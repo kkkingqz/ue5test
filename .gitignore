@@ -30,6 +30,10 @@ Saved/
 *.pdb
 *.so
 
+# Standalone/CMake build trees
+build/
+cmake-build-*/
+
 # Local Codex/agent configuration
 .agents/
 .codex/
@@ -37,4 +41,3 @@ Saved/
 # OS metadata
 .DS_Store
 Thumbs.db
-

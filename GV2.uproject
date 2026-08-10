@@ -18,6 +18,17 @@
 		{
 			"Name": "AllToolsets",
 			"Enabled": true
+		},
+		{
+			"Name": "CommonUI",
+			"Enabled": true
+		}
+	],
+	"Modules": [
+		{
+			"Name": "GV2",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	]
 }

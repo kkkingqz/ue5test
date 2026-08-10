@@ -1,0 +1,21 @@
+{
+  "name": "Lua",
+  "version": "5.4.8",
+  "release_num": 50408,
+  "source_url": "https://www.lua.org/ftp/lua-5.4.8.tar.gz",
+  "source_sha256": "4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae",
+  "license": "LICENSE",
+  "excluded_sources": [
+    "lua.c",
+    "luac.c",
+    "lcorolib.c",
+    "ldblib.c",
+    "liolib.c",
+    "linit.c",
+    "loadlib.c",
+    "loslib.c"
+  ],
+  "local_adaptations": [
+    "lprefix.h: suppress Clang unreachable fallback diagnostics promoted by Unreal Build Tool"
+  ]
+}

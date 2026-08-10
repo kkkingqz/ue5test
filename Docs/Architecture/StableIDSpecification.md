@@ -1,0 +1,181 @@
+---
+title: Stable ID Specification
+status: normative
+version: 1.0
+updated: 2026-08-10
+decisions:
+  - ../ADR/0002-stable-id-format.md
+---
+
+# Stable ID Specification
+
+Stable ID описывает логическую идентичность и не зависит от filename, directory, display text, locale, provider order, UE object path или memory address.
+
+## Global grammar
+
+```text
+stable-id    = namespace ":" kind "." path
+namespace    = segment
+kind         = segment
+path         = segment *("." segment)
+segment      = lowercase-alpha *(lowercase-alpha / digit / "_")
+```
+
+Ограничения:
+
+- segment: 1–64 ASCII characters;
+- полный ID: не более 192 ASCII characters;
+- только `a-z`, `0-9`, `_`, `.`, `:`;
+- segment начинается с `a-z`;
+- ровно одно `:` между namespace и kind;
+- пустые segments, whitespace, Unicode, hyphen, trailing dot и repeated dots запрещены.
+
+Примеры:
+
+```text
+core:item.weapon.iron_sword
+core:location.city.market
+core:command.location.travel
+core:event.location.enter
+weather_mod:item.ring.storm
+```
+
+## Canonical input policy
+
+Runtime parser ничего не исправляет: не trim-ит whitespace, не lowercases, не заменяет punctuation и не выполняет Unicode normalization. Невалидный input отклоняется.
+
+Editor/CLI может предложить отдельную fix-команду, но результат повторно проходит strict parser. Registry, save и logs хранят только canonical bytes.
+
+## Namespace ownership
+
+- `core` принадлежит основной игре.
+- Namespace мода равен immutable `mod_id` из manifest.
+- Package создаёт новые IDs только в собственном namespace.
+- Package может полностью override существующий чужой ID, если он уже предоставлен более ранним provider.
+- Создание нового ID в чужом namespace — `ForeignNamespaceNewId`.
+- `runtime` и `system` зарезервированы и не используются модами.
+
+`package_id`/`mod_id` — один `segment`, а не global Stable ID. Остальные публичные identities используют global grammar.
+
+## Kind registry
+
+`kind` определяет semantic family и expected schema. Core kinds включают:
+
+```text
+item, actor, quest, location, screen, command, event, module,
+schema, text, resource, widget, slot, effect, operation, validator,
+error, diagnostic
+```
+
+Package может добавить новый kind только вместе с declarative schema binding. Конфликтующие bindings одного kind/schema version являются fatal. Kind не выводится из directory.
+
+## Typed references
+
+Reference хранится полной canonical string. Expected kind задаётся schema поля или API signature.
+
+```json5
+{
+  equipped_weapon_id: "core:item.weapon.iron_sword",
+  arrival_text_id: "core:text.location.harbor.arrival",
+}
+```
+
+Required reference должна разрешиться до repository publication. Optional reference проверяется так же, если поле присутствует. Short IDs и universal string marker `"none"` запрещены.
+
+## Provider resolution
+
+Для одинакового Stable ID:
+
+1. Providers упорядочены package loader-ом: core, затем enabled mods.
+2. Последний provider полностью заменяет definition.
+3. Duplicate ID внутри одного package запрещён.
+4. File order не влияет на winner.
+5. Provenance хранит winning и shadowed providers.
+
+## Redirects
+
+Redirect — explicit mapping `old_id -> new_id` для rename с сохранением логической непрерывности.
+
+- Source и target имеют одинаковый kind.
+- Redirect source не может одновременно быть active definition.
+- Redirect source может объявить только owner его namespace. Мод не перенаправляет `core:*` IDs.
+- Multiple targets одного source — `RedirectConflict`.
+- Chain разрешается итеративно с visited set; cycle — fatal.
+- Save после успешной load записывает final canonical target.
+
+Published ID нельзя переиспользовать для другого смысла. После удаления применяется tombstone либо redirect. Reuse — contract error, а не warning.
+
+## Local child IDs
+
+```text
+local-child-id = stable-id "#" local-kind "." local-path
+```
+
+Примеры:
+
+```text
+core:quest.main#stage.intro
+core:screen.shop#widget.buy_button
+core:item.sword#slot.gem.primary
+```
+
+Local child уникален внутри `(owner_id, local_kind)`, не является global definition и существует только если owner schema объявляет соответствующий local kind.
+
+## Persistent instance IDs
+
+```text
+instance-id = instance-kind "@" positive-counter
+```
+
+Примеры: `item@42`, `actor@7`, `quest@3`.
+
+- Allocator принадлежит canonical save lineage.
+- Counter начинается с 1, leading zeros запрещены.
+- Выданная пара `(kind, counter)` никогда не переиспользуется.
+- Next counters сохраняются.
+- Singleton всё равно хранит отдельные `definition_id` и `instance_id`.
+
+## Transient identities
+
+```text
+runtime@<session_generation>:<counter>
+ui@<session_generation>:<counter>
+```
+
+Transient IDs не входят в canonical save, definitions и durable gameplay events. Generation mismatch возвращает `StaleTransientId` до registry lookup.
+
+## Localization и resources
+
+- `text_id` имеет kind `text`: `core:text.ui.inventory.title`.
+- `resource_id` имеет kind `resource`: `core:resource.character.aria.casual`.
+- Locale и UE path не входят в Stable ID.
+- Mapping Stable ID → Primary Asset ID/Soft Object Path задаётся explicit presentation data.
+
+## Module IDs
+
+Lua module использует global Stable ID kind `module`:
+
+```text
+core:module.location_service
+weather_mod:module.storm_rules
+```
+
+Filesystem path — provenance, но не identity.
+
+## Errors
+
+Минимальный набор stable codes:
+
+```text
+InvalidCharacter, NonAscii, InvalidSegmentStart, EmptySegment,
+TooLong, WrongKind, UnknownKind, UnknownId, ForeignNamespaceNewId,
+DuplicateDefinitionInPackage, RedirectConflict, RedirectKindMismatch,
+RedirectCycle, PublishedIdReuse, InvalidLocalId, InvalidInstanceId,
+StaleTransientId, ResourceMappingMissing
+```
+
+Diagnostic содержит package ID, package-relative source, JSON path, raw input, expected kind и provenance. Absolute filesystem path не показывается пользователю.
+
+## Conformance
+
+Обязательные tests покрывают grammar boundaries, mixed-case rejection, namespace ownership, full override, typed references, redirect chain/cycle, published-ID reuse rejection, local IDs, persistent allocator, stale transient IDs, localization/resources и deterministic indexes.
