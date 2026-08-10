@@ -1,0 +1,40 @@
+# Unreal Engine generated files
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# IDE and editor state
+.vs/
+.vscode/
+.idea/
+*.VC.db
+*.VC.opendb
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.tmp
+*.user
+*.userprefs
+
+# Compiled objects and platform artifacts
+*.dll
+*.dylib
+*.exe
+*.exp
+*.ilk
+*.lib
+*.log
+*.obj
+*.pdb
+*.so
+
+# Local Codex/agent configuration
+.agents/
+.codex/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
