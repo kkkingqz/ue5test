@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -69,11 +71,31 @@ struct FTextSpec
 {
     std::string TextId;
     FValue::FObject Args;
+    std::string Style;
 };
 
 struct FResourceReference
 {
     std::string ResourceId;
+};
+
+struct FScreenField
+{
+    std::string FieldId;
+    std::string SchemaId;
+    FValue Value;
+};
+
+struct FScreenRequest
+{
+    std::string ScreenId;
+    std::vector<FScreenField> Fields;
+};
+
+struct FRuntimeSource
+{
+    std::string Name;
+    std::string Text;
 };
 
 class GV2_PORTABLE_API FRuntimeSession
@@ -85,11 +107,17 @@ public:
     FRuntimeSession(const FRuntimeSession&) = delete;
     FRuntimeSession& operator=(const FRuntimeSession&) = delete;
 
-    bool StartTestRuntime(std::int32_t InSessionGeneration, FRuntimeFault& OutFault);
+    bool Start(
+        std::int32_t InSessionGeneration,
+        const std::vector<FRuntimeSource>& Sources,
+        FRuntimeFault& OutFault);
     void Stop();
 
     bool DispatchSemanticInput(const FSemanticInput& Input, FRuntimeFault& OutFault);
     bool DispatchCommand(const FCommandRequest& Request, FRuntimeFault& OutFault);
+    bool TakePendingScreen(
+        std::optional<FScreenRequest>& OutRequest,
+        FRuntimeFault& OutFault);
 
     bool IsStarted() const;
     bool IsExecuting() const;

@@ -1,9 +1,85 @@
 #include "Runtime/GV2RuntimeSubsystem.h"
 
 #include "Application/GV2SessionCoordinator.h"
+#include "Blueprint/UserWidget.h"
+#include "Engine/World.h"
 #include "Logging/LogMacros.h"
+#include "UI/GV2DebugStartScreenWidget.h"
+#include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2ScreenRegistry.h"
+#include "UI/GV2ScreenWidgetBase.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
+
+namespace
+{
+bool IsCanonicalSegment(const FStringView Segment)
+{
+    if (Segment.IsEmpty() || Segment.Len() > 64
+        || Segment[0] < TEXT('a') || Segment[0] > TEXT('z'))
+    {
+        return false;
+    }
+    for (const TCHAR Character : Segment)
+    {
+        const bool bIsLowercaseLetter = Character >= TEXT('a') && Character <= TEXT('z');
+        const bool bIsDigit = Character >= TEXT('0') && Character <= TEXT('9');
+        if (!bIsLowercaseLetter && !bIsDigit && Character != TEXT('_'))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsCanonicalScreenId(const FString& Value)
+{
+    if (Value.IsEmpty() || Value.Len() > 192)
+    {
+        return false;
+    }
+
+    const FStringView View(Value);
+    int32 ColonIndex = INDEX_NONE;
+    int32 DotIndex = INDEX_NONE;
+    for (int32 Index = 0; Index < View.Len(); ++Index)
+    {
+        if (View[Index] == TEXT(':'))
+        {
+            if (ColonIndex != INDEX_NONE)
+            {
+                return false;
+            }
+            ColonIndex = Index;
+        }
+        else if (View[Index] == TEXT('.') && DotIndex == INDEX_NONE)
+        {
+            DotIndex = Index;
+        }
+    }
+
+    if (ColonIndex == INDEX_NONE || DotIndex <= ColonIndex + 1
+        || !IsCanonicalSegment(View.Left(ColonIndex))
+        || View.Mid(ColonIndex + 1, DotIndex - ColonIndex - 1) != TEXTVIEW("screen"))
+    {
+        return false;
+    }
+
+    int32 SegmentStart = DotIndex + 1;
+    for (int32 Index = SegmentStart; Index <= View.Len(); ++Index)
+    {
+        if (Index == View.Len() || View[Index] == TEXT('.'))
+        {
+            if (!IsCanonicalSegment(View.Mid(SegmentStart, Index - SegmentStart)))
+            {
+                return false;
+            }
+            SegmentStart = Index + 1;
+        }
+    }
+    return true;
+}
+}
 
 UGV2RuntimeSubsystem::UGV2RuntimeSubsystem(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -16,6 +92,12 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
 
+    FString ImageCatalogError;
+    if (!UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(ImageCatalogError))
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Image Resource Catalog build failed: %s"), *ImageCatalogError);
+    }
+    LoadScreenRegistry();
     Coordinator = MakePimpl<FGV2SessionCoordinator>();
     Coordinator->SetInteractionSink([this](const FGV2UiIngressItem& Item)
     {
@@ -27,21 +109,39 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
             *Item.BindingHandle.ToString(),
             *Item.Binding.CommandId);
 
-        OnTestInteractionAccepted.Broadcast(
-            Item.Binding.CommandId,
-            Item.BindingHandle,
-            Item.Sequence);
     });
+    Coordinator->SetScreenSink([this](const FGV2ScreenViewModel& Model)
+    {
+        return HandleScreenRequested(Model);
+    });
+#if !UE_BUILD_SHIPPING
+    StartGameInstanceHandle = FWorldDelegates::OnStartGameInstance.AddUObject(
+        this,
+        &ThisClass::HandleStartGameInstance);
+#endif
 }
 
 void UGV2RuntimeSubsystem::Deinitialize()
 {
+    if (StartGameInstanceHandle.IsValid())
+    {
+        FWorldDelegates::OnStartGameInstance.Remove(StartGameInstanceHandle);
+        StartGameInstanceHandle.Reset();
+    }
+    if (ActiveScreen != nullptr)
+    {
+        ActiveScreen->RemoveFromParent();
+        ActiveScreen = nullptr;
+    }
     if (Coordinator)
     {
         Coordinator->EndSession(EGV2SessionState::Destroyed);
         Coordinator->ClearInteractionSink();
+        Coordinator->ClearScreenSink();
         Coordinator.Reset();
     }
+    RegisteredScreenClasses.Reset();
+    ScreenRegistry = nullptr;
 
     Super::Deinitialize();
 }
@@ -60,80 +160,221 @@ EGV2SubmitUiInteractionResult UGV2RuntimeSubsystem::SubmitUiInteraction(
         : EGV2SubmitUiInteractionResult::RuntimeNotReady;
 }
 
-void UGV2RuntimeSubsystem::StartTestSession()
+void UGV2RuntimeSubsystem::StartSession()
 {
     check(IsInGameThread());
     check(Coordinator);
 
-    if (!Coordinator->StartTestSession())
+    if (RegisteredScreenClasses.IsEmpty())
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 test session"));
+        UE_LOG(LogGV2Runtime, Error, TEXT("StartSession rejected: Screen Registry is not ready"));
+        return;
+    }
+
+    if (ActiveScreen != nullptr)
+    {
+        ActiveScreen->RemoveFromParent();
+        ActiveScreen = nullptr;
+    }
+
+    if (!Coordinator->StartSession())
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
         return;
     }
     UE_LOG(
         LogGV2Runtime,
         Display,
-        TEXT("Started test session generation %d"),
+        TEXT("Started session generation %d"),
         Coordinator->GetStatus().SessionGeneration);
 }
 
-void UGV2RuntimeSubsystem::EndTestSession()
+void UGV2RuntimeSubsystem::EndSession()
 {
     check(IsInGameThread());
     check(Coordinator);
+    if (ActiveScreen != nullptr)
+    {
+        ActiveScreen->RemoveFromParent();
+        ActiveScreen = nullptr;
+    }
+    bActiveScreenAddedToViewport = false;
     Coordinator->EndSession(EGV2SessionState::Destroyed);
 }
 
-FGV2TestScreenViewModel UGV2RuntimeSubsystem::CreateTestScreenModel(
-    const FText& DescriptionText,
-    const TArray<FGV2TestButtonSpec>& Buttons)
+UGV2DebugStartScreenWidget* UGV2RuntimeSubsystem::ShowDebugStartScreen(
+    const bool bAddToViewport)
 {
     check(IsInGameThread());
-
-    FGV2TestScreenViewModel Model;
-    Model.DescriptionText = DescriptionText;
-    if (!Coordinator || !Coordinator->GetStatus().bIsReady)
+    if (Coordinator == nullptr || GetGameInstance() == nullptr)
     {
-        UE_LOG(LogGV2Runtime, Warning, TEXT("CreateTestScreenModel rejected: session is not Ready"));
-        return Model;
+        return nullptr;
+    }
+    if (!Coordinator->GetStatus().bIsReady)
+    {
+        StartSession();
     }
 
-    TArray<const FGV2TestButtonSpec*> ValidButtons;
-    TArray<FGV2UiBindingDefinition> Definitions;
-    ValidButtons.Reserve(Buttons.Num());
-    Definitions.Reserve(Buttons.Num());
-
-    for (const FGV2TestButtonSpec& Button : Buttons)
+    FGV2ButtonViewModel StartButtonModel;
+    if (!Coordinator->BuildDebugStartButtonModel(StartButtonModel))
     {
-        if (Button.TestAction.IsEmpty())
+        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to build the debug start binding"));
+        return nullptr;
+    }
+
+    UGV2DebugStartScreenWidget* Screen = CreateWidget<UGV2DebugStartScreenWidget>(
+        GetGameInstance(),
+        UGV2DebugStartScreenWidget::StaticClass());
+    if (Screen == nullptr || !Screen->InitializeStartScreen(StartButtonModel))
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to create the debug start screen"));
+        return nullptr;
+    }
+
+    bActiveScreenAddedToViewport = bAddToViewport;
+    ReplaceActiveScreen(Screen);
+    return Screen;
+}
+
+UUserWidget* UGV2RuntimeSubsystem::GetActiveScreen() const
+{
+    return ActiveScreen;
+}
+
+bool UGV2RuntimeSubsystem::LoadScreenRegistry()
+{
+    RegisteredScreenClasses.Reset();
+    const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
+    ScreenRegistry = Settings != nullptr ? Settings->RegistryAsset.LoadSynchronous() : nullptr;
+    if (ScreenRegistry == nullptr)
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Screen Registry asset is not configured or could not be loaded"));
+        return false;
+    }
+
+    for (const FGV2ScreenRegistryEntry& Entry : ScreenRegistry->GetEntries())
+    {
+        if (!IsCanonicalScreenId(Entry.ScreenId)
+            || Entry.Layer.IsNone()
+            || Entry.WidgetClass.IsNull()
+            || RegisteredScreenClasses.Contains(Entry.ScreenId))
         {
-            UE_LOG(LogGV2Runtime, Warning, TEXT("Skipped test button with an empty action"));
-            continue;
+            UE_LOG(
+                LogGV2Runtime,
+                Error,
+                TEXT("Invalid or duplicate Screen Registry entry: screen_id='%s' layer='%s' class='%s'"),
+                *Entry.ScreenId,
+                *Entry.Layer.ToString(),
+                *Entry.WidgetClass.ToSoftObjectPath().ToString());
+            RegisteredScreenClasses.Reset();
+            ScreenRegistry = nullptr;
+            return false;
         }
 
-        const int32 ButtonIndex = ValidButtons.Num();
-        ValidButtons.Add(&Button);
-
-        FGV2UiBindingDefinition& Definition = Definitions.AddDefaulted_GetRef();
-        Definition.NodeKeyPath = {TEXT("route"), FString::Printf(TEXT("button_%d"), ButtonIndex)};
-        Definition.CommandId = Button.TestAction;
+        UClass* WidgetClass = Entry.WidgetClass.LoadSynchronous();
+        if (WidgetClass == nullptr
+            || !WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
+            || WidgetClass->HasAnyClassFlags(CLASS_Abstract))
+        {
+            UE_LOG(
+                LogGV2Runtime,
+                Error,
+                TEXT("Screen Registry class is missing, abstract, or has the wrong parent: screen_id='%s' class='%s'"),
+                *Entry.ScreenId,
+                *Entry.WidgetClass.ToSoftObjectPath().ToString());
+            RegisteredScreenClasses.Reset();
+            ScreenRegistry = nullptr;
+            return false;
+        }
+        RegisteredScreenClasses.Add(Entry.ScreenId, WidgetClass);
     }
 
-    TArray<FGV2UiBindingHandle> Handles;
-    if (!Coordinator->PublishTestUiBindings(Definitions, Handles)
-        || Handles.Num() != ValidButtons.Num())
+    if (RegisteredScreenClasses.IsEmpty())
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to publish test screen UI bindings"));
-        return Model;
+        UE_LOG(LogGV2Runtime, Error, TEXT("Screen Registry contains no entries"));
+        ScreenRegistry = nullptr;
+        return false;
     }
+    return true;
+}
 
-    Model.Buttons.Reserve(ValidButtons.Num());
-    for (int32 Index = 0; Index < ValidButtons.Num(); ++Index)
+UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId) const
+{
+    const TObjectPtr<UClass>* Found = RegisteredScreenClasses.Find(ScreenId);
+    if (Found == nullptr)
     {
-        FGV2ButtonViewModel& ButtonModel = Model.Buttons.AddDefaulted_GetRef();
-        ButtonModel.Text = ValidButtons[Index]->Text;
-        ButtonModel.Binding = Handles[Index];
+        UE_LOG(LogGV2Runtime, Error, TEXT("Unknown screen_id '%s'"), *ScreenId);
+        return nullptr;
+    }
+    return Found->Get();
+}
+
+UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::CreateRegisteredScreen(
+    const FGV2ScreenViewModel& Model,
+    const bool bAddToViewport)
+{
+    UClass* ScreenClass = ResolveScreenClass(Model.ScreenId);
+    if (ScreenClass == nullptr || GetGameInstance() == nullptr)
+    {
+        return nullptr;
     }
 
-    return Model;
+    UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(GetGameInstance(), ScreenClass);
+    if (Screen == nullptr)
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to instantiate registered screen '%s'"), *Model.ScreenId);
+        return nullptr;
+    }
+    if (!Screen->ApplyScreenFields(Model.Fields))
+    {
+        UE_LOG(
+            LogGV2Runtime,
+            Error,
+            TEXT("Failed to apply screen '%s' with %d fields"),
+            *Model.ScreenId,
+            Model.Fields.Num());
+        return nullptr;
+    }
+    if (bAddToViewport)
+    {
+        Screen->AddToViewport();
+    }
+    return Screen;
+}
+
+void UGV2RuntimeSubsystem::HandleStartGameInstance(UGameInstance* StartedGameInstance)
+{
+    if (StartedGameInstance != nullptr
+        && StartedGameInstance == GetGameInstance()
+        && StartedGameInstance->GetWorld() != nullptr
+        && StartedGameInstance->GetWorld()->IsGameWorld())
+    {
+        ShowDebugStartScreen(true);
+    }
+}
+
+bool UGV2RuntimeSubsystem::HandleScreenRequested(
+    const FGV2ScreenViewModel& Model)
+{
+    UGV2ScreenWidgetBase* Screen = CreateRegisteredScreen(Model, false);
+    if (Screen == nullptr)
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Unable to create requested screen '%s'"), *Model.ScreenId);
+        return false;
+    }
+    ReplaceActiveScreen(Screen);
+    return true;
+}
+
+void UGV2RuntimeSubsystem::ReplaceActiveScreen(UUserWidget* NewScreen)
+{
+    if (ActiveScreen != nullptr)
+    {
+        ActiveScreen->RemoveFromParent();
+    }
+    ActiveScreen = NewScreen;
+    if (bActiveScreenAddedToViewport && ActiveScreen != nullptr)
+    {
+        ActiveScreen->AddToViewport();
+    }
 }

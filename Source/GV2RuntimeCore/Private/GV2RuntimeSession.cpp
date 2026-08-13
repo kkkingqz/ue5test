@@ -6,8 +6,12 @@ extern "C"
 #include "lualib.h"
 }
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <functional>
+#include <set>
+#include <string_view>
 #include <thread>
 
 static_assert(LUA_VERSION_RELEASE_NUM == GV2RuntimeCore::FRuntimeSession::LuaReleaseNumber);
@@ -16,38 +20,108 @@ namespace GV2RuntimeCore
 {
 namespace
 {
-constexpr char TestRuntimeSource[] = R"lua(
-assert(io == nil and os == nil and debug == nil and coroutine == nil and package == nil)
-assert(load == nil and loadfile == nil and dofile == nil)
-assert(math.random == nil and math.randomseed == nil)
-
-function game.runtime.dispatch_command(request)
-    assert(type(request) == "table", "command request must be a table")
-    assert(type(request.command_id) == "string" and request.command_id ~= "", "command_id is required")
-    assert(type(request.args) == "table", "args table is required")
-    assert(type(request.sequence) == "number", "sequence is required")
-    if request.command_id == "core:command.test.force_error" then
-        error("forced test runtime error")
-    end
-    game.runtime.last_sequence = request.sequence
-    game.runtime.command_count = (game.runtime.command_count or 0) + 1
-    return request.sequence
-end
-
-function game.runtime.dispatch_semantic_input(input)
-    assert(type(input) == "table", "semantic input must be a table")
-    assert(input.session_generation == game.runtime.session_generation, "session generation mismatch")
-    return game.runtime.dispatch_command({
-        command_id = input.command_id,
-        args = input.args,
-        sequence = input.sequence,
-        source = "semantic_input",
-    })
-end
-)lua";
-
 constexpr int MaxValueDepth = 64;
 constexpr std::size_t MaxValueNodes = 10000;
+constexpr const char* ModuleManifestSourceName = "@Scripts/bootstrap/manifest.lua";
+constexpr const char* LoadedModulesRegistryKey = "GV2.LoadedModules";
+constexpr const char* AllowedDependenciesRegistryKey = "GV2.AllowedDependencies";
+constexpr const char* CurrentModuleRegistryKey = "GV2.CurrentModule";
+
+struct FModuleSpec
+{
+    std::string ModuleId;
+    std::string SourceName;
+    std::vector<std::string> Dependencies;
+};
+
+bool IsCanonicalSegment(const std::string_view Segment)
+{
+    if (Segment.empty() || Segment.size() > 64 || Segment.front() < 'a' || Segment.front() > 'z')
+    {
+        return false;
+    }
+    for (const char Character : Segment)
+    {
+        const bool bIsLowercaseLetter = Character >= 'a' && Character <= 'z';
+        const bool bIsDigit = Character >= '0' && Character <= '9';
+        if (!bIsLowercaseLetter && !bIsDigit && Character != '_')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool IsCanonicalStableIdOfKind(const std::string_view Value, const std::string_view ExpectedKind)
+{
+    if (Value.empty() || Value.size() > 192)
+    {
+        return false;
+    }
+    const std::size_t Colon = Value.find(':');
+    const std::size_t Dot = Value.find('.');
+    if (Colon == std::string_view::npos || Value.find(':', Colon + 1) != std::string_view::npos
+        || Dot == std::string_view::npos || Dot <= Colon + 1
+        || !IsCanonicalSegment(Value.substr(0, Colon))
+        || Value.substr(Colon + 1, Dot - Colon - 1) != ExpectedKind)
+    {
+        return false;
+    }
+    std::size_t SegmentStart = Dot + 1;
+    while (SegmentStart <= Value.size())
+    {
+        const std::size_t SegmentEnd = Value.find('.', SegmentStart);
+        const std::size_t End = SegmentEnd == std::string_view::npos ? Value.size() : SegmentEnd;
+        if (!IsCanonicalSegment(Value.substr(SegmentStart, End - SegmentStart)))
+        {
+            return false;
+        }
+        if (SegmentEnd == std::string_view::npos)
+        {
+            break;
+        }
+        SegmentStart = SegmentEnd + 1;
+    }
+    return true;
+}
+
+bool IsCanonicalModuleSourcePath(const std::string_view Value)
+{
+    if (Value.empty() || Value.size() > 240 || Value.front() == '/'
+        || !Value.ends_with(".lua") || Value.find("..") != std::string_view::npos
+        || Value.find("//") != std::string_view::npos
+        || Value.find('\\') != std::string_view::npos)
+    {
+        return false;
+    }
+    for (const char Character : Value)
+    {
+        const bool bIsLowercaseLetter = Character >= 'a' && Character <= 'z';
+        const bool bIsDigit = Character >= '0' && Character <= '9';
+        if (!bIsLowercaseLetter && !bIsDigit
+            && Character != '_' && Character != '/' && Character != '.')
+        {
+            return false;
+        }
+    }
+    const std::string_view Stem = Value.substr(0, Value.size() - 4);
+    std::size_t SegmentStart = 0;
+    while (SegmentStart <= Stem.size())
+    {
+        const std::size_t Slash = Stem.find('/', SegmentStart);
+        const std::size_t SegmentEnd = Slash == std::string_view::npos ? Stem.size() : Slash;
+        if (!IsCanonicalSegment(Stem.substr(SegmentStart, SegmentEnd - SegmentStart)))
+        {
+            return false;
+        }
+        if (Slash == std::string_view::npos)
+        {
+            break;
+        }
+        SegmentStart = Slash + 1;
+    }
+    return true;
+}
 
 struct FStackRestore
 {
@@ -203,6 +277,77 @@ bool PushValue(
     }
     return PushObject(State, std::get<FValue::FObject>(Value.Data), Depth, NodeCount, OutFault);
 }
+
+bool ReadFlatScalarObject(
+    lua_State* State,
+    const int TableIndex,
+    FValue::FObject& OutObject,
+    FRuntimeFault& OutFault)
+{
+    const int AbsoluteIndex = lua_absindex(State, TableIndex);
+    if (!lua_istable(State, AbsoluteIndex) || lua_rawlen(State, AbsoluteIndex) != 0)
+    {
+        OutFault = {"LuaScreenRequestInvalid", "Rich text span args must be an object."};
+        return false;
+    }
+
+    OutObject.clear();
+    lua_pushnil(State);
+    while (lua_next(State, AbsoluteIndex) != 0)
+    {
+        if (lua_type(State, -2) != LUA_TSTRING || OutObject.size() >= 32)
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Rich text span args require string keys and at most 32 fields."};
+            return false;
+        }
+
+        std::size_t KeyLength = 0;
+        const char* KeyData = lua_tolstring(State, -2, &KeyLength);
+        std::string Key(KeyData, KeyLength);
+        if (Key.empty())
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Rich text span args contain an empty field name."};
+            return false;
+        }
+
+        FValue Value;
+        switch (lua_type(State, -1))
+        {
+        case LUA_TBOOLEAN:
+            Value = FValue(lua_toboolean(State, -1) != 0);
+            break;
+        case LUA_TNUMBER:
+            if (lua_isinteger(State, -1))
+            {
+                Value = FValue(static_cast<std::int64_t>(lua_tointeger(State, -1)));
+            }
+            else
+            {
+                const double Number = static_cast<double>(lua_tonumber(State, -1));
+                if (!std::isfinite(Number))
+                {
+                    OutFault = {"LuaScreenRequestInvalid", "Rich text span args contain a non-finite number."};
+                    return false;
+                }
+                Value = FValue(Number);
+            }
+            break;
+        case LUA_TSTRING:
+        {
+            std::size_t StringLength = 0;
+            const char* StringData = lua_tolstring(State, -1, &StringLength);
+            Value = FValue(std::string(StringData, StringLength));
+            break;
+        }
+        default:
+            OutFault = {"LuaScreenRequestInvalid", "Rich text span args support only boolean, integer, number, and string values."};
+            return false;
+        }
+        OutObject.emplace(std::move(Key), std::move(Value));
+        lua_pop(State, 1);
+    }
+    return true;
+}
 }
 
 struct FRuntimeSession::FImpl
@@ -262,9 +407,18 @@ struct FRuntimeSession::FImpl
         lua_pushinteger(State, SessionGeneration);
         lua_setfield(State, -2, "session_generation");
         lua_setfield(State, -2, "runtime");
+        lua_createtable(State, 0, 1);
+        lua_setfield(State, -2, "ui");
+        lua_createtable(State, 0, 2);
+        lua_setfield(State, -2, "debug");
         lua_createtable(State, 0, 0);
         lua_setfield(State, -2, "null");
         lua_setglobal(State, "game");
+
+        lua_createtable(State, 0, 16);
+        lua_setfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        lua_pushcfunction(State, &FImpl::RequireModule);
+        lua_setglobal(State, "require");
 
         if (lua_gettop(State) != 0)
         {
@@ -275,9 +429,88 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
-    bool ExecuteSource(const char* Source, std::size_t Length, const char* Name, FRuntimeFault& OutFault)
+    static int RequireModule(lua_State* InState)
     {
-        if (!BeginEntry("bootstrap", OutFault))
+        std::size_t ModuleIdLength = 0;
+        const char* ModuleId = luaL_checklstring(InState, 1, &ModuleIdLength);
+
+        lua_getfield(InState, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
+        if (lua_type(InState, -1) != LUA_TSTRING)
+        {
+            return luaL_error(InState, "require is allowed only during declared module initialization");
+        }
+        lua_pop(InState, 1);
+
+        lua_getfield(InState, LUA_REGISTRYINDEX, AllowedDependenciesRegistryKey);
+        lua_pushlstring(InState, ModuleId, ModuleIdLength);
+        lua_gettable(InState, -2);
+        const bool bAllowed = lua_toboolean(InState, -1) != 0;
+        lua_pop(InState, 2);
+        if (!bAllowed)
+        {
+            return luaL_error(InState, "module import is not declared in dependencies: %s", ModuleId);
+        }
+
+        lua_getfield(InState, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        lua_pushlstring(InState, ModuleId, ModuleIdLength);
+        lua_gettable(InState, -2);
+        lua_remove(InState, -2);
+        if (lua_isnil(InState, -1))
+        {
+            return luaL_error(InState, "declared module dependency is not loaded: %s", ModuleId);
+        }
+        return 1;
+    }
+
+    bool ReadRequiredStringField(
+        const int TableIndex,
+        const char* FieldName,
+        std::string& OutValue,
+        FRuntimeFault& OutFault)
+    {
+        const int AbsoluteIndex = lua_absindex(State, TableIndex);
+        lua_getfield(State, AbsoluteIndex, FieldName);
+        if (lua_type(State, -1) != LUA_TSTRING)
+        {
+            lua_pop(State, 1);
+            OutFault = {
+                "LuaModuleManifestInvalid",
+                std::string("Module manifest field must be a string: ") + FieldName};
+            return false;
+        }
+        std::size_t Length = 0;
+        const char* Value = lua_tolstring(State, -1, &Length);
+        assert(Value != nullptr);
+        OutValue.assign(Value, Length);
+        lua_pop(State, 1);
+        return true;
+    }
+
+    bool LoadModuleGraph(
+        const std::vector<FRuntimeSource>& Sources,
+        std::vector<FModuleSpec>& OutLoadOrder,
+        std::map<std::string, const FRuntimeSource*, std::less<>>& OutSourcesByName,
+        FRuntimeFault& OutFault)
+    {
+        OutLoadOrder.clear();
+        OutSourcesByName.clear();
+        for (const FRuntimeSource& Source : Sources)
+        {
+            if (Source.Name.empty() || Source.Text.empty()
+                || !OutSourcesByName.emplace(Source.Name, &Source).second)
+            {
+                OutFault = {"LuaRuntimeSourceInvalid", "Runtime source names and text must be non-empty and unique."};
+                return false;
+            }
+        }
+
+        const auto ManifestSource = OutSourcesByName.find(ModuleManifestSourceName);
+        if (ManifestSource == OutSourcesByName.end())
+        {
+            OutFault = {"LuaModuleManifestMissing", "Required module manifest is missing."};
+            return false;
+        }
+        if (!BeginEntry("module_manifest", OutFault))
         {
             return false;
         }
@@ -286,16 +519,259 @@ struct FRuntimeSession::FImpl
         FExecutionGuard Execution(bExecuting);
         lua_pushcfunction(State, Traceback);
         const int ErrorHandler = lua_gettop(State);
-
-        if (luaL_loadbufferx(State, Source, Length, Name, "t") != LUA_OK)
+        const FRuntimeSource& Manifest = *ManifestSource->second;
+        if (luaL_loadbufferx(
+                State,
+                Manifest.Text.data(),
+                Manifest.Text.size(),
+                Manifest.Name.c_str(),
+                "t") != LUA_OK)
         {
-            ReadLuaError(State, "LuaSourceLoadError", "Lua source failed to load.", OutFault);
+            ReadLuaError(State, "LuaModuleManifestInvalid", "Module manifest failed to compile.", OutFault);
             return false;
         }
-        if (lua_pcall(State, 0, 0, ErrorHandler) != LUA_OK)
+        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
         {
-            ReadLuaError(State, "LuaBootstrapError", "Lua bootstrap failed.", OutFault);
+            ReadLuaError(State, "LuaModuleManifestInvalid", "Module manifest failed to execute.", OutFault);
             return false;
+        }
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaModuleManifestInvalid", "Module manifest must return a table."};
+            return false;
+        }
+        const int ManifestIndex = lua_absindex(State, -1);
+
+        std::string EntryModuleId;
+        if (!ReadRequiredStringField(ManifestIndex, "entry_module_id", EntryModuleId, OutFault)
+            || !IsCanonicalStableIdOfKind(EntryModuleId, "module"))
+        {
+            if (OutFault.Code.empty())
+            {
+                OutFault = {"LuaModuleManifestInvalid", "entry_module_id must be a canonical module ID."};
+            }
+            return false;
+        }
+
+        lua_getfield(State, ManifestIndex, "modules");
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaModuleManifestInvalid", "modules must be an array."};
+            return false;
+        }
+        const int ModulesIndex = lua_absindex(State, -1);
+        const lua_Unsigned ModuleCount = lua_rawlen(State, ModulesIndex);
+        if (ModuleCount == 0 || ModuleCount > 4096)
+        {
+            OutFault = {"LuaModuleManifestInvalid", "Module manifest must contain between 1 and 4096 modules."};
+            return false;
+        }
+
+        std::vector<FModuleSpec> Specs;
+        Specs.reserve(static_cast<std::size_t>(ModuleCount));
+        std::map<std::string, std::size_t, std::less<>> SpecIndexById;
+        std::set<std::string, std::less<>> DeclaredSourceNames;
+        for (lua_Unsigned Index = 1; Index <= ModuleCount; ++Index)
+        {
+            lua_rawgeti(State, ModulesIndex, static_cast<lua_Integer>(Index));
+            if (!lua_istable(State, -1))
+            {
+                OutFault = {"LuaModuleManifestInvalid", "Each module descriptor must be a table."};
+                return false;
+            }
+            const int SpecTableIndex = lua_absindex(State, -1);
+            FModuleSpec Spec;
+            std::string RelativeSource;
+            if (!ReadRequiredStringField(SpecTableIndex, "module_id", Spec.ModuleId, OutFault)
+                || !ReadRequiredStringField(SpecTableIndex, "source", RelativeSource, OutFault)
+                || !IsCanonicalStableIdOfKind(Spec.ModuleId, "module")
+                || !IsCanonicalModuleSourcePath(RelativeSource))
+            {
+                if (OutFault.Code.empty())
+                {
+                    OutFault = {"LuaModuleManifestInvalid", "Module ID or source path is not canonical."};
+                }
+                return false;
+            }
+            Spec.SourceName = "@Scripts/" + RelativeSource;
+            if (Spec.SourceName == ModuleManifestSourceName
+                || !SpecIndexById.emplace(Spec.ModuleId, Specs.size()).second
+                || !DeclaredSourceNames.emplace(Spec.SourceName).second)
+            {
+                OutFault = {"LuaModuleManifestInvalid", "Module IDs and source paths must be unique."};
+                return false;
+            }
+
+            lua_getfield(State, SpecTableIndex, "dependencies");
+            if (!lua_istable(State, -1))
+            {
+                OutFault = {"LuaModuleManifestInvalid", "Module dependencies must be an array."};
+                return false;
+            }
+            const lua_Unsigned DependencyCount = lua_rawlen(State, -1);
+            std::set<std::string, std::less<>> SeenDependencies;
+            for (lua_Unsigned DependencyIndex = 1; DependencyIndex <= DependencyCount; ++DependencyIndex)
+            {
+                lua_rawgeti(State, -1, static_cast<lua_Integer>(DependencyIndex));
+                if (lua_type(State, -1) != LUA_TSTRING)
+                {
+                    OutFault = {"LuaModuleManifestInvalid", "Module dependency IDs must be strings."};
+                    return false;
+                }
+                std::size_t Length = 0;
+                const char* Value = lua_tolstring(State, -1, &Length);
+                std::string Dependency(Value, Length);
+                lua_pop(State, 1);
+                if (!IsCanonicalStableIdOfKind(Dependency, "module")
+                    || Dependency == Spec.ModuleId
+                    || !SeenDependencies.emplace(Dependency).second)
+                {
+                    OutFault = {"LuaModuleManifestInvalid", "Module dependencies must be canonical, unique, and non-self."};
+                    return false;
+                }
+                Spec.Dependencies.emplace_back(std::move(Dependency));
+            }
+            lua_pop(State, 1);
+            Specs.emplace_back(std::move(Spec));
+            lua_pop(State, 1);
+        }
+        lua_pop(State, 1);
+
+        if (SpecIndexById.find(EntryModuleId) == SpecIndexById.end())
+        {
+            OutFault = {"LuaModuleManifestInvalid", "entry_module_id is not declared."};
+            return false;
+        }
+        for (const FModuleSpec& Spec : Specs)
+        {
+            if (OutSourcesByName.find(Spec.SourceName) == OutSourcesByName.end())
+            {
+                OutFault = {"LuaModuleSourceMissing", "Declared module source is missing: " + Spec.SourceName};
+                return false;
+            }
+            for (const std::string& Dependency : Spec.Dependencies)
+            {
+                if (SpecIndexById.find(Dependency) == SpecIndexById.end())
+                {
+                    OutFault = {"LuaModuleDependencyMissing", "Declared module dependency is missing: " + Dependency};
+                    return false;
+                }
+            }
+        }
+        if (OutSourcesByName.size() != DeclaredSourceNames.size() + 1)
+        {
+            OutFault = {"LuaModuleSourceUnlisted", "Every Lua source except the manifest must declare exactly one module."};
+            return false;
+        }
+
+        std::map<std::string, int, std::less<>> VisitState;
+        std::function<bool(const std::string&)> Visit = [&](const std::string& ModuleId)
+        {
+            int& StateValue = VisitState[ModuleId];
+            if (StateValue == 1)
+            {
+                OutFault = {"LuaModuleDependencyCycle", "Module dependency graph contains a cycle at: " + ModuleId};
+                return false;
+            }
+            if (StateValue == 2)
+            {
+                return true;
+            }
+            StateValue = 1;
+            const FModuleSpec& Spec = Specs[SpecIndexById.at(ModuleId)];
+            for (const std::string& Dependency : Spec.Dependencies)
+            {
+                if (!Visit(Dependency))
+                {
+                    return false;
+                }
+            }
+            StateValue = 2;
+            OutLoadOrder.emplace_back(Spec);
+            return true;
+        };
+        if (!Visit(EntryModuleId))
+        {
+            return false;
+        }
+        if (OutLoadOrder.size() != Specs.size())
+        {
+            OutFault = {"LuaModuleManifestInvalid", "Every declared module must be reachable from entry_module_id."};
+            return false;
+        }
+        return true;
+    }
+
+    bool ExecuteModule(
+        const FModuleSpec& Spec,
+        const FRuntimeSource& Source,
+        FRuntimeFault& OutFault)
+    {
+        if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
+        {
+            return false;
+        }
+
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+        PushString(State, Spec.ModuleId);
+        lua_setfield(State, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
+        lua_createtable(State, 0, static_cast<int>(Spec.Dependencies.size()));
+        for (const std::string& Dependency : Spec.Dependencies)
+        {
+            lua_pushboolean(State, 1);
+            lua_setfield(State, -2, Dependency.c_str());
+        }
+        lua_setfield(State, LUA_REGISTRYINDEX, AllowedDependenciesRegistryKey);
+
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+        if (luaL_loadbufferx(
+                State,
+                Source.Text.data(),
+                Source.Text.size(),
+                Source.Name.c_str(),
+                "t") != LUA_OK)
+        {
+            ReadLuaError(State, "LuaModuleLoadError", "Lua module failed to compile.", OutFault);
+            return false;
+        }
+        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "LuaModuleLoadError", "Lua module failed to initialize.", OutFault);
+            return false;
+        }
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaModuleExportInvalid", "Lua module must return an export table: " + Spec.ModuleId};
+            return false;
+        }
+
+        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        lua_pushvalue(State, -2);
+        lua_setfield(State, -2, Spec.ModuleId.c_str());
+        lua_pop(State, 1);
+        lua_pushnil(State);
+        lua_setfield(State, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
+        lua_pushnil(State);
+        lua_setfield(State, LUA_REGISTRYINDEX, AllowedDependenciesRegistryKey);
+        return true;
+    }
+
+    bool LoadModules(const std::vector<FRuntimeSource>& Sources, FRuntimeFault& OutFault)
+    {
+        std::vector<FModuleSpec> LoadOrder;
+        std::map<std::string, const FRuntimeSource*, std::less<>> SourcesByName;
+        if (!LoadModuleGraph(Sources, LoadOrder, SourcesByName, OutFault))
+        {
+            return false;
+        }
+        for (const FModuleSpec& Spec : LoadOrder)
+        {
+            if (!ExecuteModule(Spec, *SourcesByName.at(Spec.SourceName), OutFault))
+            {
+                return false;
+            }
         }
         return true;
     }
@@ -347,6 +823,274 @@ struct FRuntimeSession::FImpl
         }
         return true;
     }
+
+    bool ReadPortableValue(
+        const int ValueIndex,
+        FValue& OutValue,
+        const int Depth,
+        std::size_t& NodeCount,
+        std::set<const void*>& ActiveTables,
+        FRuntimeFault& OutFault)
+    {
+        if (Depth > MaxValueDepth || ++NodeCount > MaxValueNodes)
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Screen Field value exceeds depth or node limits."};
+            return false;
+        }
+
+        const int AbsoluteIndex = lua_absindex(State, ValueIndex);
+        switch (lua_type(State, AbsoluteIndex))
+        {
+        case LUA_TBOOLEAN:
+            OutValue = FValue(lua_toboolean(State, AbsoluteIndex) != 0);
+            return true;
+        case LUA_TNUMBER:
+            if (lua_isinteger(State, AbsoluteIndex))
+            {
+                OutValue = FValue(static_cast<std::int64_t>(lua_tointeger(State, AbsoluteIndex)));
+                return true;
+            }
+            if (const double Number = static_cast<double>(lua_tonumber(State, AbsoluteIndex)); std::isfinite(Number))
+            {
+                OutValue = FValue(Number);
+                return true;
+            }
+            OutFault = {"LuaScreenRequestInvalid", "Screen Field contains a non-finite number."};
+            return false;
+        case LUA_TSTRING:
+        {
+            std::size_t Length = 0;
+            const char* Text = lua_tolstring(State, AbsoluteIndex, &Length);
+            OutValue = FValue(std::string(Text, Length));
+            return true;
+        }
+        case LUA_TTABLE:
+            break;
+        default:
+            OutFault = {"LuaScreenRequestInvalid", "Screen Field values support only scalar, array and object values."};
+            return false;
+        }
+
+        const void* Identity = lua_topointer(State, AbsoluteIndex);
+        if (!ActiveTables.emplace(Identity).second)
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Screen Field value contains a table cycle."};
+            return false;
+        }
+        struct FActiveTableGuard
+        {
+            std::set<const void*>& Tables;
+            const void* Identity;
+            ~FActiveTableGuard() { Tables.erase(Identity); }
+        } Guard{ActiveTables, Identity};
+
+        const lua_Unsigned ArrayLength = lua_rawlen(State, AbsoluteIndex);
+        if (ArrayLength > 0)
+        {
+            lua_Unsigned EntryCount = 0;
+            lua_pushnil(State);
+            while (lua_next(State, AbsoluteIndex) != 0)
+            {
+                ++EntryCount;
+                const bool bArrayKey = lua_isinteger(State, -2)
+                    && lua_tointeger(State, -2) >= 1
+                    && static_cast<lua_Unsigned>(lua_tointeger(State, -2)) <= ArrayLength;
+                lua_pop(State, 1);
+                if (!bArrayKey)
+                {
+                    lua_pop(State, 1);
+                    OutFault = {"LuaScreenRequestInvalid", "Screen Field array contains a non-array key."};
+                    return false;
+                }
+            }
+            if (EntryCount != ArrayLength)
+            {
+                OutFault = {"LuaScreenRequestInvalid", "Screen Field array must be dense."};
+                return false;
+            }
+            FValue::FArray Array;
+            Array.reserve(static_cast<std::size_t>(ArrayLength));
+            for (lua_Unsigned Index = 1; Index <= ArrayLength; ++Index)
+            {
+                lua_rawgeti(State, AbsoluteIndex, static_cast<lua_Integer>(Index));
+                FValue& Item = Array.emplace_back();
+                const bool bValid = ReadPortableValue(-1, Item, Depth + 1, NodeCount, ActiveTables, OutFault);
+                lua_pop(State, 1);
+                if (!bValid) return false;
+            }
+            OutValue = FValue(std::move(Array));
+            return true;
+        }
+
+        FValue::FObject Object;
+        lua_pushnil(State);
+        while (lua_next(State, AbsoluteIndex) != 0)
+        {
+            if (lua_type(State, -2) != LUA_TSTRING)
+            {
+                lua_pop(State, 2);
+                OutFault = {"LuaScreenRequestInvalid", "Screen Field object keys must be strings."};
+                return false;
+            }
+            std::size_t KeyLength = 0;
+            const char* KeyData = lua_tolstring(State, -2, &KeyLength);
+            std::string Key(KeyData, KeyLength);
+            FValue Value;
+            if (Key.empty() || Object.find(Key) != Object.end()
+                || !ReadPortableValue(-1, Value, Depth + 1, NodeCount, ActiveTables, OutFault))
+            {
+                lua_pop(State, 2);
+                if (OutFault.Code.empty())
+                {
+                    OutFault = {"LuaScreenRequestInvalid", "Screen Field object contains an invalid key."};
+                }
+                return false;
+            }
+            Object.emplace(std::move(Key), std::move(Value));
+            lua_pop(State, 1);
+        }
+        OutValue = FValue(std::move(Object));
+        return true;
+    }
+
+    bool ReadScreenRequest(const int TableIndex, FScreenRequest& OutRequest, FRuntimeFault& OutFault)
+    {
+        if (!lua_istable(State, TableIndex))
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Screen request must be a table."};
+            return false;
+        }
+        const int AbsoluteIndex = lua_absindex(State, TableIndex);
+        FScreenRequest Candidate;
+        lua_getfield(State, AbsoluteIndex, "screen_id");
+        if (lua_type(State, -1) != LUA_TSTRING)
+        {
+            lua_pop(State, 1);
+            OutFault = {"LuaScreenRequestInvalid", "Screen request screen_id must be a string."};
+            return false;
+        }
+        std::size_t ScreenIdLength = 0;
+        const char* ScreenId = lua_tolstring(State, -1, &ScreenIdLength);
+        Candidate.ScreenId.assign(ScreenId, ScreenIdLength);
+        lua_pop(State, 1);
+        if (!IsCanonicalStableIdOfKind(Candidate.ScreenId, "screen"))
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Screen request returned an invalid screen_id."};
+            return false;
+        }
+
+        lua_getfield(State, AbsoluteIndex, "fields");
+        if (!lua_istable(State, -1) || lua_rawlen(State, -1) != 0)
+        {
+            lua_pop(State, 1);
+            OutFault = {"LuaScreenRequestInvalid", "Screen request fields must be an object."};
+            return false;
+        }
+        const int FieldsIndex = lua_absindex(State, -1);
+        std::set<std::string, std::less<>> SeenFields;
+        std::size_t NodeCount = 0;
+        std::set<const void*> ActiveTables;
+        lua_pushnil(State);
+        while (lua_next(State, FieldsIndex) != 0)
+        {
+            if (lua_type(State, -2) != LUA_TSTRING || !lua_istable(State, -1)
+                || Candidate.Fields.size() >= 128)
+            {
+                lua_pop(State, 3);
+                OutFault = {"LuaScreenRequestInvalid", "Screen request contains an invalid field entry."};
+                return false;
+            }
+            std::size_t FieldIdLength = 0;
+            const char* FieldId = lua_tolstring(State, -2, &FieldIdLength);
+            FScreenField& Field = Candidate.Fields.emplace_back();
+            Field.FieldId.assign(FieldId, FieldIdLength);
+            if (!IsCanonicalSegment(Field.FieldId) || !SeenFields.emplace(Field.FieldId).second)
+            {
+                lua_pop(State, 3);
+                OutFault = {"LuaScreenRequestInvalid", "Screen request field_id is invalid or duplicated."};
+                return false;
+            }
+            const int FieldIndex = lua_absindex(State, -1);
+            lua_getfield(State, FieldIndex, "schema_id");
+            if (lua_type(State, -1) != LUA_TSTRING)
+            {
+                lua_pop(State, 4);
+                OutFault = {"LuaScreenRequestInvalid", "Screen Field schema_id must be a string."};
+                return false;
+            }
+            std::size_t SchemaLength = 0;
+            const char* SchemaId = lua_tolstring(State, -1, &SchemaLength);
+            Field.SchemaId.assign(SchemaId, SchemaLength);
+            lua_pop(State, 1);
+            if (!IsCanonicalStableIdOfKind(Field.SchemaId, "schema"))
+            {
+                lua_pop(State, 3);
+                OutFault = {"LuaScreenRequestInvalid", "Screen Field schema_id is invalid."};
+                return false;
+            }
+            lua_getfield(State, FieldIndex, "value");
+            const bool bValueValid = ReadPortableValue(
+                -1, Field.Value, 0, NodeCount, ActiveTables, OutFault);
+            lua_pop(State, 1);
+            if (!bValueValid)
+            {
+                lua_pop(State, 3);
+                return false;
+            }
+            lua_pop(State, 1);
+        }
+        lua_pop(State, 1);
+        std::sort(Candidate.Fields.begin(), Candidate.Fields.end(), [](const FScreenField& Left, const FScreenField& Right)
+        {
+            return Left.FieldId < Right.FieldId;
+        });
+        OutRequest = std::move(Candidate);
+        return true;
+    }
+
+    bool CallTakePendingScreen(
+        std::optional<FScreenRequest>& OutRequest,
+        FRuntimeFault& OutFault)
+    {
+        if (!BeginEntry("take_pending_screen", OutFault))
+        {
+            return false;
+        }
+
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getglobal(State, "game");
+        lua_getfield(State, -1, "ui");
+        lua_getfield(State, -1, "take_pending_screen");
+        lua_remove(State, -2);
+        lua_remove(State, -2);
+        if (!lua_isfunction(State, -1))
+        {
+            OutFault = {"LuaEntryPointMissing", "Fixed entry point is missing: take_pending_screen"};
+            return false;
+        }
+        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "LuaPresentationTakeError", "Lua failed to return pending presentation.", OutFault);
+            return false;
+        }
+        if (lua_isnil(State, -1))
+        {
+            OutRequest.reset();
+            return true;
+        }
+
+        FScreenRequest Candidate;
+        if (!ReadScreenRequest(-1, Candidate, OutFault))
+        {
+            return false;
+        }
+        OutRequest = std::move(Candidate);
+        return true;
+    }
 };
 
 FRuntimeSession::FRuntimeSession() : Impl(std::make_unique<FImpl>())
@@ -358,8 +1102,9 @@ FRuntimeSession::~FRuntimeSession()
     Stop();
 }
 
-bool FRuntimeSession::StartTestRuntime(
+bool FRuntimeSession::Start(
     const std::int32_t InSessionGeneration,
+    const std::vector<FRuntimeSource>& Sources,
     FRuntimeFault& OutFault)
 {
     Stop();
@@ -367,6 +1112,11 @@ bool FRuntimeSession::StartTestRuntime(
     if (InSessionGeneration <= 0)
     {
         OutFault = {"InvalidSessionGeneration", "Runtime requires a positive session generation."};
+        return false;
+    }
+    if (Sources.empty())
+    {
+        OutFault = {"LuaRuntimeSourceMissing", "Runtime requires at least one Lua source."};
         return false;
     }
 
@@ -379,12 +1129,12 @@ bool FRuntimeSession::StartTestRuntime(
     Impl->OwnerThread = std::this_thread::get_id();
     Impl->SessionGeneration = InSessionGeneration;
 
-    if (!Impl->OpenEnvironment(OutFault)
-        || !Impl->ExecuteSource(
-            TestRuntimeSource,
-            sizeof(TestRuntimeSource) - 1,
-            "@core/test_runtime.lua",
-            OutFault))
+    if (!Impl->OpenEnvironment(OutFault))
+    {
+        Stop();
+        return false;
+    }
+    if (!Impl->LoadModules(Sources, OutFault))
     {
         Stop();
         return false;
@@ -450,6 +1200,14 @@ bool FRuntimeSession::DispatchCommand(
         {"source", FValue(std::string("headless"))},
     };
     return Impl->CallDispatcher("dispatch_command", Envelope, Request.Sequence, OutFault);
+}
+
+bool FRuntimeSession::TakePendingScreen(
+    std::optional<FScreenRequest>& OutRequest,
+    FRuntimeFault& OutFault)
+{
+    OutRequest.reset();
+    return Impl->CallTakePendingScreen(OutRequest, OutFault);
 }
 
 bool FRuntimeSession::IsStarted() const

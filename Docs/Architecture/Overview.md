@@ -1,8 +1,8 @@
 ---
 title: Architecture Overview
 status: normative
-version: 1.1
-updated: 2026-08-10
+version: 1.3
+updated: 2026-08-12
 depends_on:
   - ../README.md
   - ../ADR/README.md
@@ -48,6 +48,10 @@ Definition, runtime instance и physical UE object — разные сущнос
 5. После успешного commit EventBus публикует неизменяемые gameplay facts.
 6. Lua строит новый UI/presentation snapshot и при необходимости one-shot effects.
 7. UE reconciles desired presentation; поздний input отклоняется по generation/instance/revision.
+
+Lua UI-document содержит Screen instances: `screen_id`, stable instance identity и полный набор schema-validated Screen Fields. UE разрешает `screen_id` через Screen Registry и создаёт concrete Widget Blueprint, унаследованный от общего Screen base. Lua не описывает physical Widget tree, а добавление concrete Screen не требует per-screen C++ class или branch.
+
+Runtime-authored text, content images, repeated elements, Screen Field values и Semantic Input используют единые concern-specific presentation paths. Composite Widgets не вводят локальные resolvers/factories/ingress; различия layout и renderer capabilities остаются UE-local.
 
 ## Repository и content
 

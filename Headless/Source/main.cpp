@@ -1,13 +1,17 @@
 #include "GV2RuntimeCore/GV2HostServices.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -55,11 +59,86 @@ bool TryParsePositive(const std::string& Text, std::int64_t& OutValue)
     return Result.ec == std::errc{} && Result.ptr == End && OutValue > 0;
 }
 
-int Run(const std::int64_t CommandCount, const std::int64_t Seed, const bool bSelfTest)
+bool LoadRuntimeSources(
+    const char* ExecutableArgument,
+    std::vector<GV2RuntimeCore::FRuntimeSource>& OutSources)
+{
+    std::vector<std::filesystem::path> ScriptDirectories{
+        std::filesystem::current_path() / "Scripts",
+        std::filesystem::current_path() / ".." / "Scripts",
+    };
+    std::error_code PathError;
+    const std::filesystem::path ExecutablePath = std::filesystem::absolute(
+        ExecutableArgument,
+        PathError);
+    if (!PathError)
+    {
+        ScriptDirectories.push_back(
+            ExecutablePath.parent_path().parent_path().parent_path() / "Scripts");
+    }
+
+    for (const std::filesystem::path& Directory : ScriptDirectories)
+    {
+        std::error_code IterationError;
+        if (!std::filesystem::is_directory(Directory, IterationError) || IterationError)
+        {
+            continue;
+        }
+
+        std::vector<std::filesystem::path> SourcePaths;
+        for (std::filesystem::recursive_directory_iterator Iterator(Directory, IterationError), End;
+             !IterationError && Iterator != End;
+             Iterator.increment(IterationError))
+        {
+            if (Iterator->is_regular_file() && Iterator->path().extension() == ".lua")
+            {
+                SourcePaths.emplace_back(Iterator->path());
+            }
+        }
+        if (IterationError || SourcePaths.empty())
+        {
+            continue;
+        }
+        std::sort(SourcePaths.begin(), SourcePaths.end());
+
+        std::vector<GV2RuntimeCore::FRuntimeSource> Candidate;
+        Candidate.reserve(SourcePaths.size());
+        for (const std::filesystem::path& SourcePath : SourcePaths)
+        {
+            std::ifstream Stream(SourcePath, std::ios::binary);
+            if (!Stream)
+            {
+                Candidate.clear();
+                break;
+            }
+            std::string Text{
+                std::istreambuf_iterator<char>(Stream),
+                std::istreambuf_iterator<char>()};
+            if (Text.starts_with("\xef\xbb\xbf"))
+            {
+                Text.erase(0, 3);
+            }
+            const std::string RelativePath = std::filesystem::relative(SourcePath, Directory).generic_string();
+            Candidate.push_back({std::string("@Scripts/") + RelativePath, std::move(Text)});
+        }
+        if (!Candidate.empty())
+        {
+            OutSources = std::move(Candidate);
+            return true;
+        }
+    }
+    return false;
+}
+
+int Run(
+    const std::int64_t CommandCount,
+    const std::int64_t Seed,
+    const bool bSelfTest,
+    const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources)
 {
     GV2RuntimeCore::FRuntimeSession Runtime;
     GV2RuntimeCore::FRuntimeFault Fault;
-    if (!Runtime.StartTestRuntime(1, Fault))
+    if (!Runtime.Start(1, RuntimeSources, Fault))
     {
         std::cerr << "runtime_start_failed code=" << Fault.Code << " message=" << Fault.Message << '\n';
         return 2;
@@ -119,6 +198,26 @@ int Run(const std::int64_t CommandCount, const std::int64_t Seed, const bool bSe
                       << " message=" << Fault.Message << '\n';
             return 6;
         }
+
+        GV2RuntimeCore::FCommandRequest StartRequest;
+        StartRequest.CommandId = "core:command.debug.start";
+        StartRequest.Sequence = CommandCount + 2;
+        std::optional<GV2RuntimeCore::FScreenRequest> PendingScreen;
+        if (!Runtime.DispatchCommand(StartRequest, Fault)
+            || !Runtime.TakePendingScreen(PendingScreen, Fault)
+            || !PendingScreen
+            || PendingScreen->ScreenId != "core:screen.test"
+            || PendingScreen->Fields.size() != 5
+            || PendingScreen->Fields[0].FieldId != "buttons"
+            || PendingScreen->Fields[1].FieldId != "checkbox"
+            || PendingScreen->Fields[2].FieldId != "class_select"
+            || PendingScreen->Fields[3].FieldId != "description"
+            || PendingScreen->Fields[4].FieldId != "player_name")
+        {
+            std::cerr << "debug_start_flow_failed code=" << Fault.Code
+                      << " message=" << Fault.Message << '\n';
+            return 7;
+        }
     }
 
     std::cout << "{\"ok\":true,\"lua_release_num\":"
@@ -168,5 +267,11 @@ int main(int argc, char** argv)
         }
     }
 
-    return Run(CommandCount, Seed, bSelfTest);
+    std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
+    if (!LoadRuntimeSources(argv[0], RuntimeSources))
+    {
+        std::cerr << "unable to locate a non-empty Scripts module tree\n";
+        return 66;
+    }
+    return Run(CommandCount, Seed, bSelfTest, RuntimeSources);
 }

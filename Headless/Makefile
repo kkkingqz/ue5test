@@ -4,14 +4,17 @@ BUILD_DIR := build
 
 CC ?= cc
 CXX ?= c++
-CFLAGS := -O2 -DNDEBUG -DLUA_USE_LINUX=1 -I$(LUA_DIR)
-CXXFLAGS := -O2 -DNDEBUG -std=c++20 -I$(RUNTIME_CORE)/Public -I$(LUA_DIR)
+CFLAGS := -O2 -DNDEBUG -DLUA_USE_LINUX=1 -MMD -MP -I$(LUA_DIR)
+CXXFLAGS := -O2 -DNDEBUG -std=c++20 -MMD -MP -I$(RUNTIME_CORE)/Public -I$(LUA_DIR)
 
 LUA_SOURCES := $(wildcard $(LUA_DIR)/*.c)
 LUA_OBJECTS := $(patsubst $(LUA_DIR)/%.c,$(BUILD_DIR)/lua_%.o,$(LUA_SOURCES))
 CORE_OBJECT := $(BUILD_DIR)/GV2RuntimeSession.o
 MAIN_OBJECT := $(BUILD_DIR)/main.o
 TARGET := $(BUILD_DIR)/gv2-headless
+DEPENDENCIES := $(LUA_OBJECTS:.o=.d) $(CORE_OBJECT:.o=.d) $(MAIN_OBJECT:.o=.d)
+
+-include $(DEPENDENCIES)
 
 .PHONY: all self-test clean
 

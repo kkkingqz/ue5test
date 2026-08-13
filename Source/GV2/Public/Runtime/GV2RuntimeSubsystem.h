@@ -5,13 +5,11 @@
 #include "Templates/PimplPtr.h"
 #include "GV2RuntimeSubsystem.generated.h"
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
-    FGV2TestInteractionAccepted,
-    const FString&, TestAction,
-    FGV2UiBindingHandle, BindingHandle,
-    int64, Sequence);
-
 class FGV2SessionCoordinator;
+class UGV2DebugStartScreenWidget;
+class UGV2ScreenRegistry;
+class UGV2ScreenWidgetBase;
+class UUserWidget;
 
 UCLASS()
 class GV2_API UGV2RuntimeSubsystem : public UGameInstanceSubsystem
@@ -33,20 +31,37 @@ public:
         FGV2UiBindingHandle BindingHandle,
         const TArray<FGV2UiControlValue>& InputValues);
 
-    UFUNCTION(BlueprintCallable, Category = "GV2|Testing", meta = (DevelopmentOnly))
-    void StartTestSession();
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    void StartSession();
 
-    UFUNCTION(BlueprintCallable, Category = "GV2|Testing", meta = (DevelopmentOnly))
-    void EndTestSession();
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    void EndSession();
 
-    UFUNCTION(BlueprintCallable, Category = "GV2|Testing", meta = (DevelopmentOnly))
-    FGV2TestScreenViewModel CreateTestScreenModel(
-        const FText& DescriptionText,
-        const TArray<FGV2TestButtonSpec>& Buttons);
-
-    UPROPERTY(BlueprintAssignable, Category = "GV2|Testing")
-    FGV2TestInteractionAccepted OnTestInteractionAccepted;
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UUserWidget* GetActiveScreen() const;
 
 private:
+    bool LoadScreenRegistry();
+    UClass* ResolveScreenClass(const FString& ScreenId) const;
+    UGV2ScreenWidgetBase* CreateRegisteredScreen(
+        const FGV2ScreenViewModel& Model,
+        bool bAddToViewport);
+    UGV2DebugStartScreenWidget* ShowDebugStartScreen(bool bAddToViewport);
+    void HandleStartGameInstance(UGameInstance* StartedGameInstance);
+    bool HandleScreenRequested(const FGV2ScreenViewModel& Model);
+    void ReplaceActiveScreen(UUserWidget* NewScreen);
+
     TPimplPtr<FGV2SessionCoordinator> Coordinator;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UGV2ScreenRegistry> ScreenRegistry;
+
+    UPROPERTY(Transient)
+    TMap<FString, TObjectPtr<UClass>> RegisteredScreenClasses;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UUserWidget> ActiveScreen;
+
+    FDelegateHandle StartGameInstanceHandle;
+    bool bActiveScreenAddedToViewport = false;
 };

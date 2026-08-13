@@ -1,7 +1,7 @@
 ---
 title: Commands and Events
 status: normative
-version: 1.1
+version: 1.2
 updated: 2026-08-10
 depends_on:
   - LuaRuntimeContract.md
@@ -27,8 +27,8 @@ Command — единственная публичная форма намере�
   source: {
     kind: "ui",
     ui_instance_id: "ui@17:8",
-    node_key_path: ["route", "travel_market"],
-    element_id: "core:screen.map#widget.travel_market",
+    node_key_path: ["route", "main", "buttons", "travel_market"],
+    element_id: "core:screen.main#widget.travel_market",
   },
   correlation_id: "runtime@17:51",
 }
@@ -36,7 +36,7 @@ Command — единственная публичная форма намере�
 
 Command IDs используют kind `command`. Handler function name не является частью wire contract.
 
-Для `source.kind = "ui"` поля `ui_instance_id` и `node_key_path` берутся из validated UI binding record. `element_id` optional и является authored provenance, а не обязательной runtime identity. Blueprint не формирует command source и не передаёт authoritative `command_id` напрямую.
+Для `source.kind = "ui"` поля `ui_instance_id` и `node_key_path` берутся из validated UI binding record. Path обозначает logical Screen Instance/Field/item, а не physical Widget tree. `element_id` optional и является authored provenance, а не обязательной runtime identity. Blueprint не формирует command source и не передаёт authoritative `command_id` напрямую.
 
 ## Result
 

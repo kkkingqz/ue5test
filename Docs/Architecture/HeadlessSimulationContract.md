@@ -1,8 +1,8 @@
 ---
 title: Headless Simulation Contract
 status: normative
-version: 1.0
-updated: 2026-08-10
+version: 1.3
+updated: 2026-08-12
 depends_on:
   - LuaRuntimeContract.md
   - CommandsAndEvents.md
@@ -10,6 +10,7 @@ depends_on:
   - ../UI/PresentationSnapshotAndEffects.md
 decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../ADR/0013-unified-text-pipeline.md
 ---
 
 # Headless Simulation Contract
@@ -23,6 +24,7 @@ decisions:
 - UE adapter и headless host не меняют canonical state напрямую.
 - Agent/policy находится вне gameplay VM и получает только read-only Observation DTO.
 - Headless direct command ingress доступен только simulation/test host-у.
+- Headless host рекурсивно загружает тот же UTF-8 Lua module tree и manifest из repository `Scripts/`, что и UE adapter; копия Lua-кода и per-module filename list внутри runner запрещены.
 
 ## Converging command flow
 
@@ -72,7 +74,7 @@ Invalid agent output получает typed rejection и не меняет state
 - Headless package может не содержать image/audio/video payload.
 - Metadata-only resource catalog сохраняет `resource_id`, kind, required/optional policy и availability для validation.
 - Presentation snapshot/effects могут отбрасываться либо поступать metrics collector-у; gameplay facts от этого не меняются.
-- `TextSpec` по умолчанию сохраняется как `text_id + args` без formatting. `--locale` подключает portable localization catalog только для localization/report tests.
+- `TextSpec` по умолчанию сохраняется как `text_id + args + optional style` без formatting. `--locale` подключает portable localization catalog только для localization/report tests.
 - Gameplay запрещено читать resolved localized string или результат media loading как скрытое условие команды. Mandatory resource prepare моделируется deterministic TechnicalInput согласно scenario capability profile.
 
 ## Determinism and reports
@@ -97,6 +99,7 @@ Lua/runtime fault завершает run как `runtime_fault` и сохран�
 
 - Standalone executable собирается и запускается без Unreal Engine libraries.
 - UE и headless используют одну portable runtime implementation и exact Lua patch.
+- UE и headless исполняют одинаковый manifest-driven `Scripts/` module graph; missing/unlisted source, hidden dependency или cycle завершает startup как configuration failure.
 - Один recorded CommandRequest sequence даёт одинаковые state/events в UE integration test и headless conformance test.
 - Headless не загружает media payload и не требует locale для balance run.
 - Parallel process runs с одинаковым input дают одинаковые reports за исключением timing metrics.

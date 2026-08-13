@@ -1,8 +1,8 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 1.3
-updated: 2026-08-10
+version: 2.1
+updated: 2026-08-12
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -45,11 +45,36 @@ Runtime source закреплён в repository как Lua 5.4.8. Build обяз
 
 - `module_id` — canonical Stable ID kind `module`.
 - Manifest объявляет module dependencies; hidden dependencies запрещены.
-- Dependency graph проверяется на cycles до VM creation.
+- Dependency graph проверяется на missing dependencies, duplicates, cycles и unreachable modules до инициализации первого gameplay module.
 - Core modules загружаются первыми, затем mods в resolved order.
 - `require(module_id)` выполняет source один раз и возвращает export table.
 - Module source path является provenance, не identity.
 - Late registration после registry freeze запрещена.
+
+Текущий core manifest — `Scripts/bootstrap/manifest.lua`. Это единственный fixed bootstrap locator внутри portable runtime; manifest возвращает data-only table `{ entry_module_id, modules[] }` и сам не является module. Каждый descriptor обязан содержать canonical `module_id`, package-relative `source` и полный список direct `dependencies`.
+
+UE и headless hosts рекурсивно собирают UTF-8 `.lua` files под `Scripts/`, сортируют только для deterministic ingestion и передают полный source set в portable runtime. File order не является load semantics. Runtime обязан отклонить missing/unlisted/duplicate source, duplicate module ID, invalid path, dependency cycle и module, недостижимый от `entry_module_id`. Добавление module не требует изменения C++ или headless host.
+
+Loader выполняет modules один раз в dependency order. Module обязан вернуть export table. `require(module_id)` разрешён во время module initialization только для direct dependency текущего descriptor; это делает hidden import deterministic manifest violation. Module сохраняет imports в lexical locals и не вызывает `require` из runtime handlers.
+
+## Source layout and dependency direction
+
+```text
+Scripts/
+  bootstrap/       manifest и composition root
+  boundary/        fixed host entry points и DTO ingress/outbound adapters
+  runtime/         portable kernel: Stable ID, dispatcher, lifecycle, EventBus
+  gameplay/        canonical state, feature commands/services/queries
+  presentation/    desired UI/presentation builders; no gameplay mutation
+  resources/       resource_id metadata/intents; no physical media loading
+  debug/           development content через обычные runtime contracts
+```
+
+`bootstrap/main.lua` является единственной composition root. `boundary` может зависеть от runtime/application services, но gameplay, presentation и resources запрещено импортировать `boundary`. Host ports передаются им composition root-ом; direct C++/UE call из gameplay запрещён. Presentation читает state/query views и не меняет canonical state. Debug modules не регистрируют test-only host entry points.
+
+Gameplay группируется по feature (`gameplay/inventory/commands.lua`, `service.lua`, `queries.lua`), а не в repository-wide файлы всех commands/services. Module graph не обязан содержать пустые feature modules до появления concrete mechanics.
+
+`resources` хранит только canonical `resource_id`, строит value-only reference/prepare DTO и обрабатывает typed TechnicalInput. Asset locator, streaming handle, decoded media и locale resolution принадлежат host. Текущий `resources/service.lua` реализует canonical reference и deterministic deduplicated prepare request; запуск async operation появится только через injected boundary port. `TextSpec` принадлежит presentation/localization flow, а не media resources.
 
 ## Global environment
 
@@ -152,7 +177,15 @@ Expected gameplay refusal возвращает typed Result. Wrong schema, forbi
 
 `GV2RuntimeCore::FRuntimeSession` — portable STL-only session-scoped façade, а его private implementation владеет VM и единолично видит Lua C API. Façade предоставляет host-ам фиксированные typed entry points для bootstrap/lifecycle, Semantic Input, direct simulation `CommandRequest`, TechnicalInput и shutdown; generic `Call(function_name, json)` отсутствует.
 
-Portable runtime реализует создание/уничтожение VM, selective opening `base`/`table`/`string`/`math`/`utf8`, удаление запрещённых base/math functions и protected entry points. UE semantic input и headless `CommandRequest` сходятся во fixed Lua command dispatcher до gameplay validation. Test runtime source проверяет restricted environment при старте; production module loader/services развиваются поверх того же portable host.
+Portable runtime реализует создание/уничтожение VM, selective opening `base`/`table`/`string`/`math`/`utf8`, удаление запрещённых base/math functions, manifest-driven module loader и protected entry points. UE semantic input и headless `CommandRequest` сходятся во fixed Lua command dispatcher до gameplay validation.
+
+Lua source является repository content и не встраивается строковым литералом в C++. UE adapter и headless host читают module tree как bytes и передают `FRuntimeSource[]` в `GV2RuntimeCore`. Portable core не открывает filesystem и не знает UE project path. Source name используется только как manifest locator и sanitized traceback provenance.
+
+Текущий vertical slice использует private module `core:module.presentation.screen_requests` как Lua-side constructor/slot Screen request. C++ не вызывает этот builder и не передаёт ему параметры. Portable C++ принимает request через fixed boundary entry point `game.ui.take_pending_screen`, проверяет `screen_id` и generic `fields[]` envelopes и копирует их как `FScreenRequest`; UE schema adapters готовят typed fields без concrete field names в runtime façade. Полный layered UI-document через `game.ui.publish_snapshot` расширит route/overlay/modal lifecycle без добавления test-only entry points или замены field boundary.
+
+`core:module.debug.start` распознаёт `core:command.debug.start` и публикует один pending value-only Screen request через presentation module. `core:module.boundary.ingress` устанавливает fixed command/Semantic Input entry points, а `core:module.boundary.outbound` — Screen outbound entry point. Debug handler является development content, но использует обычный dispatcher и не экспортируется в `game`.
+
+UE coordinator обязан вызывать `take_pending_screen` отдельным protected entry point только после возврата `dispatch_semantic_input`. Полученный request полностью копируется до вызова Presentation sink; UMG creation и Blueprint events запрещены во время Lua execution. Headless host может отправить тот же `CommandRequest` и забрать тот же request без Unreal Engine.
 
 UE adapter выполняет `FGV2UiControlValue → portable Value` conversion до вызова runtime. Lua C API и portable implementation не зависят от Unreal Engine.
 
@@ -210,4 +243,4 @@ Structured fault содержит code, module ID, entry point, phase, session g
 
 ## Conformance
 
-Tests покрывают VM ownership, exact patch, private Lua C API, restricted libraries, source-only loader, declared dependency graph, no module globals, game namespace conflict, DTO isolation, null/absent, numeric bounds, sparse/cyclic/depth rejection, absence of JSON call protocol, state mutation policy, no rollback, deterministic replay, protected calls/stack restoration, deferred outbound publication, no re-entry, operation completion/stale discard, GC cleanup и restart-only reload.
+Tests покрывают VM ownership, exact patch, private Lua C API, recursive source ingestion без embedded runtime literal или per-file C++ list, manifest/source uniqueness, missing/unlisted source, declared dependencies, hidden import rejection, dependency cycles/reachability, export table, restricted libraries, no module globals, game namespace conflict, DTO isolation, UTF-8/Cyrillic round-trip, null/absent, numeric bounds, sparse/cyclic/depth rejection, absence of JSON call protocol, state mutation policy, no rollback, deterministic replay, protected calls/stack restoration, deferred outbound publication, no re-entry, operation completion/stale discard, GC cleanup и restart-only reload.

@@ -9,6 +9,15 @@ enum class EGV2BindingResolveResult : uint8
     Stale
 };
 
+struct FGV2PreparedBindingSet
+{
+    FString UiInstanceId;
+    int64 Revision = 0;
+    int64 NextHandleCounter = 0;
+    TMap<FGV2UiBindingHandle, FGV2UiBindingRecord> Records;
+    TArray<FGV2UiBindingHandle> Handles;
+};
+
 class FGV2UiBindingRegistry
 {
 public:
@@ -20,6 +29,13 @@ public:
         int64 Revision,
         const TArray<FGV2UiBindingDefinition>& Definitions,
         TArray<FGV2UiBindingHandle>& OutHandles);
+
+    bool PrepareBindings(
+        const FString& UiInstanceId,
+        int64 Revision,
+        const TArray<FGV2UiBindingDefinition>& Definitions,
+        FGV2PreparedBindingSet& OutCandidate) const;
+    bool CommitPreparedBindings(FGV2PreparedBindingSet&& Candidate);
 
     EGV2BindingResolveResult Resolve(
         const FGV2UiBindingHandle& Handle,

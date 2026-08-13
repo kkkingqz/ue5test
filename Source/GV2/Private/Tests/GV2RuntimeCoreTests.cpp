@@ -6,6 +6,12 @@
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+#include <algorithm>
+
 namespace
 {
 FGV2UiBindingDefinition MakeBindingDefinition(
@@ -18,6 +24,43 @@ FGV2UiBindingDefinition MakeBindingDefinition(
     Definition.CommandId = CommandId;
     return Definition;
 }
+
+std::vector<GV2RuntimeCore::FRuntimeSource> LoadTestRuntimeSources()
+{
+    std::vector<GV2RuntimeCore::FRuntimeSource> Sources;
+    FString ScriptsDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
+    FPaths::NormalizeDirectoryName(ScriptsDirectory);
+    const FString ScriptsPrefix = ScriptsDirectory + TEXT("/");
+    TArray<FString> SourceFiles;
+    IFileManager::Get().FindFilesRecursive(
+        SourceFiles,
+        *ScriptsDirectory,
+        TEXT("*.lua"),
+        true,
+        false,
+        false);
+    SourceFiles.Sort();
+    for (const FString& FullPath : SourceFiles)
+    {
+        FString Text;
+        if (!FFileHelper::LoadFileToString(Text, *FullPath))
+        {
+            return {};
+        }
+        FString NormalizedFullPath = FullPath;
+        FPaths::NormalizeFilename(NormalizedFullPath);
+        if (!NormalizedFullPath.StartsWith(ScriptsPrefix, ESearchCase::CaseSensitive))
+        {
+            return {};
+        }
+        const FString RelativePath = NormalizedFullPath.RightChop(ScriptsPrefix.Len());
+        const FTCHARToUTF8 Utf8(*Text);
+        Sources.push_back({
+            "@Scripts/" + std::string(TCHAR_TO_UTF8(*RelativePath)),
+            std::string(Utf8.Get(), Utf8.Length())});
+    }
+    return Sources;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -29,9 +72,11 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
 {
     GV2RuntimeCore::FRuntimeSession Host;
     GV2RuntimeCore::FRuntimeFault Fault;
+    const std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources = LoadTestRuntimeSources();
+    TestTrue(TEXT("Manifest-driven Lua source tree is loadable"), RuntimeSources.size() >= 2);
     TestTrue(
-        TEXT("Lua VM starts with the restricted test runtime"),
-        Host.StartTestRuntime(23, Fault));
+        TEXT("Lua VM starts with the configured runtime sources"),
+        Host.Start(23, RuntimeSources, Fault));
     TestTrue(TEXT("Lua VM reports started state"), Host.IsStarted());
     TestFalse(TEXT("Lua VM is idle after bootstrap"), Host.IsExecuting());
     if (!Host.IsStarted())
@@ -66,8 +111,70 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
         TEXT("Direct simulation ingress reaches the same fixed command dispatcher"),
         Host.DispatchCommand(DirectRequest, Fault));
 
+    GV2RuntimeCore::FCommandRequest StartRequest;
+    StartRequest.CommandId = "core:command.debug.start";
+    StartRequest.Sequence = 3;
+    TestTrue(
+        TEXT("Lua debug handler accepts the start command"),
+        Host.DispatchCommand(StartRequest, Fault));
+
+    std::optional<GV2RuntimeCore::FScreenRequest> PendingScreen;
+    TestTrue(
+        TEXT("Host copies the pending presentation after command dispatch"),
+        Host.TakePendingScreen(PendingScreen, Fault));
+    TestTrue(TEXT("Start publishes a Screen request"), PendingScreen.has_value());
+    if (PendingScreen)
+    {
+        TestEqual(
+            TEXT("Lua publishes generic Screen Fields"),
+            static_cast<int32>(PendingScreen->Fields.size()),
+            5);
+        const GV2RuntimeCore::FScreenField* DescriptionField = nullptr;
+        const GV2RuntimeCore::FScreenField* ButtonsField = nullptr;
+        const GV2RuntimeCore::FScreenField* CheckboxField = nullptr;
+        const GV2RuntimeCore::FScreenField* InputField = nullptr;
+        const GV2RuntimeCore::FScreenField* DropdownField = nullptr;
+        for (const GV2RuntimeCore::FScreenField& Field : PendingScreen->Fields)
+        {
+            if (Field.FieldId == "description") DescriptionField = &Field;
+            if (Field.FieldId == "buttons") ButtonsField = &Field;
+            if (Field.FieldId == "checkbox") CheckboxField = &Field;
+            if (Field.FieldId == "player_name") InputField = &Field;
+            if (Field.FieldId == "class_select") DropdownField = &Field;
+        }
+        TestNotNull(TEXT("Generic request contains description field"), DescriptionField);
+        TestNotNull(TEXT("Generic request contains buttons field"), ButtonsField);
+        TestNotNull(TEXT("Generic request contains checkbox field"), CheckboxField);
+        TestNotNull(TEXT("Generic request contains input field"), InputField);
+        TestNotNull(TEXT("Generic request contains dropdown field"), DropdownField);
+        TestEqual(
+            TEXT("Description field keeps its schema identity"),
+            FString(UTF8_TO_TCHAR(DescriptionField != nullptr ? DescriptionField->SchemaId.c_str() : "")),
+            FString(TEXT("core:schema.ui_field.rich_text.v3")));
+        TestEqual(
+            TEXT("Buttons field keeps its schema identity"),
+            FString(UTF8_TO_TCHAR(ButtonsField != nullptr ? ButtonsField->SchemaId.c_str() : "")),
+            FString(TEXT("core:schema.ui_field.button_list.v2")));
+        TestEqual(
+            TEXT("Checkbox field keeps its schema identity"),
+            FString(UTF8_TO_TCHAR(CheckboxField != nullptr ? CheckboxField->SchemaId.c_str() : "")),
+            FString(TEXT("core:schema.ui_field.checkbox.v1")));
+        TestEqual(
+            TEXT("Input field keeps its schema identity"),
+            FString(UTF8_TO_TCHAR(InputField != nullptr ? InputField->SchemaId.c_str() : "")),
+            FString(TEXT("core:schema.ui_field.input_field.v1")));
+        TestEqual(
+            TEXT("Dropdown field keeps its schema identity"),
+            FString(UTF8_TO_TCHAR(DropdownField != nullptr ? DropdownField->SchemaId.c_str() : "")),
+            FString(TEXT("core:schema.ui_field.dropdown_select.v1")));
+    }
+    TestTrue(
+        TEXT("Pending presentation is consumed exactly once"),
+        Host.TakePendingScreen(PendingScreen, Fault));
+    TestFalse(TEXT("No presentation remains after consumption"), PendingScreen.has_value());
+
     Item.CommandId = "core:command.test.force_error";
-    Item.Sequence = 3;
+    Item.Sequence = 4;
     TestFalse(
         TEXT("Lua runtime error is returned as a structured fault"),
         Host.DispatchSemanticInput(Item, Fault));
@@ -78,13 +185,107 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Lua VM is idle after failed protected call"), Host.IsExecuting());
 
     Item.CommandId = "core:command.test.lua_round_trip";
-    Item.Sequence = 4;
+    Item.Sequence = 5;
     TestTrue(
         TEXT("Stack is restored and the next protected call can run"),
         Host.DispatchSemanticInput(Item, Fault));
 
     Host.Stop();
     TestFalse(TEXT("Lua VM stops deterministically"), Host.IsStarted());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LuaModuleGraphTest,
+    "GV2.Runtime.Lua.ModuleManifestAndDeclaredDependencies",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
+{
+    const std::vector<GV2RuntimeCore::FRuntimeSource> Sources = LoadTestRuntimeSources();
+    GV2RuntimeCore::FRuntimeFault Fault;
+
+    std::vector<GV2RuntimeCore::FRuntimeSource> MissingSource = Sources;
+    MissingSource.erase(
+        std::remove_if(
+            MissingSource.begin(),
+            MissingSource.end(),
+            [](const GV2RuntimeCore::FRuntimeSource& Source)
+            {
+                return Source.Name == "@Scripts/resources/service.lua";
+            }),
+        MissingSource.end());
+    GV2RuntimeCore::FRuntimeSession MissingSourceHost;
+    TestFalse(
+        TEXT("Manifest rejects a missing declared module source"),
+        MissingSourceHost.Start(1, MissingSource, Fault));
+    TestEqual(
+        TEXT("Missing module source has a stable fault code"),
+        FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
+        FString(TEXT("LuaModuleSourceMissing")));
+
+    std::vector<GV2RuntimeCore::FRuntimeSource> HiddenDependency = Sources;
+    for (GV2RuntimeCore::FRuntimeSource& Source : HiddenDependency)
+    {
+        if (Source.Name == "@Scripts/boundary/entrypoints.lua")
+        {
+            Source.Text.insert(
+                0,
+                "local hidden_dependency = require(\"core:module.resources.service\")\n");
+        }
+    }
+    GV2RuntimeCore::FRuntimeSession HiddenDependencyHost;
+    TestFalse(
+        TEXT("Module cannot import an undeclared dependency"),
+        HiddenDependencyHost.Start(1, HiddenDependency, Fault));
+    TestEqual(
+        TEXT("Hidden dependency fails during module initialization"),
+        FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
+        FString(TEXT("LuaModuleLoadError")));
+    TestTrue(
+        TEXT("Hidden dependency diagnostic identifies the manifest violation"),
+        FString(UTF8_TO_TCHAR(Fault.Message.c_str())).Contains(TEXT("not declared")));
+
+    std::vector<GV2RuntimeCore::FRuntimeSource> UnlistedSource = Sources;
+    UnlistedSource.push_back({"@Scripts/gameplay/unlisted.lua", "return {}"});
+    GV2RuntimeCore::FRuntimeSession UnlistedSourceHost;
+    TestFalse(
+        TEXT("Unlisted Lua source is rejected"),
+        UnlistedSourceHost.Start(1, UnlistedSource, Fault));
+    TestEqual(
+        TEXT("Unlisted source has a stable fault code"),
+        FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
+        FString(TEXT("LuaModuleSourceUnlisted")));
+
+    const std::vector<GV2RuntimeCore::FRuntimeSource> CyclicSources = {
+        {
+            "@Scripts/bootstrap/manifest.lua",
+            R"lua(return {
+                entry_module_id = "core:module.runtime.a",
+                modules = {
+                    {
+                        module_id = "core:module.runtime.a",
+                        source = "runtime/a.lua",
+                        dependencies = { "core:module.runtime.b" },
+                    },
+                    {
+                        module_id = "core:module.runtime.b",
+                        source = "runtime/b.lua",
+                        dependencies = { "core:module.runtime.a" },
+                    },
+                },
+            })lua"},
+        {"@Scripts/runtime/a.lua", "return {}"},
+        {"@Scripts/runtime/b.lua", "return {}"},
+    };
+    GV2RuntimeCore::FRuntimeSession CyclicHost;
+    TestFalse(
+        TEXT("Cyclic module dependencies are rejected"),
+        CyclicHost.Start(1, CyclicSources, Fault));
+    TestEqual(
+        TEXT("Dependency cycle has a stable fault code"),
+        FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
+        FString(TEXT("LuaModuleDependencyCycle")));
     return true;
 }
 
@@ -133,14 +334,23 @@ bool FGV2UiBindingRegistryPublicationTest::RunTest(const FString& Parameters)
         Registry.Resolve(RevisionOneHandles[0], Record),
         EGV2BindingResolveResult::Found);
 
-    TArray<FGV2UiBindingHandle> RevisionTwoHandles;
+    FGV2PreparedBindingSet PreparedRevisionTwo;
     TestTrue(
-        TEXT("New valid revision replaces the binding set"),
-        Registry.PublishBindings(
+        TEXT("Valid binding candidate can be prepared without publication"),
+        Registry.PrepareBindings(
             TEXT("ui@11:1"),
             2,
             {MakeBindingDefinition(TEXT("second"), TEXT("core:command.test.second"))},
-            RevisionTwoHandles));
+            PreparedRevisionTwo));
+    TestEqual(TEXT("Preparation does not advance current revision"), Registry.GetRevision(), int64{1});
+    TestEqual(
+        TEXT("Old binding remains current while candidate Widgets are prepared"),
+        Registry.Resolve(RevisionOneHandles[0], Record),
+        EGV2BindingResolveResult::Found);
+    TArray<FGV2UiBindingHandle> RevisionTwoHandles = PreparedRevisionTwo.Handles;
+    TestTrue(
+        TEXT("Prepared binding set becomes current only at commit"),
+        Registry.CommitPreparedBindings(MoveTemp(PreparedRevisionTwo)));
     TestEqual(
         TEXT("Superseded binding is invalid in the same session"),
         Registry.Resolve(RevisionOneHandles[0], Record),
@@ -162,7 +372,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartTestSession());
+    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession());
     TestTrue(TEXT("Lua VM belongs to the active session"), Coordinator.IsLuaVmStarted());
 
     TArray<FGV2UiBindingHandle> Handles;
@@ -193,7 +403,7 @@ bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
         {
             ++DispatchDepth;
             MaxDispatchDepth = FMath::Max(MaxDispatchDepth, DispatchDepth);
-            TestTrue(TEXT("Runtime execution flag is active inside the sink"), Coordinator.IsExecutingRuntime());
+            TestFalse(TEXT("Host sink runs only after Lua returns"), Coordinator.IsExecutingRuntime());
             Commands.Add(Item.Binding.CommandId);
             Sequences.Add(Item.Sequence);
 
@@ -233,7 +443,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartTestSession());
+    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession());
 
     FGV2UiBindingDefinition Definition = MakeBindingDefinition(
         TEXT("form"),
@@ -314,7 +524,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator(0);
-    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartTestSession());
+    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession());
 
     TArray<FGV2UiBindingHandle> Handles;
     TestTrue(

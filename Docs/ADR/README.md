@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: normative
-version: 1.0
-updated: 2026-08-10
+version: 1.6
+updated: 2026-08-12
 ---
 
 # Architecture Decision Records
@@ -22,6 +22,13 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0008](0008-minimal-repository-indexes.md) | accepted | Только необходимые indexes v1 |
 | [0009](0009-explicit-schema-defaults.md) | accepted | Optional absent остаётся absent без explicit default |
 | [0010](0010-portable-runtime-and-headless-simulation.md) | accepted | Portable gameplay runtime, UE/headless hosts и общий Command Dispatcher path |
+| [0011](0011-blueprint-screen-templates.md) | accepted | UE-authored Screen Templates, Lua-authored fields и generic C++ screen layer |
+| [0012](0012-centralized-ui-theme.md) | accepted | Один UE-side theme asset и обязательное central styling reusable UI components |
+| [0013](0013-unified-text-pipeline.md) | accepted | Единый TextSpec pipeline и data-driven typography/markup tokens |
+| [0014](0014-three-mode-image-resources.md) | superseded | Три image render mode; manual catalog authoring заменён ADR-0015 |
+| [0015](0015-filesystem-discovered-image-resources.md) | superseded | Recursive discovery сохранён; JSON sidecar заменён ADR-0016 |
+| [0016](0016-png-suffix-image-metadata.md) | accepted | Image mode в `.png` / `.tile.png` / `.9.png`, без sidecar |
+| [0017](0017-centralized-ui-presentation-paths.md) | accepted | Единые paths для text, images, collections, Screen Fields и Semantic Input |
 
 ## Template
 

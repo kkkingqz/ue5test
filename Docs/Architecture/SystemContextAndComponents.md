@@ -1,13 +1,16 @@
 ---
 title: System Context and Components
 status: normative
-version: 1.4
-updated: 2026-08-10
+version: 1.8
+updated: 2026-08-12
 depends_on:
   - Overview.md
   - GlossaryAndNaming.md
 decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../ADR/0011-blueprint-screen-templates.md
+  - ../ADR/0012-centralized-ui-theme.md
+  - ../ADR/0016-png-suffix-image-metadata.md
 ---
 
 # System Context and Components
@@ -60,12 +63,20 @@ Source/GV2/
   Private/
     Application/    FGV2SessionCoordinator
     Bridge/         ingress queue, operation и UI binding registries
-    UI/             document reconciler, widget registry, input adapter
+    UI/             document reconciler, screen/widget registries, input adapter
 Source/GV2RuntimeCore/
   Public/            portable DTO, runtime session и host-service interfaces
   Private/           Lua VM owner, marshaller, fixed native bindings, vendored Lua
 Headless/
   Source/            standalone simulation host и metadata-only adapters
+Scripts/
+  bootstrap/         module manifest и composition root
+  boundary/          fixed Lua/host entry points
+  runtime/           portable Lua kernel
+  gameplay/          canonical gameplay features
+  presentation/      desired presentation projection
+  resources/         logical resource IDs/intents
+  debug/             development content без test-only API
 ```
 
 Имена concrete private classes являются implementation baseline, но не compatibility API. Нормативны следующие границы:
@@ -73,10 +84,11 @@ Headless/
 - `UGV2RuntimeSubsystem : UGameInstanceSubsystem` — единственный Blueprint-facing façade runtime/session уровня.
 - `FGV2SessionCoordinator` владеет UE active session composition: generation, pinned repository handle, portable runtime session, ingress queue, UI binding registry, operations и latest accepted Presentation Snapshot.
 - `GV2RuntimeCore::FRuntimeSession` является STL-only public façade; Lua headers и `lua_State*` остаются в его private implementation.
-- `FGV2UiDocumentReconciler`, Widget Registry и Semantic Input Adapter принадлежат Presentation/Bridge, но не LuaRuntime.
-- Blueprint Widget classes отвечают за composition, style и local visual state; они не выбирают Lua entry point и не хранят gameplay authority.
+- `FGV2UiDocumentReconciler`, Screen Registry, Widget Registry и Semantic Input Adapter принадлежат Presentation/Bridge, но не LuaRuntime.
+- `UGV2ScreenWidgetBase` и Dynamic Screen Element adapters являются generic presentation layer и не знают concrete `screen_id`.
+- Blueprint Screen Templates отвечают за composition и local visual state; reusable components получают default style из configured `UGV2UiTheme`. `UGV2ImageResourceCatalog` разрешает image `resource_id` в trusted texture и один из трёх canonical render modes. Ни templates, ни theme/catalog не выбирают Lua entry point и не хранят gameplay authority.
 
-Runtime-core vertical slice включает portable runtime session/Lua VM, UE-private `FGV2SessionCoordinator`, `FGV2UiBindingRegistry` и `FGV2RuntimeIngressQueue`. Coordinator владеет UE session generation, одной portable Lua session, atomic binding publication и bounded non-reentrant FIFO. Native test observer вызывается только после successful Lua dispatcher path.
+Runtime-core vertical slice включает portable runtime session/Lua VM и manifest loader, UE-private `FGV2SessionCoordinator`, `FGV2UiBindingRegistry` и `FGV2RuntimeIngressQueue`. Coordinator владеет UE session generation, одной portable Lua session, atomic binding publication и bounded non-reentrant FIFO. Host interaction sink вызывается только после successful Lua dispatcher path.
 
 Public C++ headers не выставляют Lua types, JSON strings, Slate implementation types, UObject references в Lua DTO или third-party runtime details. Boundary payload передаётся типизированными DTO/value tree; JSON может использоваться только как private storage/diagnostic representation, не как per-call Lua/Blueprint protocol.
 
@@ -133,9 +145,11 @@ Public C++ headers не выставляют Lua types, JSON strings, Slate impl
 - Presentation coordinator и snapshot reconciler.
 - UI document renderer и Game Shell.
 - Route/layer manager.
-- Widget registry.
+- Screen Registry и Widget Registry.
+- Central UI theme settings/Data Asset и style consumers.
 - Semantic input adapter.
 - Resource resolver/streaming service.
+- Startup filesystem scanner и Image Resource Catalog с `fixed_aspect`/`nine_slice`/`tile` metadata.
 - Localization, portrait/character, world и audio presenters.
 
 ## Dependency rules

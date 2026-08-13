@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 1.5
-updated: 2026-08-10
+version: 2.3
+updated: 2026-08-12
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -10,6 +10,7 @@ depends_on:
 decisions:
   - ../ADR/0006-repository-reload-and-session-pinning.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../ADR/0011-blueprint-screen-templates.md
 ---
 
 # Bootstrap and Session Lifecycle
@@ -60,13 +61,16 @@ Public readiness — один bool `is_ready`. Он становится true т
 - `SubmitUiInteraction(binding_handle, input_values)` принимает opaque UI binding handle и schema-defined values; команда определяется только current binding registry.
 - lifecycle requests используют отдельные typed methods/descriptors, а не generic `CallLuaFunction(name, args)`.
 
-Первый vertical slice реализует façade как `UGV2RuntimeSubsystem` и временный `DevelopmentOnly` test backend:
+Текущий vertical slice реализует façade без test-only runtime methods:
 
-- `StartTestSession()`/`EndTestSession()` открывают и закрывают isolated test generation с одной реальной Lua 5.4.8 VM и synthetic fixed test runtime;
-- `CreateTestScreenModel(description_text, buttons)` преобразует `FGV2TestButtonSpec[]` в `FGV2TestScreenViewModel` и выдаёт opaque handles;
-- `OnTestInteractionAccepted` используется только automation/UMG fixture и срабатывает после успешного возврата Lua Semantic Input entry point.
+- `StartSession()`/`EndSession()` открывают и закрывают generation с одной Lua 5.4.8 VM;
+- `GetActiveScreen()` возвращает только текущую reconstructable presentation instance;
+- `SubmitUiInteraction(...)` является единственным публичным путём пользовательского input;
+- создание Screen из C++ параметров, вызов Lua builder из automation и методы с семантикой `ForTest` запрещены.
 
-Test backend запрещено использовать как gameplay runtime или compatibility API. Его binding definitions проходят через coordinator-owned UI binding registry и ingress queue, после чего UE adapter преобразует envelope в portable DTO `GV2RuntimeCore`. Временными остаются synthetic Lua handler и native post-entry observer. Binding records session-scoped и инвалидируются при новой test generation.
+До открытия session `UGV2RuntimeSubsystem` обязан загрузить configured `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка registry запрещает переход session в `Ready`. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
+
+Debug start sequence: `GameInstance` start → Screen Registry ready → session `Ready` → start binding publication → `UGV2DebugStartScreenWidget` → реальный button event → Semantic Input → Lua `core:command.debug.start` handler → copied generic Screen request → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit. Screen replacement выполняется после выхода из Lua. Automatic debug fixture запрещён в shipping build и не добавляет отдельный test API.
 
 `FGV2SessionCoordinator` является private UE owner active/candidate session. Он создаёт для каждой generation отдельную portable runtime session, Bridge context, ingress queue, UI binding registry и operation registry. Ни один из этих объектов не переживает уничтожение owning session. `GV2RuntimeCore` не зависит от UObject/UMG и назначает вызывающий Game Thread owner thread-ом VM; standalone host использует тот же lifecycle на своём worker thread.
 

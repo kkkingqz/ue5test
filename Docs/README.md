@@ -1,8 +1,8 @@
 ---
 title: GV2 Documentation Index
 status: normative
-version: 1.0
-updated: 2026-08-10
+version: 1.2
+updated: 2026-08-12
 language: ru
 ---
 
@@ -40,6 +40,7 @@ language: ru
 - GameDataRepository публикует только целый immutable snapshot; session закрепляет snapshot до restart.
 - Content reload применяется через controlled session restart.
 - UI — полная декларативная desired model; presentation effects не участвуют в восстановлении.
+- Concrete screens являются UE-authored Blueprint Screen Templates; Lua передаёт `screen_id` и полный набор Screen Fields, а generic C++ не знает concrete screens.
 - Full override by ID; deep merge и универсальный patch language отсутствуют.
 - Опубликованный Stable ID не переиспользуется для другого смысла.
 
@@ -67,10 +68,16 @@ language: ru
 | Документ | Когда читать |
 |---|---|
 | [UI Index](UI/README.md) | Маршрут по UI-контрактам |
-| [UI Document and Reconciliation](UI/UIDocumentAndReconciliation.md) | Route, layers, nodes, keys и full reconciliation |
+| [Blueprint Screen Templates](UI/ScreenTemplates.md) | Base Screen Blueprint, Screen Registry и Dynamic Screen Fields |
+| [UI Document and Reconciliation](UI/UIDocumentAndReconciliation.md) | Route, layers, screen instances, fields и full reconciliation |
 | [Semantic Input](UI/SemanticInput.md) | UE → Lua input envelope и stale-input rejection |
 | [Presentation Snapshot and Effects](UI/PresentationSnapshotAndEffects.md) | Durable desired presentation и one-shot effects |
-| [Widget Registry](UI/WidgetRegistry.md) | `widget_id`, factories, mod widgets и fallback |
+| [Widget Registry](UI/WidgetRegistry.md) | Baseline UI-kit, central theme, Dynamic Screen Elements и adapters |
+| [Image Resources](UI/ImageResources.md) | Fixed-aspect graphics, nine-slice surfaces, tile textures и UE resolver |
+
+### Proposals
+
+Индекс предложений: [Proposals/README.md](Proposals/README.md).
 
 ### ADR
 

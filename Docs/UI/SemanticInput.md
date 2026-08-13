@@ -1,13 +1,15 @@
 ---
 title: Semantic Input Contract
 status: draft
-version: 0.6
-updated: 2026-08-10
+version: 1.3
+updated: 2026-08-13
 depends_on:
   - UIDocumentAndReconciliation.md
   - ../Architecture/CommandsAndEvents.md
 decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../ADR/0011-blueprint-screen-templates.md
+  - ../ADR/0017-centralized-ui-presentation-paths.md
 ---
 
 # Semantic Input Contract
@@ -27,6 +29,8 @@ Physical Widget публикует только control values и получен
 
 Blueprint-facing façade — `UGV2RuntimeSubsystem::SubmitUiInteraction(binding_handle, input_values)`. Первый vertical slice представляет `input_values` как `FGV2UiControlValue[]`: уникальное field name, scalar type и typed value. Для обычной кнопки массив пуст; text entry, slider и другие controls передают только поля своего declared input schema. Blueprint не передаёт `command_id`, bound args, session/revision identity или callback name.
 
+Physical components вызывают façade только через общий component-side `FGV2UiInteractionEmitter`. Emitter централизует поиск active runtime, submit и technical result semantics. Прямой поиск `UGV2RuntimeSubsystem` в reusable button, RichText decorator или будущем control запрещён.
+
 Метод возвращает `EGV2SubmitUiInteractionResult`: `Accepted`, `RuntimeNotReady`, `InvalidBindingHandle`, `StaleBindingHandle`, `InvalidInputValues` или `IngressQueueFull`. Rejection остаётся technical result C++ ingress и не создаёт gameplay Event.
 
 Semantic Input Adapter резолвит handle в current UI binding registry, валидирует control fields и строит полный value-only envelope. Accepted item получает monotonically increasing `sequence` и помещается в coordinator-owned bounded FIFO ingress. Default capacity первого vertical slice — 256 items; capacity является private runtime configuration, а не Blueprint API.
@@ -39,8 +43,8 @@ Semantic Input Adapter резолвит handle в current UI binding registry, �
   ui_instance_id: "ui@17:8",
   revision: 42,
   sequence: 5,
-  node_key_path: ["route", "travel_market"],
-  element_id: "core:screen.city_map#widget.travel_market",
+  node_key_path: ["route", "main", "buttons", "travel_market"],
+  element_id: "core:screen.main#widget.travel_market",
   command_id: "core:command.location.travel",
   args: {
     target_location_id: "core:location.city.market",
@@ -48,7 +52,7 @@ Semantic Input Adapter резолвит handle в current UI binding registry, �
 }
 ```
 
-`node_key_path` обязателен и берётся из binding record. `element_id` optional и используется как authored provenance. `command_id` и bound part `args` также берутся только из record. Adapter добавляет разрешённые `input_values` по input schema; control values не могут перезаписать bound args.
+`node_key_path` обязателен и берётся из binding record. Он является stable presentation path `layer → screen instance → field → item`, а не путём physical Widget tree. `element_id` optional и используется как authored provenance. `command_id` и bound part `args` также берутся только из record. Adapter добавляет разрешённые `input_values` по input schema; control values не могут перезаписать bound args.
 
 ## Validation order
 
@@ -57,7 +61,7 @@ Semantic Input Adapter резолвит handle в current UI binding registry, �
 3. Record `session_generation` is current.
 4. Record `ui_instance_id` is current and input-enabled.
 5. Record `revision` equals published interactive revision.
-6. Record `node_key_path` still resolves to an interactive node.
+6. Record `node_key_path` still resolves to an interactive Screen Field element.
 7. `input_values` содержат только unique allowed fields, включают все required fields, не пересекаются с bound args и проходят type/size/depth policy.
 8. Построить immutable ingress item с next candidate `sequence` и попытаться enqueue в bounded FIFO.
 9. Только после successful enqueue продвинуть accepted sequence и запустить fixed Lua Semantic Input entry point через non-reentrant pump.
@@ -66,7 +70,17 @@ Failure before step 9 never enters Lua command handler. Stale input и item, о�
 
 Если submit происходит во время обработки предыдущего ingress item, он может только enqueue новый item. Вложенный Lua/native sink call запрещён; внешний pump продолжает FIFO после возврата текущего handler. Session teardown сначала закрывает `Ready`, затем очищает queue и registry.
 
-Текущий vertical slice преобразует UE envelope в STL-only DTO `GV2RuntimeCore::FSemanticInput` и вызывает fixed `game.runtime.dispatch_semantic_input` portable runtime. Lua function name не приходит из Blueprint/binding record и не является generic call API. Внутри Lua Semantic Input преобразуется в `CommandRequest` и сходится с direct headless ingress до Command Dispatcher. Native test observer вызывается только после успешного protected Lua call; Lua error переводит session в `Failed`, блокирует input и очищает registry/ingress.
+Текущий vertical slice преобразует UE envelope в STL-only DTO `GV2RuntimeCore::FSemanticInput` и вызывает fixed `game.runtime.dispatch_semantic_input`, установленный `core:module.boundary.ingress`. Lua function name не приходит из Blueprint/binding record и не является generic call API. Внутри Lua Semantic Input преобразуется в `CommandRequest` и сходится с direct headless ingress до Command Dispatcher. Dynamic Screen Element получает при apply только opaque handle. Host interaction sink вызывается только после успешного protected Lua call; Lua error переводит session в `Failed`, блокирует input и очищает registry/ingress.
+
+Development start fixture публикует binding `core:screen.debug_start#widget.start → core:command.debug.start`. Отдельный UE Widget получает только opaque `FGV2UiBindingHandle`; click вызывает обычный `SubmitUiInteraction(handle, {})`. Lua dispatcher принимает команду `start` по её canonical `command_id`, поэтому этот же handler проверяется direct headless ingress-ом и не зависит от имени Widget, Blueprint event или Lua callback.
+
+Clickable RichText span использует тот же механизм. Reconciler создаёт record с logical path `route → screen instance → rich_text field → span_id`; decorator получает только handle. Hover/unhover не создаёт Semantic Input. Click/keyboard activation вызывает `SubmitUiInteraction(handle, {})`, а bound scalar `args` span-а берутся только из record и не читаются из rich text tag.
+
+Checkbox использует schema `core:schema.ui_input.checkbox_changed.v1`. Binding record объявляет единственное required control field `is_checked: boolean`; physical `WBP_Checkbox` отправляет `SubmitUiInteraction(handle, {is_checked})`. Значение является input, а не authoritative state: Lua command handler принимает его через Command Dispatcher и публикует новое desired checkbox state. Extra field, отсутствие `is_checked`, неверный type или collision с bound args возвращают `InvalidInputValues` до входа в Lua.
+
+Input field (поле ввода) использует schema `core:schema.ui_input.text_changed.v1`. Binding record объявляет единственное required control field `value: string`; physical `WBP_InputField` отправляет `SubmitUiInteraction(handle, {value})` при фиксации или изменении текста (`OnTextCommitted`). Значение является input: Lua command handler принимает строку через Command Dispatcher и публикует новое desired text state. Extra field, отсутствие `value`, неверный type или collision с bound args возвращают `InvalidInputValues` до входа в Lua.
+
+Dropdown использует schema `core:schema.ui_input.dropdown_selected.v1`. Binding record объявляет единственное required control field `selected_key: string`. Option button передаёт composite dropdown только deterministic local key и не отправляет interaction самостоятельно; `WBP_DropdownSelect` проверяет key против applied options и выполняет ровно один `SubmitUiInteraction(handle, {selected_key})`. Lua command handler принимает selection через Command Dispatcher и публикует новое desired state. Header open/close остаётся UE-local. Extra field, отсутствие `selected_key`, неверный type, неизвестный option key или collision с bound args отклоняются до изменения desired state.
 
 ## Security/authority boundary
 
@@ -79,11 +93,13 @@ Failure before step 9 never enters Lua command handler. Stale input и item, о�
 
 Physical device state, hover, focus, pressed и repeated-key timing принадлежат UE input layer. Gameplay-significant selection/confirmation becomes semantic input.
 
+RichText popover является UE-local transient surface: открытие, positioning, hover delay и закрытие не вызывают Lua. Если активация span должна открыть настоящий blocking Modal, click сначала проходит Command Dispatcher, после чего Lua публикует desired Screen Instance в `modal_stack`.
+
 Modal input routing is resolved in Presentation before envelope creation. Only the top eligible modal or explicitly permitted layer can submit.
 
 ## Result routing
 
-Command Result routes back using correlation ID and resolved current UI identity. A normal refusal can place localized error near `node_key_path`/`element_id` or in configured surface. If UI identity changed before result, Presentation may discard local placement and show only global/system feedback.
+Command Result routes back using correlation ID and resolved current UI identity. Normal refusal может разместить localized error рядом со Screen Field element по `node_key_path`/`element_id` либо в configured surface. Если UI identity изменилась до результата, Presentation может отбросить local placement и оставить только global/system feedback.
 
 ## Technical input distinction
 
@@ -91,4 +107,4 @@ Async resource/save/platform completion uses runtime TechnicalInput, not Semanti
 
 ## Tests
 
-Required tests: input-before-ready, unknown/stale handle, stale session/UI/revision, duplicate/out-of-order sequence, removed node, fabricated handle, bound-arg collision, optional/required/extra control fields, malformed values, bounded-capacity rejection, FIFO nested submit without re-entry, modal blocking и late result placement.
+Required tests: input-before-ready, unknown/stale handle, stale session/UI/revision, duplicate/out-of-order sequence, removed Screen Field item/span, fabricated handle, bound-arg collision, optional/required/extra control fields, malformed values, bounded-capacity rejection, FIFO nested submit without re-entry, debug start binding → Lua handler → presentation request, RichText span click с bound args, checkbox boolean input → desired state republish, input string → desired state republish, single dropdown `selected_key` submit → desired state republish, отсутствие hover ingress, modal blocking и late result placement.

@@ -1,8 +1,8 @@
 ---
 title: Glossary and Naming
 status: normative
-version: 1.2
-updated: 2026-08-10
+version: 1.7
+updated: 2026-08-12
 depends_on:
   - StableIDSpecification.md
 ---
@@ -51,9 +51,15 @@ depends_on:
 |---|---|
 | Location | Gameplay-сущность текущего местоположения |
 | Screen | Визуальный режим location или другого UI route |
+| Screen Template | UE-authored Widget Blueprint layout конкретного Screen, унаследованный от общего base |
+| Screen Registry | UE presentation mapping `screen_id` в trusted Screen Template class и layer policy |
+| Screen Field | Schema-identified value-only dynamic input одного Screen Template |
+| Dynamic Screen Element | Reusable Widget adapter, объявляющий и применяющий один Screen Field |
+| Leaf Adapter | Единственный approved владелец mutation конкретного runtime content primitive |
+| Composite Widget | Widget, который составляет UI из adapters и не вводит собственный presentation path |
 | Route | Основной навигационный узел с lifecycle identity |
-| UI-document | Declarative desired UI tree |
-| UI component | Declarative node UI-document |
+| UI-document | Полная declarative desired model Screen instances по UI layers |
+| UI component | Reusable semantic presentation element type; не physical Widget и не root Screen Template |
 | Widget | Физический UMG runtime object |
 | Game Shell | Постоянная корневая оболочка UI layers |
 | Overlay | Временный неблокирующий слой |
@@ -62,6 +68,9 @@ depends_on:
 | Presentation effect | One-shot визуальное/звуковое намерение, не используемое для restore |
 | UI binding handle | Opaque transient handle current UI revision; связывает physical Widget с validated command binding |
 | Resource ID | Stable logical presentation resource; не UE asset path |
+| TextSpec | Value-only `text_id + args + optional style` до localization/render resolution |
+| Text style token | Theme-local semantic typography name; не Stable ID и не UE asset locator |
+| Image Resource Catalog | Startup-built UE-side mapping filesystem-derived image `resource_id` в runtime texture и canonical render metadata |
 
 ## Stable ID categories
 
@@ -73,6 +82,7 @@ depends_on:
 | `module_id` | `core:module.location_service` |
 | `schema_id` | `core:schema.definition.item.v1` |
 | `widget_id` | `core:widget.button_list` |
+| `screen_id` | `core:screen.main` |
 | `text_id` | `core:text.location.market.title` |
 | `resource_id` | `core:resource.character.aria.casual` |
 | `operation_id` (kind) | `core:operation.resource.prepare` |
@@ -110,6 +120,7 @@ Assets используют Unreal prefixes (`WBP_`, `BP_`, `T_`, `M_`, `SFX_`, 
 | callback как public API | hook, event subscription или operation result |
 | screen как синоним location | location / screen |
 | widget как синоним component | UI component / Widget |
+| Blueprint path как screen identity | screen_id / Screen Registry |
 | asset path в Lua gameplay data | resource_id |
 | localization_key / text_key | text_id |
 | game data repository | GameDataRepository |

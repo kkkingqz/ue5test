@@ -29,8 +29,24 @@ bool FGV2UiBindingRegistry::PublishBindings(
     const TArray<FGV2UiBindingDefinition>& Definitions,
     TArray<FGV2UiBindingHandle>& OutHandles)
 {
+    FGV2PreparedBindingSet Candidate;
+    if (!PrepareBindings(UiInstanceId, Revision, Definitions, Candidate))
+    {
+        OutHandles.Reset();
+        return false;
+    }
+    OutHandles = Candidate.Handles;
+    return CommitPreparedBindings(MoveTemp(Candidate));
+}
+
+bool FGV2UiBindingRegistry::PrepareBindings(
+    const FString& UiInstanceId,
+    const int64 Revision,
+    const TArray<FGV2UiBindingDefinition>& Definitions,
+    FGV2PreparedBindingSet& OutCandidate) const
+{
     check(IsInGameThread());
-    OutHandles.Reset();
+    OutCandidate = {};
 
     int32 UiGeneration = 0;
     if (SessionGeneration <= 0
@@ -54,10 +70,8 @@ bool FGV2UiBindingRegistry::PublishBindings(
     }
 
     int64 CandidateCounter = NextHandleCounter;
-    TMap<FGV2UiBindingHandle, FGV2UiBindingRecord> CandidateRecords;
-    TArray<FGV2UiBindingHandle> CandidateHandles;
-    CandidateRecords.Reserve(Definitions.Num());
-    CandidateHandles.Reserve(Definitions.Num());
+    OutCandidate.Records.Reserve(Definitions.Num());
+    OutCandidate.Handles.Reserve(Definitions.Num());
 
     for (const FGV2UiBindingDefinition& Definition : Definitions)
     {
@@ -66,7 +80,7 @@ bool FGV2UiBindingRegistry::PublishBindings(
             SessionGeneration,
             CandidateCounter++));
 
-        FGV2UiBindingRecord& Record = CandidateRecords.Add(Handle);
+        FGV2UiBindingRecord& Record = OutCandidate.Records.Add(Handle);
         Record.SessionGeneration = SessionGeneration;
         Record.UiInstanceId = UiInstanceId;
         Record.Revision = Revision;
@@ -83,14 +97,26 @@ bool FGV2UiBindingRegistry::PublishBindings(
             }
         }
         Record.InputSchemaId = Definition.InputSchemaId;
-        CandidateHandles.Add(Handle);
+        OutCandidate.Handles.Add(Handle);
     }
+    OutCandidate.UiInstanceId = UiInstanceId;
+    OutCandidate.Revision = Revision;
+    OutCandidate.NextHandleCounter = CandidateCounter;
+    return true;
+}
 
-    Records = MoveTemp(CandidateRecords);
-    CurrentUiInstanceId = UiInstanceId;
-    CurrentRevision = Revision;
-    NextHandleCounter = CandidateCounter;
-    OutHandles = MoveTemp(CandidateHandles);
+bool FGV2UiBindingRegistry::CommitPreparedBindings(FGV2PreparedBindingSet&& Candidate)
+{
+    check(IsInGameThread());
+    if (Candidate.UiInstanceId.IsEmpty() || Candidate.Revision <= 0
+        || Candidate.NextHandleCounter < NextHandleCounter)
+    {
+        return false;
+    }
+    Records = MoveTemp(Candidate.Records);
+    CurrentUiInstanceId = MoveTemp(Candidate.UiInstanceId);
+    CurrentRevision = Candidate.Revision;
+    NextHandleCounter = Candidate.NextHandleCounter;
     return true;
 }
 

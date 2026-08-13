@@ -31,6 +31,7 @@
 - C++/Lua boundary value-only; C++ не хранит Lua callbacks.
 - Active session использует pinned immutable repository snapshot; reload применяется через controlled session restart.
 - UI является reconstructable desired presentation и отправляет bound `command_id`, а не Lua function/callback name.
+- Runtime text, content images, repeated elements, Screen Fields и Semantic Input используют только централизованные presentation paths; composite Widgets не создают parallel mechanisms.
 - Definitions используют full override by ID; implicit deep merge отсутствует.
 - Опубликованный Stable ID не переиспользуется для другого смысла.
 
@@ -168,3 +169,8 @@ date: YYYY-MM-DD
 - новый архитектурный механизм без ADR или concrete measured need;
 - новый документ, дублирующий существующий source of truth.
 
+## Unreal Editor API
+
+- Editor-authored assets (`.uasset`), включая Widget Blueprint, Data Asset и CommonUI style assets, AI обязан создавать и изменять через настроенный Unreal Editor API (`unreal-mcp`), а не прямой записью бинарных файлов.
+- Если API недоступен, AI обязан проверить, запущен ли Unreal Editor и активен ли `ModelContextProtocol`; отсутствие запущенного Editor не является основанием подменять API генерацией `.uasset` сторонними средствами.
+- После изменения asset через Editor API AI обязан выполнить compile затронутых Blueprint, сохранить assets и проверить их загрузку/контракт automation-тестом либо эквивалентной Editor validation.

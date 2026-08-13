@@ -26,3 +26,6 @@ target_compile_features(gv2-headless PRIVATE cxx_std_20)
 target_link_libraries(gv2-headless PRIVATE gv2_runtime_core)
 
 add_test(NAME gv2_headless_self_test COMMAND gv2-headless --self-test)
+set_tests_properties(gv2_headless_self_test PROPERTIES
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+)

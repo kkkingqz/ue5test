@@ -1,13 +1,16 @@
 ---
 title: Presentation Snapshot and Effects
 status: draft
-version: 0.3
-updated: 2026-08-10
+version: 0.6
+updated: 2026-08-12
 depends_on:
   - UIDocumentAndReconciliation.md
+  - ImageResources.md
   - ../Architecture/StableIDSpecification.md
 decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../ADR/0011-blueprint-screen-templates.md
+  - ../ADR/0013-unified-text-pipeline.md
 ---
 
 # Presentation Snapshot and Effects
@@ -56,7 +59,7 @@ Examples: play sound, semantic animation, short transition, transient toast. Eff
 
 ## TextSpec and locale resolution
 
-Lua публикует только `TextSpec { text_id, args }`. Concatenation локализованных fragments в gameplay Lua запрещена. Host localization adapter выбирает locale, применяет plural/gender/number rules и создаёт UE `FText` либо portable report string.
+Lua публикует только `TextSpec { text_id, args, style? }`. Concatenation локализованных fragments в gameplay Lua запрещена. Host localization adapter выбирает locale, применяет plural/gender/number rules и создаёт UE `FGV2TextViewModel` либо portable report string. `style` и markup token values разрешаются только host theme-ом.
 
 Headless balance run по умолчанию сохраняет unresolved `TextSpec`; locale отсутствует и не влияет на gameplay. Localization tests могут подключить portable catalog из того же logical localization source, из которого cook создаёт UE localization resources.
 

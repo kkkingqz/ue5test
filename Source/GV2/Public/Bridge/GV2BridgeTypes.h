@@ -116,39 +116,267 @@ struct GV2_API FGV2UiControlValue
 };
 
 USTRUCT(BlueprintType)
+struct GV2_API FGV2TextViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Text")
+    FText Text;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Text")
+    FName StyleToken;
+
+    // Prepared renderer markup. Produced only by UGV2TextPipeline.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    FString NormalizedMarkup;
+};
+
+USTRUCT(BlueprintType)
 struct GV2_API FGV2ButtonViewModel
 {
     GENERATED_BODY()
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+    FName Key;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-    FText Text;
+    FGV2TextViewModel Text;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
     FGV2UiBindingHandle Binding;
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2TestButtonSpec
+struct GV2_API FGV2CheckboxViewModel
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Testing")
-    FText Text;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+    FName Key;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Testing")
-    FString TestAction;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+    FGV2TextViewModel Text;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+    bool bIsChecked = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+    FGV2UiBindingHandle Binding;
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2TestScreenViewModel
+struct GV2_API FGV2InputFieldViewModel
 {
     GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Testing")
-    FText DescriptionText;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+    FName Key;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Testing")
-    TArray<FGV2ButtonViewModel> Buttons;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+    FGV2TextViewModel Text;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+    FGV2TextViewModel PlaceholderText;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+    FString TextValue;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+    FGV2UiBindingHandle Binding;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2DropdownOptionViewModel
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+	FName Key;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+	FGV2TextViewModel Text;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+	bool bSelected = false;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2DropdownSelectViewModel
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+	FGV2TextViewModel Placeholder;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
+	TArray<FGV2DropdownOptionViewModel> Options;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
+	FGV2UiBindingHandle Binding;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2RichTextHoverViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
+    FGV2TextViewModel Title;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
+    FGV2TextViewModel Description;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
+    FString ImageResourceId;
+
+    bool IsEmpty() const
+    {
+        return Title.Text.IsEmpty() && Description.Text.IsEmpty() && ImageResourceId.IsEmpty();
+    }
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2RichTextSpanViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
+    FName SpanId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Rich Text")
+    FName Key;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
+    FGV2RichTextHoverViewModel Hover;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Rich Text")
+    FGV2UiBindingHandle Binding;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2InteractiveRichTextViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text", meta = (MultiLine = "true"))
+    FGV2TextViewModel Text;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
+    TArray<FGV2RichTextSpanViewModel> Spans;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2ScreenFieldDescriptor
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
+    FName FieldId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
+    FString SchemaId;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
+    bool bRequired = true;
+
+    bool IsConfigured() const
+    {
+        return !FieldId.IsNone();
+    }
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2ScreenFieldValue
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FName FieldId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FString SchemaId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2InteractiveRichTextViewModel InteractiveRichTextValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    TArray<FGV2ButtonViewModel> ButtonListValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2CheckboxViewModel CheckboxValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2InputFieldViewModel InputFieldValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2DropdownSelectViewModel DropdownSelectValue;
+
+    static FGV2ScreenFieldValue MakeButtonList(
+        const FName InFieldId,
+        const TArray<FGV2ButtonViewModel>& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.button_list.v2");
+        Value.ButtonListValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakeInteractiveRichText(
+        const FName InFieldId,
+        const FGV2InteractiveRichTextViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.rich_text.v3");
+        Value.InteractiveRichTextValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakeCheckbox(
+        const FName InFieldId,
+        const FGV2CheckboxViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.checkbox.v1");
+        Value.CheckboxValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakeInputField(
+        const FName InFieldId,
+        const FGV2InputFieldViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.input_field.v1");
+        Value.InputFieldValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakeDropdownSelect(
+        const FName InFieldId,
+        const FGV2DropdownSelectViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.dropdown_select.v1");
+        Value.DropdownSelectValue = InValue;
+        return Value;
+    }
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2ScreenViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
+    FString ScreenId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    TArray<FGV2ScreenFieldValue> Fields;
 };
 
 USTRUCT(BlueprintType)
