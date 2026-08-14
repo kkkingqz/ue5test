@@ -1,5 +1,6 @@
 #include "UI/GV2ImageResourceCatalog.h"
 
+#include "Bridge/GV2StableIdUE.h"
 #include "HAL/FileManager.h"
 #include "ImageUtils.h"
 #include "Math/UnrealMathUtility.h"
@@ -8,56 +9,9 @@
 
 namespace
 {
-bool IsCanonicalSegment(const FStringView Segment)
-{
-    if (Segment.IsEmpty() || Segment[0] < TEXT('a') || Segment[0] > TEXT('z'))
-    {
-        return false;
-    }
-    for (const TCHAR Character : Segment)
-    {
-        if (!((Character >= TEXT('a') && Character <= TEXT('z'))
-            || (Character >= TEXT('0') && Character <= TEXT('9'))
-            || Character == TEXT('_')))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool IsCanonicalResourceId(const FString& ResourceId)
 {
-    const FStringView View(ResourceId);
-    int32 ColonIndex = INDEX_NONE;
-    if (!View.FindChar(TEXT(':'), ColonIndex)
-        || ColonIndex <= 0
-        || !IsCanonicalSegment(View.Left(ColonIndex)))
-    {
-        return false;
-    }
-
-    const FStringView Remainder = View.Mid(ColonIndex + 1);
-    constexpr FStringView KindPrefix(TEXTVIEW("resource."));
-    if (!Remainder.StartsWith(KindPrefix) || Remainder.Len() <= KindPrefix.Len())
-    {
-        return false;
-    }
-
-    const FStringView Path = Remainder.Mid(KindPrefix.Len());
-    int32 SegmentStart = 0;
-    for (int32 Index = 0; Index <= Path.Len(); ++Index)
-    {
-        if (Index == Path.Len() || Path[Index] == TEXT('.'))
-        {
-            if (!IsCanonicalSegment(Path.Mid(SegmentStart, Index - SegmentStart)))
-            {
-                return false;
-            }
-            SegmentStart = Index + 1;
-        }
-    }
-    return true;
+    return GV2StableIdUE::IsOfKind(ResourceId, "resource");
 }
 
 bool IsFinitePositive(const float Value)
@@ -250,6 +204,7 @@ bool UGV2ImageResourceCatalog::BuildFromDirectory(
     PngFiles.Sort();
 
     TArray<FGV2ImageResourceDefinition> CandidateEntries;
+    TMap<FString, FGV2ResolvedImageResource> CandidateResolvedById;
     TArray<TObjectPtr<UTexture2D>> CandidateTextures;
     TSet<FString> SeenIds;
     for (const FString& PngFile : PngFiles)
@@ -313,18 +268,20 @@ bool UGV2ImageResourceCatalog::BuildFromDirectory(
 
         Definition.Texture = Texture;
 
-        FGV2ResolvedImageResource ValidationResource;
-        if (!ResolveDefinition(Definition, ValidationResource, OutError))
+        FGV2ResolvedImageResource ResolvedResource;
+        if (!ResolveDefinition(Definition, ResolvedResource, OutError))
         {
             OutError = FString::Printf(TEXT("%s: %s"), *PngFile, *OutError);
             return false;
         }
         SeenIds.Add(ResourceId);
+        CandidateResolvedById.Add(ResourceId, MoveTemp(ResolvedResource));
         CandidateTextures.Add(Texture);
         CandidateEntries.Add(MoveTemp(Definition));
     }
 
     Entries = MoveTemp(CandidateEntries);
+    ResolvedById = MoveTemp(CandidateResolvedById);
     RuntimeTextures = MoveTemp(CandidateTextures);
     OutError.Reset();
     return true;
@@ -478,26 +435,21 @@ bool UGV2ImageResourceCatalog::Resolve(
     FGV2ResolvedImageResource& OutResource,
     FString& OutError) const
 {
-    if (!Validate(OutError))
-    {
-        return false;
-    }
+    OutResource = {};
     if (!IsCanonicalResourceId(ResourceId))
     {
         OutError = TEXT("Requested image resource_id is not canonical.");
         return false;
     }
-    const FGV2ImageResourceDefinition* Definition = Entries.FindByPredicate(
-        [&ResourceId](const FGV2ImageResourceDefinition& Candidate)
-        {
-            return Candidate.ResourceId == ResourceId;
-        });
-    if (Definition == nullptr)
+    const FGV2ResolvedImageResource* Resolved = ResolvedById.Find(ResourceId);
+    if (Resolved == nullptr)
     {
         OutError = FString::Printf(TEXT("Unknown image resource_id: %s"), *ResourceId);
         return false;
     }
-    return ResolveDefinition(*Definition, OutResource, OutError);
+    OutResource = *Resolved;
+    OutError.Reset();
+    return true;
 }
 
 FName UGV2ImageResourceCatalogSettings::GetCategoryName() const

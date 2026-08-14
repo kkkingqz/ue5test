@@ -1,0 +1,14 @@
+{
+  schema_version: 1,
+  type: "item",
+  definitions: [
+    {
+      id: "test_mod:item.free_sword",
+      data: {
+        label_text_id: "core:text.item.iron_sword.name",
+        price: 0,
+        icon_resource_id: "core:resource.item.iron_sword.icon",
+      },
+    },
+  ],
+}

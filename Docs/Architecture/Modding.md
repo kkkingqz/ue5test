@@ -1,8 +1,8 @@
 ---
 title: Modding Architecture
 status: draft
-version: 0.1
-updated: 2026-08-10
+version: 0.4
+updated: 2026-08-13
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -40,10 +40,14 @@ Manifest объявляет version, compatible game/API/schema ranges, dependen
 - New IDs только в namespace мода: `weather_mod:item.ring.storm`.
 - Existing foreign ID можно fully override.
 - New `core:*` ID из mod запрещён.
+- Foreign ID считается override только если более ранний provider уже предоставил exact ID; иначе candidate получает `core:diagnostic.repository.identity.foreign_new_id`.
+- Override является одной complete entry: `data`, tags, `deprecated` и extensions предыдущего provider не наследуются и не merge-ятся.
+- Invalid override блокирует candidate целиком; fallback к shadowed definition запрещён.
 - Core redirect объявляет core; mod не перенаправляет чужой namespace.
+- Mod может объявить redirect/tombstone только для source ID собственного namespace; redirect target может быть same-kind foreign ID.
 - Published IDs не переиспользуются.
 - New kind требует declarative schema binding.
-- Extension block использует собственный package namespace и registered extension schema.
+- Extension block использует собственный package namespace и exact registered extension schema для `definition_file`, `definition_entry` либо `schema_resource`; mod не переопределяет основную schema существующего kind.
 
 ## Lua modules
 
@@ -92,4 +96,3 @@ Save metadata хранит enabled mods, order, versions и fingerprints. Disabl
 - State stored in common registries or own `mods[mod_id]` section.
 - Commands/events use canonical IDs and schemas.
 - Fixtures cover enable/disable, override, save orphan/restore и missing resources.
-

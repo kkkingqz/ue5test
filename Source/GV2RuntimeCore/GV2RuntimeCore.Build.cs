@@ -9,7 +9,7 @@ public class GV2RuntimeCore : ModuleRules
         CppStandard = CppStandardVersion.Cpp20;
         bUseUnity = false;
 
-        PublicDependencyModuleNames.Add("Core");
+        PublicDependencyModuleNames.AddRange(new string[] { "Core", "GV2ContentCore" });
         PublicDefinitions.Add("GV2_RUNTIME_CORE_IMPORTS=1");
         PrivateDefinitions.Add("GV2_RUNTIME_CORE_EXPORTS=1");
         PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "Private", "ThirdParty", "Lua54"));

@@ -1,0 +1,14 @@
+{
+  schema_version: 1,
+  type: "location",
+  definitions: [
+    {
+      id: "core:location.city.market",
+      data: {
+        title_text_id: "core:text.location.market.title",
+        screen_ids: ["test_mod:screen.codex_archive"],
+      },
+      tags: ["test_mod_redirect_fixture"],
+    },
+  ],
+}

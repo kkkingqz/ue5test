@@ -3,6 +3,9 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "HAL/PlatformTime.h"
+#include "Application/GV2ScreenFieldAdapterRegistry.h"
+#include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
 #include "Runtime/GV2RuntimeSubsystem.h"
 #include "UI/GV2DebugStartScreenWidget.h"
 #include "UI/GV2ButtonListWidgetBase.h"
@@ -41,6 +44,93 @@
 #include "ImageUtils.h"
 #include "Engine/World.h"
 #include "Subsystems/SubsystemCollection.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2StableIdConformanceTest,
+    "GV2.Runtime.StableId.Conformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2StableIdConformanceTest::RunTest(const FString& Parameters)
+{
+    const std::string Failure = GV2RuntimeCore::Testing::RunStableIdConformance();
+    TestTrue(
+        *FString::Printf(
+            TEXT("Shared Stable ID conformance passes%s%s"),
+            Failure.empty() ? TEXT("") : TEXT(": "),
+            Failure.empty() ? TEXT("") : UTF8_TO_TCHAR(Failure.c_str())),
+        Failure.empty());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ImageResourceLookupScaling,
+    "GV2.Runtime.Resources.ImageLookupScaling",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ImageResourceLookupScaling::RunTest(const FString& Parameters)
+{
+    constexpr int32 LookupIterations = 200000;
+    auto MeasureLookup = [this](const int32 EntryCount)
+    {
+        UGV2ImageResourceCatalog* Catalog = NewObject<UGV2ImageResourceCatalog>();
+        Catalog->ResolvedById.Reserve(EntryCount);
+        TArray<FString> ResourceIds;
+        ResourceIds.Reserve(EntryCount);
+        for (int32 Index = 0; Index < EntryCount; ++Index)
+        {
+            FString ResourceId = FString::Printf(
+                TEXT("core:resource.benchmark.entry_%05d"),
+                Index);
+            FGV2ResolvedImageResource Resolved;
+            Resolved.ResourceId = ResourceId;
+            Resolved.RenderMode = EGV2ImageRenderMode::FixedAspect;
+            Resolved.FixedAspectRatio = 1.0f;
+            Catalog->ResolvedById.Add(ResourceId, MoveTemp(Resolved));
+            ResourceIds.Add(MoveTemp(ResourceId));
+        }
+
+        FGV2ResolvedImageResource Resolved;
+        FString ResolveError;
+        uint64 Checksum = 0;
+        for (int32 Index = 0; Index < EntryCount; ++Index)
+        {
+            Catalog->Resolve(ResourceIds[Index], Resolved, ResolveError);
+        }
+
+        const double StartedAt = FPlatformTime::Seconds();
+        for (int32 Iteration = 0; Iteration < LookupIterations; ++Iteration)
+        {
+            const bool bResolved = Catalog->Resolve(
+                ResourceIds[Iteration % EntryCount],
+                Resolved,
+                ResolveError);
+            Checksum += bResolved ? static_cast<uint64>(Resolved.ResourceId.Len()) : 0;
+        }
+        const double Elapsed = FPlatformTime::Seconds() - StartedAt;
+        TestTrue(
+            *FString::Printf(TEXT("Synthetic catalog with %d entries resolves all lookups"), EntryCount),
+            Checksum > 0);
+        return Elapsed;
+    };
+
+    const double SmallCatalogSeconds = MeasureLookup(10);
+    const double MediumCatalogSeconds = MeasureLookup(1000);
+    const double LargeCatalogSeconds = MeasureLookup(10000);
+    AddInfo(FString::Printf(
+        TEXT("Image lookup scaling: 10=%.6fs, 1000=%.6fs, 10000=%.6fs"),
+        SmallCatalogSeconds,
+        MediumCatalogSeconds,
+        LargeCatalogSeconds));
+
+    const double BaselineSeconds = FMath::Max(SmallCatalogSeconds, 0.000001);
+    TestTrue(
+        TEXT("Lookup at 1,000 entries does not scale linearly with catalog size"),
+        MediumCatalogSeconds < BaselineSeconds * 20.0);
+    TestTrue(
+        TEXT("Lookup at 10,000 entries does not scale linearly with catalog size"),
+        LargeCatalogSeconds < BaselineSeconds * 20.0);
+    return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2CentralPresentationPathSourceAudit,
@@ -87,6 +177,122 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TestFalse(TEXT("Generic runtime does not contain description field literal"), RuntimeSource.Contains(TEXT("TEXT(\"description\")")));
         TestFalse(TEXT("Generic runtime does not contain buttons field literal"), RuntimeSource.Contains(TEXT("TEXT(\"buttons\")")));
     }
+
+    FString CoordinatorSource;
+    if (ReadSource(
+            TEXT("Source/GV2/Private/Application/GV2SessionCoordinator.cpp"),
+            CoordinatorSource))
+    {
+        TestTrue(
+            TEXT("Coordinator delegates Screen Field conversion to the adapter registry"),
+            CoordinatorSource.Contains(TEXT("FGV2ScreenFieldAdapterRegistry::Get()")));
+        TestFalse(
+            TEXT("Coordinator contains no concrete Screen Field schema IDs"),
+            CoordinatorSource.Contains(TEXT("core:schema.ui_field.")));
+    }
+
+    FString AdapterRegistrySource;
+    if (ReadSource(
+            TEXT("Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp"),
+            AdapterRegistrySource))
+    {
+        const TCHAR* FieldSchemas[] = {
+            TEXT("core:schema.ui_field.button_list.v2"),
+            TEXT("core:schema.ui_field.rich_text.v3"),
+            TEXT("core:schema.ui_field.checkbox.v1"),
+            TEXT("core:schema.ui_field.input_field.v1"),
+            TEXT("core:schema.ui_field.dropdown_select.v1")
+        };
+        for (const TCHAR* SchemaId : FieldSchemas)
+        {
+            TestTrue(
+                *FString::Printf(TEXT("Adapter registry owns %s"), SchemaId),
+                AdapterRegistrySource.Contains(SchemaId));
+        }
+    }
+    TestEqual(
+        TEXT("Adapter registry contains the five published Screen Field schemas"),
+        FGV2ScreenFieldAdapterRegistry::Get().Num(),
+        5);
+
+    FString UiDocumentContract;
+    if (ReadSource(
+            TEXT("Docs/UI/UIDocumentAndReconciliation.md"),
+            UiDocumentContract))
+    {
+        const TCHAR* PublishedFieldSchemas[] = {
+            TEXT("core:schema.ui_field.button_list.v2"),
+            TEXT("core:schema.ui_field.rich_text.v3"),
+            TEXT("core:schema.ui_field.checkbox.v1"),
+            TEXT("core:schema.ui_field.input_field.v1"),
+            TEXT("core:schema.ui_field.dropdown_select.v1")
+        };
+        for (const TCHAR* SchemaId : PublishedFieldSchemas)
+        {
+            TestTrue(
+                *FString::Printf(TEXT("UI Document contract names supported schema %s"), SchemaId),
+                UiDocumentContract.Contains(SchemaId));
+        }
+        TestFalse(
+            TEXT("UI Document contract does not claim only two field adapters"),
+            UiDocumentContract.Contains(TEXT("только RichText и ButtonList")));
+        TestTrue(
+            TEXT("UI Document contract labels unimplemented layered tests as planned acceptance"),
+            UiDocumentContract.Contains(
+                TEXT("planned acceptance criteria полноценного layered reconciler")));
+    }
+
+    FString ImageCatalogSource;
+    if (ReadSource(
+            TEXT("Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp"),
+            ImageCatalogSource))
+    {
+        const int32 ResolveStart = ImageCatalogSource.Find(
+            TEXT("bool UGV2ImageResourceCatalog::Resolve("));
+        const int32 ResolveEnd = ImageCatalogSource.Find(
+            TEXT("FName UGV2ImageResourceCatalogSettings::GetCategoryName"),
+            ESearchCase::CaseSensitive,
+            ESearchDir::FromStart,
+            ResolveStart);
+        TestTrue(
+            TEXT("Image Catalog source audit locates the runtime Resolve body"),
+            ResolveStart != INDEX_NONE && ResolveEnd > ResolveStart);
+        if (ResolveStart != INDEX_NONE && ResolveEnd > ResolveStart)
+        {
+            const FString ResolveSource = ImageCatalogSource.Mid(
+                ResolveStart,
+                ResolveEnd - ResolveStart);
+            TestTrue(
+                TEXT("Image Catalog Resolve uses the immutable prepared lookup"),
+                ResolveSource.Contains(TEXT("ResolvedById.Find(ResourceId)")));
+            TestFalse(
+                TEXT("Image Catalog Resolve does not validate the whole catalog"),
+                ResolveSource.Contains(TEXT("Validate(OutError)")));
+            TestFalse(
+                TEXT("Image Catalog Resolve does not linearly scan definitions"),
+                ResolveSource.Contains(TEXT("FindByPredicate")));
+            TestFalse(
+                TEXT("Image Catalog Resolve does not rebuild a brush"),
+                ResolveSource.Contains(TEXT("ResolveDefinition")));
+        }
+    }
+
+    GV2RuntimeCore::FScreenRequest UnknownSchemaRequest;
+    UnknownSchemaRequest.ScreenId = "core:screen.unknown_schema_fixture";
+    GV2RuntimeCore::FScreenField UnknownField;
+    UnknownField.FieldId = "unknown";
+    UnknownField.SchemaId = "core:schema.ui_field.unknown.v1";
+    UnknownField.Value = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FObject{});
+    UnknownSchemaRequest.Fields.push_back(MoveTemp(UnknownField));
+    TArray<FGV2UiBindingDefinition> UnknownDefinitions;
+    TestFalse(
+        TEXT("Adapter registry rejects an unknown Screen Field schema"),
+        FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(
+            UnknownSchemaRequest,
+            UnknownDefinitions));
+    TestTrue(
+        TEXT("Unknown Screen Field schema leaves no partial binding definitions"),
+        UnknownDefinitions.IsEmpty());
 
     FString PortableHeader;
     if (ReadSource(TEXT("Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2RuntimeSession.h"), PortableHeader))
@@ -335,6 +541,53 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
             TestEqual(TEXT("Nine-slice marker border is cropped from height"), NineSliceTexture->GetSizeY(), 4);
         }
     }
+
+    FGV2ResolvedImageResource FirstPortraitResolve;
+    FGV2ResolvedImageResource SecondPortraitResolve;
+    TestTrue(
+        TEXT("Prepared fixed-aspect resource resolves from the catalog lookup"),
+        ScannedCatalog->Resolve(
+            TEXT("core:resource.image.character_portrait"),
+            FirstPortraitResolve,
+            ImagePathError));
+    TestTrue(
+        TEXT("Repeated resolve returns the prepared fixed-aspect resource"),
+        ScannedCatalog->Resolve(
+            TEXT("core:resource.image.character_portrait"),
+            SecondPortraitResolve,
+            ImagePathError));
+    TestEqual(
+        TEXT("Repeated resolve preserves the prepared brush resource object"),
+        FirstPortraitResolve.Brush.GetResourceObject(),
+        SecondPortraitResolve.Brush.GetResourceObject());
+    TestEqual(
+        TEXT("Repeated resolve preserves the prepared brush size"),
+        FirstPortraitResolve.Brush.ImageSize,
+        SecondPortraitResolve.Brush.ImageSize);
+
+    FGV2ResolvedImageResource ScannedPanel;
+    TestTrue(
+        TEXT("Prepared nine-slice resource resolves from the catalog lookup"),
+        ScannedCatalog->Resolve(
+            TEXT("core:resource.image.panel"),
+            ScannedPanel,
+            ImagePathError));
+    TestEqual(
+        TEXT("Prepared nine-slice lookup retains box drawing"),
+        ScannedPanel.Brush.DrawAs,
+        ESlateBrushDrawType::Box);
+    TestFalse(
+        TEXT("Invalid resource ID is rejected before lookup"),
+        ScannedCatalog->Resolve(
+            TEXT("Core:resource.image.character_portrait"),
+            ScannedPanel,
+            ImagePathError));
+    TestFalse(
+        TEXT("Unknown canonical resource ID is rejected by lookup"),
+        ScannedCatalog->Resolve(
+            TEXT("core:resource.image.missing"),
+            ScannedPanel,
+            ImagePathError));
     IFileManager::Get().DeleteDirectory(*ScannerFixtureRoot, false, true);
 
     UGV2ImageResourceCatalog* ConfiguredImageCatalog =
@@ -728,6 +981,94 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
             UGV2ScreenWidgetBase::StaticClass());
     }
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ImageCatalogBootstrapGate,
+    "GV2.Runtime.Bootstrap.ImageCatalogFailureBlocksReady",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
+{
+    UGV2ImageResourceCatalogSettings* ImageSettings =
+        GetMutableDefault<UGV2ImageResourceCatalogSettings>();
+    TestNotNull(TEXT("Image Catalog settings are available"), ImageSettings);
+    if (ImageSettings == nullptr)
+    {
+        return false;
+    }
+
+    const FString OriginalRoot = ImageSettings->ResourceRootDirectory;
+    FString InitialBuildError;
+    TestTrue(
+        TEXT("Image Catalog failure fixture starts from a published valid catalog"),
+        UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(InitialBuildError));
+    UGV2ImageResourceCatalog* CatalogBeforeFailedRebuild =
+        UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    TestNotNull(
+        TEXT("Valid configured catalog exists before failed rebuild"),
+        CatalogBeforeFailedRebuild);
+    ImageSettings->ResourceRootDirectory = TEXT("/invalid/absolute/resource/root");
+    AddExpectedError(
+        TEXT("Image Resource Catalog build failed"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedError(
+        TEXT("StartSession rejected: required Image Resource Catalog is not ready"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+    ImageSettings->ResourceRootDirectory = OriginalRoot;
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists after failed catalog bootstrap"), Runtime);
+    if (Runtime != nullptr)
+    {
+        Runtime->StartSession();
+        const FGV2SessionStatus Status = Runtime->GetSessionState();
+        TestFalse(TEXT("Failed required catalog keeps session non-ready"), Status.bIsReady);
+        TestNotEqual(
+            TEXT("Failed required catalog prevents Ready state publication"),
+            Status.SessionState,
+            EGV2SessionState::Ready);
+        TestNull(TEXT("Failed required catalog publishes no active Screen"), Runtime->GetActiveScreen());
+    }
+
+    UGV2ImageResourceCatalog* CatalogAfterFailedRebuild =
+        UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    TestEqual(
+        TEXT("Failed candidate rebuild preserves the previously published catalog"),
+        CatalogAfterFailedRebuild,
+        CatalogBeforeFailedRebuild);
+    if (CatalogAfterFailedRebuild != nullptr)
+    {
+        FGV2ResolvedImageResource PreservedResource;
+        FString PreservedResolveError;
+        TestTrue(
+            TEXT("Previously published prepared lookup remains usable after failed rebuild"),
+            CatalogAfterFailedRebuild->Resolve(
+                TEXT("core:resource.ui.old_paper_tile_256"),
+                PreservedResource,
+                PreservedResolveError));
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+
+    FString RestoreError;
+    TestTrue(
+        TEXT("Configured Image Catalog rebuilds after failure fixture cleanup"),
+        UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(RestoreError));
     return true;
 }
 

@@ -1,0 +1,14 @@
+{
+  id: "test_mod:schema.definition.resource.v2",
+  definition_type: "resource",
+  schema_version: 2,
+  root: {
+    kind: "object",
+    fields: {
+      resource_class: { kind: "enum", required: true, values: ["sound"] },
+      required: { kind: "bool", required: true },
+    },
+  },
+  semantic_validators: [],
+  extensions: {},
+}

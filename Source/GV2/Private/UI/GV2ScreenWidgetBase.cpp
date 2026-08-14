@@ -1,5 +1,6 @@
 #include "UI/GV2ScreenWidgetBase.h"
 
+#include "Bridge/GV2StableIdUE.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Widget.h"
 #include "UI/GV2DynamicScreenElement.h"
@@ -25,89 +26,12 @@ struct FGV2ScreenApplyRecord
 bool IsCanonicalFieldId(const FName FieldId)
 {
     const FString Value = FieldId.ToString();
-    if (Value.IsEmpty() || Value[0] < TEXT('a') || Value[0] > TEXT('z'))
-    {
-        return false;
-    }
-
-    for (const TCHAR Character : Value)
-    {
-        const bool bIsLowercaseLetter = Character >= TEXT('a') && Character <= TEXT('z');
-        const bool bIsDigit = Character >= TEXT('0') && Character <= TEXT('9');
-        if (!bIsLowercaseLetter && !bIsDigit && Character != TEXT('_'))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool IsCanonicalStableIdSegment(const FStringView Segment)
-{
-    if (Segment.IsEmpty() || Segment.Len() > 64
-        || Segment[0] < TEXT('a') || Segment[0] > TEXT('z'))
-    {
-        return false;
-    }
-
-    for (const TCHAR Character : Segment)
-    {
-        const bool bIsLowercaseLetter = Character >= TEXT('a') && Character <= TEXT('z');
-        const bool bIsDigit = Character >= TEXT('0') && Character <= TEXT('9');
-        if (!bIsLowercaseLetter && !bIsDigit && Character != TEXT('_'))
-        {
-            return false;
-        }
-    }
-    return true;
+    return GV2StableIdUE::IsValidSegment(Value);
 }
 
 bool IsCanonicalSchemaId(const FString& Value)
 {
-    if (Value.IsEmpty() || Value.Len() > 192)
-    {
-        return false;
-    }
-
-    const FStringView View(Value);
-    int32 ColonIndex = INDEX_NONE;
-    int32 DotIndex = INDEX_NONE;
-    for (int32 Index = 0; Index < View.Len(); ++Index)
-    {
-        if (View[Index] == TEXT(':'))
-        {
-            if (ColonIndex != INDEX_NONE)
-            {
-                return false;
-            }
-            ColonIndex = Index;
-        }
-        else if (View[Index] == TEXT('.') && DotIndex == INDEX_NONE)
-        {
-            DotIndex = Index;
-        }
-    }
-
-    if (ColonIndex == INDEX_NONE || DotIndex <= ColonIndex + 1
-        || !IsCanonicalStableIdSegment(View.Left(ColonIndex))
-        || View.Mid(ColonIndex + 1, DotIndex - ColonIndex - 1) != TEXTVIEW("schema"))
-    {
-        return false;
-    }
-
-    int32 SegmentStart = DotIndex + 1;
-    for (int32 Index = SegmentStart; Index <= View.Len(); ++Index)
-    {
-        if (Index == View.Len() || View[Index] == TEXT('.'))
-        {
-            if (!IsCanonicalStableIdSegment(View.Mid(SegmentStart, Index - SegmentStart)))
-            {
-                return false;
-            }
-            SegmentStart = Index + 1;
-        }
-    }
-    return true;
+    return GV2StableIdUE::IsOfKind(Value, "schema");
 }
 
 bool CollectElements(

@@ -313,6 +313,23 @@ bool FGV2UiBindingRegistryPublicationTest::RunTest(const FString& Parameters)
         return false;
     }
 
+    FGV2PreparedBindingSet NonMonotonicCandidate;
+    TestFalse(
+        TEXT("Current UI instance rejects a non-monotonic revision"),
+        Registry.PrepareBindings(
+            TEXT("ui@11:1"),
+            1,
+            {MakeBindingDefinition(TEXT("repeated"), TEXT("core:command.test.repeated"))},
+            NonMonotonicCandidate));
+    TestEqual(
+        TEXT("Rejected non-monotonic revision preserves current revision"),
+        Registry.GetRevision(),
+        int64{1});
+    TestEqual(
+        TEXT("Rejected non-monotonic revision preserves current bindings"),
+        Registry.Num(),
+        1);
+
     FGV2UiBindingDefinition DuplicatePath = MakeBindingDefinition(
         TEXT("duplicate"),
         TEXT("core:command.test.duplicate"));

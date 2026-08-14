@@ -1,0 +1,21 @@
+{
+  schema_version: 1,
+  type: "screen",
+  definitions: [
+    {
+      // Full replacement of an existing foreign definition is permitted.
+      id: "core:screen.inventory",
+      data: {
+        title_text_id: "core:text.screen.inventory.title",
+      },
+      tags: ["test_mod_override"],
+    },
+    {
+      id: "test_mod:screen.codex_lab",
+      data: {
+        title_text_id: "test_mod:text.screen.codex_lab.title",
+      },
+    },
+  ],
+}
+

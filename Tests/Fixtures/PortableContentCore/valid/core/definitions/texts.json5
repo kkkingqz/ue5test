@@ -1,0 +1,22 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "core:text.item.iron_sword.name",
+      data: { message: "Iron sword" },
+    },
+    {
+      id: "core:text.location.market.title",
+      data: { message: "Market" },
+    },
+    {
+      id: "core:text.screen.inventory.title",
+      data: { message: "Inventory" },
+    },
+    {
+      id: "core:text.screen.main.title",
+      data: { message: "Main screen" },
+    },
+  ],
+}

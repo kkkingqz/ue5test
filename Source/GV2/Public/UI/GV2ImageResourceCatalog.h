@@ -81,8 +81,15 @@ public:
         FString& OutError);
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend class FGV2ImageResourceLookupScaling;
+#endif
+
     UPROPERTY(Transient)
     TArray<FGV2ImageResourceDefinition> Entries;
+
+    UPROPERTY(Transient)
+    TMap<FString, FGV2ResolvedImageResource> ResolvedById;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> RuntimeTextures;

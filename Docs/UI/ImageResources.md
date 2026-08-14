@@ -1,8 +1,8 @@
 ---
 title: Image Resource Contract
 status: normative
-version: 1.3
-updated: 2026-08-12
+version: 1.5
+updated: 2026-08-13
 depends_on:
   - ../Architecture/StableIDSpecification.md
 decisions:
@@ -73,11 +73,13 @@ Image block Blueprint задаёт `AcceptedRenderMode`. Для `fixed_aspect` �
 
 1. Startup scanner рекурсивно перечисляет `Resources/**/*.png`, определяет mode по suffix и выводит Stable ID без `.tile`/`.9`.
 2. Candidate build декодирует PNG, проверяет duplicate entries и mode-specific metadata/marker border.
-3. После полной validation catalog публикуется атомарно; старый catalog не меняется при ошибке.
-4. Presentation готовит required resource согласно общему prepare/prefetch lifecycle.
-5. Resolver использует runtime texture и строит `FSlateBrush`.
-6. Image Widget сверяет render mode и для `fixed_aspect` ratio target block.
-7. Только после успешных проверок Widget заменяет brush и applied `resource_id`.
+3. Candidate build один раз создаёт runtime texture и готовый `FSlateBrush`, затем формирует immutable lookup `resource_id → resolved resource`.
+4. После полной validation catalog публикуется атомарно; старый catalog не меняется при ошибке.
+5. Application bootstrap фиксирует successful build как required readiness prerequisite; только после этого может создавать session candidate.
+6. Presentation готовит required resource согласно общему prepare/prefetch lifecycle.
+7. Resolver строго проверяет requested Stable ID и выполняет immutable lookup без catalog-wide validation, texture loading или повторного построения brush.
+8. Image Widget сверяет render mode и для `fixed_aspect` ratio target block.
+9. Только после успешных проверок Widget заменяет brush и applied `resource_id`.
 
 Mapping в Slate:
 
@@ -90,6 +92,8 @@ Mapping в Slate:
 ## Failure and recovery semantics
 
 Invalid ID, missing texture, duplicate ID, unknown mode, non-positive ratio/tile size, collapsed nine-slice center и target incompatibility возвращают presentation failure до Widget mutation. Required missing resource блокирует owning prepare/apply; optional use применяет type-compatible placeholder согласно общему Presentation policy.
+
+Startup Image Catalog является required application dependency. Failed configured catalog build обязан оставить Runtime Subsystem в non-ready bootstrap state и запретить создание/публикацию session `Ready`. Атомарное сохранение ранее опубликованного catalog защищает существующего consumer-а от partial mutation, но не разрешает новой session использовать stale catalog после failed rebuild.
 
 ## Compatibility and evolution
 
@@ -105,7 +109,10 @@ Invalid ID, missing texture, duplicate ID, unknown mode, non-positive ratio/tile
 - Validator принимает по одному корректному fixture каждого режима и отклоняет malformed marker metadata.
 - `Resources/core/resource/ui/old_paper_tile_256.tile.png` разрешается как `core:resource.ui.old_paper_tile_256`, `tile`, `256×256`, tiling по обеим осям.
 - Resolver создаёт ожидаемые `DrawAs`, tiling, margins и logical tile size.
+- Repeated resolve использует подготовленный immutable lookup и возвращает эквивалентный brush; runtime lookup не перечисляет entries и не перестраивает brush.
+- Scaling benchmark через public `Resolve()` для 10, 1 000 и 10 000 synthetic entries не демонстрирует линейного роста относительно размера catalog.
 - Widget отклоняет несовместимый mode/ratio без изменения предыдущего resource.
 - Непустой `InitialResourceId` использует тот же resolver и mode validation, что и динамическое применение.
 - Lua source и portable DTO не содержат texture path, brush или render mode.
 - `WBP_Image` сохраняет native parent `UGV2ImageWidgetBase`; concrete fixed-aspect Screen block проверяется на matching aspect constraint при добавлении такого поля.
+- Automation с invalid configured resource root подтверждает, что Lua VM/Screen не публикуются и session не достигает `Ready`; после восстановления settings catalog снова успешно строится.

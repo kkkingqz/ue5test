@@ -1,0 +1,24 @@
+# Canonical repository-relative inventory. Keep entries bytewise sorted.
+invalid/active_redirect_source/test_mod/definitions/screens.json5
+invalid/broken_override/test_mod/definitions/screens.json5
+invalid/duplicate_key/core/definitions/items.json5
+invalid/foreign_new_id/test_mod/definitions/screens.json5
+invalid/missing_reference/test_mod/definitions/screens.json5
+invalid/redirect_cycle/test_mod/definitions/screens.json5
+invalid/resource_class_mismatch/test_mod/definitions/items.json5
+invalid/resource_class_mismatch/test_mod/definitions/resources.json5
+invalid/resource_class_mismatch/test_mod/schemas/resource_v2.schema.json5
+invalid/semantic_failure/test_mod/definitions/items.json5
+valid/core/definitions/items.json5
+valid/core/definitions/locations.json5
+valid/core/definitions/resources.json5
+valid/core/definitions/screens.json5
+valid/core/definitions/texts.json5
+valid/core/schemas/item_v1.schema.json5
+valid/core/schemas/location_v1.schema.json5
+valid/core/schemas/resource_v1.schema.json5
+valid/core/schemas/screen_v1.schema.json5
+valid/core/schemas/text_v1.schema.json5
+valid/test_mod/definitions/locations.json5
+valid/test_mod/definitions/screens.json5
+valid/test_mod/definitions/texts.json5

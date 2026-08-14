@@ -21,9 +21,40 @@ elseif(UNIX)
     target_link_libraries(gv2_runtime_core PRIVATE m dl)
 endif()
 
+set(GV2_CONTENT_CORE_DIR "${PROJECT_SOURCE_DIR}/Source/GV2ContentCore")
+
+add_library(gv2_content_core STATIC
+    "${GV2_CONTENT_CORE_DIR}/Private/BuildResult.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/CanonicalHash.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/DefinitionEnvelope.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/Diagnostic.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/ExtensionSchema.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/FieldValidation.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/GV2ContentCore.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/Json5Lexer.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/Json5Conformance.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/Json5Parser.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/PackageDescriptor.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/ParseLimits.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/RepositoryBuilder.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/RepositorySnapshot.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/RepresentativeCore.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/SchemaRegistry.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/SemanticValidation.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/ScalarValidation.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/StableId.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/Value.cpp"
+)
+target_compile_features(gv2_content_core PUBLIC cxx_std_20)
+target_include_directories(gv2_content_core
+    PUBLIC "${GV2_CONTENT_CORE_DIR}/Public"
+)
+
+target_link_libraries(gv2_runtime_core PUBLIC gv2_content_core)
+
 add_executable(gv2-headless Source/main.cpp)
 target_compile_features(gv2-headless PRIVATE cxx_std_20)
-target_link_libraries(gv2-headless PRIVATE gv2_runtime_core)
+target_link_libraries(gv2-headless PRIVATE gv2_runtime_core gv2_content_core)
 
 add_test(NAME gv2_headless_self_test COMMAND gv2-headless --self-test)
 set_tests_properties(gv2_headless_self_test PROPERTIES

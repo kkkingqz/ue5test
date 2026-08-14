@@ -1,0 +1,14 @@
+{
+  id: "core:schema.definition.text.v1",
+  definition_type: "text",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      message: { kind: "string", required: true, min_length: 1 },
+    },
+  },
+  semantic_validators: [],
+  extensions: {},
+}
+

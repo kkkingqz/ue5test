@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: draft
-version: 2.3
+version: 2.4
 updated: 2026-08-13
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -22,6 +22,7 @@ Widget Registry описывает reusable Dynamic Screen Element types, их t
 ## Ownership
 
 - Registry владеет разрешённым adapter/factory mapping для reusable element type.
+- Screen Field Adapter Registry владеет fixed mapping portable `schema_id` в trusted C++ conversion adapter.
 - Dynamic Screen Element объявляет Screen Field schema и применяет value к local Widget state.
 - Concrete Screen Blueprint выбирает и размещает existing elements.
 - Lua выбирает `screen_id`, значения fields и Command bindings, но не `widget_id` физического child Widget.
@@ -118,7 +119,7 @@ FGV2DropdownSelectViewModel
   Binding: FGV2UiBindingHandle (единый для всего dropdown)
 ```
 
-`FGV2TextViewModel` создаётся Presentation из `TextSpec`, а handle — reconciler-ом из validated Command binding. `command_id`, Lua callback/function name и raw asset path не являются editable Blueprint data.
+`FGV2TextViewModel` создаётся Presentation из `TextSpec`, а handle — binding registry из validated Command binding. Screen Field Adapter Registry централизованно валидирует portable field value и создаёт typed view model; Widget adapter только применяет его к local state. `command_id`, Lua callback/function name и raw asset path не являются editable Blueprint data.
 
 ## Implemented vertical slice API
 
@@ -254,7 +255,7 @@ Click span получает только `FGV2UiBindingHandle`. `SubmitSpanInter
 | `player_name` | `WBP_InputField` | Yes |
 | `buttons` | `WBP_ButtonList` | Yes |
 
-Lua command handler публикует Screen request, включая rich text semantic spans, desired checkbox state, text value и dropdown selection. Coordinator атомарно создаёт binding records для clickable spans, buttons, checkbox, input field и dropdown, разрешает `screen_id` через `DA_ScreenRegistry`, преобразует request в пять `FGV2ScreenFieldValue` и применяет их к generic `UGV2ScreenWidgetBase`. Checkbox submit содержит required boolean `is_checked`, input submit — required string `value`, dropdown submit — required string `selected_key`; каждый содержит только opaque handle и schema control value. После Command Dispatcher Lua обновляет desired state и перепубликует Screen. C++ не вызывает Lua Screen builder и не принимает `TSubclassOf`; concrete class/path отсутствует в runtime source и Lua boundary.
+Lua command handler публикует Screen request, включая rich text semantic spans, desired checkbox state, text value и dropdown selection. Session Coordinator поручает fixed Screen Field Adapter Registry подготовить binding definitions и преобразовать request в пять `FGV2ScreenFieldValue`, затем атомарно публикует binding records и применяет поля к generic `UGV2ScreenWidgetBase`. Checkbox submit содержит required boolean `is_checked`, input submit — required string `value`, dropdown submit — required string `selected_key`; каждый содержит только opaque handle и schema control value. После Command Dispatcher Lua обновляет desired state и перепубликует Screen. C++ не вызывает Lua Screen builder и не принимает `TSubclassOf`; concrete class/path отсутствует в runtime source и Lua boundary.
 
 Legacy parallel arrays и untyped interaction token не являются Screen Template API. Runtime использует ordered button models с opaque binding handles.
 
@@ -276,4 +277,4 @@ Unknown/incompatible element registration или Screen Field schema делае�
 
 ## Tests
 
-Tests покрывают duplicate registration, registry freeze, trusted factory resolution, no raw asset path, element schema validation, required/optional fields, duplicate/unknown field rejection, atomic apply/rollback, opaque handle propagation и отсутствие gameplay authority. UI-kit test загружает active theme, проверяет native parents, mandatory `BindWidget`, `IGV2UiStyleConsumer` и successful style apply. Для `WBP_RichText` он дополнительно проверяет automatic/per-character wrapping и вертикальный `RichTextScrollBox`; для popover — composition через те же text/image leaf adapters и ограниченную theme height; для input/dropdown — submit через общий emitter и Lua-owned desired-state republish. Asset audit обязан перечислять все `WBP_*`, запрещать direct runtime text/content-image primitives в composites, local dynamic collection factories и direct Runtime Subsystem ingress вне общего emitter. Runtime source audit запрещает concrete `screen_id`/`field_id` branches.
+Tests покрывают duplicate registration, registry freeze, trusted factory resolution, no raw asset path, element schema validation, required/optional fields, duplicate/unknown field rejection, atomic apply/rollback, opaque handle propagation и отсутствие gameplay authority. Screen Field Adapter Registry test фиксирует полный набор опубликованных schemas, а source audit запрещает concrete field schema IDs и conversion branches в Session Coordinator. UI-kit test загружает active theme, проверяет native parents, mandatory `BindWidget`, `IGV2UiStyleConsumer` и successful style apply. Для `WBP_RichText` он дополнительно проверяет automatic/per-character wrapping и вертикальный `RichTextScrollBox`; для popover — composition через те же text/image leaf adapters и ограниченную theme height; для input/dropdown — submit через общий emitter и Lua-owned desired-state republish. Asset audit обязан перечислять все `WBP_*`, запрещать direct runtime text/content-image primitives в composites, local dynamic collection factories и direct Runtime Subsystem ingress вне общего emitter. Runtime source audit запрещает concrete `screen_id`/`field_id` branches.

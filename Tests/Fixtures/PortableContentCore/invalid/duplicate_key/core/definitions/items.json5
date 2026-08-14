@@ -1,0 +1,16 @@
+{
+  schema_version: 1,
+  type: "item",
+  definitions: [
+    {
+      id: "core:item.weapon.duplicate_price",
+      data: {
+        label_text_id: "core:text.item.iron_sword.name",
+        price: 10,
+        price: 20,
+        icon_resource_id: "core:resource.item.iron_sword.icon",
+      },
+    },
+  ],
+}
+

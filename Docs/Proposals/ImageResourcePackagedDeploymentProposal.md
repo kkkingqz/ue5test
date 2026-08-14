@@ -2,13 +2,12 @@
 title: Image Resource Packaged Deployment Proposal
 status: draft
 proposal_state: accepted_for_planning
-version: 0.1
+version: 0.2
 updated: 2026-08-13
 depends_on:
   - ../Architecture/BootstrapAndSessionLifecycle.md
   - ../UI/ImageResources.md
 decisions:
-  - ../ADR/0015-filesystem-discovered-image-resources.md
   - ../ADR/0016-png-suffix-image-metadata.md
 ---
 

@@ -1,8 +1,8 @@
 ---
 title: Image Resource Lookup Optimization Proposal
 status: draft
-proposal_state: accepted_for_planning
-version: 0.1
+proposal_state: implemented
+version: 0.2
 updated: 2026-08-13
 depends_on:
   - ../Architecture/SystemContextAndComponents.md
@@ -13,6 +13,10 @@ decisions:
 ---
 
 # Предложение по оптимизации lookup Image Resource Catalog
+
+Реализовано 2026-08-13. Нормативное runtime-поведение зафиксировано в
+[`ImageResources.md`](../UI/ImageResources.md); этот документ сохраняет исходное
+обоснование и критерии реализации.
 
 ## Назначение и область
 

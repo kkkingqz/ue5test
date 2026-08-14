@@ -1,6 +1,7 @@
 #include "Runtime/GV2RuntimeSubsystem.h"
 
 #include "Application/GV2SessionCoordinator.h"
+#include "Bridge/GV2StableIdUE.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
 #include "Logging/LogMacros.h"
@@ -13,71 +14,9 @@ DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
 
 namespace
 {
-bool IsCanonicalSegment(const FStringView Segment)
-{
-    if (Segment.IsEmpty() || Segment.Len() > 64
-        || Segment[0] < TEXT('a') || Segment[0] > TEXT('z'))
-    {
-        return false;
-    }
-    for (const TCHAR Character : Segment)
-    {
-        const bool bIsLowercaseLetter = Character >= TEXT('a') && Character <= TEXT('z');
-        const bool bIsDigit = Character >= TEXT('0') && Character <= TEXT('9');
-        if (!bIsLowercaseLetter && !bIsDigit && Character != TEXT('_'))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
 bool IsCanonicalScreenId(const FString& Value)
 {
-    if (Value.IsEmpty() || Value.Len() > 192)
-    {
-        return false;
-    }
-
-    const FStringView View(Value);
-    int32 ColonIndex = INDEX_NONE;
-    int32 DotIndex = INDEX_NONE;
-    for (int32 Index = 0; Index < View.Len(); ++Index)
-    {
-        if (View[Index] == TEXT(':'))
-        {
-            if (ColonIndex != INDEX_NONE)
-            {
-                return false;
-            }
-            ColonIndex = Index;
-        }
-        else if (View[Index] == TEXT('.') && DotIndex == INDEX_NONE)
-        {
-            DotIndex = Index;
-        }
-    }
-
-    if (ColonIndex == INDEX_NONE || DotIndex <= ColonIndex + 1
-        || !IsCanonicalSegment(View.Left(ColonIndex))
-        || View.Mid(ColonIndex + 1, DotIndex - ColonIndex - 1) != TEXTVIEW("screen"))
-    {
-        return false;
-    }
-
-    int32 SegmentStart = DotIndex + 1;
-    for (int32 Index = SegmentStart; Index <= View.Len(); ++Index)
-    {
-        if (Index == View.Len() || View[Index] == TEXT('.'))
-        {
-            if (!IsCanonicalSegment(View.Mid(SegmentStart, Index - SegmentStart)))
-            {
-                return false;
-            }
-            SegmentStart = Index + 1;
-        }
-    }
-    return true;
+    return GV2StableIdUE::IsOfKind(Value, "screen");
 }
 }
 
@@ -92,10 +31,16 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
 
-    FString ImageCatalogError;
-    if (!UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(ImageCatalogError))
+    ImageCatalogBuildError.Reset();
+    bImageCatalogReady = UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(
+        ImageCatalogBuildError);
+    if (!bImageCatalogReady)
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Image Resource Catalog build failed: %s"), *ImageCatalogError);
+        UE_LOG(
+            LogGV2Runtime,
+            Error,
+            TEXT("Image Resource Catalog build failed: %s"),
+            *ImageCatalogBuildError);
     }
     LoadScreenRegistry();
     Coordinator = MakePimpl<FGV2SessionCoordinator>();
@@ -142,6 +87,8 @@ void UGV2RuntimeSubsystem::Deinitialize()
     }
     RegisteredScreenClasses.Reset();
     ScreenRegistry = nullptr;
+    bImageCatalogReady = false;
+    ImageCatalogBuildError.Reset();
 
     Super::Deinitialize();
 }
@@ -168,6 +115,15 @@ void UGV2RuntimeSubsystem::StartSession()
     if (RegisteredScreenClasses.IsEmpty())
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("StartSession rejected: Screen Registry is not ready"));
+        return;
+    }
+    if (!bImageCatalogReady)
+    {
+        UE_LOG(
+            LogGV2Runtime,
+            Error,
+            TEXT("StartSession rejected: required Image Resource Catalog is not ready: %s"),
+            *ImageCatalogBuildError);
         return;
     }
 

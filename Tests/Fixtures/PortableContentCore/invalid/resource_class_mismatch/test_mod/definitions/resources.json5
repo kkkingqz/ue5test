@@ -1,0 +1,10 @@
+{
+  schema_version: 2,
+  type: "resource",
+  definitions: [
+    {
+      id: "test_mod:resource.sound.bad_icon",
+      data: { resource_class: "sound", required: true },
+    },
+  ],
+}

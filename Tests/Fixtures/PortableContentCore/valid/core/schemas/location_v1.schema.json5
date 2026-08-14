@@ -1,0 +1,21 @@
+{
+  id: "core:schema.definition.location.v1",
+  definition_type: "location",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      title_text_id: { kind: "text_id", required: true },
+      screen_ids: {
+        kind: "array",
+        required: true,
+        min_items: 1,
+        unique: true,
+        items: { kind: "ref", target_kind: "screen" },
+      },
+    },
+  },
+  semantic_validators: [],
+  extensions: {},
+}
+

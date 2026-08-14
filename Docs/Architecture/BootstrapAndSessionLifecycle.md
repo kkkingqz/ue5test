@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 2.3
-updated: 2026-08-12
+version: 2.4
+updated: 2026-08-13
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -68,7 +68,7 @@ Public readiness — один bool `is_ready`. Он становится true т
 - `SubmitUiInteraction(...)` является единственным публичным путём пользовательского input;
 - создание Screen из C++ параметров, вызов Lua builder из automation и методы с семантикой `ForTest` запрещены.
 
-До открытия session `UGV2RuntimeSubsystem` обязан загрузить configured `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка registry запрещает переход session в `Ready`. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
+До открытия session `UGV2RuntimeSubsystem` обязан успешно построить configured `UGV2ImageResourceCatalog`, загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка любого required presentation catalog/registry запрещает создание Lua VM и переход session в `Ready`; наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
 
 Debug start sequence: `GameInstance` start → Screen Registry ready → session `Ready` → start binding publication → `UGV2DebugStartScreenWidget` → реальный button event → Semantic Input → Lua `core:command.debug.start` handler → copied generic Screen request → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit. Screen replacement выполняется после выхода из Lua. Automatic debug fixture запрещён в shipping build и не добавляет отдельный test API.
 
@@ -122,7 +122,7 @@ Order: core modules, затем mods по resolved load order. `stop`/`unregiste
 
 ## Cold start
 
-1. Initialize platform/application services.
+1. Initialize platform/application services и построить required presentation catalogs/registries.
 2. Discover and resolve core/enabled packages.
 3. Build and atomically publish repository.
 4. On repository error, do not create Lua VM; show UE-native recovery surface.
@@ -171,4 +171,4 @@ Cancellation is accepted only between phases before Ready commit. Synchronous Lu
 
 ## Mandatory tests
 
-Tests cover cold start, repository failure before VM, full menu lifecycle, NewGame/LoadSave order, one-VM invariant, last-wins pending slot, joined request, phase cancellation, stale completion/input discard, registry freeze, restore gates, readiness single commit, bounded ingress backpressure, FIFO/no synchronous re-entry, teardown hook failure, recovery menu, load-another-save preflight, shutdown priority и content-reload restart.
+Tests cover cold start, required Image Catalog/Screen Registry failure before VM, repository failure before VM, full menu lifecycle, NewGame/LoadSave order, one-VM invariant, last-wins pending slot, joined request, phase cancellation, stale completion/input discard, registry freeze, restore gates, readiness single commit, bounded ingress backpressure, FIFO/no synchronous re-entry, teardown hook failure, recovery menu, load-another-save preflight, shutdown priority и content-reload restart.

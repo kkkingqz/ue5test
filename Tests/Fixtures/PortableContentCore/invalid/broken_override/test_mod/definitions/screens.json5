@@ -1,0 +1,11 @@
+{
+  schema_version: 1,
+  type: "screen",
+  definitions: [
+    {
+      // Missing required title_text_id; the core definition must not be restored.
+      id: "core:screen.inventory",
+      data: {},
+    },
+  ],
+}

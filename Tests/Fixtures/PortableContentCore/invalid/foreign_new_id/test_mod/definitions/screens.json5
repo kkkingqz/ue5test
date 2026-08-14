@@ -1,0 +1,10 @@
+{
+  schema_version: 1,
+  type: "screen",
+  definitions: [
+    {
+      id: "core:screen.illegal_new_screen",
+      data: { title_text_id: "core:text.screen.main.title" },
+    },
+  ],
+}

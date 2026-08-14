@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: draft
-version: 1.2
-updated: 2026-08-12
+version: 1.3
+updated: 2026-08-13
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -16,6 +16,8 @@ decisions:
 # UI Document and Reconciliation
 
 UI-document — полная декларативная desired model Screen instances для одной revision. Lua строит его из canonical state и pinned repository; Presentation разрешает `screen_id` через Screen Registry и reconciles document с UMG instances.
+
+Этот draft задаёт target contract полного layered reconciler. Реализованный scope явно перечислен в разделе [Current vertical slice](#current-vertical-slice); остальные lifecycle rules и соответствующие tests являются planned acceptance до появления layered document owner.
 
 ## Game Shell
 
@@ -183,8 +185,24 @@ Span descriptor содержит optional UE-local hover payload и optional Com
 
 Private `FGV2UiBindingRegistry` реализует prepared binding candidate и отдельный commit. Lua command handler публикует portable Screen request с `screen_id = "core:screen.test"` и generic fields; UE schema adapters готовят typed values и handles, runtime создаёт generic `UGV2ScreenWidgetBase`, применяет полный field set и только после success делает candidate revision current. `WBP_Testscreen` наследует `WBP_ScreenBase` и не содержит Lua callback.
 
-Vertical slice публикует generic `screen_id + fields[]` envelope. Schema adapters пока реализуют только RichText и ButtonList, но runtime façade, coordinator и Screen Registry не содержат concrete field names. Полноценный layered reconciler расширяет instance/layer lifecycle без замены field boundary.
+Vertical slice публикует generic `screen_id + fields[]` envelope. `FGV2ScreenFieldAdapterRegistry` поддерживает пять schemas: `core:schema.ui_field.rich_text.v3`, `core:schema.ui_field.button_list.v2`, `core:schema.ui_field.checkbox.v1`, `core:schema.ui_field.input_field.v1` и `core:schema.ui_field.dropdown_select.v1`; их typed values определены в [Blueprint Screen Template Contract](ScreenTemplates.md#dynamic-screen-element-contract). Runtime façade, coordinator и Screen Registry не содержат concrete field names. Текущий `UGV2RuntimeSubsystem` публикует один active Screen и при следующем accepted Screen request полностью строит replacement из Lua desired state. Layered reconciliation по `instance_key` для route/overlay/modal ещё не реализован; он расширит instance/layer lifecycle без замены field boundary.
 
-## Initial acceptance
+## Verification status
 
-Tests покрывают Screen Registry validation, same-screen reuse, screen replacement, overlay/modal order, removal-before-exit, invalid field atomic failure, binding publication atomicity с сохранением предыдущего set, superseded/stale handle invalidation, revision monotonicity, full rebuild after load и local-state loss without gameplay mutation. Vertical slice дополнительно проверяет inheritance `WBP_ScreenBase → WBP_Testscreen`, field contract и Lua → fields → UMG round-trip.
+Текущая automation обязана покрывать и покрывает:
+
+- Screen Registry validation и inheritance `WBP_ScreenBase → WBP_Testscreen`;
+- наличие всех пяти schema adapters и отклонение unknown schema;
+- полный five-field contract concrete Screen, missing/unknown/duplicate field и schema mismatch;
+- Lua → generic fields → typed adapters → UMG round-trip для RichText, ButtonList, Checkbox, InputField и DropdownSelect;
+- rebuild единственного active Screen из обновлённого Lua desired state после Checkbox/InputField/DropdownSelect Semantic Input;
+- binding candidate publication atomicity, сохранение предыдущего set при rejected candidate, superseded handle invalidation, stale generation rejection и monotonic revision.
+
+Следующие проверки являются planned acceptance criteria полноценного layered reconciler и не считаются существующими тестами до реализации соответствующего lifecycle:
+
+- same-instance Screen reuse и replacement при changed `screen_id`;
+- overlay/modal ordering и input eligibility верхнего modal;
+- logical removal до exit animation;
+- atomic rollback полного document при field apply failure;
+- full document rebuild after load;
+- потеря UI-local state при reconstruction без gameplay mutation.

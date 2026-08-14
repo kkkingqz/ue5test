@@ -1,8 +1,8 @@
 ---
 title: GV2 Documentation Index
 status: normative
-version: 1.2
-updated: 2026-08-12
+version: 1.5
+updated: 2026-08-13
 language: ru
 ---
 
@@ -29,6 +29,8 @@ language: ru
 4. Связанные accepted ADR.
 
 Не загружать все документы без необходимости. Каждый контракт содержит собственные зависимости и инварианты.
+
+Для первого знакомства сотрудника с проектом: [Project Brief](ProjectBrief.md).
 
 ## Зафиксированные решения v1
 
@@ -79,6 +81,10 @@ language: ru
 
 Индекс предложений: [Proposals/README.md](Proposals/README.md).
 
+### Plans
+
+Исполняемые планы с отмечаемыми задачами: [Plans/README.md](Plans/README.md).
+
 ### ADR
 
 Индекс решений: [ADR/README.md](ADR/README.md).
@@ -89,3 +95,23 @@ language: ru
 - Затем обновить все затронутые контракты и примеры в том же изменении.
 - Публичный пример считается тестовым fixture: он обязан соответствовать Stable ID grammar и терминологии.
 - Новая абстракция добавляется только для конкретного сценария vertical slice или измеренной проблемы.
+
+## Linux CI
+
+`.github/workflows/linux-ci.yml` является обязательным integration gate и выполняет три независимых jobs:
+
+- portable CMake build, CTest и явный `gv2-headless --self-test` на hosted Ubuntu runner;
+- `Tools/Documentation/validate_docs.py`, проверяющий UTF-8, required front matter, relative Markdown links и anchors, targets `depends_on`/`decisions` и отсутствие cycles в dependency graph;
+- build `GV2Editor` и полный Unreal automation filter `GV2.Runtime` на self-hosted Linux x64 runner.
+
+Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}`; repository variable `UE_ROOT` может переопределить default `/opt/unreal-engine`. Fork pull request не запускается на self-hosted runner. Нулевой exit code Unreal process недостаточен: job также обязан найти marker `TEST COMPLETE. EXIT CODE: 0` и отклонить любой `Result={Fail}` в explicit automation log.
+
+Локальные эквиваленты:
+
+```bash
+cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
+cmake --build cmake-build-ci --parallel 2
+ctest --test-dir cmake-build-ci --output-on-failure
+./cmake-build-ci/Headless/gv2-headless --self-test
+python3 Tools/Documentation/validate_docs.py
+```

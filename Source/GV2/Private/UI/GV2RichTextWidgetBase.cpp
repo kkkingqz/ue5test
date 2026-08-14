@@ -1,5 +1,6 @@
 #include "UI/GV2RichTextWidgetBase.h"
 
+#include "Bridge/GV2StableIdUE.h"
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
 #include "Blueprint/UserWidget.h"
@@ -20,20 +21,7 @@ namespace
 bool IsCanonicalSpanId(const FName SpanId)
 {
     const FString Value = SpanId.ToString();
-    if (Value.IsEmpty() || Value.Len() > 64 || Value[0] < TEXT('a') || Value[0] > TEXT('z'))
-    {
-        return false;
-    }
-    for (const TCHAR Character : Value)
-    {
-        const bool bLetter = Character >= TEXT('a') && Character <= TEXT('z');
-        const bool bDigit = Character >= TEXT('0') && Character <= TEXT('9');
-        if (!bLetter && !bDigit && Character != TEXT('_'))
-        {
-            return false;
-        }
-    }
-    return true;
+    return GV2StableIdUE::IsValidSegment(Value);
 }
 
 bool ValidateInteractiveContent(const FGV2InteractiveRichTextViewModel& Content)

@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: normative
-version: 1.6
-updated: 2026-08-12
+version: 1.7
+updated: 2026-08-13
 ---
 
 # Architecture Decision Records
@@ -29,6 +29,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0015](0015-filesystem-discovered-image-resources.md) | superseded | Recursive discovery сохранён; JSON sidecar заменён ADR-0016 |
 | [0016](0016-png-suffix-image-metadata.md) | accepted | Image mode в `.png` / `.tile.png` / `.9.png`, без sidecar |
 | [0017](0017-centralized-ui-presentation-paths.md) | accepted | Единые paths для text, images, collections, Screen Fields и Semantic Input |
+| [0018](0018-portable-content-core-module.md) | accepted | Нижний portable Content module и единый `BuildRepository()` path |
 
 ## Template
 

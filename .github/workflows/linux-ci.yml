@@ -1,0 +1,79 @@
+name: Linux CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    name: CMake, CTest and headless
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build cmake-build-ci --config Release --parallel 2
+      - name: CTest
+        run: ctest --test-dir cmake-build-ci --build-config Release --output-on-failure
+      - name: Explicit headless self-test
+        run: ./cmake-build-ci/Headless/gv2-headless --self-test
+
+  documentation:
+    name: Documentation contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate links, front matter and dependency graph
+        run: python3 Tools/Documentation/validate_docs.py
+
+  unreal-runtime:
+    name: Unreal GV2.Runtime
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 45
+    env:
+      UE_ROOT: ${{ vars.UE_ROOT || '/opt/unreal-engine' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Unreal installation
+        run: |
+          test -x "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh"
+          test -x "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd"
+      - name: Build GV2Editor
+        run: >-
+          "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh"
+          GV2Editor Linux Development "$GITHUB_WORKSPACE/GV2.uproject"
+          -WaitMutex -NoHotReloadFromIDE
+      - name: Run GV2.Runtime automation
+        run: |
+          automation_log="$RUNNER_TEMP/GV2RuntimeAutomation.log"
+          "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" \
+            "$GITHUB_WORKSPACE/GV2.uproject" \
+            -unattended -nop4 -nosound -nullrhi \
+            -abslog="$automation_log" \
+            '-ExecCmds=Automation RunTests GV2.Runtime; Quit' \
+            '-TestExit=Automation Test Queue Empty'
+          grep -Fq '**** TEST COMPLETE. EXIT CODE: 0 ****' "$automation_log"
+          if grep -Fq 'Result={Fail}' "$automation_log"; then
+            echo 'One or more GV2.Runtime automation tests failed.' >&2
+            exit 1
+          fi
+      - name: Upload Unreal automation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gv2-runtime-automation-log
+          path: ${{ runner.temp }}/GV2RuntimeAutomation.log
+          if-no-files-found: warn
+          retention-days: 14

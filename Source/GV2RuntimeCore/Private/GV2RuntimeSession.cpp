@@ -1,4 +1,5 @@
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
+#include "GV2RuntimeCore/GV2StableId.h"
 
 extern "C"
 {
@@ -34,57 +35,6 @@ struct FModuleSpec
     std::vector<std::string> Dependencies;
 };
 
-bool IsCanonicalSegment(const std::string_view Segment)
-{
-    if (Segment.empty() || Segment.size() > 64 || Segment.front() < 'a' || Segment.front() > 'z')
-    {
-        return false;
-    }
-    for (const char Character : Segment)
-    {
-        const bool bIsLowercaseLetter = Character >= 'a' && Character <= 'z';
-        const bool bIsDigit = Character >= '0' && Character <= '9';
-        if (!bIsLowercaseLetter && !bIsDigit && Character != '_')
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool IsCanonicalStableIdOfKind(const std::string_view Value, const std::string_view ExpectedKind)
-{
-    if (Value.empty() || Value.size() > 192)
-    {
-        return false;
-    }
-    const std::size_t Colon = Value.find(':');
-    const std::size_t Dot = Value.find('.');
-    if (Colon == std::string_view::npos || Value.find(':', Colon + 1) != std::string_view::npos
-        || Dot == std::string_view::npos || Dot <= Colon + 1
-        || !IsCanonicalSegment(Value.substr(0, Colon))
-        || Value.substr(Colon + 1, Dot - Colon - 1) != ExpectedKind)
-    {
-        return false;
-    }
-    std::size_t SegmentStart = Dot + 1;
-    while (SegmentStart <= Value.size())
-    {
-        const std::size_t SegmentEnd = Value.find('.', SegmentStart);
-        const std::size_t End = SegmentEnd == std::string_view::npos ? Value.size() : SegmentEnd;
-        if (!IsCanonicalSegment(Value.substr(SegmentStart, End - SegmentStart)))
-        {
-            return false;
-        }
-        if (SegmentEnd == std::string_view::npos)
-        {
-            break;
-        }
-        SegmentStart = SegmentEnd + 1;
-    }
-    return true;
-}
-
 bool IsCanonicalModuleSourcePath(const std::string_view Value)
 {
     if (Value.empty() || Value.size() > 240 || Value.front() == '/'
@@ -110,7 +60,7 @@ bool IsCanonicalModuleSourcePath(const std::string_view Value)
     {
         const std::size_t Slash = Stem.find('/', SegmentStart);
         const std::size_t SegmentEnd = Slash == std::string_view::npos ? Stem.size() : Slash;
-        if (!IsCanonicalSegment(Stem.substr(SegmentStart, SegmentEnd - SegmentStart)))
+        if (!FStableId::IsValidSegment(Stem.substr(SegmentStart, SegmentEnd - SegmentStart)))
         {
             return false;
         }
@@ -544,7 +494,7 @@ struct FRuntimeSession::FImpl
 
         std::string EntryModuleId;
         if (!ReadRequiredStringField(ManifestIndex, "entry_module_id", EntryModuleId, OutFault)
-            || !IsCanonicalStableIdOfKind(EntryModuleId, "module"))
+            || !FStableId::IsOfKind(EntryModuleId, "module"))
         {
             if (OutFault.Code.empty())
             {
@@ -584,7 +534,7 @@ struct FRuntimeSession::FImpl
             std::string RelativeSource;
             if (!ReadRequiredStringField(SpecTableIndex, "module_id", Spec.ModuleId, OutFault)
                 || !ReadRequiredStringField(SpecTableIndex, "source", RelativeSource, OutFault)
-                || !IsCanonicalStableIdOfKind(Spec.ModuleId, "module")
+                || !FStableId::IsOfKind(Spec.ModuleId, "module")
                 || !IsCanonicalModuleSourcePath(RelativeSource))
             {
                 if (OutFault.Code.empty())
@@ -622,7 +572,7 @@ struct FRuntimeSession::FImpl
                 const char* Value = lua_tolstring(State, -1, &Length);
                 std::string Dependency(Value, Length);
                 lua_pop(State, 1);
-                if (!IsCanonicalStableIdOfKind(Dependency, "module")
+                if (!FStableId::IsOfKind(Dependency, "module")
                     || Dependency == Spec.ModuleId
                     || !SeenDependencies.emplace(Dependency).second)
                 {
@@ -973,7 +923,7 @@ struct FRuntimeSession::FImpl
         const char* ScreenId = lua_tolstring(State, -1, &ScreenIdLength);
         Candidate.ScreenId.assign(ScreenId, ScreenIdLength);
         lua_pop(State, 1);
-        if (!IsCanonicalStableIdOfKind(Candidate.ScreenId, "screen"))
+        if (!FStableId::IsOfKind(Candidate.ScreenId, "screen"))
         {
             OutFault = {"LuaScreenRequestInvalid", "Screen request returned an invalid screen_id."};
             return false;
@@ -1004,7 +954,7 @@ struct FRuntimeSession::FImpl
             const char* FieldId = lua_tolstring(State, -2, &FieldIdLength);
             FScreenField& Field = Candidate.Fields.emplace_back();
             Field.FieldId.assign(FieldId, FieldIdLength);
-            if (!IsCanonicalSegment(Field.FieldId) || !SeenFields.emplace(Field.FieldId).second)
+            if (!FStableId::IsValidSegment(Field.FieldId) || !SeenFields.emplace(Field.FieldId).second)
             {
                 lua_pop(State, 3);
                 OutFault = {"LuaScreenRequestInvalid", "Screen request field_id is invalid or duplicated."};
@@ -1022,7 +972,7 @@ struct FRuntimeSession::FImpl
             const char* SchemaId = lua_tolstring(State, -1, &SchemaLength);
             Field.SchemaId.assign(SchemaId, SchemaLength);
             lua_pop(State, 1);
-            if (!IsCanonicalStableIdOfKind(Field.SchemaId, "schema"))
+            if (!FStableId::IsOfKind(Field.SchemaId, "schema"))
             {
                 lua_pop(State, 3);
                 OutFault = {"LuaScreenRequestInvalid", "Screen Field schema_id is invalid."};

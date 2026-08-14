@@ -1,8 +1,8 @@
 ---
 title: Stable ID Specification
 status: normative
-version: 1.0
-updated: 2026-08-10
+version: 1.3
+updated: 2026-08-13
 decisions:
   - ../ADR/0002-stable-id-format.md
 ---
@@ -45,6 +45,16 @@ weather_mod:item.ring.storm
 Runtime parser ничего не исправляет: не trim-ит whitespace, не lowercases, не заменяет punctuation и не выполняет Unicode normalization. Невалидный input отклоняется.
 
 Editor/CLI может предложить отдельную fix-команду, но результат повторно проходит strict parser. Registry, save и logs хранят только canonical bytes.
+
+## Runtime parser API
+
+`GV2ContentCore::FStableId` является единственной C++-реализацией global grammar и `segment`. Utility находится в нижнем portable Content module, принимает UTF-8 `std::string_view`, не изменяет input и не зависит от Unreal Engine, Lua или filesystem types. `GV2RuntimeCore::FStableId` является только compatibility alias к этому типу и не содержит второй grammar.
+
+- `Parse` валидирует global Stable ID и возвращает views `Namespace`, `Kind`, `Path`.
+- `IsOfKind` выполняет тот же полный parse и дополнительно проверяет expected kind.
+- `IsValidSegment` используется для `package_id`/`mod_id` и contract-local keys, чья grammar явно равна `segment`.
+- UE consumers обязаны использовать только thin UTF-8 adapter к `FStableId`; повторная grammar на `FString`, regex или ручном поиске separators запрещена.
+- Utility возвращает `EStableIdError`; subsystem может преобразовать его в собственный diagnostic context, но не переопределяет результат validation.
 
 ## Namespace ownership
 
@@ -102,6 +112,9 @@ Redirect — explicit mapping `old_id -> new_id` для rename с сохране
 - Multiple targets одного source — `RedirectConflict`.
 - Chain разрешается итеративно с visited set; cycle — fatal.
 - Save после успешной load записывает final canonical target.
+- Resolved package descriptor получает redirects/tombstones из manifest layer. Redirect source и tombstone не являются active definitions.
+- Repository lookup flatten-ит chain для `Find`, но provenance хранит original ID и полный ordered chain.
+- Tombstone не имеет target и возвращает typed tombstoned result при required lookup.
 
 Published ID нельзя переиспользовать для другого смысла. После удаления применяется tombstone либо redirect. Reuse — contract error, а не warning.
 
@@ -179,3 +192,5 @@ Diagnostic содержит package ID, package-relative source, JSON path, raw 
 ## Conformance
 
 Обязательные tests покрывают grammar boundaries, mixed-case rejection, namespace ownership, full override, typed references, redirect chain/cycle, published-ID reuse rejection, local IDs, persistent allocator, stale transient IDs, localization/resources и deterministic indexes.
+
+Grammar fixtures являются общими для UE и standalone host. Один и тот же `RunStableIdConformance` обязан выполняться Unreal automation-test и `gv2-headless --self-test`; отдельные копии positive/negative parser cases запрещены. Fixture минимум проверяет ASCII/Unicode, character set, segment start, empty/repeated segments, separators, maximum segment/ID length, parsed components и expected-kind mismatch.

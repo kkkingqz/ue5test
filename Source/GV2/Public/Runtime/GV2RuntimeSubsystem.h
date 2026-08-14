@@ -63,5 +63,7 @@ private:
     TObjectPtr<UUserWidget> ActiveScreen;
 
     FDelegateHandle StartGameInstanceHandle;
+    FString ImageCatalogBuildError;
+    bool bImageCatalogReady = false;
     bool bActiveScreenAddedToViewport = false;
 };

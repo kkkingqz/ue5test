@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: draft
-version: 0.9
+version: 1.0
 updated: 2026-08-13
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -23,6 +23,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Lua владеет desired screen instance, значениями полей и доступными Command bindings.
 - Concrete Widget Blueprint владеет layout, slots, animation, focus navigation и выбором Dynamic Screen Elements.
 - `UGV2ScreenWidgetBase` владеет generic validation/apply lifecycle.
+- `FGV2ScreenFieldAdapterRegistry` владеет fixed mapping `schema_id → trusted boundary adapter` и преобразованием portable value в typed `FGV2ScreenFieldValue`.
 - Dynamic Screen Element владеет преобразованием одного declared field schema в local Widget state.
 - Screen Registry является единственным UE presentation mapping `screen_id → trusted Widget Blueprint class`.
 
@@ -38,6 +39,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Добавление нового Dynamic Screen Element schema требует concrete scenario и обновления этого или owning component contract.
 - Scrollable Dynamic Screen Element обязан получать конечную viewport geometry от layout concrete Screen Template. Template не может оставлять такой элемент с unbounded desired height: overflow policy принадлежит reusable component, а доступная доля экрана — concrete layout.
 - Generic runtime принимает только ordered `field_id + schema_id + value` envelopes и запрещает concrete field names. Schema-specific conversion принадлежит registered field adapter.
+- Registry строится до первого использования, не хранит session state и запрещает duplicate `schema_id`. Unknown schema отклоняет весь candidate Screen request.
 
 ## Screen Registry
 
@@ -121,19 +123,22 @@ UE apply использует prepared typed `FGV2ScreenFieldValue`; portable bo
 | `core:schema.ui_field.input_field.v1` | `WBP_InputField` / `UGV2InputFieldWidgetBase` | resolved label/placeholder, desired `value: string` и opaque binding handle |
 | `core:schema.ui_field.dropdown_select.v1` | `WBP_DropdownSelect` / `UGV2DropdownSelectWidgetBase` | resolved placeholder/options, optional selected key и opaque binding handle |
 
+Каждый registry adapter выполняет две deterministic фазы. `PrepareBindings` валидирует schema-specific value и добавляет binding definitions в порядке обхода поля. После единой подготовки candidate binding set `BuildField` потребляет ровно соответствующие opaque handles и создаёт typed field value. Registry не публикует bindings и не меняет active Screen; атомарная публикация остаётся ответственностью Session Coordinator.
+
 Production Lua document обязан использовать `TextSpec`; localization adapter создаёт `FGV2TextViewModel` до apply. Button model содержит только resolved display text, semantic style token и opaque binding handle, а не Lua callback.
 
 ## Apply lifecycle
 
 `ApplyScreenFields` выполняется атомарно на логическом presentation level:
 
-1. Обойти Widget tree и собрать configured Dynamic Screen Elements.
-2. Отклонить invalid/duplicate `field_id` и duplicate element declarations.
-3. Отклонить unknown payload field, missing required field и `schema_id` mismatch.
-4. Вызвать `CanApplyScreenField` для каждого candidate и захватить старые значения.
-5. Применить все present fields; absent optional field сбросить через `ResetScreenField`.
-6. При commit failure восстановить уже изменённые элементы и не публиковать screen interactive.
-7. Только после полного success вызвать `OnScreenFieldsApplied` и разрешить publication binding revision.
+1. Registry adapters валидируют portable fields и готовят ordered binding definitions.
+2. Session Coordinator создаёт единый candidate binding set; registry adapters строят typed fields, потребляя подготовленные handles.
+3. Обойти Widget tree и собрать configured Dynamic Screen Elements.
+4. Отклонить invalid/duplicate `field_id`, unknown payload field, missing required field и `schema_id` mismatch.
+5. Вызвать `CanApplyScreenField` для каждого candidate и захватить старые значения.
+6. Применить все present fields; absent optional field сбросить через `ResetScreenField`.
+7. При commit failure восстановить уже изменённые элементы и не публиковать screen interactive.
+8. Только после полного success вызвать `OnScreenFieldsApplied` и commit binding revision.
 
 `GetScreenFieldContract` возвращает descriptors в deterministic order по `field_id` и используется validation/tests, но не заменяет build-time schema declaration.
 
@@ -166,6 +171,7 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 - Удаление required field, смена смысла `field_id` или несовместимая смена schema являются breaking change.
 - Опубликованный `screen_id` или field schema Stable ID не переиспользуется для другого смысла.
 - Layout/style/animation могут меняться без schema version, если observable field/input contract сохраняется.
+- Новый field schema добавляет один adapter и registry entry, DTO/contract fixtures и tests; Session Coordinator изменять запрещено.
 
 ## Verification
 
@@ -181,4 +187,5 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 - Dropdown option activation пересекает boundary ровно один раз как opaque handle + `selected_key`, после чего Lua публикует новое desired state.
 - Добавление нового Screen Blueprint и registry entry не требует изменения C++.
 - Runtime source не содержит `/Game/UI/Widgets/WBP_Testscreen` и не принимает Blueprint class из Lua/Blueprint façade.
+- Session Coordinator не содержит concrete Screen Field schema IDs; fixed adapter registry содержит ровно пять опубликованных schemas и отклоняет unknown/duplicate registration.
 - Automation проходит через обычные Session, Semantic Input и Screen request entry points; test-only runtime methods отсутствуют.

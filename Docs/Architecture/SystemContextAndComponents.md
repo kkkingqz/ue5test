@@ -1,8 +1,8 @@
 ---
 title: System Context and Components
 status: normative
-version: 1.8
-updated: 2026-08-12
+version: 2.1
+updated: 2026-08-13
 depends_on:
   - Overview.md
   - GlossaryAndNaming.md
@@ -11,6 +11,8 @@ decisions:
   - ../ADR/0011-blueprint-screen-templates.md
   - ../ADR/0012-centralized-ui-theme.md
   - ../ADR/0016-png-suffix-image-metadata.md
+  - ../ADR/0017-centralized-ui-presentation-paths.md
+  - ../ADR/0018-portable-content-core-module.md
 ---
 
 # System Context and Components
@@ -41,7 +43,9 @@ decisions:
 
 `Application` — composition root. `Content` — нижний module. `LuaRuntime` и `Presentation` не зависят друг от друга напрямую. Tooling никогда не становится runtime dependency.
 
-`GV2RuntimeCore` является portable library под `LuaRuntime`/portable DTO и не зависит от UE Presentation. `GV2` Unreal module и `gv2-headless` являются sibling host adapters.
+`GV2ContentCore` является нижней portable library для Content value model, Stable ID, package descriptors, repository build result и validators. `GV2RuntimeCore` является portable library под `LuaRuntime`/portable DTO и зависит от `GV2ContentCore`, но не от UE Presentation. `GV2` Unreal module и `gv2-headless` являются sibling host adapters.
+
+Canonical Stable ID parser `GV2ContentCore::FStableId` принадлежит нижней portable library и используется Content, LuaRuntime и обоими host-ами. UE может иметь только encoding adapter `FStringView → UTF-8`; отдельная UE grammar запрещена.
 
 ## Unreal module mapping
 
@@ -49,7 +53,7 @@ decisions:
 
 `GV2` не владеет canonical gameplay-state и не добавляет gameplay rules. Новые C++ классы должны сохранять logical ownership из таблицы выше: UE-facing adapters, UMG и DTO относятся к `Presentation` или `Bridge`, а gameplay mutation проходит через Lua `Command Dispatcher`.
 
-На первом этапе logical modules реализуются внутри одного Build Module `GV2`. Разделение на несколько Build Modules допускается позднее без ADR, если public behavior, ownership и dependency direction не меняются. При добавлении native CommonUI bases `CommonUI` становится явной dependency `GV2`; Lua runtime library и optional serialization libraries остаются private dependencies.
+Physical mapping использует Unreal modules `GV2`, `GV2RuntimeCore` и `GV2ContentCore`. Shared `GV2ContentCore` implementation/public sources запрещено включать Unreal headers или вызывать Lua/filesystem API. Тонкая generated Unreal module-bootstrap translation unit может иметь private dependency на UE `Core`; эта dependency не пересекает portable API и отсутствует у CMake static library. При добавлении native CommonUI bases `CommonUI` становится явной dependency `GV2`; Lua и optional serialization libraries остаются private implementation dependencies соответствующих host/runtime modules.
 
 ### C++ implementation profile
 
@@ -61,12 +65,15 @@ Source/GV2/
     Runtime/        UGV2RuntimeSubsystem и Blueprint-safe DTO
     UI/             native Widget base classes и presentation DTO
   Private/
-    Application/    FGV2SessionCoordinator
+    Application/    FGV2SessionCoordinator и stateless Screen Field Adapter Registry
     Bridge/         ingress queue, operation и UI binding registries
     UI/             document reconciler, screen/widget registries, input adapter
 Source/GV2RuntimeCore/
   Public/            portable DTO, runtime session и host-service interfaces
   Private/           Lua VM owner, marshaller, fixed native bindings, vendored Lua
+Source/GV2ContentCore/
+  Public/            Stable ID, value/diagnostic/package/schema-registry/scalar-validation/build-result API
+  Private/           portable validators и reference repository build path
 Headless/
   Source/            standalone simulation host и metadata-only adapters
 Scripts/
@@ -83,6 +90,7 @@ Scripts/
 
 - `UGV2RuntimeSubsystem : UGameInstanceSubsystem` — единственный Blueprint-facing façade runtime/session уровня.
 - `FGV2SessionCoordinator` владеет UE active session composition: generation, pinned repository handle, portable runtime session, ingress queue, UI binding registry, operations и latest accepted Presentation Snapshot.
+- `FGV2ScreenFieldAdapterRegistry` является stateless Presentation/Bridge mapping `schema_id → trusted adapter`; adapters валидируют portable field values, готовят binding definitions и строят typed presentation values, но не публикуют Screen или bindings.
 - `GV2RuntimeCore::FRuntimeSession` является STL-only public façade; Lua headers и `lua_State*` остаются в его private implementation.
 - `FGV2UiDocumentReconciler`, Screen Registry, Widget Registry и Semantic Input Adapter принадлежат Presentation/Bridge, но не LuaRuntime.
 - `UGV2ScreenWidgetBase` и Dynamic Screen Element adapters являются generic presentation layer и не знают concrete `screen_id`.
@@ -136,6 +144,7 @@ Public C++ headers не выставляют Lua types, JSON strings, Slate impl
 
 - DTO marshalling.
 - UI/world/resource/audio adapters.
+- Fixed Screen Field Adapter Registry; duplicate/unknown schema не допускает partial Screen candidate.
 - Save adapter.
 - Platform capability adapter.
 - Operation registry с opaque handles; без Lua function references.

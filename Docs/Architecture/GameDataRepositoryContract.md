@@ -1,8 +1,8 @@
 ---
 title: GameDataRepository Contract
 status: normative
-version: 1.1
-updated: 2026-08-10
+version: 2.4
+updated: 2026-08-13
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -10,6 +10,7 @@ decisions:
   - ../ADR/0006-repository-reload-and-session-pinning.md
   - ../ADR/0008-minimal-repository-indexes.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../ADR/0018-portable-content-core-module.md
 ---
 
 # GameDataRepository Contract
@@ -35,7 +36,19 @@ definition files, schema files, localization/resources
 
 Core имеет `package_id=core`, `load_index=0`. Enabled mods следуют в resolved order. Duplicate `package_id`/load index и missing core дают `PackageSetInvalid`.
 
+`package_id` и namespace обязаны соответствовать canonical `segment`; namespace package обязан равняться его immutable `package_id`. Definition/schema/extension-schema paths обязаны быть unique canonical package-relative paths без `.`/`..`, absolute prefix и platform separators. Exact schema binding содержит `definition_type`, positive int64 `schema_version`, `schema_id` и schema resource path. Exact extension binding дополнительно содержит supported `extension_site` и package-owned `extension_namespace`. Resolved descriptor также содержит manifest-authored redirects и tombstones. Resolved descriptor предоставляет только const access к этим значениям.
+
 File enumeration и entry order не влияют на provider selection, normalized snapshot и hash. Для diagnostics источники сортируются по package index, canonical package-relative path и entry index.
+
+### Portable build entry point
+
+`GV2ContentCore::BuildRepository(package_set, build_options)` является единственным reference build path. Он возвращает `BuildResult`, содержащий либо complete immutable stage artifact, либо непустой ordered diagnostic list. `FCandidate::GetStage()` различает `SchemaValidated`, `ReferencesValidated` и `RepositoryResolved`; publication разрешена только когда `IsPublishable()` возвращает `true`. `build_options.source_provider` предоставляет immutable bytes по `(package_id, package-relative source)` и не выполняет discovery внутри portable core.
+
+Builder обязан прочитать в deterministic order и разобрать все объявленные definition sources, schema и extension-schema resources, построить exact schema registries, проверить closed envelopes и package-local duplicate IDs, materialize typed values/defaults/extensions, проверить namespace ownership и выбрать full-override winners. Package может вводить новый definition ID только в собственном namespace; foreign ID допустим только как override ID, уже предоставленного более ранним provider. Каждый provider entry обязан быть самодостаточно valid до winner selection: ошибка более позднего override блокирует весь candidate и не открывает shadowed entry.
+
+После выбора winners builder проверяет redirects/tombstones, разворачивает redirect chains до final active target и одним recursive path разрешает `ref`, `text_id`, `resource_ref` в `data` и materialized `definition_entry` extension blocks только против final winner set. Redirect source и tombstone не могут сосуществовать с active definition. Missing target, wrong target kind и несовпадающий `resource_class` являются fatal typed diagnostics. Materialized reference хранит final canonical target; extension diagnostic сохраняет identity соответствующей extension schema. Затем schema-declared semantic validators исполняются в порядке schema над read-only candidate view. `build_options.semantic_validator_registry` является non-owning host registry на время вызова; core validators имеют process lifetime. Пересечение validator IDs core и host registries, а также отсутствующий validator блокируют candidate.
+
+Успешный полный M4 path создаёт immutable `FRepositorySnapshot`, строит только contract-required indexes/provenance/hash и возвращает publishable `RepositoryResolved` candidate. `SchemaValidated` и `ReferencesValidated` остаются lifecycle names для неполных внутренних stages, но текущий reference `BuildRepository()` не возвращает их при success. Stage tag без frozen snapshot не является publishable. Empty core descriptor создаёт допустимый пустой snapshot.
 
 ## Snapshot identity
 
@@ -51,15 +64,16 @@ Same-hash candidate не публикуется и не увеличивает v
 
 1. Ingest immutable resolved source manifest.
 2. Parse UTF-8 JSON5 definitions/schemas.
-3. Register exact `(kind, schema_version)` bindings.
+3. Parse closed schema resources и register exact `(definition_type, schema_version)` bindings.
 4. Validate envelopes и typed structures.
 5. Materialize explicit defaults и normalize values.
 6. Validate namespace ownership и select full-override winners.
-7. Apply redirects/tombstones.
-8. Run semantic/reference/text/resource validation.
-9. Build minimal indexes и content hash.
-10. Freeze candidate.
-11. On Game Thread validate token and atomically publish current.
+7. Validate и flatten redirects/tombstones.
+8. Resolve typed references against final winners.
+9. Run deterministic semantic validators.
+10. Build provenance, minimal indexes и content hash.
+11. Freeze candidate.
+12. On Game Thread validate token and atomically publish current.
 
 Any error blocks publication. Invalid override does not reveal previous provider.
 
@@ -73,6 +87,27 @@ original/canonical ID, redirect chain, ordered shadowed providers
 ```
 
 Shadowed data не входит в active DTO.
+
+Package-local duplicate ID использует `core:diagnostic.definition.entry.duplicate_id`; новый foreign ID — `core:diagnostic.repository.identity.foreign_new_id`. Full override не выполняет deep merge `data`, metadata или extensions.
+
+## Redirects and tombstones
+
+- Redirect/tombstone объявляется resolved package descriptor-ом из manifest layer; отдельный definition kind не вводится.
+- Redirect source и tombstone ID принадлежат namespace declaring package. Target redirect может принадлежать другому namespace, но обязан иметь тот же kind.
+- Один retired ID объявляется ровно один раз: redirect/redirect и redirect/tombstone conflicts fatal.
+- Chain хранит original source, intermediate IDs и final active ID. Cycle, missing/tombstoned final target и active source conflict блокируют snapshot.
+- Snapshot хранит flattened `source -> final canonical target`, но provenance сохраняет полную chain.
+- Tombstone lookup не возвращает definition; `Require()` отличает tombstoned ID от обычного missing ID.
+
+## Typed references and semantic validation
+
+- `ref` разрешается по exact Stable ID и проверяет schema-declared `target_kind`; правило одинаково для основной schema и materialized `definition_entry` extension schema.
+- `text_id` разрешается как reference kind `text`.
+- `resource_ref` разрешается как kind `resource` и дополнительно проверяет `resource_class` winner definition.
+- Optional absent field не создаёт reference и не диагностируется.
+- Ошибки используют `core:diagnostic.reference.target_missing`, `core:diagnostic.reference.target_kind_mismatch` и `core:diagnostic.reference.resource_class_mismatch`.
+- `ISemanticValidator` получает только immutable definition, `FSemanticCandidateView`, provenance context и diagnostic sink. Validator обязан быть deterministic и side-effect-free; Lua, I/O, mutation, locale и wall-clock time запрещены.
+- Validator Stable ID обязан иметь kind `validator`; duplicate registration внутри registry, конфликт IDs между core/host registries и unavailable schema declaration являются fatal. `ListIds()` возвращает detached canonical-order list только для проверки composition; он не передаёт ownership validator instances.
 
 ## Minimal storage/indexes
 
@@ -89,7 +124,9 @@ Localization catalog, resource mapping и UI/widget catalogs являются о
 
 ## C++ read semantics
 
-`Find<T>` возвращает empty при valid missing ID. `Require<T>` возвращает structured error. Public API принимает typed Stable ID wrappers и read handle, не interchangeable raw string.
+`FRepositoryReadHandle::Find(FDefinitionId)` возвращает pointer-view либо empty; redirect source разрешается в final active definition. `Require(FDefinitionId)` возвращает `FRepositoryQueryResult` со structured `not_found`, `tombstoned` или `invalid_handle` error. `List(kind)` возвращает detached typed ID list только active definitions; redirects не перечисляются. `GetProvenance()` принимает active либо redirect ID. `GetContentHash()` возвращает 64 lowercase hex SHA-256. Public definition lookup принимает typed `FDefinitionId`, не interchangeable raw string.
+
+`FRepositorySnapshot` после construction не имеет mutation API, не копируется и хранится handle-ами как shared `const`. Snapshot constructor доступен только `BuildRepository()`, а pinned-handle constructor — только `FCandidate`; внешний consumer не может собрать несогласованные indexes/hash в обход reference build path. Returned definition/provenance pointer-view действителен не дольше read handle. Query не выполняет parsing, I/O или hash computation.
 
 Enumeration order C++ не является gameplay semantics. Caller задаёт explicit comparator. Lua API возвращает IDs в canonical byte order, если schema не объявляет другой explicit order.
 
@@ -120,14 +157,14 @@ Active session никогда не переключает pinned handle. Для 
 
 Одинаковые source bytes, provider order, schemas и settings дают одинаковый normalized snapshot/hash либо одинаковый ordered diagnostic set.
 
-Hash включает active normalized definitions, canonical IDs, schema identities, provider identities/order и compatibility-relevant provenance. Comments, whitespace, timestamps, raw numeric spelling, pointer values и worker completion order не включаются.
+Hash использует versioned canonical binary-like encoding portable values и SHA-256. Он включает active normalized definitions, canonical schema resource values, provider identities/order, package-relative winner/shadowed provenance без source spans, flattened redirects, full redirect provenance и tombstones. Object key/source entry order, comments, whitespace, timestamps, raw numeric spelling, absolute paths, pointer values и worker completion order не включаются. Array order остаётся значимым.
 
 ## Diagnostics
 
-Diagnostic содержит severity, stable code, package, package-relative source, definition ID, JSON pointer/span, schema ID/version и human message. Machine logic ветвится по code/typed fields.
+Diagnostic содержит severity, canonical Stable ID code вида `<namespace>:diagnostic.<path>`, package ID/load index, package-relative source, definition ID, JSON pointer/span, optional related span/message, schema ID/version и human message. Duplicate-key diagnostic использует основной span для повторного key и related span для первого объявления. Machine logic ветвится по code/typed fields. Comparator сортирует сначала по package load index, затем по canonical relative source, span/entry position и stable code; package ID и остальные typed fields служат deterministic tie-breakers.
 
 Required categories: input, parsing, envelope/schema, identity, provider resolution, references, semantic/build, publication и read API.
 
 ## Conformance
 
-Tests покрывают same-input determinism, parallel equivalence, file permutation, duplicate-in-package, full override, broken override, redirects/cycles/tombstones, typed references, minimal indexes, C++ explicit order, Lua canonical order, detached copies, pinned handles, same-hash skip, stale token, old snapshot lifetime, restart reload и no partial publication.
+M4 shared UE/headless suite покрывает package/entry/file order invariance, repeated build, duplicate-in-package, full/broken override, redirect ownership/kind/conflict/chain/cycle, active tombstone/source conflicts, typed references в `data` и extension blocks, core/host validator conflicts, provenance fields, minimal indexes, pinned canonical hash, hash sensitivity и pinned handle lifetime. Parallel worker equivalence, Lua detached-copy/order API, application publication same-hash skip, stale token, restart reload и old-current lifecycle проверяются последующими host/publication milestones.
