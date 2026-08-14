@@ -22,13 +22,12 @@ public:
     {
         const FString Package = UTF8_TO_TCHAR(std::string(PackageId).c_str());
         const FString Relative = UTF8_TO_TCHAR(std::string(RelativeSource).c_str());
-        FString Source;
-        if (!FFileHelper::LoadFileToString(Source, *FPaths::Combine(Root, Package, Relative)))
+        TArray<uint8> FileBytes;
+        if (!FFileHelper::LoadFileToArray(FileBytes, *FPaths::Combine(Root, Package, Relative)))
         {
             return std::nullopt;
         }
-        FTCHARToUTF8 Utf8(*Source);
-        return std::string(Utf8.Get(), Utf8.Length());
+        return std::string(reinterpret_cast<const char*>(FileBytes.GetData()), FileBytes.Num());
     }
 
 private:

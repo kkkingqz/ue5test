@@ -2,8 +2,8 @@
 title: Content Diagnostics and Tooling Proposal
 status: draft
 proposal_state: accepted_for_planning
-version: 0.1
-updated: 2026-08-13
+version: 0.2
+updated: 2026-08-14
 depends_on:
   - PortableContentCoreProposal.md
   - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
@@ -66,10 +66,12 @@ Fuzzer не проверяет Unreal objects и не запускает Lua gam
 Первый интерфейс:
 
 ```text
-gv2-content validate <package-or-project-root> [--format=text|json]
-gv2-content inspect <definition_id> [--provenance]
-gv2-content hash <package-or-project-root>
+gv2-content validate <package-root> [--format=text|json]
+gv2-content inspect <package-root> <definition_id> [--provenance] [--format=text|json]
+gv2-content hash <package-root> [--format=text|json]
 ```
+
+Реализованный `<package-root>` — ровно один self-describing package directory (`definitions/*.json5` + `schemas/*.json5`), не multi-package project root: mod/dependency discovery остаётся вне первого этапа `PortableContentCoreProposal`, поэтому `inspect`/`hash` не могут разрешить root implicitly и требуют его явно на каждый вызов.
 
 CLI обязан:
 

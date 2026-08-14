@@ -6,6 +6,7 @@
 #include "GV2ContentCore/Json5Lexer.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/PackageDescriptor.h"
+#include "GV2ContentCore/PackageDiscovery.h"
 #include "GV2ContentCore/ParseLimits.h"
 #include "GV2ContentCore/RepositoryBuilder.h"
 #include "GV2ContentCore/SchemaRegistry.h"
@@ -872,6 +873,128 @@ bool LoadRuntimeSources(
     return false;
 }
 
+class FHeadlessFilesystemContentSourceProvider final : public GV2ContentCore::IContentSourceProvider
+{
+public:
+    FHeadlessFilesystemContentSourceProvider(std::filesystem::path InPackageRoot, std::string InPackageId)
+        : PackageRoot(std::move(InPackageRoot))
+        , PackageId(std::move(InPackageId))
+    {
+    }
+
+    std::optional<std::string> ReadSource(
+        const std::string_view RequestedPackageId,
+        const std::string_view RelativeSource) const override
+    {
+        if (RequestedPackageId != PackageId)
+        {
+            return std::nullopt;
+        }
+        std::ifstream Stream(PackageRoot / std::string(RelativeSource), std::ios::binary);
+        if (!Stream)
+        {
+            return std::nullopt;
+        }
+        return std::string{std::istreambuf_iterator<char>(Stream), std::istreambuf_iterator<char>()};
+    }
+
+private:
+    std::filesystem::path PackageRoot;
+    std::string PackageId;
+};
+
+std::vector<std::filesystem::path> ListSortedJson5Files(const std::filesystem::path& Dir)
+{
+    std::vector<std::filesystem::path> Entries;
+    std::error_code Ec;
+    if (!std::filesystem::is_directory(Dir, Ec) || Ec)
+    {
+        return Entries;
+    }
+    for (const auto& Entry : std::filesystem::directory_iterator(Dir, Ec))
+    {
+        if (Entry.is_regular_file() && Entry.path().extension() == ".json5")
+        {
+            Entries.push_back(Entry.path());
+        }
+    }
+    std::sort(Entries.begin(), Entries.end());
+    return Entries;
+}
+
+// PCC-35: builds the single-package pinned repository read handle used
+// before Lua bootstrap. Mirrors gv2-content's BuildFromPackageRoot
+// (Content/Source/main.cpp) so CLI/headless/UE stay on one discovery
+// convention (self-describing schema resources) and the same
+// GV2ContentCore::BuildRepository() reference path (PCC-38 parity).
+GV2ContentCore::FBuildResult BuildRepositoryFromDirectory(const std::filesystem::path& PackageRoot)
+{
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    std::optional<GV2ContentCore::FPackageDescriptor> Descriptor =
+        GV2ContentCore::DiscoverPackageFromDirectory(PackageRoot, Diagnostics);
+    if (!Descriptor)
+    {
+        return GV2ContentCore::FBuildResult::Failure(std::move(Diagnostics));
+    }
+
+    FHeadlessFilesystemContentSourceProvider Provider(PackageRoot, Descriptor->GetPackageId());
+    GV2ContentCore::FBuildOptions Options;
+    Options.SourceProvider = &Provider;
+
+    return GV2ContentCore::BuildRepository({*Descriptor}, Options);
+}
+
+std::optional<std::filesystem::path> LoadContentRoot(
+    const char* ExecutableArgument,
+    const std::optional<std::string>& ExplicitRoot)
+{
+    if (ExplicitRoot)
+    {
+        return std::filesystem::path(*ExplicitRoot);
+    }
+
+    std::vector<std::filesystem::path> CandidateRoots{
+        std::filesystem::current_path() / "GameData" / "core",
+        std::filesystem::current_path() / ".." / "GameData" / "core",
+    };
+    std::error_code PathError;
+    const std::filesystem::path ExecutablePath = std::filesystem::absolute(ExecutableArgument, PathError);
+    if (!PathError)
+    {
+        CandidateRoots.push_back(
+            ExecutablePath.parent_path().parent_path().parent_path()
+            / "GameData" / "core");
+    }
+
+    for (const std::filesystem::path& Candidate : CandidateRoots)
+    {
+        std::error_code CandidateError;
+        if (std::filesystem::is_directory(Candidate, CandidateError) && !CandidateError)
+        {
+            return Candidate;
+        }
+    }
+    return std::nullopt;
+}
+
+void PrintRepositoryDiagnostics(const std::vector<GV2ContentCore::FDiagnostic>& Diagnostics)
+{
+    for (const GV2ContentCore::FDiagnostic& Diagnostic : Diagnostics)
+    {
+        std::cerr << (Diagnostic.Severity == GV2ContentCore::EDiagnosticSeverity::Error ? "error" : "warning")
+                   << " " << Diagnostic.Code;
+        if (Diagnostic.RelativeSource)
+        {
+            std::cerr << " " << *Diagnostic.RelativeSource;
+            if (Diagnostic.Span)
+            {
+                std::cerr << ":" << Diagnostic.Span->StartLine << ":" << Diagnostic.Span->StartColumn;
+            }
+        }
+        std::cerr << " " << Diagnostic.Message << "\n";
+    }
+}
+
 bool RunSharedJson5FixtureConformance()
 {
     namespace Fs = std::filesystem;
@@ -1225,7 +1348,8 @@ int Run(
     const std::int64_t CommandCount,
     const std::int64_t Seed,
     const bool bSelfTest,
-    const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources)
+    const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources,
+    const std::optional<std::filesystem::path>& ContentRoot)
 {
     if (!RunContentCoreValueSelfTest())
     {
@@ -1302,6 +1426,25 @@ int Run(
         std::cerr << "pcc_shared_json5_fixture_conformance_failed\n";
         return 1;
     }
+
+    // PCC-35: pin a repository read handle before Lua bootstrap. Missing or
+    // invalid repository content blocks session startup entirely.
+    if (!ContentRoot)
+    {
+        std::cerr << "content_root_not_found\n";
+        return 9;
+    }
+    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromDirectory(*ContentRoot);
+    if (RepositoryBuild.IsFailure())
+    {
+        PrintRepositoryDiagnostics(RepositoryBuild.GetDiagnostics());
+        std::cerr << "repository_build_failed\n";
+        return 9;
+    }
+    const GV2ContentCore::FRepositoryReadHandle RepositoryHandle =
+        RepositoryBuild.GetCandidate().GetReadHandle();
+    // Exercise the pinned handle with a portable repository query.
+    const std::size_t RepositoryItemCount = RepositoryHandle.List("item").size();
 
     GV2RuntimeCore::FRuntimeSession Runtime;
     GV2RuntimeCore::FRuntimeFault Fault;
@@ -1400,6 +1543,8 @@ int Run(
               << ",\"commands\":" << CommandCount
               << ",\"seed\":" << Seed
               << ",\"commands_per_second\":" << CommandsPerSecond
+              << ",\"repository_content_hash\":\"" << RepositoryHandle.GetContentHash() << "\""
+              << ",\"repository_item_count\":" << RepositoryItemCount
               << ",\"media_payload_loaded\":false"
               << ",\"localization_resolved\":false}\n";
     return 0;
@@ -1411,6 +1556,7 @@ int main(int argc, char** argv)
     std::int64_t CommandCount = 1000;
     std::int64_t Seed = 1;
     bool bSelfTest = false;
+    std::optional<std::string> ExplicitContentRoot;
 
     for (int Index = 1; Index < argc; ++Index)
     {
@@ -1435,6 +1581,10 @@ int main(int argc, char** argv)
                 return 64;
             }
         }
+        else if (Argument.rfind("--content-root=", 0) == 0)
+        {
+            ExplicitContentRoot = Argument.substr(15);
+        }
         else
         {
             std::cerr << "unknown argument: " << Argument << '\n';
@@ -1448,5 +1598,6 @@ int main(int argc, char** argv)
         std::cerr << "unable to locate a non-empty Scripts module tree\n";
         return 66;
     }
-    return Run(CommandCount, Seed, bSelfTest, RuntimeSources);
+    const std::optional<std::filesystem::path> ContentRoot = LoadContentRoot(argv[0], ExplicitContentRoot);
+    return Run(CommandCount, Seed, bSelfTest, RuntimeSources, ContentRoot);
 }

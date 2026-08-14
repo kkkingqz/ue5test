@@ -46,14 +46,13 @@ public:
         }
         const auto Root = PackageRoots.find(std::string(PackageId));
         if (Root == PackageRoots.end()) return std::nullopt;
-        FString Source;
-        if (!FFileHelper::LoadFileToString(Source, *FPaths::Combine(
+        TArray<uint8> FileBytes;
+        if (!FFileHelper::LoadFileToArray(FileBytes, *FPaths::Combine(
                 Root->second, UTF8_TO_TCHAR(std::string(RelativeSource).c_str()))))
         {
             return std::nullopt;
         }
-        FTCHARToUTF8 Utf8(*Source);
-        return std::string(Utf8.Get(), Utf8.Length());
+        return std::string(reinterpret_cast<const char*>(FileBytes.GetData()), FileBytes.Num());
     }
 };
 

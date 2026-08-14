@@ -99,7 +99,7 @@ public:
         std::int32_t InSessionGeneration,
         const std::vector<FRuntimeSource>& Sources,
         FRuntimeFault& OutFault);
-    void Stop();
+    bool Stop(FRuntimeFault* OutFault = nullptr);
 
     bool DispatchSemanticInput(const FSemanticInput& Input, FRuntimeFault& OutFault);
     bool DispatchCommand(const FCommandRequest& Request, FRuntimeFault& OutFault);

@@ -35,6 +35,7 @@ add_library(gv2_content_core STATIC
     "${GV2_CONTENT_CORE_DIR}/Private/Json5Conformance.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/Json5Parser.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/PackageDescriptor.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/PackageDiscovery.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/ParseLimits.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/RepositoryBuilder.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/RepositorySnapshot.cpp"
@@ -59,4 +60,25 @@ target_link_libraries(gv2-headless PRIVATE gv2_runtime_core gv2_content_core)
 add_test(NAME gv2_headless_self_test COMMAND gv2-headless --self-test)
 set_tests_properties(gv2_headless_self_test PROPERTIES
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+)
+
+# PCC-35: missing/invalid repository content must block session startup
+# before Lua bootstrap even runs.
+add_test(NAME gv2_headless_rejects_missing_content_root
+    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/does_not_exist
+)
+add_test(NAME gv2_headless_rejects_invalid_content_root
+    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/invalid/duplicate_key/core
+)
+set_tests_properties(
+    gv2_headless_rejects_missing_content_root
+    PROPERTIES
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "core:diagnostic.package.discovery.root_not_found"
+)
+set_tests_properties(
+    gv2_headless_rejects_invalid_content_root
+    PROPERTIES
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "core:diagnostic.json5.duplicate_key"
 )

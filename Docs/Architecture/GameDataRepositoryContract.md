@@ -1,8 +1,8 @@
 ---
 title: GameDataRepository Contract
 status: normative
-version: 2.4
-updated: 2026-08-13
+version: 2.5
+updated: 2026-08-14
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -167,4 +167,6 @@ Required categories: input, parsing, envelope/schema, identity, provider resolut
 
 ## Conformance
 
-M4 shared UE/headless suite покрывает package/entry/file order invariance, repeated build, duplicate-in-package, full/broken override, redirect ownership/kind/conflict/chain/cycle, active tombstone/source conflicts, typed references в `data` и extension blocks, core/host validator conflicts, provenance fields, minimal indexes, pinned canonical hash, hash sensitivity и pinned handle lifetime. Parallel worker equivalence, Lua detached-copy/order API, application publication same-hash skip, stale token, restart reload и old-current lifecycle проверяются последующими host/publication milestones.
+M4 shared UE/headless suite покрывает package/entry/file order invariance, repeated build, duplicate-in-package, full/broken override, redirect ownership/kind/conflict/chain/cycle, active tombstone/source conflicts, typed references в `data` и extension blocks, core/host validator conflicts, provenance fields, minimal indexes, pinned canonical hash, hash sensitivity и pinned handle lifetime.
+
+M5 CLI/headless/UE integration suite покрывает cross-host normalized snapshot/hash parity для одного corpus (`gv2-content validate|hash|inspect`, `gv2-headless`, `GV2.Runtime.ContentCore.CrossHostParity`), application publication same-hash skip и failed/non-publishable candidate rejection без изменения current (`GV2.Runtime.ContentCore.RepositoryPublisherAtomicPublication`) и pinned handle persistence активной session через unrelated republish и controlled restart (`GV2.Runtime.ContentCore.SessionRepositoryPinningAcrossRestart`). Repository build и publish выполняются synchronously на Game Thread; parallel worker equivalence, Lua detached-copy/order API и async candidate build с cancellable operation token остаются future work.

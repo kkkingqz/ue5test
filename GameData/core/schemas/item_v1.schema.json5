@@ -1,0 +1,19 @@
+{
+  id: "core:schema.definition.item.v1",
+  definition_type: "item",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      label_text_id: { kind: "text_id", required: true },
+      price: { kind: "int64", required: true, min: 0 },
+      icon_resource_id: {
+        kind: "resource_ref",
+        required: true,
+        resource_class: "texture_2d",
+      },
+    },
+  },
+  semantic_validators: ["core:validator.item.positive_price"],
+  extensions: {},
+}

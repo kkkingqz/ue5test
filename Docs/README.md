@@ -1,8 +1,8 @@
 ---
 title: GV2 Documentation Index
 status: normative
-version: 1.5
-updated: 2026-08-13
+version: 1.6
+updated: 2026-08-14
 language: ru
 ---
 
@@ -100,7 +100,7 @@ language: ru
 
 `.github/workflows/linux-ci.yml` является обязательным integration gate и выполняет три независимых jobs:
 
-- portable CMake build, CTest и явный `gv2-headless --self-test` на hosted Ubuntu runner;
+- portable CMake build, CTest и явные `gv2-headless --self-test`/`gv2-content` smoke commands на hosted Ubuntu runner;
 - `Tools/Documentation/validate_docs.py`, проверяющий UTF-8, required front matter, relative Markdown links и anchors, targets `depends_on`/`decisions` и отсутствие cycles в dependency graph;
 - build `GV2Editor` и полный Unreal automation filter `GV2.Runtime` на self-hosted Linux x64 runner.
 
@@ -113,5 +113,7 @@ cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
 cmake --build cmake-build-ci --parallel 2
 ctest --test-dir cmake-build-ci --output-on-failure
 ./cmake-build-ci/Headless/gv2-headless --self-test
+./cmake-build-ci/Tools/Content/gv2-content validate Tests/Fixtures/PortableContentCore/valid/core
+./cmake-build-ci/Tools/Content/gv2-content hash Tests/Fixtures/PortableContentCore/valid/core
 python3 Tools/Documentation/validate_docs.py
 ```

@@ -2,6 +2,8 @@
 
 #include "Misc/AutomationTest.h"
 
+#include "Application/GV2FilesystemContentSourceProvider.h"
+#include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
@@ -60,6 +62,40 @@ std::vector<GV2RuntimeCore::FRuntimeSource> LoadTestRuntimeSources()
             std::string(Utf8.Get(), Utf8.Length())});
     }
     return Sources;
+}
+
+GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepositoryFrom(const TCHAR* FixtureRelativePath)
+{
+    const FString PackageRoot = FPaths::Combine(
+        FPaths::ProjectDir(), TEXT("Tests/Fixtures/PortableContentCore"), FixtureRelativePath);
+    GV2ContentCore::FBuildResult Result = BuildGV2RepositoryFromDirectory(PackageRoot);
+    if (Result.IsFailure())
+    {
+        return GV2ContentCore::FRepositoryReadHandle();
+    }
+    return Result.GetCandidate().GetReadHandle();
+}
+
+GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepository()
+{
+    return MakeTestPinnedRepositoryFrom(TEXT("valid/core"));
+}
+
+// BuildRepository() requires a package literally named "core" at load_index 0
+// (GameDataRepositoryContract.md); the shared "empty_core" fixture directory
+// doesn't match that name, so build a distinct, minimal empty "core" package
+// in-memory instead of going through the filesystem discovery convention.
+GV2ContentCore::FRepositoryReadHandle MakeEmptyCoreRepository()
+{
+    using namespace GV2ContentCore;
+    const FPackageDescriptor EmptyCore("core", "core", 0u, {}, {});
+    const FBuildOptions Options;
+    FBuildResult Result = BuildRepository({EmptyCore}, Options);
+    if (Result.IsFailure())
+    {
+        return FRepositoryReadHandle();
+    }
+    return Result.GetCandidate().GetReadHandle();
 }
 }
 
@@ -389,7 +425,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession());
+    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession(MakeTestPinnedRepository()));
     TestTrue(TEXT("Lua VM belongs to the active session"), Coordinator.IsLuaVmStarted());
 
     TArray<FGV2UiBindingHandle> Handles;
@@ -460,7 +496,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession());
+    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession(MakeTestPinnedRepository()));
 
     FGV2UiBindingDefinition Definition = MakeBindingDefinition(
         TEXT("form"),
@@ -533,6 +569,138 @@ bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
     return true;
 }
 
+GV2ContentCore::FRepositoryReadHandle MakeEmptyCoreRepository()
+{
+    using namespace GV2ContentCore;
+    const FPackageDescriptor EmptyCore("core", "core", 0u, {}, {});
+    const FBuildOptions Options;
+    FBuildResult Result = BuildRepository({EmptyCore}, Options);
+    if (Result.IsFailure())
+    {
+        return FRepositoryReadHandle();
+    }
+    return Result.GetCandidate().GetReadHandle();
+}
+
+GV2ContentCore::FBuildResult MakeTestBuildResultFrom(const TCHAR* FixtureRelativePath)
+{
+    const FString PackageRoot = FPaths::Combine(
+        FPaths::ProjectDir(), TEXT("Tests/Fixtures/PortableContentCore"), FixtureRelativePath);
+    return BuildGV2RepositoryFromDirectory(PackageRoot);
+}
+
+GV2ContentCore::FBuildResult MakeEmptyCoreBuildResult()
+{
+    using namespace GV2ContentCore;
+    const FPackageDescriptor EmptyCore("core", "core", 0u, {}, {});
+    const FBuildOptions Options;
+    return BuildRepository({EmptyCore}, Options);
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PortableRuntimeTest,
+    "GV2.Runtime.Lua.SafeEnvironmentAndProtectedEntry",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
+{
+    GV2RuntimeCore::FRuntimeSession Host;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources = LoadTestRuntimeSources();
+    TestTrue(TEXT("Portable runtime session starts"), Host.Start(1, RuntimeSources, Fault));
+    TestTrue(TEXT("Portable runtime executes simple script"), Host.Execute(1, Fault));
+    Host.Stop();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiBindingRegistryTest,
+    "GV2.Runtime.UI.BindingRegistry",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiBindingRegistryTest::RunTest(const FString& Parameters)
+{
+    FGV2UiBindingRegistry Registry;
+    TArray<FGV2UiBindingHandle> Handles;
+    TestTrue(
+        TEXT("Registry publishes valid binding definition"),
+        Registry.PublishBindings(
+            TEXT("ui@1:1"),
+            1,
+            {MakeBindingDefinition(TEXT("start"), TEXT("core:command.menu.start"))},
+            Handles));
+    if (!TestEqual(TEXT("Registry returns one handle"), Handles.Num(), 1))
+    {
+        return false;
+    }
+
+    const FGV2UiBindingRecord* Record = Registry.FindRecord(Handles[0]);
+    if (!TestNotNull(TEXT("Handle resolves to record"), Record))
+    {
+        return false;
+    }
+    TestEqual(TEXT("Record retains ui_instance_id"), Record->UiInstanceId, FString(TEXT("ui@1:1")));
+    TestEqual(TEXT("Record retains element_id"), Record->ElementId, FString(TEXT("start")));
+    TestEqual(TEXT("Record retains command_id"), Record->CommandId, FString(TEXT("core:command.menu.start")));
+
+    Registry.UnpublishUiInstance(TEXT("ui@1:1"));
+    TestNull(TEXT("Unpublished handle fails resolution"), Registry.FindRecord(Handles[0]));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionCoordinatorIngressTest,
+    "GV2.Runtime.Session.IngressValidationAndDispatch",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionCoordinatorIngressTest::RunTest(const FString& Parameters)
+{
+    FGV2SessionCoordinator Coordinator(16);
+    TestTrue(TEXT("Session starts"), Coordinator.StartSession(MakeTestPinnedRepository()));
+
+    TArray<FGV2UiBindingHandle> Handles;
+    TestTrue(
+        TEXT("Binding is published"),
+        Coordinator.PublishUiBindings(
+            TEXT("ui@1:1"),
+            1,
+            {MakeBindingDefinition(TEXT("start"), TEXT("core:command.menu.start"))},
+            Handles));
+    if (Handles.Num() != 1)
+    {
+        return false;
+    }
+
+    int32 SinkCalls = 0;
+    FGV2UiIngressItem LastItem;
+    Coordinator.SetInteractionSink(
+        [&SinkCalls, &LastItem](const FGV2UiIngressItem& Item)
+        {
+            ++SinkCalls;
+            LastItem = Item;
+        });
+
+    TestEqual(
+        TEXT("Valid submission succeeds"),
+        Coordinator.SubmitUiInteraction(Handles[0], {{"choice", "new_game"}}),
+        EGV2SubmitUiInteractionResult::Accepted);
+    TestEqual(TEXT("Ingress queue holds item before dispatch"), Coordinator.GetQueuedIngressCount(), 1);
+    TestEqual(TEXT("Dispatch flushes queued item"), Coordinator.DispatchQueuedIngress(), 1);
+    TestEqual(TEXT("Sink receives dispatched item"), SinkCalls, 1);
+    TestEqual(TEXT("Dispatched item retains session_generation"), LastItem.SessionGeneration, 1u);
+    TestEqual(TEXT("Dispatched item retains ui_instance_id"), LastItem.UiInstanceId, FString(TEXT("ui@1:1")));
+    TestEqual(TEXT("Dispatched item retains command_id"), LastItem.CommandId, FString(TEXT("core:command.menu.start")));
+
+    FGV2UiBindingHandle StaleHandle = Handles[0];
+    Coordinator.UnpublishUiInstance(TEXT("ui@1:1"));
+    TestEqual(
+        TEXT("Stale handle is rejected"),
+        Coordinator.SubmitUiInteraction(StaleHandle, {}),
+        EGV2SubmitUiInteractionResult::InvalidHandle);
+
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2RuntimeIngressCapacityTest,
     "GV2.Runtime.Ingress.BoundedCapacity",
@@ -541,7 +709,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator(0);
-    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession());
+    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession(MakeTestPinnedRepository()));
 
     TArray<FGV2UiBindingHandle> Handles;
     TestTrue(
@@ -564,6 +732,120 @@ bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
         EGV2SubmitUiInteractionResult::IngressQueueFull);
     TestEqual(TEXT("Rejected ingress is not dispatched"), SinkCalls, 0);
     TestEqual(TEXT("Rejected ingress is not retained"), Coordinator.GetQueuedIngressCount(), 0);
+    return true;
+}
+
+// PCC-36/PCC-37 milestone check: an active session never switches its pinned
+// repository handle when the Application-level current snapshot is
+// republished; a new snapshot only takes effect for the *next* session,
+// created via controlled restart (BootstrapAndSessionLifecycle.md
+// "Active session никогда не переключает pinned handle" /
+// GameDataRepositoryContract.md "Reload").
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionRepositoryPinningAcrossRestartTest,
+    "GV2.Runtime.ContentCore.SessionRepositoryPinningAcrossRestart",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Parameters)
+{
+    const GV2ContentCore::FBuildResult ResultA = MakeTestBuildResultFrom(TEXT("valid/core"));
+    const GV2ContentCore::FBuildResult ResultB = MakeEmptyCoreBuildResult();
+    if (!TestTrue(TEXT("Fixture A builds"), ResultA.IsSuccess())
+        || !TestTrue(TEXT("Fixture B builds"), ResultB.IsSuccess()))
+    {
+        return false;
+    }
+
+    FGV2RepositoryPublisher Publisher;
+    TestTrue(TEXT("Publish candidate A"), Publisher.PublishCandidate(ResultA));
+    const GV2ContentCore::FRepositoryReadHandle ReadHandleA = Publisher.GetCurrent();
+    const FString HashA(UTF8_TO_TCHAR(ReadHandleA.GetContentHash().c_str()));
+
+    TestTrue(TEXT("Publish candidate B"), Publisher.PublishCandidate(ResultB));
+    const GV2ContentCore::FRepositoryReadHandle ReadHandleB = Publisher.GetCurrent();
+    const FString HashB(UTF8_TO_TCHAR(ReadHandleB.GetContentHash().c_str()));
+
+    if (!TestNotEqual(TEXT("The two published repositories have distinct content hashes"), HashA, HashB))
+    {
+        return false;
+    }
+
+    FGV2SessionCoordinator Coordinator(4);
+    TestTrue(TEXT("Session starts pinned to repository A"), Coordinator.StartSession(ReadHandleA));
+    TestEqual(
+        TEXT("Active session is pinned to A's content hash"),
+        FString(UTF8_TO_TCHAR(Coordinator.GetPinnedRepository().GetContentHash().c_str())),
+        HashA);
+
+    // Active session keeps A's pinned handle even though Publisher.GetCurrent() was updated to B!
+    TestEqual(
+        TEXT("Publisher current has updated to B"),
+        FString(UTF8_TO_TCHAR(Publisher.GetCurrent().GetContentHash().c_str())),
+        HashB);
+
+    TestEqual(
+        TEXT("Active session keeps A's pinned handle after Publisher updated to B"),
+        FString(UTF8_TO_TCHAR(Coordinator.GetPinnedRepository().GetContentHash().c_str())),
+        HashA);
+
+    // Controlled restart: end the session, then start a new one against Publisher.GetCurrent() (which is B).
+    Coordinator.EndSession();
+    TestTrue(TEXT("Restarted session starts pinned to Publisher current (B)"), Coordinator.StartSession(Publisher.GetCurrent()));
+    TestEqual(
+        TEXT("Restarted session is pinned to B's content hash"),
+        FString(UTF8_TO_TCHAR(Coordinator.GetPinnedRepository().GetContentHash().c_str())),
+        HashB);
+
+    return true;
+}
+
+// BootstrapAndSessionLifecycle.md "Mandatory tests": repository failure
+// before VM. A missing/invalid pinned repository must refuse to start the
+// Lua VM entirely, not just fail some later step.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionRejectsInvalidRepositoryTest,
+    "GV2.Runtime.ContentCore.SessionRejectsInvalidRepository",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
+{
+    FGV2SessionCoordinator Coordinator(4);
+
+    // 1. Initial StartSession with invalid handle
+    AddExpectedError(
+        TEXT("GV2 Lua runtime fault: code=RepositoryNotReady"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    TestFalse(
+        TEXT("StartSession rejects a default-constructed (invalid) repository handle"),
+        Coordinator.StartSession(GV2ContentCore::FRepositoryReadHandle()));
+    TestFalse(TEXT("No Lua VM was started"), Coordinator.IsLuaVmStarted());
+    TestFalse(TEXT("Session is not ready"), Coordinator.GetStatus().bIsReady);
+    TestEqual(
+        TEXT("Session state is Failed"),
+        Coordinator.GetStatus().SessionState,
+        EGV2SessionState::Failed);
+
+    // 2. Start valid session, then call StartSession with invalid handle to ensure full teardown
+    TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeTestPinnedRepository()));
+    TestTrue(TEXT("Lua VM is started for valid session"), Coordinator.IsLuaVmStarted());
+    TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
+
+    AddExpectedError(
+        TEXT("GV2 Lua runtime fault: code=RepositoryNotReady"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    TestFalse(
+        TEXT("StartSession rejects invalid handle on active session"),
+        Coordinator.StartSession(GV2ContentCore::FRepositoryReadHandle()));
+    TestFalse(TEXT("Active VM is stopped on failed StartSession"), Coordinator.IsLuaVmStarted());
+    TestFalse(TEXT("Coordinator is not ready after failed StartSession"), Coordinator.GetStatus().bIsReady);
+    TestFalse(TEXT("Pinned repository handle is cleared on failure"), Coordinator.GetPinnedRepository().IsValid());
+    TestEqual(
+        TEXT("Session state is Failed after failed StartSession on active session"),
+        Coordinator.GetStatus().SessionState,
+        EGV2SessionState::Failed);
+
     return true;
 }
 

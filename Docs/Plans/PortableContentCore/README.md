@@ -42,9 +42,9 @@ Milestone отмечается выполненным только после з
 
 - [x] M1 — [Foundation](Foundation.md): portable target и публичная модель build result.
 - [x] M2 — [JSON5 Parsing](Json5Parsing.md): deterministic bounded parser и source locations.
-- [ ] M3 — [Schema Validation](SchemaValidation.md): core package проходит envelope/schema validation.
+- [x] M3 — [Schema Validation](SchemaValidation.md): core package проходит envelope/schema validation.
 - [x] M4 — [Repository Resolution](RepositoryResolution.md): providers превращаются в immutable snapshot.
-- [ ] M5 — [CLI and Host Integration](CliAndHostIntegration.md): CLI, Headless и UE дают одинаковый результат.
+- [x] M5 — [CLI and Host Integration](CliAndHostIntegration.md): CLI, Headless и UE дают одинаковый результат.
 
 ## Критический путь
 

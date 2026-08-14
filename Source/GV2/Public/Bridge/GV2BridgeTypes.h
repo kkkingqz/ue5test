@@ -395,4 +395,7 @@ struct GV2_API FGV2SessionStatus
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|Runtime")
     int32 SessionGeneration = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|Runtime")
+    int64 RepositoryVersion = 0;
 };

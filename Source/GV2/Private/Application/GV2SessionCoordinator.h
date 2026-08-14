@@ -2,6 +2,7 @@
 
 #include "Bridge/GV2RuntimeIngressQueue.h"
 #include "Bridge/GV2UiBindingRegistry.h"
+#include "GV2ContentCore/RepositorySnapshot.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 
 class FGV2SessionCoordinator
@@ -17,10 +18,18 @@ public:
     void SetScreenSink(FScreenSink InSink);
     void ClearScreenSink();
 
-    bool StartSession();
+    // PCC-36: PinnedRepository must be a valid read handle obtained from the
+    // Application-scope FGV2RepositoryPublisher current snapshot at the time
+    // of this call. It is held for the whole session lifetime and is never
+    // swapped for a later Application-level republish (BootstrapAndSessionLifecycle.md
+    // "Active session никогда не переключает pinned handle").
+    bool StartSession(
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        int64 RepositoryVersion = 0);
     void EndSession(EGV2SessionState FinalState = EGV2SessionState::Destroyed);
 
     const FGV2SessionStatus& GetStatus() const;
+    const GV2ContentCore::FRepositoryReadHandle& GetPinnedRepository() const { return PinnedRepository; }
 
     bool PublishUiBindings(
         const FString& UiInstanceId,
@@ -54,6 +63,7 @@ private:
     void FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault);
 
     FGV2SessionStatus Status;
+    GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     FGV2UiBindingRegistry BindingRegistry;
     FGV2RuntimeIngressQueue IngressQueue;
     GV2RuntimeCore::FRuntimeSession RuntimeSession;

@@ -1,0 +1,19 @@
+{
+  id: "core:schema.definition.resource.v1",
+  definition_type: "resource",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      resource_class: {
+        kind: "enum",
+        required: true,
+        values: ["texture_2d"],
+      },
+      required: { kind: "bool", required: true },
+    },
+  },
+  semantic_validators: [],
+  extensions: {},
+}
+

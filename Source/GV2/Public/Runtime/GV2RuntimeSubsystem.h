@@ -5,6 +5,7 @@
 #include "Templates/PimplPtr.h"
 #include "GV2RuntimeSubsystem.generated.h"
 
+class FGV2RepositoryPublisher;
 class FGV2SessionCoordinator;
 class UGV2DebugStartScreenWidget;
 class UGV2ScreenRegistry;
@@ -52,6 +53,7 @@ private:
     void ReplaceActiveScreen(UUserWidget* NewScreen);
 
     TPimplPtr<FGV2SessionCoordinator> Coordinator;
+    TPimplPtr<FGV2RepositoryPublisher> RepositoryPublisher;
 
     UPROPERTY(Transient)
     TObjectPtr<UGV2ScreenRegistry> ScreenRegistry;
@@ -65,5 +67,7 @@ private:
     FDelegateHandle StartGameInstanceHandle;
     FString ImageCatalogBuildError;
     bool bImageCatalogReady = false;
+    FString RepositoryBuildError;
+    bool bRepositoryReady = false;
     bool bActiveScreenAddedToViewport = false;
 };

@@ -10,7 +10,7 @@ CXXFLAGS := -O2 -DNDEBUG -std=c++20 -MMD -MP -I$(RUNTIME_CORE)/Public -I$(CONTEN
 
 LUA_SOURCES := $(wildcard $(LUA_DIR)/*.c)
 LUA_OBJECTS := $(patsubst $(LUA_DIR)/%.c,$(BUILD_DIR)/lua_%.o,$(LUA_SOURCES))
-CONTENT_CORE_NAMES := BuildResult CanonicalHash DefinitionEnvelope Diagnostic ExtensionSchema FieldValidation GV2ContentCore Json5Conformance Json5Lexer Json5Parser PackageDescriptor ParseLimits RepositoryBuilder RepositorySnapshot RepresentativeCore ScalarValidation SchemaRegistry SemanticValidation StableId Value
+CONTENT_CORE_NAMES := BuildResult CanonicalHash DefinitionEnvelope Diagnostic ExtensionSchema FieldValidation GV2ContentCore Json5Conformance Json5Lexer Json5Parser PackageDescriptor PackageDiscovery ParseLimits RepositoryBuilder RepositorySnapshot RepresentativeCore ScalarValidation SchemaRegistry SemanticValidation StableId Value
 CONTENT_CORE_OBJECTS := $(addprefix $(BUILD_DIR)/content_,$(addsuffix .o,$(CONTENT_CORE_NAMES)))
 CORE_OBJECTS := $(BUILD_DIR)/GV2RuntimeSession.o $(CONTENT_CORE_OBJECTS)
 MAIN_OBJECT := $(BUILD_DIR)/main.o

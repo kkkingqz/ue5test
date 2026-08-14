@@ -1092,18 +1092,45 @@ bool FRuntimeSession::Start(
     return true;
 }
 
-void FRuntimeSession::Stop()
+bool FRuntimeSession::Stop(FRuntimeFault* OutFault)
 {
-    assert(Impl != nullptr);
-    assert(Impl->IsOwnerThread());
-    assert(!Impl->bExecuting);
-    if (Impl->State != nullptr)
+    if (OutFault != nullptr)
     {
-        lua_close(Impl->State);
-        Impl->State = nullptr;
+        *OutFault = {};
     }
+    if (Impl == nullptr)
+    {
+        return true;
+    }
+    if (Impl->State == nullptr)
+    {
+        Impl->SessionGeneration = 0;
+        Impl->OwnerThread = {};
+        Impl->bExecuting = false;
+        return true;
+    }
+    if (!Impl->IsOwnerThread())
+    {
+        if (OutFault != nullptr)
+        {
+            *OutFault = {"RuntimeWrongThread", "Stop must execute on the session owner thread."};
+        }
+        return false;
+    }
+    if (Impl->bExecuting)
+    {
+        if (OutFault != nullptr)
+        {
+            *OutFault = {"LuaReentryRejected", "Stop attempted during active Lua execution."};
+        }
+        return false;
+    }
+    lua_close(Impl->State);
+    Impl->State = nullptr;
     Impl->SessionGeneration = 0;
     Impl->OwnerThread = {};
+    Impl->bExecuting = false;
+    return true;
 }
 
 bool FRuntimeSession::DispatchSemanticInput(

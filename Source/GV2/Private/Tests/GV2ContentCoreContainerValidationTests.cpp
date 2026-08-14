@@ -21,7 +21,7 @@ public:
     }
 };
 
-GV2ContentCore::FCompiledFieldSpecPtr CompileSpec(
+GV2ContentCore::FCompiledFieldSpecPtr CompileContainerSpec(
     const std::string_view Source,
     std::vector<GV2ContentCore::FDiagnostic>& Diagnostics)
 {
@@ -49,7 +49,7 @@ bool FGV2ContentCoreContainerValidationTest::RunTest(const FString& Parameters)
     Context.SchemaId = "core:schema.test.container.v1";
 
     std::vector<FDiagnostic> Diagnostics;
-    const FCompiledFieldSpecPtr ArraySpec = CompileSpec(
+    const FCompiledFieldSpecPtr ArraySpec = CompileContainerSpec(
         "{ kind: 'array', min_items: 2, max_items: 3, unique: true, items: { kind: 'int64', min: 0 } }",
         Diagnostics);
     TestTrue(TEXT("array compiles"), ArraySpec != nullptr && Diagnostics.empty());
@@ -65,7 +65,7 @@ bool FGV2ContentCoreContainerValidationTest::RunTest(const FString& Parameters)
         && Diagnostics[0].Code == "core:diagnostic.schema.value.duplicate_array_item");
 
     Diagnostics.clear();
-    const FCompiledFieldSpecPtr ObjectArraySpec = CompileSpec(
+    const FCompiledFieldSpecPtr ObjectArraySpec = CompileContainerSpec(
         "{ kind: 'array', unique: true, items: { kind: 'object', fields: {"
         "a: { kind: 'int64' }, b: { kind: 'int64' } } } }",
         Diagnostics);
@@ -78,7 +78,7 @@ bool FGV2ContentCoreContainerValidationTest::RunTest(const FString& Parameters)
         && Diagnostics[0].Code == "core:diagnostic.schema.value.duplicate_array_item");
 
     Diagnostics.clear();
-    const FCompiledFieldSpecPtr MapSpec = CompileSpec(
+    const FCompiledFieldSpecPtr MapSpec = CompileContainerSpec(
         "{ kind: 'map', min_entries: 1, keys: { kind: 'string', pattern: '^[a-z]+$' }, values: { kind: 'bool' } }",
         Diagnostics);
     auto MapDocument = ParseJson5Document("{ valid: true, Bad: false }", FParseLimits{}, Diagnostics);
@@ -91,7 +91,7 @@ bool FGV2ContentCoreContainerValidationTest::RunTest(const FString& Parameters)
         && Diagnostics[0].Span == MapDocument->FindLocation("/Bad")->KeySpan);
 
     Diagnostics.clear();
-    const FCompiledFieldSpecPtr ObjectSpec = CompileSpec(
+    const FCompiledFieldSpecPtr ObjectSpec = CompileContainerSpec(
         "{ kind: 'object', fields: { name: { kind: 'string', required: true }, values: { kind: 'array', items: { kind: 'int64' } } } }",
         Diagnostics);
     auto ObjectDocument = ParseJson5Document("{ name: 'test', extra: 1 }", FParseLimits{}, Diagnostics);
@@ -108,7 +108,7 @@ bool FGV2ContentCoreContainerValidationTest::RunTest(const FString& Parameters)
         && Diagnostics[0].Code == "core:diagnostic.schema.value.missing_required_field");
 
     Diagnostics.clear();
-    const FCompiledFieldSpecPtr UnionSpec = CompileSpec(
+    const FCompiledFieldSpecPtr UnionSpec = CompileContainerSpec(
         "{ kind: 'union', discriminator: 'kind', variants: {"
         "heal: { kind: 'object', fields: { kind: { kind: 'enum', values: ['heal'] }, amount: { kind: 'int64', min: 1 } } },"
         "wait: { kind: 'object', fields: { kind: { kind: 'enum', values: ['wait'] } } } } }",

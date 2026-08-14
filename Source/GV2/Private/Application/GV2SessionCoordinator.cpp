@@ -151,20 +151,33 @@ void FGV2SessionCoordinator::ClearScreenSink()
     ScreenSink = nullptr;
 }
 
-bool FGV2SessionCoordinator::StartSession()
+bool FGV2SessionCoordinator::StartSession(
+    const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+    const int64 InRepositoryVersion)
 {
     check(IsInGameThread());
 
     BindingRegistry.EndSession();
     IngressQueue.Reset();
     RuntimeSession.Stop();
+    PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
+    Status.RepositoryVersion = 0;
+
+    if (!InPinnedRepository.IsValid())
+    {
+        GV2RuntimeCore::FRuntimeFault Fault{"RepositoryNotReady", "No published GameDataRepository to pin."};
+        FailRuntime(Fault);
+        return false;
+    }
 
     ++Status.SessionGeneration;
     Status.ApplicationState = EGV2ApplicationState::Bootstrapping;
     Status.SessionState = EGV2SessionState::Creating;
     Status.bIsReady = false;
+    Status.RepositoryVersion = InRepositoryVersion;
     NextInputSequence = 1;
     UiRevision = 0;
+    PinnedRepository = InPinnedRepository;
     BindingRegistry.BeginSession(Status.SessionGeneration);
 
     GV2RuntimeCore::FRuntimeFault Fault;
@@ -190,8 +203,10 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
     BindingRegistry.EndSession();
     IngressQueue.Reset();
     RuntimeSession.Stop();
+    PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
     Status.SessionState = FinalState;
+    Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;
 }
@@ -441,6 +456,11 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
     Status.SessionState = EGV2SessionState::Failed;
     BindingRegistry.EndSession();
     IngressQueue.Reset();
+    RuntimeSession.Stop();
+    PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
+    Status.RepositoryVersion = 0;
+    NextInputSequence = 1;
+    UiRevision = 0;
 
     UE_LOG(
         LogTemp,

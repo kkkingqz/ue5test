@@ -1,8 +1,8 @@
 ---
 title: System Context and Components
 status: normative
-version: 2.1
-updated: 2026-08-13
+version: 2.3
+updated: 2026-08-14
 depends_on:
   - Overview.md
   - GlossaryAndNaming.md
@@ -43,7 +43,9 @@ decisions:
 
 `Application` — composition root. `Content` — нижний module. `LuaRuntime` и `Presentation` не зависят друг от друга напрямую. Tooling никогда не становится runtime dependency.
 
-`GV2ContentCore` является нижней portable library для Content value model, Stable ID, package descriptors, repository build result и validators. `GV2RuntimeCore` является portable library под `LuaRuntime`/portable DTO и зависит от `GV2ContentCore`, но не от UE Presentation. `GV2` Unreal module и `gv2-headless` являются sibling host adapters.
+`GV2ContentCore` является нижней portable library для Content value model, Stable ID, package descriptors, repository build result и validators. `GV2RuntimeCore` является portable library под `LuaRuntime`/portable DTO и зависит от `GV2ContentCore`, но не от UE Presentation. `GV2` Unreal module и `gv2-headless` являются sibling gameplay host adapters; `gv2-content` — дополнительный portable CLI (`validate`/`inspect`/`hash`), использующий тот же `BuildRepository()` reference path без Lua/UE dependency и без запуска gameplay session.
+
+UE host строит repository из единственного захардкоженного package root `GameData/core` (staged в packaged build через `RuntimeDependencies` в `GV2.Build.cs`, аналогично `Scripts/` и `Resources/`). Package/mod discovery, enabled-mod resolution и multi-package root не реализованы — соответствует PortableContentCore первому релизу (`Docs/Plans/PortableContentCore/README.md` "Границы первого релиза"). `Tests/Fixtures/PortableContentCore` — отдельный, никогда не стейджащийся corpus только для CLI/headless/UE automation tests; UE production host его не использует.
 
 Canonical Stable ID parser `GV2ContentCore::FStableId` принадлежит нижней portable library и используется Content, LuaRuntime и обоими host-ами. UE может иметь только encoding adapter `FStringView → UTF-8`; отдельная UE grammar запрещена.
 
@@ -65,7 +67,7 @@ Source/GV2/
     Runtime/        UGV2RuntimeSubsystem и Blueprint-safe DTO
     UI/             native Widget base classes и presentation DTO
   Private/
-    Application/    FGV2SessionCoordinator и stateless Screen Field Adapter Registry
+    Application/    FGV2SessionCoordinator, stateless Screen Field Adapter Registry, FGV2RepositoryPublisher (Application-scope current repository/version) и FGV2FilesystemContentSourceProvider (UE-filesystem package source acquisition)
     Bridge/         ingress queue, operation и UI binding registries
     UI/             document reconciler, screen/widget registries, input adapter
 Source/GV2RuntimeCore/
@@ -76,6 +78,9 @@ Source/GV2ContentCore/
   Private/           portable validators и reference repository build path
 Headless/
   Source/            standalone simulation host и metadata-only adapters
+Tools/Content/
+  Source/            standalone `gv2-content` CLI (validate/inspect/hash) host adapter; kept out of the
+                     UE asset root `Content/` on purpose
 Scripts/
   bootstrap/         module manifest и composition root
   boundary/          fixed Lua/host entry points

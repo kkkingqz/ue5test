@@ -47,5 +47,19 @@ public class GV2 : ModuleRules
             }
         }
 
+        // Real GameDataRepository "core" package (definitions/schemas JSON5).
+        // Tests/Fixtures/PortableContentCore is test-only and intentionally
+        // never staged here.
+        string GameDataDirectory = Path.Combine(ModuleDirectory, "..", "..", "GameData");
+        if (Directory.Exists(GameDataDirectory))
+        {
+            foreach (string GameDataFile in Directory.GetFiles(
+                GameDataDirectory,
+                "*",
+                SearchOption.AllDirectories))
+            {
+                RuntimeDependencies.Add(GameDataFile, StagedFileType.NonUFS);
+            }
+        }
     }
 }

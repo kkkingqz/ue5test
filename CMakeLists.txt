@@ -9,6 +9,7 @@ set(GV2_PCC_FIXTURE_ROOT
 )
 
 add_subdirectory(Headless)
+add_subdirectory(Tools/Content)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)

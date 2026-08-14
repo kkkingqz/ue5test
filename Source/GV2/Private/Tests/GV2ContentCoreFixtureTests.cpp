@@ -58,18 +58,18 @@ bool FGV2PortableContentCoreSharedFixtures::RunTest(const FString& Parameters)
         IndexedSet.Add(RelativePath);
 
         const FString FullPath = FPaths::Combine(FixtureRoot, RelativePath);
-        FString Source;
+        TArray<uint8> FileBytes;
         TestTrue(
             *FString::Printf(TEXT("UBT automation can read shared fixture: %s"), *RelativePath),
-            FFileHelper::LoadFileToString(Source, *FullPath));
+            FFileHelper::LoadFileToArray(FileBytes, *FullPath));
         TestFalse(
             *FString::Printf(TEXT("Shared fixture is non-empty: %s"), *RelativePath),
-            Source.IsEmpty());
+            FileBytes.Num() == 0);
 
-        FTCHARToUTF8 Utf8Source(*Source);
         GV2ContentCore::Testing::FJson5Fixture ParserFixture;
         ParserFixture.RelativePath = TCHAR_TO_UTF8(*RelativePath);
-        ParserFixture.Source.assign(Utf8Source.Get(), Utf8Source.Length());
+        ParserFixture.Source.assign(
+            reinterpret_cast<const char*>(FileBytes.GetData()), FileBytes.Num());
         if (RelativePath.StartsWith(TEXT("invalid/duplicate_key/")))
         {
             ParserFixture.ExpectedDiagnosticCode = "core:diagnostic.json5.duplicate_key";

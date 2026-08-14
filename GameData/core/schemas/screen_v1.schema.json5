@@ -1,0 +1,14 @@
+{
+  id: "core:schema.definition.screen.v1",
+  definition_type: "screen",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      title_text_id: { kind: "text_id", required: true },
+    },
+  },
+  semantic_validators: [],
+  extensions: {},
+}
+

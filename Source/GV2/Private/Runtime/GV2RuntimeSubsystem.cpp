@@ -1,10 +1,13 @@
 #include "Runtime/GV2RuntimeSubsystem.h"
 
+#include "Application/GV2FilesystemContentSourceProvider.h"
+#include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Bridge/GV2StableIdUE.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
 #include "Logging/LogMacros.h"
+#include "Misc/Paths.h"
 #include "UI/GV2DebugStartScreenWidget.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ScreenRegistry.h"
@@ -17,6 +20,17 @@ namespace
 bool IsCanonicalScreenId(const FString& Value)
 {
     return GV2StableIdUE::IsOfKind(Value, "screen");
+}
+
+// PCC-36: default package root for the real "core" package, staged into
+// packaged builds via GV2.Build.cs RuntimeDependencies (mirroring Scripts/
+// and Resources/). `Tests/Fixtures/PortableContentCore` is test-only and is
+// never staged; using it here would leave `bRepositoryReady` false in any
+// packaged build. No mod discovery/multi-package root exists yet -
+// consistent with PortableContentCore's first-release scope.
+FString DefaultRepositoryPackageRoot()
+{
+    return FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
 }
 }
 
@@ -43,6 +57,16 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
             *ImageCatalogBuildError);
     }
     LoadScreenRegistry();
+
+    RepositoryPublisher = MakePimpl<FGV2RepositoryPublisher>();
+    bRepositoryReady = RepositoryPublisher->PublishCandidate(
+        BuildGV2RepositoryFromDirectory(DefaultRepositoryPackageRoot()));
+    if (!bRepositoryReady)
+    {
+        RepositoryBuildError = TEXT("failed to build the initial GameDataRepository");
+        UE_LOG(LogGV2Runtime, Error, TEXT("%s"), *RepositoryBuildError);
+    }
+
     Coordinator = MakePimpl<FGV2SessionCoordinator>();
     Coordinator->SetInteractionSink([this](const FGV2UiIngressItem& Item)
     {
@@ -89,6 +113,9 @@ void UGV2RuntimeSubsystem::Deinitialize()
     ScreenRegistry = nullptr;
     bImageCatalogReady = false;
     ImageCatalogBuildError.Reset();
+    RepositoryPublisher.Reset();
+    bRepositoryReady = false;
+    RepositoryBuildError.Reset();
 
     Super::Deinitialize();
 }
@@ -115,6 +142,7 @@ void UGV2RuntimeSubsystem::StartSession()
     if (RegisteredScreenClasses.IsEmpty())
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("StartSession rejected: Screen Registry is not ready"));
+        Coordinator->StartSession(GV2ContentCore::FRepositoryReadHandle(), 0);
         return;
     }
     if (!bImageCatalogReady)
@@ -124,6 +152,17 @@ void UGV2RuntimeSubsystem::StartSession()
             Error,
             TEXT("StartSession rejected: required Image Resource Catalog is not ready: %s"),
             *ImageCatalogBuildError);
+        Coordinator->StartSession(GV2ContentCore::FRepositoryReadHandle(), 0);
+        return;
+    }
+    if (!bRepositoryReady || !RepositoryPublisher->HasCurrent())
+    {
+        UE_LOG(
+            LogGV2Runtime,
+            Error,
+            TEXT("StartSession rejected: GameDataRepository is not ready: %s"),
+            *RepositoryBuildError);
+        Coordinator->StartSession(GV2ContentCore::FRepositoryReadHandle(), 0);
         return;
     }
 
@@ -133,7 +172,7 @@ void UGV2RuntimeSubsystem::StartSession()
         ActiveScreen = nullptr;
     }
 
-    if (!Coordinator->StartSession())
+    if (!Coordinator->StartSession(RepositoryPublisher->GetCurrent(), RepositoryPublisher->GetVersion()))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
         return;
@@ -141,8 +180,9 @@ void UGV2RuntimeSubsystem::StartSession()
     UE_LOG(
         LogGV2Runtime,
         Display,
-        TEXT("Started session generation %d"),
-        Coordinator->GetStatus().SessionGeneration);
+        TEXT("Started session generation %d with repository version %lld"),
+        Coordinator->GetStatus().SessionGeneration,
+        Coordinator->GetStatus().RepositoryVersion);
 }
 
 void UGV2RuntimeSubsystem::EndSession()
@@ -169,6 +209,27 @@ UGV2DebugStartScreenWidget* UGV2RuntimeSubsystem::ShowDebugStartScreen(
     if (!Coordinator->GetStatus().bIsReady)
     {
         StartSession();
+    }
+
+    if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed)
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Showing UE-native recovery surface: session bootstrap failed"));
+        UGV2DebugStartScreenWidget* RecoveryScreen = CreateWidget<UGV2DebugStartScreenWidget>(
+            GetGameInstance(),
+            UGV2DebugStartScreenWidget::StaticClass());
+        if (RecoveryScreen != nullptr)
+        {
+            FGV2ButtonViewModel RecoveryModel;
+            RecoveryModel.Text = FGV2TextSpec::FromLiteral(TEXT("Bootstrap Failed (Recovery Surface)"));
+            RecoveryModel.Binding = FGV2UiBindingHandle::Create(TEXT("recovery:failed"));
+            if (RecoveryScreen->InitializeStartScreen(RecoveryModel))
+            {
+                bActiveScreenAddedToViewport = bAddToViewport;
+                ReplaceActiveScreen(RecoveryScreen);
+                return RecoveryScreen;
+            }
+        }
+        return nullptr;
     }
 
     FGV2ButtonViewModel StartButtonModel;
