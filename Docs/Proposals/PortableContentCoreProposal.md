@@ -1,9 +1,9 @@
 ---
 title: Portable Content Core Proposal
 status: draft
-proposal_state: accepted_for_planning
-version: 0.1
-updated: 2026-08-13
+proposal_state: implemented
+version: 1.0
+updated: 2026-08-14
 depends_on:
   - ../Architecture/SystemContextAndComponents.md
   - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
@@ -17,6 +17,8 @@ decisions:
 ---
 
 # Предложение по portable Content Core
+
+> **Реализовано.** Нормативное поведение перенесено в [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md), [Definition Envelope and Schema Rules](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md) и [Build and Tooling](../Architecture/BuildAndTooling.md). Ход выполнения — в архивном плане [PortableContentCore](../Plans/Archive/PortableContentCore/README.md). Документ сохраняется как rationale.
 
 ## Назначение и область
 

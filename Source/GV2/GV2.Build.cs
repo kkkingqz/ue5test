@@ -16,7 +16,9 @@ public class GV2 : ModuleRules
             "UMG",
             "CommonUI",
             "GV2RuntimeCore",
-            "GV2ContentCore"
+            "GV2ContentCore",
+            "GV2ContentHostSupport",
+            "GV2TestSupport"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]

@@ -5,10 +5,9 @@
   root: {
     kind: "object",
     fields: {
-      message: { kind: "string", required: true, min_length: 1 },
+      source_message: { kind: "string", required: true, min_length: 1 },
     },
   },
   semantic_validators: [],
   extensions: {},
 }
-

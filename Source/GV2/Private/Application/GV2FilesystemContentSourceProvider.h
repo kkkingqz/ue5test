@@ -8,7 +8,7 @@
 // root directory. This is the only UE-specific piece of the repository
 // build path - schema/resolution logic stays entirely inside the shared
 // GV2ContentCore::BuildRepository() reference path, matching
-// Content/Source/main.cpp's FFilesystemContentSourceProvider and
+// Tools/Content/Source/main.cpp's FFilesystemContentSourceProvider and
 // Headless/Source/main.cpp's FHeadlessFilesystemContentSourceProvider.
 class FGV2FilesystemContentSourceProvider final : public GV2ContentCore::IContentSourceProvider
 {

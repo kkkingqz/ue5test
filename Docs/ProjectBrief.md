@@ -1,8 +1,8 @@
 ---
 title: GV2 Project Brief
 status: normative
-version: 0.1
-updated: 2026-08-13
+version: 1.0
+updated: 2026-08-14
 depends_on:
   - Architecture/Overview.md
   - Architecture/GlossaryAndNaming.md
@@ -54,38 +54,28 @@ GV2 — single-player 2D/2.5D data-driven игра на Unreal Engine 5. Про�
 
 Такое разделение позволяет тестировать правила игры отдельно от интерфейса и не допускает появления второго gameplay-state в Blueprint или C++.
 
-## Ключевые принятые решения
+## Что важно запомнить сразу
 
-- **Lua является gameplay authority.** C++ и Blueprint не содержат параллельную доменную модель и не меняют canonical state напрямую.
-- **Все gameplay-изменения проходят через Commands.** Validators проверяют намерение до mutation; Events сообщают только о состоявшемся результате.
-- **Граница Lua/C++ передаёт только значения.** UObject, raw pointers, Lua callbacks и физические asset paths через неё не проходят.
-- **Контент отделён от runtime-state.** Definition является immutable описанием; сохраняемый Runtime Instance ссылается на него по Stable ID.
-- **Stable ID имеет единый формат** `<namespace>:<kind>.<path>`. Опубликованный ID нельзя повторно использовать для нового смысла.
-- **Repository публикуется атомарно.** Ошибочный candidate не становится видимым, а active session продолжает использовать закреплённый snapshot.
-- **Reload выполняется через controlled session restart.** Repository и Lua-код не подменяются внутри работающей session.
-- **Overrides являются полными.** Последний provider целиком заменяет definition с тем же ID; implicit deep merge отсутствует.
-- **Gameplay runtime portable.** UE и Headless используют один Lua runtime, один Content Core и одинаковые contracts.
-- **UI является presentation, а не источником истины.** Lua описывает желаемое состояние экранов, а Unreal создаёт конкретные Blueprint Screen Templates и Widgets.
-- **Presentation paths централизованы.** Text, images, repeated elements, Screen Fields и input не получают локальные альтернативные механизмы внутри отдельных Widgets.
-- **Modding расширяет те же публичные точки.** Mods используют namespaces, definitions, commands, validators, events и документированные lifecycle hooks без прямого доступа к Unreal API.
+Четыре правила определяют почти все остальные решения: gameplay authority принадлежит Lua, любое изменение состояния проходит через Command, граница Lua/C++ передаёт только значения, а repository публикуется целиком и атомарно.
 
-## Осознанные ограничения первой версии
+Полный список инвариантов и non-goals первой версии — в [Architecture Overview](Architecture/Overview.md); причины каждого выбора — в [ADR Index](ADR/README.md). Дублировать эти списки здесь намеренно не будем.
 
-В ближайшую архитектурную цель не входят multiplayer/replication, hostile-code sandbox для Lua-модов, live repository mutation, universal rollback, event sourcing и универсальный patch/deep-merge язык. Новая абстракция добавляется только под конкретный игровой сценарий или измеренную проблему.
+## Текущее состояние
 
-## Текущий фокус
+Content pipeline завершён: контент из `GameData/core` проверяется схемами, собирается в immutable repository snapshot и читается из Lua через `game.repository`. Один и тот же corpus даёт одинаковый результат в Unreal, `gv2-headless` и CLI `gv2-content`.
 
-Проект укрепляет end-to-end vertical slice: проверенный контент должен пройти через repository, Lua gameplay, Commands/Events, UI projection, save/load и одинаково воспроизводиться в Unreal и Headless.
+Следующий крупный шаг — canonical gameplay-state и Command/Event path: без них gameplay остаётся заглушкой, а vertical slice не закрывается.
 
-Текущий крупный implementation track — [PortableContentCore](Plans/PortableContentCore/README.md): общий pipeline от package descriptors и JSON5 definitions до immutable repository snapshot и CLI validation.
+Подробная разбивка по подсистемам: [Implementation Status](ImplementationStatus.md).
 
 ## Куда идти дальше
 
-- [Architecture Overview](Architecture/Overview.md) — общая модель и архитектурные границы.
+- [Architecture Overview](Architecture/Overview.md) — общая модель, инварианты и границы.
 - [Glossary and Naming](Architecture/GlossaryAndNaming.md) — канонические термины и правила именования.
 - [System Context and Components](Architecture/SystemContextAndComponents.md) — ownership и направления зависимостей.
+- [Implementation Status](ImplementationStatus.md) — что уже реализовано.
+- [Build and Tooling](Architecture/BuildAndTooling.md) — как собрать, запустить и проверить проект.
 - [ADR Index](ADR/README.md) — принятые решения и причины выбора.
 - [UI Index](UI/README.md) — устройство presentation/UI.
-- [Implementation Plans](Plans/README.md) — текущие планы и отмечаемый прогресс.
 
 Перед изменением конкретной подсистемы следует открыть её contract через [основной индекс](README.md) и прочитать связанные accepted ADR.

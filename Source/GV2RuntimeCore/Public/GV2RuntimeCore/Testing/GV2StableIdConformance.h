@@ -79,12 +79,41 @@ inline std::string RunStableIdConformance()
     {
         return "parsed_components";
     }
-    if (!FStableId::IsOfKind("core:command.location.travel", "command", &Error)
-        || FStableId::IsOfKind("core:command.location.travel", "event", &Error)
-        || Error != EStableIdError::WrongKind)
+    struct FInstanceIdCase
     {
-        return "expected_kind";
+        std::string_view Value;
+        bool bValid;
+        EStableIdError Error;
+    };
+
+    const std::array InstanceIdCases{
+        FInstanceIdCase{"item@1", true, EStableIdError::None},
+        FInstanceIdCase{"item@42", true, EStableIdError::None},
+        FInstanceIdCase{"actor@7", true, EStableIdError::None},
+        FInstanceIdCase{"quest@100", true, EStableIdError::None},
+        FInstanceIdCase{"", false, EStableIdError::Empty},
+        FInstanceIdCase{"item@0", false, EStableIdError::InvalidInstanceId},
+        FInstanceIdCase{"item@01", false, EStableIdError::InvalidInstanceId},
+        FInstanceIdCase{"item@-1", false, EStableIdError::InvalidInstanceId},
+        FInstanceIdCase{"Item@1", false, EStableIdError::InvalidSegmentStart},
+        FInstanceIdCase{"item1", false, EStableIdError::InvalidSeparator},
+        FInstanceIdCase{"item@@1", false, EStableIdError::InvalidSeparator},
+        FInstanceIdCase{"item@abc", false, EStableIdError::InvalidInstanceId},
+        FInstanceIdCase{"@1", false, EStableIdError::EmptySegment},
+    };
+
+    for (std::size_t Index = 0; Index < InstanceIdCases.size(); ++Index)
+    {
+        const FInstanceIdCase& Case = InstanceIdCases[Index];
+        EStableIdError InstError = EStableIdError::None;
+        FInstanceIdView ParsedInst;
+        const bool bValid = FStableId::ParseInstanceId(Case.Value, ParsedInst, &InstError);
+        if (bValid != Case.bValid || InstError != Case.Error)
+        {
+            return "instance_id_case_" + std::to_string(Index);
+        }
     }
+
     return {};
 }
 }

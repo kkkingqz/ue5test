@@ -7,6 +7,9 @@ local selected_class = nil
 local player_name = ""
 
 local function create_screen()
+    local item_def = game.repository and game.repository.get("core:item.weapon.iron_sword")
+    local item_id = (item_def and item_def.id) or "core:item.weapon.iron_sword"
+
     return screens.create("core:screen.test", {
         description = {
             schema_id = "core:schema.ui_field.rich_text.v3",
@@ -22,7 +25,7 @@ local function create_screen()
                         },
                         binding = {
                             command_id = "core:command.test.inspect",
-                            args = { target = "integration" },
+                            args = { target = item_id },
                         },
                     },
                 },
@@ -35,7 +38,10 @@ local function create_screen()
                     {
                         key = "inspect",
                         text = text.spec("core:text.screen.test.inspect", nil, "button"),
-                        binding = { command_id = "core:command.test.inspect", args = {} },
+                        binding = {
+                            command_id = "core:command.test.inspect",
+                            args = { target = item_id },
+                        },
                     },
                     {
                         key = "close",
@@ -61,7 +67,7 @@ local function create_screen()
             value = {
                 text = text.spec("core:text.screen.test.name_label", nil, "default"),
                 placeholder_text = text.spec("core:text.screen.test.name_placeholder", nil, "default"),
-                value = player_name,
+                value = player_name ~= "" and player_name or item_id,
                 binding = {
                     command_id = "core:command.test.name_changed",
                     args = {},

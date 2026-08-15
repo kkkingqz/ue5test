@@ -1,8 +1,8 @@
 ---
 title: Glossary and Naming
 status: normative
-version: 1.7
-updated: 2026-08-12
+version: 1.9
+updated: 2026-08-14
 depends_on:
   - StableIDSpecification.md
 ---
@@ -19,12 +19,35 @@ depends_on:
 | Resolved definition | Победившая immutable definition после override и validation |
 | GameDataRepository | Published immutable snapshot definitions, schemas и provenance |
 | Canonical gameplay-state | Единственное сохраняемое mutable состояние прохождения, owner — Lua |
+| Actor | Каноническая сущность персонажа (игрока или NPC), хранящаяся в `state.actors` |
+| ActorRegistry | Реестр `game.instances.actors`, отвечающий за identity, lookup, CRUD-операции, детерминированное перечисление и выдачу disposable-обёрток |
+| Disposable Wrapper | Одноразовая обёртка runtime-объекта (например `ActorWrapper`, `WorldWrapper`), вычисляющая динамические свойства (`discriminator`) и предоставляющая доменные методы без загрязнения canonical state |
+| World | Канонический singleton runtime instance мира под `game.instances.world`, предоставляющий disposable wrapper над `state.world` (включая `current_location_id`) |
 | Runtime instance | Сохраняемый экземпляр с `type_id`, `definition_id`, `instance_id` и instance state |
 | Runtime object | Любой transient объект Lua runtime; может не сохраняться |
 | Presentation-state | Локальное состояние UE/UX, не определяющее gameplay |
 | Presentation projection | Widgets, Actors, streams и audio/visual representation desired state |
 
 Термин `prototype` не используется как синоним class, definition или instance.
+
+## Модули и host-ы
+
+| Термин | Значение |
+|---|---|
+| `GV2ContentCore` | Нижняя portable library: value model, Stable ID, JSON5, schemas, repository build и snapshot; без filesystem I/O |
+| `GV2ContentHostSupport` | Portable library filesystem-based package discovery; единственный владелец сканирования package root |
+| `GV2RuntimeCore` | Portable library Lua VM, runtime session и marshalling |
+| `GV2` | Unreal composition module: Application, Bridge и Presentation |
+| Package root | Каталог одного package: `definitions/*.json5` и self-describing `schemas/*.json5`; имя каталога равно `package_id` |
+| Content source provider | Host-адаптер, отдающий immutable bytes по `(package_id, package-relative source)` |
+| Repository publisher | Application-scope владелец current snapshot и его monotonic version |
+| Pinned read handle | Копия read handle, закреплённая за session на всё её время жизни |
+| Marshaller | `FGV2LuaMarshaller` — единственный C++ путь конвертации portable values в/из Lua |
+| `gv2-headless` | Gameplay host без Unreal Engine |
+| `gv2-content` | Content CLI (`validate`/`inspect`/`hash`); gameplay session не запускает |
+| Recovery surface | UE-native экран, показываемый при отказе bootstrap вместо gameplay session |
+| Save slot storage | Host-примитив чтения/записи непрозрачных байт по `save_slot_id`; содержимое сейва не интерпретирует. Не путать с UI `slot_id` |
+| Conformance set | Portable набор проверок, исполняемый обоими host-ами из одного entry point |
 
 ## Commands, input и events
 
@@ -34,8 +57,11 @@ depends_on:
 | Command | Проверяемое намерение изменить canonical gameplay-state |
 | CommandRequest | Value-only envelope `command_id + args + sequence`, подаваемый в Command Dispatcher |
 | Command Dispatcher | Единственная публичная точка запуска gameplay commands |
+| Mutation Window | Окно исполнения обработчика команды, в течение которого разрешена мутация `game.state` |
+| Gameplay Services | Реестр `game.services`, предоставляющий pure Lua workflows над несколькими сущностями |
 | Command validator | Ordered, side-effect-free проверка до mutation; может отклонить command |
 | Gameplay event | Неотменяемый post-commit факт внутри Lua runtime |
+| Event subscription | Регистрация обработчика на post-commit факт по `event_id` с детерминированным приоритетом вызова (`options.priority`) на фазе `register` |
 | Technical input | Результат UE/platform operation, доставленный через runtime ingress queue |
 | Handler | Реализация command/event/lifecycle contract |
 | Hook | Документированная lifecycle или extension point |

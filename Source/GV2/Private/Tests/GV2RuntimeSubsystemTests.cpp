@@ -405,6 +405,32 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     TestTrue(TEXT("Escaped argument is preserved for the renderer"), NormalizedMarkup.Contains(TEXT("&lt;size=huge&gt;")));
     TestFalse(TEXT("Escaped argument is not double-escaped"), NormalizedMarkup.Contains(TEXT("&amp;lt;size=huge")));
 
+    // LOC-07: Missing translation in TextCatalog smoothly falls back to FallbackTextCatalog (source_message)
+    Theme->FallbackTextCatalog.Add(TEXT("core:text.untranslated.item"), FText::FromString(TEXT("Fallback source string")));
+    FGV2TextViewModel FallbackResolvedText;
+    FString FallbackResolveError;
+    TestTrue(
+        TEXT("Text pipeline falls back to FallbackTextCatalog when key is missing from TextCatalog"),
+        UGV2TextPipeline::Resolve(
+            TEXT("core:text.untranslated.item"),
+            {},
+            TEXT("inventory"),
+            FallbackResolvedText,
+            FallbackResolveError));
+    TestEqual(TEXT("Fallback resolved text matches source_message"), FallbackResolvedText.Text.ToString(), TEXT("Fallback source string"));
+
+    FGV2TextViewModel MissingResolvedText;
+    FString MissingResolveError;
+    TestFalse(
+        TEXT("Text pipeline rejects completely unknown text_id without fault or crash"),
+        UGV2TextPipeline::Resolve(
+            TEXT("core:text.unknown.nonexistent"),
+            {},
+            TEXT("inventory"),
+            MissingResolvedText,
+            MissingResolveError));
+    TestTrue(TEXT("Error message identifies unknown text_id"), MissingResolveError.Contains(TEXT("Unknown text_id")));
+
     TestNull(
         TEXT("Plain text base exposes no raw FText apply entry point"),
         UGV2TextWidgetBase::StaticClass()->FindFunctionByName(TEXT("ApplyTextContent")));
@@ -1016,6 +1042,10 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
         1);
     AddExpectedError(
         TEXT("StartSession rejected: required Image Resource Catalog is not ready"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedError(
+        TEXT("GV2 Lua runtime fault: code=ImageCatalogNotReady"),
         EAutomationExpectedErrorFlags::Contains,
         1);
 

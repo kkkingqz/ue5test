@@ -1,0 +1,160 @@
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "Misc/AutomationTest.h"
+
+#include "Application/GV2FilesystemContentSourceProvider.h"
+#include "GV2RuntimeCore/GV2RuntimeSession.h"
+#include "GV2TestSupport/CommandValidatorFixture.h"
+#include "GV2TestSupport/LuaSpecRunner.h"
+
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
+#include <filesystem>
+
+// TAS-04: one UE automation test represents the whole Lua spec runner, not
+// one test per spec. Adding a spec under Tests/Lua/world/ is covered by
+// this single test without any new C++ — the same generic runner headless
+// calls from `--self-test` (Headless/Source/main.cpp). TAS-13: scoped to
+// Tests/Lua/world specifically, since it is the only subtree that needs
+// nothing more than the real production session — see
+// GV2.Runtime.Lua.CommandValidatorSpecRunnerHost below for the isolated
+// fixture session Tests/Lua/commands/ needs.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LuaSpecRunnerHostTest,
+    "GV2.Runtime.Lua.SpecRunnerHost",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
+{
+    // 1. Build the real GameData/core repository.
+    const FString CoreRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
+    const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectory(CoreRoot);
+    if (!TestTrue(TEXT("UE host builds GameData/core repository"), RepoBuild.IsSuccess()))
+    {
+        return false;
+    }
+    const GV2ContentCore::FRepositoryReadHandle RepoHandle = RepoBuild.GetCandidate().GetReadHandle();
+
+    // 2. Load the real Scripts/ module tree.
+    std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
+    FString ScriptsDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
+    FPaths::NormalizeDirectoryName(ScriptsDir);
+    const FString ScriptsPrefix = ScriptsDir + TEXT("/");
+    TArray<FString> SourceFiles;
+    IFileManager::Get().FindFilesRecursive(SourceFiles, *ScriptsDir, TEXT("*.lua"), true, false, false);
+    SourceFiles.Sort();
+    for (const FString& FullPath : SourceFiles)
+    {
+        FString Text;
+        if (!FFileHelper::LoadFileToString(Text, *FullPath))
+        {
+            TestTrue(TEXT("Load lua script"), false);
+            return false;
+        }
+        FString Norm = FullPath;
+        FPaths::NormalizeFilename(Norm);
+        const FString Rel = Norm.RightChop(ScriptsPrefix.Len());
+        const FTCHARToUTF8 Utf8(*Text);
+        RuntimeSources.push_back({
+            "@Scripts/" + std::string(TCHAR_TO_UTF8(*Rel)),
+            std::string(Utf8.Get(), Utf8.Length())});
+    }
+
+    // 3. Start a real production session.
+    GV2RuntimeCore::FRuntimeSession Session;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const bool bStarted = Session.Start(1, RepoHandle, RuntimeSources, Fault);
+    if (!TestTrue(
+            FString::Printf(TEXT("Runtime session starts: code=%s message=%s"),
+                UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
+            bStarted))
+    {
+        return false;
+    }
+
+    // 4. Run every Tests/Lua/world and Tests/Lua/events spec against it —
+    // the same generic runner gv2-headless --self-test calls. A missing
+    // directory is not an error (TAS-02). Only subtrees needing the real
+    // production session run here (TAS-13: Tests/Lua/commands needs an
+    // isolated fixture session instead, tested by
+    // GV2.Runtime.Lua.CommandValidatorSpecRunnerHost).
+    for (const TCHAR* Subtree : { TEXT("Tests/Lua/world"), TEXT("Tests/Lua/events"), TEXT("Tests/Lua/resources"), TEXT("Tests/Lua/lifecycle") })
+    {
+        const FString SpecRootFString = FPaths::Combine(FPaths::ProjectDir(), Subtree);
+        const std::filesystem::path SpecRoot(TCHAR_TO_UTF8(*SpecRootFString));
+
+        GV2TestSupport::FLuaSpecRunResult SpecResult;
+        const bool bAllPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, Session, SpecResult);
+        if (!bAllPassed)
+        {
+            for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)
+            {
+                AddError(FString::Printf(
+                    TEXT("Lua spec failed: id=%s code=%s message=%s"),
+                    UTF8_TO_TCHAR(Failure.Identifier.c_str()),
+                    UTF8_TO_TCHAR(Failure.Code.c_str()),
+                    UTF8_TO_TCHAR(Failure.Message.c_str())));
+            }
+            Session.Stop();
+            return false;
+        }
+    }
+    Session.Stop();
+    return true;
+}
+
+// TAS-13: one UE automation test for the whole Tests/Lua/commands/ subtree,
+// running on the isolated CommandValidatorSpecs fixture session (test-scoped
+// validators registered before the registry freezes) instead of the real
+// production session, whose validator registry is already frozen and empty
+// by the time any spec runs.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CommandValidatorSpecRunnerHostTest,
+    "GV2.Runtime.Lua.CommandValidatorSpecRunnerHost",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2CommandValidatorSpecRunnerHostTest::RunTest(const FString& Parameters)
+{
+    const FString ScriptsRootFString = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
+    const FString FixtureRootFString = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tests/Fixtures/CommandValidatorSpecs"));
+    const FString SpecRootFString = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tests/Lua/commands"));
+
+    GV2RuntimeCore::FRuntimeSession Session;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const bool bStarted = GV2TestSupport::StartCommandValidatorFixtureSession(
+        std::filesystem::path(TCHAR_TO_UTF8(*ScriptsRootFString)),
+        std::filesystem::path(TCHAR_TO_UTF8(*FixtureRootFString)),
+        Session,
+        Fault);
+    if (!TestTrue(
+            FString::Printf(TEXT("Command validator fixture session starts: code=%s message=%s"),
+                UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
+            bStarted))
+    {
+        return false;
+    }
+
+    const std::filesystem::path SpecRoot(TCHAR_TO_UTF8(*SpecRootFString));
+    GV2TestSupport::FLuaSpecRunResult SpecResult;
+    const bool bAllPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, Session, SpecResult);
+    Session.Stop();
+
+    if (!bAllPassed)
+    {
+        for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)
+        {
+            AddError(FString::Printf(
+                TEXT("Lua spec failed: id=%s code=%s message=%s"),
+                UTF8_TO_TCHAR(Failure.Identifier.c_str()),
+                UTF8_TO_TCHAR(Failure.Code.c_str()),
+                UTF8_TO_TCHAR(Failure.Message.c_str())));
+        }
+        return false;
+    }
+
+    return true;
+}
+
+#endif // WITH_DEV_AUTOMATION_TESTS

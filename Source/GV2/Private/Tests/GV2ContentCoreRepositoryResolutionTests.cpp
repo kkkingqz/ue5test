@@ -120,8 +120,30 @@ bool FGV2ContentCoreRepositoryResolutionM4Test::RunTest(const FString& Parameter
         Valid.GetCandidate().GetStage() == ECandidateStage::RepositoryResolved
         && Valid.GetCandidate().IsPublishable());
     const FValue* Definitions = Valid.GetCandidate().GetRootValue().FindField("definitions");
-    TestTrue(TEXT("winner set has eleven definitions"),
-        Definitions != nullptr && Definitions->AsArray().size() == 11);
+    // TAS-10: membership and uniqueness (every winner id appears exactly
+    // once — an override replaces, never duplicates) are the real
+    // invariants, not a pinned total count; the frozen corpus (TAS-06) may
+    // still gain a definition when the subject of the change is content-
+    // resolution rules themselves.
+    TestTrue(TEXT("winner set is non-empty"),
+        Definitions != nullptr && !Definitions->AsArray().empty());
+    if (Definitions != nullptr)
+    {
+        std::set<std::string> SeenWinnerIds;
+        bool bNoDuplicateWinnerIds = true;
+        for (const FValue& Definition : Definitions->AsArray())
+        {
+            if (!SeenWinnerIds.insert(Definition.FindField("id")->AsString()).second)
+            {
+                bNoDuplicateWinnerIds = false;
+            }
+        }
+        TestTrue(TEXT("every winner id is unique"), bNoDuplicateWinnerIds);
+        TestTrue(TEXT("winner set contains the test_mod-added screen"),
+            SeenWinnerIds.count("test_mod:screen.codex_lab") == 1);
+        TestTrue(TEXT("winner set contains an untouched core survivor"),
+            SeenWinnerIds.count("core:location.city.market") == 1);
+    }
     for (std::size_t Index = 1; Definitions != nullptr && Index < Definitions->AsArray().size(); ++Index)
     {
         TestTrue(TEXT("winner definitions use canonical ID order"),
@@ -174,11 +196,27 @@ bool FGV2ContentCoreRepositoryResolutionM4Test::RunTest(const FString& Parameter
         && Location->FindField("data")->FindField("screen_ids")->AsArray()[0].AsString()
             == "test_mod:screen.codex_lab");
     const std::vector<FDefinitionId> Screens = Handle.List("screen");
-    TestTrue(TEXT("ByKind contains active definitions only in canonical order"),
-        Screens.size() == 3
-        && Screens[0].ToString() == "core:screen.inventory"
-        && Screens[1].ToString() == "core:screen.main"
-        && Screens[2].ToString() == "test_mod:screen.codex_lab");
+    // TAS-10: membership and sort order are the real invariants, not a
+    // pinned count — the frozen corpus may still gain a screen.
+    TestTrue(TEXT("ByKind list is sorted in canonical ID order"),
+        std::is_sorted(Screens.begin(), Screens.end(),
+            [](const FDefinitionId& A, const FDefinitionId& B) { return A.ToString() < B.ToString(); }));
+    {
+        bool bHasInventory = false;
+        bool bHasMain = false;
+        bool bHasCodexLab = false;
+        bool bHasTombstoned = false;
+        for (const FDefinitionId& Screen : Screens)
+        {
+            if (Screen.ToString() == "core:screen.inventory") bHasInventory = true;
+            if (Screen.ToString() == "core:screen.main") bHasMain = true;
+            if (Screen.ToString() == "test_mod:screen.codex_lab") bHasCodexLab = true;
+            if (Screen.ToString() == "test_mod:screen.retired") bHasTombstoned = true;
+        }
+        TestTrue(TEXT("ByKind contains the overridden, untouched and added screens"),
+            bHasInventory && bHasMain && bHasCodexLab);
+        TestFalse(TEXT("ByKind excludes the tombstoned screen"), bHasTombstoned);
+    }
     const FRepositoryQueryResult Tombstoned = Handle.Require(
         FDefinitionId::Require("test_mod:screen.retired"));
     TestTrue(TEXT("Require returns a structured tombstone error"),
@@ -279,9 +317,20 @@ bool FGV2ContentCoreRepositoryResolutionM4Test::RunTest(const FString& Parameter
         NumericSpelling.IsSuccess()
         && NumericSpelling.GetCandidate().GetReadHandle().GetContentHash() == Handle.GetContentHash());
 
-    TestEqual(TEXT("representative snapshot pins canonical SHA-256 output"),
-        Handle.GetContentHash(),
-        std::string("7e74328e50a01e9dc44982a86c37a63eaae751b40e288eecb6c364d4124121a1"));
+    // TAS-09: single source of truth, shared with
+    // Headless/Source/main.cpp's RunSharedJson5FixtureConformance().
+    FString ExpectedMergedHashFString;
+    const FString ExpectedMergedHashPath = FPaths::Combine(
+        FPaths::ProjectDir(), TEXT("Tests/Fixtures/expected_merged_content_hash.txt"));
+    if (TestTrue(
+            TEXT("UE host can read expected_merged_content_hash.txt"),
+            FFileHelper::LoadFileToString(ExpectedMergedHashFString, *ExpectedMergedHashPath)))
+    {
+        ExpectedMergedHashFString.TrimStartAndEndInline();
+        TestEqual(TEXT("representative snapshot pins canonical SHA-256 output"),
+            Handle.GetContentHash(),
+            std::string(TCHAR_TO_UTF8(*ExpectedMergedHashFString)));
+    }
 
     FResolutionFixtureProvider ChangedActiveProvider = ValidProvider;
     ChangedActiveProvider.InlineSources["core/definitions/items.json5"] = R"json5(

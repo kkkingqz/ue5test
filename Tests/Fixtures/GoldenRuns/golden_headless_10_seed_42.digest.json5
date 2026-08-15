@@ -1,0 +1,11 @@
+{
+  "digest_hash": "b68cb09ad2f8ead254275ee92b2efc08fa9e58d16832f7bb11a4c88f665077a2",
+  "lua_release_num": 50408,
+  "repository_content_hash": "0e68f1736f301f313ee30764c2685701ddd357d1453e3696388e6528fa15c581",
+  "seed": 42,
+  "executed_commands_count": 11,
+  "success": true,
+  "final_screen_id": "",
+  "state_hash": "841425c22f67356a8990265a5b77e06ce7bd357e01713ee26ee40a642acaaa36",
+  "fault_code": ""
+}

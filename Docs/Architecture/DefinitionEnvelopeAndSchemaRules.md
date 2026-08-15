@@ -1,13 +1,14 @@
 ---
 title: Definition Envelope and Schema Rules
 status: normative
-version: 2.2
-updated: 2026-08-13
+version: 2.3
+updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
 decisions:
   - ../ADR/0009-explicit-schema-defaults.md
   - ../ADR/0018-portable-content-core-module.md
+  - ../ADR/0022-external-translation-catalog.md
 ---
 
 # Definition Envelope and Schema Rules
@@ -27,6 +28,7 @@ Candidate repository публикуется только целиком посл
 - Integer хранится как signed int64. Decimal point/exponent создаёт finite double; NaN, infinity и overflow запрещены.
 - Parser создаёт transient value tree и source map с JSON Pointer, value span и optional key span. Они существуют только во время candidate build и не входят в immutable repository snapshot/hash.
 - Duplicate object key является fatal: diagnostic указывает повторный key основным span и первое объявление related span.
+- Пределы парсинга и валидации согласованы с Lua runtime (`FGV2LuaMarshaller`): максимальная глубина вложенности `MaxNestingDepth = 64`, максимальное число элементов в контейнере и узлов в `data` `MaxContainerEntries = 10000`. Превышение лимитов отсекается typed diagnostics на стадии build/parse (`core:diagnostic.json5.limit.nesting_depth`, `core:diagnostic.schema.limit.node_count`), гарантируя беспрепятственное пересечение Lua boundary всеми опубликованными definitions.
 
 ## Definition file envelope
 
@@ -355,17 +357,25 @@ root: {
 
 ### Minimal core schema set
 
-M3 фиксирует только пять definition kinds, необходимых vertical slice:
+M3/M4 фиксируют следующие definition kinds:
 
 | Kind | Минимальные поля `data` |
 |---|---|
 | `location` | required `title_text_id`; required non-empty unique `screen_ids` refs kind `screen` |
 | `screen` | required `title_text_id` |
 | `item` | required `label_text_id`, non-negative `price`, required `icon_resource_id` class `texture_2d` |
-| `text` | required non-empty `message` |
+| `text` | required non-empty `source_message` (`min_length: 1`) |
 | `resource` | required `resource_class` enum `texture_2d`; required `required` bool |
+| `actor` | required `archetype` (`min_length: 1`) |
 
-Canonical schema resources и representative definitions находятся в `Tests/Fixtures/PortableContentCore/valid/core`. `GV2ContentCore::Testing::MakeRepresentativeCorePackageDescriptor()` является общей UE/headless привязкой этих десяти fixture sources. Representative package содержит одну location, два screens, один item, четыре texts и один resource. `actor`, `quest`, trigger/effect DSL и per-kind native managers в M3 отсутствуют.
+- **Семантика `source_message` в схеме `text`** ([ADR-0022](../ADR/0022-external-translation-catalog.md)):
+  - Поле `source_message` — обязательная непустая строка (`min_length: 1`) на языке авторинга.
+  - Служит контекстом для переводчиков при извлечении в PO-каталоги (`<package-root>/localization/<locale>.po`) и fallback-строкой при отсутствии перевода в целевой локали (а также в headless-хосте, где переводы не загружаются).
+  - `source_message` **не является** «переводом на язык по умолчанию» и не заменяет PO-каталог локализации.
+  - Gameplay-логика и Lua-скрипты никогда не читают и не сравнивают `source_message` как условие: игровой код оперирует исключительно Stable ID (`text_id`), а текст форматируется и локализуется строго на presentation-границе.
+  - Пустая строка `""` или отсутствие поля отклоняются валидацией схемы с ошибкой (`core:diagnostic.schema.value.constraint_failed` или `core:diagnostic.schema.value.missing_required_field`).
+
+Canonical schema resources и representative definitions находятся в `Tests/Fixtures/PortableContentCore/valid/core`. `GV2ContentCore::Testing::MakeRepresentativeCorePackageDescriptor()` является общей UE/headless привязкой этих fixture sources. Representative package содержит locations, screens, items, texts, resources и actors. `quest`, trigger/effect DSL и per-kind native managers отсутствуют.
 
 ## Conformance
 

@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: normative
-version: 1.7
-updated: 2026-08-13
+version: 2.2
+updated: 2026-08-15
 ---
 
 # Architecture Decision Records
@@ -30,6 +30,12 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0016](0016-png-suffix-image-metadata.md) | accepted | Image mode в `.png` / `.tile.png` / `.9.png`, без sidecar |
 | [0017](0017-centralized-ui-presentation-paths.md) | accepted | Единые paths для text, images, collections, Screen Fields и Semantic Input |
 | [0018](0018-portable-content-core-module.md) | accepted | Нижний portable Content module и единый `BuildRepository()` path |
+| [0019](0019-content-host-support-module.md) | accepted | `GV2ContentHostSupport` — filesystem package discovery отдельно от filesystem-free `GV2ContentCore` |
+| [0020](0020-cpp-scope-criterion.md) | accepted | Критерий принадлежности кода C++ и минимальное представление на boundary |
+| [0021](0021-opaque-save-container.md) | accepted | State не пересекает boundary; save — непрозрачные байты через slot storage |
+| [0022](0022-external-translation-catalog.md) | accepted | Репозиторий владеет identity текста; переводы — внешние PO-каталоги, резолвит host |
+| [0023](0023-stable-id-publication-freeze.md) | accepted | Жизненный цикл Stable ID: авторский rename до релиза и безусловный freeze после публикации |
+| [0024](0024-lua-spec-runner.md) | accepted | Lua-правила проверяются Lua-спеками из `Tests/Lua/` через один generic runner |
 
 ## Template
 

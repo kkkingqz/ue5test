@@ -1,0 +1,26 @@
+{
+  id: "core:schema.definition.actor.v1",
+  definition_type: "actor",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      discriminator: {
+        kind: "enum",
+        required: true,
+        values: ["player", "npc"],
+      },
+      name_text_id: {
+        kind: "text_id",
+        required: false,
+      },
+      base_hp: {
+        kind: "int64",
+        required: false,
+        min: 1,
+      },
+    },
+  },
+  semantic_validators: [],
+  extensions: {},
+}

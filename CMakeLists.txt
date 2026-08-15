@@ -8,8 +8,9 @@ set(GV2_PCC_FIXTURE_ROOT
     CACHE INTERNAL "Canonical shared PortableContentCore fixture root"
 )
 
-add_subdirectory(Headless)
+add_subdirectory(Source)
 add_subdirectory(Tools/Content)
+add_subdirectory(Headless)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -19,5 +20,11 @@ if(BUILD_TESTING)
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_pcc_fixtures.py"
             "${GV2_PCC_FIXTURE_ROOT}"
+    )
+    add_test(
+        NAME host_conformance_parity_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_host_conformance_parity.py"
     )
 endif()

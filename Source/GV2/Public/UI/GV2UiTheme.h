@@ -40,6 +40,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography|Localization")
     TMap<FString, FText> TextCatalog;
 
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography|Localization")
+    TMap<FString, FText> FallbackTextCatalog;
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography")
     TSubclassOf<UCommonTextStyle> TextStyle;
 

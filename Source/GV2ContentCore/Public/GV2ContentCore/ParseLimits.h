@@ -17,11 +17,11 @@ namespace GV2ContentCore
      */
     struct GV2_CONTENT_CORE_API FParseLimits final
     {
-        static constexpr std::size_t MaxSupportedNestingDepth = 1024;
+        static constexpr std::size_t MaxSupportedNestingDepth = 64;
         std::size_t MaxFileSizeBytes = 16 * 1024 * 1024;     // Default 16 MB limit
-        std::size_t MaxNestingDepth = 256;                   // Default 256 levels
+        std::size_t MaxNestingDepth = 64;                    // Default 64 levels (canonical limit matching FGV2LuaMarshaller::MaxDepth)
         std::size_t MaxStringLengthBytes = 1 * 1024 * 1024;  // Default 1 MB per string
-        std::size_t MaxContainerEntries = 100000;            // Default 100,000 entries per container
+        std::size_t MaxContainerEntries = 10000;             // Default 10,000 entries per container (canonical limit matching FGV2LuaMarshaller::MaxNodes)
 
         bool operator==(const FParseLimits&) const = default;
     };

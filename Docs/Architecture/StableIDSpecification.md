@@ -1,10 +1,11 @@
 ---
 title: Stable ID Specification
 status: normative
-version: 1.3
-updated: 2026-08-13
+version: 1.4
+updated: 2026-08-15
 decisions:
   - ../ADR/0002-stable-id-format.md
+  - ../ADR/0023-stable-id-publication-freeze.md
 ---
 
 # Stable ID Specification
@@ -102,9 +103,18 @@ Required reference должна разрешиться до repository publicati
 4. File order не влияет на winner.
 5. Provenance хранит winning и shadowed providers.
 
-## Redirects
+## Lifecycle and publication freeze
 
-Redirect — explicit mapping `old_id -> new_id` для rename с сохранением логической непрерывности.
+Жизненный цикл Stable ID разделён на две фазы ([ADR-0023](../ADR/0023-stable-id-publication-freeze.md)):
+
+1. **Pre-publication (Authoring / Draft)**: до публичного релиза идентификаторы не заморожены. Автор может свободно переименовывать определения на месте с помощью `gv2-content rename`, который атомарно обновляет определение и все ссылки на него в пределах пакета без создания редиректов.
+2. **Publication Freeze**: наступает в момент публичного релиза пакета контента (поставка игрокам, публикация мода, фиксация эталонного манифеста). С этого момента Stable ID считается **опубликованным (Published)**.
+
+## Redirects and tombstones
+
+После публикации (Post-publication) действует безусловный инвариант: **опубликованный Stable ID никогда не переиспользуется для сущности с другим смыслом**. Любое переименование опубликованного ID обязано объявлять явный `redirect`, а удаление — `tombstone`. Повторное использование retired/tombstoned ID под новым активным определением запрещено (`PublishedIdReuse` / `active_definition_conflict`).
+
+Redirect — explicit mapping `old_id -> new_id` для rename с сохранением логической непрерывности:
 
 - Source и target имеют одинаковый kind.
 - Redirect source не может одновременно быть active definition.
@@ -115,8 +125,6 @@ Redirect — explicit mapping `old_id -> new_id` для rename с сохране
 - Resolved package descriptor получает redirects/tombstones из manifest layer. Redirect source и tombstone не являются active definitions.
 - Repository lookup flatten-ит chain для `Find`, но provenance хранит original ID и полный ordered chain.
 - Tombstone не имеет target и возвращает typed tombstoned result при required lookup.
-
-Published ID нельзя переиспользовать для другого смысла. После удаления применяется tombstone либо redirect. Reuse — contract error, а не warning.
 
 ## Local child IDs
 

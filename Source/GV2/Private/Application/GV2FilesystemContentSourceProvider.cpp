@@ -2,7 +2,7 @@
 
 #include "GV2ContentCore/Diagnostic.h"
 #include "GV2ContentCore/PackageDescriptor.h"
-#include "GV2ContentCore/PackageDiscovery.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -54,7 +54,7 @@ GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectory(const FString& Pack
     const std::filesystem::path PackageRootPath(ToUtf8(Normalized));
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
     std::optional<GV2ContentCore::FPackageDescriptor> Descriptor =
-        GV2ContentCore::DiscoverPackageFromDirectory(PackageRootPath, Diagnostics);
+        GV2ContentHostSupport::DiscoverPackageFromDirectory(PackageRootPath, Diagnostics);
     if (!Descriptor)
     {
         return GV2ContentCore::FBuildResult::Failure(std::move(Diagnostics));

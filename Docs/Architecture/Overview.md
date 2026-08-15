@@ -1,11 +1,14 @@
 ---
 title: Architecture Overview
 status: normative
-version: 1.3
-updated: 2026-08-12
+version: 1.5
+updated: 2026-08-14
 depends_on:
   - ../README.md
   - ../ADR/README.md
+decisions:
+  - ../ADR/0020-cpp-scope-criterion.md
+  - ../ADR/0021-opaque-save-container.md
 ---
 
 # Architecture Overview
@@ -18,13 +21,21 @@ Authoritative gameplay runtime является portable и запускаетс
 
 Всё, что необходимо для однозначного продолжения игры после загрузки, хранится в canonical Lua state либо выводится из него и закреплённого snapshot `GameDataRepository`. Widgets, Actors, streaming handles и animation state не являются источником gameplay-истины.
 
+## Границы C++
+
+Код принадлежит C++ только если он требует возможности, недоступной Lua по trust model (файловая система, процесс, потоки, native libraries, UObject/UMG/Slate, платформенные API), либо обязан работать до создания Lua VM или без неё. Всё остальное принадлежит Lua.
+
+Данные пересекают C++/Lua boundary минимальным возможным представлением: скаляр вместо структуры, идентификатор вместо объекта, непрозрачные байты вместо разобранного дерева. Canonical gameplay-state boundary не пересекает.
+
+Критерий применяется к новым решениям и проверяется в review; ретроспективная ревизия существующего кода им не требуется.
+
 ## Слои
 
 | Слой | Владеет | Не владеет |
 |---|---|---|
 | External Content | Definitions, schemas, Lua modules, localization, manifests, resource mappings | Runtime state, UObject instances |
 | Lua Gameplay Runtime | Canonical state, commands, gameplay services, post-commit events, desired UI | UObject, UWorld, platform I/O |
-| C++ Runtime Boundary | Bootstrap, DTO conversion, repository build, save codec/storage, typed UE adapters | Gameplay rules и параллельная domain model |
+| C++ Runtime Boundary | Bootstrap, DTO conversion, repository build, slot-scoped byte storage, typed UE adapters | Gameplay rules, параллельная domain model и формат сейва |
 | UE Presentation | UMG, Blueprint, input capture, rendering, audio, animation, streaming, Actor projection | Canonical gameplay decisions |
 
 ## Категории состояния
@@ -89,15 +100,8 @@ Core и включённые Lua-моды являются trusted gameplay code
 
 ## Vertical slice acceptance
 
-Архитектура считается подтверждённой, когда один сценарий проходит end-to-end:
+Архитектура считается подтверждённой, когда один сценарий проходит end-to-end: core package и тестовый mod определяют location, screens, item, localized text и resources; Lua строит initial presentation; UI отправляет command, validator проверяет его, handler меняет state, EventBus публикует facts; save/load восстанавливает state, PRNG и instance IDs; тот же recorded command sequence воспроизводится standalone runner-ом без Unreal Engine с тем же результатом и без доменных C++ классов Item/Quest/Location.
 
-1. Core package определяет location, два screens, item, localized text и presentation resources.
-2. Lua строит initial UI/presentation snapshot.
-3. UI отправляет travel command; validator проверяет доступность и resource prepare.
-4. Handler меняет location; EventBus публикует `leave`/`enter` facts в стабильном порядке.
-5. Тестовый mod добавляет item и полностью overrides один screen.
-6. Save/load восстанавливает state, PRNG, instance IDs и presentation без сериализации functions/handles.
-7. Сценарий работает на Windows и Linux без доменных C++ классов Item/Quest/Location.
-8. Recorded command sequence воспроизводится standalone runner-ом без Unreal Engine с тем же gameplay result.
+Текущая степень готовности этого сценария: [Implementation Status](../ImplementationStatus.md).
 
 Конкретные имена C++ классов являются рекомендацией реализации, а не частью архитектурной совместимости. Нормативны ownership, dependency direction, DTO boundary и observable behavior.

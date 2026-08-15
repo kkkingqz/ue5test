@@ -117,6 +117,10 @@ bool UGV2TextPipeline::Resolve(
     OutError.Reset();
     const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
     const FText* Template = Theme != nullptr ? Theme->TextCatalog.Find(TextId) : nullptr;
+    if (Template == nullptr && Theme != nullptr)
+    {
+        Template = Theme->FallbackTextCatalog.Find(TextId);
+    }
     if (Template == nullptr)
     {
         OutError = FString::Printf(TEXT("Unknown text_id: %s"), *TextId);

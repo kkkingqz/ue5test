@@ -1,0 +1,29 @@
+{
+  schema_version: 1,
+  type: "actor",
+  definitions: [
+    {
+      id: "core:actor.character.hero",
+      data: {
+        discriminator: "player",
+        name_text_id: "core:text.character.hero.name",
+        base_hp: 100,
+      },
+      tags: ["character", "player"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:actor.npc.merchant",
+      data: {
+        discriminator: "npc",
+        name_text_id: "core:text.npc.merchant.name",
+        base_hp: 50,
+      },
+      tags: ["npc", "merchant"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

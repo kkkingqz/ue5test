@@ -74,6 +74,10 @@ bool FGV2PortableContentCoreSharedFixtures::RunTest(const FString& Parameters)
         {
             ParserFixture.ExpectedDiagnosticCode = "core:diagnostic.json5.duplicate_key";
         }
+        else if (RelativePath.StartsWith(TEXT("invalid/nesting_depth_exceeded/")))
+        {
+            ParserFixture.ExpectedDiagnosticCode = "core:diagnostic.json5.limit.nesting_depth";
+        }
         ParserFixtures.push_back(std::move(ParserFixture));
 
         bHasCore |= RelativePath.StartsWith(TEXT("valid/core/"));

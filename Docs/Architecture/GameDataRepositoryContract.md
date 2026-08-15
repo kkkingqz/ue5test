@@ -1,8 +1,8 @@
 ---
 title: GameDataRepository Contract
 status: normative
-version: 2.5
-updated: 2026-08-14
+version: 2.7
+updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -11,6 +11,7 @@ decisions:
   - ../ADR/0008-minimal-repository-indexes.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0018-portable-content-core-module.md
+  - ../ADR/0022-external-translation-catalog.md
 ---
 
 # GameDataRepository Contract
@@ -92,7 +93,7 @@ Package-local duplicate ID использует `core:diagnostic.definition.entr
 
 ## Redirects and tombstones
 
-- Redirect/tombstone объявляется resolved package descriptor-ом из manifest layer; отдельный definition kind не вводится.
+- Redirect/tombstone объявляется resolved package descriptor-ом из manifest layer; отдельный definition kind не вводится. Файловая форма manifest layer — необязательный `package.json5` в корне пакета; её конвенция описана в [Build and Tooling](BuildAndTooling.md).
 - Redirect source и tombstone ID принадлежат namespace declaring package. Target redirect может принадлежать другому namespace, но обязан иметь тот же kind.
 - Один retired ID объявляется ровно один раз: redirect/redirect и redirect/tombstone conflicts fatal.
 - Chain хранит original source, intermediate IDs и final active ID. Cycle, missing/tombstoned final target и active source conflict блокируют snapshot.
@@ -102,7 +103,7 @@ Package-local duplicate ID использует `core:diagnostic.definition.entr
 ## Typed references and semantic validation
 
 - `ref` разрешается по exact Stable ID и проверяет schema-declared `target_kind`; правило одинаково для основной schema и materialized `definition_entry` extension schema.
-- `text_id` разрешается как reference kind `text`.
+- `text_id` разрешается как reference kind `text` (по [ADR-0022](../ADR/0022-external-translation-catalog.md) репозиторий владеет идентичностью текста, а не переводами; definition kind `text` хранит обязательную непустую исходную строку `source_message`).
 - `resource_ref` разрешается как kind `resource` и дополнительно проверяет `resource_class` winner definition.
 - Optional absent field не создаёт reference и не диагностируется.
 - Ошибки используют `core:diagnostic.reference.target_missing`, `core:diagnostic.reference.target_kind_mismatch` и `core:diagnostic.reference.resource_class_mismatch`.
@@ -139,7 +140,16 @@ local ids = game.repository.list("item")
 local exists = game.repository.exists("core:item.weapon.iron_sword")
 ```
 
-Query result — detached deep Lua copy. Изменение copy разрешено, но не влияет на snapshot. Repeated `get` не гарантирует table identity. Generic `query(index_id, key)` появляется только вместе с конкретным зарегистрированным index contract.
+- `get(id)` никогда не выбрасывает Lua error; при успехе возвращает `(definition_table, nil)`, при отсутствии/ошибке — `(nil, err_table)` со стабильным полем `code` (`not_found`, `tombstoned`, `invalid_id`, `invalid_handle`, `marshal_error`), `requested_id` и `canonical_id` (при наличии).
+- `require(id)` возвращает `definition_table` либо выбрасывает Lua error, где стабильный `code` является первым токеном сообщения (`not_found: ...`, `tombstoned: ...`, `invalid_id: ...`, `invalid_handle: ...`).
+- `list(kind)` возвращает массив идентификаторов в каноническом лексикографическом порядке (strict lowercase ASCII order); redirects не перечисляются; при неизвестном или невалидном `kind` возвращается `{}`.
+- `exists(id)` возвращает boolean `true`/`false`.
+
+Query result — detached deep Lua copy. Изменение copy разрешено, но не влияет на snapshot. Repeated `get` не гарантирует table identity. Таблица `game.repository` закрыта от модификации и расширения (`__newindex`, `__metatable = false`). Generic `query(index_id, key)` появляется только вместе с конкретным зарегистрированным index contract.
+
+### Отсутствие provenance в Lua surface
+
+Lua runtime изолирован от authoring metadata: `game.repository` предоставляет ровно 4 функции (`get`, `require`, `list`, `exists`). Возвращаемые значения не содержат сведений о пакетах, путях к исходным файлам, строках или истории затенения (`shadowed_providers`). Инспекция и аудит provenance осуществляются исключительно через CLI-утилиту `gv2-content inspect <definition_id>` и C++ API `FRepositoryReadHandle::GetProvenance()`.
 
 ## Threading and publication
 
@@ -169,4 +179,6 @@ Required categories: input, parsing, envelope/schema, identity, provider resolut
 
 M4 shared UE/headless suite покрывает package/entry/file order invariance, repeated build, duplicate-in-package, full/broken override, redirect ownership/kind/conflict/chain/cycle, active tombstone/source conflicts, typed references в `data` и extension blocks, core/host validator conflicts, provenance fields, minimal indexes, pinned canonical hash, hash sensitivity и pinned handle lifetime.
 
-M5 CLI/headless/UE integration suite покрывает cross-host normalized snapshot/hash parity для одного corpus (`gv2-content validate|hash|inspect`, `gv2-headless`, `GV2.Runtime.ContentCore.CrossHostParity`), application publication same-hash skip и failed/non-publishable candidate rejection без изменения current (`GV2.Runtime.ContentCore.RepositoryPublisherAtomicPublication`) и pinned handle persistence активной session через unrelated republish и controlled restart (`GV2.Runtime.ContentCore.SessionRepositoryPinningAcrossRestart`). Repository build и publish выполняются synchronously на Game Thread; parallel worker equivalence, Lua detached-copy/order API и async candidate build с cancellable operation token остаются future work.
+M5 CLI/headless/UE integration suite покрывает cross-host normalized snapshot/hash parity для одного corpus (`gv2-content validate|hash|inspect`, `gv2-headless`, `GV2.Runtime.ContentCore.CrossHostParity`), application publication same-hash skip и failed/non-publishable candidate rejection без изменения current (`GV2.Runtime.ContentCore.RepositoryPublisherAtomicPublication`) и pinned handle persistence активной session через unrelated republish и controlled restart (`GV2.Runtime.ContentCore.SessionRepositoryPinningAcrossRestart`). Repository build и publish выполняются synchronously на Game Thread; parallel worker equivalence и async candidate build с cancellable operation token остаются future work.
+
+M6 Lua repository access suite покрывает `game.repository` (`get`/`require`/`list`/`exists`) поверх pinned snapshot: detached deep copy и отсутствие table identity между повторными query, canonical `list` order, error codes `not_found`/`tombstoned`/`invalid_id`/`invalid_handle`, отсутствие provenance/package/source полей в возвращаемых значениях и один marshaller для обоих portable value-типов (`GV2.Runtime.Lua.MarshallerConformance`, `GV2.Runtime.Lua.RepositoryAccess`, `GV2.Runtime.Lua.RepositoryConformanceCrossHost`, `GV2.Runtime.Session.PinnedHandleLifetime`, self-test в `gv2-headless`).

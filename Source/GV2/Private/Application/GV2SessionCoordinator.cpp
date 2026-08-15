@@ -159,7 +159,13 @@ bool FGV2SessionCoordinator::StartSession(
 
     BindingRegistry.EndSession();
     IngressQueue.Reset();
-    RuntimeSession.Stop();
+    
+    GV2RuntimeCore::FRuntimeFault StopFault;
+    if (!RuntimeSession.Stop(&StopFault))
+    {
+        FailRuntime(StopFault);
+        return false;
+    }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     Status.RepositoryVersion = 0;
 
@@ -183,7 +189,7 @@ bool FGV2SessionCoordinator::StartSession(
     GV2RuntimeCore::FRuntimeFault Fault;
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
     if (!LoadPortableRuntimeSources(RuntimeSources, Fault)
-        || !RuntimeSession.Start(Status.SessionGeneration, RuntimeSources, Fault))
+        || !RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, RuntimeSources, Fault))
     {
         FailRuntime(Fault);
         return false;
@@ -195,6 +201,15 @@ bool FGV2SessionCoordinator::StartSession(
     return true;
 }
 
+void FGV2SessionCoordinator::FailBootstrap(const FString& Code, const FString& Message)
+{
+    check(IsInGameThread());
+    GV2RuntimeCore::FRuntimeFault Fault{
+        TCHAR_TO_UTF8(*Code),
+        TCHAR_TO_UTF8(*Message)};
+    FailRuntime(Fault);
+}
+
 void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
 {
     check(IsInGameThread());
@@ -202,7 +217,17 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
     Status.bIsReady = false;
     BindingRegistry.EndSession();
     IngressQueue.Reset();
-    RuntimeSession.Stop();
+
+    GV2RuntimeCore::FRuntimeFault StopFault;
+    if (!RuntimeSession.Stop(&StopFault))
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime Stop failed in EndSession: code=%s message=%s"),
+            UTF8_TO_TCHAR(StopFault.Code.c_str()),
+            UTF8_TO_TCHAR(StopFault.Message.c_str()));
+    }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
     Status.SessionState = FinalState;
@@ -456,7 +481,16 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
     Status.SessionState = EGV2SessionState::Failed;
     BindingRegistry.EndSession();
     IngressQueue.Reset();
-    RuntimeSession.Stop();
+    GV2RuntimeCore::FRuntimeFault StopFault;
+    if (!RuntimeSession.Stop(&StopFault))
+    {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime Stop failed in FailRuntime: code=%s message=%s"),
+            UTF8_TO_TCHAR(StopFault.Code.c_str()),
+            UTF8_TO_TCHAR(StopFault.Message.c_str()));
+    }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;

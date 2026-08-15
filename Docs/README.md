@@ -1,7 +1,7 @@
 ---
 title: GV2 Documentation Index
 status: normative
-version: 1.6
+version: 2.1
 updated: 2026-08-14
 language: ru
 ---
@@ -15,7 +15,8 @@ language: ru
 1. `Docs/ADR/*.md` с `status: accepted` фиксируют принятые архитектурные решения.
 2. Контракт конкретной подсистемы уточняет `Architecture/Overview.md`.
 3. `Architecture/Overview.md` задаёт общие границы и инварианты.
-4. Экспортированные, архивные и внешние копии не являются нормативными и не должны храниться в `Docs` рядом с canonical Markdown.
+4. Экспортированные и внешние копии не являются нормативными и не должны храниться в `Docs` рядом с canonical Markdown.
+5. Документ со `status: archived` является историческим record: он не нормативен, не источник задач и живёт только в каталоге `Archive/`. При расхождении с contract прав contract.
 
 При конфликте применяется более конкретный документ. Если accepted ADR был заменён, он обязан содержать `status: superseded` и ссылку на замену.
 
@@ -32,19 +33,7 @@ language: ru
 
 Для первого знакомства сотрудника с проектом: [Project Brief](ProjectBrief.md).
 
-## Зафиксированные решения v1
-
-- Stable ID: `<namespace>:<kind>.<path>`, только canonical lowercase ASCII.
-- Lua — единственный владелец canonical gameplay-state.
-- Gameplay меняется через `Command Dispatcher`; EventBus публикует только post-commit факты.
-- C++/Lua boundary передаёт только DTO, Stable ID и opaque operation handles; C++ не хранит Lua callbacks.
-- Одна Lua VM на session, owner-thread only, без synchronous re-entry; UE использует Game Thread.
-- GameDataRepository публикует только целый immutable snapshot; session закрепляет snapshot до restart.
-- Content reload применяется через controlled session restart.
-- UI — полная декларативная desired model; presentation effects не участвуют в восстановлении.
-- Concrete screens являются UE-authored Blueprint Screen Templates; Lua передаёт `screen_id` и полный набор Screen Fields, а generic C++ не знает concrete screens.
-- Full override by ID; deep merge и универсальный patch language отсутствуют.
-- Опубликованный Stable ID не переиспользуется для другого смысла.
+Устойчивые инварианты v1 перечислены один раз — в [Architecture/Overview.md](Architecture/Overview.md). Что из contracts уже реализовано в коде — в [Implementation Status](ImplementationStatus.md).
 
 ## Карта документов
 
@@ -57,7 +46,8 @@ language: ru
 | [System Context and Components](Architecture/SystemContextAndComponents.md) | Модули, зависимости, ownership и lifetime |
 | [Bootstrap and Session Lifecycle](Architecture/BootstrapAndSessionLifecycle.md) | Cold start, menu/game session, load, restart, teardown |
 | [Lua Runtime Contract](Architecture/LuaRuntimeContract.md) | VM, modules, values, state, determinism и ingress |
-| [Headless Simulation Contract](Architecture/HeadlessSimulationContract.md) | Portable runtime, simulation driver, deterministic batches и metrics |
+| [Headless Simulation Contract](Architecture/HeadlessSimulationContract.md) | Роли UE-free host-а: parity gate, deterministic replay, run manifest/digest |
+| [Build and Tooling](Architecture/BuildAndTooling.md) | CMake/UBT targets, executable hosts, package root, exit codes, fixtures и CI gate |
 | [Stable ID Specification](Architecture/StableIDSpecification.md) | Grammar, namespace ownership, redirects и instance IDs |
 | [Definition Envelope and Schema Rules](Architecture/DefinitionEnvelopeAndSchemaRules.md) | JSON5 envelope, schemas, defaults, extensions и validation |
 | [GameDataRepository Contract](Architecture/GameDataRepositoryContract.md) | Build pipeline, overrides, snapshot API и reload |
@@ -83,7 +73,7 @@ language: ru
 
 ### Plans
 
-Исполняемые планы с отмечаемыми задачами: [Plans/README.md](Plans/README.md).
+Исполняемые планы и архив выполненных: [Plans/README.md](Plans/README.md).
 
 ### ADR
 
@@ -95,25 +85,8 @@ language: ru
 - Затем обновить все затронутые контракты и примеры в том же изменении.
 - Публичный пример считается тестовым fixture: он обязан соответствовать Stable ID grammar и терминологии.
 - Новая абстракция добавляется только для конкретного сценария vertical slice или измеренной проблемы.
+- Изменение объёма реализованного отражается в [Implementation Status](ImplementationStatus.md).
 
-## Linux CI
+## Сборка и CI
 
-`.github/workflows/linux-ci.yml` является обязательным integration gate и выполняет три независимых jobs:
-
-- portable CMake build, CTest и явные `gv2-headless --self-test`/`gv2-content` smoke commands на hosted Ubuntu runner;
-- `Tools/Documentation/validate_docs.py`, проверяющий UTF-8, required front matter, relative Markdown links и anchors, targets `depends_on`/`decisions` и отсутствие cycles в dependency graph;
-- build `GV2Editor` и полный Unreal automation filter `GV2.Runtime` на self-hosted Linux x64 runner.
-
-Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}`; repository variable `UE_ROOT` может переопределить default `/opt/unreal-engine`. Fork pull request не запускается на self-hosted runner. Нулевой exit code Unreal process недостаточен: job также обязан найти marker `TEST COMPLETE. EXIT CODE: 0` и отклонить любой `Result={Fail}` в explicit automation log.
-
-Локальные эквиваленты:
-
-```bash
-cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
-cmake --build cmake-build-ci --parallel 2
-ctest --test-dir cmake-build-ci --output-on-failure
-./cmake-build-ci/Headless/gv2-headless --self-test
-./cmake-build-ci/Tools/Content/gv2-content validate Tests/Fixtures/PortableContentCore/valid/core
-./cmake-build-ci/Tools/Content/gv2-content hash Tests/Fixtures/PortableContentCore/valid/core
-python3 Tools/Documentation/validate_docs.py
-```
+Targets, host-ы, exit codes, fixtures и обязательный integration gate описаны в [Build and Tooling](Architecture/BuildAndTooling.md).

@@ -1,7 +1,7 @@
 ---
 title: System Context and Components
 status: normative
-version: 2.3
+version: 2.5
 updated: 2026-08-14
 depends_on:
   - Overview.md
@@ -13,6 +13,7 @@ decisions:
   - ../ADR/0016-png-suffix-image-metadata.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0018-portable-content-core-module.md
+  - ../ADR/0019-content-host-support-module.md
 ---
 
 # System Context and Components
@@ -43,9 +44,11 @@ decisions:
 
 `Application` — composition root. `Content` — нижний module. `LuaRuntime` и `Presentation` не зависят друг от друга напрямую. Tooling никогда не становится runtime dependency.
 
-`GV2ContentCore` является нижней portable library для Content value model, Stable ID, package descriptors, repository build result и validators. `GV2RuntimeCore` является portable library под `LuaRuntime`/portable DTO и зависит от `GV2ContentCore`, но не от UE Presentation. `GV2` Unreal module и `gv2-headless` являются sibling gameplay host adapters; `gv2-content` — дополнительный portable CLI (`validate`/`inspect`/`hash`), использующий тот же `BuildRepository()` reference path без Lua/UE dependency и без запуска gameplay session.
+`GV2ContentCore` является нижней portable library для Content value model, Stable ID, package descriptors, repository build result и validators; её public API и shared sources никогда не выполняют filesystem I/O (ADR-0018). `GV2RuntimeCore` является portable library под `LuaRuntime`/portable DTO и зависит от `GV2ContentCore`, но не от UE Presentation. `GV2` Unreal module и `gv2-headless` являются sibling gameplay host adapters; `gv2-content` — дополнительный portable CLI (`validate`/`inspect`/`hash`), использующий тот же `BuildRepository()` reference path без Lua/UE dependency и без запуска gameplay session.
 
-UE host строит repository из единственного захардкоженного package root `GameData/core` (staged в packaged build через `RuntimeDependencies` в `GV2.Build.cs`, аналогично `Scripts/` и `Resources/`). Package/mod discovery, enabled-mod resolution и multi-package root не реализованы — соответствует PortableContentCore первому релизу (`Docs/Plans/PortableContentCore/README.md` "Границы первого релиза"). `Tests/Fixtures/PortableContentCore` — отдельный, никогда не стейджащийся corpus только для CLI/headless/UE automation tests; UE production host его не использует.
+`GV2ContentHostSupport` (ADR-0019) — отдельная portable library, единственный владелец filesystem-based package discovery (`DiscoverPackageFromDirectory`: сканирует `definitions/*.json5` + self-describing `schemas/*.json5`). Она зависит от `GV2ContentCore` (типы `FPackageDescriptor`/`FDiagnostic`); обратная зависимость запрещена. `gv2-content`, `gv2-headless` и `GV2` (через `FGV2FilesystemContentSourceProvider`) — единственные consumers; ни один из них не дублирует discovery-логику самостоятельно.
+
+UE host строит repository из единственного package root `GameData/core`. Package/mod discovery, enabled-mod resolution и multi-package root не реализованы. Layout package root, staging и разделение production-контента и test corpus описаны в [Build and Tooling](BuildAndTooling.md).
 
 Canonical Stable ID parser `GV2ContentCore::FStableId` принадлежит нижней portable library и используется Content, LuaRuntime и обоими host-ами. UE может иметь только encoding adapter `FStringView → UTF-8`; отдельная UE grammar запрещена.
 
@@ -55,7 +58,7 @@ Canonical Stable ID parser `GV2ContentCore::FStableId` принадлежит н
 
 `GV2` не владеет canonical gameplay-state и не добавляет gameplay rules. Новые C++ классы должны сохранять logical ownership из таблицы выше: UE-facing adapters, UMG и DTO относятся к `Presentation` или `Bridge`, а gameplay mutation проходит через Lua `Command Dispatcher`.
 
-Physical mapping использует Unreal modules `GV2`, `GV2RuntimeCore` и `GV2ContentCore`. Shared `GV2ContentCore` implementation/public sources запрещено включать Unreal headers или вызывать Lua/filesystem API. Тонкая generated Unreal module-bootstrap translation unit может иметь private dependency на UE `Core`; эта dependency не пересекает portable API и отсутствует у CMake static library. При добавлении native CommonUI bases `CommonUI` становится явной dependency `GV2`; Lua и optional serialization libraries остаются private implementation dependencies соответствующих host/runtime modules.
+Physical mapping использует Unreal modules `GV2`, `GV2RuntimeCore`, `GV2ContentCore` и `GV2ContentHostSupport`. Shared `GV2ContentCore` implementation/public sources запрещено включать Unreal headers или вызывать Lua/filesystem API; filesystem-based package discovery принадлежит исключительно `GV2ContentHostSupport` (ADR-0019), который зависит от `GV2ContentCore`, но не наоборот. Тонкая generated Unreal module-bootstrap translation unit может иметь private dependency на UE `Core`; эта dependency не пересекает portable API и отсутствует у CMake static library. При добавлении native CommonUI bases `CommonUI` становится явной dependency `GV2`; Lua и optional serialization libraries остаются private implementation dependencies соответствующих host/runtime modules.
 
 ### C++ implementation profile
 
@@ -75,7 +78,10 @@ Source/GV2RuntimeCore/
   Private/           Lua VM owner, marshaller, fixed native bindings, vendored Lua
 Source/GV2ContentCore/
   Public/            Stable ID, value/diagnostic/package/schema-registry/scalar-validation/build-result API
-  Private/           portable validators и reference repository build path
+  Private/           portable validators и reference repository build path; no filesystem I/O (ADR-0018)
+Source/GV2ContentHostSupport/
+  Public/            DiscoverPackageFromDirectory() и другие filesystem-based discovery helpers (ADR-0019)
+  Private/           std::filesystem-based implementation; depends on GV2ContentCore, not vice versa
 Headless/
   Source/            standalone simulation host и metadata-only adapters
 Tools/Content/
@@ -150,7 +156,7 @@ Public C++ headers не выставляют Lua types, JSON strings, Slate impl
 - DTO marshalling.
 - UI/world/resource/audio adapters.
 - Fixed Screen Field Adapter Registry; duplicate/unknown schema не допускает partial Screen candidate.
-- Save adapter.
+- Slot-scoped byte storage adapter; содержимое сейва не интерпретируется.
 - Platform capability adapter.
 - Operation registry с opaque handles; без Lua function references.
 
@@ -192,7 +198,9 @@ Public C++ headers не выставляют Lua types, JSON strings, Slate impl
 
 ### Save
 
-`Lua explicit save tree → C++ DTO validation → codec/checksum → atomic platform write → TechnicalInput result`
+`Lua serializes state to bytes → slot storage primitive → atomic platform write → TechnicalInput result`
+
+Host не разбирает bytes: формат, integrity check и migrations принадлежат Lua (ADR-0021).
 
 ## Failure containment
 

@@ -12,6 +12,14 @@
         ],
       },
     },
+    {
+      id: "core:location.city.tavern",
+      data: {
+        title_text_id: "core:text.location.tavern.title",
+        screen_ids: [
+          "core:screen.main",
+        ],
+      },
+    },
   ],
 }
-

@@ -1,4 +1,6 @@
-local M = {}
+local M = {
+    id = "core:module.runtime.stable_id",
+}
 
 local function is_segment(value)
     return type(value) == "string"

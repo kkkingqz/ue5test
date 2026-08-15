@@ -1,61 +1,14 @@
-set(GV2_RUNTIME_CORE_DIR "${PROJECT_SOURCE_DIR}/Source/GV2RuntimeCore")
-set(GV2_LUA_DIR "${GV2_RUNTIME_CORE_DIR}/Private/ThirdParty/Lua54")
-
-file(GLOB GV2_LUA_SOURCES CONFIGURE_DEPENDS "${GV2_LUA_DIR}/*.c")
-
-add_library(gv2_runtime_core STATIC
-    "${GV2_RUNTIME_CORE_DIR}/Private/GV2RuntimeSession.cpp"
-    ${GV2_LUA_SOURCES}
-)
-
-target_compile_features(gv2_runtime_core PUBLIC cxx_std_20)
-target_include_directories(gv2_runtime_core
-    PUBLIC "${GV2_RUNTIME_CORE_DIR}/Public"
-    PRIVATE "${GV2_LUA_DIR}"
-)
-
-if(WIN32)
-    target_compile_definitions(gv2_runtime_core PRIVATE LUA_USE_WINDOWS=1)
-elseif(UNIX)
-    target_compile_definitions(gv2_runtime_core PRIVATE LUA_USE_LINUX=1)
-    target_link_libraries(gv2_runtime_core PRIVATE m dl)
-endif()
-
-set(GV2_CONTENT_CORE_DIR "${PROJECT_SOURCE_DIR}/Source/GV2ContentCore")
-
-add_library(gv2_content_core STATIC
-    "${GV2_CONTENT_CORE_DIR}/Private/BuildResult.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/CanonicalHash.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/DefinitionEnvelope.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/Diagnostic.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/ExtensionSchema.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/FieldValidation.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/GV2ContentCore.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/Json5Lexer.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/Json5Conformance.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/Json5Parser.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/PackageDescriptor.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/PackageDiscovery.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/ParseLimits.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/RepositoryBuilder.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/RepositorySnapshot.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/RepresentativeCore.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/SchemaRegistry.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/SemanticValidation.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/ScalarValidation.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/StableId.cpp"
-    "${GV2_CONTENT_CORE_DIR}/Private/Value.cpp"
-)
-target_compile_features(gv2_content_core PUBLIC cxx_std_20)
-target_include_directories(gv2_content_core
-    PUBLIC "${GV2_CONTENT_CORE_DIR}/Public"
-)
-
-target_link_libraries(gv2_runtime_core PUBLIC gv2_content_core)
-
 add_executable(gv2-headless Source/main.cpp)
 target_compile_features(gv2-headless PRIVATE cxx_std_20)
-target_link_libraries(gv2-headless PRIVATE gv2_runtime_core gv2_content_core)
+target_link_libraries(gv2-headless PRIVATE gv2_runtime_core gv2_content_core gv2_content_host_support gv2_test_support)
+
+# TAS-09: single source of truth. Read out of the golden digest fixture
+# itself rather than duplicating the value as a literal here.
+file(READ
+    "${PROJECT_SOURCE_DIR}/Tests/Fixtures/GoldenRuns/golden_headless_10_seed_42.digest.json5"
+    GV2_GOLDEN_DIGEST_JSON
+)
+string(JSON GV2_GOLDEN_DIGEST_HASH GET "${GV2_GOLDEN_DIGEST_JSON}" digest_hash)
 
 add_test(NAME gv2_headless_self_test COMMAND gv2-headless --self-test)
 set_tests_properties(gv2_headless_self_test PROPERTIES
@@ -67,7 +20,13 @@ set_tests_properties(gv2_headless_self_test PROPERTIES
 add_test(NAME gv2_headless_rejects_missing_content_root
     COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/does_not_exist
 )
+add_test(NAME gv2_headless_rejects_missing_content_root_exit_code
+    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/does_not_exist
+)
 add_test(NAME gv2_headless_rejects_invalid_content_root
+    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/invalid/duplicate_key/core
+)
+add_test(NAME gv2_headless_rejects_invalid_content_root_exit_code
     COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/invalid/duplicate_key/core
 )
 set_tests_properties(
@@ -82,3 +41,49 @@ set_tests_properties(
         WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "core:diagnostic.json5.duplicate_key"
 )
+set_tests_properties(
+    gv2_headless_rejects_missing_content_root_exit_code
+    gv2_headless_rejects_invalid_content_root_exit_code
+    PROPERTIES
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        WILL_FAIL TRUE
+)
+
+add_test(NAME gv2_headless_outputs_manifest_and_digest
+    COMMAND gv2-headless --commands=10 --seed=42
+)
+set_tests_properties(gv2_headless_outputs_manifest_and_digest
+    PROPERTIES
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "\"digest_hash\":\"[0-9a-f]+\""
+)
+
+# TAS-08: the golden run is pinned against the frozen test corpus
+# (Tests/Fixtures/PortableContentCore/valid/core), not the live GameData/core
+# — adding gameplay content never perturbs this digest.
+add_test(NAME gv2_headless_golden_replay_matches_digest
+    COMMAND gv2-headless
+        --manifest=${PROJECT_SOURCE_DIR}/Tests/Fixtures/GoldenRuns/golden_headless_10_seed_42.manifest.json5
+        --content-root=${GV2_PCC_FIXTURE_ROOT}/valid/core
+)
+set_tests_properties(gv2_headless_golden_replay_matches_digest
+    PROPERTIES
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "\"digest_hash\":\"${GV2_GOLDEN_DIGEST_HASH}\""
+)
+
+add_test(NAME gv2_headless_check_scripts
+    COMMAND gv2-headless --check-scripts
+)
+set_tests_properties(gv2_headless_check_scripts
+    PROPERTIES
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "\"status\":\"ok\".*\"modules_checked\":[1-9][0-9]*"
+)
+
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_test(NAME gv2_headless_script_feedback_python
+        COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/Tools/Content/test_script_feedback.py" "$<TARGET_FILE:gv2-headless>"
+    )
+endif()

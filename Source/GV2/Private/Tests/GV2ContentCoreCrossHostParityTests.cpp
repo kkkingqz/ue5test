@@ -10,11 +10,15 @@
 // the exact same normalized content hash regardless of which host built it.
 // This constant is independently reproduced by:
 //   - `gv2-content validate|hash Tests/Fixtures/PortableContentCore/valid/core`
-//   - `gv2-headless` (printed as "repository_content_hash")
+// TAS-06/07: this fixture corpus is frozen and independent of GameData/core
+// (Tests/Fixtures/PortableContentCore/README.md); its pinned hash lives as
+// a sibling of the corpus (PCC-01 forbids "expected*" files inside it).
+// `gv2-headless` does not reproduce this constant: it runs against the live
+// GameData/core repository, which pins no content hash of its own.
 // All three hosts route through GV2ContentCore::BuildRepository() with a
 // discovery convention (self-describing schema resources under
 // definitions/*.json5 + schemas/*.json5) that is identical across the CLI
-// (Content/Source/main.cpp), headless (Headless/Source/main.cpp) and this UE
+// (Tools/Content/Source/main.cpp), headless (Headless/Source/main.cpp) and this UE
 // adapter (Source/GV2/Private/Application/GV2FilesystemContentSourceProvider.cpp).
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2ContentCoreCrossHostParityTest,

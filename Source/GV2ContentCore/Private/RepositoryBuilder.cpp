@@ -1,6 +1,6 @@
 #include "GV2ContentCore/RepositoryBuilder.h"
 
-#include "CanonicalHash.h"
+#include "GV2ContentCore/CanonicalHash.h"
 #include "GV2ContentCore/DefinitionEnvelope.h"
 #include "GV2ContentCore/ExtensionSchema.h"
 #include "GV2ContentCore/Json5Parser.h"
@@ -89,6 +89,26 @@ std::string EscapeJsonPointerToken(const std::string_view Token)
         else Escaped.push_back(Character);
     }
     return Escaped;
+}
+
+std::size_t CountValueNodes(const FValue& Value)
+{
+    std::size_t Count = 1;
+    if (Value.IsArray())
+    {
+        for (const auto& Item : Value.AsArray())
+        {
+            Count += CountValueNodes(Item);
+        }
+    }
+    else if (Value.IsObject())
+    {
+        for (const auto& [Key, Item] : Value.AsObject())
+        {
+            Count += CountValueNodes(Item);
+        }
+    }
+    return Count;
 }
 
 void ResolveReferences(
@@ -640,6 +660,32 @@ FBuildResult BuildRepository(
                     Diagnostics);
                 if (bDataValid && bExtensionsValid)
                 {
+                    const std::size_t DataNodeCount = CountValueNodes(MaterializedData);
+                    if (DataNodeCount > Options.ParseLimits.MaxContainerEntries)
+                    {
+                        FDiagnostic Diagnostic;
+                        Diagnostic.Code = "core:diagnostic.schema.limit.node_count";
+                        Diagnostic.Message = "Definition data node count (" + std::to_string(DataNodeCount)
+                            + ") exceeds maximum allowed limit (" + std::to_string(Options.ParseLimits.MaxContainerEntries) + ")";
+                        Diagnostic.PackageId = Package->GetPackageId();
+                        Diagnostic.PackageLoadIndex = Package->GetLoadIndex();
+                        Diagnostic.RelativeSource = DefinitionFile.GetRelativeSource();
+                        Diagnostic.DefinitionId = Definition.GetId();
+                        Diagnostic.SchemaId = Schema->GetSchemaId();
+                        Diagnostic.SchemaVersion = DefinitionFile.GetSchemaVersion();
+                        Diagnostic.JsonPointer = "/definitions/" + std::to_string(Definition.GetSourceIndex()) + "/data";
+                        if (const FParsedLocation* Location = Document->FindLocation(*Diagnostic.JsonPointer))
+                        {
+                            Diagnostic.Span = Location->ValueSpan;
+                        }
+                        else
+                        {
+                            Diagnostic.Span = Definition.GetSourceSpan();
+                        }
+                        Diagnostics.push_back(std::move(Diagnostic));
+                        continue;
+                    }
+
                     FValue::FArray Tags;
                     Tags.reserve(Definition.GetTags().size());
                     for (const std::string& Tag : Definition.GetTags()) Tags.emplace_back(Tag);
@@ -923,6 +969,10 @@ FBuildResult BuildRepository(
         const std::string& Kind = ResolvedDefinitions[Index].FindField("type")->AsString();
         ById.emplace(Id, Index);
         ByKind[Kind].push_back(Id);
+    }
+    for (auto& [Kind, Ids] : ByKind)
+    {
+        std::sort(Ids.begin(), Ids.end());
     }
 
     FValue RootValue = FValue::MakeObject({

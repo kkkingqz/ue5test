@@ -1,8 +1,8 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 2.1
-updated: 2026-08-12
+version: 2.9
+updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -25,9 +25,12 @@ Runtime source закреплён в repository как Lua 5.4.8. Build обяз
 - Каждый C++ → Lua call protected и восстанавливает stack top.
 - Synchronous re-entry запрещён.
 - C++/Lua boundary принимает только schema-defined DTO, Stable IDs и opaque operation IDs.
+- Данные пересекают boundary минимальным возможным представлением (ADR-0020): скаляр вместо структуры, ID вместо объекта, непрозрачные байты вместо разобранного дерева.
+- Canonical gameplay-state boundary не пересекает ни при save, ни при диагностике, ни при измерении. Host получает от Lua только непрозрачные bytes и скаляры.
 - UObject, pointers, functions, threads, userdata и metatables не пересекают boundary.
 - Lua source/module graph change требует full session restart.
 - Portable runtime sources не включают UObject, `FText`, UE containers или Presentation implementation.
+- Active session удерживает pinned immutable repository snapshot (`FRepositoryReadHandle`); невалидный handle отклоняется до создания Lua VM (`RepositoryNotReady`); teardown (`Stop()`) освобождает handle; последующий publish в Application layer не меняет snapshot активной сессии.
 
 ## Standard libraries
 
@@ -109,7 +112,47 @@ game = {
 }
 ```
 
-`game.repository` — единственное имя repository API; alias `game.data` отсутствует.
+Список полей фасада закрыт. Registry конкретного вида runtime instances не добавляет новое поле верхнего уровня, а живёт под `game.instances` (например, `game.instances.actors`); иначе каждая следующая категория сущностей расширяет фасад. Registry отвечает за identity, lookup, creation, removal, deterministic enumeration и выдачу runtime-объекта, но не за gameplay rules.
+
+`game.repository` — единственное имя repository API; alias `game.data` отсутствует. Таблица защищена от подмены и расширения (`__newindex`, `__metatable = false`).
+
+API предоставляет ровно четыре функции — `get`, `require`, `list`, `exists`. `get` никогда не выбрасывает Lua error и возвращает вторым значением typed table с полем `code`; `require` выбрасывает Lua error, первым токеном которого является тот же стабильный code.
+
+Возвращаемые таблицы являются detached deep copy и содержат только валидированные payload-поля (`id`, `data`, `tags`, `deprecated`, `extensions`). Provenance, package identity, load index, shadowed providers и пути к исходным файлам через boundary не проходят: gameplay-правила не должны зависеть от раскладки файлов и порядка загрузки пакетов, а аудит источников принадлежит authoring-слою. Полные семантика вызовов, коды ошибок и обоснование изоляции provenance — в [GameDataRepository Contract](GameDataRepositoryContract.md).
+
+### `game.commands.validators` (GEW-01)
+
+`game.commands` — зарезервированное поле фасада для command dispatcher service; `validators` — первое реально заполненное подполе. Регистрация выполняется на фазе `register` (`registry.register(id, validator_impl, options)`, `options.priority` — опциональный целочисленный приоритет, по умолчанию `0`) и закрывается вместе с остальными registries тем же host-side freeze шагом, что и `game.services`. Id обязан быть canonical Stable ID kind `validator`; поздняя регистрация после freeze — ошибка.
+
+Итоговый порядок исполнения (`registry.ordered()`): priority по возрастанию, затем package load order, затем registration order — [Commands and Events](CommandsAndEvents.md) "Command validators". Один global `register`-проход над уже разрешённым module `LoadOrder` (core-модули, затем mods) делает package load order и registration order одной composite-последовательностью: отдельного numeric package-index не вводится, пока не появится второе измерение (реальные mods).
+
+Запуск (GEW-02): `core:module.runtime.command_dispatcher` вызывает `registry.ordered()` целиком до открытия mutation window (до шага 4 Lifecycle, `Invoke one handler`). Каждый validator получает read-only `{ state, repository, payload, command_id }` (`state`/`repository` — те же живые ссылки, что видит handler, без отдельного copy) и возвращает:
+
+- `true` — allow, handler выполняется как обычно;
+- `false, { code = "core:error....", params = {} }` — typed refusal: handler пропускается, `{ ok = false, error = refusal }` становится command result, dispatch завершается успешно (не fault);
+- ничего не возвращает, а вместо этого бросает Lua error (в том числе попытка `state.x = ...`, которую `mutation_window` отклоняет, поскольку окно ещё не открыто) — ошибка пробрасывается через `pcall` наружу dispatch-а и становится `LuaDispatchError`: host получает `DispatchCommand(...) == false` + `Fault`, что явно отличимо от typed refusal (`DispatchCommand(...) == true`, `ok=false` в command result).
+
+Первый отказавший validator прекращает цепочку (остальные не вызываются). Отдельного enforcement-кода на запрет мутации/событий/операций нет: mutation window уже закрыт для любого кода вне handler-а, а попытка вызвать `game.events.enqueue` вне контекста команды отклоняется `EventEnqueueOutsideCommandContext`.
+
+GEW-03 фиксирует итоговый refusal envelope: `{ code = "core:error....", params = {} }`, `code` — обязательно canonical Stable ID kind `error`. Validator может вернуть `false` без второго значения (даёт `core:error.command.validation_refused`), `false, { code = "..." }` (params по умолчанию `{}`) или `false, { code = "...", params = {...} }`. Refusal с невалидным/отсутствующим `code` или нетабличным `params` — баг validator-а: `normalize_refusal` бросает `InvalidValidatorRefusal`, что становится тем же `LuaDispatchError`, каким становится любая другая ошибка внутри `validate()`.
+
+### `game.events` (GEW-06, GEW-07, GEW-08, GEW-09, GEW-10, GEW-11)
+
+`game.events` — сервис публикации неотменяемых gameplay-фактов (`core:module.runtime.event_bus`).
+- `enqueue(spec)` / `emit(spec)` — постановка события в очередь текущего контекста команды (`ExecutingCommand`) или очереди pump (`PumpingEvents`). Принимает spec или готовый конверт (`core:module.runtime.event_envelope`). Значения валидируются на переносимость и глубоко копируются в read-only структуру. Вызов вне активной команды или pump отклоняется ошибкой `EventEnqueueOutsideCommandContext`.
+- `subscribers.register(id, event_id, handler, options)` (и alias `subscribe`) — регистрация подписчика на фазе `register` (`core:module.runtime.subscriber_registry`, GEW-10). Валидирует `id` (kind `subscriber`), `event_id` (kind `event`), `handler` (функция или таблица с `handle_event`/`on_event`) и `options.priority`. Замораживается вместе с остальными реестрами (`freeze()`). Декларативные фильтры отсутствуют: условия проверяются императивно внутри обработчика.
+- Обработчики событий исполняются при закрытом mutation window (GEW-11): попытка прямой записи в `game.state` отклоняется `MutationWindowClosed`. Разрешено чтение `state`/`repository`, постановка событий (`game.events.enqueue`) и отложенных команд (`game.commands.enqueue`).
+- Доставка фактов происходит strictly post-commit (`commit_command_context`) по принципу FIFO и breadth-first для вложенных событий. При отказе команды (`ok == false` или отказ валидатора) все накопленные события сбрасываются (`rollback_command_context`) и не доставляются. При runtime fault события отбрасываются (`discard_command_context`).
+- `set_pump_limit(limit)`, `get_pump_limit()`, `reset_pump_limit()` — управление лимитом итераций цикла pump (`DEFAULT_PUMP_LIMIT = 1000`). Превышение лимита переводит `game.runtime.phase` в `"failed"` и выбрасывает `EventPumpLimitExceeded`.
+- `get_published_events()` и `clear_published_events()` — методы инспекции и очистки доставленных событий для тестов и спек.
+
+### `game.commands.enqueue` (GEW-12)
+
+`game.commands.enqueue(request)` — постановка команды в очередь отложенного исполнения.
+- Доступна во время `ExecutingCommand` и `PumpingEvents`.
+- Валидирует `request.command_id` (Stable ID kind `command`) и параметры.
+- Очередь имеет фиксированную ёмкость (`MAX_COMMAND_QUEUE_SIZE = 100`). Превышение ёмкости отклоняется `CommandQueueFull` без расхода sequence.
+- Отложенные команды исполняются последовательно после завершения текущего event pump, каждая в собственном изолированном `mutation_window` с полной цепочкой валидаторов, handler-а и доставки порождённых фактов. Синхронный вызов команд внутри обработчиков запрещён (`CommandDispatchReentrant`, `CommandDispatchDuringEventPump`).
 
 ## Value model
 
@@ -126,16 +169,17 @@ game = {
 
 Schema различает array/map. Empty container без schema boundary не пересекает. Cycles/shared identity не сохраняются. Conversion — deep copy.
 
-Repository query возвращает обычную mutable detached Lua copy. Её изменение не влияет на repository и следующий query; frozen proxy/identity guarantees отсутствуют.
+Возвращённая Lua copy остаётся обычной mutable таблицей: frozen proxy и identity guarantees отсутствуют, повторный query не гарантирует ту же таблицу.
 
 ### C++ marshalling
 
-`FGV2LuaMarshaller` конвертирует schema-defined values в private recursive C++ value model: null, bool, signed int64, finite double, UTF-8 string, array и string-key object. Каждое пересечение boundary создаёт detached deep copy.
+`FGV2LuaMarshaller` предоставляет единый C++ путь marshalling для обоих value-типов (`GV2RuntimeCore::FValue` и `GV2ContentCore::FValue`) в/из Lua: null (`game.null`), bool, signed int64, finite double, UTF-8 string, array и string-key object. Каждое пересечение boundary создаёт detached deep copy. Параллельный marshalling path отсутствует.
 
 Marshaller обязан:
 
-- отличать absent field от explicit null;
-- отклонять sparse/mixed tables, cycles, excessive depth/size и non-finite numbers;
+- отличать absent field (`nil`) от explicit null (`game.null`);
+- сохранять канонический порядок ключей объектов при конвертации;
+- отклонять sparse/mixed tables, cycles, excessive depth/size (`MaxDepth = 64`, `MaxNodes = 10000` -> `PortableValueLimitExceeded`), пустые имена полей (`PortableValueFieldInvalid`) и non-finite numbers (`PortableValueNonFinite`);
 - не сохранять Lua stack indices, registry references или userdata внутри DTO;
 - не использовать JSON string serialization как runtime call protocol;
 - преобразовывать Blueprint-facing structs в boundary values только через declared schema adapters.
@@ -144,21 +188,48 @@ Marshaller обязан:
 
 ## Canonical state
 
-`game.state` — обычная mutable Lua table с JSON-representable values и `game.null`. Runtime не строит per-path proxies или ownership guards.
+`game.state` — обычная mutable Lua table, содержащая шесть канонических секций: `meta`, `actors`, `item_instances`, `world`, `quests`, `mods`. Список канонических секций объявлен ровно один раз — в модуле `core:module.runtime.state_validator` (`Scripts/runtime/state_validator.lua`), который является единственным владельцем правил валидации дерева состояния (`validate_state_tree`), структуры секции `meta` и конструирования начального дерева (`create_empty_canonical_state`). Host (C++) не дублирует список секций или правила валидации и обращается к модулю `state_validator`.
 
-Нормативно state меняется только внутри active Command Handler через зарегистрированные Gameplay Services. Прямое изменение технически возможно trusted Lua-коду, но является contract violation и покрывается review/tests.
+Допустимые значения: `string`, `bool`, `int64`, finite `double`, dense arrays, string-key maps и `game.null`. Каноническое дерево оборачивается прокси-защитой `mutation_window.guard_state`.
 
-State не содержит functions, metatables, userdata, UObject, operation handles, queues, subscriptions или definition copies.
+Нормативно state меняется только внутри active Command Handler через доменные методы сущностей или зарегистрированные Gameplay Services. Любая попытка мутации `game.state` вне активного окна исполнения команды отклоняется ошибкой `MutationWindowClosed: cannot mutate canonical state outside of active command handler`.
+
+State не содержит functions, metatables, userdata, UObject, operation handles, non-finite numbers (NaN/inf), sparse arrays, cycles, shared references, queues, subscriptions или definition copies. Валидация выполняется целиком в Lua VM перед переходом в `Ready` через `state_validator.validate_state_tree`.
+
+State не покидает VM в разобранном виде. Сериализация, integrity check и версии секций принадлежат Lua; host предоставляет только slot-scoped byte storage ([Canonical State and Save](CanonicalStateAndSave.md)). Для наблюдаемости состояния в тестах и run digest Lua регистрирует fixed outbound entrypoint `game.runtime.get_canonical_state_hash`, а host получает один скаляр через узкий accessor `FRuntimeSession::GetCanonicalStateHash()`. Отсутствие `game.state` возвращает пустую строку `""` без генерации ошибки; само дерево состояния boundary никогда не пересекает (ADR-0020, ADR-0021).
 
 Uncaught error после начала mutation не запускает универсальный rollback. Session переходит в `Failed`; поэтому validation выполняется до первой mutation.
 
 ## Runtime instances
 
-- Persistent state хранит `instance_id`, `definition_id`, `type_id` и explicit instance state.
-- Runtime wrappers/methods/metatables перестраиваются после load.
-- `game.instances.resolve(instance_id)` возвращает typed result и transient view для текущего entry point.
-- View не сохраняется между lifecycle phases или technical completions; требуется повторный resolve.
-- Unknown/stale ID возвращает typed failure.
+- Persistent state хранит `instance_id`, `definition_id` и explicit instance state.
+- Runtime wrappers/methods/metatables перестраиваются dynamically и не сохраняются в canonical state.
+- **Actor Registry (`game.instances.actors`)**:
+  - `game.instances.actors.get(instance_id)` возвращает disposable `ActorWrapper` либо `nil`.
+  - `game.instances.actors.exists(instance_id)` возвращает boolean.
+  - `game.instances.actors.create(spec)` аллоцирует `instance_id` через `instance_allocator` и создаёт экземпляр в `state.actors`.
+  - `game.instances.actors.remove(instance_id)` удаляет актора, предварительно проверяя отсутствие зависимых ссылок (например, `owner_id` в `state.item_instances`).
+  - `game.instances.actors.ids(filter_fn)` возвращает детерминированный отсортированный список идентификаторов с возможностью фильтрации по дискриминатору/предикату.
+  - `game.instances.actors.player()` возвращает wrapper для текущего игрока (`state.meta.player_actor_id`).
+- **Disposable Actor Wrapper**:
+  - Одноразовая обёртка вокруг сырой таблицы `actor_state`, предоставляющая доступ к полям, `instance_id`, `definition_id` и динамически вычисляемому дискриминатору `discriminator` (извлекается из pinned repository definition).
+  - Предоставляет доменные методы для локальных операций над сущностью (например `get_gold()`, `add_gold(amount)`), которые валидируют инварианты и атомарно мутируют поля состояния внутри окна команды.
+  - Идентификационные поля (`instance_id`, `definition_id`, `discriminator`) защищены от перезаписи (`ActorDiscriminatorImmutable`).
+  - Сам wrapper никогда не попадает в `game.state` и не кэшируется между вызовами.
+- **World Domain Object (`game.instances.world`)** (план [GameplayEventsAndWorld](../Plans/GameplayEventsAndWorld/README.md), GEW-04):
+  - Мир — singleton runtime instance, а не registry: `game.instances.world` — функция (`core:module.runtime.world`), а не таблица с методами `get`/`create`/`remove`.
+  - `game.instances.world()` возвращает свежий disposable wrapper над `state.world` при каждом вызове; wrapper не кэшируется, повторный вызов не гарантирует ту же таблицу.
+  - `__index`/`__newindex` wrapper-а делегируют напрямую в `state.world`; отдельного mutation-window enforcement wrapper не вводит, поскольку `state.world` уже является guarded-прокси через `game.state`.
+  - Wrapper имеет metatable, поэтому существующая generic-проверка `state_validator.lua` (`getmetatable(val) ~= nil` → error) отклоняет любую попытку сохранить его внутрь canonical state; отдельного правила валидации для мира не потребовалось.
+  - **Текущая локация (`state.world.current_location_id`)** (GEW-05): опциональное поле, значение — Stable ID kind `location`. `state_validator.lua` валидирует его отдельным правилом (по аналогии с `meta.player_actor_id`): grammar (строка), kind `location` через `stable_id.is_kind` (проверяется до обращения к repository — Stable ID неверного kind отклоняется без repository lookup), и pinned-repository resolution через `game.repository.exists` (dangling-ссылка на несуществующую локацию отклоняется). Поле читается через `game.instances.world().current_location_id` — обычное чтение таблицы, mutation window не требуется.
+
+## Gameplay Services
+
+- Реестр `game.services` (`core:module.runtime.service_registry`) предоставляет доступ к чистым Lua-сервисам предметной области.
+- Сервисы регистрируются во время lifecycle-фазы `register` через `game.services.register(id, service_impl)`.
+- По завершении фазы `register` реестр замораживается (`freeze()`). Поздняя регистрация сервиса после freeze отклоняется с ошибкой `ServiceRegistryFrozen`.
+- Прямая запись в таблицу реестра запрещена (`ServiceRegistryDirectAssignmentDisallowed`).
+- Gameplay Services предназначены для выполнения многосущностных workflow (например, торговля, передача предметов между акторами, квестовые цепочки), возвращают структурированный результат `{ ok = true, value = ... }` или `{ ok = false, error = { code = "..." } }`, не вызывают filesystem/UE API и не подменяют доменные методы единичных сущностей.
 
 ## Protected execution
 

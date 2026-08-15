@@ -26,6 +26,8 @@
 
 - Stable ID имеет вид `<namespace>:<kind>.<path>` и использует strict lowercase ASCII.
 - Lua владеет canonical gameplay-state.
+- Код принадлежит C++ только если требует возможности, недоступной Lua по trust model, либо обязан работать до создания VM. Иначе он принадлежит Lua. Новый C++ module или сервис без ответа на этот вопрос — дефект проектирования.
+- Данные пересекают boundary минимальным представлением: скаляр вместо структуры, ID вместо объекта, непрозрачные байты вместо разобранного дерева. Canonical state boundary не пересекает.
 - Gameplay mutation проходит через Command Dispatcher и Gameplay Services.
 - EventBus публикует только post-commit gameplay facts.
 - C++/Lua boundary value-only; C++ не хранит Lua callbacks.
@@ -92,7 +94,7 @@ Pure refactor без изменения behavior не требует переп�
 ```yaml
 ---
 title: Human Readable Title
-status: draft | normative | deprecated
+status: draft | normative | deprecated | archived
 version: 0.1
 updated: YYYY-MM-DD
 depends_on:
@@ -103,6 +105,8 @@ decisions:
 ```
 
 Не добавлять пустые `depends_on`/`decisions`. Dependencies должны существовать и не образовывать cycles.
+
+`archived` означает исторический record: документ не нормативен и не является источником задач. Он допустим только внутри каталога `Archive/`, и наоборот — любой документ внутри `Archive/` обязан иметь `status: archived`. Оба направления проверяет `Tools/Documentation/validate_docs.py`.
 
 ADR использует:
 

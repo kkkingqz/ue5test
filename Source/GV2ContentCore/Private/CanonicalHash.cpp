@@ -1,4 +1,4 @@
-#include "CanonicalHash.h"
+#include "GV2ContentCore/CanonicalHash.h"
 
 #include <algorithm>
 #include <array>

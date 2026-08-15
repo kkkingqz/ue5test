@@ -9,6 +9,7 @@ FPackageDescriptor MakeRepresentativeCorePackageDescriptor()
         "core",
         0,
         {
+            "definitions/actors.json5",
             "definitions/items.json5",
             "definitions/locations.json5",
             "definitions/resources.json5",
@@ -16,6 +17,7 @@ FPackageDescriptor MakeRepresentativeCorePackageDescriptor()
             "definitions/texts.json5",
         },
         {
+            FSchemaBinding("actor", 1, "core:schema.definition.actor.v1", "schemas/actor_v1.schema.json5"),
             FSchemaBinding("item", 1, "core:schema.definition.item.v1", "schemas/item_v1.schema.json5"),
             FSchemaBinding("location", 1, "core:schema.definition.location.v1", "schemas/location_v1.schema.json5"),
             FSchemaBinding("resource", 1, "core:schema.definition.resource.v1", "schemas/resource_v1.schema.json5"),

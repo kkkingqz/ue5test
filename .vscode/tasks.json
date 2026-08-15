@@ -1,0 +1,101 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "GV2: Watch Content (GameData/core)",
+      "type": "shell",
+      "command": "./build/Tools/Content/gv2-content",
+      "args": [
+        "validate",
+        "${workspaceFolder}/GameData/core",
+        "--watch"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "gv2-content",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}/GameData/core"
+        ],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+):\\s+(error|warning):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^(rebuilding candidate|ok content_hash=)",
+          "endsPattern": "^(ok content_hash=|[0-9]+ diagnostics?:)"
+        }
+      },
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "GV2: Validate Content (GameData/core)",
+      "type": "shell",
+      "command": "./build/Tools/Content/gv2-content",
+      "args": [
+        "validate",
+        "${workspaceFolder}/GameData/core"
+      ],
+      "problemMatcher": {
+        "owner": "gv2-content",
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}/GameData/core"
+        ],
+        "pattern": {
+          "regexp": "^(.*?):(\\d+):(\\d+):\\s+(error|warning):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      },
+      "group": "test"
+    },
+    {
+      "label": "GV2: Update Content Snippets & Index",
+      "type": "shell",
+      "command": "python3",
+      "args": [
+        "${workspaceFolder}/Tools/Editor/generate_vscode_snippets.py",
+        "${workspaceFolder}/build/Tools/Content/gv2-content",
+        "${workspaceFolder}/GameData/core",
+        "--output",
+        "${workspaceFolder}/.vscode/gv2-content.code-snippets"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "GV2: Check Lua Scripts",
+      "type": "shell",
+      "command": "./build/Headless/gv2-headless",
+      "args": [
+        "--check-scripts"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "GV2: Run Golden Replay",
+      "type": "shell",
+      "command": "./build/Headless/gv2-headless",
+      "args": [
+        "--content-root=${workspaceFolder}/GameData/core",
+        "--replay=golden",
+        "--ticks=5"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ from urllib.parse import unquote
 
 
 FRONT_MATTER_BOUNDARY = "---"
+ARCHIVE_DIRECTORY = "Archive"
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$")
 VERSION = re.compile(r"^\d+\.\d+$")
@@ -71,6 +72,7 @@ class Validation:
         relative = path.relative_to(self.docs_root)
         is_adr = relative.parts[0] == "ADR" and path.name != "README.md"
         is_proposal = relative.parts[0] == "Proposals" and path.name != "README.md"
+        is_archived_location = ARCHIVE_DIRECTORY in relative.parts
 
         required = {"title", "status"}
         required |= {"date"} if is_adr else {"version", "updated"}
@@ -84,10 +86,18 @@ class Validation:
         allowed_status = (
             {"proposed", "accepted", "superseded", "rejected"}
             if is_adr
-            else {"draft", "normative", "deprecated"}
+            else {"draft", "normative", "deprecated", "archived"}
         )
         if status and status not in allowed_status:
             self.fail(path, f"invalid status '{status}'")
+
+        # An archived document is a historical record: it is never normative and
+        # never a source of tasks. Keep location and status in sync in both
+        # directions so an archived plan cannot silently keep an active status.
+        if is_archived_location and status != "archived":
+            self.fail(path, f"document under {ARCHIVE_DIRECTORY}/ must use status 'archived', found '{status}'")
+        if status == "archived" and not is_archived_location:
+            self.fail(path, f"status 'archived' requires the document to live under {ARCHIVE_DIRECTORY}/")
 
         version = metadata.get("version")
         if version and (not isinstance(version, str) or VERSION.fullmatch(version) is None):

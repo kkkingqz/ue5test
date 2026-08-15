@@ -2,9 +2,11 @@ local dispatcher_factory = require("core:module.runtime.command_dispatcher")
 local gameplay = require("core:module.gameplay.root")
 local debug_commands = require("core:module.debug.start")
 
-local M = {}
+local M = {
+    id = "core:module.boundary.ingress",
+}
 
-function M.install()
+function M.register(_ctx)
     local dispatcher = dispatcher_factory.new({ gameplay, debug_commands })
 
     game.runtime.dispatch_command = dispatcher.dispatch

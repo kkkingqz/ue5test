@@ -27,8 +27,14 @@ jobs:
         run: ctest --test-dir cmake-build-ci --build-config Release --output-on-failure
       - name: Explicit headless self-test
         run: ./cmake-build-ci/Headless/gv2-headless --self-test
+      - name: Explicit headless check-scripts
+        run: ./cmake-build-ci/Headless/gv2-headless --check-scripts
       - name: Explicit gv2-content smoke test
         run: |
+          ./cmake-build-ci/Tools/Content/gv2-content validate GameData/core
+          ./cmake-build-ci/Tools/Content/gv2-content hash GameData/core
+          ./cmake-build-ci/Tools/Content/gv2-content coverage GameData/core
+          ./cmake-build-ci/Tools/Content/gv2-content describe GameData/core item
           ./cmake-build-ci/Tools/Content/gv2-content validate Tests/Fixtures/PortableContentCore/valid/core
           ./cmake-build-ci/Tools/Content/gv2-content hash Tests/Fixtures/PortableContentCore/valid/core
           ./cmake-build-ci/Tools/Content/gv2-content inspect Tests/Fixtures/PortableContentCore/valid/core core:item.weapon.iron_sword --provenance

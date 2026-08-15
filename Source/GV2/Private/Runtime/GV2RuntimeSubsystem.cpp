@@ -10,6 +10,7 @@
 #include "Misc/Paths.h"
 #include "UI/GV2DebugStartScreenWidget.h"
 #include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 
@@ -142,7 +143,7 @@ void UGV2RuntimeSubsystem::StartSession()
     if (RegisteredScreenClasses.IsEmpty())
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("StartSession rejected: Screen Registry is not ready"));
-        Coordinator->StartSession(GV2ContentCore::FRepositoryReadHandle(), 0);
+        Coordinator->FailBootstrap(TEXT("ScreenRegistryNotReady"), TEXT("Screen Registry is not ready"));
         return;
     }
     if (!bImageCatalogReady)
@@ -152,7 +153,9 @@ void UGV2RuntimeSubsystem::StartSession()
             Error,
             TEXT("StartSession rejected: required Image Resource Catalog is not ready: %s"),
             *ImageCatalogBuildError);
-        Coordinator->StartSession(GV2ContentCore::FRepositoryReadHandle(), 0);
+        Coordinator->FailBootstrap(
+            TEXT("ImageCatalogNotReady"),
+            ImageCatalogBuildError.IsEmpty() ? TEXT("Image Resource Catalog is not ready") : ImageCatalogBuildError);
         return;
     }
     if (!bRepositoryReady || !RepositoryPublisher->HasCurrent())
@@ -162,7 +165,9 @@ void UGV2RuntimeSubsystem::StartSession()
             Error,
             TEXT("StartSession rejected: GameDataRepository is not ready: %s"),
             *RepositoryBuildError);
-        Coordinator->StartSession(GV2ContentCore::FRepositoryReadHandle(), 0);
+        Coordinator->FailBootstrap(
+            TEXT("RepositoryNotReady"),
+            RepositoryBuildError.IsEmpty() ? TEXT("No published GameDataRepository to pin.") : RepositoryBuildError);
         return;
     }
 
@@ -206,7 +211,7 @@ UGV2DebugStartScreenWidget* UGV2RuntimeSubsystem::ShowDebugStartScreen(
     {
         return nullptr;
     }
-    if (!Coordinator->GetStatus().bIsReady)
+    if (!Coordinator->GetStatus().bIsReady && Coordinator->GetStatus().ApplicationState != EGV2ApplicationState::Failed)
     {
         StartSession();
     }
@@ -214,19 +219,17 @@ UGV2DebugStartScreenWidget* UGV2RuntimeSubsystem::ShowDebugStartScreen(
     if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed)
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Showing UE-native recovery surface: session bootstrap failed"));
-        UGV2DebugStartScreenWidget* RecoveryScreen = CreateWidget<UGV2DebugStartScreenWidget>(
+        UGV2RecoveryScreenWidget* RecoveryScreen = CreateWidget<UGV2RecoveryScreenWidget>(
             GetGameInstance(),
-            UGV2DebugStartScreenWidget::StaticClass());
+            UGV2RecoveryScreenWidget::StaticClass());
         if (RecoveryScreen != nullptr)
         {
-            FGV2ButtonViewModel RecoveryModel;
-            RecoveryModel.Text = FGV2TextSpec::FromLiteral(TEXT("Bootstrap Failed (Recovery Surface)"));
-            RecoveryModel.Binding = FGV2UiBindingHandle::Create(TEXT("recovery:failed"));
-            if (RecoveryScreen->InitializeStartScreen(RecoveryModel))
+            if (RecoveryScreen->InitializeRecoveryScreen(
+                    TEXT("Bootstrap Failed"),
+                    TEXT("Session initialization rejected by host lifecycle")))
             {
                 bActiveScreenAddedToViewport = bAddToViewport;
                 ReplaceActiveScreen(RecoveryScreen);
-                return RecoveryScreen;
             }
         }
         return nullptr;

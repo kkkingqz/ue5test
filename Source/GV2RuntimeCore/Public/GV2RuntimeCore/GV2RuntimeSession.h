@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GV2RuntimeCore/GV2RuntimeCoreAPI.h"
+#include "GV2ContentCore/RepositorySnapshot.h"
 
 #include <cstdint>
 #include <map>
@@ -25,9 +26,12 @@ struct FValue
     explicit FValue(bool Value) : Data(Value) {}
     explicit FValue(std::int64_t Value) : Data(Value) {}
     explicit FValue(double Value) : Data(Value) {}
+    explicit FValue(const char* Value) : Data(std::string(Value != nullptr ? Value : "")) {}
     explicit FValue(std::string Value) : Data(std::move(Value)) {}
     explicit FValue(FArray Value) : Data(std::move(Value)) {}
     explicit FValue(FObject Value) : Data(std::move(Value)) {}
+
+    bool operator==(const FValue&) const = default;
 };
 
 struct FRuntimeFault
@@ -86,6 +90,13 @@ struct FRuntimeSource
     std::string Text;
 };
 
+struct FLuaSpecCaseResult
+{
+    std::string CaseId;
+    bool Success = false;
+    std::string ErrorMessage;
+};
+
 class GV2_PORTABLE_API FRuntimeSession
 {
 public:
@@ -97,9 +108,36 @@ public:
 
     bool Start(
         std::int32_t InSessionGeneration,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
         const std::vector<FRuntimeSource>& Sources,
         FRuntimeFault& OutFault);
     bool Stop(FRuntimeFault* OutFault = nullptr);
+
+    bool CheckScripts(
+        std::int32_t InSessionGeneration,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        std::size_t* OutModuleCount,
+        FRuntimeFault& OutFault);
+
+    // TAS-02: loads SpecSource as a Lua chunk (NOT via the module loader —
+    // the spec never enters LoadedModulesRegistryKey / Scripts/ module
+    // tree). The chunk must return a table mapping case name -> zero-arg
+    // function (Tests/Lua spec format, BuildAndTooling.md). Requires the
+    // session to already be started. OutFault is populated only for FORMAT
+    // violations of the spec itself (chunk fails to compile/execute, return
+    // value is not a table, a value is not a function, or the table is
+    // empty) — a failing CASE is not a fault, it is recorded in
+    // OutCaseResults with Success=false so remaining cases still run.
+    // Case order is deterministic (ascending by CaseId), independent of
+    // Lua's internal table iteration order. While the chunk and every case
+    // run, `require()` is permitted for any module already loaded by the
+    // session's production bootstrap.
+    bool RunLuaSpec(
+        const std::string& SpecChunkName,
+        const std::string& SpecSource,
+        std::vector<FLuaSpecCaseResult>& OutCaseResults,
+        FRuntimeFault& OutFault);
 
     bool DispatchSemanticInput(const FSemanticInput& Input, FRuntimeFault& OutFault);
     bool DispatchCommand(const FCommandRequest& Request, FRuntimeFault& OutFault);
@@ -110,6 +148,8 @@ public:
     bool IsStarted() const;
     bool IsExecuting() const;
     std::int32_t GetSessionGeneration() const;
+    const GV2ContentCore::FRepositoryReadHandle& GetPinnedRepository() const;
+    std::string GetCanonicalStateHash(FRuntimeFault* OutFault = nullptr) const;
 
     static constexpr std::int32_t LuaReleaseNumber = 50408;
 

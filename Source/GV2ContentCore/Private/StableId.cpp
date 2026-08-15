@@ -139,4 +139,72 @@ bool FStableId::IsOfKind(
     Succeed(OutError);
     return true;
 }
+
+bool FStableId::ParseInstanceId(
+    const std::string_view Value,
+    FInstanceIdView& OutId,
+    EStableIdError* OutError)
+{
+    OutId = {};
+    if (Value.empty())
+    {
+        return Fail(EStableIdError::Empty, OutError);
+    }
+    if (Value.size() > MaxLength)
+    {
+        return Fail(EStableIdError::TooLong, OutError);
+    }
+
+    const std::size_t At = Value.find('@');
+    if (At == std::string_view::npos || Value.find('@', At + 1) != std::string_view::npos)
+    {
+        return Fail(EStableIdError::InvalidSeparator, OutError);
+    }
+
+    const std::string_view Kind = Value.substr(0, At);
+    const std::string_view CounterStr = Value.substr(At + 1);
+
+    if (!IsValidSegment(Kind, OutError))
+    {
+        return false;
+    }
+
+    if (CounterStr.empty())
+    {
+        return Fail(EStableIdError::InvalidInstanceId, OutError);
+    }
+
+    // Counter must be a positive integer without leading zeros
+    if (CounterStr.front() < '1' || CounterStr.front() > '9')
+    {
+        return Fail(EStableIdError::InvalidInstanceId, OutError);
+    }
+
+    uint64_t Counter = 0;
+    for (const char Ch : CounterStr)
+    {
+        if (Ch < '0' || Ch > '9')
+        {
+            return Fail(EStableIdError::InvalidInstanceId, OutError);
+        }
+        const uint64_t Digit = static_cast<uint64_t>(Ch - '0');
+        if (Counter > (UINT64_MAX - Digit) / 10)
+        {
+            return Fail(EStableIdError::TooLong, OutError);
+        }
+        Counter = Counter * 10 + Digit;
+    }
+
+    OutId = {Kind, Counter};
+    Succeed(OutError);
+    return true;
+}
+
+bool FStableId::IsValidInstanceId(
+    const std::string_view Value,
+    EStableIdError* OutError)
+{
+    FInstanceIdView Parsed;
+    return ParseInstanceId(Value, Parsed, OutError);
+}
 }

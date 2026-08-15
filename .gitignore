@@ -6,8 +6,14 @@ Saved/
 
 # IDE and editor state
 .vs/
-.vscode/
 .idea/
+
+# Authoring configuration is shared (CAT-13); generated snippets are not.
+# Note: .vscode/* (not .vscode/) — git cannot re-include a file whose parent
+# directory is excluded.
+.vscode/*
+!.vscode/tasks.json
+!.vscode/settings.json
 *.VC.db
 *.VC.opendb
 *.sln

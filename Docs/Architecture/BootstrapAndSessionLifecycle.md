@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 2.4
-updated: 2026-08-13
+version: 2.5
+updated: 2026-08-14
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -68,7 +68,7 @@ Public readiness — один bool `is_ready`. Он становится true т
 - `SubmitUiInteraction(...)` является единственным публичным путём пользовательского input;
 - создание Screen из C++ параметров, вызов Lua builder из automation и методы с семантикой `ForTest` запрещены.
 
-До открытия session `UGV2RuntimeSubsystem` обязан успешно построить configured `UGV2ImageResourceCatalog`, загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка любого required presentation catalog/registry запрещает создание Lua VM и переход session в `Ready`; наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
+До открытия session `UGV2RuntimeSubsystem` обязан успешно построить configured `UGV2ImageResourceCatalog`, загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка любого required presentation catalog/registry или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (выставляя явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
 
 Debug start sequence: `GameInstance` start → Screen Registry ready → session `Ready` → start binding publication → `UGV2DebugStartScreenWidget` → реальный button event → Semantic Input → Lua `core:command.debug.start` handler → copied generic Screen request → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit. Screen replacement выполняется после выхода из Lua. Automatic debug fixture запрещён в shipping build и не добавляет отдельный test API.
 
@@ -85,7 +85,7 @@ repository_version: exact pinned snapshot identity
 reason: diagnostic string
 ```
 
-LoadSave выполняет read-only preflight container до teardown active session. Commit запрещён, если requested repository version больше не current.
+LoadSave выполняет read-only preflight container до teardown active session. Preflight исполняет текущая active session: она читает bytes через slot storage primitive и проверяет их сама, поэтому вторая VM не создаётся и инвариант одной VM сохраняется (ADR-0021). Failed preflight оставляет current session `Ready`. Commit запрещён, если requested repository version больше не current.
 
 ## Module lifecycle
 
@@ -107,6 +107,8 @@ return {
 ```
 
 Order: core modules, затем mods по resolved load order. `stop`/`unregister` выполняются в reverse order. Первая user-hook error прекращает следующие user hooks, но не обязательный C++ cleanup.
+
+В текущей реализации жизненного цикла сессии вызываются хуки `register`, `create_default_state`, `validate_state` и `start`. Остальные хуки (`migrate_state`, `restore_instances`, `build_initial_projection`, `stop` и `unregister`) остаются объявленными контрактом и будут подключены в соответствующих этапах (Save/Load миграции, восстановление инстансов, проекции и graceful teardown). Отсутствие хука в модуле не является ошибкой.
 
 ### Phase restrictions
 

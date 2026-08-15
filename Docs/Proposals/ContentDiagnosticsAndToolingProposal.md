@@ -85,13 +85,13 @@ SARIF export добавляется после стабилизации diagnost
 
 ## Editor и LSP roadmap
 
-1. CLI validation и JSON output.
-2. Editor command/commandlet, который вызывает shared core и открывает source location.
-3. Completion для Stable IDs и schema fields из immutable repository metadata.
-4. Find references/rename preflight для definitions.
+1. CLI validation и JSON output — **реализовано** (`gv2-content validate`, `inspect`, `hash`, `--format=json`).
+2. Live Loop и continuous validation — **реализовано** (`gv2-content validate --watch`, `.vscode/tasks.json` с problemMatcher).
+3. Completion для Stable IDs и заготовки из схем — **реализовано** (`gv2-content index`, `describe`, `new`, `Tools/Editor/generate_vscode_snippets.py`, `.vscode/gv2-content.code-snippets`).
+4. Find references / rename preflight для definitions — **реализовано** (`gv2-content refs`, `rename` с точечным AST-переписыванием и проверкой `package_frozen`).
 5. Тонкий LSP process только после стабилизации CLI API.
 
-Lua tooling на первом этапе ограничивается generated annotations для фиксированного `game` façade и registry IDs. Полный type system или отдельный Lua analyzer не добавляется.
+Lua tooling на первом этапе ограничивается проверкой синтаксиса и графа зависимостей (`gv2-headless --check-scripts`) и выполнением спек (`Tests/Lua/`). Полный type system или отдельный Lua analyzer не добавляется.
 
 ## Польза, риски и трудоёмкость
 

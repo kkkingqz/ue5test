@@ -7,6 +7,11 @@
 #include "Application/GV2SessionCoordinator.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
+#include "GV2RuntimeCore/Testing/GV2LuaMarshallerConformance.h"
+#include "GV2RuntimeCore/Testing/GV2LuaRepositoryConformance.h"
+#include "GV2RuntimeCore/Testing/GV2ValidatorRegistryConformance.h"
+#include "GV2RuntimeCore/Testing/GV2LuaSpecRunnerConformance.h"
+#include "GV2ContentCore/Testing/RepresentativeCore.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -64,11 +69,16 @@ std::vector<GV2RuntimeCore::FRuntimeSource> LoadTestRuntimeSources()
     return Sources;
 }
 
-GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepositoryFrom(const TCHAR* FixtureRelativePath)
+GV2ContentCore::FBuildResult MakeTestBuildResultFrom(const TCHAR* FixtureRelativePath)
 {
     const FString PackageRoot = FPaths::Combine(
         FPaths::ProjectDir(), TEXT("Tests/Fixtures/PortableContentCore"), FixtureRelativePath);
-    GV2ContentCore::FBuildResult Result = BuildGV2RepositoryFromDirectory(PackageRoot);
+    return BuildGV2RepositoryFromDirectory(PackageRoot);
+}
+
+GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepositoryFrom(const TCHAR* FixtureRelativePath)
+{
+    GV2ContentCore::FBuildResult Result = MakeTestBuildResultFrom(FixtureRelativePath);
     if (Result.IsFailure())
     {
         return GV2ContentCore::FRepositoryReadHandle();
@@ -81,21 +91,57 @@ GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepository()
     return MakeTestPinnedRepositoryFrom(TEXT("valid/core"));
 }
 
+class FTestMultiPackageSourceProvider final : public GV2ContentCore::IContentSourceProvider
+{
+public:
+    std::map<std::string, FString> PackageRoots;
+
+    std::optional<std::string> ReadSource(
+        std::string_view RequestedPackageId,
+        std::string_view RelativeSource) const override
+    {
+        auto Found = PackageRoots.find(std::string(RequestedPackageId));
+        if (Found == PackageRoots.end()) return std::nullopt;
+        const FString FullPath = FPaths::Combine(Found->second, UTF8_TO_TCHAR(std::string(RelativeSource).c_str()));
+        FString Text;
+        if (!FFileHelper::LoadFileToString(Text, *FullPath)) return std::nullopt;
+        FTCHARToUTF8 Utf8(*Text);
+        return std::string(Utf8.Get(), Utf8.Length());
+    }
+};
+
+GV2ContentCore::FRepositoryReadHandle MakeTestModdedPinnedRepository()
+{
+    using namespace GV2ContentCore;
+    const FString FixtureRoot = FPaths::ConvertRelativePathToFull(FPaths::Combine(
+        FPaths::ProjectDir(), TEXT("Tests/Fixtures/PortableContentCore")));
+    const FPackageDescriptor Core = Testing::MakeRepresentativeCorePackageDescriptor();
+    const FPackageDescriptor TestMod = Testing::MakeRepresentativeTestModPackageDescriptor();
+
+    FTestMultiPackageSourceProvider Provider;
+    Provider.PackageRoots.emplace("core", FPaths::Combine(FixtureRoot, TEXT("valid/core")));
+    Provider.PackageRoots.emplace("test_mod", FPaths::Combine(FixtureRoot, TEXT("valid/test_mod")));
+
+    FBuildOptions Options;
+    Options.SourceProvider = &Provider;
+    const FBuildResult BuildResult = BuildRepository({ Core, TestMod }, Options);
+    if (BuildResult.IsFailure())
+    {
+        return FRepositoryReadHandle();
+    }
+    return BuildResult.GetCandidate().GetReadHandle();
+}
+
 // BuildRepository() requires a package literally named "core" at load_index 0
 // (GameDataRepositoryContract.md); the shared "empty_core" fixture directory
 // doesn't match that name, so build a distinct, minimal empty "core" package
 // in-memory instead of going through the filesystem discovery convention.
-GV2ContentCore::FRepositoryReadHandle MakeEmptyCoreRepository()
+GV2ContentCore::FBuildResult MakeEmptyCoreBuildResult()
 {
     using namespace GV2ContentCore;
     const FPackageDescriptor EmptyCore("core", "core", 0u, {}, {});
     const FBuildOptions Options;
-    FBuildResult Result = BuildRepository({EmptyCore}, Options);
-    if (Result.IsFailure())
-    {
-        return FRepositoryReadHandle();
-    }
-    return Result.GetCandidate().GetReadHandle();
+    return BuildRepository({EmptyCore}, Options);
 }
 }
 
@@ -112,7 +158,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Manifest-driven Lua source tree is loadable"), RuntimeSources.size() >= 2);
     TestTrue(
         TEXT("Lua VM starts with the configured runtime sources"),
-        Host.Start(23, RuntimeSources, Fault));
+        Host.Start(23, MakeTestPinnedRepository(), RuntimeSources, Fault));
     TestTrue(TEXT("Lua VM reports started state"), Host.IsStarted());
     TestFalse(TEXT("Lua VM is idle after bootstrap"), Host.IsExecuting());
     if (!Host.IsStarted())
@@ -203,6 +249,52 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
             TEXT("Dropdown field keeps its schema identity"),
             FString(UTF8_TO_TCHAR(DropdownField != nullptr ? DropdownField->SchemaId.c_str() : "")),
             FString(TEXT("core:schema.ui_field.dropdown_select.v1")));
+
+        // PCC-47: Verify definition read from repository reaches Screen Field
+        if (ButtonsField != nullptr && std::holds_alternative<GV2RuntimeCore::FValue::FObject>(ButtonsField->Value.Data))
+        {
+            const auto& ButtonsObj = std::get<GV2RuntimeCore::FValue::FObject>(ButtonsField->Value.Data);
+            auto ItemsIt = ButtonsObj.find("items");
+            if (ItemsIt != ButtonsObj.end() && std::holds_alternative<GV2RuntimeCore::FValue::FArray>(ItemsIt->second.Data))
+            {
+                const auto& ItemsArray = std::get<GV2RuntimeCore::FValue::FArray>(ItemsIt->second.Data);
+                if (!ItemsArray.empty() && std::holds_alternative<GV2RuntimeCore::FValue::FObject>(ItemsArray[0].Data))
+                {
+                    const auto& FirstBtnObj = std::get<GV2RuntimeCore::FValue::FObject>(ItemsArray[0].Data);
+                    auto BindingIt = FirstBtnObj.find("binding");
+                    if (BindingIt != FirstBtnObj.end() && std::holds_alternative<GV2RuntimeCore::FValue::FObject>(BindingIt->second.Data))
+                    {
+                        const auto& BindingObj = std::get<GV2RuntimeCore::FValue::FObject>(BindingIt->second.Data);
+                        auto ArgsIt = BindingObj.find("args");
+                        if (ArgsIt != BindingObj.end() && std::holds_alternative<GV2RuntimeCore::FValue::FObject>(ArgsIt->second.Data))
+                        {
+                            const auto& ArgsObj = std::get<GV2RuntimeCore::FValue::FObject>(ArgsIt->second.Data);
+                            auto TargetIt = ArgsObj.find("target");
+                            if (TargetIt != ArgsObj.end() && std::holds_alternative<std::string>(TargetIt->second.Data))
+                            {
+                                TestEqual(
+                                    TEXT("First button binding target arg was read from repository definition"),
+                                    FString(UTF8_TO_TCHAR(std::get<std::string>(TargetIt->second.Data).c_str())),
+                                    FString(TEXT("core:item.weapon.iron_sword")));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (InputField != nullptr && std::holds_alternative<GV2RuntimeCore::FValue::FObject>(InputField->Value.Data))
+        {
+            const auto& InputObj = std::get<GV2RuntimeCore::FValue::FObject>(InputField->Value.Data);
+            auto ValueIt = InputObj.find("value");
+            if (ValueIt != InputObj.end() && std::holds_alternative<std::string>(ValueIt->second.Data))
+            {
+                TestEqual(
+                    TEXT("Input field initial value was populated from repository definition"),
+                    FString(UTF8_TO_TCHAR(std::get<std::string>(ValueIt->second.Data).c_str())),
+                    FString(TEXT("core:item.weapon.iron_sword")));
+            }
+        }
     }
     TestTrue(
         TEXT("Pending presentation is consumed exactly once"),
@@ -254,7 +346,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession MissingSourceHost;
     TestFalse(
         TEXT("Manifest rejects a missing declared module source"),
-        MissingSourceHost.Start(1, MissingSource, Fault));
+        MissingSourceHost.Start(1, MakeTestPinnedRepository(), MissingSource, Fault));
     TestEqual(
         TEXT("Missing module source has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -273,7 +365,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession HiddenDependencyHost;
     TestFalse(
         TEXT("Module cannot import an undeclared dependency"),
-        HiddenDependencyHost.Start(1, HiddenDependency, Fault));
+        HiddenDependencyHost.Start(1, MakeTestPinnedRepository(), HiddenDependency, Fault));
     TestEqual(
         TEXT("Hidden dependency fails during module initialization"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -287,7 +379,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession UnlistedSourceHost;
     TestFalse(
         TEXT("Unlisted Lua source is rejected"),
-        UnlistedSourceHost.Start(1, UnlistedSource, Fault));
+        UnlistedSourceHost.Start(1, MakeTestPinnedRepository(), UnlistedSource, Fault));
     TestEqual(
         TEXT("Unlisted source has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -317,7 +409,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession CyclicHost;
     TestFalse(
         TEXT("Cyclic module dependencies are rejected"),
-        CyclicHost.Start(1, CyclicSources, Fault));
+        CyclicHost.Start(1, MakeTestPinnedRepository(), CyclicSources, Fault));
     TestEqual(
         TEXT("Dependency cycle has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -425,7 +517,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession(MakeTestPinnedRepository()));
+    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
     TestTrue(TEXT("Lua VM belongs to the active session"), Coordinator.IsLuaVmStarted());
 
     TArray<FGV2UiBindingHandle> Handles;
@@ -496,7 +588,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession(MakeTestPinnedRepository()));
+    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
 
     FGV2UiBindingDefinition Definition = MakeBindingDefinition(
         TEXT("form"),
@@ -569,137 +661,6 @@ bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
     return true;
 }
 
-GV2ContentCore::FRepositoryReadHandle MakeEmptyCoreRepository()
-{
-    using namespace GV2ContentCore;
-    const FPackageDescriptor EmptyCore("core", "core", 0u, {}, {});
-    const FBuildOptions Options;
-    FBuildResult Result = BuildRepository({EmptyCore}, Options);
-    if (Result.IsFailure())
-    {
-        return FRepositoryReadHandle();
-    }
-    return Result.GetCandidate().GetReadHandle();
-}
-
-GV2ContentCore::FBuildResult MakeTestBuildResultFrom(const TCHAR* FixtureRelativePath)
-{
-    const FString PackageRoot = FPaths::Combine(
-        FPaths::ProjectDir(), TEXT("Tests/Fixtures/PortableContentCore"), FixtureRelativePath);
-    return BuildGV2RepositoryFromDirectory(PackageRoot);
-}
-
-GV2ContentCore::FBuildResult MakeEmptyCoreBuildResult()
-{
-    using namespace GV2ContentCore;
-    const FPackageDescriptor EmptyCore("core", "core", 0u, {}, {});
-    const FBuildOptions Options;
-    return BuildRepository({EmptyCore}, Options);
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2PortableRuntimeTest,
-    "GV2.Runtime.Lua.SafeEnvironmentAndProtectedEntry",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
-{
-    GV2RuntimeCore::FRuntimeSession Host;
-    GV2RuntimeCore::FRuntimeFault Fault;
-    const std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources = LoadTestRuntimeSources();
-    TestTrue(TEXT("Portable runtime session starts"), Host.Start(1, RuntimeSources, Fault));
-    TestTrue(TEXT("Portable runtime executes simple script"), Host.Execute(1, Fault));
-    Host.Stop();
-    return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2UiBindingRegistryTest,
-    "GV2.Runtime.UI.BindingRegistry",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2UiBindingRegistryTest::RunTest(const FString& Parameters)
-{
-    FGV2UiBindingRegistry Registry;
-    TArray<FGV2UiBindingHandle> Handles;
-    TestTrue(
-        TEXT("Registry publishes valid binding definition"),
-        Registry.PublishBindings(
-            TEXT("ui@1:1"),
-            1,
-            {MakeBindingDefinition(TEXT("start"), TEXT("core:command.menu.start"))},
-            Handles));
-    if (!TestEqual(TEXT("Registry returns one handle"), Handles.Num(), 1))
-    {
-        return false;
-    }
-
-    const FGV2UiBindingRecord* Record = Registry.FindRecord(Handles[0]);
-    if (!TestNotNull(TEXT("Handle resolves to record"), Record))
-    {
-        return false;
-    }
-    TestEqual(TEXT("Record retains ui_instance_id"), Record->UiInstanceId, FString(TEXT("ui@1:1")));
-    TestEqual(TEXT("Record retains element_id"), Record->ElementId, FString(TEXT("start")));
-    TestEqual(TEXT("Record retains command_id"), Record->CommandId, FString(TEXT("core:command.menu.start")));
-
-    Registry.UnpublishUiInstance(TEXT("ui@1:1"));
-    TestNull(TEXT("Unpublished handle fails resolution"), Registry.FindRecord(Handles[0]));
-    return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2SessionCoordinatorIngressTest,
-    "GV2.Runtime.Session.IngressValidationAndDispatch",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2SessionCoordinatorIngressTest::RunTest(const FString& Parameters)
-{
-    FGV2SessionCoordinator Coordinator(16);
-    TestTrue(TEXT("Session starts"), Coordinator.StartSession(MakeTestPinnedRepository()));
-
-    TArray<FGV2UiBindingHandle> Handles;
-    TestTrue(
-        TEXT("Binding is published"),
-        Coordinator.PublishUiBindings(
-            TEXT("ui@1:1"),
-            1,
-            {MakeBindingDefinition(TEXT("start"), TEXT("core:command.menu.start"))},
-            Handles));
-    if (Handles.Num() != 1)
-    {
-        return false;
-    }
-
-    int32 SinkCalls = 0;
-    FGV2UiIngressItem LastItem;
-    Coordinator.SetInteractionSink(
-        [&SinkCalls, &LastItem](const FGV2UiIngressItem& Item)
-        {
-            ++SinkCalls;
-            LastItem = Item;
-        });
-
-    TestEqual(
-        TEXT("Valid submission succeeds"),
-        Coordinator.SubmitUiInteraction(Handles[0], {{"choice", "new_game"}}),
-        EGV2SubmitUiInteractionResult::Accepted);
-    TestEqual(TEXT("Ingress queue holds item before dispatch"), Coordinator.GetQueuedIngressCount(), 1);
-    TestEqual(TEXT("Dispatch flushes queued item"), Coordinator.DispatchQueuedIngress(), 1);
-    TestEqual(TEXT("Sink receives dispatched item"), SinkCalls, 1);
-    TestEqual(TEXT("Dispatched item retains session_generation"), LastItem.SessionGeneration, 1u);
-    TestEqual(TEXT("Dispatched item retains ui_instance_id"), LastItem.UiInstanceId, FString(TEXT("ui@1:1")));
-    TestEqual(TEXT("Dispatched item retains command_id"), LastItem.CommandId, FString(TEXT("core:command.menu.start")));
-
-    FGV2UiBindingHandle StaleHandle = Handles[0];
-    Coordinator.UnpublishUiInstance(TEXT("ui@1:1"));
-    TestEqual(
-        TEXT("Stale handle is rejected"),
-        Coordinator.SubmitUiInteraction(StaleHandle, {}),
-        EGV2SubmitUiInteractionResult::InvalidHandle);
-
-    return true;
-}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2RuntimeIngressCapacityTest,
@@ -709,7 +670,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator(0);
-    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession(MakeTestPinnedRepository()));
+    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
 
     TArray<FGV2UiBindingHandle> Handles;
     TestTrue(
@@ -771,7 +732,7 @@ bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Param
     }
 
     FGV2SessionCoordinator Coordinator(4);
-    TestTrue(TEXT("Session starts pinned to repository A"), Coordinator.StartSession(ReadHandleA));
+    TestTrue(TEXT("Session starts pinned to repository A"), Coordinator.StartSession(ReadHandleA, 1));
     TestEqual(
         TEXT("Active session is pinned to A's content hash"),
         FString(UTF8_TO_TCHAR(Coordinator.GetPinnedRepository().GetContentHash().c_str())),
@@ -790,7 +751,9 @@ bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Param
 
     // Controlled restart: end the session, then start a new one against Publisher.GetCurrent() (which is B).
     Coordinator.EndSession();
-    TestTrue(TEXT("Restarted session starts pinned to Publisher current (B)"), Coordinator.StartSession(Publisher.GetCurrent()));
+    TestTrue(
+        TEXT("Restarted session starts pinned to Publisher current (B)"),
+        Coordinator.StartSession(Publisher.GetCurrent(), Publisher.GetVersion()));
     TestEqual(
         TEXT("Restarted session is pinned to B's content hash"),
         FString(UTF8_TO_TCHAR(Coordinator.GetPinnedRepository().GetContentHash().c_str())),
@@ -818,7 +781,7 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
         1);
     TestFalse(
         TEXT("StartSession rejects a default-constructed (invalid) repository handle"),
-        Coordinator.StartSession(GV2ContentCore::FRepositoryReadHandle()));
+        Coordinator.StartSession(GV2ContentCore::FRepositoryReadHandle(), 0));
     TestFalse(TEXT("No Lua VM was started"), Coordinator.IsLuaVmStarted());
     TestFalse(TEXT("Session is not ready"), Coordinator.GetStatus().bIsReady);
     TestEqual(
@@ -827,7 +790,7 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
         EGV2SessionState::Failed);
 
     // 2. Start valid session, then call StartSession with invalid handle to ensure full teardown
-    TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeTestPinnedRepository()));
+    TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
     TestTrue(TEXT("Lua VM is started for valid session"), Coordinator.IsLuaVmStarted());
     TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
 
@@ -837,7 +800,7 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
         1);
     TestFalse(
         TEXT("StartSession rejects invalid handle on active session"),
-        Coordinator.StartSession(GV2ContentCore::FRepositoryReadHandle()));
+        Coordinator.StartSession(GV2ContentCore::FRepositoryReadHandle(), 0));
     TestFalse(TEXT("Active VM is stopped on failed StartSession"), Coordinator.IsLuaVmStarted());
     TestFalse(TEXT("Coordinator is not ready after failed StartSession"), Coordinator.GetStatus().bIsReady);
     TestFalse(TEXT("Pinned repository handle is cleared on failure"), Coordinator.GetPinnedRepository().IsValid());
@@ -846,6 +809,329 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
         Coordinator.GetStatus().SessionState,
         EGV2SessionState::Failed);
 
+    return true;
+}
+
+// PCC-39: FGV2LuaMarshaller unified marshalling conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LuaMarshallerConformanceTest,
+    "GV2.Runtime.Lua.MarshallerConformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LuaMarshallerConformanceTest::RunTest(const FString& Parameters)
+{
+    const std::string Failure = GV2RuntimeCore::Testing::RunLuaMarshallerConformance();
+    TestTrue(
+        *FString::Printf(
+            TEXT("Lua marshaller conformance passes%s%s"),
+            Failure.empty() ? TEXT("") : TEXT(": "),
+            Failure.empty() ? TEXT("") : UTF8_TO_TCHAR(Failure.c_str())),
+        Failure.empty());
+    return true;
+}
+
+// PCC-41: Pinned Read Handle transmission and lifetime in FRuntimeSession
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2RuntimeSessionPinnedHandleTest,
+    "GV2.Runtime.Session.PinnedHandleLifetime",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2RuntimeSessionPinnedHandleTest::RunTest(const FString& Parameters)
+{
+    GV2RuntimeCore::FRuntimeSession Session;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources = LoadTestRuntimeSources();
+
+    // 1. Invalid handle is rejected before Lua VM creation with RepositoryNotReady
+    TestFalse(
+        TEXT("Start rejects uninitialized read handle"),
+        Session.Start(1, GV2ContentCore::FRepositoryReadHandle(), RuntimeSources, Fault));
+    TestEqual(
+        TEXT("Fault code is RepositoryNotReady"),
+        FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
+        FString(TEXT("RepositoryNotReady")));
+    TestFalse(TEXT("VM is not started on invalid handle"), Session.IsStarted());
+    TestFalse(TEXT("Pinned handle remains invalid"), Session.GetPinnedRepository().IsValid());
+
+    // 2. Valid handle starts session and stores handle
+    const GV2ContentCore::FRepositoryReadHandle PinnedHandle = MakeTestPinnedRepository();
+    TestTrue(TEXT("Test pinned repository is valid"), PinnedHandle.IsValid());
+    TestTrue(
+        TEXT("Start succeeds with valid pinned handle"),
+        Session.Start(1, PinnedHandle, RuntimeSources, Fault));
+    TestTrue(TEXT("Session is started"), Session.IsStarted());
+    TestTrue(TEXT("Session stores valid pinned handle"), Session.GetPinnedRepository().IsValid());
+    TestEqual(
+        TEXT("Session retains exact pinned content hash"),
+        FString(UTF8_TO_TCHAR(Session.GetPinnedRepository().GetContentHash().c_str())),
+        FString(UTF8_TO_TCHAR(PinnedHandle.GetContentHash().c_str())));
+
+    // 3. Stop releases the pinned handle
+    TestTrue(TEXT("Stop succeeds"), Session.Stop());
+    TestFalse(TEXT("Session is not started after Stop"), Session.IsStarted());
+    TestFalse(TEXT("Stop clears pinned handle"), Session.GetPinnedRepository().IsValid());
+
+    return true;
+}
+
+// PCC-42: game.repository Lua query API test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LuaRepositoryAccessTest,
+    "GV2.Runtime.Lua.RepositoryAccess",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LuaRepositoryAccessTest::RunTest(const FString& Parameters)
+{
+    GV2RuntimeCore::FRuntimeSession Host;
+    GV2RuntimeCore::FRuntimeFault Fault;
+
+    const std::vector<GV2RuntimeCore::FRuntimeSource> TestSources = {
+        {
+            "@Scripts/bootstrap/manifest.lua",
+            R"lua(return {
+                entry_module_id = "core:module.test.repository",
+                modules = {
+                    {
+                        module_id = "core:module.test.repository",
+                        source = "test/repository.lua",
+                        dependencies = {},
+                    },
+                },
+            })lua"
+        },
+        {
+            "@Scripts/test/repository.lua",
+            R"lua(
+                local M = {}
+
+                -- 1. game.repository exists and has 4 functions
+                assert(type(game.repository) == "table", "game.repository must be table")
+                assert(type(game.repository.get) == "function", "get must be function")
+                assert(type(game.repository.require) == "function", "require must be function")
+                assert(type(game.repository.list) == "function", "list must be function")
+                assert(type(game.repository.exists) == "function", "exists must be function")
+
+                -- 2. game.repository is read-only
+                local ok, err = pcall(function() game.repository.foo = 123 end)
+                assert(not ok and string.find(tostring(err), "read%-only table"), "game.repository must be read-only")
+
+                -- 3. game.data alias is absent
+                assert(game.data == nil, "game.data alias must be absent")
+
+                -- 4. exists query
+                assert(game.repository.exists("core:item.weapon.iron_sword") == true, "iron_sword must exist")
+                assert(game.repository.exists("core:item.non_existent") == false, "non_existent must not exist")
+                assert(game.repository.exists("invalid_id_grammar") == false, "invalid id must not exist")
+
+                -- 5. get query (happy path)
+                local item, get_err = game.repository.get("core:item.weapon.iron_sword")
+                assert(item ~= nil, "item must not be nil")
+                assert(get_err == nil, "get_err must be nil")
+                assert(item.id == "core:item.weapon.iron_sword", "item id must match")
+                assert(type(item.data) == "table", "item data must be table")
+                assert(item.data.price == 10, "item price must match")
+
+                -- 6. Detached deep copy: mutating returned table does not affect subsequent query
+                item.data.price = 999
+                local item2, _ = game.repository.get("core:item.weapon.iron_sword")
+                assert(item2.data.price == 10, "repository data must remain immutable across queries")
+
+                -- 7. require query (happy path)
+                local req_item = game.repository.require("core:item.weapon.iron_sword")
+                assert(req_item.id == "core:item.weapon.iron_sword", "require item id must match")
+                assert(req_item.data.price == 10, "require item price must match")
+
+                -- 8. get negative queries (typed errors)
+                local missing, miss_err = game.repository.get("core:item.non_existent")
+                assert(missing == nil, "missing item must be nil")
+                assert(type(miss_err) == "table", "miss_err must be table")
+                assert(miss_err.code == "not_found", "miss_err code must be not_found")
+                assert(miss_err.requested_id == "core:item.non_existent", "requested_id must match")
+
+                local bad_id, bad_err = game.repository.get("not_a_stable_id")
+                assert(bad_id == nil, "bad id must return nil")
+                assert(type(bad_err) == "table" and bad_err.code == "invalid_id", "bad_id error code must be invalid_id")
+
+                -- 9. require negative queries (throws with stable code as first token)
+                local req_ok, req_err = pcall(function() game.repository.require("core:item.non_existent") end)
+                assert(not req_ok, "require non_existent must throw error")
+                assert(string.find(tostring(req_err), "not_found:") ~= nil, "require error message must contain not_found code token")
+
+                local req_bad_ok, req_bad_err = pcall(function() game.repository.require("bad_id") end)
+                assert(not req_bad_ok, "require bad_id must throw error")
+                assert(string.find(tostring(req_bad_err), "invalid_id:") ~= nil, "require bad_id error message must contain invalid_id code token")
+
+                -- 10. list query (canonical byte order, membership; TAS-11:
+                -- not a pinned count/full listing — the frozen test corpus
+                -- (TAS-06) may still gain an id when the subject of the
+                -- change is content-resolution rules themselves)
+                local function assert_sorted(list, kind)
+                    for i = 2, #list do
+                        assert(list[i - 1] < list[i], "list('" .. kind .. "') must be in canonical byte order")
+                    end
+                end
+                local function list_contains(list, id)
+                    for _, value in ipairs(list) do
+                        if value == id then return true end
+                    end
+                    return false
+                end
+
+                local screen_ids = game.repository.list("screen")
+                assert(type(screen_ids) == "table", "list('screen') must return table")
+                assert_sorted(screen_ids, "screen")
+                assert(list_contains(screen_ids, "core:screen.inventory"), "screen_ids must contain core:screen.inventory")
+                assert(list_contains(screen_ids, "core:screen.main"), "screen_ids must contain core:screen.main")
+                assert(list_contains(screen_ids, "test_mod:screen.codex_lab"), "screen_ids must contain test_mod:screen.codex_lab")
+
+                local text_ids = game.repository.list("text")
+                assert(type(text_ids) == "table", "list('text') must return table")
+                assert_sorted(text_ids, "text")
+                assert(list_contains(text_ids, "core:text.item.iron_sword.name"), "text_ids must contain core:text.item.iron_sword.name")
+                assert(list_contains(text_ids, "test_mod:text.screen.codex_lab.title"), "text_ids must contain test_mod:text.screen.codex_lab.title")
+
+                local actor_ids = game.repository.list("actor")
+                assert(type(actor_ids) == "table", "list('actor') must return table")
+                assert_sorted(actor_ids, "actor")
+                assert(list_contains(actor_ids, "core:actor.character.hero"), "actor_ids must contain core:actor.character.hero")
+
+                local item_ids = game.repository.list("item")
+                assert(type(item_ids) == "table", "list('item') must return table")
+                assert_sorted(item_ids, "item")
+                assert(list_contains(item_ids, "core:item.weapon.iron_sword"), "item_ids must contain core:item.weapon.iron_sword")
+
+                local empty_list = game.repository.list("non_existent_kind")
+                assert(type(empty_list) == "table" and #empty_list == 0, "unknown kind must return empty table")
+
+                local bad_param_list = game.repository.list(12345)
+                assert(type(bad_param_list) == "table" and #bad_param_list == 0, "non-string kind must return empty table")
+
+                local no_param_list = game.repository.list()
+                assert(type(no_param_list) == "table" and #no_param_list == 0, "missing kind param must return empty table")
+
+                -- 11. tombstoned definition query (tombstone code token)
+                local tomb_item, tomb_err = game.repository.get("test_mod:screen.retired")
+                assert(tomb_item == nil, "tombstoned item must be nil")
+                assert(type(tomb_err) == "table" and tomb_err.code == "tombstoned", "tombstone error code must be tombstoned")
+                assert(tomb_err.requested_id == "test_mod:screen.retired", "tombstone requested_id must match")
+
+                local req_tomb_ok, req_tomb_err = pcall(function() game.repository.require("test_mod:screen.retired") end)
+                assert(not req_tomb_ok, "require tombstoned must throw error")
+                assert(string.find(tostring(req_tomb_err), "tombstoned:") ~= nil, "require tombstoned message must contain tombstoned code token")
+
+                -- 12. redirect source query resolves to final active definition
+                local redir_item, redir_err = game.repository.get("test_mod:screen.codex_archive")
+                assert(redir_item ~= nil and redir_err == nil, "redirect source must resolve")
+                assert(redir_item.id == "test_mod:screen.codex_lab", "redirect source must resolve to target definition ID")
+
+                local redir_req = game.repository.require("test_mod:screen.codex_archive")
+                assert(redir_req.id == "test_mod:screen.codex_lab", "require redirect source must resolve to target ID")
+
+                -- 13. Absence of provenance / authoring metadata in Lua surface
+                local inv_item = game.repository.require("core:screen.inventory")
+                assert(inv_item.provenance == nil, "provenance must not leak into Lua")
+                assert(inv_item.package_id == nil, "package_id must not leak into Lua")
+                assert(inv_item.package == nil, "package must not leak into Lua")
+                assert(inv_item.source == nil, "source must not leak into Lua")
+                assert(inv_item.file == nil, "file must not leak into Lua")
+                assert(inv_item.line == nil, "line must not leak into Lua")
+                assert(inv_item.path == nil, "path must not leak into Lua")
+                assert(inv_item.load_index == nil, "load_index must not leak into Lua")
+                assert(inv_item.shadowed_providers == nil, "shadowed_providers must not leak into Lua")
+
+                -- game.repository must only expose exactly 4 functions
+                local repo_func_count = 0
+                for k, v in pairs(game.repository) do
+                    repo_func_count = repo_func_count + 1
+                end
+                assert(repo_func_count == 4, "game.repository must expose exactly 4 functions")
+                assert(type(game.repository.get) == "function", "get must exist")
+                assert(type(game.repository.require) == "function", "require must exist")
+                assert(type(game.repository.list) == "function", "list must exist")
+                assert(type(game.repository.exists) == "function", "exists must exist")
+
+                return M
+            )lua"
+        }
+    };
+
+    const GV2ContentCore::FRepositoryReadHandle PinnedHandle = MakeTestModdedPinnedRepository();
+    TestTrue(TEXT("Modded pinned repository is valid"), PinnedHandle.IsValid());
+    TestTrue(
+        TEXT("Start succeeds with test repository sources"),
+        Host.Start(1, PinnedHandle, TestSources, Fault));
+    if (!Host.IsStarted())
+    {
+        AddError(FString::Printf(
+            TEXT("Host start failed: %s: %s"),
+            UTF8_TO_TCHAR(Fault.Code.c_str()),
+            UTF8_TO_TCHAR(Fault.Message.c_str())));
+        return false;
+    }
+
+    return true;
+}
+
+// PCC-46: Cross-host Lua repository access conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LuaRepositoryConformanceCrossHostTest,
+    "GV2.Runtime.Lua.RepositoryConformanceCrossHost",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LuaRepositoryConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2RuntimeCore::Testing::RunLuaRepositoryAccessConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Lua repository access cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
+    return true;
+}
+
+// GEW-01: Cross-host command validator registry conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ValidatorRegistryConformanceCrossHostTest,
+    "GV2.Runtime.Lua.ValidatorRegistryConformanceCrossHost",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ValidatorRegistryConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2RuntimeCore::Testing::RunValidatorRegistryConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Validator registry cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
+    return true;
+}
+
+// TAS-12: GEW-04/GEW-05 conformance migrated to Tests/Lua/world/{domain_object,current_location}.lua,
+// executed by GV2.Runtime.Lua.SpecRunnerHost (TAS-04) — no per-spec C++ wrapper needed.
+// TAS-13: GEW-02/GEW-03 conformance migrated to
+// Tests/Lua/commands/{validator_invocation,refusal_semantics}.lua, executed
+// by GV2.Runtime.Lua.CommandValidatorSpecRunnerHost (GV2LuaSpecRunnerHostTests.cpp).
+
+// TAS-02: Cross-host Lua spec runner mechanism conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LuaSpecRunnerConformanceCrossHostTest,
+    "GV2.Runtime.Lua.SpecRunnerConformanceCrossHost",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LuaSpecRunnerConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2RuntimeCore::Testing::RunLuaSpecRunnerConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Lua spec runner cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
     return true;
 }
 

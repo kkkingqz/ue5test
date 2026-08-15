@@ -4,7 +4,7 @@
   definitions: [
     {
       id: "test_mod:text.screen.codex_lab.title",
-      data: { message: "Codex laboratory" },
+      data: { source_message: "Codex laboratory" },
     },
   ],
 }
