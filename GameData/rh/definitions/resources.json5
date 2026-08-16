@@ -3,7 +3,7 @@
   type: "resource",
   definitions: [
     {
-      id: "core:resource.item.iron_sword.icon",
+      id: "rh:resource.item.iron_sword.icon",
       data: {
         resource_class: "texture_2d",
         required: true,
@@ -11,4 +11,3 @@
     },
   ],
 }
-

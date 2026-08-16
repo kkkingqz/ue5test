@@ -142,13 +142,13 @@ return {
 
     -- SAV-15/16 against the real pinned repository (no fixture needed)
     resolve_definition_id_against_real_repository_hits_directly = function()
-        local id, err = load_module.resolve_definition_id("core:location.city.tavern")
-        assert(id == "core:location.city.tavern", "a real, live definition must resolve to itself, got: " .. tostring(id))
+        local id, err = load_module.resolve_definition_id("rh:location.city.tavern")
+        assert(id == "rh:location.city.tavern", "a real, live definition must resolve to itself, got: " .. tostring(id))
         assert(err == nil)
     end,
 
     resolve_definition_id_against_real_repository_reports_unknown = function()
-        local id, err = load_module.resolve_definition_id("core:location.city.does_not_exist_zzz")
+        local id, err = load_module.resolve_definition_id("rh:location.city.does_not_exist_zzz")
         assert(id == nil, "a definition absent from the real repository must not resolve")
         assert(err == "unknown", "got: " .. tostring(err))
     end,
@@ -157,13 +157,13 @@ return {
     -- real container referencing a real, live definition — proves the
     -- rewrite pass is a correct no-op for an already-canonical reference.
     decode_and_prepare_roundtrips_state_with_live_reference = function()
-        local state = { meta = {}, world = { current_location_id = "core:location.city.tavern" } }
+        local state = { meta = {}, world = { current_location_id = "rh:location.city.tavern" } }
         local envelope = save.build_envelope(state, 1, "")
         local container = save.serialize_envelope(envelope)
 
         local decoded, err = load_module.decode_and_prepare(container)
         assert(decoded ~= nil, "decode_and_prepare must succeed for a valid container, got err=" .. tostring(err))
-        assert(decoded.world.current_location_id == "core:location.city.tavern",
+        assert(decoded.world.current_location_id == "rh:location.city.tavern",
             "a live reference must roundtrip unchanged")
     end,
 

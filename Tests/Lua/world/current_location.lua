@@ -22,7 +22,7 @@ return {
     valid_location_reference_accepted = function()
         local state_validator = require("core:module.runtime.state_validator")
         local ok = pcall(function()
-            state_validator.validate_state_tree(make_tree("core:location.city.market"))
+            state_validator.validate_state_tree(make_tree("rh:location.city.market"))
         end)
         assert(ok, "a Stable ID of kind 'location' resolving in the pinned repository must be accepted as world.current_location_id")
     end,
@@ -38,7 +38,7 @@ return {
     dangling_reference_rejected = function()
         local state_validator = require("core:module.runtime.state_validator")
         local ok = pcall(function()
-            state_validator.validate_state_tree(make_tree("core:location.city.nonexistent"))
+            state_validator.validate_state_tree(make_tree("rh:location.city.nonexistent"))
         end)
         assert(not ok, "a well-formed but non-existent location reference must be rejected as dangling")
     end,
@@ -46,9 +46,9 @@ return {
     current_location_readable_without_mutation = function()
         local mutation_window = require("core:module.runtime.mutation_window")
         mutation_window.execute_in_window(function()
-            game.state.world.current_location_id = "core:location.city.market"
+            game.state.world.current_location_id = "rh:location.city.market"
         end)
         local w = game.instances.world()
-        assert(w.current_location_id == "core:location.city.market", "current_location_id must be readable through the World wrapper")
+        assert(w.current_location_id == "rh:location.city.market", "current_location_id must be readable through the World wrapper")
     end,
 }

@@ -90,7 +90,7 @@ return {
             meta = { schema_version = 1, save_id = "abc" },
             actors = { ["actor@1"] = { instance_id = "actor@1", gold = 10, dead = false, note = game.null } },
             item_instances = {},
-            world = { current_location_id = "core:location.city.market" },
+            world = { current_location_id = "rh:location.city.market" },
         }, "a canonical-state-shaped tree")
     end,
 

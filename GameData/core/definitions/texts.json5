@@ -3,32 +3,12 @@
   type: "text",
   definitions: [
     {
-      id: "core:text.item.iron_sword.name",
-      data: { source_message: "Iron sword" },
-    },
-    {
-      id: "core:text.location.market.title",
-      data: { source_message: "Market" },
-    },
-    {
-      id: "core:text.location.tavern.title",
-      data: { source_message: "Tavern" },
-    },
-    {
       id: "core:text.screen.inventory.title",
       data: { source_message: "Inventory" },
     },
     {
       id: "core:text.screen.main.title",
       data: { source_message: "Main screen" },
-    },
-    {
-      id: "core:text.character.hero.name",
-      data: { source_message: "Hero" },
-    },
-    {
-      id: "core:text.npc.merchant.name",
-      data: { source_message: "Merchant" },
     },
   ],
 }

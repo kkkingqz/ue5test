@@ -5,13 +5,13 @@
       package_id: "core",
       version: "0.1.0",
       load_index: 0,
-      fingerprint: "b2230aa56c15f4b7f00a99dc775a6fff3703d8651284b2b414c91936025d3b3d",
+      fingerprint: "666b5dc6a0f24a3580f3c79947fbbc63a0da79cc90d2e861b041d8d3f490c9c8",
     },
     {
       package_id: "rh",
       version: "0.1.0",
       load_index: 1,
-      fingerprint: "5f39af9a5183294772d724f802f8ca2581bdf589aca578c7193f86185b656827",
+      fingerprint: "6fbefaaef9e32fcdb730e878d2aaa3e17b9bea515460e4a05a323dd3dc6d52d1",
     },
   ],
 }

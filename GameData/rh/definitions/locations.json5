@@ -3,9 +3,9 @@
   type: "location",
   definitions: [
     {
-      id: "core:location.city.market",
+      id: "rh:location.city.market",
       data: {
-        title_text_id: "core:text.location.market.title",
+        title_text_id: "rh:text.location.market.title",
         screen_ids: [
           "core:screen.main",
           "core:screen.inventory",
@@ -13,9 +13,9 @@
       },
     },
     {
-      id: "core:location.city.tavern",
+      id: "rh:location.city.tavern",
       data: {
-        title_text_id: "core:text.location.tavern.title",
+        title_text_id: "rh:text.location.tavern.title",
         screen_ids: [
           "core:screen.main",
         ],

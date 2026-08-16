@@ -17,10 +17,10 @@ return {
         local dispatcher = command_dispatcher.new({ gameplay_root })
 
         -- Move to market first if not there
-        if world.current_location_id ~= "core:location.city.market" then
+        if world.current_location_id ~= "rh:location.city.market" then
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
-                args = { target_location_id = "core:location.city.market" },
+                args = { target_location_id = "rh:location.city.market" },
                 sequence = 800,
             })
         end
@@ -54,19 +54,19 @@ return {
 
         dispatcher.dispatch({
             command_id = "core:command.location.travel",
-            args = { target_location_id = "core:location.city.tavern" },
+            args = { target_location_id = "rh:location.city.tavern" },
             sequence = 801,
         })
 
         -- Verify exactly 2 events in strict order: leave before enter
         assert(#events_order == 2, "must have received exactly 2 events, got " .. tostring(#events_order))
         assert(events_order[1].kind == "leave", "first event must be location.leave")
-        assert(events_order[1].from == "core:location.city.market", "leave from must be market")
-        assert(events_order[1].to == "core:location.city.tavern", "leave to must be tavern")
+        assert(events_order[1].from == "rh:location.city.market", "leave from must be market")
+        assert(events_order[1].to == "rh:location.city.tavern", "leave to must be tavern")
 
         assert(events_order[2].kind == "enter", "second event must be location.enter")
-        assert(events_order[2].from == "core:location.city.market", "enter from must be market")
-        assert(events_order[2].to == "core:location.city.tavern", "enter to must be tavern")
+        assert(events_order[2].from == "rh:location.city.market", "enter from must be market")
+        assert(events_order[2].to == "rh:location.city.tavern", "enter to must be tavern")
 
         -- Cleanup
         event_bus.clear_subscribers()
@@ -122,10 +122,10 @@ return {
 
         -- Reset to market
         local dispatcher = command_dispatcher.new({ gameplay_root })
-        if game.instances.world().current_location_id ~= "core:location.city.market" then
+        if game.instances.world().current_location_id ~= "rh:location.city.market" then
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
-                args = { target_location_id = "core:location.city.market" },
+                args = { target_location_id = "rh:location.city.market" },
                 sequence = 803,
             })
         end
@@ -139,7 +139,7 @@ return {
             "core:subscriber.test.tavern_checker",
             "core:event.location.enter",
             function(env)
-                if env.payload.to_location_id == "core:location.city.tavern" then
+                if env.payload.to_location_id == "rh:location.city.tavern" then
                     tavern_entered = true
                 end
             end
@@ -150,7 +150,7 @@ return {
             "core:subscriber.test.forest_checker",
             "core:event.location.enter",
             function(env)
-                if env.payload.to_location_id == "core:location.wild.forest" then
+                if env.payload.to_location_id == "rh:location.wild.forest" then
                     forest_entered = true
                 end
             end
@@ -158,7 +158,7 @@ return {
 
         dispatcher.dispatch({
             command_id = "core:command.location.travel",
-            args = { target_location_id = "core:location.city.tavern" },
+            args = { target_location_id = "rh:location.city.tavern" },
             sequence = 804,
         })
 
@@ -180,10 +180,10 @@ return {
         local dispatcher = command_dispatcher.new({ gameplay_root })
 
         -- Move to market first if not there
-        if game.instances.world().current_location_id ~= "core:location.city.market" then
+        if game.instances.world().current_location_id ~= "rh:location.city.market" then
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
-                args = { target_location_id = "core:location.city.market" },
+                args = { target_location_id = "rh:location.city.market" },
                 sequence = 810,
             })
         end
@@ -196,11 +196,11 @@ return {
             "core:event.location.enter",
             function(env)
                 table.insert(trace, "entered:" .. env.payload.to_location_id)
-                if env.payload.to_location_id == "core:location.city.tavern" then
+                if env.payload.to_location_id == "rh:location.city.tavern" then
                     -- Enqueue deferred return travel back to market
                     game.commands.enqueue({
                         command_id = "core:command.location.travel",
-                        args = { target_location_id = "core:location.city.market" },
+                        args = { target_location_id = "rh:location.city.market" },
                     })
                 end
             end
@@ -208,16 +208,16 @@ return {
 
         dispatcher.dispatch({
             command_id = "core:command.location.travel",
-            args = { target_location_id = "core:location.city.tavern" },
+            args = { target_location_id = "rh:location.city.tavern" },
             sequence = 811,
         })
 
         -- Verify trace: entered tavern -> deferred command executed -> entered market
         assert(#trace == 2, "must have 2 enter events, got " .. tostring(#trace))
-        assert(trace[1] == "entered:core:location.city.tavern", "first enter tavern")
-        assert(trace[2] == "entered:core:location.city.market", "second enter market via deferred command")
+        assert(trace[1] == "entered:rh:location.city.tavern", "first enter tavern")
+        assert(trace[2] == "entered:rh:location.city.market", "second enter market via deferred command")
 
-        assert(game.instances.world().current_location_id == "core:location.city.market",
+        assert(game.instances.world().current_location_id == "rh:location.city.market",
             "final location must be market")
 
         -- Cleanup

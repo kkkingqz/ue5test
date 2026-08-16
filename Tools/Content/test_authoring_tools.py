@@ -239,11 +239,11 @@ def main():
         assert "ok content_hash=" in res.stdout
 
         # 17. Test rename with JSON output
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.tavern", "core:location.city.inn", "--format=json"])
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.inventory", "core:screen.backpack", "--format=json"])
         rename_doc = json.loads(res.stdout)
         assert rename_doc["status"] == "ok"
-        assert rename_doc["old_id"] == "core:location.city.tavern"
-        assert rename_doc["new_id"] == "core:location.city.inn"
+        assert rename_doc["old_id"] == "core:screen.inventory"
+        assert rename_doc["new_id"] == "core:screen.backpack"
         assert rename_doc["files_modified_count"] >= 1
 
         # Validate whole package succeeds after second rename
@@ -262,40 +262,40 @@ def main():
         assert err["code"] == "source_definition_not_found"
 
         # 19. Test rename to duplicate existing new ID (exit code 2)
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:location.city.market"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "core:screen.main"], check=False)
         assert res.returncode == 2
         assert "already exists in package" in res.stderr
 
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:location.city.market", "--format=json"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "core:screen.main", "--format=json"], check=False)
         assert res.returncode == 2
         err = json.loads(res.stdout)
         assert err["status"] == "error"
         assert err["code"] == "duplicate_definition_id"
 
         # 20. Test rename with invalid ID grammar (exit code 2)
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "not-a-valid-id"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "not-a-valid-id"], check=False)
         assert res.returncode == 2
         assert "not a valid new definition id" in res.stderr
 
-        res = run_cmd([gv2_content, "rename", test_pkg, "not-a-valid-id", "core:location.city.inn2", "--format=json"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "not-a-valid-id", "core:screen.backpack2", "--format=json"], check=False)
         assert res.returncode == 2
         err = json.loads(res.stdout)
         assert err["status"] == "error"
         assert err["code"] == "invalid_definition_id"
 
         # 21. Test rename with kind mismatch (exit code 2)
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:item.city.inn"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "core:item.backpack"], check=False)
         assert res.returncode == 2
         assert "does not match" in res.stderr
 
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:item.city.inn", "--format=json"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "core:item.backpack", "--format=json"], check=False)
         assert res.returncode == 2
         err = json.loads(res.stdout)
         assert err["status"] == "error"
         assert err["code"] == "id_kind_mismatch"
 
         # 22. Test rename identical ID (no-op success)
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:location.city.inn", "--format=json"])
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "core:screen.backpack", "--format=json"])
         noop_doc = json.loads(res.stdout)
         assert noop_doc["status"] == "ok"
         assert noop_doc["files_modified_count"] == 0
@@ -308,11 +308,11 @@ def main():
         with open(pkg_desc_path, "w") as f:
             f.write('{\n  package_id: "core",\n  namespace: "core",\n  version: "1.0.0",\n  frozen: true,\n}\n')
 
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:location.city.tavern"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "core:screen.inventory"], check=False)
         assert res.returncode == 2
         assert "package is published/frozen" in res.stderr
 
-        res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:location.city.tavern", "--format=json"], check=False)
+        res = run_cmd([gv2_content, "rename", test_pkg, "core:screen.backpack", "core:screen.inventory", "--format=json"], check=False)
         assert res.returncode == 2
         err = json.loads(res.stdout)
         assert err["status"] == "error"
@@ -346,16 +346,16 @@ def main():
 
         time.sleep(0.15)
         # Iteration 2: introduce a syntax error
-        items_path = os.path.join(test_pkg, "definitions", "items.json5")
-        with open(items_path, "a") as f:
+        screens_path = os.path.join(test_pkg, "definitions", "screens.json5")
+        with open(screens_path, "a") as f:
             f.write("\nthis is a syntax error\n")
 
         time.sleep(0.15)
         # Iteration 3: fix the error
-        with open(items_path, "r") as f:
+        with open(screens_path, "r") as f:
             content = f.read()
         content = content.replace("\nthis is a syntax error\n", "")
-        with open(items_path, "w") as f:
+        with open(screens_path, "w") as f:
             f.write(content)
 
         stdout, stderr = proc.communicate(timeout=5)
@@ -387,11 +387,10 @@ def main():
     res = run_cmd([gv2_content, "index", core_pkg])
     assert "package_id: core" in res.stdout
     assert re.search(r"active_ids: \d+", res.stdout)
-    assert re.search(r"\[actor\] \(\d+\)", res.stdout)
-    assert re.search(r"\[location\] \(\d+\)", res.stdout)
+    assert re.search(r"\[screen\] \(\d+\)", res.stdout)
     assert re.search(r"\[text\] \(\d+\)", res.stdout)
-    assert "core:location.city.market" in res.stdout
-    assert "core:location.city.tavern" in res.stdout
+    assert "core:screen.main" in res.stdout
+    assert "core:screen.inventory" in res.stdout
 
     # 28. Test index json format
     res = run_cmd([gv2_content, "index", core_pkg, "--format=json"])
@@ -401,9 +400,9 @@ def main():
     # The real invariant: total is exactly the sum of every kind's list —
     # not a specific number, since GameData/core grows freely (TAS-08).
     assert index_doc["total_active_ids"] == sum(len(ids) for ids in index_doc["kinds"].values())
-    assert "location" in index_doc["kinds"]
-    assert "core:location.city.market" in index_doc["kinds"]["location"]
-    assert "core:location.city.tavern" in index_doc["kinds"]["location"]
+    assert "screen" in index_doc["kinds"]
+    assert "core:screen.main" in index_doc["kinds"]["screen"]
+    assert "core:screen.inventory" in index_doc["kinds"]["screen"]
     assert len(index_doc["kinds"]["text"]) >= 1
     assert index_doc["redirects"] == []
     assert index_doc["tombstones"] == []
@@ -415,23 +414,23 @@ def main():
 
         pkg_desc_path = os.path.join(test_pkg, "package.json5")
         with open(pkg_desc_path, "w") as f:
-            f.write('{\n  package_id: "core",\n  namespace: "core",\n  version: "1.0.0",\n  redirects: {\n    "core:item.old_sword": "core:item.weapon.iron_sword",\n  },\n  tombstones: [\n    "core:item.deleted_sword",\n  ],\n}\n')
+            f.write('{\n  package_id: "core",\n  namespace: "core",\n  version: "1.0.0",\n  redirects: {\n    "core:screen.old_main": "core:screen.main",\n  },\n  tombstones: [\n    "core:screen.deleted_screen",\n  ],\n}\n')
 
         res = run_cmd([gv2_content, "index", test_pkg, "--format=json"])
         doc = json.loads(res.stdout)
         assert doc["status"] == "ok"
         assert len(doc["redirects"]) == 1
-        assert doc["redirects"][0]["source_id"] == "core:item.old_sword"
-        assert doc["redirects"][0]["target_id"] == "core:item.weapon.iron_sword"
+        assert doc["redirects"][0]["source_id"] == "core:screen.old_main"
+        assert doc["redirects"][0]["target_id"] == "core:screen.main"
         assert len(doc["tombstones"]) == 1
-        assert doc["tombstones"][0] == "core:item.deleted_sword"
+        assert doc["tombstones"][0] == "core:screen.deleted_screen"
 
         # Also check text format
         res = run_cmd([gv2_content, "index", test_pkg])
         assert "[redirects] (1)" in res.stdout
-        assert "core:item.old_sword -> core:item.weapon.iron_sword" in res.stdout
+        assert "core:screen.old_main -> core:screen.main" in res.stdout
         assert "[tombstones] (1)" in res.stdout
-        assert "core:item.deleted_sword" in res.stdout
+        assert "core:screen.deleted_screen" in res.stdout
 
     # 30. Test index with missing arguments or non-existent path
     res = run_cmd([gv2_content, "index"], check=False)
@@ -451,8 +450,8 @@ def main():
 
         with open(out_snippets, "r") as f:
             snippets_data = json.load(f)
-        assert "ID: core:location.city.market" in snippets_data
-        assert snippets_data["ID: core:location.city.market"]["body"] == ['"core:location.city.market"']
+        assert "ID: core:screen.main" in snippets_data
+        assert snippets_data["ID: core:screen.main"]["body"] == ['"core:screen.main"']
 
     print("[*] Testing LOC-03: localization catalog does not affect package discovery, validate, index, or hash...")
     # 32. Test localization catalog isolation and hash invariance
@@ -473,9 +472,9 @@ def main():
             '"MIME-Version: 1.0\\n"\n'
             '"Content-Type: text/plain; charset=UTF-8\\n"\n'
             '\n'
-            'msgctxt "core:text.item.iron_sword.name"\n'
-            'msgid "Iron sword"\n'
-            'msgstr "Железный меч"\n'
+            'msgctxt "core:text.screen.main.title"\n'
+            'msgid "Main screen"\n'
+            'msgstr "Главный экран"\n'
         )
         with open(os.path.join(loc_dir, "ru_RU.po"), "w", encoding="utf-8") as f:
             f.write(po_content)
@@ -490,7 +489,7 @@ def main():
 
         # Modifying PO translations also does not change hash
         with open(os.path.join(loc_dir, "ru_RU.po"), "w", encoding="utf-8") as f:
-            f.write(po_content.replace("Железный меч", "Стальной клинок"))
+            f.write(po_content.replace("Главный экран", "Основной экран"))
 
         hash_modified = run_cmd([gv2_content, "hash", tmp_pkg]).stdout.strip()
         assert hash_before == hash_modified, f"Hash changed after modifying translation: {hash_before} != {hash_modified}"
@@ -517,8 +516,8 @@ def main():
     assert data["package_id"] == "core"
     assert "ru" in data["locales"]
     ru_stats = data["locales"]["ru"]
-    assert ru_stats["total_definitions"] == 7
-    assert ru_stats["translated_count"] == 7
+    assert ru_stats["total_definitions"] == 2
+    assert ru_stats["translated_count"] == 2
     assert ru_stats["empty_count"] == 0
     assert ru_stats["missing_count"] == 0
     assert ru_stats["extra_count"] == 0
@@ -529,21 +528,21 @@ def main():
         tmp_pkg = os.path.join(tmp_dir, "core")
         shutil.copytree(core_pkg, tmp_pkg)
 
-        # Write custom PO with 1 translated, 1 empty, and 1 extra key (and missing the other 5)
+        # Write custom PO with 1 translated, 1 empty, and 1 extra key
         custom_po = (
             'msgid ""\n'
             'msgstr ""\n'
             '"Language: test\\n"\n'
             '\n'
-            'msgctxt "core:text.item.iron_sword.name"\n'
-            'msgid "Iron sword"\n'
-            'msgstr "Меч"\n'
+            'msgctxt "core:text.screen.main.title"\n'
+            'msgid "Main screen"\n'
+            'msgstr "Экран"\n'
             '\n'
-            'msgctxt "core:text.character.hero.name"\n'
-            'msgid "Hero"\n'
+            'msgctxt "core:text.screen.inventory.title"\n'
+            'msgid "Inventory"\n'
             'msgstr ""\n'
             '\n'
-            'msgctxt "core:text.extra.obsolete_item"\n'
+            'msgctxt "core:text.extra.obsolete"\n'
             'msgid "Old item"\n'
             'msgstr "Старый предмет"\n'
         )
@@ -553,15 +552,14 @@ def main():
         res = run_cmd([gv2_content, "coverage", tmp_pkg, "--locale=test", "--format=json"])
         data = json.loads(res.stdout)
         stats = data["locales"]["test"]
-        assert stats["total_definitions"] == 7
+        assert stats["total_definitions"] == 2
         assert stats["translated_count"] == 1
-        assert stats["translated_keys"] == ["core:text.item.iron_sword.name"]
+        assert stats["translated_keys"] == ["core:text.screen.main.title"]
         assert stats["empty_count"] == 1
-        assert stats["empty_keys"] == ["core:text.character.hero.name"]
+        assert stats["empty_keys"] == ["core:text.screen.inventory.title"]
         assert stats["extra_count"] == 1
-        assert stats["extra_keys"] == ["core:text.extra.obsolete_item"]
-        assert stats["missing_count"] == 5
-        assert "core:text.location.market.title" in stats["missing_keys"]
+        assert stats["extra_keys"] == ["core:text.extra.obsolete"]
+        assert stats["missing_count"] == 0
 
         # Validate that incomplete localization does not fail gv2-content validate
         val_res = run_cmd([gv2_content, "validate", tmp_pkg])

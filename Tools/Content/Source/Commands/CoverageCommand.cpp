@@ -1,6 +1,7 @@
 #include "Commands/CoverageCommand.h"
 #include "Support/CliOutput.h"
 #include "Support/PackageLoader.h"
+#include "GV2ContentCore/StableId.h"
 #include "GV2ContentHostSupport/LocalizationDiscovery.h"
 
 #include <algorithm>
@@ -69,13 +70,19 @@ int RunCoverage(
 
     const auto ReadHandle = BuildRes.GetCandidate().GetReadHandle();
     const auto TextIds = ReadHandle.List("text");
+    const std::string PackageId = Outcome.Descriptor ? Outcome.Descriptor->GetPackageId() : "";
     std::set<std::string> DefinedTextIds;
     for (const auto& DefId : TextIds)
     {
-        DefinedTextIds.insert(DefId.ToString());
+        GV2ContentCore::FStableIdView View;
+        if (GV2ContentCore::FStableId::Parse(DefId.ToString(), View))
+        {
+            if (PackageId.empty() || View.Namespace == PackageId)
+            {
+                DefinedTextIds.insert(DefId.ToString());
+            }
+        }
     }
-
-    const std::string PackageId = Outcome.Descriptor ? Outcome.Descriptor->GetPackageId() : "";
 
     std::vector<std::string> Locales;
     if (!SpecificLocale.empty())

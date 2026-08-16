@@ -86,16 +86,16 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME gv2_content_new_rejects_duplicate_id
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "core:item.weapon.iron_sword"
+        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main"
     )
     add_test(NAME gv2_content_new_rejects_duplicate_id_exit_code
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "core:item.weapon.iron_sword"
+        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main"
     )
     add_test(NAME gv2_content_new_rejects_duplicate_id_json
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "core:item.weapon.iron_sword" --format=json
+        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main" --format=json
     )
     add_test(NAME gv2_content_new_rejects_duplicate_id_json_exit_code
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "core:item.weapon.iron_sword" --format=json
+        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main" --format=json
     )
     add_test(NAME gv2_content_new_rejects_invalid_id
         COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "not-valid-id"
@@ -133,22 +133,22 @@ if(BUILD_TESTING)
         COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:text.nonexistent.id core:text.new.id
     )
     add_test(NAME gv2_content_rename_rejects_duplicate_id
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:location.city.tavern core:location.city.market
+        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:screen.main
     )
     add_test(NAME gv2_content_rename_rejects_duplicate_id_exit_code
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:location.city.tavern core:location.city.market
+        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:screen.main
     )
     add_test(NAME gv2_content_rename_rejects_invalid_id
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:location.city.tavern not-valid-id
+        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory not-valid-id
     )
     add_test(NAME gv2_content_rename_rejects_invalid_id_exit_code
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:location.city.tavern not-valid-id
+        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory not-valid-id
     )
     add_test(NAME gv2_content_rename_rejects_id_kind_mismatch
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:location.city.tavern core:item.city.tavern
+        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:item.inventory
     )
     add_test(NAME gv2_content_rename_rejects_id_kind_mismatch_exit_code
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:location.city.tavern core:item.city.tavern
+        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:item.inventory
     )
 
     add_test(NAME gv2_content_validate_watch_single_iteration
@@ -329,13 +329,13 @@ if(BUILD_TESTING)
         gv2_content_index_text
         PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-            PASS_REGULAR_EXPRESSION "package_id: core.*active_ids: [1-9][0-9]*.*\\[location\\]"
+            PASS_REGULAR_EXPRESSION "package_id: core.*active_ids: [1-9][0-9]*.*\\[screen\\]"
     )
     set_tests_properties(
         gv2_content_index_json
         PROPERTIES
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-            PASS_REGULAR_EXPRESSION "\"status\":\"ok\".*\"package_id\":\"core\".*\"total_active_ids\":[1-9][0-9]*.*\"kinds\":\\{.*\"location\":\\["
+            PASS_REGULAR_EXPRESSION "\"status\":\"ok\".*\"package_id\":\"core\".*\"total_active_ids\":[1-9][0-9]*.*\"kinds\":\\{.*\"screen\":\\["
     )
     set_tests_properties(
         gv2_content_index_rejects_missing_root

@@ -1,0 +1,25 @@
+msgid ""
+msgstr ""
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgctxt "rh:text.item.iron_sword.name"
+msgid "Iron sword"
+msgstr "Железный меч"
+
+msgctxt "rh:text.location.market.title"
+msgid "Market"
+msgstr "Рыночная площадь"
+
+msgctxt "rh:text.location.tavern.title"
+msgid "Tavern"
+msgstr "Таверна"
+
+msgctxt "rh:text.character.hero.name"
+msgid "Hero"
+msgstr "Герой"
+
+msgctxt "rh:text.npc.merchant.name"
+msgid "Merchant"
+msgstr "Торговец"

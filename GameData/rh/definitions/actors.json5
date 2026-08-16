@@ -3,10 +3,10 @@
   type: "actor",
   definitions: [
     {
-      id: "core:actor.character.hero",
+      id: "rh:actor.character.hero",
       data: {
         discriminator: "player",
-        name_text_id: "core:text.character.hero.name",
+        name_text_id: "rh:text.character.hero.name",
         base_hp: 100,
       },
       tags: ["character", "player"],
@@ -14,10 +14,10 @@
       extensions: {},
     },
     {
-      id: "core:actor.npc.merchant",
+      id: "rh:actor.npc.merchant",
       data: {
         discriminator: "npc",
-        name_text_id: "core:text.npc.merchant.name",
+        name_text_id: "rh:text.npc.merchant.name",
         base_hp: 50,
       },
       tags: ["npc", "merchant"],

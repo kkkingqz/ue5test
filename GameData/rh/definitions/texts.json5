@@ -1,0 +1,26 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "rh:text.item.iron_sword.name",
+      data: { source_message: "Iron sword" },
+    },
+    {
+      id: "rh:text.location.market.title",
+      data: { source_message: "Market" },
+    },
+    {
+      id: "rh:text.location.tavern.title",
+      data: { source_message: "Tavern" },
+    },
+    {
+      id: "rh:text.character.hero.name",
+      data: { source_message: "Hero" },
+    },
+    {
+      id: "rh:text.npc.merchant.name",
+      data: { source_message: "Merchant" },
+    },
+  ],
+}

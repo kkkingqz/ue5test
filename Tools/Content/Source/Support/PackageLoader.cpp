@@ -44,7 +44,7 @@ FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>
     }
 
     std::vector<std::filesystem::path> Roots;
-    Roots.reserve(RawRoots.size());
+    Roots.reserve(RawRoots.size() + 1);
     for (const auto& RawRoot : RawRoots)
     {
         std::error_code Ec;
@@ -60,6 +60,21 @@ FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>
         Roots.push_back(Root);
     }
 
+    if (Roots.size() == 1)
+    {
+        std::error_code Ec;
+        const std::filesystem::path SiblingCore = Roots.front().parent_path() / "core";
+        if (std::filesystem::is_directory(SiblingCore, Ec) && std::filesystem::exists(SiblingCore / "package.json5", Ec))
+        {
+            std::vector<GV2ContentCore::FDiagnostic> Diags;
+            auto TargetDesc = GV2ContentHostSupport::DiscoverPackageFromDirectory(Roots.front(), Diags);
+            if (TargetDesc && TargetDesc->GetPackageId() != "core")
+            {
+                Roots.insert(Roots.begin(), SiblingCore);
+            }
+        }
+    }
+
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
     std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoveredDescriptors =
         GV2ContentHostSupport::DiscoverPackagesFromDirectories(Roots, Diagnostics);
@@ -72,7 +87,7 @@ FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>
     Outcome.Descriptors = std::move(*DiscoveredDescriptors);
     if (!Outcome.Descriptors.empty())
     {
-        Outcome.Descriptor = std::make_unique<GV2ContentCore::FPackageDescriptor>(Outcome.Descriptors.front());
+        Outcome.Descriptor = std::make_unique<GV2ContentCore::FPackageDescriptor>(Outcome.Descriptors.back());
     }
 
     auto MultiProvider = std::make_unique<GV2ContentHostSupport::FMultiPackageSourceProvider>();

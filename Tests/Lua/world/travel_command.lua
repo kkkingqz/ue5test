@@ -23,9 +23,9 @@ return {
         -- (Set world location to market first inside a dispatcher call or service)
         local initial_loc = world.current_location_id
 
-        local target_loc = (initial_loc == "core:location.city.market")
-            and "core:location.city.tavern"
-            or "core:location.city.market"
+        local target_loc = (initial_loc == "rh:location.city.market")
+            and "rh:location.city.tavern"
+            or "rh:location.city.market"
 
         local seq = dispatcher.dispatch({
             command_id = "core:command.location.travel",
@@ -46,11 +46,11 @@ return {
         dispatcher.dispatch({
             command_id = "core:command.location.travel",
             args = {
-                target_location_id = "core:location.city.market",
+                target_location_id = "rh:location.city.market",
             },
             sequence = 702,
         })
-        assert(game.instances.world().current_location_id == "core:location.city.market",
+        assert(game.instances.world().current_location_id == "rh:location.city.market",
             "location must be back at market")
     end,
 
@@ -90,7 +90,7 @@ return {
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
                 args = {
-                    target_location_id = "core:location.city.nonexistent",
+                    target_location_id = "rh:location.city.nonexistent",
                 },
                 sequence = 704,
             })
@@ -115,7 +115,7 @@ return {
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
                 args = {
-                    target_location_id = "core:item.weapon.iron_sword",
+                    target_location_id = "rh:item.weapon.iron_sword",
                 },
                 sequence = 705,
             })
