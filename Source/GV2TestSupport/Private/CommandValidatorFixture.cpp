@@ -63,6 +63,7 @@ bool StartCommandValidatorFixtureSession(
         {"runtime/mutation_window.lua", "@core/runtime/mutation_window.lua"},
         {"runtime/stable_id.lua", "@core/runtime/stable_id.lua"},
         {"runtime/validator_registry.lua", "@core/runtime/validator_registry.lua"},
+        {"runtime/handler_registry.lua", "@core/runtime/handler_registry.lua"},
         {"runtime/event_envelope.lua", "@core/runtime/event_envelope.lua"},
         {"runtime/subscriber_registry.lua", "@core/runtime/subscriber_registry.lua"},
         {"runtime/event_bus.lua", "@core/runtime/event_bus.lua"},

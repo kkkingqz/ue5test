@@ -5,6 +5,7 @@
 -- recognized test command. Not under Scripts/ — never loaded by the real
 -- module loader, never staged into the packaged game.
 local dispatcher_factory = require("core:module.runtime.command_dispatcher")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 local M = {
     id = "core:module.test.command_validator_specs_driver",

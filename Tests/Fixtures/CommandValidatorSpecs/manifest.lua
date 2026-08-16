@@ -25,6 +25,11 @@ return {
             dependencies = { "core:module.runtime.stable_id" },
         },
         {
+            module_id = "core:module.runtime.handler_registry",
+            source = "runtime/handler_registry.lua",
+            dependencies = { "core:module.runtime.stable_id" },
+        },
+        {
             module_id = "core:module.runtime.event_envelope",
             source = "runtime/event_envelope.lua",
             dependencies = { "core:module.runtime.stable_id" },
@@ -58,6 +63,7 @@ return {
             dependencies = {
                 "core:module.runtime.command_dispatcher",
                 "core:module.runtime.validator_registry",
+                "core:module.runtime.handler_registry",
                 "core:module.runtime.event_bus",
             },
         },

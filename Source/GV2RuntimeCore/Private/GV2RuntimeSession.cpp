@@ -1647,9 +1647,10 @@ struct FRuntimeSession::FImpl
         }
 
         // Freeze registries at the end of register phase (GEW-01: validators,
-        // GEW-10: event subscribers freeze together with the other registries).
+        // CHR-02: command handlers, GEW-10: event subscribers).
         FreezeGameRegistry({"services"});
         FreezeGameRegistry({"commands", "validators"});
+        FreezeGameRegistry({"commands", "handlers"});
         FreezeGameRegistry({"events", "subscribers"});
         FreezeGameRegistry({"events"});
 

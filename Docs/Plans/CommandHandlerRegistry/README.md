@@ -60,7 +60,7 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Registry](Registry.md): реестр существует, заморожен и покрыт спеками.
+- [x] M1 — [Registry](Registry.md): реестр существует, заморожен и покрыт спеками.
 - [ ] M2 — [Dispatch by Key](DispatchByKey.md): диспетчер ходит в реестр, неизвестная команда отклоняется, `ingress` развязан.
 - [ ] M3 — [Package Commands](PackageCommands.md): пакет регистрирует команду; contract и guide синхронизированы.
 

@@ -11,6 +11,7 @@ local actor_registry = require("core:module.runtime.actor_registry")
 local world = require("core:module.runtime.world")
 local service_registry = require("core:module.runtime.service_registry")
 local validator_registry = require("core:module.runtime.validator_registry")
+local handler_registry = require("core:module.runtime.handler_registry")
 local subscriber_registry = require("core:module.runtime.subscriber_registry")
 local event_bus = require("core:module.runtime.event_bus")
 local location_service = require("core:module.gameplay.location_service")
@@ -30,6 +31,7 @@ return {
     world = world,
     service_registry = service_registry,
     validator_registry = validator_registry,
+    handler_registry = handler_registry,
     subscriber_registry = subscriber_registry,
     event_bus = event_bus,
     location_service = location_service,
