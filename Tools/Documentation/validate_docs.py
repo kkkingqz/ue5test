@@ -16,7 +16,7 @@ ARCHIVE_DIRECTORY = "Archive"
 # Explanatory tiers. They never define architectural rules: at a conflict the
 # normative contract wins. Keeping the status tied to the location makes the
 # distinction impossible to lose in a move or a copy-paste.
-INFORMATIVE_DIRECTORIES = ("Concepts", "Guides")
+INFORMATIVE_DIRECTORIES = ("Concepts", "Guides", "Authoring")
 # Header opens every document with the one thing its front matter cannot carry.
 # The field differs by document type because the useful question differs: a
 # contract is defined by what it owns, a guide by the task it solves.
@@ -27,6 +27,7 @@ HEADER_FIELD_BY_DIRECTORY = {
     "UI": "Владеет",
     "Concepts": "Объясняет",
     "Guides": "Задача",
+    "Authoring": "Задача",
     "ADR": "Решение",
     "Proposals": "Предлагает",
     "Plans": "Материализует",
