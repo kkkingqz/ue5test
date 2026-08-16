@@ -478,43 +478,52 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
         return static_cast<int>(EExitCode::ToolFailure);
     }
 
-    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    std::optional<GV2ContentCore::FPackageDescriptor> Descriptor =
-        GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, Diagnostics);
-    if (!Descriptor)
+    // Schemas live in the package that declares the entity kind, which for a game package is its
+    // "core" dependency rather than the package itself. Resolve across the whole set so
+    // `describe GameData/rh item` works the same as `describe GameData/core item`.
+    FPackageSetDiscovery Set = DiscoverPackageSet({Root});
+    if (Set.bToolFailure)
     {
-        return EmitDiagnosticsFailure(Diagnostics, Format);
+        std::cerr << "gv2-content: " << Set.ToolFailureMessage << "\n";
+        return static_cast<int>(EExitCode::ToolFailure);
+    }
+    if (Set.bDiscoveryFailed || Set.Descriptors.empty())
+    {
+        return EmitDiagnosticsFailure(Set.Diagnostics, Format);
     }
 
+    const GV2ContentCore::FPackageDescriptor* Descriptor = &Set.Descriptors[Set.TargetIndex()];
+
+    std::size_t SchemaPackageIndex = 0;
     const GV2ContentCore::FSchemaBinding* MatchingBinding = nullptr;
-    for (const GV2ContentCore::FSchemaBinding& Binding : Descriptor->GetSchemaBindings())
-    {
-        if (Binding.GetDefinitionType() == DefinitionType)
-        {
-            MatchingBinding = &Binding;
-            break;
-        }
-    }
+    const bool bFoundSchema =
+        FindSchemaBindingInSet(Set, DefinitionType, SchemaPackageIndex, MatchingBinding);
 
-    if (MatchingBinding == nullptr)
+    if (!bFoundSchema)
     {
         if (Format == EOutputFormat::Json)
         {
             std::cout << "{\"status\":\"error\",\"code\":\"unknown_definition_type\",\"message\":\"Unknown definition type '";
-            std::cout << DefinitionType << "' in package '" << Descriptor->GetPackageId() << "'\",\"definition_type\":\""
+            std::cout << DefinitionType << "' in package '" << Descriptor->GetPackageId()
+                      << "' or its dependencies\",\"definition_type\":\""
                       << DefinitionType << "\"}\n";
         }
         else
         {
             std::cerr << "gv2-content: unknown definition type '" << DefinitionType
-                      << "' in package '" << Descriptor->GetPackageId() << "'\n";
+                      << "' in package '" << Descriptor->GetPackageId() << "' or its dependencies\n";
         }
         return static_cast<int>(EExitCode::ToolFailure);
     }
 
-    FFilesystemContentSourceProvider Provider(Root, Descriptor->GetPackageId());
-    std::optional<std::string> SchemaSource = Provider.ReadSource(
-        Descriptor->GetPackageId(), MatchingBinding->GetRelativePath());
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+
+    // The schema is read from the package that owns it, which need not be the one asked about.
+    const GV2ContentCore::FPackageDescriptor& SchemaDescriptor = Set.Descriptors[SchemaPackageIndex];
+    FFilesystemContentSourceProvider SchemaProvider(
+        Set.Roots[SchemaPackageIndex], SchemaDescriptor.GetPackageId());
+    std::optional<std::string> SchemaSource = SchemaProvider.ReadSource(
+        SchemaDescriptor.GetPackageId(), MatchingBinding->GetRelativePath());
     if (!SchemaSource)
     {
         std::cerr << "gv2-content: failed to read schema source '" << MatchingBinding->GetRelativePath() << "'\n";
@@ -526,8 +535,8 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
         *SchemaSource,
         Limits,
         Diagnostics,
-        Descriptor->GetPackageId(),
-        Descriptor->GetLoadIndex(),
+        SchemaDescriptor.GetPackageId(),
+        SchemaDescriptor.GetLoadIndex(),
         MatchingBinding->GetRelativePath());
 
     if (!SchemaDoc)
@@ -538,8 +547,8 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
     auto SchemaResourceOpt = GV2ContentCore::ParseSchemaResource(
         *SchemaDoc,
         *MatchingBinding,
-        Descriptor->GetPackageId(),
-        Descriptor->GetLoadIndex(),
+        SchemaDescriptor.GetPackageId(),
+        SchemaDescriptor.GetLoadIndex(),
         MatchingBinding->GetRelativePath(),
         Diagnostics);
 
@@ -550,13 +559,23 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
 
     const GV2ContentCore::FSchemaResource& Schema = *SchemaResourceOpt;
 
+    // Any package in the set may extend a definition type, so extensions are collected across
+    // the whole set, each read from its own owner.
     std::vector<GV2ContentCore::FExtensionSchemaResource> ExtensionSchemas;
-    for (const GV2ContentCore::FExtensionSchemaBinding& ExtBinding : Descriptor->GetExtensionSchemaBindings())
+    for (std::size_t Index = 0; Index < Set.Descriptors.size(); ++Index)
     {
-        if (ExtBinding.GetDefinitionType() == DefinitionType)
+        const GV2ContentCore::FPackageDescriptor& ExtDescriptor = Set.Descriptors[Index];
+        FFilesystemContentSourceProvider ExtProvider(Set.Roots[Index], ExtDescriptor.GetPackageId());
+
+        for (const GV2ContentCore::FExtensionSchemaBinding& ExtBinding : ExtDescriptor.GetExtensionSchemaBindings())
         {
-            std::optional<std::string> ExtSource = Provider.ReadSource(
-                Descriptor->GetPackageId(), ExtBinding.GetRelativePath());
+            if (ExtBinding.GetDefinitionType() != DefinitionType)
+            {
+                continue;
+            }
+
+            std::optional<std::string> ExtSource = ExtProvider.ReadSource(
+                ExtDescriptor.GetPackageId(), ExtBinding.GetRelativePath());
             if (!ExtSource)
             {
                 std::cerr << "gv2-content: failed to read extension schema source '" << ExtBinding.GetRelativePath() << "'\n";
@@ -567,8 +586,8 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
                 *ExtSource,
                 Limits,
                 Diagnostics,
-                Descriptor->GetPackageId(),
-                Descriptor->GetLoadIndex(),
+                ExtDescriptor.GetPackageId(),
+                ExtDescriptor.GetLoadIndex(),
                 ExtBinding.GetRelativePath());
 
             if (!ExtDoc)
@@ -579,8 +598,8 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
             auto ExtResourceOpt = GV2ContentCore::ParseExtensionSchemaResource(
                 *ExtDoc,
                 ExtBinding,
-                Descriptor->GetPackageId(),
-                Descriptor->GetLoadIndex(),
+                ExtDescriptor.GetPackageId(),
+                ExtDescriptor.GetLoadIndex(),
                 ExtBinding.GetRelativePath(),
                 Diagnostics);
 

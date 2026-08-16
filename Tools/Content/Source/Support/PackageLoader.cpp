@@ -33,14 +33,14 @@ std::optional<std::string> FFilesystemContentSourceProvider::ReadSource(
     return std::string{std::istreambuf_iterator<char>(Stream), std::istreambuf_iterator<char>()};
 }
 
-FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>& RawRoots)
+FPackageSetDiscovery DiscoverPackageSet(const std::vector<std::filesystem::path>& RawRoots)
 {
-    FRootBuildOutcome Outcome;
+    FPackageSetDiscovery Set;
     if (RawRoots.empty())
     {
-        Outcome.bToolFailure = true;
-        Outcome.ToolFailureMessage = "no package roots specified";
-        return Outcome;
+        Set.bToolFailure = true;
+        Set.ToolFailureMessage = "no package roots specified";
+        return Set;
     }
 
     std::vector<std::filesystem::path> Roots;
@@ -53,9 +53,9 @@ FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>
 
         if (!std::filesystem::is_directory(Root, Ec) || Ec)
         {
-            Outcome.bToolFailure = true;
-            Outcome.ToolFailureMessage = "package root not found or not a directory: " + Root.string();
-            return Outcome;
+            Set.bToolFailure = true;
+            Set.ToolFailureMessage = "package root not found or not a directory: " + Root.string();
+            return Set;
         }
         Roots.push_back(Root);
     }
@@ -75,16 +75,60 @@ FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>
         }
     }
 
-    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
     std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoveredDescriptors =
-        GV2ContentHostSupport::DiscoverPackagesFromDirectories(Roots, Diagnostics);
+        GV2ContentHostSupport::DiscoverPackagesFromDirectories(Roots, Set.Diagnostics);
     if (!DiscoveredDescriptors)
     {
-        Outcome.Result.emplace(GV2ContentCore::FBuildResult::Failure(std::move(Diagnostics)));
+        Set.bDiscoveryFailed = true;
+        return Set;
+    }
+
+    Set.Roots = std::move(Roots);
+    Set.Descriptors = std::move(*DiscoveredDescriptors);
+    return Set;
+}
+
+bool FindSchemaBindingInSet(
+    const FPackageSetDiscovery& Set,
+    std::string_view DefinitionType,
+    std::size_t& OutPackageIndex,
+    const GV2ContentCore::FSchemaBinding*& OutBinding)
+{
+    // Load order: a package binding a type its dependency already binds is fatal at repository
+    // build, so the first match is the only match.
+    for (std::size_t Index = 0; Index < Set.Descriptors.size(); ++Index)
+    {
+        for (const GV2ContentCore::FSchemaBinding& Binding : Set.Descriptors[Index].GetSchemaBindings())
+        {
+            if (Binding.GetDefinitionType() == DefinitionType)
+            {
+                OutPackageIndex = Index;
+                OutBinding = &Binding;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>& RawRoots)
+{
+    FRootBuildOutcome Outcome;
+
+    FPackageSetDiscovery Set = DiscoverPackageSet(RawRoots);
+    if (Set.bToolFailure)
+    {
+        Outcome.bToolFailure = true;
+        Outcome.ToolFailureMessage = std::move(Set.ToolFailureMessage);
+        return Outcome;
+    }
+    if (Set.bDiscoveryFailed)
+    {
+        Outcome.Result.emplace(GV2ContentCore::FBuildResult::Failure(std::move(Set.Diagnostics)));
         return Outcome;
     }
 
-    Outcome.Descriptors = std::move(*DiscoveredDescriptors);
+    Outcome.Descriptors = std::move(Set.Descriptors);
     if (!Outcome.Descriptors.empty())
     {
         Outcome.Descriptor = std::make_unique<GV2ContentCore::FPackageDescriptor>(Outcome.Descriptors.back());
@@ -93,7 +137,7 @@ FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>
     auto MultiProvider = std::make_unique<GV2ContentHostSupport::FMultiPackageSourceProvider>();
     for (std::size_t Index = 0; Index < Outcome.Descriptors.size(); ++Index)
     {
-        MultiProvider->RegisterPackage(Outcome.Descriptors[Index].GetPackageId(), Roots[Index]);
+        MultiProvider->RegisterPackage(Outcome.Descriptors[Index].GetPackageId(), Set.Roots[Index]);
     }
 
     GV2ContentCore::FBuildOptions Options;

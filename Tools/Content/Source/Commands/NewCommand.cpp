@@ -85,43 +85,48 @@ int RunNew(const std::vector<std::string>& Positional, EOutputFormat Format)
         return static_cast<int>(EExitCode::ToolFailure);
     }
 
+    // The new entry is written into the package that was asked for, but the schema describing it
+    // usually belongs to that package's "core" dependency — resolve it across the whole set.
+    FPackageSetDiscovery Set = DiscoverPackageSet({Root});
+    if (Set.bToolFailure)
+    {
+        std::cerr << "gv2-content: " << Set.ToolFailureMessage << "\n";
+        return static_cast<int>(EExitCode::ToolFailure);
+    }
+    if (Set.bDiscoveryFailed || Set.Descriptors.empty())
+    {
+        return EmitDiagnosticsFailure(Set.Diagnostics, Format);
+    }
+
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    std::optional<GV2ContentCore::FPackageDescriptor> Descriptor =
-        GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, Diagnostics);
-    if (!Descriptor)
-    {
-        return EmitDiagnosticsFailure(Diagnostics, Format);
-    }
+    const GV2ContentCore::FPackageDescriptor* Descriptor = &Set.Descriptors[Set.TargetIndex()];
 
+    std::size_t SchemaPackageIndex = 0;
     const GV2ContentCore::FSchemaBinding* MatchingSchemaBinding = nullptr;
-    for (const GV2ContentCore::FSchemaBinding& Binding : Descriptor->GetSchemaBindings())
-    {
-        if (Binding.GetDefinitionType() == DefinitionType)
-        {
-            MatchingSchemaBinding = &Binding;
-            break;
-        }
-    }
-
-    if (MatchingSchemaBinding == nullptr)
+    if (!FindSchemaBindingInSet(Set, DefinitionType, SchemaPackageIndex, MatchingSchemaBinding))
     {
         if (Format == EOutputFormat::Json)
         {
             std::cout << "{\"status\":\"error\",\"code\":\"unknown_definition_type\",\"message\":\"Unknown definition type '"
-                      << DefinitionType << "' in package '" << Descriptor->GetPackageId() << "'\",\"definition_type\":\""
+                      << DefinitionType << "' in package '" << Descriptor->GetPackageId()
+                      << "' or its dependencies\",\"definition_type\":\""
                       << DefinitionType << "\"}\n";
         }
         else
         {
             std::cerr << "gv2-content: unknown definition type '" << DefinitionType
-                      << "' in package '" << Descriptor->GetPackageId() << "'\n";
+                      << "' in package '" << Descriptor->GetPackageId() << "' or its dependencies\n";
         }
         return static_cast<int>(EExitCode::ToolFailure);
     }
 
     FFilesystemContentSourceProvider Provider(Root, Descriptor->GetPackageId());
-    std::optional<std::string> SchemaSource = Provider.ReadSource(
-        Descriptor->GetPackageId(), MatchingSchemaBinding->GetRelativePath());
+
+    const GV2ContentCore::FPackageDescriptor& SchemaDescriptor = Set.Descriptors[SchemaPackageIndex];
+    FFilesystemContentSourceProvider SchemaProvider(
+        Set.Roots[SchemaPackageIndex], SchemaDescriptor.GetPackageId());
+    std::optional<std::string> SchemaSource = SchemaProvider.ReadSource(
+        SchemaDescriptor.GetPackageId(), MatchingSchemaBinding->GetRelativePath());
     if (!SchemaSource)
     {
         std::cerr << "gv2-content: failed to read schema source '" << MatchingSchemaBinding->GetRelativePath() << "'\n";
@@ -133,8 +138,8 @@ int RunNew(const std::vector<std::string>& Positional, EOutputFormat Format)
         *SchemaSource,
         Limits,
         Diagnostics,
-        Descriptor->GetPackageId(),
-        Descriptor->GetLoadIndex(),
+        SchemaDescriptor.GetPackageId(),
+        SchemaDescriptor.GetLoadIndex(),
         MatchingSchemaBinding->GetRelativePath());
 
     if (!SchemaDoc)
@@ -145,8 +150,8 @@ int RunNew(const std::vector<std::string>& Positional, EOutputFormat Format)
     auto SchemaResourceOpt = GV2ContentCore::ParseSchemaResource(
         *SchemaDoc,
         *MatchingSchemaBinding,
-        Descriptor->GetPackageId(),
-        Descriptor->GetLoadIndex(),
+        SchemaDescriptor.GetPackageId(),
+        SchemaDescriptor.GetLoadIndex(),
         MatchingSchemaBinding->GetRelativePath(),
         Diagnostics);
 

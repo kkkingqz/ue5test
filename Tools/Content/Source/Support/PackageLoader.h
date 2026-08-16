@@ -4,12 +4,14 @@
 #include "GV2ContentCore/PackageDescriptor.h"
 #include "GV2ContentCore/RepositoryBuilder.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace GV2ContentCli
 {
@@ -28,6 +30,34 @@ private:
     std::filesystem::path PackageRoot;
     std::string PackageId;
 };
+
+// Ordered package set behind one or more root directories, without building a repository.
+// A single non-core root picks up a sibling "core" package, so a command pointed at the game
+// package still sees the schemas that package depends on.
+struct FPackageSetDiscovery
+{
+    bool bToolFailure = false;
+    std::string ToolFailureMessage;
+    // Set when discovery itself produced diagnostics; Descriptors is empty in that case.
+    bool bDiscoveryFailed = false;
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    // Parallel arrays in load order: Roots[i] is the directory Descriptors[i] was discovered in.
+    std::vector<std::filesystem::path> Roots;
+    std::vector<GV2ContentCore::FPackageDescriptor> Descriptors;
+
+    // Index of the package the command was pointed at: always the last one in load order.
+    std::size_t TargetIndex() const { return Descriptors.empty() ? 0 : Descriptors.size() - 1; }
+};
+
+FPackageSetDiscovery DiscoverPackageSet(const std::vector<std::filesystem::path>& RawRoots);
+
+// Locates the schema binding for a definition type anywhere in the set, in load order.
+// Returns false when no package in the set binds the type.
+bool FindSchemaBindingInSet(
+    const FPackageSetDiscovery& Set,
+    std::string_view DefinitionType,
+    std::size_t& OutPackageIndex,
+    const GV2ContentCore::FSchemaBinding*& OutBinding);
 
 // Discovers package descriptors and builds a repository from one or more package root directories.
 struct FRootBuildOutcome

@@ -378,6 +378,61 @@ def main():
     assert res.returncode == 2
     assert "only supported for 'validate'" in res.stderr
 
+    print("[*] Testing schema resolution from a game package's core dependency...")
+    # The game package (rh) carries entities but no schemas: those belong to its core
+    # dependency. 'describe' and 'new' must resolve across the package set, the way
+    # 'validate' already does, or the authoring tools are unusable in the package the
+    # designer actually works in.
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shutil.copytree(core_pkg, os.path.join(tmpdir, "core"))
+        game_pkg = os.path.join(tmpdir, "game")
+        os.makedirs(os.path.join(game_pkg, "definitions"))
+        with open(os.path.join(game_pkg, "package.json5"), "w", encoding="utf-8") as f:
+            f.write(
+                "{\n"
+                '  package_id: "game",\n'
+                '  namespace: "game",\n'
+                '  version: "0.1.0",\n'
+                "  dependencies: [\n"
+                '    { package_id: "core", load_after: true },\n'
+                "  ],\n"
+                "}\n"
+            )
+
+        # describe reports the schema and names the package that actually owns it.
+        res = run_cmd([gv2_content, "describe", game_pkg, "item"])
+        assert "definition_type: item" in res.stdout
+        assert "core:schema.definition.item.v1" in res.stdout
+        assert "package: core" in res.stdout
+        assert "price: int64 (required, min=0)" in res.stdout
+
+        res = run_cmd([gv2_content, "describe", game_pkg, "item", "--format=json"])
+        doc = json.loads(res.stdout)
+        assert doc["status"] == "ok"
+        assert doc["schema_id"] == "core:schema.definition.item.v1"
+
+        # new writes into the game package, using the schema owned by core.
+        res = run_cmd([gv2_content, "new", game_pkg, "actor", "game:actor.npc.guard"])
+        assert "created definition game:actor.npc.guard in definitions/actors.json5" in res.stdout
+
+        res = run_cmd([gv2_content, "inspect", game_pkg, "game:actor.npc.guard", "--format=json"])
+        actor_doc = json.loads(res.stdout)
+        assert actor_doc["status"] == "ok"
+        assert actor_doc["definition"]["id"] == "game:actor.npc.guard"
+
+        res = run_cmd([gv2_content, "validate", game_pkg])
+        assert "ok content_hash=" in res.stdout
+
+        # A type no package in the set binds still fails, and says where it looked.
+        res = run_cmd([gv2_content, "describe", game_pkg, "unknown_type"], check=False)
+        assert res.returncode == 2
+        assert "unknown definition type 'unknown_type'" in res.stderr
+        assert "or its dependencies" in res.stderr
+
+        res = run_cmd([gv2_content, "new", game_pkg, "unknown_type", "game:unknown_type.x"], check=False)
+        assert res.returncode == 2
+        assert "or its dependencies" in res.stderr
+
     print("[*] Testing 'index' on GameData/core...")
     # TAS-11: GameData/core is live gameplay content (not the frozen test
     # corpus, TAS-06) — assertions here must not pin its size. "active_ids:

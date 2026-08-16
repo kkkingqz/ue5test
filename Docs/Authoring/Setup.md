@@ -1,7 +1,7 @@
 ---
 title: Setup and Workflow
 status: informative
-version: 1.0
+version: 1.1
 updated: 2026-08-16
 depends_on:
   - README.md
@@ -85,20 +85,47 @@ gv2-content validate GameData/rh --watch
 
 ## Полезные команды
 
-**Посмотреть, какие поля бывают у объекта.** Обратите внимание: тут указывается `GameData/core`, потому что описания полей живут в движке.
+**Посмотреть, какие поля бывают у объекта:**
 
 ```bash
-gv2-content describe GameData/core item
+gv2-content describe GameData/rh item
 ```
 
 ```text
 definition_type: item
 schema_id: core:schema.definition.item.v1
+package: core (schemas/item_v1.schema.json5)
 fields:
   label_text_id: text_id (required)
   price: int64 (required, min=0)
   icon_resource_id: resource_ref (required, resource_class=texture_2d)
 ```
+
+Строка `package:` показывает, что описание полей взято из `core` — так и должно быть, поля объектов задаёт движок.
+
+**Завести новый объект заготовкой:**
+
+```bash
+gv2-content new GameData/rh item rh:item.weapon.axe
+```
+
+Команда допишет в `definitions/items.json5` запись со всеми обязательными полями и предсказуемыми именами ссылок:
+
+```json5
+{
+  id: "rh:item.weapon.axe",
+  data: {
+    label_text_id: "rh:text.item.weapon.axe.label",
+    price: 0,
+    icon_resource_id: "rh:resource.item.weapon.axe.icon",
+  },
+  tags: [],
+  deprecated: false,
+  extensions: {},
+},
+```
+
+Заготовка сразу не проходит проверку — она ссылается на текст и картинку, которых ещё нет. Это не ошибка команды, а список того, что осталось сделать: `validate` назовёт обе недостающие ссылки поимённо.
 
 **Посмотреть один объект целиком:**
 
@@ -124,10 +151,6 @@ gv2-content rename GameData/rh rh:item.weapon.iron_sword rh:item.weapon.steel_sw
 gv2-content coverage GameData/rh --locale=ru
 ```
 
-## Две шероховатости
+## Про пути в командах
 
-Их стоит знать заранее, чтобы не решить, что вы что-то сломали.
-
-**`describe` и `new` не работают с `GameData/rh`.** Они ищут описания полей внутри того пакета, на который вы указали, а те лежат в `core`. Поэтому `describe` запускайте на `GameData/core`, а новые объекты пока добавляйте копированием соседней записи — это надёжнее генератора и занимает те же секунды.
-
-**`validate` при этом с `rh` работает нормально** — он сам подхватывает соседний `core`. Указывать оба пути не нужно.
+Во всех командах указывайте `GameData/rh` — свой пакет. Описания полей лежат в `core`, но инструменты находят их сами: они видят, что `rh` зависит от `core`, и заглядывают туда. Указывать два пути не нужно.
