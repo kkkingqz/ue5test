@@ -1,8 +1,8 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 2.10
-updated: 2026-08-15
+version: 2.11
+updated: 2026-08-16
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -134,9 +134,28 @@ API предоставляет ровно четыре функции — `get`,
 
 Возвращаемые таблицы являются detached deep copy и содержат только валидированные payload-поля (`id`, `data`, `tags`, `deprecated`, `extensions`). Provenance, package identity, load index, shadowed providers и пути к исходным файлам через boundary не проходят: gameplay-правила не должны зависеть от раскладки файлов и порядка загрузки пакетов, а аудит источников принадлежит authoring-слою. Полные семантика вызовов, коды ошибок и обоснование изоляции provenance — в [GameDataRepository Contract](GameDataRepositoryContract.md).
 
+### `game.commands.handlers` (CHR-01..07)
+
+`game.commands.handlers` — реестр обработчиков команд (`core:module.runtime.handler_registry`). Обработчики регистрируются модулями ядра и модов на фазе `register` и связываются с точным идентификатором команды `command_id` (Stable ID категории `command`).
+
+Публичный API реестра:
+- `register(command_id, handler_fn, options)` — регистрация обработчика команды. `command_id` обязан быть валидным Stable ID категории `command` (проверяется `stable_id.is_kind`, иначе ошибка `InvalidCommandId`), `handler_fn` — исполняемой функцией (иначе `InvalidCommandHandler`). Возвращает зарегистрированную функцию.
+- `get(command_id)` — возвращает зарегистрированную функцию обработчика или `nil`.
+- `exists(command_id)` — возвращает `true`, если обработчик зарегистрирован.
+- `ids()` — возвращает детерминированный отсортированный массив всех зарегистрированных `command_id`.
+- `freeze()` / `is_frozen()` — заморозка реестра в конце фазы `register`. Регистрация после freeze отклоняется ошибкой `CommandHandlerRegistryFrozen`.
+
+Правила перекрытия и защита целостности:
+- **Отказ на дубликат**: повторная регистрация того же `command_id` без явного флага `override` отклоняется ошибкой `CommandHandlerDuplicateRegistration` и блокирует запуск сессии. Правило «поздний пакет побеждает» без явного указания для команд не применяется.
+- **Явный override**: замена существующего обработчика разрешена только при передаче `options.override = true`.
+- **Защита от ложного override**: передача `options.override = true` для незарегистрированного ранее `command_id` отклоняется ошибкой `CommandHandlerOverrideMissing`.
+- **Защита от прямой мутации**: прямая запись полей в таблицу реестра запрещена метатаблицей (`CommandHandlerRegistryDirectAssignmentDisallowed`).
+
+При диспетчеризации (`command_dispatcher.dispatch`) обработчик находится за один lookup `game.commands.handlers.get(request.command_id)`. При отсутствии обработчика диспетчер возвращает типизированный отказ `{ ok = false, error = { code = "core:error.command.unknown", params = { command_id = request.command_id } } }` без открытия окна мутации и без доставки событий.
+
 ### `game.commands.validators` (GEW-01)
 
-`game.commands` — зарезервированное поле фасада для command dispatcher service; `validators` — первое реально заполненное подполе. Регистрация выполняется на фазе `register` (`registry.register(id, validator_impl, options)`, `options.priority` — опциональный целочисленный приоритет, по умолчанию `0`) и закрывается вместе с остальными registries тем же host-side freeze шагом, что и `game.services`. Id обязан быть canonical Stable ID kind `validator`; поздняя регистрация после freeze — ошибка.
+`game.commands` — зарезервированное поле фасада для command dispatcher service; `validators` — реестр валидаторов команд. Регистрация выполняется на фазе `register` (`registry.register(id, validator_impl, options)`, `options.priority` — опциональный целочисленный приоритет, по умолчанию `0`) и закрывается вместе с остальными registries тем же host-side freeze шагом, что и `game.services`. Id обязан быть canonical Stable ID kind `validator`; поздняя регистрация после freeze — ошибка.
 
 Итоговый порядок исполнения (`registry.ordered()`): priority по возрастанию, затем package load order, затем registration order — [Commands and Events](CommandsAndEvents.md) "Command validators". Один global `register`-проход над уже разрешённым module `LoadOrder` (core-модули, затем mods) делает package load order и registration order одной composite-последовательностью: отдельного numeric package-index не вводится, пока не появится второе измерение (реальные mods).
 

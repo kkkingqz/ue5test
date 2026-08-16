@@ -1,8 +1,8 @@
 ---
 title: Commands and Events
 status: normative
-version: 1.7
-updated: 2026-08-15
+version: 1.8
+updated: 2026-08-16
 depends_on:
   - LuaRuntimeContract.md
   - StableIDSpecification.md
@@ -16,7 +16,7 @@ decisions:
 > **Владеет:** конвертом команды, порядком валидаторов, mutation window, семантикой отказа, публикацией и доставкой событий, фазами и очередями.
 > **Не владеет:** конкретными командами и правилами игры — они принадлежат геймплейным модулям.
 > **Инварианты:** [INV-003](Invariants.md), [INV-004](Invariants.md)
-> **Реализация:** `Scripts/runtime/command_dispatcher.lua`, `validator_registry.lua`, `event_bus.lua`, `subscriber_registry.lua`, `mutation_window.lua`.
+> **Реализация:** `Scripts/runtime/command_dispatcher.lua`, `handler_registry.lua`, `validator_registry.lua`, `event_bus.lua`, `subscriber_registry.lua`, `mutation_window.lua`.
 > **Проверки:** `Tests/Lua/commands/`, `Tests/Lua/events/`.
 
 Command — единственная публичная форма намерения изменить gameplay-state. Event — неотменяемый факт после commit. Отдельные action bus, command bus и `before_*` events отсутствуют.
@@ -60,16 +60,19 @@ Expected refusal не является runtime fault. Failed result гарант
 1. Validate runtime phase и source identity.
 2. Validate envelope/payload schema.
 3. Run ordered command validators read-only.
-4. Invoke one handler.
-5. Handler mutates state через Gameplay Services или доменные методы сущностей.
-6. Validate required postconditions.
-7. Commit command result и enqueue gameplay facts.
-8. Pump EventBus FIFO/breadth-first.
-9. Rebuild affected UI/presentation desired model.
+4. Lookup handler in `game.commands.handlers` by `request.command_id`.
+5. If handler is missing: return typed refusal `{ ok = false, error = { code = "core:error.command.unknown", params = { command_id = request.command_id } } }` without opening mutation window.
+6. If handler is present: open `mutation_window`, begin event context, and invoke handler function.
+7. Handler mutates state через Gameplay Services или доменные методы сущностей.
+8. Validate required postconditions.
+9. Commit command result and enqueue gameplay facts (or rollback on refusal / discard on fault).
+10. Drain EventBus FIFO/breadth-first.
+11. Execute deferred commands from queue sequentially.
+12. Rebuild affected UI/presentation desired model.
 
-Синхронный путь вызова команд через `command_dispatcher` (`dispatch(request)`) с открытием `mutation_window`, вызовом тонкого handler-а (`Scripts/gameplay/root.lua`), делегированием доменным методам сущностей/Gameplay Services и возвратом структурированного результата `{ ok = true, value = ... }` либо `{ ok = false, error = { code = "core:error...." } }` реализован.
+Синхронный путь вызова команд через `command_dispatcher` (`dispatch(request)`) выполняет точечный поиск обработчика в реестре `game.commands.handlers`, запускает валидаторы до открытия окна мутации, исполняет обработчик внутри `mutation_window` с делегированием доменным методам сущностей/Gameplay Services и возвращает структурированный результат `{ ok = true, value = ... }` либо отказ `{ ok = false, error = { code = "..." } }`. Цепочка обработчиков и обход массива отсутствуют.
 
-Command handler не вызывает другой handler synchronously; вложенный вызов `dispatch` отклоняется типизированной ошибкой `CommandDispatchReentrant`. Отложенные очереди команд, цепочки валидаторов и EventBus реализуются в следующих этапах.
+Command handler не вызывает другой handler synchronously; вложенный вызов `dispatch` отклоняется типизированной ошибкой `CommandDispatchReentrant`. Отложенные команды ставятся в очередь `game.commands.enqueue` и исполняются последовательно после завершения текущего цикла событий.
 
 ## Command validators
 

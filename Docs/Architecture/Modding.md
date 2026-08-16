@@ -1,7 +1,7 @@
 ---
 title: Modding Architecture
 status: draft
-version: 0.7
+version: 0.8
 updated: 2026-08-16
 depends_on:
   - StableIDSpecification.md
@@ -97,11 +97,14 @@ optional cooked Pak
 - Замещение модулей разрешено только для явно помеченных как замещаемые (`replaceable: true`, например `gameplay/`, `debug/`); модули ядра запечатаны по умолчанию (`LuaModuleSealed`).
 - Замещающий модуль получает доступ к базовой реализации через `require_base()` во время инициализации.
 - Хуки жизненного цикла (`register`, `validate_state` и др.) вызываются только у активного победителя.
-- Public extension surface: `game.mods.weather_mod`.
-- Commands, validators, events, services и lifecycle hooks регистрируются до freeze.
-- Event handler меняет gameplay только через queued command.
+## Package commands
 
-Все enabled modules проходят full Menu и Game session lifecycle. Bootstrap error включённого mod блокирует candidate session с diagnostic mod/source.
+- Мод регистрирует свои команды в хуке жизненного цикла `M.register(ctx)` своего модуля через `game.commands.handlers.register("pkg:command.name", handler_fn)`.
+- Идентификаторы команд принадлежат собственному namespace мода (`<mod_id>:command.<path>`).
+- **Защита от случайного перекрытия**: повторная регистрация существующего `command_id` без явного флага `override` отклоняется ошибкой `CommandHandlerDuplicateRegistration` и блокирует запуск сессии. Правило «поздний пакет побеждает» для команд сознательно не применяется (в отличие от declarative definitions): механику нельзя тихо подменить порядком загрузки пакетов.
+- **Явное перекрытие**: мод может осознанно переопределить существующую команду ядра или другого мода, передав `options.override = true`.
+- **Защита от ложного перекрытия**: попытка указать `options.override = true` для идентификатора, который ещё не был зарегистрирован предшествующим пакетом, вызывает ошибку `CommandHandlerOverrideMissing`.
+- Команды мода исполняются через стандартный конвейер: валидаторы мода (`game.commands.validators`), окно мутации, публикация фактов (`game.events.enqueue`) и реакция подписчиков (`game.events.subscribers`). Никаких правок ядра или C++ для добавления команд мода не требуется.
 
 ## Trust model
 
