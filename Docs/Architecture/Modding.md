@@ -15,9 +15,16 @@ depends_on:
 > **Не владеет:** механикой сборки репозитория и разрешения override ([GameDataRepository](GameDataRepositoryContract.md)).
 > **Инварианты:** [INV-009](Invariants.md), [INV-010](Invariants.md)
 > **Реализация:** манифест пакета (M1) и discovery набора пакетов, порядок загрузки, валидация зависимостей, циклов, `load_after` и `mods.lock.json5` (M2) реализованы (план [PackageSupport](../Plans/Archive/PackageSupport/README.md)); Lua из пакетов и save metadata остаются future work (M3–M4). См. [Implementation Status](../Status/ImplementationStatus.md).
-> **Проверки:** фикстура `Tests/Fixtures/PortableContentCore/valid/test_mod` является полноценным пакетом с `package.json5` и покрывает override/redirects; `RunPackageManifestConformance()` и `RunPackageDiscoveryAndOrderConformance()` покрывают манифесты, discovery, зависимости, циклы, порядок и lock-файлы на обоих хостах (`gv2-headless --self-test`, `GV2.Runtime.ContentCore.*`).
-
 Mod — trusted content package с одним immutable `mod_id`, который одновременно является его namespace.
+
+## Игровой пакет поставки (`rh`)
+
+Базовая поставка игры разделена на два пакета (план [RhGamePackage](../Plans/RhGamePackage/README.md)):
+
+- `core` (движок) — схемы (`schemas/`), экраны (`core:screen.*`), команды, события, базовые модули среды исполнения (`Scripts/`). Движок не содержит конкретных игровых сущностей и не знает идентификаторов пространства `rh:`.
+- `rh` (игра) — конкретные игровые сущности: предметы (`rh:item.*`), персонажи/акторы (`rh:actor.*`), локации (`rh:location.*`), а также привязанные к ним тексты (`rh:text.*`), переводы (`ru.po`) и ресурсы (`rh:resource.*`).
+
+**Архитектурное правило разделения:** конкретные сущности живут в `rh`, механизмы и возможности — в `core`. Запрещены любые обратные ссылки из `core`, `Scripts/` или `Source/` на пространство имён `rh:` (проверяется гейтом `core_decoupling_gate_contract`).
 
 ## Package contents
 

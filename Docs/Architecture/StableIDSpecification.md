@@ -40,8 +40,8 @@ segment      = lowercase-alpha *(lowercase-alpha / digit / "_")
 Примеры:
 
 ```text
-core:item.weapon.iron_sword
-core:location.city.market
+rh:item.weapon.iron_sword
+rh:location.city.market
 core:command.location.travel
 core:event.location.enter
 weather_mod:item.ring.storm
@@ -92,8 +92,8 @@ Reference хранится полной canonical string. Expected kind зада
 
 ```json5
 {
-  equipped_weapon_id: "core:item.weapon.iron_sword",
-  arrival_text_id: "core:text.location.harbor.arrival",
+  equipped_weapon_id: "rh:item.weapon.iron_sword",
+  arrival_text_id: "rh:text.location.harbor.arrival",
 }
 ```
 

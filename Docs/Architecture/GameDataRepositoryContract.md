@@ -140,10 +140,10 @@ Enumeration order C++ не является gameplay semantics. Caller зада�
 ## Lua API
 
 ```lua
-local item, err = game.repository.get("core:item.weapon.iron_sword")
-local item = game.repository.require("core:item.weapon.iron_sword")
+local item, err = game.repository.get("rh:item.weapon.iron_sword")
+local item = game.repository.require("rh:item.weapon.iron_sword")
 local ids = game.repository.list("item")
-local exists = game.repository.exists("core:item.weapon.iron_sword")
+local exists = game.repository.exists("rh:item.weapon.iron_sword")
 ```
 
 - `get(id)` никогда не выбрасывает Lua error; при успехе возвращает `(definition_table, nil)`, при отсутствии/ошибке — `(nil, err_table)` со стабильным полем `code` (`not_found`, `tombstoned`, `invalid_id`, `invalid_handle`, `marshal_error`), `requested_id` и `canonical_id` (при наличии).

@@ -108,15 +108,15 @@ depends_on:
 
 | Поле | Пример |
 |---|---|
-| `definition_id` | `core:item.weapon.iron_sword` |
+| `definition_id` | `rh:item.weapon.iron_sword` |
 | `command_id` | `core:command.location.travel` |
 | `event_id` | `core:event.location.enter` |
 | `module_id` | `core:module.location_service` |
 | `schema_id` | `core:schema.definition.item.v1` |
 | `widget_id` | `core:widget.button_list` |
 | `screen_id` | `core:screen.main` |
-| `text_id` | `core:text.location.market.title` |
-| `resource_id` | `core:resource.character.aria.casual` |
+| `text_id` | `rh:text.location.market.title` |
+| `resource_id` | `rh:resource.item.iron_sword.icon` |
 | `operation_id` (kind) | `core:operation.resource.prepare` |
 | `validator_id` | `core:validator.item.semantics` |
 | `error_id` | `core:error.location.locked` |

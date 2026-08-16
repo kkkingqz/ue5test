@@ -44,11 +44,11 @@ Candidate repository публикуется только целиком посл
   type: "item",
   definitions: [
     {
-      id: "core:item.weapon.iron_sword",
+      id: "rh:item.weapon.iron_sword",
       data: {
-        label_text_id: "core:text.item.iron_sword.name",
+        label_text_id: "rh:text.item.iron_sword.name",
         price: 10,
-        icon_resource_id: "core:resource.item.iron_sword.icon",
+        icon_resource_id: "rh:resource.item.iron_sword.icon",
       },
       tags: ["weapon", "melee"],
       deprecated: false,

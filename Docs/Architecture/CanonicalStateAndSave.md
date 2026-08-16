@@ -157,7 +157,7 @@ Migration failure не изменяет source slot. После failure replacem
 
 State неизвестного/disabled mod сохраняется opaque в container и не передаётся чужому module. При возвращении mod section доступна только после version/fingerprint compatibility check.
 
-**Отсутствие ID — всегда ошибка (SAV-16, план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md)).** Per-field recovery policy в v1 не вводится: broken required reference на missing definition — всегда типизированная ошибка загрузки (`SaveReferenceRetired` для tombstoned ID, `SaveReferenceUnknown` для ID, отсутствующего в pinned repository), а не silent substitution и не частичное восстановление. Политика восстановления по отдельным полям появится позже, под конкретный случай и отдельным решением (README.md).
+**Отсутствие ID — всегда ошибка (SAV-16, план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md), RH-12).** Per-field recovery policy в v1 не вводится: broken required reference на missing definition — всегда типизированная ошибка загрузки (`SaveReferenceRetired` для tombstoned ID, `SaveReferenceUnknown` для ID, отсутствующего в pinned repository), а не silent substitution и не частичное восстановление. Смена namespace сущности (например, при переносе из `core` в игровой пакет `rh`) является несовместимым изменением (breaking change) для старых сохранений: старые сейвы с `core:location.*` или `core:actor.*` отклоняются типизированной ошибкой `SaveReferenceUnknown:<id>`. Редиректы из `core` в `rh` намеренно не создаются, так как движковый пакет не должен содержать обратных зависимостей на игру. Политика восстановления по отдельным полям появится позже, под конкретный случай и отдельным решением (README.md).
 
 ## Migrations
 

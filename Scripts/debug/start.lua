@@ -9,8 +9,13 @@ local selected_class = nil
 local player_name = ""
 
 local function create_screen()
-    local item_def = game.repository and game.repository.get("core:item.weapon.iron_sword")
-    local item_id = (item_def and item_def.id) or "core:item.weapon.iron_sword"
+    local item_id = "core:item.synthetic.placeholder"
+    if game.repository then
+        local items = game.repository.list("item")
+        if items and #items > 0 then
+            item_id = items[1]
+        end
+    end
 
     return screens.create("core:screen.test", {
         description = {

@@ -27,4 +27,17 @@ if(BUILD_TESTING)
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_host_conformance_parity.py"
     )
+    add_test(
+        NAME core_decoupling_gate_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_decoupling.py"
+    )
+    add_test(
+        NAME core_decoupling_gate_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_decoupling.py"
+            "--self-test"
+    )
 endif()

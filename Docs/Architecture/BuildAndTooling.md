@@ -22,7 +22,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `gv2_content_*`.
+> **Проверки:** `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -158,6 +158,8 @@ Exit code одинаков для `--format=text` и `--format=json`.
 **Заморожен (TAS-06, план [TestArchitectureAndLuaSpecs](../Plans/Archive/TestArchitectureAndLuaSpecs/README.md)).** `valid/core`/`valid/test_mod` больше не зеркалируют `GameData/core`: рост игрового контента их не трогает; изменение допустимо только когда предметом изменения являются сами правила разрешения контента (parsing/schema/override/redirect/tombstone/provenance), а не gameplay-сущности. Правило записано также в `Tests/Fixtures/PortableContentCore/README.md`, рядом с корпусом.
 
 **Раздельные pinned-значения (TAS-07).** `Tests/Fixtures/expected_core_content_hash.txt` пинит хэш ТОЛЬКО замороженного тестового корпуса (`valid/core`); сверяется CTest `gv2_content_hash_core_fixture` и Unreal automation (`GV2.Runtime.ContentCore.CrossHostParity`). `GameData/core` не пинит content hash вовсе — CTest `gv2_content_validate_gamedata_core` остаётся smoke-проверкой (`gv2-content validate`, без сравнения хэша), поэтому рост игрового контента никогда не требует правки pinned-значения.
+ 
+**Гейт развязки core и rh (RH-11, план [RhGamePackage](../Plans/RhGamePackage/README.md)).** `Tools/Content/validate_core_decoupling.py` сканирует `Scripts/`, `GameData/core/` и `Source/` на отсутствие ссылок на пространство имён `rh:` (CTest `core_decoupling_gate_contract`). Негативный тест `core_decoupling_gate_negative_contract` подтверждает срабатывание гейта при обнаружении нарушений.
 
 Conformance-наборы объявлены в portable headers (`Source/<Module>/Public/<Module>/Testing/`) и исполняются обоими host-ами из одного источника; отдельные копии positive/negative cases запрещены.
 

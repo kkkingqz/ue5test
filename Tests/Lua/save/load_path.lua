@@ -178,4 +178,17 @@ return {
         assert(decoded == nil, "a dangling reference must reject the whole container, not just that field")
         assert(tostring(err):find("^SaveReferenceUnknown:") ~= nil, "got: " .. tostring(err))
     end,
+
+    -- RH-12: Old save created before entity migration contains core:location.city.tavern.
+    -- Because no redirect exists from engine to game, it must fail typed as SaveReferenceUnknown (not retired).
+    old_save_with_unmigrated_core_location_fails_as_unknown = function()
+        local state = { meta = {}, world = { current_location_id = "core:location.city.tavern" } }
+        local envelope = save.build_envelope(state, 1, "")
+        local container = save.serialize_envelope(envelope)
+
+        local decoded, err = load_module.decode_and_prepare(container)
+        assert(decoded == nil, "old save referencing core:location.city.tavern must fail to load")
+        assert(tostring(err):find("^SaveReferenceUnknown:") ~= nil and tostring(err):find("core:location.city.tavern") ~= nil,
+            "must fail with SaveReferenceUnknown, got: " .. tostring(err))
+    end,
 }
