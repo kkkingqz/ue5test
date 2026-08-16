@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 1.4
-updated: 2026-08-15
+version: 1.5
+updated: 2026-08-16
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -27,6 +27,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [PortableContentCoreProposal](PortableContentCoreProposal.md) | implemented | Content, Runtime, Headless | Общий portable pipeline `Packages → Definitions → Repository Snapshot → Runtime` |
 | [ContentDiagnosticsAndToolingProposal](ContentDiagnosticsAndToolingProposal.md) | accepted for planning | Content, CI, Tooling | Source spans, deterministic diagnostics, CLI validation, fuzzing и будущий LSP |
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
+| [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | implemented | UI, Resources, Engine | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
@@ -38,9 +39,10 @@ Proposal не изменяет нормативную архитектуру с�
 `PortableContentCoreProposal` выполнен. Оставшаяся очередь:
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
-2. `ModPackageLifecycleProposal`.
-3. `CommonUIRuntimeIntegrationProposal`.
-4. `ScreenAuthoringWorkflowProposal`.
+2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
+3. `ModPackageLifecycleProposal`.
+4. `CommonUIRuntimeIntegrationProposal`.
+5. `ScreenAuthoringWorkflowProposal`.
 
 `ImageResourceLookupOptimizationProposal` и `ImageResourcePackagedDeploymentProposal` могут выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 
