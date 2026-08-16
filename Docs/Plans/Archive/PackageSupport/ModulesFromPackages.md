@@ -1,17 +1,17 @@
 ---
 title: Modules from Packages Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - ModuleSealing.md
   - DiscoveryAndOrder.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 ---
 
 # M4 — Modules from Packages
 
-> **Материализует:** [Lua Runtime Contract § Module loader](../../Architecture/LuaRuntimeContract.md), [Modding § Lua modules](../../Architecture/Modding.md).
+> **Материализует:** [Lua Runtime Contract § Module loader](../../../Architecture/LuaRuntimeContract.md), [Modding § Lua modules](../../../Architecture/Modding.md).
 > **Задачи:** PKG-14…19.
 > **Результат:** Lua приезжает из пакета, замещает модуль ядра и получает замещённую реализацию.
 
@@ -24,7 +24,7 @@ depends_on:
 - [x] **PKG-14 — Обнаружение `scripts/` внутри пакета**
   - Зависимости: PKG-05.
   - Сейчас Lua внутри пакета не обнаруживается вовсе: UE берёт `FPaths::ProjectDir()/Scripts`, headless — рабочий каталог.
-  - Done: `GV2ContentHostSupport` обнаруживает `scripts/` внутри каждого пакета набора; filesystem-часть остаётся вне `GV2ContentCore` ([ADR-0019](../../ADR/0019-content-host-support-module.md)); порядок обхода не является семантикой; UTF-8 и BOM обрабатываются так же, как сейчас.
+  - Done: `GV2ContentHostSupport` обнаруживает `scripts/` внутри каждого пакета набора; filesystem-часть остаётся вне `GV2ContentCore` ([ADR-0019](../../../ADR/0019-content-host-support-module.md)); порядок обхода не является семантикой; UTF-8 и BOM обрабатываются так же, как сейчас.
   - Evidence: `GV2ContentHostSupport::DiscoverPackageScripts`, `DiscoverPackagesScripts`, unit tests in `PackageDiscoveryTests.cpp`.
 
 - [x] **PKG-15 — Атрибуция source пакетом**
@@ -49,7 +49,7 @@ depends_on:
 
 - [x] **PKG-19 — Фикстура замещения и синхронизация документации**
   - Зависимости: PKG-17, PKG-18.
-  - Done: фикстура мод-пакета содержит `scripts/` и покрывает полную замену модуля, расширение через `require_base()` с делегированием, цепочку из двух замещающих пакетов и каждый типизированный отказ; правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../ADR/0024-lua-spec-runner.md)), C++ проверяет только резолюцию провайдеров; набор исполняется обоими хостами; `LuaRuntimeContract`, `Modding` и guide [AddLuaModule](../../Guides/AddLuaModule.md) описывают замещение и идиому `setmetatable(M, { __index = base })`.
+  - Done: фикстура мод-пакета содержит `scripts/` и покрывает полную замену модуля, расширение через `require_base()` с делегированием, цепочку из двух замещающих пакетов и каждый типизированный отказ; правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)), C++ проверяет только резолюцию провайдеров; набор исполняется обоими хостами; `LuaRuntimeContract`, `Modding` и guide [AddLuaModule](../../../Guides/AddLuaModule.md) описывают замещение и идиому `setmetatable(M, { __index = base })`.
   - Evidence: `test_mod/scripts/`, `module_override.lua`, `FGV2LuaModulePackageOverrideTest`, updated docs.
 
 ## Проверка milestone

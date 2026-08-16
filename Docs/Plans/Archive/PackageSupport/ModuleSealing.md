@@ -1,19 +1,19 @@
 ---
 title: Module Sealing Tasks
-status: draft
+status: archived
 version: 1.1
 updated: 2026-08-16
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Proposals/LuaModuleOverrideProposal.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Proposals/LuaModuleOverrideProposal.md
 decisions:
-  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../../ADR/0025-lua-module-replacement-and-export-freezing.md
 ---
 
 # M3 — Module Sealing
 
-> **Материализует:** [Lua Runtime Contract § Module loader](../../Architecture/LuaRuntimeContract.md).
+> **Материализует:** [Lua Runtime Contract § Module loader](../../../Architecture/LuaRuntimeContract.md).
 > **Задачи:** PKG-10…13.
 > **Результат:** таблица экспорта неизменяема после инициализации, а замещаемость модуля объявлена явно.
 
@@ -26,9 +26,9 @@ decisions:
 ## Задачи
 
 - [x] **PKG-10 — Создать ADR по замещению модулей**
-  - Реализация меняет семантику загрузчика и уточняет [INV-006](../../Architecture/Invariants.md): замораживаются не только реестры `game`, но и таблицы экспорта модулей.
+  - Реализация меняет семантику загрузчика и уточняет [INV-006](../../../Architecture/Invariants.md): замораживаются не только реестры `game`, но и таблицы экспорта модулей.
   - Done: ADR фиксирует замещение как единый механизм замены и расширения, запрет мутации таблиц экспорта, запечатанность по умолчанию и правило «хуки только у победителя»; перечисляет отвергнутые альтернативы (свободный патч, объявленный патч, декораторы по именам функций) с причинами; `LuaRuntimeContract` и `Modding` обновлены синхронно; ADR принят до первой отметки `[x]` в PKG-11.
-  - Evidence: [ADR-0025](../../ADR/0025-lua-module-replacement-and-export-freezing.md).
+  - Evidence: [ADR-0025](../../../ADR/0025-lua-module-replacement-and-export-freezing.md).
 
 - [x] **PKG-11 — Заморозить таблицы экспорта**
   - Зависимости: PKG-10.
@@ -43,7 +43,7 @@ decisions:
 
 - [x] **PKG-13 — Синхронизировать contract**
   - Зависимости: PKG-11, PKG-12.
-  - Done: `LuaRuntimeContract` описывает неизменяемость таблиц экспорта и объявление замещаемости; [Invariants](../../Architecture/Invariants.md) уточняют INV-006; guide [AddLuaModule](../../Guides/AddLuaModule.md) описывает, что расширение чужого модуля мутацией невозможно и какой механизм придёт на смену в M4.
+  - Done: `LuaRuntimeContract` описывает неизменяемость таблиц экспорта и объявление замещаемости; [Invariants](../../../Architecture/Invariants.md) уточняют INV-006; guide [AddLuaModule](../../../Guides/AddLuaModule.md) описывает, что расширение чужого модуля мутацией невозможно и какой механизм придёт на смену в M4.
   - Evidence: `LuaRuntimeContract.md`, `Modding.md`, `Invariants.md`, `AddLuaModule.md`, `ImplementationStatus.md`.
 
 ## Проверка milestone

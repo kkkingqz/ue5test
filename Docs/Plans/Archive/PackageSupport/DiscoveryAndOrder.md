@@ -1,17 +1,17 @@
 ---
 title: Discovery and Order Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - PackageManifest.md
-  - ../../Architecture/GameDataRepositoryContract.md
-  - ../../Proposals/ModPackageLifecycleProposal.md
+  - ../../../Architecture/GameDataRepositoryContract.md
+  - ../../../Proposals/ModPackageLifecycleProposal.md
 ---
 
 # M2 — Discovery and Order
 
-> **Материализует:** [Modding § Load order](../../Architecture/Modding.md), [GameDataRepository Contract](../../Architecture/GameDataRepositoryContract.md).
+> **Материализует:** [Modding § Load order](../../../Architecture/Modding.md), [GameDataRepository Contract](../../../Architecture/GameDataRepositoryContract.md).
 > **Задачи:** PKG-05…09.
 > **Результат:** репозиторий собирается из набора пакетов в явном, воспроизводимом порядке.
 
@@ -45,7 +45,7 @@ depends_on:
 - [x] **PKG-09 — Фикстура реального мода и синхронизация документации**
   - Зависимости: PKG-08.
   - `Tests/Fixtures/PortableContentCore/valid/test_mod` сегодня содержит только `definitions/` и используется как источник override на уровне ядра.
-  - Done: фикстура становится полноценным вторым пакетом с манифестом `valid/test_mod/package.json5`; conformance-набор покрывает full override definition из мода, redirect собственного namespace, попытку создать `core:*` ID (`foreign_new_id`) и невалидный override, блокирующий кандидат целиком; набор исполняется обоими хостами; [Modding](../../Architecture/Modding.md) и [Implementation Status](../../Status/ImplementationStatus.md) обновлены.
+  - Done: фикстура становится полноценным вторым пакетом с манифестом `valid/test_mod/package.json5`; conformance-набор покрывает full override definition из мода, redirect собственного namespace, попытку создать `core:*` ID (`foreign_new_id`) и невалидный override, блокирующий кандидат целиком; набор исполняется обоими хостами; [Modding](../../../Architecture/Modding.md) и [Implementation Status](../../../Status/ImplementationStatus.md) обновлены.
   - Evidence: `Tests/Fixtures/PortableContentCore/valid/test_mod/package.json5`, `fixtures.index`, `GV2.Runtime.ContentCore.PackageDiscoveryAndOrderConformance`, `gv2-headless --self-test`.
 
 ## Проверка milestone

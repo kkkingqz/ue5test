@@ -1,25 +1,25 @@
 ---
 title: Package Support Implementation Plan
-status: normative
+status: archived
 version: 1.1
 updated: 2026-08-16
 depends_on:
-  - ../../Architecture/Modding.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/GameDataRepositoryContract.md
-  - ../../Architecture/HeadlessSimulationContract.md
-  - ../../Proposals/ModPackageLifecycleProposal.md
-  - ../../Proposals/LuaModuleOverrideProposal.md
+  - ../../../Architecture/Modding.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/GameDataRepositoryContract.md
+  - ../../../Architecture/HeadlessSimulationContract.md
+  - ../../../Proposals/ModPackageLifecycleProposal.md
+  - ../../../Proposals/LuaModuleOverrideProposal.md
 decisions:
-  - ../../ADR/0006-repository-reload-and-session-pinning.md
-  - ../../ADR/0018-portable-content-core-module.md
-  - ../../ADR/0019-content-host-support-module.md
-  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../../ADR/0006-repository-reload-and-session-pinning.md
+  - ../../../ADR/0018-portable-content-core-module.md
+  - ../../../ADR/0019-content-host-support-module.md
+  - ../../../ADR/0025-lua-module-replacement-and-export-freezing.md
 ---
 
 # План реализации поддержки пакетов
 
-> **Материализует:** [Modding](../../Architecture/Modding.md) и [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) в рамках [ModPackageLifecycle](../../Proposals/ModPackageLifecycleProposal.md) и [LuaModuleOverride](../../Proposals/LuaModuleOverrideProposal.md).
+> **Материализует:** [Modding](../../../Architecture/Modding.md) и [Lua Runtime Contract](../../../Architecture/LuaRuntimeContract.md) в рамках [ModPackageLifecycle](../../../Proposals/ModPackageLifecycleProposal.md) и [LuaModuleOverride](../../../Proposals/LuaModuleOverrideProposal.md).
 > **Задачи:** PKG-01…23.
 > **Результат:** пакет несёт контент и Lua-код, замещает модули ядра и попадает в digest и сейв.
 
@@ -61,7 +61,7 @@ Content-сторона к нескольким пакетам готова: `Bui
 - Replacement session и смена набора пакетов без перезапуска: изменение enabled set по-прежнему требует полного restart.
 - Cooked Pak, mod kit и подключение UE-ассетов из мода.
 - UI управления модами; порядок задаётся конфигурацией.
-- Sandbox для враждебного кода; trust model из [Modding](../../Architecture/Modding.md) не меняется.
+- Sandbox для враждебного кода; trust model из [Modding](../../../Architecture/Modding.md) не меняется.
 - Декораторы по именам функций и любые формы патча чужих таблиц.
 
 ## Milestones
@@ -88,10 +88,10 @@ M3 не зависит от пакетов и может идти паралле
 
 ## Общие правила выполнения
 
-1. Filesystem-операции принадлежат `GV2ContentHostSupport`; `GV2ContentCore` остаётся без владения файловой системой ([ADR-0018](../../ADR/0018-portable-content-core-module.md), [ADR-0019](../../ADR/0019-content-host-support-module.md)).
+1. Filesystem-операции принадлежат `GV2ContentHostSupport`; `GV2ContentCore` остаётся без владения файловой системой ([ADR-0018](../../../ADR/0018-portable-content-core-module.md), [ADR-0019](../../../ADR/0019-content-host-support-module.md)).
 2. Порядок перечисления файлов и каталогов не является семантикой ни на одном этапе.
 3. Каждый этап оставляет ровно один reference execution path: состояние, где часть пакетов резолвится по-старому, а часть по-новому, не допускается.
-4. Новый C++ обязан проходить критерий [ADR-0020](../../ADR/0020-cpp-scope-criterion.md). Резолюция провайдеров, заморозка и хэш его проходят по условию «до создания VM»; правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../ADR/0024-lua-spec-runner.md)).
+4. Новый C++ обязан проходить критерий [ADR-0020](../../../ADR/0020-cpp-scope-criterion.md). Резолюция провайдеров, заморозка и хэш его проходят по условию «до создания VM»; правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)).
 5. Каждая задача, меняющая failure semantics, добавляет negative case.
 6. Диагностика адресуется `package_id` и package-relative путём; абсолютный путь пользователю не показывается.
 7. Новое observable behavior синхронно отражается в contract; изменение инварианта требует ADR до отметки `[x]`.

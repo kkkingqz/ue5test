@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 1.7
+version: 1.8
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -25,3 +25,4 @@ depends_on:
 | [LifecycleSpecsMigration](LifecycleSpecsMigration/README.md) | 2026-08-15 | Миграция последнего крупного унаследованного набора: 5326 строк C++ заменены декларативными спеками `Tests/Lua/lifecycle/` |
 | [ContentCliModularization](ContentCliModularization/README.md) | 2026-08-15 | Разбиение `gv2-content` на модули команд и поддержки вместо монолитного `main.cpp` |
 | [SaveAndLoad](SaveAndLoad/README.md) | 2026-08-16 | Обратимый канонический кодек, slot-storage примитив, конверт контейнера, загрузка на холодном старте с резолвом редиректов и версии секций с миграциями |
+| [PackageSupport](PackageSupport/README.md) | 2026-08-16 | Обязательный манифест пакета, набор корней с явным порядком и lock-файлом, Lua внутри пакета, замещение модулей ядра с доступом к базе через `require_base()`, `ScriptSetHash` в run manifest и состав пакетов в сейве |

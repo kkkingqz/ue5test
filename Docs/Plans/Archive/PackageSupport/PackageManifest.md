@@ -1,17 +1,17 @@
 ---
 title: Package Manifest Tasks
-status: draft
+status: archived
 version: 1.1
 updated: 2026-08-16
 depends_on:
   - README.md
-  - ../../Architecture/Modding.md
-  - ../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/Modding.md
+  - ../../../Architecture/StableIDSpecification.md
 ---
 
 # M1 — Package Manifest
 
-> **Материализует:** [Modding § Package contents](../../Architecture/Modding.md).
+> **Материализует:** [Modding § Package contents](../../../Architecture/Modding.md).
 > **Задачи:** PKG-01…04.
 > **Результат:** пакет объявляет свою identity, версию и совместимость документом, а не именем каталога.
 
@@ -32,7 +32,7 @@ depends_on:
 
 - [x] **PKG-02 — Ввести диапазоны совместимости**
   - Зависимости: PKG-01.
-  - Манифест объявляет поддерживаемые диапазоны game/API/schema, как требует [Modding](../../Architecture/Modding.md).
+  - Манифест объявляет поддерживаемые диапазоны game/API/schema, как требует [Modding](../../../Architecture/Modding.md).
   - Done: несовместимый диапазон отвергает пакет с диагностикой, называющей и требуемый, и фактический диапазон; проверка выполняется до чтения definitions; отсутствие диапазона у `core` не является ошибкой; negative case на каждый вид несовместимости.
   - Evidence: `GV2ContentHostSupport::Current{Game,Api,Schema}Version` (`PackageDiscovery.h`) — три независимых целочисленных константы текущего build-а. Манифест может объявить `compatibility.{game,api,schema}`, каждая ось — необязательный объект `{min, max}`; `CheckCompatibilityAxis` (`PackageDiscovery.cpp`) сравнивает текущую версию с диапазоном и, при несовпадении, кладёт в `Message` и требуемый диапазон, и фактическую версию build-а (`core:diagnostic.package.manifest.incompatible_range`). Отсутствующая ось (или весь `compatibility`) пропускается без проверки — `core` не объявляет `compatibility` вовсе и всегда совместим. Проверка идёт сразу после identity-полей, до сканирования `definitions/`/`schemas/` — оба класса манифест-проблем (identity и compatibility) собираются в один `LocalDiagnostics` и приводят к раннему `return std::nullopt` до единого обращения к этим каталогам.
     - Спека покрытия — C++ conformance (см. Evidence PKG-01/03 ниже): negative case на `game` вне диапазона, `api` вне диапазона, positive case на диапазон, покрывающий текущую версию, и positive case на полностью отсутствующий `compatibility`.
@@ -46,7 +46,7 @@ depends_on:
 
 - [x] **PKG-04 — Синхронизировать contract и tooling**
   - Зависимости: PKG-01–PKG-03.
-  - Done: [Modding](../../Architecture/Modding.md) описывает фактический состав манифеста вместо перечисления намерений; `gv2-content validate` проверяет манифест и печатает его диагностики; `gv2-content new` создаёт манифест для нового пакета; [Implementation Status](../../Status/ImplementationStatus.md) обновлён.
+  - Done: [Modding](../../../Architecture/Modding.md) описывает фактический состав манифеста вместо перечисления намерений; `gv2-content validate` проверяет манифест и печатает его диагностики; `gv2-content new` создаёт манифест для нового пакета; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён.
   - Evidence: `Docs/Architecture/Modding.md`, раздел «Package contents» — заменён на фактическую форму манифеста (пример JSON5 со всеми полями PKG-01–03) вместо перечисления намерений; шапка документа (`Реализация`/`Проверки`) обновлена. `gv2-content validate` уже печатает манифест-диагностики без единой строки нового кода — они идут по тому же пути, что и любая другая discovery-ошибка (`PackageLoader.cpp` → `FBuildResult::Failure` → `ValidateCommand.cpp`); проверено вручную (`gv2-content validate <root-без-манифеста>` → `error core:diagnostic.package.manifest.missing package.json5 package root has no package.json5`). `Docs/Status/ImplementationStatus.md` обновлён.
     - **Не реализовано намеренно**: `gv2-content new` для пакета без манифеста по-прежнему завершается диагностикой `core:diagnostic.package.manifest.missing`, а не автоматически создаёт манифест. Учитывая, что `new` также требует существующего `schemas/`-биндинга для запрошенного `definition_type` (без него `unknown_definition_type` в любом случае), автогенерация одного манифеста не открыла бы реальный «создание пакета с нуля» workflow — эта часть Done сознательно не реализована в этом change set-е и остаётся для отдельной задачи, если понадобится.
   - Evidence (C++ conformance для PKG-01/02/03 в целом): `GV2ContentHostSupport::Testing::RunPackageManifestConformance()` (`Source/GV2ContentHostSupport/Public/GV2ContentHostSupport/Testing/PackageManifestConformance.h` + `Private/PackageManifestConformance.cpp`, новый, portable, без аргументов — сам создаёт и удаляет временные каталоги, как остальные наборы этого рода в проекте). 12 кейсов: отсутствующий манифест, невалидный `package_id`, `namespace_mismatch`, отсутствующая/невалидная `version`, несовместимые `game`/`api` диапазоны, отсутствующий `compatibility` (совместимо), диапазон, покрывающий текущую версию (совместимо), невалидная запись `dependencies`, валидные `dependencies` (включая `load_after`) — с проверкой, что поля дошли до `FPackageDescriptor` неизменными, дубликат ключа в самом манифесте. Подключено к обоим host-ам: `gv2-headless --self-test` (после `RunColdStartLoadConformance`, exit code 19) и `GV2.Runtime.ContentCore.PackageManifestConformance`.

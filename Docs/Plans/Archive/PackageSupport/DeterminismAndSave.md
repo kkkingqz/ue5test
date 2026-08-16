@@ -1,17 +1,17 @@
 ---
 title: Determinism and Save Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - ModulesFromPackages.md
-  - ../../Architecture/HeadlessSimulationContract.md
-  - ../../Architecture/CanonicalStateAndSave.md
+  - ../../../Architecture/HeadlessSimulationContract.md
+  - ../../../Architecture/CanonicalStateAndSave.md
 ---
 
 # M5 — Determinism and Save
 
-> **Материализует:** [Headless Simulation Contract](../../Architecture/HeadlessSimulationContract.md), [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md).
+> **Материализует:** [Headless Simulation Contract](../../../Architecture/HeadlessSimulationContract.md), [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md).
 > **Задачи:** PKG-20…23.
 > **Результат:** состав пакетов и набор скриптов входят в идентичность прогона и сейва.
 
@@ -29,7 +29,7 @@ depends_on:
 
 - [x] **PKG-21 — Состав пакетов в сейве**
   - Зависимости: PKG-07, PKG-20.
-  - [Modding](../../Architecture/Modding.md) уже требует хранить в сейве enabled mods, order, versions и fingerprints.
+  - [Modding](../../../Architecture/Modding.md) уже требует хранить в сейве enabled mods, order, versions и fingerprints.
   - Done: конверт сейва фиксирует фактический набор пакетов, их порядок, версии и `ScriptSetHash`; сейв, снятый с замещённым модулем, отличим от сейва без мода; отсутствие пакета при загрузке обрабатывается общим правилом отсутствующего мода и не превращается в тихий откат на базовую реализацию; `save_version` поднимается, если меняется форма конверта.
   - Evidence: `Scripts/runtime/save.lua` (`build_envelope` и `save`) записывает `script_set_hash` и `packages`; `Scripts/runtime/load.lua` (`preflight` и `decode_and_prepare`) проверяет наличие всех пакетов сейва в `game.runtime.packages`, возвращая типизированную ошибку `SaveMissingPackage: <id>`; проверено новой Lua-спекой `Tests/Lua/save/package_composition_save.lua`.
 
@@ -40,7 +40,7 @@ depends_on:
 
 - [x] **PKG-23 — Cross-host parity и синхронизация документации**
   - Зависимости: PKG-20–PKG-22.
-  - Done: одинаковый набор пакетов даёт одинаковый `ScriptSetHash` и одинаковый run digest в UE и headless; golden-прогон с включённым мод-пакетом добавлен в CI; `HeadlessSimulationContract` описывает роль `ScriptSetHash` в digest, `CanonicalStateAndSave` — состав пакетов в конверте, `BuildAndTooling` — вывод `--check-scripts`; [Implementation Status](../../Status/ImplementationStatus.md) обновлён.
+  - Done: одинаковый набор пакетов даёт одинаковый `ScriptSetHash` и одинаковый run digest в UE и headless; golden-прогон с включённым мод-пакетом добавлен в CI; `HeadlessSimulationContract` описывает роль `ScriptSetHash` в digest, `CanonicalStateAndSave` — состав пакетов в конверте, `BuildAndTooling` — вывод `--check-scripts`; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён.
   - Evidence: CTest (57/57 passed), `gv2-headless --self-test` (1000 команд) и `gv2-headless --check-scripts` зелёные; cross-host golden digest parity тест `GV2.Runtime.Session.CrossHostDigestParity` и conformance-тесты согласованы; обновлены контракты `HeadlessSimulationContract.md`, `CanonicalStateAndSave.md`, `BuildAndTooling.md`, `ImplementationStatus.md`, `PackageSupport/README.md`.
 
 ## Проверка milestone

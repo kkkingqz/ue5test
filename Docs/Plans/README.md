@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 2.4
+version: 2.5
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,9 +24,7 @@ depends_on:
 
 ## Активные планы
 
-| План | Основание | Результат |
-|---|---|---|
-| [PackageSupport](PackageSupport/README.md) | [ModPackageLifecycle](../Proposals/ModPackageLifecycleProposal.md), [LuaModuleOverride](../Proposals/LuaModuleOverrideProposal.md) | Обязательный манифест пакета, набор корней с явным порядком и lock-файлом, Lua внутри пакета, замещение модулей ядра с доступом к базе, состав пакетов в digest и сейве |
+Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
@@ -42,3 +40,4 @@ depends_on:
 | [TestArchitectureAndLuaSpecs](Archive/TestArchitectureAndLuaSpecs/README.md) | 2026-08-15 | Lua spec runner, независимость тестов от контента игры, миграция 2375 строк C++ в спеки |
 | [ContentAuthoringTools](Archive/ContentAuthoringTools/README.md) | 2026-08-15 | Справочник и заготовки из схем, быстрая проверка Lua-модулей, обратные ссылки и переименование ID, живой цикл валидации и индекс для автодополнения |
 | [SaveAndLoad](Archive/SaveAndLoad/README.md) | 2026-08-16 | Обратимый канонический кодек, slot-storage примитив, конверт контейнера, загрузка на холодном старте с резолвом редиректов и версии секций с миграциями |
+| [PackageSupport](Archive/PackageSupport/README.md) | 2026-08-16 | Обязательный манифест пакета, набор корней с явным порядком и lock-файлом, Lua внутри пакета, замещение модулей ядра с доступом к базе, состав пакетов в digest и сейве |
