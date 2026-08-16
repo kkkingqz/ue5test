@@ -90,6 +90,9 @@ set(GV2_CONTENT_HOST_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/GV2ContentHostSupp
 
 add_library(gv2_content_host_support STATIC
     "${GV2_CONTENT_HOST_SUPPORT_DIR}/Private/PackageDiscovery.cpp"
+    "${GV2_CONTENT_HOST_SUPPORT_DIR}/Private/ModsLock.cpp"
+    "${GV2_CONTENT_HOST_SUPPORT_DIR}/Private/PackageManifestConformance.cpp"
+    "${GV2_CONTENT_HOST_SUPPORT_DIR}/Private/PackageDiscoveryAndOrderConformance.cpp"
     "${GV2_CONTENT_HOST_SUPPORT_DIR}/Private/LocalizationDiscovery.cpp"
     "${GV2_CONTENT_HOST_SUPPORT_DIR}/Private/LuaSpecDiscovery.cpp"
     "${GV2_CONTENT_HOST_SUPPORT_DIR}/Private/LuaSpecIdentity.cpp"

@@ -46,23 +46,38 @@ std::optional<std::string> FGV2FilesystemContentSourceProvider::ReadSource(
     return std::string(reinterpret_cast<const char*>(FileBytes.GetData()), FileBytes.Num());
 }
 
-GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectory(const FString& PackageRootDir)
+GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectories(const TArray<FString>& PackageRootDirs)
 {
-    FString Normalized = PackageRootDir;
-    FPaths::NormalizeDirectoryName(Normalized);
+    std::vector<std::filesystem::path> Roots;
+    Roots.reserve(PackageRootDirs.Num());
+    for (const FString& Dir : PackageRootDirs)
+    {
+        FString Normalized = Dir;
+        FPaths::NormalizeDirectoryName(Normalized);
+        Roots.emplace_back(ToUtf8(Normalized));
+    }
 
-    const std::filesystem::path PackageRootPath(ToUtf8(Normalized));
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    std::optional<GV2ContentCore::FPackageDescriptor> Descriptor =
-        GV2ContentHostSupport::DiscoverPackageFromDirectory(PackageRootPath, Diagnostics);
-    if (!Descriptor)
+    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
+        GV2ContentHostSupport::DiscoverPackagesFromDirectories(Roots, Diagnostics);
+    if (!Descriptors)
     {
         return GV2ContentCore::FBuildResult::Failure(std::move(Diagnostics));
     }
 
-    FGV2FilesystemContentSourceProvider Provider(Normalized, Descriptor->GetPackageId());
+    GV2ContentHostSupport::FMultiPackageSourceProvider Provider;
+    for (std::size_t Index = 0; Index < Descriptors->size(); ++Index)
+    {
+        Provider.RegisterPackage((*Descriptors)[Index].GetPackageId(), Roots[Index]);
+    }
+
     GV2ContentCore::FBuildOptions Options;
     Options.SourceProvider = &Provider;
 
-    return GV2ContentCore::BuildRepository({*Descriptor}, Options);
+    return GV2ContentCore::BuildRepository(*Descriptors, Options);
+}
+
+GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectory(const FString& PackageRootDir)
+{
+    return BuildGV2RepositoryFromDirectories({PackageRootDir});
 }

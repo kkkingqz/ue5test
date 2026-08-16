@@ -9,7 +9,7 @@
 
 namespace
 {
-std::string ToUtf8(const FString& Value)
+std::string SessionCoordinatorToUtf8(const FString& Value)
 {
     const FTCHARToUTF8 Converted(*Value);
     return std::string(Converted.Get(), Converted.Length());
@@ -46,7 +46,7 @@ bool LoadPortableRuntimeSources(
         {
             OutFault = {
                 "LuaRuntimeSourceMissing",
-                ToUtf8(FString::Printf(TEXT("Lua source could not be read: %s"), *FullPath))};
+                SessionCoordinatorToUtf8(FString::Printf(TEXT("Lua source could not be read: %s"), *FullPath))};
             return false;
         }
 
@@ -59,7 +59,7 @@ bool LoadPortableRuntimeSources(
         {
             OutFault = {
                 "LuaRuntimeSourceInvalid",
-                ToUtf8(FString::Printf(TEXT("Lua source is empty: %s"), *FullPath))};
+                SessionCoordinatorToUtf8(FString::Printf(TEXT("Lua source is empty: %s"), *FullPath))};
             return false;
         }
         FString NormalizedFullPath = FullPath;
@@ -71,7 +71,7 @@ bool LoadPortableRuntimeSources(
         }
         const FString RelativePath = NormalizedFullPath.RightChop(ScriptsPrefix.Len());
         GV2RuntimeCore::FRuntimeSource& Source = OutSources.emplace_back();
-        Source.Name = "@Scripts/" + ToUtf8(RelativePath);
+        Source.Name = "@Scripts/" + SessionCoordinatorToUtf8(RelativePath);
         Source.Text.assign(
             reinterpret_cast<const char*>(Bytes.GetData() + Offset),
             static_cast<std::size_t>(Bytes.Num() - Offset));
@@ -92,7 +92,7 @@ GV2RuntimeCore::FValue ToPortableValue(const FGV2UiControlValue& Value)
     case EGV2UiControlValueType::Number:
         return GV2RuntimeCore::FValue(Value.NumberValue);
     case EGV2UiControlValueType::String:
-        return GV2RuntimeCore::FValue(ToUtf8(Value.StringValue));
+        return GV2RuntimeCore::FValue(SessionCoordinatorToUtf8(Value.StringValue));
     default:
         checkNoEntry();
         return GV2RuntimeCore::FValue();
@@ -103,23 +103,23 @@ GV2RuntimeCore::FSemanticInput ToPortableInput(const FGV2UiIngressItem& Item)
 {
     GV2RuntimeCore::FSemanticInput Input;
     Input.SessionGeneration = Item.Binding.SessionGeneration;
-    Input.UiInstanceId = ToUtf8(Item.Binding.UiInstanceId);
+    Input.UiInstanceId = SessionCoordinatorToUtf8(Item.Binding.UiInstanceId);
     Input.Revision = Item.Binding.Revision;
     Input.Sequence = Item.Sequence;
-    Input.ElementId = ToUtf8(Item.Binding.ElementId);
-    Input.CommandId = ToUtf8(Item.Binding.CommandId);
+    Input.ElementId = SessionCoordinatorToUtf8(Item.Binding.ElementId);
+    Input.CommandId = SessionCoordinatorToUtf8(Item.Binding.CommandId);
     Input.NodeKeyPath.reserve(Item.Binding.NodeKeyPath.Num());
     for (const FString& Segment : Item.Binding.NodeKeyPath)
     {
-        Input.NodeKeyPath.push_back(ToUtf8(Segment));
+        Input.NodeKeyPath.push_back(SessionCoordinatorToUtf8(Segment));
     }
     for (const FGV2UiControlValue& Value : Item.Binding.BoundArgs)
     {
-        Input.Args.emplace(ToUtf8(Value.Name.ToString()), ToPortableValue(Value));
+        Input.Args.emplace(SessionCoordinatorToUtf8(Value.Name.ToString()), ToPortableValue(Value));
     }
     for (const FGV2UiControlValue& Value : Item.InputValues)
     {
-        Input.Args.emplace(ToUtf8(Value.Name.ToString()), ToPortableValue(Value));
+        Input.Args.emplace(SessionCoordinatorToUtf8(Value.Name.ToString()), ToPortableValue(Value));
     }
     return Input;
 }

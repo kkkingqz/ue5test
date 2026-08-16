@@ -1,7 +1,7 @@
 ---
 title: Состояние реализации
 status: normative
-version: 1.17
+version: 1.18
 updated: 2026-08-15
 depends_on:
   - ../README.md
@@ -36,7 +36,7 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 | Provenance, minimal indexes, canonical hash | Реализовано | `ById`, `ByKind`, `ProvenanceById`, redirects/tombstones |
 | Immutable snapshot и pinned read handle | Реализовано | `Find`/`Require`/`List`/`GetProvenance`/`GetContentHash` |
 | Atomic publication, same-hash skip, session pinning | Реализовано | Synchronous, на Game Thread |
-| Package discovery | Частично | Один package root (`GameData/core`); mod discovery, load order и `mods.lock` отсутствуют |
+| Package discovery and ordering | Реализовано | Discovery набора пакетов по списку корней, назначение load_index, проверка зависимостей, циклов и load_after, генерация и сверка mods.lock.json5, FMultiPackageSourceProvider (план [PackageSupport](../Plans/PackageSupport/README.md), M1-M2 PKG-01–09 завершены) |
 | Async candidate build, parallel workers, operation token | Не реализовано | Build и publish синхронные; token сведён к Game-Thread-проверке |
 
 ## Lua runtime

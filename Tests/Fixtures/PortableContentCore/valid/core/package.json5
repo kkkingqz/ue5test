@@ -1,0 +1,11 @@
+{
+  // PKG-01 (plan PackageSupport, M1 Package Manifest): mandatory manifest
+  // for this frozen fixture (Tests/Fixtures/PortableContentCore/README.md
+  // — manifest-format changes are in-scope content-resolution-rule
+  // changes, not gameplay content). package_id/namespace match the
+  // directory-derived values this fixture always had, so content_hash is
+  // unaffected (only package_id/namespace/load_index feed the hash).
+  package_id: "core",
+  namespace: "core",
+  version: "1.0.0",
+}

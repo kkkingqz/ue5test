@@ -301,9 +301,12 @@ def main():
         assert noop_doc["files_modified_count"] == 0
 
         # 23. Test rename in frozen package (exit code 2)
+        # PKG-01: package_id/namespace/version are now mandatory manifest
+        # fields (plan PackageSupport) — discovery must still succeed for
+        # this test to reach the frozen check below.
         pkg_desc_path = os.path.join(test_pkg, "package.json5")
         with open(pkg_desc_path, "w") as f:
-            f.write('{\n  id: "core",\n  frozen: true,\n}\n')
+            f.write('{\n  package_id: "core",\n  namespace: "core",\n  version: "1.0.0",\n  frozen: true,\n}\n')
 
         res = run_cmd([gv2_content, "rename", test_pkg, "core:location.city.inn", "core:location.city.tavern"], check=False)
         assert res.returncode == 2
@@ -412,7 +415,7 @@ def main():
 
         pkg_desc_path = os.path.join(test_pkg, "package.json5")
         with open(pkg_desc_path, "w") as f:
-            f.write('{\n  id: "core",\n  redirects: {\n    "core:item.old_sword": "core:item.weapon.iron_sword",\n  },\n  tombstones: [\n    "core:item.deleted_sword",\n  ],\n}\n')
+            f.write('{\n  package_id: "core",\n  namespace: "core",\n  version: "1.0.0",\n  redirects: {\n    "core:item.old_sword": "core:item.weapon.iron_sword",\n  },\n  tombstones: [\n    "core:item.deleted_sword",\n  ],\n}\n')
 
         res = run_cmd([gv2_content, "index", test_pkg, "--format=json"])
         doc = json.loads(res.stdout)

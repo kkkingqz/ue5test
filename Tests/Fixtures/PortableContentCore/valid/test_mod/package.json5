@@ -1,0 +1,18 @@
+{
+  package_id: "test_mod",
+  namespace: "test_mod",
+  version: "1.0.0",
+  dependencies: [
+    {
+      package_id: "core",
+      load_after: true,
+    },
+  ],
+  redirects: {
+    "test_mod:screen.codex_archive": "test_mod:screen.codex_legacy",
+    "test_mod:screen.codex_legacy": "test_mod:screen.codex_lab",
+  },
+  tombstones: [
+    "test_mod:screen.retired",
+  ],
+}

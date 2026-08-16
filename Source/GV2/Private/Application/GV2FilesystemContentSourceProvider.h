@@ -24,11 +24,11 @@ private:
     std::string PackageId;
 };
 
+// Discovers ordered package descriptors from a list of package root directories
+// and builds the repository via the shared GV2ContentCore::BuildRepository() path.
+GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectories(const TArray<FString>& PackageRootDirs);
+
 // Discovers a single-package FPackageDescriptor from
 // <PackageRootDir>/definitions/*.json5 and <PackageRootDir>/schemas/*.json5
-// (each schema resource self-declares "id"/"definition_type"/
-// "schema_version") and builds the repository via the shared
-// GV2ContentCore::BuildRepository() path. Does not resolve mods, dependency
-// order or extension schemas - PackageRootDir is always exactly one package,
-// matching the CLI/headless discovery convention (PCC-38 parity).
+// and builds the repository via the shared GV2ContentCore::BuildRepository() path.
 GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectory(const FString& PackageRootDir);

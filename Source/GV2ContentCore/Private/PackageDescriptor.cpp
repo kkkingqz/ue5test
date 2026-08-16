@@ -3,6 +3,7 @@
 #include "GV2ContentCore/StableId.h"
 
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <set>
 #include <tuple>
@@ -29,6 +30,9 @@ constexpr const char* RedirectKindMismatchCode = "core:diagnostic.repository.red
 constexpr const char* RedirectConflictCode = "core:diagnostic.repository.redirect.conflict";
 constexpr const char* InvalidTombstoneCode = "core:diagnostic.repository.tombstone.invalid";
 constexpr const char* ForeignTombstoneCode = "core:diagnostic.repository.tombstone.foreign_id";
+constexpr const char* MissingDependencyCode = "core:diagnostic.package.order.missing_dependency";
+constexpr const char* DependencyCycleCode = "core:diagnostic.package.order.dependency_cycle";
+constexpr const char* LoadAfterViolationCode = "core:diagnostic.package.order.load_after_violation";
 
 bool IsCanonicalRelativePath(const std::string& Path)
 {
@@ -136,7 +140,9 @@ FPackageDescriptor::FPackageDescriptor(
     std::vector<FSchemaBinding> InSchemaBindings,
     std::vector<FExtensionSchemaBinding> InExtensionSchemaBindings,
     std::vector<FRedirectDescriptor> InRedirects,
-    std::vector<std::string> InTombstones)
+    std::vector<std::string> InTombstones,
+    std::string InVersion,
+    std::vector<FPackageDependency> InDependencies)
     : PackageId(std::move(InPackageId))
     , Namespace(std::move(InNamespace))
     , LoadIndex(InLoadIndex)
@@ -145,6 +151,8 @@ FPackageDescriptor::FPackageDescriptor(
     , ExtensionSchemaBindings(std::move(InExtensionSchemaBindings))
     , Redirects(std::move(InRedirects))
     , Tombstones(std::move(InTombstones))
+    , Version(std::move(InVersion))
+    , Dependencies(std::move(InDependencies))
 {
 }
 
@@ -157,12 +165,29 @@ bool FPackageDescriptor::operator==(const FPackageDescriptor& Other) const
         && SchemaBindings == Other.SchemaBindings
         && ExtensionSchemaBindings == Other.ExtensionSchemaBindings
         && Redirects == Other.Redirects
-        && Tombstones == Other.Tombstones;
+        && Tombstones == Other.Tombstones
+        && Version == Other.Version
+        && Dependencies == Other.Dependencies;
 }
 
 bool FPackageDescriptor::operator!=(const FPackageDescriptor& Other) const
 {
     return !(*this == Other);
+}
+
+FPackageDescriptor FPackageDescriptor::WithLoadIndex(const std::uint32_t NewLoadIndex) const
+{
+    return FPackageDescriptor(
+        PackageId,
+        Namespace,
+        NewLoadIndex,
+        RelativeSources,
+        SchemaBindings,
+        ExtensionSchemaBindings,
+        Redirects,
+        Tombstones,
+        Version,
+        Dependencies);
 }
 
 std::vector<FDiagnostic> ValidatePackageDescriptors(
@@ -425,6 +450,120 @@ std::vector<FDiagnostic> ValidatePackageDescriptors(
                 Diagnostic.DefinitionId = Tombstone;
                 Diagnostics.push_back(std::move(Diagnostic));
             }
+        }
+    }
+
+    std::map<std::string, const FPackageDescriptor*> PackageMap;
+    for (const FPackageDescriptor* DescriptorPointer : OrderedDescriptors)
+    {
+        PackageMap[DescriptorPointer->GetPackageId()] = DescriptorPointer;
+    }
+
+    // PKG-06: Dependency existence and load_after ordering checks
+    for (const FPackageDescriptor* DescriptorPointer : OrderedDescriptors)
+    {
+        const FPackageDescriptor& Descriptor = *DescriptorPointer;
+        for (const FPackageDependency& Dep : Descriptor.GetDependencies())
+        {
+            const auto TargetIt = PackageMap.find(Dep.GetPackageId());
+            if (TargetIt == PackageMap.end())
+            {
+                Diagnostics.push_back(MakePackageDiagnostic(
+                    Descriptor,
+                    MissingDependencyCode,
+                    "Package '" + Descriptor.GetPackageId() + "' requires missing dependency '" + Dep.GetPackageId() + "'"));
+            }
+            else
+            {
+                const FPackageDescriptor& TargetDesc = *TargetIt->second;
+                if (Dep.GetLoadAfter() && Descriptor.GetLoadIndex() < TargetDesc.GetLoadIndex())
+                {
+                    Diagnostics.push_back(MakePackageDiagnostic(
+                        Descriptor,
+                        LoadAfterViolationCode,
+                        "Package '" + Descriptor.GetPackageId() + "' (load_index "
+                            + std::to_string(Descriptor.GetLoadIndex())
+                            + ") specifies load_after on '" + TargetDesc.GetPackageId()
+                            + "' (load_index " + std::to_string(TargetDesc.GetLoadIndex())
+                            + "), but is ordered before it"));
+                }
+            }
+        }
+    }
+
+    // PKG-06: Dependency cycle detection (DFS 3-color graph traversal)
+    std::map<std::string, std::vector<std::string>> DependencyGraph;
+    for (const FPackageDescriptor* DescriptorPointer : OrderedDescriptors)
+    {
+        const std::string& SourceId = DescriptorPointer->GetPackageId();
+        for (const FPackageDependency& Dep : DescriptorPointer->GetDependencies())
+        {
+            if (PackageMap.find(Dep.GetPackageId()) != PackageMap.end())
+            {
+                DependencyGraph[SourceId].push_back(Dep.GetPackageId());
+            }
+        }
+    }
+
+    std::map<std::string, int> VisitedState; // 0 = unvisited, 1 = visiting, 2 = visited
+    std::set<std::string> EmittedCycleSources;
+
+    std::function<void(const std::string&, std::vector<std::string>&)> DetectCycles =
+        [&](const std::string& Node, std::vector<std::string>& Stack)
+    {
+        VisitedState[Node] = 1;
+        Stack.push_back(Node);
+
+        if (auto AdjIt = DependencyGraph.find(Node); AdjIt != DependencyGraph.end())
+        {
+            for (const std::string& Neighbor : AdjIt->second)
+            {
+                if (VisitedState[Neighbor] == 1)
+                {
+                    auto CycleStartIt = std::find(Stack.begin(), Stack.end(), Neighbor);
+                    if (CycleStartIt != Stack.end())
+                    {
+                        std::string CyclePath;
+                        for (auto It = CycleStartIt; It != Stack.end(); ++It)
+                        {
+                            if (!CyclePath.empty())
+                            {
+                                CyclePath += " -> ";
+                            }
+                            CyclePath += *It;
+                        }
+                        CyclePath += " -> " + Neighbor;
+
+                        if (EmittedCycleSources.insert(Node).second)
+                        {
+                            auto DescIt = PackageMap.find(Node);
+                            if (DescIt != PackageMap.end())
+                            {
+                                Diagnostics.push_back(MakePackageDiagnostic(
+                                    *DescIt->second,
+                                    DependencyCycleCode,
+                                    "Dependency cycle detected: " + CyclePath));
+                            }
+                        }
+                    }
+                }
+                else if (VisitedState[Neighbor] == 0)
+                {
+                    DetectCycles(Neighbor, Stack);
+                }
+            }
+        }
+
+        Stack.pop_back();
+        VisitedState[Node] = 2;
+    };
+
+    for (const auto& [PkgId, _] : PackageMap)
+    {
+        if (VisitedState[PkgId] == 0)
+        {
+            std::vector<std::string> Stack;
+            DetectCycles(PkgId, Stack);
         }
     }
 

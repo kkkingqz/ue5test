@@ -1,0 +1,9 @@
+{
+  // PKG-01 (plan PackageSupport, M1 Package Manifest): package_id and
+  // namespace own this package's identity — no longer derived from the
+  // directory name. core declares no compatibility ranges: the engine is
+  // always compatible with itself (PKG-02 Done).
+  package_id: "core",
+  namespace: "core",
+  version: "0.1.0",
+}

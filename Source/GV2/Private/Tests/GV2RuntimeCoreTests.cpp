@@ -13,6 +13,8 @@
 #include "GV2RuntimeCore/Testing/GV2LuaSpecRunnerConformance.h"
 #include "GV2RuntimeCore/Testing/GV2SaveSlotStorageConformance.h"
 #include "GV2RuntimeCore/Testing/GV2ColdStartLoadConformance.h"
+#include "GV2ContentHostSupport/Testing/PackageDiscoveryAndOrderConformance.h"
+#include "GV2ContentHostSupport/Testing/PackageManifestConformance.h"
 #include "GV2ContentCore/Testing/RepresentativeCore.h"
 
 #include "HAL/FileManager.h"
@@ -1169,6 +1171,44 @@ bool FGV2ColdStartLoadConformanceCrossHostTest::RunTest(const FString& Parameter
     {
         AddError(FString::Printf(
             TEXT("Cold start load cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
+    return true;
+}
+
+// PKG-01/02/03: Cross-host package manifest conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PackageManifestConformanceCrossHostTest,
+    "GV2.Runtime.ContentCore.PackageManifestConformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PackageManifestConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2ContentHostSupport::Testing::RunPackageManifestConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Package manifest cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
+    return true;
+}
+
+// PKG-05…09: Cross-host package discovery and order conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PackageDiscoveryAndOrderConformanceCrossHostTest,
+    "GV2.Runtime.ContentCore.PackageDiscoveryAndOrderConformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PackageDiscoveryAndOrderConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2ContentHostSupport::Testing::RunPackageDiscoveryAndOrderConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Package discovery and order cross-host conformance failed: %s"),
             UTF8_TO_TCHAR(Error.c_str())));
         return false;
     }

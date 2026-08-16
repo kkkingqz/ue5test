@@ -33,37 +33,65 @@ std::optional<std::string> FFilesystemContentSourceProvider::ReadSource(
     return std::string{std::istreambuf_iterator<char>(Stream), std::istreambuf_iterator<char>()};
 }
 
-FRootBuildOutcome BuildFromPackageRoot(const std::filesystem::path& RawRoot)
+FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>& RawRoots)
 {
     FRootBuildOutcome Outcome;
-
-    std::error_code Ec;
-    const std::filesystem::path NormalizedRoot = std::filesystem::weakly_canonical(RawRoot, Ec);
-    const std::filesystem::path Root = (!Ec && !NormalizedRoot.empty()) ? NormalizedRoot : RawRoot;
-
-    if (!std::filesystem::is_directory(Root, Ec) || Ec)
+    if (RawRoots.empty())
     {
         Outcome.bToolFailure = true;
-        Outcome.ToolFailureMessage = "package root not found or not a directory";
+        Outcome.ToolFailureMessage = "no package roots specified";
         return Outcome;
     }
 
+    std::vector<std::filesystem::path> Roots;
+    Roots.reserve(RawRoots.size());
+    for (const auto& RawRoot : RawRoots)
+    {
+        std::error_code Ec;
+        const std::filesystem::path NormalizedRoot = std::filesystem::weakly_canonical(RawRoot, Ec);
+        const std::filesystem::path Root = (!Ec && !NormalizedRoot.empty()) ? NormalizedRoot : RawRoot;
+
+        if (!std::filesystem::is_directory(Root, Ec) || Ec)
+        {
+            Outcome.bToolFailure = true;
+            Outcome.ToolFailureMessage = "package root not found or not a directory: " + Root.string();
+            return Outcome;
+        }
+        Roots.push_back(Root);
+    }
+
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    std::optional<GV2ContentCore::FPackageDescriptor> DiscoveredDescriptor =
-        GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, Diagnostics);
-    if (!DiscoveredDescriptor)
+    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoveredDescriptors =
+        GV2ContentHostSupport::DiscoverPackagesFromDirectories(Roots, Diagnostics);
+    if (!DiscoveredDescriptors)
     {
         Outcome.Result.emplace(GV2ContentCore::FBuildResult::Failure(std::move(Diagnostics)));
         return Outcome;
     }
 
-    Outcome.Descriptor = std::make_unique<GV2ContentCore::FPackageDescriptor>(std::move(*DiscoveredDescriptor));
-    Outcome.Provider = std::make_unique<FFilesystemContentSourceProvider>(Root, Outcome.Descriptor->GetPackageId());
-    GV2ContentCore::FBuildOptions Options;
-    Options.SourceProvider = Outcome.Provider.get();
+    Outcome.Descriptors = std::move(*DiscoveredDescriptors);
+    if (!Outcome.Descriptors.empty())
+    {
+        Outcome.Descriptor = std::make_unique<GV2ContentCore::FPackageDescriptor>(Outcome.Descriptors.front());
+    }
 
-    Outcome.Result.emplace(GV2ContentCore::BuildRepository({*Outcome.Descriptor}, Options));
+    auto MultiProvider = std::make_unique<GV2ContentHostSupport::FMultiPackageSourceProvider>();
+    for (std::size_t Index = 0; Index < Outcome.Descriptors.size(); ++Index)
+    {
+        MultiProvider->RegisterPackage(Outcome.Descriptors[Index].GetPackageId(), Roots[Index]);
+    }
+
+    GV2ContentCore::FBuildOptions Options;
+    Options.SourceProvider = MultiProvider.get();
+    Outcome.Provider = std::move(MultiProvider);
+
+    Outcome.Result.emplace(GV2ContentCore::BuildRepository(Outcome.Descriptors, Options));
     return Outcome;
+}
+
+FRootBuildOutcome BuildFromPackageRoot(const std::filesystem::path& RawRoot)
+{
+    return BuildFromPackageRoots({RawRoot});
 }
 
 } // namespace GV2ContentCli

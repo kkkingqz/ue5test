@@ -1,8 +1,8 @@
 ---
 title: Modding Architecture
 status: draft
-version: 0.5
-updated: 2026-08-15
+version: 0.7
+updated: 2026-08-16
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -14,15 +14,15 @@ depends_on:
 > **Владеет:** границами мод-пакета, тем, что мод может расширять, и trust model расширений.
 > **Не владеет:** механикой сборки репозитория и разрешения override ([GameDataRepository](GameDataRepositoryContract.md)).
 > **Инварианты:** [INV-009](Invariants.md), [INV-010](Invariants.md)
-> **Реализация:** не реализовано — хост грузит один пакет; см. [Implementation Status](../Status/ImplementationStatus.md).
-> **Проверки:** фикстура `Tests/Fixtures/PortableContentCore/valid/test_mod` покрывает override и redirects на уровне ядра.
+> **Реализация:** манифест пакета (M1) и discovery набора пакетов, порядок загрузки, валидация зависимостей, циклов, `load_after` и `mods.lock.json5` (M2) реализованы (план [PackageSupport](../Plans/PackageSupport/README.md)); Lua из пакетов и save metadata остаются future work (M3–M4). См. [Implementation Status](../Status/ImplementationStatus.md).
+> **Проверки:** фикстура `Tests/Fixtures/PortableContentCore/valid/test_mod` является полноценным пакетом с `package.json5` и покрывает override/redirects; `RunPackageManifestConformance()` и `RunPackageDiscoveryAndOrderConformance()` покрывают манифесты, discovery, зависимости, циклы, порядок и lock-файлы на обоих хостах (`gv2-headless --self-test`, `GV2.Runtime.ContentCore.*`).
 
 Mod — trusted content package с одним immutable `mod_id`, который одновременно является его namespace.
 
 ## Package contents
 
 ```text
-manifest
+manifest             # package.json5 — mandatory (PKG-01, план PackageSupport)
 definitions/
 schemas/            # only for new kinds/extension sites
 scripts/
@@ -31,7 +31,31 @@ resources/
 optional cooked Pak
 ```
 
-Manifest объявляет version, compatible game/API/schema ranges, dependencies, module graph, content roots и optional Pak metadata.
+**Manифест реализован (PKG-01/02/03, план [PackageSupport](../Plans/PackageSupport/README.md)).** `package.json5` обязателен: пакет без него, с невалидным JSON5 или с отсутствующими/некорректными identity-полями отвергается диагностикой (`core:diagnostic.package.manifest.*`) до чтения `definitions/`/`schemas/`. Identity больше не выводится из имени каталога.
+
+```json5
+{
+  package_id: "weather_mod",
+  namespace: "weather_mod",   // обязано совпадать с package_id (v1: один пакет — один namespace)
+  version: "1.2.0",           // <major>.<minor>.<patch>, неотрицательные целые
+  compatibility: {             // необязательно; отсутствующая ось всегда совместима
+    game: { min: 1, max: 1 },
+    api: { min: 1, max: 1 },
+    schema: { min: 1, max: 1 },
+  },
+  dependencies: [               // необязательно; форма проверяется здесь (PKG-03),
+    { package_id: "core_extras", load_after: true },  // присутствие в наборе — M2 (PKG-06)
+  ],
+  redirects: { /* ... */ },
+  tombstones: [ /* ... */ ],
+}
+```
+
+`compatibility.{game,api,schema}` — каждая ось `{min, max}` целых чисел, сверяется с текущими версиями build-а (`GV2ContentHostSupport::Current{Game,Api,Schema}Version`); несовместимый диапазон отвергает пакет диагностикой `core:diagnostic.package.manifest.incompatible_range`, называющей и требуемый диапазон, и фактическую версию. `core` не объявляет `compatibility` вовсе — движок всегда совместим сам с собой.
+
+`dependencies[].load_after` — подсказка редактору порядка, не меняющая runtime order (см. «Load order» ниже); зависимость проверяется на присутствие в наборе и на циклы отдельным этапом (M2 Discovery and Order), здесь — только форма записи.
+
+`module graph`, `content roots` и `optional Pak metadata` в манифесте — по-прежнему future work следующих milestones плана PackageSupport (M2/M4), не M1.
 
 ## Load order
 

@@ -70,11 +70,17 @@ bool FGV2PortableContentCoreSharedFixtures::RunTest(const FString& Parameters)
         ParserFixture.RelativePath = TCHAR_TO_UTF8(*RelativePath);
         ParserFixture.Source.assign(
             reinterpret_cast<const char*>(FileBytes.GetData()), FileBytes.Num());
-        if (RelativePath.StartsWith(TEXT("invalid/duplicate_key/")))
+        // PKG-01 (plan PackageSupport): package.json5 manifests are
+        // well-formed identity documents, not the fixture's own failure
+        // mode — excluded from both blanket per-directory expectations
+        // below even though they now live inside these fixture
+        // directories (manifest is mandatory as of PKG-01).
+        const bool bIsManifest = RelativePath.EndsWith(TEXT("/package.json5"));
+        if (!bIsManifest && RelativePath.StartsWith(TEXT("invalid/duplicate_key/")))
         {
             ParserFixture.ExpectedDiagnosticCode = "core:diagnostic.json5.duplicate_key";
         }
-        else if (RelativePath.StartsWith(TEXT("invalid/nesting_depth_exceeded/")))
+        else if (!bIsManifest && RelativePath.StartsWith(TEXT("invalid/nesting_depth_exceeded/")))
         {
             ParserFixture.ExpectedDiagnosticCode = "core:diagnostic.json5.limit.nesting_depth";
         }

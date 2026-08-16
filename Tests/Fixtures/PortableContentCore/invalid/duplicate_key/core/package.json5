@@ -1,0 +1,8 @@
+{
+  // PKG-01: this fixture's failure mode under test is a duplicate key
+  // inside definitions/*.json5 (core:diagnostic.json5.duplicate_key) —
+  // the manifest itself must be valid so discovery reaches that point.
+  package_id: "core",
+  namespace: "core",
+  version: "1.0.0",
+}

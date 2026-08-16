@@ -29,6 +29,8 @@
 #include "GV2ContentCore/Testing/ValueModelConformance.h"
 #include "GV2ContentCore/Value.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "GV2ContentHostSupport/Testing/PackageDiscoveryAndOrderConformance.h"
+#include "GV2ContentHostSupport/Testing/PackageManifestConformance.h"
 #include "GV2RuntimeCore/GV2HostServices.h"
 #include "GV2RuntimeCore/GV2RunDigest.h"
 #include "GV2RuntimeCore/GV2RunManifest.h"
@@ -216,21 +218,31 @@ private:
 // (Tools/Content/Source/main.cpp) so CLI/headless/UE stay on one discovery
 // convention (self-describing schema resources) and the same
 // GV2ContentCore::BuildRepository() reference path (PCC-38 parity).
-GV2ContentCore::FBuildResult BuildRepositoryFromDirectory(const std::filesystem::path& PackageRoot)
+GV2ContentCore::FBuildResult BuildRepositoryFromDirectories(const std::vector<std::filesystem::path>& PackageRoots)
 {
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    std::optional<GV2ContentCore::FPackageDescriptor> Descriptor =
-        GV2ContentHostSupport::DiscoverPackageFromDirectory(PackageRoot, Diagnostics);
-    if (!Descriptor)
+    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
+        GV2ContentHostSupport::DiscoverPackagesFromDirectories(PackageRoots, Diagnostics);
+    if (!Descriptors)
     {
         return GV2ContentCore::FBuildResult::Failure(std::move(Diagnostics));
     }
 
-    FHeadlessFilesystemContentSourceProvider Provider(PackageRoot, Descriptor->GetPackageId());
+    GV2ContentHostSupport::FMultiPackageSourceProvider Provider;
+    for (std::size_t Index = 0; Index < Descriptors->size(); ++Index)
+    {
+        Provider.RegisterPackage((*Descriptors)[Index].GetPackageId(), PackageRoots[Index]);
+    }
+
     GV2ContentCore::FBuildOptions Options;
     Options.SourceProvider = &Provider;
 
-    return GV2ContentCore::BuildRepository({*Descriptor}, Options);
+    return GV2ContentCore::BuildRepository(*Descriptors, Options);
+}
+
+GV2ContentCore::FBuildResult BuildRepositoryFromDirectory(const std::filesystem::path& PackageRoot)
+{
+    return BuildRepositoryFromDirectories({PackageRoot});
 }
 
 std::optional<std::filesystem::path> LoadContentRoot(
@@ -326,11 +338,17 @@ bool RunSharedJson5FixtureConformance()
         Fixture.Source.assign(
             std::istreambuf_iterator<char>(SourceStream),
             std::istreambuf_iterator<char>());
-        if (RelativePath.starts_with("invalid/duplicate_key/"))
+        // PKG-01 (plan PackageSupport): package.json5 manifests are
+        // well-formed identity documents, not the fixture's own failure
+        // mode — excluded from both blanket per-directory expectations
+        // below even though they now live inside these fixture
+        // directories (manifest is mandatory as of PKG-01).
+        const bool bIsManifest = RelativePath.ends_with("/package.json5");
+        if (!bIsManifest && RelativePath.starts_with("invalid/duplicate_key/"))
         {
             Fixture.ExpectedDiagnosticCode = "core:diagnostic.json5.duplicate_key";
         }
-        else if (RelativePath.starts_with("invalid/nesting_depth_exceeded/"))
+        else if (!bIsManifest && RelativePath.starts_with("invalid/nesting_depth_exceeded/"))
         {
             Fixture.ExpectedDiagnosticCode = "core:diagnostic.json5.limit.nesting_depth";
         }
@@ -1052,6 +1070,24 @@ int Run(
         {
             std::cerr << "cold_start_load_conformance_failed case=" << ColdStartLoadFailure << '\n';
             return 18;
+        }
+
+        // PKG-01/02/03: package manifest conformance (plan PackageSupport, M1).
+        const std::string PackageManifestFailure =
+            GV2ContentHostSupport::Testing::RunPackageManifestConformance();
+        if (!PackageManifestFailure.empty())
+        {
+            std::cerr << "package_manifest_conformance_failed case=" << PackageManifestFailure << '\n';
+            return 19;
+        }
+
+        // PKG-05…09: package discovery and order conformance (plan PackageSupport, M2).
+        const std::string DiscoveryOrderFailure =
+            GV2ContentHostSupport::Testing::RunPackageDiscoveryAndOrderConformance();
+        if (!DiscoveryOrderFailure.empty())
+        {
+            std::cerr << "package_discovery_and_order_conformance_failed case=" << DiscoveryOrderFailure << '\n';
+            return 20;
         }
 
         // TAS-04: both hosts call this one runner over Tests/Lua/**/*.lua.

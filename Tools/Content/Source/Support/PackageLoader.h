@@ -29,18 +29,19 @@ private:
     std::string PackageId;
 };
 
-// Discovers a single-package FPackageDescriptor from a directory laid out as
-// <root>/definitions/*.json5 and <root>/schemas/*.json5.
+// Discovers package descriptors and builds a repository from one or more package root directories.
 struct FRootBuildOutcome
 {
     bool bToolFailure = false;
     std::string ToolFailureMessage;
     std::unique_ptr<GV2ContentCore::FPackageDescriptor> Descriptor;
+    std::vector<GV2ContentCore::FPackageDescriptor> Descriptors;
     std::optional<GV2ContentCore::FBuildResult> Result;
     // Kept alive for the lifetime of Result, which holds a raw pointer into it via FBuildOptions.
-    std::unique_ptr<FFilesystemContentSourceProvider> Provider;
+    std::unique_ptr<GV2ContentCore::IContentSourceProvider> Provider;
 };
 
+FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>& RawRoots);
 FRootBuildOutcome BuildFromPackageRoot(const std::filesystem::path& RawRoot);
 
 } // namespace GV2ContentCli

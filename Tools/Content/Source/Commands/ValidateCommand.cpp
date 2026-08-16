@@ -20,18 +20,23 @@ int RunValidate(
     const std::uint32_t PollIntervalMs,
     const std::uint32_t MaxIterations)
 {
-    if (Positional.size() != 1)
+    if (Positional.empty())
     {
-        std::cerr << "usage: gv2-content validate <package-root> [--watch] [--poll-interval=MS] [--max-iterations=N] [--format=text|json]\n";
+        std::cerr << "usage: gv2-content validate <package-root>... [--watch] [--poll-interval=MS] [--max-iterations=N] [--format=text|json]\n";
         return static_cast<int>(EExitCode::ToolFailure);
     }
 
-    const std::filesystem::path PackageRoot = Positional[0];
+    std::vector<std::filesystem::path> PackageRoots;
+    PackageRoots.reserve(Positional.size());
+    for (const auto& Pos : Positional)
+    {
+        PackageRoots.emplace_back(Pos);
+    }
 
     auto ExecuteSinglePass = [&](std::size_t Iteration) -> int {
         try
         {
-            FRootBuildOutcome Outcome = BuildFromPackageRoot(PackageRoot);
+            FRootBuildOutcome Outcome = BuildFromPackageRoots(PackageRoots);
             if (Outcome.bToolFailure)
             {
                 if (Format == EOutputFormat::Json)
@@ -130,7 +135,7 @@ int RunValidate(
         return ExecuteSinglePass(1);
     }
 
-    return RunDirectoryWatchLoop(PackageRoot, {PollIntervalMs, MaxIterations}, ExecuteSinglePass);
+    return RunDirectoryWatchLoop(PackageRoots[0], {PollIntervalMs, MaxIterations}, ExecuteSinglePass);
 }
 
 } // namespace GV2ContentCli

@@ -2,6 +2,7 @@
 invalid/active_redirect_source/test_mod/definitions/screens.json5
 invalid/broken_override/test_mod/definitions/screens.json5
 invalid/duplicate_key/core/definitions/items.json5
+invalid/duplicate_key/core/package.json5
 invalid/foreign_new_id/test_mod/definitions/screens.json5
 invalid/missing_reference/test_mod/definitions/screens.json5
 invalid/nesting_depth_exceeded/core/definitions/screens.json5
@@ -16,6 +17,7 @@ valid/core/definitions/locations.json5
 valid/core/definitions/resources.json5
 valid/core/definitions/screens.json5
 valid/core/definitions/texts.json5
+valid/core/package.json5
 valid/core/schemas/actor_v1.schema.json5
 valid/core/schemas/item_v1.schema.json5
 valid/core/schemas/location_v1.schema.json5
@@ -25,3 +27,4 @@ valid/core/schemas/text_v1.schema.json5
 valid/test_mod/definitions/locations.json5
 valid/test_mod/definitions/screens.json5
 valid/test_mod/definitions/texts.json5
+valid/test_mod/package.json5
