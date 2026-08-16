@@ -4,7 +4,6 @@
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
-local gameplay_root = require("core:module.gameplay.root")
 
 return {
     leave_then_enter_facts_published_on_successful_travel = function()
@@ -14,7 +13,7 @@ return {
 
         -- Ensure starting at market
         local world = game.instances.world()
-        local dispatcher = command_dispatcher.new({ gameplay_root })
+        local dispatcher = command_dispatcher.new()
 
         -- Move to market first if not there
         if world.current_location_id ~= "rh:location.city.market" then
@@ -58,15 +57,22 @@ return {
             sequence = 801,
         })
 
-        -- Verify exactly 2 events in strict order: leave before enter
-        assert(#events_order == 2, "must have received exactly 2 events, got " .. tostring(#events_order))
-        assert(events_order[1].kind == "leave", "first event must be location.leave")
-        assert(events_order[1].from == "rh:location.city.market", "leave from must be market")
-        assert(events_order[1].to == "rh:location.city.tavern", "leave to must be tavern")
+        -- Verify exactly 2 events published in strict order: leave -> enter
+        local published = game.events.get_published_events()
+        assert(#published == 2, "exactly 2 facts must be published, got " .. tostring(#published))
+        assert(published[1].event_id == "core:event.location.leave", "1st event must be leave")
+        assert(published[2].event_id == "core:event.location.enter", "2nd event must be enter")
 
-        assert(events_order[2].kind == "enter", "second event must be location.enter")
-        assert(events_order[2].from == "rh:location.city.market", "enter from must be market")
-        assert(events_order[2].to == "rh:location.city.tavern", "enter to must be tavern")
+        -- Verify payload contents
+        assert(published[1].payload.from_location_id == "rh:location.city.market", "leave from market")
+        assert(published[1].payload.to_location_id == "rh:location.city.tavern", "leave to tavern")
+        assert(published[2].payload.from_location_id == "rh:location.city.market", "enter from market")
+        assert(published[2].payload.to_location_id == "rh:location.city.tavern", "enter to tavern")
+
+        -- Verify subscribers received both events in exact order
+        assert(#events_order == 2, "subscribers must have run twice, got " .. tostring(#events_order))
+        assert(events_order[1].kind == "leave", "leave subscriber ran first")
+        assert(events_order[2].kind == "enter", "enter subscriber ran second")
 
         -- Cleanup
         event_bus.clear_subscribers()
@@ -79,35 +85,32 @@ return {
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
 
-        local received_count = 0
+        local world = game.instances.world()
+        local current_loc = world.current_location_id
+
+        local subscriber_invoked = false
         game.events.subscribers.register(
-            "core:subscriber.test.all_listener",
+            "core:subscriber.test.guard",
             "core:event.location.leave",
             function(_env)
-                received_count = received_count + 1
-            end
-        )
-        game.events.subscribers.register(
-            "core:subscriber.test.all_enter_listener",
-            "core:event.location.enter",
-            function(_env)
-                received_count = received_count + 1
+                subscriber_invoked = true
             end
         )
 
-        local current_loc = game.instances.world().current_location_id
-        local dispatcher = command_dispatcher.new({ gameplay_root })
+        local dispatcher = command_dispatcher.new()
+        -- Attempt to travel to current location (rejected by validator)
+        local ok, _ = pcall(function()
+            dispatcher.dispatch({
+                command_id = "core:command.location.travel",
+                args = { target_location_id = current_loc },
+                sequence = 802,
+            })
+        end)
 
-        -- Attempt invalid travel: travel to current location
-        dispatcher.dispatch({
-            command_id = "core:command.location.travel",
-            args = { target_location_id = current_loc },
-            sequence = 802,
-        })
-
-        assert(received_count == 0, "no events should be delivered when validator refuses command")
+        assert(ok, "typed refusal must not throw Lua exception")
+        assert(subscriber_invoked == false, "subscribers must NOT be invoked on refused travel")
         local published = game.events.get_published_events()
-        assert(#published == 0, "published events buffer must be empty on refusal")
+        assert(#published == 0, "0 events must be published on refused travel, got " .. tostring(#published))
 
         -- Cleanup
         event_bus.clear_subscribers()
@@ -120,42 +123,31 @@ return {
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
 
-        -- Reset to market
-        local dispatcher = command_dispatcher.new({ gameplay_root })
-        if game.instances.world().current_location_id ~= "rh:location.city.market" then
-            dispatcher.dispatch({
-                command_id = "core:command.location.travel",
-                args = { target_location_id = "rh:location.city.market" },
-                sequence = 803,
-            })
-        end
-        event_bus.clear_published_events()
-
         local tavern_entered = false
         local forest_entered = false
 
-        -- Subscriber 1: checks tavern
         game.events.subscribers.register(
             "core:subscriber.test.tavern_checker",
             "core:event.location.enter",
             function(env)
                 if env.payload.to_location_id == "rh:location.city.tavern" then
                     tavern_entered = true
-                end
-            end
-        )
-
-        -- Subscriber 2: checks forest
-        game.events.subscribers.register(
-            "core:subscriber.test.forest_checker",
-            "core:event.location.enter",
-            function(env)
-                if env.payload.to_location_id == "rh:location.wild.forest" then
+                elseif env.payload.to_location_id == "rh:location.wilderness.forest" then
                     forest_entered = true
                 end
             end
         )
 
+        local dispatcher = command_dispatcher.new()
+        -- Move to market first
+        dispatcher.dispatch({
+            command_id = "core:command.location.travel",
+            args = { target_location_id = "rh:location.city.market" },
+            sequence = 803,
+        })
+        event_bus.clear_published_events()
+
+        -- Now travel to tavern
         dispatcher.dispatch({
             command_id = "core:command.location.travel",
             args = { target_location_id = "rh:location.city.tavern" },
@@ -177,7 +169,7 @@ return {
         game.commands.clear_queue()
         game.runtime.phase = "idle"
 
-        local dispatcher = command_dispatcher.new({ gameplay_root })
+        local dispatcher = command_dispatcher.new()
 
         -- Move to market first if not there
         if game.instances.world().current_location_id ~= "rh:location.city.market" then

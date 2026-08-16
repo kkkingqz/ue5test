@@ -16,7 +16,7 @@ return {
 
     active_winner_is_loaded_and_callable = function()
         assert(type(gameplay_root) == "table", "gameplay root must be a table")
-        assert(type(gameplay_root.handle_command) == "function", "handle_command must be a function")
+        assert(type(gameplay_root.register) == "function", "register must be a function")
     end,
 
     derived_module_prototype_delegation = function()

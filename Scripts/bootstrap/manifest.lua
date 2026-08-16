@@ -137,8 +137,6 @@ return {
             source = "boundary/ingress.lua",
             dependencies = {
                 "core:module.runtime.command_dispatcher",
-                "core:module.gameplay.root",
-                "core:module.debug.start",
             },
             replaceable = false,
         },
@@ -238,6 +236,8 @@ return {
                 "core:module.runtime.event_envelope",
                 "core:module.runtime.event_bus",
                 "core:module.gameplay.location_service",
+                "core:module.gameplay.root",
+                "core:module.debug.start",
             },
             replaceable = false,
         },

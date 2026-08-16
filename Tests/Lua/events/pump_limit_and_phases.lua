@@ -5,6 +5,7 @@
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     runtime_phase_transitions_during_command_lifecycle = function()
@@ -18,21 +19,17 @@ return {
             table.insert(observed_phases, { context = "event_subscriber", phase = game.runtime.phase })
         end)
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.phase_lifecycle" then
-                    table.insert(observed_phases, { context = "command_handler", phase = game.runtime.phase })
-                    game.events.enqueue({
-                        event_id = "core:event.test.phase_check",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.phase_lifecycle", function(_request)
+            table.insert(observed_phases, { context = "command_handler", phase = game.runtime.phase })
+            game.events.enqueue({
+                event_id = "core:event.test.phase_check",
+                payload = {},
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
 
         assert(game.runtime.phase == "idle", "phase must start at idle")
         dispatcher.dispatch({
@@ -72,20 +69,19 @@ return {
             end
         end)
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.outer" then
-                    game.events.enqueue({
-                        event_id = "core:event.test.nested_cmd",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.outer", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.test.nested_cmd",
+                payload = {},
+            })
+            return { ok = true }
+        end)
+        reg.register("core:command.test.inner", function(_request)
+            return { ok = true }
+        end)
 
-        test_dispatcher = command_dispatcher.new({ handler })
+        test_dispatcher = command_dispatcher.new(reg)
         test_dispatcher.dispatch({
             command_id = "core:command.test.outer",
             args = {},
@@ -106,27 +102,26 @@ return {
         local inner_error_message = ""
         local test_dispatcher = nil
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.reentrant_outer" then
-                    local ok, err = pcall(function()
-                        test_dispatcher.dispatch({
-                            command_id = "core:command.test.reentrant_inner",
-                            args = {},
-                            sequence = 304,
-                        })
-                    end)
-                    if not ok then
-                        inner_dispatch_threw = true
-                        inner_error_message = tostring(err)
-                    end
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.reentrant_outer", function(_request)
+            local ok, err = pcall(function()
+                test_dispatcher.dispatch({
+                    command_id = "core:command.test.reentrant_inner",
+                    args = {},
+                    sequence = 304,
+                })
+            end)
+            if not ok then
+                inner_dispatch_threw = true
+                inner_error_message = tostring(err)
+            end
+            return { ok = true }
+        end)
+        reg.register("core:command.test.reentrant_inner", function(_request)
+            return { ok = true }
+        end)
 
-        test_dispatcher = command_dispatcher.new({ handler })
+        test_dispatcher = command_dispatcher.new(reg)
         test_dispatcher.dispatch({
             command_id = "core:command.test.reentrant_outer",
             args = {},
@@ -152,20 +147,16 @@ return {
             })
         end)
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.trigger_loop" then
-                    game.events.enqueue({
-                        event_id = "core:event.test.infinite_loop",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.trigger_loop", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.test.infinite_loop",
+                payload = {},
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         local ok, err = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.test.trigger_loop",
@@ -207,20 +198,16 @@ return {
             error("DeliberateEventHandlerFault: subscriber threw exception", 0)
         end)
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.trigger_fault" then
-                    game.events.enqueue({
-                        event_id = "core:event.test.fault_event",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.trigger_fault", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.test.fault_event",
+                payload = {},
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         local ok, _ = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.test.trigger_fault",

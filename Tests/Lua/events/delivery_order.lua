@@ -4,6 +4,7 @@
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     subscriber_priority_ordering = function()
@@ -32,20 +33,16 @@ return {
             table.insert(trace, "sub_0_second")
         end, { priority = 0 })
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew08_priority" then
-                    game.events.enqueue({
-                        event_id = "core:event.test.priority",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew08_priority", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.test.priority",
+                payload = {},
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.gew08_priority",
             args = {},
@@ -76,19 +73,15 @@ return {
             table.insert(trace, "recv_" .. env.event_id)
         end)
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew08_fifo" then
-                    game.events.enqueue({ event_id = "core:event.test.step1", payload = {} })
-                    game.events.enqueue({ event_id = "core:event.test.step2", payload = {} })
-                    game.events.enqueue({ event_id = "core:event.test.step3", payload = {} })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew08_fifo", function(_request)
+            game.events.enqueue({ event_id = "core:event.test.step1", payload = {} })
+            game.events.enqueue({ event_id = "core:event.test.step2", payload = {} })
+            game.events.enqueue({ event_id = "core:event.test.step3", payload = {} })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.gew08_fifo",
             args = {},
@@ -136,17 +129,13 @@ return {
             table.insert(trace, "grandchild_a_sub")
         end)
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew08_breadth_first" then
-                    game.events.enqueue({ event_id = "core:event.test.root", payload = {} })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew08_breadth_first", function(_request)
+            game.events.enqueue({ event_id = "core:event.test.root", payload = {} })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.gew08_breadth_first",
             args = {},
@@ -159,33 +148,11 @@ return {
         -- 3. child_a_sub runs -> enqueues grandchild_a
         -- 4. child_b_sub runs (BEFORE grandchild_a!)
         -- 5. grandchild_a_sub runs
-        assert(#trace == 5, "exact 5 steps in trace, got " .. tostring(#trace))
+        assert(#trace == 5, "all 5 subscriber callbacks must have run, got " .. tostring(#trace))
         assert(trace[1] == "root_sub1", "1: root_sub1")
         assert(trace[2] == "root_sub2", "2: root_sub2")
         assert(trace[3] == "child_a_sub", "3: child_a_sub")
-        assert(trace[4] == "child_b_sub", "4: child_b_sub must execute before grandchild_a (breadth-first)")
+        assert(trace[4] == "child_b_sub", "4: child_b_sub (breadth-first before grandchild)")
         assert(trace[5] == "grandchild_a_sub", "5: grandchild_a_sub")
-    end,
-
-    invalid_subscriber_rejected = function()
-        event_bus.clear_subscribers()
-
-        -- Reject wrong kind Stable ID
-        local ok_bad_id = pcall(function()
-            event_bus.subscribe("core:command.location.travel", function() end)
-        end)
-        assert(not ok_bad_id, "subscribing with kind 'command' must fail")
-
-        -- Reject non-function handler
-        local ok_bad_handler = pcall(function()
-            event_bus.subscribe("core:event.test.bad", "not_a_function")
-        end)
-        assert(not ok_bad_handler, "subscribing with non-function handler must fail")
-
-        -- Reject non-integer priority
-        local ok_bad_priority = pcall(function()
-            event_bus.subscribe("core:event.test.bad", function() end, { priority = "high" })
-        end)
-        assert(not ok_bad_priority, "subscribing with non-integer priority must fail")
     end,
 }

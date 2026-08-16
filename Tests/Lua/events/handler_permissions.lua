@@ -4,14 +4,13 @@
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     event_handler_cannot_mutate_state_directly = function()
         event_bus.clear_published_events()
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
-
-        local mutation_attempt_threw = false
 
         game.events.subscribers.register(
             "core:subscriber.test.illegal_mutator",
@@ -22,20 +21,16 @@ return {
             end
         )
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.trigger_illegal_mutation" then
-                    game.events.enqueue({
-                        event_id = "core:event.test.illegal_mutation",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.trigger_illegal_mutation", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.test.illegal_mutation",
+                payload = {},
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         local ok, err = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.test.trigger_illegal_mutation",
@@ -68,22 +63,18 @@ return {
             end
         )
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.commit_then_fault" then
-                    -- Legitimate mutation
-                    game.state.counter = 200
-                    game.events.enqueue({
-                        event_id = "core:event.test.fault_target",
-                        payload = {},
-                    })
-                    return { ok = true, value = { counter = 200 } }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.commit_then_fault", function(_request)
+            -- Legitimate mutation
+            game.state.counter = 200
+            game.events.enqueue({
+                event_id = "core:event.test.fault_target",
+                payload = {},
+            })
+            return { ok = true, value = { counter = 200 } }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         local ok, _ = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.test.commit_then_fault",
@@ -119,20 +110,16 @@ return {
             end
         )
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.read_check" then
-                    game.events.enqueue({
-                        event_id = "core:event.test.read_check",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.read_check", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.test.read_check",
+                payload = {},
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.read_check",
             args = {},

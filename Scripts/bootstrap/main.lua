@@ -15,6 +15,8 @@ local handler_registry = require("core:module.runtime.handler_registry")
 local subscriber_registry = require("core:module.runtime.subscriber_registry")
 local event_bus = require("core:module.runtime.event_bus")
 local location_service = require("core:module.gameplay.location_service")
+local gameplay_root = require("core:module.gameplay.root")
+local debug_start = require("core:module.debug.start")
 
 return {
     id = "core:module.bootstrap.main",
@@ -35,4 +37,6 @@ return {
     subscriber_registry = subscriber_registry,
     event_bus = event_bus,
     location_service = location_service,
+    gameplay_root = gameplay_root,
+    debug_start = debug_start,
 }

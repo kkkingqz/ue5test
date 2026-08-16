@@ -109,36 +109,43 @@ local function create_screen()
     })
 end
 
-function M.handle_command(request)
-    if request.command_id == "core:command.test.force_error" then
-        error("forced test runtime error")
+function M.register(_ctx)
+    if not game or not game.commands or not game.commands.handlers then
+        return
     end
-    if request.command_id == "core:command.debug.start" then
+
+    game.commands.handlers.register("core:command.test.force_error", function(_req)
+        error("forced test runtime error")
+    end)
+
+    game.commands.handlers.register("core:command.debug.start", function(_req)
         checkbox_checked = false
         selected_class = nil
         player_name = ""
         screens.publish(create_screen())
         return true
-    end
-    if request.command_id == "core:command.test.checkbox_changed" then
+    end)
+
+    game.commands.handlers.register("core:command.test.checkbox_changed", function(request)
         assert(type(request.args.is_checked) == "boolean", "checkbox command requires is_checked")
         checkbox_checked = request.args.is_checked
         screens.publish(create_screen())
         return true
-    end
-    if request.command_id == "core:command.test.dropdown_selected" then
+    end)
+
+    game.commands.handlers.register("core:command.test.dropdown_selected", function(request)
         assert(type(request.args.selected_key) == "string", "dropdown command requires selected_key")
         selected_class = request.args.selected_key
         screens.publish(create_screen())
         return true
-    end
-    if request.command_id == "core:command.test.name_changed" then
+    end)
+
+    game.commands.handlers.register("core:command.test.name_changed", function(request)
         assert(type(request.args.value) == "string", "name command requires value")
         player_name = request.args.value
         screens.publish(create_screen())
         return true
-    end
-    return false
+    end)
 end
 
 function M.start(_ctx)

@@ -77,24 +77,26 @@ function M.register(_ctx)
         make_scoped_validator("core:command.test.gew03_chain", "mutate_if_invoked"),
         { priority = 1 })
 
-    local handler = {
-        handle_command = function(request)
-            if request.command_id == "core:command.test.gew02_read_check"
-                or request.command_id == "core:command.test.gew02_allow"
-                or request.command_id == "core:command.test.gew02_refuse"
-                or request.command_id == "core:command.test.gew02_mutate_attempt"
-                or request.command_id == "core:command.test.gew03_refuse"
-                or request.command_id == "core:command.test.gew03_chain"
-                or request.command_id == "core:command.test.gew03_missing_params"
-                or request.command_id == "core:command.test.gew03_bad_code"
-            then
-                game.state.counter = (game.state.counter or 0) + 1
-                return { ok = true, value = { counter = game.state.counter } }
-            end
-            return nil
-        end,
+    local function test_handler(_request)
+        game.state.counter = (game.state.counter or 0) + 1
+        return { ok = true, value = { counter = game.state.counter } }
+    end
+
+    local test_command_ids = {
+        "core:command.test.gew02_read_check",
+        "core:command.test.gew02_allow",
+        "core:command.test.gew02_refuse",
+        "core:command.test.gew02_mutate_attempt",
+        "core:command.test.gew03_refuse",
+        "core:command.test.gew03_chain",
+        "core:command.test.gew03_missing_params",
+        "core:command.test.gew03_bad_code",
     }
-    local dispatcher = dispatcher_factory.new({ handler })
+    for _, id in ipairs(test_command_ids) do
+        game.commands.handlers.register(id, test_handler)
+    end
+
+    local dispatcher = dispatcher_factory.new()
     game.runtime.dispatch_command = dispatcher.dispatch
     game.runtime.get_canonical_state_hash = function()
         return tostring(game.state.counter or 0)

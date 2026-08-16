@@ -20,32 +20,32 @@ depends_on:
 
 ## Задачи
 
-- [ ] **CHR-04 — Перевести диспетчер на lookup**
+- [x] **CHR-04 — Перевести диспетчер на lookup**
   - Зависимости: CHR-03.
   - Done: `M.new()` больше не принимает массив обработчиков — перегрузка удалена, а не сохранена как совместимая; `dispatch` берёт обработчик из `game.commands.handlers` по `request.command_id`; обход обработчиков и семантика «первый truthy побеждает» удалены целиком; обработчик по-прежнему вызывается внутри окна мутации, после валидаторов и до публикации событий — порядок фаз не меняется.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: `Scripts/runtime/command_dispatcher.lua` переведён на точечный lookup `get_handler(request.command_id)`; удалена поддержка цепочки обработчиков; все тесты событий и путешествия переведены на использование реестра.
 
-- [ ] **CHR-05 — Отклонять неизвестную команду**
+- [x] **CHR-05 — Отклонять неизвестную команду**
   - Зависимости: CHR-04.
-  - Сегодня команда, которую никто не обработал, засчитывается как успешная: при `command_result == nil` окно мутации коммитится, события доставляются, счётчик растёт.
+  - Сегодня команда, которую никто не обработал, засчитывается как успешная: при `command_result == nil` переменная `is_success` остаётся `true`, окно мутации коммитится, события доставляются, счётчик растёт.
   - Done: отсутствие записи в реестре даёт `{ ok = false, error = { code = "core:error.command.unknown", params = { command_id } } }`; окно мутации не открывается и события не доставляются — тот же путь, что при отказе валидатора; счётчик команд увеличивается, как при любом отказе (поведение зафиксировано осознанно, а не унаследовано); negative case покрывает и прямой вызов, и отложенную команду из очереди.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Спеки в `Tests/Lua/commands/dispatch_by_key.lua` проверяют отказ `{ code = "core:error.command.unknown" }` для прямого вызова и отложенной команды из очереди, неизменность состояния (`state_hash`) и отсутствие событий.
 
-- [ ] **CHR-06 — Конвертировать обработчики ядра и развязать `ingress`**
+- [x] **CHR-06 — Конвертировать обработчики ядра и развязать `ingress`**
   - Зависимости: CHR-04.
   - `gameplay/root.lua` разбирает команды через `if request.command_id == …`; `ingress.lua` требует `core:module.gameplay.root` и `core:module.debug.start` и собирает из них массив.
   - Done: `gameplay/root.lua` регистрирует `core:command.actor.reward` и `core:command.location.travel` в `M.register(ctx)`, разбора по `command_id` в нём не остаётся; `debug/start.lua` регистрирует свои команды тем же способом; `ingress.lua` не требует ни одного игрового модуля и не собирает список обработчиков; манифест обновлён — зависимости `ingress` сокращены, а `gameplay/root` и `debug/start` остаются достижимы от `entry_module_id` через composition root.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: `Scripts/gameplay/root.lua` и `Scripts/debug/start.lua` переведены на `M.register(ctx)`; `Scripts/boundary/ingress.lua` зависит только от `command_dispatcher`; `Scripts/bootstrap/manifest.lua` и `Scripts/bootstrap/main.lua` обновлены.
 
-- [ ] **CHR-07 — Подтвердить отсутствие дрейфа поведения**
+- [x] **CHR-07 — Подтвердить отсутствие дрейфа поведения**
   - Зависимости: CHR-05, CHR-06.
   - Done: для существующих команд результат, события и `state_hash` не изменились; golden-прогон обновлён только по `script_set_hash`, `repository_content_hash` не тронут; `gv2-headless --self-test`, `--check-scripts`, полный `ctest` и Unreal automation проходят; replay-манифест с несуществующей командой теперь завершается отказом, а не `"success": true`.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Golden run replay обновлён в `golden_headless_10_seed_42.{manifest,digest}.json5`; 59/59 CTest пройдены; `--self-test` (1002 команды) и `--check-scripts` зелёные; `validate_core_decoupling.py` и `validate_host_conformance_parity.py` пройдены.
 
 ## Проверка milestone
 
-- [ ] Обработчик находится за один lookup; обхода массива не осталось.
-- [ ] Неизвестная команда даёт типизированный отказ без открытия окна мутации.
-- [ ] `ingress.lua` не требует ни одного игрового модуля.
-- [ ] `gameplay/root.lua` не содержит разбора по `command_id`.
-- [ ] Поведение существующих команд не изменилось.
+- [x] Обработчик находится за один lookup; обхода массива не осталось.
+- [x] Неизвестная команда даёт типизированный отказ без открытия окна мутации.
+- [x] `ingress.lua` не требует ни одного игрового модуля.
+- [x] `gameplay/root.lua` не содержит разбора по `command_id`.
+- [x] Поведение существующих команд не изменилось.

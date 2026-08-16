@@ -5,6 +5,7 @@
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     events_published_after_successful_command_commit = function()
@@ -12,22 +13,18 @@ return {
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
 
-        local test_handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew07_success" then
-                    game.events.enqueue({
-                        event_id = "core:event.location.leave",
-                        payload = {
-                            from_location_id = "core:location.city.market",
-                        },
-                    })
-                    return { ok = true, value = { travelled = true } }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew07_success", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.location.leave",
+                payload = {
+                    from_location_id = "core:location.city.market",
+                },
+            })
+            return { ok = true, value = { travelled = true } }
+        end)
 
-        local dispatcher = command_dispatcher.new({ test_handler })
+        local dispatcher = command_dispatcher.new(reg)
         local seq = dispatcher.dispatch({
             command_id = "core:command.test.gew07_success",
             args = {},
@@ -52,26 +49,22 @@ return {
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
 
-        local test_handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew07_refusal" then
-                    game.events.enqueue({
-                        event_id = "core:event.location.leave",
-                        payload = { from = "market" },
-                    })
-                    return {
-                        ok = false,
-                        error = {
-                            code = "core:error.location.locked",
-                            params = {},
-                        },
-                    }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew07_refusal", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.location.leave",
+                payload = { from = "market" },
+            })
+            return {
+                ok = false,
+                error = {
+                    code = "core:error.location.locked",
+                    params = {},
+                },
+            }
+        end)
 
-        local dispatcher = command_dispatcher.new({ test_handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.gew07_refusal",
             args = {},
@@ -87,28 +80,24 @@ return {
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
 
-        local test_handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew07_early_event_refusal" then
-                    -- Enqueue event before performing checks
-                    game.events.enqueue({
-                        event_id = "core:event.item.add",
-                        payload = { item_id = "core:item.apple" },
-                    })
-                    -- Later refusal
-                    return {
-                        ok = false,
-                        error = {
-                            code = "core:error.item.inventory_full",
-                            params = {},
-                        },
-                    }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew07_early_event_refusal", function(_request)
+            -- Enqueue event before performing checks
+            game.events.enqueue({
+                event_id = "core:event.item.add",
+                payload = { item_id = "core:item.apple" },
+            })
+            -- Later refusal
+            return {
+                ok = false,
+                error = {
+                    code = "core:error.item.inventory_full",
+                    params = {},
+                },
+            }
+        end)
 
-        local dispatcher = command_dispatcher.new({ test_handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.gew07_early_event_refusal",
             args = {},
@@ -124,21 +113,17 @@ return {
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
 
-        local test_handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew07_fault" then
-                    game.events.enqueue({
-                        event_id = "core:event.location.enter",
-                        payload = {},
-                    })
-                    error("SimulatedHandlerFault: unexpected failure", 0)
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew07_fault", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.location.enter",
+                payload = {},
+            })
+            error("SimulatedHandlerFault: unexpected failure", 0)
+        end)
 
-        local dispatcher = command_dispatcher.new({ test_handler })
-        local ok, err = pcall(function()
+        local dispatcher = command_dispatcher.new(reg)
+        local ok, _err = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.test.gew07_fault",
                 args = {},
@@ -192,13 +177,6 @@ return {
             end,
         }
 
-        local test_handler = {
-            handle_command = function(_request)
-                return { ok = true }
-            end,
-        }
-
-        local dispatcher = command_dispatcher.new({ test_handler })
         -- Direct simulation: call validator
         test_validator.validate({})
         assert(validator_attempted_emit, "validator must have run")

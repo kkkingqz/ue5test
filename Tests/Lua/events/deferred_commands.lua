@@ -5,6 +5,7 @@
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     deferred_command_executed_after_pump_in_own_window = function()
@@ -36,30 +37,27 @@ return {
             end
         )
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.step1" then
-                    table.insert(execution_trace, "cmd_step1_executed")
-                    game.state.step1_complete = true
-                    game.events.enqueue({
-                        event_id = "core:event.test.step1_done",
-                        payload = {},
-                    })
-                    return { ok = true }
-                elseif request.command_id == "core:command.test.step2" then
-                    table.insert(execution_trace, "cmd_step2_executed")
-                    game.state.step2_complete = true
-                    game.events.enqueue({
-                        event_id = "core:event.test.step2_done",
-                        payload = {},
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.step1", function(_request)
+            table.insert(execution_trace, "cmd_step1_executed")
+            game.state.step1_complete = true
+            game.events.enqueue({
+                event_id = "core:event.test.step1_done",
+                payload = {},
+            })
+            return { ok = true }
+        end)
+        reg.register("core:command.test.step2", function(_request)
+            table.insert(execution_trace, "cmd_step2_executed")
+            game.state.step2_complete = true
+            game.events.enqueue({
+                event_id = "core:event.test.step2_done",
+                payload = {},
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.step1",
             args = {},

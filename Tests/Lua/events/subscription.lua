@@ -1,10 +1,7 @@
--- GEW-10: Subscription by Event ID Specification
--- Verifies subscriber registration on phase 'register', freezing of registry,
--- rejection of invalid event_id/subscriber_id, duplicate registrations, and direct assignment.
-
 local subscriber_registry = require("core:module.runtime.subscriber_registry")
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     subscribing_to_event_id_succeeds_and_runs_handler = function()
@@ -25,23 +22,19 @@ return {
             end
         )
 
-        local handler = {
-            handle_command = function(request)
-                if request.command_id == "core:command.test.gew10_travel" then
-                    game.events.enqueue({
-                        event_id = "core:event.location.enter",
-                        payload = {
-                            from_location_id = "core:location.city.market",
-                            to_location_id = "core:location.city.tavern",
-                        },
-                    })
-                    return { ok = true }
-                end
-                return nil
-            end,
-        }
+        local reg = handler_registry.create_registry()
+        reg.register("core:command.test.gew10_travel", function(_request)
+            game.events.enqueue({
+                event_id = "core:event.location.enter",
+                payload = {
+                    from_location_id = "core:location.city.market",
+                    to_location_id = "core:location.city.tavern",
+                },
+            })
+            return { ok = true }
+        end)
 
-        local dispatcher = command_dispatcher.new({ handler })
+        local dispatcher = command_dispatcher.new(reg)
         dispatcher.dispatch({
             command_id = "core:command.test.gew10_travel",
             args = {},

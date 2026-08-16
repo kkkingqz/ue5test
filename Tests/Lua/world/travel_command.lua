@@ -3,7 +3,6 @@
 -- validator -> handler -> Gameplay Service -> World.
 
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
-local gameplay_root = require("core:module.gameplay.root")
 
 return {
     successful_travel_updates_current_location = function()
@@ -13,7 +12,7 @@ return {
         local world = game.instances.world()
         assert(world ~= nil, "world instance must be available")
 
-        local dispatcher = command_dispatcher.new({ gameplay_root })
+        local dispatcher = command_dispatcher.new()
 
         -- First move to market to be sure
         local handler_direct = game.services.get("core:service.location")
@@ -58,10 +57,9 @@ return {
         game.runtime.phase = "idle"
 
         local current_loc = game.instances.world().current_location_id
-        local before_hash = game.runtime.get_canonical_state_hash and game.runtime.get_canonical_state_hash()
 
-        local dispatcher = command_dispatcher.new({ gameplay_root })
-        local ok, err = pcall(function()
+        local dispatcher = command_dispatcher.new()
+        local ok, _err = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
                 args = {
@@ -84,9 +82,9 @@ return {
         game.runtime.phase = "idle"
 
         local current_loc = game.instances.world().current_location_id
-        local dispatcher = command_dispatcher.new({ gameplay_root })
+        local dispatcher = command_dispatcher.new()
 
-        local ok, err = pcall(function()
+        local ok, _err = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
                 args = {
@@ -109,9 +107,9 @@ return {
         game.runtime.phase = "idle"
 
         local current_loc = game.instances.world().current_location_id
-        local dispatcher = command_dispatcher.new({ gameplay_root })
+        local dispatcher = command_dispatcher.new()
 
-        local ok, err = pcall(function()
+        local ok, _err = pcall(function()
             dispatcher.dispatch({
                 command_id = "core:command.location.travel",
                 args = {

@@ -102,12 +102,25 @@ function M.get_queue_length()
     return #deferred_command_queue
 end
 
-function M.new(handlers)
-    assert(type(handlers) == "table", "command handlers must be a table")
+function M.new(handlers_registry)
+    if handlers_registry ~= nil then
+        assert(type(handlers_registry) == "table" and type(handlers_registry.get) == "function",
+            "handlers_registry must be a registry table with a get() method")
+    end
 
     local dispatcher = {}
     local is_dispatching = false
     local is_processing_queue = false
+
+    local function get_handler(command_id)
+        if handlers_registry ~= nil then
+            return handlers_registry.get(command_id)
+        end
+        if game and game.commands and game.commands.handlers then
+            return game.commands.handlers.get(command_id)
+        end
+        return nil
+    end
 
     function dispatcher.dispatch(request)
         if game and game.runtime then
@@ -138,16 +151,22 @@ function M.new(handlers)
                 return
             end
 
+            local handler_fn = get_handler(request.command_id)
+            if handler_fn == nil then
+                command_result = {
+                    ok = false,
+                    error = {
+                        code = "core:error.command.unknown",
+                        params = { command_id = request.command_id },
+                    },
+                }
+                return
+            end
+
             event_bus.begin_command_context(request)
 
             mutation_window.execute_in_window(function()
-                for _, handler in ipairs(handlers) do
-                    local result = handler.handle_command(request)
-                    if result then
-                        command_result = result
-                        break
-                    end
-                end
+                command_result = handler_fn(request)
             end)
 
             -- GEW-07: Deliver events only after successful commit.
