@@ -94,6 +94,7 @@ FRunDigest ComputeRunDigest(
     GV2ContentCore::FValue::FObject HashPayload;
     HashPayload.emplace_back("lua_release_num", GV2ContentCore::FValue(static_cast<std::int64_t>(Manifest.LuaReleaseNumber)));
     HashPayload.emplace_back("repository_content_hash", GV2ContentCore::FValue(Manifest.RepositoryContentHash));
+    HashPayload.emplace_back("script_set_hash", GV2ContentCore::FValue(Manifest.ScriptSetHash));
     HashPayload.emplace_back("seed", GV2ContentCore::FValue(static_cast<std::int64_t>(Manifest.Seed)));
 
     GV2ContentCore::FValue::FArray CommandsArray;
@@ -119,6 +120,7 @@ FRunDigest ComputeRunDigest(
     Digest.DigestHash = GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue(std::move(HashPayload)));
     Digest.LuaReleaseNumber = Manifest.LuaReleaseNumber;
     Digest.RepositoryContentHash = Manifest.RepositoryContentHash;
+    Digest.ScriptSetHash = Manifest.ScriptSetHash;
     Digest.Seed = Manifest.Seed;
     Digest.ExecutedCommandsCount = Result.ExecutedCommandsCount;
     Digest.bSuccess = Result.bSuccess;
@@ -137,6 +139,9 @@ std::string SerializeRunDigest(const FRunDigest& Digest)
     Out += "  \"lua_release_num\": " + std::to_string(Digest.LuaReleaseNumber) + ",\n";
     Out += "  \"repository_content_hash\": ";
     EscapeJsonString(Digest.RepositoryContentHash, Out);
+    Out += ",\n";
+    Out += "  \"script_set_hash\": ";
+    EscapeJsonString(Digest.ScriptSetHash, Out);
     Out += ",\n";
     Out += "  \"seed\": " + std::to_string(Digest.Seed) + ",\n";
     Out += "  \"executed_commands_count\": " + std::to_string(Digest.ExecutedCommandsCount) + ",\n";
@@ -195,6 +200,13 @@ bool DeserializeRunDigest(
         return false;
     }
 
+    const auto* ScriptSetHashVal = Root.FindField("script_set_hash");
+    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || ScriptSetHashVal->AsString().length() != 64)
+    {
+        OutError = "run_digest.invalid_script_set_hash";
+        return false;
+    }
+
     const auto* SeedVal = Root.FindField("seed");
     if (SeedVal == nullptr || !SeedVal->IsInteger() || SeedVal->AsInteger() < 0)
     {
@@ -240,6 +252,7 @@ bool DeserializeRunDigest(
     OutDigest.DigestHash = DigestHashVal->AsString();
     OutDigest.LuaReleaseNumber = static_cast<std::int32_t>(LuaReleaseVal->AsInteger());
     OutDigest.RepositoryContentHash = RepoHashVal->AsString();
+    OutDigest.ScriptSetHash = ScriptSetHashVal->AsString();
     OutDigest.Seed = static_cast<std::uint64_t>(SeedVal->AsInteger());
     OutDigest.ExecutedCommandsCount = static_cast<std::uint64_t>(ExecutedVal->AsInteger());
     OutDigest.bSuccess = SuccessVal->AsBoolean();

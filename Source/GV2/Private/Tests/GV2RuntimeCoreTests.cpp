@@ -493,6 +493,41 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
         TEXT("Runtime starts with valid multi-package module override"),
         OverrideSession.Start(1, MakeTestPinnedRepository(), OverrideSources, Fault));
 
+    const std::string OverrideHash = OverrideSession.GetScriptSetHash();
+    TestEqual(TEXT("Override session script set hash length is 64"), OverrideHash.length(), static_cast<std::size_t>(64));
+
+    const auto ReplacedModules = OverrideSession.GetReplacedModules();
+    TestEqual(TEXT("Replaced modules count is 1"), ReplacedModules.size(), static_cast<std::size_t>(1));
+    if (ReplacedModules.size() == 1)
+    {
+        TestEqual(TEXT("Replaced module id is core:module.gameplay.root"),
+            FString(UTF8_TO_TCHAR(ReplacedModules[0].ModuleId.c_str())),
+            FString(TEXT("core:module.gameplay.root")));
+        TestEqual(TEXT("Replaced module provider count is 2"), ReplacedModules[0].Providers.size(), static_cast<std::size_t>(2));
+        if (ReplacedModules[0].Providers.size() == 2)
+        {
+            TestEqual(TEXT("Provider 0 is core"), FString(UTF8_TO_TCHAR(ReplacedModules[0].Providers[0].c_str())), FString(TEXT("core")));
+            TestEqual(TEXT("Provider 1 is test_mod"), FString(UTF8_TO_TCHAR(ReplacedModules[0].Providers[1].c_str())), FString(TEXT("test_mod")));
+        }
+    }
+
+    // Base sources without override produces a different ScriptSetHash
+    const std::vector<GV2RuntimeCore::FRuntimeSource> BaseOnlySources = { OverrideSources[0], OverrideSources[1] };
+    GV2RuntimeCore::FRuntimeSession BaseSession;
+    TestTrue(TEXT("Base session starts"), BaseSession.Start(1, MakeTestPinnedRepository(), BaseOnlySources, Fault));
+    const std::string BaseHash = BaseSession.GetScriptSetHash();
+    TestTrue(TEXT("Override changes ScriptSetHash"), BaseHash != OverrideHash);
+    TestEqual(TEXT("Base session has 0 replaced modules"), BaseSession.GetReplacedModules().size(), static_cast<std::size_t>(0));
+
+    // CheckScripts also reports ScriptSetHash and ReplacedModules
+    std::size_t CheckedCount = 0;
+    std::string CheckHash;
+    std::vector<GV2RuntimeCore::FReplacedModuleInfo> CheckReplaced;
+    GV2RuntimeCore::FRuntimeSession CheckSession;
+    TestTrue(TEXT("CheckScripts succeeds"), CheckSession.CheckScripts(1, MakeTestPinnedRepository(), OverrideSources, &CheckedCount, &CheckHash, &CheckReplaced, Fault));
+    TestEqual(TEXT("CheckScripts hash matches started session"), CheckHash, OverrideHash);
+    TestEqual(TEXT("CheckScripts replaced modules count is 1"), CheckReplaced.size(), static_cast<std::size_t>(1));
+
     // 2. Replacing sealed module triggers LuaModuleSealed
     const std::vector<GV2RuntimeCore::FRuntimeSource> SealedSources = {
         {

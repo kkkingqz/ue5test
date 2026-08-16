@@ -35,6 +35,14 @@ bool ReplayRunManifest(
         return false;
     }
 
+    if (Manifest.ScriptSetHash != Runtime.GetScriptSetHash())
+    {
+        OutFault.Code = "core:fault.run_manifest.script_set_hash_mismatch";
+        OutFault.Message = "Manifest script set hash mismatch";
+        OutResult.FaultCode = OutFault.Code;
+        return false;
+    }
+
     for (const auto& Cmd : Manifest.AcceptedCommands)
     {
         FCommandRequest Request;

@@ -83,10 +83,20 @@ std::string RunRunReplayConformance()
     const auto ReadHandle = BuildResult.GetCandidate().GetReadHandle();
     const auto Sources = CreateReplayRuntimeSources();
 
+    FRuntimeSession ProbeSession;
+    FRuntimeFault ProbeFault;
+    if (!ProbeSession.Start(1, ReadHandle, Sources, ProbeFault))
+    {
+        return "run_replay.probe_session_failed";
+    }
+    const std::string ExpectedScriptSetHash = ProbeSession.GetScriptSetHash();
+    ProbeSession.Stop();
+
     // 1. Negative: Lua release mismatch
     FRunManifest MismatchReleaseManifest;
     MismatchReleaseManifest.LuaReleaseNumber = 99999;
     MismatchReleaseManifest.RepositoryContentHash = ReadHandle.GetContentHash();
+    MismatchReleaseManifest.ScriptSetHash = ExpectedScriptSetHash;
     MismatchReleaseManifest.Seed = 1;
 
     FRunResult Result;
@@ -101,6 +111,7 @@ std::string RunRunReplayConformance()
     FRunManifest MismatchHashManifest;
     MismatchHashManifest.LuaReleaseNumber = FRuntimeSession::LuaReleaseNumber;
     MismatchHashManifest.RepositoryContentHash = "0000000000000000000000000000000000000000000000000000000000000000";
+    MismatchHashManifest.ScriptSetHash = ExpectedScriptSetHash;
     MismatchHashManifest.Seed = 1;
 
     if (ReplayRunManifest(MismatchHashManifest, ReadHandle, Sources, Result, Fault)
@@ -109,10 +120,24 @@ std::string RunRunReplayConformance()
         return "run_replay.repository_hash_mismatch_rejected";
     }
 
+    // 2b. Negative: Script set hash mismatch
+    FRunManifest MismatchScriptSetManifest;
+    MismatchScriptSetManifest.LuaReleaseNumber = FRuntimeSession::LuaReleaseNumber;
+    MismatchScriptSetManifest.RepositoryContentHash = ReadHandle.GetContentHash();
+    MismatchScriptSetManifest.ScriptSetHash = "0000000000000000000000000000000000000000000000000000000000000000";
+    MismatchScriptSetManifest.Seed = 1;
+
+    if (ReplayRunManifest(MismatchScriptSetManifest, ReadHandle, Sources, Result, Fault)
+        || Fault.Code != "core:fault.run_manifest.script_set_hash_mismatch")
+    {
+        return "run_replay.script_set_hash_mismatch_rejected";
+    }
+
     // 3. Positive: Replay executed successfully
     FRunManifest ValidManifest;
     ValidManifest.LuaReleaseNumber = FRuntimeSession::LuaReleaseNumber;
     ValidManifest.RepositoryContentHash = ReadHandle.GetContentHash();
+    ValidManifest.ScriptSetHash = ExpectedScriptSetHash;
     ValidManifest.Seed = 42;
 
     FRunAcceptedCommand Cmd1;

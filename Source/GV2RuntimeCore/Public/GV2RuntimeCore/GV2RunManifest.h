@@ -23,6 +23,7 @@ struct GV2_PORTABLE_API FRunManifest final
 {
     std::int32_t LuaReleaseNumber = FRuntimeSession::LuaReleaseNumber;
     std::string RepositoryContentHash;
+    std::string ScriptSetHash;
     std::uint64_t Seed = 0;
     std::vector<FRunAcceptedCommand> AcceptedCommands;
 

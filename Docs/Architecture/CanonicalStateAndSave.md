@@ -1,8 +1,8 @@
 ---
 title: Canonical State and Save
 status: draft
-version: 1.7
-updated: 2026-08-15
+version: 1.8
+updated: 2026-08-16
 depends_on:
   - LuaRuntimeContract.md
   - StableIDSpecification.md
@@ -96,7 +96,7 @@ Container целиком принадлежит Lua. Physical encoding не яв
 - Golden-прогоны (`state_hash` в `Tests/Fixtures/GoldenRuns/`) и pinned canonical-строка в `Tests/Lua/save/canonical_codec.lua` дают немедленный, невозможный не заметить сигнал: любое изменение кодировки без синхронного поднятия версий ломает CI на этом же коммите.
 - `save_version` может расти отдельно от `M.VERSION` (например, миграция секции без изменения физической кодировки значений) — но не наоборот: `M.VERSION` не растёт без `save_version`.
 
-**Реализованный конверт (SAV-08/18, план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md)).** `core:module.runtime.save` (`Scripts/runtime/save.lua`, `M.build_envelope(state, save_id, repository_content_hash)`) собирает конверт из подмножества полей списка выше: `format_version`, `codec_version` (`canonical_codec.M.VERSION`), `save_version` (`M.SAVE_VERSION`), `save_id`, `repository_content_hash` (provenance, не условие загрузки), `section_versions` (SAV-18, свежая копия `migrate.CURRENT_SECTION_VERSIONS` — живая `game.state` всегда на текущих версиях секций, поэтому конверт не читает версии из самого state), `integrity` и `payload`. `payload` — `canonical_codec.serialize(state)`; `integrity` — `state_hasher.sha256(payload)`, что численно равно `state_hasher.hash_state(state)`. Сам конверт сериализуется тем же `canonical_codec.serialize`, не отдельным форматом. `save_id` и `repository_content_hash` — параметры вызова, а не внутреннее состояние модуля: модуль не хранит и не продвигает счётчик, поэтому конверт — чистая функция своих аргументов. Оставшиеся поля списка выше (PRNG streams, gameplay time, enabled mods, namespaced mod sections, orphaned sections) относятся к будущей работе за пределами плана SaveAndLoad.
+**Реализованный конверт (SAV-08/18, PKG-21).** `core:module.runtime.save` (`Scripts/runtime/save.lua`, `M.build_envelope(state, save_id, repository_content_hash, script_set_hash, packages)`) собирает конверт из полей: `format_version`, `codec_version` (`canonical_codec.M.VERSION`), `save_version` (`M.SAVE_VERSION`), `save_id`, `repository_content_hash` (provenance, не условие загрузки), `script_set_hash` (хэш состава скриптов сессии), `packages` (состав и порядок загруженных пакетов), `section_versions` (SAV-18, свежая копия `migrate.CURRENT_SECTION_VERSIONS` — живая `game.state` всегда на текущих версиях секций, поэтому конверт не читает версии из самого state), `integrity` и `payload`. `payload` — `canonical_codec.serialize(state)`; `integrity` — `state_hasher.sha256(payload)`, что численно равно `state_hasher.hash_state(state)`. Сам конверт сериализуется тем же `canonical_codec.serialize`, не отдельным форматом. `save_id` и `repository_content_hash` — параметры вызова, а `script_set_hash`/`packages` при отсутствии явных аргументов считываются из `game.runtime`. При загрузке `load.lua` проверяет наличие зафиксированных пакетов, предотвращая тихий откат на базовые модули. Оставшиеся поля списка выше (PRNG streams, gameplay time, namespaced mod sections, orphaned sections) относятся к будущим задачам.
 
 ## Export boundary
 

@@ -1,8 +1,8 @@
 ---
 title: Headless Simulation Contract
 status: normative
-version: 2.4
-updated: 2026-08-15
+version: 2.5
+updated: 2026-08-16
 depends_on:
   - LuaRuntimeContract.md
   - CommandsAndEvents.md
@@ -96,14 +96,15 @@ Portable-проверка существует в одном экземпляр�
 Прогон описывается структурой `FRunManifest`:
 
 ```text
-lua_release_num (int), repository_content_hash (64 hex), seed (uint64), accepted_commands [ command_id, sequence, args ]
+lua_release_num (int), repository_content_hash (64 hex), script_set_hash (64 hex), seed (uint64), accepted_commands [ command_id, sequence, args ]
 ```
 
-Результат прогона описывается `FRunResult` (`bSuccess`, `ExecutedCommandsCount`, `FinalScreenId`, `FinalScreenFields`, `StateHash`, `FaultCode`) и сводится в `FRunDigest` — детерминированную каноническую SHA-256 свёртку наблюдаемого результата, включающую `state_hash` (хэш канонического состояния). Digest строго исключает тайминги, порядок завершения worker-ов, идентичность хоста, абсолютные пути файловой системы и локализованный текст.
+Результат прогона описывается `FRunResult` (`bSuccess`, `ExecutedCommandsCount`, `FinalScreenId`, `FinalScreenFields`, `StateHash`, `FaultCode`) и сводится в `FRunDigest` — детерминированную каноническую SHA-256 свёртку наблюдаемого результата, включающую `script_set_hash` и `state_hash` (хэш канонического состояния). Digest строго исключает тайминги, порядок завершения worker-ов, идентичность хоста, абсолютные пути файловой системы и локализованный текст.
 
 `ReplayRunManifest` воспроизводит записанную в манифесте последовательность команд:
 - Несовпадение `repository_content_hash` завершает прогон как configuration failure до создания Lua VM.
 - Несовпадение `lua_release_num` завершает прогон как replay failure с typed fault `core:fault.run_manifest.lua_release_mismatch`; ни одна команда не исполняется.
+- Несовпадение `script_set_hash` завершает прогон как replay failure с typed fault `core:fault.run_manifest.script_set_hash_mismatch`; ни одна команда не исполняется.
 - Все команды диспетчеризируются последовательно через единый `Command Dispatcher`.
 - Одинаковый manifest даёт бит-в-бит идентичный digest в `gv2-headless` и в UE integration-тесте (`GV2.Runtime.Session.CrossHostDigestParity`).
 

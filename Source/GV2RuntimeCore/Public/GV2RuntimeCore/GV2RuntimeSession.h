@@ -99,6 +99,14 @@ struct FLuaSpecCaseResult
     std::string ErrorMessage;
 };
 
+struct FReplacedModuleInfo
+{
+    std::string ModuleId;
+    std::vector<std::string> Providers;
+
+    bool operator==(const FReplacedModuleInfo&) const = default;
+};
+
 class GV2_PORTABLE_API FRuntimeSession
 {
 public:
@@ -149,6 +157,15 @@ public:
         std::size_t* OutModuleCount,
         FRuntimeFault& OutFault);
 
+    bool CheckScripts(
+        std::int32_t InSessionGeneration,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        std::size_t* OutModuleCount,
+        std::string* OutScriptSetHash,
+        std::vector<FReplacedModuleInfo>* OutReplacedModules,
+        FRuntimeFault& OutFault);
+
     // TAS-02: loads SpecSource as a Lua chunk (NOT via the module loader —
     // the spec never enters LoadedModulesRegistryKey / Scripts/ module
     // tree). The chunk must return a table mapping case name -> zero-arg
@@ -179,6 +196,8 @@ public:
     std::int32_t GetSessionGeneration() const;
     const GV2ContentCore::FRepositoryReadHandle& GetPinnedRepository() const;
     std::string GetCanonicalStateHash(FRuntimeFault* OutFault = nullptr) const;
+    std::string GetScriptSetHash() const;
+    std::vector<FReplacedModuleInfo> GetReplacedModules() const;
 
     static constexpr std::int32_t LuaReleaseNumber = 50408;
 

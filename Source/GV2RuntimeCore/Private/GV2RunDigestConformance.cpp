@@ -18,6 +18,7 @@ std::string RunRunDigestConformance()
     FRunManifest BaseManifest;
     BaseManifest.LuaReleaseNumber = 50408;
     BaseManifest.RepositoryContentHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
+    BaseManifest.ScriptSetHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
     BaseManifest.Seed = 100;
 
     FRunAcceptedCommand Cmd1;
@@ -60,6 +61,14 @@ std::string RunRunDigestConformance()
     if (DigestModifiedSeed.DigestHash == Digest1.DigestHash)
     {
         return "run_digest.seed_change_not_reflected";
+    }
+
+    FRunManifest ModifiedScriptSetManifest = BaseManifest;
+    ModifiedScriptSetManifest.ScriptSetHash = "45ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
+    const FRunDigest DigestModifiedScriptSet = ComputeRunDigest(ModifiedScriptSetManifest, BaseResult);
+    if (DigestModifiedScriptSet.DigestHash == Digest1.DigestHash)
+    {
+        return "run_digest.script_set_hash_change_not_reflected";
     }
 
     // 3. Modifying result changes digest hash

@@ -1,3 +1,4 @@
+#include "GV2ContentCore/CanonicalHash.h"
 #include "GV2RuntimeCore/GV2HostServices.h"
 #include "GV2RuntimeCore/GV2LuaMarshaller.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
@@ -184,6 +185,9 @@ struct FRuntimeSession::FImpl
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     bool bExecuting = false;
     ISaveSlotStorage* SaveSlotStorage = nullptr;
+    std::string ScriptSetHash;
+    std::vector<FReplacedModuleInfo> ReplacedModules;
+    std::vector<std::string> DiscoveredPackageIds;
 
     bool IsOwnerThread() const
     {
@@ -998,6 +1002,51 @@ struct FRuntimeSession::FImpl
         {
             OutFault = {"LuaModuleManifestInvalid", "Every declared module must be reachable from entry_module_id."};
             return false;
+        }
+
+        DiscoveredPackageIds = OrderedPackageIds;
+
+        GV2ContentCore::FValue::FArray ModulesArray;
+        ModulesArray.reserve(ChainsById.size());
+
+        for (const auto& [ModuleId, Chain] : ChainsById)
+        {
+            GV2ContentCore::FValue::FObject ModuleObj;
+            ModuleObj.emplace_back("module_id", GV2ContentCore::FValue(ModuleId));
+
+            GV2ContentCore::FValue::FArray ProvidersArray;
+            ProvidersArray.reserve(Chain.Providers.size());
+
+            for (const auto& Provider : Chain.Providers)
+            {
+                const FRuntimeSource& Src = *OutSourcesByName.at(Provider.SourceName);
+                const std::string SourceHash = GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue(Src.Text));
+
+                GV2ContentCore::FValue::FObject ProviderObj;
+                ProviderObj.emplace_back("package_id", GV2ContentCore::FValue(Provider.PackageId));
+                ProviderObj.emplace_back("source_hash", GV2ContentCore::FValue(SourceHash));
+                ProvidersArray.push_back(GV2ContentCore::FValue(std::move(ProviderObj)));
+            }
+
+            ModuleObj.emplace_back("providers", GV2ContentCore::FValue(std::move(ProvidersArray)));
+            ModulesArray.push_back(GV2ContentCore::FValue(std::move(ModuleObj)));
+        }
+
+        ScriptSetHash = GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue(std::move(ModulesArray)));
+
+        ReplacedModules.clear();
+        for (const auto& [ModuleId, Chain] : ChainsById)
+        {
+            if (Chain.Providers.size() > 1)
+            {
+                FReplacedModuleInfo Info;
+                Info.ModuleId = ModuleId;
+                for (const auto& Provider : Chain.Providers)
+                {
+                    Info.Providers.push_back(Provider.PackageId);
+                }
+                ReplacedModules.push_back(std::move(Info));
+            }
         }
 
         return true;
@@ -1957,6 +2006,30 @@ struct FRuntimeSession::FImpl
         {
             return false;
         }
+
+        lua_getglobal(State, "game");
+        if (lua_istable(State, -1))
+        {
+            lua_getfield(State, -1, "runtime");
+            if (lua_istable(State, -1))
+            {
+                lua_pushlstring(State, ScriptSetHash.data(), ScriptSetHash.size());
+                lua_setfield(State, -2, "script_set_hash");
+
+                lua_createtable(State, static_cast<int>(DiscoveredPackageIds.size()), 0);
+                for (std::size_t PkgIdx = 0; PkgIdx < DiscoveredPackageIds.size(); ++PkgIdx)
+                {
+                    lua_createtable(State, 0, 1);
+                    lua_pushstring(State, DiscoveredPackageIds[PkgIdx].c_str());
+                    lua_setfield(State, -2, "package_id");
+                    lua_rawseti(State, -2, static_cast<lua_Integer>(PkgIdx + 1));
+                }
+                lua_setfield(State, -2, "packages");
+            }
+            lua_pop(State, 1);
+        }
+        lua_pop(State, 1);
+
         for (const FModuleSpec& Spec : LoadOrder)
         {
             if (!ExecuteModule(Spec, SourcesByName, OutFault))
@@ -1974,6 +2047,8 @@ struct FRuntimeSession::FImpl
     bool CheckScripts(
         const std::vector<FRuntimeSource>& Sources,
         std::size_t* OutModuleCount,
+        std::string* OutScriptSetHash,
+        std::vector<FReplacedModuleInfo>* OutReplacedModules,
         FRuntimeFault& OutFault)
     {
         std::vector<FModuleSpec> LoadOrder;
@@ -1982,6 +2057,30 @@ struct FRuntimeSession::FImpl
         {
             return false;
         }
+
+        lua_getglobal(State, "game");
+        if (lua_istable(State, -1))
+        {
+            lua_getfield(State, -1, "runtime");
+            if (lua_istable(State, -1))
+            {
+                lua_pushlstring(State, ScriptSetHash.data(), ScriptSetHash.size());
+                lua_setfield(State, -2, "script_set_hash");
+
+                lua_createtable(State, static_cast<int>(DiscoveredPackageIds.size()), 0);
+                for (std::size_t PkgIdx = 0; PkgIdx < DiscoveredPackageIds.size(); ++PkgIdx)
+                {
+                    lua_createtable(State, 0, 1);
+                    lua_pushstring(State, DiscoveredPackageIds[PkgIdx].c_str());
+                    lua_setfield(State, -2, "package_id");
+                    lua_rawseti(State, -2, static_cast<lua_Integer>(PkgIdx + 1));
+                }
+                lua_setfield(State, -2, "packages");
+            }
+            lua_pop(State, 1);
+        }
+        lua_pop(State, 1);
+
         for (const FModuleSpec& Spec : LoadOrder)
         {
             if (!ExecuteModule(Spec, SourcesByName, OutFault))
@@ -1992,6 +2091,14 @@ struct FRuntimeSession::FImpl
         if (OutModuleCount != nullptr)
         {
             *OutModuleCount = LoadOrder.size();
+        }
+        if (OutScriptSetHash != nullptr)
+        {
+            *OutScriptSetHash = ScriptSetHash;
+        }
+        if (OutReplacedModules != nullptr)
+        {
+            *OutReplacedModules = ReplacedModules;
         }
         return true;
     }
@@ -2625,6 +2732,18 @@ bool FRuntimeSession::CheckScripts(
     std::size_t* OutModuleCount,
     FRuntimeFault& OutFault)
 {
+    return CheckScripts(InSessionGeneration, PinnedRepository, Sources, OutModuleCount, nullptr, nullptr, OutFault);
+}
+
+bool FRuntimeSession::CheckScripts(
+    const std::int32_t InSessionGeneration,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    std::size_t* OutModuleCount,
+    std::string* OutScriptSetHash,
+    std::vector<FReplacedModuleInfo>* OutReplacedModules,
+    FRuntimeFault& OutFault)
+{
     OutFault = {};
     if (!Stop(&OutFault))
     {
@@ -2661,7 +2780,7 @@ bool FRuntimeSession::CheckScripts(
         Stop();
         return false;
     }
-    const bool bSuccess = Impl->CheckScripts(Sources, OutModuleCount, OutFault);
+    const bool bSuccess = Impl->CheckScripts(Sources, OutModuleCount, OutScriptSetHash, OutReplacedModules, OutFault);
     Stop();
     return bSuccess;
 }
@@ -2804,5 +2923,15 @@ const GV2ContentCore::FRepositoryReadHandle& FRuntimeSession::GetPinnedRepositor
 std::string FRuntimeSession::GetCanonicalStateHash(FRuntimeFault* OutFault) const
 {
     return Impl ? Impl->CallGetCanonicalStateHash(OutFault) : "";
+}
+
+std::string FRuntimeSession::GetScriptSetHash() const
+{
+    return Impl ? Impl->ScriptSetHash : "";
+}
+
+std::vector<FReplacedModuleInfo> FRuntimeSession::GetReplacedModules() const
+{
+    return Impl ? Impl->ReplacedModules : std::vector<FReplacedModuleInfo>{};
 }
 }

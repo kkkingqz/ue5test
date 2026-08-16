@@ -17,6 +17,7 @@ std::string RunRunManifestConformance()
     FRunManifest EmptyManifest;
     EmptyManifest.LuaReleaseNumber = 50408;
     EmptyManifest.RepositoryContentHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
+    EmptyManifest.ScriptSetHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
     EmptyManifest.Seed = 42;
 
     const std::string EmptyJson = SerializeRunManifest(EmptyManifest);
@@ -41,6 +42,7 @@ std::string RunRunManifestConformance()
     FRunManifest RichManifest;
     RichManifest.LuaReleaseNumber = 50408;
     RichManifest.RepositoryContentHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
+    RichManifest.ScriptSetHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
     RichManifest.Seed = 12345;
 
     FRunAcceptedCommand Cmd1;
@@ -94,28 +96,35 @@ std::string RunRunManifestConformance()
     }
 
     // Missing lua_release_num
-    if (DeserializeRunManifest("{ repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, accepted_commands: [] }", InvalidParsed, Error)
+    if (DeserializeRunManifest("{ repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, accepted_commands: [] }", InvalidParsed, Error)
         || Error != "run_manifest.invalid_lua_release_num")
     {
         return "run_manifest.reject_missing_lua_release";
     }
 
     // Invalid hash (not 64 hex characters)
-    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: 'tooshort', seed: 0, accepted_commands: [] }", InvalidParsed, Error)
+    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: 'tooshort', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, accepted_commands: [] }", InvalidParsed, Error)
         || Error != "run_manifest.invalid_repository_content_hash")
     {
         return "run_manifest.reject_invalid_hash";
     }
 
+    // Invalid script_set_hash
+    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: 'tooshort', seed: 0, accepted_commands: [] }", InvalidParsed, Error)
+        || Error != "run_manifest.invalid_script_set_hash")
+    {
+        return "run_manifest.reject_invalid_script_set_hash";
+    }
+
     // Invalid seed (negative)
-    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: -1, accepted_commands: [] }", InvalidParsed, Error)
+    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: -1, accepted_commands: [] }", InvalidParsed, Error)
         || Error != "run_manifest.invalid_seed")
     {
         return "run_manifest.reject_negative_seed";
     }
 
     // Invalid command ID (not a valid Stable ID)
-    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, accepted_commands: [{ command_id: 'Invalid ID!', args: {}, sequence: 0 }] }", InvalidParsed, Error)
+    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, accepted_commands: [{ command_id: 'Invalid ID!', args: {}, sequence: 0 }] }", InvalidParsed, Error)
         || Error != "run_manifest.invalid_command_id")
     {
         return "run_manifest.reject_invalid_command_id";

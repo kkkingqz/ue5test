@@ -46,6 +46,8 @@ function M.preflight(container_bytes)
         or type(envelope.payload) ~= "string"
         or type(envelope.integrity) ~= "string"
         or type(envelope.section_versions) ~= "table"
+        or (envelope.packages ~= nil and type(envelope.packages) ~= "table")
+        or (envelope.script_set_hash ~= nil and type(envelope.script_set_hash) ~= "string")
     then
         return nil, "SaveContainerCorrupt"
     end
@@ -162,6 +164,22 @@ function M.decode_and_prepare(container_bytes)
     local ok, decoded = pcall(canonical_codec.deserialize, envelope.payload)
     if not ok or type(decoded) ~= "table" then
         return nil, "SaveContainerCorrupt"
+    end
+
+    if envelope.packages and type(envelope.packages) == "table" and game and game.runtime and game.runtime.packages then
+        local loaded_pkgs = {}
+        for _, pkg in ipairs(game.runtime.packages) do
+            local pid = type(pkg) == "table" and pkg.package_id or pkg
+            if pid then
+                loaded_pkgs[pid] = true
+            end
+        end
+        for _, pkg in ipairs(envelope.packages) do
+            local pid = type(pkg) == "table" and pkg.package_id or pkg
+            if pid and not loaded_pkgs[pid] then
+                return nil, "SaveMissingPackage: " .. tostring(pid)
+            end
+        end
     end
 
     local rewrite_ok, rewrite_err = rewrite_references(decoded, "state", nil)

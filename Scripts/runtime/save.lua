@@ -22,7 +22,7 @@ M.SAVE_VERSION = 1
 -- serialization, not identity or provenance policy, so the same
 -- (state, save_id, repository_content_hash) always produces the exact same
 -- envelope — no hidden module-local counter to make repeated saves diverge.
-function M.build_envelope(state, save_id, repository_content_hash)
+function M.build_envelope(state, save_id, repository_content_hash, script_set_hash, packages)
     if type(state) ~= "table" then
         error("SaveEnvelopeError: state must be a table", 2)
     end
@@ -36,6 +36,12 @@ function M.build_envelope(state, save_id, repository_content_hash)
     for section_id, version in pairs(migrate.CURRENT_SECTION_VERSIONS) do
         section_versions[section_id] = version
     end
+    local env_script_set_hash = script_set_hash
+        or (game and game.runtime and game.runtime.script_set_hash)
+        or ""
+    local env_packages = packages
+        or (game and game.runtime and game.runtime.packages)
+        or {}
     return {
         format_version = M.SAVE_VERSION,
         codec_version = canonical_codec.VERSION,
@@ -43,6 +49,8 @@ function M.build_envelope(state, save_id, repository_content_hash)
         save_id = save_id,
         -- Provenance only (ADR-0021 SAV-08): never a condition for loading.
         repository_content_hash = repository_content_hash or "",
+        script_set_hash = env_script_set_hash,
+        packages = env_packages,
         section_versions = section_versions,
         -- Computed over payload; equals state_hasher.hash_state(state)
         -- because hash_state does exactly sha256(canonical_codec.serialize(state)).
@@ -84,7 +92,7 @@ end
 -- it — the same save_id can be retried unchanged. A successful write
 -- relies entirely on the storage primitive's own atomicity (SAV-06): a
 -- failure never touches the slot's previously-published content.
-function M.save(slot_id, save_id, repository_content_hash)
+function M.save(slot_id, save_id, repository_content_hash, script_set_hash, packages)
     if not M.is_safe_point() then
         return false, "SaveNotAtSafePoint"
     end
@@ -92,7 +100,7 @@ function M.save(slot_id, save_id, repository_content_hash)
         return false, "SaveSlotStorageUnavailable"
     end
 
-    local envelope = M.build_envelope(game.state, save_id, repository_content_hash)
+    local envelope = M.build_envelope(game.state, save_id, repository_content_hash, script_set_hash, packages)
     local container = M.serialize_envelope(envelope)
 
     local ok, err = game.save_slots.write(slot_id, container)

@@ -935,6 +935,7 @@ int Run(
                   << ",\"seed\":" << Manifest.Seed
                   << ",\"commands_per_second\":" << CommandsPerSecond
                   << ",\"repository_content_hash\":\"" << RepositoryHandle.GetContentHash() << "\""
+                  << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
                   << ",\"repository_item_count\":" << RepositoryItemCount
                   << ",\"media_payload_loaded\":false"
                   << ",\"localization_resolved\":false"
@@ -942,6 +943,7 @@ int Run(
                   << ",\"digest\":{\"digest_hash\":\"" << Digest.DigestHash << "\""
                   << ",\"lua_release_num\":" << Digest.LuaReleaseNumber
                   << ",\"repository_content_hash\":\"" << Digest.RepositoryContentHash << "\""
+                  << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
                   << ",\"seed\":" << Digest.Seed
                   << ",\"executed_commands_count\":" << Digest.ExecutedCommandsCount
                   << ",\"success\":" << (Digest.bSuccess ? "true" : "false")
@@ -963,6 +965,7 @@ int Run(
     GV2RuntimeCore::FRunManifest Manifest;
     Manifest.LuaReleaseNumber = GV2RuntimeCore::FRuntimeSession::LuaReleaseNumber;
     Manifest.RepositoryContentHash = RepositoryHandle.GetContentHash();
+    Manifest.ScriptSetHash = Runtime.GetScriptSetHash();
     Manifest.Seed = static_cast<std::uint64_t>(Seed);
 
     const auto Started = std::chrono::steady_clock::now();
@@ -1298,6 +1301,7 @@ int Run(
               << ",\"seed\":" << Seed
               << ",\"commands_per_second\":" << CommandsPerSecond
               << ",\"repository_content_hash\":\"" << RepositoryHandle.GetContentHash() << "\""
+              << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
               << ",\"repository_item_count\":" << RepositoryItemCount
               << ",\"media_payload_loaded\":false"
               << ",\"localization_resolved\":false"
@@ -1305,6 +1309,7 @@ int Run(
               << ",\"digest\":{\"digest_hash\":\"" << Digest.DigestHash << "\""
               << ",\"lua_release_num\":" << Digest.LuaReleaseNumber
               << ",\"repository_content_hash\":\"" << Digest.RepositoryContentHash << "\""
+              << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
               << ",\"seed\":" << Digest.Seed
               << ",\"executed_commands_count\":" << Digest.ExecutedCommandsCount
               << ",\"success\":" << (Digest.bSuccess ? "true" : "false")
@@ -1337,14 +1342,36 @@ int RunCheckScripts(
     GV2RuntimeCore::FRuntimeSession Runtime;
     GV2RuntimeCore::FRuntimeFault Fault;
     std::size_t ModuleCount = 0;
-    if (!Runtime.CheckScripts(1, RepositoryHandle, RuntimeSources, &ModuleCount, Fault))
+    std::string ScriptSetHash;
+    std::vector<GV2RuntimeCore::FReplacedModuleInfo> ReplacedModules;
+    if (!Runtime.CheckScripts(1, RepositoryHandle, RuntimeSources, &ModuleCount, &ScriptSetHash, &ReplacedModules, Fault))
     {
         std::cerr << "gv2-headless: script check failed: [" << Fault.Code << "] " << Fault.Message << "\n";
         return 1;
     }
 
     std::cout << "{\"ok\":true,\"status\":\"ok\",\"modules_checked\":" << ModuleCount
-              << ",\"repository_content_hash\":\"" << RepositoryHandle.GetContentHash() << "\"}\n";
+              << ",\"repository_content_hash\":\"" << RepositoryHandle.GetContentHash() << "\""
+              << ",\"script_set_hash\":\"" << ScriptSetHash << "\"";
+
+    if (!ReplacedModules.empty())
+    {
+        std::cout << ",\"replaced_modules\":[";
+        for (std::size_t i = 0; i < ReplacedModules.size(); ++i)
+        {
+            if (i > 0) std::cout << ",";
+            std::cout << "{\"module_id\":\"" << ReplacedModules[i].ModuleId << "\",\"providers\":[";
+            for (std::size_t j = 0; j < ReplacedModules[i].Providers.size(); ++j)
+            {
+                if (j > 0) std::cout << ",";
+                std::cout << "\"" << ReplacedModules[i].Providers[j] << "\"";
+            }
+            std::cout << "]}";
+        }
+        std::cout << "]";
+    }
+
+    std::cout << "}\n";
     return 0;
 }
 } // namespace

@@ -167,6 +167,9 @@ std::string SerializeRunManifest(const FRunManifest& Manifest)
     Out += "  \"repository_content_hash\": ";
     EscapeJsonString(Manifest.RepositoryContentHash, Out);
     Out += ",\n";
+    Out += "  \"script_set_hash\": ";
+    EscapeJsonString(Manifest.ScriptSetHash, Out);
+    Out += ",\n";
     Out += "  \"seed\": " + std::to_string(Manifest.Seed) + ",\n";
     Out += "  \"accepted_commands\": [";
 
@@ -241,6 +244,21 @@ bool DeserializeRunManifest(
         }
     }
 
+    const auto* ScriptSetHashVal = Root.FindField("script_set_hash");
+    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || ScriptSetHashVal->AsString().length() != 64)
+    {
+        OutError = "run_manifest.invalid_script_set_hash";
+        return false;
+    }
+    for (const char Ch : ScriptSetHashVal->AsString())
+    {
+        if (!((Ch >= '0' && Ch <= '9') || (Ch >= 'a' && Ch <= 'f')))
+        {
+            OutError = "run_manifest.invalid_script_set_hash";
+            return false;
+        }
+    }
+
     const auto* SeedVal = Root.FindField("seed");
     if (SeedVal == nullptr || !SeedVal->IsInteger() || SeedVal->AsInteger() < 0)
     {
@@ -300,6 +318,7 @@ bool DeserializeRunManifest(
 
     OutManifest.LuaReleaseNumber = static_cast<std::int32_t>(LuaReleaseVal->AsInteger());
     OutManifest.RepositoryContentHash = HashVal->AsString();
+    OutManifest.ScriptSetHash = ScriptSetHashVal->AsString();
     OutManifest.Seed = static_cast<std::uint64_t>(SeedVal->AsInteger());
     OutManifest.AcceptedCommands = std::move(Commands);
     return true;
