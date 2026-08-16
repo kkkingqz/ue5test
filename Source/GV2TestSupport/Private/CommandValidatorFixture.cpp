@@ -60,13 +60,13 @@ bool StartCommandValidatorFixtureSession(
         const char* ChunkName;
     };
     const std::vector<FRealModule> RealModules = {
-        {"runtime/mutation_window.lua", "@Scripts/runtime/mutation_window.lua"},
-        {"runtime/stable_id.lua", "@Scripts/runtime/stable_id.lua"},
-        {"runtime/validator_registry.lua", "@Scripts/runtime/validator_registry.lua"},
-        {"runtime/event_envelope.lua", "@Scripts/runtime/event_envelope.lua"},
-        {"runtime/subscriber_registry.lua", "@Scripts/runtime/subscriber_registry.lua"},
-        {"runtime/event_bus.lua", "@Scripts/runtime/event_bus.lua"},
-        {"runtime/command_dispatcher.lua", "@Scripts/runtime/command_dispatcher.lua"},
+        {"runtime/mutation_window.lua", "@core/runtime/mutation_window.lua"},
+        {"runtime/stable_id.lua", "@core/runtime/stable_id.lua"},
+        {"runtime/validator_registry.lua", "@core/runtime/validator_registry.lua"},
+        {"runtime/event_envelope.lua", "@core/runtime/event_envelope.lua"},
+        {"runtime/subscriber_registry.lua", "@core/runtime/subscriber_registry.lua"},
+        {"runtime/event_bus.lua", "@core/runtime/event_bus.lua"},
+        {"runtime/command_dispatcher.lua", "@core/runtime/command_dispatcher.lua"},
     };
 
     std::vector<GV2RuntimeCore::FRuntimeSource> Sources;
@@ -79,7 +79,7 @@ bool StartCommandValidatorFixtureSession(
             "Failed to read fixture manifest: " + (FixtureRoot / "manifest.lua").string()};
         return false;
     }
-    Sources.push_back({"@Scripts/bootstrap/manifest.lua", *ManifestSource});
+    Sources.push_back({"@core/bootstrap/manifest.lua", *ManifestSource});
 
     for (const FRealModule& Module : RealModules)
     {
@@ -102,7 +102,7 @@ bool StartCommandValidatorFixtureSession(
             "Failed to read fixture driver: " + (FixtureRoot / "driver.lua").string()};
         return false;
     }
-    Sources.push_back({"@Scripts/test/command_validator_specs_driver.lua", *DriverSource});
+    Sources.push_back({"@core/test/command_validator_specs_driver.lua", *DriverSource});
 
     return OutSession.Start(1, RepoHandle, Sources, OutFault);
 }

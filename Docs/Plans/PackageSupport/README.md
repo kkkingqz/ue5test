@@ -69,7 +69,7 @@ Content-сторона к нескольким пакетам готова: `Bui
 - [x] M1 — [Package Manifest](PackageManifest.md): пакет объявляет identity, версию и совместимость.
 - [x] M2 — [Discovery and Order](DiscoveryAndOrder.md): набор корней, явный порядок, зависимости, lock-файл.
 - [x] M3 — [Module Sealing](ModuleSealing.md): заморозка таблиц экспорта и разметка замещаемости.
-- [ ] M4 — [Modules from Packages](ModulesFromPackages.md): Lua из пакета, резолюция по провайдерам, `require_base()`.
+- [x] M4 — [Modules from Packages](ModulesFromPackages.md): Lua из пакета, резолюция по провайдерам, `require_base()`.
 - [ ] M5 — [Determinism and Save](DeterminismAndSave.md): `ScriptSetHash`, fingerprint пакетов в сейве, вывод цепочек.
 
 ## Критический путь

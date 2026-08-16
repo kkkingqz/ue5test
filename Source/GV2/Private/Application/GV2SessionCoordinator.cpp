@@ -71,7 +71,7 @@ bool LoadPortableRuntimeSources(
         }
         const FString RelativePath = NormalizedFullPath.RightChop(ScriptsPrefix.Len());
         GV2RuntimeCore::FRuntimeSource& Source = OutSources.emplace_back();
-        Source.Name = "@Scripts/" + SessionCoordinatorToUtf8(RelativePath);
+        Source.Name = "@core/" + SessionCoordinatorToUtf8(RelativePath);
         Source.Text.assign(
             reinterpret_cast<const char*>(Bytes.GetData() + Offset),
             static_cast<std::size_t>(Bytes.Num() - Offset));

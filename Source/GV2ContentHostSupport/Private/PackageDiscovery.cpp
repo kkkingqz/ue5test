@@ -470,6 +470,88 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
     return Descriptors;
 }
 
+std::vector<FDiscoveredScriptSource> DiscoverPackageScripts(
+    const std::filesystem::path& PackageRoot,
+    const std::string& PackageId)
+{
+    std::vector<FDiscoveredScriptSource> Results;
+    std::vector<std::filesystem::path> CandidateDirs = {
+        PackageRoot / "scripts",
+        PackageRoot / "Scripts"
+    };
+
+    if (PackageId == "core")
+    {
+        CandidateDirs.push_back(PackageRoot / ".." / ".." / "Scripts");
+        CandidateDirs.push_back(PackageRoot / ".." / "Scripts");
+        CandidateDirs.push_back(std::filesystem::current_path() / "Scripts");
+        CandidateDirs.push_back(std::filesystem::current_path() / ".." / "Scripts");
+    }
+
+    std::filesystem::path ScriptsDir;
+    std::error_code Ec;
+    for (const auto& Candidate : CandidateDirs)
+    {
+        if (std::filesystem::is_directory(Candidate, Ec) && !Ec)
+        {
+            ScriptsDir = Candidate;
+            break;
+        }
+    }
+
+    if (ScriptsDir.empty())
+    {
+        return Results;
+    }
+
+    std::vector<std::filesystem::path> SourcePaths;
+    for (std::filesystem::recursive_directory_iterator It(ScriptsDir, Ec), End;
+         !Ec && It != End;
+         It.increment(Ec))
+    {
+        if (It->is_regular_file(Ec) && It->path().extension() == ".lua")
+        {
+            SourcePaths.push_back(It->path());
+        }
+    }
+
+    std::sort(SourcePaths.begin(), SourcePaths.end());
+
+    for (const auto& Path : SourcePaths)
+    {
+        std::ifstream Stream(Path, std::ios::binary);
+        if (!Stream)
+        {
+            continue;
+        }
+        std::string Text{
+            (std::istreambuf_iterator<char>(Stream)),
+            std::istreambuf_iterator<char>()};
+        if (Text.starts_with("\xef\xbb\xbf"))
+        {
+            Text.erase(0, 3);
+        }
+        std::string Relative = std::filesystem::relative(Path, ScriptsDir).generic_string();
+        Results.push_back({"@" + PackageId + "/" + Relative, std::move(Text)});
+    }
+
+    return Results;
+}
+
+std::vector<FDiscoveredScriptSource> DiscoverPackagesScripts(
+    const std::vector<std::pair<std::string, std::filesystem::path>>& Packages)
+{
+    std::vector<FDiscoveredScriptSource> AllSources;
+    for (const auto& [PkgId, PkgRoot] : Packages)
+    {
+        auto PkgSources = DiscoverPackageScripts(PkgRoot, PkgId);
+        AllSources.insert(AllSources.end(),
+            std::make_move_iterator(PkgSources.begin()),
+            std::make_move_iterator(PkgSources.end()));
+    }
+    return AllSources;
+}
+
 void FMultiPackageSourceProvider::RegisterPackage(std::string PackageId, std::filesystem::path PackageRoot)
 {
     PackageRoots.insert_or_assign(std::move(PackageId), std::move(PackageRoot));

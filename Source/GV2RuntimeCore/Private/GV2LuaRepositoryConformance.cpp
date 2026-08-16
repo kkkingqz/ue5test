@@ -394,7 +394,7 @@ std::string RunLuaRepositoryAccessConformance()
 
     const std::vector<FRuntimeSource> Sources = {
         {
-            "@Scripts/bootstrap/manifest.lua",
+            "@core/bootstrap/manifest.lua",
             R"lua(return {
                 entry_module_id = "core:module.test.conformance",
                 modules = {
@@ -407,7 +407,7 @@ std::string RunLuaRepositoryAccessConformance()
             })lua"
         },
         {
-            "@Scripts/test/conformance.lua",
+            "@core/test/conformance.lua",
             ConformanceLuaScript
         }
     };

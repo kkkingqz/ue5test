@@ -28,18 +28,32 @@ namespace
 constexpr int MaxValueDepth = 64;
 constexpr std::size_t MaxValueNodes = 10000;
 constexpr const char* SessionImplRegistryKey = "GV2.SessionImpl";
-constexpr const char* ModuleManifestSourceName = "@Scripts/bootstrap/manifest.lua";
 constexpr const char* LoadedModulesRegistryKey = "GV2.LoadedModules";
 constexpr const char* AllowedDependenciesRegistryKey = "GV2.AllowedDependencies";
 constexpr const char* CurrentModuleRegistryKey = "GV2.CurrentModule";
+constexpr const char* CurrentBaseExportRegistryKey = "GV2.CurrentBaseExport";
 
-struct FModuleSpec
+struct FModuleProvider
 {
-    std::string ModuleId;
+    std::string PackageId;
     std::string SourceName;
-    std::vector<std::string> Dependencies;
+    std::vector<std::string> DirectDependencies;
     bool bReplaceable = false;
 };
+
+struct FModuleChain
+{
+    std::string ModuleId;
+    std::vector<FModuleProvider> Providers;
+    std::vector<std::string> EffectiveDependencies;
+
+    bool IsReplaceable() const
+    {
+        return !Providers.empty() && Providers.back().bReplaceable;
+    }
+};
+
+using FModuleSpec = FModuleChain;
 
 bool IsCanonicalModuleSourcePath(const std::string_view Value)
 {
@@ -106,6 +120,8 @@ struct FRequireContextGuard
         lua_setfield(State, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
         lua_pushnil(State);
         lua_setfield(State, LUA_REGISTRYINDEX, AllowedDependenciesRegistryKey);
+        lua_pushnil(State);
+        lua_setfield(State, LUA_REGISTRYINDEX, CurrentBaseExportRegistryKey);
     }
 };
 
@@ -275,6 +291,8 @@ struct FRuntimeSession::FImpl
         lua_setfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
         lua_pushcfunction(State, &FImpl::RequireModule);
         lua_setglobal(State, "require");
+        lua_pushcfunction(State, &FImpl::RequireBase);
+        lua_setglobal(State, "require_base");
 
         if (lua_gettop(State) != 0)
         {
@@ -283,6 +301,16 @@ struct FRuntimeSession::FImpl
             return false;
         }
         return true;
+    }
+
+    static int RequireBase(lua_State* InState)
+    {
+        lua_getfield(InState, LUA_REGISTRYINDEX, CurrentBaseExportRegistryKey);
+        if (lua_isnil(InState, -1))
+        {
+            return luaL_error(InState, "LuaModuleBaseNotAvailable: require_base() is only available during initialization of a replacing module");
+        }
+        return 1;
     }
 
     static int RequireModule(lua_State* InState)
@@ -613,8 +641,53 @@ struct FRuntimeSession::FImpl
             }
         }
 
-        const auto ManifestSource = OutSourcesByName.find(ModuleManifestSourceName);
-        if (ManifestSource == OutSourcesByName.end())
+        auto ExtractPackageId = [](const std::string& SourceName) -> std::string
+        {
+            if (SourceName.starts_with("@Scripts/"))
+            {
+                return "core";
+            }
+            if (SourceName.starts_with("@"))
+            {
+                const std::size_t SlashPos = SourceName.find('/');
+                if (SlashPos != std::string::npos && SlashPos > 1)
+                {
+                    return SourceName.substr(1, SlashPos - 1);
+                }
+            }
+            return "";
+        };
+
+        std::vector<std::string> OrderedPackageIds;
+        std::set<std::string, std::less<>> SeenPackages;
+        OrderedPackageIds.push_back("core");
+        SeenPackages.insert("core");
+
+        for (const FRuntimeSource& Source : Sources)
+        {
+            std::string Pkg = ExtractPackageId(Source.Name);
+            if (!Pkg.empty() && SeenPackages.insert(Pkg).second)
+            {
+                OrderedPackageIds.push_back(Pkg);
+            }
+        }
+
+        std::map<std::string, std::string, std::less<>> ManifestSourceByPackage;
+        for (const auto& [SourceName, SourcePtr] : OutSourcesByName)
+        {
+            std::string Pkg = ExtractPackageId(SourceName);
+            if (Pkg.empty())
+            {
+                continue;
+            }
+            if (SourceName == "@" + Pkg + "/bootstrap/manifest.lua" || SourceName == "@" + Pkg + "/manifest.lua"
+                || (Pkg == "core" && SourceName == "@Scripts/bootstrap/manifest.lua"))
+            {
+                ManifestSourceByPackage[Pkg] = SourceName;
+            }
+        }
+
+        if (ManifestSourceByPackage.find("core") == ManifestSourceByPackage.end())
         {
             OutFault = {"LuaModuleManifestMissing", "Required module manifest is missing."};
             return false;
@@ -628,170 +701,264 @@ struct FRuntimeSession::FImpl
         FExecutionGuard Execution(bExecuting);
         lua_pushcfunction(State, Traceback);
         const int ErrorHandler = lua_gettop(State);
-        const FRuntimeSource& Manifest = *ManifestSource->second;
-        if (luaL_loadbufferx(
-                State,
-                Manifest.Text.data(),
-                Manifest.Text.size(),
-                Manifest.Name.c_str(),
-                "t") != LUA_OK)
-        {
-            ReadLuaError(State, "LuaModuleManifestInvalid", "Module manifest failed to compile.", OutFault);
-            return false;
-        }
-        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
-        {
-            ReadLuaError(State, "LuaModuleManifestInvalid", "Module manifest failed to execute.", OutFault);
-            return false;
-        }
-        if (!lua_istable(State, -1))
-        {
-            OutFault = {"LuaModuleManifestInvalid", "Module manifest must return a table."};
-            return false;
-        }
-        const int ManifestIndex = lua_absindex(State, -1);
 
         std::string EntryModuleId;
-        if (!ReadRequiredStringField(ManifestIndex, "entry_module_id", EntryModuleId, OutFault)
-            || !FStableId::IsOfKind(EntryModuleId, "module"))
-        {
-            if (OutFault.Code.empty())
-            {
-                OutFault = {"LuaModuleManifestInvalid", "entry_module_id must be a canonical module ID."};
-            }
-            return false;
-        }
-
-        lua_getfield(State, ManifestIndex, "modules");
-        if (!lua_istable(State, -1))
-        {
-            OutFault = {"LuaModuleManifestInvalid", "modules must be an array."};
-            return false;
-        }
-        const int ModulesIndex = lua_absindex(State, -1);
-        const lua_Unsigned ModuleCount = lua_rawlen(State, ModulesIndex);
-        if (ModuleCount == 0 || ModuleCount > 4096)
-        {
-            OutFault = {"LuaModuleManifestInvalid", "Module manifest must contain between 1 and 4096 modules."};
-            return false;
-        }
-
-        std::vector<FModuleSpec> Specs;
-        Specs.reserve(static_cast<std::size_t>(ModuleCount));
-        std::map<std::string, std::size_t, std::less<>> SpecIndexById;
+        std::map<std::string, FModuleChain, std::less<>> ChainsById;
+        std::vector<std::string> DeclaredModuleOrder;
         std::set<std::string, std::less<>> DeclaredSourceNames;
-        for (lua_Unsigned Index = 1; Index <= ModuleCount; ++Index)
+
+        for (const std::string& PackageId : OrderedPackageIds)
         {
-            lua_rawgeti(State, ModulesIndex, static_cast<lua_Integer>(Index));
+            const auto ManifestIt = ManifestSourceByPackage.find(PackageId);
+            if (ManifestIt == ManifestSourceByPackage.end())
+            {
+                continue;
+            }
+
+            const FRuntimeSource& Manifest = *OutSourcesByName.at(ManifestIt->second);
+            if (luaL_loadbufferx(
+                    State,
+                    Manifest.Text.data(),
+                    Manifest.Text.size(),
+                    Manifest.Name.c_str(),
+                    "t") != LUA_OK)
+            {
+                ReadLuaError(State, "LuaModuleManifestInvalid", "Module manifest failed to compile.", OutFault);
+                return false;
+            }
+            if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+            {
+                ReadLuaError(State, "LuaModuleManifestInvalid", "Module manifest failed to execute.", OutFault);
+                return false;
+            }
             if (!lua_istable(State, -1))
             {
-                OutFault = {"LuaModuleManifestInvalid", "Each module descriptor must be a table."};
+                OutFault = {"LuaModuleManifestInvalid", "Module manifest must return a table."};
                 return false;
             }
-            const int SpecTableIndex = lua_absindex(State, -1);
-            FModuleSpec Spec;
-            std::string RelativeSource;
-            if (!ReadRequiredStringField(SpecTableIndex, "module_id", Spec.ModuleId, OutFault)
-                || !ReadRequiredStringField(SpecTableIndex, "source", RelativeSource, OutFault)
-                || !FStableId::IsOfKind(Spec.ModuleId, "module")
-                || !IsCanonicalModuleSourcePath(RelativeSource))
+            const int ManifestIndex = lua_absindex(State, -1);
+
+            if (PackageId == "core")
             {
-                if (OutFault.Code.empty())
+                if (!ReadRequiredStringField(ManifestIndex, "entry_module_id", EntryModuleId, OutFault)
+                    || !FStableId::IsOfKind(EntryModuleId, "module"))
                 {
-                    OutFault = {"LuaModuleManifestInvalid", "Module ID or source path is not canonical."};
+                    if (OutFault.Code.empty())
+                    {
+                        OutFault = {"LuaModuleManifestInvalid", "entry_module_id must be a canonical module ID."};
+                    }
+                    return false;
                 }
+            }
+
+            lua_getfield(State, ManifestIndex, "modules");
+            if (!lua_istable(State, -1))
+            {
+                OutFault = {"LuaModuleManifestInvalid", "modules must be an array."};
                 return false;
             }
-            Spec.SourceName = "@Scripts/" + RelativeSource;
-            if (Spec.SourceName == ModuleManifestSourceName
-                || !SpecIndexById.emplace(Spec.ModuleId, Specs.size()).second
-                || !DeclaredSourceNames.emplace(Spec.SourceName).second)
+            const int ModulesIndex = lua_absindex(State, -1);
+            const lua_Unsigned ModuleCount = lua_rawlen(State, ModulesIndex);
+            if (ModuleCount == 0 || ModuleCount > 4096)
             {
-                OutFault = {"LuaModuleManifestInvalid", "Module IDs and source paths must be unique."};
+                OutFault = {"LuaModuleManifestInvalid", "Module manifest must contain between 1 and 4096 modules."};
                 return false;
             }
 
-            lua_getfield(State, SpecTableIndex, "dependencies");
-            if (!lua_istable(State, -1))
+            std::set<std::string, std::less<>> PackageSeenModuleIds;
+            for (lua_Unsigned Index = 1; Index <= ModuleCount; ++Index)
             {
-                OutFault = {"LuaModuleManifestInvalid", "Module dependencies must be an array."};
-                return false;
-            }
-            const lua_Unsigned DependencyCount = lua_rawlen(State, -1);
-            std::set<std::string, std::less<>> SeenDependencies;
-            for (lua_Unsigned DependencyIndex = 1; DependencyIndex <= DependencyCount; ++DependencyIndex)
-            {
-                lua_rawgeti(State, -1, static_cast<lua_Integer>(DependencyIndex));
-                if (lua_type(State, -1) != LUA_TSTRING)
+                lua_rawgeti(State, ModulesIndex, static_cast<lua_Integer>(Index));
+                if (!lua_istable(State, -1))
                 {
-                    OutFault = {"LuaModuleManifestInvalid", "Module dependency IDs must be strings."};
+                    OutFault = {"LuaModuleManifestInvalid", "Each module descriptor must be a table."};
                     return false;
                 }
-                std::size_t Length = 0;
-                const char* Value = lua_tolstring(State, -1, &Length);
-                std::string Dependency(Value, Length);
+                const int SpecTableIndex = lua_absindex(State, -1);
+                std::string ModuleId;
+                std::string RelativeSource;
+                if (!ReadRequiredStringField(SpecTableIndex, "module_id", ModuleId, OutFault)
+                    || !ReadRequiredStringField(SpecTableIndex, "source", RelativeSource, OutFault)
+                    || !FStableId::IsOfKind(ModuleId, "module")
+                    || !IsCanonicalModuleSourcePath(RelativeSource))
+                {
+                    if (OutFault.Code.empty())
+                    {
+                        OutFault = {"LuaModuleManifestInvalid", "Module ID or source path is not canonical."};
+                    }
+                    return false;
+                }
+
+                if (!PackageSeenModuleIds.insert(ModuleId).second)
+                {
+                    OutFault = {"LuaModuleManifestInvalid", "Module IDs must be unique within package: " + ModuleId};
+                    return false;
+                }
+
+                std::string SourceName = "@" + PackageId + "/" + RelativeSource;
+                if (PackageId == "core" && OutSourcesByName.find(SourceName) == OutSourcesByName.end()
+                    && OutSourcesByName.find("@Scripts/" + RelativeSource) != OutSourcesByName.end())
+                {
+                    SourceName = "@Scripts/" + RelativeSource;
+                }
+
+                if (OutSourcesByName.find(SourceName) == OutSourcesByName.end())
+                {
+                    OutFault = {"LuaModuleSourceMissing", ModuleId + ": declared module source is missing: " + SourceName};
+                    return false;
+                }
+
+                lua_getfield(State, SpecTableIndex, "dependencies");
+                if (!lua_istable(State, -1))
+                {
+                    OutFault = {"LuaModuleManifestInvalid", "Module dependencies must be an array."};
+                    return false;
+                }
+                const lua_Unsigned DependencyCount = lua_rawlen(State, -1);
+                std::set<std::string, std::less<>> SeenDependencies;
+                std::vector<std::string> Dependencies;
+                for (lua_Unsigned DependencyIndex = 1; DependencyIndex <= DependencyCount; ++DependencyIndex)
+                {
+                    lua_rawgeti(State, -1, static_cast<lua_Integer>(DependencyIndex));
+                    if (lua_type(State, -1) != LUA_TSTRING)
+                    {
+                        OutFault = {"LuaModuleManifestInvalid", "Module dependency IDs must be strings."};
+                        return false;
+                    }
+                    std::size_t Length = 0;
+                    const char* Value = lua_tolstring(State, -1, &Length);
+                    std::string Dependency(Value, Length);
+                    lua_pop(State, 1);
+                    if (!FStableId::IsOfKind(Dependency, "module")
+                        || Dependency == ModuleId
+                        || !SeenDependencies.emplace(Dependency).second)
+                    {
+                        OutFault = {"LuaModuleManifestInvalid", "Module dependencies must be canonical, unique, and non-self."};
+                        return false;
+                    }
+                    Dependencies.emplace_back(std::move(Dependency));
+                }
                 lua_pop(State, 1);
-                if (!FStableId::IsOfKind(Dependency, "module")
-                    || Dependency == Spec.ModuleId
-                    || !SeenDependencies.emplace(Dependency).second)
+
+                bool bReplaceable = false;
+                lua_getfield(State, SpecTableIndex, "replaceable");
+                if (!lua_isnil(State, -1))
                 {
-                    OutFault = {"LuaModuleManifestInvalid", "Module dependencies must be canonical, unique, and non-self."};
-                    return false;
+                    if (!lua_isboolean(State, -1))
+                    {
+                        OutFault = {
+                            "LuaModuleManifestInvalid",
+                            "Module descriptor 'replaceable' field must be a boolean: " + ModuleId};
+                        return false;
+                    }
+                    bReplaceable = lua_toboolean(State, -1) != 0;
                 }
-                Spec.Dependencies.emplace_back(std::move(Dependency));
+                lua_pop(State, 1);
+
+                DeclaredSourceNames.insert(SourceName);
+
+                auto ExistingChainIt = ChainsById.find(ModuleId);
+                if (ExistingChainIt != ChainsById.end())
+                {
+                    if (!ExistingChainIt->second.IsReplaceable())
+                    {
+                        OutFault = {"LuaModuleSealed", PackageId + ": cannot replace sealed module: " + ModuleId};
+                        return false;
+                    }
+                    ExistingChainIt->second.Providers.push_back({
+                        PackageId,
+                        SourceName,
+                        std::move(Dependencies),
+                        bReplaceable
+                    });
+                }
+                else
+                {
+                    GV2ContentCore::FStableIdView ParsedId;
+                    FStableId::Parse(ModuleId, ParsedId);
+                    const std::string_view ModNamespace = ParsedId.Namespace;
+                    if (PackageId == "core")
+                    {
+                        if (ModNamespace != "core")
+                        {
+                            OutFault = {"LuaModuleForeignNewId", "core package cannot declare non-core module ID: " + ModuleId};
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (ModNamespace != PackageId)
+                        {
+                            OutFault = {"LuaModuleForeignNewId", PackageId + ": foreign new module ID declared by mod: " + ModuleId};
+                            return false;
+                        }
+                    }
+
+                    FModuleChain NewChain;
+                    NewChain.ModuleId = ModuleId;
+                    NewChain.Providers.push_back({
+                        PackageId,
+                        SourceName,
+                        std::move(Dependencies),
+                        bReplaceable
+                    });
+                    ChainsById.emplace(ModuleId, std::move(NewChain));
+                    DeclaredModuleOrder.push_back(ModuleId);
+                }
+
+                lua_pop(State, 1);
             }
             lua_pop(State, 1);
-
-            lua_getfield(State, SpecTableIndex, "replaceable");
-            if (!lua_isnil(State, -1))
-            {
-                if (!lua_isboolean(State, -1))
-                {
-                    OutFault = {
-                        "LuaModuleManifestInvalid",
-                        "Module descriptor 'replaceable' field must be a boolean: " + Spec.ModuleId};
-                    return false;
-                }
-                Spec.bReplaceable = lua_toboolean(State, -1) != 0;
-            }
-            else
-            {
-                Spec.bReplaceable = false;
-            }
-            lua_pop(State, 1);
-
-            Specs.emplace_back(std::move(Spec));
             lua_pop(State, 1);
         }
-        lua_pop(State, 1);
 
-        if (SpecIndexById.find(EntryModuleId) == SpecIndexById.end())
+        if (ChainsById.find(EntryModuleId) == ChainsById.end())
         {
             OutFault = {"LuaModuleManifestInvalid", "entry_module_id is not declared."};
             return false;
         }
-        for (const FModuleSpec& Spec : Specs)
-        {
-            if (OutSourcesByName.find(Spec.SourceName) == OutSourcesByName.end())
-            {
-                OutFault = {"LuaModuleSourceMissing", Spec.ModuleId + ": declared module source is missing: " + Spec.SourceName};
-                return false;
-            }
-            for (const std::string& Dependency : Spec.Dependencies)
-            {
-                if (SpecIndexById.find(Dependency) == SpecIndexById.end())
-                {
-                    OutFault = {"LuaModuleDependencyMissing", Spec.ModuleId + ": declared module dependency is missing: " + Dependency};
-                    return false;
-                }
-            }
-        }
+
         for (const auto& [SourceName, SourcePtr] : OutSourcesByName)
         {
-            if (SourceName != ModuleManifestSourceName && DeclaredSourceNames.find(SourceName) == DeclaredSourceNames.end())
+            bool bIsManifest = false;
+            for (const auto& [Pkg, ManPath] : ManifestSourceByPackage)
+            {
+                if (SourceName == ManPath)
+                {
+                    bIsManifest = true;
+                    break;
+                }
+            }
+            if (!bIsManifest && DeclaredSourceNames.find(SourceName) == DeclaredSourceNames.end())
             {
                 OutFault = {"LuaModuleSourceUnlisted", "Unlisted Lua source found: " + SourceName};
                 return false;
+            }
+        }
+
+        for (auto& [ModuleId, Chain] : ChainsById)
+        {
+            std::vector<std::string> EffectiveDeps;
+            std::set<std::string, std::less<>> SeenDeps;
+            for (const auto& Provider : Chain.Providers)
+            {
+                for (const auto& Dep : Provider.DirectDependencies)
+                {
+                    if (SeenDeps.insert(Dep).second)
+                    {
+                        EffectiveDeps.push_back(Dep);
+                    }
+                }
+            }
+            Chain.EffectiveDependencies = std::move(EffectiveDeps);
+
+            for (const std::string& Dependency : Chain.EffectiveDependencies)
+            {
+                if (ChainsById.find(Dependency) == ChainsById.end())
+                {
+                    OutFault = {"LuaModuleDependencyMissing", ModuleId + ": declared module dependency is missing: " + Dependency};
+                    return false;
+                }
             }
         }
 
@@ -809,8 +976,8 @@ struct FRuntimeSession::FImpl
                 return true;
             }
             StateValue = 1;
-            const FModuleSpec& Spec = Specs[SpecIndexById.at(ModuleId)];
-            for (const std::string& Dependency : Spec.Dependencies)
+            const FModuleChain& Chain = ChainsById.at(ModuleId);
+            for (const std::string& Dependency : Chain.EffectiveDependencies)
             {
                 if (!Visit(Dependency))
                 {
@@ -818,24 +985,27 @@ struct FRuntimeSession::FImpl
                 }
             }
             StateValue = 2;
-            OutLoadOrder.emplace_back(Spec);
+            OutLoadOrder.emplace_back(Chain);
             return true;
         };
+
         if (!Visit(EntryModuleId))
         {
             return false;
         }
-        if (OutLoadOrder.size() != Specs.size())
+
+        if (OutLoadOrder.size() != ChainsById.size())
         {
             OutFault = {"LuaModuleManifestInvalid", "Every declared module must be reachable from entry_module_id."};
             return false;
         }
+
         return true;
     }
 
     bool ExecuteModule(
         const FModuleSpec& Spec,
-        const FRuntimeSource& Source,
+        const std::map<std::string, const FRuntimeSource*, std::less<>>& SourcesByName,
         FRuntimeFault& OutFault)
     {
         if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
@@ -845,65 +1015,87 @@ struct FRuntimeSession::FImpl
 
         FStackRestore Stack{State, lua_gettop(State)};
         FExecutionGuard Execution(bExecuting);
-        PushString(State, Spec.ModuleId);
-        lua_setfield(State, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
-        lua_createtable(State, 0, static_cast<int>(Spec.Dependencies.size()));
-        for (const std::string& Dependency : Spec.Dependencies)
+
+        lua_pushnil(State);
+        lua_setfield(State, LUA_REGISTRYINDEX, CurrentBaseExportRegistryKey);
+
+        for (std::size_t K = 0; K < Spec.Providers.size(); ++K)
         {
-            lua_pushboolean(State, 1);
-            lua_setfield(State, -2, Dependency.c_str());
+            const FModuleProvider& Provider = Spec.Providers[K];
+            const FRuntimeSource& Source = *SourcesByName.at(Provider.SourceName);
+
+            PushString(State, Spec.ModuleId);
+            lua_setfield(State, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
+
+            lua_createtable(State, 0, static_cast<int>(Provider.DirectDependencies.size()));
+            for (const std::string& Dependency : Provider.DirectDependencies)
+            {
+                lua_pushboolean(State, 1);
+                lua_setfield(State, -2, Dependency.c_str());
+            }
+            lua_setfield(State, LUA_REGISTRYINDEX, AllowedDependenciesRegistryKey);
+
+            lua_pushcfunction(State, Traceback);
+            const int ErrorHandler = lua_gettop(State);
+            if (luaL_loadbufferx(
+                    State,
+                    Source.Text.data(),
+                    Source.Text.size(),
+                    Source.Name.c_str(),
+                    "t") != LUA_OK)
+            {
+                ReadLuaError(State, "LuaModuleSyntaxError", "Lua module failed to compile.", OutFault);
+                OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
+                return false;
+            }
+            if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+            {
+                ReadLuaError(State, "LuaModuleLoadError", "Lua module failed to initialize.", OutFault);
+                OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
+                return false;
+            }
+            if (!lua_istable(State, -1))
+            {
+                OutFault = {"LuaModuleExportInvalid", "Lua module must return an export table: " + Spec.ModuleId};
+                return false;
+            }
+
+            // PKG-11: Freeze export table using an immutable proxy table
+            lua_createtable(State, 0, 0);
+            lua_createtable(State, 0, 4);
+
+            lua_pushvalue(State, -3);
+            lua_setfield(State, -2, "__index");
+
+            lua_pushcfunction(State, &FImpl::ModuleExportFrozenError);
+            lua_setfield(State, -2, "__newindex");
+
+            lua_pushvalue(State, -3);
+            lua_pushcclosure(State, &FImpl::ModuleExportPairs, 1);
+            lua_setfield(State, -2, "__pairs");
+
+            lua_pushboolean(State, 0);
+            lua_setfield(State, -2, "__metatable");
+
+            lua_setmetatable(State, -2);
+
+            // Store frozen proxy into CurrentBaseExport for the next provider in chain
+            lua_pushvalue(State, -1);
+            lua_setfield(State, LUA_REGISTRYINDEX, CurrentBaseExportRegistryKey);
+
+            if (K == Spec.Providers.size() - 1)
+            {
+                lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+                lua_pushvalue(State, -2);
+                lua_setfield(State, -2, Spec.ModuleId.c_str());
+                lua_pop(State, 1);
+            }
+
+            lua_pop(State, 3);
         }
-        lua_setfield(State, LUA_REGISTRYINDEX, AllowedDependenciesRegistryKey);
 
-        lua_pushcfunction(State, Traceback);
-        const int ErrorHandler = lua_gettop(State);
-        if (luaL_loadbufferx(
-                State,
-                Source.Text.data(),
-                Source.Text.size(),
-                Source.Name.c_str(),
-                "t") != LUA_OK)
-        {
-            ReadLuaError(State, "LuaModuleSyntaxError", "Lua module failed to compile.", OutFault);
-            OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
-            return false;
-        }
-        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
-        {
-            ReadLuaError(State, "LuaModuleLoadError", "Lua module failed to initialize.", OutFault);
-            OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
-            return false;
-        }
-        if (!lua_istable(State, -1))
-        {
-            OutFault = {"LuaModuleExportInvalid", "Lua module must return an export table: " + Spec.ModuleId};
-            return false;
-        }
-
-        // PKG-11: Freeze export table using an immutable proxy table
-        lua_createtable(State, 0, 0);
-        lua_createtable(State, 0, 4);
-
-        lua_pushvalue(State, -3);
-        lua_setfield(State, -2, "__index");
-
-        lua_pushcfunction(State, &FImpl::ModuleExportFrozenError);
-        lua_setfield(State, -2, "__newindex");
-
-        lua_pushvalue(State, -3);
-        lua_pushcclosure(State, &FImpl::ModuleExportPairs, 1);
-        lua_setfield(State, -2, "__pairs");
-
-        lua_pushboolean(State, 0);
-        lua_setfield(State, -2, "__metatable");
-
-        lua_setmetatable(State, -2);
-
-        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-        lua_pushvalue(State, -2);
-        lua_setfield(State, -2, Spec.ModuleId.c_str());
-        lua_pop(State, 2);
-
+        lua_pushnil(State);
+        lua_setfield(State, LUA_REGISTRYINDEX, CurrentBaseExportRegistryKey);
         lua_pushnil(State);
         lua_setfield(State, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
         lua_pushnil(State);
@@ -1767,7 +1959,7 @@ struct FRuntimeSession::FImpl
         }
         for (const FModuleSpec& Spec : LoadOrder)
         {
-            if (!ExecuteModule(Spec, *SourcesByName.at(Spec.SourceName), OutFault))
+            if (!ExecuteModule(Spec, SourcesByName, OutFault))
             {
                 return false;
             }
@@ -1792,7 +1984,7 @@ struct FRuntimeSession::FImpl
         }
         for (const FModuleSpec& Spec : LoadOrder)
         {
-            if (!ExecuteModule(Spec, *SourcesByName.at(Spec.SourceName), OutFault))
+            if (!ExecuteModule(Spec, SourcesByName, OutFault))
             {
                 return false;
             }

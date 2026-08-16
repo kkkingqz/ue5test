@@ -67,7 +67,7 @@ std::vector<GV2RuntimeCore::FRuntimeSource> LoadTestRuntimeSources()
         const FString RelativePath = NormalizedFullPath.RightChop(ScriptsPrefix.Len());
         const FTCHARToUTF8 Utf8(*Text);
         Sources.push_back({
-            "@Scripts/" + std::string(TCHAR_TO_UTF8(*RelativePath)),
+            "@core/" + std::string(TCHAR_TO_UTF8(*RelativePath)),
             std::string(Utf8.Get(), Utf8.Length())});
     }
     return Sources;
@@ -344,7 +344,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
             MissingSource.end(),
             [](const GV2RuntimeCore::FRuntimeSource& Source)
             {
-                return Source.Name == "@Scripts/resources/service.lua";
+                return Source.Name == "@core/resources/service.lua";
             }),
         MissingSource.end());
     GV2RuntimeCore::FRuntimeSession MissingSourceHost;
@@ -359,7 +359,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     std::vector<GV2RuntimeCore::FRuntimeSource> HiddenDependency = Sources;
     for (GV2RuntimeCore::FRuntimeSource& Source : HiddenDependency)
     {
-        if (Source.Name == "@Scripts/boundary/entrypoints.lua")
+        if (Source.Name == "@core/boundary/entrypoints.lua")
         {
             Source.Text.insert(
                 0,
@@ -379,7 +379,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
         FString(UTF8_TO_TCHAR(Fault.Message.c_str())).Contains(TEXT("not declared")));
 
     std::vector<GV2RuntimeCore::FRuntimeSource> UnlistedSource = Sources;
-    UnlistedSource.push_back({"@Scripts/gameplay/unlisted.lua", "return {}"});
+    UnlistedSource.push_back({"@core/gameplay/unlisted.lua", "return {}"});
     GV2RuntimeCore::FRuntimeSession UnlistedSourceHost;
     TestFalse(
         TEXT("Unlisted Lua source is rejected"),
@@ -391,7 +391,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
 
     const std::vector<GV2RuntimeCore::FRuntimeSource> CyclicSources = {
         {
-            "@Scripts/bootstrap/manifest.lua",
+            "@core/bootstrap/manifest.lua",
             R"lua(return {
                 entry_module_id = "core:module.runtime.a",
                 modules = {
@@ -407,8 +407,8 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
                     },
                 },
             })lua"},
-        {"@Scripts/runtime/a.lua", "return {}"},
-        {"@Scripts/runtime/b.lua", "return {}"},
+        {"@core/runtime/a.lua", "return {}"},
+        {"@core/runtime/b.lua", "return {}"},
     };
     GV2RuntimeCore::FRuntimeSession CyclicHost;
     TestFalse(
@@ -418,6 +418,174 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
         TEXT("Dependency cycle has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
         FString(TEXT("LuaModuleDependencyCycle")));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LuaModulePackageOverrideTest,
+    "GV2.Runtime.Lua.ModulePackageOverrideAndSealing",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
+{
+    GV2RuntimeCore::FRuntimeFault Fault;
+
+    // 1. Successful module override with require_base()
+    const std::vector<GV2RuntimeCore::FRuntimeSource> OverrideSources = {
+        {
+            "@core/bootstrap/manifest.lua",
+            R"lua(return {
+                entry_module_id = "core:module.gameplay.root",
+                modules = {
+                    {
+                        module_id = "core:module.gameplay.root",
+                        source = "gameplay/root.lua",
+                        dependencies = {},
+                        replaceable = true,
+                    },
+                },
+            })lua"
+        },
+        {
+            "@core/gameplay/root.lua",
+            R"lua(
+                local M = {
+                    id = "core:module.gameplay.root",
+                    base_version = 1,
+                }
+                function M.compute(val)
+                    return val * 2
+                end
+                return M
+            )lua"
+        },
+        {
+            "@test_mod/manifest.lua",
+            R"lua(return {
+                modules = {
+                    {
+                        module_id = "core:module.gameplay.root",
+                        source = "gameplay/root.lua",
+                        dependencies = {},
+                        replaceable = true,
+                    },
+                },
+            })lua"
+        },
+        {
+            "@test_mod/gameplay/root.lua",
+            R"lua(
+                local base = require_base()
+                local M = setmetatable({
+                    id = "core:module.gameplay.root",
+                    mod_version = 2,
+                }, { __index = base })
+                function M.compute(val)
+                    return base.compute(val) + 10
+                end
+                return M
+            )lua"
+        },
+    };
+
+    GV2RuntimeCore::FRuntimeSession OverrideSession;
+    TestTrue(
+        TEXT("Runtime starts with valid multi-package module override"),
+        OverrideSession.Start(1, MakeTestPinnedRepository(), OverrideSources, Fault));
+
+    // 2. Replacing sealed module triggers LuaModuleSealed
+    const std::vector<GV2RuntimeCore::FRuntimeSource> SealedSources = {
+        {
+            "@core/bootstrap/manifest.lua",
+            R"lua(return {
+                entry_module_id = "core:module.runtime.sealed",
+                modules = {
+                    {
+                        module_id = "core:module.runtime.sealed",
+                        source = "runtime/sealed.lua",
+                        dependencies = {},
+                        replaceable = false,
+                    },
+                },
+            })lua"
+        },
+        {
+            "@core/runtime/sealed.lua",
+            "return { id = 'core:module.runtime.sealed' }"
+        },
+        {
+            "@test_mod/manifest.lua",
+            R"lua(return {
+                modules = {
+                    {
+                        module_id = "core:module.runtime.sealed",
+                        source = "runtime/sealed.lua",
+                        dependencies = {},
+                    },
+                },
+            })lua"
+        },
+        {
+            "@test_mod/runtime/sealed.lua",
+            "return { id = 'core:module.runtime.sealed' }"
+        },
+    };
+
+    GV2RuntimeCore::FRuntimeSession SealedSession;
+    TestFalse(
+        TEXT("Overriding sealed module is rejected"),
+        SealedSession.Start(1, MakeTestPinnedRepository(), SealedSources, Fault));
+    TestEqual(
+        TEXT("Sealed module override error code is LuaModuleSealed"),
+        FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
+        FString(TEXT("LuaModuleSealed")));
+
+    // 3. Mod declaring foreign new module ID triggers LuaModuleForeignNewId
+    const std::vector<GV2RuntimeCore::FRuntimeSource> ForeignNewSources = {
+        {
+            "@core/bootstrap/manifest.lua",
+            R"lua(return {
+                entry_module_id = "core:module.bootstrap.main",
+                modules = {
+                    {
+                        module_id = "core:module.bootstrap.main",
+                        source = "bootstrap/main.lua",
+                        dependencies = {},
+                    },
+                },
+            })lua"
+        },
+        {
+            "@core/bootstrap/main.lua",
+            "return {}"
+        },
+        {
+            "@test_mod/manifest.lua",
+            R"lua(return {
+                modules = {
+                    {
+                        module_id = "core:module.gameplay.foreign_new",
+                        source = "gameplay/foreign.lua",
+                        dependencies = {},
+                    },
+                },
+            })lua"
+        },
+        {
+            "@test_mod/gameplay/foreign.lua",
+            "return {}"
+        },
+    };
+
+    GV2RuntimeCore::FRuntimeSession ForeignNewSession;
+    TestFalse(
+        TEXT("Mod cannot introduce a new core module ID"),
+        ForeignNewSession.Start(1, MakeTestPinnedRepository(), ForeignNewSources, Fault));
+    TestEqual(
+        TEXT("Foreign new ID error code is LuaModuleForeignNewId"),
+        FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
+        FString(TEXT("LuaModuleForeignNewId")));
+
     return true;
 }
 
@@ -891,7 +1059,7 @@ bool FGV2LuaRepositoryAccessTest::RunTest(const FString& Parameters)
 
     const std::vector<GV2RuntimeCore::FRuntimeSource> TestSources = {
         {
-            "@Scripts/bootstrap/manifest.lua",
+            "@core/bootstrap/manifest.lua",
             R"lua(return {
                 entry_module_id = "core:module.test.repository",
                 modules = {
@@ -904,7 +1072,7 @@ bool FGV2LuaRepositoryAccessTest::RunTest(const FString& Parameters)
             })lua"
         },
         {
-            "@Scripts/test/repository.lua",
+            "@core/test/repository.lua",
             R"lua(
                 local M = {}
 

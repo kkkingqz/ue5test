@@ -44,7 +44,7 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 | Область | Статус | Комментарий |
 |---|---|---|
 | Lua 5.4.8 VM, one-VM invariant, owner thread | Реализовано | Wrong-thread и re-entry дают typed faults |
-| Safe environment, module manifest/graph, protected entry | Реализовано | `load`/`loadfile`/`dofile`/`math.random` удалены; манифест дескрипторов модулей с `replaceable: boolean`, неизменяемость таблиц экспорта (`LuaModuleExportFrozen`) и защита от ad-hoc мутации чужих экспортов ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md), план [PackageSupport](../Plans/PackageSupport/README.md) M3) |
+| Safe environment, module manifest/graph, protected entry | Реализовано | `load`/`loadfile`/`dofile`/`math.random` удалены; манифест дескрипторов модулей с `replaceable: boolean`, неизменяемость таблиц экспорта (`LuaModuleExportFrozen`) и защита от ad-hoc мутации чужих экспортов ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)); загрузка Lua-модулей из пакетов (`scripts/`), атрибуция источников `@<package_id>/<relative>`, резолюция провайдеров по порядку загрузки пакетов, `require_base()` с прототипным наследованием и валидация объединённого графа зависимостей (план [PackageSupport](../Plans/PackageSupport/README.md) M3–M4) |
 | Value marshalling обоих portable типов | Реализовано | `FGV2LuaMarshaller`, единый path |
 | `game.repository` (`get`/`require`/`list`/`exists`) | Реализовано | Detached deep copy, typed error codes, canonical `list` order |
 | Semantic input ingress и command dispatch | Реализовано | Command Dispatcher с защитой от реентерабельности, открытие `mutation_window`, делегирование доменным методам сущностей/сервисам, команды `core:command.actor.reward` и `core:command.location.travel`, возврат structured result/error |
@@ -90,7 +90,7 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 Приоритет определяется тем, что блокирует end-to-end vertical slice из [Architecture Overview](../Architecture/Overview.md):
 
 1. UI document reconciliation (routes, layers, overlays) — нужен, как только экранов станет больше одного.
-2. Mod package lifecycle — discovery, load order и `mods.lock`; ядро override/redirect уже умеет, но ни один host не грузит больше одного package root.
+2. Mod package lifecycle — discovery, load order, mods.lock и Lua-модули из пакетов реализованы (M1–M4); остаётся детерминизм и сейв (M5).
 3. `game.random` и `game.time` — детерминированные PRNG и часы; слоты в `meta` зарезервированы, генераторов нет.
 
 Save/load (план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md)) закрыт целиком, M1–M5, и больше не входит в этот список.

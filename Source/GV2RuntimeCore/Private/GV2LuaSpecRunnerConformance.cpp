@@ -39,7 +39,7 @@ bool StartFixtureSession(FRuntimeSession& Session, FRuntimeFault& OutFault)
     const GV2ContentCore::FRepositoryReadHandle RepoHandle = MakeEmptyRepository();
     const std::vector<FRuntimeSource> Sources = {
         {
-            "@Scripts/bootstrap/manifest.lua",
+            "@core/bootstrap/manifest.lua",
             R"lua(return {
                 entry_module_id = "core:module.test.loaded_marker",
                 modules = {
@@ -51,7 +51,7 @@ bool StartFixtureSession(FRuntimeSession& Session, FRuntimeFault& OutFault)
                 },
             })lua"
         },
-        {"@Scripts/test/loaded_marker.lua", LoadedMarkerSource},
+        {"@core/test/loaded_marker.lua", LoadedMarkerSource},
     };
 
     return Session.Start(1, RepoHandle, Sources, OutFault);

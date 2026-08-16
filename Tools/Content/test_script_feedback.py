@@ -57,7 +57,7 @@ def test_negative_missing_source(headless_bin: str, repo_root: Path):
         if "core:module.runtime.world" not in proc.stderr:
             print(f"FAILED: expected module ID in stderr, got:\n{proc.stderr}")
             sys.exit(1)
-        if "@Scripts/runtime/world.lua" not in proc.stderr:
+        if "@core/runtime/world.lua" not in proc.stderr:
             print(f"FAILED: expected relative path in stderr, got:\n{proc.stderr}")
             sys.exit(1)
     print("  PASS: LuaModuleSourceMissing")
@@ -83,7 +83,7 @@ def test_negative_unlisted_source(headless_bin: str, repo_root: Path):
         if "LuaModuleSourceUnlisted" not in proc.stderr:
             print(f"FAILED: expected 'LuaModuleSourceUnlisted' in stderr, got:\n{proc.stderr}")
             sys.exit(1)
-        if "@Scripts/runtime/unlisted.lua" not in proc.stderr:
+        if "@core/runtime/unlisted.lua" not in proc.stderr:
             print(f"FAILED: expected relative source path in stderr, got:\n{proc.stderr}")
             sys.exit(1)
     print("  PASS: LuaModuleSourceUnlisted")
@@ -171,7 +171,7 @@ def test_negative_syntax_error(headless_bin: str, repo_root: Path):
         if "core:module.runtime.world" not in proc.stderr:
             print(f"FAILED: expected module ID in stderr, got:\n{proc.stderr}")
             sys.exit(1)
-        if "Scripts/runtime/world.lua" not in proc.stderr:
+        if "runtime/world.lua" not in proc.stderr:
             print(f"FAILED: expected relative path in stderr, got:\n{proc.stderr}")
             sys.exit(1)
         if ":1:" not in proc.stderr and "line 1" not in proc.stderr:

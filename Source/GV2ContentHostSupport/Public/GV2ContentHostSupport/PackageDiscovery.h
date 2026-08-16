@@ -69,6 +69,30 @@ GV2_CONTENT_HOST_SUPPORT_API std::optional<std::vector<GV2ContentCore::FPackageD
     std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics);
 
 /**
+ * Discovered Lua script source belonging to a package.
+ * PKG-14/15: Name is '@<package_id>/<relative_path>'.
+ */
+struct FDiscoveredScriptSource
+{
+    std::string Name;
+    std::string Text;
+};
+
+/**
+ * Discovers all .lua script files inside a package root directory (scripts/ or Scripts/ directory).
+ * For core, falls back to repository Scripts/ directory if needed.
+ */
+GV2_CONTENT_HOST_SUPPORT_API std::vector<FDiscoveredScriptSource> DiscoverPackageScripts(
+    const std::filesystem::path& PackageRoot,
+    const std::string& PackageId);
+
+/**
+ * Discovers all .lua script files across an ordered sequence of packages.
+ */
+GV2_CONTENT_HOST_SUPPORT_API std::vector<FDiscoveredScriptSource> DiscoverPackagesScripts(
+    const std::vector<std::pair<std::string, std::filesystem::path>>& Packages);
+
+/**
  * Filesystem-backed IContentSourceProvider that routes ReadSource calls by package_id
  * to their respective package root directories. Shared by CLI, Headless and UE.
  */
@@ -87,3 +111,4 @@ private:
     std::map<std::string, std::filesystem::path, std::less<>> PackageRoots;
 };
 }
+

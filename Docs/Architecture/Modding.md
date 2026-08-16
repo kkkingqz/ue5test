@@ -82,7 +82,9 @@ optional cooked Pak
 ## Lua modules
 
 - Module ID: `weather_mod:module.storm_rules`.
-- Dependencies объявляются manifest-ом.
+- Модули мода поставляются в подкаталоге `scripts/` пакета мода. Имя источника атрибутируется пакетом: `@<package_id>/<relative>` (например `@weather_mod/gameplay/storm_rules.lua`).
+- Dependencies и модули объявляются манифестом пакета (`scripts/manifest.lua`).
+- Мод может объявлять новые модули только в своём namespace (попытка объявить новый модуль в чужом namespace без предшествующего провайдера отклоняется ошибкой `LuaModuleForeignNewId`).
 - Module возвращает export table и не создаёт globals.
 - Таблицы экспорта модулей неизменяемы после загрузки (`LuaModuleExportFrozen`); ad-hoc мутация чужих экспортов запрещена ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)).
 - Замещение модулей разрешено только для явно помеченных как замещаемые (`replaceable: true`, например `gameplay/`, `debug/`); модули ядра запечатаны по умолчанию (`LuaModuleSealed`).

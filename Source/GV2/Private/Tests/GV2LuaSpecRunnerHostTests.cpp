@@ -60,7 +60,7 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
         const FString Rel = Norm.RightChop(ScriptsPrefix.Len());
         const FTCHARToUTF8 Utf8(*Text);
         RuntimeSources.push_back({
-            "@Scripts/" + std::string(TCHAR_TO_UTF8(*Rel)),
+            "@core/" + std::string(TCHAR_TO_UTF8(*Rel)),
             std::string(Utf8.Get(), Utf8.Length())});
     }
 

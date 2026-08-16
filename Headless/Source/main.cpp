@@ -138,45 +138,20 @@ bool LoadRuntimeSources(
             continue;
         }
 
-        std::vector<std::filesystem::path> SourcePaths;
-        for (std::filesystem::recursive_directory_iterator Iterator(Directory, IterationError), End;
-             !IterationError && Iterator != End;
-             Iterator.increment(IterationError))
+        std::vector<GV2ContentHostSupport::FDiscoveredScriptSource> Discovered =
+            GV2ContentHostSupport::DiscoverPackageScripts(Directory.parent_path(), "core");
+        if (Discovered.empty())
         {
-            if (Iterator->is_regular_file() && Iterator->path().extension() == ".lua")
-            {
-                SourcePaths.emplace_back(Iterator->path());
-            }
+            Discovered = GV2ContentHostSupport::DiscoverPackageScripts(Directory, "core");
         }
-        if (IterationError || SourcePaths.empty())
+        if (!Discovered.empty())
         {
-            continue;
-        }
-        std::sort(SourcePaths.begin(), SourcePaths.end());
-
-        std::vector<GV2RuntimeCore::FRuntimeSource> Candidate;
-        Candidate.reserve(SourcePaths.size());
-        for (const std::filesystem::path& SourcePath : SourcePaths)
-        {
-            std::ifstream Stream(SourcePath, std::ios::binary);
-            if (!Stream)
+            OutSources.clear();
+            OutSources.reserve(Discovered.size());
+            for (auto& Src : Discovered)
             {
-                Candidate.clear();
-                break;
+                OutSources.push_back({std::move(Src.Name), std::move(Src.Text)});
             }
-            std::string Text{
-                std::istreambuf_iterator<char>(Stream),
-                std::istreambuf_iterator<char>()};
-            if (Text.starts_with("\xef\xbb\xbf"))
-            {
-                Text.erase(0, 3);
-            }
-            const std::string RelativePath = std::filesystem::relative(SourcePath, Directory).generic_string();
-            Candidate.push_back({std::string("@Scripts/") + RelativePath, std::move(Text)});
-        }
-        if (!Candidate.empty())
-        {
-            OutSources = std::move(Candidate);
             return true;
         }
     }

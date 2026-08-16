@@ -287,7 +287,7 @@ std::string RunValidatorRegistryConformance()
 
     const std::vector<FRuntimeSource> Sources = {
         {
-            "@Scripts/bootstrap/manifest.lua",
+            "@core/bootstrap/manifest.lua",
             R"lua(return {
                 entry_module_id = "core:module.test.validator_registry_driver",
                 modules = {
@@ -309,9 +309,9 @@ std::string RunValidatorRegistryConformance()
                 },
             })lua"
         },
-        {"@Scripts/runtime/stable_id.lua", StableIdScriptSource},
-        {"@Scripts/runtime/validator_registry.lua", ValidatorRegistryScriptSource},
-        {"@Scripts/test/validator_registry_driver.lua", DriverScriptSource},
+        {"@core/runtime/stable_id.lua", StableIdScriptSource},
+        {"@core/runtime/validator_registry.lua", ValidatorRegistryScriptSource},
+        {"@core/test/validator_registry_driver.lua", DriverScriptSource},
     };
 
     FRuntimeSession Session;

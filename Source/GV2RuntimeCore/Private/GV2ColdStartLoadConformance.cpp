@@ -349,13 +349,13 @@ std::vector<FRuntimeSource> MakeSharedSources(const char* DriverModuleId, const 
         })lua";
 
     return {
-        {"@Scripts/bootstrap/manifest.lua", Manifest},
-        {"@Scripts/runtime/migrate.lua", MigrateStubSource},
-        {"@Scripts/runtime/state_validator.lua", StateValidatorStubSource},
-        {"@Scripts/runtime/save.lua", SaveStubSource},
-        {"@Scripts/runtime/load.lua", LoadStubSource},
-        {"@Scripts/test/restore_marker.lua", RestoreMarkerSource},
-        {"@Scripts/test/driver.lua", DriverSource},
+        {"@core/bootstrap/manifest.lua", Manifest},
+        {"@core/runtime/migrate.lua", MigrateStubSource},
+        {"@core/runtime/state_validator.lua", StateValidatorStubSource},
+        {"@core/runtime/save.lua", SaveStubSource},
+        {"@core/runtime/load.lua", LoadStubSource},
+        {"@core/test/restore_marker.lua", RestoreMarkerSource},
+        {"@core/test/driver.lua", DriverSource},
     };
 }
 } // namespace

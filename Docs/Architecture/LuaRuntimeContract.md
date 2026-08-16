@@ -55,19 +55,24 @@ Runtime source закреплён в repository как Lua 5.4.8. Build обяз
 
 - `module_id` — canonical Stable ID kind `module`.
 - Manifest объявляет module dependencies; hidden dependencies запрещены.
-- Dependency graph проверяется на missing dependencies, duplicates, cycles и unreachable modules до инициализации первого gameplay module.
+- Dependency graph проверяется на missing dependencies, duplicates, cycles и unreachable modules до инициализации первого gameplay module на объединённом графе всех пакетов.
+- Модули поставляются пакетами (`scripts/` под корнем пакета). Имя источника атрибутируется пакетом: `@<package_id>/<relative>` (например `@core/gameplay/root.lua`, `@weather_mod/gameplay/storm.lua`).
+- `module_id` резолвится по цепочке провайдеров в порядке загрузки пакетов (побеждает последний провайдер).
+- Замещающий модуль получает доступ к предыдущей реализации через `require_base()`; вне инициализации замещающего модуля вызов `require_base()` завершается ошибкой `LuaModuleBaseNotAvailable` ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)).
 - Core modules загружаются первыми, затем mods в resolved order.
-- `require(module_id)` выполняет source один раз и возвращает export table.
+- `require(module_id)` выполняет source один раз и возвращает export table активного победителя.
 - Таблицы экспорта модулей замораживаются после возврата загрузчиком (`__newindex` с ошибкой `LuaModuleExportFrozen`, `__metatable = false`); прямая мутация чужих экспортов запрещена ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)).
-- Дескриптор каждого модуля в манифесте объявляет `replaceable: boolean` (по умолчанию `false`); модули ядра запечатаны по умолчанию (`runtime/`, `boundary/`, `bootstrap/`, `presentation/`, `resources/`), модули геймплея и отладки замещаемы (`gameplay/`, `debug/`).
+- Дескриптор каждого модуля в манифесте объявляет `replaceable: boolean` (по умолчанию `false`); модули ядра запечатаны по умолчанию (`runtime/`, `boundary/`, `bootstrap/`, `presentation/`, `resources/`), модули геймплея и отладки замещаемы (`gameplay/`, `debug/`). Попытка заместить запечатанный модуль отклоняется ошибкой `LuaModuleSealed`.
+- Попытка мод-пакета объявить новый модуль в чужом namespace (без предшествующего провайдера) отклоняется ошибкой `LuaModuleForeignNewId`.
+- Хуки жизненного цикла (`register`, `validate_state` и др.) вызываются только у активного победителя.
 - Module source path является provenance, не identity.
 - Late registration после registry freeze запрещена.
 
-Текущий core manifest — `Scripts/bootstrap/manifest.lua`. Это единственный fixed bootstrap locator внутри portable runtime; manifest возвращает data-only table `{ entry_module_id, modules[] }` и сам не является module. Каждый descriptor обязан содержать canonical `module_id`, package-relative `source`, полный список direct `dependencies` и опциональное булево поле `replaceable`.
+Манифест ядра располагается по пути `bootstrap/manifest.lua` (или `manifest.lua`) в каталоге `scripts/` пакета `core`. Мод-пакеты также могут объявлять манифест `scripts/manifest.lua` (или `scripts/bootstrap/manifest.lua`). Манифест возвращает data-only table `{ entry_module_id, modules[] }` и сам не является module. Каждый descriptor обязан содержать canonical `module_id`, package-relative `source`, полный список direct `dependencies` и опциональное булево поле `replaceable`.
 
-UE и headless hosts рекурсивно собирают UTF-8 `.lua` files под `Scripts/`, сортируют только для deterministic ingestion и передают полный source set в portable runtime. File order не является load semantics. Runtime обязан отклонить missing/unlisted/duplicate source, duplicate module ID, invalid path, dependency cycle, invalid `replaceable` type и module, недостижимый от `entry_module_id`. Добавление module не требует изменения C++ или headless host.
+UE и headless hosts рекурсивно собирают UTF-8 `.lua` files под `scripts/` каждого подключённого пакета через `GV2ContentHostSupport::DiscoverPackagesScripts`, сортируют только для deterministic ingestion и передают полный source set в portable runtime с именами `@<package_id>/<relative>`. File order не является load semantics. Runtime строит цепочки провайдеров, вычисляет эффективные зависимости как объединение прямых зависимостей всей цепочки и проверяет граф на ошибки (missing source, unlisted source, duplicate ID внутри одного пакета, dependency cycle, sealed module override, foreign new ID, unreachable module) до исполнения первого модуля.
 
-Loader выполняет modules один раз в dependency order. Module обязан вернуть export table. Возвращённая таблица экспорта оборачивается в immutable proxy (`__index`, `__newindex` с ошибкой `LuaModuleExportFrozen`, `__pairs`, `__metatable = false`). `require(module_id)` разрешён во время module initialization только для direct dependency текущего descriptor; это делает hidden import deterministic manifest violation. Module сохраняет imports в lexical locals и не вызывает `require` из runtime handlers.
+Loader выполняет modules в порядке топологической сортировки зависимостей. Для каждого замещающего модуля цепочки загрузчик временно предоставляет предыдущий замороженный экспорт через `require_base()`. Возвращённая таблица экспорта каждого провайдера оборачивается в immutable proxy (`__index`, `__newindex` с ошибкой `LuaModuleExportFrozen`, `__pairs`, `__metatable = false`). В глобальном реестре `GV2.LoadedModules` регистрируется только активный победитель цепочки. `require(module_id)` разрешён во время module initialization только для direct dependency текущего descriptor; это делает hidden import deterministic manifest violation. Module сохраняет imports в lexical locals и не вызывает `require` из runtime handlers.
 
 ## Source layout and dependency direction
 
