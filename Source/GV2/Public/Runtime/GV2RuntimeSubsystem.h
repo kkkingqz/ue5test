@@ -7,7 +7,6 @@
 
 class FGV2RepositoryPublisher;
 class FGV2SessionCoordinator;
-class UGV2DebugStartScreenWidget;
 class UGV2ScreenRegistry;
 class UGV2ScreenWidgetBase;
 class UUserWidget;
@@ -47,7 +46,6 @@ private:
     UGV2ScreenWidgetBase* CreateRegisteredScreen(
         const FGV2ScreenViewModel& Model,
         bool bAddToViewport);
-    UGV2DebugStartScreenWidget* ShowDebugStartScreen(bool bAddToViewport);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
     bool HandleScreenRequested(const FGV2ScreenViewModel& Model);
     void ReplaceActiveScreen(UUserWidget* NewScreen);

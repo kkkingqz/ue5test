@@ -1,7 +1,9 @@
 local screens = require("core:module.presentation.screen_requests")
 local text = require("core:module.resources.text")
 
-local M = {}
+local M = {
+    id = "core:module.debug.start",
+}
 local checkbox_checked = false
 local selected_class = nil
 local player_name = ""
@@ -132,6 +134,13 @@ function M.handle_command(request)
         return true
     end
     return false
+end
+
+function M.start(_ctx)
+    checkbox_checked = false
+    selected_class = nil
+    player_name = ""
+    screens.publish(create_screen())
 end
 
 return M

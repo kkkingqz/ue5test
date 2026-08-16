@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: draft
-version: 1.3
-updated: 2026-08-13
+version: 1.4
+updated: 2026-08-15
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -14,6 +14,12 @@ decisions:
 ---
 
 # UI Document and Reconciliation
+
+> **Владеет:** моделью желаемого UI-документа, маршрутами, слоями и правилами полной реконсиляции.
+> **Не владеет:** физическим деревом виджетов и локальным визуальным состоянием.
+> **Инварианты:** [INV-014](../Architecture/Invariants.md)
+> **Реализация:** не реализовано — активен один экран; см. [Implementation Status](../Status/ImplementationStatus.md).
+> **Проверки:** появятся вместе с реализацией.
 
 UI-document — полная декларативная desired model Screen instances для одной revision. Lua строит его из canonical state и pinned repository; Presentation разрешает `screen_id` через Screen Registry и reconciles document с UMG instances.
 

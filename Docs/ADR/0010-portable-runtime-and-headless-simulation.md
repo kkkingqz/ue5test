@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0010: Portable Runtime and Headless Simulation
 
+> **Решение:** Portable gameplay runtime, UE/headless hosts и общий Command Dispatcher path.
+> **Нормативный текст:** [Headless Simulation Contract](../Architecture/HeadlessSimulationContract.md).
+
 ## Context
 
 Gameplay Lua должен исполняться без Unreal Engine для deterministic balance simulation. Текущий prototype VM host использует UE containers и Game Thread assertions. Такое связывание делает standalone runner невозможным и создаёт риск двух различных gameplay implementations.

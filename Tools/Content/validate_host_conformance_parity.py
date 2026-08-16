@@ -117,6 +117,15 @@ MECHANISM_LUA_FIXTURE_CONFORMANCE_FILES = {
     # request.sequence) with no counterpart under Scripts/, not a gameplay
     # rule.
     "GV2RuntimeCore/Private/GV2RunReplayConformance.cpp",
+    # Tests FRuntimeSession::StartFromSave's C++ orchestration (SAV-12/17,
+    # plan SaveAndLoad): tree from decode_and_prepare instead of defaults,
+    # restore_instances firing, state assigned only after every stage
+    # succeeds, slot-read-before-VM-creation on failure. Its embedded
+    # save/load/state_validator modules are deliberately trivial synthetic
+    # stubs, not copies of the real Scripts/ rule logic — the real
+    # preflight/integrity/redirect/safe-point rules are covered by
+    # Tests/Lua/save/{canonical_codec,save_path,load_path}.lua instead.
+    "GV2RuntimeCore/Private/GV2ColdStartLoadConformance.cpp",
 }
 
 

@@ -7,7 +7,6 @@
 #include "Application/GV2ScreenFieldAdapterRegistry.h"
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
 #include "Runtime/GV2RuntimeSubsystem.h"
-#include "UI/GV2DebugStartScreenWidget.h"
 #include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2CheckboxWidgetBase.h"
@@ -1137,21 +1136,9 @@ bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
     if (Runtime != nullptr)
     {
         FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
-        UGV2DebugStartScreenWidget* StartScreen = Cast<UGV2DebugStartScreenWidget>(
+        UGV2ScreenWidgetBase* Screen = Cast<UGV2ScreenWidgetBase>(
             Runtime->GetActiveScreen());
-        TestNotNull(TEXT("GameInstance start creates a separate debug start screen"), StartScreen);
-        if (StartScreen != nullptr)
-        {
-            UButton* StartButton = Cast<UButton>(StartScreen->GetWidgetFromName(TEXT("StartButton")));
-            TestNotNull(TEXT("Debug start screen contains its real button"), StartButton);
-            if (StartButton != nullptr)
-            {
-                StartButton->OnClicked.Broadcast();
-            }
-            TestNotNull(
-                TEXT("Lua start handler replaces it with WBP_Testscreen"),
-                Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen()));
-        }
+        TestNotNull(TEXT("GameInstance start directly opens the registered WBP_Testscreen"), Screen);
         Runtime->EndSession();
     }
 
@@ -1184,17 +1171,8 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
     if (Runtime != nullptr)
     {
         FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
-        UGV2DebugStartScreenWidget* StartScreen = Cast<UGV2DebugStartScreenWidget>(Runtime->GetActiveScreen());
-        UButton* StartButton = StartScreen != nullptr
-            ? Cast<UButton>(StartScreen->GetWidgetFromName(TEXT("StartButton")))
-            : nullptr;
-        TestNotNull(TEXT("Normal startup provides the debug start button"), StartButton);
-        if (StartButton != nullptr)
-        {
-            StartButton->OnClicked.Broadcast();
-        }
         Screen = Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
-        TestNotNull(TEXT("Lua model instantiates and applies WBP_Testscreen"), Screen);
+        TestNotNull(TEXT("Lua start hook instantiates and applies WBP_Testscreen"), Screen);
         if (Screen != nullptr)
         {
             const UGV2ScreenRegistrySettings* RegistrySettings = GetDefault<UGV2ScreenRegistrySettings>();

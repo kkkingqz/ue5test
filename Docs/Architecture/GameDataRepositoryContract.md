@@ -1,7 +1,7 @@
 ---
 title: GameDataRepository Contract
 status: normative
-version: 2.7
+version: 2.8
 updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
@@ -15,6 +15,12 @@ decisions:
 ---
 
 # GameDataRepository Contract
+
+> **Владеет:** сборкой репозитория, разрешением провайдеров и override, redirects и tombstones, идентичностью снимка и API чтения.
+> **Не владеет:** содержимым конкретных definitions и тем, как их использует геймплей.
+> **Инварианты:** [INV-002](Invariants.md), [INV-010](Invariants.md), [INV-011](Invariants.md)
+> **Реализация:** `Source/GV2ContentCore/Private/RepositoryBuilder.cpp`, `RepositorySnapshot.cpp`.
+> **Проверки:** `RunPackageDescriptorConformance`, `RunLuaRepositoryConformance`, `GV2.Runtime.ContentCore.*`.
 
 GameDataRepository — единственный runtime-источник immutable static definitions. Candidate либо публикуется целиком одной atomic operation, либо не становится observable.
 

@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0006: Repository Reload and Session Pinning
 
+> **Решение:** Pinned snapshot; reload через restart.
+> **Нормативный текст:** [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md).
+
 ## Context
 
 Live publication и pinned session snapshot одновременно означали, что reload формально успешен, но active gameplay продолжает видеть old data. Safe live swap требует сложной compatibility/invalidation model.

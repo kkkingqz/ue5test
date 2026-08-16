@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0000: Markdown Documentation Authority
 
+> **Решение:** Markdown в `Docs` — единственный нормативный набор.
+> **Нормативный текст:** [Docs/README](../README.md).
+
 ## Context
 
 Исходные DOCX появились в разное время и содержали несовместимые grammar, terminology и runtime contracts. Одновременная нормативность нескольких копий увеличивает drift.

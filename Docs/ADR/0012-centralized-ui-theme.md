@@ -6,6 +6,9 @@ date: 2026-08-11
 
 # ADR-0012: Centralized UI Theme
 
+> **Решение:** Один UE-side theme asset и обязательное central styling reusable UI components.
+> **Нормативный текст:** [Widget Registry](../UI/WidgetRegistry.md).
+
 ## Context
 
 Reusable Widget Blueprints уже ссылались на отдельные CommonUI style classes. При локальном назначении style в каждом Widget изменение визуального языка требует обхода множества assets и допускает незаметный drift. Новые нейтральные UI primitives также используют разные типы Slate/CommonUI style values, поэтому одного CommonTextStyle недостаточно.

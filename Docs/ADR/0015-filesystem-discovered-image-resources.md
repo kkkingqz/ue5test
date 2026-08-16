@@ -7,6 +7,9 @@ superseded_by: 0016-png-suffix-image-metadata.md
 
 # ADR-0015: Filesystem-Discovered Image Resources
 
+> **Решение:** Recursive discovery сохранён; JSON sidecar заменён ADR-0016.
+> **Нормативный текст:** [Image Resources](../UI/ImageResources.md).
+
 Решение заменено [ADR-0016](0016-png-suffix-image-metadata.md): filesystem discovery и directory-derived `resource_id` сохранены, JSON sidecar заменён filename suffix и marker border самого PNG.
 
 ## Context

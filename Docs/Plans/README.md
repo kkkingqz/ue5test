@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 2.1
+version: 2.2
 updated: 2026-08-15
 depends_on:
   - ../README.md
@@ -26,16 +26,11 @@ depends_on:
 
 | План | Основание | Результат |
 |---|---|---|
-| [GameplayEventsAndWorld](GameplayEventsAndWorld/README.md) | [Commands and Events](../Architecture/CommandsAndEvents.md) | Validators, EventBus, доменный объект мира и сценарий перемещения между локациями |
-| [LocalizationPipeline](LocalizationPipeline/README.md) | [ADR-0022](../ADR/0022-external-translation-catalog.md) | Репозиторий владеет `text_id`, переводы — внешние PO-каталоги, резолвит host |
-| [LifecycleSpecsMigration](LifecycleSpecsMigration/README.md) | [ADR-0024](../ADR/0024-lua-spec-runner.md) | Миграция 5326 строк `GV2LuaLifecycleConformance.cpp` в декларативные спеки `Tests/Lua/lifecycle/` |
-| [ContentCliModularization](ContentCliModularization/README.md) | [Build and Tooling](../Architecture/BuildAndTooling.md) | Модуляризация CLI `gv2-content` (3.3k строк `main.cpp` -> модули команд и поддержки) |
-
-Планы независимы и могут выполняться параллельно.
+| [SaveAndLoad](SaveAndLoad/README.md) | [ADR-0021](../ADR/0021-opaque-save-container.md) | Непрозрачный контейнер сейва, slot-storage примитив, загрузка на холодном старте и миграции |
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
-Фактическое состояние реализации по подсистемам: [Implementation Status](../ImplementationStatus.md).
+Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
 ## Архив
 

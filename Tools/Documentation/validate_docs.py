@@ -13,6 +13,25 @@ from urllib.parse import unquote
 
 FRONT_MATTER_BOUNDARY = "---"
 ARCHIVE_DIRECTORY = "Archive"
+# Explanatory tiers. They never define architectural rules: at a conflict the
+# normative contract wins. Keeping the status tied to the location makes the
+# distinction impossible to lose in a move or a copy-paste.
+INFORMATIVE_DIRECTORIES = ("Concepts", "Guides")
+# Header opens every document with the one thing its front matter cannot carry.
+# The field differs by document type because the useful question differs: a
+# contract is defined by what it owns, a guide by the task it solves.
+# Indexes are the navigation themselves and carry no header. Archived plans are
+# historical records and are not rewritten.
+HEADER_FIELD_BY_DIRECTORY = {
+    "Architecture": "Владеет",
+    "UI": "Владеет",
+    "Concepts": "Объясняет",
+    "Guides": "Задача",
+    "ADR": "Решение",
+    "Proposals": "Предлагает",
+    "Plans": "Материализует",
+    "Status": "Показывает",
+}
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$")
 VERSION = re.compile(r"^\d+\.\d+$")
@@ -73,6 +92,7 @@ class Validation:
         is_adr = relative.parts[0] == "ADR" and path.name != "README.md"
         is_proposal = relative.parts[0] == "Proposals" and path.name != "README.md"
         is_archived_location = ARCHIVE_DIRECTORY in relative.parts
+        is_informative_location = relative.parts[0] in INFORMATIVE_DIRECTORIES
 
         required = {"title", "status"}
         required |= {"date"} if is_adr else {"version", "updated"}
@@ -86,10 +106,24 @@ class Validation:
         allowed_status = (
             {"proposed", "accepted", "superseded", "rejected"}
             if is_adr
-            else {"draft", "normative", "deprecated", "archived"}
+            else {"draft", "normative", "deprecated", "archived", "informative"}
         )
         if status and status not in allowed_status:
             self.fail(path, f"invalid status '{status}'")
+
+        # Concepts/ and Guides/ explain and instruct; they never carry normative
+        # rules. Binding the tier to the directory keeps a second source of truth
+        # from appearing by accident.
+        if is_informative_location and status != "informative":
+            self.fail(
+                path,
+                f"document under {' or '.join(d + '/' for d in INFORMATIVE_DIRECTORIES)} must use status 'informative', found '{status}'",
+            )
+        if status == "informative" and not is_informative_location:
+            self.fail(
+                path,
+                f"status 'informative' requires the document to live under {' or '.join(d + '/' for d in INFORMATIVE_DIRECTORIES)}",
+            )
 
         # An archived document is a historical record: it is never normative and
         # never a source of tasks. Keep location and status in sync in both
@@ -159,6 +193,22 @@ class Validation:
         file_part, separator, anchor = target.partition("#")
         resolved = (source.parent / file_part).resolve()
         return resolved, anchor if separator else ""
+
+    def validate_header(self, path: Path, text: str) -> None:
+        relative = path.relative_to(self.docs_root)
+        if path.name == "README.md":
+            return
+        if ARCHIVE_DIRECTORY in relative.parts:
+            return
+        field = HEADER_FIELD_BY_DIRECTORY.get(relative.parts[0])
+        if field is None:
+            return
+        if f"> **{field}:**" not in text:
+            self.fail(
+                path,
+                f"missing header: first block after the title must state '> **{field}:** …' "
+                f"(see Docs/Architecture/README.md)",
+            )
 
     def validate_links(self, path: Path, text: str, texts: dict[Path, str]) -> None:
         in_fence = False
@@ -282,6 +332,7 @@ class Validation:
             self.metadata[path.resolve()] = metadata
             self.validate_front_matter(path, metadata)
             self.validate_metadata_links(path, metadata)
+            self.validate_header(path, text)
 
         for path, text in texts.items():
             self.validate_links(path, text, texts)

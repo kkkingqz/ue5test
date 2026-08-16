@@ -13,6 +13,10 @@ decisions:
 
 # Предложение по проверке packaged deployment Image Resources
 
+> **Предлагает:** проверку NonUFS staging и единого resource root в packaged build.
+> **Затрагивает:** [Image Resources](../UI/ImageResources.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
+> **Не является нормативным:** до реализации действует текущий contract.
+
 ## Назначение и область
 
 Предлагается проверить и зафиксировать работу filesystem-discovered Image Resources в staged Development/Shipping build. `NonUFS` staging уже реализован в `GV2.Build.cs`; ближайшая задача — verification фактического artifact layout и startup behavior, а не добавление второго staging mechanism.

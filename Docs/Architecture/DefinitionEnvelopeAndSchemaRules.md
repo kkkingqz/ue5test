@@ -1,7 +1,7 @@
 ---
 title: Definition Envelope and Schema Rules
 status: normative
-version: 2.3
+version: 2.4
 updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
@@ -12,6 +12,12 @@ decisions:
 ---
 
 # Definition Envelope and Schema Rules
+
+> **Владеет:** конвертом файла определений, устройством схем, типами полей, значениями по умолчанию, расширениями и лимитами парсинга.
+> **Не владеет:** разрешением провайдеров и публикацией снимка ([GameDataRepository](GameDataRepositoryContract.md)).
+> **Инварианты:** [INV-011](Invariants.md)
+> **Реализация:** `Source/GV2ContentCore/Private/Json5Parser.cpp`, `SchemaRegistry.cpp`, `FieldValidation.cpp`, `DefinitionEnvelope.cpp`.
+> **Проверки:** `RunJson5ParserConformance`, `RunSchemaRegistryConformance`, `RunScalarValidationConformance`.
 
 Документ задаёт единую модель UTF-8 JSON5 definitions и declarative schemas. Runtime, editor, commandlet и CI используют одинаковые правила validation.
 

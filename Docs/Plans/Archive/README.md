@@ -20,3 +20,7 @@ depends_on:
 | [CanonicalGameplayState](CanonicalGameplayState/README.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |
 | [TestArchitectureAndLuaSpecs](TestArchitectureAndLuaSpecs/README.md) | 2026-08-15 | Lua spec runner в `Tests/Lua/`, замороженный тестовый корпус, единый источник pinned-значений, миграция world и command validators в спеки |
 | [ContentAuthoringTools](ContentAuthoringTools/README.md) | 2026-08-15 | Справочник и заготовки из схем, быстрая проверка Lua-модулей, обратные ссылки и переименование ID, живой цикл валидации и индекс для автодополнения |
+| [GameplayEventsAndWorld](GameplayEventsAndWorld/README.md) | 2026-08-15 | Ordered command validators, конверт и шина событий, подписка по `event_id`, отложенные команды, доменный объект мира и travel-слайс целиком |
+| [LocalizationPipeline](LocalizationPipeline/README.md) | 2026-08-15 | Разделение identity и содержимого текста, PO-каталоги внутри package root, резолвинг `TextSpec` в Presentation, fallback и отчёт покрытия |
+| [LifecycleSpecsMigration](LifecycleSpecsMigration/README.md) | 2026-08-15 | Миграция последнего крупного унаследованного набора: 5326 строк C++ заменены декларативными спеками `Tests/Lua/lifecycle/` |
+| [ContentCliModularization](ContentCliModularization/README.md) | 2026-08-15 | Разбиение `gv2-content` на модули команд и поддержки вместо монолитного `main.cpp` |

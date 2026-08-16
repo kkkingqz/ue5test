@@ -198,6 +198,23 @@ bool FGV2SessionCoordinator::StartSession(
     Status.ApplicationState = EGV2ApplicationState::MenuActive;
     Status.SessionState = EGV2SessionState::Ready;
     Status.bIsReady = true;
+
+    std::optional<GV2RuntimeCore::FScreenRequest> PendingScreen;
+    if (RuntimeSession.TakePendingScreen(PendingScreen, Fault) && PendingScreen.has_value())
+    {
+        if (ScreenSink)
+        {
+            FGV2ScreenViewModel Model;
+            FGV2PreparedBindingSet PreparedBindings;
+            if (PrepareScreenRequest(*PendingScreen, Model, PreparedBindings)
+                && ScreenSink(Model)
+                && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+            {
+                ++UiRevision;
+            }
+        }
+    }
+
     return true;
 }
 
@@ -270,37 +287,6 @@ bool FGV2SessionCoordinator::PublishScreenBindings(
     }
 
     UiRevision = CandidateRevision;
-    return true;
-}
-
-bool FGV2SessionCoordinator::BuildDebugStartButtonModel(FGV2ButtonViewModel& OutModel)
-{
-    check(IsInGameThread());
-    OutModel = {};
-    OutModel.Key = TEXT("start");
-    if (!Status.bIsReady || Status.SessionState != EGV2SessionState::Ready)
-    {
-        return false;
-    }
-
-    FGV2UiBindingDefinition Definition;
-    Definition.NodeKeyPath = {TEXT("route"), TEXT("start")};
-    Definition.ElementId = TEXT("core:screen.debug_start#widget.start");
-    Definition.CommandId = TEXT("core:command.debug.start");
-
-    TArray<FGV2UiBindingHandle> Handles;
-    if (!PublishScreenBindings({Definition}, Handles) || Handles.Num() != 1)
-    {
-        return false;
-    }
-
-    FString TextError;
-    if (!UGV2TextPipeline::Resolve(
-            TEXT("core:text.debug.start"), {}, TEXT("button"), OutModel.Text, TextError))
-    {
-        return false;
-    }
-    OutModel.Binding = Handles[0];
     return true;
 }
 

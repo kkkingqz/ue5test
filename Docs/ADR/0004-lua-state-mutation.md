@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0004: Lua State Mutation Policy
 
+> **Решение:** Mutable table без proxies; mutation только command path.
+> **Нормативный текст:** [Commands and Events](../Architecture/CommandsAndEvents.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
+
 ## Context
 
 Lua table удобна для data-driven gameplay, но unrestricted mutation из modules/events разрушает command invariants. Runtime proxies/capabilities заметно усложняют код.

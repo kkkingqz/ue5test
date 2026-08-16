@@ -17,6 +17,10 @@ decisions:
 
 # Предложение по lifecycle и UX mod packages
 
+> **Предлагает:** discovery модов, явный порядок загрузки, lock-файл и controlled restart.
+> **Затрагивает:** [Modding](../Architecture/Modding.md), [GameDataRepository](../Architecture/GameDataRepositoryContract.md).
+> **Не является нормативным:** до реализации действует текущий contract.
+
 ## Назначение и область
 
 Предлагается единый application-level workflow обнаружения, проверки, упорядочивания и применения mod packages. UX использует понятные паттерны mod loaders, но content resolution остаётся собственным и подчиняется namespace, full override, provenance и controlled restart rules GV2.

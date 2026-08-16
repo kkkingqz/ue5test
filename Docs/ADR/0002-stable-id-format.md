@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0002: Stable ID Format
 
+> **Решение:** `<namespace>:<kind>.<path>` и no reuse.
+> **Нормативный текст:** [Stable ID Specification](../Architecture/StableIDSpecification.md).
+
 ## Context
 
 Документы использовали две несовместимые формы: `namespace:kind.path` и `type.namespace.path`, а также разные case policies.

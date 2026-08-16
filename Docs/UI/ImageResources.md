@@ -1,8 +1,8 @@
 ---
 title: Image Resource Contract
 status: normative
-version: 1.5
-updated: 2026-08-13
+version: 1.6
+updated: 2026-08-15
 depends_on:
   - ../Architecture/StableIDSpecification.md
 decisions:
@@ -12,6 +12,12 @@ decisions:
 ---
 
 # Image Resource Contract
+
+> **Владеет:** тремя режимами изображений, конвенцией суффиксов файлов и правилами разрешения `resource_id`.
+> **Не владеет:** тем, где изображение используется, и раскладкой экрана.
+> **Инварианты:** [INV-007](../Architecture/Invariants.md)
+> **Реализация:** `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, `GV2ImagePresentation.cpp`, `Resources/`.
+> **Проверки:** `GV2.Runtime.Presentation.ImageCatalog*`.
 
 ## Purpose and scope
 

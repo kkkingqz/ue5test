@@ -6,6 +6,9 @@ date: 2026-08-15
 
 # ADR-0022: External Translation Catalog
 
+> **Решение:** Репозиторий владеет identity текста; переводы — внешние PO-каталоги, резолвит host.
+> **Нормативный текст:** [Build and Tooling](../Architecture/BuildAndTooling.md), [Definition Envelope](../Architecture/DefinitionEnvelopeAndSchemaRules.md).
+
 ## Context
 
 Текст сейчас является definition kind `text` с обязательным полем `data.message`. Это делает репозиторий владельцем и идентичности текста, и его содержимого.

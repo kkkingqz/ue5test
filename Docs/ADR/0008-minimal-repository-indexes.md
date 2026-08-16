@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0008: Minimal Repository Indexes
 
+> **Решение:** Только необходимые indexes v1.
+> **Нормативный текст:** [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md).
+
 ## Context
 
 Первоначальный GDR делал mandatory множество generic indexes до появления реальных query patterns.

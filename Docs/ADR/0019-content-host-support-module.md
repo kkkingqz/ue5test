@@ -6,6 +6,9 @@ date: 2026-08-14
 
 # ADR-0019: Content Host Support Module
 
+> **Решение:** `GV2ContentHostSupport` — filesystem package discovery отдельно от filesystem-free `GV2ContentCore`.
+> **Нормативный текст:** [System Context and Components](../Architecture/SystemContextAndComponents.md).
+
 ## Context
 
 `gv2-content`, `gv2-headless` and the UE host adapter each need to turn a

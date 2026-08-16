@@ -1,7 +1,7 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 2.9
+version: 2.10
 updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
@@ -13,6 +13,12 @@ decisions:
 ---
 
 # Lua Runtime Contract
+
+> **Владеет:** жизненным циклом VM, загрузчиком модулей, фасадом `game`, моделью значений и marshalling на границе.
+> **Не владеет:** правилами геймплея, формой состояния и семантикой команд — они в соответствующих contracts.
+> **Инварианты:** [INV-006](Invariants.md), [INV-007](Invariants.md), [INV-008](Invariants.md)
+> **Реализация:** `Source/GV2RuntimeCore/`, `Scripts/runtime/`, `Scripts/bootstrap/`.
+> **Проверки:** `RunLuaMarshallerConformance`, `RunLuaRepositoryConformance`, `Tests/Lua/lifecycle/`.
 
 Lua — authoritative gameplay runtime. Одна main Lua 5.4 VM принадлежит одной session и исполняется только на owner thread. В UE owner thread обязан быть Game Thread; standalone worker использует свой thread. Exact Lua patch закрепляется build manifest-ом.
 
@@ -216,7 +222,7 @@ Uncaught error после начала mutation не запускает унив
   - Предоставляет доменные методы для локальных операций над сущностью (например `get_gold()`, `add_gold(amount)`), которые валидируют инварианты и атомарно мутируют поля состояния внутри окна команды.
   - Идентификационные поля (`instance_id`, `definition_id`, `discriminator`) защищены от перезаписи (`ActorDiscriminatorImmutable`).
   - Сам wrapper никогда не попадает в `game.state` и не кэшируется между вызовами.
-- **World Domain Object (`game.instances.world`)** (план [GameplayEventsAndWorld](../Plans/GameplayEventsAndWorld/README.md), GEW-04):
+- **World Domain Object (`game.instances.world`)** (план [GameplayEventsAndWorld](../Plans/Archive/GameplayEventsAndWorld/README.md), GEW-04):
   - Мир — singleton runtime instance, а не registry: `game.instances.world` — функция (`core:module.runtime.world`), а не таблица с методами `get`/`create`/`remove`.
   - `game.instances.world()` возвращает свежий disposable wrapper над `state.world` при каждом вызове; wrapper не кэшируется, повторный вызов не гарантирует ту же таблицу.
   - `__index`/`__newindex` wrapper-а делегируют напрямую в `state.world`; отдельного mutation-window enforcement wrapper не вводит, поскольку `state.world` уже является guarded-прокси через `game.state`.

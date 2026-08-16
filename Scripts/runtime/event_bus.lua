@@ -45,6 +45,12 @@ function M.is_pumping()
     return is_pumping
 end
 
+-- SAV-09: lets a safe-point check (core:module.runtime.save) confirm the
+-- event queue is drained without depending on is_pumping alone.
+function M.get_queue_length()
+    return #event_queue
+end
+
 function M.get_current_context()
     return current_context
 end
@@ -310,6 +316,7 @@ function M.register(_ctx)
     game.events.set_pump_limit = M.set_pump_limit
     game.events.get_pump_limit = M.get_pump_limit
     game.events.reset_pump_limit = M.reset_pump_limit
+    game.events.get_queue_length = M.get_queue_length
     game.events.is_envelope = event_envelope.is_envelope
 end
 

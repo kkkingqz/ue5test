@@ -1,7 +1,7 @@
 ---
 title: Headless Simulation Contract
 status: normative
-version: 2.3
+version: 2.4
 updated: 2026-08-15
 depends_on:
   - LuaRuntimeContract.md
@@ -15,6 +15,12 @@ decisions:
 ---
 
 # Headless Simulation Contract
+
+> **Владеет:** ролями UE-free хоста, формами portable-проверок, run manifest и digest, семантикой replay.
+> **Не владеет:** правилами геймплея и валидацией контента — вторая принадлежит `gv2-content`.
+> **Инварианты:** [INV-011](Invariants.md), [INV-012](Invariants.md)
+> **Реализация:** `Headless/Source/main.cpp`, `Source/GV2TestSupport/`, `Source/GV2RuntimeCore/Private/GV2Run*.cpp`.
+> **Проверки:** `gv2_headless_*` в CTest, `GV2.Runtime.Session.CrossHostDigestParity`.
 
 `gv2-headless` запускает authoritative Lua gameplay без Unreal Engine. Runner не является альтернативной gameplay implementation и не имеет собственных gameplay rules.
 

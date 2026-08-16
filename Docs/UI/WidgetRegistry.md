@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: draft
-version: 2.4
-updated: 2026-08-13
+version: 2.5
+updated: 2026-08-15
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -16,6 +16,12 @@ decisions:
 ---
 
 # Widget Registry Contract
+
+> **Владеет:** базовым набором виджетов, адаптерами Screen Field, централизованной темой и правилами их использования.
+> **Не владеет:** раскладкой конкретного экрана и игровыми данными в нём.
+> **Инварианты:** [INV-014](../Architecture/Invariants.md)
+> **Реализация:** `Source/GV2/Public/UI/`, `Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp`.
+> **Проверки:** `GV2.Runtime.Presentation.*`, инвентарь `/Game/UI` в automation.
 
 Widget Registry описывает reusable Dynamic Screen Element types, их trusted C++/UMG adapters и field schemas. Concrete root screens принадлежат отдельному [Screen Template contract](ScreenTemplates.md) и разрешаются Screen Registry, а не `widget_id` из Lua-authored tree.
 
@@ -62,7 +68,7 @@ UGV2ButtonListWidgetBase     implements IGV2DynamicScreenElement, IGV2UiStyleCon
 UGV2ProgressBarWidgetBase    implements IGV2UiStyleConsumer
 UGV2SeparatorWidgetBase      implements IGV2UiStyleConsumer
 UGV2LoadingIndicatorWidgetBase implements IGV2UiStyleConsumer
-UGV2DebugStartScreenWidget   development-only fixture
+UGV2DebugStartScreenWidget   retired development-only fixture (replaced by standard screen pipeline)
 ```
 
 ```text
@@ -138,7 +144,7 @@ FGV2DropdownSelectViewModel
 | `UGV2ProgressBarWidgetBase` | `ApplyProgress(float)` с clamp `[0,1]` | Пока отсутствует | `ProgressBar: UProgressBar` |
 | `UGV2SeparatorWidgetBase` | Только central style | Нет; purely visual | `SeparatorSizeBox: USizeBox`, `SeparatorImage: UImage` |
 | `UGV2LoadingIndicatorWidgetBase` | Только central style | Нет; UE-local operation state | `LoadingIndicator: UCircularThrobber` |
-| `UGV2DebugStartScreenWidget` | `InitializeStartScreen(FGV2ButtonViewModel)` | Нет; development fixture | Нет; native `UButton` создаётся программно |
+| `UGV2DebugStartScreenWidget` | `InitializeStartScreen(FGV2ButtonViewModel)` | Нет; retired development fixture | Нет; native `UButton` создавался программно |
 
 `UGV2ScreenWidgetBase` централизует discovery, validation, capture, apply, optional reset и rollback. Он не содержит concrete Screen fields или `screen_id` branches. Unset `ScreenFieldId` исключает nested Widget из aggregate contract.
 
@@ -197,7 +203,7 @@ Composite Widget не может создавать собственный direc
 | Text composites | `WBP_ButtonList`, `WBP_DropdownSelect`, `WBP_Testscreen` | Текст существует только во вложенных pipeline components |
 | Сейчас не содержат text primitives | `WBP_Image`, `WBP_LoadingIndicator`, `WBP_Modal`, `WBP_Portrait`, `WBP_ProgressBar`, `WBP_Separator`, `WBP_ScreenBase`, `WBP_GameShell` | При добавлении runtime text обязан использовать pipeline component/native adapter |
 
-Development-only `UGV2DebugStartScreenWidget` не является `WBP_*`, но подчиняется тому же правилу: его `UCommonTextBlock` получает уже resolved `FGV2TextViewModel` через `UGV2TextPipeline`.
+Retired development-only `UGV2DebugStartScreenWidget` не являлся `WBP_*`, но подчинялся тому же правилу: его `UCommonTextBlock` получал уже resolved `FGV2TextViewModel` через `UGV2TextPipeline`.
 
 `WBP_Image` принимает только `resource_id` через generic Image Resource Catalog. Render mode и geometry metadata регулируются [Image Resource Contract](ImageResources.md); raw `FSlateBrush` mutation из Blueprint запрещена.
 

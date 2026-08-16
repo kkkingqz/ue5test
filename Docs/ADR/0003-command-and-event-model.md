@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0003: Command and Event Model
 
+> **Решение:** Commands + validators; EventBus post-commit only.
+> **Нормативный текст:** [Commands and Events](../Architecture/CommandsAndEvents.md).
+
 ## Context
 
 Ранние документы использовали gameplay action, отдельный UI Action Registry и cancellable `before_*` events в EventBus. Это создавало две semantics одного bus и лишнее mapping layer.

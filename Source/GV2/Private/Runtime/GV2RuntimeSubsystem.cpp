@@ -8,7 +8,6 @@
 #include "Engine/World.h"
 #include "Logging/LogMacros.h"
 #include "Misc/Paths.h"
-#include "UI/GV2DebugStartScreenWidget.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
@@ -180,6 +179,22 @@ void UGV2RuntimeSubsystem::StartSession()
     if (!Coordinator->StartSession(RepositoryPublisher->GetCurrent(), RepositoryPublisher->GetVersion()))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
+        if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed && GetGameInstance() != nullptr)
+        {
+            UE_LOG(LogGV2Runtime, Error, TEXT("Showing UE-native recovery surface: session bootstrap failed"));
+            UGV2RecoveryScreenWidget* RecoveryScreen = CreateWidget<UGV2RecoveryScreenWidget>(
+                GetGameInstance(),
+                UGV2RecoveryScreenWidget::StaticClass());
+            if (RecoveryScreen != nullptr)
+            {
+                if (RecoveryScreen->InitializeRecoveryScreen(
+                        TEXT("Bootstrap Failed"),
+                        TEXT("Session initialization rejected by host lifecycle")))
+                {
+                    ReplaceActiveScreen(RecoveryScreen);
+                }
+            }
+        }
         return;
     }
     UE_LOG(
@@ -201,59 +216,6 @@ void UGV2RuntimeSubsystem::EndSession()
     }
     bActiveScreenAddedToViewport = false;
     Coordinator->EndSession(EGV2SessionState::Destroyed);
-}
-
-UGV2DebugStartScreenWidget* UGV2RuntimeSubsystem::ShowDebugStartScreen(
-    const bool bAddToViewport)
-{
-    check(IsInGameThread());
-    if (Coordinator == nullptr || GetGameInstance() == nullptr)
-    {
-        return nullptr;
-    }
-    if (!Coordinator->GetStatus().bIsReady && Coordinator->GetStatus().ApplicationState != EGV2ApplicationState::Failed)
-    {
-        StartSession();
-    }
-
-    if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed)
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Showing UE-native recovery surface: session bootstrap failed"));
-        UGV2RecoveryScreenWidget* RecoveryScreen = CreateWidget<UGV2RecoveryScreenWidget>(
-            GetGameInstance(),
-            UGV2RecoveryScreenWidget::StaticClass());
-        if (RecoveryScreen != nullptr)
-        {
-            if (RecoveryScreen->InitializeRecoveryScreen(
-                    TEXT("Bootstrap Failed"),
-                    TEXT("Session initialization rejected by host lifecycle")))
-            {
-                bActiveScreenAddedToViewport = bAddToViewport;
-                ReplaceActiveScreen(RecoveryScreen);
-            }
-        }
-        return nullptr;
-    }
-
-    FGV2ButtonViewModel StartButtonModel;
-    if (!Coordinator->BuildDebugStartButtonModel(StartButtonModel))
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to build the debug start binding"));
-        return nullptr;
-    }
-
-    UGV2DebugStartScreenWidget* Screen = CreateWidget<UGV2DebugStartScreenWidget>(
-        GetGameInstance(),
-        UGV2DebugStartScreenWidget::StaticClass());
-    if (Screen == nullptr || !Screen->InitializeStartScreen(StartButtonModel))
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to create the debug start screen"));
-        return nullptr;
-    }
-
-    bActiveScreenAddedToViewport = bAddToViewport;
-    ReplaceActiveScreen(Screen);
-    return Screen;
 }
 
 UUserWidget* UGV2RuntimeSubsystem::GetActiveScreen() const
@@ -369,7 +331,8 @@ void UGV2RuntimeSubsystem::HandleStartGameInstance(UGameInstance* StartedGameIns
         && StartedGameInstance->GetWorld() != nullptr
         && StartedGameInstance->GetWorld()->IsGameWorld())
     {
-        ShowDebugStartScreen(true);
+        bActiveScreenAddedToViewport = true;
+        StartSession();
     }
 }
 

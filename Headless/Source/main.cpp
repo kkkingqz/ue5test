@@ -38,7 +38,9 @@
 #include "GV2RuntimeCore/Testing/GV2LuaRepositoryConformance.h"
 #include "GV2RuntimeCore/Testing/GV2RunDigestConformance.h"
 #include "GV2RuntimeCore/Testing/GV2RunManifestConformance.h"
+#include "GV2RuntimeCore/Testing/GV2ColdStartLoadConformance.h"
 #include "GV2RuntimeCore/Testing/GV2RunReplayConformance.h"
+#include "GV2RuntimeCore/Testing/GV2SaveSlotStorageConformance.h"
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
 #include "GV2RuntimeCore/Testing/GV2ValidatorRegistryConformance.h"
 #include "GV2RuntimeCore/Testing/GV2LuaSpecRunnerConformance.h"
@@ -1034,14 +1036,34 @@ int Run(
             return 15;
         }
 
+        // SAV-07: FFilesystemSaveSlotStorage conformance (plan SaveAndLoad).
+        const std::string SaveSlotStorageFailure =
+            GV2RuntimeCore::Testing::RunSaveSlotStorageConformance();
+        if (!SaveSlotStorageFailure.empty())
+        {
+            std::cerr << "save_slot_storage_conformance_failed case=" << SaveSlotStorageFailure << '\n';
+            return 17;
+        }
+
+        // SAV-12/13/17: cold-start load conformance (plan SaveAndLoad, M4).
+        const std::string ColdStartLoadFailure =
+            GV2RuntimeCore::Testing::RunColdStartLoadConformance();
+        if (!ColdStartLoadFailure.empty())
+        {
+            std::cerr << "cold_start_load_conformance_failed case=" << ColdStartLoadFailure << '\n';
+            return 18;
+        }
+
         // TAS-04: both hosts call this one runner over Tests/Lua/**/*.lua.
         // TAS-12: specs run on a dedicated session (same real GameData/core
         // repository and real Scripts/bootstrap module tree as Runtime
         // above), not the shared Runtime — a spec that opens the mutation
         // window to test a write must not leak that mutation into the
         // digest-relevant RunResult.StateHash captured later from Runtime.
-        // A missing Tests/Lua directory is not an error.
-        for (const std::string& Subtree : {"world", "events", "resources", "lifecycle"})
+        // A missing Tests/Lua directory is not an error. SAV-02/03: "save"
+        // needs nothing beyond the production module tree either (the
+        // codec is stateless), so it rides the same loop.
+        for (const std::string& Subtree : {"world", "events", "resources", "lifecycle", "save"})
         {
             const std::vector<std::filesystem::path> SpecRootCandidates{
                 std::filesystem::current_path() / "Tests" / "Lua" / Subtree,
@@ -1067,9 +1089,24 @@ int Run(
                 return 16;
             }
 
+            // SAV-10/11: Tests/Lua/save/ specs exercise game.save_slots.write
+            // through a real (throwaway, temp-dir-rooted) storage backing,
+            // not a mock — the same primitive gv2-headless would use for a
+            // real save. Harmless to wire for every subtree since only
+            // save/ specs call it.
+            const std::filesystem::path SaveSlotSpecRoot = std::filesystem::temp_directory_path()
+                / ("gv2_headless_save_spec_slots_"
+                    + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            GV2RuntimeCore::FFilesystemSaveSlotStorage SaveSlotSpecStorage(SaveSlotSpecRoot);
+            SpecSession.SetSaveSlotStorage(&SaveSlotSpecStorage);
+
             GV2TestSupport::FLuaSpecRunResult SpecResult;
             const bool bSpecsPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, SpecSession, SpecResult);
             SpecSession.Stop();
+            {
+                std::error_code RemoveEc;
+                std::filesystem::remove_all(SaveSlotSpecRoot, RemoveEc);
+            }
             if (!bSpecsPassed)
             {
                 for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)

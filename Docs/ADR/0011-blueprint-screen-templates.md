@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0011: Blueprint Screen Templates
 
+> **Решение:** UE-authored Screen Templates, Lua-authored fields и generic C++ screen layer.
+> **Нормативный текст:** [Screen Templates](../UI/ScreenTemplates.md).
+
 ## Context
 
 В игре существует ограниченный набор визуально различающихся экранов. Их layout, animation, focus navigation и composition удобнее авторить в UMG, тогда как Lua обязан оставаться владельцем desired presentation data и не зависеть от Unreal Engine для headless simulation.

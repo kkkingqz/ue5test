@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 2.1
+version: 2.3
 updated: 2026-08-15
 depends_on:
   - SystemContextAndComponents.md
@@ -17,6 +17,12 @@ decisions:
 ---
 
 # Build and Tooling Contract
+
+> **Владеет:** составом build-таргетов, исполняемыми хостами, конвенцией package root, кодами возврата, общими фикстурами и составом CI.
+> **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
+> **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
+> **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
+> **Проверки:** `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -34,11 +40,19 @@ decisions:
 |---|---|---|---|
 | `gv2_content_core` | `GV2ContentCore` | Value model, Stable ID, JSON5, schemas, repository build/snapshot | — |
 | `gv2_content_host_support` | `GV2ContentHostSupport` | Filesystem package discovery (ADR-0019); Lua spec file discovery (TAS-02, ADR-0024) | `gv2_content_core` |
-| `gv2_runtime_core` | `GV2RuntimeCore` | Lua 5.4.8 VM, runtime session, `FGV2LuaMarshaller` | `gv2_content_core` |
+| `gv2_runtime_core` | `GV2RuntimeCore` | Lua 5.4.8 VM, runtime session, `FGV2LuaMarshaller`, slot-scoped save storage primitive (SAV-05/06, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)) | `gv2_content_core` |
 | `gv2_test_support` | `GV2TestSupport` | Lua spec runner orchestration (TAS-04, ADR-0024); test-only, ни один gameplay host не линкует | `gv2_content_host_support`, `gv2_runtime_core` |
 | — | `GV2` | UE composition, Bridge, Presentation | все четыре |
 
 Vendored Lua (`Source/GV2RuntimeCore/Private/ThirdParty/Lua54`) собирается только внутри `gv2_runtime_core` и не выставляется через public headers.
+
+### Save slot storage primitive (SAV-05/06/07, план [SaveAndLoad](../Plans/SaveAndLoad/README.md))
+
+`GV2RuntimeCore::ISaveSlotStorage` (`Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2HostServices.h`) — единственный C++ примитив плана SaveAndLoad (ADR-0021): чтение и запись непрозрачных байт по `save_slot_id`, с типизированным результатом (`Ok`/`NotFound`/`Unreadable`/`Failure`). Интерфейс не содержит путей, `FString`, UObject и filesystem-типов; отсутствие конкретной реализации не мешает `FRuntimeSession::Start` — примитив не является параметром сессии, как и `IResourceCatalog`/`ILocalizationAdapter` рядом с ним.
+
+`GV2RuntimeCore::FFilesystemSaveSlotStorage` — единственная реализация примитива, используемая обоими host-ами без дублирования: `std::filesystem::path` уже принят как portable-тип на этом уровне (см. discovery-заголовки `GV2ContentHostSupport`). Каждый host передаёт конструктору свой корневой каталог; резолв `save_slot_id` в путь и его ограничение этим каталогом целиком внутри реализации. Запись идёт во временный файл рядом со слотом и публикуется одним `rename` (атомарным на одном volume) — отказ на любом шаге до `rename` оставляет предыдущий опубликованный слот нетронутым.
+
+Conformance-набор `GV2RuntimeCore::Testing::RunSaveSlotStorageConformance()` (`Source/GV2RuntimeCore/Public/GV2RuntimeCore/Testing/GV2SaveSlotStorageConformance.h`) сам создаёт и удаляет временный каталог — оба host-а вызывают его без аргументов и без host-specific setup, как остальные наборы в этом namespace. Покрывает write/read roundtrip с произвольными байтами (включая NUL), чтение отсутствующего слота, чтение слота с не-файлом на его месте, прерванную запись с сохранением предыдущего содержимого и отказ адресации по невалидному `save_slot_id`. Исполняется `gv2-headless --self-test` и `GV2.Runtime.SaveAndLoad.SaveSlotStorageConformance`.
 
 ## Executable hosts
 

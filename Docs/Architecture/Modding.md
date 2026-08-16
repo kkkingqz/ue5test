@@ -1,8 +1,8 @@
 ---
 title: Modding Architecture
 status: draft
-version: 0.4
-updated: 2026-08-13
+version: 0.5
+updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -10,6 +10,12 @@ depends_on:
 ---
 
 # Modding Architecture
+
+> **Владеет:** границами мод-пакета, тем, что мод может расширять, и trust model расширений.
+> **Не владеет:** механикой сборки репозитория и разрешения override ([GameDataRepository](GameDataRepositoryContract.md)).
+> **Инварианты:** [INV-009](Invariants.md), [INV-010](Invariants.md)
+> **Реализация:** не реализовано — хост грузит один пакет; см. [Implementation Status](../Status/ImplementationStatus.md).
+> **Проверки:** фикстура `Tests/Fixtures/PortableContentCore/valid/test_mod` покрывает override и redirects на уровне ядра.
 
 Mod — trusted content package с одним immutable `mod_id`, который одновременно является его namespace.
 

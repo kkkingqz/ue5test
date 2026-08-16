@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0001: Authority Boundaries
 
+> **Решение:** Lua state / C++ boundary / UE presentation ownership.
+> **Нормативный текст:** [Overview](../Architecture/Overview.md).
+
 ## Context
 
 Data-driven gameplay требует избежать дублирования domain model между Lua, C++ и Blueprint и гарантировать save/load reconstruction.

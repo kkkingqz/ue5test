@@ -33,9 +33,41 @@ return {
             dependencies = {},
         },
         {
+            module_id = "core:module.runtime.canonical_codec",
+            source = "runtime/canonical_codec.lua",
+            dependencies = {},
+        },
+        {
             module_id = "core:module.runtime.state_hasher",
             source = "runtime/state_hasher.lua",
+            dependencies = {
+                "core:module.runtime.canonical_codec",
+            },
+        },
+        {
+            module_id = "core:module.runtime.migrate",
+            source = "runtime/migrate.lua",
             dependencies = {},
+        },
+        {
+            module_id = "core:module.runtime.save",
+            source = "runtime/save.lua",
+            dependencies = {
+                "core:module.runtime.canonical_codec",
+                "core:module.runtime.state_hasher",
+                "core:module.runtime.migrate",
+            },
+        },
+        {
+            module_id = "core:module.runtime.load",
+            source = "runtime/load.lua",
+            dependencies = {
+                "core:module.runtime.canonical_codec",
+                "core:module.runtime.state_hasher",
+                "core:module.runtime.save",
+                "core:module.runtime.state_validator",
+                "core:module.runtime.migrate",
+            },
         },
         {
             module_id = "core:module.runtime.actor_registry",
@@ -159,6 +191,9 @@ return {
                 "core:module.runtime.state_validator",
                 "core:module.runtime.instance_allocator",
                 "core:module.runtime.state_hasher",
+                "core:module.runtime.migrate",
+                "core:module.runtime.save",
+                "core:module.runtime.load",
                 "core:module.runtime.mutation_window",
                 "core:module.runtime.actor_registry",
                 "core:module.runtime.world",

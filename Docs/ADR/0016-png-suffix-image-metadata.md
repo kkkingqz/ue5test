@@ -6,6 +6,9 @@ date: 2026-08-12
 
 # ADR-0016: PNG Suffix Image Metadata
 
+> **Решение:** Image mode в `.png` / `.tile.png` / `.9.png`, без sidecar.
+> **Нормативный текст:** [Image Resources](../UI/ImageResources.md).
+
 ## Context
 
 Отдельный JSON sidecar для каждого bitmap создаёт пару файлов, которая может рассинхронизироваться. Для трёх утверждённых render mode достаточно однозначно определить режим по имени PNG, а nine-slice границы хранить в стандартной однопиксельной marker-рамке самого изображения.

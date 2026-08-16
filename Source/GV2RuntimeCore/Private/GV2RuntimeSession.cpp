@@ -1,3 +1,4 @@
+#include "GV2RuntimeCore/GV2HostServices.h"
 #include "GV2RuntimeCore/GV2LuaMarshaller.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/GV2StableId.h"
@@ -165,6 +166,7 @@ struct FRuntimeSession::FImpl
     std::int32_t SessionGeneration = 0;
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     bool bExecuting = false;
+    ISaveSlotStorage* SaveSlotStorage = nullptr;
 
     bool IsOwnerThread() const
     {
@@ -250,6 +252,22 @@ struct FRuntimeSession::FImpl
         lua_setmetatable(State, -2);
 
         lua_setfield(State, -2, "repository");
+
+        // game.save_slots (SAV-05/06/10): the one host capability Lua's
+        // core:module.runtime.save uses to publish a save container. Only
+        // "write" is exposed — reading a slot back is out of scope until
+        // Cold Start Load (M4).
+        lua_createtable(State, 0, 1);
+        lua_pushcfunction(State, &FImpl::SaveSlotsWrite);
+        lua_setfield(State, -2, "write");
+        lua_createtable(State, 0, 2);
+        lua_pushcfunction(State, &FImpl::ReadOnlyTableError);
+        lua_setfield(State, -2, "__newindex");
+        lua_pushboolean(State, 0);
+        lua_setfield(State, -2, "__metatable");
+        lua_setmetatable(State, -2);
+        lua_setfield(State, -2, "save_slots");
+
         lua_setglobal(State, "game");
 
         lua_createtable(State, 0, 16);
@@ -310,6 +328,56 @@ struct FRuntimeSession::FImpl
     static int ReadOnlyTableError(lua_State* InState)
     {
         return luaL_error(InState, "attempt to modify read-only table: game.repository");
+    }
+
+    // SAV-05/06/10: game.save_slots.write(slot_id, bytes) -> ok, err_code.
+    // A pure pass-through to ISaveSlotStorage::WriteSlot — no path, no
+    // filesystem type, no interpretation of bytes crosses this call in
+    // either direction, matching ISaveSlotStorage (GV2HostServices.h).
+    static int SaveSlotsWrite(lua_State* InState)
+    {
+        if (lua_gettop(InState) < 2
+            || lua_type(InState, 1) != LUA_TSTRING
+            || lua_type(InState, 2) != LUA_TSTRING)
+        {
+            return luaL_error(InState, "invalid_arguments: save_slots.write expects (slot_id: string, bytes: string)");
+        }
+
+        std::size_t SlotIdLength = 0;
+        const char* SlotIdRaw = lua_tolstring(InState, 1, &SlotIdLength);
+        std::size_t BytesLength = 0;
+        const char* BytesRaw = lua_tolstring(InState, 2, &BytesLength);
+
+        FImpl* Impl = GetSessionImpl(InState);
+        if (Impl == nullptr || Impl->SaveSlotStorage == nullptr)
+        {
+            lua_pushboolean(InState, 0);
+            lua_pushstring(InState, "unavailable");
+            return 2;
+        }
+
+        const FSaveSlotWriteResult Result = Impl->SaveSlotStorage->WriteSlot(
+            std::string(SlotIdRaw, SlotIdLength),
+            std::string(BytesRaw, BytesLength));
+        if (Result.Result == ESaveSlotResult::Ok)
+        {
+            lua_pushboolean(InState, 1);
+            lua_pushnil(InState);
+            return 2;
+        }
+
+        const char* Code = "failure";
+        if (Result.Result == ESaveSlotResult::NotFound)
+        {
+            Code = "not_found";
+        }
+        else if (Result.Result == ESaveSlotResult::Unreadable)
+        {
+            Code = "unreadable";
+        }
+        lua_pushboolean(InState, 0);
+        lua_pushstring(InState, Code);
+        return 2;
     }
 
     static int RepositoryGet(lua_State* InState)
@@ -1126,6 +1194,122 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
+    // SAV-12/13/14/15/16: cold-start load counterpart to
+    // CreateDefaultCanonicalStateTree above. Calls
+    // core:module.runtime.load.decode_and_prepare(container_bytes), which
+    // does preflight, payload decode, and reference-rewrite entirely in
+    // Lua and returns either a ready-to-use tree or (nil, typed_error) —
+    // C++ only ever sees the final table or a string error code, never a
+    // partially-built tree (ADR-0021: canonical state never crosses the
+    // boundary piecemeal).
+    bool DecodeAndPrepareCanonicalStateTree(
+        const std::string& ContainerBytes,
+        int& OutTreeRef,
+        FRuntimeFault& OutFault)
+    {
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"SaveLoadModuleMissing", "core:module.runtime.load is not loaded."};
+            return false;
+        }
+        lua_getfield(State, -1, "core:module.runtime.load");
+        lua_remove(State, -2);
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"SaveLoadModuleMissing", "core:module.runtime.load is not loaded."};
+            return false;
+        }
+        lua_getfield(State, -1, "decode_and_prepare");
+        if (!lua_isfunction(State, -1))
+        {
+            OutFault = {"SaveLoadModuleMissing", "core:module.runtime.load.decode_and_prepare is missing."};
+            return false;
+        }
+
+        PushString(State, ContainerBytes);
+        if (lua_pcall(State, 1, 2, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "SaveLoadError", "core:module.runtime.load.decode_and_prepare failed.", OutFault);
+            return false;
+        }
+
+        // Stack: [..., tree_or_nil, err_or_nil]
+        if (lua_istable(State, -2))
+        {
+            lua_pop(State, 1); // pop err (nil)
+            OutTreeRef = luaL_ref(State, LUA_REGISTRYINDEX); // pops tree
+            return true;
+        }
+
+        std::string ErrCode = "SaveLoadFailed";
+        if (lua_type(State, -1) == LUA_TSTRING)
+        {
+            ErrCode = lua_tostring(State, -1);
+        }
+        OutFault = {ErrCode, "Cold start load failed: " + ErrCode};
+        lua_pop(State, 2);
+        return false;
+    }
+
+    // SAV-20: calls core:module.runtime.migrate.verify_complete() after
+    // every module's "migrate_state" hook has run, to reject — explicitly,
+    // not silently — any pending migration no module claimed.
+    bool VerifyMigrationsComplete(FRuntimeFault& OutFault)
+    {
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"SaveLoadModuleMissing", "core:module.runtime.migrate is not loaded."};
+            return false;
+        }
+        lua_getfield(State, -1, "core:module.runtime.migrate");
+        lua_remove(State, -2);
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"SaveLoadModuleMissing", "core:module.runtime.migrate is not loaded."};
+            return false;
+        }
+        lua_getfield(State, -1, "verify_complete");
+        if (!lua_isfunction(State, -1))
+        {
+            OutFault = {"SaveLoadModuleMissing", "core:module.runtime.migrate.verify_complete is missing."};
+            return false;
+        }
+
+        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "MigrationError", "core:module.runtime.migrate.verify_complete failed.", OutFault);
+            return false;
+        }
+
+        if (lua_isnil(State, -1))
+        {
+            lua_pop(State, 1);
+            return true;
+        }
+        std::string ErrCode = "MigrationMissing";
+        if (lua_type(State, -1) == LUA_TSTRING)
+        {
+            ErrCode = lua_tostring(State, -1);
+        }
+        OutFault = {ErrCode, "Cold start load migration incomplete: " + ErrCode};
+        lua_pop(State, 1);
+        return false;
+    }
+
     // Calls .freeze() on the table found by walking `game` then each field
     // in Path (e.g. {"commands", "validators"} -> game.commands.validators),
     // if every step and the final freeze() method exist. Used at the end of
@@ -1157,7 +1341,10 @@ struct FRuntimeSession::FImpl
         lua_settop(State, Base);
     }
 
-    bool RunLifecycleHooks(const std::vector<FModuleSpec>& LoadOrder, FRuntimeFault& OutFault)
+    bool RunLifecycleHooks(
+        const std::vector<FModuleSpec>& LoadOrder,
+        const std::string* LoadContainerBytes,
+        FRuntimeFault& OutFault)
     {
         // 1. Phase "register"
         if (!RunLifecyclePhase("register", LoadOrder, OutFault))
@@ -1172,8 +1359,24 @@ struct FRuntimeSession::FImpl
         FreezeGameRegistry({"events", "subscribers"});
         FreezeGameRegistry({"events"});
 
-        // 2. Create canonical state tree from state_validator module
+        // 2. Obtain the canonical state tree. SAV-12/13/14/15/16: on a
+        // cold-start load, the tree comes whole from the save container —
+        // preflight, payload decode, and reference-rewrite all happen
+        // inside one Lua call (core:module.runtime.load.decode_and_prepare)
+        // so C++ never sees canonical state (ADR-0021) — and module
+        // "create_default_state" contributions are skipped entirely: a
+        // loaded tree is already complete, running defaults over it would
+        // duplicate or clobber loaded data.
         int TreeRef = LUA_NOREF;
+        if (LoadContainerBytes != nullptr)
+        {
+            if (!DecodeAndPrepareCanonicalStateTree(*LoadContainerBytes, TreeRef, OutFault))
+            {
+                return false;
+            }
+        }
+        else
+        {
         if (!CreateDefaultCanonicalStateTree(TreeRef))
         {
             OutFault = {"LuaStateInitializationFailed", "Failed to initialize canonical state tree."};
@@ -1253,8 +1456,82 @@ struct FRuntimeSession::FImpl
                 lua_pop(State, 1); // pop Tree
             }
         }
+        } // end LoadContainerBytes == nullptr (NewGame default-state branch)
 
-        // 4. Validate canonical state tree structure & value types
+        // SAV-18/19/20: phase "migrate_state" — only on a cold-start load,
+        // between decode (above) and restore_instances (below), so a
+        // migration can repair shape before restore_instances/validate_state
+        // see the tree. Same (ctx, tree) calling convention as
+        // "restore_instances"/"validate_state". core:module.runtime.load
+        // already rejected a downgrade (a saved section newer than this
+        // build) before returning a tree at all; what remains here is
+        // giving every module a chance to claim a pending migration, then
+        // verifying none was silently left unclaimed.
+        if (LoadContainerBytes != nullptr)
+        {
+            for (const FModuleSpec& Spec : LoadOrder)
+            {
+                if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    return false;
+                }
+
+                FStackRestore Stack{State, lua_gettop(State)};
+                FExecutionGuard Execution(bExecuting);
+
+                lua_pushcfunction(State, Traceback);
+                const int ErrorHandler = lua_gettop(State);
+
+                lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+                lua_getfield(State, -1, Spec.ModuleId.c_str());
+                lua_remove(State, -2);
+
+                if (!lua_istable(State, -1))
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    OutFault = {"LuaModuleLifecycleError", "Module export table is missing: " + Spec.ModuleId};
+                    return false;
+                }
+
+                lua_getfield(State, -1, "migrate_state");
+                if (lua_isnil(State, -1))
+                {
+                    continue;
+                }
+                if (!lua_isfunction(State, -1))
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    OutFault = {
+                        "LuaModuleLifecycleInvalid",
+                        "Module hook 'migrate_state' must be a function: " + Spec.ModuleId};
+                    return false;
+                }
+
+                lua_createtable(State, 0, 1);
+                lua_pushinteger(State, SessionGeneration);
+                lua_setfield(State, -2, "session_generation");
+
+                lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
+
+                if (lua_pcall(State, 2, 0, ErrorHandler) != LUA_OK)
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    ReadLuaError(State, "LuaModuleLifecycleError", "Module migrate_state failed.", OutFault);
+                    return false;
+                }
+            }
+
+            if (!VerifyMigrationsComplete(OutFault))
+            {
+                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                return false;
+            }
+        }
+
+        // 4. Validate canonical state tree structure & value types (runs
+        // for both NewGame and cold-start load — a loaded tree gets the
+        // exact same structural scrutiny a freshly-defaulted one does).
         lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
         const int RootTreeIndex = lua_gettop(State);
         if (!ValidateCanonicalStateTree(RootTreeIndex, OutFault))
@@ -1264,6 +1541,66 @@ struct FRuntimeSession::FImpl
             return false;
         }
         lua_pop(State, 1);
+
+        // SAV-17: phase "restore_instances" — only on a cold-start load (a
+        // freshly-defaulted state has nothing to restore). Same (ctx, tree)
+        // calling convention as "validate_state" below. Absence of the
+        // hook in a module is not an error (BootstrapAndSessionLifecycle.md).
+        if (LoadContainerBytes != nullptr)
+        {
+            for (const FModuleSpec& Spec : LoadOrder)
+            {
+                if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    return false;
+                }
+
+                FStackRestore Stack{State, lua_gettop(State)};
+                FExecutionGuard Execution(bExecuting);
+
+                lua_pushcfunction(State, Traceback);
+                const int ErrorHandler = lua_gettop(State);
+
+                lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+                lua_getfield(State, -1, Spec.ModuleId.c_str());
+                lua_remove(State, -2);
+
+                if (!lua_istable(State, -1))
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    OutFault = {"LuaModuleLifecycleError", "Module export table is missing: " + Spec.ModuleId};
+                    return false;
+                }
+
+                lua_getfield(State, -1, "restore_instances");
+                if (lua_isnil(State, -1))
+                {
+                    continue;
+                }
+                if (!lua_isfunction(State, -1))
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    OutFault = {
+                        "LuaModuleLifecycleInvalid",
+                        "Module hook 'restore_instances' must be a function: " + Spec.ModuleId};
+                    return false;
+                }
+
+                lua_createtable(State, 0, 1);
+                lua_pushinteger(State, SessionGeneration);
+                lua_setfield(State, -2, "session_generation");
+
+                lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
+
+                if (lua_pcall(State, 2, 0, ErrorHandler) != LUA_OK)
+                {
+                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                    ReadLuaError(State, "LuaModuleLifecycleError", "Module restore_instances failed.", OutFault);
+                    return false;
+                }
+            }
+        }
 
         // 5. Phase "validate_state"
         for (const FModuleSpec& Spec : LoadOrder)
@@ -1364,7 +1701,10 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
-    bool LoadModules(const std::vector<FRuntimeSource>& Sources, FRuntimeFault& OutFault)
+    bool LoadModules(
+        const std::vector<FRuntimeSource>& Sources,
+        const std::string* LoadContainerBytes,
+        FRuntimeFault& OutFault)
     {
         std::vector<FModuleSpec> LoadOrder;
         std::map<std::string, const FRuntimeSource*, std::less<>> SourcesByName;
@@ -1379,7 +1719,7 @@ struct FRuntimeSession::FImpl
                 return false;
             }
         }
-        if (!RunLifecycleHooks(LoadOrder, OutFault))
+        if (!RunLifecycleHooks(LoadOrder, LoadContainerBytes, OutFault))
         {
             return false;
         }
@@ -1957,7 +2297,75 @@ bool FRuntimeSession::Start(
         Stop();
         return false;
     }
-    if (!Impl->LoadModules(Sources, OutFault))
+    if (!Impl->LoadModules(Sources, nullptr, OutFault))
+    {
+        Stop();
+        return false;
+    }
+    return true;
+}
+
+bool FRuntimeSession::StartFromSave(
+    const std::int32_t InSessionGeneration,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    ISaveSlotStorage& Storage,
+    const std::string& SaveSlotId,
+    FRuntimeFault& OutFault)
+{
+    OutFault = {};
+    if (!Stop(&OutFault))
+    {
+        return false;
+    }
+
+    // SAV-12: the slot is read with no Lua VM in existence yet — a missing
+    // or unreadable slot is a configuration failure the caller (composition
+    // root) surfaces as a recovery surface before any VM cost is paid.
+    const FSaveSlotReadResult ReadResult = Storage.ReadSlot(SaveSlotId);
+    if (ReadResult.Result == ESaveSlotResult::NotFound)
+    {
+        OutFault = {"SaveSlotNotFound", "Cold start load requested slot '" + SaveSlotId + "', which does not exist."};
+        return false;
+    }
+    if (ReadResult.Result != ESaveSlotResult::Ok)
+    {
+        OutFault = {"SaveSlotUnreadable", "Cold start load requested slot '" + SaveSlotId + "', which is not readable."};
+        return false;
+    }
+
+    if (!PinnedRepository.IsValid())
+    {
+        OutFault = {"RepositoryNotReady", "Runtime session requires a valid pinned repository read handle."};
+        return false;
+    }
+    if (InSessionGeneration <= 0)
+    {
+        OutFault = {"InvalidSessionGeneration", "Runtime requires a positive session generation."};
+        return false;
+    }
+    if (Sources.empty())
+    {
+        OutFault = {"LuaRuntimeSourceMissing", "Runtime requires at least one Lua source."};
+        return false;
+    }
+
+    Impl->State = luaL_newstate();
+    if (Impl->State == nullptr)
+    {
+        OutFault = {"LuaVmAllocationFailed", "Lua VM allocation failed."};
+        return false;
+    }
+    Impl->OwnerThread = std::this_thread::get_id();
+    Impl->SessionGeneration = InSessionGeneration;
+    Impl->PinnedRepository = PinnedRepository;
+
+    if (!Impl->OpenEnvironment(OutFault))
+    {
+        Stop();
+        return false;
+    }
+    if (!Impl->LoadModules(Sources, &ReadResult.Bytes, OutFault))
     {
         Stop();
         return false;
@@ -2054,6 +2462,14 @@ bool FRuntimeSession::Stop(FRuntimeFault* OutFault)
     Impl->OwnerThread = {};
     Impl->bExecuting = false;
     return true;
+}
+
+void FRuntimeSession::SetSaveSlotStorage(ISaveSlotStorage* Storage)
+{
+    if (Impl)
+    {
+        Impl->SaveSlotStorage = Storage;
+    }
 }
 
 bool FRuntimeSession::RunLuaSpec(

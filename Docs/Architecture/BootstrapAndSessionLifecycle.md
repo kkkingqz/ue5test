@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 2.5
-updated: 2026-08-14
+version: 2.8
+updated: 2026-08-15
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -14,6 +14,12 @@ decisions:
 ---
 
 # Bootstrap and Session Lifecycle
+
+> **Владеет:** порядком cold start, состояниями сессии и приложения, хуками модулей и их фазовыми ограничениями, teardown.
+> **Не владеет:** содержимым состояния ([Canonical State and Save](CanonicalStateAndSave.md)) и семантикой команд ([Commands and Events](CommandsAndEvents.md)).
+> **Инварианты:** [INV-005](Invariants.md), [INV-006](Invariants.md)
+> **Реализация:** `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp`, `Source/GV2/Private/Application/`, `Scripts/bootstrap/`.
+> **Проверки:** `Tests/Lua/lifecycle/`, `GV2.Runtime.ContentCore.Session*`.
 
 Ни один partially built repository, state, runtime или presentation не становится public. Commit выполняется на Game Thread после token/generation validation.
 
@@ -70,7 +76,7 @@ Public readiness — один bool `is_ready`. Он становится true т
 
 До открытия session `UGV2RuntimeSubsystem` обязан успешно построить configured `UGV2ImageResourceCatalog`, загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка любого required presentation catalog/registry или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (выставляя явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
 
-Debug start sequence: `GameInstance` start → Screen Registry ready → session `Ready` → start binding publication → `UGV2DebugStartScreenWidget` → реальный button event → Semantic Input → Lua `core:command.debug.start` handler → copied generic Screen request → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit. Screen replacement выполняется после выхода из Lua. Automatic debug fixture запрещён в shipping build и не добавляет отдельный test API.
+Debug start sequence: `GameInstance` start → Screen Registry ready → session `Ready` (`StartSession()`) → Lua module `start` lifecycle hook публикует initial Screen request (`screens.publish(...)`) → coordinator забирает pending screen → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child (`WBP_Testscreen`) → atomic field apply → binding revision commit → активный экран отображается во viewport. Screen replacement выполняется после выхода из Lua. Automatic debug fixture запрещён в shipping build и не добавляет отдельный test API.
 
 `FGV2SessionCoordinator` является private UE owner active/candidate session. Он создаёт для каждой generation отдельную portable runtime session, Bridge context, ingress queue, UI binding registry и operation registry. Ни один из этих объектов не переживает уничтожение owning session. `GV2RuntimeCore` не зависит от UObject/UMG и назначает вызывающий Game Thread owner thread-ом VM; standalone host использует тот же lifecycle на своём worker thread.
 
@@ -108,7 +114,11 @@ return {
 
 Order: core modules, затем mods по resolved load order. `stop`/`unregister` выполняются в reverse order. Первая user-hook error прекращает следующие user hooks, но не обязательный C++ cleanup.
 
-В текущей реализации жизненного цикла сессии вызываются хуки `register`, `create_default_state`, `validate_state` и `start`. Остальные хуки (`migrate_state`, `restore_instances`, `build_initial_projection`, `stop` и `unregister`) остаются объявленными контрактом и будут подключены в соответствующих этапах (Save/Load миграции, восстановление инстансов, проекции и graceful teardown). Отсутствие хука в модуле не является ошибкой.
+В текущей реализации жизненного цикла сессии вызываются хуки `register`, `create_default_state` (только вне cold-start load — см. ниже), `migrate_state` (только на cold-start load, см. ниже), `validate_state` и `start`. `restore_instances` подключён (SAV-17, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)) и вызывается только на cold-start load, между `migrate_state` и модульным хуком `validate_state` — свежее defaulted-состояние восстанавливать нечего. Остальные хуки (`build_initial_projection`, `stop` и `unregister`) остаются объявленными контрактом и будут подключены в соответствующих этапах (проекции и graceful teardown). Отсутствие хука в модуле не является ошибкой.
+
+**Cold-start load реализован (SAV-12, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** `FRuntimeSession::StartFromSave(SessionGeneration, PinnedRepository, Sources, Storage, SaveSlotId, OutFault)` — единственная новая точка входа; `Start()` (NewGame) не изменился. Slot читается через `ISaveSlotStorage::ReadSlot` до создания Lua VM — отсутствующий (`SaveSlotNotFound`) или нечитаемый (`SaveSlotUnreadable`) слот завершает старт как configuration failure нулевой VM-стоимости. При успешном чтении дерево состояния получается целиком одним вызовом `core:module.runtime.load.decode_and_prepare(container_bytes)` (preflight SAV-13, редиректы и referential integrity SAV-14/15/16, планирование миграций секций SAV-18 — всё внутри Lua, ADR-0021) вместо `create_default_state`; провал на любой стадии (`SaveContainerCorrupt`, `SaveFormatVersionUnknown`, `SaveVersionDowngradeUnsupported`, `SaveIntegrityMismatch`, `SaveReferenceRetired`, `SaveReferenceUnknown`, `MigrationDowngradeUnsupported`, `MigrationMissing:...`) оставляет сессию незапущенной — ни одно состояние не присваивается частично. Реализована только **загрузка на холодном старте** (README.md); read-only preflight текущей активной сессии для replacement session, описанный в «Session start descriptor» выше, остаётся нереализованным.
+
+**Миграции секций реализованы (SAV-18–20, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** `core:module.runtime.migrate.CURRENT_SECTION_VERSIONS` — версия каждой canonical-секции, которую понимает текущий build. `decode_and_prepare` вызывает `migrate.plan_migrations(envelope.section_versions)` сразу после resolve/rewrite ссылок: секция новее текущей — `MigrationDowngradeUnsupported` немедленно, до единого вызова какого-либо module hook; секция старше — попадает в список pending, сохранённый в `game.runtime.pending_section_migrations`. Фаза `migrate_state` (тот же `(ctx, tree)` calling convention, что у `restore_instances`/`validate_state`) даёт каждому модулю возможность забрать из этого списка секции, которые он понимает, пометив запись `handled = true`; после прохода всех модулей `core:module.runtime.migrate.verify_complete()` отклоняет типизированной `MigrationMissing:<section_id>:<from>-><to>` любую запись, оставшуюся непомеченной — молчаливый пропуск невозможен. Отдельной фазы `Saving` не потребовалось: запись сейва (`core:module.runtime.save.M.save`) синхронна целиком — один вызов кодека и один вызов host-примитива без промежуточной точки, где мог бы наблюдаться промежуточный статус (SavePath.md, SAV-09 Evidence).
 
 ### Phase restrictions
 

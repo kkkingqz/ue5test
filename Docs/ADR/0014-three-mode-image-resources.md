@@ -7,6 +7,9 @@ superseded_by: 0015-filesystem-discovered-image-resources.md
 
 # ADR-0014: Three-Mode Image Resources
 
+> **Решение:** Три image render mode; manual catalog authoring заменён ADR-0015.
+> **Нормативный текст:** [Image Resources](../UI/ImageResources.md).
+
 Решение заменено [ADR-0015](0015-filesystem-discovered-image-resources.md): три render mode сохранены, но manual Data Asset catalog заменён deterministic filesystem discovery.
 
 ## Context

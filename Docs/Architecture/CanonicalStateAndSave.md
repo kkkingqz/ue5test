@@ -1,7 +1,7 @@
 ---
 title: Canonical State and Save
 status: draft
-version: 1.2
+version: 1.7
 updated: 2026-08-15
 depends_on:
   - LuaRuntimeContract.md
@@ -13,6 +13,12 @@ decisions:
 ---
 
 # Canonical State and Save
+
+> **Владеет:** формой canonical state, допустимыми значениями, identity экземпляров, конвертом сейва и последовательностью загрузки.
+> **Не владеет:** тем, когда состояние меняется ([Commands and Events](CommandsAndEvents.md)), и содержимым definitions ([GameDataRepository](GameDataRepositoryContract.md)).
+> **Инварианты:** [INV-001](Invariants.md), [INV-008](Invariants.md), [INV-015](Invariants.md)
+> **Реализация:** `Scripts/runtime/state_validator.lua`, `instance_allocator.lua`, `canonical_codec.lua`, `save.lua`, `load.lua`.
+> **Проверки:** `Tests/Lua/lifecycle/state_sections.lua`, `Tests/Lua/save/`.
 
 Этот начальный контракт фиксирует границу state/save. Конкретная per-system schema будет добавляться без изменения ownership.
 
@@ -42,7 +48,7 @@ game.state = {
 | `meta` | Save/schema versions, save identity, player actor ID (`player_actor_id`), instance counters, PRNG streams, gameplay time |
 | `actors` | Persistent player and NPC actor instances (`instance_id`, `definition_id`, ...) |
 | `item_instances` | Unique item instances; stack counts live in owning containers |
-| `world` | Global flags и location/screen state; `current_location_id` — Stable ID kind `location`, валидируется `state_validator.lua` против pinned repository (план [GameplayEventsAndWorld](../Plans/GameplayEventsAndWorld/README.md), GEW-05) |
+| `world` | Global flags и location/screen state; `current_location_id` — Stable ID kind `location`, валидируется `state_validator.lua` против pinned repository (план [GameplayEventsAndWorld](../Plans/Archive/GameplayEventsAndWorld/README.md), GEW-05) |
 | `quests` | Activated quest instances only |
 | `mods` | Только нестандартное namespaced mod state |
 
@@ -84,6 +90,14 @@ Container включает:
 
 Container целиком принадлежит Lua. Physical encoding не является gameplay contract и не известен host-у.
 
+**Кодек и `save_version` (SAV-04, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** Каноническая кодировка (`core:module.runtime.canonical_codec`, `M.serialize`/`M.deserialize`) — единственная реализация, общая для хэширования состояния (`state_hasher`) и container-а. Она объявляет `M.VERSION` — версию самой кодировки (набор тегов, framing длин/счётчиков, представление float), независимую от `save_version` container-а (который версионирует секции и формат конверта, а не байтовую кодировку значений). Изменение кодировки — breaking change для существующих сейвов, поэтому:
+
+- Изменение `canonical_codec`, меняющее байтовый результат `M.serialize` хотя бы для одного значения, обязано поднять и `M.VERSION`, и `meta.save_version` в одном change set.
+- Golden-прогоны (`state_hash` в `Tests/Fixtures/GoldenRuns/`) и pinned canonical-строка в `Tests/Lua/save/canonical_codec.lua` дают немедленный, невозможный не заметить сигнал: любое изменение кодировки без синхронного поднятия версий ломает CI на этом же коммите.
+- `save_version` может расти отдельно от `M.VERSION` (например, миграция секции без изменения физической кодировки значений) — но не наоборот: `M.VERSION` не растёт без `save_version`.
+
+**Реализованный конверт (SAV-08/18, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** `core:module.runtime.save` (`Scripts/runtime/save.lua`, `M.build_envelope(state, save_id, repository_content_hash)`) собирает конверт из подмножества полей списка выше: `format_version`, `codec_version` (`canonical_codec.M.VERSION`), `save_version` (`M.SAVE_VERSION`), `save_id`, `repository_content_hash` (provenance, не условие загрузки), `section_versions` (SAV-18, свежая копия `migrate.CURRENT_SECTION_VERSIONS` — живая `game.state` всегда на текущих версиях секций, поэтому конверт не читает версии из самого state), `integrity` и `payload`. `payload` — `canonical_codec.serialize(state)`; `integrity` — `state_hasher.sha256(payload)`, что численно равно `state_hasher.hash_state(state)`. Сам конверт сериализуется тем же `canonical_codec.serialize`, не отдельным форматом. `save_id` и `repository_content_hash` — параметры вызова, а не внутреннее состояние модуля: модуль не хранит и не продвигает счётчик, поэтому конверт — чистая функция своих аргументов. Оставшиеся поля списка выше (PRNG streams, gameplay time, enabled mods, namespaced mod sections, orphaned sections) относятся к будущей работе за пределами плана SaveAndLoad.
+
 ## Export boundary
 
 Canonical gameplay-state не пересекает C++/Lua boundary (ADR-0021). Lua сериализует state в непрозрачную последовательность байт, сама считает integrity check и сама владеет версиями секций.
@@ -106,6 +120,8 @@ Host не разбирает bytes, не проверяет их структу�
 
 Обнаружение повреждения, отказ применять несовместимый container и все migrations принадлежат Lua и обязаны быть покрыты conformance-тестами.
 
+**Реализованная запись (SAV-06/10, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** `write_slot` реализован как `GV2RuntimeCore::FFilesystemSaveSlotStorage`, единая реализация для обоих host-ов (`Docs/Architecture/BuildAndTooling.md` "Save slot storage primitive"), доступная Lua через единственный биндинг `game.save_slots.write(slot_id, bytes) -> ok, err_code` (`core:module.runtime.save.M.save` — единственный вызывающий). `read_slot` пока не забинжен в Lua — он появится вместе с Cold Start Load (M4).
+
 ## Safe point
 
 Save разрешён только когда:
@@ -115,6 +131,8 @@ Save разрешён только когда:
 - session `Ready`, not `Failed`;
 - gameplay-significant technical inputs processed;
 - no lifecycle transition active.
+
+**Реализованная проверка (SAV-09, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** `core:module.runtime.save.M.is_safe_point()` проверяет `game.runtime.phase == "idle"` (что само по себе исключает `ExecutingCommand`, `PumpingEvents` и `Failed` — единственные другие значения фазы), `game.commands.get_queue_length() == 0` и `game.events.get_queue_length() == 0`. `M.save()` вызывает эту проверку первым шагом и возвращает `false, "SaveNotAtSafePoint"` без единого обращения к storage primitive, если она не проходит — реентерабельный вызов `save()` изнутри обработчика команды/события всегда видит не-`idle` фазу и отклоняется тем же путём.
 
 ## Load
 
@@ -133,13 +151,19 @@ Load всегда создаёт replacement session. Preflight выполняе
 
 Migration failure не изменяет source slot. После failure replacement candidate уничтожается и создаётся recovery menu.
 
+**Реализован только холодный старт (SAV-12–17, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** Из шагов выше существует только эквивалент шагов 5, 8, 9 — и только когда приложение стартует с нуля (`FRuntimeSession::StartFromSave`), а не когда уже есть активная session. Replacement session (шаги 1–4, 10 — preflight текущей сессией, teardown, коммит нового session как Ready) не реализован (README.md прямо это оговаривает: без него пункт меню «загрузить другое сохранение» работать не будет). Explicit core/mod migrations (шаг 6) — M5, не реализованы. Реализованный порядок: slot читается host-примитивом до создания VM (`SaveSlotNotFound`/`SaveSlotUnreadable` — configuration failure нулевой VM-стоимости) → `core:module.runtime.load.decode_and_prepare` целиком в Lua (preflight header/codec/save_version/integrity, редиректы шага 7 разрешаются и переписываются, referential integrity) → структурная валидация дерева → хук `restore_instances` (шаг 8) → модульный `validate_state` → присвоение canonical state (шаг 9) → `start`. Провал любой стадии оставляет сессию без назначенного состояния — эквивалент recovery surface на уровне `FRuntimeFault`, без UI-слоя (тот принадлежит `GV2SessionCoordinator`, не затронут этим планом).
+
 ## Missing mods
 
-State неизвестного/disabled mod сохраняется opaque в container и не передаётся чужому module. При возвращении mod section доступна только после version/fingerprint compatibility check. Broken required references на missing definitions следуют explicit per-field recovery policy; silent substitution запрещён.
+State неизвестного/disabled mod сохраняется opaque в container и не передаётся чужому module. При возвращении mod section доступна только после version/fingerprint compatibility check.
+
+**Отсутствие ID — всегда ошибка (SAV-16, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** Per-field recovery policy в v1 не вводится: broken required reference на missing definition — всегда типизированная ошибка загрузки (`SaveReferenceRetired` для tombstoned ID, `SaveReferenceUnknown` для ID, отсутствующего в pinned repository), а не silent substitution и не частичное восстановление. Политика восстановления по отдельным полям появится позже, под конкретный случай и отдельным решением (README.md).
 
 ## Migrations
 
 Migration принадлежит Lua, работает с temporary tree и имеет `(section_id, from_version, to_version)`. Она deterministic, side-effect-free, не вызывает Bridge/events/effects и не меняет исходный container. Downgrade не поддерживается.
+
+**Реализовано (SAV-18–20, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)).** `core:module.runtime.migrate.CURRENT_SECTION_VERSIONS` — версия каждой canonical-секции для текущего build-а; записывается в конверт как `section_versions` (`core:module.runtime.save.build_envelope`) при каждом сохранении. При загрузке `migrate.plan_migrations(envelope.section_versions)` строит детерминированно упорядоченный (по `section_id`) список pending-миграций и немедленно, до вызова хоть одного module hook, отклоняет `MigrationDowngradeUnsupported`, если хотя бы одна секция сейва новее, чем понимает build. Фаза `migrate_state` (между декодированием и `restore_instances`, `BootstrapAndSessionLifecycle.md`) даёт каждому модулю шанс забрать секции, которые он умеет мигрировать, помечая их обработанными; `migrate.verify_complete()` после прохода всех модулей отклоняет `MigrationMissing:<section_id>:<from>-><to>`, если хоть одна pending-запись осталась непомеченной — молчаливый пропуск невозможен. Provал на любой из этих стадий происходит до присвоения `game.state` (SAV-17: состояние присваивается только после полного успеха) и никогда не касается уже записанного слота — миграция работает только с decoded-в-память деревом, а не с исходными байтами container-а или файлом слота.
 
 ## Tooling
 

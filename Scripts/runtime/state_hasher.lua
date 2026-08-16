@@ -1,3 +1,5 @@
+local canonical_codec = require("core:module.runtime.canonical_codec")
+
 local M = {
     id = "core:module.runtime.state_hasher",
 }
@@ -84,72 +86,17 @@ function M.sha256(msg)
     return string.format("%08x%08x%08x%08x%08x%08x%08x%08x", h0, h1, h2, h3, h4, h5, h6, h7)
 end
 
-function M.serialize(val)
-    local t = type(val)
-    if val == nil then
-        return "n"
-    end
-    if game and game.null and val == game.null then
-        return "n"
-    end
-    if t == "boolean" then
-        return val and "b1" or "b0"
-    end
-    if t == "number" then
-        if math.type(val) == "integer" then
-            return "i" .. tostring(val) .. ";"
-        else
-            local packed = string.pack(">d", val)
-            local bits = string.unpack(">I8", packed)
-            return "d" .. string.format("%016x", bits)
-        end
-    end
-    if t == "string" then
-        return "s" .. tostring(#val) .. ":" .. val
-    end
-    if t == "table" then
-        local count = 0
-        local has_int = false
-        local has_str = false
-        for k, _ in pairs(val) do
-            count = count + 1
-            if type(k) == "number" then
-                has_int = true
-            else
-                has_str = true
-            end
-        end
-
-        if has_int and not has_str then
-            local parts = { "[" .. tostring(#val) .. ":" }
-            for i = 1, #val do
-                parts[#parts + 1] = M.serialize(val[i])
-            end
-            parts[#parts + 1] = "]"
-            return table.concat(parts)
-        else
-            local keys = {}
-            for k, _ in pairs(val) do
-                keys[#keys + 1] = tostring(k)
-            end
-            table.sort(keys)
-            local parts = { "{" .. tostring(#keys) .. ":" }
-            for _, k in ipairs(keys) do
-                parts[#parts + 1] = tostring(#k) .. ":" .. k
-                parts[#parts + 1] = M.serialize(val[k])
-            end
-            parts[#parts + 1] = "}"
-            return table.concat(parts)
-        end
-    end
-    error("LuaStateHashError: unsupported state value type '" .. t .. "'")
-end
+-- SAV-01: the canonical encoding itself now lives in
+-- core:module.runtime.canonical_codec (shared with the save container,
+-- ADR-0021); this module keeps M.serialize as a thin delegate so its
+-- public interface is unchanged.
+M.serialize = canonical_codec.serialize
 
 function M.hash_state(state)
     if type(state) ~= "table" then
         error("LuaStateHashError: state must be a table")
     end
-    local canonical = M.serialize(state)
+    local canonical = canonical_codec.serialize(state)
     return M.sha256(canonical)
 end
 

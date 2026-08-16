@@ -6,6 +6,9 @@ date: 2026-08-12
 
 # ADR-0013: Unified Data-Driven Text Pipeline
 
+> **Решение:** Единый TextSpec pipeline и data-driven typography/markup tokens.
+> **Нормативный текст:** [Widget Registry](../UI/WidgetRegistry.md), [UI Index](../UI/README.md).
+
 ## Context
 
 Plain CommonUI text, RichText, button labels, tooltip text и custom Slate runs применяли typography разными путями. Это привело к расхождению font fallback: интерактивный фрагмент не наследовал composite font окружающего текста и некорректно отображал кириллицу. Одновременно localized content должен уметь задавать семантическое форматирование без UE asset paths и физических RGB/font-size значений.

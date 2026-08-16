@@ -35,7 +35,7 @@ depends_on:
 - [x] **CAT-14 — Синхронизировать документацию**
   - Зависимости: CAT-11–CAT-13.
   - Done: `BuildAndTooling` описывает полный набор команд `gv2-content` и режим `--check-scripts`; `ImplementationStatus` отражает появившийся tooling; `ContentDiagnosticsAndToolingProposal` отмечает реализованную часть.
-  - Evidence: `Docs/Architecture/BuildAndTooling.md` (полный набор команд `gv2-content`, включая `validate --watch` и `index`, а также раздел «Интеграция с редакторами и Live Loop»), `Docs/ImplementationStatus.md` (актуализирован статус `gv2-content CLI и Live Loop` по M1–M4), `Docs/Proposals/ContentDiagnosticsAndToolingProposal.md` (отмечена реализованная часть M1–M4 дорожной карты).
+  - Evidence: `Docs/Architecture/BuildAndTooling.md` (полный набор команд `gv2-content`, включая `validate --watch` и `index`, а также раздел «Интеграция с редакторами и Live Loop»), `Docs/Status/ImplementationStatus.md` (актуализирован статус `gv2-content CLI и Live Loop` по M1–M4), `Docs/Proposals/ContentDiagnosticsAndToolingProposal.md` (отмечена реализованная часть M1–M4 дорожной карты).
 
 ## Проверка milestone
 

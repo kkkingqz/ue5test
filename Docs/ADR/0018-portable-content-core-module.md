@@ -6,6 +6,9 @@ date: 2026-08-13
 
 # ADR-0018: Portable Content Core Module
 
+> **Решение:** Нижний portable Content module и единый `BuildRepository()` path.
+> **Нормативный текст:** [System Context and Components](../Architecture/SystemContextAndComponents.md).
+
 ## Context
 
 Repository parsing, validation и resolution должны давать одинаковый результат в Unreal, headless и будущих CLI tools. Размещение этих правил в `GV2` или `GV2RuntimeCore` связывает Content с UE Presentation либо Lua VM и мешает independent testing.

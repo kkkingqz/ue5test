@@ -4,7 +4,8 @@
 
 ## Documentation authority
 
-- Нормативная документация находится только в `Docs/**/*.md`.
+- Нормативная документация находится только в `Docs/Architecture/`, `Docs/UI/` и `Docs/ADR/`.
+- `Docs/Concepts/` и `Docs/Guides/` объясняют и инструктируют, но правил не вводят: при расхождении прав contract. Это закреплено статусом `informative`, обязательным внутри этих каталогов и запрещённым снаружи.
 - Начальная точка для любой задачи: `Docs/README.md`.
 - Архивные, экспортированные или внешние копии документации не являются источником истины.
 - Accepted ADR фиксирует решение и причины; subsystem contract содержит его актуальное полное правило.
@@ -15,12 +16,12 @@
 Перед анализом или изменением кода AI должен:
 
 1. Прочитать `Docs/README.md`.
-2. Прочитать `Docs/Architecture/Overview.md` и `Docs/Architecture/GlossaryAndNaming.md`, если они ещё не прочитаны в текущей задаче.
-3. По карте документов выбрать только контракты затронутых подсистем.
-4. Прочитать связанные `accepted` ADR, перечисленные в front matter или `Docs/ADR/README.md`.
+2. Для задачи «понять или спроектировать»: релевантный документ из `Docs/Concepts/`, затем contract затронутой подсистемы, затем связанные `accepted` ADR.
+3. Для задачи «выполнить типовое изменение»: релевантный `Docs/Guides/` плюс contract, на который он ссылается, плюс активный план, если задача из него.
+4. `Docs/Architecture/DependencyMap.md` — если вопрос про допустимость зависимости. `Docs/Architecture/Invariants.md` — если нужно найти нормативный источник правила по его ID.
 5. Проверить соседние контракты, если изменение пересекает ownership, Stable ID, command/event, save, repository, Lua/UE boundary, lifecycle, UI или modding.
 
-Не загружать все документы без необходимости. Не полагаться на память, если соответствующий контракт можно прочитать из `Docs/`.
+Не загружать `Docs/Architecture` целиком. Не полагаться на память, если соответствующий контракт можно прочитать из `Docs/`.
 
 ## Architecture rules that must not drift
 
@@ -73,6 +74,9 @@ Pure refactor без изменения behavior не требует переп�
 
 - `Docs/Architecture/` — runtime, data, lifecycle, state, repository, Lua, modding и cross-cutting contracts.
 - `Docs/UI/` — UI document, semantic input, widgets, presentation snapshots/effects и UX-facing contracts.
+- `Docs/Concepts/` — объяснение понятия обычным языком со ссылками на нормативный источник; новых правил не вводит.
+- `Docs/Guides/` — инструкция по типовой задаче через уже существующие точки расширения; contract не меняет и его формулировки не копирует.
+- `Docs/Status/` — состояние реализации относительно contracts.
 - `Docs/ADR/` — принятые или предложенные архитектурные решения.
 - `Docs/README.md` — repository-wide router; не превращать его в полный contract.
 - `README.md` внутри тематического каталога — только локальный index/router.
@@ -94,7 +98,7 @@ Pure refactor без изменения behavior не требует переп�
 ```yaml
 ---
 title: Human Readable Title
-status: draft | normative | deprecated | archived
+status: draft | normative | deprecated | archived | informative
 version: 0.1
 updated: YYYY-MM-DD
 depends_on:
@@ -106,7 +110,13 @@ decisions:
 
 Не добавлять пустые `depends_on`/`decisions`. Dependencies должны существовать и не образовывать cycles.
 
-`archived` означает исторический record: документ не нормативен и не является источником задач. Он допустим только внутри каталога `Archive/`, и наоборот — любой документ внутри `Archive/` обязан иметь `status: archived`. Оба направления проверяет `Tools/Documentation/validate_docs.py`.
+Сразу после заголовка документ открывается блоком-цитатой с обязательным первым полем: `Владеет` для contracts, `Объясняет` для Concepts, `Задача` для Guides, `Решение` для ADR, `Предлагает` для Proposals, `Материализует` для Plans, `Показывает` для Status. Header не повторяет front matter. Полная схема — `Docs/Architecture/README.md`; наличие проверяется валидатором.
+
+`archived` означает исторический record: документ не нормативен и не является источником задач. Он допустим только внутри каталога `Archive/`, и наоборот — любой документ внутри `Archive/` обязан иметь `status: archived`.
+
+`informative` означает объясняющий или инструктирующий документ: он не вводит архитектурных правил и при расхождении уступает contract. Допустим только внутри `Concepts/` и `Guides/`, и обязателен там.
+
+Оба правила проверяет `Tools/Documentation/validate_docs.py` в обе стороны.
 
 ADR использует:
 

@@ -14,6 +14,10 @@ decisions:
 
 # Предложение по оптимизации lookup Image Resource Catalog
 
+> **Предлагает:** immutable O(1) lookup и однократную подготовку resolved brush.
+> **Затрагивает:** [Image Resources](../UI/ImageResources.md).
+> **Состояние:** реализовано; нормативный результат перенесён в contracts, документ сохраняется как rationale.
+
 Реализовано 2026-08-13. Нормативное runtime-поведение зафиксировано в
 [`ImageResources.md`](../UI/ImageResources.md); этот документ сохраняет исходное
 обоснование и критерии реализации.

@@ -1,8 +1,8 @@
 ---
 title: GV2 Project Brief
 status: normative
-version: 1.0
-updated: 2026-08-14
+version: 1.3
+updated: 2026-08-15
 depends_on:
   - Architecture/Overview.md
   - Architecture/GlossaryAndNaming.md
@@ -11,6 +11,10 @@ depends_on:
 ---
 
 # Кратко о проекте GV2
+
+> **Объясняет:** цель проекта и принятый архитектурный подход для первого знакомства.
+> **Дальше:** [Concepts](Concepts/README.md) — понятия, [Architecture](Architecture/README.md) — обязательные правила.
+> **Не является нормативным:** при расхождении прав contract.
 
 Этот документ предназначен для первого знакомства с проектом. Он объясняет общую цель и принятый архитектурный подход, но не заменяет нормативные subsystem contracts и ADR из [индекса документации](README.md).
 
@@ -62,18 +66,22 @@ GV2 — single-player 2D/2.5D data-driven игра на Unreal Engine 5. Про�
 
 ## Текущее состояние
 
-Content pipeline завершён: контент из `GameData/core` проверяется схемами, собирается в immutable repository snapshot и читается из Lua через `game.repository`. Один и тот же corpus даёт одинаковый результат в Unreal, `gv2-headless` и CLI `gv2-content`.
+Content pipeline и gameplay-ядро работают. Контент из `GameData/core` проверяется схемами и собирается в immutable repository snapshot; Lua владеет canonical state, меняет его только через Commands с валидаторами, публикует post-commit Events и реагирует на них подписками. Сценарий перемещения между локациями проходит целиком. Один и тот же corpus и одна и та же последовательность команд дают одинаковый результат в Unreal, `gv2-headless` и CLI `gv2-content`.
 
-Следующий крупный шаг — canonical gameplay-state и Command/Event path: без них gameplay остаётся заглушкой, а vertical slice не закрывается.
+Правила геймплея пишутся на Lua и проверяются Lua-спеками: добавление правила или контента не требует C++.
 
-Подробная разбивка по подсистемам: [Implementation Status](ImplementationStatus.md).
+Следующий крупный шаг — save/load: без него vertical slice не закрывается.
+
+Подробная разбивка по подсистемам: [Implementation Status](Status/ImplementationStatus.md).
 
 ## Куда идти дальше
 
+- [Concepts](Concepts/README.md) — понятия проекта обычным языком; лучший второй шаг после этого документа.
+- [Guides](Guides/README.md) — как выполнить типовую задачу: добавить definition, команду, событие, экран.
 - [Architecture Overview](Architecture/Overview.md) — общая модель, инварианты и границы.
 - [Glossary and Naming](Architecture/GlossaryAndNaming.md) — канонические термины и правила именования.
-- [System Context and Components](Architecture/SystemContextAndComponents.md) — ownership и направления зависимостей.
-- [Implementation Status](ImplementationStatus.md) — что уже реализовано.
+- [Dependency Map](Architecture/DependencyMap.md) — кто от кого может зависеть и что запрещено.
+- [Implementation Status](Status/ImplementationStatus.md) — что уже реализовано.
 - [Build and Tooling](Architecture/BuildAndTooling.md) — как собрать, запустить и проверить проект.
 - [ADR Index](ADR/README.md) — принятые решения и причины выбора.
 - [UI Index](UI/README.md) — устройство presentation/UI.

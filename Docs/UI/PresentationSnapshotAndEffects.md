@@ -1,8 +1,8 @@
 ---
 title: Presentation Snapshot and Effects
 status: draft
-version: 0.6
-updated: 2026-08-12
+version: 0.7
+updated: 2026-08-15
 depends_on:
   - UIDocumentAndReconciliation.md
   - ImageResources.md
@@ -14,6 +14,12 @@ decisions:
 ---
 
 # Presentation Snapshot and Effects
+
+> **Владеет:** различием между восстановимым desired presentation и одноразовыми эффектами.
+> **Не владеет:** тем, что именно показывать, и порядком гейплейных фактов.
+> **Инварианты:** [INV-014](../Architecture/Invariants.md)
+> **Реализация:** частично — snapshot применяется, эффекты не реализованы.
+> **Проверки:** `GV2.Runtime.Presentation.*`.
 
 Lua → UE сообщения разделены на durable desired snapshot и one-shot effects. Snapshot достаточен для полного восстановления presentation; effect никогда не является единственным носителем важного состояния.
 

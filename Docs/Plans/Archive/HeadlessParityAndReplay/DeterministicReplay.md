@@ -58,7 +58,7 @@ decisions:
 - [x] **HPR-14 — Синхронизировать документацию**
   - Зависимости: HPR-13.
   - Done: `HeadlessSimulationContract` описывает фактический формат manifest/digest и режим replay; `BuildAndTooling` описывает CLI-поверхность и новые CTest; `ImplementationStatus` отражает изменившийся объём реализованного.
-  - Evidence: Обновлены `Docs/Architecture/HeadlessSimulationContract.md` (структура манифеста, дайджеста, семантика ReplayRunManifest, CLI), `Docs/Architecture/BuildAndTooling.md` (CLI-опции, exit code 2, conformance table), `Docs/ImplementationStatus.md` (статус deterministic replay: Реализовано) и `Docs/Plans/HeadlessParityAndReplay/README.md`.
+  - Evidence: Обновлены `Docs/Architecture/HeadlessSimulationContract.md` (структура манифеста, дайджеста, семантика ReplayRunManifest, CLI), `Docs/Architecture/BuildAndTooling.md` (CLI-опции, exit code 2, conformance table), `Docs/Status/ImplementationStatus.md` (статус deterministic replay: Реализовано) и `Docs/Plans/HeadlessParityAndReplay/README.md`.
 
 ## Проверка milestone
 

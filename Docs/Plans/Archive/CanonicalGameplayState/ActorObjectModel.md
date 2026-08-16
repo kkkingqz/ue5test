@@ -77,7 +77,7 @@ Gameplay-код работает с акторами через disposable runti
 - [x] **CGS-27 — Синхронизировать документацию этапа**
   - Зависимости: CGS-19–CGS-26.
   - Done: `LuaRuntimeContract` описывает `game.instances.actors` и disposable wrappers; `CanonicalStateAndSave` описывает фактическую форму записи актора; `CommandsAndEvents` отмечает, какая часть lifecycle реализована; `GlossaryAndNaming` содержит термины Actor, ActorRegistry и mutation window; `ImplementationStatus` обновлён.
-  - Evidence: `Docs/Architecture/LuaRuntimeContract.md`, `Docs/Architecture/CanonicalStateAndSave.md`, `Docs/Architecture/CommandsAndEvents.md`, `Docs/Architecture/GlossaryAndNaming.md`, `Docs/ImplementationStatus.md`.
+  - Evidence: `Docs/Architecture/LuaRuntimeContract.md`, `Docs/Architecture/CanonicalStateAndSave.md`, `Docs/Architecture/CommandsAndEvents.md`, `Docs/Architecture/GlossaryAndNaming.md`, `Docs/Status/ImplementationStatus.md`.
 
 ## Проверка milestone
 

@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0005: Value-Only Async Boundary
 
+> **Решение:** DTO ingress; C++ не хранит Lua callbacks.
+> **Нормативный текст:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md).
+
 ## Context
 
 Один контракт требовал technical event DTO, другой передавал Lua callback function в C++ и хранил registry reference.

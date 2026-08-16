@@ -6,6 +6,9 @@ date: 2026-08-15
 
 # ADR-0024: Lua Spec Runner
 
+> **Решение:** Lua-правила проверяются Lua-спеками из `Tests/Lua/` через один generic runner.
+> **Нормативный текст:** [Headless Simulation Contract](../Architecture/HeadlessSimulationContract.md).
+
 ## Context
 
 ADR-0020 зафиксировал, что код принадлежит Lua, если не требует возможностей, недоступных ей по trust model. Рантайм этому следует: gameplay-правила уходят в `Scripts/`.

@@ -16,6 +16,10 @@ decisions:
 
 # Предложение по authoring workflow Screen Templates
 
+> **Предлагает:** UMG Designer как canonical authoring surface и минимальный editor workflow.
+> **Затрагивает:** [Screen Templates](../UI/ScreenTemplates.md).
+> **Не является нормативным:** до реализации действует текущий contract.
+
 ## Назначение и область
 
 UMG Designer остаётся canonical visual editor для Screen Templates. Предлагается небольшой Editor-only tool, который создаёт правильную заготовку, регистрирует Screen и проверяет contract. Собственный drag-and-drop canvas и bidirectional Widget Tree serialization не создаются.

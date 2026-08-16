@@ -48,7 +48,7 @@ Module loader вызывает lifecycle hooks в порядке, заданно
 - [x] **CGS-05 — Синхронизировать документацию этапа**
   - Зависимости: CGS-01–CGS-04.
   - Done: `BootstrapAndSessionLifecycle` описывает фактически вызываемое подмножество hooks и явно называет отложенные; `LuaRuntimeContract` описывает `game.state` как доступное поле фасада; `ImplementationStatus` отражает изменившийся объём.
-  - Evidence: Обновлены `Docs/Architecture/BootstrapAndSessionLifecycle.md`, `Docs/Architecture/LuaRuntimeContract.md`, `Docs/Architecture/BuildAndTooling.md` и `Docs/ImplementationStatus.md`.
+  - Evidence: Обновлены `Docs/Architecture/BootstrapAndSessionLifecycle.md`, `Docs/Architecture/LuaRuntimeContract.md`, `Docs/Architecture/BuildAndTooling.md` и `Docs/Status/ImplementationStatus.md`.
 
 ## Проверка milestone
 

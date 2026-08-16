@@ -16,6 +16,19 @@ local CANONICAL_SECTIONS = {
 
 M.canonical_sections = CANONICAL_SECTIONS
 
+-- SAV-14: single place declaring every state field (other than the
+-- generic `definition_id`, checked on any node below) that references a
+-- definition of a fixed Stable ID kind. Adding a new reference field of
+-- this shape requires exactly one entry here — validate_node checks every
+-- node's fields against this registry, not a hardcoded per-path condition.
+-- Reused by core:module.runtime.load (SAV-15/16) to know which fields to
+-- walk when rewriting redirects on cold start load.
+local DEFINITION_REFERENCE_FIELDS = {
+    current_location_id = "location",
+}
+
+M.definition_reference_fields = DEFINITION_REFERENCE_FIELDS
+
 function M.get_canonical_sections()
     return CANONICAL_SECTIONS
 end
@@ -118,6 +131,28 @@ local function validate_node(val, path, visited, seen_instances)
                 local exists = game.repository.exists(val.definition_id)
                 if not exists then
                     error("LuaStateValidationInvalid: definition_id '" .. val.definition_id .. "' at " .. path .. " not found in pinned repository")
+                end
+            end
+        end
+
+        -- SAV-14: any other field declared in DEFINITION_REFERENCE_FIELDS,
+        -- wherever it appears in the tree (generalizes the previous
+        -- hardcoded world.current_location_id-only check).
+        for field_name, expected_kind in pairs(DEFINITION_REFERENCE_FIELDS) do
+            local ref_value = val[field_name]
+            if ref_value ~= nil then
+                if type(ref_value) ~= "string" then
+                    error("LuaStateValidationInvalid: " .. field_name .. " at " .. path .. " must be a string")
+                end
+                if not stable_id.is_kind(ref_value, expected_kind) then
+                    error("LuaStateValidationInvalid: invalid " .. field_name .. " '" .. ref_value .. "' at " .. path
+                        .. " (must be a Stable ID of kind '" .. expected_kind .. "')")
+                end
+                if game and game.repository and game.repository.exists then
+                    if not game.repository.exists(ref_value) then
+                        error("LuaStateValidationInvalid: dangling " .. field_name .. " '" .. ref_value .. "' at " .. path
+                            .. " (not found in pinned repository)")
+                    end
                 end
             end
         end
@@ -242,20 +277,9 @@ function M.validate_state_tree(tree)
         end
     end
 
-    -- Validate world.current_location_id grammar, kind, and pinned repository resolution (GEW-05)
-    if tree.world.current_location_id ~= nil then
-        if type(tree.world.current_location_id) ~= "string" then
-            error("LuaStateValidationInvalid: world.current_location_id must be a string")
-        end
-        if not stable_id.is_kind(tree.world.current_location_id, "location") then
-            error("LuaStateValidationInvalid: invalid world.current_location_id '" .. tree.world.current_location_id .. "' (must be a Stable ID of kind 'location')")
-        end
-        if game and game.repository and game.repository.exists then
-            if not game.repository.exists(tree.world.current_location_id) then
-                error("LuaStateValidationInvalid: dangling world.current_location_id '" .. tree.world.current_location_id .. "' (location not found in pinned repository)")
-            end
-        end
-    end
+    -- world.current_location_id grammar/kind/existence is now checked
+    -- generically by validate_node via DEFINITION_REFERENCE_FIELDS (SAV-14)
+    -- when it visits the state.world node above.
 
     -- Validate player section does not duplicate Actor model fields
     if tree.player.instance_id ~= nil or tree.player.definition_id ~= nil then

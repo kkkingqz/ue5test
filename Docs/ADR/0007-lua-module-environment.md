@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0007: Lua Module Environment
 
+> **Решение:** Одна VM/_G; no globals; `game.mods[mod_id]`.
+> **Нормативный текст:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md).
+
 ## Context
 
 Архитектура одновременно обещала per-mod environments и общий `_G`. Security sandbox не является целью v1.

@@ -42,8 +42,6 @@ public:
         const TArray<FGV2UiBindingDefinition>& Definitions,
         TArray<FGV2UiBindingHandle>& OutHandles);
 
-    bool BuildDebugStartButtonModel(FGV2ButtonViewModel& OutModel);
-
     EGV2SubmitUiInteractionResult SubmitUiInteraction(
         const FGV2UiBindingHandle& BindingHandle,
         const TArray<FGV2UiControlValue>& InputValues);

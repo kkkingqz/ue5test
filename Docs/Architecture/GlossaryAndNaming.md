@@ -1,13 +1,19 @@
 ---
 title: Glossary and Naming
 status: normative
-version: 1.9
-updated: 2026-08-14
+version: 1.10
+updated: 2026-08-15
 depends_on:
   - StableIDSpecification.md
 ---
 
 # Glossary and Naming
+
+> **Владеет:** каноническими именами понятий, категориями Stable ID и правилами именования в Lua, JSON5 и C++.
+> **Не владеет:** семантикой понятий — она в contracts соответствующих подсистем.
+> **Инварианты:** [INV-009](Invariants.md)
+> **Реализация:** имена в `Scripts/`, `Source/`, `GameData/`.
+> **Проверки:** грамматика идентификаторов — `RunStableIdConformance`.
 
 Один архитектурный смысл имеет одно каноническое имя. Английские термины и identifiers канонические; пояснения документа — на русском.
 

@@ -17,6 +17,10 @@ decisions:
 
 # Предложение по deferred loading Image Resources
 
+> **Предлагает:** условный async prepare/cache lifecycle после измерения startup и памяти.
+> **Затрагивает:** [Image Resources](../UI/ImageResources.md).
+> **Не является нормативным:** до реализации действует текущий contract.
+
 ## Назначение и область
 
 Предлагается рассмотреть разделение startup metadata index и загрузки texture payload по требованию. Реализация разрешена только после измерения representative catalog и подтверждения, что eager decode/create даёт неприемлемый startup time или resident memory.

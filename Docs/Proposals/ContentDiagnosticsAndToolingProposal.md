@@ -13,6 +13,10 @@ depends_on:
 
 # Предложение по diagnostics и tooling контента
 
+> **Предлагает:** source spans, детерминированные диагностики, CLI-валидацию, fuzzing и editor tooling.
+> **Затрагивает:** [GameDataRepository](../Architecture/GameDataRepositoryContract.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
+> **Не является нормативным:** до реализации действует текущий contract.
+
 ## Назначение и область
 
 Предлагается сделать diagnostics частью `GV2ContentCore`, а первым consumer — небольшой CLI `gv2-content`. Editor integration и будущий LSP обязаны отображать те же результаты, а не реализовывать вторую validation grammar.

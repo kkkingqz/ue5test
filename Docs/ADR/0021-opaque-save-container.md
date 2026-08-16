@@ -6,6 +6,9 @@ date: 2026-08-14
 
 # ADR-0021: Opaque Save Container
 
+> **Решение:** State не пересекает boundary; save — непрозрачные байты через slot storage.
+> **Нормативный текст:** [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
+
 ## Context
 
 `CanonicalStateAndSave` фиксировал export boundary так: Lua формирует pure data

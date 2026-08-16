@@ -1,8 +1,8 @@
 ---
 title: Architecture Overview
 status: normative
-version: 1.5
-updated: 2026-08-14
+version: 1.6
+updated: 2026-08-15
 depends_on:
   - ../README.md
   - ../ADR/README.md
@@ -12,6 +12,12 @@ decisions:
 ---
 
 # Architecture Overview
+
+> **Владеет:** слоями, категориями состояния, границей C++/Lua, trust model и non-goals первой версии.
+> **Не владеет:** деталями подсистем — их определяют отдельные contracts.
+> **Инварианты:** [INV-001](Invariants.md), [INV-013](Invariants.md), [INV-014](Invariants.md)
+> **Реализация:** весь проект; конкретные модули — [System Context](SystemContextAndComponents.md).
+> **Проверки:** архитектурные инварианты проверяются в contracts, на которые ссылается этот документ.
 
 GV2 — single-player 2D/2.5D data-driven игра на Unreal Engine 5. Gameplay реализуется в Lua, presentation — в Unreal Engine, интеграционная граница — в C++.
 
@@ -102,6 +108,6 @@ Core и включённые Lua-моды являются trusted gameplay code
 
 Архитектура считается подтверждённой, когда один сценарий проходит end-to-end: core package и тестовый mod определяют location, screens, item, localized text и resources; Lua строит initial presentation; UI отправляет command, validator проверяет его, handler меняет state, EventBus публикует facts; save/load восстанавливает state, PRNG и instance IDs; тот же recorded command sequence воспроизводится standalone runner-ом без Unreal Engine с тем же результатом и без доменных C++ классов Item/Quest/Location.
 
-Текущая степень готовности этого сценария: [Implementation Status](../ImplementationStatus.md).
+Текущая степень готовности этого сценария: [Implementation Status](../Status/ImplementationStatus.md).
 
 Конкретные имена C++ классов являются рекомендацией реализации, а не частью архитектурной совместимости. Нормативны ownership, dependency direction, DTO boundary и observable behavior.

@@ -1,7 +1,7 @@
 ---
 title: Stable ID Specification
 status: normative
-version: 1.4
+version: 1.5
 updated: 2026-08-15
 decisions:
   - ../ADR/0002-stable-id-format.md
@@ -9,6 +9,12 @@ decisions:
 ---
 
 # Stable ID Specification
+
+> **Владеет:** грамматикой идентификаторов, реестром kind, владением namespace, redirects, локальными и persistent instance ID, жизненным циклом публикации.
+> **Не владеет:** тем, какие сущности существуют, — это контент и его схемы.
+> **Инварианты:** [INV-009](Invariants.md), [INV-015](Invariants.md)
+> **Реализация:** `Source/GV2ContentCore/Private/StableId.cpp`, `Scripts/runtime/stable_id.lua`.
+> **Проверки:** `RunStableIdConformance`.
 
 Stable ID описывает логическую идентичность и не зависит от filename, directory, display text, locale, provider order, UE object path или memory address.
 

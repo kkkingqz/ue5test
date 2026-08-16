@@ -29,7 +29,7 @@ depends_on:
 - [x] **CAT-03 — Описать команды в контракте**
   - Зависимости: CAT-01, CAT-02.
   - Done: `BuildAndTooling` описывает обе команды и их exit codes; добавлены CTest на успешный и на отказной путь каждой команды.
-  - Evidence: `Docs/Architecture/BuildAndTooling.md` (документированы команды `describe` и `new`, exit codes, форматы вывода), `Docs/ImplementationStatus.md`, `Tools/Content/test_authoring_tools.py`, `Tools/Content/CMakeLists.txt` (CTest 36/36 passed).
+  - Evidence: `Docs/Architecture/BuildAndTooling.md` (документированы команды `describe` и `new`, exit codes, форматы вывода), `Docs/Status/ImplementationStatus.md`, `Tools/Content/test_authoring_tools.py`, `Tools/Content/CMakeLists.txt` (CTest 36/36 passed).
 
 ## Проверка milestone
 

@@ -14,6 +14,8 @@
 
 namespace GV2RuntimeCore
 {
+class ISaveSlotStorage;
+
 struct FValue
 {
     using FArray = std::vector<FValue>;
@@ -111,7 +113,34 @@ public:
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
         const std::vector<FRuntimeSource>& Sources,
         FRuntimeFault& OutFault);
+
+    // SAV-12 (plan SaveAndLoad, M4 Cold Start Load): starts the session
+    // from a save slot instead of module defaults. Reads the slot through
+    // Storage BEFORE any Lua VM is created — a missing or unreadable slot
+    // fails as "SaveSlotNotFound"/"SaveSlotUnreadable" at zero VM cost. On
+    // success, the whole preflight/decode/reference-rewrite pipeline (SAV-
+    // 13/14/15/16) runs inside Lua (core:module.runtime.load) before any
+    // canonical state is assigned; failure at any stage leaves the session
+    // unstarted, exactly like a failed Start() above — never a partially
+    // loaded state. NewGame's Start() above is entirely unaffected.
+    bool StartFromSave(
+        std::int32_t InSessionGeneration,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        ISaveSlotStorage& Storage,
+        const std::string& SaveSlotId,
+        FRuntimeFault& OutFault);
+
     bool Stop(FRuntimeFault* OutFault = nullptr);
+
+    // SAV-05/06/10: wires the host's slot-scoped save storage into
+    // game.save_slots for this session (composition root's job, per
+    // GV2HostServices.h). Optional and safe to never call — Lua's
+    // core:module.runtime.save.save() reports a typed
+    // "SaveSlotStorageUnavailable" error if no storage was set, exactly as
+    // its absence never blocks Start() above. Storage must outlive the
+    // session; ownership stays with the caller.
+    void SetSaveSlotStorage(ISaveSlotStorage* Storage);
 
     bool CheckScripts(
         std::int32_t InSessionGeneration,

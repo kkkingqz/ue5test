@@ -1,92 +1,63 @@
 ---
 title: GV2 Documentation Index
 status: normative
-version: 2.1
-updated: 2026-08-14
+version: 3.0
+updated: 2026-08-15
 language: ru
 ---
 
 # Документация GV2
 
-Этот каталог — единая нормативная документация проекта. Markdown-файлы предназначены одновременно для разработчиков, инструментов и AI-агентов.
+Документация разделена по типу задачи читателя. Markdown предназначен одновременно для разработчиков, инструментов и AI-агентов.
 
-## Статус источников
+| Раздел | Отвечает на вопрос | Нормативность |
+|---|---|---|
+| [ProjectBrief](ProjectBrief.md) | Что это за проект | нет |
+| [Concepts](Concepts/README.md) | Что это и зачем | нет |
+| [Architecture](Architecture/README.md), [UI](UI/README.md) | Какие правила обязательны | **да** |
+| [Guides](Guides/README.md) | Как выполнить типовую задачу | нет |
+| [ADR](ADR/README.md) | Почему принято такое решение | **да** |
+| [Plans](Plans/README.md) | Как конкретное изменение будет реализовано | нет |
+| [Proposals](Proposals/README.md) | Что рассматривается, но не принято | нет |
+| [Status](Status/ImplementationStatus.md) | Что из спецификации реализовано | нет |
 
-1. `Docs/ADR/*.md` с `status: accepted` фиксируют принятые архитектурные решения.
-2. Контракт конкретной подсистемы уточняет `Architecture/Overview.md`.
+## Иерархия источников
+
+1. `ADR/*.md` со `status: accepted` фиксируют принятые архитектурные решения.
+2. Contract подсистемы уточняет `Architecture/Overview.md`.
 3. `Architecture/Overview.md` задаёт общие границы и инварианты.
-4. Экспортированные и внешние копии не являются нормативными и не должны храниться в `Docs` рядом с canonical Markdown.
-5. Документ со `status: archived` является историческим record: он не нормативен, не источник задач и живёт только в каталоге `Archive/`. При расхождении с contract прав contract.
 
-При конфликте применяется более конкретный документ. Если accepted ADR был заменён, он обязан содержать `status: superseded` и ссылку на замену.
+При конфликте применяется более конкретный документ. Заменённый ADR обязан иметь `status: superseded` и ссылку на замену.
 
-## Быстрый маршрут для AI
+**Ненормативные тиры не спорят с нормативными.** Concepts и Guides объясняют и инструктируют, но правил не вводят: при расхождении прав contract. Это закреплено статусом `informative`, который валидатор требует внутри `Concepts/` и `Guides/` и запрещает снаружи. Аналогично `archived` допустим только внутри `Archive/`.
 
-Для общей задачи читать в таком порядке:
+Экспортированные и внешние копии нормативными не являются и рядом с canonical Markdown не хранятся.
 
-1. [Architecture/Overview.md](Architecture/Overview.md)
-2. [Architecture/GlossaryAndNaming.md](Architecture/GlossaryAndNaming.md)
-3. Контракт затронутой подсистемы из таблицы ниже.
-4. Связанные accepted ADR.
+## Маршрут загрузки контекста
 
-Не загружать все документы без необходимости. Каждый контракт содержит собственные зависимости и инварианты.
+Не загружайте `Docs/Architecture` целиком. Минимальный путь зависит от задачи.
 
-Для первого знакомства сотрудника с проектом: [Project Brief](ProjectBrief.md).
+**Разобраться в архитектуре или спроектировать изменение:**
 
-Устойчивые инварианты v1 перечислены один раз — в [Architecture/Overview.md](Architecture/Overview.md). Что из contracts уже реализовано в коде — в [Implementation Status](ImplementationStatus.md).
+1. [ProjectBrief](ProjectBrief.md)
+2. Нужный документ из [Concepts](Concepts/README.md)
+3. Contract затронутой подсистемы
+4. Связанные accepted ADR
+5. [Implementation Status](Status/ImplementationStatus.md) и ссылки на код
 
-## Карта документов
+**Выполнить типовую задачу:** нужный [Guide](Guides/README.md) + contract, на который он ссылается + активный [план](Plans/README.md), если задача из него.
 
-### Architecture
+**Сориентироваться в зависимостях:** [Dependency Map](Architecture/DependencyMap.md). **Найти нормативный источник правила:** [Invariants](Architecture/Invariants.md). **Найти код и тесты по понятию:** таблица в [Concepts](Concepts/README.md).
 
-| Документ | Когда читать |
-|---|---|
-| [Overview](Architecture/Overview.md) | Источники истины, слои, основные потоки и non-goals |
-| [Glossary and Naming](Architecture/GlossaryAndNaming.md) | Термины, имена, категории ID |
-| [System Context and Components](Architecture/SystemContextAndComponents.md) | Модули, зависимости, ownership и lifetime |
-| [Bootstrap and Session Lifecycle](Architecture/BootstrapAndSessionLifecycle.md) | Cold start, menu/game session, load, restart, teardown |
-| [Lua Runtime Contract](Architecture/LuaRuntimeContract.md) | VM, modules, values, state, determinism и ingress |
-| [Headless Simulation Contract](Architecture/HeadlessSimulationContract.md) | Роли UE-free host-а: parity gate, deterministic replay, run manifest/digest |
-| [Build and Tooling](Architecture/BuildAndTooling.md) | CMake/UBT targets, executable hosts, package root, exit codes, fixtures и CI gate |
-| [Stable ID Specification](Architecture/StableIDSpecification.md) | Grammar, namespace ownership, redirects и instance IDs |
-| [Definition Envelope and Schema Rules](Architecture/DefinitionEnvelopeAndSchemaRules.md) | JSON5 envelope, schemas, defaults, extensions и validation |
-| [GameDataRepository Contract](Architecture/GameDataRepositoryContract.md) | Build pipeline, overrides, snapshot API и reload |
-| [Commands and Events](Architecture/CommandsAndEvents.md) | Command lifecycle, validation, mutation и post-commit events |
-| [Canonical State and Save](Architecture/CanonicalStateAndSave.md) | State shape, save boundary, load и migrations |
-| [Modding](Architecture/Modding.md) | Package ownership, Lua modules, overrides и trust model |
+## Правила ведения
 
-### UI
-
-| Документ | Когда читать |
-|---|---|
-| [UI Index](UI/README.md) | Маршрут по UI-контрактам |
-| [Blueprint Screen Templates](UI/ScreenTemplates.md) | Base Screen Blueprint, Screen Registry и Dynamic Screen Fields |
-| [UI Document and Reconciliation](UI/UIDocumentAndReconciliation.md) | Route, layers, screen instances, fields и full reconciliation |
-| [Semantic Input](UI/SemanticInput.md) | UE → Lua input envelope и stale-input rejection |
-| [Presentation Snapshot and Effects](UI/PresentationSnapshotAndEffects.md) | Durable desired presentation и one-shot effects |
-| [Widget Registry](UI/WidgetRegistry.md) | Baseline UI-kit, central theme, Dynamic Screen Elements и adapters |
-| [Image Resources](UI/ImageResources.md) | Fixed-aspect graphics, nine-slice surfaces, tile textures и UE resolver |
-
-### Proposals
-
-Индекс предложений: [Proposals/README.md](Proposals/README.md).
-
-### Plans
-
-Исполняемые планы и архив выполненных: [Plans/README.md](Plans/README.md).
-
-### ADR
-
-Индекс решений: [ADR/README.md](ADR/README.md).
-
-## Правила обновления
-
-- Сначала обновить или добавить ADR, если меняется источник истины, ID, command/event semantics, save compatibility, trust model или module dependency direction.
-- Затем обновить все затронутые контракты и примеры в том же изменении.
-- Публичный пример считается тестовым fixture: он обязан соответствовать Stable ID grammar и терминологии.
-- Новая абстракция добавляется только для конкретного сценария vertical slice или измеренной проблемы.
-- Изменение объёма реализованного отражается в [Implementation Status](ImplementationStatus.md).
+- Сначала ADR, если меняется источник истины, идентичность, command/event semantics, save compatibility, trust model или направление зависимостей.
+- Затем — все затронутые contracts в том же изменении.
+- Concepts и Guides объясняют и ссылаются, но не переписывают нормативные формулировки: два описания одного правила расходятся.
+- Публичный пример считается тестовым fixture и обязан соответствовать грамматике и терминологии.
+- Новая абстракция вводится под конкретный сценарий или измеренную проблему.
+- Изменение объёма реализованного отражается в [Implementation Status](Status/ImplementationStatus.md).
 
 ## Сборка и CI
 
-Targets, host-ы, exit codes, fixtures и обязательный integration gate описаны в [Build and Tooling](Architecture/BuildAndTooling.md).
+Таргеты, хосты, коды возврата, фикстуры и обязательный integration gate — [Build and Tooling](Architecture/BuildAndTooling.md).

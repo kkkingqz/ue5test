@@ -6,6 +6,9 @@ date: 2026-08-12
 
 # ADR-0017: Centralized UI Presentation Paths
 
+> **Решение:** Единые paths для text, images, collections, Screen Fields и Semantic Input.
+> **Нормативный текст:** [UI Index](../UI/README.md).
+
 ## Context
 
 Reusable UI components shared theme and parts of the Text Pipeline, but composite Widgets could still resolve images, construct repeated children, submit Semantic Input or apply text through local mechanisms. A local improvement therefore did not necessarily reach every consumer and parallel presentation paths could drift.

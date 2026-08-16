@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: draft
-version: 1.0
-updated: 2026-08-13
+version: 1.1
+updated: 2026-08-15
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -13,6 +13,12 @@ decisions:
 ---
 
 # Blueprint Screen Template Contract
+
+> **Владеет:** базовым Screen Blueprint, реестром экранов, устройством Screen Fields и правилами их применения.
+> **Не владеет:** тем, какой экран показать — это решает Lua; и содержимым полей.
+> **Инварианты:** [INV-014](../Architecture/Invariants.md)
+> **Реализация:** `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `GV2ScreenWidgetBase.cpp`, `Content/UI/`.
+> **Проверки:** `GV2.Runtime.Presentation.*`.
 
 ## Purpose and scope
 

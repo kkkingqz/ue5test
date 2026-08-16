@@ -1,8 +1,8 @@
 ---
 title: Semantic Input Contract
 status: draft
-version: 1.3
-updated: 2026-08-13
+version: 1.4
+updated: 2026-08-15
 depends_on:
   - UIDocumentAndReconciliation.md
   - ../Architecture/CommandsAndEvents.md
@@ -13,6 +13,12 @@ decisions:
 ---
 
 # Semantic Input Contract
+
+> **Владеет:** конвертом пользовательского ввода, binding handle и правилами отклонения устаревшего ввода.
+> **Не владеет:** обработкой команды после её приёма ([Commands and Events](../Architecture/CommandsAndEvents.md)).
+> **Инварианты:** [INV-007](../Architecture/Invariants.md)
+> **Реализация:** `Source/GV2/Private/Bridge/GV2UiBindingRegistry.cpp`, `GV2RuntimeIngressQueue.cpp`, `Source/GV2/Private/UI/GV2UiInteractionEmitter.cpp`.
+> **Проверки:** `GV2.Runtime.Ingress.*`, `GV2.Runtime.UI.BindingRegistry`.
 
 Semantic input — value-only сообщение UE → Lua. Оно описывает смысл взаимодействия, а не Widget name, Blueprint callback или Lua function.
 
@@ -72,7 +78,7 @@ Failure before step 9 never enters Lua command handler. Stale input и item, о�
 
 Текущий vertical slice преобразует UE envelope в STL-only DTO `GV2RuntimeCore::FSemanticInput` и вызывает fixed `game.runtime.dispatch_semantic_input`, установленный `core:module.boundary.ingress`. Lua function name не приходит из Blueprint/binding record и не является generic call API. Внутри Lua Semantic Input преобразуется в `CommandRequest` и сходится с direct headless ingress до Command Dispatcher. Dynamic Screen Element получает при apply только opaque handle. Host interaction sink вызывается только после успешного protected Lua call; Lua error переводит session в `Failed`, блокирует input и очищает registry/ingress.
 
-Development start fixture публикует binding `core:screen.debug_start#widget.start → core:command.debug.start`. Отдельный UE Widget получает только opaque `FGV2UiBindingHandle`; click вызывает обычный `SubmitUiInteraction(handle, {})`. Lua dispatcher принимает команду `start` по её canonical `command_id`, поэтому этот же handler проверяется direct headless ingress-ом и не зависит от имени Widget, Blueprint event или Lua callback.
+При старте сессии стандартный пайплайн жизненного цикла открывает зарегистрированный экран (например, `WBP_Testscreen` для `core:screen.test`) со всеми элементами управления. Каждый Dynamic Screen Element (кнопки, чекбокс, поле ввода, выпадающий список) получает при apply только opaque `FGV2UiBindingHandle`; взаимодействие вызывает обычный `SubmitUiInteraction(handle, input_values)`. Lua dispatcher принимает команды по их canonical `command_id`, поэтому все handlers проверяются direct headless ingress-ом и не зависят от имени Widget, Blueprint event или Lua callback.
 
 Clickable RichText span использует тот же механизм. Reconciler создаёт record с logical path `route → screen instance → rich_text field → span_id`; decorator получает только handle. Hover/unhover не создаёт Semantic Input. Click/keyboard activation вызывает `SubmitUiInteraction(handle, {})`, а bound scalar `args` span-а берутся только из record и не читаются из rich text tag.
 

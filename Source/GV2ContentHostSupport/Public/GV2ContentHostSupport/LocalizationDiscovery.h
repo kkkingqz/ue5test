@@ -11,7 +11,7 @@
 namespace GV2ContentHostSupport
 {
 /**
- * Discovers available locales within a package root by scanning <package-root>/localization/*.po.
+ * Discovers available locales within a package root by scanning <package-root>/localization/ for .po files.
  * Returns sorted list of locale codes (e.g. ["en", "ru"]).
  */
 std::vector<std::string> DiscoverPackageLocales(const std::filesystem::path& PackageRoot);

@@ -11,6 +11,8 @@
 #include "GV2RuntimeCore/Testing/GV2LuaRepositoryConformance.h"
 #include "GV2RuntimeCore/Testing/GV2ValidatorRegistryConformance.h"
 #include "GV2RuntimeCore/Testing/GV2LuaSpecRunnerConformance.h"
+#include "GV2RuntimeCore/Testing/GV2SaveSlotStorageConformance.h"
+#include "GV2RuntimeCore/Testing/GV2ColdStartLoadConformance.h"
 #include "GV2ContentCore/Testing/RepresentativeCore.h"
 
 #include "HAL/FileManager.h"
@@ -1129,6 +1131,44 @@ bool FGV2LuaSpecRunnerConformanceCrossHostTest::RunTest(const FString& Parameter
     {
         AddError(FString::Printf(
             TEXT("Lua spec runner cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
+    return true;
+}
+
+// SAV-07: Cross-host FFilesystemSaveSlotStorage conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveSlotStorageConformanceCrossHostTest,
+    "GV2.Runtime.SaveAndLoad.SaveSlotStorageConformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveSlotStorageConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2RuntimeCore::Testing::RunSaveSlotStorageConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Save slot storage cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
+    return true;
+}
+
+// SAV-12/17: Cross-host cold-start load conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ColdStartLoadConformanceCrossHostTest,
+    "GV2.Runtime.SaveAndLoad.ColdStartLoadConformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ColdStartLoadConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2RuntimeCore::Testing::RunColdStartLoadConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Cold start load cross-host conformance failed: %s"),
             UTF8_TO_TCHAR(Error.c_str())));
         return false;
     }

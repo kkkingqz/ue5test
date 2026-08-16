@@ -6,6 +6,9 @@ date: 2026-08-15
 
 # ADR-0023: Stable ID Publication Freeze and Authoring Lifecycle
 
+> **Решение:** Жизненный цикл Stable ID: авторский rename до релиза и безусловный freeze после публикации.
+> **Нормативный текст:** [Stable ID Specification](../Architecture/StableIDSpecification.md).
+
 ## Context
 
 Контракты архитектуры ([ADR-0002](0002-stable-id-format.md), [Stable ID Specification](../Architecture/StableIDSpecification.md), `AGENTS.md`) фиксируют инвариант: «Опубликованный Stable ID не переиспользуется для другого смысла; rename использует owner-declared redirect; удаление использует tombstone».

@@ -1,8 +1,8 @@
 ---
 title: System Context and Components
 status: normative
-version: 2.5
-updated: 2026-08-14
+version: 2.6
+updated: 2026-08-15
 depends_on:
   - Overview.md
   - GlossaryAndNaming.md
@@ -17,6 +17,12 @@ decisions:
 ---
 
 # System Context and Components
+
+> **Владеет:** составом logical modules, направлением зависимостей, ownership и lifetime scopes.
+> **Не владеет:** внутренним устройством модулей и физической раскладкой сборки ([Build and Tooling](BuildAndTooling.md)).
+> **Инварианты:** [INV-013](Invariants.md)
+> **Реализация:** `Source/GV2ContentCore/`, `Source/GV2ContentHostSupport/`, `Source/GV2RuntimeCore/`, `Source/GV2/`.
+> **Проверки:** запреты зависимостей — [Dependency Map](DependencyMap.md); границы модулей — `host_conformance_parity_contract`.
 
 Документ фиксирует logical modules, dependency direction, ownership и lifetime. Конкретное разбиение на Unreal Build Modules и имена private classes можно менять без ADR, если границы остаются теми же.
 

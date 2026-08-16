@@ -17,6 +17,10 @@ decisions:
 
 # Предложение по интеграции CommonUI runtime
 
+> **Предлагает:** CommonUI для focus, input routing и activatable layers без передачи gameplay authority.
+> **Затрагивает:** [UI Index](../UI/README.md), [Semantic Input](../UI/SemanticInput.md).
+> **Не является нормативным:** до реализации действует текущий contract.
+
 ## Назначение и область
 
 CommonUI уже включён в проект и должен стать UE-side механизмом physical input routing, focus restoration, activatable lifecycle и platform-aware UI navigation. Lua UI-document остаётся единственным источником desired Screen instances и Command bindings.

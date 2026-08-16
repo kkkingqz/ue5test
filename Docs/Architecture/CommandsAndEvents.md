@@ -1,7 +1,7 @@
 ---
 title: Commands and Events
 status: normative
-version: 1.6
+version: 1.7
 updated: 2026-08-15
 depends_on:
   - LuaRuntimeContract.md
@@ -12,6 +12,12 @@ decisions:
 ---
 
 # Commands and Events
+
+> **Владеет:** конвертом команды, порядком валидаторов, mutation window, семантикой отказа, публикацией и доставкой событий, фазами и очередями.
+> **Не владеет:** конкретными командами и правилами игры — они принадлежат геймплейным модулям.
+> **Инварианты:** [INV-003](Invariants.md), [INV-004](Invariants.md)
+> **Реализация:** `Scripts/runtime/command_dispatcher.lua`, `validator_registry.lua`, `event_bus.lua`, `subscriber_registry.lua`, `mutation_window.lua`.
+> **Проверки:** `Tests/Lua/commands/`, `Tests/Lua/events/`.
 
 Command — единственная публичная форма намерения изменить gameplay-state. Event — неотменяемый факт после commit. Отдельные action bus, command bus и `before_*` events отсутствуют.
 

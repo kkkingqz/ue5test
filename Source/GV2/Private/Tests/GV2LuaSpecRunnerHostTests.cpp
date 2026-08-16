@@ -3,6 +3,7 @@
 #include "Misc/AutomationTest.h"
 
 #include "Application/GV2FilesystemContentSourceProvider.h"
+#include "GV2RuntimeCore/GV2HostServices.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2TestSupport/CommandValidatorFixture.h"
 #include "GV2TestSupport/LuaSpecRunner.h"
@@ -11,6 +12,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
+#include <chrono>
 #include <filesystem>
 
 // TAS-04: one UE automation test represents the whole Lua spec runner, not
@@ -62,31 +64,53 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
             std::string(Utf8.Get(), Utf8.Length())});
     }
 
-    // 3. Start a real production session.
-    GV2RuntimeCore::FRuntimeSession Session;
-    GV2RuntimeCore::FRuntimeFault Fault;
-    const bool bStarted = Session.Start(1, RepoHandle, RuntimeSources, Fault);
-    if (!TestTrue(
-            FString::Printf(TEXT("Runtime session starts: code=%s message=%s"),
-                UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
-            bStarted))
-    {
-        return false;
-    }
-
-    // 4. Run every Tests/Lua/world and Tests/Lua/events spec against it —
-    // the same generic runner gv2-headless --self-test calls. A missing
-    // directory is not an error (TAS-02). Only subtrees needing the real
-    // production session run here (TAS-13: Tests/Lua/commands needs an
+    // 3. Run every subtree against its own fresh production session — the
+    // same generic runner gv2-headless --self-test calls (Headless/Source/
+    // main.cpp starts one FRuntimeSession per subtree, not a single shared
+    // one). This matters beyond isolation hygiene: Tests/Lua/events/*.lua
+    // specs call event_bus.clear_subscribers() as a setup/teardown helper,
+    // which resets the subscriber registry's frozen flag
+    // (subscriber_registry.lua's registry.clear()). Sharing one session
+    // across subtrees let that leak into Tests/Lua/lifecycle/, which then
+    // observed an unfrozen registry outside of any registration window —
+    // a test-harness divergence from headless, not a product bug. A
+    // missing directory is not an error (TAS-02). Only subtrees needing the
+    // real production session run here (TAS-13: Tests/Lua/commands needs an
     // isolated fixture session instead, tested by
     // GV2.Runtime.Lua.CommandValidatorSpecRunnerHost).
-    for (const TCHAR* Subtree : { TEXT("Tests/Lua/world"), TEXT("Tests/Lua/events"), TEXT("Tests/Lua/resources"), TEXT("Tests/Lua/lifecycle") })
+    for (const TCHAR* Subtree : { TEXT("Tests/Lua/world"), TEXT("Tests/Lua/events"), TEXT("Tests/Lua/resources"), TEXT("Tests/Lua/lifecycle"), TEXT("Tests/Lua/save") })
     {
         const FString SpecRootFString = FPaths::Combine(FPaths::ProjectDir(), Subtree);
         const std::filesystem::path SpecRoot(TCHAR_TO_UTF8(*SpecRootFString));
 
+        GV2RuntimeCore::FRuntimeSession Session;
+        GV2RuntimeCore::FRuntimeFault Fault;
+        const bool bStarted = Session.Start(1, RepoHandle, RuntimeSources, Fault);
+        if (!TestTrue(
+                FString::Printf(TEXT("Runtime session starts for %s: code=%s message=%s"),
+                    Subtree, UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
+                bStarted))
+        {
+            return false;
+        }
+
+        // SAV-10/11: Tests/Lua/save/ specs exercise game.save_slots.write
+        // through a real (throwaway, temp-dir-rooted) storage backing, not
+        // a mock. Harmless to wire for every subtree since only save/
+        // specs call it.
+        const std::filesystem::path SaveSlotSpecRoot = std::filesystem::temp_directory_path()
+            / ("gv2_ue_save_spec_slots_"
+                + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        GV2RuntimeCore::FFilesystemSaveSlotStorage SaveSlotSpecStorage(SaveSlotSpecRoot);
+        Session.SetSaveSlotStorage(&SaveSlotSpecStorage);
+
         GV2TestSupport::FLuaSpecRunResult SpecResult;
         const bool bAllPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, Session, SpecResult);
+        Session.Stop();
+        {
+            std::error_code RemoveEc;
+            std::filesystem::remove_all(SaveSlotSpecRoot, RemoveEc);
+        }
         if (!bAllPassed)
         {
             for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)
@@ -97,11 +121,9 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
                     UTF8_TO_TCHAR(Failure.Code.c_str()),
                     UTF8_TO_TCHAR(Failure.Message.c_str())));
             }
-            Session.Stop();
             return false;
         }
     }
-    Session.Stop();
     return true;
 }
 

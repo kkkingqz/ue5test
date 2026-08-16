@@ -6,6 +6,9 @@ date: 2026-08-10
 
 # ADR-0009: Explicit Schema Defaults
 
+> **Решение:** Optional absent остаётся absent без explicit default.
+> **Нормативный текст:** [Definition Envelope and Schema Rules](../Architecture/DefinitionEnvelopeAndSchemaRules.md).
+
 ## Context
 
 Автоматические defaults (`0`, empty array, first enum/union variant) смешивают absent и empty, а schema evolution может молча менять gameplay semantics.
