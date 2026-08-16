@@ -159,7 +159,7 @@ Exit code одинаков для `--format=text` и `--format=json`.
 
 **Раздельные pinned-значения (TAS-07).** `Tests/Fixtures/expected_core_content_hash.txt` пинит хэш ТОЛЬКО замороженного тестового корпуса (`valid/core`); сверяется CTest `gv2_content_hash_core_fixture` и Unreal automation (`GV2.Runtime.ContentCore.CrossHostParity`). `GameData/core` не пинит content hash вовсе — CTest `gv2_content_validate_gamedata_core` остаётся smoke-проверкой (`gv2-content validate`, без сравнения хэша), поэтому рост игрового контента никогда не требует правки pinned-значения.
  
-**Гейт развязки core и rh (RH-11, план [RhGamePackage](../Plans/RhGamePackage/README.md)).** `Tools/Content/validate_core_decoupling.py` сканирует `Scripts/`, `GameData/core/` и `Source/` на отсутствие ссылок на пространство имён `rh:` (CTest `core_decoupling_gate_contract`). Негативный тест `core_decoupling_gate_negative_contract` подтверждает срабатывание гейта при обнаружении нарушений.
+**Гейт развязки core и rh (RH-11, план [RhGamePackage](../Plans/Archive/RhGamePackage/README.md)).** `Tools/Content/validate_core_decoupling.py` сканирует `Scripts/`, `GameData/core/` и `Source/` на отсутствие ссылок на пространство имён `rh:` (CTest `core_decoupling_gate_contract`). Негативный тест `core_decoupling_gate_negative_contract` подтверждает срабатывание гейта при обнаружении нарушений.
 
 Conformance-наборы объявлены в portable headers (`Source/<Module>/Public/<Module>/Testing/`) и исполняются обоими host-ами из одного источника; отдельные копии positive/negative cases запрещены.
 

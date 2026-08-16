@@ -1,16 +1,16 @@
 ---
 title: Package Setup Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - README.md
-  - ../../Architecture/BuildAndTooling.md
+  - ../../../Architecture/BuildAndTooling.md
 ---
 
 # M1 — Package Setup
 
-> **Материализует:** [Modding § Load order](../../Architecture/Modding.md), [Build and Tooling](../../Architecture/BuildAndTooling.md).
+> **Материализует:** [Modding § Load order](../../../Architecture/Modding.md), [Build and Tooling](../../../Architecture/BuildAndTooling.md).
 > **Задачи:** RH-01…04.
 > **Результат:** пакет `rh` существует и загружается всеми хостами вместе с `core`.
 

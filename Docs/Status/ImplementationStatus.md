@@ -36,7 +36,7 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 | Provenance, minimal indexes, canonical hash | Реализовано | `ById`, `ByKind`, `ProvenanceById`, redirects/tombstones |
 | Immutable snapshot и pinned read handle | Реализовано | `Find`/`Require`/`List`/`GetProvenance`/`GetContentHash` |
 | Atomic publication, same-hash skip, session pinning | Реализовано | Synchronous, на Game Thread |
-| Package discovery and ordering | Реализовано | Discovery набора пакетов по списку корней, назначение load_index, проверка зависимостей, циклов и load_after, генерация и сверка mods.lock.json5, FMultiPackageSourceProvider, детерминизм и сейвы (план [PackageSupport](../Plans/Archive/PackageSupport/README.md), M1–M5); базовый набор поставки разделён на движок `core` и игру `rh`, хосты настроены на мульти-корневую загрузку по умолчанию, обратные ссылки блокируются CI-гейтом `core_decoupling_gate_contract` (план [RhGamePackage](../Plans/RhGamePackage/README.md), RH-01–13) |
+| Package discovery and ordering | Реализовано | Discovery набора пакетов по списку корней, назначение load_index, проверка зависимостей, циклов и load_after, генерация и сверка mods.lock.json5, FMultiPackageSourceProvider, детерминизм и сейвы (план [PackageSupport](../Plans/Archive/PackageSupport/README.md), M1–M5); базовый набор поставки разделён на движок `core` и игру `rh`, хосты настроены на мульти-корневую загрузку по умолчанию, обратные ссылки блокируются CI-гейтом `core_decoupling_gate_contract` (план [RhGamePackage](../Plans/Archive/RhGamePackage/README.md), RH-01–13) |
 | Async candidate build, parallel workers, operation token | Не реализовано | Build и publish синхронные; token сведён к Game-Thread-проверке |
 
 ## Lua runtime

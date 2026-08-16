@@ -1,7 +1,7 @@
 ---
 title: Headless Simulation Contract
 status: normative
-version: 2.5
+version: 2.6
 updated: 2026-08-16
 depends_on:
   - LuaRuntimeContract.md
@@ -111,6 +111,16 @@ lua_release_num (int), repository_content_hash (64 hex), script_set_hash (64 hex
 Конкретные exit codes перечислены в [Build and Tooling](BuildAndTooling.md).
 
 Manifest и digest выводятся в machine-readable JSON-строку в stdout (поля `state_hash`, `digest_hash` и объект `digest`), а также могут сохраняться в файлы через флаги `--output-manifest` и `--output-digest`. Эталонные golden-манифесты и дайджесты хранятся в `Tests/Fixtures/GoldenRuns/` и проверяются в CI.
+
+Golden-прогон закреплён за замороженным корпусом `Tests/Fixtures/PortableContentCore/valid/core`, но исполняет **живое** дерево `Scripts/`. Поэтому поля digest реагируют на изменения по-разному, и это различие намеренное:
+
+| Что изменилось | Golden меняется | Почему |
+|---|---|---|
+| Контент в `GameData/` | Нет | `repository_content_hash` берётся из замороженного корпуса; рост игрового контента не должен трогать эталон |
+| Любой файл в `Scripts/` | **Да** | `script_set_hash` покрывает фактический набор скриптов; изменение поведения обязано быть видно |
+| Версия Lua | Да | `lua_release_num` — часть идентичности прогона |
+
+Изменение golden при правке `Scripts/` — ожидаемый результат, а не поломка: обновление эталона выполняется тем же change set, что и правка, и рецензируется вместе с ней. Изменение golden при правке `GameData/` — признак ошибки: значит корпус и игровой контент перестали быть разными деревьями.
 
 ## Resources and localization
 

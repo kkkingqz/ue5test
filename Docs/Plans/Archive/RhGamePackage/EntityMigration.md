@@ -1,16 +1,16 @@
 ---
 title: Entity Migration Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - PackageSetup.md
-  - ../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/StableIDSpecification.md
 ---
 
 # M2 — Entity Migration
 
-> **Материализует:** [Stable ID Specification § Namespace ownership](../../Architecture/StableIDSpecification.md).
+> **Материализует:** [Stable ID Specification § Namespace ownership](../../../Architecture/StableIDSpecification.md).
 > **Задачи:** RH-05…09.
 > **Результат:** конкретные сущности игры, их тексты, переводы и ресурсы живут в `rh`.
 

@@ -1,21 +1,21 @@
 ---
 title: RH Game Package Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
-  - ../../Architecture/Modding.md
-  - ../../Architecture/StableIDSpecification.md
-  - ../../Architecture/GameDataRepositoryContract.md
-  - ../../Architecture/BuildAndTooling.md
+  - ../../../Architecture/Modding.md
+  - ../../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/GameDataRepositoryContract.md
+  - ../../../Architecture/BuildAndTooling.md
 decisions:
-  - ../../ADR/0023-stable-id-publication-freeze.md
-  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../../ADR/0023-stable-id-publication-freeze.md
+  - ../../../ADR/0025-lua-module-replacement-and-export-freezing.md
 ---
 
 # План выделения игрового пакета `rh`
 
-> **Материализует:** [Modding](../../Architecture/Modding.md) и [Stable ID Specification](../../Architecture/StableIDSpecification.md) как фактическое разделение поставки.
+> **Материализует:** [Modding](../../../Architecture/Modding.md) и [Stable ID Specification](../../../Architecture/StableIDSpecification.md) как фактическое разделение поставки.
 > **Задачи:** RH-01…13.
 > **Результат:** конкретные сущности игры живут в пакете `rh`, `core` не знает ни одного её идентификатора.
 
@@ -25,7 +25,7 @@ decisions:
 
 На этом шаге переносятся **только конкретные сущности**. Механика, новый экран или новая возможность по-прежнему добавляются в `core` — по мере наполнения `rh` пополняться будет и он.
 
-Возможность выделить пакет уже есть: план [PackageSupport](../Archive/PackageSupport/README.md) дал обязательный манифест, набор корней с явным порядком, `mods.lock`, Lua внутри пакета и замещение модулей. Настоящий план этой возможностью пользуется — новых механизмов не вводит.
+Возможность выделить пакет уже есть: план [PackageSupport](../PackageSupport/README.md) дал обязательный манифест, набор корней с явным порядком, `mods.lock`, Lua внутри пакета и замещение модулей. Настоящий план этой возможностью пользуется — новых механизмов не вводит.
 
 ## Состояние на входе
 
@@ -47,7 +47,7 @@ decisions:
 
 ## Принятые решения
 
-- **ID меняют namespace, redirect не создаётся.** `core:item.weapon.iron_sword` становится `rh:item.weapon.iron_sword`. Ничего не опубликовано, поэтому действует авторский rename до релиза ([ADR-0023](../../ADR/0023-stable-id-publication-freeze.md)). Redirect из `core` в `rh` был бы ссылкой движка на игру и запрещён по смыслу разделения.
+- **ID меняют namespace, redirect не создаётся.** `core:item.weapon.iron_sword` становится `rh:item.weapon.iron_sword`. Ничего не опубликовано, поэтому действует авторский rename до релиза ([ADR-0023](../../../ADR/0023-stable-id-publication-freeze.md)). Redirect из `core` в `rh` был бы ссылкой движка на игру и запрещён по смыслу разделения.
 - **Схемы остаются в `core`.** Схема объявляет, что такое предмет, актор и локация — это заявление движка о предметной модели. `rh` пользуется схемами `core` и своих не заводит: новый binding нужен только для нового kind.
 - **Демо-экран остаётся в `core`, но перестаёт знать конкретный предмет.** По правилу «экран — это возможность движка» `debug/start.lua` не переезжает. Вместо жёсткого `core:item.weapon.iron_sword` он берёт первый элемент `game.repository.list("item")` в каноническом порядке — это обращение к механизму, а не знание об игре. Если демо когда-нибудь потребует именно своих сущностей, `rh` заместит `core:module.debug.start` — модуль помечен `replaceable`.
 - **Замороженный корпус не трогаем.** `Tests/Fixtures/PortableContentCore/valid/core` — фикстура, изображающая пакет по имени `core`, а не игру. Её ID остаются `core:*`, golden-прогон и его digest не меняются.

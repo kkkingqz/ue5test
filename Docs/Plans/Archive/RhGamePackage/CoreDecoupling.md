@@ -1,16 +1,16 @@
 ---
 title: Core Decoupling Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - EntityMigration.md
-  - ../../Architecture/Modding.md
+  - ../../../Architecture/Modding.md
 ---
 
 # M3 — Core Decoupling
 
-> **Материализует:** [Modding § Identity and content](../../Architecture/Modding.md).
+> **Материализует:** [Modding § Identity and content](../../../Architecture/Modding.md).
 > **Задачи:** RH-10…13.
 > **Результат:** `core` не содержит ни одной ссылки на `rh`, и это удерживается проверкой, а не вниманием.
 
@@ -34,12 +34,12 @@ depends_on:
 - [x] **RH-12 — Определить поведение старых сейвов**
   - Зависимости: RH-07.
   - Сейв, снятый до переноса, содержит `core:location.*` и `core:actor.*`, которых больше нет.
-  - Done: загрузка такого сейва даёт типизированную ошибку отсутствующего Stable ID (`unknown`, не `retired`), а не тихий сбой и не частично восстановленное состояние; поведение покрыто спекой; в [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md) зафиксировано, что смена namespace сущности — несовместимое изменение, а redirect для неё сознательно не создаётся.
+  - Done: загрузка такого сейва даёт типизированную ошибку отсутствующего Stable ID (`unknown`, не `retired`), а не тихий сбой и не частично восстановленное состояние; поведение покрыто спекой; в [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md) зафиксировано, что смена namespace сущности — несовместимое изменение, а redirect для неё сознательно не создаётся.
   - Evidence: `Tests/Lua/save/load_path.lua` (`old_save_with_unmigrated_core_location_fails_as_unknown`), `Docs/Architecture/CanonicalStateAndSave.md`.
 
 - [x] **RH-13 — Синхронизировать документацию**
   - Зависимости: RH-10–RH-12.
-  - Done: [Modding](../../Architecture/Modding.md) описывает `rh` как игровой пакет поставки и правило «сущности в `rh`, возможности в `core`»; [Build and Tooling](../../Architecture/BuildAndTooling.md) описывает набор из двух пакетов, staging и новый гейт; [Concepts/ContentModel](../../Concepts/ContentModel.md) объясняет разделение читателю; примеры в документации, использующие `core:item.weapon.iron_sword`, обновлены либо заменены синтетическими; [Implementation Status](../../Status/ImplementationStatus.md) обновлён.
+  - Done: [Modding](../../../Architecture/Modding.md) описывает `rh` как игровой пакет поставки и правило «сущности в `rh`, возможности в `core`»; [Build and Tooling](../../../Architecture/BuildAndTooling.md) описывает набор из двух пакетов, staging и новый гейт; [Concepts/ContentModel](../../../Concepts/ContentModel.md) объясняет разделение читателю; примеры в документации, использующие `core:item.weapon.iron_sword`, обновлены либо заменены синтетическими; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён.
   - Evidence: `Docs/Architecture/{Modding,BuildAndTooling,CanonicalStateAndSave,DefinitionEnvelopeAndSchemaRules,GameDataRepositoryContract,GlossaryAndNaming,StableIDSpecification}.md`, `Docs/Concepts/{ContentModel,GameplayModel}.md`, `Docs/Status/ImplementationStatus.md`.
 
 ## Проверка milestone
