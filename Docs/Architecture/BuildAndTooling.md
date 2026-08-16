@@ -40,13 +40,13 @@ decisions:
 |---|---|---|---|
 | `gv2_content_core` | `GV2ContentCore` | Value model, Stable ID, JSON5, schemas, repository build/snapshot | — |
 | `gv2_content_host_support` | `GV2ContentHostSupport` | Filesystem package discovery (ADR-0019); Lua spec file discovery (TAS-02, ADR-0024) | `gv2_content_core` |
-| `gv2_runtime_core` | `GV2RuntimeCore` | Lua 5.4.8 VM, runtime session, `FGV2LuaMarshaller`, slot-scoped save storage primitive (SAV-05/06, план [SaveAndLoad](../Plans/SaveAndLoad/README.md)) | `gv2_content_core` |
+| `gv2_runtime_core` | `GV2RuntimeCore` | Lua 5.4.8 VM, runtime session, `FGV2LuaMarshaller`, slot-scoped save storage primitive (SAV-05/06, план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md)) | `gv2_content_core` |
 | `gv2_test_support` | `GV2TestSupport` | Lua spec runner orchestration (TAS-04, ADR-0024); test-only, ни один gameplay host не линкует | `gv2_content_host_support`, `gv2_runtime_core` |
 | — | `GV2` | UE composition, Bridge, Presentation | все четыре |
 
 Vendored Lua (`Source/GV2RuntimeCore/Private/ThirdParty/Lua54`) собирается только внутри `gv2_runtime_core` и не выставляется через public headers.
 
-### Save slot storage primitive (SAV-05/06/07, план [SaveAndLoad](../Plans/SaveAndLoad/README.md))
+### Save slot storage primitive (SAV-05/06/07, план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md))
 
 `GV2RuntimeCore::ISaveSlotStorage` (`Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2HostServices.h`) — единственный C++ примитив плана SaveAndLoad (ADR-0021): чтение и запись непрозрачных байт по `save_slot_id`, с типизированным результатом (`Ok`/`NotFound`/`Unreadable`/`Failure`). Интерфейс не содержит путей, `FString`, UObject и filesystem-типов; отсутствие конкретной реализации не мешает `FRuntimeSession::Start` — примитив не является параметром сессии, как и `IResourceCatalog`/`ILocalizationAdapter` рядом с ним.
 

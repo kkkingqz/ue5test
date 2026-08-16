@@ -1,17 +1,17 @@
 ---
 title: Save Path Tasks
-status: draft
+status: archived
 version: 1.1
 updated: 2026-08-15
 depends_on:
   - CanonicalCodec.md
   - SlotStorage.md
-  - ../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/CommandsAndEvents.md
 ---
 
 # M3 — Save Path
 
-> **Материализует:** [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md).
+> **Материализует:** [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md).
 > **Задачи:** SAV-08…11.
 > **Результат:** конверт контейнера, safe point и атомарная запись.
 

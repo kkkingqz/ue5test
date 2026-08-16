@@ -1,18 +1,18 @@
 ---
 title: Canonical Codec Tasks
-status: draft
+status: archived
 version: 1.1
 updated: 2026-08-15
 depends_on:
   - README.md
-  - ../../Architecture/CanonicalStateAndSave.md
+  - ../../../Architecture/CanonicalStateAndSave.md
 decisions:
-  - ../../ADR/0021-opaque-save-container.md
+  - ../../../ADR/0021-opaque-save-container.md
 ---
 
 # M1 — Canonical Codec
 
-> **Материализует:** [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md).
+> **Материализует:** [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md).
 > **Задачи:** SAV-01…04.
 > **Результат:** обратимая каноническая кодировка как отдельный модуль.
 

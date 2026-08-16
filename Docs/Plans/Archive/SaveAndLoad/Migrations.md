@@ -1,16 +1,16 @@
 ---
 title: Migrations Tasks
-status: draft
+status: archived
 version: 1.1
 updated: 2026-08-15
 depends_on:
   - ColdStartLoad.md
-  - ../../Architecture/BootstrapAndSessionLifecycle.md
+  - ../../../Architecture/BootstrapAndSessionLifecycle.md
 ---
 
 # M5 — Migrations
 
-> **Материализует:** [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md).
+> **Материализует:** [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md).
 > **Задачи:** SAV-18…21.
 > **Результат:** версии секций и детерминированные миграции.
 

@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 1.6
-updated: 2026-08-15
+version: 1.7
+updated: 2026-08-16
 depends_on:
   - ../README.md
 ---
@@ -24,3 +24,4 @@ depends_on:
 | [LocalizationPipeline](LocalizationPipeline/README.md) | 2026-08-15 | Разделение identity и содержимого текста, PO-каталоги внутри package root, резолвинг `TextSpec` в Presentation, fallback и отчёт покрытия |
 | [LifecycleSpecsMigration](LifecycleSpecsMigration/README.md) | 2026-08-15 | Миграция последнего крупного унаследованного набора: 5326 строк C++ заменены декларативными спеками `Tests/Lua/lifecycle/` |
 | [ContentCliModularization](ContentCliModularization/README.md) | 2026-08-15 | Разбиение `gv2-content` на модули команд и поддержки вместо монолитного `main.cpp` |
+| [SaveAndLoad](SaveAndLoad/README.md) | 2026-08-16 | Обратимый канонический кодек, slot-storage примитив, конверт контейнера, загрузка на холодном старте с резолвом редиректов и версии секций с миграциями |

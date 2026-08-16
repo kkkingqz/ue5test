@@ -1,19 +1,19 @@
 ---
 title: Slot Storage Tasks
-status: draft
+status: archived
 version: 1.1
 updated: 2026-08-15
 depends_on:
   - README.md
-  - ../../Architecture/BuildAndTooling.md
+  - ../../../Architecture/BuildAndTooling.md
 decisions:
-  - ../../ADR/0020-cpp-scope-criterion.md
-  - ../../ADR/0021-opaque-save-container.md
+  - ../../../ADR/0020-cpp-scope-criterion.md
+  - ../../../ADR/0021-opaque-save-container.md
 ---
 
 # M2 — Slot Storage
 
-> **Материализует:** [Build and Tooling](../../Architecture/BuildAndTooling.md).
+> **Материализует:** [Build and Tooling](../../../Architecture/BuildAndTooling.md).
 > **Задачи:** SAV-05…07.
 > **Результат:** host отдаёт и принимает непрозрачные байты по `save_slot_id`.
 

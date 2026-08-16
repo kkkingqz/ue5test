@@ -1,21 +1,21 @@
 ---
 title: Save and Load Implementation Plan
-status: normative
+status: archived
 version: 1.5
 updated: 2026-08-15
 depends_on:
-  - ../../Architecture/CanonicalStateAndSave.md
-  - ../../Architecture/BootstrapAndSessionLifecycle.md
-  - ../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/CanonicalStateAndSave.md
+  - ../../../Architecture/BootstrapAndSessionLifecycle.md
+  - ../../../Architecture/StableIDSpecification.md
 decisions:
-  - ../../ADR/0020-cpp-scope-criterion.md
-  - ../../ADR/0021-opaque-save-container.md
-  - ../../ADR/0023-stable-id-publication-freeze.md
+  - ../../../ADR/0020-cpp-scope-criterion.md
+  - ../../../ADR/0021-opaque-save-container.md
+  - ../../../ADR/0023-stable-id-publication-freeze.md
 ---
 
 # План реализации Save and Load
 
-> **Материализует:** [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md) в рамках [ADR-0021](../../ADR/0021-opaque-save-container.md).
+> **Материализует:** [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md) в рамках [ADR-0021](../../../ADR/0021-opaque-save-container.md).
 > **Задачи:** SAV-01…21.
 > **Результат:** состояние сохраняется в непрозрачный контейнер и восстанавливается из него без потерь.
 
@@ -23,7 +23,7 @@ decisions:
 
 Закрыть последний недостающий элемент vertical slice: состояние сохраняется в непрозрачный контейнер и восстанавливается из него так, что канонический хэш состояния совпадает до и после.
 
-План материализует [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md) в рамках [ADR-0021](../../ADR/0021-opaque-save-container.md): сериализация, integrity check и миграции принадлежат Lua, host предоставляет только slot-scoped byte storage.
+План материализует [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md) в рамках [ADR-0021](../../../ADR/0021-opaque-save-container.md): сериализация, integrity check и миграции принадлежат Lua, host предоставляет только slot-scoped byte storage.
 
 ## Состояние на входе
 

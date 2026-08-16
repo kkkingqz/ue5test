@@ -1,18 +1,18 @@
 ---
 title: Cold Start Load Tasks
-status: draft
+status: archived
 version: 1.1
 updated: 2026-08-15
 depends_on:
   - SavePath.md
-  - ../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/StableIDSpecification.md
 decisions:
-  - ../../ADR/0023-stable-id-publication-freeze.md
+  - ../../../ADR/0023-stable-id-publication-freeze.md
 ---
 
 # M4 — Cold Start Load
 
-> **Материализует:** [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md).
+> **Материализует:** [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md).
 > **Задачи:** SAV-12…17.
 > **Результат:** восстановление состояния и ссылочная целостность.
 
