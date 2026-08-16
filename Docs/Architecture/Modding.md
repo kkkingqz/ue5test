@@ -84,6 +84,10 @@ optional cooked Pak
 - Module ID: `weather_mod:module.storm_rules`.
 - Dependencies объявляются manifest-ом.
 - Module возвращает export table и не создаёт globals.
+- Таблицы экспорта модулей неизменяемы после загрузки (`LuaModuleExportFrozen`); ad-hoc мутация чужих экспортов запрещена ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)).
+- Замещение модулей разрешено только для явно помеченных как замещаемые (`replaceable: true`, например `gameplay/`, `debug/`); модули ядра запечатаны по умолчанию (`LuaModuleSealed`).
+- Замещающий модуль получает доступ к базовой реализации через `require_base()` во время инициализации.
+- Хуки жизненного цикла (`register`, `validate_state` и др.) вызываются только у активного победителя.
 - Public extension surface: `game.mods.weather_mod`.
 - Commands, validators, events, services и lifecycle hooks регистрируются до freeze.
 - Event handler меняет gameplay только через queued command.

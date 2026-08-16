@@ -36,6 +36,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0022](0022-external-translation-catalog.md) | accepted | Репозиторий владеет identity текста; переводы — внешние PO-каталоги, резолвит host |
 | [0023](0023-stable-id-publication-freeze.md) | accepted | Жизненный цикл Stable ID: авторский rename до релиза и безусловный freeze после публикации |
 | [0024](0024-lua-spec-runner.md) | accepted | Lua-правила проверяются Lua-спеками из `Tests/Lua/` через один generic runner |
+| [0025](0025-lua-module-replacement-and-export-freezing.md) | accepted | Замещение модулей, запрет мутации таблиц экспорта и запечатанность по умолчанию |
 
 ## Template
 

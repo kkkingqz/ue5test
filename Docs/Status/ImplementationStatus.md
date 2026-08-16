@@ -44,7 +44,7 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 | Область | Статус | Комментарий |
 |---|---|---|
 | Lua 5.4.8 VM, one-VM invariant, owner thread | Реализовано | Wrong-thread и re-entry дают typed faults |
-| Safe environment, module manifest/graph, protected entry | Реализовано | `load`/`loadfile`/`dofile`/`math.random` удалены |
+| Safe environment, module manifest/graph, protected entry | Реализовано | `load`/`loadfile`/`dofile`/`math.random` удалены; манифест дескрипторов модулей с `replaceable: boolean`, неизменяемость таблиц экспорта (`LuaModuleExportFrozen`) и защита от ad-hoc мутации чужих экспортов ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md), план [PackageSupport](../Plans/PackageSupport/README.md) M3) |
 | Value marshalling обоих portable типов | Реализовано | `FGV2LuaMarshaller`, единый path |
 | `game.repository` (`get`/`require`/`list`/`exists`) | Реализовано | Detached deep copy, typed error codes, canonical `list` order |
 | Semantic input ingress и command dispatch | Реализовано | Command Dispatcher с защитой от реентерабельности, открытие `mutation_window`, делегирование доменным методам сущностей/сервисам, команды `core:command.actor.reward` и `core:command.location.travel`, возврат structured result/error |

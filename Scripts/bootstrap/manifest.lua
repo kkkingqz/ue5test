@@ -5,11 +5,13 @@ return {
             module_id = "core:module.runtime.stable_id",
             source = "runtime/stable_id.lua",
             dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.mutation_window",
             source = "runtime/mutation_window.lua",
             dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.command_dispatcher",
@@ -19,6 +21,7 @@ return {
                 "core:module.runtime.stable_id",
                 "core:module.runtime.event_bus",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.state_validator",
@@ -26,16 +29,19 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.instance_allocator",
             source = "runtime/instance_allocator.lua",
             dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.canonical_codec",
             source = "runtime/canonical_codec.lua",
             dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.state_hasher",
@@ -43,11 +49,13 @@ return {
             dependencies = {
                 "core:module.runtime.canonical_codec",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.migrate",
             source = "runtime/migrate.lua",
             dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.save",
@@ -57,6 +65,7 @@ return {
                 "core:module.runtime.state_hasher",
                 "core:module.runtime.migrate",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.load",
@@ -68,6 +77,7 @@ return {
                 "core:module.runtime.state_validator",
                 "core:module.runtime.migrate",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.actor_registry",
@@ -75,16 +85,19 @@ return {
             dependencies = {
                 "core:module.runtime.instance_allocator",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.world",
             source = "runtime/world.lua",
             dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "core:module.gameplay.root",
             source = "gameplay/root.lua",
             dependencies = {},
+            replaceable = true,
         },
         {
             module_id = "core:module.presentation.screen_requests",
@@ -92,6 +105,7 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.resources.text",
@@ -99,6 +113,7 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.resources.service",
@@ -106,6 +121,7 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.debug.start",
@@ -114,6 +130,7 @@ return {
                 "core:module.presentation.screen_requests",
                 "core:module.resources.text",
             },
+            replaceable = true,
         },
         {
             module_id = "core:module.boundary.ingress",
@@ -123,6 +140,7 @@ return {
                 "core:module.gameplay.root",
                 "core:module.debug.start",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.boundary.outbound",
@@ -131,6 +149,7 @@ return {
                 "core:module.presentation.screen_requests",
                 "core:module.runtime.state_hasher",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.boundary.entrypoints",
@@ -139,11 +158,13 @@ return {
                 "core:module.boundary.ingress",
                 "core:module.boundary.outbound",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.service_registry",
             source = "runtime/service_registry.lua",
             dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.validator_registry",
@@ -151,6 +172,7 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.event_envelope",
@@ -158,6 +180,7 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.subscriber_registry",
@@ -165,6 +188,7 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.runtime.event_bus",
@@ -174,6 +198,7 @@ return {
                 "core:module.runtime.stable_id",
                 "core:module.runtime.subscriber_registry",
             },
+            replaceable = false,
         },
         {
             module_id = "core:module.gameplay.location_service",
@@ -181,6 +206,7 @@ return {
             dependencies = {
                 "core:module.runtime.stable_id",
             },
+            replaceable = true,
         },
         {
             module_id = "core:module.bootstrap.main",
@@ -204,6 +230,7 @@ return {
                 "core:module.runtime.event_bus",
                 "core:module.gameplay.location_service",
             },
+            replaceable = false,
         },
     },
 }

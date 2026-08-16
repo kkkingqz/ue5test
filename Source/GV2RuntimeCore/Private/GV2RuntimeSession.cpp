@@ -38,6 +38,7 @@ struct FModuleSpec
     std::string ModuleId;
     std::string SourceName;
     std::vector<std::string> Dependencies;
+    bool bReplaceable = false;
 };
 
 bool IsCanonicalModuleSourcePath(const std::string_view Value)
@@ -328,6 +329,19 @@ struct FRuntimeSession::FImpl
     static int ReadOnlyTableError(lua_State* InState)
     {
         return luaL_error(InState, "attempt to modify read-only table: game.repository");
+    }
+
+    static int ModuleExportFrozenError(lua_State* InState)
+    {
+        return luaL_error(InState, "LuaModuleExportFrozen: module export table is immutable after initialization");
+    }
+
+    static int ModuleExportPairs(lua_State* InState)
+    {
+        lua_getglobal(InState, "next");
+        lua_pushvalue(InState, lua_upvalueindex(1));
+        lua_pushnil(InState);
+        return 3;
     }
 
     // SAV-05/06/10: game.save_slots.write(slot_id, bytes) -> ok, err_code.
@@ -727,6 +741,25 @@ struct FRuntimeSession::FImpl
                 Spec.Dependencies.emplace_back(std::move(Dependency));
             }
             lua_pop(State, 1);
+
+            lua_getfield(State, SpecTableIndex, "replaceable");
+            if (!lua_isnil(State, -1))
+            {
+                if (!lua_isboolean(State, -1))
+                {
+                    OutFault = {
+                        "LuaModuleManifestInvalid",
+                        "Module descriptor 'replaceable' field must be a boolean: " + Spec.ModuleId};
+                    return false;
+                }
+                Spec.bReplaceable = lua_toboolean(State, -1) != 0;
+            }
+            else
+            {
+                Spec.bReplaceable = false;
+            }
+            lua_pop(State, 1);
+
             Specs.emplace_back(std::move(Spec));
             lua_pop(State, 1);
         }
@@ -847,10 +880,30 @@ struct FRuntimeSession::FImpl
             return false;
         }
 
+        // PKG-11: Freeze export table using an immutable proxy table
+        lua_createtable(State, 0, 0);
+        lua_createtable(State, 0, 4);
+
+        lua_pushvalue(State, -3);
+        lua_setfield(State, -2, "__index");
+
+        lua_pushcfunction(State, &FImpl::ModuleExportFrozenError);
+        lua_setfield(State, -2, "__newindex");
+
+        lua_pushvalue(State, -3);
+        lua_pushcclosure(State, &FImpl::ModuleExportPairs, 1);
+        lua_setfield(State, -2, "__pairs");
+
+        lua_pushboolean(State, 0);
+        lua_setfield(State, -2, "__metatable");
+
+        lua_setmetatable(State, -2);
+
         lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
         lua_pushvalue(State, -2);
         lua_setfield(State, -2, Spec.ModuleId.c_str());
-        lua_pop(State, 1);
+        lua_pop(State, 2);
+
         lua_pushnil(State);
         lua_setfield(State, LUA_REGISTRYINDEX, CurrentModuleRegistryKey);
         lua_pushnil(State);

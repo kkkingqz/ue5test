@@ -10,6 +10,7 @@ decisions:
   - ../ADR/0005-value-only-async-boundary.md
   - ../ADR/0007-lua-module-environment.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../ADR/0025-lua-module-replacement-and-export-freezing.md
 ---
 
 # Lua Runtime Contract
@@ -57,14 +58,16 @@ Runtime source закреплён в repository как Lua 5.4.8. Build обяз
 - Dependency graph проверяется на missing dependencies, duplicates, cycles и unreachable modules до инициализации первого gameplay module.
 - Core modules загружаются первыми, затем mods в resolved order.
 - `require(module_id)` выполняет source один раз и возвращает export table.
+- Таблицы экспорта модулей замораживаются после возврата загрузчиком (`__newindex` с ошибкой `LuaModuleExportFrozen`, `__metatable = false`); прямая мутация чужих экспортов запрещена ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)).
+- Дескриптор каждого модуля в манифесте объявляет `replaceable: boolean` (по умолчанию `false`); модули ядра запечатаны по умолчанию (`runtime/`, `boundary/`, `bootstrap/`, `presentation/`, `resources/`), модули геймплея и отладки замещаемы (`gameplay/`, `debug/`).
 - Module source path является provenance, не identity.
 - Late registration после registry freeze запрещена.
 
-Текущий core manifest — `Scripts/bootstrap/manifest.lua`. Это единственный fixed bootstrap locator внутри portable runtime; manifest возвращает data-only table `{ entry_module_id, modules[] }` и сам не является module. Каждый descriptor обязан содержать canonical `module_id`, package-relative `source` и полный список direct `dependencies`.
+Текущий core manifest — `Scripts/bootstrap/manifest.lua`. Это единственный fixed bootstrap locator внутри portable runtime; manifest возвращает data-only table `{ entry_module_id, modules[] }` и сам не является module. Каждый descriptor обязан содержать canonical `module_id`, package-relative `source`, полный список direct `dependencies` и опциональное булево поле `replaceable`.
 
-UE и headless hosts рекурсивно собирают UTF-8 `.lua` files под `Scripts/`, сортируют только для deterministic ingestion и передают полный source set в portable runtime. File order не является load semantics. Runtime обязан отклонить missing/unlisted/duplicate source, duplicate module ID, invalid path, dependency cycle и module, недостижимый от `entry_module_id`. Добавление module не требует изменения C++ или headless host.
+UE и headless hosts рекурсивно собирают UTF-8 `.lua` files под `Scripts/`, сортируют только для deterministic ingestion и передают полный source set в portable runtime. File order не является load semantics. Runtime обязан отклонить missing/unlisted/duplicate source, duplicate module ID, invalid path, dependency cycle, invalid `replaceable` type и module, недостижимый от `entry_module_id`. Добавление module не требует изменения C++ или headless host.
 
-Loader выполняет modules один раз в dependency order. Module обязан вернуть export table. `require(module_id)` разрешён во время module initialization только для direct dependency текущего descriptor; это делает hidden import deterministic manifest violation. Module сохраняет imports в lexical locals и не вызывает `require` из runtime handlers.
+Loader выполняет modules один раз в dependency order. Module обязан вернуть export table. Возвращённая таблица экспорта оборачивается в immutable proxy (`__index`, `__newindex` с ошибкой `LuaModuleExportFrozen`, `__pairs`, `__metatable = false`). `require(module_id)` разрешён во время module initialization только для direct dependency текущего descriptor; это делает hidden import deterministic manifest violation. Module сохраняет imports в lexical locals и не вызывает `require` из runtime handlers.
 
 ## Source layout and dependency direction
 

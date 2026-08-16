@@ -24,7 +24,7 @@ depends_on:
 | INV-003 | Состояние меняется только пока исполняется command handler | [Commands and Events § Mutation authority](CommandsAndEvents.md) |
 | INV-004 | Событие публикуется только после успешного commit и не может быть отменено | [Commands and Events](CommandsAndEvents.md) |
 | INV-005 | Не более одной активной сессии и одной Lua VM в процессе | [Bootstrap and Session Lifecycle](BootstrapAndSessionLifecycle.md) |
-| INV-006 | Реестры замораживаются после регистрации; поздняя регистрация запрещена | [Bootstrap and Session Lifecycle](BootstrapAndSessionLifecycle.md), [Lua Runtime Contract](LuaRuntimeContract.md) |
+| INV-006 | Реестры и таблицы экспорта модулей замораживаются; поздняя регистрация и мутация экспортов запрещены | [Bootstrap and Session Lifecycle](BootstrapAndSessionLifecycle.md), [Lua Runtime Contract](LuaRuntimeContract.md), [ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md) |
 | INV-007 | Через boundary проходят только значения; UObject, указатели и функции — нет | [Lua Runtime Contract](LuaRuntimeContract.md), [ADR-0005](../ADR/0005-value-only-async-boundary.md) |
 | INV-008 | Canonical state не пересекает boundary; host получает байты и скаляры | [ADR-0021](../ADR/0021-opaque-save-container.md), [Lua Runtime Contract](LuaRuntimeContract.md) |
 | INV-009 | Stable ID имеет единый формат и не переиспользуется после публикации | [Stable ID Specification](StableIDSpecification.md), [ADR-0023](../ADR/0023-stable-id-publication-freeze.md) |

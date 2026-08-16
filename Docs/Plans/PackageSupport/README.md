@@ -14,6 +14,7 @@ decisions:
   - ../../ADR/0006-repository-reload-and-session-pinning.md
   - ../../ADR/0018-portable-content-core-module.md
   - ../../ADR/0019-content-host-support-module.md
+  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
 ---
 
 # План реализации поддержки пакетов
@@ -67,7 +68,7 @@ Content-сторона к нескольким пакетам готова: `Bui
 
 - [x] M1 — [Package Manifest](PackageManifest.md): пакет объявляет identity, версию и совместимость.
 - [x] M2 — [Discovery and Order](DiscoveryAndOrder.md): набор корней, явный порядок, зависимости, lock-файл.
-- [ ] M3 — [Module Sealing](ModuleSealing.md): заморозка таблиц экспорта и разметка замещаемости.
+- [x] M3 — [Module Sealing](ModuleSealing.md): заморозка таблиц экспорта и разметка замещаемости.
 - [ ] M4 — [Modules from Packages](ModulesFromPackages.md): Lua из пакета, резолюция по провайдерам, `require_base()`.
 - [ ] M5 — [Determinism and Save](DeterminismAndSave.md): `ScriptSetHash`, fingerprint пакетов в сейве, вывод цепочек.
 
