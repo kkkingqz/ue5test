@@ -1158,22 +1158,30 @@ int Run(
         // A missing Tests/Lua directory is not an error. SAV-02/03: "save"
         // needs nothing beyond the production module tree either (the
         // codec is stateless), so it rides the same loop.
-        for (const std::string& Subtree : {"world", "events", "resources", "lifecycle", "save"})
+        //
+        // Review fix: the subtree list itself is no longer hardcoded here
+        // (and separately in GV2LuaSpecRunnerHostTests.cpp) — both hosts
+        // discover it from the filesystem via
+        // GV2TestSupport::DiscoverProductionSessionSubtreeNames(), so a new
+        // Tests/Lua/<subtree>/ extends both hosts with zero C++ change.
+        const std::vector<std::filesystem::path> TestsLuaRootCandidates{
+            std::filesystem::current_path() / "Tests" / "Lua",
+            std::filesystem::current_path() / ".." / "Tests" / "Lua",
+        };
+        std::filesystem::path TestsLuaRoot = TestsLuaRootCandidates.front();
+        for (const std::filesystem::path& Candidate : TestsLuaRootCandidates)
         {
-            const std::vector<std::filesystem::path> SpecRootCandidates{
-                std::filesystem::current_path() / "Tests" / "Lua" / Subtree,
-                std::filesystem::current_path() / ".." / "Tests" / "Lua" / Subtree,
-            };
-            std::filesystem::path SpecRoot = SpecRootCandidates.front();
-            for (const std::filesystem::path& Candidate : SpecRootCandidates)
+            std::error_code Ec;
+            if (std::filesystem::is_directory(Candidate, Ec) && !Ec)
             {
-                std::error_code Ec;
-                if (std::filesystem::is_directory(Candidate, Ec) && !Ec)
-                {
-                    SpecRoot = Candidate;
-                    break;
-                }
+                TestsLuaRoot = Candidate;
+                break;
             }
+        }
+
+        for (const std::string& Subtree : GV2TestSupport::DiscoverProductionSessionSubtreeNames(TestsLuaRoot))
+        {
+            const std::filesystem::path SpecRoot = TestsLuaRoot / Subtree;
 
             GV2RuntimeCore::FRuntimeSession SpecSession;
             GV2RuntimeCore::FRuntimeFault SpecSessionFault;
@@ -1219,20 +1227,7 @@ int Run(
         // registered before the registry freezes), not the real
         // production session's already-frozen, empty validator registry.
         {
-            const std::vector<std::filesystem::path> CommandsSpecRootCandidates{
-                std::filesystem::current_path() / "Tests" / "Lua" / "commands",
-                std::filesystem::current_path() / ".." / "Tests" / "Lua" / "commands",
-            };
-            std::filesystem::path CommandsSpecRoot = CommandsSpecRootCandidates.front();
-            for (const std::filesystem::path& Candidate : CommandsSpecRootCandidates)
-            {
-                std::error_code Ec;
-                if (std::filesystem::is_directory(Candidate, Ec) && !Ec)
-                {
-                    CommandsSpecRoot = Candidate;
-                    break;
-                }
-            }
+            const std::filesystem::path CommandsSpecRoot = TestsLuaRoot / "commands";
 
             const std::vector<std::filesystem::path> ScriptsRootCandidates{
                 std::filesystem::current_path() / "Scripts",

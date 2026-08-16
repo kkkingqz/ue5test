@@ -22,6 +22,11 @@ local event_queue = {}
 local subscribers_by_event = {}
 local registration_seq = 0
 
+-- Review fix: the only holder of subscriber_registry's `admin.clear()`
+-- capability (see subscriber_registry.lua) — never assigned onto `game`,
+-- so nothing outside this module can reach it.
+local subscriber_registry_admin = nil
+
 function M.get_pump_limit()
     return pump_limit
 end
@@ -151,11 +156,17 @@ function M.get_subscribers(event_id)
     return all_subs
 end
 
+-- Test-only reset (setup/teardown between Tests/Lua spec cases, e.g.
+-- Tests/Lua/events/, Tests/Lua/commands/). Deliberately not exposed on
+-- game.events (see M.register below) — a gameplay module or mod would
+-- have to explicitly require("core:module.runtime.event_bus") and call
+-- this by name to reach it, an auditable, declared-dependency surface
+-- instead of the previously-global game.events.clear_subscribers.
 function M.clear_subscribers()
     subscribers_by_event = {}
     registration_seq = 0
-    if game and game.events and game.events.subscribers then
-        game.events.subscribers.clear()
+    if subscriber_registry_admin then
+        subscriber_registry_admin.clear()
     end
 end
 
@@ -304,7 +315,8 @@ function M.register(_ctx)
         game.events = {}
     end
 
-    local registry = subscriber_registry.create_registry()
+    local registry, admin = subscriber_registry.create_registry()
+    subscriber_registry_admin = admin
     game.events.subscribers = registry
     game.events.enqueue = M.enqueue
     game.events.emit = M.emit
@@ -312,7 +324,12 @@ function M.register(_ctx)
     game.events.freeze = M.freeze
     game.events.get_published_events = M.get_published_events
     game.events.clear_published_events = M.clear_published_events
-    game.events.clear_subscribers = M.clear_subscribers
+    -- Review fix: clear_subscribers is deliberately NOT exposed on
+    -- game.events (production facade) — it can unfreeze the subscriber
+    -- registry, violating "Registries freeze после registration"
+    -- (BootstrapAndSessionLifecycle.md) if reachable by any gameplay
+    -- module/mod. Tests/Lua specs call event_bus.clear_subscribers()
+    -- directly (they already require() the module) — see M.clear_subscribers above.
     game.events.set_pump_limit = M.set_pump_limit
     game.events.get_pump_limit = M.get_pump_limit
     game.events.reset_pump_limit = M.reset_pump_limit

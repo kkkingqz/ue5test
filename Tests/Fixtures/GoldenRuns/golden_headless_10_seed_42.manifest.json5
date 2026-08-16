@@ -1,7 +1,7 @@
 {
   "lua_release_num": 50408,
   "repository_content_hash": "0e68f1736f301f313ee30764c2685701ddd357d1453e3696388e6528fa15c581",
-  "script_set_hash": "d1dce018b9f65f733ca1eaa0179a628d73d46e1905f069a92073b3cc9a6fdc99",
+  "script_set_hash": "25b6f071022916f889083854c76adc2ba8d7a58ca620fd79a26b2b8c70593a9c",
   "seed": 42,
   "accepted_commands": [
     {
@@ -53,11 +53,6 @@
       "command_id": "core:command.test.headless_step",
       "args": {"seed": 42, "step": 10},
       "sequence": 10
-    },
-    {
-      "command_id": "core:command.location.travel",
-      "args": {"target_location_id": "core:location.city.tavern"},
-      "sequence": 11
     }
   ]
 }

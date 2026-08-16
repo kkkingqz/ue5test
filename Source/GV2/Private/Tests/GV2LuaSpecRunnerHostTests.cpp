@@ -84,17 +84,24 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
     // real production session run here (TAS-13: Tests/Lua/commands needs an
     // isolated fixture session instead, tested by
     // GV2.Runtime.Lua.CommandValidatorSpecRunnerHost).
-    for (const TCHAR* Subtree : { TEXT("Tests/Lua/world"), TEXT("Tests/Lua/events"), TEXT("Tests/Lua/resources"), TEXT("Tests/Lua/lifecycle"), TEXT("Tests/Lua/save") })
+    //
+    // Review fix: the subtree list is discovered from the filesystem via
+    // GV2TestSupport::DiscoverProductionSessionSubtreeNames() — the same
+    // single source of truth Headless/Source/main.cpp reads — instead of
+    // being hardcoded here separately, so a new Tests/Lua/<subtree>/
+    // extends both hosts with zero C++ change.
+    const FString TestsLuaRootFString = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tests/Lua"));
+    const std::filesystem::path TestsLuaRoot(TCHAR_TO_UTF8(*TestsLuaRootFString));
+    for (const std::string& Subtree : GV2TestSupport::DiscoverProductionSessionSubtreeNames(TestsLuaRoot))
     {
-        const FString SpecRootFString = FPaths::Combine(FPaths::ProjectDir(), Subtree);
-        const std::filesystem::path SpecRoot(TCHAR_TO_UTF8(*SpecRootFString));
+        const std::filesystem::path SpecRoot = TestsLuaRoot / Subtree;
 
         GV2RuntimeCore::FRuntimeSession Session;
         GV2RuntimeCore::FRuntimeFault Fault;
         const bool bStarted = Session.Start(1, RepoHandle, RuntimeSources, Fault);
         if (!TestTrue(
                 FString::Printf(TEXT("Runtime session starts for %s: code=%s message=%s"),
-                    Subtree, UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
+                    UTF8_TO_TCHAR(Subtree.c_str()), UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
                 bStarted))
         {
             return false;

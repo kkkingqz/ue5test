@@ -76,6 +76,42 @@ def validate_ue_tests(entry_points: list[str]) -> list[str]:
     return errors
 
 
+def validate_no_hardcoded_lua_subtree_lists() -> list[str]:
+    """Review fix: Headless and UE each used to hardcode their own copy of
+    the Tests/Lua production-session subtree list ({"world", "events",
+    ...} literals next to their GV2TestSupport::RunLuaSpecs calls) — a new
+    subtree added to one copy and forgotten in the other would silently
+    run in only one host, with nothing here or in the build catching it
+    (this gate only checked that RunLuaSpecs is called at all, not that
+    both hosts enumerate the same subtrees). Both hosts now call the one
+    shared GV2TestSupport::DiscoverProductionSessionSubtreeNames(), which
+    discovers the list from the filesystem instead of a literal — this
+    check fails if either host calls RunLuaSpecs without also referencing
+    that shared discovery function, so a regression to a hardcoded copy
+    cannot land silently.
+    """
+    errors: list[str] = []
+    candidates = [
+        HEADLESS_DIR / "Source" / "main.cpp",
+        UE_TESTS_DIR / "GV2LuaSpecRunnerHostTests.cpp",
+    ]
+    for path in candidates:
+        if not path.exists():
+            continue
+        content = path.read_text(encoding="utf-8")
+        if "RunLuaSpecs" not in content:
+            continue
+        if "DiscoverProductionSessionSubtreeNames" not in content:
+            errors.append(
+                f"{path}: calls GV2TestSupport::RunLuaSpecs but never "
+                "GV2TestSupport::DiscoverProductionSessionSubtreeNames() — the Tests/Lua "
+                "subtree list must be discovered from the filesystem (shared by both "
+                "hosts), not hardcoded per host."
+            )
+
+    return errors
+
+
 def is_test_file(path: Path) -> bool:
     """Identifies test/conformance fixtures where embedded Lua test sources are allowed."""
     if "Conformance" in path.name:
@@ -215,6 +251,7 @@ def main() -> int:
     errors.extend(validate_ue_tests(entry_points))
     errors.extend(validate_no_embedded_lua_in_production())
     errors.extend(validate_no_new_lua_rule_conformance())
+    errors.extend(validate_no_hardcoded_lua_subtree_lists())
 
     if errors:
         print(f"FAILED: Host conformance parity validation failed with {len(errors)} error(s):", file=sys.stderr)

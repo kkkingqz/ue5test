@@ -126,31 +126,33 @@ function M.create_registry()
         return result
     end
 
-    function registry.clear()
-        entries = {}
-        entries_by_id = {}
-        subscribers_by_event = {}
-        is_frozen = false
-        next_sequence = 1
-    end
-
     setmetatable(registry, {
         __newindex = function(_t, _k, _v)
             error("SubscriberRegistryDirectAssignmentDisallowed: use game.events.subscribers.register(id, event_id, handler, options) to register a subscriber", 2)
         end,
     })
 
-    return registry
-end
+    -- Review fix (BootstrapAndSessionLifecycle "Registries freeze после
+    -- registration", LuaRuntimeContract "Late registration после registry
+    -- freeze запрещена"): `clear()` — the one operation that can unfreeze
+    -- a registry — is deliberately NOT a method on `registry` above, so it
+    -- is not reachable through `game.events.subscribers` at all, by any
+    -- gameplay module or mod. It is returned separately as `admin`, held
+    -- only by event_bus.lua (a closure-captured module-local upvalue,
+    -- never assigned onto `game`), which is the sole caller
+    -- (`event_bus.clear_subscribers()`, used by Tests/Lua specs as
+    -- setup/teardown between cases — never gameplay code).
+    local admin = {
+        clear = function()
+            entries = {}
+            entries_by_id = {}
+            subscribers_by_event = {}
+            is_frozen = false
+            next_sequence = 1
+        end,
+    }
 
-function M.register(_ctx)
-    if not game then
-        game = {}
-    end
-    if not game.events then
-        game.events = {}
-    end
-    game.events.subscribers = M.create_registry()
+    return registry, admin
 end
 
 return M
