@@ -22,15 +22,19 @@ bool IsCanonicalScreenId(const FString& Value)
     return GV2StableIdUE::IsOfKind(Value, "screen");
 }
 
-// PCC-36: default package root for the real "core" package, staged into
-// packaged builds via GV2.Build.cs RuntimeDependencies (mirroring Scripts/
-// and Resources/). `Tests/Fixtures/PortableContentCore` is test-only and is
-// never staged; using it here would leave `bRepositoryReady` false in any
-// packaged build. No mod discovery/multi-package root exists yet -
-// consistent with PortableContentCore's first-release scope.
-FString DefaultRepositoryPackageRoot()
+// RH-02: default package roots for real GameDataRepository packages ("core" and "rh"),
+// staged into packaged builds via GV2.Build.cs RuntimeDependencies (mirroring Scripts/
+// and Resources/). `Tests/Fixtures/PortableContentCore` is test-only and is never staged.
+TArray<FString> DefaultRepositoryPackageRoots()
 {
-    return FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
+    TArray<FString> Roots;
+    Roots.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core")));
+    const FString RhRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/rh"));
+    if (FPaths::DirectoryExists(RhRoot))
+    {
+        Roots.Add(RhRoot);
+    }
+    return Roots;
 }
 }
 
@@ -60,7 +64,7 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
     RepositoryPublisher = MakePimpl<FGV2RepositoryPublisher>();
     bRepositoryReady = RepositoryPublisher->PublishCandidate(
-        BuildGV2RepositoryFromDirectory(DefaultRepositoryPackageRoot()));
+        BuildGV2RepositoryFromDirectories(DefaultRepositoryPackageRoots()));
     if (!bRepositoryReady)
     {
         RepositoryBuildError = TEXT("failed to build the initial GameDataRepository");

@@ -65,8 +65,8 @@ decisions:
 - UI управления модами и загрузка `rh` как отключаемого мода: `rh` — обязательная часть поставки игры.
 
 ## Milestones
-
-- [ ] M1 — [Package Setup](PackageSetup.md): пакет `rh` создан, все хосты грузят набор из двух пакетов.
+ 
+- [x] M1 — [Package Setup](PackageSetup.md): пакет `rh` создан, все хосты грузят набор из двух пакетов.
 - [ ] M2 — [Entity Migration](EntityMigration.md): сущности, тексты, переводы и ресурсы переехали в `rh`.
 - [ ] M3 — [Core Decoupling](CoreDecoupling.md): `core` не содержит ни одной ссылки на `rh`, разделение закреплено гейтом и документацией.
 

@@ -1,0 +1,11 @@
+{
+  package_id: "rh",
+  namespace: "rh",
+  version: "0.1.0",
+  dependencies: [
+    {
+      package_id: "core",
+      load_after: true,
+    },
+  ],
+}

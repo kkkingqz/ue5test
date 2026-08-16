@@ -114,8 +114,37 @@ bool TryParsePositive(const std::string& Text, std::int64_t& OutValue)
 
 bool LoadRuntimeSources(
     const char* ExecutableArgument,
+    const std::vector<std::filesystem::path>& ContentRoots,
     std::vector<GV2RuntimeCore::FRuntimeSource>& OutSources)
 {
+    if (!ContentRoots.empty())
+    {
+        std::vector<std::pair<std::string, std::filesystem::path>> Packages;
+        for (const auto& Root : ContentRoots)
+        {
+            std::vector<GV2ContentCore::FDiagnostic> Diags;
+            auto Descriptor = GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, Diags);
+            if (Descriptor)
+            {
+                Packages.emplace_back(Descriptor->GetPackageId(), Root);
+            }
+        }
+        if (!Packages.empty())
+        {
+            auto Discovered = GV2ContentHostSupport::DiscoverPackagesScripts(Packages);
+            if (!Discovered.empty())
+            {
+                OutSources.clear();
+                OutSources.reserve(Discovered.size());
+                for (auto& Src : Discovered)
+                {
+                    OutSources.push_back({std::move(Src.Name), std::move(Src.Text)});
+                }
+                return true;
+            }
+        }
+    }
+
     std::vector<std::filesystem::path> ScriptDirectories{
         std::filesystem::current_path() / "Scripts",
         std::filesystem::current_path() / ".." / "Scripts",
@@ -220,37 +249,89 @@ GV2ContentCore::FBuildResult BuildRepositoryFromDirectory(const std::filesystem:
     return BuildRepositoryFromDirectories({PackageRoot});
 }
 
-std::optional<std::filesystem::path> LoadContentRoot(
+std::vector<std::filesystem::path> LoadContentRoots(
     const char* ExecutableArgument,
     const std::optional<std::string>& ExplicitRoot)
 {
     if (ExplicitRoot)
     {
-        return std::filesystem::path(*ExplicitRoot);
+        if (ExplicitRoot->find(',') != std::string::npos)
+        {
+            std::vector<std::filesystem::path> Roots;
+            std::string::size_type Start = 0;
+            while (Start < ExplicitRoot->size())
+            {
+                auto CommaPos = ExplicitRoot->find(',', Start);
+                if (CommaPos == std::string::npos)
+                {
+                    CommaPos = ExplicitRoot->size();
+                }
+                std::string Segment = ExplicitRoot->substr(Start, CommaPos - Start);
+                if (!Segment.empty())
+                {
+                    Roots.emplace_back(std::move(Segment));
+                }
+                Start = CommaPos + 1;
+            }
+            return Roots;
+        }
+
+        const std::filesystem::path ExplicitPath(*ExplicitRoot);
+        std::error_code Ec;
+        if (std::filesystem::exists(ExplicitPath / "package.json5", Ec))
+        {
+            return {ExplicitPath};
+        }
+
+        if (std::filesystem::is_directory(ExplicitPath, Ec))
+        {
+            if (std::filesystem::exists(ExplicitPath / "core" / "package.json5", Ec))
+            {
+                std::vector<std::filesystem::path> Roots{ExplicitPath / "core"};
+                if (std::filesystem::exists(ExplicitPath / "rh" / "package.json5", Ec))
+                {
+                    Roots.push_back(ExplicitPath / "rh");
+                }
+                return Roots;
+            }
+        }
+
+        return {ExplicitPath};
     }
 
-    std::vector<std::filesystem::path> CandidateRoots{
-        std::filesystem::current_path() / "GameData" / "core",
-        std::filesystem::current_path() / ".." / "GameData" / "core",
+    std::vector<std::filesystem::path> CandidateGameDataDirs{
+        std::filesystem::current_path() / "GameData",
+        std::filesystem::current_path() / ".." / "GameData",
     };
     std::error_code PathError;
     const std::filesystem::path ExecutablePath = std::filesystem::absolute(ExecutableArgument, PathError);
     if (!PathError)
     {
-        CandidateRoots.push_back(
-            ExecutablePath.parent_path().parent_path().parent_path()
-            / "GameData" / "core");
+        CandidateGameDataDirs.push_back(
+            ExecutablePath.parent_path().parent_path().parent_path() / "GameData");
     }
 
-    for (const std::filesystem::path& Candidate : CandidateRoots)
+    for (const std::filesystem::path& GameDataDir : CandidateGameDataDirs)
     {
         std::error_code CandidateError;
-        if (std::filesystem::is_directory(Candidate, CandidateError) && !CandidateError)
+        if (std::filesystem::is_directory(GameDataDir, CandidateError) && !CandidateError)
         {
-            return Candidate;
+            std::vector<std::filesystem::path> Roots;
+            if (std::filesystem::exists(GameDataDir / "core" / "package.json5", CandidateError))
+            {
+                Roots.push_back(GameDataDir / "core");
+            }
+            if (std::filesystem::exists(GameDataDir / "rh" / "package.json5", CandidateError))
+            {
+                Roots.push_back(GameDataDir / "rh");
+            }
+            if (!Roots.empty())
+            {
+                return Roots;
+            }
         }
     }
-    return std::nullopt;
+    return {};
 }
 
 void PrintRepositoryDiagnostics(const std::vector<GV2ContentCore::FDiagnostic>& Diagnostics)
@@ -725,7 +806,7 @@ int Run(
     const std::int64_t Seed,
     const bool bSelfTest,
     const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources,
-    const std::optional<std::filesystem::path>& ContentRoot,
+    const std::vector<std::filesystem::path>& ContentRoots,
     const std::optional<std::string>& ManifestPath = std::nullopt,
     const std::optional<std::string>& OutputManifestPath = std::nullopt,
     const std::optional<std::string>& OutputDigestPath = std::nullopt)
@@ -833,12 +914,12 @@ int Run(
 
     // PCC-35: pin a repository read handle before Lua bootstrap. Missing or
     // invalid repository content blocks session startup entirely.
-    if (!ContentRoot)
+    if (ContentRoots.empty())
     {
         std::cerr << "content_root_not_found\n";
         return 9;
     }
-    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromDirectory(*ContentRoot);
+    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromDirectories(ContentRoots);
     if (RepositoryBuild.IsFailure())
     {
         PrintRepositoryDiagnostics(RepositoryBuild.GetDiagnostics());
@@ -1322,14 +1403,14 @@ int Run(
 
 int RunCheckScripts(
     const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources,
-    const std::optional<std::filesystem::path>& ContentRoot)
+    const std::vector<std::filesystem::path>& ContentRoots)
 {
-    if (!ContentRoot)
+    if (ContentRoots.empty())
     {
         std::cerr << "content_root_not_found\n";
         return 9;
     }
-    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromDirectory(*ContentRoot);
+    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromDirectories(ContentRoots);
     if (RepositoryBuild.IsFailure())
     {
         PrintRepositoryDiagnostics(RepositoryBuild.GetDiagnostics());
@@ -1437,16 +1518,16 @@ int main(int argc, char** argv)
         }
     }
 
+    const std::vector<std::filesystem::path> ContentRoots = LoadContentRoots(argv[0], ExplicitContentRoot);
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
-    if (!LoadRuntimeSources(argv[0], RuntimeSources))
+    if (!LoadRuntimeSources(argv[0], ContentRoots, RuntimeSources))
     {
         std::cerr << "unable to locate a non-empty Scripts module tree\n";
         return 66;
     }
-    const std::optional<std::filesystem::path> ContentRoot = LoadContentRoot(argv[0], ExplicitContentRoot);
     if (bCheckScripts)
     {
-        return RunCheckScripts(RuntimeSources, ContentRoot);
+        return RunCheckScripts(RuntimeSources, ContentRoots);
     }
-    return Run(CommandCount, Seed, bSelfTest, RuntimeSources, ContentRoot, ManifestPath, OutputManifestPath, OutputDigestPath);
+    return Run(CommandCount, Seed, bSelfTest, RuntimeSources, ContentRoots, ManifestPath, OutputManifestPath, OutputDigestPath);
 }

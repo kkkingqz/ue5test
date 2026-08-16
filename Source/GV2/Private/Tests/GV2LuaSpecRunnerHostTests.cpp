@@ -30,10 +30,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
 {
-    // 1. Build the real GameData/core repository.
-    const FString CoreRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
-    const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectory(CoreRoot);
-    if (!TestTrue(TEXT("UE host builds GameData/core repository"), RepoBuild.IsSuccess()))
+    // 1. Build the real GameData repository (core and rh packages).
+    TArray<FString> PackageRoots;
+    PackageRoots.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core")));
+    const FString RhRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/rh"));
+    if (FPaths::DirectoryExists(RhRoot))
+    {
+        PackageRoots.Add(RhRoot);
+    }
+    const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectories(PackageRoots);
+    if (!TestTrue(TEXT("UE host builds GameData packages repository"), RepoBuild.IsSuccess()))
     {
         return false;
     }
