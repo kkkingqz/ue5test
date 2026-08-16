@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 1.9
+version: 1.10
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -27,3 +27,4 @@ depends_on:
 | [SaveAndLoad](SaveAndLoad/README.md) | 2026-08-16 | Обратимый канонический кодек, slot-storage примитив, конверт контейнера, загрузка на холодном старте с резолвом редиректов и версии секций с миграциями |
 | [PackageSupport](PackageSupport/README.md) | 2026-08-16 | Обязательный манифест пакета, набор корней с явным порядком и lock-файлом, Lua внутри пакета, замещение модулей ядра с доступом к базе через `require_base()`, `ScriptSetHash` в run manifest и состав пакетов в сейве |
 | [RhGamePackage](RhGamePackage/README.md) | 2026-08-16 | Игровой пакет `rh`: 11 конкретных сущностей со сменой namespace, переводы и ресурсы вместе с ними, демо-экран без знания об игре, гейт `core_decoupling_gate_contract` |
+| [CommandHandlerRegistry](CommandHandlerRegistry/README.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |

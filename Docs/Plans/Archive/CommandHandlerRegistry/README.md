@@ -1,20 +1,20 @@
 ---
 title: Command Handler Registry Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
-  - ../../Architecture/CommandsAndEvents.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/Modding.md
+  - ../../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/Modding.md
 decisions:
-  - ../../ADR/0003-command-and-event-model.md
-  - ../../ADR/0020-cpp-scope-criterion.md
+  - ../../../ADR/0003-command-and-event-model.md
+  - ../../../ADR/0020-cpp-scope-criterion.md
 ---
 
 # План реализации реестра обработчиков команд
 
-> **Материализует:** [Commands and Events](../../Architecture/CommandsAndEvents.md) и [Lua Runtime Contract § `game.commands`](../../Architecture/LuaRuntimeContract.md).
+> **Материализует:** [Commands and Events](../../../Architecture/CommandsAndEvents.md) и [Lua Runtime Contract § `game.commands`](../../../Architecture/LuaRuntimeContract.md).
 > **Задачи:** CHR-01…10.
 > **Результат:** обработчик команды регистрируется по `command_id`, и пакет добавляет команду, не трогая ядро.
 
@@ -76,7 +76,7 @@ M1 оставляет реестр незадействованным — это
 
 1. `dispatcher.new(handlers)` удаляется, а не сохраняется как совместимая перегрузка: два пути диспетчеризации не допускаются.
 2. Реестр повторяет форму `validator_registry` (регистрация на фазе `register`, freeze, дубликат, канонический порядок) — расхождение формы без причины считается дефектом.
-3. Правила, выразимые в Lua, проверяются спеками `Tests/Lua/commands/` ([ADR-0024](../../ADR/0024-lua-spec-runner.md)); C++ меняется ровно одной строкой freeze.
+3. Правила, выразимые в Lua, проверяются спеками `Tests/Lua/commands/` ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)); C++ меняется ровно одной строкой freeze.
 4. Каждая задача, меняющая failure semantics, добавляет negative case.
 5. Изменение `script_set_hash` в golden-прогоне ожидаемо и обновляется тем же change set; изменение `repository_content_hash` — признак ошибки.
 6. Новое observable behavior синхронно отражается в contract.

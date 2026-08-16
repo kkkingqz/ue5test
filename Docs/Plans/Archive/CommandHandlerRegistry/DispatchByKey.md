@@ -1,16 +1,16 @@
 ---
 title: Dispatch by Key Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - Registry.md
-  - ../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/CommandsAndEvents.md
 ---
 
 # M2 — Dispatch by Key
 
-> **Материализует:** [Commands and Events § Command path](../../Architecture/CommandsAndEvents.md).
+> **Материализует:** [Commands and Events § Command path](../../../Architecture/CommandsAndEvents.md).
 > **Задачи:** CHR-04…07.
 > **Результат:** команда находится за один lookup, неизвестная отклоняется, точка входа не знает игру.
 

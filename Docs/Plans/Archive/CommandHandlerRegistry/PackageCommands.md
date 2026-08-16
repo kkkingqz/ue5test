@@ -1,16 +1,16 @@
 ---
 title: Package Commands Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - DispatchByKey.md
-  - ../../Architecture/Modding.md
+  - ../../../Architecture/Modding.md
 ---
 
 # M3 — Package Commands
 
-> **Материализует:** [Modding § Lua modules](../../Architecture/Modding.md), [Commands and Events](../../Architecture/CommandsAndEvents.md).
+> **Материализует:** [Modding § Lua modules](../../../Architecture/Modding.md), [Commands and Events](../../../Architecture/CommandsAndEvents.md).
 > **Задачи:** CHR-08…10.
 > **Результат:** пакет добавляет команду, не трогая ядро, и это зафиксировано контрактом.
 
@@ -32,7 +32,7 @@ depends_on:
 
 - [x] **CHR-10 — Синхронизировать документацию**
   - Зависимости: CHR-08, CHR-09.
-  - Done: [Commands and Events](../../Architecture/CommandsAndEvents.md) описывает диспетчеризацию по ключу, отказ на неизвестную команду и порядок фаз без цепочки; [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) получает раздел `game.commands.handlers` рядом с `game.commands.validators`; [Modding](../../Architecture/Modding.md) описывает регистрацию команд пакетом и правило перекрытия; guide [AddCommand](../../Guides/AddCommand.md) переписан на регистрацию вместо правки `ingress`/`root`; [Implementation Status](../../Status/ImplementationStatus.md) отмечает, что добавление команды больше не требует C++.
+  - Done: [Commands and Events](../../../Architecture/CommandsAndEvents.md) описывает диспетчеризацию по ключу, отказ на неизвестную команду и порядок фаз без цепочки; [Lua Runtime Contract](../../../Architecture/LuaRuntimeContract.md) получает раздел `game.commands.handlers` рядом с `game.commands.validators`; [Modding](../../../Architecture/Modding.md) описывает регистрацию команд пакетом и правило перекрытия; guide [AddCommand](../../../Guides/AddCommand.md) переписан на регистрацию вместо правки `ingress`/`root`; [Implementation Status](../../../Status/ImplementationStatus.md) отмечает, что добавление команды больше не требует C++.
   - Evidence: Обновлены `CommandsAndEvents.md`, `LuaRuntimeContract.md`, `Modding.md`, `AddCommand.md`, `ImplementationStatus.md`.
 
 ## Проверка milestone

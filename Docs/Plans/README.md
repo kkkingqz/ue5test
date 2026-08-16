@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 2.8
+version: 2.9
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,9 +24,7 @@ depends_on:
 
 ## Активные планы
 
-| План | Основание | Результат |
-|---|---|---|
-| [CommandHandlerRegistry](CommandHandlerRegistry/README.md) | [Commands and Events](../Architecture/CommandsAndEvents.md), [ADR-0003](../ADR/0003-command-and-event-model.md) | Обработчик команды регистрируется по `command_id`; пакет добавляет команду без правки ядра и без C++ |
+Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
@@ -44,3 +42,4 @@ depends_on:
 | [SaveAndLoad](Archive/SaveAndLoad/README.md) | 2026-08-16 | Обратимый канонический кодек, slot-storage примитив, конверт контейнера, загрузка на холодном старте с резолвом редиректов и версии секций с миграциями |
 | [PackageSupport](Archive/PackageSupport/README.md) | 2026-08-16 | Обязательный манифест пакета, набор корней с явным порядком и lock-файлом, Lua внутри пакета, замещение модулей ядра с доступом к базе, состав пакетов в digest и сейве |
 | [RhGamePackage](Archive/RhGamePackage/README.md) | 2026-08-16 | Игровой пакет `rh`, перенос конкретных сущностей со сменой namespace, развязка `core` от игровых идентификаторов и гейт на обратную ссылку |
+| [CommandHandlerRegistry](Archive/CommandHandlerRegistry/README.md) | 2026-08-16 | Реестр `game.commands.handlers` по ключу `command_id`, типизированный отказ на неизвестную команду, регистрация команд пакетом без правки ядра |

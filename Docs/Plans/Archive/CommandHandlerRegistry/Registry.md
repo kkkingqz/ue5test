@@ -1,16 +1,16 @@
 ---
 title: Registry Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-16
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 ---
 
 # M1 — Registry
 
-> **Материализует:** [Lua Runtime Contract § `game.commands`](../../Architecture/LuaRuntimeContract.md).
+> **Материализует:** [Lua Runtime Contract § `game.commands`](../../../Architecture/LuaRuntimeContract.md).
 > **Задачи:** CHR-01…03.
 > **Результат:** реестр обработчиков существует, замораживается вместе с остальными и покрыт спеками.
 
@@ -34,7 +34,7 @@ depends_on:
 
 - [x] **CHR-03 — Покрыть реестр спеками**
   - Зависимости: CHR-02.
-  - Done: спеки в `Tests/Lua/commands/` покрывают успешную регистрацию и lookup, невалидный `command_id`, обработчик не-функцию, дубликат, `override` над существующей и над отсутствующей записью, регистрацию после freeze и детерминизм `ids()`; ни одна проверка не написана на C++ ([ADR-0024](../../ADR/0024-lua-spec-runner.md)).
+  - Done: спеки в `Tests/Lua/commands/` покрывают успешную регистрацию и lookup, невалидный `command_id`, обработчик не-функцию, дубликат, `override` над существующей и над отсутствующей записью, регистрацию после freeze и детерминизм `ids()`; ни одна проверка не написана на C++ ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)).
   - Evidence: `Tests/Lua/commands/handler_registry.lua`, 59/59 CTest passed, `gv2-headless --self-test` passed.
 
 ## Проверка milestone
