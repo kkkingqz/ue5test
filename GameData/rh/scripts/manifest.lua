@@ -31,6 +31,7 @@ return {
             source = "gameplay/travel.lua",
             dependencies = {
                 "core:module.runtime.stable_id",
+                "core:module.runtime.state_validator",
             },
             replaceable = false,
         },

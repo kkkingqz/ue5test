@@ -16,18 +16,46 @@ local CANONICAL_SECTIONS = {
 
 M.canonical_sections = CANONICAL_SECTIONS
 
--- SAV-14: single place declaring every state field (other than the
--- generic `definition_id`, checked on any node below) that references a
--- definition of a fixed Stable ID kind. Adding a new reference field of
--- this shape requires exactly one entry here — validate_node checks every
--- node's fields against this registry, not a hardcoded per-path condition.
--- Reused by core:module.runtime.load (SAV-15/16) to know which fields to
--- walk when rewriting redirects on cold start load.
-local DEFINITION_REFERENCE_FIELDS = {
-    current_location_id = "location",
-}
+local reference_fields = {}
+local is_frozen = false
 
-M.definition_reference_fields = DEFINITION_REFERENCE_FIELDS
+function M.register_reference_field(field_name, expected_kind)
+    if is_frozen then
+        error("StateReferenceFieldRegistryFrozen: cannot register reference field after register phase", 2)
+    end
+    if type(field_name) ~= "string" or field_name == "" then
+        error("InvalidStateReferenceField: field_name must be a non-empty string", 2)
+    end
+    if type(expected_kind) ~= "string" or expected_kind == "" then
+        error("InvalidStateReferenceFieldKind: expected_kind must be a non-empty string", 2)
+    end
+    if reference_fields[field_name] ~= nil and reference_fields[field_name] ~= expected_kind then
+        error("StateReferenceFieldConflict: field '" .. field_name .. "' is already registered with kind '" .. tostring(reference_fields[field_name]) .. "'", 2)
+    end
+    reference_fields[field_name] = expected_kind
+end
+
+function M.freeze_reference_fields()
+    is_frozen = true
+end
+
+function M.freeze()
+    is_frozen = true
+end
+
+function M.is_frozen()
+    return is_frozen
+end
+
+function M.get_reference_fields()
+    local copy = {}
+    for k, v in pairs(reference_fields) do
+        copy[k] = v
+    end
+    return copy
+end
+
+M.definition_reference_fields = reference_fields
 
 function M.get_canonical_sections()
     return CANONICAL_SECTIONS
@@ -135,10 +163,9 @@ local function validate_node(val, path, visited, seen_instances)
             end
         end
 
-        -- SAV-14: any other field declared in DEFINITION_REFERENCE_FIELDS,
-        -- wherever it appears in the tree (generalizes the previous
-        -- hardcoded world.current_location_id-only check).
-        for field_name, expected_kind in pairs(DEFINITION_REFERENCE_FIELDS) do
+        -- SAV-14 / CBM-10: any other field declared in reference_fields,
+        -- wherever it appears in the tree.
+        for field_name, expected_kind in pairs(reference_fields) do
             local ref_value = val[field_name]
             if ref_value ~= nil then
                 if type(ref_value) ~= "string" then

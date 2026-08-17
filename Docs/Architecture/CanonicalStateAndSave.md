@@ -10,6 +10,7 @@ depends_on:
 decisions:
   - ../ADR/0020-cpp-scope-criterion.md
   - ../ADR/0021-opaque-save-container.md
+  - ../ADR/0026-core-and-gameplay-ownership.md
 ---
 
 # Canonical State and Save
@@ -68,7 +69,7 @@ State содержит strings, bool, int64/finite double, dense arrays, string-
   - Повторная выдача выданной пары `(kind, counter)` невозможна.
   - При достижении лимита `MAX_COUNTER = 9007199254740991` выбрасывается типизированная ошибка `InstanceCounterExhausted`.
 - **Уникальность ID**: `instance_id` глобально уникален по всему дереву состояния; дубликаты отклоняются валидатором `LuaStateValidationInvalid`.
-- **Разрешение Definition ID**: каждый `definition_id` проверяется на соответствие Stable ID grammar и обязан существовать в pinned snapshot репозитория (`game.repository.exists`). Ссылка на несуществующую дефиницию даёт ошибку валидации.
+- **Разрешение Definition ID и ссылочные поля**: каждый `definition_id` проверяется на соответствие Stable ID grammar и обязан существовать в pinned snapshot репозитория (`game.repository.exists`). Дополнительные поля состояния, ссылающиеся на Stable ID конкретного kind (например, `current_location_id` для kind `location`), регистрируются пакетами динамически на фазе `register` через `state_validator.register_reference_field(field_name, expected_kind)`. Валидатор проверяет их тип, kind и существование дефиниции, а модуль `load.lua` использует тот же реестр для переписывания редиректов при загрузке. Ссылка на несуществующую дефиницию даёт ошибку валидации.
 - **Принадлежность предметов**: каждый unique item в `state.item_instances` обязан иметь `instance_id`, `definition_id` и `owner_id`, указывающий на ровно один логический контейнер (актора или локацию/слот). Ссылки на удалённых или несуществующих акторов (`owner_id` с префиксом `actor@`) отклоняются валидатором `LuaStateValidationInvalid`.
 - **Политика удаления и ссылочная целостность**: удаление сущностей через Registry обязано оставлять дерево состояния валидным:
   - `actor_registry.remove(id)` отклоняет удаление актора с ошибкой `ActorHasDependentReferences`, если на него ссылаются зависимые предметы (`state.item_instances`) или квесты. Предметы должны быть явно переданы другому владельцу либо удалены до удаления актора.

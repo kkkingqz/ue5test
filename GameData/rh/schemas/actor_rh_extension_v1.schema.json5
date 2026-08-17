@@ -1,0 +1,21 @@
+{
+  id: "rh:schema.extension.actor.entry.v1",
+  definition_type: "actor",
+  schema_version: 1,
+  extension_site: "definition_entry",
+  extension_namespace: "rh",
+  root: {
+    kind: "object",
+    fields: {
+      name_text_id: {
+        kind: "text_id",
+        required: true,
+      },
+      base_hp: {
+        kind: "int64",
+        required: true,
+        min: 1,
+      },
+    },
+  },
+}

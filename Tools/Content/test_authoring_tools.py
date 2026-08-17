@@ -28,22 +28,19 @@ def main():
 
     print("[*] Testing 'describe' on GameData/core...")
     # 1. Test describe text
-    res = run_cmd([gv2_content, "describe", core_pkg, "item"])
-    assert "definition_type: item" in res.stdout
-    assert "core:schema.definition.item.v1" in res.stdout
-    assert "label_text_id: text_id (required)" in res.stdout
-    assert "price: int64 (required, min=0)" in res.stdout
-    assert "icon_resource_id: resource_ref (required, resource_class=texture_2d)" in res.stdout
+    res = run_cmd([gv2_content, "describe", core_pkg, "screen"])
+    assert "definition_type: screen" in res.stdout
+    assert "core:schema.definition.screen.v1" in res.stdout
+    assert "title_text_id: text_id (required)" in res.stdout
 
     # 2. Test describe json
-    res = run_cmd([gv2_content, "describe", core_pkg, "item", "--format=json"])
+    res = run_cmd([gv2_content, "describe", core_pkg, "screen", "--format=json"])
     doc = json.loads(res.stdout)
     assert doc["status"] == "ok"
-    assert doc["definition_type"] == "item"
-    assert doc["schema_id"] == "core:schema.definition.item.v1"
-    assert "price" in doc["fields"]
-    assert doc["fields"]["price"]["required"] is True
-    assert doc["fields"]["price"]["min"] == 0
+    assert doc["definition_type"] == "screen"
+    assert doc["schema_id"] == "core:schema.definition.screen.v1"
+    assert "title_text_id" in doc["fields"]
+    assert doc["fields"]["title_text_id"]["required"] is True
 
     # 3. Test describe unknown type
     res = run_cmd([gv2_content, "describe", core_pkg, "unknown_type"], check=False)
@@ -127,30 +124,21 @@ def main():
                 content = f.read()
             assert "core:screen.dialog.main" in content
 
-        # 9. Test creating item and its referenced text and resource
-        res = run_cmd([gv2_content, "new", test_pkg, "text", "core:text.item.weapon.steel_sword.label"])
-        assert "created definition core:text.item.weapon.steel_sword.label" in res.stdout
+        # 9. Test creating screen and its referenced text and resource
+        res = run_cmd([gv2_content, "new", test_pkg, "text", "core:text.screen.battle.title"])
+        assert "created definition core:text.screen.battle.title" in res.stdout
 
-        res = run_cmd([gv2_content, "new", test_pkg, "resource", "core:resource.item.weapon.steel_sword.icon"])
-        assert "created definition core:resource.item.weapon.steel_sword.icon" in res.stdout
+        res = run_cmd([gv2_content, "new", test_pkg, "resource", "core:resource.screen.battle.background"])
+        assert "created definition core:resource.screen.battle.background" in res.stdout
 
-        res = run_cmd([gv2_content, "new", test_pkg, "item", "core:item.weapon.steel_sword"])
-        assert "created definition core:item.weapon.steel_sword in definitions/items.json5" in res.stdout
-
-        # Fill in valid author values (price: 15)
-        items_path = os.path.join(test_pkg, "definitions", "items.json5")
-        with open(items_path, "r") as f:
-            items_content = f.read()
-        items_content = items_content.replace("price: 0,", "price: 15,")
-        with open(items_path, "w") as f:
-            f.write(items_content)
+        res = run_cmd([gv2_content, "new", test_pkg, "screen", "core:screen.battle"])
+        assert "created definition core:screen.battle in definitions/screens.json5" in res.stdout
 
         # Verify inspect finds it
-        res = run_cmd([gv2_content, "inspect", test_pkg, "core:item.weapon.steel_sword", "--format=json"])
-        item_doc = json.loads(res.stdout)
-        assert item_doc["status"] == "ok"
-        assert item_doc["definition"]["id"] == "core:item.weapon.steel_sword"
-        assert item_doc["definition"]["data"]["price"] == 15
+        res = run_cmd([gv2_content, "inspect", test_pkg, "core:screen.battle", "--format=json"])
+        screen_doc = json.loads(res.stdout)
+        assert screen_doc["status"] == "ok"
+        assert screen_doc["definition"]["id"] == "core:screen.battle"
 
         # Validate whole package succeeds
         res = run_cmd([gv2_content, "validate", test_pkg])
@@ -400,16 +388,16 @@ def main():
             )
 
         # describe reports the schema and names the package that actually owns it.
-        res = run_cmd([gv2_content, "describe", game_pkg, "item"])
-        assert "definition_type: item" in res.stdout
-        assert "core:schema.definition.item.v1" in res.stdout
+        res = run_cmd([gv2_content, "describe", game_pkg, "screen"])
+        assert "definition_type: screen" in res.stdout
+        assert "core:schema.definition.screen.v1" in res.stdout
         assert "package: core" in res.stdout
-        assert "price: int64 (required, min=0)" in res.stdout
+        assert "title_text_id: text_id (required)" in res.stdout
 
-        res = run_cmd([gv2_content, "describe", game_pkg, "item", "--format=json"])
+        res = run_cmd([gv2_content, "describe", game_pkg, "screen", "--format=json"])
         doc = json.loads(res.stdout)
         assert doc["status"] == "ok"
-        assert doc["schema_id"] == "core:schema.definition.item.v1"
+        assert doc["schema_id"] == "core:schema.definition.screen.v1"
 
         # new writes into the game package, using the schema owned by core.
         res = run_cmd([gv2_content, "new", game_pkg, "actor", "game:actor.npc.guard"])

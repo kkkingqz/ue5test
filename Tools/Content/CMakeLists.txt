@@ -67,10 +67,10 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME gv2_content_describe_item_text
-        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/core" item
+        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/rh" item
     )
     add_test(NAME gv2_content_describe_item_json
-        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/core" item --format=json
+        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/rh" item --format=json
     )
     add_test(NAME gv2_content_describe_rejects_unknown_type
         COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/core" nonexistent_type
@@ -204,12 +204,12 @@ if(BUILD_TESTING)
     set_tests_properties(
         gv2_content_describe_item_text
         PROPERTIES
-            PASS_REGULAR_EXPRESSION "definition_type: item.*schema_id: core:schema.definition.item.v1.*price: int64 \\(required, min=0\\)"
+            PASS_REGULAR_EXPRESSION "definition_type: item.*schema_id: rh:schema.definition.item.v1.*price: int64 \\(required, min=0\\)"
     )
     set_tests_properties(
         gv2_content_describe_item_json
         PROPERTIES
-            PASS_REGULAR_EXPRESSION "\"status\":\"ok\".*\"definition_type\":\"item\".*\"schema_id\":\"core:schema.definition.item.v1\""
+            PASS_REGULAR_EXPRESSION "\"status\":\"ok\".*\"definition_type\":\"item\".*\"schema_id\":\"rh:schema.definition.item.v1\""
     )
     set_tests_properties(
         gv2_content_describe_rejects_unknown_type

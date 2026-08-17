@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0018-portable-content-core-module.md
   - ../ADR/0022-external-translation-catalog.md
+  - ../ADR/0026-core-and-gameplay-ownership.md
 ---
 
 # GameDataRepository Contract

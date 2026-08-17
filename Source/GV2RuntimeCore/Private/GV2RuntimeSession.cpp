@@ -1655,6 +1655,27 @@ struct FRuntimeSession::FImpl
         FreezeGameRegistry({"events"});
         FreezeGameRegistry({"instances", "actors"});
 
+        // Freeze state validator reference fields registry (CBM-10)
+        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        if (lua_istable(State, -1))
+        {
+            lua_getfield(State, -1, "core:module.runtime.state_validator");
+            if (lua_istable(State, -1))
+            {
+                lua_getfield(State, -1, "freeze_reference_fields");
+                if (lua_isfunction(State, -1))
+                {
+                    lua_pcall(State, 0, 0, 0);
+                }
+                else
+                {
+                    lua_pop(State, 1);
+                }
+            }
+            lua_pop(State, 1);
+        }
+        lua_pop(State, 1);
+
         // 2. Obtain the canonical state tree. SAV-12/13/14/15/16: on a
         // cold-start load, the tree comes whole from the save container —
         // preflight, payload decode, and reference-rewrite all happen

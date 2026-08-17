@@ -3,6 +3,7 @@
 -- Enforces stamina and map connectivity preconditions in read-only validator.
 
 local stable_id = require("core:module.runtime.stable_id")
+local state_validator = require("core:module.runtime.state_validator")
 
 local M = {
     id = "rh:module.gameplay.travel",
@@ -58,25 +59,26 @@ local travel_validator = {
         end
 
         -- Check stamina requirement
-        local player_id = ctx.state and ctx.state.meta and ctx.state.meta.player_actor_id
-        local player_state = player_id and ctx.state.actors and ctx.state.actors[player_id]
-        local current_stamina = player_state and player_state.stamina or 0
-
+        local player = game and game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player()
+        local current_stamina = player and (player.stamina or 0) or 0
         if current_stamina < TRAVEL_STAMINA_COST then
             return false, {
                 code = "rh:error.travel.insufficient_stamina",
                 params = {
-                    current_stamina = current_stamina,
                     required_stamina = TRAVEL_STAMINA_COST,
+                    current_stamina = current_stamina,
                 },
             }
         end
 
-        -- Check map connectivity
-        local current_location_id = ctx.state and ctx.state.world and ctx.state.world.current_location_id
-        if current_location_id and current_location_id ~= target_location_id and ctx.repository and ctx.repository.get then
-            local current_def = ctx.repository.get(current_location_id)
-            local connected_ids = current_def and current_def.data and current_def.data.connected_location_ids
+        -- Check connectivity
+        local world = game and game.instances and game.instances.world and game.instances.world()
+        local current_location_id = world and world.current_location_id
+
+        if current_location_id and game and game.repository and game.repository.get then
+            local current_def = game.repository.get(current_location_id)
+            local data = current_def and (current_def.data or current_def)
+            local connected_ids = data and data.connected_location_ids
             local is_connected = false
 
             if type(connected_ids) == "table" then
@@ -104,6 +106,10 @@ local travel_validator = {
 }
 
 function M.register_handlers(_ctx)
+    if state_validator and state_validator.register_reference_field then
+        state_validator.register_reference_field("current_location_id", "location")
+    end
+
     if game and game.commands and game.commands.validators and game.commands.validators.register then
         game.commands.validators.register("rh:validator.location.travel", travel_validator, { priority = 10 })
     end

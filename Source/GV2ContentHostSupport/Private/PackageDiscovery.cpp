@@ -313,6 +313,7 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
     }
 
     std::vector<FSchemaBinding> SchemaBindings;
+    std::vector<FExtensionSchemaBinding> ExtensionSchemaBindings;
     for (const auto& Path : ListSortedJson5Files(PackageRoot / "schemas"))
     {
         const std::string RelativePath = "schemas/" + Path.filename().string();
@@ -357,13 +358,30 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
             continue;
         }
 
-        SchemaBindings.emplace_back(
-            TypeField->AsString(), SchemaVersionField->AsInteger(), IdField->AsString(), RelativePath);
+        const FValue* ExtensionSiteField = Parsed->IsObject() ? Parsed->FindField("extension_site") : nullptr;
+        const FValue* ExtensionNamespaceField = Parsed->IsObject() ? Parsed->FindField("extension_namespace") : nullptr;
+        if (ExtensionSiteField != nullptr && ExtensionSiteField->IsString())
+        {
+            const std::string ExtensionNamespace = ExtensionNamespaceField != nullptr && ExtensionNamespaceField->IsString()
+                ? ExtensionNamespaceField->AsString()
+                : ResolvedPackageId;
+            ExtensionSchemaBindings.emplace_back(
+                TypeField->AsString(),
+                SchemaVersionField->AsInteger(),
+                ExtensionSiteField->AsString(),
+                ExtensionNamespace,
+                IdField->AsString(),
+                RelativePath);
+        }
+        else
+        {
+            SchemaBindings.emplace_back(
+                TypeField->AsString(), SchemaVersionField->AsInteger(), IdField->AsString(), RelativePath);
+        }
     }
 
     std::vector<FRedirectDescriptor> Redirects;
     std::vector<std::string> Tombstones;
-    std::vector<FExtensionSchemaBinding> ExtensionSchemaBindings;
 
     const FValue* RedirectsVal = ParsedManifest->FindField("redirects");
     if (RedirectsVal && RedirectsVal->IsObject())

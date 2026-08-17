@@ -1,4 +1,8 @@
 {
+  // Framework actor schema (ADR-0026, CBM-12).
+  // discriminator is the only framework requirement: runtime uses it
+  // to select the disposable instance wrapper. Gameplay fields (base_hp,
+  // name_text_id, etc.) belong to the gameplay package.
   id: "core:schema.definition.actor.v1",
   definition_type: "actor",
   schema_version: 1,
@@ -9,15 +13,6 @@
         kind: "enum",
         required: true,
         values: ["player", "npc"],
-      },
-      name_text_id: {
-        kind: "text_id",
-        required: false,
-      },
-      base_hp: {
-        kind: "int64",
-        required: false,
-        min: 1,
       },
     },
   },

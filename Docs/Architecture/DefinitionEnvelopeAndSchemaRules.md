@@ -9,6 +9,7 @@ decisions:
   - ../ADR/0009-explicit-schema-defaults.md
   - ../ADR/0018-portable-content-core-module.md
   - ../ADR/0022-external-translation-catalog.md
+  - ../ADR/0026-core-and-gameplay-ownership.md
 ---
 
 # Definition Envelope and Schema Rules
@@ -127,26 +128,26 @@ definition_schemas: [
   {
     type: "item",
     schema_version: 1,
-    schema_id: "core:schema.definition.item.v1",
-    resource: "data/schemas/item_v1.schema.json5",
+    schema_id: "rh:schema.definition.item.v1",
+    resource: "schemas/item_v1.schema.json5",
   },
 ]
 ```
 
 ```json5
 {
-  id: "core:schema.definition.item.v1",
+  id: "rh:schema.definition.item.v1",
   definition_type: "item",
   schema_version: 1,
   root: { kind: "object", fields: {} },
-  semantic_validators: ["core:validator.item.semantics"],
+  semantic_validators: [],
   extensions: {},
 }
 ```
 
-- Core предоставляет schemas core kinds.
-- Mod, вводящий новый kind, обязан предоставить schema binding до validation его definitions.
-- Existing `(kind, version)` schema не override-ится load order-ом.
+- Core предоставляет schemas только для framework kinds, необходимых runtime или host boundary (`screen`, `text`, `resource`, минимальный `actor`).
+- Gameplay package или mod объявляет schema binding для kind (например, `item`, `location`), если ядро само не объявляет binding для этой пары `(definition_type, schema_version)` (ADR-0026).
+- Existing `(kind, version)` schema не override-ится load order-ом: конфликт двух bindings для одной пары `(definition_type, schema_version)` остаётся fatal.
 - Новая семантика schema требует новой version.
 - Schema inheritance, mixins и implicit composition отсутствуют.
 
