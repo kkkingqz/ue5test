@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 3.1
+version: 3.2
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,7 +24,9 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
+| План | Основание | Результат |
+|---|---|---|
+| [CoreBoundaryMigration](CoreBoundaryMigration/README.md) | [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) | Демо и экономика уходят из ядра, пакет получает точку расширения обёртки, схемы `item`/`location` и большая часть `actor` переезжают в игру |
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 

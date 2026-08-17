@@ -2,7 +2,7 @@
 title: Core and Gameplay Boundary Proposal
 status: draft
 proposal_state: accepted_for_planning
-version: 0.1
+version: 0.2
 updated: 2026-08-17
 depends_on:
   - ../Architecture/Modding.md
@@ -11,13 +11,14 @@ depends_on:
   - ../Architecture/GameDataRepositoryContract.md
 decisions:
   - ../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../ADR/0026-core-and-gameplay-ownership.md
 ---
 
 # Предложение по границе GV2 Core и gameplay packages
 
 > **Предлагает:** правило ownership, по которому новая сущность однозначно относится к framework core либо к gameplay package.
 > **Затрагивает:** [Modding](../Architecture/Modding.md), [Stable ID Specification](../Architecture/StableIDSpecification.md), [GameDataRepository](../Architecture/GameDataRepositoryContract.md).
-> **Не является нормативным:** до реализации действует текущий contract.
+> **Не является нормативным:** правило владения принято [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) и перенесено в contracts; документ сохраняется как исходное обоснование и целевая картина.
 
 Цель — не изменить существующие runtime contracts без необходимости, а зафиксировать правило ownership, по которому новые сущности можно однозначно относить либо к framework core, либо к конкретной игре или feature package.
 

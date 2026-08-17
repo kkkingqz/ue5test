@@ -1,8 +1,8 @@
 ---
 title: Dependency Map
 status: normative
-version: 1.0
-updated: 2026-08-15
+version: 1.1
+updated: 2026-08-17
 depends_on:
   - Overview.md
   - SystemContextAndComponents.md
@@ -14,7 +14,7 @@ depends_on:
 > **Не владеет:** формулировками запретов; они принадлежат contracts по ссылкам.
 > **Инварианты:** [INV-007](Invariants.md), [INV-008](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** направления зависимостей закреплены в `Source/CMakeLists.txt` и `*.Build.cs`.
-> **Проверки:** `host_conformance_parity_contract`; нарушение направления не собирается.
+> **Проверки:** `host_conformance_parity_contract`, `core_decoupling_gate_contract`; нарушение направления не собирается.
 
 ## Разрешённые направления
 
@@ -28,6 +28,9 @@ Lua Gameplay Runtime        GV2RuntimeCore + Scripts/
 C++ Host Boundary           GV2 (Application, Bridge)
         ↓
 UE Presentation             GV2 (UI), UMG, Blueprint
+
+core  ←  feature packages  ←  gameplay package  ←  mods
+        обратное направление запрещено (ADR-0026)
 
 gv2-headless  →  тот же Content Core + тот же Lua Runtime, без Presentation
 gv2-content   →  только Content Core, без Lua VM
@@ -51,6 +54,7 @@ gv2-content   →  только Content Core, без Lua VM
 | Tooling не становится runtime dependency | [Build and Tooling](BuildAndTooling.md) |
 | `gv2-content` не линкует Lua VM | [Build and Tooling](BuildAndTooling.md) |
 | Gameplay и presentation не импортируют `boundary` | [Lua Runtime Contract](LuaRuntimeContract.md) |
+| `core` не зависит от игрового пакета: не импортирует его модули, не ссылается на его ID и не предполагает наличия инвентаря, торговли, боя или квестов | [Modding](Modding.md), [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) |
 | Код принадлежит C++ только при выполнении одного из двух условий | [ADR-0020](../ADR/0020-cpp-scope-criterion.md) |
 
 ## Физические модули

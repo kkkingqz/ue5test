@@ -1,8 +1,8 @@
 ---
 title: Modding Architecture
 status: draft
-version: 0.8
-updated: 2026-08-16
+version: 0.9
+updated: 2026-08-17
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -21,7 +21,9 @@ Mod — trusted content package с одним immutable `mod_id`, который
 
 Базовая поставка игры разделена на два пакета (план [RhGamePackage](../Plans/Archive/RhGamePackage/README.md)):
 
-- `core` (движок) — схемы (`schemas/`), экраны (`core:screen.*`), команды, события, базовые модули среды исполнения (`Scripts/`). Движок не содержит конкретных игровых сущностей и не знает идентификаторов пространства `rh:`.
+- `core` (движок) — механизмы: загрузка пакетов и модулей, сборка репозитория, диспетчер команд, EventBus, идентичность инстансов, save/load, протокол presentation, framework-схемы и framework-ошибки. Движок не содержит конкретных игровых сущностей и не знает идентификаторов пространства `rh:`.
+
+**Критерий владения ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)).** Сущность принадлежит `core` только если она нужна более чем одной игре на GV2 с тем же смыслом: если заменить игровой пакет другой игрой, останется ли она необходимой? `core` определяет, *как* исполняется игра; пакет — *что* в ней существует, что означает и что разрешено. Схемы, команды, события, валидаторы и сервисы, выражающие правила конкретной игры, принадлежат её пакету. Подсистема, оказавшаяся применимой в другой игре, выносится в отдельный feature package, а не в ядро; отсутствие feature package не должно мешать работе ядра.
 - `rh` (игра) — конкретные игровые сущности: предметы (`rh:item.*`), персонажи/акторы (`rh:actor.*`), локации (`rh:location.*`), а также привязанные к ним тексты (`rh:text.*`), переводы (`ru.po`) и ресурсы (`rh:resource.*`).
 
 **Архитектурное правило разделения:** конкретные сущности живут в `rh`, механизмы и возможности — в `core`. Запрещены любые обратные ссылки из `core`, `Scripts/` или `Source/` на пространство имён `rh:` (проверяется гейтом `core_decoupling_gate_contract`).
@@ -84,7 +86,8 @@ optional cooked Pak
 - Mod может объявить redirect/tombstone только для source ID собственного namespace; redirect target может быть same-kind foreign ID.
 - Published IDs не переиспользуются.
 - New kind требует declarative schema binding.
-- Extension block использует собственный package namespace и exact registered extension schema для `definition_file`, `definition_entry` либо `schema_resource`; mod не переопределяет основную schema существующего kind.
+- Extension block использует собственный package namespace и exact registered extension schema для `definition_file`, `definition_entry` либо `schema_resource`.
+- Package вправе объявить schema binding для kind, объявленного ядром, если ядро само для этого kind binding не объявляет. Перекрытие существующего binding запрещено; конфликт двух bindings одной пары `(definition_type, schema_version)` является fatal. Запрет относится к перекрытию, а не к заполнению пустого ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)).
 
 ## Lua modules
 

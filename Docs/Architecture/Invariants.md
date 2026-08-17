@@ -1,8 +1,8 @@
 ---
 title: Architecture Invariants Index
 status: normative
-version: 1.0
-updated: 2026-08-15
+version: 1.1
+updated: 2026-08-17
 depends_on:
   - Overview.md
 ---
@@ -34,6 +34,7 @@ depends_on:
 | INV-013 | Код принадлежит C++ только если требует недоступной Lua возможности либо работает до создания VM | [Overview § Границы C++](Overview.md), [ADR-0020](../ADR/0020-cpp-scope-criterion.md) |
 | INV-014 | Presentation восстановима и не является источником gameplay-истины | [Overview](Overview.md), [UI Index](../UI/README.md) |
 | INV-015 | Runtime instance ссылается на definition по Stable ID и не хранит его копию | [Canonical State and Save](CanonicalStateAndSave.md) |
+| INV-016 | `core` владеет механизмами, пакет — семантикой; наличие kind в ядре не означает владения его схемой | [Modding](Modding.md), [Stable ID Specification](StableIDSpecification.md), [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) |
 
 ## Как использовать
 

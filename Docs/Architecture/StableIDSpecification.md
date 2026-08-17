@@ -1,8 +1,8 @@
 ---
 title: Stable ID Specification
 status: normative
-version: 1.5
-updated: 2026-08-15
+version: 1.6
+updated: 2026-08-17
 decisions:
   - ../ADR/0002-stable-id-format.md
   - ../ADR/0023-stable-id-publication-freeze.md
@@ -76,7 +76,7 @@ Editor/CLI может предложить отдельную fix-команду
 
 ## Kind registry
 
-`kind` определяет semantic family и expected schema. Core kinds включают:
+`kind` определяет semantic family. Core kinds включают:
 
 ```text
 item, actor, quest, location, screen, command, event, module,
@@ -85,6 +85,14 @@ error, diagnostic
 ```
 
 Package может добавить новый kind только вместе с declarative schema binding. Конфликтующие bindings одного kind/schema version являются fatal. Kind не выводится из directory.
+
+**Наличие kind в реестре не означает владения его схемой** ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)). Реестр перечисляет категории пространства имён, а не предметную модель движка. Схема принадлежит `core` только тогда, когда её структура необходима самому runtime или host boundary; иначе она принадлежит пакету. Package вправе привязать schema к kind, объявленному ядром, если ядро само для этого kind binding не объявляет; перекрытие существующего binding по-прежнему запрещено.
+
+## Namespace `core`
+
+Namespace `core` принадлежит GV2 framework и используется только для сущностей, смысл которых не зависит от конкретной игры: механизмов, протоколов, framework-ошибок и диагностик. Конкретная игра и её сущности используют собственный namespace пакета ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)).
+
+Framework-отказы адресуются `core:error.*` и `core:diagnostic.*`; отказы правил игры — namespace её пакета (`rh:error.shop.not_enough_gold`).
 
 ## Typed references
 
