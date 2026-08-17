@@ -1653,6 +1653,7 @@ struct FRuntimeSession::FImpl
         FreezeGameRegistry({"commands", "handlers"});
         FreezeGameRegistry({"events", "subscribers"});
         FreezeGameRegistry({"events"});
+        FreezeGameRegistry({"instances", "actors"});
 
         // 2. Obtain the canonical state tree. SAV-12/13/14/15/16: on a
         // cold-start load, the tree comes whole from the save container —

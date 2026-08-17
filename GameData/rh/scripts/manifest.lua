@@ -4,6 +4,7 @@ return {
             module_id = "core:module.gameplay.root",
             source = "gameplay/root.lua",
             dependencies = {
+                "rh:module.gameplay.actors",
                 "rh:module.services.economy",
                 "rh:module.gameplay.travel",
                 "rh:module.gameplay.shop",
@@ -12,6 +13,12 @@ return {
                 "rh:module.presentation.location_screen",
             },
             replaceable = true,
+        },
+        {
+            module_id = "rh:module.gameplay.actors",
+            source = "gameplay/actors.lua",
+            dependencies = {},
+            replaceable = false,
         },
         {
             module_id = "rh:module.services.economy",

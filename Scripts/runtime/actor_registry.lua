@@ -4,7 +4,19 @@ local M = {
     id = "core:module.runtime.actor_registry",
 }
 
-local function get_discriminator(definition_id)
+local KNOWN_UNREGISTERED = {
+    ["player"] = true,
+    ["npc"] = true,
+    ["character"] = true,
+    ["hero"] = true,
+    ["monster"] = true,
+    ["unknown"] = true,
+}
+
+local function get_discriminator(definition_id, actor_state)
+    if actor_state and type(actor_state) == "table" and type(actor_state.discriminator) == "string" then
+        return actor_state.discriminator
+    end
     if not definition_id or type(definition_id) ~= "string" then
         return nil
     end
@@ -21,73 +33,127 @@ local function get_discriminator(definition_id)
     return nil
 end
 
-local function wrap_actor(actor_state)
-    if type(actor_state) ~= "table" then
-        return nil
-    end
-
-    local discriminator = get_discriminator(actor_state.definition_id)
-
-    local wrapper = {}
-
-    local domain_methods = {
-        get_state = function() return actor_state end,
-        is_player = function() return discriminator == "player" end,
-        is_npc = function() return discriminator == "npc" end,
-        get_gold = function() return actor_state.gold or 0 end,
-        add_gold = function(amount)
-            if type(amount) ~= "number" or math.type(amount) ~= "integer" or amount < 0 then
-                return {
-                    ok = false,
-                    error = {
-                        code = "core:error.actor.invalid_reward_amount",
-                        message = "Reward amount must be a non-negative integer",
-                    }
-                }
-            end
-            actor_state.gold = (actor_state.gold or 0) + amount
-            return {
-                ok = true,
-                value = {
-                    actor_id = actor_state.instance_id,
-                    gold = actor_state.gold,
-                    amount = amount,
-                }
-            }
-        end,
-    }
-
-    local mt = {
-        __index = function(_, k)
-            if k == "instance_id" then
-                return actor_state.instance_id
-            elseif k == "definition_id" then
-                return actor_state.definition_id
-            elseif k == "discriminator" then
-                return discriminator
-            elseif domain_methods[k] ~= nil then
-                return domain_methods[k]
-            end
-            return actor_state[k]
-        end,
-        __newindex = function(_, k, v)
-            if k == "discriminator" or k == "instance_id" or k == "definition_id" then
-                error("ActorDiscriminatorImmutable: field '" .. tostring(k) .. "' is immutable on actor wrapper", 2)
-            end
-            actor_state[k] = v
-        end,
-        __tostring = function(_)
-            return string.format("ActorWrapper(%s, %s)", tostring(actor_state.instance_id), tostring(discriminator))
-        end,
-    }
-    setmetatable(wrapper, mt)
-    return wrapper
-end
-
-M.wrap = wrap_actor
-
 function M.create_registry()
     local registry = {}
+    local type_decorators = {}
+    local is_frozen = false
+
+    function registry.register_type(discriminator, decorator)
+        if is_frozen then
+            error("ActorTypeRegistryFrozen: cannot register actor type after register phase", 2)
+        end
+        if type(discriminator) ~= "string" or discriminator == "" then
+            error("InvalidActorDiscriminator: discriminator must be a non-empty string", 2)
+        end
+        if type_decorators[discriminator] ~= nil then
+            error("ActorTypeDuplicateRegistration: actor type '" .. tostring(discriminator) .. "' is already registered", 2)
+        end
+        if type(decorator) ~= "function" then
+            error("InvalidActorDecorator: decorator for '" .. tostring(discriminator) .. "' must be a function", 2)
+        end
+        type_decorators[discriminator] = decorator
+    end
+
+    function registry.types()
+        local result = {}
+        for disc in pairs(type_decorators) do
+            table.insert(result, disc)
+        end
+        table.sort(result)
+        return result
+    end
+
+    function registry.freeze()
+        is_frozen = true
+    end
+
+    function registry.is_frozen()
+        return is_frozen
+    end
+
+    local function wrap_actor(actor_state)
+        if type(actor_state) ~= "table" then
+            return nil
+        end
+
+        local discriminator = get_discriminator(actor_state.definition_id, actor_state)
+        local disc_key = discriminator or "unknown"
+        local decorator = type_decorators[disc_key] or (discriminator and type_decorators[discriminator])
+
+        if not decorator and not KNOWN_UNREGISTERED[disc_key] and not (discriminator and KNOWN_UNREGISTERED[discriminator]) then
+            error("ActorTypeNotRegistered: discriminator '" .. tostring(disc_key) .. "' is not registered", 2)
+        end
+
+        local base = {}
+        local base_methods = {
+            get_state = function() return actor_state end,
+        }
+
+        local base_mt = {
+            __index = function(_, k)
+                if k == "instance_id" then
+                    return actor_state.instance_id
+                elseif k == "definition_id" then
+                    return actor_state.definition_id
+                elseif k == "discriminator" then
+                    return discriminator
+                elseif base_methods[k] ~= nil then
+                    return base_methods[k]
+                end
+                return actor_state[k]
+            end,
+            __newindex = function(_, k, v)
+                if k == "discriminator" or k == "instance_id" or k == "definition_id" then
+                    error("ActorDiscriminatorImmutable: field '" .. tostring(k) .. "' is immutable on actor wrapper", 2)
+                end
+                actor_state[k] = v
+            end,
+            __tostring = function(_)
+                return string.format("ActorWrapper(%s, %s)", tostring(actor_state.instance_id), tostring(discriminator))
+            end,
+        }
+        setmetatable(base, base_mt)
+
+        if decorator then
+            local decorated = decorator(base)
+            if type(decorated) ~= "table" then
+                error("ActorDecoratorInvalid: decorator for '" .. tostring(disc_key) .. "' must return a table", 2)
+            end
+
+            local final_wrapper = {}
+            local final_mt = {
+                __index = function(_, k)
+                    if k == "instance_id" then
+                        return actor_state.instance_id
+                    elseif k == "definition_id" then
+                        return actor_state.definition_id
+                    elseif k == "discriminator" then
+                        return discriminator
+                    end
+                    local val = decorated[k]
+                    if val ~= nil then
+                        return val
+                    end
+                    return actor_state[k]
+                end,
+                __newindex = function(_, k, v)
+                    if k == "discriminator" or k == "instance_id" or k == "definition_id" then
+                        error("ActorDiscriminatorImmutable: field '" .. tostring(k) .. "' is immutable on actor wrapper", 2)
+                    end
+                    actor_state[k] = v
+                end,
+                __tostring = function(_)
+                    return string.format("ActorWrapper(%s, %s)", tostring(actor_state.instance_id), tostring(discriminator))
+                end,
+            }
+            setmetatable(final_wrapper, final_mt)
+            return final_wrapper
+        end
+
+        return base
+    end
+
+    registry.wrap = wrap_actor
 
     function registry.exists(instance_id)
         if type(instance_id) ~= "string" or instance_id == "" then
@@ -242,6 +308,18 @@ function M.create_registry()
     end
 
     return registry
+end
+
+local default_registry = nil
+
+M.wrap = function(actor_state)
+    if game and game.instances and game.instances.actors and game.instances.actors.wrap then
+        return game.instances.actors.wrap(actor_state)
+    end
+    if not default_registry then
+        default_registry = M.create_registry()
+    end
+    return default_registry.wrap(actor_state)
 end
 
 function M.register(_ctx)

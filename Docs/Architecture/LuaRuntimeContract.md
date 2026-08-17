@@ -238,16 +238,19 @@ Uncaught error после начала mutation не запускает унив
 - Persistent state хранит `instance_id`, `definition_id` и explicit instance state.
 - Runtime wrappers/methods/metatables перестраиваются dynamically и не сохраняются в canonical state.
 - **Actor Registry (`game.instances.actors`)**:
+  - `game.instances.actors.register_type(discriminator, decorator)` регистрирует фабрику-декоратор обёртки для указанного `discriminator` на фазе `register` ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)). Регистрация замораживается после фазы `register` (`ActorTypeRegistryFrozen`); повторная регистрация отклоняется (`ActorTypeDuplicateRegistration`); `decorator` обязан быть функцией, возвращающей таблицу (`InvalidActorDecorator`, `ActorDecoratorInvalid`).
+  - `game.instances.actors.types()` возвращает отсортированный детерминированный список зарегистрированных дискриминаторов.
   - `game.instances.actors.get(instance_id)` возвращает disposable `ActorWrapper` либо `nil`.
   - `game.instances.actors.exists(instance_id)` возвращает boolean.
-  - `game.instances.actors.create(spec)` аллоцирует `instance_id` через `instance_allocator` и создаёт экземпляр в `state.actors`.
+  - `game.instances.actors.create(definition_id, overrides)` аллоцирует `instance_id` через `instance_allocator` и создаёт экземпляр в `state.actors`.
   - `game.instances.actors.remove(instance_id)` удаляет актора, предварительно проверяя отсутствие зависимых ссылок (например, `owner_id` в `state.item_instances`).
   - `game.instances.actors.ids(filter_fn)` возвращает детерминированный отсортированный список идентификаторов с возможностью фильтрации по дискриминатору/предикату.
   - `game.instances.actors.player()` возвращает wrapper для текущего игрока (`state.meta.player_actor_id`).
-- **Disposable Actor Wrapper**:
-  - Одноразовая обёртка вокруг сырой таблицы `actor_state`, предоставляющая доступ к полям, `instance_id`, `definition_id` и динамически вычисляемому дискриминатору `discriminator` (извлекается из pinned repository definition).
-  - Предоставляет доменные методы для локальных операций над сущностью (например `get_gold()`, `add_gold(amount)`), которые валидируют инварианты и атомарно мутируют поля состояния внутри окна команды.
-  - Идентификационные поля (`instance_id`, `definition_id`, `discriminator`) защищены от перезаписи (`ActorDiscriminatorImmutable`).
+- **Disposable Actor Wrapper & Decorator Extension**:
+  - Ядро формирует базовую обёртку вокруг сырой таблицы `actor_state`, предоставляющую доступ к полям состояния, `instance_id`, `definition_id`, `discriminator` и вспомогательному методу `get_state()`.
+  - Идентификационные поля (`instance_id`, `definition_id`, `discriminator`) защищены от перезаписи и переопределения (`ActorDiscriminatorImmutable`).
+  - Пакет регистрирует декоратор `decorator(base) -> wrapper`, надстраивающий доменные методы сущности (например `is_player()`, `get_gold()`, `add_gold(amount)`) через `{ __index = base }`.
+  - Незарегистрированный `discriminator` отклоняется типизированной ошибкой (`ActorTypeNotRegistered`), за исключением переходного списка известных нерегистраций ядра.
   - Сам wrapper никогда не попадает в `game.state` и не кэшируется между вызовами.
 - **World Domain Object (`game.instances.world`)** (план [GameplayEventsAndWorld](../Plans/Archive/GameplayEventsAndWorld/README.md), GEW-04):
   - Мир — singleton runtime instance, а не registry: `game.instances.world` — функция (`core:module.runtime.world`), а не таблица с методами `get`/`create`/`remove`.
