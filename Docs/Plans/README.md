@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 2.9
+version: 3.0
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,7 +24,9 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
+| План | Основание | Результат |
+|---|---|---|
+| [TestGameplaySlice](TestGameplaySlice/README.md) | [Commands and Events](../Architecture/CommandsAndEvents.md), [Screen Templates](../UI/ScreenTemplates.md) | Три локации с экранами, перемещение по карте за выносливость, покупки и заработок — целиком в пакете `rh` |
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
