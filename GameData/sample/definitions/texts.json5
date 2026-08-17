@@ -1,0 +1,54 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "sample:text.screen.test.description",
+      data: { source_message: "Test screen" },
+    },
+    {
+      id: "sample:text.screen.test.hover_title",
+      data: { source_message: "Hover title" },
+    },
+    {
+      id: "sample:text.screen.test.hover_description",
+      data: { source_message: "Hover description" },
+    },
+    {
+      id: "sample:text.screen.test.inspect",
+      data: { source_message: "Inspect" },
+    },
+    {
+      id: "sample:text.screen.test.close",
+      data: { source_message: "Close" },
+    },
+    {
+      id: "sample:text.screen.test.checkbox",
+      data: { source_message: "Test checkbox" },
+    },
+    {
+      id: "sample:text.screen.test.name_label",
+      data: { source_message: "Player name" },
+    },
+    {
+      id: "sample:text.screen.test.name_placeholder",
+      data: { source_message: "Enter name..." },
+    },
+    {
+      id: "sample:text.screen.test.dropdown_placeholder",
+      data: { source_message: "Select class..." },
+    },
+    {
+      id: "sample:text.screen.test.class_warrior",
+      data: { source_message: "Warrior" },
+    },
+    {
+      id: "sample:text.screen.test.class_mage",
+      data: { source_message: "Mage" },
+    },
+    {
+      id: "sample:text.screen.test.class_rogue",
+      data: { source_message: "Rogue" },
+    },
+  ],
+}

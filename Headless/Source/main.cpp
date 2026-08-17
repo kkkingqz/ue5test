@@ -1305,30 +1305,7 @@ int Run(
         SemanticAccepted.Args = Input.Args;
         Manifest.AcceptedCommands.push_back(std::move(SemanticAccepted));
 
-        GV2RuntimeCore::FCommandRequest StartRequest;
-        StartRequest.CommandId = "core:command.debug.start";
-        StartRequest.Sequence = CommandCount + 2;
-        if (!Runtime.DispatchCommand(StartRequest, Fault)
-            || !Runtime.TakePendingScreen(PendingScreen, Fault)
-            || !PendingScreen
-            || PendingScreen->ScreenId != "core:screen.test"
-            || PendingScreen->Fields.size() != 5
-            || PendingScreen->Fields[0].FieldId != "buttons"
-            || PendingScreen->Fields[1].FieldId != "checkbox"
-            || PendingScreen->Fields[2].FieldId != "class_select"
-            || PendingScreen->Fields[3].FieldId != "description"
-            || PendingScreen->Fields[4].FieldId != "player_name")
-        {
-            std::cerr << "debug_start_flow_failed code=" << Fault.Code
-                      << " message=" << Fault.Message << '\n';
-            return 7;
-        }
-
-        GV2RuntimeCore::FRunAcceptedCommand StartAccepted;
-        StartAccepted.CommandId = StartRequest.CommandId;
-        StartAccepted.Sequence = StartRequest.Sequence;
-        StartAccepted.Args = StartRequest.Args;
-        Manifest.AcceptedCommands.push_back(std::move(StartAccepted));
+        Runtime.TakePendingScreen(PendingScreen, Fault);
     }
 
     GV2RuntimeCore::FRunResult RunResult;

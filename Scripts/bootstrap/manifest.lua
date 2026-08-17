@@ -124,15 +124,6 @@ return {
             replaceable = false,
         },
         {
-            module_id = "core:module.debug.start",
-            source = "debug/start.lua",
-            dependencies = {
-                "core:module.presentation.screen_requests",
-                "core:module.resources.text",
-            },
-            replaceable = true,
-        },
-        {
             module_id = "core:module.boundary.ingress",
             source = "boundary/ingress.lua",
             dependencies = {
@@ -220,6 +211,7 @@ return {
             dependencies = {
                 "core:module.boundary.entrypoints",
                 "core:module.resources.service",
+                "core:module.resources.text",
                 "core:module.runtime.state_validator",
                 "core:module.runtime.instance_allocator",
                 "core:module.runtime.state_hasher",
@@ -237,7 +229,6 @@ return {
                 "core:module.runtime.event_bus",
                 "core:module.gameplay.location_service",
                 "core:module.gameplay.root",
-                "core:module.debug.start",
             },
             replaceable = false,
         },

@@ -2,14 +2,14 @@ local screens = require("core:module.presentation.screen_requests")
 local text = require("core:module.resources.text")
 
 local M = {
-    id = "core:module.debug.start",
+    id = "sample:module.debug.start",
 }
 local checkbox_checked = false
 local selected_class = nil
 local player_name = ""
 
 local function create_screen()
-    local item_id = "core:item.synthetic.placeholder"
+    local item_id = "sample:item.synthetic.placeholder"
     if game.repository then
         local items = game.repository.list("item")
         if items and #items > 0 then
@@ -17,21 +17,21 @@ local function create_screen()
         end
     end
 
-    return screens.create("core:screen.test", {
+    return screens.create("sample:screen.test", {
         description = {
             schema_id = "core:schema.ui_field.rich_text.v3",
             value = {
-                text = text.spec("core:text.screen.test.description", { player_name = "Игрок" }, "default"),
+                text = text.spec("sample:text.screen.test.description", { player_name = "Игрок" }, "default"),
                 spans = {
                     {
                         key = "integration",
                         span_id = "integration",
                         hover = {
-                            title = text.spec("core:text.screen.test.hover_title", nil, "tooltip_title"),
-                            description = text.spec("core:text.screen.test.hover_description"),
+                            title = text.spec("sample:text.screen.test.hover_title", nil, "tooltip_title"),
+                            description = text.spec("sample:text.screen.test.hover_description"),
                         },
                         binding = {
-                            command_id = "core:command.test.inspect",
+                            command_id = "sample:command.test.inspect",
                             args = { target = item_id },
                         },
                     },
@@ -44,16 +44,16 @@ local function create_screen()
                 items = {
                     {
                         key = "inspect",
-                        text = text.spec("core:text.screen.test.inspect", nil, "button"),
+                        text = text.spec("sample:text.screen.test.inspect", nil, "button"),
                         binding = {
-                            command_id = "core:command.test.inspect",
+                            command_id = "sample:command.test.inspect",
                             args = { target = item_id },
                         },
                     },
                     {
                         key = "close",
-                        text = text.spec("core:text.screen.test.close", nil, "button"),
-                        binding = { command_id = "core:command.test.close", args = {} },
+                        text = text.spec("sample:text.screen.test.close", nil, "button"),
+                        binding = { command_id = "sample:command.test.close", args = {} },
                     },
                 },
             },
@@ -61,10 +61,10 @@ local function create_screen()
         checkbox = {
             schema_id = "core:schema.ui_field.checkbox.v1",
             value = {
-                text = text.spec("core:text.screen.test.checkbox", nil, "default"),
+                text = text.spec("sample:text.screen.test.checkbox", nil, "default"),
                 is_checked = checkbox_checked,
                 binding = {
-                    command_id = "core:command.test.checkbox_changed",
+                    command_id = "sample:command.test.checkbox_changed",
                     args = {},
                 },
             },
@@ -72,11 +72,11 @@ local function create_screen()
         player_name = {
             schema_id = "core:schema.ui_field.input_field.v1",
             value = {
-                text = text.spec("core:text.screen.test.name_label", nil, "default"),
-                placeholder_text = text.spec("core:text.screen.test.name_placeholder", nil, "default"),
+                text = text.spec("sample:text.screen.test.name_label", nil, "default"),
+                placeholder_text = text.spec("sample:text.screen.test.name_placeholder", nil, "default"),
                 value = player_name ~= "" and player_name or item_id,
                 binding = {
-                    command_id = "core:command.test.name_changed",
+                    command_id = "sample:command.test.name_changed",
                     args = {},
                 },
             },
@@ -84,24 +84,24 @@ local function create_screen()
         class_select = {
             schema_id = "core:schema.ui_field.dropdown_select.v1",
             value = {
-                placeholder = text.spec("core:text.screen.test.dropdown_placeholder", nil, "default"),
+                placeholder = text.spec("sample:text.screen.test.dropdown_placeholder", nil, "default"),
                 selected_key = selected_class,
                 items = {
                     {
                         key = "warrior",
-                        text = text.spec("core:text.screen.test.class_warrior", nil, "default"),
+                        text = text.spec("sample:text.screen.test.class_warrior", nil, "default"),
                     },
                     {
                         key = "mage",
-                        text = text.spec("core:text.screen.test.class_mage", nil, "default"),
+                        text = text.spec("sample:text.screen.test.class_mage", nil, "default"),
                     },
                     {
                         key = "rogue",
-                        text = text.spec("core:text.screen.test.class_rogue", nil, "default"),
+                        text = text.spec("sample:text.screen.test.class_rogue", nil, "default"),
                     },
                 },
                 binding = {
-                    command_id = "core:command.test.dropdown_selected",
+                    command_id = "sample:command.test.dropdown_selected",
                     args = {},
                 },
             },
@@ -114,11 +114,11 @@ function M.register(_ctx)
         return
     end
 
-    game.commands.handlers.register("core:command.test.force_error", function(_req)
+    game.commands.handlers.register("sample:command.test.force_error", function(_req)
         error("forced test runtime error")
     end)
 
-    game.commands.handlers.register("core:command.debug.start", function(_req)
+    game.commands.handlers.register("sample:command.debug.start", function(_req)
         checkbox_checked = false
         selected_class = nil
         player_name = ""
@@ -126,21 +126,21 @@ function M.register(_ctx)
         return true
     end)
 
-    game.commands.handlers.register("core:command.test.checkbox_changed", function(request)
+    game.commands.handlers.register("sample:command.test.checkbox_changed", function(request)
         assert(type(request.args.is_checked) == "boolean", "checkbox command requires is_checked")
         checkbox_checked = request.args.is_checked
         screens.publish(create_screen())
         return true
     end)
 
-    game.commands.handlers.register("core:command.test.dropdown_selected", function(request)
+    game.commands.handlers.register("sample:command.test.dropdown_selected", function(request)
         assert(type(request.args.selected_key) == "string", "dropdown command requires selected_key")
         selected_class = request.args.selected_key
         screens.publish(create_screen())
         return true
     end)
 
-    game.commands.handlers.register("core:command.test.name_changed", function(request)
+    game.commands.handlers.register("sample:command.test.name_changed", function(request)
         assert(type(request.args.value) == "string", "name command requires value")
         player_name = request.args.value
         screens.publish(create_screen())

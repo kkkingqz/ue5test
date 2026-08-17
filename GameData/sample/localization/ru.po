@@ -1,0 +1,53 @@
+msgid ""
+msgstr ""
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgctxt "sample:text.screen.test.description"
+msgid "Test screen"
+msgstr "Тестовый экран"
+
+msgctxt "sample:text.screen.test.hover_title"
+msgid "Hover title"
+msgstr "Заголовок подсказки"
+
+msgctxt "sample:text.screen.test.hover_description"
+msgid "Hover description"
+msgstr "Описание подсказки"
+
+msgctxt "sample:text.screen.test.inspect"
+msgid "Inspect"
+msgstr "Осмотреть"
+
+msgctxt "sample:text.screen.test.close"
+msgid "Close"
+msgstr "Закрыть"
+
+msgctxt "sample:text.screen.test.checkbox"
+msgid "Test checkbox"
+msgstr "Тестовый чекбокс"
+
+msgctxt "sample:text.screen.test.name_label"
+msgid "Player name"
+msgstr "Имя игрока"
+
+msgctxt "sample:text.screen.test.name_placeholder"
+msgid "Enter name..."
+msgstr "Введите имя..."
+
+msgctxt "sample:text.screen.test.dropdown_placeholder"
+msgid "Select class..."
+msgstr "Выберите класс..."
+
+msgctxt "sample:text.screen.test.class_warrior"
+msgid "Warrior"
+msgstr "Воин"
+
+msgctxt "sample:text.screen.test.class_mage"
+msgid "Mage"
+msgstr "Маг"
+
+msgctxt "sample:text.screen.test.class_rogue"
+msgid "Rogue"
+msgstr "Разбойник"

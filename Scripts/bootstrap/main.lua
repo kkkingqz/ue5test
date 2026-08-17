@@ -1,5 +1,6 @@
 local boundary = require("core:module.boundary.entrypoints")
 local resources = require("core:module.resources.service")
+local text = require("core:module.resources.text")
 local state_validator = require("core:module.runtime.state_validator")
 local instance_allocator = require("core:module.runtime.instance_allocator")
 local state_hasher = require("core:module.runtime.state_hasher")
@@ -16,12 +17,12 @@ local subscriber_registry = require("core:module.runtime.subscriber_registry")
 local event_bus = require("core:module.runtime.event_bus")
 local location_service = require("core:module.gameplay.location_service")
 local gameplay_root = require("core:module.gameplay.root")
-local debug_start = require("core:module.debug.start")
 
 return {
     id = "core:module.bootstrap.main",
     boundary = boundary,
     resources = resources,
+    text = text,
     state_validator = state_validator,
     instance_allocator = instance_allocator,
     state_hasher = state_hasher,
@@ -38,5 +39,4 @@ return {
     event_bus = event_bus,
     location_service = location_service,
     gameplay_root = gameplay_root,
-    debug_start = debug_start,
 }

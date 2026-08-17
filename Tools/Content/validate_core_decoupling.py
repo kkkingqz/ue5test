@@ -18,7 +18,7 @@ TARGET_DIRECTORIES = [
     REPO_ROOT / "Source",
 ]
 
-FORBIDDEN_PATTERN = re.compile(r"\brh:")
+FORBIDDEN_PATTERN = re.compile(r"\b(rh|sample):")
 CHECKED_EXTENSIONS = {
     ".lua",
     ".json5",

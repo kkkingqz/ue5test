@@ -1,0 +1,12 @@
+{
+  schema_version: 1,
+  type: "screen",
+  definitions: [
+    {
+      id: "sample:screen.test",
+      data: {
+        title_text_id: "sample:text.screen.test.description",
+      },
+    },
+  ],
+}
