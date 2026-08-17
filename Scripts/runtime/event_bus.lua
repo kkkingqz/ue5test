@@ -156,18 +156,46 @@ function M.get_subscribers(event_id)
     return all_subs
 end
 
--- Test-only reset (setup/teardown between Tests/Lua spec cases, e.g.
--- Tests/Lua/events/, Tests/Lua/commands/). Deliberately not exposed on
--- game.events (see M.register below) — a gameplay module or mod would
--- have to explicitly require("core:module.runtime.event_bus") and call
--- this by name to reach it, an auditable, declared-dependency surface
--- instead of the previously-global game.events.clear_subscribers.
-function M.clear_subscribers()
+-- Isolated subscriber scope for Tests/Lua spec cases.
+--
+-- A spec that needs its own subscribers has to get past the freeze, and the
+-- only way to do that is to unfreeze the registry — which also drops the
+-- subscribers packages registered during the "register" phase. Left cleared,
+-- that breaks whichever spec runs next, and the failure is reported there
+-- rather than at its cause.
+--
+-- So clearing is only available inside a scope that always puts the previous
+-- set back, frozen flag included. There is deliberately no operation that
+-- clears without restoring.
+--
+-- Deliberately not exposed on game.events (see M.register below): a gameplay
+-- module or mod would have to explicitly require this module and call it by
+-- name — an auditable surface declared in the manifest.
+function M.with_isolated_subscribers(body)
+    assert(type(body) == "function", "with_isolated_subscribers expects a function")
+
+    local previous_by_event = subscribers_by_event
+    local previous_seq = registration_seq
+    local previous_registry = subscriber_registry_admin and subscriber_registry_admin.snapshot() or nil
+
     subscribers_by_event = {}
     registration_seq = 0
     if subscriber_registry_admin then
         subscriber_registry_admin.clear()
     end
+
+    local ok, result = pcall(body)
+
+    subscribers_by_event = previous_by_event
+    registration_seq = previous_seq
+    if previous_registry ~= nil then
+        subscriber_registry_admin.restore(previous_registry)
+    end
+
+    if not ok then
+        error(result, 0)
+    end
+    return result
 end
 
 function M.enqueue(spec)

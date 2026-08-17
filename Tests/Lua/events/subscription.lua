@@ -5,45 +5,46 @@ local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     subscribing_to_event_id_succeeds_and_runs_handler = function()
-        event_bus.clear_published_events()
-        event_bus.clear_subscribers()
-        game.runtime.phase = "idle"
+        event_bus.with_isolated_subscribers(function()
+            event_bus.clear_published_events()
+            game.runtime.phase = "idle"
 
-        local received_event = nil
+            local received_event = nil
 
-        game.events.subscribers.register(
-            "core:subscriber.test.location_tracker",
-            "core:event.location.enter",
-            function(env)
-                -- Imperative condition check on payload fields
-                if env.payload.to_location_id == "core:location.city.tavern" then
-                    received_event = env
+            game.events.subscribers.register(
+                "core:subscriber.test.location_tracker",
+                "core:event.location.enter",
+                function(env)
+                    -- Imperative condition check on payload fields
+                    if env.payload.to_location_id == "core:location.city.tavern" then
+                        received_event = env
+                    end
                 end
-            end
-        )
+            )
 
-        local reg = handler_registry.create_registry()
-        reg.register("core:command.test.gew10_travel", function(_request)
-            game.events.enqueue({
-                event_id = "core:event.location.enter",
-                payload = {
-                    from_location_id = "core:location.city.market",
-                    to_location_id = "core:location.city.tavern",
-                },
+            local reg = handler_registry.create_registry()
+            reg.register("core:command.test.gew10_travel", function(_request)
+                game.events.enqueue({
+                    event_id = "core:event.location.enter",
+                    payload = {
+                        from_location_id = "core:location.city.market",
+                        to_location_id = "core:location.city.tavern",
+                    },
+                })
+                return { ok = true }
+            end)
+
+            local dispatcher = command_dispatcher.new(reg)
+            dispatcher.dispatch({
+                command_id = "core:command.test.gew10_travel",
+                args = {},
+                sequence = 401,
             })
-            return { ok = true }
+
+            assert(received_event ~= nil, "subscriber must have received and matched event")
+            assert(received_event.event_id == "core:event.location.enter", "event_id must match")
+            assert(received_event.payload.to_location_id == "core:location.city.tavern", "payload field must match")
         end)
-
-        local dispatcher = command_dispatcher.new(reg)
-        dispatcher.dispatch({
-            command_id = "core:command.test.gew10_travel",
-            args = {},
-            sequence = 401,
-        })
-
-        assert(received_event ~= nil, "subscriber must have received and matched event")
-        assert(received_event.event_id == "core:event.location.enter", "event_id must match")
-        assert(received_event.payload.to_location_id == "core:location.city.tavern", "payload field must match")
     end,
 
     subscribing_to_invalid_event_id_rejected = function()

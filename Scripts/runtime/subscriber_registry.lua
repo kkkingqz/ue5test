@@ -139,9 +139,13 @@ function M.create_registry()
     -- is not reachable through `game.events.subscribers` at all, by any
     -- gameplay module or mod. It is returned separately as `admin`, held
     -- only by event_bus.lua (a closure-captured module-local upvalue,
-    -- never assigned onto `game`), which is the sole caller
-    -- (`event_bus.clear_subscribers()`, used by Tests/Lua specs as
-    -- setup/teardown between cases — never gameplay code).
+    -- never assigned onto `game`).
+    --
+    -- `clear` is never exposed on its own: event_bus wraps it together with
+    -- snapshot/restore into a scope (`with_isolated_subscribers`). Clearing
+    -- without restoring wipes production subscribers registered by packages,
+    -- and the failure then surfaces in whichever spec runs next — so the
+    -- unpaired operation is not offered at all.
     local admin = {
         clear = function()
             entries = {}
@@ -149,6 +153,43 @@ function M.create_registry()
             subscribers_by_event = {}
             is_frozen = false
             next_sequence = 1
+        end,
+
+        -- Shallow copies: entries are never mutated in place after registration,
+        -- so sharing the entry tables between snapshot and registry is safe.
+        snapshot = function()
+            local entries_copy = {}
+            for index, entry in ipairs(entries) do
+                entries_copy[index] = entry
+            end
+            local by_id_copy = {}
+            for id, entry in pairs(entries_by_id) do
+                by_id_copy[id] = entry
+            end
+            local by_event_copy = {}
+            for event_id, list in pairs(subscribers_by_event) do
+                local list_copy = {}
+                for index, entry in ipairs(list) do
+                    list_copy[index] = entry
+                end
+                by_event_copy[event_id] = list_copy
+            end
+            return {
+                entries = entries_copy,
+                entries_by_id = by_id_copy,
+                subscribers_by_event = by_event_copy,
+                is_frozen = is_frozen,
+                next_sequence = next_sequence,
+            }
+        end,
+
+        restore = function(snapshot)
+            assert(type(snapshot) == "table", "subscriber snapshot must be a table")
+            entries = snapshot.entries
+            entries_by_id = snapshot.entries_by_id
+            subscribers_by_event = snapshot.subscribers_by_event
+            is_frozen = snapshot.is_frozen
+            next_sequence = snapshot.next_sequence
         end,
     }
 
