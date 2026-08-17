@@ -1,8 +1,8 @@
 ---
 title: Состояние реализации
 status: normative
-version: 1.20
-updated: 2026-08-16
+version: 1.21
+updated: 2026-08-17
 depends_on:
   - ../README.md
   - ../Architecture/Overview.md
@@ -89,7 +89,9 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 
 Приоритет определяется тем, что блокирует end-to-end vertical slice из [Architecture Overview](../Architecture/Overview.md):
 
-1. UI document reconciliation (routes, layers, overlays) — нужен, как только экранов станет больше одного.
+1. UI document reconciliation (routes, layers, overlays) — нужен уже сейчас: [TestGameplaySlice](../Plans/Archive/TestGameplaySlice/README.md) ввёл три экрана, и они переключаются заменой единственного активного, без слоёв и оверлеев.
 2. `game.random` и `game.time` — детерминированные PRNG и часы; слоты в `meta` зарезервированы, генераторов нет.
 
 Save/load (план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md)) и Mod package support (план [PackageSupport](../Plans/Archive/PackageSupport/README.md)) закрыты целиком и больше не входят в этот список.
+
+Играбельный цикл существует: план [TestGameplaySlice](../Plans/Archive/TestGameplaySlice/README.md) собрал в пакете `rh` три локации с картой `market↔tavern↔gate`, перемещение за выносливость, покупки и заработок. Это первый Lua внутри игрового пакета (`GameData/rh/scripts/`) и первое перекрытие модуля ядра через `require_base()`; в `core` понадобилась одна правка — поле `connected_location_ids` в схеме локации.

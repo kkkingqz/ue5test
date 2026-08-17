@@ -1,20 +1,20 @@
 ---
 title: Test Gameplay Slice Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-17
 depends_on:
-  - ../../Architecture/CommandsAndEvents.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/StableIDSpecification.md
-  - ../../UI/ScreenTemplates.md
+  - ../../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/StableIDSpecification.md
+  - ../../../UI/ScreenTemplates.md
 decisions:
-  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../../ADR/0025-lua-module-replacement-and-export-freezing.md
 ---
 
 # План реализации тестового геймплейного слайса
 
-> **Материализует:** [Commands and Events](../../Architecture/CommandsAndEvents.md) и [Screen Templates](../../UI/ScreenTemplates.md) как первый играбельный цикл.
+> **Материализует:** [Commands and Events](../../../Architecture/CommandsAndEvents.md) и [Screen Templates](../../../UI/ScreenTemplates.md) как первый играбельный цикл.
 > **Задачи:** TGS-01…10.
 > **Результат:** три локации, перемещение по карте за выносливость, покупки и заработок.
 
