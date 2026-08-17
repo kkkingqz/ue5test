@@ -34,6 +34,68 @@ local function ensure_player(initial_stamina, initial_gold)
 end
 
 return {
+    -- TGS-09: an action rebuilds the screen, otherwise the player presses a button
+    -- and sees nothing change. Travel is covered separately by the enter-event case.
+    screen_republished_after_location_action = function()
+        event_bus.clear_published_events()
+
+        mutation_window.execute_in_window(function()
+            local player = ensure_player(20, 50)
+            local world = game.instances.world()
+            world.current_location_id = "rh:location.city.tavern"
+
+            screens.take_pending()
+            assert(screens.take_pending() == nil, "no screen must be pending before the action")
+
+            local seq = game.runtime.dispatch_command({
+                command_id = "rh:command.time.wait_day",
+                args = {},
+                sequence = 901,
+            })
+            assert(seq == 901)
+
+            local result = game.runtime.last_command_result
+            assert(result ~= nil and result.ok ~= false, "wait_day must succeed")
+
+            local published = screens.take_pending()
+            assert(published ~= nil, "a successful action must republish the screen")
+            assert(published.screen_id == "rh:screen.location.tavern",
+                "republished screen must be the current location's, got: " .. tostring(published.screen_id))
+            assert(find_button(published.fields.buttons, "wait_day") ~= nil,
+                "republished menu must still contain the location actions")
+
+            assert(player.stamina == 30, "wait_day must add 10 stamina, got: " .. tostring(player.stamina))
+        end)
+
+        event_bus.clear_published_events()
+    end,
+
+    screen_not_republished_after_refused_action = function()
+        event_bus.clear_published_events()
+
+        mutation_window.execute_in_window(function()
+            ensure_player(4, 50)
+            local world = game.instances.world()
+            world.current_location_id = "rh:location.city.tavern"
+
+            screens.take_pending()
+
+            local seq = game.runtime.dispatch_command({
+                command_id = "rh:command.work.do_work",
+                args = {},
+                sequence = 902,
+            })
+            assert(seq == 902)
+
+            local result = game.runtime.last_command_result
+            assert(result ~= nil and result.ok == false, "work at stamina 4 must be refused")
+
+            assert(screens.take_pending() == nil, "a refused action must not republish the screen")
+        end)
+
+        event_bus.clear_published_events()
+    end,
+
     market_screen_structure_and_buttons = function()
         local req = location_screen.build_screen_request("rh:location.city.market")
         assert(req ~= nil, "screen request must be generated for market")

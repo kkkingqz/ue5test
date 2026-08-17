@@ -81,13 +81,29 @@ local work_validator = {
     end,
 }
 
-function M.register_handlers(_ctx)
+-- TGS-09: the screen is rebuilt after a successful action so the player sees the
+-- result. The republish callback is injected by the composition root, keeping
+-- presentation out of this module's imports.
+local function with_republish(handler, republish)
+    if type(republish) ~= "function" then
+        return handler
+    end
+    return function(request)
+        local result = handler(request)
+        if type(result) ~= "table" or result.ok ~= false then
+            republish()
+        end
+        return result
+    end
+end
+
+function M.register_handlers(_ctx, republish)
     if game and game.commands and game.commands.validators and game.commands.validators.register then
         game.commands.validators.register("rh:validator.work.do_work", work_validator, { priority = 10 })
     end
 
     if game and game.commands and game.commands.handlers and game.commands.handlers.register then
-        game.commands.handlers.register("rh:command.work.do_work", do_work_handler)
+        game.commands.handlers.register("rh:command.work.do_work", with_republish(do_work_handler, republish))
     end
 end
 

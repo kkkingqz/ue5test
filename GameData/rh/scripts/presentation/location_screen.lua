@@ -3,7 +3,6 @@
 
 local screens = require("core:module.presentation.screen_requests")
 local text = require("core:module.resources.text")
-local stable_id = require("core:module.runtime.stable_id")
 
 local M = {
     id = "rh:module.presentation.location_screen",

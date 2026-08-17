@@ -16,20 +16,20 @@ function M.register(ctx)
     if base.register then
         base.register(ctx)
     end
+    if location_screen and location_screen.register_handlers then
+        location_screen.register_handlers(ctx)
+    end
     if travel and travel.register_handlers then
         travel.register_handlers(ctx)
     end
     if shop and shop.register_handlers then
-        shop.register_handlers(ctx)
+        shop.register_handlers(ctx, location_screen.build_and_publish_screen)
     end
     if time and time.register_handlers then
-        time.register_handlers(ctx)
+        time.register_handlers(ctx, location_screen.build_and_publish_screen)
     end
     if work and work.register_handlers then
-        work.register_handlers(ctx)
-    end
-    if location_screen and location_screen.register_handlers then
-        location_screen.register_handlers(ctx)
+        work.register_handlers(ctx, location_screen.build_and_publish_screen)
     end
 end
 

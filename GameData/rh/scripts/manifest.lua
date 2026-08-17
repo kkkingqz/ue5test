@@ -53,7 +53,6 @@ return {
             dependencies = {
                 "core:module.presentation.screen_requests",
                 "core:module.resources.text",
-                "core:module.runtime.stable_id",
             },
             replaceable = false,
         },
