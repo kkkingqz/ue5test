@@ -8,6 +8,10 @@ msgctxt "rh:text.item.iron_sword.name"
 msgid "Iron sword"
 msgstr "Железный меч"
 
+msgctxt "rh:text.item.leather_armor.name"
+msgid "Leather armor"
+msgstr "Кожаный доспех"
+
 msgctxt "rh:text.location.market.title"
 msgid "Market"
 msgstr "Рыночная площадь"
@@ -19,6 +23,34 @@ msgstr "Таверна"
 msgctxt "rh:text.location.gate.title"
 msgid "City Gate"
 msgstr "Городские ворота"
+
+msgctxt "rh:text.action.buy_sword"
+msgid "Buy iron sword (10 gold)"
+msgstr "Купить железный меч (10 золота)"
+
+msgctxt "rh:text.action.buy_armor"
+msgid "Buy leather armor (25 gold)"
+msgstr "Купить кожаный доспех (25 золота)"
+
+msgctxt "rh:text.action.wait_day"
+msgid "Rest 1 day (+10 stamina)"
+msgstr "Отдохнуть 1 день (+10 выносливости)"
+
+msgctxt "rh:text.action.do_work"
+msgid "Work (+10 gold, -2 stamina)"
+msgstr "Работать (+10 золота, -2 выносливости)"
+
+msgctxt "rh:text.screen.market.description"
+msgid "Market square. Local merchants offer weapons and armor."
+msgstr "Рыночная площадь. Местные торговцы предлагают оружие и доспехи."
+
+msgctxt "rh:text.screen.tavern.description"
+msgid "Cozy tavern. Here you can rest or earn some gold."
+msgstr "Уютная таверна. Здесь можно отдохнуть или подработать."
+
+msgctxt "rh:text.screen.gate.description"
+msgid "City gates. Guards watch everyone entering or leaving."
+msgstr "Городские ворота. Стражники следят за каждым входящим и выходящим."
 
 msgctxt "rh:text.character.hero.name"
 msgid "Hero"

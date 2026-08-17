@@ -6,6 +6,10 @@ return {
             dependencies = {
                 "rh:module.services.economy",
                 "rh:module.gameplay.travel",
+                "rh:module.gameplay.shop",
+                "rh:module.gameplay.time",
+                "rh:module.gameplay.work",
+                "rh:module.presentation.location_screen",
             },
             replaceable = true,
         },
@@ -19,6 +23,36 @@ return {
             module_id = "rh:module.gameplay.travel",
             source = "gameplay/travel.lua",
             dependencies = {
+                "core:module.runtime.stable_id",
+            },
+            replaceable = false,
+        },
+        {
+            module_id = "rh:module.gameplay.shop",
+            source = "gameplay/shop.lua",
+            dependencies = {
+                "core:module.runtime.instance_allocator",
+            },
+            replaceable = false,
+        },
+        {
+            module_id = "rh:module.gameplay.time",
+            source = "gameplay/time.lua",
+            dependencies = {},
+            replaceable = false,
+        },
+        {
+            module_id = "rh:module.gameplay.work",
+            source = "gameplay/work.lua",
+            dependencies = {},
+            replaceable = false,
+        },
+        {
+            module_id = "rh:module.presentation.location_screen",
+            source = "presentation/location_screen.lua",
+            dependencies = {
+                "core:module.presentation.screen_requests",
+                "core:module.resources.text",
                 "core:module.runtime.stable_id",
             },
             replaceable = false,

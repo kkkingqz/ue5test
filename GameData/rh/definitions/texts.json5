@@ -7,6 +7,10 @@
       data: { source_message: "Iron sword" },
     },
     {
+      id: "rh:text.item.leather_armor.name",
+      data: { source_message: "Leather armor" },
+    },
+    {
       id: "rh:text.location.market.title",
       data: { source_message: "Market" },
     },
@@ -17,6 +21,34 @@
     {
       id: "rh:text.location.gate.title",
       data: { source_message: "City Gate" },
+    },
+    {
+      id: "rh:text.action.buy_sword",
+      data: { source_message: "Buy iron sword (10 gold)" },
+    },
+    {
+      id: "rh:text.action.buy_armor",
+      data: { source_message: "Buy leather armor (25 gold)" },
+    },
+    {
+      id: "rh:text.action.wait_day",
+      data: { source_message: "Rest 1 day (+10 stamina)" },
+    },
+    {
+      id: "rh:text.action.do_work",
+      data: { source_message: "Work (+10 gold, -2 stamina)" },
+    },
+    {
+      id: "rh:text.screen.market.description",
+      data: { source_message: "Market square. Local merchants offer weapons and armor." },
+    },
+    {
+      id: "rh:text.screen.tavern.description",
+      data: { source_message: "Cozy tavern. Here you can rest or earn some gold." },
+    },
+    {
+      id: "rh:text.screen.gate.description",
+      data: { source_message: "City gates. Guards watch everyone entering or leaving." },
     },
     {
       id: "rh:text.character.hero.name",

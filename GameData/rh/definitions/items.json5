@@ -13,6 +13,17 @@
       deprecated: false,
       extensions: {},
     },
+    {
+      id: "rh:item.armor.leather_armor",
+      data: {
+        label_text_id: "rh:text.item.leather_armor.name",
+        price: 25,
+        icon_resource_id: "rh:resource.item.leather_armor.icon",
+      },
+      tags: ["armor"],
+      deprecated: false,
+      extensions: {},
+    },
   ],
   extensions: {},
 }

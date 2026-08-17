@@ -9,5 +9,12 @@
         required: true,
       },
     },
+    {
+      id: "rh:resource.item.leather_armor.icon",
+      data: {
+        resource_class: "texture_2d",
+        required: true,
+      },
+    },
   ],
 }
