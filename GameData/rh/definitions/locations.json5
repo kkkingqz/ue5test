@@ -7,19 +7,47 @@
       data: {
         title_text_id: "rh:text.location.market.title",
         screen_ids: [
-          "core:screen.main",
-          "core:screen.inventory",
+          "rh:screen.location.market",
+        ],
+        connected_location_ids: [
+          "rh:location.city.tavern",
         ],
       },
+      tags: ["city", "market"],
+      deprecated: false,
+      extensions: {},
     },
     {
       id: "rh:location.city.tavern",
       data: {
         title_text_id: "rh:text.location.tavern.title",
         screen_ids: [
-          "core:screen.main",
+          "rh:screen.location.tavern",
+        ],
+        connected_location_ids: [
+          "rh:location.city.market",
+          "rh:location.city.gate",
         ],
       },
+      tags: ["city", "tavern"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "rh:location.city.gate",
+      data: {
+        title_text_id: "rh:text.location.gate.title",
+        screen_ids: [
+          "rh:screen.location.gate",
+        ],
+        connected_location_ids: [
+          "rh:location.city.tavern",
+        ],
+      },
+      tags: ["city", "gate"],
+      deprecated: false,
+      extensions: {},
     },
   ],
+  extensions: {},
 }

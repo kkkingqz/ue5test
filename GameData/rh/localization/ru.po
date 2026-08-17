@@ -16,6 +16,10 @@ msgctxt "rh:text.location.tavern.title"
 msgid "Tavern"
 msgstr "Таверна"
 
+msgctxt "rh:text.location.gate.title"
+msgid "City Gate"
+msgstr "Городские ворота"
+
 msgctxt "rh:text.character.hero.name"
 msgid "Hero"
 msgstr "Герой"

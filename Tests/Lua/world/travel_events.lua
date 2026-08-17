@@ -4,12 +4,29 @@
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local mutation_window = require("core:module.runtime.mutation_window")
+
+local function ensure_player()
+    mutation_window.execute_in_window(function()
+        local player = game.instances.actors.player()
+        if not player then
+            local hero = game.instances.actors.create("rh:actor.character.hero", {
+                stamina = 50,
+                gold = 50,
+            })
+            game.state.meta.player_actor_id = hero.instance_id
+        else
+            player.stamina = 50
+        end
+    end)
+end
 
 return {
     leave_then_enter_facts_published_on_successful_travel = function()
         event_bus.clear_published_events()
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
+        ensure_player()
 
         -- Ensure starting at market
         local world = game.instances.world()
@@ -69,10 +86,10 @@ return {
         assert(published[2].payload.from_location_id == "rh:location.city.market", "enter from market")
         assert(published[2].payload.to_location_id == "rh:location.city.tavern", "enter to tavern")
 
-        -- Verify subscribers received both events in exact order
-        assert(#events_order == 2, "subscribers must have run twice, got " .. tostring(#events_order))
-        assert(events_order[1].kind == "leave", "leave subscriber ran first")
-        assert(events_order[2].kind == "enter", "enter subscriber ran second")
+        -- Verify subscriber delivery order
+        assert(#events_order == 2, "both subscribers must be invoked")
+        assert(events_order[1].kind == "leave", "leave subscriber first")
+        assert(events_order[2].kind == "enter", "enter subscriber second")
 
         -- Cleanup
         event_bus.clear_subscribers()
@@ -80,37 +97,35 @@ return {
         game.runtime.phase = "idle"
     end,
 
-    refused_travel_publishes_no_facts = function()
+    no_facts_published_on_refused_travel_command = function()
         event_bus.clear_published_events()
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
+        ensure_player()
 
         local world = game.instances.world()
         local current_loc = world.current_location_id
+        local dispatcher = command_dispatcher.new()
 
         local subscriber_invoked = false
         game.events.subscribers.register(
-            "core:subscriber.test.guard",
+            "core:subscriber.test.fail_tracker",
             "core:event.location.leave",
             function(_env)
                 subscriber_invoked = true
             end
         )
 
-        local dispatcher = command_dispatcher.new()
-        -- Attempt to travel to current location (rejected by validator)
-        local ok, _ = pcall(function()
-            dispatcher.dispatch({
-                command_id = "core:command.location.travel",
-                args = { target_location_id = current_loc },
-                sequence = 802,
-            })
-        end)
+        -- Dispatch travel to current location -> validator will refuse
+        dispatcher.dispatch({
+            command_id = "core:command.location.travel",
+            args = { target_location_id = current_loc },
+            sequence = 802,
+        })
 
-        assert(ok, "typed refusal must not throw Lua exception")
-        assert(subscriber_invoked == false, "subscribers must NOT be invoked on refused travel")
         local published = game.events.get_published_events()
-        assert(#published == 0, "0 events must be published on refused travel, got " .. tostring(#published))
+        assert(#published == 0, "no facts must be published when command is refused, got " .. tostring(#published))
+        assert(subscriber_invoked == false, "subscriber must NOT be invoked on refused command")
 
         -- Cleanup
         event_bus.clear_subscribers()
@@ -122,6 +137,7 @@ return {
         event_bus.clear_published_events()
         event_bus.clear_subscribers()
         game.runtime.phase = "idle"
+        ensure_player()
 
         local tavern_entered = false
         local forest_entered = false
@@ -168,6 +184,7 @@ return {
         event_bus.clear_subscribers()
         game.commands.clear_queue()
         game.runtime.phase = "idle"
+        ensure_player()
 
         local dispatcher = command_dispatcher.new()
 

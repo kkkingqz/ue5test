@@ -67,7 +67,7 @@ decisions:
 ## Milestones
 
 - [x] M1 — Состояние и экономика: `stamina`, `gold`, сервис `rh:service.economy`.
-- [ ] M2 — Карта и перемещение: связи локаций, расход выносливости, валидатор.
+- [x] M2 — Карта и перемещение: связи локаций, расход выносливости, валидатор.
 - [ ] M3 — Экраны и меню: три экрана, динамическая сборка меню, действия локаций.
 
 ## Задачи
@@ -93,27 +93,27 @@ decisions:
 
 ### M2 — Карта и перемещение
 
-- [ ] **TGS-04 — Поле связей в схеме локации**
+- [x] **TGS-04 — Поле связей в схеме локации**
   - Единственная правка `core`: в `location_v1.schema.json5` добавляется `connected_location_ids` — массив ссылок kind `location`, необязательный, без повторов.
   - Done: схема принимает и проверяет поле; ссылка на несуществующую локацию отклоняется; `describe` показывает новое поле; существующие локации без него остаются валидными.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Добавлено поле `connected_location_ids` в `GameData/core/schemas/location_v1.schema.json5`. Валидация пакета `core` и `gv2-content describe GameData/core location` подтверждают поддержку поля (`optional, unique=true, items=ref(location)`).
 
-- [ ] **TGS-05 — Три локации и карта**
+- [x] **TGS-05 — Три локации и карта**
   - Зависимости: TGS-04.
   - `rh:location.city.market`, `rh:location.city.tavern` и новая третья; связи `1↔2↔3`.
   - Done: связи объявлены в обе стороны и симметричны; каждая локация ссылается на свой экран; тексты названий заведены и переведены; `validate` зелёный.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Определены 3 локации (`market`, `tavern`, `gate`) в `GameData/rh/definitions/locations.json5` с симметричными `connected_location_ids` и экранами `rh:screen.location.*` из `GameData/rh/definitions/screens.json5`. Добавлены тексты и русский перевод в `texts.json5` и `ru.po`. `gv2-content validate GameData/rh` зелёный.
 
-- [ ] **TGS-06 — Перемещение за выносливость**
+- [x] **TGS-06 — Перемещение за выносливость**
   - Зависимости: TGS-03, TGS-05.
   - `rh` перекрывает обработчик `core:command.location.travel` с `options.override = true`: списывает 5 выносливости и вызывает `core:service.location`.
   - Done: успешный переход списывает ровно 5 и меняет локацию в одном окне мутации; события `leave`/`enter` публикуются как прежде; отказ не меняет ни выносливость, ни локацию; спека покрывает успех и отказ.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Реализован обработчик в `GameData/rh/scripts/gameplay/travel.lua`, зарегистрированный с `override = true`. Переход списывает 5 выносливости и вызывает `core:service.location.travel` в рамках единого окна мутации. Покрыто спекой `Tests/Lua/world/travel_stamina.lua`.
 
-- [ ] **TGS-07 — Валидатор перемещения**
+- [x] **TGS-07 — Валидатор перемещения**
   - Зависимости: TGS-06.
   - Done: переход отклоняется, если выносливости меньше 5 либо целевая локация не является соседней; коды отказа раздельные и содержат `params`; валидатор ничего не меняет и работает до открытия окна мутации; negative case на каждый класс.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Валидатор `rh:validator.location.travel` проверяет `stamina >= 5` (`rh:error.travel.insufficient_stamina`) и связность в графе карты (`rh:error.travel.not_connected`). Покрыт негативными тестами в `Tests/Lua/world/travel_stamina.lua`.
 
 ### M3 — Экраны и меню
 

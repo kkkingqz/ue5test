@@ -3,10 +3,27 @@
 -- validator -> handler -> Gameplay Service -> World.
 
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local mutation_window = require("core:module.runtime.mutation_window")
+
+local function ensure_player()
+    mutation_window.execute_in_window(function()
+        local player = game.instances.actors.player()
+        if not player then
+            local hero = game.instances.actors.create("rh:actor.character.hero", {
+                stamina = 50,
+                gold = 50,
+            })
+            game.state.meta.player_actor_id = hero.instance_id
+        else
+            player.stamina = 50
+        end
+    end)
+end
 
 return {
     successful_travel_updates_current_location = function()
         game.runtime.phase = "idle"
+        ensure_player()
 
         -- Ensure world is at initial market location
         local world = game.instances.world()
@@ -55,6 +72,7 @@ return {
 
     travel_to_same_location_rejected_by_validator = function()
         game.runtime.phase = "idle"
+        ensure_player()
 
         local current_loc = game.instances.world().current_location_id
 
@@ -80,6 +98,7 @@ return {
 
     travel_to_unknown_location_rejected_by_validator = function()
         game.runtime.phase = "idle"
+        ensure_player()
 
         local current_loc = game.instances.world().current_location_id
         local dispatcher = command_dispatcher.new()
@@ -105,6 +124,7 @@ return {
 
     travel_with_invalid_id_format_rejected_by_validator = function()
         game.runtime.phase = "idle"
+        ensure_player()
 
         local current_loc = game.instances.world().current_location_id
         local dispatcher = command_dispatcher.new()

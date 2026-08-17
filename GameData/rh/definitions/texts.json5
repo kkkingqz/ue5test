@@ -15,6 +15,10 @@
       data: { source_message: "Tavern" },
     },
     {
+      id: "rh:text.location.gate.title",
+      data: { source_message: "City Gate" },
+    },
+    {
       id: "rh:text.character.hero.name",
       data: { source_message: "Hero" },
     },

@@ -13,9 +13,14 @@
         unique: true,
         items: { kind: "ref", target_kind: "screen" },
       },
+      connected_location_ids: {
+        kind: "array",
+        required: false,
+        unique: true,
+        items: { kind: "ref", target_kind: "location" },
+      },
     },
   },
   semantic_validators: [],
   extensions: {},
 }
-
