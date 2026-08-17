@@ -34,6 +34,14 @@ if(BUILD_TESTING)
     add_test(NAME gv2_content_validate_gamedata_core
         COMMAND gv2-content validate "${PROJECT_SOURCE_DIR}/GameData/core"
     )
+    # CBM-follow-up: every gv2-content case except the live-content smoke
+    # validate above runs against the frozen corpus, not GameData/core.
+    # Two reasons. Игровой контент перестал быть фикстурой: он принадлежит
+    # пакету игры и меняется свободно. И негативные кейсы `new … <id>`,
+    # проверяющие отказ по дубликату, при отсутствии определения не
+    # отказывают, а записывают его в целевой пакет — на живом дереве это
+    # тихая порча, на корпусе её ловит pcc_shared_fixture_contract по
+    # неиндексированному файлу.
     add_test(NAME gv2_content_validate_core_fixture
         COMMAND gv2-content validate "${GV2_PCC_FIXTURE_ROOT}/valid/core"
     )
@@ -73,99 +81,99 @@ if(BUILD_TESTING)
         COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/rh" item --format=json
     )
     add_test(NAME gv2_content_describe_rejects_unknown_type
-        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/core" nonexistent_type
+        COMMAND gv2-content describe "${GV2_PCC_FIXTURE_ROOT}/valid/core" nonexistent_type
     )
     add_test(NAME gv2_content_describe_rejects_unknown_type_exit_code
-        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/core" nonexistent_type
+        COMMAND gv2-content describe "${GV2_PCC_FIXTURE_ROOT}/valid/core" nonexistent_type
     )
     add_test(NAME gv2_content_describe_rejects_unknown_type_json
-        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/core" nonexistent_type --format=json
+        COMMAND gv2-content describe "${GV2_PCC_FIXTURE_ROOT}/valid/core" nonexistent_type --format=json
     )
     add_test(NAME gv2_content_describe_rejects_unknown_type_json_exit_code
-        COMMAND gv2-content describe "${PROJECT_SOURCE_DIR}/GameData/core" nonexistent_type --format=json
+        COMMAND gv2-content describe "${GV2_PCC_FIXTURE_ROOT}/valid/core" nonexistent_type --format=json
     )
 
     add_test(NAME gv2_content_new_rejects_duplicate_id
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main"
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" screen "core:screen.main"
     )
     add_test(NAME gv2_content_new_rejects_duplicate_id_exit_code
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main"
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" screen "core:screen.main"
     )
     add_test(NAME gv2_content_new_rejects_duplicate_id_json
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main" --format=json
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" screen "core:screen.main" --format=json
     )
     add_test(NAME gv2_content_new_rejects_duplicate_id_json_exit_code
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" screen "core:screen.main" --format=json
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" screen "core:screen.main" --format=json
     )
     add_test(NAME gv2_content_new_rejects_invalid_id
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "not-valid-id"
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" item "not-valid-id"
     )
     add_test(NAME gv2_content_new_rejects_invalid_id_exit_code
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "not-valid-id"
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" item "not-valid-id"
     )
     add_test(NAME gv2_content_new_rejects_id_kind_mismatch
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "core:actor.hero"
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" item "core:actor.hero"
     )
     add_test(NAME gv2_content_new_rejects_id_kind_mismatch_exit_code
-        COMMAND gv2-content new "${PROJECT_SOURCE_DIR}/GameData/core" item "core:actor.hero"
+        COMMAND gv2-content new "${GV2_PCC_FIXTURE_ROOT}/valid/core" item "core:actor.hero"
     )
 
     add_test(NAME gv2_content_refs_text
-        COMMAND gv2-content refs "${PROJECT_SOURCE_DIR}/GameData/core" core:text.screen.main.title
+        COMMAND gv2-content refs "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:text.screen.main.title
     )
     add_test(NAME gv2_content_refs_json
-        COMMAND gv2-content refs "${PROJECT_SOURCE_DIR}/GameData/core" core:text.screen.main.title --format=json
+        COMMAND gv2-content refs "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:text.screen.main.title --format=json
     )
     add_test(NAME gv2_content_refs_unreferenced
-        COMMAND gv2-content refs "${PROJECT_SOURCE_DIR}/GameData/core" core:text.unreferenced.sample
+        COMMAND gv2-content refs "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:text.unreferenced.sample
     )
     add_test(NAME gv2_content_refs_rejects_invalid_id
-        COMMAND gv2-content refs "${PROJECT_SOURCE_DIR}/GameData/core" not-valid-id
+        COMMAND gv2-content refs "${GV2_PCC_FIXTURE_ROOT}/valid/core" not-valid-id
     )
     add_test(NAME gv2_content_refs_rejects_invalid_id_exit_code
-        COMMAND gv2-content refs "${PROJECT_SOURCE_DIR}/GameData/core" not-valid-id
+        COMMAND gv2-content refs "${GV2_PCC_FIXTURE_ROOT}/valid/core" not-valid-id
     )
 
     add_test(NAME gv2_content_rename_rejects_nonexistent_id
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:text.nonexistent.id core:text.new.id
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:text.nonexistent.id core:text.new.id
     )
     add_test(NAME gv2_content_rename_rejects_nonexistent_id_exit_code
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:text.nonexistent.id core:text.new.id
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:text.nonexistent.id core:text.new.id
     )
     add_test(NAME gv2_content_rename_rejects_duplicate_id
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:screen.main
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.inventory core:screen.main
     )
     add_test(NAME gv2_content_rename_rejects_duplicate_id_exit_code
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:screen.main
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.inventory core:screen.main
     )
     add_test(NAME gv2_content_rename_rejects_invalid_id
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory not-valid-id
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.inventory not-valid-id
     )
     add_test(NAME gv2_content_rename_rejects_invalid_id_exit_code
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory not-valid-id
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.inventory not-valid-id
     )
     add_test(NAME gv2_content_rename_rejects_id_kind_mismatch
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:item.inventory
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.inventory core:item.inventory
     )
     add_test(NAME gv2_content_rename_rejects_id_kind_mismatch_exit_code
-        COMMAND gv2-content rename "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.inventory core:item.inventory
+        COMMAND gv2-content rename "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.inventory core:item.inventory
     )
 
     add_test(NAME gv2_content_validate_watch_single_iteration
-        COMMAND gv2-content validate "${PROJECT_SOURCE_DIR}/GameData/core" --watch --max-iterations=1 --format=json
+        COMMAND gv2-content validate "${GV2_PCC_FIXTURE_ROOT}/valid/core" --watch --max-iterations=1 --format=json
     )
     add_test(NAME gv2_content_validate_watch_rejects_other_commands
-        COMMAND gv2-content inspect "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.main --watch
+        COMMAND gv2-content inspect "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.main --watch
     )
     add_test(NAME gv2_content_validate_watch_rejects_other_commands_exit_code
-        COMMAND gv2-content inspect "${PROJECT_SOURCE_DIR}/GameData/core" core:screen.main --watch
+        COMMAND gv2-content inspect "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:screen.main --watch
     )
 
     add_test(NAME gv2_content_index_text
-        COMMAND gv2-content index "${PROJECT_SOURCE_DIR}/GameData/core"
+        COMMAND gv2-content index "${GV2_PCC_FIXTURE_ROOT}/valid/core"
     )
     add_test(NAME gv2_content_index_json
-        COMMAND gv2-content index "${PROJECT_SOURCE_DIR}/GameData/core" --format=json
+        COMMAND gv2-content index "${GV2_PCC_FIXTURE_ROOT}/valid/core" --format=json
     )
     add_test(NAME gv2_content_index_rejects_missing_root
         COMMAND gv2-content index
@@ -177,7 +185,7 @@ if(BUILD_TESTING)
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_FOUND)
         add_test(NAME gv2_content_authoring_tools_python
-            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_authoring_tools.py" "$<TARGET_FILE:gv2-content>" "${PROJECT_SOURCE_DIR}/GameData/core"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_authoring_tools.py" "$<TARGET_FILE:gv2-content>" "${GV2_PCC_FIXTURE_ROOT}/valid/core"
         )
     endif()
 

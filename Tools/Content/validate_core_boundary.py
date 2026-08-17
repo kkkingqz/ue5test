@@ -19,6 +19,15 @@ CORE_SCHEMAS_DIR = REPO_ROOT / "GameData" / "core" / "schemas"
 FORBIDDEN_DEFINITION_KINDS = {"actor", "item", "location"}
 FORBIDDEN_SCHEMA_KINDS = {"item", "location"}
 FORBIDDEN_ACTOR_SCHEMA_FIELDS = {"base_hp", "name_text_id", "inventory", "price", "gold"}
+# Screens cannot be judged by kind: ADR-0026 permits framework/system UI in core
+# but not screens of the game. A gameplay screen in core is what "core must not
+# presuppose an inventory" looks like concretely, so screens are gated by an
+# explicit allowlist instead.
+ALLOWED_CORE_SCREEN_IDS = {
+    "core:screen.error",
+    "core:screen.loading",
+    "core:screen.recovery",
+}
 
 ID_PATTERN = re.compile(r'id:\s*["\']([a-z0-9_]+):([a-z0-9_]+)\.([a-z0-9_.]+)["\']')
 TYPE_PATTERN = re.compile(r'type:\s*["\']([a-z0-9_]+)["\']')
@@ -57,6 +66,13 @@ def scan_definitions(defs_dir: Path) -> list[str]:
                     violations.append(
                         f"{rel_path}:{line_num}: error [CORE_GAMEPLAY_BOUNDARY_RULE]: "
                         f"GameData/core/definitions/ must not declare definition '{full_id}' of forbidden gameplay kind '{kind}'."
+                    )
+                elif kind == "screen" and full_id not in ALLOWED_CORE_SCREEN_IDS:
+                    violations.append(
+                        f"{rel_path}:{line_num}: error [CORE_GAMEPLAY_BOUNDARY_RULE]: "
+                        f"GameData/core/definitions/ must not declare gameplay screen '{full_id}'. "
+                        f"Framework screens are limited to {sorted(ALLOWED_CORE_SCREEN_IDS)}; "
+                        f"a screen belonging to the game belongs to its package."
                     )
 
     return violations
@@ -135,6 +151,28 @@ def run_self_test() -> bool:
             return False
         if not any("CORE_GAMEPLAY_BOUNDARY_RULE" in v and "core:item.weapon.sword" in v for v in violations):
             print(f"FAILED: violation message mismatch for forbidden item definition: {violations}")
+            return False
+
+    # 2b. Negative test: gameplay screen in core; framework screens still pass
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_defs = Path(tmpdir) / "definitions"
+        fake_defs.mkdir(parents=True)
+        (fake_defs / "screens.json5").write_text(
+            '{\n  schema_version: 1,\n  type: "screen",\n  definitions: [\n'
+            '    { id: "core:screen.recovery", data: {} },\n'
+            '    { id: "core:screen.inventory", data: {} }\n  ]\n}\n',
+            encoding="utf-8",
+        )
+        fake_schemas = Path(tmpdir) / "schemas"
+        fake_schemas.mkdir(parents=True)
+
+        violations = run_validation(fake_defs, fake_schemas)
+        if not any("gameplay screen 'core:screen.inventory'" in v for v in violations):
+            print("FAILED: self-test did not catch gameplay screen in core")
+            return False
+        # The rejection message embeds the allowlist, so match the claim, not the id.
+        if any("gameplay screen 'core:screen.recovery'" in v for v in violations):
+            print("FAILED: framework screen must be allowed in core")
             return False
 
     # 3. Negative test: forbidden actor definition in core

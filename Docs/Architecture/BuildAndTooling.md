@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 2.5
-updated: 2026-08-15
+version: 2.6
+updated: 2026-08-17
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -164,6 +164,10 @@ Exit code одинаков для `--format=text` и `--format=json`.
 **Гейт развязки core и rh (RH-11, план [RhGamePackage](../Plans/Archive/RhGamePackage/README.md)).** `Tools/Content/validate_core_decoupling.py` сканирует `Scripts/`, `GameData/core/` и `Source/` на отсутствие ссылок на пространство имён `rh:` (CTest `core_decoupling_gate_contract`). Негативный тест `core_decoupling_gate_negative_contract` подтверждает срабатывание гейта при обнаружении нарушений.
  
 **Гейт границы ядра (CBM-14, план [CoreBoundaryMigration](../Plans/Archive/CoreBoundaryMigration/README.md)).** `Tools/Content/validate_core_boundary.py` сканирует `GameData/core/definitions/` и `GameData/core/schemas/`, запрещая размещение игровых определений (`actor`, `item`, `location`) и игровых схем в ядре (CTest `core_boundary_gate_contract`). Негативный тест `core_boundary_gate_negative_contract` подтверждает отказ при внесении игровых определений или схем в ядро.
+
+Экраны гейт различает не по kind: [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) допускает в ядре framework/system UI (`core:screen.error`, `core:screen.loading`, `core:screen.recovery`), но не экраны игры. Поэтому они заданы явным списком, а любой другой `core:screen.*` отклоняется.
+
+Все `gv2-content`-кейсы CTest, кроме smoke-валидации живого контента, исполняются на замороженном корпусе `Tests/Fixtures/PortableContentCore/valid/core`, а не на `GameData/core`. Игровой контент принадлежит пакету игры и меняется свободно, поэтому фикстурой быть не может; кроме того, негативные кейсы `new … <id>`, проверяющие отказ по дубликату, при отсутствии определения не отказывают, а записывают его в целевой пакет — на живом дереве это тихая порча, на корпусе её ловит `pcc_shared_fixture_contract` по неиндексированному файлу.
 
 Conformance-наборы объявлены в portable headers (`Source/<Module>/Public/<Module>/Testing/`) и исполняются обоими host-ами из одного источника; отдельные копии positive/negative cases запрещены.
 

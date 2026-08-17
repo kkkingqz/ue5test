@@ -559,8 +559,8 @@ def main():
     assert data["package_id"] == "core"
     assert "ru" in data["locales"]
     ru_stats = data["locales"]["ru"]
-    assert ru_stats["total_definitions"] == 2
-    assert ru_stats["translated_count"] == 2
+    assert ru_stats["total_definitions"] == 7
+    assert ru_stats["translated_count"] == 7
     assert ru_stats["empty_count"] == 0
     assert ru_stats["missing_count"] == 0
     assert ru_stats["extra_count"] == 0
@@ -595,14 +595,14 @@ def main():
         res = run_cmd([gv2_content, "coverage", tmp_pkg, "--locale=test", "--format=json"])
         data = json.loads(res.stdout)
         stats = data["locales"]["test"]
-        assert stats["total_definitions"] == 2
+        assert stats["total_definitions"] == 7
         assert stats["translated_count"] == 1
         assert stats["translated_keys"] == ["core:text.screen.main.title"]
         assert stats["empty_count"] == 1
         assert stats["empty_keys"] == ["core:text.screen.inventory.title"]
         assert stats["extra_count"] == 1
         assert stats["extra_keys"] == ["core:text.extra.obsolete"]
-        assert stats["missing_count"] == 0
+        assert stats["missing_count"] == 5
 
         # Validate that incomplete localization does not fail gv2-content validate
         val_res = run_cmd([gv2_content, "validate", tmp_pkg])
