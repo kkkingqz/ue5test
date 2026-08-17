@@ -1,8 +1,8 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 2.12
-updated: 2026-08-16
+version: 2.13
+updated: 2026-08-17
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -66,7 +66,7 @@ Runtime source закреплён в repository как Lua 5.4.8. Build обяз
 - Попытка мод-пакета объявить новый модуль в чужом namespace (без предшествующего провайдера) отклоняется ошибкой `LuaModuleForeignNewId`.
 - Хуки жизненного цикла (`register`, `validate_state` и др.) вызываются только у активного победителя.
 - Module source path является provenance, не identity.
-- Late registration после registry freeze запрещена. Для подписчиков (`core:module.runtime.subscriber_registry`) это структурная гарантия, не только конвенция: операция сброса (`clear()`), единственная способная разморозить registry, не является методом объекта, доступного через `game.events.subscribers` — она возвращается `create_registry()` отдельным `admin`-handle, который `event_bus.lua` держит как module-local upvalue и никогда не публикует на `game`. Ни один gameplay-модуль или мод не может её достать через глобальный `game`; `event_bus.clear_subscribers()` (test-only reset для `Tests/Lua/` спек) доступен только модулям, явно объявившим `core:module.runtime.event_bus` зависимостью — это узкая, видимая в манифесте поверхность, а не открытая через `game.events`.
+- Late registration после registry freeze запрещена. Для подписчиков (`core:module.runtime.subscriber_registry`) это структурная гарантия, не только конвенция: операция сброса (`clear()`), единственная способная разморозить registry, не является методом объекта, доступного через `game.events.subscribers` — она возвращается `create_registry()` отдельным `admin`-handle, который `event_bus.lua` держит как module-local upvalue и никогда не публикует на `game`. Ни один gameplay-модуль или мод не может её достать через глобальный `game`; `event_bus.with_isolated_subscribers(fn)` (изолированная область для `Tests/Lua/` спек) доступен только модулям, явно объявившим `core:module.runtime.event_bus` зависимостью — это узкая, видимая в манифесте поверхность, а не открытая через `game.events`. Операции, которая очищает реестр **без** восстановления, не существует: очистка размораживает реестр и вместе с ним стирает подписчиков, зарегистрированных пакетами на фазе `register`, а оставленная так — ломает следующую по порядку спеку, и отказ проявляется не там, где его причина. Поэтому очистка доступна только внутри области, которая всегда возвращает прежний набор вместе с флагом заморозки, в том числе при ошибке в теле.
 
 Манифест ядра располагается по пути `bootstrap/manifest.lua` (или `manifest.lua`) в каталоге `scripts/` пакета `core`. Мод-пакеты также могут объявлять манифест `scripts/manifest.lua` (или `scripts/bootstrap/manifest.lua`). Манифест возвращает data-only table `{ entry_module_id, modules[] }` и сам не является module. Каждый descriptor обязан содержать canonical `module_id`, package-relative `source`, полный список direct `dependencies` и опциональное булево поле `replaceable`.
 
