@@ -66,7 +66,7 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — Состояние и экономика: `stamina`, `gold`, сервис `rh:service.economy`.
+- [x] M1 — Состояние и экономика: `stamina`, `gold`, сервис `rh:service.economy`.
 - [ ] M2 — Карта и перемещение: связи локаций, расход выносливости, валидатор.
 - [ ] M3 — Экраны и меню: три экрана, динамическая сборка меню, действия локаций.
 
@@ -74,22 +74,22 @@ decisions:
 
 ### M1 — Состояние и экономика
 
-- [ ] **TGS-01 — Завести `GameData/rh/scripts/`**
+- [x] **TGS-01 — Завести `GameData/rh/scripts/`**
   - Первый Lua внутри игрового пакета: создаётся `scripts/manifest.lua` и пустой модуль-заглушка, чтобы проверить загрузку до появления логики.
   - Done: модуль объявлен в манифесте пакета и загружается обоими хостами; `gv2-headless --check-scripts` зелёный; `ScriptSetHash` изменился, golden обновлён тем же change set.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Создан `GameData/rh/scripts/manifest.lua`, `GameData/rh/scripts/gameplay/root.lua`, `GameData/rh/scripts/services/economy.lua`. `gv2-headless --check-scripts` и `--self-test` зелёные (29 модулей проверены, `ok: true`).
 
-- [ ] **TGS-02 — Ввести `stamina` и `gold`**
+- [x] **TGS-02 — Ввести `stamina` и `gold`**
   - Зависимости: TGS-01.
   - Поля состояния актора игрока; стартовые значения задаются при создании актора.
   - Done: оба поля целые и неотрицательные; проверка состояния их принимает; сохранение и загрузка возвращают те же значения; спека покрывает round-trip.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Спецификация `Tests/Lua/economy/economy_service.lua` проверяет чтение и запись `stamina` и `gold` через `ActorWrapper`, валидацию структуры состояния `state_validator.validate_state_tree` и сохранение/восстановление через `canonical_codec`.
 
-- [ ] **TGS-03 — Сервис `rh:service.economy`**
+- [x] **TGS-03 — Сервис `rh:service.economy`**
   - Зависимости: TGS-02.
   - Операции `add_gold`, `spend_gold`, `add_stamina`, `spend_stamina`; каждая возвращает `{ ok, value }` или `{ ok = false, error }`.
   - Done: сервис зарегистрирован на фазе `register`; отрицательные и дробные суммы отклоняются типизированной ошибкой; списание сверх остатка отклоняется и состояние не меняет; спеки на каждый класс отказа.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Сервис реализован в `GameData/rh/scripts/services/economy.lua` и зарегистрирован в `game.services`. Покрыт тестами операций начисления, списания, отказа при недостатке средств (`insufficient_gold`, `insufficient_stamina`), невалидных суммах (`invalid_amount`) и отсутствии игрока в `Tests/Lua/economy/economy_service.lua`.
 
 ### M2 — Карта и перемещение
 

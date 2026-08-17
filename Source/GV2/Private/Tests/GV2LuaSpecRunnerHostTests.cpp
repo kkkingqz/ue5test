@@ -70,6 +70,50 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
             std::string(Utf8.Get(), Utf8.Length())});
     }
 
+    for (const FString& PkgRoot : PackageRoots)
+    {
+        const FString PkgName = FPaths::GetCleanFilename(PkgRoot);
+        if (PkgName == TEXT("core"))
+        {
+            continue;
+        }
+        FString PkgScriptsDir = FPaths::Combine(PkgRoot, TEXT("scripts"));
+        FPaths::NormalizeDirectoryName(PkgScriptsDir);
+        if (!FPaths::DirectoryExists(PkgScriptsDir))
+        {
+            PkgScriptsDir = FPaths::Combine(PkgRoot, TEXT("Scripts"));
+            FPaths::NormalizeDirectoryName(PkgScriptsDir);
+            if (!FPaths::DirectoryExists(PkgScriptsDir))
+            {
+                continue;
+            }
+        }
+        const FString PkgScriptsPrefix = PkgScriptsDir + TEXT("/");
+        TArray<FString> PkgSourceFiles;
+        IFileManager::Get().FindFilesRecursive(PkgSourceFiles, *PkgScriptsDir, TEXT("*.lua"), true, false, false);
+        PkgSourceFiles.Sort();
+        for (const FString& FullPath : PkgSourceFiles)
+        {
+            FString Text;
+            if (!FFileHelper::LoadFileToString(Text, *FullPath))
+            {
+                TestTrue(TEXT("Load lua script"), false);
+                return false;
+            }
+            FString Norm = FullPath;
+            FPaths::NormalizeFilename(Norm);
+            if (!Norm.StartsWith(PkgScriptsPrefix, ESearchCase::CaseSensitive))
+            {
+                continue;
+            }
+            const FString Rel = Norm.RightChop(PkgScriptsPrefix.Len());
+            const FTCHARToUTF8 Utf8(*Text);
+            RuntimeSources.push_back({
+                "@" + std::string(TCHAR_TO_UTF8(*PkgName)) + "/" + std::string(TCHAR_TO_UTF8(*Rel)),
+                std::string(Utf8.Get(), Utf8.Length())});
+        }
+    }
+
     // 3. Run every subtree against its own fresh production session — the
     // same generic runner gv2-headless --self-test calls (Headless/Source/
     // main.cpp starts one FRuntimeSession per subtree, not a single shared
