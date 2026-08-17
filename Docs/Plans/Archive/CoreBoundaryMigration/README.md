@@ -1,28 +1,28 @@
 ---
 title: Core Boundary Migration Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-17
 depends_on:
-  - ../../Architecture/Modding.md
-  - ../../Architecture/StableIDSpecification.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/CanonicalStateAndSave.md
-  - ../../Proposals/CoreGameplayBoundaryProposal.md
+  - ../../../Architecture/Modding.md
+  - ../../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/CanonicalStateAndSave.md
+  - ../../../Proposals/CoreGameplayBoundaryProposal.md
 decisions:
-  - ../../ADR/0026-core-and-gameplay-ownership.md
-  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../../ADR/0025-lua-module-replacement-and-export-freezing.md
 ---
 
 # План приведения ядра к границе владения
 
-> **Материализует:** [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) в коде и контенте.
+> **Материализует:** [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md) в коде и контенте.
 > **Задачи:** CBM-01…16.
 > **Результат:** в `core` не остаётся ни одной сущности, выражающей правила текущей игры.
 
 ## Цель
 
-Привести код и контент в соответствие с [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md): убрать из ядра демо-контент и игровую экономику, дать пакету точку расширения обёртки инстанса и перенести схемы `item`, `location` и большую часть `actor` в игровой пакет.
+Привести код и контент в соответствие с [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md): убрать из ядра демо-контент и игровую экономику, дать пакету точку расширения обёртки инстанса и перенести схемы `item`, `location` и большую часть `actor` в игровой пакет.
 
 ## Состояние на входе
 
@@ -39,7 +39,7 @@ decisions:
 
 ## Принятые решения
 
-Все приняты [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md), здесь — только следствия для порядка работ.
+Все приняты [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md), здесь — только следствия для порядка работ.
 
 - **Точка расширения — фабрика-декоратор.** Ядро строит базовую обёртку и держит инварианты идентичности; пакет надстраивает поведение через `__index = base`. Реестр методов не вводится: он выражается через декоратор без остатка.
 - **`discriminator` остаётся в схеме ядра.** Это единственное поле актора, которое требуется runtime: по нему выбирается обёртка. Остальные поля актора уезжают в пакет.
@@ -54,7 +54,7 @@ decisions:
 Не входят:
 
 - Feature packages (`gv2.inventory` и подобные): применимость доказывается второй игрой, а не ожиданием.
-- Перенос схем `screen`, `text`, `resource` — они framework-протокол по [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md).
+- Перенос схем `screen`, `text`, `resource` — они framework-протокол по [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md).
 - Пересмотр kind-реестра: список категорий остаётся прежним, меняется только его толкование.
 - Переработка `core:command.location.travel` и `core:service.location`: команда уже перекрывается пакетом, отдельная работа.
 
@@ -80,15 +80,19 @@ M1 не зависит ни от чего и может идти паралле�
 2. Ни одна задача не меняет замороженный корпус `Tests/Fixtures/PortableContentCore/`. Изменение `repository_content_hash` golden-прогона — признак ошибки; изменение `script_set_hash` ожидаемо и обновляется воспроизведением манифеста.
 3. Перенос definitions выполняется `gv2-content rename`, а не текстовой заменой.
 4. Каждая задача, меняющая failure semantics, добавляет negative case.
-5. Правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../ADR/0024-lua-spec-runner.md)).
+5. Правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)).
 6. Новое observable behavior синхронно отражается в contract.
 
 ## Итоговый Definition of Done
 
 - [ ] В `GameData/core/definitions/` нет ни одной сущности, выражающей правила игры.
-- [ ] `Scripts/runtime/` не содержит имён из словаря игры.
-- [ ] Схема актора в ядре содержит только `discriminator`; `item` и `location` описаны пакетом.
-- [ ] Пакет регистрирует обёртку по discriminator и добавляет свои методы, не трогая ядро.
-- [ ] Незарегистрированный discriminator даёт типизированный отказ, список известных нерегистраций пуст.
-- [ ] Новая игровая сущность в `core` ломает CI.
-- [ ] Слайс TestGameplaySlice проходится целиком.
+- [x] `Scripts/runtime/` не содержит имён из словаря игры.
+- [x] Схема актора в ядре содержит только `discriminator`; `item` и `location` описаны пакетом.
+- [x] Пакет регистрирует обёртку по discriminator и добавляет свои методы, не трогая ядро.
+- [x] Незарегистрированный discriminator даёт типизированный отказ, список известных нерегистраций пуст.
+- [x] Новая игровая сущность в `core` ломает CI.
+- [x] Слайс TestGameplaySlice проходится целиком.
+
+Первый пункт закрыт не полностью и намеренно оставлен отмеченным как невыполненный. В `GameData/core/definitions/screens.json5` остались `core:screen.main` и `core:screen.inventory` — последний прямо предполагает наличие инвентаря, что [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md) запрещает. Ссылок на них в контенте нет (`gv2-content refs` даёт 0), но они удерживаются негативными CTest-кейсами `gv2-content new … screen core:screen.main`, проверяющими отказ по дубликату: эти кейсы направлены на живое `GameData/core`, и при отсутствии определения команда не отказывает, а записывает его обратно в дерево репозитория.
+
+Снятие требует сначала перевести те кейсы на временную фикстуру, как сделано в остальных authoring-тестах. Это работа отдельного change set, а не этого плана.

@@ -163,7 +163,7 @@ Exit code одинаков для `--format=text` и `--format=json`.
  
 **Гейт развязки core и rh (RH-11, план [RhGamePackage](../Plans/Archive/RhGamePackage/README.md)).** `Tools/Content/validate_core_decoupling.py` сканирует `Scripts/`, `GameData/core/` и `Source/` на отсутствие ссылок на пространство имён `rh:` (CTest `core_decoupling_gate_contract`). Негативный тест `core_decoupling_gate_negative_contract` подтверждает срабатывание гейта при обнаружении нарушений.
  
-**Гейт границы ядра (CBM-14, план [CoreBoundaryMigration](../Plans/CoreBoundaryMigration/README.md)).** `Tools/Content/validate_core_boundary.py` сканирует `GameData/core/definitions/` и `GameData/core/schemas/`, запрещая размещение игровых определений (`actor`, `item`, `location`) и игровых схем в ядре (CTest `core_boundary_gate_contract`). Негативный тест `core_boundary_gate_negative_contract` подтверждает отказ при внесении игровых определений или схем в ядро.
+**Гейт границы ядра (CBM-14, план [CoreBoundaryMigration](../Plans/Archive/CoreBoundaryMigration/README.md)).** `Tools/Content/validate_core_boundary.py` сканирует `GameData/core/definitions/` и `GameData/core/schemas/`, запрещая размещение игровых определений (`actor`, `item`, `location`) и игровых схем в ядре (CTest `core_boundary_gate_contract`). Негативный тест `core_boundary_gate_negative_contract` подтверждает отказ при внесении игровых определений или схем в ядро.
 
 Conformance-наборы объявлены в portable headers (`Source/<Module>/Public/<Module>/Testing/`) и исполняются обоими host-ами из одного источника; отдельные копии positive/negative cases запрещены.
 

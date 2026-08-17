@@ -1,16 +1,16 @@
 ---
 title: Instance Extension Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-17
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 ---
 
 # M2 — Instance Extension
 
-> **Материализует:** [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) в части точки расширения обёртки.
+> **Материализует:** [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md) в части точки расширения обёртки.
 > **Задачи:** CBM-04…08.
 > **Результат:** поведение инстанса определяет пакет, идентичность — ядро.
 
@@ -45,7 +45,7 @@ depends_on:
 
 - [x] **CBM-08 — Синхронизировать contract**
   - Зависимости: CBM-04–CBM-07.
-  - Done: [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) описывает `game.instances.actors.register_type`, порядок применения декоратора и инварианты базовой обёртки; [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md) уточняет, что доменные методы не являются частью состояния; guide по добавлению обёртки обновлён.
+  - Done: [Lua Runtime Contract](../../../Architecture/LuaRuntimeContract.md) описывает `game.instances.actors.register_type`, порядок применения декоратора и инварианты базовой обёртки; [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md) уточняет, что доменные методы не являются частью состояния; guide по добавлению обёртки обновлён.
   - Evidence: Обновлены `Docs/Architecture/LuaRuntimeContract.md` и `Docs/Guides/AddActorWrapper.md`. `validate_docs.py` подтверждает валидность ссылок и фронтматтера.
 
 ## Проверка milestone

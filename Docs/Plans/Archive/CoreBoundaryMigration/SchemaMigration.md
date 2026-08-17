@@ -1,16 +1,16 @@
 ---
 title: Schema Migration Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-17
 depends_on:
   - InstanceExtension.md
-  - ../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/StableIDSpecification.md
 ---
 
 # M3 — Schema Migration
 
-> **Материализует:** [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) в части владения схемами.
+> **Материализует:** [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md) в части владения схемами.
 > **Задачи:** CBM-09…13.
 > **Результат:** предметная модель игры описана её пакетом, ядро описывает только то, что требует runtime.
 
@@ -23,7 +23,7 @@ depends_on:
 ## Задачи
 
 - [x] **CBM-09 — Разрешить пакету привязывать схему существующего kind**
-  - Правило принято [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) и записано в contracts; здесь оно реализуется.
+  - Правило принято [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md) и записано в contracts; здесь оно реализуется.
   - Done: пакет объявляет binding для kind, объявленного ядром, если ядро для него binding не объявляет; перекрытие существующего binding отклоняется отдельной диагностикой; конфликт двух bindings одной пары `(definition_type, schema_version)` остаётся fatal; kind без binding ни в одном пакете набора отклоняется при использовании, а не молча пропускается.
   - Evidence: `SchemaRegistry.cpp` и `PackageDiscovery.cpp` разрешают привязку схем набором пакетов. `gv2-content describe GameData/rh item` успешно находит схему `rh:schema.definition.item.v1`.
 
@@ -44,7 +44,7 @@ depends_on:
 
 - [x] **CBM-13 — Синхронизировать contract и фикстуры**
   - Зависимости: CBM-10–CBM-12.
-  - Done: [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md) и [GameDataRepository Contract](../../Architecture/GameDataRepositoryContract.md) описывают владение схемой по набору пакетов; [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md) описывает реестр ссылочных полей; примеры в документации обновлены на схемы `rh`; замороженный корпус не изменён.
+  - Done: [Definition Envelope and Schema Rules](../../../Architecture/DefinitionEnvelopeAndSchemaRules.md) и [GameDataRepository Contract](../../../Architecture/GameDataRepositoryContract.md) описывают владение схемой по набору пакетов; [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md) описывает реестр ссылочных полей; примеры в документации обновлены на схемы `rh`; замороженный корпус не изменён.
   - Evidence: Обновлены `DefinitionEnvelopeAndSchemaRules.md`, `CanonicalStateAndSave.md`, `GameDataRepositoryContract.md`. `validate_docs.py` — 161/161 файлов валидны.
 
 ## Проверка milestone

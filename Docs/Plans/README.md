@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 3.2
+version: 3.3
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,9 +24,7 @@ depends_on:
 
 ## Активные планы
 
-| План | Основание | Результат |
-|---|---|---|
-| [CoreBoundaryMigration](CoreBoundaryMigration/README.md) | [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) | Демо и экономика уходят из ядра, пакет получает точку расширения обёртки, схемы `item`/`location` и большая часть `actor` переезжают в игру |
+Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
@@ -46,3 +44,4 @@ depends_on:
 | [RhGamePackage](Archive/RhGamePackage/README.md) | 2026-08-16 | Игровой пакет `rh`, перенос конкретных сущностей со сменой namespace, развязка `core` от игровых идентификаторов и гейт на обратную ссылку |
 | [CommandHandlerRegistry](Archive/CommandHandlerRegistry/README.md) | 2026-08-16 | Реестр `game.commands.handlers` по ключу `command_id`, типизированный отказ на неизвестную команду, регистрация команд пакетом без правки ядра |
 | [TestGameplaySlice](Archive/TestGameplaySlice/README.md) | 2026-08-17 | Первый играбельный цикл целиком в пакете `rh`: три локации и экрана, карта с расходом выносливости, покупки и заработок |
+| [CoreBoundaryMigration](Archive/CoreBoundaryMigration/README.md) | 2026-08-17 | Демо в пакете `sample`, точка расширения обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до `discriminator`, гейт границы |

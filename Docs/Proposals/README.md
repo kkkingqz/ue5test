@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 1.6
+version: 1.7
 updated: 2026-08-17
 ---
 
@@ -28,7 +28,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [ContentDiagnosticsAndToolingProposal](ContentDiagnosticsAndToolingProposal.md) | accepted for planning | Content, CI, Tooling | Source spans, deterministic diagnostics, CLI validation, fuzzing и будущий LSP |
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
-| [CoreGameplayBoundaryProposal](CoreGameplayBoundaryProposal.md) | accepted for planning | Architecture, Modding, Content | Правило ownership между framework core и gameplay packages: механизмы в `core`, семантика и контент в пакетах |
+| [CoreGameplayBoundaryProposal](CoreGameplayBoundaryProposal.md) | implemented | Architecture, Modding, Content | Правило ownership между framework core и gameplay packages: механизмы в `core`, семантика и контент в пакетах |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | implemented | UI, Resources, Engine | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
@@ -41,10 +41,9 @@ Proposal не изменяет нормативную архитектуру с�
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
-3. `CoreGameplayBoundaryProposal` — §17, §18 и §27 требуют ADR до реализации; порядок работ и варианты по спорным пунктам — в его разделе 35.
-4. `ModPackageLifecycleProposal`.
-5. `CommonUIRuntimeIntegrationProposal`.
-6. `ScreenAuthoringWorkflowProposal`.
+3. `ModPackageLifecycleProposal`.
+4. `CommonUIRuntimeIntegrationProposal`.
+5. `ScreenAuthoringWorkflowProposal`.
 
 `ImageResourceLookupOptimizationProposal` и `ImageResourcePackagedDeploymentProposal` могут выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 

@@ -304,9 +304,9 @@ function M.validate_state_tree(tree)
         end
     end
 
-    -- world.current_location_id grammar/kind/existence is now checked
-    -- generically by validate_node via DEFINITION_REFERENCE_FIELDS (SAV-14)
-    -- when it visits the state.world node above.
+    -- Definition reference fields (grammar, kind, existence) are checked
+    -- generically by validate_node against the registry filled by gameplay
+    -- packages (SAV-14, CBM-10), wherever such a field appears in the tree.
 
     -- Validate player section does not duplicate Actor model fields
     if tree.player.instance_id ~= nil or tree.player.definition_id ~= nil then

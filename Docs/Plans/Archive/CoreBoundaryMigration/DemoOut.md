@@ -1,16 +1,16 @@
 ---
 title: Demo Out Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-17
 depends_on:
   - README.md
-  - ../../Architecture/Modding.md
+  - ../../../Architecture/Modding.md
 ---
 
 # M1 — Demo Out
 
-> **Материализует:** [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) в части demo content.
+> **Материализует:** [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md) в части demo content.
 > **Задачи:** CBM-01…03.
 > **Результат:** демонстрационный экран и его контент перестают быть частью движка.
 
