@@ -4,15 +4,6 @@ local M = {
     id = "core:module.runtime.actor_registry",
 }
 
-local KNOWN_UNREGISTERED = {
-    ["player"] = true,
-    ["npc"] = true,
-    ["character"] = true,
-    ["hero"] = true,
-    ["monster"] = true,
-    ["unknown"] = true,
-}
-
 local function get_discriminator(definition_id, actor_state)
     if actor_state and type(actor_state) == "table" and type(actor_state.discriminator) == "string" then
         return actor_state.discriminator
@@ -80,7 +71,7 @@ function M.create_registry()
         local disc_key = discriminator or "unknown"
         local decorator = type_decorators[disc_key] or (discriminator and type_decorators[discriminator])
 
-        if not decorator and not KNOWN_UNREGISTERED[disc_key] and not (discriminator and KNOWN_UNREGISTERED[discriminator]) then
+        if not decorator then
             error("ActorTypeNotRegistered: discriminator '" .. tostring(disc_key) .. "' is not registered", 2)
         end
 

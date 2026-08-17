@@ -40,4 +40,17 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_decoupling.py"
             "--self-test"
     )
+    add_test(
+        NAME core_boundary_gate_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_boundary.py"
+    )
+    add_test(
+        NAME core_boundary_gate_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_boundary.py"
+            "--self-test"
+    )
 endif()

@@ -1,8 +1,8 @@
 ---
 title: Core and Gameplay Boundary Proposal
 status: draft
-proposal_state: accepted_for_planning
-version: 0.2
+proposal_state: implemented
+version: 1.0
 updated: 2026-08-17
 depends_on:
   - ../Architecture/Modding.md
@@ -18,7 +18,7 @@ decisions:
 
 > **Предлагает:** правило ownership, по которому новая сущность однозначно относится к framework core либо к gameplay package.
 > **Затрагивает:** [Modding](../Architecture/Modding.md), [Stable ID Specification](../Architecture/StableIDSpecification.md), [GameDataRepository](../Architecture/GameDataRepositoryContract.md).
-> **Не является нормативным:** правило владения принято [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) и перенесено в contracts; документ сохраняется как исходное обоснование и целевая картина.
+> **Статус: реализовано.** Правило владения закреплено в [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) и перенесено в contracts ([Definition Envelope and Schema Rules](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md), [Build and Tooling](../Architecture/BuildAndTooling.md)) в рамках плана [CoreBoundaryMigration](../Plans/CoreBoundaryMigration/README.md) (задачи CBM-01…CBM-16). Документ сохраняется как исходное обоснование и целевая картина.
 
 Цель — не изменить существующие runtime contracts без необходимости, а зафиксировать правило ownership, по которому новые сущности можно однозначно относить либо к framework core, либо к конкретной игре или feature package.
 

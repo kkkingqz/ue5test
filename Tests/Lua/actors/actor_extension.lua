@@ -137,20 +137,25 @@ return {
     unregistered_discriminator_handling = function()
         local registry = actor_reg_mod.create_registry()
 
-        -- 1. Discriminator in transition allowlist (e.g. "player", "npc") returns base wrapper
-        local allowlist_state = { instance_id = "actor@1:1", definition_id = "test:def", discriminator = "player" }
-        local base_wrapped = registry.wrap(allowlist_state)
-        assert(base_wrapped ~= nil, "allowlist discriminator must yield base wrapper")
-        assert(base_wrapped.get_state() == allowlist_state, "base wrapper get_state() must work")
-
-        -- 2. Unknown discriminator not in allowlist raises typed error
-        local unknown_state = { instance_id = "actor@1:2", definition_id = "test:def", discriminator = "nonexistent_alien" }
+        -- 1. Unregistered discriminator raises typed error ActorTypeNotRegistered
+        local unreg_state = { instance_id = "actor@1:1", definition_id = "test:def", discriminator = "alien" }
         local ok_unreg, err_unreg = pcall(function()
-            registry.wrap(unknown_state)
+            registry.wrap(unreg_state)
         end)
-        assert(not ok_unreg, "unknown discriminator must be rejected")
+        assert(not ok_unreg, "unregistered discriminator must be rejected")
         assert(tostring(err_unreg):find("ActorTypeNotRegistered") ~= nil,
             "must raise ActorTypeNotRegistered, got: " .. tostring(err_unreg))
+
+        -- 2. After registering decorator for discriminator, wrapping succeeds
+        registry.register_type("alien", function(base)
+            return {
+                speak = function() return "greetings" end,
+            }
+        end)
+        local wrapped = registry.wrap(unreg_state)
+        assert(wrapped ~= nil, "registered discriminator must yield wrapper")
+        assert(wrapped.speak() == "greetings", "decorator method must be callable")
+        assert(wrapped.instance_id == "actor@1:1", "identity must be preserved")
     end,
 
     rh_actor_decorators_provide_economy_methods = function()

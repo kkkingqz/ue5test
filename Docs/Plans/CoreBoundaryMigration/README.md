@@ -63,7 +63,7 @@ decisions:
 - [x] M1 — [Demo Out](DemoOut.md): демо-контент покидает ядро.
 - [x] M2 — [Instance Extension](InstanceExtension.md): точка расширения обёртки и перенос экономики.
 - [x] M3 — [Schema Migration](SchemaMigration.md): схемы `item`, `location` и урезание `actor_v1`.
-- [ ] M4 — [Boundary Gate](BoundaryGate.md): проверка, закрепляющая границу.
+- [x] M4 — [Boundary Gate](BoundaryGate.md): проверка, закрепляющая границу.
 
 ## Критический путь
 

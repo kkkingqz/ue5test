@@ -20,23 +20,23 @@ depends_on:
 
 ## Задачи
 
-- [ ] **CBM-14 — Гейт на игровые сущности в ядре**
+- [x] **CBM-14 — Гейт на игровые сущности в ядре**
   - Зависимости: CBM-11.
   - Done: проверка ломает CI, если в `GameData/core/definitions/` появляется definition kind `actor`, `item` или `location`, либо если `GameData/core/schemas/` содержит схему для этих kind; сообщение называет файл, ID и правило; негативный тест подтверждает срабатывание; проверка зарегистрирована в CTest рядом с `core_decoupling_gate_contract`.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Создан `Tools/Content/validate_core_boundary.py` (правило `CORE_GAMEPLAY_BOUNDARY_RULE`). Тесты `core_boundary_gate_contract` и `core_boundary_gate_negative_contract` зарегистрированы в `CMakeLists.txt`.
 
-- [ ] **CBM-15 — Закрыть список известных нерегистраций**
+- [x] **CBM-15 — Закрыть список известных нерегистраций**
   - Зависимости: CBM-12.
   - Done: список известных незарегистрированных discriminator пуст; временный режим базовой обёртки снят, незарегистрированный discriminator даёт типизированный отказ безусловно; negative case подтверждает отказ.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Из `Scripts/runtime/actor_registry.lua` удалён `KNOWN_UNREGISTERED`, незарегистрированный `discriminator` безусловно вызывает `ActorTypeNotRegistered`. Спека `Tests/Lua/actors/actor_extension.lua` подтверждает отказ.
 
-- [ ] **CBM-16 — Синхронизировать документацию**
+- [x] **CBM-16 — Синхронизировать документацию**
   - Зависимости: CBM-14, CBM-15.
   - Done: [Build and Tooling](../../Architecture/BuildAndTooling.md) описывает новый гейт; [Concepts/ContentModel](../../Concepts/ContentModel.md) объясняет разделение владения читателю; `Docs/Authoring/` описывает, что схемы игры живут в её пакете; [Implementation Status](../../Status/ImplementationStatus.md) обновлён; в proposal проставлено `proposal_state: implemented` с указанием, какие разделы перенесены в contracts.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: Обновлены `BuildAndTooling.md`, `ContentModel.md`, `Docs/Authoring/README.md`, `Docs/Authoring/Objects.md`, `ImplementationStatus.md`, `CoreGameplayBoundaryProposal.md`. Валидация документации `validate_docs.py` — 161/161 файлов валидны.
 
 ## Проверка milestone
 
-- [ ] Добавление `core:item.*` в ядро ломает CI.
-- [ ] Список известных нерегистраций пуст, временный режим снят.
-- [ ] Документация описывает границу одинаково в contracts, Concepts и Authoring.
+- [x] Добавление `core:item.*` в ядро ломает CI.
+- [x] Список известных нерегистраций пуст, временный режим снят.
+- [x] Документация описывает границу одинаково в contracts, Concepts и Authoring.
