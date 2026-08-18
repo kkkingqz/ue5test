@@ -12,6 +12,7 @@ local portable_value = require("core:module.runtime.portable_value")
 local actor_registry = require("core:module.runtime.actor_registry")
 local world = require("core:module.runtime.world")
 local service_registry = require("core:module.runtime.service_registry")
+local action_registry = require("core:module.runtime.action_registry")
 local validator_registry = require("core:module.runtime.validator_registry")
 local handler_registry = require("core:module.runtime.handler_registry")
 local subscriber_registry = require("core:module.runtime.subscriber_registry")
@@ -39,6 +40,7 @@ return {
     actor_registry = actor_registry,
     world = world,
     service_registry = service_registry,
+    action_registry = action_registry,
     validator_registry = validator_registry,
     handler_registry = handler_registry,
     subscriber_registry = subscriber_registry,

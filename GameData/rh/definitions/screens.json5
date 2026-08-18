@@ -6,6 +6,20 @@
       id: "rh:screen.location.market",
       data: {
         title_text_id: "rh:text.location.market.title",
+        description_text_id: "rh:text.screen.market.description",
+        include_connected_locations: true,
+        actions: [
+          {
+            key: "buy_sword",
+            text_id: "rh:text.action.buy_sword",
+            action_id: "rh:action.buy_sword",
+          },
+          {
+            key: "buy_armor",
+            text_id: "rh:text.action.buy_armor",
+            action_id: "rh:action.buy_armor",
+          },
+        ],
       },
       tags: ["location", "market"],
       deprecated: false,
@@ -15,6 +29,20 @@
       id: "rh:screen.location.tavern",
       data: {
         title_text_id: "rh:text.location.tavern.title",
+        description_text_id: "rh:text.screen.tavern.description",
+        include_connected_locations: true,
+        actions: [
+          {
+            key: "wait_day",
+            text_id: "rh:text.action.wait_day",
+            action_id: "rh:action.wait_day",
+          },
+          {
+            key: "do_work",
+            text_id: "rh:text.action.do_work",
+            action_id: "rh:action.do_work",
+          },
+        ],
       },
       tags: ["location", "tavern"],
       deprecated: false,
@@ -24,6 +52,9 @@
       id: "rh:screen.location.gate",
       data: {
         title_text_id: "rh:text.location.gate.title",
+        description_text_id: "rh:text.screen.gate.description",
+        include_connected_locations: true,
+        actions: [],
       },
       tags: ["location", "gate"],
       deprecated: false,

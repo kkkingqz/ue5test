@@ -81,7 +81,7 @@ Editor/CLI может предложить отдельную fix-команду
 ```text
 item, actor, quest, location, screen, command, event, module,
 schema, text, resource, widget, slot, effect, operation, validator,
-error, diagnostic
+error, diagnostic, action
 ```
 
 Package может добавить новый kind только вместе с declarative schema binding. Конфликтующие bindings одного kind/schema version являются fatal. Kind не выводится из directory.

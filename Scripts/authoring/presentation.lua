@@ -42,10 +42,31 @@ function M.create_action_helper(package_id)
         end
 
         local cmd_id = nil
-        if type(command_desc) == "table" and (command_desc.command_id or command_desc.__command_id) then
-            cmd_id = command_desc.command_id or command_desc.__command_id
+        local bound_default_args = nil
+
+        if type(command_desc) == "table" then
+            local act_id = command_desc.action_id or (command_desc.id and stable_id.is_kind(command_desc.id, "action") and command_desc.id)
+            if act_id then
+                if not (game and game.actions and game.actions.require) then
+                    error("ActionNotBound: action '" .. tostring(act_id) .. "' is not bound to any command (actions registry not available)", 2)
+                end
+                local binding = game.actions.require(act_id)
+                cmd_id = binding.command_id
+                bound_default_args = binding.args
+            elseif command_desc.command_id or command_desc.__command_id then
+                cmd_id = command_desc.command_id or command_desc.__command_id
+            else
+                error("ActionInvalidDescriptor: expected command descriptor, action handle, or string, got table", 2)
+            end
         elseif type(command_desc) == "string" then
-            if stable_id.is_kind(command_desc, "command") then
+            if stable_id.is_kind(command_desc, "action") then
+                if not (game and game.actions and game.actions.require) then
+                    error("ActionNotBound: action '" .. tostring(command_desc) .. "' is not bound to any command (actions registry not available)", 2)
+                end
+                local binding = game.actions.require(command_desc)
+                cmd_id = binding.command_id
+                bound_default_args = binding.args
+            elseif stable_id.is_kind(command_desc, "command") then
                 cmd_id = command_desc
             else
                 cmd_id = package_id .. ":command." .. command_desc
@@ -63,11 +84,28 @@ function M.create_action_helper(package_id)
         local canonical_args
         if num_args == 0 then
             canonical_args = {}
-        elseif num_args == 1 and type(raw_args[1]) == "table" and not raw_args[1].__gv2_ref and #raw_args[1] == 0 and next(raw_args[1]) ~= nil then
-            -- dictionary of named arguments
-            canonical_args = tagged_ref.canonicalize_arg(raw_args[1], { allow_plain_id = true })
+        elseif num_args == 1 and type(raw_args[1]) == "table" and not raw_args[1].__gv2_ref and #raw_args[1] == 0 then
+            if next(raw_args[1]) ~= nil then
+                -- dictionary of named arguments
+                canonical_args = tagged_ref.canonicalize_arg(raw_args[1], { allow_plain_id = true })
+            else
+                canonical_args = {}
+            end
         else
             canonical_args = tagged_ref.canonicalize_args(raw_args)
+        end
+
+        if bound_default_args and next(bound_default_args) ~= nil then
+            local merged = {}
+            for k, v in pairs(bound_default_args) do
+                merged[k] = v
+            end
+            if type(canonical_args) == "table" and not canonical_args.__gv2_ref and #canonical_args == 0 then
+                for k, v in pairs(canonical_args) do
+                    merged[k] = v
+                end
+                canonical_args = merged
+            end
         end
 
         portable_value.validate(canonical_args, "action_args")

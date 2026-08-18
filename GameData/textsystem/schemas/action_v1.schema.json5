@@ -1,0 +1,14 @@
+{
+  id: "textsystem:schema.definition.action.v1",
+  definition_type: "action",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      title_text_id: { kind: "text_id", required: false },
+      description_text_id: { kind: "text_id", required: false },
+    },
+  },
+  semantic_validators: [],
+  extensions: {},
+}

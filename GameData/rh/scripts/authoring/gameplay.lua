@@ -36,3 +36,11 @@ commands.buy = function(item)
     player:spend_gold(item.price)
     player:add_item(item)
 end
+
+-- Semantic action bindings (TSL-11, TSL-12, TSL-13)
+actions["textsystem:action.location.travel"] = "rh:command.travel"
+actions["rh:action.buy_sword"] = { command = "buy", args = { item = "rh:item.weapon.iron_sword" } }
+actions["rh:action.buy_armor"] = { command = "buy", args = { item = "rh:item.armor.leather_armor" } }
+actions["rh:action.wait_day"] = "time.wait_day"
+actions["rh:action.do_work"] = "work.do_work"
+

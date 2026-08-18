@@ -137,10 +137,67 @@ function M.gameplay(package_id)
 
     local commands_proxy, proxy_ctrl = commands_module.create_commands_proxy(package_id)
     local subscribers = {}
+    local declared_actions = {}
+
+    local actions_proxy = setmetatable({}, {
+        __newindex = function(_, key, val)
+            local action_id
+            if stable_id.is_kind(key, "action") then
+                action_id = key
+            elseif type(key) == "string" and key ~= "" then
+                action_id = package_id .. ":action." .. key
+            else
+                error("InvalidActionKey: expected string key, got " .. type(key), 2)
+            end
+
+            local cmd_id = nil
+            local args = {}
+            if type(val) == "string" then
+                if stable_id.is_kind(val, "command") then
+                    cmd_id = val
+                else
+                    cmd_id = package_id .. ":command." .. val
+                end
+            elseif type(val) == "table" then
+                local raw_cmd = val.command_id or val.command or val.__command_id
+                if type(raw_cmd) == "string" then
+                    if stable_id.is_kind(raw_cmd, "command") then
+                        cmd_id = raw_cmd
+                    else
+                        cmd_id = package_id .. ":command." .. raw_cmd
+                    end
+                elseif type(raw_cmd) == "table" and raw_cmd.command_id then
+                    cmd_id = raw_cmd.command_id
+                else
+                    error("InvalidActionBinding: expected command_id string or descriptor in table", 2)
+                end
+                args = val.args or {}
+            else
+                error("InvalidActionBinding: expected string or table, got " .. type(val), 2)
+            end
+
+            declared_actions[action_id] = {
+                command_id = cmd_id,
+                args = args,
+            }
+        end,
+        __index = function(_, key)
+            local action_id
+            if stable_id.is_kind(key, "action") then
+                action_id = key
+            elseif type(key) == "string" and key ~= "" then
+                action_id = package_id .. ":action." .. key
+            else
+                return nil
+            end
+            return declared_actions[action_id]
+        end,
+    })
 
     local mod = {}
 
     mod.commands = commands_proxy
+    mod.actions = actions_proxy
     mod.action = presentation_module.create_action_helper(package_id)
     mod.button = presentation_module.create_button_helper(package_id)
     mod.text = presentation_module.create_text_helper(package_id)
@@ -394,6 +451,13 @@ function M.gameplay(package_id)
             end
         end
 
+        -- Register declared semantic actions
+        if game and game.actions and game.actions.bind then
+            for act_id, binding in pairs(declared_actions) do
+                game.actions.bind(act_id, binding)
+            end
+        end
+
         proxy_ctrl.freeze()
     end
 
@@ -404,6 +468,7 @@ function M.create_authoring_environment(package_id)
     local mod = M.gameplay(package_id)
     local env = {
         commands = mod.commands,
+        actions = mod.actions,
         player = mod.player,
         world = mod.world,
         def = mod.def,

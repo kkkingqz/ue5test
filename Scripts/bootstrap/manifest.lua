@@ -182,6 +182,14 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.runtime.action_registry",
+            source = "runtime/action_registry.lua",
+            dependencies = {
+                "core:module.runtime.stable_id",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.runtime.event_envelope",
             source = "runtime/event_envelope.lua",
             dependencies = {
@@ -279,6 +287,7 @@ return {
                 "core:module.runtime.actor_registry",
                 "core:module.runtime.world",
                 "core:module.runtime.service_registry",
+                "core:module.runtime.action_registry",
                 "core:module.runtime.validator_registry",
                 "core:module.runtime.handler_registry",
                 "core:module.runtime.subscriber_registry",

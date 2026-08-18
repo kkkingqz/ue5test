@@ -16,13 +16,5 @@ return {
             },
             replaceable = false,
         },
-        {
-            module_id = "rh:module.presentation.location_screen",
-            source = "presentation/location_screen.lua",
-            dependencies = {
-                "core:module.authoring.context",
-            },
-            replaceable = false,
-        },
     },
 }

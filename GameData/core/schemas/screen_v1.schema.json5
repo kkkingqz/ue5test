@@ -6,6 +6,20 @@
     kind: "object",
     fields: {
       title_text_id: { kind: "text_id", required: true },
+      description_text_id: { kind: "text_id", required: false },
+      include_connected_locations: { kind: "bool", required: false, default: true },
+      actions: {
+        kind: "array",
+        required: false,
+        items: {
+          kind: "object",
+          fields: {
+            key: { kind: "string", required: true },
+            text_id: { kind: "text_id", required: true },
+            action_id: { kind: "ref", target_kind: "action", required: true },
+          },
+        },
+      },
     },
   },
   semantic_validators: [],

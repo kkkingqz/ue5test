@@ -2,7 +2,7 @@
 -- Verifies dynamic generation of button_list combining location actions and travel links,
 -- and automated publication of location screens on travel events.
 
-local location_screen = require("rh:module.presentation.location_screen")
+local location_presenter = require("textsystem:module.presentation.location_presenter")
 local screens = require("core:module.presentation.screen_requests")
 local mutation_window = require("core:module.runtime.mutation_window")
 local event_bus = require("core:module.runtime.event_bus")
@@ -97,7 +97,7 @@ return {
     end,
 
     market_screen_structure_and_buttons = function()
-        local req = location_screen.build_screen_request("rh:location.city.market")
+        local req = location_presenter.build_screen_request("rh:location.city.market")
         assert(req ~= nil, "screen request must be generated for market")
         assert(req.screen_id == "rh:screen.location.market", "screen_id must match market screen")
 
@@ -126,7 +126,7 @@ return {
     end,
 
     tavern_screen_structure_and_buttons = function()
-        local req = location_screen.build_screen_request("rh:location.city.tavern")
+        local req = location_presenter.build_screen_request("rh:location.city.tavern")
         assert(req ~= nil, "screen request must be generated for tavern")
         assert(req.screen_id == "rh:screen.location.tavern", "screen_id must match tavern screen")
 
@@ -154,7 +154,7 @@ return {
     end,
 
     gate_screen_structure_and_buttons = function()
-        local req = location_screen.build_screen_request("rh:location.city.gate")
+        local req = location_presenter.build_screen_request("rh:location.city.gate")
         assert(req ~= nil, "screen request must be generated for gate")
         assert(req.screen_id == "rh:screen.location.gate", "screen_id must match gate screen")
 
@@ -176,7 +176,7 @@ return {
             player.current_location_id = "rh:location.city.market"
 
             -- Publish market screen
-            location_screen.build_and_publish_screen()
+            location_presenter.build_and_publish_screen()
             local screen_market = screens.take_pending()
             assert(screen_market ~= nil and screen_market.screen_id == "rh:screen.location.market")
 

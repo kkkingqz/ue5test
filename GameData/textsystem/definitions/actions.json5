@@ -1,0 +1,14 @@
+{
+  schema_version: 1,
+  type: "action",
+  definitions: [
+    {
+      id: "textsystem:action.location.travel",
+      data: {},
+      tags: ["location", "travel"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

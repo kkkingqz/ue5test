@@ -281,6 +281,15 @@ Uncaught error после начала mutation не запускает унив
 - Прямая запись в таблицу реестра запрещена (`ServiceRegistryDirectAssignmentDisallowed`).
 - Gameplay Services предназначены для выполнения многосущностных workflow (например, торговля, передача предметов между акторами, квестовые цепочки), возвращают структурированный результат `{ ok = true, value = ... }` или `{ ok = false, error = { code = "..." } }`, не вызывают filesystem/UE API и не подменяют доменные методы единичных сущностей.
 
+## Semantic Actions
+
+- Реестр `game.actions` (`core:module.runtime.action_registry`) обеспечивает декларативное связывание семантических действий (`kind: "action"`) с целевыми командами геймплея (`kind: "command"`).
+- Связывание действий производится во время фазы `register` через `game.actions.bind(action_id, command_binding)` (или через прокси авторского окружения `actions[key] = binding`).
+- По завершении фазы `register` реестр замораживается (`freeze()`). Попытка привязки действия после freeze отклоняется с ошибкой `ActionRegistryFrozen`.
+- Попытка повторной привязки уже зарегистрированного действия отклоняется с ошибкой `DuplicateActionBinding`.
+- Запрос непривязанного действия через `game.actions.require(action_id)` завершается типизированной ошибкой `ActionNotBound`.
+- В авторском слое презентации помощник `action(action_id, args)` прозрачно разрешает семантическое действие в целевой `command_id` с объединением аргументов.
+
 ## Designer authoring layer
 
 Для упрощения написания игрового кода и модов ядро предоставляет авторский слой ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)):

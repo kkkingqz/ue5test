@@ -10,5 +10,13 @@ return {
             },
             replaceable = false,
         },
+        {
+            module_id = "textsystem:module.presentation.location_presenter",
+            source = "presentation/location_presenter.lua",
+            dependencies = {
+                "core:module.authoring.context",
+            },
+            replaceable = false,
+        },
     },
 }

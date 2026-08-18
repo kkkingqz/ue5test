@@ -1,0 +1,43 @@
+{
+  schema_version: 1,
+  type: "action",
+  definitions: [
+    {
+      id: "rh:action.buy_sword",
+      data: {
+        title_text_id: "rh:text.action.buy_sword",
+      },
+      tags: ["shop", "buy"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "rh:action.buy_armor",
+      data: {
+        title_text_id: "rh:text.action.buy_armor",
+      },
+      tags: ["shop", "buy"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "rh:action.wait_day",
+      data: {
+        title_text_id: "rh:text.action.wait_day",
+      },
+      tags: ["time", "wait"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "rh:action.do_work",
+      data: {
+        title_text_id: "rh:text.action.do_work",
+      },
+      tags: ["work"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}
