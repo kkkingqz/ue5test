@@ -242,6 +242,18 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.authoring.presentation",
+            source = "authoring/presentation.lua",
+            dependencies = {
+                "core:module.runtime.stable_id",
+                "core:module.runtime.portable_value",
+                "core:module.authoring.tagged_ref",
+                "core:module.resources.text",
+                "core:module.presentation.screen_requests",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.authoring.context",
             source = "authoring/context.lua",
             dependencies = {
@@ -251,6 +263,7 @@ return {
                 "core:module.authoring.tagged_ref",
                 "core:module.authoring.commands",
                 "core:module.authoring.properties",
+                "core:module.authoring.presentation",
             },
             replaceable = false,
         },
@@ -280,6 +293,7 @@ return {
                 "core:module.authoring.properties",
                 "core:module.authoring.tagged_ref",
                 "core:module.authoring.commands",
+                "core:module.authoring.presentation",
                 "core:module.authoring.context",
                 "core:module.gameplay.location_service",
                 "core:module.gameplay.root",

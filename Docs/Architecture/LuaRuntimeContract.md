@@ -272,7 +272,7 @@ Uncaught error после начала mutation не запускает унив
 
 Для упрощения написания игрового кода и модов ядро предоставляет авторский слой ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)):
 
-- **Модули ядра**: `core:module.authoring.context` (`Scripts/authoring/context.lua`), `core:module.authoring.commands` (`Scripts/authoring/commands.lua`), `core:module.authoring.properties` (`Scripts/authoring/properties.lua`), `core:module.authoring.tagged_ref` (`Scripts/authoring/tagged_ref.lua`).
+- **Модули ядра**: `core:module.authoring.context` (`Scripts/authoring/context.lua`), `core:module.authoring.commands` (`Scripts/authoring/commands.lua`), `core:module.authoring.properties` (`Scripts/authoring/properties.lua`), `core:module.authoring.tagged_ref` (`Scripts/authoring/tagged_ref.lua`), `core:module.authoring.presentation` (`Scripts/authoring/presentation.lua`).
 - **Фасад пакета**: `local M = authoring.gameplay(package_id)` создаёт дескриптор авторского модуля с прокси команд `M.commands`, типизированным отказом `M.fail(key, params)` и динамическими аксессорами.
 - **Динамические аксессоры**:
   - `M.player` — динамический прокси, разрешающий `game.instances.actors.player()` на каждое обращение (не кэширует обёртку).
@@ -289,6 +289,16 @@ Uncaught error после начала mutation не запускает унив
   - **Ссылки**: `ref_definition` (возвращает дескриптор/таблицу определения из репозитория) и `ref_instance` (возвращает свежую обёртку `ActorWrapper`).
   - **Ссылочная целостность**: `game.instances.actors.remove(id)` проверяет отсутствие входящих ссылок из других сущностей состояния (`ActorHasDependentReferences`).
   - **Локация**: хранится на акторе (`ref_definition<location>`), переход между локациями (`core:service.location`) обновляет локацию актора игрока.
+- **События и подписчики**:
+  - `M.emit(event_name, payload)` разворачивает переданные обёртки сущностей в канонические помеченные ссылки (`__gv2_ref`) и ставит событие в очередь.
+  - `M.on(event_name, handler_fn)` регистрирует подписчик, который при срабатывании автоматически регидрирует помеченные ссылки в свежие обёртки сущностей, читающие **текущее committed состояние**.
+- **Презентация и действия**:
+  - `M.text(key, args, style)` создаёт каноническую структуру `TextSpec`.
+  - `M.action(command_desc, ...)` создаёт привязку команды `{ command_id = ..., args = ... }`, запрещая произвольные замыкания (`ActionClosureDisallowed`).
+  - `M.button(text_spec, action_result, key_opt)` создаёт запись кнопки, запрещая сырые строки в тексте (`RawStringDisallowed`).
+  - `M.show_screen({ template, description, buttons })` валидирует спецификацию экрана и публикует экранный запрос, запрещая сырые строки в пользовательских текстах (`RawStringDisallowed`).
+  - Код отказа `fail(key)` (`<pkg>:error.<path>`) строго мапится на локализационный идентификатор текста `<pkg>:text.error.<path>`.
+  - Утилита `Tools/Content/collect_texts.py` выполняет статический сбор литералов `text("...")` и `fail("...")` и синхронизирует `texts.json5` и `.po` каталоги.
 
 ## Protected execution
 

@@ -197,6 +197,10 @@ local function rehydrate_value_internal(val, visited)
             end
             return val.id
         elseif val.__gv2_ref == "definition" then
+            local ok, properties_mod = pcall(require, "core:module.authoring.properties")
+            if ok and properties_mod and properties_mod.wrap_definition then
+                return properties_mod.wrap_definition(val.id)
+            end
             if game and game.repository and game.repository.get then
                 local def = game.repository.get(val.id)
                 return def

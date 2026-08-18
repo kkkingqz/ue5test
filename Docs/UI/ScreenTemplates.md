@@ -133,6 +133,17 @@ UE apply использует prepared typed `FGV2ScreenFieldValue`; portable bo
 
 Production Lua document обязан использовать `TextSpec`; localization adapter создаёт `FGV2TextViewModel` до apply. Button model содержит только resolved display text, semantic style token и opaque binding handle, а не Lua callback.
 
+### Designer Authoring Layer (ADR-0027)
+
+Для декларации экранов и кнопок в авторском слое геймдизайнера используются хелперы:
+
+- **`mod.text(key, args, style)`**: создаёт каноническую структуру `TextSpec` (`{ text_id = "<package_id>:text.<key>", args = args or {}, style = style or "default" }`).
+- **`mod.action(command_desc, ...)`**: строит дескриптор действия `{ command_id = ..., args = ... }`. Принимает дескриптор команды (`mod.commands.buy`) или короткое имя команды (`"buy"`). Передача произвольных замыканий/функций строго запрещена и отклоняется ошибкой `ActionClosureDisallowed`.
+- **`mod.button(text_spec, action_binding, key_opt)`**: конструирует запись кнопки. Принимает `TextSpec` и результат `mod.action`. Передача сырых строк в текст кнопки строго запрещена и отклоняется ошибкой `RawStringDisallowed`.
+- **`mod.show_screen({ template, description, buttons })`**: валидирует спецификацию экрана и публикует экранный запрос. Сырые строки в описании или кнопках отклоняются с `RawStringDisallowed`.
+- **Конвенция ошибок**: код отказа `<pkg>:error.<path>` соответствует тексту локализации `<pkg>:text.error.<path>`.
+- **Сборщик текстов**: утилита `Tools/Content/collect_texts.py <package_root>` выполняет статический анализ Lua-скриптов на наличие литералов `text("...")` и `fail("...")`, генерирует недостающие определения текстов в `definitions/texts.json5` и шаблоны в `localization/*.po` идемпотентно.
+
 ## Apply lifecycle
 
 `ApplyScreenFields` выполняется атомарно на логическом presentation level:

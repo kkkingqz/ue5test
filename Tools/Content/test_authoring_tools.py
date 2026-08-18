@@ -659,6 +659,49 @@ def main():
         assert val_res.returncode != 0
         assert "missing_operations" in (val_res.stdout + val_res.stderr)
 
+    # 36. DLA-20: Text collector tool (collect_texts.py)
+    print("[36] Text collector tool (collect_texts.py)...")
+    collect_texts_py = os.path.join(os.path.dirname(__file__), "collect_texts.py")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_pkg = os.path.join(tmpdir, "rh")
+        rh_pkg = os.path.join(os.path.dirname(__file__), "..", "..", "GameData", "rh")
+        shutil.copytree(rh_pkg, tmp_pkg)
+
+        # Add a dummy lua script referencing new literal texts
+        script_dir = os.path.join(tmp_pkg, "scripts", "gameplay")
+        os.makedirs(script_dir, exist_ok=True)
+        with open(os.path.join(script_dir, "custom_shop.lua"), "w", encoding="utf-8") as f:
+            f.write(
+                'local M = {}\n'
+                'function M.buy()\n'
+                '    local btn = button(text("custom_shop.title"), action("buy"))\n'
+                '    return fail("custom_shop.out_of_stock")\n'
+                'end\n'
+                'return M\n'
+            )
+
+        # 36a. Dry-run reports missing texts without modifying files
+        res_dry = run_cmd([sys.executable, collect_texts_py, tmp_pkg, "--dry-run"])
+        assert res_dry.returncode == 0
+        assert "rh:text.custom_shop.title" in res_dry.stdout
+        assert "rh:text.error.custom_shop.out_of_stock" in res_dry.stdout
+        assert "[dry-run] No files modified." in res_dry.stdout
+
+        # 36b. Real run generates definition entries and PO catalog entries
+        res_real = run_cmd([sys.executable, collect_texts_py, tmp_pkg])
+        assert res_real.returncode == 0
+        assert "Successfully updated texts" in res_real.stdout
+
+        # Validate that the package is valid according to gv2-content validate
+        real_core_pkg = os.path.join(os.path.dirname(__file__), "..", "..", "GameData", "core")
+        val_res = run_cmd([gv2_content, "validate", real_core_pkg, tmp_pkg])
+        assert val_res.returncode == 0
+
+        # 36c. Second run is idempotent and modifies nothing
+        res_repeat = run_cmd([sys.executable, collect_texts_py, tmp_pkg])
+        assert res_repeat.returncode == 0
+        assert "All 2 texts found in Lua scripts are already defined" in res_repeat.stdout
+
     print("[*] All authoring tools tests passed successfully!")
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ local gameplay_root = require("core:module.gameplay.root")
 local authoring_properties = require("core:module.authoring.properties")
 local authoring_tagged_ref = require("core:module.authoring.tagged_ref")
 local authoring_commands = require("core:module.authoring.commands")
+local authoring_presentation = require("core:module.authoring.presentation")
 local authoring_context = require("core:module.authoring.context")
 
 return {
@@ -47,6 +48,7 @@ return {
     authoring_commands = authoring_commands,
     authoring_properties = authoring_properties,
     authoring_tagged_ref = authoring_tagged_ref,
+    authoring_presentation = authoring_presentation,
     location_service = location_service,
     gameplay_root = gameplay_root,
 }

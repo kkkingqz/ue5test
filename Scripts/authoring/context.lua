@@ -16,6 +16,7 @@ local portable_value = require("core:module.runtime.portable_value")
 local tagged_ref = require("core:module.authoring.tagged_ref")
 local commands_module = require("core:module.authoring.commands")
 local properties_module = require("core:module.authoring.properties")
+local presentation_module = require("core:module.authoring.presentation")
 
 local M = {
     id = "core:module.authoring.context",
@@ -52,6 +53,23 @@ local function canonicalize_actor_def_id(package_id, name)
     local canonical = package_id .. ":actor." .. name
     if not stable_id.is_valid(canonical) then
         error("InvalidActorName: cannot construct valid actor definition Stable ID from name '" .. name .. "' (constructed '" .. canonical .. "')", 3)
+    end
+
+    return canonical
+end
+
+local function canonicalize_event_id(package_id, name)
+    if stable_id.is_kind(name, "event") then
+        return name
+    end
+
+    if type(name) ~= "string" or name == "" then
+        error("InvalidEventName: expected non-empty string event name, got " .. tostring(name), 3)
+    end
+
+    local canonical = package_id .. ":event." .. name
+    if not stable_id.is_valid(canonical) then
+        error("InvalidEventName: cannot construct valid event Stable ID from name '" .. name .. "' (constructed '" .. canonical .. "')", 3)
     end
 
     return canonical
@@ -113,11 +131,15 @@ function M.gameplay(package_id)
     end
 
     local commands_proxy, proxy_ctrl = commands_module.create_commands_proxy(package_id)
+    local subscribers = {}
 
     local mod = {}
 
     mod.commands = commands_proxy
-    mod.action = commands_module.action
+    mod.action = presentation_module.create_action_helper(package_id)
+    mod.button = presentation_module.create_button_helper(package_id)
+    mod.text = presentation_module.create_text_helper(package_id)
+    mod.show_screen = presentation_module.create_show_screen_helper(package_id)
     mod.player = M.create_player_proxy()
     mod.world = M.create_world_proxy()
 
@@ -138,6 +160,38 @@ function M.gameplay(package_id)
 
     function mod.location(name)
         return def_proxy.location(name)
+    end
+
+    function mod.emit(event_name, payload)
+        local canonical_event_id = canonicalize_event_id(package_id, event_name)
+        local canonical_payload = tagged_ref.canonicalize_arg(payload or {})
+        portable_value.validate(canonical_payload, "event_payload")
+
+        if game and game.events and game.events.enqueue then
+            game.events.enqueue({
+                event_id = canonical_event_id,
+                payload = canonical_payload,
+            })
+        elseif game and game.events and game.events.publish then
+            game.events.publish({
+                event_id = canonical_event_id,
+                payload = canonical_payload,
+            })
+        else
+            error("EventsNotAvailable: game.events is not available", 2)
+        end
+    end
+
+    function mod.on(event_name, handler_fn)
+        if type(handler_fn) ~= "function" then
+            error("InvalidEventHandler: handler must be a function, got " .. type(handler_fn), 2)
+        end
+        local canonical_event_id = canonicalize_event_id(package_id, event_name)
+        table.insert(subscribers, {
+            event_name = event_name,
+            event_id = canonical_event_id,
+            handler = handler_fn,
+        })
     end
 
     function mod.fail(key, params)
@@ -260,6 +314,22 @@ function M.gameplay(package_id)
 
             if game and game.commands and game.commands.handlers and game.commands.handlers.register then
                 game.commands.handlers.register(cmd_id, wrapped_handler)
+            end
+        end
+
+        -- Register accumulated event subscribers
+        for i, sub in ipairs(subscribers) do
+            local clean_name = sub.event_name:gsub("[^a-zA-Z0-9_]", "_"):lower()
+            local sub_id = package_id .. ":subscriber.authoring." .. clean_name .. ".s" .. tostring(i)
+            local raw_handler = sub.handler
+            local function wrapped_subscriber(env)
+                local raw_payload = env.payload or {}
+                local rehydrated = tagged_ref.rehydrate_arg(raw_payload)
+                raw_handler(rehydrated, env)
+            end
+
+            if game and game.events and game.events.subscribers and game.events.subscribers.register then
+                game.events.subscribers.register(sub_id, sub.event_id, wrapped_subscriber)
             end
         end
 

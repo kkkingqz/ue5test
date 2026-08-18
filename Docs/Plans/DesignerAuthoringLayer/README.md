@@ -74,7 +74,7 @@ decisions:
 - [x] M2 — [Commands](Commands.md): дескриптор модуля, прокси команд, отложенная регистрация, `fail()`, `run`/`later`.
 - [x] M3 — [Properties](Properties.md): хранилище и политика записи в схеме, три вида property, два типа ссылок.
 - [x] M4 — [Runtime State](RuntimeState.md): универсальная секция, sparse-материализация, переезд локации на актора.
-- [ ] M5 — [Events and Presentation](EventsAndPresentation.md): `emit`/`on`, `action`/`button`/`show_screen`, тексты.
+- [x] M5 — [Events and Presentation](EventsAndPresentation.md): `emit`/`on`, `action`/`button`/`show_screen`, тексты.
 - [ ] M6 — [RH Migration](RhMigration.md): геймплей `rh` переписан на новый синтаксис, старый путь удалён.
 
 ## Критический путь
