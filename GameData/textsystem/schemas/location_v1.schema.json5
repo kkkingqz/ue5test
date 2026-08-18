@@ -1,5 +1,5 @@
 {
-  id: "rh:schema.definition.location.v1",
+  id: "textsystem:schema.definition.location.v1",
   definition_type: "location",
   schema_version: 1,
   root: {

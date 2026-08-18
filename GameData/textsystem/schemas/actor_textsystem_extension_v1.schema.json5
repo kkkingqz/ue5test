@@ -1,0 +1,17 @@
+{
+  id: "textsystem:schema.extension.actor.entry.v1",
+  definition_type: "actor",
+  schema_version: 1,
+  extension_site: "definition_entry",
+  extension_namespace: "textsystem",
+  root: {
+    kind: "object",
+    fields: {
+      current_location: {
+        kind: "ref",
+        target_kind: "location",
+        required: false,
+      },
+    },
+  },
+}

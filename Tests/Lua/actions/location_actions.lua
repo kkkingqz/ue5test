@@ -127,8 +127,8 @@ return {
             local res = game.runtime.last_command_result
             assert(res ~= nil and res.ok == false, "must be refused outside market")
             assert(res.error.code == "rh:error.location.wrong_location")
-            assert(res.error.params.required_location_id == "rh:location.city.market")
-            assert(res.error.params.current_location_id == "rh:location.city.tavern")
+            assert(res.error.params.required_location == "rh:location.city.market")
+            assert(res.error.params.current_location == "rh:location.city.tavern")
             assert(player.gold == 50, "gold must not change on refusal")
         end)
     end,

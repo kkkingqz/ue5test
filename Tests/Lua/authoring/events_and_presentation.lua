@@ -60,7 +60,6 @@ local function run_with_mock_environment(fn)
         },
     }
 
-    properties.clear_for_test()
     local registry = actor_registry.create_registry()
     registry.register_type("character", function(base) return {} end)
     local sub_reg = subscriber_registry.create_registry()
@@ -98,9 +97,12 @@ local function run_with_mock_environment(fn)
         end,
     }
 
-    local ok, err = pcall(fn, registry, queue, published_events)
+    local ok, err = pcall(function()
+        properties.with_isolated_state(function()
+            fn(registry, queue, published_events)
+        end)
+    end)
     _G.game = prev_game
-    properties.clear_for_test()
     if not ok then
         error(err)
     end
@@ -183,8 +185,8 @@ return {
             assert(act1.args[2] == 1)
 
             -- 2. action() with full Stable ID
-            local act2 = rh.action("core:command.location.travel", { target_location_id = "rh:location.city.tavern" })
-            assert(act2.command_id == "core:command.location.travel")
+            local act2 = rh.action("rh:command.travel", { target_location_id = "rh:location.city.tavern" })
+            assert(act2.command_id == "rh:command.travel")
             assert(act2.args.target_location_id == "rh:location.city.tavern")
 
             -- 3. action() with closure must be rejected

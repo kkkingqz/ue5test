@@ -11,13 +11,13 @@
       package_id: "textsystem",
       version: "0.1.0",
       load_index: 1,
-      fingerprint: "49ad767782faa04b0fa4a4c5bfc0e78fd8bacd6f88b55f0ce7bd599cd694ecb3",
+      fingerprint: "f33438d30cca7fb5d1f5f719647dc22da64fe0961af275f1fb08f048396bd5e6",
     },
     {
       package_id: "rh",
       version: "0.1.0",
       load_index: 2,
-      fingerprint: "eae973c41055252a2d765305de0fc08d4f3b23932f1de99b5bd272a8b94c20f1",
+      fingerprint: "660189e6a841fc4e29f8a554245f9815292d34e759c63be341e4b0f5eafc9b41",
     },
   ],
 }

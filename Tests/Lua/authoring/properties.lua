@@ -66,15 +66,17 @@ local function run_with_mock_environment(fn)
         },
     }
 
-    properties.clear_for_test()
     local registry = actor_registry.create_registry()
     _G.game.instances = {
         actors = registry,
     }
 
-    local ok, err = pcall(fn, registry)
+    local ok, err = pcall(function()
+        properties.with_isolated_state(function()
+            fn(registry)
+        end)
+    end)
     _G.game = prev_game
-    properties.clear_for_test()
     if not ok then
         error(err)
     end

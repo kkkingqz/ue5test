@@ -1,7 +1,7 @@
 -- PKG-17/19: Module Override & require_base() Specification (ADR-0025, LuaRuntimeContract.md)
 -- Verifies require_base() semantics, chain resolution, and prototype inheritance.
 
-local gameplay_root = require("core:module.gameplay.root")
+local state_validator = require("core:module.runtime.state_validator")
 
 return {
     require_base_not_available_outside_replacing_module = function()
@@ -15,8 +15,8 @@ return {
     end,
 
     active_winner_is_loaded_and_callable = function()
-        assert(type(gameplay_root) == "table", "gameplay root must be a table")
-        assert(type(gameplay_root.register) == "function", "register must be a function")
+        assert(type(state_validator) == "table", "state_validator must be a table")
+        assert(type(state_validator.register_section) == "function", "register_section must be a function")
     end,
 
     derived_module_prototype_delegation = function()

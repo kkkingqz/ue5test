@@ -121,7 +121,7 @@ return {
 
         local btn_travel = find_button(buttons, "travel_city_tavern")
         assert(btn_travel ~= nil, "travel to tavern button must exist")
-        assert(btn_travel.binding.command_id == "core:command.location.travel")
+        assert(btn_travel.binding.command_id == "rh:command.travel")
         assert(btn_travel.binding.args.target_location_id == "rh:location.city.tavern")
     end,
 
@@ -182,7 +182,7 @@ return {
 
             -- Dispatch travel to tavern
             local seq = game.runtime.dispatch_command({
-                command_id = "core:command.location.travel",
+                command_id = "rh:command.travel",
                 args = { target_location_id = "rh:location.city.tavern" },
                 sequence = 950,
             })

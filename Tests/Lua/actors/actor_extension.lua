@@ -53,14 +53,15 @@ return {
                 "must raise InvalidActorDecorator, got: " .. tostring(err))
         end
 
-        -- 3. Duplicate registration
-        registry.register_type("warrior", function(b) return b end)
-        local ok_dup, err_dup = pcall(function()
-            registry.register_type("warrior", function(b) return b end)
+        -- 3. Chained decorator composition across package layers
+        registry.register_type("warrior", function(b)
+            return setmetatable({ m1 = function() return 1 end }, { __index = b })
         end)
-        assert(not ok_dup, "register_type must reject duplicate registration")
-        assert(tostring(err_dup):find("ActorTypeDuplicateRegistration") ~= nil,
-            "must raise ActorTypeDuplicateRegistration, got: " .. tostring(err_dup))
+        registry.register_type("warrior", function(b)
+            return setmetatable({ m2 = function() return 2 end }, { __index = b })
+        end)
+        local warrior = registry.wrap({ instance_id = "w@1", discriminator = "warrior" })
+        assert(warrior.m1() == 1 and warrior.m2() == 2, "chained decorators must both provide their methods")
     end,
 
     freeze_prevents_late_registration = function()

@@ -80,7 +80,7 @@ function M.build_screen_request(location_id)
         path_str = path_str:gsub("%.", "_")
         table.insert(buttons, M.button(
             M.text(conn_loc.title_text_id),
-            M.action("core:command.location.travel", { target_location_id = conn_id }),
+            M.action("rh:command.travel", { target_location_id = conn_id }),
             "travel_" .. path_str
         ))
     end

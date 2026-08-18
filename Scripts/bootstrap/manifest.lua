@@ -102,12 +102,6 @@ return {
             replaceable = false,
         },
         {
-            module_id = "core:module.gameplay.root",
-            source = "gameplay/root.lua",
-            dependencies = {},
-            replaceable = true,
-        },
-        {
             module_id = "core:module.presentation.screen_requests",
             source = "presentation/screen_requests.lua",
             dependencies = {
@@ -215,14 +209,6 @@ return {
             replaceable = false,
         },
         {
-            module_id = "core:module.gameplay.location_service",
-            source = "gameplay/location_service.lua",
-            dependencies = {
-                "core:module.runtime.stable_id",
-            },
-            replaceable = true,
-        },
-        {
             module_id = "core:module.authoring.properties",
             source = "authoring/properties.lua",
             dependencies = {
@@ -304,8 +290,6 @@ return {
                 "core:module.authoring.presentation",
                 "core:module.authoring.context",
                 "core:module.runtime.presentation_source",
-                "core:module.gameplay.location_service",
-                "core:module.gameplay.root",
             },
             replaceable = false,
         },

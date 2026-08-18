@@ -52,14 +52,6 @@ return {
 
     service_registry_lookup_and_require = function()
         assert(game and game.services, "game.services must exist")
-        assert(game.services.exists("core:service.location"), "core:service.location must be registered in session")
-
-        local loc_service = game.services.get("core:service.location")
-        assert(type(loc_service) == "table", "game.services.get must return service table")
-        assert(type(loc_service.travel) == "function", "location service must expose travel method")
-
-        local required_service = game.services.require("core:service.location")
-        assert(required_service == loc_service, "game.services.require must return identical service instance")
 
         local missing = game.services.get("core:service.nonexistent")
         assert(missing == nil, "game.services.get for missing service must return nil")
@@ -69,6 +61,14 @@ return {
         end)
         assert(not ok, "game.services.require for missing service must throw error")
         assert(string.find(tostring(err), "ServiceNotFound"), "Error must indicate ServiceNotFound, got: " .. tostring(err))
+
+        local service_registry = require("core:module.runtime.service_registry")
+        local fresh = service_registry.create_registry()
+        local dummy = { test_fn = function() return 42 end }
+        fresh.register("core:service.test.dummy", dummy)
+        assert(fresh.exists("core:service.test.dummy"), "dummy service must exist")
+        assert(fresh.get("core:service.test.dummy") == dummy, "get must return dummy service")
+        assert(fresh.require("core:service.test.dummy") == dummy, "require must return dummy service")
     end,
 
     sandbox_removes_unsafe_primitives = function()

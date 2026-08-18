@@ -117,10 +117,43 @@ def scan_schemas(schemas_dir: Path) -> list[str]:
     return violations
 
 
-def run_validation(defs_dir: Path, schemas_dir: Path) -> list[str]:
+CORE_SCRIPTS_DIR = REPO_ROOT / "Scripts"
+
+
+def scan_scripts(scripts_dir: Path) -> list[str]:
+    violations: list[str] = []
+    if not scripts_dir.exists():
+        return violations
+
+    gameplay_dir = scripts_dir / "gameplay"
+    if gameplay_dir.exists():
+        violations.append(
+            f"{gameplay_dir}: error [CORE_GAMEPLAY_BOUNDARY_RULE]: "
+            f"Scripts/ must not contain gameplay/ directory; gameplay services and commands belong to gameplay packages."
+        )
+
+    for file_path in sorted(scripts_dir.rglob("*.lua")):
+        try:
+            content = file_path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+
+        rel_path = file_path.relative_to(REPO_ROOT) if file_path.is_relative_to(REPO_ROOT) else file_path
+        for line_num, line in enumerate(content.splitlines(), start=1):
+            if "core:command.location.travel" in line or "core:service.location" in line:
+                violations.append(
+                    f"{rel_path}:{line_num}: error [CORE_GAMEPLAY_BOUNDARY_RULE]: "
+                    f"Scripts/ must not reference or define core location commands or services: {line.strip()}"
+                )
+
+    return violations
+
+
+def run_validation(defs_dir: Path, schemas_dir: Path, scripts_dir: Path = CORE_SCRIPTS_DIR) -> list[str]:
     violations: list[str] = []
     violations.extend(scan_definitions(defs_dir))
     violations.extend(scan_schemas(schemas_dir))
+    violations.extend(scan_scripts(scripts_dir))
     return violations
 
 
@@ -128,7 +161,7 @@ def run_self_test() -> bool:
     print("[*] Running validate_core_boundary self-test...")
 
     # 1. Positive test on live repo
-    actual_violations = run_validation(CORE_DEFINITIONS_DIR, CORE_SCHEMAS_DIR)
+    actual_violations = run_validation(CORE_DEFINITIONS_DIR, CORE_SCHEMAS_DIR, CORE_SCRIPTS_DIR)
     if actual_violations:
         print("FAILED: expected clean core definitions and schemas, found violations:\n" + "\n".join(actual_violations))
         return False
@@ -235,6 +268,24 @@ def run_self_test() -> bool:
             print(f"FAILED: violation message mismatch for forbidden actor schema field: {violations}")
             return False
 
+    # 6. Negative test: forbidden gameplay dir in Scripts/
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fake_defs = Path(tmpdir) / "definitions"
+        fake_defs.mkdir(parents=True)
+        fake_schemas = Path(tmpdir) / "schemas"
+        fake_schemas.mkdir(parents=True)
+        fake_scripts = Path(tmpdir) / "Scripts"
+        fake_gameplay = fake_scripts / "gameplay"
+        fake_gameplay.mkdir(parents=True)
+
+        violations = run_validation(fake_defs, fake_schemas, fake_scripts)
+        if not violations:
+            print("FAILED: self-test did not catch forbidden gameplay directory in Scripts/")
+            return False
+        if not any("CORE_GAMEPLAY_BOUNDARY_RULE" in v and "gameplay" in v for v in violations):
+            print(f"FAILED: violation message mismatch for forbidden gameplay directory: {violations}")
+            return False
+
     print("  PASS: validate_core_boundary self-test succeeded.")
     return True
 
@@ -243,7 +294,7 @@ def main() -> int:
     if "--self-test" in sys.argv:
         return 0 if run_self_test() else 1
 
-    violations = run_validation(CORE_DEFINITIONS_DIR, CORE_SCHEMAS_DIR)
+    violations = run_validation(CORE_DEFINITIONS_DIR, CORE_SCHEMAS_DIR, CORE_SCRIPTS_DIR)
     if violations:
         print(f"Core gameplay boundary validation failed ({len(violations)} violations):", file=sys.stderr)
         for violation in violations:

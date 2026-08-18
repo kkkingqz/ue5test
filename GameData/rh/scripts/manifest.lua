@@ -12,9 +12,7 @@ return {
             source = "gameplay/actors.lua",
             dependencies = {
                 "core:module.authoring.context",
-                "core:module.authoring.properties",
                 "core:module.runtime.instance_allocator",
-                "core:module.runtime.state_validator",
             },
             replaceable = false,
         },

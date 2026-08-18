@@ -35,7 +35,19 @@ function M.register_definition_type(kind_or_discriminator, decorator_fn)
     if type(decorator_fn) ~= "function" then
         error("InvalidDefinitionDecorator: decorator must be a function", 2)
     end
-    registered_def_decorators[kind_or_discriminator] = decorator_fn
+    if registered_def_decorators[kind_or_discriminator] then
+        local existing = registered_def_decorators[kind_or_discriminator]
+        registered_def_decorators[kind_or_discriminator] = function(base)
+            local d1 = existing(base)
+            local d2 = decorator_fn(d1 or base)
+            if type(d2) == "table" and type(d1) == "table" then
+                return setmetatable(d2, { __index = d1 })
+            end
+            return d2 or d1 or base
+        end
+    else
+        registered_def_decorators[kind_or_discriminator] = decorator_fn
+    end
 end
 
 function M.get_schema(discriminator_or_type)
@@ -59,6 +71,29 @@ end
 
 function M.is_frozen()
     return is_frozen
+end
+
+function M.with_isolated_state(fn)
+    local prev_schemas = registered_schemas
+    local prev_decorators = registered_def_decorators
+    local prev_frozen = is_frozen
+
+    registered_schemas = {}
+    for k, v in pairs(prev_schemas) do registered_schemas[k] = v end
+    registered_def_decorators = {}
+    for k, v in pairs(prev_decorators) do registered_def_decorators[k] = v end
+    is_frozen = false
+
+    local ok, res_or_err = pcall(fn)
+
+    registered_schemas = prev_schemas
+    registered_def_decorators = prev_decorators
+    is_frozen = prev_frozen
+
+    if not ok then
+        error(res_or_err, 0)
+    end
+    return res_or_err
 end
 
 function M.clear_for_test()
@@ -430,45 +465,6 @@ function M.wrap_definition(def_id)
     local def = get_def_data()
     local discriminator = def and (def.discriminator or (def.data and def.data.discriminator)) or kind
     local dec = registered_def_decorators[discriminator] or registered_def_decorators[kind]
-    if not dec and (kind == "location" or discriminator == "location") then
-        dec = function(def_base)
-            local wrapper = {}
-            function wrapper:is_connected(target)
-                local target_id = target
-                if type(target) == "table" then
-                    target_id = target.id or target.definition_id
-                end
-                if not target_id then return false end
-                local connected_ids = def_base.connected_location_ids or (def_base.data and def_base.data.connected_location_ids) or {}
-                for _, id in ipairs(connected_ids) do
-                    if id == target_id then
-                        return true
-                    end
-                end
-                return false
-            end
-            function wrapper:require_connected(target, opt_key)
-                local target_id = target
-                if type(target) == "table" then
-                    target_id = target.id or target.definition_id
-                end
-                if not self:is_connected(target) then
-                    local ok_ac, authoring_context = pcall(require, "core:module.authoring.context")
-                    if ok_ac and authoring_context and authoring_context.fail then
-                        authoring_context.fail(opt_key or "travel.not_connected", {
-                            from_location_id = def_base.id or def_base.definition_id,
-                            to_location_id = target_id or "",
-                        })
-                    else
-                        error("TravelNotConnected: location '" .. tostring(def_base.id) .. "' is not connected to '" .. tostring(target_id) .. "'", 2)
-                    end
-                end
-            end
-            return setmetatable(wrapper, {
-                __index = def_base,
-            })
-        end
-    end
 
     if dec then
         local decorated = dec(base_wrapper)

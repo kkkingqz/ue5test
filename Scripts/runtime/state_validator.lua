@@ -55,6 +55,31 @@ function M.freeze()
     is_frozen = true
 end
 
+function M.with_isolated_state(fn)
+    local prev_ref_fields = reference_fields
+    local prev_sections = registered_sections
+    local prev_frozen = is_frozen
+
+    reference_fields = {}
+    for k, v in pairs(prev_ref_fields) do reference_fields[k] = v end
+    registered_sections = {}
+    for k, v in pairs(prev_sections) do registered_sections[k] = v end
+    is_frozen = false
+    M.definition_reference_fields = reference_fields
+
+    local ok, res_or_err = pcall(fn)
+
+    reference_fields = prev_ref_fields
+    registered_sections = prev_sections
+    is_frozen = prev_frozen
+    M.definition_reference_fields = reference_fields
+
+    if not ok then
+        error(res_or_err, 0)
+    end
+    return res_or_err
+end
+
 function M.clear_for_test()
     reference_fields = {}
     registered_sections = {}

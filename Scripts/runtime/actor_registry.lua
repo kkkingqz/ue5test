@@ -37,13 +37,17 @@ function M.create_registry()
         if type(discriminator) ~= "string" or discriminator == "" then
             error("InvalidActorDiscriminator: discriminator must be a non-empty string", 2)
         end
-        if type_decorators[discriminator] ~= nil then
-            error("ActorTypeDuplicateRegistration: actor type '" .. tostring(discriminator) .. "' is already registered", 2)
-        end
         if type(decorator) ~= "function" then
             error("InvalidActorDecorator: decorator for '" .. tostring(discriminator) .. "' must be a function", 2)
         end
-        type_decorators[discriminator] = decorator
+        local existing = type_decorators[discriminator]
+        if existing then
+            type_decorators[discriminator] = function(base)
+                return decorator(existing(base))
+            end
+        else
+            type_decorators[discriminator] = decorator
+        end
     end
 
     function registry.types()

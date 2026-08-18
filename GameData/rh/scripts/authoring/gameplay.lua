@@ -9,9 +9,10 @@ local function handle_travel(target)
     player:require_stamina(5, "travel.insufficient_stamina")
 
     player:spend_stamina(5)
-    player:travel(target)
+    player:move_to(target)
 end
-commands["core:command.location.travel"] = handle_travel
+commands["rh:command.travel"] = handle_travel
+commands.travel = handle_travel
 
 local function handle_wait_day()
     player:require_location(tavern)
