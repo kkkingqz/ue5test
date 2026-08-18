@@ -69,6 +69,28 @@ GV2_CONTENT_HOST_SUPPORT_API std::optional<std::vector<GV2ContentCore::FPackageD
     std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics);
 
 /**
+ * Checks whether Directory is a package container directory (i.e. a directory that does not
+ * directly contain package.json5, but contains at least one child directory with package.json5).
+ */
+GV2_CONTENT_HOST_SUPPORT_API bool IsContainerDirectory(const std::filesystem::path& Directory);
+
+/**
+ * Discovers and orders package descriptors from a container directory (e.g. GameData/).
+ *
+ * If mods.lock.json5 exists in the container directory, packages are ordered and verified
+ * against mods.lock.json5.
+ * If mods.lock.json5 does not exist, all child package roots are discovered and topologically
+ * sorted by their declared dependencies (with 'core' package at load_index 0).
+ *
+ * OutOrderedRoots (optional) is populated with the corresponding package root filesystem paths
+ * in load order.
+ */
+GV2_CONTENT_HOST_SUPPORT_API std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesFromContainer(
+    const std::filesystem::path& ContainerDir,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics,
+    std::vector<std::filesystem::path>* OutOrderedRoots = nullptr);
+
+/**
  * Discovered Lua script source belonging to a package.
  * PKG-14/15: Name is '@<package_id>/<relative_path>'.
  */

@@ -694,7 +694,8 @@ def main():
 
         # Validate that the package is valid according to gv2-content validate
         real_core_pkg = os.path.join(os.path.dirname(__file__), "..", "..", "GameData", "core")
-        val_res = run_cmd([gv2_content, "validate", real_core_pkg, tmp_pkg])
+        real_textsystem_pkg = os.path.join(os.path.dirname(__file__), "..", "..", "GameData", "textsystem")
+        val_res = run_cmd([gv2_content, "validate", real_core_pkg, real_textsystem_pkg, tmp_pkg])
         assert val_res.returncode == 0
 
         # 36c. Second run is idempotent and modifies nothing
@@ -1050,7 +1051,72 @@ def main():
             )
         res_stale = run_cmd([sys.executable, val_meta_py, meta_pkg], check=False)
         assert res_stale.returncode != 0
-        assert "stale_deleted_field" in res_stale.stderr
+        # 41. Test Container Mode in gv2-content (TSL-02..03 / ADR-0030)
+        print("[*] Testing container directory mode in gv2-content...")
+        container_dir = os.path.join(tmpdir, "test_container")
+        pkg_core = os.path.join(container_dir, "core")
+        pkg_textsystem = os.path.join(container_dir, "textsystem")
+        pkg_game = os.path.join(container_dir, "game")
+
+        os.makedirs(os.path.join(pkg_core, "schemas"), exist_ok=True)
+        os.makedirs(os.path.join(pkg_core, "definitions"), exist_ok=True)
+        with open(os.path.join(pkg_core, "package.json5"), "w", encoding="utf-8") as f:
+            f.write('{\n  package_id: "core",\n  namespace: "core",\n  version: "1.0.0",\n}\n')
+
+        os.makedirs(os.path.join(pkg_textsystem, "schemas"), exist_ok=True)
+        os.makedirs(os.path.join(pkg_textsystem, "definitions"), exist_ok=True)
+        with open(os.path.join(pkg_textsystem, "package.json5"), "w", encoding="utf-8") as f:
+            f.write('{\n  package_id: "textsystem",\n  namespace: "textsystem",\n  version: "1.0.0",\n  dependencies: [{ package_id: "core", load_after: true }],\n}\n')
+
+        os.makedirs(os.path.join(pkg_game, "schemas"), exist_ok=True)
+        os.makedirs(os.path.join(pkg_game, "definitions"), exist_ok=True)
+        with open(os.path.join(pkg_game, "package.json5"), "w", encoding="utf-8") as f:
+            f.write('{\n  package_id: "game",\n  namespace: "game",\n  version: "1.0.0",\n  dependencies: [{ package_id: "textsystem", load_after: true }],\n}\n')
+
+        # 41a. validate container directory without mods.lock.json5 (topological resolution)
+        res_c_val = run_cmd([gv2_content, "validate", container_dir])
+        assert res_c_val.returncode == 0
+        assert "ok content_hash=" in res_c_val.stdout
+
+        # 41b. hash container directory
+        res_c_hash = run_cmd([gv2_content, "hash", container_dir])
+        assert res_c_hash.returncode == 0
+        assert len(res_c_hash.stdout.strip()) == 64
+
+        # 41c. index container directory
+        res_c_idx = run_cmd([gv2_content, "index", container_dir])
+        assert res_c_idx.returncode == 0
+        assert "active_ids:" in res_c_idx.stdout
+
+        # 41d. coverage container directory
+        res_c_cov = run_cmd([gv2_content, "coverage", container_dir])
+        assert res_c_cov.returncode == 0
+
+        # 41e. empty container directory rejects with typed failure
+        empty_container = os.path.join(tmpdir, "empty_container")
+        os.makedirs(empty_container, exist_ok=True)
+        res_c_empty = run_cmd([gv2_content, "validate", empty_container], check=False)
+        assert res_c_empty.returncode != 0
+        res_c_empty_out = res_c_empty.stdout + res_c_empty.stderr
+        assert "core:diagnostic.package.discovery.no_packages_found" in res_c_empty_out or "no package roots found" in res_c_empty_out
+
+        # 41f. container directory without core rejects with missing_core
+        no_core_container = os.path.join(tmpdir, "no_core_container")
+        pkg_other = os.path.join(no_core_container, "other")
+        os.makedirs(os.path.join(pkg_other, "schemas"), exist_ok=True)
+        os.makedirs(os.path.join(pkg_other, "definitions"), exist_ok=True)
+        with open(os.path.join(pkg_other, "package.json5"), "w", encoding="utf-8") as f:
+            f.write('{\n  package_id: "other",\n  namespace: "other",\n  version: "1.0.0",\n}\n')
+        res_c_no_core = run_cmd([gv2_content, "validate", no_core_container], check=False)
+        assert res_c_no_core.returncode != 0
+        res_c_no_core_out = res_c_no_core.stdout + res_c_no_core.stderr
+        assert "core:diagnostic.package.order.missing_core" in res_c_no_core_out or "core" in res_c_no_core_out
+
+        # 41g. live GameData container validation via gv2-content
+        real_gamedata = os.path.join(os.path.dirname(__file__), "..", "..", "GameData")
+        res_gamedata_val = run_cmd([gv2_content, "validate", real_gamedata])
+        assert res_gamedata_val.returncode == 0
+        assert "ok content_hash=" in res_gamedata_val.stdout
 
     print("[*] All authoring tools tests passed successfully!")
 

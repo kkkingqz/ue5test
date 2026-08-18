@@ -1,4 +1,5 @@
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "GV2ContentHostSupport/ModsLock.h"
 
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
@@ -6,6 +7,8 @@
 
 #include <algorithm>
 #include <fstream>
+#include <map>
+#include <set>
 
 namespace GV2ContentHostSupport
 {
@@ -492,6 +495,378 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         return std::nullopt;
     }
 
+    return Descriptors;
+}
+
+bool IsContainerDirectory(const std::filesystem::path& Directory)
+{
+    std::error_code Ec;
+    if (!std::filesystem::is_directory(Directory, Ec) || Ec)
+    {
+        return false;
+    }
+    if (std::filesystem::exists(Directory / "package.json5", Ec))
+    {
+        return false;
+    }
+    for (const auto& Entry : std::filesystem::directory_iterator(Directory, Ec))
+    {
+        if (Ec) break;
+        if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesFromContainer(
+    const std::filesystem::path& ContainerDir,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics,
+    std::vector<std::filesystem::path>* OutOrderedRoots)
+{
+    using namespace GV2ContentCore;
+    std::error_code Ec;
+    if (!std::filesystem::is_directory(ContainerDir, Ec) || Ec)
+    {
+        FDiagnostic Diagnostic;
+        Diagnostic.Code = "core:diagnostic.package.discovery.root_not_found";
+        Diagnostic.Severity = EDiagnosticSeverity::Error;
+        Diagnostic.Message = "Container directory not found: " + ContainerDir.string();
+        OutDiagnostics.push_back(std::move(Diagnostic));
+        return std::nullopt;
+    }
+
+    const std::filesystem::path LockFilePath = ContainerDir / "mods.lock.json5";
+    if (std::filesystem::exists(LockFilePath, Ec) && !Ec)
+    {
+        std::optional<std::string> LockContent = ReadFileToString(LockFilePath);
+        if (!LockContent)
+        {
+            FDiagnostic Diagnostic;
+            Diagnostic.Code = "core:diagnostic.package.manifest.unreadable";
+            Diagnostic.Severity = EDiagnosticSeverity::Error;
+            Diagnostic.Message = "mods.lock.json5 could not be read";
+            Diagnostic.RelativeSource = "mods.lock.json5";
+            OutDiagnostics.push_back(std::move(Diagnostic));
+            return std::nullopt;
+        }
+
+        const FParseLimits Limits;
+        std::vector<FDiagnostic> ParseDiags;
+        std::optional<FValue> ParsedLock = ParseJson5(
+            *LockContent, Limits, ParseDiags, std::nullopt, 0u, "mods.lock.json5");
+        if (!ParsedLock)
+        {
+            OutDiagnostics.insert(OutDiagnostics.end(), ParseDiags.begin(), ParseDiags.end());
+            return std::nullopt;
+        }
+
+        if (!ParsedLock->IsObject())
+        {
+            FDiagnostic Diagnostic;
+            Diagnostic.Code = "core:diagnostic.package.lock.invalid";
+            Diagnostic.Severity = EDiagnosticSeverity::Error;
+            Diagnostic.Message = "mods.lock.json5 must be a JSON5 object";
+            Diagnostic.RelativeSource = "mods.lock.json5";
+            OutDiagnostics.push_back(std::move(Diagnostic));
+            return std::nullopt;
+        }
+
+        const FValue* PackagesVal = ParsedLock->FindField("packages");
+        if (!PackagesVal || !PackagesVal->IsArray())
+        {
+            FDiagnostic Diagnostic;
+            Diagnostic.Code = "core:diagnostic.package.lock.invalid";
+            Diagnostic.Severity = EDiagnosticSeverity::Error;
+            Diagnostic.Message = "mods.lock.json5 must declare 'packages' array";
+            Diagnostic.RelativeSource = "mods.lock.json5";
+            OutDiagnostics.push_back(std::move(Diagnostic));
+            return std::nullopt;
+        }
+
+        struct FLockedPkg
+        {
+            std::string PackageId;
+            std::int64_t LoadIndex = 0;
+            std::filesystem::path Root;
+        };
+        std::vector<FLockedPkg> LockedPkgs;
+        const auto& LockArray = PackagesVal->AsArray();
+        for (std::size_t Index = 0; Index < LockArray.size(); ++Index)
+        {
+            const FValue& Item = LockArray[Index];
+            if (!Item.IsObject())
+            {
+                FDiagnostic Diagnostic;
+                Diagnostic.Code = "core:diagnostic.package.lock.invalid";
+                Diagnostic.Severity = EDiagnosticSeverity::Error;
+                Diagnostic.Message = "mods.lock.json5 packages[" + std::to_string(Index) + "] must be an object";
+                Diagnostic.RelativeSource = "mods.lock.json5";
+                OutDiagnostics.push_back(std::move(Diagnostic));
+                return std::nullopt;
+            }
+            const FValue* PkgIdVal = Item.FindField("package_id");
+            const FValue* LoadIndexVal = Item.FindField("load_index");
+            if (!PkgIdVal || !PkgIdVal->IsString() || !LoadIndexVal || !LoadIndexVal->IsInteger())
+            {
+                FDiagnostic Diagnostic;
+                Diagnostic.Code = "core:diagnostic.package.lock.invalid";
+                Diagnostic.Severity = EDiagnosticSeverity::Error;
+                Diagnostic.Message = "mods.lock.json5 packages[" + std::to_string(Index) + "] is missing package_id or load_index";
+                Diagnostic.RelativeSource = "mods.lock.json5";
+                OutDiagnostics.push_back(std::move(Diagnostic));
+                return std::nullopt;
+            }
+
+            const std::string PkgId = PkgIdVal->AsString();
+            std::filesystem::path PkgPath;
+            const std::filesystem::path DirectPath = ContainerDir / PkgId;
+            if (std::filesystem::is_directory(DirectPath, Ec) && std::filesystem::exists(DirectPath / "package.json5", Ec))
+            {
+                PkgPath = DirectPath;
+            }
+            else
+            {
+                for (const auto& Entry : std::filesystem::directory_iterator(ContainerDir, Ec))
+                {
+                    if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
+                    {
+                        std::vector<FDiagnostic> TempDiags;
+                        auto Desc = DiscoverPackageFromDirectory(Entry.path(), TempDiags);
+                        if (Desc && Desc->GetPackageId() == PkgId)
+                        {
+                            PkgPath = Entry.path();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (PkgPath.empty())
+            {
+                FDiagnostic Diagnostic;
+                Diagnostic.Code = "core:diagnostic.package.lock.mismatch";
+                Diagnostic.Severity = EDiagnosticSeverity::Error;
+                Diagnostic.Message = "Package '" + PkgId + "' listed in mods.lock.json5 not found in container directory '" + ContainerDir.string() + "'";
+                Diagnostic.PackageId = PkgId;
+                Diagnostic.RelativeSource = "mods.lock.json5";
+                OutDiagnostics.push_back(std::move(Diagnostic));
+                return std::nullopt;
+            }
+
+            LockedPkgs.push_back({PkgId, LoadIndexVal->AsInteger(), std::move(PkgPath)});
+        }
+
+        std::sort(LockedPkgs.begin(), LockedPkgs.end(), [](const FLockedPkg& A, const FLockedPkg& B) {
+            return A.LoadIndex < B.LoadIndex;
+        });
+
+        std::vector<std::filesystem::path> OrderedRoots;
+        OrderedRoots.reserve(LockedPkgs.size());
+        for (const auto& Locked : LockedPkgs)
+        {
+            OrderedRoots.push_back(Locked.Root);
+        }
+
+        std::optional<std::vector<FPackageDescriptor>> Descriptors =
+            DiscoverPackagesFromDirectories(OrderedRoots, OutDiagnostics);
+        if (!Descriptors)
+        {
+            return std::nullopt;
+        }
+
+        if (!VerifyModsLock(*LockContent, *Descriptors, OutDiagnostics))
+        {
+            return std::nullopt;
+        }
+
+        if (OutOrderedRoots)
+        {
+            *OutOrderedRoots = OrderedRoots;
+        }
+        return Descriptors;
+    }
+
+    struct FCandidatePackage
+    {
+        std::string PackageId;
+        std::filesystem::path Root;
+        FPackageDescriptor Descriptor;
+    };
+    std::vector<FCandidatePackage> DiscoveredCandidates;
+    std::vector<FDiagnostic> LocalDiagnostics;
+
+    for (const auto& Entry : std::filesystem::directory_iterator(ContainerDir, Ec))
+    {
+        if (Ec) break;
+        if (Entry.is_directory(Ec) && std::filesystem::exists(Entry.path() / "package.json5", Ec))
+        {
+            std::vector<FDiagnostic> SingleDiags;
+            std::optional<FPackageDescriptor> Desc = DiscoverPackageFromDirectory(Entry.path(), SingleDiags);
+            if (!Desc)
+            {
+                LocalDiagnostics.insert(LocalDiagnostics.end(), SingleDiags.begin(), SingleDiags.end());
+            }
+            else
+            {
+                DiscoveredCandidates.push_back({Desc->GetPackageId(), Entry.path(), std::move(*Desc)});
+            }
+        }
+    }
+
+    if (!LocalDiagnostics.empty())
+    {
+        std::sort(LocalDiagnostics.begin(), LocalDiagnostics.end());
+        OutDiagnostics.insert(OutDiagnostics.end(), LocalDiagnostics.begin(), LocalDiagnostics.end());
+        return std::nullopt;
+    }
+
+    if (DiscoveredCandidates.empty())
+    {
+        FDiagnostic Diagnostic;
+        Diagnostic.Code = "core:diagnostic.package.discovery.no_packages_found";
+        Diagnostic.Severity = EDiagnosticSeverity::Error;
+        Diagnostic.Message = "No package roots found in container directory: " + ContainerDir.string();
+        OutDiagnostics.push_back(std::move(Diagnostic));
+        return std::nullopt;
+    }
+
+    std::map<std::string, std::filesystem::path> SeenPackageIds;
+    for (const auto& Cand : DiscoveredCandidates)
+    {
+        auto It = SeenPackageIds.find(Cand.PackageId);
+        if (It != SeenPackageIds.end())
+        {
+            FDiagnostic Diagnostic;
+            Diagnostic.Code = "core:diagnostic.package.discovery.duplicate_package_id";
+            Diagnostic.Severity = EDiagnosticSeverity::Error;
+            Diagnostic.Message = "Duplicate package_id '" + Cand.PackageId + "' discovered in '"
+                + It->second.string() + "' and '" + Cand.Root.string() + "'";
+            Diagnostic.PackageId = Cand.PackageId;
+            LocalDiagnostics.push_back(std::move(Diagnostic));
+        }
+        else
+        {
+            SeenPackageIds.emplace(Cand.PackageId, Cand.Root);
+        }
+    }
+    if (!LocalDiagnostics.empty())
+    {
+        std::sort(LocalDiagnostics.begin(), LocalDiagnostics.end());
+        OutDiagnostics.insert(OutDiagnostics.end(), LocalDiagnostics.begin(), LocalDiagnostics.end());
+        return std::nullopt;
+    }
+
+    if (SeenPackageIds.find("core") == SeenPackageIds.end())
+    {
+        FDiagnostic Diagnostic;
+        Diagnostic.Code = "core:diagnostic.package.order.missing_core";
+        Diagnostic.Severity = EDiagnosticSeverity::Error;
+        Diagnostic.Message = "Core package 'core' is required but not found in package set";
+        OutDiagnostics.push_back(std::move(Diagnostic));
+        return std::nullopt;
+    }
+
+    std::map<std::string, const FCandidatePackage*> CandidateMap;
+    for (const auto& Cand : DiscoveredCandidates)
+    {
+        CandidateMap[Cand.PackageId] = &Cand;
+    }
+
+    std::map<std::string, std::set<std::string>> Dependants;
+    std::map<std::string, std::size_t> InDegree;
+    for (const auto& Cand : DiscoveredCandidates)
+    {
+        InDegree[Cand.PackageId] = 0;
+    }
+
+    for (const auto& Cand : DiscoveredCandidates)
+    {
+        for (const auto& Dep : Cand.Descriptor.GetDependencies())
+        {
+            const auto TargetIt = CandidateMap.find(Dep.GetPackageId());
+            if (TargetIt == CandidateMap.end())
+            {
+                FDiagnostic Diagnostic;
+                Diagnostic.Code = "core:diagnostic.package.order.missing_dependency";
+                Diagnostic.Severity = EDiagnosticSeverity::Error;
+                Diagnostic.Message = "Package '" + Cand.PackageId + "' requires missing dependency '" + Dep.GetPackageId() + "'";
+                Diagnostic.PackageId = Cand.PackageId;
+                LocalDiagnostics.push_back(std::move(Diagnostic));
+            }
+            else
+            {
+                if (Dependants[Dep.GetPackageId()].insert(Cand.PackageId).second)
+                {
+                    ++InDegree[Cand.PackageId];
+                }
+            }
+        }
+    }
+
+    if (!LocalDiagnostics.empty())
+    {
+        std::sort(LocalDiagnostics.begin(), LocalDiagnostics.end());
+        OutDiagnostics.insert(OutDiagnostics.end(), LocalDiagnostics.begin(), LocalDiagnostics.end());
+        return std::nullopt;
+    }
+
+    std::vector<std::filesystem::path> OrderedRoots;
+    std::set<std::string> Ready;
+    for (const auto& [PkgId, Deg] : InDegree)
+    {
+        if (Deg == 0 && PkgId != "core")
+        {
+            Ready.insert(PkgId);
+        }
+    }
+
+    OrderedRoots.push_back(CandidateMap["core"]->Root);
+    for (const std::string& DepOfCore : Dependants["core"])
+    {
+        if (--InDegree[DepOfCore] == 0)
+        {
+            Ready.insert(DepOfCore);
+        }
+    }
+
+    while (!Ready.empty())
+    {
+        const std::string NextPkgId = *Ready.begin();
+        Ready.erase(Ready.begin());
+        OrderedRoots.push_back(CandidateMap[NextPkgId]->Root);
+
+        for (const std::string& DepTarget : Dependants[NextPkgId])
+        {
+            if (--InDegree[DepTarget] == 0)
+            {
+                Ready.insert(DepTarget);
+            }
+        }
+    }
+
+    if (OrderedRoots.size() != DiscoveredCandidates.size())
+    {
+        FDiagnostic Diagnostic;
+        Diagnostic.Code = "core:diagnostic.package.order.dependency_cycle";
+        Diagnostic.Severity = EDiagnosticSeverity::Error;
+        Diagnostic.Message = "Dependency cycle detected among packages in container directory";
+        OutDiagnostics.push_back(std::move(Diagnostic));
+        return std::nullopt;
+    }
+
+    std::optional<std::vector<FPackageDescriptor>> Descriptors =
+        DiscoverPackagesFromDirectories(OrderedRoots, OutDiagnostics);
+    if (!Descriptors)
+    {
+        return std::nullopt;
+    }
+
+    if (OutOrderedRoots)
+    {
+        *OutOrderedRoots = OrderedRoots;
+    }
     return Descriptors;
 }
 

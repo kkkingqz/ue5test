@@ -5,13 +5,19 @@
       package_id: "core",
       version: "0.1.0",
       load_index: 0,
-      fingerprint: "666b5dc6a0f24a3580f3c79947fbbc63a0da79cc90d2e861b041d8d3f490c9c8",
+      fingerprint: "86e500a2b88efc950801e91fbbf297f7e9fe2c79852f5f482bfcf9bab11ab416",
+    },
+    {
+      package_id: "textsystem",
+      version: "0.1.0",
+      load_index: 1,
+      fingerprint: "49ad767782faa04b0fa4a4c5bfc0e78fd8bacd6f88b55f0ce7bd599cd694ecb3",
     },
     {
       package_id: "rh",
       version: "0.1.0",
-      load_index: 1,
-      fingerprint: "6fbefaaef9e32fcdb730e878d2aaa3e17b9bea515460e4a05a323dd3dc6d52d1",
+      load_index: 2,
+      fingerprint: "eae973c41055252a2d765305de0fc08d4f3b23932f1de99b5bd272a8b94c20f1",
     },
   ],
 }

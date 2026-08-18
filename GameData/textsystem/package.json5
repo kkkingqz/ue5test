@@ -1,10 +1,10 @@
 {
-  package_id: "rh",
-  namespace: "rh",
+  package_id: "textsystem",
+  namespace: "textsystem",
   version: "0.1.0",
   dependencies: [
     {
-      package_id: "textsystem",
+      package_id: "core",
       load_after: true,
     },
   ],

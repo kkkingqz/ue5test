@@ -12,6 +12,7 @@
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
 
@@ -22,19 +23,26 @@ bool IsCanonicalScreenId(const FString& Value)
     return GV2StableIdUE::IsOfKind(Value, "screen");
 }
 
-// RH-02: default package roots for real GameDataRepository packages ("core" and "rh"),
-// staged into packaged builds via GV2.Build.cs RuntimeDependencies (mirroring Scripts/
-// and Resources/). `Tests/Fixtures/PortableContentCore` is test-only and is never staged.
+// TSL-02: default package roots discovered dynamically from GameData container.
 TArray<FString> DefaultRepositoryPackageRoots()
 {
-    TArray<FString> Roots;
-    Roots.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core")));
-    const FString RhRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/rh"));
-    if (FPaths::DirectoryExists(RhRoot))
+    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+    const std::string GameDataDirUtf8 = TCHAR_TO_UTF8(*GameDataDir);
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    std::vector<std::filesystem::path> OrderedRoots;
+    if (GV2ContentHostSupport::DiscoverPackagesFromContainer(
+            std::filesystem::path(GameDataDirUtf8),
+            Diagnostics,
+            &OrderedRoots))
     {
-        Roots.Add(RhRoot);
+        TArray<FString> Roots;
+        for (const auto& Root : OrderedRoots)
+        {
+            Roots.Add(UTF8_TO_TCHAR(Root.string().c_str()));
+        }
+        return Roots;
     }
-    return Roots;
+    return {};
 }
 }
 

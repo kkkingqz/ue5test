@@ -11,6 +11,7 @@
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 
 #include <chrono>
 #include <filesystem>
@@ -30,13 +31,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
 {
-    // 1. Build the real GameData repository (core and rh packages).
+    // 1. Build the real GameData repository dynamically from container.
+    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+    const std::string GameDataDirUtf8 = TCHAR_TO_UTF8(*GameDataDir);
+    std::vector<GV2ContentCore::FDiagnostic> DiscoveryDiagnostics;
+    std::vector<std::filesystem::path> DiscoveredRoots;
+    GV2ContentHostSupport::DiscoverPackagesFromContainer(
+        std::filesystem::path(GameDataDirUtf8),
+        DiscoveryDiagnostics,
+        &DiscoveredRoots);
     TArray<FString> PackageRoots;
-    PackageRoots.Add(FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core")));
-    const FString RhRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/rh"));
-    if (FPaths::DirectoryExists(RhRoot))
+    for (const auto& Root : DiscoveredRoots)
     {
-        PackageRoots.Add(RhRoot);
+        PackageRoots.Add(UTF8_TO_TCHAR(Root.string().c_str()));
     }
     const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectories(PackageRoots);
     if (!TestTrue(TEXT("UE host builds GameData packages repository"), RepoBuild.IsSuccess()))

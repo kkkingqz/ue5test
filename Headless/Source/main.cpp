@@ -286,13 +286,10 @@ std::vector<std::filesystem::path> LoadContentRoots(
 
         if (std::filesystem::is_directory(ExplicitPath, Ec))
         {
-            if (std::filesystem::exists(ExplicitPath / "core" / "package.json5", Ec))
+            std::vector<GV2ContentCore::FDiagnostic> Diags;
+            std::vector<std::filesystem::path> Roots;
+            if (GV2ContentHostSupport::DiscoverPackagesFromContainer(ExplicitPath, Diags, &Roots) && !Roots.empty())
             {
-                std::vector<std::filesystem::path> Roots{ExplicitPath / "core"};
-                if (std::filesystem::exists(ExplicitPath / "rh" / "package.json5", Ec))
-                {
-                    Roots.push_back(ExplicitPath / "rh");
-                }
                 return Roots;
             }
         }
@@ -317,16 +314,9 @@ std::vector<std::filesystem::path> LoadContentRoots(
         std::error_code CandidateError;
         if (std::filesystem::is_directory(GameDataDir, CandidateError) && !CandidateError)
         {
+            std::vector<GV2ContentCore::FDiagnostic> Diags;
             std::vector<std::filesystem::path> Roots;
-            if (std::filesystem::exists(GameDataDir / "core" / "package.json5", CandidateError))
-            {
-                Roots.push_back(GameDataDir / "core");
-            }
-            if (std::filesystem::exists(GameDataDir / "rh" / "package.json5", CandidateError))
-            {
-                Roots.push_back(GameDataDir / "rh");
-            }
-            if (!Roots.empty())
+            if (GV2ContentHostSupport::DiscoverPackagesFromContainer(GameDataDir, Diags, &Roots) && !Roots.empty())
             {
                 return Roots;
             }

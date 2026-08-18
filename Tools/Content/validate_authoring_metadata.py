@@ -312,6 +312,7 @@ def main() -> int:
         repo_root = Path(__file__).resolve().parent.parent.parent
         roots = [
             repo_root / "GameData" / "core",
+            repo_root / "GameData" / "textsystem",
             repo_root / "GameData" / "rh",
             repo_root / "Tests" / "Fixtures" / "PortableContentCore" / "valid" / "core",
         ]

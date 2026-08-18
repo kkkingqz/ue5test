@@ -37,6 +37,18 @@ if(BUILD_TESTING)
     add_test(NAME gv2_content_validate_gamedata_core
         COMMAND gv2-content validate "${PROJECT_SOURCE_DIR}/GameData/core"
     )
+    add_test(NAME gv2_content_validate_gamedata_container
+        COMMAND gv2-content validate "${PROJECT_SOURCE_DIR}/GameData"
+    )
+    add_test(NAME gv2_content_hash_gamedata_container
+        COMMAND gv2-content hash "${PROJECT_SOURCE_DIR}/GameData"
+    )
+    add_test(NAME gv2_content_index_gamedata_container
+        COMMAND gv2-content index "${PROJECT_SOURCE_DIR}/GameData"
+    )
+    add_test(NAME gv2_content_coverage_gamedata_container
+        COMMAND gv2-content coverage "${PROJECT_SOURCE_DIR}/GameData"
+    )
     # CBM-follow-up: every gv2-content case except the live-content smoke
     # validate above runs against the frozen corpus, not GameData/core.
     # Two reasons. Игровой контент перестал быть фикстурой: он принадлежит

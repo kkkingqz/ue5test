@@ -1,7 +1,9 @@
 #include "Support/PackageLoader.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 
+#include <algorithm>
 #include <iterator>
+#include <set>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -60,18 +62,85 @@ FPackageSetDiscovery DiscoverPackageSet(const std::vector<std::filesystem::path>
         Roots.push_back(Root);
     }
 
+    // Case 1: Single root that is a container directory
+    if (Roots.size() == 1 && !std::filesystem::exists(Roots.front() / "package.json5"))
+    {
+        std::vector<std::filesystem::path> ContainerRoots;
+        std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Discovered =
+            GV2ContentHostSupport::DiscoverPackagesFromContainer(Roots.front(), Set.Diagnostics, &ContainerRoots);
+        if (!Discovered)
+        {
+            Set.bDiscoveryFailed = true;
+            return Set;
+        }
+        Set.Roots = std::move(ContainerRoots);
+        Set.Descriptors = std::move(*Discovered);
+        return Set;
+    }
+
+    // Case 2: Single package root (resolve sibling dependencies if present)
     if (Roots.size() == 1)
     {
         std::error_code Ec;
-        const std::filesystem::path SiblingCore = Roots.front().parent_path() / "core";
-        if (std::filesystem::is_directory(SiblingCore, Ec) && std::filesystem::exists(SiblingCore / "package.json5", Ec))
+        const std::filesystem::path Parent = Roots.front().parent_path();
+        std::vector<GV2ContentCore::FDiagnostic> Diags;
+        auto TargetDesc = GV2ContentHostSupport::DiscoverPackageFromDirectory(Roots.front(), Diags);
+        if (TargetDesc && TargetDesc->GetPackageId() != "core" && std::filesystem::is_directory(Parent, Ec))
         {
-            std::vector<GV2ContentCore::FDiagnostic> Diags;
-            auto TargetDesc = GV2ContentHostSupport::DiscoverPackageFromDirectory(Roots.front(), Diags);
-            if (TargetDesc && TargetDesc->GetPackageId() != "core")
+            std::vector<std::string> DepQueue;
+            std::set<std::string> VisitedDeps;
+            for (const auto& Dep : TargetDesc->GetDependencies())
             {
-                Roots.insert(Roots.begin(), SiblingCore);
+                if (VisitedDeps.insert(Dep.GetPackageId()).second)
+                {
+                    DepQueue.push_back(Dep.GetPackageId());
+                }
             }
+
+            std::size_t Head = 0;
+            while (Head < DepQueue.size())
+            {
+                const std::string DepId = DepQueue[Head++];
+                const std::filesystem::path SiblingPkgDir = Parent / DepId;
+                if (std::filesystem::is_directory(SiblingPkgDir, Ec) && std::filesystem::exists(SiblingPkgDir / "package.json5", Ec))
+                {
+                    std::vector<GV2ContentCore::FDiagnostic> SubDiags;
+                    auto SiblingDesc = GV2ContentHostSupport::DiscoverPackageFromDirectory(SiblingPkgDir, SubDiags);
+                    if (SiblingDesc)
+                    {
+                        for (const auto& SubDep : SiblingDesc->GetDependencies())
+                        {
+                            if (VisitedDeps.insert(SubDep.GetPackageId()).second)
+                            {
+                                DepQueue.push_back(SubDep.GetPackageId());
+                            }
+                        }
+                    }
+                }
+            }
+
+            VisitedDeps.insert("core");
+            std::vector<std::filesystem::path> OrderedPackageRoots;
+            if (std::filesystem::exists(Parent / "core" / "package.json5", Ec))
+            {
+                OrderedPackageRoots.push_back(Parent / "core");
+            }
+            for (const auto& DepId : DepQueue)
+            {
+                if (DepId != "core" && DepId != TargetDesc->GetPackageId())
+                {
+                    const std::filesystem::path SiblingPkgDir = Parent / DepId;
+                    if (std::filesystem::exists(SiblingPkgDir / "package.json5", Ec))
+                    {
+                        if (std::find(OrderedPackageRoots.begin(), OrderedPackageRoots.end(), SiblingPkgDir) == OrderedPackageRoots.end())
+                        {
+                            OrderedPackageRoots.push_back(SiblingPkgDir);
+                        }
+                    }
+                }
+            }
+            OrderedPackageRoots.push_back(Roots.front());
+            Roots = std::move(OrderedPackageRoots);
         }
     }
 
