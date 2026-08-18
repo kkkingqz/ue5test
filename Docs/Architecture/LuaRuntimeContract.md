@@ -272,7 +272,7 @@ Uncaught error после начала mutation не запускает унив
 
 Для упрощения написания игрового кода и модов ядро предоставляет авторский слой ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)):
 
-- **Модули ядра**: `core:module.authoring.context` (`Scripts/authoring/context.lua`), `core:module.authoring.commands` (`Scripts/authoring/commands.lua`), `core:module.authoring.tagged_ref` (`Scripts/authoring/tagged_ref.lua`).
+- **Модули ядра**: `core:module.authoring.context` (`Scripts/authoring/context.lua`), `core:module.authoring.commands` (`Scripts/authoring/commands.lua`), `core:module.authoring.properties` (`Scripts/authoring/properties.lua`), `core:module.authoring.tagged_ref` (`Scripts/authoring/tagged_ref.lua`).
 - **Фасад пакета**: `local M = authoring.gameplay(package_id)` создаёт дескриптор авторского модуля с прокси команд `M.commands`, типизированным отказом `M.fail(key, params)` и динамическими аксессорами.
 - **Динамические аксессоры**:
   - `M.player` — динамический прокси, разрешающий `game.instances.actors.player()` на каждое обращение (не кэширует обёртку).
@@ -280,6 +280,12 @@ Uncaught error после начала mutation не запускает унив
   - `M.actor(name)` — аксессор уникального экземпляра по имени определения (`0` экземпляров $\rightarrow$ `ActorInstanceNotFound`, `1` $\rightarrow$ fresh wrapper, `2+` $\rightarrow$ `ActorInstanceAmbiguous`).
   - `M.actors(name)` — список свежих обёрток для всех экземпляров указанного определения.
 - **Исполнение команд**: `:run(...)` для синхронного вызова в собственном окне мутации (вложенный вызов из активного обработчика запрещён: `AuthoringNestedRunDisallowed`) и `:later(...)` для помещения в очередь `game.commands.enqueue`.
+- **Свойства и политики схем**:
+  - `storage`: `"definition"` (чтение из данных определения в репозитории) или `"runtime_state"` (хранение в `game.state`).
+  - `write_policy`: `"read_only"` (запись запрещена), `"plain"` (валидация типа, ограничений, enums перед записью в состояние; отказ оставляет состояние и `write_revision` неизменными), `"managed"` (прямая запись запрещена, ошибка указывает доступные доменные операции из `operations`).
+  - **Фаза freeze**: проверка наличия всех объявленных в схеме доменных операций на зарегистрированных декораторах типов (`MissingDomainOperation`).
+  - **Ссылки**: `ref_definition` (возвращает дескриптор/таблицу определения из репозитория) и `ref_instance` (возвращает свежую обёртку `ActorWrapper`).
+  - **Ссылочная целостность**: `game.instances.actors.remove(id)` проверяет отсутствие входящих ссылок из других сущностей состояния (`ActorHasDependentReferences`).
 
 ## Protected execution
 

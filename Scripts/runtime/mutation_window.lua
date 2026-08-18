@@ -32,12 +32,12 @@ end
 function M.execute_in_window(fn, ...)
     local prev = window_open
     window_open = true
-    local ok, res_or_err = pcall(fn, ...)
+    local results = table.pack(pcall(fn, ...))
     window_open = prev
-    if not ok then
-        error(res_or_err, 0)
+    if not results[1] then
+        error(results[2], 0)
     end
-    return res_or_err
+    return table.unpack(results, 2, results.n)
 end
 
 function M.write_revision()

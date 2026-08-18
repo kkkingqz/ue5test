@@ -83,7 +83,8 @@ FDiagnostic MakeDiagnostic(
 bool IsCommonField(const std::string_view FieldName)
 {
     return FieldName == "kind" || FieldName == "required" || FieldName == "nullable"
-        || FieldName == "default" || FieldName == "description";
+        || FieldName == "default" || FieldName == "description"
+        || FieldName == "storage" || FieldName == "write_policy" || FieldName == "operations";
 }
 
 bool IsCanonicalFieldName(const std::string_view Name)
@@ -206,6 +207,121 @@ bool ReadCommonFields(
             "core:diagnostic.schema.field_spec.invalid_constraint", "description must be string",
             Document, ChildPointer(Pointer, "description"), Context));
     }
+    return Diagnostics.size() == InitialCount;
+}
+
+bool ReadPropertyAttributes(
+    const FValue& Source,
+    EStoragePolicy& OutStorage,
+    EWritePolicy& OutWritePolicy,
+    std::vector<std::string>& OutOperations,
+    const FParsedDocument* Document,
+    const std::string& Pointer,
+    const FValidationDiagnosticContext& Context,
+    std::vector<FDiagnostic>& Diagnostics)
+{
+    const std::size_t InitialCount = Diagnostics.size();
+    OutStorage = EStoragePolicy::Definition;
+    bool bStorageExplicit = false;
+
+    if (const FValue* StorageVal = Source.FindField("storage"))
+    {
+        bStorageExplicit = true;
+        if (!StorageVal->IsString())
+        {
+            Diagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.schema.field_spec.invalid_storage", "storage must be a string",
+                Document, ChildPointer(Pointer, "storage"), Context));
+        }
+        else
+        {
+            const std::string& S = StorageVal->AsString();
+            if (S == "definition" || S == "Definition")
+            {
+                OutStorage = EStoragePolicy::Definition;
+            }
+            else if (S == "runtime_state" || S == "RuntimeState")
+            {
+                OutStorage = EStoragePolicy::RuntimeState;
+            }
+            else
+            {
+                Diagnostics.push_back(MakeDiagnostic(
+                    "core:diagnostic.schema.field_spec.invalid_storage", "unknown storage policy '" + S + "', expected 'definition' or 'runtime_state'",
+                    Document, ChildPointer(Pointer, "storage"), Context));
+            }
+        }
+    }
+
+    // Default write policy depends on storage
+    OutWritePolicy = (OutStorage == EStoragePolicy::Definition) ? EWritePolicy::ReadOnly : EWritePolicy::Plain;
+
+    if (const FValue* WritePolicyVal = Source.FindField("write_policy"))
+    {
+        if (!WritePolicyVal->IsString())
+        {
+            Diagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.schema.field_spec.invalid_write_policy", "write_policy must be a string",
+                Document, ChildPointer(Pointer, "write_policy"), Context));
+        }
+        else
+        {
+            const std::string& WP = WritePolicyVal->AsString();
+            if (WP == "read_only" || WP == "ReadOnly")
+            {
+                OutWritePolicy = EWritePolicy::ReadOnly;
+            }
+            else if (WP == "plain" || WP == "Plain")
+            {
+                OutWritePolicy = EWritePolicy::Plain;
+            }
+            else if (WP == "managed" || WP == "Managed")
+            {
+                OutWritePolicy = EWritePolicy::Managed;
+            }
+            else
+            {
+                Diagnostics.push_back(MakeDiagnostic(
+                    "core:diagnostic.schema.field_spec.invalid_write_policy", "unknown write policy '" + WP + "', expected 'read_only', 'plain', or 'managed'",
+                    Document, ChildPointer(Pointer, "write_policy"), Context));
+            }
+        }
+    }
+
+    if (const FValue* OpsVal = Source.FindField("operations"))
+    {
+        if (!OpsVal->IsArray())
+        {
+            Diagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.schema.field_spec.invalid_operations", "operations must be an array of strings",
+                Document, ChildPointer(Pointer, "operations"), Context));
+        }
+        else
+        {
+            for (std::size_t i = 0; i < OpsVal->AsArray().size(); ++i)
+            {
+                const auto& Item = OpsVal->AsArray()[i];
+                if (!Item.IsString() || Item.AsString().empty() || !IsCanonicalFieldName(Item.AsString()))
+                {
+                    Diagnostics.push_back(MakeDiagnostic(
+                        "core:diagnostic.schema.field_spec.invalid_operations", "operation name must be a canonical snake_case string",
+                        Document, ChildPointer(ChildPointer(Pointer, "operations"), std::to_string(i)), Context));
+                }
+                else
+                {
+                    OutOperations.push_back(Item.AsString());
+                }
+            }
+        }
+    }
+
+    if (OutWritePolicy == EWritePolicy::Managed && OutOperations.empty())
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.schema.field_spec.missing_operations", "managed write_policy requires at least one operation in operations array",
+            Document, ChildPointer(Pointer, "operations"), Context));
+    }
+
     return Diagnostics.size() == InitialCount;
 }
 
@@ -347,6 +463,7 @@ FCompiledFieldSpecPtr CompileFieldSpecNode(
             Result->Kind = EFieldKind::Scalar;
             Result->Scalar = *Scalar;
             Result->bNullable = Scalar->bNullable;
+            ReadPropertyAttributes(Source, Result->Storage, Result->WritePolicy, Result->Operations, Document, Pointer, Context, Diagnostics);
             CompileExplicitDefault(
                 Source, bRequired, Result, Document, Pointer, Context, Diagnostics);
         }
@@ -354,6 +471,7 @@ FCompiledFieldSpecPtr CompileFieldSpecNode(
         return Diagnostics.size() == InitialCount ? Result : nullptr;
     }
     ReadCommonFields(Source, bObjectField, bNullable, bRequired, Document, Pointer, Context, Diagnostics);
+    ReadPropertyAttributes(Source, Result->Storage, Result->WritePolicy, Result->Operations, Document, Pointer, Context, Diagnostics);
     Result->bNullable = bNullable;
     if (OutRequired != nullptr) *OutRequired = bRequired;
 
@@ -484,9 +602,10 @@ FCompiledFieldSpecPtr CompileFieldSpecNode(
             }
         }
     }
-    else if (Kind == "ref")
+    else if (Kind == "ref" || Kind == "ref_definition")
     {
         Result->Kind = EFieldKind::Reference;
+        Result->ReferenceKind = EReferenceKind::Definition;
         CheckClosedSpec(Source, { "target_kind" }, Kind, Document, Pointer, Context, Diagnostics);
         const FValue* TargetKind = Source.FindField("target_kind");
         if (TargetKind == nullptr || !TargetKind->IsString()
@@ -494,7 +613,31 @@ FCompiledFieldSpecPtr CompileFieldSpecNode(
         {
             Diagnostics.push_back(MakeDiagnostic(
                 "core:diagnostic.schema.field_spec.invalid_target_kind",
-                "ref requires target_kind as a canonical Stable ID segment",
+                Kind + " requires target_kind as a canonical Stable ID segment",
+                Document, ChildPointer(Pointer, "target_kind"), Context));
+        }
+        else Result->ExpectedStableIdKind = TargetKind->AsString();
+    }
+    else if (Kind == "ref_instance")
+    {
+        Result->Kind = EFieldKind::Reference;
+        Result->ReferenceKind = EReferenceKind::Instance;
+        if (Source.FindField("storage") == nullptr)
+        {
+            Result->Storage = EStoragePolicy::RuntimeState;
+            if (Source.FindField("write_policy") == nullptr)
+            {
+                Result->WritePolicy = EWritePolicy::Plain;
+            }
+        }
+        CheckClosedSpec(Source, { "target_kind" }, Kind, Document, Pointer, Context, Diagnostics);
+        const FValue* TargetKind = Source.FindField("target_kind");
+        if (TargetKind == nullptr || !TargetKind->IsString()
+            || !FStableId::IsValidSegment(TargetKind->IsString() ? TargetKind->AsString() : ""))
+        {
+            Diagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.schema.field_spec.invalid_target_kind",
+                "ref_instance requires target_kind as a canonical Stable ID segment",
                 Document, ChildPointer(Pointer, "target_kind"), Context));
         }
         else Result->ExpectedStableIdKind = TargetKind->AsString();

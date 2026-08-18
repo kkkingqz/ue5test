@@ -41,6 +41,8 @@ def main():
     assert doc["schema_id"] == "core:schema.definition.screen.v1"
     assert "title_text_id" in doc["fields"]
     assert doc["fields"]["title_text_id"]["required"] is True
+    assert doc["fields"]["title_text_id"]["storage"] == "definition"
+    assert doc["fields"]["title_text_id"]["write_policy"] == "read_only"
 
     # 3. Test describe unknown type
     res = run_cmd([gv2_content, "describe", core_pkg, "unknown_type"], check=False)
@@ -607,6 +609,55 @@ def main():
         # Validate that incomplete localization does not fail gv2-content validate
         val_res = run_cmd([gv2_content, "validate", tmp_pkg])
         assert val_res.returncode == 0
+
+    # 35. DLA-10: Schema storage, write_policy, and operations
+    print("[35] Schema storage and write_policy validation and describe...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_pkg = os.path.join(tmpdir, "core")
+        shutil.copytree(core_pkg, tmp_pkg)
+
+        # 35a. Test schema with managed field and operations
+        schema_path = os.path.join(tmp_pkg, "schemas", "screen_v1.schema.json5")
+        with open(schema_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Add managed field and plain field
+        content_mod = content.replace(
+            'title_text_id: { kind: "text_id", required: true },',
+            'title_text_id: { kind: "text_id", required: true, storage: "definition", write_policy: "read_only" },\n'
+            '      gold: { kind: "int64", required: false, storage: "runtime_state", write_policy: "managed", operations: ["add_gold", "spend_gold"] },\n'
+            '      target_npc: { kind: "ref_instance", target_kind: "actor", required: false },'
+        )
+        with open(schema_path, "w", encoding="utf-8") as f:
+            f.write(content_mod)
+
+        res = run_cmd([gv2_content, "describe", tmp_pkg, "screen", "--format=json"])
+        doc = json.loads(res.stdout)
+        assert doc["fields"]["gold"]["storage"] == "runtime_state"
+        assert doc["fields"]["gold"]["write_policy"] == "managed"
+        assert doc["fields"]["gold"]["operations"] == ["add_gold", "spend_gold"]
+        assert doc["fields"]["target_npc"]["kind"] == "ref_instance"
+        assert doc["fields"]["target_npc"]["storage"] == "runtime_state"
+
+        # 35b. Invalid storage produces schema error
+        with open(schema_path, "w", encoding="utf-8") as f:
+            f.write(content.replace(
+                'title_text_id: { kind: "text_id", required: true },',
+                'title_text_id: { kind: "text_id", required: true, storage: "invalid_storage" },'
+            ))
+        val_res = run_cmd([gv2_content, "validate", tmp_pkg], check=False)
+        assert val_res.returncode != 0
+        assert "invalid_storage" in (val_res.stdout + val_res.stderr)
+
+        # 35c. Managed write_policy without operations produces schema error
+        with open(schema_path, "w", encoding="utf-8") as f:
+            f.write(content.replace(
+                'title_text_id: { kind: "text_id", required: true },',
+                'title_text_id: { kind: "text_id", required: true, write_policy: "managed" },'
+            ))
+        val_res = run_cmd([gv2_content, "validate", tmp_pkg], check=False)
+        assert val_res.returncode != 0
+        assert "missing_operations" in (val_res.stdout + val_res.stderr)
 
     print("[*] All authoring tools tests passed successfully!")
 

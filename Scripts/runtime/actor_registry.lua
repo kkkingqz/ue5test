@@ -1,4 +1,5 @@
 local instance_allocator = require("core:module.runtime.instance_allocator")
+local properties = require("core:module.authoring.properties")
 
 local M = {
     id = "core:module.runtime.actor_registry",
@@ -56,6 +57,33 @@ function M.create_registry()
 
     function registry.freeze()
         is_frozen = true
+        properties.freeze()
+
+        -- Verify that for all registered schemas, any managed field's declared operations exist on the decorator (DLA-12)
+        for disc, schema in pairs(properties.schemas()) do
+            if schema and schema.fields then
+                for field_name, fspec in pairs(schema.fields) do
+                    if fspec.write_policy == "managed" and fspec.operations then
+                        local decorator = type_decorators[disc]
+                        if not decorator then
+                            error("MissingDomainOperation: discriminator '" .. tostring(disc) .. "' has managed field '" .. tostring(field_name) .. "' but no decorator registered", 2)
+                        end
+                        local dummy_base = {
+                            instance_id = "test@0",
+                            definition_id = "core:actor.test",
+                            discriminator = disc,
+                            get_state = function() return {} end,
+                        }
+                        local dummy_decorated = decorator(dummy_base)
+                        for _, op_name in ipairs(fspec.operations) do
+                            if type(dummy_decorated[op_name]) ~= "function" then
+                                error("MissingDomainOperation: operation '" .. tostring(op_name) .. "' declared in schema for managed field '" .. tostring(field_name) .. "' is not defined on actor type '" .. tostring(disc) .. "'", 2)
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 
     function registry.is_frozen()
@@ -80,24 +108,90 @@ function M.create_registry()
             get_state = function() return actor_state end,
         }
 
+        local function read_property(k, decorated_val)
+            if k == "instance_id" then
+                return actor_state.instance_id
+            elseif k == "definition_id" then
+                return actor_state.definition_id
+            elseif k == "discriminator" then
+                return discriminator
+            end
+            if decorated_val ~= nil then
+                return decorated_val
+            end
+            local schema = properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id))
+            if schema and schema.fields and schema.fields[k] then
+                local fspec = schema.fields[k]
+                if fspec.storage == "definition" then
+                    local def_data = nil
+                    if game and game.repository and game.repository.get and actor_state.definition_id then
+                        local def = game.repository.get(actor_state.definition_id)
+                        if def and def.data then def_data = def.data end
+                    end
+                    local val = def_data and def_data[k]
+                    if (fspec.kind == "ref" or fspec.kind == "ref_definition") and type(val) == "string" then
+                        if game and game.repository and game.repository.get then
+                            return game.repository.get(val)
+                        end
+                    end
+                    return val
+                elseif fspec.kind == "ref_instance" then
+                    local raw_id = actor_state[k]
+                    if type(raw_id) == "string" and raw_id ~= "" then
+                        if game and game.instances and game.instances.actors and game.instances.actors.get then
+                            return game.instances.actors.get(raw_id)
+                        end
+                    end
+                    return raw_id
+                elseif fspec.kind == "ref" or fspec.kind == "ref_definition" then
+                    local raw_id = actor_state[k]
+                    if type(raw_id) == "string" and raw_id ~= "" then
+                        if game and game.repository and game.repository.get then
+                            return game.repository.get(raw_id)
+                        end
+                    end
+                    return raw_id
+                elseif fspec.kind == "array" then
+                    return properties.wrap_collection(actor_state, k, fspec)
+                end
+            end
+            return actor_state[k]
+        end
+
+        local function write_property(k, v)
+            if k == "discriminator" or k == "instance_id" or k == "definition_id" then
+                error("ActorDiscriminatorImmutable: field '" .. tostring(k) .. "' is immutable on actor wrapper", 2)
+            end
+            local schema = properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id))
+            if schema and schema.fields and schema.fields[k] then
+                local fspec = schema.fields[k]
+                if fspec.storage == "definition" then
+                    error("Cannot modify definition field: '" .. tostring(k) .. "' is stored in definition", 2)
+                elseif fspec.write_policy == "read_only" then
+                    error("Cannot modify read-only field: '" .. tostring(k) .. "'", 2)
+                elseif fspec.write_policy == "managed" then
+                    local ops_list = fspec.operations or {}
+                    local ops_str = table.concat(ops_list, ", ")
+                    error("Cannot assign directly to managed field '" .. tostring(k) .. "'; use domain operation(s): " .. ops_str, 2)
+                else
+                    -- plain write_policy: validate before writing to state
+                    local ok, canonical_val = properties.validate_field_value(k, fspec, v)
+                    actor_state[k] = canonical_val
+                end
+            else
+                actor_state[k] = v
+            end
+        end
+
         local base_mt = {
             __index = function(_, k)
-                if k == "instance_id" then
-                    return actor_state.instance_id
-                elseif k == "definition_id" then
-                    return actor_state.definition_id
-                elseif k == "discriminator" then
-                    return discriminator
-                elseif base_methods[k] ~= nil then
+                if base_methods[k] ~= nil then
                     return base_methods[k]
                 end
-                return actor_state[k]
+                return read_property(k, nil)
             end,
             __newindex = function(_, k, v)
-                if k == "discriminator" or k == "instance_id" or k == "definition_id" then
-                    error("ActorDiscriminatorImmutable: field '" .. tostring(k) .. "' is immutable on actor wrapper", 2)
-                end
-                actor_state[k] = v
+                write_property(k, v)
             end,
             __tostring = function(_)
                 return string.format("ActorWrapper(%s, %s)", tostring(actor_state.instance_id), tostring(discriminator))
@@ -114,24 +208,10 @@ function M.create_registry()
             local final_wrapper = {}
             local final_mt = {
                 __index = function(_, k)
-                    if k == "instance_id" then
-                        return actor_state.instance_id
-                    elseif k == "definition_id" then
-                        return actor_state.definition_id
-                    elseif k == "discriminator" then
-                        return discriminator
-                    end
-                    local val = decorated[k]
-                    if val ~= nil then
-                        return val
-                    end
-                    return actor_state[k]
+                    return read_property(k, decorated[k])
                 end,
                 __newindex = function(_, k, v)
-                    if k == "discriminator" or k == "instance_id" or k == "definition_id" then
-                        error("ActorDiscriminatorImmutable: field '" .. tostring(k) .. "' is immutable on actor wrapper", 2)
-                    end
-                    actor_state[k] = v
+                    write_property(k, v)
                 end,
                 __tostring = function(_)
                     return string.format("ActorWrapper(%s, %s)", tostring(actor_state.instance_id), tostring(discriminator))
@@ -271,6 +351,25 @@ function M.create_registry()
         end
         if not game or not game.state or not game.state.actors or game.state.actors[instance_id] == nil then
             return false
+        end
+
+        -- Check referential integrity: other actors referencing this actor (DLA-13)
+        if game.state.actors then
+            for other_id, other_state in pairs(game.state.actors) do
+                if other_id ~= instance_id and type(other_state) == "table" then
+                    for field_k, field_v in pairs(other_state) do
+                        if field_v == instance_id then
+                            error("ActorHasDependentReferences: cannot remove actor '" .. instance_id .. "' referenced in actor '" .. other_id .. "' field '" .. field_k .. "'", 2)
+                        elseif type(field_v) == "table" then
+                            for _, elem in ipairs(field_v) do
+                                if elem == instance_id then
+                                    error("ActorHasDependentReferences: cannot remove actor '" .. instance_id .. "' referenced in actor '" .. other_id .. "' field '" .. field_k .. "'", 2)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
         end
 
         -- Check referential integrity: items owned by this actor

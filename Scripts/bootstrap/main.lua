@@ -18,6 +18,7 @@ local subscriber_registry = require("core:module.runtime.subscriber_registry")
 local event_bus = require("core:module.runtime.event_bus")
 local location_service = require("core:module.gameplay.location_service")
 local gameplay_root = require("core:module.gameplay.root")
+local authoring_properties = require("core:module.authoring.properties")
 local authoring_tagged_ref = require("core:module.authoring.tagged_ref")
 local authoring_commands = require("core:module.authoring.commands")
 local authoring_context = require("core:module.authoring.context")
@@ -44,6 +45,7 @@ return {
     event_bus = event_bus,
     authoring = authoring_context,
     authoring_commands = authoring_commands,
+    authoring_properties = authoring_properties,
     authoring_tagged_ref = authoring_tagged_ref,
     location_service = location_service,
     gameplay_root = gameplay_root,

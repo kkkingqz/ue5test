@@ -54,7 +54,8 @@ std::string FormatCompactSpecSummary(const GV2ContentCore::FCompiledFieldSpec& S
     }
     if (Spec.Kind == GV2ContentCore::EFieldKind::Reference)
     {
-        return "ref(" + Spec.ExpectedStableIdKind + ")";
+        std::string Prefix = (Spec.ReferenceKind == GV2ContentCore::EReferenceKind::Instance) ? "ref_instance(" : "ref(";
+        return Prefix + Spec.ExpectedStableIdKind + ")";
     }
     if (Spec.Kind == GV2ContentCore::EFieldKind::TextId)
     {
@@ -169,7 +170,7 @@ void FormatFieldDetailsText(
     }
     else if (Spec.Kind == GV2ContentCore::EFieldKind::Reference)
     {
-        KindName = "ref";
+        KindName = (Spec.ReferenceKind == GV2ContentCore::EReferenceKind::Instance) ? "ref_instance" : "ref";
         Constraints.push_back("target_kind=" + Spec.ExpectedStableIdKind);
     }
     else if (Spec.Kind == GV2ContentCore::EFieldKind::TextId)
@@ -181,6 +182,30 @@ void FormatFieldDetailsText(
         KindName = "resource_ref";
         Constraints.push_back("resource_class=" + Spec.ResourceClass);
         if (Spec.bBootstrapRequired) Constraints.push_back("bootstrap_required=true");
+    }
+
+    if (Spec.Storage == GV2ContentCore::EStoragePolicy::RuntimeState)
+    {
+        Constraints.push_back("storage=runtime_state");
+    }
+    if (Spec.WritePolicy == GV2ContentCore::EWritePolicy::Managed)
+    {
+        Constraints.push_back("write_policy=managed");
+        if (!Spec.Operations.empty())
+        {
+            std::string Ops = "[";
+            for (std::size_t i = 0; i < Spec.Operations.size(); ++i)
+            {
+                if (i > 0) Ops += ", ";
+                Ops += Spec.Operations[i];
+            }
+            Ops += "]";
+            Constraints.push_back("operations=" + Ops);
+        }
+    }
+    else if (Spec.WritePolicy == GV2ContentCore::EWritePolicy::Plain && Spec.Storage == GV2ContentCore::EStoragePolicy::Definition)
+    {
+        Constraints.push_back("write_policy=plain");
     }
 
     Out << KindName << " (" << (bRequired ? "required" : "optional");
@@ -237,9 +262,27 @@ void WriteFieldSpecJson(std::ostream& Out, const GV2ContentCore::FCompiledFieldS
     case GV2ContentCore::EFieldKind::Map: Out << "\"map\""; break;
     case GV2ContentCore::EFieldKind::Object: Out << "\"object\""; break;
     case GV2ContentCore::EFieldKind::Union: Out << "\"union\""; break;
-    case GV2ContentCore::EFieldKind::Reference: Out << "\"ref\""; break;
+    case GV2ContentCore::EFieldKind::Reference:
+        Out << (Spec.ReferenceKind == GV2ContentCore::EReferenceKind::Instance ? "\"ref_instance\"" : "\"ref\"");
+        break;
     case GV2ContentCore::EFieldKind::TextId: Out << "\"text_id\""; break;
     case GV2ContentCore::EFieldKind::ResourceReference: Out << "\"resource_ref\""; break;
+    }
+
+    Comma();
+    Out << "\"storage\":\"" << (Spec.Storage == GV2ContentCore::EStoragePolicy::RuntimeState ? "runtime_state" : "definition") << "\"";
+    Comma();
+    Out << "\"write_policy\":\"" << (Spec.WritePolicy == GV2ContentCore::EWritePolicy::Managed ? "managed" : (Spec.WritePolicy == GV2ContentCore::EWritePolicy::Plain ? "plain" : "read_only")) << "\"";
+    if (!Spec.Operations.empty())
+    {
+        Comma();
+        Out << "\"operations\":[";
+        for (std::size_t i = 0; i < Spec.Operations.size(); ++i)
+        {
+            if (i > 0) Out << ',';
+            WriteJsonEscapedString(Out, Spec.Operations[i]);
+        }
+        Out << ']';
     }
 
     if (Spec.bNullable)

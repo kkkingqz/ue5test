@@ -175,6 +175,9 @@ Common keywords:
 | `nullable` | Разрешает explicit JSON null; default `false` |
 | `default` | Optional explicit default, проходящий тот же FieldSpec |
 | `description` | Tooling metadata |
+| `storage` | `"definition"` (default) или `"runtime_state"` |
+| `write_policy` | `"read_only"`, `"plain"`, `"managed"` (default: `"read_only"` для `definition`, `"plain"` для `runtime_state`) |
+| `operations` | Array of snake_case string operation names (обязателен при `write_policy: "managed"`) |
 
 Supported kinds:
 
@@ -189,7 +192,8 @@ Supported kinds:
 | `map` | `keys`, `values`, `min_entries`, `max_entries` |
 | `object` | `fields`, всегда closed |
 | `union` | `discriminator`, `variants` |
-| `ref` | `target_kind` |
+| `ref` / `ref_definition` | `target_kind` (ссылка на запись в репозитории определений) |
+| `ref_instance` | `target_kind` (ссылка на runtime-экземпляр сущности в состоянии) |
 | `text_id` | implicit expected kind `text` |
 | `resource_ref` | `resource_class`, optional `bootstrap_required` |
 

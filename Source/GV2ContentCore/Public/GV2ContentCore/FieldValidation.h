@@ -23,6 +23,25 @@ enum class EFieldKind : std::uint8_t
     ResourceReference,
 };
 
+enum class EStoragePolicy : std::uint8_t
+{
+    Definition,
+    RuntimeState,
+};
+
+enum class EWritePolicy : std::uint8_t
+{
+    ReadOnly,
+    Plain,
+    Managed,
+};
+
+enum class EReferenceKind : std::uint8_t
+{
+    Definition,
+    Instance,
+};
+
 struct FCompiledFieldSpec;
 using FCompiledFieldSpecPtr = std::shared_ptr<const FCompiledFieldSpec>;
 
@@ -46,6 +65,11 @@ struct GV2_CONTENT_CORE_API FCompiledFieldSpec final
     bool bNullable = false;
     std::optional<FValue> DefaultValue;
     std::optional<FScalarFieldSpec> Scalar;
+
+    EStoragePolicy Storage = EStoragePolicy::Definition;
+    EWritePolicy WritePolicy = EWritePolicy::ReadOnly;
+    EReferenceKind ReferenceKind = EReferenceKind::Definition;
+    std::vector<std::string> Operations;
 
     FCompiledFieldSpecPtr Items;
     FCompiledFieldSpecPtr MapKeys;

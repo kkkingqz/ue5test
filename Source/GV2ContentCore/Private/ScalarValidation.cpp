@@ -144,7 +144,10 @@ bool IsAllowedCommonField(const std::string_view FieldName)
         || FieldName == "required"
         || FieldName == "nullable"
         || FieldName == "default"
-        || FieldName == "description";
+        || FieldName == "description"
+        || FieldName == "storage"
+        || FieldName == "write_policy"
+        || FieldName == "operations";
 }
 
 bool IsScalarEnumValue(const FValue& Value)

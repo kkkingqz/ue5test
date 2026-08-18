@@ -91,6 +91,7 @@ return {
             source = "runtime/actor_registry.lua",
             dependencies = {
                 "core:module.runtime.instance_allocator",
+                "core:module.authoring.properties",
             },
             replaceable = false,
         },
@@ -214,6 +215,14 @@ return {
             replaceable = true,
         },
         {
+            module_id = "core:module.authoring.properties",
+            source = "authoring/properties.lua",
+            dependencies = {
+                "core:module.runtime.stable_id",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.authoring.tagged_ref",
             source = "authoring/tagged_ref.lua",
             dependencies = {
@@ -267,6 +276,7 @@ return {
                 "core:module.runtime.subscriber_registry",
                 "core:module.runtime.event_envelope",
                 "core:module.runtime.event_bus",
+                "core:module.authoring.properties",
                 "core:module.authoring.tagged_ref",
                 "core:module.authoring.commands",
                 "core:module.authoring.context",
