@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 1.7
-updated: 2026-08-17
+version: 1.8
+updated: 2026-08-18
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -29,6 +29,8 @@ Proposal не изменяет нормативную архитектуру с�
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
 | [CoreGameplayBoundaryProposal](CoreGameplayBoundaryProposal.md) | implemented | Architecture, Modding, Content | Правило ownership между framework core и gameplay packages: механизмы в `core`, семантика и контент в пакетах |
+| [LuaAuthoringSugarProposal](LuaAuthoringSugarProposal.md) | accepted for planning | Runtime, Authoring | Тонкий Lua-слой над фасадом: короткие ссылки внутри пакета, помощники команд, разделение definition и instance |
+| [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | implemented | UI, Resources, Engine | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
@@ -41,9 +43,11 @@ Proposal не изменяет нормативную архитектуру с�
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
-3. `ModPackageLifecycleProposal`.
-4. `CommonUIRuntimeIntegrationProposal`.
-5. `ScreenAuthoringWorkflowProposal`.
+3. `LuaAuthoringSugarProposal` — ни от чего не зависит, контрактов не касается, снимает основную часть боли авторов геймплея.
+4. `ContentEditorPluginProposal` — начинается только после трёх блокирующих пунктов из его раздела 40: правило версионирования схем, правка поля в `Json5AstRewriter`, authoring-метаданные схем.
+5. `ModPackageLifecycleProposal`.
+6. `CommonUIRuntimeIntegrationProposal`.
+7. `ScreenAuthoringWorkflowProposal`.
 
 `ImageResourceLookupOptimizationProposal` и `ImageResourcePackagedDeploymentProposal` могут выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 
