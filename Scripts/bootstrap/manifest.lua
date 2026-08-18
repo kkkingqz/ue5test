@@ -250,6 +250,7 @@ return {
                 "core:module.runtime.portable_value",
                 "core:module.authoring.tagged_ref",
                 "core:module.authoring.commands",
+                "core:module.authoring.properties",
             },
             replaceable = false,
         },

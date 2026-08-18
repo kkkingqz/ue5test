@@ -15,6 +15,7 @@ local mutation_window = require("core:module.runtime.mutation_window")
 local portable_value = require("core:module.runtime.portable_value")
 local tagged_ref = require("core:module.authoring.tagged_ref")
 local commands_module = require("core:module.authoring.commands")
+local properties_module = require("core:module.authoring.properties")
 
 local M = {
     id = "core:module.authoring.context",
@@ -119,6 +120,25 @@ function M.gameplay(package_id)
     mod.action = commands_module.action
     mod.player = M.create_player_proxy()
     mod.world = M.create_world_proxy()
+
+    local def_proxy = setmetatable({}, {
+        __index = function(_, kind)
+            return function(name)
+                local full_id
+                if stable_id.is_valid(name) then
+                    full_id = name
+                else
+                    full_id = package_id .. ":" .. kind .. "." .. name
+                end
+                return properties_module.wrap_definition(full_id)
+            end
+        end,
+    })
+    mod.def = def_proxy
+
+    function mod.location(name)
+        return def_proxy.location(name)
+    end
 
     function mod.fail(key, params)
         if active_command_context == nil then

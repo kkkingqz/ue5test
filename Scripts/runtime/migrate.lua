@@ -19,6 +19,7 @@ M.CURRENT_SECTION_VERSIONS = {
     world = 1,
     quests = 1,
     mods = 1,
+    definitions = 1,
 }
 
 -- SAV-18/20: given the section_versions map recorded in a save envelope,

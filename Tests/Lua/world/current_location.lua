@@ -15,6 +15,7 @@ local function make_tree(current_location_id)
         world = { current_location_id = current_location_id },
         quests = {},
         mods = {},
+        definitions = {},
     }
 end
 
@@ -45,10 +46,32 @@ return {
 
     current_location_readable_without_mutation = function()
         local mutation_window = require("core:module.runtime.mutation_window")
+        local player
         mutation_window.execute_in_window(function()
-            game.state.world.current_location_id = "rh:location.city.market"
+            player = game.instances.actors.player()
+            if not player then
+                player = game.instances.actors.create("rh:actor.character.hero", {
+                    current_location_id = "rh:location.city.market",
+                })
+                game.state.meta.player_actor_id = player.instance_id
+            else
+                player.current_location_id = "rh:location.city.market"
+            end
         end)
         local w = game.instances.world()
         assert(w.current_location_id == "rh:location.city.market", "current_location_id must be readable through the World wrapper")
+
+        -- Direct write to world.current_location_id must be rejected (read-only accessor)
+        local write_err = false
+        mutation_window.execute_in_window(function()
+            local ok, err = pcall(function()
+                w.current_location_id = "rh:location.city.tavern"
+            end)
+            if not ok then
+                write_err = true
+                assert(string.find(tostring(err), "WorldLocationReadOnly"), "Expected WorldLocationReadOnly error")
+            end
+        end)
+        assert(write_err, "Direct write to world.current_location_id must be rejected")
     end,
 }

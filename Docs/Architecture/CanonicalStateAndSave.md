@@ -41,17 +41,19 @@ game.state = {
   world = {},
   quests = {},
   mods = {},
+  definitions = {},
 }
 ```
 
 | Section | Purpose |
 |---|---|
 | `meta` | Save/schema versions, save identity, player actor ID (`player_actor_id`), instance counters, PRNG streams, gameplay time |
-| `actors` | Persistent player and NPC actor instances (`instance_id`, `definition_id`, ...) |
+| `actors` | Persistent player and NPC actor instances (`instance_id`, `definition_id`, `current_location_id`, ...) |
 | `item_instances` | Unique item instances; stack counts live in owning containers |
-| `world` | Global flags и location/screen state; `current_location_id` — Stable ID kind `location`, валидируется `state_validator.lua` против pinned repository (план [GameplayEventsAndWorld](../Plans/Archive/GameplayEventsAndWorld/README.md), GEW-05) |
+| `world` | Global flags и world state; локация игрока хранится на акторе игрока, а `game.instances.world().current_location` является read-only аксессором ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)) |
 | `quests` | Activated quest instances only |
 | `mods` | Только нестандартное namespaced mod state |
+| `definitions` | Sparse runtime-состояние definitions (`definitions[def_id]`), ключуется по Stable ID определения и валидируется против pinned repository ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)) |
 
 Стандартные mod entities используют общие registries. `mods[mod_id]` не дублирует standard state.
 

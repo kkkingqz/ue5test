@@ -30,7 +30,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(20, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.market"
+            player.current_location_id = "rh:location.city.market"
 
             local initial_gold = player.gold
             local seq = game.runtime.dispatch_command({
@@ -62,7 +62,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(20, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.market"
+            player.current_location_id = "rh:location.city.market"
 
             local initial_gold = player.gold
             local seq = game.runtime.dispatch_command({
@@ -89,7 +89,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(20, 5)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.market"
+            player.current_location_id = "rh:location.city.market"
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.shop.buy_sword",
@@ -111,7 +111,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(20, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.tavern"
+            player.current_location_id = "rh:location.city.tavern"
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.shop.buy_sword",
@@ -133,7 +133,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(10, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.tavern"
+            player.current_location_id = "rh:location.city.tavern"
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.time.wait_day",
@@ -153,7 +153,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(10, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.market"
+            player.current_location_id = "rh:location.city.market"
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.time.wait_day",
@@ -173,7 +173,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(10, 20)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.tavern"
+            player.current_location_id = "rh:location.city.tavern"
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.work.do_work",
@@ -195,7 +195,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(5, 20) -- stamina must be > 5, so 5 is insufficient
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.tavern"
+            player.current_location_id = "rh:location.city.tavern"
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.work.do_work",
@@ -218,7 +218,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(20, 20)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.gate"
+            player.current_location_id = "rh:location.city.gate"
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.work.do_work",

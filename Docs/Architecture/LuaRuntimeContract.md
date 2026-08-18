@@ -276,16 +276,19 @@ Uncaught error после начала mutation не запускает унив
 - **Фасад пакета**: `local M = authoring.gameplay(package_id)` создаёт дескриптор авторского модуля с прокси команд `M.commands`, типизированным отказом `M.fail(key, params)` и динамическими аксессорами.
 - **Динамические аксессоры**:
   - `M.player` — динамический прокси, разрешающий `game.instances.actors.player()` на каждое обращение (не кэширует обёртку).
-  - `M.world` — динамический прокси к `game.instances.world()`.
+  - `M.world` — динамический прокси к `game.instances.world()`; `world.current_location` и `world.current_location_id` являются read-only аксессорами к активному игроку (`state.world` не дублирует локацию).
   - `M.actor(name)` — аксессор уникального экземпляра по имени определения (`0` экземпляров $\rightarrow$ `ActorInstanceNotFound`, `1` $\rightarrow$ fresh wrapper, `2+` $\rightarrow$ `ActorInstanceAmbiguous`).
   - `M.actors(name)` — список свежих обёрток для всех экземпляров указанного определения.
+  - `M.def.<kind>(name)` и shortcut `M.location(name)` — доступ к обёртке определения с поддержкой динамических runtime-полей и декораторов (`register_definition_type`).
 - **Исполнение команд**: `:run(...)` для синхронного вызова в собственном окне мутации (вложенный вызов из активного обработчика запрещён: `AuthoringNestedRunDisallowed`) и `:later(...)` для помещения в очередь `game.commands.enqueue`.
 - **Свойства и политики схем**:
-  - `storage`: `"definition"` (чтение из данных определения в репозитории) или `"runtime_state"` (хранение в `game.state`).
+  - `storage`: `"definition"` (чтение из данных определения в репозитории) или `"runtime_state"` (хранение в `game.state.definitions[def_id]`).
   - `write_policy`: `"read_only"` (запись запрещена), `"plain"` (валидация типа, ограничений, enums перед записью в состояние; отказ оставляет состояние и `write_revision` неизменными), `"managed"` (прямая запись запрещена, ошибка указывает доступные доменные операции из `operations`).
+  - **Sparse-материализация**: чтение отсутствующего runtime-поля определения возвращает schema `default` (не занимая места в состоянии); любая запись материализует значение в `game.state.definitions[def_id]`; метод `:reset(field_name)` снимает override и возвращает sparse default.
   - **Фаза freeze**: проверка наличия всех объявленных в схеме доменных операций на зарегистрированных декораторах типов (`MissingDomainOperation`).
   - **Ссылки**: `ref_definition` (возвращает дескриптор/таблицу определения из репозитория) и `ref_instance` (возвращает свежую обёртку `ActorWrapper`).
   - **Ссылочная целостность**: `game.instances.actors.remove(id)` проверяет отсутствие входящих ссылок из других сущностей состояния (`ActorHasDependentReferences`).
+  - **Локация**: хранится на акторе (`ref_definition<location>`), переход между локациями (`core:service.location`) обновляет локацию актора игрока.
 
 ## Protected execution
 

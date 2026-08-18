@@ -9,6 +9,7 @@ local M = {
 }
 
 local registered_schemas = {}
+local registered_def_decorators = {}
 local is_frozen = false
 
 function M.register_schema(discriminator_or_type, schema_def)
@@ -22,6 +23,19 @@ function M.register_schema(discriminator_or_type, schema_def)
         error("InvalidSchemaDefinition: schema_def must be a table with a fields map", 2)
     end
     registered_schemas[discriminator_or_type] = schema_def
+end
+
+function M.register_definition_type(kind_or_discriminator, decorator_fn)
+    if is_frozen then
+        error("DefinitionTypeRegistryFrozen: cannot register definition type after register phase", 2)
+    end
+    if type(kind_or_discriminator) ~= "string" or kind_or_discriminator == "" then
+        error("InvalidDefinitionTypeTarget: target must be a non-empty string", 2)
+    end
+    if type(decorator_fn) ~= "function" then
+        error("InvalidDefinitionDecorator: decorator must be a function", 2)
+    end
+    registered_def_decorators[kind_or_discriminator] = decorator_fn
 end
 
 function M.get_schema(discriminator_or_type)
@@ -49,6 +63,7 @@ end
 
 function M.clear_for_test()
     registered_schemas = {}
+    registered_def_decorators = {}
     is_frozen = false
 end
 
@@ -243,6 +258,195 @@ function M.wrap_collection(container_state, field_name, field_spec)
 
     setmetatable(wrapper, mt)
     return wrapper
+end
+
+function M.wrap_definition(def_id)
+    if type(def_id) ~= "string" or def_id == "" then
+        error("DefinitionWrapperError: def_id must be a non-empty string", 2)
+    end
+    local ns, kind, rest = def_id:match("^([a-z][a-z0-9_]*):([a-z][a-z0-9_]*)%.([a-z0-9_.]+)$")
+    if not ns or not kind or not rest then
+        error("DefinitionWrapperError: invalid definition Stable ID grammar '" .. def_id .. "'", 2)
+    end
+
+    local function get_def_data()
+        if game and game.repository and game.repository.get then
+            return game.repository.get(def_id)
+        end
+        return nil
+    end
+
+    local base_wrapper = {
+        __gv2_ref = "definition",
+        id = def_id,
+        definition_id = def_id,
+    }
+
+    local methods = {}
+
+    function methods.get_def()
+        return get_def_data()
+    end
+
+    function methods.reset(self_or_field, maybe_field)
+        local field_name = (type(self_or_field) == "table" and maybe_field) or self_or_field
+        if not field_name or type(field_name) ~= "string" then
+            error("DefinitionResetError: field_name must be a non-empty string", 2)
+        end
+        if game and game.state and game.state.definitions and game.state.definitions[def_id] then
+            game.state.definitions[def_id][field_name] = nil
+        end
+    end
+
+    local mt = {
+        __index = function(_, k)
+            if methods[k] ~= nil then
+                return methods[k]
+            end
+            if k == "id" or k == "definition_id" or k == "__gv2_ref" then
+                return base_wrapper[k]
+            end
+
+            local def = get_def_data()
+            local discriminator = nil
+            if def then
+                if def.discriminator then
+                    discriminator = def.discriminator
+                elseif def.data and def.data.discriminator then
+                    discriminator = def.data.discriminator
+                else
+                    discriminator = kind
+                end
+            else
+                discriminator = kind
+            end
+
+            local schema = M.get_schema(discriminator) or M.get_schema(kind)
+            local field_spec = schema and schema.fields and schema.fields[k]
+
+            if field_spec then
+                local storage = field_spec.storage or "definition"
+                if storage == "runtime_state" then
+                    local runtime_val = nil
+                    if game and game.state and game.state.definitions and game.state.definitions[def_id] then
+                        runtime_val = game.state.definitions[def_id][k]
+                    end
+                    if runtime_val ~= nil then
+                        if field_spec.kind == "ref_instance" then
+                            if game and game.instances and game.instances.actors and game.instances.actors.get then
+                                return game.instances.actors.get(runtime_val)
+                            end
+                        elseif field_spec.kind == "ref" or field_spec.kind == "ref_definition" then
+                            if game and game.repository and game.repository.get then
+                                return game.repository.get(runtime_val)
+                            end
+                        elseif field_spec.kind == "array" or field_spec.kind == "map" then
+                            return M.wrap_collection(game.state.definitions[def_id], k, field_spec)
+                        end
+                        return runtime_val
+                    else
+                        return field_spec.default
+                    end
+                else
+                    if def then
+                        if def.data and def.data[k] ~= nil then
+                            return def.data[k]
+                        elseif def[k] ~= nil then
+                            return def[k]
+                        end
+                    end
+                    return field_spec.default
+                end
+            else
+                if def then
+                    if def.data and def.data[k] ~= nil then
+                        return def.data[k]
+                    elseif def[k] ~= nil then
+                        return def[k]
+                    end
+                end
+                return nil
+            end
+        end,
+
+        __newindex = function(_, k, v)
+            local def = get_def_data()
+            local discriminator = nil
+            if def then
+                if def.discriminator then
+                    discriminator = def.discriminator
+                elseif def.data and def.data.discriminator then
+                    discriminator = def.data.discriminator
+                else
+                    discriminator = kind
+                end
+            else
+                discriminator = kind
+            end
+
+            local schema = M.get_schema(discriminator) or M.get_schema(kind)
+            local field_spec = schema and schema.fields and schema.fields[k]
+
+            if not field_spec then
+                error("Cannot modify definition field '" .. tostring(k) .. "' (no runtime_state schema defined)", 2)
+            end
+
+            local storage = field_spec.storage or "definition"
+            if storage == "definition" then
+                error("Cannot modify definition field '" .. tostring(k) .. "'", 2)
+            end
+
+            local write_policy = field_spec.write_policy or "plain"
+            if write_policy == "read_only" then
+                error("Cannot modify read_only field '" .. tostring(k) .. "'", 2)
+            elseif write_policy == "managed" then
+                local ops_str = ""
+                if type(field_spec.operations) == "table" and #field_spec.operations > 0 then
+                    ops_str = " (use domain operations: " .. table.concat(field_spec.operations, ", ") .. ")"
+                end
+                error("Cannot assign directly to managed field '" .. tostring(k) .. "'" .. ops_str, 2)
+            end
+
+            local _, canonical_val = M.validate_field_value(k, field_spec, v)
+
+            if not game or not game.state or not game.state.definitions then
+                error("DefinitionStateError: game.state.definitions is not available", 2)
+            end
+
+            if game.state.definitions[def_id] == nil then
+                game.state.definitions[def_id] = {}
+            end
+
+            game.state.definitions[def_id][k] = canonical_val
+        end,
+
+        __tostring = function(_)
+            return "DefinitionWrapper(" .. def_id .. ")"
+        end,
+    }
+
+    setmetatable(base_wrapper, mt)
+
+    local def = get_def_data()
+    local discriminator = def and (def.discriminator or (def.data and def.data.discriminator)) or kind
+    local dec = registered_def_decorators[discriminator] or registered_def_decorators[kind]
+    if dec then
+        local decorated = dec(base_wrapper)
+        if type(decorated) == "table" then
+            setmetatable(decorated, {
+                __index = base_wrapper,
+                __newindex = function(_, k, v)
+                    base_wrapper[k] = v
+                end,
+                __tostring = function(_)
+                    return "DecoratedDefinitionWrapper(" .. def_id .. ")"
+                end,
+            })
+            return decorated
+        end
+    end
+
+    return base_wrapper
 end
 
 return M

@@ -135,6 +135,25 @@ local function rewrite_references(val, path, repository_get)
         end
     end
 
+    if val.definitions ~= nil and type(val.definitions) == "table" then
+        local defs_to_rekey = {}
+        for def_id, _ in pairs(val.definitions) do
+            if type(def_id) == "string" then
+                local canonical_id, reason = M.resolve_definition_id(def_id, repository_get)
+                if not canonical_id then
+                    return false, reference_error("definition_id", def_id, reason, path .. ".definitions")
+                end
+                if canonical_id ~= def_id then
+                    defs_to_rekey[def_id] = canonical_id
+                end
+            end
+        end
+        for old_id, new_id in pairs(defs_to_rekey) do
+            val.definitions[new_id] = val.definitions[old_id]
+            val.definitions[old_id] = nil
+        end
+    end
+
     for k, v in pairs(val) do
         local ok, err = rewrite_references(v, path .. "." .. tostring(k), repository_get)
         if not ok then

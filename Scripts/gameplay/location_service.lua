@@ -21,18 +21,25 @@ function service.travel(target_location_id)
         }
     end
 
-    local world_instance = game and game.instances and game.instances.world and game.instances.world()
-    if not world_instance then
+    local player = game and game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player()
+    if not player then
         return {
             ok = false,
             error = {
-                code = "core:error.world.not_available",
+                code = "core:error.player.not_available",
                 params = {},
             },
         }
     end
 
-    local from_location_id = world_instance.current_location_id
+    local from_location_id = player.current_location_id
+    if from_location_id == nil and player.current_location ~= nil then
+        if type(player.current_location) == "table" and player.current_location.id then
+            from_location_id = player.current_location.id
+        else
+            from_location_id = player.current_location
+        end
+    end
 
     -- GEW-14: Enqueue location.leave fact before updating state
     if game and game.events and game.events.enqueue then
@@ -45,7 +52,11 @@ function service.travel(target_location_id)
         })
     end
 
-    world_instance.current_location_id = target_location_id
+    if player.current_location ~= nil or player.current_location_id == nil then
+        player.current_location = target_location_id
+    else
+        player.current_location_id = target_location_id
+    end
 
     -- GEW-14: Enqueue location.enter fact after updating state
     if game and game.events and game.events.enqueue then
@@ -93,7 +104,17 @@ local validator = {
             end
         end
 
-        local current_location_id = ctx.state and ctx.state.world and ctx.state.world.current_location_id
+        local current_location_id = nil
+        if ctx.state and ctx.state.meta and ctx.state.meta.player_actor_id and ctx.state.actors then
+            local p_state = ctx.state.actors[ctx.state.meta.player_actor_id]
+            if p_state then
+                current_location_id = p_state.current_location_id or p_state.current_location
+            end
+        end
+        if not current_location_id and ctx.state and ctx.state.world then
+            current_location_id = ctx.state.world.current_location_id
+        end
+
         if current_location_id == target_location_id then
             return false, {
                 code = "core:error.location.already_at_target",

@@ -39,6 +39,7 @@ return {
             world = { bad_ref = world },
             quests = {},
             mods = {},
+            definitions = {},
         }
         local ok = pcall(function()
             state_validator.validate_state_tree(bad_tree)

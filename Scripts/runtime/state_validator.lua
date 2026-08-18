@@ -12,12 +12,24 @@ local CANONICAL_SECTIONS = {
     "world",
     "quests",
     "mods",
+    "definitions",
 }
 
 M.canonical_sections = CANONICAL_SECTIONS
 
 local reference_fields = {}
+local registered_sections = {}
 local is_frozen = false
+
+function M.register_section(section_name)
+    if is_frozen then
+        error("StateSectionRegistryFrozen: cannot register state section after register phase", 2)
+    end
+    if type(section_name) ~= "string" or section_name == "" then
+        error("InvalidStateSection: section_name must be a non-empty string", 2)
+    end
+    registered_sections[section_name] = true
+end
 
 function M.register_reference_field(field_name, expected_kind)
     if is_frozen then
@@ -43,6 +55,13 @@ function M.freeze()
     is_frozen = true
 end
 
+function M.clear_for_test()
+    reference_fields = {}
+    registered_sections = {}
+    is_frozen = false
+    M.definition_reference_fields = reference_fields
+end
+
 function M.is_frozen()
     return is_frozen
 end
@@ -58,7 +77,14 @@ end
 M.definition_reference_fields = reference_fields
 
 function M.get_canonical_sections()
-    return CANONICAL_SECTIONS
+    local sections = {}
+    for _, sec in ipairs(CANONICAL_SECTIONS) do
+        sections[#sections + 1] = sec
+    end
+    for sec, _ in pairs(registered_sections) do
+        sections[#sections + 1] = sec
+    end
+    return sections
 end
 
 function M.is_canonical_section(name)
@@ -69,6 +95,9 @@ function M.is_canonical_section(name)
         if sec == name then
             return true
         end
+    end
+    if registered_sections[name] then
+        return true
     end
     return false
 end
@@ -330,6 +359,30 @@ function M.validate_state_tree(tree)
         if item.owner_id:match("^actor@[1-9][0-9]*$") then
             if tree.actors[item.owner_id] == nil then
                 error("LuaStateValidationInvalid: dangling owner_id '" .. item.owner_id .. "' in state.item_instances." .. tostring(k) .. " (actor not found in state.actors)")
+            end
+        end
+    end
+
+    -- Validate definitions section (DLA-14)
+    if tree.definitions ~= nil then
+        if type(tree.definitions) ~= "table" then
+            error("LuaStateValidationInvalid: section state.definitions must be a table")
+        end
+        for def_id, def_state in pairs(tree.definitions) do
+            if type(def_id) ~= "string" then
+                error("LuaStateValidationInvalid: key in state.definitions must be a string definition_id")
+            end
+            local ns, kind, rest = def_id:match("^([a-z][a-z0-9_]*):([a-z][a-z0-9_]*)%.([a-z0-9_.]+)$")
+            if not ns or not kind or not rest then
+                error("LuaStateValidationInvalid: invalid definition_id grammar '" .. def_id .. "' in state.definitions")
+            end
+            if game and game.repository and game.repository.exists then
+                if not game.repository.exists(def_id) then
+                    error("LuaStateValidationInvalid: definition_id '" .. def_id .. "' in state.definitions not found in pinned repository")
+                end
+            end
+            if type(def_state) ~= "table" then
+                error("LuaStateValidationInvalid: definition state at state.definitions['" .. def_id .. "'] must be a table")
             end
         end
     end

@@ -55,8 +55,10 @@ return {
         local after_world = game.instances.world()
         assert(after_world.current_location_id == target_loc,
             "world.current_location_id must be updated to target location: " .. target_loc)
-        assert(game.state.world.current_location_id == target_loc,
-            "state.world.current_location_id must be updated to target location")
+        assert(game.instances.actors.player().current_location_id == target_loc,
+            "player.current_location_id must be updated to target location")
+        assert(game.state.world.current_location_id == nil,
+            "state.world.current_location_id must not exist in state.world")
 
         -- Restore location to market
         dispatcher.dispatch({

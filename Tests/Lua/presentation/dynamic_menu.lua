@@ -42,7 +42,7 @@ return {
         mutation_window.execute_in_window(function()
             local player = ensure_player(20, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.tavern"
+            player.current_location_id = "rh:location.city.tavern"
 
             screens.take_pending()
             assert(screens.take_pending() == nil, "no screen must be pending before the action")
@@ -74,9 +74,9 @@ return {
         event_bus.clear_published_events()
 
         mutation_window.execute_in_window(function()
-            ensure_player(4, 50)
+            local player = ensure_player(4, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.tavern"
+            player.current_location_id = "rh:location.city.tavern"
 
             screens.take_pending()
 
@@ -169,9 +169,9 @@ return {
 
     screen_updates_on_travel_event = function()
         mutation_window.execute_in_window(function()
-            ensure_player(50, 50)
+            local player = ensure_player(50, 50)
             local world = game.instances.world()
-            world.current_location_id = "rh:location.city.market"
+            player.current_location_id = "rh:location.city.market"
 
             -- Publish market screen
             location_screen.build_and_publish_screen()

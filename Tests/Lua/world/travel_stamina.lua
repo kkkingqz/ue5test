@@ -32,7 +32,7 @@ return {
             mutation_window.execute_in_window(function()
                 local player = ensure_player(20, 50)
                 local world = game.instances.world()
-                world.current_location_id = "rh:location.city.market"
+                player.current_location_id = "rh:location.city.market"
 
                 local received_events = {}
                 game.events.subscribers.register(
@@ -72,7 +72,7 @@ return {
             mutation_window.execute_in_window(function()
                 local player = ensure_player(4, 50)
                 local world = game.instances.world()
-                world.current_location_id = "rh:location.city.market"
+                player.current_location_id = "rh:location.city.market"
 
                 local seq = game.runtime.dispatch_command({
                     command_id = "core:command.location.travel",
@@ -105,7 +105,7 @@ return {
             mutation_window.execute_in_window(function()
                 local player = ensure_player(20, 50)
                 local world = game.instances.world()
-                world.current_location_id = "rh:location.city.market"
+                player.current_location_id = "rh:location.city.market"
 
                 -- market is connected only to tavern, not directly to gate
                 local seq = game.runtime.dispatch_command({
@@ -139,7 +139,7 @@ return {
             mutation_window.execute_in_window(function()
                 local player = ensure_player(20, 50)
                 local world = game.instances.world()
-                world.current_location_id = "rh:location.city.market"
+                player.current_location_id = "rh:location.city.market"
 
                 local seq = game.runtime.dispatch_command({
                     command_id = "core:command.location.travel",

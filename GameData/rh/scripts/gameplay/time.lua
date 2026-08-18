@@ -45,7 +45,11 @@ local time_validator = {
             return true
         end
 
-        local current_loc = ctx.state and ctx.state.world and ctx.state.world.current_location_id
+        local player_id = ctx.state and ctx.state.meta and ctx.state.meta.player_actor_id
+        local player_state = player_id and ctx.state.actors and ctx.state.actors[player_id]
+        local current_loc = player_state and (player_state.current_location_id or player_state.current_location)
+            or (ctx.state and ctx.state.world and ctx.state.world.current_location_id)
+
         if current_loc ~= "rh:location.city.tavern" then
             return false, {
                 code = "rh:error.location.wrong_location",
