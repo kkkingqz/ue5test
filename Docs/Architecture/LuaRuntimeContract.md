@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0025-lua-module-replacement-and-export-freezing.md
   - ../ADR/0027-designer-lua-authoring-layer.md
+  - ../ADR/0028-simplified-authoring-surface.md
 ---
 
 # Lua Runtime Contract
@@ -96,7 +97,7 @@ Gameplay группируется по feature (`gameplay/inventory/commands.lua
 
 ## Global environment
 
-Все modules используют одну VM и общий runtime `_G`, но module source не создаёт globals. Module хранит private values в lexical locals и возвращает export table.
+Все modules используют одну VM и общий runtime `_G`, но module source не создаёт globals. Standard modules хранят private values в lexical locals и возвращают export table.
 
 Runtime-owned globals: `game`, safe standard libraries и loader functions. Extension data/functions публикуются только под:
 
@@ -104,7 +105,18 @@ Runtime-owned globals: `game`, safe standard libraries и loader functions. Exte
 game.mods[mod_id]
 ```
 
-Например `game.mods.weather_mod`. Замена runtime-owned field — `GameApiFieldConflict`. Per-module environments и capability sandbox в v1 отсутствуют.
+Например `game.mods.weather_mod`. Замена runtime-owned field — `GameApiFieldConflict`.
+
+### Authoring modules and `_ENV` (ADR-0028)
+
+Файлы подкаталога `scripts/authoring/` пакетов (или модули с флагом `authoring: true`) выделяются в класс **authoring-скриптов** ([ADR-0028](../ADR/0028-simplified-authoring-surface.md)):
+- Загрузчик создаёт дескриптор модуля `mod = authoring.gameplay(package_id)` до исполнения файла и устанавливает лексическое окружение `_ENV` с предварительно связанными именами (`commands`, `player`, `world`, `def`, `location`, `actor`, `actors`, `fail`, `emit`, `on`, `text`, `button`, `action`, `show_screen`).
+- `_ENV` связан через `__index` с `_G` для доступа к стандартным функциям (`pairs`, `ipairs`, `type`, `assert`, `math`, `string`, `table`, `error`, `pcall`).
+- Запись в глобальные переменные внутри authoring-скрипта запрещена: попытка присваивания в `_ENV` завершается ошибкой `AuthoringGlobalWriteDisallowed`.
+- Директива `return M` не требуется: возвращаемое значение чанка игнорируется, экспортной таблицей становится созданный загрузчиком дескриптор `mod`.
+- Обработчики команд поддерживают неявный успех: `return nil` расценивается как `{ ok = true }`, `return val` — как `{ ok = true, value = val }`. Отказом считается исключительно объект, возвращённый функцией `fail(...)`.
+
+Окружение authoring-модулей не является security sandbox и предназначено для синтаксической чистоты правил игры. Модули программиста (`scripts/runtime/`, `scripts/services/`) продолжают использовать стандартное окружение и `require`.
 
 ## Stable `game` façade
 

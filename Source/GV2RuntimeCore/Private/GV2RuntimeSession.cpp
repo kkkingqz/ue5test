@@ -40,6 +40,7 @@ struct FModuleProvider
     std::string SourceName;
     std::vector<std::string> DirectDependencies;
     bool bReplaceable = false;
+    bool bAuthoring = false;
 };
 
 struct FModuleChain
@@ -859,6 +860,25 @@ struct FRuntimeSession::FImpl
                 }
                 lua_pop(State, 1);
 
+                bool bAuthoring = false;
+                lua_getfield(State, SpecTableIndex, "authoring");
+                if (!lua_isnil(State, -1))
+                {
+                    if (!lua_isboolean(State, -1))
+                    {
+                        OutFault = {
+                            "LuaModuleManifestInvalid",
+                            "Module descriptor 'authoring' field must be a boolean: " + ModuleId};
+                        return false;
+                    }
+                    bAuthoring = lua_toboolean(State, -1) != 0;
+                }
+                else if (PackageId != "core" && RelativeSource.rfind("authoring/", 0) == 0)
+                {
+                    bAuthoring = true;
+                }
+                lua_pop(State, 1);
+
                 DeclaredSourceNames.insert(SourceName);
 
                 auto ExistingChainIt = ChainsById.find(ModuleId);
@@ -873,7 +893,8 @@ struct FRuntimeSession::FImpl
                         PackageId,
                         SourceName,
                         std::move(Dependencies),
-                        bReplaceable
+                        bReplaceable,
+                        bAuthoring
                     });
                 }
                 else
@@ -904,7 +925,8 @@ struct FRuntimeSession::FImpl
                         PackageId,
                         SourceName,
                         std::move(Dependencies),
-                        bReplaceable
+                        bReplaceable,
+                        bAuthoring
                     });
                     ChainsById.emplace(ModuleId, std::move(NewChain));
                     DeclaredModuleOrder.push_back(ModuleId);
@@ -1097,16 +1119,66 @@ struct FRuntimeSession::FImpl
                 OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
                 return false;
             }
-            if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+            const int ChunkIndex = lua_gettop(State);
+
+            if (Provider.bAuthoring)
             {
-                ReadLuaError(State, "LuaModuleLoadError", "Lua module failed to initialize.", OutFault);
-                OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
-                return false;
+                // Obtain core:module.authoring.context from LoadedModules
+                lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+                lua_getfield(State, -1, "core:module.authoring.context");
+                if (!lua_istable(State, -1))
+                {
+                    OutFault = {"LuaAuthoringContextMissing", "core:module.authoring.context must be loaded before authoring modules: " + Spec.ModuleId};
+                    return false;
+                }
+                lua_getfield(State, -1, "create_authoring_environment");
+                if (!lua_isfunction(State, -1))
+                {
+                    OutFault = {"LuaAuthoringContextInvalid", "create_authoring_environment function missing on core:module.authoring.context"};
+                    return false;
+                }
+                PushString(State, Provider.PackageId);
+                if (lua_pcall(State, 1, 2, ErrorHandler) != LUA_OK)
+                {
+                    ReadLuaError(State, "LuaAuthoringEnvironmentError", "Failed to create authoring environment.", OutFault);
+                    OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
+                    return false;
+                }
+                // Stack has: [..., ErrorHandler, Chunk, LoadedModules, context_mod, mod, env]
+                lua_setupvalue(State, ChunkIndex, 1);
+                // Stack has: [..., ErrorHandler, Chunk, LoadedModules, context_mod, mod]
+                lua_remove(State, ChunkIndex + 2); // remove context_mod
+                lua_remove(State, ChunkIndex + 1); // remove LoadedModules
+                // Stack has: [..., ErrorHandler, Chunk, mod]
+                const int ModIndex = ChunkIndex + 1;
+
+                lua_pushvalue(State, ChunkIndex);
+                if (lua_pcall(State, 0, LUA_MULTRET, ErrorHandler) != LUA_OK)
+                {
+                    ReadLuaError(State, "LuaModuleLoadError", "Authoring module failed to execute.", OutFault);
+                    OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
+                    return false;
+                }
+                while (lua_gettop(State) > ModIndex)
+                {
+                    lua_pop(State, 1);
+                }
+                lua_remove(State, ChunkIndex);
+                // Stack has: [..., ErrorHandler, mod]
             }
-            if (!lua_istable(State, -1))
+            else
             {
-                OutFault = {"LuaModuleExportInvalid", "Lua module must return an export table: " + Spec.ModuleId};
-                return false;
+                if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+                {
+                    ReadLuaError(State, "LuaModuleLoadError", "Lua module failed to initialize.", OutFault);
+                    OutFault.Message = Spec.ModuleId + ": " + OutFault.Message;
+                    return false;
+                }
+                if (!lua_istable(State, -1))
+                {
+                    OutFault = {"LuaModuleExportInvalid", "Lua module must return an export table: " + Spec.ModuleId};
+                    return false;
+                }
             }
 
             // PKG-11: Freeze export table using an immutable proxy table

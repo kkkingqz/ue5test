@@ -39,6 +39,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0025](0025-lua-module-replacement-and-export-freezing.md) | accepted | Замещение модулей, запрет мутации таблиц экспорта и запечатанность по умолчанию |
 | [0026](0026-core-and-gameplay-ownership.md) | accepted | `core` владеет механизмами, пакет — семантикой; kind в реестре не означает владения схемой |
 | [0027](0027-designer-lua-authoring-layer.md) | accepted | Designer Lua Authoring: дескрипторы команд, fail() с write_revision, изоляция состояния, единый portable_value |
+| [0028](0028-simplified-authoring-surface.md) | accepted | Simplified Authoring Surface: per-module _ENV для authoring, неявный успех команд, источник презентации |
 
 ## Template
 

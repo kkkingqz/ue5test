@@ -23,6 +23,11 @@ local M = {
 }
 
 local active_command_context = nil
+local FAIL_SENTINEL = setmetatable({}, { __tostring = function() return "AuthoringFailRefusal" end })
+
+local function is_fail_result(val)
+    return type(val) == "table" and val.__gv2_fail == FAIL_SENTINEL
+end
 
 local function canonicalize_error_id(package_id, key)
     if stable_id.is_kind(key, "error") then
@@ -217,6 +222,7 @@ function M.gameplay(package_id)
                 code = canonical_code,
                 params = canonical_params,
             },
+            __gv2_fail = FAIL_SENTINEL,
         }
     end
 
@@ -309,7 +315,22 @@ function M.gameplay(package_id)
                     error(res, 0)
                 end
 
-                return res
+                -- SAS-04: Implicit Command Success & Return Normalization
+                if res == nil then
+                    return { ok = true }
+                elseif is_fail_result(res) then
+                    return {
+                        ok = false,
+                        error = res.error,
+                    }
+                elseif type(res) == "table" and res.ok == true and res.value ~= nil and res.__gv2_fail == nil then
+                    return res
+                else
+                    return {
+                        ok = true,
+                        value = res,
+                    }
+                end
             end
 
             if game and game.commands and game.commands.handlers and game.commands.handlers.register then
@@ -338,6 +359,35 @@ function M.gameplay(package_id)
     end
 
     return mod
+end
+
+function M.create_authoring_environment(package_id)
+    local mod = M.gameplay(package_id)
+    local env = {
+        commands = mod.commands,
+        player = mod.player,
+        world = mod.world,
+        def = mod.def,
+        location = mod.location,
+        actor = mod.actor,
+        actors = mod.actors,
+        fail = mod.fail,
+        emit = mod.emit,
+        on = mod.on,
+        text = mod.text,
+        button = mod.button,
+        action = mod.action,
+        show_screen = mod.show_screen,
+    }
+
+    setmetatable(env, {
+        __index = _G,
+        __newindex = function(_, key, _)
+            error("AuthoringGlobalWriteDisallowed: cannot assign global variable '" .. tostring(key) .. "' in authoring module", 2)
+        end,
+    })
+
+    return mod, env
 end
 
 return M
