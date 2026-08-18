@@ -37,6 +37,8 @@ endif()
 set(GV2_CONTENT_CORE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/GV2ContentCore")
 
 add_library(gv2_content_core STATIC
+    "${GV2_CONTENT_CORE_DIR}/Private/AuthoringMetadata.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/AuthoringMetadataConformance.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/BuildResult.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/BuildResultConformance.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/CanonicalHash.cpp"

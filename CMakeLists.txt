@@ -64,4 +64,17 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_boundary.py"
             "--self-test"
     )
+    add_test(
+        NAME authoring_metadata_gate_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_authoring_metadata.py"
+    )
+    add_test(
+        NAME authoring_metadata_gate_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_authoring_metadata.py"
+            "--self-test"
+    )
 endif()

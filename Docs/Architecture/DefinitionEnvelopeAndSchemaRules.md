@@ -1,7 +1,7 @@
 ---
 title: Definition Envelope and Schema Rules
 status: normative
-version: 2.5
+version: 2.6
 updated: 2026-08-18
 depends_on:
   - StableIDSpecification.md
@@ -15,11 +15,11 @@ decisions:
 
 # Definition Envelope and Schema Rules
 
-> **Владеет:** конвертом файла определений, устройством схем, типами полей, значениями по умолчанию, расширениями и лимитами парсинга.
+> **Владеет:** конвертом файла определений, устройством схем, типами полей, значениями по умолчанию, расширениями, метаданными авторинга и лимитами парсинга.
 > **Не владеет:** разрешением провайдеров и публикацией снимка ([GameDataRepository](GameDataRepositoryContract.md)).
 > **Инварианты:** [INV-011](Invariants.md)
-> **Реализация:** `Source/GV2ContentCore/Private/Json5Parser.cpp`, `SchemaRegistry.cpp`, `FieldValidation.cpp`, `DefinitionEnvelope.cpp`.
-> **Проверки:** `RunJson5ParserConformance`, `RunSchemaRegistryConformance`, `RunScalarValidationConformance`.
+> **Реализация:** `Source/GV2ContentCore/Private/Json5Parser.cpp`, `SchemaRegistry.cpp`, `FieldValidation.cpp`, `DefinitionEnvelope.cpp`, `AuthoringMetadata.cpp`.
+> **Проверки:** `RunJson5ParserConformance`, `RunSchemaRegistryConformance`, `RunScalarValidationConformance`, `RunAuthoringMetadataConformance`.
 
 Документ задаёт единую модель UTF-8 JSON5 definitions и declarative schemas. Runtime, editor, commandlet и CI используют одинаковые правила validation.
 
@@ -409,6 +409,59 @@ M3/M4 фиксируют следующие definition kinds:
 
 Canonical schema resources и representative definitions находятся в `Tests/Fixtures/PortableContentCore/valid/core`. `GV2ContentCore::Testing::MakeRepresentativeCorePackageDescriptor()` является общей UE/headless привязкой этих fixture sources. Representative package содержит locations, screens, items, texts, resources и actors. `quest`, trigger/effect DSL и per-kind native managers отсутствуют.
 
+## Authoring UI metadata (`schemas/<name>.ui.json5`)
+
+Схемы определений могут сопровождаться декларативным файлом метаданных авторинга `schemas/<name>.ui.json5` (CEP-08..12, [ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md)), расположенным рядом с соответствующим файлом схемы (`schemas/<name>.schema.json5` или `schemas/<name>.json5`).
+
+### Формат и модель данных
+
+```json5
+// schemas/item_v1.ui.json5
+{
+  schema_id: "core:schema.definition.item.v1",
+  fields: {
+    label_text_id: {
+      label: "Label Text ID",
+      description: "Localized text entry for the item name",
+      category: "General",
+      order: 1,
+      widget_hint: "text_id",
+    },
+    price: {
+      label: "Price in Gold",
+      description: "Base item cost in standard coins",
+      category: "Economy",
+      order: 2,
+      widget_hint: "integer",
+    },
+    icon_resource_id: {
+      label: "Icon Texture",
+      description: "2D texture asset for item display",
+      category: "Visuals",
+      order: 3,
+      widget_hint: "resource_ref",
+    },
+  },
+}
+```
+
+- **Корень документа**: допускает свойства `fields` (обязательный объект), `schema_id` (string), `schema_version` (integer), `definition_type` (string). Любые иные свойства корня отклоняются диагностикой `core:diagnostic.schema.ui_metadata.unknown_field`.
+- **Поля `fields`**: каждое свойство обязано ссылаться на имя существующего поля в корневом объекте схемы (`root.fields`). Ссылки на несуществующие/устаревшие поля отклоняются ошибкой `core:diagnostic.schema.ui_metadata.unresolved_field`.
+- **Свойства метаданных поля**:
+  - `label` (string) — человекочитаемое имя поля в инспекторе редактора;
+  - `description` (string) — подсказка / описание назначения поля;
+  - `category` (string) — категория / секция группировки в форме;
+  - `order` (integer) — порядок отображения полей в форме (по возрастанию; поля без `order` следуют в порядке объявления в схеме);
+  - `widget_hint` (string) — подсказка типу инспектора/виджета (например `text`, `integer`, `number`, `text_id`, `resource_ref`).
+- Любые посторонние свойства внутри описания поля отклоняются диагностикой `core:diagnostic.schema.ui_metadata.unknown_field`. Несоответствие типов отклоняется диагностикой `core:diagnostic.schema.ui_metadata.invalid_type`.
+
+### Инварианты изоляции (CEP-09)
+
+1. **Изоляция от runtime и репозитория**: файлы `*.ui.json5` служат исключительно для UI-авторинга и инструментов (CLI/Editor).
+2. **Исключение из компиляции**: discovery пакета (`PackageDiscovery.cpp`) явно пропускает `*.ui.json5` при сканировании каталога `schemas/`.
+3. **Хэш контента**: добавление, изменение или удаление `*.ui.json5` гарантированно не меняет `content_hash` пакета и снимка репозитория.
+4. **Валидация определений**: синтаксис и валидация определений (`definitions/*.json5`) не зависят от наличия или корректности `*.ui.json5`. Ошибки в `*.ui.json5` проверяются специализированным CI-гейтом `validate_authoring_metadata.py` и `gv2-content --self-test`, не блокируя загрузку игрового состояния.
+
 ## Conformance
 
-Реализованный shared UE/headless conformance покрывает полный M3/M4 path: package-local ownership, full/broken override, redirect/tombstone resolution, canonical reference rewrite, semantic validation, provenance, minimal indexes, deterministic hash и immutable read handle. Host publication/restart semantics и Lua read adapters относятся к следующим milestones.
+Реализованный shared UE/headless conformance покрывает полный M3/M4 path: package-local ownership, full/broken override, redirect/tombstone resolution, canonical reference rewrite, semantic validation, authoring metadata parsing/validation, provenance, minimal indexes, deterministic hash и immutable read handle. Host publication/restart semantics и Lua read adapters относятся к следующим milestones.

@@ -10,6 +10,7 @@
 #include "GV2ContentCore/RepositoryBuilder.h"
 #include "GV2ContentCore/SchemaRegistry.h"
 #include "GV2ContentCore/ScalarValidation.h"
+#include "GV2ContentCore/Testing/AuthoringMetadataConformance.h"
 #include "GV2ContentCore/Testing/BuildResultConformance.h"
 #include "GV2ContentCore/Testing/ContainerValidationConformance.h"
 #include "GV2ContentCore/Testing/DefinitionEnvelopeConformance.h"
@@ -884,6 +885,11 @@ int Run(
     if (const std::string Error = GV2ContentCore::Testing::RunPoParserConformance(); !Error.empty())
     {
         std::cerr << "pcc_po_parser_self_test_failed: " << Error << "\n";
+        return 1;
+    }
+    if (const std::string Error = GV2ContentCore::Testing::RunAuthoringMetadataConformance(); !Error.empty())
+    {
+        std::cerr << "pcc_authoring_metadata_self_test_failed: " << Error << "\n";
         return 1;
     }
     if (!RunSharedJson5FixtureConformance())

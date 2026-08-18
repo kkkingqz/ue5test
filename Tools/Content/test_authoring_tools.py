@@ -972,6 +972,86 @@ def main():
         err_doc = json.loads(res_frozen.stdout)
         assert err_doc["code"] == "package_frozen"
 
+        # 40. Authoring metadata (schemas/<name>.ui.json5) - CEP-08..12
+        print("[40] Authoring UI metadata (describe, isolation, field sorting, and validation)...")
+        meta_pkg = os.path.join(tmpdir, "meta_pkg")
+        shutil.copytree(real_core_pkg, meta_pkg)
+
+        # 40a. describe on schema without .ui.json5 produces "ui": {}
+        res_desc_no_ui = run_cmd([gv2_content, "describe", meta_pkg, "screen", "--format=json"])
+        assert res_desc_no_ui.returncode == 0
+        desc_doc = json.loads(res_desc_no_ui.stdout)
+        assert desc_doc["status"] == "ok"
+        assert "title_text_id" in desc_doc["fields"]
+        assert desc_doc["fields"]["title_text_id"]["ui"] == {}
+
+        # 40b. Record initial package hash
+        res_hash_before = run_cmd([gv2_content, "hash", meta_pkg])
+        assert res_hash_before.returncode == 0
+        hash_before = res_hash_before.stdout.strip()
+
+        # 40c. Add schemas/screen_v1.ui.json5 with custom order and labels
+        screen_ui_path = os.path.join(meta_pkg, "schemas", "screen_v1.ui.json5")
+        with open(screen_ui_path, "w", encoding="utf-8") as f:
+            f.write(
+                '{\n'
+                '  schema_id: "core:schema.definition.screen.v1",\n'
+                '  fields: {\n'
+                '    title_text_id: {\n'
+                '      label: "Screen Title Text",\n'
+                '      description: "Localized title string for screen header",\n'
+                '      category: "Presentation",\n'
+                '      order: 10,\n'
+                '      widget_hint: "text_id",\n'
+                '    },\n'
+                '  },\n'
+                '}\n'
+            )
+
+        # 40d. Isolation: content_hash MUST NOT change after adding .ui.json5
+        res_hash_after = run_cmd([gv2_content, "hash", meta_pkg])
+        assert res_hash_after.returncode == 0
+        hash_after = res_hash_after.stdout.strip()
+        assert hash_after == hash_before, f"Content hash changed unexpectedly: {hash_before} vs {hash_after}"
+
+        # 40e. describe now reports full UI metadata
+        res_desc_ui = run_cmd([gv2_content, "describe", meta_pkg, "screen", "--format=json"])
+        assert res_desc_ui.returncode == 0
+        desc_doc = json.loads(res_desc_ui.stdout)
+        field_ui = desc_doc["fields"]["title_text_id"]["ui"]
+        assert field_ui["label"] == "Screen Title Text"
+        assert field_ui["description"] == "Localized title string for screen header"
+        assert field_ui["category"] == "Presentation"
+        assert field_ui["order"] == 10
+        assert field_ui["widget_hint"] == "text_id"
+
+        # 40f. describe in text format contains UI metadata annotations
+        res_desc_text = run_cmd([gv2_content, "describe", meta_pkg, "screen"])
+        assert res_desc_text.returncode == 0
+        assert 'label="Screen Title Text"' in res_desc_text.stdout
+        assert 'category="Presentation"' in res_desc_text.stdout
+        assert 'order=10' in res_desc_text.stdout
+        assert 'widget_hint="text_id"' in res_desc_text.stdout
+
+        # 40g. validate_authoring_metadata tool validates meta_pkg
+        val_meta_py = os.path.join(os.path.dirname(__file__), "validate_authoring_metadata.py")
+        res_val_meta = run_cmd([sys.executable, val_meta_py, meta_pkg])
+        assert res_val_meta.returncode == 0
+
+        # 40h. Stale field in UI metadata causes validation failure
+        with open(screen_ui_path, "w", encoding="utf-8") as f:
+            f.write(
+                '{\n'
+                '  fields: {\n'
+                '    title_text_id: { label: "Screen Title" },\n'
+                '    stale_deleted_field: { label: "Stale" },\n'
+                '  },\n'
+                '}\n'
+            )
+        res_stale = run_cmd([sys.executable, val_meta_py, meta_pkg], check=False)
+        assert res_stale.returncode != 0
+        assert "stale_deleted_field" in res_stale.stderr
+
     print("[*] All authoring tools tests passed successfully!")
 
 if __name__ == "__main__":

@@ -204,11 +204,14 @@ Command commit → состояние обновлено → презентац�
 
 Связь «действие интерфейса → Action Registry → Command» сохраняется: декларативность экрана не отменяет реестр действий.
 
-### 11.1. Этап заблокирован
+### 11.1. Статус предусловий
 
-Схемные изменения для экранов упираются в те же три предусловия, что и [Content Editor Plugin](ContentEditorPluginProposal.md), раздел 40: правило версионирования схем, правка поля в `Json5AstRewriter`, authoring-метаданные схем.
+Все три предусловия схемных изменений ([Content Editor Plugin](ContentEditorPluginProposal.md), раздел 40) выполнены в рамках плана `Docs/Plans/ContentEditorPrerequisites/` (Milestones 1–3):
+- Правило версионирования схем ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md));
+- Точечная правка и удаление полей в `Json5AstRewriter` (`gv2-content set` / `delete`);
+- Authoring UI-метаданные схем (`schemas/<name>.ui.json5`).
 
-Раньше них декларативные экраны начинать нельзя.
+Препятствий для последующего перехода к декларативным экранам на уровне инфраструктуры контента больше нет.
 
 # Part B. Переработка RH
 

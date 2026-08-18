@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 2.6
-updated: 2026-08-17
+version: 2.7
+updated: 2026-08-18
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -16,6 +16,7 @@ decisions:
   - ../ADR/0024-lua-spec-runner.md
   - ../ADR/0026-core-and-gameplay-ownership.md
   - ../ADR/0028-simplified-authoring-surface.md
+  - ../ADR/0029-content-authoring-and-schema-evolution.md
 ---
 
 # Build and Tooling Contract
@@ -24,7 +25,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `gv2_content_*`.
+> **Проверки:** `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -299,6 +300,7 @@ GV2_PORTABLE_API std::string Run<Area>Conformance();
 | `RunRunDigestConformance()` | `FRunDigest` canonical SHA-256 computation, sensitivity to manifest/result/state_hash, determinism, round-trip |
 | `RunRunReplayConformance()` | `ReplayRunManifest` выполнение команд, отказ при несовпадении Lua release или repository hash |
 | `RunLuaSpecRunnerConformance()` | Механизм `FRuntimeSession::RunLuaSpec` (TAS-02): пропуск непровалившихся кейсов, детерминированный порядок, `require()` уже загруженного модуля, отказ на невалидном формате спеки. Проверяет C++-механизм, не Lua-правило (ADR-0024) |
+| `RunAuthoringMetadataConformance()` | Метаданные авторинга схем `*.ui.json5` (CEP-08): парсинг, резолв полей схемы, order, неизвестные свойства и проверка типов |
 
 ## Integration gate
 

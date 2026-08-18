@@ -11,6 +11,7 @@
 #include "Commands/ValidateCommand.h"
 #include "Support/CliOutput.h"
 #include "Support/Json5AstRewriterConformance.h"
+#include "GV2ContentCore/Testing/AuthoringMetadataConformance.h"
 
 #include <iostream>
 #include <string>
@@ -40,6 +41,12 @@ int main(int argc, char** argv)
         if (!Error.empty())
         {
             std::cerr << "json5_ast_rewriter_conformance_failed: " << Error << "\n";
+            return static_cast<int>(EExitCode::ToolFailure);
+        }
+        const std::string MetaError = GV2ContentCore::Testing::RunAuthoringMetadataConformance();
+        if (!MetaError.empty())
+        {
+            std::cerr << "authoring_metadata_conformance_failed: " << MetaError << "\n";
             return static_cast<int>(EExitCode::ToolFailure);
         }
         std::cout << "gv2-content self-test passed.\n";

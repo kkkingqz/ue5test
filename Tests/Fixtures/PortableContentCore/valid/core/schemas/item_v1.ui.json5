@@ -1,0 +1,26 @@
+// Authoring UI metadata for item_v1 schema
+{
+  fields: {
+    label_text_id: {
+      label: "Label Text ID",
+      description: "Localized text entry for the item name",
+      category: "General",
+      order: 1,
+      widget_hint: "text_id",
+    },
+    price: {
+      label: "Price in Gold",
+      description: "Base item cost in standard coins",
+      category: "Economy",
+      order: 2,
+      widget_hint: "integer",
+    },
+    icon_resource_id: {
+      label: "Icon Texture",
+      description: "2D texture asset for item display",
+      category: "Visuals",
+      order: 3,
+      widget_hint: "resource_ref",
+    },
+  },
+}

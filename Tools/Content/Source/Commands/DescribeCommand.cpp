@@ -1,6 +1,7 @@
 #include "Commands/DescribeCommand.h"
 #include "Support/CliOutput.h"
 #include "Support/PackageLoader.h"
+#include "GV2ContentCore/AuthoringMetadata.h"
 #include "GV2ContentCore/ExtensionSchema.h"
 #include "GV2ContentCore/FieldValidation.h"
 #include "GV2ContentCore/Json5Parser.h"
@@ -85,11 +86,78 @@ std::string FormatCompactSpecSummary(const GV2ContentCore::FCompiledFieldSpec& S
     return "unknown";
 }
 
+std::string GetUiMetadataRelativePath(const std::string& SchemaRelativeSource)
+{
+    std::string Path = SchemaRelativeSource;
+    if (Path.size() >= 13 && Path.compare(Path.size() - 13, 13, ".schema.json5") == 0)
+    {
+        return Path.substr(0, Path.size() - 13) + ".ui.json5";
+    }
+    if (Path.size() >= 6 && Path.compare(Path.size() - 6, 6, ".json5") == 0)
+    {
+        return Path.substr(0, Path.size() - 6) + ".ui.json5";
+    }
+    return Path + ".ui.json5";
+}
+
+struct FFieldDescribeEntry
+{
+    std::string Name;
+    bool bRequired = false;
+    const GV2ContentCore::FCompiledFieldSpec* Spec = nullptr;
+    const GV2ContentCore::FFieldUiMetadata* UiMeta = nullptr;
+    std::size_t OriginalIndex = 0;
+};
+
+void WriteFieldUiMetadataJson(std::ostream& Out, const GV2ContentCore::FFieldUiMetadata* UiMeta)
+{
+    Out << "\"ui\":{";
+    if (UiMeta != nullptr)
+    {
+        bool bFirst = true;
+        const auto Comma = [&]() {
+            if (!bFirst) Out << ',';
+            bFirst = false;
+        };
+        if (UiMeta->Label.has_value())
+        {
+            Comma();
+            Out << "\"label\":";
+            WriteJsonEscapedString(Out, *UiMeta->Label);
+        }
+        if (UiMeta->Description.has_value())
+        {
+            Comma();
+            Out << "\"description\":";
+            WriteJsonEscapedString(Out, *UiMeta->Description);
+        }
+        if (UiMeta->Category.has_value())
+        {
+            Comma();
+            Out << "\"category\":";
+            WriteJsonEscapedString(Out, *UiMeta->Category);
+        }
+        if (UiMeta->Order.has_value())
+        {
+            Comma();
+            Out << "\"order\":" << *UiMeta->Order;
+        }
+        if (UiMeta->WidgetHint.has_value())
+        {
+            Comma();
+            Out << "\"widget_hint\":";
+            WriteJsonEscapedString(Out, *UiMeta->WidgetHint);
+        }
+    }
+    Out << "}";
+}
+
 void FormatFieldDetailsText(
     std::ostream& Out,
     const std::string& FieldName,
     bool bRequired,
     const GV2ContentCore::FCompiledFieldSpec& Spec,
+    const GV2ContentCore::FFieldUiMetadata* UiMeta,
     int IndentLevel)
 {
     std::string Indent(IndentLevel * 2, ' ');
@@ -208,6 +276,14 @@ void FormatFieldDetailsText(
         Constraints.push_back("write_policy=plain");
     }
 
+    if (UiMeta != nullptr)
+    {
+        if (UiMeta->Label.has_value()) Constraints.push_back("label=\"" + *UiMeta->Label + "\"");
+        if (UiMeta->Category.has_value()) Constraints.push_back("category=\"" + *UiMeta->Category + "\"");
+        if (UiMeta->Order.has_value()) Constraints.push_back("order=" + std::to_string(*UiMeta->Order));
+        if (UiMeta->WidgetHint.has_value()) Constraints.push_back("widget_hint=\"" + *UiMeta->WidgetHint + "\"");
+    }
+
     Out << KindName << " (" << (bRequired ? "required" : "optional");
     if (Spec.bNullable) Out << ", nullable";
     for (const auto& C : Constraints)
@@ -222,7 +298,7 @@ void FormatFieldDetailsText(
         {
             if (ChildField.Spec != nullptr)
             {
-                FormatFieldDetailsText(Out, ChildField.Name, ChildField.bRequired, *ChildField.Spec, IndentLevel + 1);
+                FormatFieldDetailsText(Out, ChildField.Name, ChildField.bRequired, *ChildField.Spec, nullptr, IndentLevel + 1);
             }
         }
     }
@@ -602,6 +678,39 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
 
     const GV2ContentCore::FSchemaResource& Schema = *SchemaResourceOpt;
 
+    const std::string UiMetaPath = GetUiMetadataRelativePath(Schema.GetRelativeSource());
+    std::optional<std::string> UiSource = SchemaProvider.ReadSource(
+        SchemaDescriptor.GetPackageId(), UiMetaPath);
+
+    std::optional<GV2ContentCore::FSchemaUiMetadata> UiMetadata;
+    if (UiSource.has_value())
+    {
+        std::vector<GV2ContentCore::FDiagnostic> UiDiags;
+        UiMetadata = GV2ContentCore::ParseSchemaUiMetadata(
+            *UiSource, Schema, UiDiags, SchemaDescriptor.GetPackageId(), UiMetaPath);
+    }
+
+    std::vector<FFieldDescribeEntry> FieldEntries;
+    if (Schema.GetCompiledRootSpec() != nullptr && Schema.GetCompiledRootSpec()->Kind == GV2ContentCore::EFieldKind::Object)
+    {
+        const auto& Fields = Schema.GetCompiledRootSpec()->Fields;
+        for (std::size_t i = 0; i < Fields.size(); ++i)
+        {
+            const auto* UiField = UiMetadata ? UiMetadata->FindField(Fields[i].Name) : nullptr;
+            FieldEntries.push_back({ Fields[i].Name, Fields[i].bRequired, Fields[i].Spec.get(), UiField, i });
+        }
+    }
+
+    std::stable_sort(FieldEntries.begin(), FieldEntries.end(), [](const FFieldDescribeEntry& A, const FFieldDescribeEntry& B) {
+        const std::int64_t OrderA = (A.UiMeta && A.UiMeta->Order.has_value()) ? *A.UiMeta->Order : std::numeric_limits<std::int64_t>::max() / 2;
+        const std::int64_t OrderB = (B.UiMeta && B.UiMeta->Order.has_value()) ? *B.UiMeta->Order : std::numeric_limits<std::int64_t>::max() / 2;
+        if (OrderA != OrderB)
+        {
+            return OrderA < OrderB;
+        }
+        return A.OriginalIndex < B.OriginalIndex;
+    });
+
     // Any package in the set may extend a definition type, so extensions are collected across
     // the whole set, each read from its own owner.
     std::vector<GV2ContentCore::FExtensionSchemaResource> ExtensionSchemas;
@@ -673,31 +782,29 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
             WriteJsonEscapedString(std::cout, Schema.GetSemanticValidators()[i]);
         }
         std::cout << "],\"fields\":{";
-        if (Schema.GetCompiledRootSpec() != nullptr && Schema.GetCompiledRootSpec()->Kind == GV2ContentCore::EFieldKind::Object)
+        for (std::size_t i = 0; i < FieldEntries.size(); ++i)
         {
-            const auto& Fields = Schema.GetCompiledRootSpec()->Fields;
-            for (std::size_t i = 0; i < Fields.size(); ++i)
+            if (i != 0) std::cout << ",";
+            WriteJsonEscapedString(std::cout, FieldEntries[i].Name);
+            std::cout << ":{";
+            std::cout << "\"required\":" << (FieldEntries[i].bRequired ? "true" : "false");
+            if (FieldEntries[i].Spec != nullptr)
             {
-                if (i != 0) std::cout << ",";
-                WriteJsonEscapedString(std::cout, Fields[i].Name);
-                std::cout << ":{";
-                std::cout << "\"required\":" << (Fields[i].bRequired ? "true" : "false");
-                if (Fields[i].Spec != nullptr)
+                std::ostringstream SpecStream;
+                WriteFieldSpecJson(SpecStream, *FieldEntries[i].Spec);
+                std::string Inner = SpecStream.str();
+                if (Inner.size() >= 2 && Inner.front() == '{' && Inner.back() == '}')
                 {
-                    std::ostringstream SpecStream;
-                    WriteFieldSpecJson(SpecStream, *Fields[i].Spec);
-                    std::string Inner = SpecStream.str();
-                    if (Inner.size() >= 2 && Inner.front() == '{' && Inner.back() == '}')
+                    std::string Rest = Inner.substr(1, Inner.size() - 2);
+                    if (!Rest.empty())
                     {
-                        std::string Rest = Inner.substr(1, Inner.size() - 2);
-                        if (!Rest.empty())
-                        {
-                            std::cout << "," << Rest;
-                        }
+                        std::cout << "," << Rest;
                     }
                 }
-                std::cout << "}";
             }
+            std::cout << ",";
+            WriteFieldUiMetadataJson(std::cout, FieldEntries[i].UiMeta);
+            std::cout << "}";
         }
         std::cout << "},\"extensions\":[";
         for (std::size_t i = 0; i < ExtensionSchemas.size(); ++i)
@@ -765,14 +872,11 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
         }
 
         std::cout << "\nfields:\n";
-        if (Schema.GetCompiledRootSpec() != nullptr && Schema.GetCompiledRootSpec()->Kind == GV2ContentCore::EFieldKind::Object)
+        for (const auto& Field : FieldEntries)
         {
-            for (const auto& Field : Schema.GetCompiledRootSpec()->Fields)
+            if (Field.Spec != nullptr)
             {
-                if (Field.Spec != nullptr)
-                {
-                    FormatFieldDetailsText(std::cout, Field.Name, Field.bRequired, *Field.Spec, 1);
-                }
+                FormatFieldDetailsText(std::cout, Field.Name, Field.bRequired, *Field.Spec, Field.UiMeta, 1);
             }
         }
 
@@ -797,7 +901,7 @@ int RunDescribe(const std::vector<std::string>& Positional, EOutputFormat Format
                     {
                         if (Field.Spec != nullptr)
                         {
-                            FormatFieldDetailsText(std::cout, Field.Name, Field.bRequired, *Field.Spec, 3);
+                            FormatFieldDetailsText(std::cout, Field.Name, Field.bRequired, *Field.Spec, nullptr, 3);
                         }
                     }
                 }

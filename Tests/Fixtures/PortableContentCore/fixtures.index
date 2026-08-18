@@ -21,6 +21,7 @@ valid/core/definitions/texts.json5
 valid/core/package.json5
 valid/core/schemas/actor_v1.schema.json5
 valid/core/schemas/item_v1.schema.json5
+valid/core/schemas/item_v1.ui.json5
 valid/core/schemas/item_v2.schema.json5
 valid/core/schemas/location_v1.schema.json5
 valid/core/schemas/resource_v1.schema.json5

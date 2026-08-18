@@ -251,7 +251,7 @@ if(BUILD_TESTING)
     set_tests_properties(
         gv2_content_describe_item_text
         PROPERTIES
-            PASS_REGULAR_EXPRESSION "definition_type: item.*schema_id: rh:schema.definition.item.v1.*price: int64 \\(required, min=0\\)"
+            PASS_REGULAR_EXPRESSION "definition_type: item.*schema_id: rh:schema.definition.item.v1.*price: int64 \\(required, min=0.*\\)"
     )
     set_tests_properties(
         gv2_content_describe_item_json

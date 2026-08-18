@@ -316,7 +316,14 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
     std::vector<FExtensionSchemaBinding> ExtensionSchemaBindings;
     for (const auto& Path : ListSortedJson5Files(PackageRoot / "schemas"))
     {
-        const std::string RelativePath = "schemas/" + Path.filename().string();
+        const std::string Filename = Path.filename().string();
+        if (Filename.size() >= 9 && Filename.compare(Filename.size() - 9, 9, ".ui.json5") == 0)
+        {
+            // UI authoring metadata is intentionally isolated from package schema discovery (ADR-0029, CEP-09).
+            continue;
+        }
+
+        const std::string RelativePath = "schemas/" + Filename;
         const std::optional<std::string> Content = ReadFileToString(Path);
         if (!Content)
         {
