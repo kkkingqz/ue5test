@@ -1,61 +1,12 @@
+-- Base gameplay root of the core package.
+--
+-- Holds only the default handler of a command whose mechanism belongs to the
+-- engine. Game rules — cost, preconditions, rewards — belong to the gameplay
+-- package, which replaces this module and calls base.register (ADR-0026).
+
 local M = {
     id = "core:module.gameplay.root",
 }
-
-local function handle_actor_reward(request)
-    local args = request.args or {}
-    local actor_id = args.actor_id
-    if not actor_id or actor_id == "" then
-        if game and game.state and game.state.meta then
-            actor_id = game.state.meta.player_actor_id
-        end
-    end
-
-    if not actor_id or type(actor_id) ~= "string" then
-        return {
-            ok = false,
-            error = {
-                code = "core:error.actor.actor_not_specified",
-                message = "Actor ID must be specified or player actor must exist in state.meta",
-            },
-        }
-    end
-
-    local reg = game and game.instances and game.instances.actors
-    if not reg then
-        return {
-            ok = false,
-            error = {
-                code = "core:error.actor.registry_not_available",
-                message = "Actor registry is not available",
-            },
-        }
-    end
-
-    local actor = reg.get(actor_id)
-    if not actor then
-        return {
-            ok = false,
-            error = {
-                code = "core:error.actor.not_found",
-                message = "Actor with id '" .. tostring(actor_id) .. "' not found",
-            },
-        }
-    end
-
-    local amount = args.gold or args.amount
-    if amount == nil or type(amount) ~= "number" or math.type(amount) ~= "integer" or amount < 0 then
-        return {
-            ok = false,
-            error = {
-                code = "core:error.actor.invalid_reward_amount",
-                message = "Reward gold amount must be a non-negative integer",
-            },
-        }
-    end
-
-    return actor.add_gold(amount)
-end
 
 local function handle_location_travel(request)
     local location_service = game and game.services and game.services.get and game.services.get("core:service.location")
@@ -79,9 +30,6 @@ function M.register(_ctx)
         return
     end
 
-    if not (game.commands.handlers.exists and game.commands.handlers.exists("core:command.actor.reward")) then
-        game.commands.handlers.register("core:command.actor.reward", handle_actor_reward)
-    end
     if not (game.commands.handlers.exists and game.commands.handlers.exists("core:command.location.travel")) then
         game.commands.handlers.register("core:command.location.travel", handle_location_travel)
     end
