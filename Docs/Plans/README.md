@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 3.8
+version: 3.9
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,9 +24,7 @@ depends_on:
 
 ## Активные планы
 
-| План | Основание | Результат |
-|---|---|---|
-| [ContentEditorPrerequisites](ContentEditorPrerequisites/README.md) | [Content Editor Plugin](../Proposals/ContentEditorPluginProposal.md), раздел 40 | Классификация схемных изменений, точечная правка поля в файле, метаданные представления; разблокирует редактор и декларативные экраны |
+Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
@@ -49,3 +47,4 @@ depends_on:
 | [CoreBoundaryMigration](Archive/CoreBoundaryMigration/README.md) | 2026-08-17 | Демо в пакете `sample`, точка расширения обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до `discriminator`, гейт границы |
 | [DesignerAuthoringLayer](Archive/DesignerAuthoringLayer/README.md) | 2026-08-18 | Designer-facing Lua: `write_revision` и правило `fail()`, дескриптор команд, модель property, универсальная секция runtime-состояния, события и экраны; геймплей `rh` переписан |
 | [SimplifiedAuthoringSurface](Archive/SimplifiedAuthoringSurface/README.md) | 2026-08-18 | Окружение authoring-скрипта без `M.`, автообнаружение модулей и генерируемый манифест, предусловия и единый API актора, источник презентации; геймплей `rh` сведён к одному файлу правил |
+| [ContentEditorPrerequisites](Archive/ContentEditorPrerequisites/README.md) | 2026-08-18 | Классификация схемных изменений с сосуществованием версий, точечная правка поля и удаление записи в JSON5, метаданные представления в отдельном файле; редактор и декларативные экраны разблокированы |

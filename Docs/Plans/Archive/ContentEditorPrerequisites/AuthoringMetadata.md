@@ -1,16 +1,16 @@
 ---
 title: Authoring Metadata Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - README.md
-  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../../Architecture/DefinitionEnvelopeAndSchemaRules.md
 ---
 
 # M3 — Authoring Metadata
 
-> **Материализует:** [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md) в части данных для авторского интерфейса.
+> **Материализует:** [Definition Envelope and Schema Rules](../../../Architecture/DefinitionEnvelopeAndSchemaRules.md) в части данных для авторского интерфейса.
 > **Задачи:** CEP-08…12.
 > **Результат:** форма строится по объявленным подписям и порядку, а не по случайному порядку полей в файле схемы.
 
@@ -44,7 +44,7 @@ depends_on:
 
 - [x] **CEP-12 — Синхронизация документации**
   - Зависимости: CEP-02, CEP-07, CEP-11.
-  - Done: [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md) описывает метаданные и их изоляцию; [Build and Tooling](../../Architecture/BuildAndTooling.md) — новый гейт; в разделе 40 предложения о редакторе три пункта отмечены закрытыми со ссылкой на этот план; в [Simplified Authoring Surface](../../Proposals/SimplifiedAuthoringSurfaceProposal.md) снята пометка о блокировке декларативных экранов; [Implementation Status](../../Status/ImplementationStatus.md) обновлён.
+  - Done: [Definition Envelope and Schema Rules](../../../Architecture/DefinitionEnvelopeAndSchemaRules.md) описывает метаданные и их изоляцию; [Build and Tooling](../../../Architecture/BuildAndTooling.md) — новый гейт; в разделе 40 предложения о редакторе три пункта отмечены закрытыми со ссылкой на этот план; в [Simplified Authoring Surface](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md) снята пометка о блокировке декларативных экранов; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён.
   - Evidence: Обновлены `Docs/Architecture/DefinitionEnvelopeAndSchemaRules.md`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Proposals/ContentEditorPluginProposal.md` §40, `Docs/Proposals/SimplifiedAuthoringSurfaceProposal.md` §11.1, `Docs/Plans/ContentEditorPrerequisites/README.md`, `Docs/Status/ImplementationStatus.md`; валидация `Tools/Documentation/validate_docs.py` пройдена без ошибок.
 
 ## Проверка milestone

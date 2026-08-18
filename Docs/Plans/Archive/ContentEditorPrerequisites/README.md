@@ -1,21 +1,21 @@
 ---
 title: Content Editor Prerequisites Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
-  - ../../Proposals/ContentEditorPluginProposal.md
-  - ../../Proposals/SimplifiedAuthoringSurfaceProposal.md
-  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
-  - ../../Architecture/BuildAndTooling.md
+  - ../../../Proposals/ContentEditorPluginProposal.md
+  - ../../../Proposals/SimplifiedAuthoringSurfaceProposal.md
+  - ../../../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../../Architecture/BuildAndTooling.md
 decisions:
-  - ../../ADR/0026-core-and-gameplay-ownership.md
-  - ../../ADR/0029-content-authoring-and-schema-evolution.md
+  - ../../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../../ADR/0029-content-authoring-and-schema-evolution.md
 ---
 
 # План предусловий редактора контента
 
-> **Материализует:** раздел 40 [Content Editor Plugin](../../Proposals/ContentEditorPluginProposal.md).
+> **Материализует:** раздел 40 [Content Editor Plugin](../../../Proposals/ContentEditorPluginProposal.md).
 > **Задачи:** CEP-01…12.
 > **Результат:** три блокирующих пункта закрыты; редактор контента и декларативные экраны разблокированы.
 
@@ -23,7 +23,7 @@ decisions:
 
 Закрыть три возможности, без которых визуальный редактор будет порождать изменения, которые нечем проверить: правило версионирования схем, точечную правку поля в файле и метаданные представления для схем.
 
-Работа разблокирует сразу два направления — [Content Editor Plugin](../../Proposals/ContentEditorPluginProposal.md) целиком и декларативные экраны из [Simplified Authoring Surface](../../Proposals/SimplifiedAuthoringSurfaceProposal.md), которые не вошли в свой план по той же причине.
+Работа разблокирует сразу два направления — [Content Editor Plugin](../../../Proposals/ContentEditorPluginProposal.md) целиком и декларативные экраны из [Simplified Authoring Surface](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md), которые не вошли в свой план по той же причине.
 
 Первые два пункта не требуют Unreal Editor вовсе и проверяются существующими средствами.
 
@@ -59,7 +59,7 @@ error core:diagnostic.schema.value.constraint_failed definitions/items.json5:9:1
 
 Не входят:
 
-- сам плагин редактора — [Content Editor Plugin](../../Proposals/ContentEditorPluginProposal.md);
+- сам плагин редактора — [Content Editor Plugin](../../../Proposals/ContentEditorPluginProposal.md);
 - декларативные экраны и удаление `location_screen.lua`;
 - автоматическая миграция контента между версиями схемы: инструмент переноса появится, когда появится вторая версия реальной схемы;
 - обнаружение разрушающего изменения сравнением с предыдущей версией схемы: правило держится следствием — несовместимость ломает сборку.

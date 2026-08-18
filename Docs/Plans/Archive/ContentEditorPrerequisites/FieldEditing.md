@@ -1,16 +1,16 @@
 ---
 title: Field Editing Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - README.md
-  - ../../Architecture/BuildAndTooling.md
+  - ../../../Architecture/BuildAndTooling.md
 ---
 
 # M2 — Field Editing
 
-> **Материализует:** [Build and Tooling](../../Architecture/BuildAndTooling.md) в части редактирования контента инструментами.
+> **Материализует:** [Build and Tooling](../../../Architecture/BuildAndTooling.md) в части редактирования контента инструментами.
 > **Задачи:** CEP-04…07.
 > **Результат:** значение поля меняется без переписывания файла.
 
@@ -38,7 +38,7 @@ depends_on:
 
 - [x] **CEP-07 — Поверхность CLI и синхронизация contract**
   - Зависимости: CEP-05, CEP-06.
-  - Done: `gv2-content set <package-root> <definition-id> <json-pointer> <value>` и `gv2-content delete <package-root> <definition-id>` доступны с `--format=json` и стабильными exit codes наравне с прочими командами; обе исполняются в CTest на замороженном корпусе, а не на живом контенте; [Build and Tooling](../../Architecture/BuildAndTooling.md) описывает обе команды и правило сохранения форматирования.
+  - Done: `gv2-content set <package-root> <definition-id> <json-pointer> <value>` и `gv2-content delete <package-root> <definition-id>` доступны с `--format=json` и стабильными exit codes наравне с прочими командами; обе исполняются в CTest на замороженном корпусе, а не на живом контенте; [Build and Tooling](../../../Architecture/BuildAndTooling.md) описывает обе команды и правило сохранения форматирования.
   - Evidence: `SetCommand.h/.cpp`, `DeleteCommand.h/.cpp`, `main.cpp`, `CliOutput.cpp`; CTests `gv2_content_set_*`, `gv2_content_delete_*`, `gv2_content_authoring_tools_python`; `BuildAndTooling.md`.
 
 ## Проверка milestone

@@ -759,17 +759,17 @@ Marcus    120  10     Tavern
 
 ## 40. Предусловия и статус готовности к реализации
 
-Раздел добавлен при review. Все три базовых блокирующих предусловия закрыты в рамках плана `Docs/Plans/ContentEditorPrerequisites/` (Milestones 1–3):
+Раздел добавлен при review. Все три базовых блокирующих предусловия закрыты в рамках плана `Docs/Plans/Archive/ContentEditorPrerequisites/` (Milestones 1–3):
 
 ### 40.1. Реализованные блокирующие предусловия
 
 1. **Правило версионирования схем ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md), M1)**:
    - Зафиксирована классификация изменений (non-breaking, breaking with migration, unsupported in-place).
    - Определена совместимость с runtime-сохранениями и сессиями.
-2. **Точечная модификация и удаление полей ([CEP-05..07](../Plans/ContentEditorPrerequisites/FieldEditing.md), M2)**:
+2. **Точечная модификация и удаление полей ([CEP-05..07](../Plans/Archive/ContentEditorPrerequisites/FieldEditing.md), M2)**:
    - В `Json5AstRewriter` реализованы операции `SetFieldValue` и `RemoveDefinitionEntry`.
    - В CLI добавлены команды `gv2-content set` и `gv2-content delete` с сохранением комментариев, структуры и отступов JSON5.
-3. **Authoring UI-метаданные схем ([CEP-08..12](../Plans/ContentEditorPrerequisites/AuthoringMetadata.md), M3)**:
+3. **Authoring UI-метаданные схем ([CEP-08..12](../Plans/Archive/ContentEditorPrerequisites/AuthoringMetadata.md), M3)**:
    - Введён формат `schemas/<name>.ui.json5` с декларацией `label`, `description`, `category`, `order`, `widget_hint`.
    - Метаданные изолированы от репозитория и не влияют на `content_hash` пакета.
    - `gv2-content describe --format=json` отдаёт блок `"ui"` для каждого поля и упорядочивает поля согласно `order`.

@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 1.14
+version: 1.15
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -32,3 +32,4 @@ depends_on:
 | [CoreBoundaryMigration](CoreBoundaryMigration/README.md) | 2026-08-17 | Приведение ядра к [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md): демо в пакет `sample`, `register_type` для обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до одного поля, гейт `core_boundary_gate_contract` |
 | [DesignerAuthoringLayer](DesignerAuthoringLayer/README.md) | 2026-08-18 | Слой авторинга: признак записи в окне мутации, изоляция сырого состояния, дескриптор команд с отложенной регистрацией, `Storage`/`WritePolicy`, sparse runtime-состояние, `emit`/`on`/`show_screen`, перевод геймплея `rh` |
 | [SimplifiedAuthoringSurface](SimplifiedAuthoringSurface/README.md) | 2026-08-18 | Собственное окружение authoring-скриптов, автообнаружение модулей с генерируемым манифестом, `require_*`/`spend_*`, источник презентации; 791 строка Lua в `rh` сведена к 352 при том же геймплее |
+| [ContentEditorPrerequisites](ContentEditorPrerequisites/README.md) | 2026-08-18 | Три блокирующих предусловия редактора: строгая классификация схемных изменений, `SetFieldValue`/`RemoveDefinitionEntry` с сохранением комментариев, `.ui.json5` вне `content_hash` с гейтом на устаревшие ключи |
