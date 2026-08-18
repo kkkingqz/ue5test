@@ -1,16 +1,16 @@
 ---
 title: Module Discovery Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - AuthoringEnvironment.md
-  - ../../Architecture/BuildAndTooling.md
+  - ../../../Architecture/BuildAndTooling.md
 ---
 
 # M2 — Module Discovery
 
-> **Материализует:** [Build and Tooling](../../Architecture/BuildAndTooling.md) и [Lua Runtime Contract § Module loader](../../Architecture/LuaRuntimeContract.md).
+> **Материализует:** [Build and Tooling](../../../Architecture/BuildAndTooling.md) и [Lua Runtime Contract § Module loader](../../../Architecture/LuaRuntimeContract.md).
 > **Задачи:** SAS-06…09.
 > **Результат:** добавление файла не требует правки другого файла.
 
@@ -38,7 +38,7 @@ depends_on:
 
 - [x] **SAS-09 — Редкие метаданные и синхронизация contract**
   - Зависимости: SAS-07, SAS-08.
-  - Done: `replaceable`, цель замещения и особые зависимости жизненного цикла объявляются в `package.json5` либо компактным блоком для программиста; обычный authoring-скрипт таких сведений не содержит; [Build and Tooling](../../Architecture/BuildAndTooling.md) описывает обнаружение и генерацию, [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) — правила идентичности.
+  - Done: `replaceable`, цель замещения и особые зависимости жизненного цикла объявляются в `package.json5` либо компактным блоком для программиста; обычный authoring-скрипт таких сведений не содержит; [Build and Tooling](../../../Architecture/BuildAndTooling.md) описывает обнаружение и генерацию, [Lua Runtime Contract](../../../Architecture/LuaRuntimeContract.md) — правила идентичности.
   - Evidence: `GameData/rh/package.json5:modules`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Architecture/LuaRuntimeContract.md`.
 
 ## Проверка milestone

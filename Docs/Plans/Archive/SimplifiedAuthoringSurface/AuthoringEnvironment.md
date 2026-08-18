@@ -1,16 +1,16 @@
 ---
 title: Authoring Environment Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 ---
 
 # M1 — Authoring Environment
 
-> **Материализует:** [Lua Runtime Contract § Module loader](../../Architecture/LuaRuntimeContract.md) в части окружения authoring-скриптов.
+> **Материализует:** [Lua Runtime Contract § Module loader](../../../Architecture/LuaRuntimeContract.md) в части окружения authoring-скриптов.
 > **Задачи:** SAS-01…05.
 > **Результат:** файл правил игры содержит только правила игры.
 
@@ -23,7 +23,7 @@ depends_on:
 - [x] **SAS-01 — Создать ADR по окружению authoring-скрипта**
   - Контракт говорит: «Per-module environments и capability sandbox в v1 отсутствуют». Решение о прологе из локальных принималось два круга назад именно чтобы не менять это правило.
   - Done: ADR фиксирует отдельное лексическое окружение для `scripts/authoring/`, правила вывода имён и то, что окружение не является границей безопасности; отдельно записывает, **что не сошлось в прежнем решении** — цена была не в строке пролога, а в префиксе на каждой ссылке; отмечает, что правило «module source не создаёт globals» остаётся истинным и правки требует только фраза про отсутствие per-module окружений; принят до первой отметки `[x]` ниже.
-  - Evidence: [ADR-0028](../../ADR/0028-simplified-authoring-surface.md), [ADR Index](../../ADR/README.md).
+  - Evidence: [ADR-0028](../../../ADR/0028-simplified-authoring-surface.md), [ADR Index](../../../ADR/README.md).
 
 - [x] **SAS-02 — Класс authoring-скриптов и их окружение**
   - Зависимости: SAS-01.
@@ -44,7 +44,7 @@ depends_on:
 - [x] **SAS-05 — Спеки через диспетчеризацию и синхронизация contract**
   - Зависимости: SAS-04.
   - Authoring-скрипт не возвращает дескриптор и живёт в особом окружении, поэтому спека не может потребовать его через `require`.
-  - Done: правила authoring-скрипта проверяются отправкой команды и проверкой результата, состояния и событий; прямой доступ к телу authoring-функции не предоставляется — и это записано вместе с причиной: правило, непроверяемое через команду, не является правилом игры; [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) описывает класс authoring-скриптов, его окружение и правило неявного успеха.
+  - Done: правила authoring-скрипта проверяются отправкой команды и проверкой результата, состояния и событий; прямой доступ к телу authoring-функции не предоставляется — и это записано вместе с причиной: правило, непроверяемое через команду, не является правилом игры; [Lua Runtime Contract](../../../Architecture/LuaRuntimeContract.md) описывает класс authoring-скриптов, его окружение и правило неявного успеха.
   - Evidence: `Tests/Lua/authoring/simplified_surface.lua`, `Docs/Architecture/LuaRuntimeContract.md`.
 
 ## Проверка milestone

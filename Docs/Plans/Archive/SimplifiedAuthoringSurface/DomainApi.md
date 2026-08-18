@@ -1,16 +1,16 @@
 ---
 title: Domain API Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - AuthoringEnvironment.md
-  - ../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/CommandsAndEvents.md
 ---
 
 # M3 — Domain API
 
-> **Материализует:** [Commands and Events](../../Architecture/CommandsAndEvents.md) в части предусловий и доменных операций.
+> **Материализует:** [Commands and Events](../../../Architecture/CommandsAndEvents.md) в части предусловий и доменных операций.
 > **Задачи:** SAS-10…13.
 > **Результат:** правило игры выражается предусловием и операцией, без разбора результатов и транспорта.
 

@@ -1,21 +1,21 @@
 ---
 title: Simplified Authoring Surface Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
-  - ../../Proposals/SimplifiedAuthoringSurfaceProposal.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/CommandsAndEvents.md
-  - ../../Architecture/BuildAndTooling.md
+  - ../../../Proposals/SimplifiedAuthoringSurfaceProposal.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/BuildAndTooling.md
 decisions:
-  - ../../ADR/0027-designer-lua-authoring-layer.md
-  - ../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../../ADR/0026-core-and-gameplay-ownership.md
 ---
 
 # План упрощения авторской поверхности
 
-> **Материализует:** [Simplified Authoring Surface](../../Proposals/SimplifiedAuthoringSurfaceProposal.md).
+> **Материализует:** [Simplified Authoring Surface](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md).
 > **Задачи:** SAS-01…21.
 > **Результат:** геймплей `rh` — один файл правил игры без обвязки; инфраструктурных Lua-файлов в пакете не остаётся.
 
@@ -23,7 +23,7 @@ decisions:
 
 Убрать из designer-facing Lua всё, что обслуживает интеграцию с GV2, а не описывает игру: префикс `M.`, ручной манифест, конверты результата, разбор транспортного DTO, обновление интерфейса, дублирующий сервис.
 
-Предыдущий слой ([DesignerAuthoringLayer](../Archive/DesignerAuthoringLayer/README.md)) убрал Stable ID, реестры и конверты команд. Практическая переработка `rh` показала, что осталась обвязка самого слоя.
+Предыдущий слой ([DesignerAuthoringLayer](../DesignerAuthoringLayer/README.md)) убрал Stable ID, реестры и конверты команд. Практическая переработка `rh` показала, что осталась обвязка самого слоя.
 
 ## Состояние на входе
 
@@ -46,7 +46,7 @@ Lua-часть `rh` — 791 строка на четыре правила игр
 
 ## Принятые решения
 
-Зафиксированы в [предложении](../../Proposals/SimplifiedAuthoringSurfaceProposal.md), выносятся в ADR первой задачей. Кратко:
+Зафиксированы в [предложении](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md), выносятся в ADR первой задачей. Кратко:
 
 - authoring-скрипт получает собственное лексическое окружение с прямыми именами; это пересмотр решения о прологе, и ADR фиксирует, что именно не сошлось;
 - ID модуля выводится из пути **только для незамещаемых**; `replaceable` объявляет ID явно, потому что на него нацеливаются моды;
@@ -61,7 +61,7 @@ Lua-часть `rh` — 791 строка на четыре правила игр
 
 Не входят:
 
-- **Декларативные экраны и удаление `location_screen.lua`.** Требуют тех же трёх предусловий, что и [Content Editor Plugin](../../Proposals/ContentEditorPluginProposal.md): правило версионирования схем, правка поля в `Json5AstRewriter`, authoring-метаданные схем. Выносится отдельно, чтобы план не висел незакрытым из-за чужой работы.
+- **Декларативные экраны и удаление `location_screen.lua`.** Требуют тех же трёх предусловий, что и [Content Editor Plugin](../../../Proposals/ContentEditorPluginProposal.md): правило версионирования схем, правка поля в `Json5AstRewriter`, authoring-метаданные схем. Выносится отдельно, чтобы план не висел незакрытым из-за чужой работы.
 - Маршрутизация, слои и оверлеи UI document: закладывается шов, реализация позже.
 - Отдельный DSL, отказ от Lua, rollback состояния, автоматический выбор между `run` и `later`.
 - Упрощение programmer-facing кода: `runtime/actors.lua` остаётся сложным намеренно.
@@ -87,7 +87,7 @@ M4 не зависит ни от чего и может идти первым и
 ## Общие правила выполнения
 
 1. Если проблема общая для будущего геймплея, она чинится в слое, а не помощником внутри `rh`.
-2. Правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../ADR/0024-lua-spec-runner.md)). Authoring-скрипт проверяется **через диспетчеризацию команд**, а не прямым доступом к его телу.
+2. Правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)). Authoring-скрипт проверяется **через диспетчеризацию команд**, а не прямым доступом к его телу.
 3. Слой вызывает фасад и не вводит второго пути мутации; правило `AuthoringFailAfterMutation` не ослабляется.
 4. Каждая задача, меняющая failure semantics, добавляет negative case.
 5. Изменение `script_set_hash` в golden ожидаемо и обновляется воспроизведением манифеста; изменение `repository_content_hash` — признак ошибки, кроме задач, сознательно меняющих контент `rh`.
@@ -97,10 +97,19 @@ M4 не зависит ни от чего и может идти первым и
 
 - [x] Designer-facing команда не содержит `M.`, `game.*`, литералов Stable ID, `current_location_id`, конвертов результата, разбора DTO и вызовов презентации.
 - [x] Добавление designer-файла не требует правки манифеста, списка модулей и зависимостей.
-- [x] `manifest.lua`, `root.lua`, `economy.lua` в `rh` отсутствуют.
+- [x] `root.lua` и `economy.lua` в `rh` отсутствуют; `manifest.lua` остался как **генерируемый артефакт** — см. примечание ниже.
 - [x] Одна команда `buy(item)` вместо команды на товар; цена берётся из definition.
 - [x] Добавление товара не требует ни строки Lua.
 - [x] Геймплей не вызывает код презентации; экран обновляется сам после commit.
 - [x] `require_*` даёт отказ, `spend_*` при непроверенном предусловии — fault.
 - [x] Слайс проходится целиком; `state_hash` до и после сохранения совпадает.
 - [x] `Docs/Authoring/` удалён.
+
+Три уточнения по итогам приёмки.
+
+**План противоречил сам себе по манифесту.** SAS-06 описывал его как генерируемый артефакт с проверкой расхождения, SAS-19 требовал удалить файл. Реализация выбрала связный вариант: файл остаётся сгенерированным и зафиксированным, как `mods.lock.json5`. Дизайнер его не редактирует — цель достигнута, формулировка SAS-19 была неточной.
+
+**Проверки расхождения не существовало.** `--check` был написан и покрыт спекой на синтетическом пакете, но к живому `GameData/rh` не применялся, то есть ручная правка манифеста прошла бы незамеченной. Добавлен гейт `rh_manifest_up_to_date_contract` по образцу проверки `mods.lock`.
+
+**Команды регистрировались под двумя ID.** Кроме прежних `time.wait_day`, `work.do_work` и `core:command.location.travel`, объявлялись короткие `rh:command.travel`, `rh:command.work`, `rh:command.wait_day`. Ни экран, ни спеки их не использовали — удалены, чтобы публичная поверхность не росла мёртвыми именами.
+

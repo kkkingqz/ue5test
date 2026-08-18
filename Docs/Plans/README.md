@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 3.6
+version: 3.7
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,9 +24,7 @@ depends_on:
 
 ## Активные планы
 
-| План | Основание | Результат |
-|---|---|---|
-| [SimplifiedAuthoringSurface](SimplifiedAuthoringSurface/README.md) | [Simplified Authoring Surface](../Proposals/SimplifiedAuthoringSurfaceProposal.md) | Окружение authoring-скрипта без `M.`, автообнаружение модулей, предусловия и единый API актора, источник презентации; геймплей `rh` — один файл правил |
+Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
@@ -48,3 +46,4 @@ depends_on:
 | [TestGameplaySlice](Archive/TestGameplaySlice/README.md) | 2026-08-17 | Первый играбельный цикл целиком в пакете `rh`: три локации и экрана, карта с расходом выносливости, покупки и заработок |
 | [CoreBoundaryMigration](Archive/CoreBoundaryMigration/README.md) | 2026-08-17 | Демо в пакете `sample`, точка расширения обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до `discriminator`, гейт границы |
 | [DesignerAuthoringLayer](Archive/DesignerAuthoringLayer/README.md) | 2026-08-18 | Designer-facing Lua: `write_revision` и правило `fail()`, дескриптор команд, модель property, универсальная секция runtime-состояния, события и экраны; геймплей `rh` переписан |
+| [SimplifiedAuthoringSurface](Archive/SimplifiedAuthoringSurface/README.md) | 2026-08-18 | Окружение authoring-скрипта без `M.`, автообнаружение модулей и генерируемый манифест, предусловия и единый API актора, источник презентации; геймплей `rh` сведён к одному файлу правил |

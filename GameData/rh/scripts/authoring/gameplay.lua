@@ -11,14 +11,12 @@ local function handle_travel(target)
     player:spend_stamina(5)
     player:travel(target)
 end
-commands.travel = handle_travel
 commands["core:command.location.travel"] = handle_travel
 
 local function handle_wait_day()
     player:require_location(tavern)
     player:add_stamina(10)
 end
-commands.wait_day = handle_wait_day
 commands["time.wait_day"] = handle_wait_day
 
 local function handle_work()
@@ -28,7 +26,6 @@ local function handle_work()
     player:spend_stamina(2)
     player:add_gold(10)
 end
-commands.work = handle_work
 commands["work.do_work"] = handle_work
 
 commands.buy = function(item)

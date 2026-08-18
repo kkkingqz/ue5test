@@ -1,6 +1,6 @@
 ---
 title: RH Cleanup Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:

@@ -1,16 +1,16 @@
 ---
 title: Presentation Source Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - README.md
-  - ../../UI/ScreenTemplates.md
+  - ../../../UI/ScreenTemplates.md
 ---
 
 # M4 — Presentation Source
 
-> **Материализует:** [Screen Templates](../../UI/ScreenTemplates.md) в части того, кто перестраивает экран.
+> **Материализует:** [Screen Templates](../../../UI/ScreenTemplates.md) в части того, кто перестраивает экран.
 > **Задачи:** SAS-14…16.
 > **Результат:** геймплей не знает про интерфейс; экран обновляется сам после успешной команды.
 
@@ -34,7 +34,7 @@ depends_on:
 
 - [x] **SAS-16 — Запретить обновление презентации из геймплея и синхронизировать contract**
   - Зависимости: SAS-15.
-  - Done: designer-facing геймплей-команды (`shop.lua`, `work.lua`, `time.lua`, `travel.lua`) очищены от ручных вызовов `build_and_publish_screen()` и зависимостей на `location_screen`; [Screen Templates](../../UI/ScreenTemplates.md) и [Commands and Events](../../Architecture/CommandsAndEvents.md) описывают источник презентации и автоматическую инвалидацию; в [Implementation Status](../../Status/ImplementationStatus.md) зафиксирован шов под будущий UI document.
+  - Done: designer-facing геймплей-команды (`shop.lua`, `work.lua`, `time.lua`, `travel.lua`) очищены от ручных вызовов `build_and_publish_screen()` и зависимостей на `location_screen`; [Screen Templates](../../../UI/ScreenTemplates.md) и [Commands and Events](../../../Architecture/CommandsAndEvents.md) описывают источник презентации и автоматическую инвалидацию; в [Implementation Status](../../../Status/ImplementationStatus.md) зафиксирован шов под будущий UI document.
   - Evidence: `GameData/rh/scripts/gameplay/` (`shop.lua`, `time.lua`, `work.lua`, `travel.lua`), `Docs/UI/ScreenTemplates.md`, `Docs/Architecture/CommandsAndEvents.md`, `Docs/Status/ImplementationStatus.md`.
 
 ## Проверка milestone

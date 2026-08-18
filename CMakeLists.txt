@@ -46,6 +46,17 @@ if(BUILD_TESTING)
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_core_boundary.py"
     )
+    # SAS-06: the package manifest is a generated artifact. Nothing prevents it
+    # drifting from the sources by hand, so the committed manifest is verified
+    # against what the generator produces — the same shape as the mods.lock check.
+    add_test(
+        NAME rh_manifest_up_to_date_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/generate_manifest.py"
+            "${PROJECT_SOURCE_DIR}/GameData/rh"
+            "--check"
+    )
     add_test(
         NAME core_boundary_gate_negative_contract
         COMMAND
