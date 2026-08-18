@@ -13,6 +13,7 @@ invalid/resource_class_mismatch/test_mod/schemas/resource_v2.schema.json5
 invalid/semantic_failure/test_mod/definitions/items.json5
 valid/core/definitions/actors.json5
 valid/core/definitions/items.json5
+valid/core/definitions/items_v2.json5
 valid/core/definitions/locations.json5
 valid/core/definitions/resources.json5
 valid/core/definitions/screens.json5
@@ -20,6 +21,7 @@ valid/core/definitions/texts.json5
 valid/core/package.json5
 valid/core/schemas/actor_v1.schema.json5
 valid/core/schemas/item_v1.schema.json5
+valid/core/schemas/item_v2.schema.json5
 valid/core/schemas/location_v1.schema.json5
 valid/core/schemas/resource_v1.schema.json5
 valid/core/schemas/screen_v1.schema.json5

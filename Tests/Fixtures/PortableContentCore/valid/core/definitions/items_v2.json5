@@ -1,0 +1,19 @@
+{
+  schema_version: 2,
+  type: "item",
+  definitions: [
+    {
+      id: "core:item.armor.leather_vest",
+      data: {
+        label_text_id: "core:text.item.iron_sword.name",
+        price: 25,
+        icon_resource_id: "core:resource.item.iron_sword.icon",
+        weight: 3,
+      },
+      tags: ["armor"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

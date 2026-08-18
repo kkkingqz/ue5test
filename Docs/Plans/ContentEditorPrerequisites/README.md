@@ -10,6 +10,7 @@ depends_on:
   - ../../Architecture/BuildAndTooling.md
 decisions:
   - ../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0029-content-authoring-and-schema-evolution.md
 ---
 
 # План предусловий редактора контента
@@ -65,7 +66,7 @@ error core:diagnostic.schema.value.constraint_failed definitions/items.json5:9:1
 
 ## Milestones
 
-- [ ] M1 — [Schema Versioning](SchemaVersioning.md): классификация изменений и её фиксация.
+- [x] M1 — [Schema Versioning](SchemaVersioning.md): классификация изменений и её фиксация.
 - [ ] M2 — [Field Editing](FieldEditing.md): точечная правка значения и удаление записи.
 - [ ] M3 — [Authoring Metadata](AuthoringMetadata.md): метаданные представления и их проверка.
 

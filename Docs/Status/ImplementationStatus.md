@@ -29,7 +29,7 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 | Область | Статус | Комментарий |
 |---|---|---|
 | JSON5 parsing, source spans, bounded limits | Реализовано | Duplicate-key detection, UTF-8 validation, лимиты согласованы с Lua boundary |
-| Definition envelope, schemas, explicit defaults | Реализовано | Scalar/container/union specs, extension schemas, semantic validators; схема `text` требует `source_message` (`min_length: 1`, [ADR-0022](../ADR/0022-external-translation-catalog.md)) |
+| Definition envelope, schemas, explicit defaults | Реализовано | Scalar/container/union specs, extension schemas, semantic validators; классификация эволюции схем и сосуществование версий схем ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md), M1 плана [ContentEditorPrerequisites](../Plans/ContentEditorPrerequisites/README.md)); схема `text` требует `source_message` (`min_length: 1`, [ADR-0022](../ADR/0022-external-translation-catalog.md)) |
 | Namespace ownership, full override, redirects/tombstones | Реализовано | Включая chain/cycle и active-source conflicts |
 | Typed references (`ref`, `text_id`, `resource_ref`) | Реализовано | Один recursive resolution path для `data` и extension blocks |
 | Localization catalogs (PO) | Реализовано | Внешние PO-каталоги `<package-root>/localization/<locale>.po` ([ADR-0022](../ADR/0022-external-translation-catalog.md)), парсер `GV2ContentCore::ParsePo`, сборка String Table CSV `GV2ContentHostSupport::ExportPoToStringTableCsv`, изоляция от `content_hash` пакета |

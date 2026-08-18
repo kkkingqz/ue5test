@@ -40,6 +40,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0026](0026-core-and-gameplay-ownership.md) | accepted | `core` владеет механизмами, пакет — семантикой; kind в реестре не означает владения схемой |
 | [0027](0027-designer-lua-authoring-layer.md) | accepted | Designer Lua Authoring: дескрипторы команд, fail() с write_revision, изоляция состояния, единый portable_value |
 | [0028](0028-simplified-authoring-surface.md) | accepted | Simplified Authoring Surface: per-module _ENV для authoring, неявный успех команд, источник презентации |
+| [0029](0029-content-authoring-and-schema-evolution.md) | accepted | Content Authoring and Schema Evolution: классификация изменений схем, точечная AST-правка, файлы-спутники authoring-метаданных |
 
 ## Template
 

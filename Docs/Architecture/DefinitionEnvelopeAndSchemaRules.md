@@ -1,8 +1,8 @@
 ---
 title: Definition Envelope and Schema Rules
 status: normative
-version: 2.4
-updated: 2026-08-15
+version: 2.5
+updated: 2026-08-18
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -10,6 +10,7 @@ decisions:
   - ../ADR/0018-portable-content-core-module.md
   - ../ADR/0022-external-translation-catalog.md
   - ../ADR/0026-core-and-gameplay-ownership.md
+  - ../ADR/0029-content-authoring-and-schema-evolution.md
 ---
 
 # Definition Envelope and Schema Rules
@@ -341,11 +342,31 @@ Semantic validators перечисляются schema в стабильном п
 
 ## Schema evolution
 
-- `schema_version` — positive integer scoped to kind.
-- Add/remove required field, change kind/nullability/default/constraints, union/enum semantics или validator set требуют новой version.
-- Metadata description можно менять в той же version.
-- Migration — explicit editor/bootstrap operation до обычной validation; hidden migration при read запрещена.
-- Definition rename выполняется Stable ID redirect, а не schema migration.
+Эволюция схем определений подчиняется строгой классификации изменений ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md)):
+
+| Класс изменения | Правило версии | Влияние на существующие definitions | Влияние на сохранения (Saves) |
+|---|---|---|---|
+| **Добавление опционального поля с `default`** | Допустимо на месте (в той же `schema_version`) | Совместимо без правок; отсутствующее поле материализуется из `default` | Совместимо; старые сейвы продолжают работать |
+| **Добавление обязательного поля** | Требует новую `schema_version` | Старые definitions невалидны в новой версии; остаются на старой версии до миграции | Старые сейвы валидируются старой схемой |
+| **Сужение диапазона или типа** (`min`/`max`/`enum`) | Требует новую `schema_version` | Definitions вне нового диапазона невалидны; требуют проверки и миграции | Изоляция версий предотвращает порчу данных |
+| **Удаление поля** | Требует новую `schema_version` | Старые definitions сохраняют данные под старой схемой до переезда | Старые сейвы читаются по старой схеме |
+| **Переименование поля** | Требует новую `schema_version` | Эквивалентно удалению + добавлению; требует миграции файлов | Старые сейвы валидируются по старой схеме |
+
+### Принципы эволюции схем
+
+1. **Сосуществование версий схем:**
+   - Репозиторий и рантайм поддерживают одновременное сосуществование нескольких версий схемы для одного `definition_type` (например, `(item, 1)` и `(item, 2)`).
+   - Пакет объявляет привязки для каждой поддерживаемой версии через дескриптор пакета.
+   - Файлы определений явно указывают `schema_version: N` в корневом конверте. Определения разных версий одного типа могут находиться в разных файлах одного пакета.
+   - Конфликт двух разных схем для одной и той же пары `(definition_type, schema_version)` внутри набора пакетов является фатальной ошибкой сборки candidate repository.
+
+2. **Impact analysis:**
+   - Анализ влияния изменений схемы на существующую кодовую базу контента выполняется стандартной командой `gv2-content validate`.
+   - Если изменение схемы нарушает ограничения в существующих definitions, валидатор выдаёт точную диагностику с файлом, строкой, `definition_id` и JSON-указателем (pointer).
+
+3. **Миграция контента:**
+   - Перевод определений на новую `schema_version` выполняется явно: изменением `schema_version` в файле и заполнением/обновлением полей. Скрытая автоматическая миграция при чтении запрещена.
+   - Переименование самих определений (Stable ID) выполняется через цепочки перенаправлений (`redirects`), а не через миграцию схем.
 
 ## Example schema
 
