@@ -123,4 +123,22 @@ function M.register(_ctx)
     game.commands.handlers = M.create_registry()
 end
 
+function M.with_isolated_handlers(fn)
+    local old_handlers = game and game.commands and game.commands.handlers
+    local fresh_registry = M.create_registry()
+    if not game then
+        game = {}
+    end
+    if not game.commands then
+        game.commands = {}
+    end
+    game.commands.handlers = fresh_registry
+
+    local ok, err = pcall(fn)
+    game.commands.handlers = old_handlers
+    if not ok then
+        error(err, 0)
+    end
+end
+
 return M

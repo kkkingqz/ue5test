@@ -268,6 +268,19 @@ Uncaught error после начала mutation не запускает унив
 - Прямая запись в таблицу реестра запрещена (`ServiceRegistryDirectAssignmentDisallowed`).
 - Gameplay Services предназначены для выполнения многосущностных workflow (например, торговля, передача предметов между акторами, квестовые цепочки), возвращают структурированный результат `{ ok = true, value = ... }` или `{ ok = false, error = { code = "..." } }`, не вызывают filesystem/UE API и не подменяют доменные методы единичных сущностей.
 
+## Designer authoring layer
+
+Для упрощения написания игрового кода и модов ядро предоставляет авторский слой ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)):
+
+- **Модули ядра**: `core:module.authoring.context` (`Scripts/authoring/context.lua`), `core:module.authoring.commands` (`Scripts/authoring/commands.lua`), `core:module.authoring.tagged_ref` (`Scripts/authoring/tagged_ref.lua`).
+- **Фасад пакета**: `local M = authoring.gameplay(package_id)` создаёт дескриптор авторского модуля с прокси команд `M.commands`, типизированным отказом `M.fail(key, params)` и динамическими аксессорами.
+- **Динамические аксессоры**:
+  - `M.player` — динамический прокси, разрешающий `game.instances.actors.player()` на каждое обращение (не кэширует обёртку).
+  - `M.world` — динамический прокси к `game.instances.world()`.
+  - `M.actor(name)` — аксессор уникального экземпляра по имени определения (`0` экземпляров $\rightarrow$ `ActorInstanceNotFound`, `1` $\rightarrow$ fresh wrapper, `2+` $\rightarrow$ `ActorInstanceAmbiguous`).
+  - `M.actors(name)` — список свежих обёрток для всех экземпляров указанного определения.
+- **Исполнение команд**: `:run(...)` для синхронного вызова в собственном окне мутации (вложенный вызов из активного обработчика запрещён: `AuthoringNestedRunDisallowed`) и `:later(...)` для помещения в очередь `game.commands.enqueue`.
+
 ## Protected execution
 
 Каждый entry point:

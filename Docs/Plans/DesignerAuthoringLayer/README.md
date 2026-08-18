@@ -71,7 +71,7 @@ decisions:
 ## Milestones
 
 - [x] M1 — [Foundation](Foundation.md): признак записи, изоляция сырого состояния, общий примитив переносимости.
-- [ ] M2 — [Commands](Commands.md): дескриптор модуля, прокси команд, отложенная регистрация, `fail()`, `run`/`later`.
+- [x] M2 — [Commands](Commands.md): дескриптор модуля, прокси команд, отложенная регистрация, `fail()`, `run`/`later`.
 - [ ] M3 — [Properties](Properties.md): хранилище и политика записи в схеме, три вида property, два типа ссылок.
 - [ ] M4 — [Runtime State](RuntimeState.md): универсальная секция, sparse-материализация, переезд локации на актора.
 - [ ] M5 — [Events and Presentation](EventsAndPresentation.md): `emit`/`on`, `action`/`button`/`show_screen`, тексты.

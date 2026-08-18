@@ -214,6 +214,37 @@ return {
             replaceable = true,
         },
         {
+            module_id = "core:module.authoring.tagged_ref",
+            source = "authoring/tagged_ref.lua",
+            dependencies = {
+                "core:module.runtime.stable_id",
+                "core:module.runtime.portable_value",
+            },
+            replaceable = false,
+        },
+        {
+            module_id = "core:module.authoring.commands",
+            source = "authoring/commands.lua",
+            dependencies = {
+                "core:module.runtime.stable_id",
+                "core:module.runtime.mutation_window",
+                "core:module.authoring.tagged_ref",
+            },
+            replaceable = false,
+        },
+        {
+            module_id = "core:module.authoring.context",
+            source = "authoring/context.lua",
+            dependencies = {
+                "core:module.runtime.stable_id",
+                "core:module.runtime.mutation_window",
+                "core:module.runtime.portable_value",
+                "core:module.authoring.tagged_ref",
+                "core:module.authoring.commands",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.bootstrap.main",
             source = "bootstrap/main.lua",
             dependencies = {
@@ -236,6 +267,9 @@ return {
                 "core:module.runtime.subscriber_registry",
                 "core:module.runtime.event_envelope",
                 "core:module.runtime.event_bus",
+                "core:module.authoring.tagged_ref",
+                "core:module.authoring.commands",
+                "core:module.authoring.context",
                 "core:module.gameplay.location_service",
                 "core:module.gameplay.root",
             },

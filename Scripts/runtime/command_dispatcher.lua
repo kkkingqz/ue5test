@@ -231,6 +231,22 @@ function M.new(handlers_registry)
     return dispatcher
 end
 
+function M.drain_queue(dispatcher)
+    local d = dispatcher or active_dispatcher
+    if not d then
+        d = M.new()
+    end
+    local count = 0
+    while #deferred_command_queue > 0 do
+        local next_req = table.remove(deferred_command_queue, 1)
+        local next_seq = (game and game.runtime and game.runtime.last_sequence or 0) + 1
+        next_req.sequence = next_seq
+        d.dispatch(next_req)
+        count = count + 1
+    end
+    return count
+end
+
 function M.register(_ctx)
     if not game then
         game = {}
@@ -241,6 +257,7 @@ function M.register(_ctx)
     game.commands.enqueue = M.enqueue
     game.commands.clear_queue = M.clear_queue
     game.commands.get_queue_length = M.get_queue_length
+    game.commands.drain_queue = M.drain_queue
 end
 
 return M

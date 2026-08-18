@@ -37,4 +37,32 @@ function M.is_kind(value, expected_kind)
     return consumed + separators == #path
 end
 
+function M.is_valid(value)
+    if type(value) ~= "string" or #value > 192 then
+        return false
+    end
+
+    local namespace, kind, path = value:match("^([^:]+):([^.]+)%.(.+)$")
+    if not is_segment(namespace)
+        or not is_segment(kind)
+        or path == nil
+        or path:sub(1, 1) == "."
+        or path:sub(-1) == "."
+        or path:find("..", 1, true) ~= nil
+    then
+        return false
+    end
+
+    local consumed = 0
+    for segment in path:gmatch("[^.]+") do
+        if not is_segment(segment) then
+            return false
+        end
+        consumed = consumed + #segment
+    end
+
+    local separators = select(2, path:gsub("%.", ""))
+    return consumed + separators == #path
+end
+
 return M
