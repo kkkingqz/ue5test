@@ -1,22 +1,17 @@
--- TSL-07: Location Travel Events Specification
+-- TSL-07 / TSL-17: Location Travel Events Specification (TextSystem tier)
 -- Verifies publication of textsystem:event.location.leave and textsystem:event.location.enter facts,
--- strict order (leave before enter), zero facts on refused command, and subscriber reaction.
+-- strict order (leave before enter), zero facts on refused command, and subscriber reaction in sample.
 
 local event_bus = require("core:module.runtime.event_bus")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
 local mutation_window = require("core:module.runtime.mutation_window")
 
-local function ensure_player(stamina)
+local function ensure_player()
     mutation_window.execute_in_window(function()
         local player = game.instances.actors.player()
         if not player then
-            local hero = game.instances.actors.create("rh:actor.character.hero", {
-                stamina = stamina or 50,
-                gold = 50,
-            })
+            local hero = game.instances.actors.create("sample:actor.character.hero", {})
             game.state.meta.player_actor_id = hero.instance_id
-        else
-            player.stamina = stamina or 50
         end
     end)
 end
@@ -26,17 +21,17 @@ return {
         event_bus.with_isolated_subscribers(function()
             event_bus.clear_published_events()
             game.runtime.phase = "idle"
-            ensure_player(50)
+            ensure_player()
 
-            -- Ensure starting at market
+            -- Ensure starting at hub
             local world = game.instances.world()
             local dispatcher = command_dispatcher.new()
 
-            -- Move to market first if not there
-            if world.current_location_id ~= "rh:location.city.market" then
+            -- Move to hub first if not there
+            if world.current_location_id ~= "sample:location.hub" then
                 dispatcher.dispatch({
-                    command_id = "rh:command.travel",
-                    args = { target_location_id = "rh:location.city.market" },
+                    command_id = "sample:command.travel",
+                    args = { target_location_id = "sample:location.hub" },
                     sequence = 800,
                 })
             end
@@ -69,8 +64,8 @@ return {
             )
 
             dispatcher.dispatch({
-                command_id = "rh:command.travel",
-                args = { target_location_id = "rh:location.city.tavern" },
+                command_id = "sample:command.travel",
+                args = { target_location_id = "sample:location.east" },
                 sequence = 801,
             })
 
@@ -81,10 +76,10 @@ return {
             assert(published[2].event_id == "textsystem:event.location.enter", "2nd event must be enter")
 
             -- Verify payload contents
-            assert(published[1].payload.from_location == "rh:location.city.market", "leave from market")
-            assert(published[1].payload.to_location == "rh:location.city.tavern", "leave to tavern")
-            assert(published[2].payload.from_location == "rh:location.city.market", "enter from market")
-            assert(published[2].payload.to_location == "rh:location.city.tavern", "enter to tavern")
+            assert(published[1].payload.from_location == "sample:location.hub", "leave from hub")
+            assert(published[1].payload.to_location == "sample:location.east", "leave to east")
+            assert(published[2].payload.from_location == "sample:location.hub", "enter from hub")
+            assert(published[2].payload.to_location == "sample:location.east", "enter to east")
 
             -- Verify subscriber delivery order
             assert(#events_order == 2, "both subscribers must be invoked")
@@ -101,10 +96,10 @@ return {
         event_bus.with_isolated_subscribers(function()
             event_bus.clear_published_events()
             game.runtime.phase = "idle"
-            ensure_player(50)
+            ensure_player()
 
             mutation_window.execute_in_window(function()
-                game.instances.actors.player().current_location = "rh:location.city.market"
+                game.instances.actors.player().current_location = "sample:location.east"
             end)
 
             event_bus.clear_published_events()
@@ -119,10 +114,10 @@ return {
             )
 
             local dispatcher = command_dispatcher.new()
-            -- Dispatch travel to non-connected gate from market -> validator will refuse
+            -- Dispatch travel to non-connected west from east -> validator will refuse
             dispatcher.dispatch({
-                command_id = "rh:command.travel",
-                args = { target_location_id = "rh:location.city.gate" },
+                command_id = "sample:command.travel",
+                args = { target_location_id = "sample:location.west" },
                 sequence = 802,
             })
 
@@ -140,41 +135,41 @@ return {
         event_bus.with_isolated_subscribers(function()
             event_bus.clear_published_events()
             game.runtime.phase = "idle"
-            ensure_player(50)
+            ensure_player()
 
-            local tavern_entered = false
-            local forest_entered = false
+            local east_entered = false
+            local west_entered = false
 
             game.events.subscribers.register(
-                "core:subscriber.test.tavern_checker",
+                "core:subscriber.test.east_checker",
                 "textsystem:event.location.enter",
                 function(env)
-                    if env.payload.to_location == "rh:location.city.tavern" then
-                        tavern_entered = true
-                    elseif env.payload.to_location == "rh:location.wilderness.forest" then
-                        forest_entered = true
+                    if env.payload.to_location == "sample:location.east" then
+                        east_entered = true
+                    elseif env.payload.to_location == "sample:location.west" then
+                        west_entered = true
                     end
                 end
             )
 
             local dispatcher = command_dispatcher.new()
-            -- Move to market first
+            -- Move to hub first
             dispatcher.dispatch({
-                command_id = "rh:command.travel",
-                args = { target_location_id = "rh:location.city.market" },
+                command_id = "sample:command.travel",
+                args = { target_location_id = "sample:location.hub" },
                 sequence = 803,
             })
             event_bus.clear_published_events()
 
-            -- Now travel to tavern
+            -- Now travel to east
             dispatcher.dispatch({
-                command_id = "rh:command.travel",
-                args = { target_location_id = "rh:location.city.tavern" },
+                command_id = "sample:command.travel",
+                args = { target_location_id = "sample:location.east" },
                 sequence = 804,
             })
 
-            assert(tavern_entered == true, "tavern subscriber must have reacted to tavern enter")
-            assert(forest_entered == false, "forest subscriber must NOT have reacted")
+            assert(east_entered == true, "east subscriber must have reacted to east enter")
+            assert(west_entered == false, "west subscriber must NOT have reacted")
 
             -- Cleanup
             event_bus.clear_published_events()
@@ -187,15 +182,15 @@ return {
             event_bus.clear_published_events()
             game.commands.clear_queue()
             game.runtime.phase = "idle"
-            ensure_player(50)
+            ensure_player()
 
             local dispatcher = command_dispatcher.new()
 
-            -- Move to market first if not there
-            if game.instances.world().current_location_id ~= "rh:location.city.market" then
+            -- Move to hub first if not there
+            if game.instances.world().current_location_id ~= "sample:location.hub" then
                 dispatcher.dispatch({
-                    command_id = "rh:command.travel",
-                    args = { target_location_id = "rh:location.city.market" },
+                    command_id = "sample:command.travel",
+                    args = { target_location_id = "sample:location.hub" },
                     sequence = 810,
                 })
             end
@@ -204,33 +199,33 @@ return {
             local trace = {}
 
             game.events.subscribers.register(
-                "core:subscriber.test.tavern_roundtrip",
+                "core:subscriber.test.hub_roundtrip",
                 "textsystem:event.location.enter",
                 function(env)
                     table.insert(trace, "entered:" .. env.payload.to_location)
-                    if env.payload.to_location == "rh:location.city.tavern" then
-                        -- Enqueue deferred return travel back to market
+                    if env.payload.to_location == "sample:location.east" then
+                        -- Enqueue deferred return travel back to hub
                         game.commands.enqueue({
-                            command_id = "rh:command.travel",
-                            args = { target_location_id = "rh:location.city.market" },
+                            command_id = "sample:command.travel",
+                            args = { target_location_id = "sample:location.hub" },
                         })
                     end
                 end
             )
 
             dispatcher.dispatch({
-                command_id = "rh:command.travel",
-                args = { target_location_id = "rh:location.city.tavern" },
+                command_id = "sample:command.travel",
+                args = { target_location_id = "sample:location.east" },
                 sequence = 811,
             })
 
-            -- Verify trace: entered tavern -> deferred command executed -> entered market
+            -- Verify trace: entered east -> deferred command executed -> entered hub
             assert(#trace == 2, "must have 2 enter events, got " .. tostring(#trace))
-            assert(trace[1] == "entered:rh:location.city.tavern", "first enter tavern")
-            assert(trace[2] == "entered:rh:location.city.market", "second enter market via deferred command")
+            assert(trace[1] == "entered:sample:location.east", "first enter east")
+            assert(trace[2] == "entered:sample:location.hub", "second enter hub via deferred command")
 
-            assert(game.instances.world().current_location_id == "rh:location.city.market",
-                "final location must be market")
+            assert(game.instances.world().current_location_id == "sample:location.hub",
+                "final location must be hub")
 
             -- Cleanup
             event_bus.clear_published_events()

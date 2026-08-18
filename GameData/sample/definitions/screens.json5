@@ -7,6 +7,46 @@
       data: {
         title_text_id: "sample:text.screen.test.description",
       },
+      tags: ["sample", "test"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "sample:screen.location.hub",
+      data: {
+        title_text_id: "sample:text.location.hub.title",
+        description_text_id: "sample:text.screen.hub.description",
+        include_connected_locations: true,
+        actions: [],
+      },
+      tags: ["sample", "location", "hub"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "sample:screen.location.east",
+      data: {
+        title_text_id: "sample:text.location.east.title",
+        description_text_id: "sample:text.screen.east.description",
+        include_connected_locations: true,
+        actions: [],
+      },
+      tags: ["sample", "location", "east"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "sample:screen.location.west",
+      data: {
+        title_text_id: "sample:text.location.west.title",
+        description_text_id: "sample:text.screen.west.description",
+        include_connected_locations: true,
+        actions: [],
+      },
+      tags: ["sample", "location", "west"],
+      deprecated: false,
+      extensions: {},
     },
   ],
+  extensions: {},
 }

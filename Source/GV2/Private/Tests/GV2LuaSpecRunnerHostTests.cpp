@@ -31,75 +31,60 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
 {
-    // 1. Build the real GameData repository dynamically from container.
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
-    const std::string GameDataDirUtf8 = TCHAR_TO_UTF8(*GameDataDir);
-    std::vector<GV2ContentCore::FDiagnostic> DiscoveryDiagnostics;
-    std::vector<std::filesystem::path> DiscoveredRoots;
-    GV2ContentHostSupport::DiscoverPackagesFromContainer(
-        std::filesystem::path(GameDataDirUtf8),
-        DiscoveryDiagnostics,
-        &DiscoveredRoots);
-    TArray<FString> PackageRoots;
-    for (const auto& Root : DiscoveredRoots)
+    const FString ScriptsDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
+    const FString TestsLuaRootFString = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tests/Lua"));
+    const std::filesystem::path TestsLuaRoot(TCHAR_TO_UTF8(*TestsLuaRootFString));
+
+    // TSL-15: Validate that all Tests/Lua subtrees have an assigned tier
+    std::vector<std::string> UnregisteredSubtrees;
+    if (!GV2TestSupport::ValidateAllSubtreesRegistered(TestsLuaRoot, UnregisteredSubtrees))
     {
-        PackageRoots.Add(UTF8_TO_TCHAR(Root.string().c_str()));
-    }
-    const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectories(PackageRoots);
-    if (!TestTrue(TEXT("UE host builds GameData packages repository"), RepoBuild.IsSuccess()))
-    {
+        for (const std::string& Name : UnregisteredSubtrees)
+        {
+            AddError(FString::Printf(TEXT("Unregistered Lua spec subtree: %s"), UTF8_TO_TCHAR(Name.c_str())));
+        }
         return false;
     }
-    const GV2ContentCore::FRepositoryReadHandle RepoHandle = RepoBuild.GetCandidate().GetReadHandle();
 
-    // 2. Load the real Scripts/ module tree.
-    std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
-    FString ScriptsDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
-    FPaths::NormalizeDirectoryName(ScriptsDir);
-    const FString ScriptsPrefix = ScriptsDir + TEXT("/");
-    TArray<FString> SourceFiles;
-    IFileManager::Get().FindFilesRecursive(SourceFiles, *ScriptsDir, TEXT("*.lua"), true, false, false);
-    SourceFiles.Sort();
-    for (const FString& FullPath : SourceFiles)
-    {
-        FString Text;
-        if (!FFileHelper::LoadFileToString(Text, *FullPath))
-        {
-            TestTrue(TEXT("Load lua script"), false);
-            return false;
-        }
-        FString Norm = FullPath;
-        FPaths::NormalizeFilename(Norm);
-        const FString Rel = Norm.RightChop(ScriptsPrefix.Len());
-        const FTCHARToUTF8 Utf8(*Text);
-        RuntimeSources.push_back({
-            "@core/" + std::string(TCHAR_TO_UTF8(*Rel)),
-            std::string(Utf8.Get(), Utf8.Length())});
-    }
+    const std::vector<GV2TestSupport::ELuaSpecTier> StandardTiers = {
+        GV2TestSupport::ELuaSpecTier::Core,
+        GV2TestSupport::ELuaSpecTier::TextSystem,
+        GV2TestSupport::ELuaSpecTier::FullGame,
+    };
 
-    for (const FString& PkgRoot : PackageRoots)
+    for (const auto Tier : StandardTiers)
     {
-        const FString PkgName = FPaths::GetCleanFilename(PkgRoot);
-        if (PkgName == TEXT("core"))
+        const std::vector<std::string> Subtrees = GV2TestSupport::GetSubtreesForTier(Tier);
+        if (Subtrees.empty())
         {
             continue;
         }
-        FString PkgScriptsDir = FPaths::Combine(PkgRoot, TEXT("scripts"));
-        FPaths::NormalizeDirectoryName(PkgScriptsDir);
-        if (!FPaths::DirectoryExists(PkgScriptsDir))
+
+        const std::vector<std::string> PackageNames = GV2TestSupport::GetPackageNamesForTier(Tier);
+        TArray<FString> PackageRoots;
+        for (const std::string& PkgName : PackageNames)
         {
-            PkgScriptsDir = FPaths::Combine(PkgRoot, TEXT("Scripts"));
-            FPaths::NormalizeDirectoryName(PkgScriptsDir);
-            if (!FPaths::DirectoryExists(PkgScriptsDir))
-            {
-                continue;
-            }
+            PackageRoots.Add(FPaths::Combine(GameDataDir, UTF8_TO_TCHAR(PkgName.c_str())));
         }
-        const FString PkgScriptsPrefix = PkgScriptsDir + TEXT("/");
-        TArray<FString> PkgSourceFiles;
-        IFileManager::Get().FindFilesRecursive(PkgSourceFiles, *PkgScriptsDir, TEXT("*.lua"), true, false, false);
-        PkgSourceFiles.Sort();
-        for (const FString& FullPath : PkgSourceFiles)
+
+        const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectories(PackageRoots);
+        if (!TestTrue(
+                FString::Printf(TEXT("Build repository for tier %d"), static_cast<int>(Tier)),
+                RepoBuild.IsSuccess()))
+        {
+            return false;
+        }
+        const GV2ContentCore::FRepositoryReadHandle RepoHandle = RepoBuild.GetCandidate().GetReadHandle();
+
+        std::vector<GV2RuntimeCore::FRuntimeSource> TierRuntimeSources;
+        FString NormScriptsDir = ScriptsDir;
+        FPaths::NormalizeDirectoryName(NormScriptsDir);
+        const FString ScriptsPrefix = NormScriptsDir + TEXT("/");
+        TArray<FString> SourceFiles;
+        IFileManager::Get().FindFilesRecursive(SourceFiles, *NormScriptsDir, TEXT("*.lua"), true, false, false);
+        SourceFiles.Sort();
+        for (const FString& FullPath : SourceFiles)
         {
             FString Text;
             if (!FFileHelper::LoadFileToString(Text, *FullPath))
@@ -109,83 +94,102 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
             }
             FString Norm = FullPath;
             FPaths::NormalizeFilename(Norm);
-            if (!Norm.StartsWith(PkgScriptsPrefix, ESearchCase::CaseSensitive))
+            const FString Rel = Norm.RightChop(ScriptsPrefix.Len());
+            const FTCHARToUTF8 Utf8(*Text);
+            TierRuntimeSources.push_back({
+                "@core/" + std::string(TCHAR_TO_UTF8(*Rel)),
+                std::string(Utf8.Get(), Utf8.Length())});
+        }
+
+        for (const FString& PkgRoot : PackageRoots)
+        {
+            const FString PkgName = FPaths::GetCleanFilename(PkgRoot);
+            if (PkgName == TEXT("core"))
             {
                 continue;
             }
-            const FString Rel = Norm.RightChop(PkgScriptsPrefix.Len());
-            const FTCHARToUTF8 Utf8(*Text);
-            RuntimeSources.push_back({
-                "@" + std::string(TCHAR_TO_UTF8(*PkgName)) + "/" + std::string(TCHAR_TO_UTF8(*Rel)),
-                std::string(Utf8.Get(), Utf8.Length())});
-        }
-    }
-
-    // 3. Run every subtree against its own fresh production session — the
-    // same generic runner gv2-headless --self-test calls (Headless/Source/
-    // main.cpp starts one FRuntimeSession per subtree, not a single shared
-    // one). This matters beyond isolation hygiene: Tests/Lua/events/*.lua
-    // specs call event_bus.clear_subscribers() as a setup/teardown helper,
-    // which resets the subscriber registry's frozen flag
-    // (subscriber_registry.lua's registry.clear()). Sharing one session
-    // across subtrees let that leak into Tests/Lua/lifecycle/, which then
-    // observed an unfrozen registry outside of any registration window —
-    // a test-harness divergence from headless, not a product bug. A
-    // missing directory is not an error (TAS-02). Only subtrees needing the
-    // real production session run here (TAS-13: Tests/Lua/commands needs an
-    // isolated fixture session instead, tested by
-    // GV2.Runtime.Lua.CommandValidatorSpecRunnerHost).
-    //
-    // Review fix: the subtree list is discovered from the filesystem via
-    // GV2TestSupport::DiscoverProductionSessionSubtreeNames() — the same
-    // single source of truth Headless/Source/main.cpp reads — instead of
-    // being hardcoded here separately, so a new Tests/Lua/<subtree>/
-    // extends both hosts with zero C++ change.
-    const FString TestsLuaRootFString = FPaths::Combine(FPaths::ProjectDir(), TEXT("Tests/Lua"));
-    const std::filesystem::path TestsLuaRoot(TCHAR_TO_UTF8(*TestsLuaRootFString));
-    for (const std::string& Subtree : GV2TestSupport::DiscoverProductionSessionSubtreeNames(TestsLuaRoot))
-    {
-        const std::filesystem::path SpecRoot = TestsLuaRoot / Subtree;
-
-        GV2RuntimeCore::FRuntimeSession Session;
-        GV2RuntimeCore::FRuntimeFault Fault;
-        const bool bStarted = Session.Start(1, RepoHandle, RuntimeSources, Fault);
-        if (!TestTrue(
-                FString::Printf(TEXT("Runtime session starts for %s: code=%s message=%s"),
-                    UTF8_TO_TCHAR(Subtree.c_str()), UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
-                bStarted))
-        {
-            return false;
-        }
-
-        // SAV-10/11: Tests/Lua/save/ specs exercise game.save_slots.write
-        // through a real (throwaway, temp-dir-rooted) storage backing, not
-        // a mock. Harmless to wire for every subtree since only save/
-        // specs call it.
-        const std::filesystem::path SaveSlotSpecRoot = std::filesystem::temp_directory_path()
-            / ("gv2_ue_save_spec_slots_"
-                + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-        GV2RuntimeCore::FFilesystemSaveSlotStorage SaveSlotSpecStorage(SaveSlotSpecRoot);
-        Session.SetSaveSlotStorage(&SaveSlotSpecStorage);
-
-        GV2TestSupport::FLuaSpecRunResult SpecResult;
-        const bool bAllPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, Session, SpecResult);
-        Session.Stop();
-        {
-            std::error_code RemoveEc;
-            std::filesystem::remove_all(SaveSlotSpecRoot, RemoveEc);
-        }
-        if (!bAllPassed)
-        {
-            for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)
+            FString PkgScriptsDir = FPaths::Combine(PkgRoot, TEXT("scripts"));
+            FPaths::NormalizeDirectoryName(PkgScriptsDir);
+            if (!FPaths::DirectoryExists(PkgScriptsDir))
             {
-                AddError(FString::Printf(
-                    TEXT("Lua spec failed: id=%s code=%s message=%s"),
-                    UTF8_TO_TCHAR(Failure.Identifier.c_str()),
-                    UTF8_TO_TCHAR(Failure.Code.c_str()),
-                    UTF8_TO_TCHAR(Failure.Message.c_str())));
+                PkgScriptsDir = FPaths::Combine(PkgRoot, TEXT("Scripts"));
+                FPaths::NormalizeDirectoryName(PkgScriptsDir);
+                if (!FPaths::DirectoryExists(PkgScriptsDir))
+                {
+                    continue;
+                }
             }
-            return false;
+            const FString PkgScriptsPrefix = PkgScriptsDir + TEXT("/");
+            TArray<FString> PkgSourceFiles;
+            IFileManager::Get().FindFilesRecursive(PkgSourceFiles, *PkgScriptsDir, TEXT("*.lua"), true, false, false);
+            PkgSourceFiles.Sort();
+            for (const FString& FullPath : PkgSourceFiles)
+            {
+                FString Text;
+                if (!FFileHelper::LoadFileToString(Text, *FullPath))
+                {
+                    TestTrue(TEXT("Load lua script"), false);
+                    return false;
+                }
+                FString Norm = FullPath;
+                FPaths::NormalizeFilename(Norm);
+                if (!Norm.StartsWith(PkgScriptsPrefix, ESearchCase::CaseSensitive))
+                {
+                    continue;
+                }
+                const FString Rel = Norm.RightChop(PkgScriptsPrefix.Len());
+                const FTCHARToUTF8 Utf8(*Text);
+                TierRuntimeSources.push_back({
+                    "@" + std::string(TCHAR_TO_UTF8(*PkgName)) + "/" + std::string(TCHAR_TO_UTF8(*Rel)),
+                    std::string(Utf8.Get(), Utf8.Length())});
+            }
+        }
+
+        for (const std::string& Subtree : Subtrees)
+        {
+            const std::filesystem::path SpecRoot = TestsLuaRoot / Subtree;
+            std::error_code SpecEc;
+            if (!std::filesystem::is_directory(SpecRoot, SpecEc) || SpecEc)
+            {
+                continue;
+            }
+
+            GV2RuntimeCore::FRuntimeSession Session;
+            GV2RuntimeCore::FRuntimeFault Fault;
+            const bool bStarted = Session.Start(1, RepoHandle, TierRuntimeSources, Fault);
+            if (!TestTrue(
+                    FString::Printf(TEXT("Runtime session starts for %s: code=%s message=%s"),
+                        UTF8_TO_TCHAR(Subtree.c_str()), UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),
+                    bStarted))
+            {
+                return false;
+            }
+
+            const std::filesystem::path SaveSlotSpecRoot = std::filesystem::temp_directory_path()
+                / ("gv2_ue_save_spec_slots_"
+                    + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            GV2RuntimeCore::FFilesystemSaveSlotStorage SaveSlotSpecStorage(SaveSlotSpecRoot);
+            Session.SetSaveSlotStorage(&SaveSlotSpecStorage);
+
+            GV2TestSupport::FLuaSpecRunResult SpecResult;
+            const bool bAllPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, Session, SpecResult);
+            Session.Stop();
+            {
+                std::error_code RemoveEc;
+                std::filesystem::remove_all(SaveSlotSpecRoot, RemoveEc);
+            }
+            if (!bAllPassed)
+            {
+                for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)
+                {
+                    AddError(FString::Printf(
+                        TEXT("Lua spec failed: id=%s code=%s message=%s"),
+                        UTF8_TO_TCHAR(Failure.Identifier.c_str()),
+                        UTF8_TO_TCHAR(Failure.Code.c_str()),
+                        UTF8_TO_TCHAR(Failure.Message.c_str())));
+                }
+                return false;
+            }
         }
     }
     return true;

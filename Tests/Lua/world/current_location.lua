@@ -1,10 +1,5 @@
--- GEW-05 / TAS-12: state.world.current_location_id as a Stable ID of kind
--- `location`, resolved against the pinned repository. Migrated from
--- GV2RuntimeCore::Testing::RunWorldCurrentLocationConformance (removed) —
--- same cases, same conditions, same coverage. Runs against the real
--- production repository, so it references real GameData/core definitions
--- (core:location.city.market, core:screen.main) instead of an in-memory
--- fixture repository the way the removed C++ conformance test did.
+-- GEW-05 / TAS-12 / TSL-17: state.world.current_location_id as a Stable ID of kind
+-- `location`, resolved against the pinned repository (TextSystem tier).
 
 local function make_tree(current_location_id)
     return {
@@ -23,7 +18,7 @@ return {
     valid_location_reference_accepted = function()
         local state_validator = require("core:module.runtime.state_validator")
         local ok = pcall(function()
-            state_validator.validate_state_tree(make_tree("rh:location.city.market"))
+            state_validator.validate_state_tree(make_tree("sample:location.hub"))
         end)
         assert(ok, "a Stable ID of kind 'location' resolving in the pinned repository must be accepted as world.current_location_id")
     end,
@@ -39,7 +34,7 @@ return {
     dangling_reference_rejected = function()
         local state_validator = require("core:module.runtime.state_validator")
         local ok = pcall(function()
-            state_validator.validate_state_tree(make_tree("rh:location.city.nonexistent"))
+            state_validator.validate_state_tree(make_tree("sample:location.nonexistent"))
         end)
         assert(not ok, "a well-formed but non-existent location reference must be rejected as dangling")
     end,
@@ -50,22 +45,22 @@ return {
         mutation_window.execute_in_window(function()
             player = game.instances.actors.player()
             if not player then
-                player = game.instances.actors.create("rh:actor.character.hero", {
-                    current_location_id = "rh:location.city.market",
+                player = game.instances.actors.create("sample:actor.character.hero", {
+                    current_location_id = "sample:location.hub",
                 })
                 game.state.meta.player_actor_id = player.instance_id
             else
-                player.current_location_id = "rh:location.city.market"
+                player.current_location_id = "sample:location.hub"
             end
         end)
         local w = game.instances.world()
-        assert(w.current_location_id == "rh:location.city.market", "current_location_id must be readable through the World wrapper")
+        assert(w.current_location_id == "sample:location.hub", "current_location_id must be readable through the World wrapper")
 
         -- Direct write to world.current_location_id must be rejected (read-only accessor)
         local write_err = false
         mutation_window.execute_in_window(function()
             local ok, err = pcall(function()
-                w.current_location_id = "rh:location.city.tavern"
+                w.current_location_id = "sample:location.east"
             end)
             if not ok then
                 write_err = true

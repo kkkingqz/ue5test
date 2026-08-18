@@ -1,0 +1,53 @@
+{
+  schema_version: 1,
+  type: "location",
+  definitions: [
+    {
+      id: "sample:location.hub",
+      data: {
+        title_text_id: "sample:text.location.hub.title",
+        screen_ids: [
+          "sample:screen.location.hub",
+        ],
+        connected_location_ids: [
+          "sample:location.east",
+          "sample:location.west",
+        ],
+      },
+      tags: ["sample", "location", "hub"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "sample:location.east",
+      data: {
+        title_text_id: "sample:text.location.east.title",
+        screen_ids: [
+          "sample:screen.location.east",
+        ],
+        connected_location_ids: [
+          "sample:location.hub",
+        ],
+      },
+      tags: ["sample", "location", "east"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "sample:location.west",
+      data: {
+        title_text_id: "sample:text.location.west.title",
+        screen_ids: [
+          "sample:screen.location.west",
+        ],
+        connected_location_ids: [
+          "sample:location.hub",
+        ],
+      },
+      tags: ["sample", "location", "west"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

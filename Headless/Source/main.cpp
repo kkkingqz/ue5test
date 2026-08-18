@@ -1155,11 +1155,8 @@ int Run(
         // needs nothing beyond the production module tree either (the
         // codec is stateless), so it rides the same loop.
         //
-        // Review fix: the subtree list itself is no longer hardcoded here
-        // (and separately in GV2LuaSpecRunnerHostTests.cpp) — both hosts
-        // discover it from the filesystem via
-        // GV2TestSupport::DiscoverProductionSessionSubtreeNames(), so a new
-        // Tests/Lua/<subtree>/ extends both hosts with zero C++ change.
+        // TSL-15: Map Tests/Lua/<subtree> to package configuration test tiers.
+        // Single source of truth in GV2TestSupport shared with Unreal runner.
         const std::vector<std::filesystem::path> TestsLuaRootCandidates{
             std::filesystem::current_path() / "Tests" / "Lua",
             std::filesystem::current_path() / ".." / "Tests" / "Lua",
@@ -1175,46 +1172,154 @@ int Run(
             }
         }
 
-        for (const std::string& Subtree : GV2TestSupport::DiscoverProductionSessionSubtreeNames(TestsLuaRoot))
+        const std::vector<std::filesystem::path> GameDataRootCandidates{
+            std::filesystem::current_path() / "GameData",
+            std::filesystem::current_path() / ".." / "GameData",
+        };
+        std::filesystem::path GameDataRoot = GameDataRootCandidates.front();
+        for (const std::filesystem::path& Candidate : GameDataRootCandidates)
         {
-            const std::filesystem::path SpecRoot = TestsLuaRoot / Subtree;
-
-            GV2RuntimeCore::FRuntimeSession SpecSession;
-            GV2RuntimeCore::FRuntimeFault SpecSessionFault;
-            if (!SpecSession.Start(1, RepositoryHandle, RuntimeSources, SpecSessionFault))
+            std::error_code Ec;
+            if (std::filesystem::is_directory(Candidate, Ec) && !Ec)
             {
-                std::cerr << "lua_spec_session_start_failed code=" << SpecSessionFault.Code
-                          << " message=" << SpecSessionFault.Message << '\n';
+                GameDataRoot = Candidate;
+                break;
+            }
+        }
+
+        const std::vector<std::filesystem::path> ScriptsRootCandidates{
+            std::filesystem::current_path() / "Scripts",
+            std::filesystem::current_path() / ".." / "Scripts",
+        };
+        std::filesystem::path ScriptsRoot = ScriptsRootCandidates.front();
+        for (const std::filesystem::path& Candidate : ScriptsRootCandidates)
+        {
+            std::error_code Ec;
+            if (std::filesystem::is_directory(Candidate, Ec) && !Ec)
+            {
+                ScriptsRoot = Candidate;
+                break;
+            }
+        }
+
+        std::vector<std::string> UnregisteredSubtrees;
+        if (!GV2TestSupport::ValidateAllSubtreesRegistered(TestsLuaRoot, UnregisteredSubtrees))
+        {
+            for (const std::string& Name : UnregisteredSubtrees)
+            {
+                std::cerr << "unregistered_lua_spec_subtree name=" << Name << '\n';
+            }
+            return 16;
+        }
+
+        const std::vector<GV2TestSupport::ELuaSpecTier> StandardTiers = {
+            GV2TestSupport::ELuaSpecTier::Core,
+            GV2TestSupport::ELuaSpecTier::TextSystem,
+            GV2TestSupport::ELuaSpecTier::FullGame,
+        };
+
+        for (const auto Tier : StandardTiers)
+        {
+            const std::vector<std::string> Subtrees = GV2TestSupport::GetSubtreesForTier(Tier);
+            if (Subtrees.empty())
+            {
+                continue;
+            }
+
+            const std::vector<std::string> PackageNames = GV2TestSupport::GetPackageNamesForTier(Tier);
+            std::vector<std::filesystem::path> TierPackageRoots;
+            for (const std::string& PkgName : PackageNames)
+            {
+                TierPackageRoots.push_back(GameDataRoot / PkgName);
+            }
+
+            const GV2ContentCore::FBuildResult TierRepoBuild = BuildRepositoryFromDirectories(TierPackageRoots);
+            if (TierRepoBuild.IsFailure())
+            {
+                PrintRepositoryDiagnostics(TierRepoBuild.GetDiagnostics());
+                std::cerr << "tier_repository_build_failed tier=" << static_cast<int>(Tier) << '\n';
                 return 16;
             }
+            const GV2ContentCore::FRepositoryReadHandle TierRepoHandle =
+                TierRepoBuild.GetCandidate().GetReadHandle();
 
-            // SAV-10/11: Tests/Lua/save/ specs exercise game.save_slots.write
-            // through a real (throwaway, temp-dir-rooted) storage backing,
-            // not a mock — the same primitive gv2-headless would use for a
-            // real save. Harmless to wire for every subtree since only
-            // save/ specs call it.
-            const std::filesystem::path SaveSlotSpecRoot = std::filesystem::temp_directory_path()
-                / ("gv2_headless_save_spec_slots_"
-                    + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-            GV2RuntimeCore::FFilesystemSaveSlotStorage SaveSlotSpecStorage(SaveSlotSpecRoot);
-            SpecSession.SetSaveSlotStorage(&SaveSlotSpecStorage);
-
-            GV2TestSupport::FLuaSpecRunResult SpecResult;
-            const bool bSpecsPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, SpecSession, SpecResult);
-            SpecSession.Stop();
+            std::vector<GV2RuntimeCore::FRuntimeSource> TierRuntimeSources;
+            for (const auto& Entry : std::filesystem::recursive_directory_iterator(ScriptsRoot))
             {
-                std::error_code RemoveEc;
-                std::filesystem::remove_all(SaveSlotSpecRoot, RemoveEc);
-            }
-            if (!bSpecsPassed)
-            {
-                for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)
+                if (Entry.is_regular_file() && Entry.path().extension() == ".lua")
                 {
-                    std::cerr << "lua_spec_failed id=" << Failure.Identifier
-                              << " code=" << Failure.Code
-                              << " message=" << Failure.Message << '\n';
+                    std::ifstream File(Entry.path(), std::ios::binary);
+                    std::string Code((std::istreambuf_iterator<char>(File)), std::istreambuf_iterator<char>());
+                    const std::string Rel = std::filesystem::relative(Entry.path(), ScriptsRoot).generic_string();
+                    TierRuntimeSources.push_back({ "@core/" + Rel, Code });
                 }
-                return 16;
+            }
+            for (const auto& PkgRoot : TierPackageRoots)
+            {
+                const std::string PkgName = PkgRoot.filename().string();
+                if (PkgName == "core")
+                {
+                    continue;
+                }
+                const std::filesystem::path PkgScriptsRoot = PkgRoot / "scripts";
+                std::error_code PkgEc;
+                if (std::filesystem::is_directory(PkgScriptsRoot, PkgEc) && !PkgEc)
+                {
+                    for (const auto& Entry : std::filesystem::recursive_directory_iterator(PkgScriptsRoot))
+                    {
+                        if (Entry.is_regular_file() && Entry.path().extension() == ".lua")
+                        {
+                            std::ifstream File(Entry.path(), std::ios::binary);
+                            std::string Code((std::istreambuf_iterator<char>(File)), std::istreambuf_iterator<char>());
+                            const std::string Rel = std::filesystem::relative(Entry.path(), PkgScriptsRoot).generic_string();
+                            TierRuntimeSources.push_back({ "@" + PkgName + "/" + Rel, Code });
+                        }
+                    }
+                }
+            }
+
+            for (const std::string& Subtree : Subtrees)
+            {
+                const std::filesystem::path SpecRoot = TestsLuaRoot / Subtree;
+                std::error_code SpecEc;
+                if (!std::filesystem::is_directory(SpecRoot, SpecEc) || SpecEc)
+                {
+                    continue;
+                }
+
+                GV2RuntimeCore::FRuntimeSession SpecSession;
+                GV2RuntimeCore::FRuntimeFault SpecSessionFault;
+                if (!SpecSession.Start(1, TierRepoHandle, TierRuntimeSources, SpecSessionFault))
+                {
+                    std::cerr << "lua_spec_session_start_failed subtree=" << Subtree
+                              << " code=" << SpecSessionFault.Code
+                              << " message=" << SpecSessionFault.Message << '\n';
+                    return 16;
+                }
+
+                const std::filesystem::path SaveSlotSpecRoot = std::filesystem::temp_directory_path()
+                    / ("gv2_headless_save_spec_slots_"
+                        + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+                GV2RuntimeCore::FFilesystemSaveSlotStorage SaveSlotSpecStorage(SaveSlotSpecRoot);
+                SpecSession.SetSaveSlotStorage(&SaveSlotSpecStorage);
+
+                GV2TestSupport::FLuaSpecRunResult SpecResult;
+                const bool bSpecsPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, SpecSession, SpecResult);
+                SpecSession.Stop();
+                {
+                    std::error_code RemoveEc;
+                    std::filesystem::remove_all(SaveSlotSpecRoot, RemoveEc);
+                }
+                if (!bSpecsPassed)
+                {
+                    for (const GV2ContentHostSupport::FLuaSpecFailure& Failure : SpecResult.Failures)
+                    {
+                        std::cerr << "lua_spec_failed id=" << Failure.Identifier
+                                  << " code=" << Failure.Code
+                                  << " message=" << Failure.Message << '\n';
+                    }
+                    return 16;
+                }
             }
         }
 

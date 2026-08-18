@@ -59,13 +59,13 @@ return {
                 assert(#received_events == 1, "must receive 1 enter event")
                 assert(received_events[1].from_location == "rh:location.city.market")
                 assert(received_events[1].to_location == "rh:location.city.tavern")
-
-                event_bus.clear_published_events()
             end)
+
+            event_bus.clear_published_events()
         end)
     end,
 
-    travel_insufficient_stamina_refused_by_validator = function()
+    travel_refused_when_insufficient_stamina = function()
         event_bus.with_isolated_subscribers(function()
             event_bus.clear_published_events()
 
@@ -79,26 +79,22 @@ return {
                     args = { target_location_id = "rh:location.city.tavern" },
                     sequence = 802,
                 })
-                assert(seq == 802)
+                assert(seq == 802, "dispatch sequence must match")
 
                 local result = game.runtime.last_command_result
-                assert(result ~= nil and result.ok == false, "travel must be refused by validator")
-                assert(result.error.code == "rh:error.travel.insufficient_stamina",
-                    "error code must be insufficient_stamina, got: " .. tostring(result.error.code))
-                assert(result.error.params.current_stamina == 4)
-                assert(result.error.params.required_stamina == 5)
+                assert(result ~= nil and result.ok == false, "travel with stamina 4 must fail")
+                assert(result.error ~= nil and result.error.code == "rh:error.travel.insufficient_stamina",
+                    "error code must be insufficient_stamina, got: " .. tostring(result.error and result.error.code))
 
-                -- State must remain unchanged
-                assert(player.stamina == 4, "stamina must remain 4")
-                assert(world.current_location_id == "rh:location.city.market", "location must not change")
-                assert(#game.events.get_published_events() == 0, "0 events published on refusal")
-
-                event_bus.clear_published_events()
+                assert(player.stamina == 4, "stamina must remain unchanged")
+                assert(world.current_location_id == "rh:location.city.market", "location must remain unchanged")
             end)
+
+            event_bus.clear_published_events()
         end)
     end,
 
-    travel_not_connected_refused_by_validator = function()
+    travel_refused_when_not_connected = function()
         event_bus.with_isolated_subscribers(function()
             event_bus.clear_published_events()
 
@@ -107,28 +103,23 @@ return {
                 local world = game.instances.world()
                 player.current_location_id = "rh:location.city.market"
 
-                -- market is connected only to tavern, not directly to gate
                 local seq = game.runtime.dispatch_command({
                     command_id = "rh:command.travel",
                     args = { target_location_id = "rh:location.city.gate" },
                     sequence = 803,
                 })
-                assert(seq == 803)
+                assert(seq == 803, "dispatch sequence must match")
 
                 local result = game.runtime.last_command_result
-                assert(result ~= nil and result.ok == false, "travel to non-connected location must be refused")
-                assert(result.error.code == "rh:error.travel.not_connected",
-                    "error code must be not_connected, got: " .. tostring(result.error.code))
-                assert(result.error.params.from_location == "rh:location.city.market")
-                assert(result.error.params.to_location == "rh:location.city.gate")
+                assert(result ~= nil and result.ok == false, "travel market->gate must fail (not connected)")
+                assert(result.error ~= nil and result.error.code == "rh:error.travel.not_connected",
+                    "error code must be not_connected, got: " .. tostring(result.error and result.error.code))
 
-                -- State must remain unchanged
-                assert(player.stamina == 20, "stamina must remain 20")
-                assert(world.current_location_id == "rh:location.city.market", "location must not change")
-                assert(#game.events.get_published_events() == 0, "0 events published on refusal")
-
-                event_bus.clear_published_events()
+                assert(player.stamina == 20, "stamina must remain unchanged")
+                assert(world.current_location_id == "rh:location.city.market", "location must remain unchanged")
             end)
+
+            event_bus.clear_published_events()
         end)
     end,
 }

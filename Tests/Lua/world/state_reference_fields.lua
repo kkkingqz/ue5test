@@ -1,5 +1,5 @@
--- CBM-10: State Reference Fields Dynamic Registry Specs
--- Verifies dynamic registration of reference fields in state_validator,
+-- CBM-10 / TSL-17: State Reference Fields Dynamic Registry Specs (TextSystem tier)
+-- Verifies dynamic registration of reference fields in state_validator by textsystem,
 -- freeze invariants, error semantics, and integration with state validation & load rewriting.
 
 local state_validator = require("core:module.runtime.state_validator")
@@ -9,7 +9,7 @@ return {
     reference_fields_exposed_and_registered = function()
         local fields = state_validator.get_reference_fields()
         assert(type(fields) == "table", "get_reference_fields must return table")
-        -- current_location_id registered by rh package
+        -- current_location_id registered by textsystem package
         assert(fields.current_location_id == "location", "current_location_id must map to location")
         assert(state_validator.definition_reference_fields.current_location_id == "location",
             "definition_reference_fields proxy must expose registered fields")
@@ -33,11 +33,11 @@ return {
 
     validation_enforces_registered_reference_fields = function()
         local state = state_validator.create_empty_canonical_state()
-        state.world.current_location_id = "rh:location.city.market"
+        state.world.current_location_id = "sample:location.hub"
         assert(state_validator.validate_state_tree(state) == true, "valid state tree must pass validation")
 
-        -- Invalid kind
-        state.world.current_location_id = "rh:item.weapon.sword"
+        -- Invalid kind (actor instead of location)
+        state.world.current_location_id = "sample:actor.character.hero"
         local ok, err = pcall(function()
             state_validator.validate_state_tree(state)
         end)
@@ -58,16 +58,16 @@ return {
     load_rewrite_uses_reference_fields = function()
         -- Test definition redirect resolution in load_module
         local repo_get = function(id)
-            if id == "rh:location.city.market" then
-                return { id = "rh:location.city.market" }, nil
-            elseif id == "rh:location.old_market" then
-                return nil, { code = "not_found", canonical_id = "rh:location.city.market" }
+            if id == "sample:location.hub" then
+                return { id = "sample:location.hub" }, nil
+            elseif id == "sample:location.old_hub" then
+                return nil, { code = "not_found", canonical_id = "sample:location.hub" }
             end
             return nil, { code = "not_found" }
         end
 
-        local canonical, err = load_module.resolve_definition_id("rh:location.old_market", repo_get)
+        local canonical, err = load_module.resolve_definition_id("sample:location.old_hub", repo_get)
         assert(err == nil, "redirect must resolve without error")
-        assert(canonical == "rh:location.city.market", "redirect must rewrite to canonical target")
+        assert(canonical == "sample:location.hub", "must return canonical_id from redirect")
     end,
 }

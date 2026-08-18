@@ -101,11 +101,12 @@ def validate_no_hardcoded_lua_subtree_lists() -> list[str]:
         content = path.read_text(encoding="utf-8")
         if "RunLuaSpecs" not in content:
             continue
-        if "DiscoverProductionSessionSubtreeNames" not in content:
+        if "DiscoverProductionSessionSubtreeNames" not in content and "ValidateAllSubtreesRegistered" not in content and "GetSubtreesForTier" not in content:
             errors.append(
                 f"{path}: calls GV2TestSupport::RunLuaSpecs but never "
-                "GV2TestSupport::DiscoverProductionSessionSubtreeNames() — the Tests/Lua "
-                "subtree list must be discovered from the filesystem (shared by both "
+                "GV2TestSupport shared discovery/tier functions (ValidateAllSubtreesRegistered, "
+                "GetSubtreesForTier, DiscoverProductionSessionSubtreeNames) — the Tests/Lua "
+                "subtree list must be discovered from the filesystem/tier-config (shared by both "
                 "hosts), not hardcoded per host."
             )
 

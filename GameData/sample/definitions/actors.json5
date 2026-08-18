@@ -1,0 +1,16 @@
+{
+  schema_version: 1,
+  type: "actor",
+  definitions: [
+    {
+      id: "sample:actor.character.hero",
+      data: {
+        discriminator: "player",
+      },
+      tags: ["character", "player"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}
