@@ -5,7 +5,7 @@ proposal_state: accepted_for_planning
 version: 0.1
 updated: 2026-08-18
 depends_on:
-  - LuaAuthoringSugarProposal.md
+  - DesignerLuaAuthoringProposal.md
   - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
   - ../Architecture/GameDataRepositoryContract.md
   - ../Architecture/BuildAndTooling.md
@@ -21,7 +21,7 @@ decisions:
 > **Затрагивает:** [Definition Envelope](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
 > **Не является нормативным:** до реализации действует текущий contract.
 
-Плагин — один из frontend авторского слоя наравне с `gv2-content` и правкой файлов вручную. Lua-часть авторского слоя — в [Lua Authoring Sugar](LuaAuthoringSugarProposal.md).
+Плагин — один из frontend авторского слоя наравне с `gv2-content` и правкой файлов вручную. Lua-часть авторского слоя — в [Designer Lua Authoring](DesignerLuaAuthoringProposal.md).
 
 ## 1. Цель
 
