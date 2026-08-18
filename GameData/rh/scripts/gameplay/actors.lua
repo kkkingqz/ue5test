@@ -37,8 +37,8 @@ local function actor_decorator(base)
                 return {
                     ok = false,
                     error = {
-                        code = "core:error.actor.invalid_reward_amount",
-                        message = "Reward amount must be a non-negative integer",
+                        code = "rh:error.economy.invalid_amount",
+                        params = { amount = amount },
                     },
                 }
             end
