@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 2.1
+version: 2.2
 updated: 2026-08-18
 ---
 
@@ -30,6 +30,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
 | [CoreGameplayBoundaryProposal](CoreGameplayBoundaryProposal.md) | implemented | Architecture, Modding, Content | Правило ownership между framework core и gameplay packages: механизмы в `core`, семантика и контент в пакетах |
 | [DesignerLuaAuthoringProposal](DesignerLuaAuthoringProposal.md) | implemented | Runtime, State, Authoring | Designer-facing Lua: дескриптор модуля с отложенной регистрацией, три вида property, `write_revision` и правило `fail()`, изоляция сырого состояния |
+| [SimplifiedAuthoringSurfaceProposal](SimplifiedAuthoringSurfaceProposal.md) | accepted for planning | Runtime, Authoring, Tooling | Окружение authoring-скрипта без `M.`, автообнаружение модулей, неявный успех команды, презентация без участия геймплея; переработка `rh` |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
@@ -43,10 +44,11 @@ Proposal не изменяет нормативную архитектуру с�
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
-3. `ContentEditorPluginProposal` — начинается только после трёх блокирующих пунктов из его раздела 40: правило версионирования схем, правка поля в `Json5AstRewriter`, authoring-метаданные схем.
-4. `ModPackageLifecycleProposal`.
-5. `CommonUIRuntimeIntegrationProposal`.
-6. `ScreenAuthoringWorkflowProposal`.
+3. `SimplifiedAuthoringSurfaceProposal` — этапы 1–6 самодостаточны; этап 7 (декларативные экраны) ждёт тех же предусловий, что и редактор.
+4. `ContentEditorPluginProposal` — начинается только после трёх блокирующих пунктов из его раздела 40: правило версионирования схем, правка поля в `Json5AstRewriter`, authoring-метаданные схем.
+5. `ModPackageLifecycleProposal`.
+6. `CommonUIRuntimeIntegrationProposal`.
+7. `ScreenAuthoringWorkflowProposal`.
 
 `ImageResourceLookupOptimizationProposal` и `ImageResourcePackagedDeploymentProposal` могут выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 
