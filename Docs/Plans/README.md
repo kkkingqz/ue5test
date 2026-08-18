@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 3.9
+version: 4.0
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,7 +24,9 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
+| План | Основание | Результат |
+|---|---|---|
+| [TextSystemLayer](TextSystemLayer/README.md) | [TextSystem Layer](../Proposals/TextSystemLayerProposal.md) | Набор пакетов из данных, слой `textsystem` с локациями и переходами, презентер и декларативные экраны, трёхуровневое разбиение спеков |
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
