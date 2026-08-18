@@ -1,16 +1,16 @@
 ---
 title: Commands Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - Foundation.md
-  - ../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/CommandsAndEvents.md
 ---
 
 # M2 — Commands
 
-> **Материализует:** [Commands and Events](../../Architecture/CommandsAndEvents.md) в designer-facing форме.
+> **Материализует:** [Commands and Events](../../../Architecture/CommandsAndEvents.md) в designer-facing форме.
 > **Задачи:** DLA-05…09.
 > **Результат:** команда объявляется присваиванием в дескриптор, отказ типизирован, время исполнения видно в коде.
 

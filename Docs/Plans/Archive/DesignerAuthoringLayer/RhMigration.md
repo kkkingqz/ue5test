@@ -1,6 +1,6 @@
 ---
 title: RH Migration Tasks
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
@@ -36,7 +36,7 @@ depends_on:
 
 - [x] **DLA-23 — Удалить старый путь и синхронизировать документацию**
   - Зависимости: DLA-21, DLA-22.
-  - Done: прямые вызовы `game.commands.handlers.register`, `game.commands.validators.register` и `game.events.subscribers.register` из `GameData/rh/scripts/gameplay/` и `presentation/` удалены; `Docs/Authoring/` актуализирован; `collect_texts.py` применён к `GameData/rh`; [Implementation Status](../../Status/ImplementationStatus.md) обновлён; в предложении проставлено `proposal_state: implemented`.
+  - Done: прямые вызовы `game.commands.handlers.register`, `game.commands.validators.register` и `game.events.subscribers.register` из `GameData/rh/scripts/gameplay/` и `presentation/` удалены; `Docs/Authoring/` актуализирован; `collect_texts.py` применён к `GameData/rh`; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён; в предложении проставлено `proposal_state: implemented`.
   - Evidence: `Docs/Authoring/*`, `Docs/Proposals/DesignerLuaAuthoringProposal.md`, `Docs/Status/ImplementationStatus.md`.
 
 ## Проверка milestone

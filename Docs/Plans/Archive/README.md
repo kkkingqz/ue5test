@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 1.12
+version: 1.13
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -30,3 +30,4 @@ depends_on:
 | [CommandHandlerRegistry](CommandHandlerRegistry/README.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |
 | [TestGameplaySlice](TestGameplaySlice/README.md) | 2026-08-17 | Три локации и экрана, карта `market↔tavern↔gate`, перемещение за выносливость, покупки и заработок; первый Lua внутри игрового пакета и первое перекрытие модуля ядра |
 | [CoreBoundaryMigration](CoreBoundaryMigration/README.md) | 2026-08-17 | Приведение ядра к [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md): демо в пакет `sample`, `register_type` для обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до одного поля, гейт `core_boundary_gate_contract` |
+| [DesignerAuthoringLayer](DesignerAuthoringLayer/README.md) | 2026-08-18 | Слой авторинга: признак записи в окне мутации, изоляция сырого состояния, дескриптор команд с отложенной регистрацией, `Storage`/`WritePolicy`, sparse runtime-состояние, `emit`/`on`/`show_screen`, перевод геймплея `rh` |

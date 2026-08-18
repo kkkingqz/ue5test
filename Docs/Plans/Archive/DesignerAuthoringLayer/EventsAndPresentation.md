@@ -1,17 +1,17 @@
 ---
 title: Events and Presentation Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - Commands.md
-  - ../../Architecture/CommandsAndEvents.md
-  - ../../UI/ScreenTemplates.md
+  - ../../../Architecture/CommandsAndEvents.md
+  - ../../../UI/ScreenTemplates.md
 ---
 
 # M5 — Events and Presentation
 
-> **Материализует:** [Commands and Events](../../Architecture/CommandsAndEvents.md) и [Screen Templates](../../UI/ScreenTemplates.md) в designer-facing форме.
+> **Материализует:** [Commands and Events](../../../Architecture/CommandsAndEvents.md) и [Screen Templates](../../../UI/ScreenTemplates.md) в designer-facing форме.
 > **Задачи:** DLA-17…20.
 > **Результат:** событие и экран описываются без конвертов и DTO, ни одной пользовательской строки в коде.
 

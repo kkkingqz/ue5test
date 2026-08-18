@@ -1,16 +1,16 @@
 ---
 title: Foundation Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 ---
 
 # M1 — Foundation
 
-> **Материализует:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) в части окна мутации и изоляции состояния.
+> **Материализует:** [Lua Runtime Contract](../../../Architecture/LuaRuntimeContract.md) в части окна мутации и изоляции состояния.
 > **Задачи:** DLA-01…04.
 > **Результат:** рантайм знает, была ли запись, сырое состояние недостижимо из геймплея, проверка переносимости одна на всех.
 

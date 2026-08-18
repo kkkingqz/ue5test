@@ -1,16 +1,16 @@
 ---
 title: Runtime State Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - Properties.md
-  - ../../Architecture/CanonicalStateAndSave.md
+  - ../../../Architecture/CanonicalStateAndSave.md
 ---
 
 # M4 — Runtime State
 
-> **Материализует:** [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md) в части runtime-полей, привязанных к definition.
+> **Материализует:** [Canonical State and Save](../../../Architecture/CanonicalStateAndSave.md) в части runtime-полей, привязанных к definition.
 > **Задачи:** DLA-14…16.
 > **Результат:** любой вид сущности получает runtime-поля без правок ядра; локация принадлежит персонажу.
 

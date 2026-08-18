@@ -1,16 +1,16 @@
 ---
 title: Properties Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - Foundation.md
-  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../../Architecture/DefinitionEnvelopeAndSchemaRules.md
 ---
 
 # M3 — Properties
 
-> **Материализует:** [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md) в части хранилища и политики записи.
+> **Материализует:** [Definition Envelope and Schema Rules](../../../Architecture/DefinitionEnvelopeAndSchemaRules.md) в части хранилища и политики записи.
 > **Задачи:** DLA-10…13.
 > **Результат:** поле знает, где хранится и как в него писать; ссылка знает, definition это или экземпляр.
 

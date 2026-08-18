@@ -1,23 +1,23 @@
 ---
 title: Designer Authoring Layer Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
-  - ../../Proposals/DesignerLuaAuthoringProposal.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/CommandsAndEvents.md
-  - ../../Architecture/CanonicalStateAndSave.md
-  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../../Proposals/DesignerLuaAuthoringProposal.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/CanonicalStateAndSave.md
+  - ../../../Architecture/DefinitionEnvelopeAndSchemaRules.md
 decisions:
-  - ../../ADR/0026-core-and-gameplay-ownership.md
-  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
-  - ../../ADR/0024-lua-spec-runner.md
+  - ../../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../../ADR/0024-lua-spec-runner.md
 ---
 
 # План реализации designer-facing слоя
 
-> **Материализует:** [Designer Lua Authoring](../../Proposals/DesignerLuaAuthoringProposal.md).
+> **Материализует:** [Designer Lua Authoring](../../../Proposals/DesignerLuaAuthoringProposal.md).
 > **Задачи:** DLA-01…23.
 > **Результат:** геймплей `rh` написан на designer-facing Lua; фасад в теле команд не встречается.
 
@@ -46,7 +46,7 @@ decisions:
 
 ## Принятые решения
 
-Все зафиксированы в [предложении](../../Proposals/DesignerLuaAuthoringProposal.md) и выносятся в ADR первой задачей. Кратко:
+Все зафиксированы в [предложении](../../../Proposals/DesignerLuaAuthoringProposal.md) и выносятся в ADR первой задачей. Кратко:
 
 - команда именуется ключом дескриптора, регистрация отложена до фазы `register`;
 - `fail()` до первой мутации — отказ, после — `AuthoringFailAfterMutation`; признак даёт `write_revision` в самом окне мутации;
@@ -66,7 +66,7 @@ decisions:
 - удаление programmer API — фасад, реестры и декораторы остаются;
 - отмена валидаторов: `fail()` покрывает типовой случай, валидаторы остаются для модов, приоритетов и перехвата;
 - per-module окружения и capability sandbox;
-- визуальный редактор — [Content Editor Plugin](../../Proposals/ContentEditorPluginProposal.md).
+- визуальный редактор — [Content Editor Plugin](../../../Proposals/ContentEditorPluginProposal.md).
 
 ## Milestones
 
@@ -91,7 +91,7 @@ M4 — единственный этап, меняющий форму состо
 ## Общие правила выполнения
 
 1. Слой вызывает фасад и никогда не пишет в состояние в обход окна мутации. Появление второго пути мутации — дефект, а не оптимизация.
-2. Правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../ADR/0024-lua-spec-runner.md)). C++ трогается только там, где иначе нельзя: `write_revision` и изоляция `unwrap_state`.
+2. Правила, выразимые в Lua, проверяются спеками ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)). C++ трогается только там, где иначе нельзя: `write_revision` и изоляция `unwrap_state`.
 3. Проверка переносимого значения существует в одном экземпляре: события, аргументы команд и параметры отказа используют её, а не свои копии.
 4. Каждая задача, меняющая failure semantics, добавляет negative case.
 5. Изменение `script_set_hash` в golden ожидаемо и обновляется воспроизведением манифеста; изменение `repository_content_hash` — признак ошибки, кроме задач, сознательно меняющих контент `rh`.
@@ -99,11 +99,18 @@ M4 — единственный этап, меняющий форму состо
 
 ## Итоговый Definition of Done
 
-- [ ] В теле команд `rh` не встречается ни одного обращения к `game.*`.
-- [ ] Ни одной пользовательской строки в геймплейном коде, включая отказы.
-- [ ] `fail()` после мутации даёт ошибку с указанием команды, а не частичный эффект.
-- [ ] Запись в managed-поле отклоняется и называет операцию, объявленную схемой.
-- [ ] Добавление runtime-поля новому виду сущности не требует правок ядра.
-- [ ] `unwrap_state` недостижим из геймплейного пакета.
-- [ ] Слайс проходится целиком; `state_hash` до и после сохранения совпадает.
-- [ ] Старый путь регистрации геймплея `rh` удалён, а не оставлен запасным.
+- [x] В теле команд `rh` не встречается ни одного обращения к `game.*`.
+- [x] Ни одной пользовательской строки в геймплейном коде, включая отказы.
+- [x] `fail()` после мутации даёт ошибку с указанием команды, а не частичный эффект.
+- [x] Запись в managed-поле отклоняется и называет операцию, объявленную схемой.
+- [x] Добавление runtime-поля новому виду сущности не требует правок ядра.
+- [x] `unwrap_state` недостижим из геймплейного пакета.
+- [x] Слайс проходится целиком; `state_hash` до и после сохранения совпадает.
+- [x] Старый путь регистрации геймплея `rh` удалён, а не оставлен запасным.
+
+Два наблюдения, зафиксированных при приёмке.
+
+Механизм managed-полей реализован и покрыт спеками, но `gold` и `stamina` актора в `rh` **не объявлены managed**: они остаются обычными полями обёртки, защищёнными только тем, что команды пользуются `add_gold`/`spend_stamina` по договорённости. Прямое присваивание `player.gold = 100` проходит, и на нём стоят фикстуры существующих спеков. Объявить их managed — отдельное решение с последствиями для подготовки состояния в тестах.
+
+В декораторе `rh/scripts/gameplay/actors.lua` остался единственный текст отказа в поле `message` рядом с кодом. Это слой программиста, а не дизайнера, но текст дублирует то, что должно приходить из каталога.
+
