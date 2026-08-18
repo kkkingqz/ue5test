@@ -55,4 +55,64 @@ FRenameStringTokenResult ReplaceStringTokens(
     const std::string& PackageId = "",
     const std::string& RelativeSource = "");
 
+bool SourcePositionToByteOffset(
+    std::string_view RawInput,
+    std::uint32_t Line,
+    std::uint32_t Column,
+    std::size_t& OutByteOffset);
+
+bool SourceSpanToByteRange(
+    std::string_view RawInput,
+    const GV2ContentCore::FSourceSpan& Span,
+    std::size_t& OutStartByte,
+    std::size_t& OutEndByte);
+
+enum class ESetFieldValueStatus
+{
+    Success,
+    InvalidJson5,
+    PointerNotFound,
+    TargetIsContainer,
+    InvalidValue,
+    SpanMappingFailed,
+};
+
+struct FSetFieldValueResult
+{
+    ESetFieldValueStatus Status = ESetFieldValueStatus::Success;
+    std::string UpdatedContent;
+    std::string ErrorCode;
+    std::string ErrorMessage;
+};
+
+FSetFieldValueResult SetFieldValue(
+    const std::string& OriginalContent,
+    const std::string& JsonPointer,
+    const GV2ContentCore::FValue& NewValue,
+    const std::string& PackageId = "",
+    const std::string& RelativeSource = "");
+
+enum class ERemoveDefinitionStatus
+{
+    Success,
+    InvalidJson5,
+    DefinitionNotFound,
+    SpanMappingFailed,
+};
+
+struct FRemoveDefinitionResult
+{
+    ERemoveDefinitionStatus Status = ERemoveDefinitionStatus::Success;
+    std::string UpdatedContent;
+    std::string ErrorCode;
+    std::string ErrorMessage;
+    std::size_t RemovedIndex = 0;
+};
+
+FRemoveDefinitionResult RemoveDefinitionEntry(
+    const std::string& OriginalContent,
+    const std::string& DefinitionId,
+    const std::string& PackageId = "",
+    const std::string& RelativeSource = "");
+
 } // namespace GV2ContentCli

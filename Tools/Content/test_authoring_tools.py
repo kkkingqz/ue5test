@@ -795,10 +795,188 @@ def main():
         doc_cyc = json.loads(res_cyc_fail.stdout)
         assert doc_cyc["code"] == "CircularDependencyDetected"
 
+    print("[*] Testing 'set' in temporary package workspace (CEP-05, CEP-07)...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_pkg = os.path.join(tmpdir, "core")
+        shutil.copytree(core_pkg, test_pkg)
+
+        # 38a. Set integer field on item with comments before, inside, and after
+        items_path = os.path.join(test_pkg, "definitions", "items.json5")
+        with open(items_path, "r", encoding="utf-8") as f:
+            items_orig = f.read()
+
+        # Add distinct comments around iron sword
+        annotated_items = (
+            "// Top header comment\n" +
+            items_orig.replace(
+                'id: "core:item.weapon.iron_sword",',
+                '// Comment before iron sword\n      id: "core:item.weapon.iron_sword",\n      // Comment inside iron sword'
+            ) +
+            "\n// Footer comment at EOF\n"
+        )
+        with open(items_path, "w", encoding="utf-8") as f:
+            f.write(annotated_items)
+
+        # Update price to 150
+        res = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "price", "150", "--format=json"])
+        set_doc = json.loads(res.stdout)
+        assert set_doc["status"] == "ok"
+        assert set_doc["definition_id"] == "core:item.weapon.iron_sword"
+
+        with open(items_path, "r", encoding="utf-8") as f:
+            items_after_set = f.read()
+
+        # Verify comments preserved
+        assert "// Top header comment" in items_after_set
+        assert "// Comment before iron sword" in items_after_set
+        assert "// Comment inside iron sword" in items_after_set
+        assert "// Footer comment at EOF" in items_after_set
+        assert "price: 150" in items_after_set
+
+        # Inspect definition reflects new value
+        res_insp = run_cmd([gv2_content, "inspect", test_pkg, "core:item.weapon.iron_sword", "--format=json"])
+        insp_doc = json.loads(res_insp.stdout)
+        assert insp_doc["definition"]["data"]["price"] == 150
+
+        # Validate whole package succeeds
+        res_val = run_cmd([gv2_content, "validate", test_pkg])
+        assert "ok content_hash=" in res_val.stdout
+
+        # 38b. Test different pointer forms (/price, /data/price, data/price, /deprecated)
+        res = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "/price", "200"])
+        assert "updated core:item.weapon.iron_sword (/price)" in res.stdout
+
+        res = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "/data/price", "250"])
+        assert "updated core:item.weapon.iron_sword (/data/price)" in res.stdout
+
+        res = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "/deprecated", "true"])
+        assert "updated core:item.weapon.iron_sword (/deprecated)" in res.stdout
+
+        # Verify deprecated is true
+        res_insp = run_cmd([gv2_content, "inspect", test_pkg, "core:item.weapon.iron_sword", "--format=json"])
+        insp_doc = json.loads(res_insp.stdout)
+        assert insp_doc["definition"]["deprecated"] is True
+        assert insp_doc["definition"]["data"]["price"] == 250
+
+        # 38c. Negative test: nonexistent definition ID (exit 2)
+        res_err = run_cmd([gv2_content, "set", test_pkg, "core:item.nonexistent", "price", "10"], check=False)
+        assert res_err.returncode == 2
+        assert "not found in package" in res_err.stderr
+
+        res_err_json = run_cmd([gv2_content, "set", test_pkg, "core:item.nonexistent", "price", "10", "--format=json"], check=False)
+        assert res_err_json.returncode == 2
+        err_doc = json.loads(res_err_json.stdout)
+        assert err_doc["code"] == "definition_not_found"
+
+        # 38d. Negative test: nonexistent pointer (exit 2)
+        res_err_ptr = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "nonexistent_field", "10", "--format=json"], check=False)
+        assert res_err_ptr.returncode == 2
+        err_doc = json.loads(res_err_ptr.stdout)
+        assert err_doc["code"] == "pointer_not_found"
+
+        # 38e. Negative test: target is container (exit 2)
+        res_err_cont = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "/data", "10", "--format=json"], check=False)
+        assert res_err_cont.returncode == 2
+        err_doc = json.loads(res_err_cont.stdout)
+        assert err_doc["code"] == "target_is_container"
+
+        # 38f. Negative test: constraint violation (price < 0 should fail validation, exit 1)
+        res_err_val = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "price", "-10", "--format=json"], check=False)
+        assert res_err_val.returncode == 1
+        err_doc = json.loads(res_err_val.stdout)
+        assert err_doc["status"] == "invalid"
+        assert any("price" in d.get("message", "") or "minimum" in d.get("code", "") or "diagnostic" in d.get("code", "") for d in err_doc["diagnostics"])
+
+        # 38g. Negative test: set on frozen package (exit 2)
+        pkg_manifest_path = os.path.join(test_pkg, "package.json5")
+        with open(pkg_manifest_path, "r", encoding="utf-8") as f:
+            pkg_manifest = f.read()
+        with open(pkg_manifest_path, "w", encoding="utf-8") as f:
+            f.write(pkg_manifest.replace('package_id: "core",', 'package_id: "core",\n  frozen: true,'))
+
+        res_frozen = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "price", "10", "--format=json"], check=False)
+        assert res_frozen.returncode == 2
+        err_doc = json.loads(res_frozen.stdout)
+        assert err_doc["code"] == "package_frozen"
+
+    print("[*] Testing 'delete' in temporary package workspace (CEP-06, CEP-07)...")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_pkg = os.path.join(tmpdir, "core")
+        shutil.copytree(core_pkg, test_pkg)
+
+        # 39a. Negative test: delete referenced definition is rejected (exit 1)
+        res_del_ref = run_cmd([gv2_content, "delete", test_pkg, "core:text.screen.main.title", "--format=json"], check=False)
+        assert res_del_ref.returncode == 1
+        doc_del_ref = json.loads(res_del_ref.stdout)
+        assert doc_del_ref["code"] == "referenced_by_definitions"
+        assert len(doc_del_ref["references"]) >= 1
+        assert doc_del_ref["references"][0]["source_definition_id"] == "core:screen.main"
+
+        # 39b. Delete unreferenced definition succeeds
+        res_new_text = run_cmd([gv2_content, "new", test_pkg, "text", "core:text.sample.unreferenced"])
+        assert "created definition core:text.sample.unreferenced" in res_new_text.stdout
+
+        texts_path = os.path.join(test_pkg, "definitions", "texts.json5")
+        with open(texts_path, "r", encoding="utf-8") as f:
+            texts_orig = f.read()
+
+        # Add comment around unreferenced text
+        annotated_texts = texts_orig.replace(
+            'id: "core:text.sample.unreferenced",',
+            '// Sample comment before unreferenced\n      id: "core:text.sample.unreferenced",\n      // Inside unreferenced'
+        )
+        with open(texts_path, "w", encoding="utf-8") as f:
+            f.write(annotated_texts)
+
+        res_del = run_cmd([gv2_content, "delete", test_pkg, "core:text.sample.unreferenced", "--format=json"])
+        doc_del = json.loads(res_del.stdout)
+        assert doc_del["status"] == "ok"
+        assert doc_del["definition_id"] == "core:text.sample.unreferenced"
+
+        # Verify other definitions in texts.json5 and package validate cleanly
+        with open(texts_path, "r", encoding="utf-8") as f:
+            texts_after_del = f.read()
+        assert "core:text.sample.unreferenced" not in texts_after_del
+        assert "core:text.screen.main.title" in texts_after_del
+
+        res_val = run_cmd([gv2_content, "validate", test_pkg])
+        assert "ok content_hash=" in res_val.stdout
+
+        # 39c. Delete remaining entries in a file leaving valid empty array
+        # Create a single-definition file
+        res_new_actor = run_cmd([gv2_content, "new", test_pkg, "actor", "core:actor.temp_del"])
+        assert "created definition core:actor.temp_del in definitions/actors.json5" in res_new_actor.stdout
+
+        res_del_actor = run_cmd([gv2_content, "delete", test_pkg, "core:actor.temp_del"])
+        assert "deleted definition core:actor.temp_del" in res_del_actor.stdout
+
+        # Validate whole package succeeds after deletion
+        res_val = run_cmd([gv2_content, "validate", test_pkg])
+        assert "ok content_hash=" in res_val.stdout
+
+        # 39d. Negative test: delete nonexistent definition (exit 2)
+        res_del_non = run_cmd([gv2_content, "delete", test_pkg, "core:item.nonexistent", "--format=json"], check=False)
+        assert res_del_non.returncode == 2
+        err_doc = json.loads(res_del_non.stdout)
+        assert err_doc["code"] == "definition_not_found"
+
+        # 39e. Negative test: delete on frozen package (exit 2)
+        pkg_manifest_path = os.path.join(test_pkg, "package.json5")
+        with open(pkg_manifest_path, "r", encoding="utf-8") as f:
+            pkg_manifest = f.read()
+        with open(pkg_manifest_path, "w", encoding="utf-8") as f:
+            f.write(pkg_manifest.replace('package_id: "core",', 'package_id: "core",\n  frozen: true,'))
+
+        res_frozen = run_cmd([gv2_content, "delete", test_pkg, "core:screen.main", "--format=json"], check=False)
+        assert res_frozen.returncode == 2
+        err_doc = json.loads(res_frozen.stdout)
+        assert err_doc["code"] == "package_frozen"
+
     print("[*] All authoring tools tests passed successfully!")
 
 if __name__ == "__main__":
     main()
+
 
 
 

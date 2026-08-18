@@ -1,4 +1,5 @@
 #include "Commands/CoverageCommand.h"
+#include "Commands/DeleteCommand.h"
 #include "Commands/DescribeCommand.h"
 #include "Commands/HashCommand.h"
 #include "Commands/IndexCommand.h"
@@ -6,8 +7,10 @@
 #include "Commands/NewCommand.h"
 #include "Commands/RefsCommand.h"
 #include "Commands/RenameCommand.h"
+#include "Commands/SetCommand.h"
 #include "Commands/ValidateCommand.h"
 #include "Support/CliOutput.h"
+#include "Support/Json5AstRewriterConformance.h"
 
 #include <iostream>
 #include <string>
@@ -28,6 +31,18 @@ int main(int argc, char** argv)
     if (Command == "--help" || Command == "-h" || Command == "help")
     {
         PrintUsage(std::cout);
+        return static_cast<int>(EExitCode::Success);
+    }
+
+    if (Command == "--self-test")
+    {
+        const std::string Error = GV2ContentCli::Testing::RunJson5AstRewriterConformance();
+        if (!Error.empty())
+        {
+            std::cerr << "json5_ast_rewriter_conformance_failed: " << Error << "\n";
+            return static_cast<int>(EExitCode::ToolFailure);
+        }
+        std::cout << "gv2-content self-test passed.\n";
         return static_cast<int>(EExitCode::Success);
     }
 
@@ -94,7 +109,7 @@ int main(int argc, char** argv)
                 return static_cast<int>(EExitCode::ToolFailure);
             }
         }
-        else if (!Arg.empty() && Arg[0] == '-')
+        else if (!Arg.empty() && Arg[0] == '-' && !(Arg.size() >= 2 && Arg[1] >= '0' && Arg[1] <= '9'))
         {
             std::cerr << "gv2-content: unknown option '" << Arg << "'\n";
             return static_cast<int>(EExitCode::ToolFailure);
@@ -158,6 +173,14 @@ int main(int argc, char** argv)
     if (Command == "coverage")
     {
         return RunCoverage(Positional, Format, Locale);
+    }
+    if (Command == "set")
+    {
+        return RunSet(Positional, Format);
+    }
+    if (Command == "delete")
+    {
+        return RunDelete(Positional, Format);
     }
 
     std::cerr << "gv2-content: unknown command '" << Command << "'\n";

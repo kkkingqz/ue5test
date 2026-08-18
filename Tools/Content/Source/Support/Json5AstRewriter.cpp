@@ -456,4 +456,433 @@ FRenameStringTokenResult ReplaceStringTokens(
     return Result;
 }
 
+bool SourcePositionToByteOffset(
+    std::string_view RawInput,
+    std::uint32_t Line,
+    std::uint32_t Column,
+    std::size_t& OutByteOffset)
+{
+    if (Line < 1 || Column < 1)
+    {
+        return false;
+    }
+
+    std::size_t BaseOffset = 0;
+    if (RawInput.size() >= 3 &&
+        static_cast<unsigned char>(RawInput[0]) == 0xEF &&
+        static_cast<unsigned char>(RawInput[1]) == 0xBB &&
+        static_cast<unsigned char>(RawInput[2]) == 0xBF)
+    {
+        BaseOffset = 3;
+    }
+
+    std::uint32_t CurLine = 1;
+    std::uint32_t CurCol = 1;
+    std::size_t CurOffset = BaseOffset;
+    const std::size_t Size = RawInput.size();
+
+    while (CurOffset < Size)
+    {
+        if (CurLine == Line && CurCol == Column)
+        {
+            OutByteOffset = CurOffset;
+            return true;
+        }
+
+        if (CurLine > Line)
+        {
+            return false;
+        }
+
+        const unsigned char LeadByte = static_cast<unsigned char>(RawInput[CurOffset]);
+        if (LeadByte == '\r')
+        {
+            CurOffset++;
+            if (CurOffset < Size && RawInput[CurOffset] == '\n')
+            {
+                CurOffset++;
+            }
+            CurLine++;
+            CurCol = 1;
+        }
+        else if (LeadByte == '\n')
+        {
+            CurOffset++;
+            CurLine++;
+            CurCol = 1;
+        }
+        else
+        {
+            CurOffset++;
+            while (CurOffset < Size && (static_cast<unsigned char>(RawInput[CurOffset]) & 0xC0) == 0x80)
+            {
+                CurOffset++;
+            }
+            CurCol++;
+        }
+    }
+
+    if (CurLine == Line && CurCol == Column)
+    {
+        OutByteOffset = CurOffset;
+        return true;
+    }
+
+    return false;
+}
+
+bool SourceSpanToByteRange(
+    std::string_view RawInput,
+    const GV2ContentCore::FSourceSpan& Span,
+    std::size_t& OutStartByte,
+    std::size_t& OutEndByte)
+{
+    if (!SourcePositionToByteOffset(RawInput, Span.StartLine, Span.StartColumn, OutStartByte))
+    {
+        return false;
+    }
+    if (!SourcePositionToByteOffset(RawInput, Span.EndLine, Span.EndColumn, OutEndByte))
+    {
+        return false;
+    }
+    return OutStartByte <= OutEndByte && OutEndByte <= RawInput.size();
+}
+
+namespace
+{
+
+std::string UnescapeJsonPointerToken(std::string_view Token)
+{
+    std::string Unescaped;
+    for (std::size_t i = 0; i < Token.size(); ++i)
+    {
+        if (Token[i] == '~' && i + 1 < Token.size())
+        {
+            if (Token[i + 1] == '0')
+            {
+                Unescaped.push_back('~');
+                i++;
+                continue;
+            }
+            if (Token[i + 1] == '1')
+            {
+                Unescaped.push_back('/');
+                i++;
+                continue;
+            }
+        }
+        Unescaped.push_back(Token[i]);
+    }
+    return Unescaped;
+}
+
+const GV2ContentCore::FValue* FindValueByPointer(
+    const GV2ContentCore::FValue& Root,
+    std::string_view JsonPointer)
+{
+    if (JsonPointer.empty())
+    {
+        return &Root;
+    }
+    if (JsonPointer.front() != '/')
+    {
+        return nullptr;
+    }
+
+    const GV2ContentCore::FValue* Current = &Root;
+    std::size_t Start = 1;
+    while (Start <= JsonPointer.size())
+    {
+        std::size_t SlashPos = JsonPointer.find('/', Start);
+        std::string_view Segment = (SlashPos == std::string_view::npos)
+            ? JsonPointer.substr(Start)
+            : JsonPointer.substr(Start, SlashPos - Start);
+
+        std::string UnescapedSegment = UnescapeJsonPointerToken(Segment);
+
+        if (Current->IsObject())
+        {
+            const auto* Found = Current->FindField(UnescapedSegment);
+            if (Found == nullptr)
+            {
+                return nullptr;
+            }
+            Current = Found;
+        }
+        else if (Current->IsArray())
+        {
+            std::size_t Index = 0;
+            try
+            {
+                Index = std::stoul(UnescapedSegment);
+            }
+            catch (...)
+            {
+                return nullptr;
+            }
+            const auto& Arr = Current->AsArray();
+            if (Index >= Arr.size())
+            {
+                return nullptr;
+            }
+            Current = &Arr[Index];
+        }
+        else
+        {
+            return nullptr;
+        }
+
+        if (SlashPos == std::string_view::npos)
+        {
+            break;
+        }
+        Start = SlashPos + 1;
+    }
+    return Current;
+}
+
+} // namespace
+
+FSetFieldValueResult SetFieldValue(
+    const std::string& OriginalContent,
+    const std::string& JsonPointer,
+    const GV2ContentCore::FValue& NewValue,
+    const std::string& PackageId,
+    const std::string& RelativeSource)
+{
+    FSetFieldValueResult Result;
+    GV2ContentCore::FParseLimits Limits;
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    auto ParsedDoc = GV2ContentCore::ParseJson5Document(
+        OriginalContent, Limits, Diagnostics, PackageId, 0, RelativeSource);
+    if (!ParsedDoc.has_value())
+    {
+        Result.Status = ESetFieldValueStatus::InvalidJson5;
+        Result.ErrorCode = "invalid_json5";
+        Result.ErrorMessage = "Failed to parse JSON5 document";
+        return Result;
+    }
+
+    const auto* Location = ParsedDoc->FindLocation(JsonPointer);
+    if (Location == nullptr)
+    {
+        Result.Status = ESetFieldValueStatus::PointerNotFound;
+        Result.ErrorCode = "pointer_not_found";
+        Result.ErrorMessage = "JSON pointer '" + JsonPointer + "' not found in document";
+        return Result;
+    }
+
+    // Check if target is a container
+    const auto* TargetVal = FindValueByPointer(ParsedDoc->GetRootValue(), JsonPointer);
+    if (TargetVal != nullptr && (TargetVal->IsObject() || TargetVal->IsArray()))
+    {
+        Result.Status = ESetFieldValueStatus::TargetIsContainer;
+        Result.ErrorCode = "target_is_container";
+        Result.ErrorMessage = "JSON pointer '" + JsonPointer + "' refers to a container (object/array), expected scalar value";
+        return Result;
+    }
+
+    // Validate NewValue is not a container
+    if (NewValue.IsObject() || NewValue.IsArray())
+    {
+        Result.Status = ESetFieldValueStatus::InvalidValue;
+        Result.ErrorCode = "invalid_value";
+        Result.ErrorMessage = "Cannot set container value directly via set; value must be a scalar";
+        return Result;
+    }
+
+    std::size_t StartByte = 0;
+    std::size_t EndByte = 0;
+    if (!SourceSpanToByteRange(OriginalContent, Location->ValueSpan, StartByte, EndByte))
+    {
+        Result.Status = ESetFieldValueStatus::SpanMappingFailed;
+        Result.ErrorCode = "span_mapping_failed";
+        Result.ErrorMessage = "Failed to map location span to byte offsets";
+        return Result;
+    }
+
+    std::ostringstream FormattedValueStream;
+    FormatJson5Value(FormattedValueStream, NewValue, 0);
+    std::string FormattedValue = FormattedValueStream.str();
+
+    std::string UpdatedContent = OriginalContent.substr(0, StartByte)
+        + FormattedValue
+        + OriginalContent.substr(EndByte);
+
+    std::vector<GV2ContentCore::FDiagnostic> VerifyDiagnostics;
+    auto VerifyDoc = GV2ContentCore::ParseJson5Document(
+        UpdatedContent, Limits, VerifyDiagnostics, PackageId, 0, RelativeSource);
+    if (!VerifyDoc.has_value())
+    {
+        Result.Status = ESetFieldValueStatus::InvalidJson5;
+        Result.ErrorCode = "rewritten_document_invalid";
+        Result.ErrorMessage = "Rewritten document failed to parse";
+        return Result;
+    }
+
+    Result.Status = ESetFieldValueStatus::Success;
+    Result.UpdatedContent = std::move(UpdatedContent);
+    return Result;
+}
+
+FRemoveDefinitionResult RemoveDefinitionEntry(
+    const std::string& OriginalContent,
+    const std::string& DefinitionId,
+    const std::string& PackageId,
+    const std::string& RelativeSource)
+{
+    FRemoveDefinitionResult Result;
+    GV2ContentCore::FParseLimits Limits;
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    auto ParsedDoc = GV2ContentCore::ParseJson5Document(
+        OriginalContent, Limits, Diagnostics, PackageId, 0, RelativeSource);
+    if (!ParsedDoc.has_value())
+    {
+        Result.Status = ERemoveDefinitionStatus::InvalidJson5;
+        Result.ErrorCode = "invalid_json5";
+        Result.ErrorMessage = "Failed to parse JSON5 document";
+        return Result;
+    }
+
+    const auto& Root = ParsedDoc->GetRootValue();
+    if (!Root.IsObject())
+    {
+        Result.Status = ERemoveDefinitionStatus::InvalidJson5;
+        Result.ErrorCode = "invalid_json5";
+        Result.ErrorMessage = "Root value is not an object";
+        return Result;
+    }
+
+    const auto* DefsVal = Root.FindField("definitions");
+    if (DefsVal == nullptr || !DefsVal->IsArray())
+    {
+        Result.Status = ERemoveDefinitionStatus::InvalidJson5;
+        Result.ErrorCode = "invalid_json5";
+        Result.ErrorMessage = "Missing or invalid definitions array in root";
+        return Result;
+    }
+
+    const auto& DefsArr = DefsVal->AsArray();
+    std::size_t TargetIndex = std::string::npos;
+    for (std::size_t i = 0; i < DefsArr.size(); ++i)
+    {
+        if (DefsArr[i].IsObject())
+        {
+            const auto* IdVal = DefsArr[i].FindField("id");
+            if (IdVal != nullptr && IdVal->IsString() && IdVal->AsString() == DefinitionId)
+            {
+                TargetIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (TargetIndex == std::string::npos)
+    {
+        Result.Status = ERemoveDefinitionStatus::DefinitionNotFound;
+        Result.ErrorCode = "definition_not_found";
+        Result.ErrorMessage = "Definition '" + DefinitionId + "' not found in file";
+        return Result;
+    }
+
+    Result.RemovedIndex = TargetIndex;
+    const std::string EntryPointer = "/definitions/" + std::to_string(TargetIndex);
+    const auto* Location = ParsedDoc->FindLocation(EntryPointer);
+    if (Location == nullptr)
+    {
+        Result.Status = ERemoveDefinitionStatus::SpanMappingFailed;
+        Result.ErrorCode = "span_mapping_failed";
+        Result.ErrorMessage = "Failed to find location span for entry " + EntryPointer;
+        return Result;
+    }
+
+    std::size_t EntryStart = 0;
+    std::size_t EntryEnd = 0;
+    if (!SourceSpanToByteRange(OriginalContent, Location->ValueSpan, EntryStart, EntryEnd))
+    {
+        Result.Status = ERemoveDefinitionStatus::SpanMappingFailed;
+        Result.ErrorCode = "span_mapping_failed";
+        Result.ErrorMessage = "Failed to map entry span to byte offsets";
+        return Result;
+    }
+
+    std::size_t RemoveStart = EntryStart;
+    std::size_t RemoveEnd = EntryEnd;
+
+    // Expand backwards to line start if only whitespace precedes entry
+    std::size_t LineStart = 0;
+    if (EntryStart > 0)
+    {
+        std::size_t PrevNewline = OriginalContent.rfind('\n', EntryStart - 1);
+        if (PrevNewline != std::string::npos)
+        {
+            LineStart = PrevNewline + 1;
+        }
+    }
+    bool bOnlyWhitespaceBefore = true;
+    for (std::size_t k = LineStart; k < EntryStart; ++k)
+    {
+        if (OriginalContent[k] != ' ' && OriginalContent[k] != '\t' && OriginalContent[k] != '\r')
+        {
+            bOnlyWhitespaceBefore = false;
+            break;
+        }
+    }
+    if (bOnlyWhitespaceBefore)
+    {
+        RemoveStart = LineStart;
+    }
+
+    // Expand forwards to consume trailing comma and newline
+    std::size_t Pos = EntryEnd;
+    while (Pos < OriginalContent.size() && (OriginalContent[Pos] == ' ' || OriginalContent[Pos] == '\t'))
+    {
+        Pos++;
+    }
+    if (Pos < OriginalContent.size() && OriginalContent[Pos] == ',')
+    {
+        Pos++;
+        while (Pos < OriginalContent.size() && (OriginalContent[Pos] == ' ' || OriginalContent[Pos] == '\t'))
+        {
+            Pos++;
+        }
+    }
+    if (Pos < OriginalContent.size() && OriginalContent[Pos] == '\r')
+    {
+        Pos++;
+        if (Pos < OriginalContent.size() && OriginalContent[Pos] == '\n')
+        {
+            Pos++;
+        }
+        RemoveEnd = Pos;
+    }
+    else if (Pos < OriginalContent.size() && OriginalContent[Pos] == '\n')
+    {
+        Pos++;
+        RemoveEnd = Pos;
+    }
+    else
+    {
+        RemoveEnd = Pos;
+    }
+
+    std::string UpdatedContent = OriginalContent.substr(0, RemoveStart)
+        + OriginalContent.substr(RemoveEnd);
+
+    std::vector<GV2ContentCore::FDiagnostic> VerifyDiagnostics;
+    auto VerifyDoc = GV2ContentCore::ParseJson5Document(
+        UpdatedContent, Limits, VerifyDiagnostics, PackageId, 0, RelativeSource);
+    if (!VerifyDoc.has_value())
+    {
+        Result.Status = ERemoveDefinitionStatus::InvalidJson5;
+        Result.ErrorCode = "rewritten_document_invalid";
+        Result.ErrorMessage = "Rewritten document failed to parse after entry removal";
+        return Result;
+    }
+
+    Result.Status = ERemoveDefinitionStatus::Success;
+    Result.UpdatedContent = std::move(UpdatedContent);
+    return Result;
+}
+
 } // namespace GV2ContentCli

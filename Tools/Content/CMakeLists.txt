@@ -3,8 +3,10 @@ add_executable(gv2-content
     Source/Support/CliOutput.cpp
     Source/Support/DirectoryWatcher.cpp
     Source/Support/Json5AstRewriter.cpp
+    Source/Support/Json5AstRewriterConformance.cpp
     Source/Support/PackageLoader.cpp
     Source/Commands/CoverageCommand.cpp
+    Source/Commands/DeleteCommand.cpp
     Source/Commands/DescribeCommand.cpp
     Source/Commands/HashCommand.cpp
     Source/Commands/IndexCommand.cpp
@@ -12,6 +14,7 @@ add_executable(gv2-content
     Source/Commands/NewCommand.cpp
     Source/Commands/RefsCommand.cpp
     Source/Commands/RenameCommand.cpp
+    Source/Commands/SetCommand.cpp
     Source/Commands/ValidateCommand.cpp
 )
 target_compile_features(gv2-content PRIVATE cxx_std_20)
@@ -180,6 +183,42 @@ if(BUILD_TESTING)
     )
     add_test(NAME gv2_content_index_rejects_missing_root_exit_code
         COMMAND gv2-content index
+    )
+
+    add_test(NAME gv2_content_self_test
+        COMMAND gv2-content --self-test
+    )
+
+    add_test(NAME gv2_content_set_rejects_nonexistent_id
+        COMMAND gv2-content set "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.nonexistent price 10 --format=json
+    )
+    add_test(NAME gv2_content_set_rejects_nonexistent_id_exit_code
+        COMMAND gv2-content set "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.nonexistent price 10 --format=json
+    )
+    add_test(NAME gv2_content_set_rejects_nonexistent_pointer
+        COMMAND gv2-content set "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.weapon.iron_sword nonexistent_field 10 --format=json
+    )
+    add_test(NAME gv2_content_set_rejects_nonexistent_pointer_exit_code
+        COMMAND gv2-content set "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.weapon.iron_sword nonexistent_field 10 --format=json
+    )
+    add_test(NAME gv2_content_set_rejects_container
+        COMMAND gv2-content set "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.weapon.iron_sword /data 10 --format=json
+    )
+    add_test(NAME gv2_content_set_rejects_container_exit_code
+        COMMAND gv2-content set "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.weapon.iron_sword /data 10 --format=json
+    )
+
+    add_test(NAME gv2_content_delete_rejects_nonexistent_id
+        COMMAND gv2-content delete "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.nonexistent --format=json
+    )
+    add_test(NAME gv2_content_delete_rejects_nonexistent_id_exit_code
+        COMMAND gv2-content delete "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.nonexistent --format=json
+    )
+    add_test(NAME gv2_content_delete_rejects_referenced_id
+        COMMAND gv2-content delete "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:text.screen.main.title --format=json
+    )
+    add_test(NAME gv2_content_delete_rejects_referenced_id_exit_code
+        COMMAND gv2-content delete "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:text.screen.main.title --format=json
     )
 
     find_package(Python3 QUIET COMPONENTS Interpreter)
@@ -352,6 +391,42 @@ if(BUILD_TESTING)
             PASS_REGULAR_EXPRESSION "index requires <package-root>"
     )
     set_tests_properties(
+        gv2_content_self_test
+        PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            PASS_REGULAR_EXPRESSION "gv2-content self-test passed."
+    )
+    set_tests_properties(
+        gv2_content_set_rejects_nonexistent_id
+        PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            PASS_REGULAR_EXPRESSION "\"code\":\"definition_not_found\""
+    )
+    set_tests_properties(
+        gv2_content_set_rejects_nonexistent_pointer
+        PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            PASS_REGULAR_EXPRESSION "\"code\":\"pointer_not_found\""
+    )
+    set_tests_properties(
+        gv2_content_set_rejects_container
+        PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            PASS_REGULAR_EXPRESSION "\"code\":\"target_is_container\""
+    )
+    set_tests_properties(
+        gv2_content_delete_rejects_nonexistent_id
+        PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            PASS_REGULAR_EXPRESSION "\"code\":\"definition_not_found\""
+    )
+    set_tests_properties(
+        gv2_content_delete_rejects_referenced_id
+        PROPERTIES
+            WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+            PASS_REGULAR_EXPRESSION "\"code\":\"referenced_by_definitions\""
+    )
+    set_tests_properties(
         gv2_content_validate_rejects_duplicate_key_exit_code
         gv2_content_validate_rejects_missing_root_exit_code
         gv2_content_validate_rejects_provenance_exit_code
@@ -366,6 +441,11 @@ if(BUILD_TESTING)
         gv2_content_rename_rejects_duplicate_id_exit_code
         gv2_content_rename_rejects_invalid_id_exit_code
         gv2_content_rename_rejects_id_kind_mismatch_exit_code
+        gv2_content_set_rejects_nonexistent_id_exit_code
+        gv2_content_set_rejects_nonexistent_pointer_exit_code
+        gv2_content_set_rejects_container_exit_code
+        gv2_content_delete_rejects_nonexistent_id_exit_code
+        gv2_content_delete_rejects_referenced_id_exit_code
         gv2_content_validate_watch_rejects_other_commands_exit_code
         gv2_content_index_rejects_missing_root_exit_code
         PROPERTIES
