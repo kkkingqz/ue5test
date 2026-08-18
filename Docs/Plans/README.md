@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 3.7
+version: 3.8
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,7 +24,9 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
+| План | Основание | Результат |
+|---|---|---|
+| [ContentEditorPrerequisites](ContentEditorPrerequisites/README.md) | [Content Editor Plugin](../Proposals/ContentEditorPluginProposal.md), раздел 40 | Классификация схемных изменений, точечная правка поля в файле, метаданные представления; разблокирует редактор и декларативные экраны |
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
