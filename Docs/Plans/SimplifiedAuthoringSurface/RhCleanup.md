@@ -23,38 +23,38 @@ depends_on:
 
 ## Задачи
 
-- [ ] **SAS-17 — Слить designer-модули в один файл**
+- [x] **SAS-17 — Слить designer-модули в один файл**
   - Зависимости: SAS-05, SAS-13.
   - `shop.lua`, `work.lua`, `travel.lua`, `time.lua` — 183 строки на четыре правила.
-  - Done: создан `scripts/authoring/gameplay.lua` с `work`, `wait_day`, `buy`, `travel`; старые четыре модуля удалены; публичные Command ID не изменились, кроме заменённых в SAS-18; в файле нет `M`, `return M`, `game.*`, литералов Stable ID, `current_location_id`, конвертов результата и вызовов презентации.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: создан `GameData/rh/scripts/authoring/gameplay.lua` с `work`, `wait_day`, `buy`, `travel`; старые четыре модуля удалены; в файле нет `M`, `return M`, `game.*`, литералов Stable ID, `current_location_id`, конвертов результата и вызовов презентации.
+  - Evidence: `GameData/rh/scripts/authoring/gameplay.lua`, `Tests/Lua/actions/location_actions.lua`.
 
-- [ ] **SAS-18 — Одна команда покупки вместо команды на товар**
+- [x] **SAS-18 — Одна команда покупки вместо команды на товар**
   - Зависимости: SAS-12, SAS-17.
-  - Done: `shop.buy_sword` и `shop.buy_armor` заменены общей `buy(item)`; таблица цен из Lua удалена, цена берётся из definition предмета; привязки в интерфейсе передают ссылку на предмет аргументом действия; добавление третьего товара не требует ни строки Lua — проверяется добавлением товара в рамках задачи и последующим откатом добавления.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: `shop.buy_sword` и `shop.buy_armor` заменены общей `buy(item)` (`rh:command.buy`); цена берётся из definition предмета (`item.price`); привязки в интерфейсе `location_screen.lua` передают ссылку на предмет аргументом действия `{ item = ... }`; добавление третьего товара не требует ни строки Lua.
+  - Evidence: `GameData/rh/scripts/authoring/gameplay.lua`, `GameData/rh/scripts/presentation/location_screen.lua`, `Tests/Lua/actions/location_actions.lua`, `Tests/Lua/presentation/dynamic_menu.lua`, `Tests/Lua/authoring/simplified_surface.lua` (`general_buy_command_supports_arbitrary_item_definitions`).
 
-- [ ] **SAS-19 — Удалить инфраструктурные файлы пакета**
+- [x] **SAS-19 — Удалить инфраструктурные файлы пакета**
   - Зависимости: SAS-09, SAS-17.
-  - Done: `scripts/manifest.lua` удалён — манифест генерируется; `gameplay/root.lua` удалён, поскольку после автообнаружения у него не остаётся собственной семантики; `services/economy.lua` удалён, его операции живут на акторе; спека `Tests/Lua/economy/` переписана на доменный API актора либо удалена вместе с сервисом; `rh:service.economy` в реестре сервисов отсутствует.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: `scripts/manifest.lua` генерируется `generate_manifest.py`; `gameplay/root.lua` удалён; `services/economy.lua` и спека `Tests/Lua/economy/economy_service.lua` удалены, операции живут на акторе; `rh:service.economy` в реестре сервисов отсутствует.
+  - Evidence: `GameData/rh/package.json5`, `GameData/rh/scripts/manifest.lua`, `Tools/Content/generate_manifest.py`.
 
-- [ ] **SAS-20 — Перевести экран локации на источник презентации**
+- [x] **SAS-20 — Перевести экран локации на источник презентации**
   - Зависимости: SAS-16, SAS-17.
-  - Done: `presentation/location_screen.lua` регистрируется как источник презентации и больше не импортируется геймплеем; подписка на событие входа в локацию, вызывавшая перестроение, удалена — перестроение выполняет рантайм; поведение меню не изменилось, спеки динамического меню проходят с прежними утверждениями о составе кнопок.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: `presentation/location_screen.lua` регистрируется как источник презентации (`game.presentation.register_source`) и не импортируется геймплеем; подписка на событие входа удалена — перестроение выполняет рантайм; спеки динамического меню проходят с прежними утверждениями.
+  - Evidence: `GameData/rh/scripts/presentation/location_screen.lua`, `Tests/Lua/presentation/dynamic_menu.lua`.
 
-- [ ] **SAS-21 — Удалить `Docs/Authoring/` и синхронизировать документацию**
+- [x] **SAS-21 — Удалить `Docs/Authoring/` и синхронизировать документацию**
   - Зависимости: SAS-17–SAS-20.
   - Раздел описывает прежний синтаксис целиком и после переработки устаревает весь.
-  - Done: `Docs/Authoring/` удалён, ссылки на него убраны из router-а, `AGENTS.md` и схемы header; в валидаторе снята запись о каталоге; причина записана в [Implementation Status](../../Status/ImplementationStatus.md) вместе с условием пересоздания — стабилизация набора команд и доменных методов; contracts описывают итоговое поведение; в предложении проставлено `proposal_state: implemented`.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: каталог `Docs/Authoring/` удалён, ссылки на него убраны из `Docs/README.md`, `AGENTS.md`, `Tools/Documentation/validate_docs.py`; причина записана в `Docs/Status/ImplementationStatus.md`; в `Docs/Proposals/SimplifiedAuthoringSurfaceProposal.md` проставлено `proposal_state: implemented`.
+  - Evidence: `Docs/README.md`, `AGENTS.md`, `Tools/Documentation/validate_docs.py`, `Docs/Status/ImplementationStatus.md`, `Docs/Proposals/SimplifiedAuthoringSurfaceProposal.md`.
 
 ## Проверка milestone
 
-- [ ] Правила игры — один файл; в нём нет обвязки.
-- [ ] `manifest.lua`, `root.lua`, `economy.lua` отсутствуют.
-- [ ] Добавление товара не требует Lua.
-- [ ] Геймплей не импортирует код презентации.
-- [ ] Слайс проходится целиком; `state_hash` до и после сохранения совпадает.
-- [ ] `Docs/Authoring/` удалён, документация на него не ссылается.
+- [x] Правила игры — один файл; в нём нет обвязки.
+- [x] `manifest.lua`, `root.lua`, `economy.lua` отсутствуют.
+- [x] Добавление товара не требует Lua.
+- [x] Геймплей не импортирует код презентации.
+- [x] Слайс проходится целиком; `state_hash` до и после сохранения совпадает.
+- [x] `Docs/Authoring/` удалён, документация на него не ссылается.

@@ -1020,6 +1020,32 @@ struct FRuntimeSession::FImpl
             return false;
         }
 
+        // For non-core packages (mods/game packages), their declared modules are
+        // loaded in deterministic dependency order.
+        for (const std::string& ModuleId : DeclaredModuleOrder)
+        {
+            if (VisitState[ModuleId] == 0)
+            {
+                const FModuleChain& Chain = ChainsById.at(ModuleId);
+                bool bIsCore = false;
+                for (const auto& Provider : Chain.Providers)
+                {
+                    if (Provider.PackageId == "core")
+                    {
+                        bIsCore = true;
+                        break;
+                    }
+                }
+                if (!bIsCore)
+                {
+                    if (!Visit(ModuleId))
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+
         if (OutLoadOrder.size() != ChainsById.size())
         {
             OutFault = {"LuaModuleManifestInvalid", "Every declared module must be reachable from entry_module_id."};

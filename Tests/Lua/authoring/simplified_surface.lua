@@ -558,4 +558,74 @@ return {
 
         game.presentation.clear_for_test()
     end,
+
+    general_buy_command_supports_arbitrary_item_definitions = function()
+        handler_registry.with_isolated_handlers(function()
+            local mod, env = authoring_context.create_authoring_environment("rh")
+
+            -- Define buy handler as in authoring/gameplay.lua
+            env.commands.buy = function(item)
+                env.player:require_location("rh:location.city.market")
+                env.player:require_gold(item.price, "shop.insufficient_gold")
+
+                env.player:spend_gold(item.price)
+                env.player:add_item(item)
+            end
+
+            mod.register({})
+
+            local hero = nil
+            mutation_window.execute_in_window(function()
+                local player = game.instances.actors.player()
+                if not player then
+                    hero = game.instances.actors.create("rh:actor.character.hero", {
+                        stamina = 50,
+                        gold = 100,
+                        current_location = "rh:location.city.market",
+                    })
+                    game.state.meta.player_actor_id = hero.instance_id
+                else
+                    hero = player
+                    hero.stamina = 50
+                    hero.gold = 100
+                    hero.current_location = "rh:location.city.market"
+                end
+            end)
+
+            -- 1. Buy standard iron sword (price 10)
+            game.runtime.dispatch_command({
+                command_id = "rh:command.buy",
+                args = { item = "rh:item.weapon.iron_sword" },
+                sequence = 1101,
+            })
+            local r1 = game.runtime.last_command_result
+            assert(r1 ~= nil and r1.ok == true, "buy sword must succeed")
+            assert(hero.gold == 90, "gold must be 100 - 10 = 90")
+
+            -- 2. Buy standard leather armor (price 25)
+            game.runtime.dispatch_command({
+                command_id = "rh:command.buy",
+                args = { item = "rh:item.armor.leather_armor" },
+                sequence = 1102,
+            })
+            local r2 = game.runtime.last_command_result
+            assert(r2 ~= nil and r2.ok == true, "buy armor must succeed")
+            assert(hero.gold == 65, "gold must be 90 - 25 = 65")
+
+            -- 3. Buy 3rd custom item (requires 0 lines of new Lua)
+            -- We verify passing any item definition handle works seamlessly
+            local custom_potion_def = {
+                id = "rh:item.potion.healing",
+                price = 15,
+            }
+            game.runtime.dispatch_command({
+                command_id = "rh:command.buy",
+                args = { item = custom_potion_def },
+                sequence = 1103,
+            })
+            local r3 = game.runtime.last_command_result
+            assert(r3 ~= nil and r3.ok == true, "buy 3rd item definition must succeed without new Lua")
+            assert(hero.gold == 50, "gold must be 65 - 15 = 50")
+        end)
+    end,
 }

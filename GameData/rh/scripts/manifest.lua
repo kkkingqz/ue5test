@@ -1,18 +1,11 @@
 return {
     modules = {
         {
-            module_id = "core:module.gameplay.root",
-            source = "gameplay/root.lua",
-            dependencies = {
-                "rh:module.gameplay.actors",
-                "rh:module.gameplay.shop",
-                "rh:module.gameplay.time",
-                "rh:module.gameplay.travel",
-                "rh:module.gameplay.work",
-                "rh:module.presentation.location_screen",
-                "rh:module.services.economy",
-            },
-            replaceable = true,
+            module_id = "rh:module.authoring.gameplay",
+            source = "authoring/gameplay.lua",
+            dependencies = {},
+            replaceable = false,
+            authoring = true,
         },
         {
             module_id = "rh:module.gameplay.actors",
@@ -26,49 +19,11 @@ return {
             replaceable = false,
         },
         {
-            module_id = "rh:module.gameplay.shop",
-            source = "gameplay/shop.lua",
-            dependencies = {
-                "core:module.authoring.context",
-            },
-            replaceable = false,
-        },
-        {
-            module_id = "rh:module.gameplay.time",
-            source = "gameplay/time.lua",
-            dependencies = {
-                "core:module.authoring.context",
-            },
-            replaceable = false,
-        },
-        {
-            module_id = "rh:module.gameplay.travel",
-            source = "gameplay/travel.lua",
-            dependencies = {
-                "core:module.authoring.context",
-            },
-            replaceable = false,
-        },
-        {
-            module_id = "rh:module.gameplay.work",
-            source = "gameplay/work.lua",
-            dependencies = {
-                "core:module.authoring.context",
-            },
-            replaceable = false,
-        },
-        {
             module_id = "rh:module.presentation.location_screen",
             source = "presentation/location_screen.lua",
             dependencies = {
                 "core:module.authoring.context",
             },
-            replaceable = false,
-        },
-        {
-            module_id = "rh:module.services.economy",
-            source = "services/economy.lua",
-            dependencies = {},
             replaceable = false,
         },
     },

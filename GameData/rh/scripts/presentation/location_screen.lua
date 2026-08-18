@@ -13,12 +13,14 @@ local LOCATION_CONFIG = {
             {
                 key = "buy_sword",
                 text_id = "rh:text.action.buy_sword",
-                command_name = "shop.buy_sword",
+                command_name = "buy",
+                args = { item = "rh:item.weapon.iron_sword" },
             },
             {
                 key = "buy_armor",
                 text_id = "rh:text.action.buy_armor",
-                command_name = "shop.buy_armor",
+                command_name = "buy",
+                args = { item = "rh:item.armor.leather_armor" },
             },
         },
     },
@@ -65,7 +67,7 @@ function M.build_screen_request(location_id)
     for _, act in ipairs(config.actions or {}) do
         table.insert(buttons, M.button(
             M.text(act.text_id),
-            M.action(act.command_name),
+            M.action(act.command_name, act.args or {}),
             act.key
         ))
     end

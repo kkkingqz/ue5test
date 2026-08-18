@@ -1,8 +1,8 @@
 ---
 title: Simplified Authoring Surface Proposal
 status: draft
-proposal_state: accepted_for_planning
-version: 0.1
+proposal_state: implemented
+version: 1.0
 updated: 2026-08-18
 depends_on:
   - DesignerLuaAuthoringProposal.md

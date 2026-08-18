@@ -8,20 +8,4 @@
       load_after: true,
     },
   ],
-  modules: [
-    {
-      source: "gameplay/root.lua",
-      module_id: "core:module.gameplay.root",
-      dependencies: [
-        "rh:module.gameplay.actors",
-        "rh:module.services.economy",
-        "rh:module.gameplay.travel",
-        "rh:module.gameplay.shop",
-        "rh:module.gameplay.time",
-        "rh:module.gameplay.work",
-        "rh:module.presentation.location_screen",
-      ],
-      replaceable: true,
-    },
-  ],
 }

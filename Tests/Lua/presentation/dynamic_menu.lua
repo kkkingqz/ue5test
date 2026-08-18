@@ -111,11 +111,13 @@ return {
 
         local btn_sword = find_button(buttons, "buy_sword")
         assert(btn_sword ~= nil, "buy_sword button must exist")
-        assert(btn_sword.binding.command_id == "rh:command.shop.buy_sword")
+        assert(btn_sword.binding.command_id == "rh:command.buy")
+        assert(btn_sword.binding.args.item == "rh:item.weapon.iron_sword")
 
         local btn_armor = find_button(buttons, "buy_armor")
         assert(btn_armor ~= nil, "buy_armor button must exist")
-        assert(btn_armor.binding.command_id == "rh:command.shop.buy_armor")
+        assert(btn_armor.binding.command_id == "rh:command.buy")
+        assert(btn_armor.binding.args.item == "rh:item.armor.leather_armor")
 
         local btn_travel = find_button(buttons, "travel_city_tavern")
         assert(btn_travel ~= nil, "travel to tavern button must exist")
