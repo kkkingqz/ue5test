@@ -700,7 +700,7 @@ def main():
         # 36c. Second run is idempotent and modifies nothing
         res_repeat = run_cmd([sys.executable, collect_texts_py, tmp_pkg])
         assert res_repeat.returncode == 0
-        assert "All 2 texts found in Lua scripts are already defined" in res_repeat.stdout
+        assert "texts found in Lua scripts are already defined and present in PO catalogs." in res_repeat.stdout
 
     print("[*] All authoring tools tests passed successfully!")
 

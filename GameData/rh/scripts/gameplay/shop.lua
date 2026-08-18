@@ -1,144 +1,70 @@
--- Shop Command Handlers & Validator for rh package (TGS-10)
+-- Shop Command Handlers for rh package (DLA-21)
 -- Handles buying sword and armor at the market, deducting gold and allocating item instances.
 
-local instance_allocator = require("core:module.runtime.instance_allocator")
+local authoring = require("core:module.authoring.context")
+local location_screen = require("rh:module.presentation.location_screen")
 
-local M = {
-    id = "rh:module.gameplay.shop",
-}
+local M = authoring.gameplay("rh")
+M.id = "rh:module.gameplay.shop"
 
 local ITEMS = {
     ["rh:command.shop.buy_sword"] = {
-        definition_id = "rh:item.weapon.iron_sword",
+        item_name = "weapon.iron_sword",
         price = 10,
     },
     ["rh:command.shop.buy_armor"] = {
-        definition_id = "rh:item.armor.leather_armor",
+        item_name = "armor.leather_armor",
         price = 25,
     },
 }
 
-local function buy_item_handler(request)
-    local item_info = ITEMS[request.command_id]
-    if not item_info then
-        return {
-            ok = false,
-            error = {
-                code = "core:error.command.unknown",
-                params = { command_id = request.command_id },
-            },
-        }
+local function handle_buy(cmd_id)
+    local info = ITEMS[cmd_id]
+    if not info then
+        return M.fail("command.unknown", { command_id = cmd_id })
     end
 
-    local player = game.instances.actors.player()
-    if not player then
-        return {
-            ok = false,
-            error = { code = "rh:error.economy.player_not_found" },
-        }
+    if M.player.current_location_id ~= "rh:location.city.market" then
+        return M.fail("location.wrong_location", {
+            required_location_id = "rh:location.city.market",
+            current_location_id = M.player.current_location_id,
+        })
     end
 
-    local economy = game.services.get("rh:service.economy")
-    if not economy then
-        return {
-            ok = false,
-            error = {
-                code = "core:error.service.not_found",
-                params = { service_id = "rh:service.economy" },
-            },
-        }
+    local item_def = M.def.item(info.item_name)
+    local price = info.price or item_def.price or 0
+
+    if M.player.gold < price then
+        return M.fail("shop.insufficient_gold", {
+            current_gold = M.player.gold,
+            required_gold = price,
+        })
     end
 
-    local spend_res = economy.spend_gold(item_info.price)
-    if not spend_res.ok then
-        return spend_res
-    end
+    M.player:spend_gold(price)
+    local instance_id = M.player:add_item(item_def)
 
-    local item_instance_id = instance_allocator.allocate(game.state, "item")
-    game.state.item_instances[item_instance_id] = {
-        instance_id = item_instance_id,
-        definition_id = item_info.definition_id,
-        owner_id = player.instance_id,
-    }
+    if location_screen and location_screen.build_and_publish_screen then
+        location_screen.build_and_publish_screen()
+    end
 
     return {
         ok = true,
         value = {
-            instance_id = item_instance_id,
-            definition_id = item_info.definition_id,
-            price = item_info.price,
-            owner_id = player.instance_id,
+            instance_id = instance_id,
+            definition_id = item_def.id,
+            price = price,
+            owner_id = M.player.instance_id,
         },
     }
 end
 
-local shop_validator = {
-    validate = function(ctx)
-        local item_info = ITEMS[ctx.command_id]
-        if not item_info then
-            return true
-        end
-
-        local player_id = ctx.state and ctx.state.meta and ctx.state.meta.player_actor_id
-        local player_state = player_id and ctx.state.actors and ctx.state.actors[player_id]
-        local current_loc = player_state and (player_state.current_location_id or player_state.current_location)
-            or (ctx.state and ctx.state.world and ctx.state.world.current_location_id)
-
-        if current_loc ~= "rh:location.city.market" then
-            return false, {
-                code = "rh:error.location.wrong_location",
-                params = {
-                    required_location_id = "rh:location.city.market",
-                    current_location_id = current_loc,
-                },
-            }
-        end
-
-        local current_gold = player_state and player_state.gold or 0
-
-        if current_gold < item_info.price then
-            return false, {
-                code = "rh:error.shop.insufficient_gold",
-                params = {
-                    current_gold = current_gold,
-                    required_gold = item_info.price,
-                },
-            }
-        end
-
-        return true
-    end,
-}
-
--- TGS-09: the screen is rebuilt after a successful action so the player sees the
--- result. The republish callback is injected by the composition root, keeping
--- presentation out of this module's imports.
-local function with_republish(handler, republish)
-    if type(republish) ~= "function" then
-        return handler
-    end
-    return function(request)
-        local result = handler(request)
-        if type(result) ~= "table" or result.ok ~= false then
-            republish()
-        end
-        return result
-    end
+M.commands["shop.buy_sword"] = function()
+    return handle_buy("rh:command.shop.buy_sword")
 end
 
-function M.register_handlers(_ctx, republish)
-    if game and game.commands and game.commands.validators and game.commands.validators.register then
-        game.commands.validators.register("rh:validator.shop.buy_item", shop_validator, { priority = 10 })
-    end
-
-    if game and game.commands and game.commands.handlers and game.commands.handlers.register then
-        game.commands.handlers.register("rh:command.shop.buy_sword", with_republish(buy_item_handler, republish))
-        game.commands.handlers.register("rh:command.shop.buy_armor", with_republish(buy_item_handler, republish))
-    end
+M.commands["shop.buy_armor"] = function()
+    return handle_buy("rh:command.shop.buy_armor")
 end
-
-M.ITEMS = ITEMS
-M.handler = buy_item_handler
-M.validator = shop_validator
 
 return M

@@ -59,3 +59,27 @@ msgstr "Герой"
 msgctxt "rh:text.npc.merchant.name"
 msgid "Merchant"
 msgstr "Торговец"
+
+msgctxt "rh:text.error.command.unknown"
+msgid "Error Command Unknown"
+msgstr ""
+
+msgctxt "rh:text.error.location.wrong_location"
+msgid "Error Location Wrong location"
+msgstr ""
+
+msgctxt "rh:text.error.shop.insufficient_gold"
+msgid "Error Shop Insufficient gold"
+msgstr ""
+
+msgctxt "rh:text.error.travel.insufficient_stamina"
+msgid "Error Travel Insufficient stamina"
+msgstr ""
+
+msgctxt "rh:text.error.travel.not_connected"
+msgid "Error Travel Not connected"
+msgstr ""
+
+msgctxt "rh:text.error.work.insufficient_stamina"
+msgid "Error Work Insufficient stamina"
+msgstr ""

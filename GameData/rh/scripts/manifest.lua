@@ -17,7 +17,11 @@ return {
         {
             module_id = "rh:module.gameplay.actors",
             source = "gameplay/actors.lua",
-            dependencies = {},
+            dependencies = {
+                "core:module.authoring.properties",
+                "core:module.runtime.instance_allocator",
+                "core:module.runtime.state_validator",
+            },
             replaceable = false,
         },
         {
@@ -30,8 +34,7 @@ return {
             module_id = "rh:module.gameplay.travel",
             source = "gameplay/travel.lua",
             dependencies = {
-                "core:module.runtime.stable_id",
-                "core:module.runtime.state_validator",
+                "core:module.authoring.context",
             },
             replaceable = false,
         },
@@ -39,28 +42,34 @@ return {
             module_id = "rh:module.gameplay.shop",
             source = "gameplay/shop.lua",
             dependencies = {
-                "core:module.runtime.instance_allocator",
+                "core:module.authoring.context",
+                "rh:module.presentation.location_screen",
             },
             replaceable = false,
         },
         {
             module_id = "rh:module.gameplay.time",
             source = "gameplay/time.lua",
-            dependencies = {},
+            dependencies = {
+                "core:module.authoring.context",
+                "rh:module.presentation.location_screen",
+            },
             replaceable = false,
         },
         {
             module_id = "rh:module.gameplay.work",
             source = "gameplay/work.lua",
-            dependencies = {},
+            dependencies = {
+                "core:module.authoring.context",
+                "rh:module.presentation.location_screen",
+            },
             replaceable = false,
         },
         {
             module_id = "rh:module.presentation.location_screen",
             source = "presentation/location_screen.lua",
             dependencies = {
-                "core:module.presentation.screen_requests",
-                "core:module.resources.text",
+                "core:module.authoring.context",
             },
             replaceable = false,
         },

@@ -313,7 +313,8 @@ function M.gameplay(package_id)
             end
 
             if game and game.commands and game.commands.handlers and game.commands.handlers.register then
-                game.commands.handlers.register(cmd_id, wrapped_handler)
+                local exists = (game.commands.handlers.exists and game.commands.handlers.exists(cmd_id)) or false
+                game.commands.handlers.register(cmd_id, wrapped_handler, { override = exists })
             end
         end
 

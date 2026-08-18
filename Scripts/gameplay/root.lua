@@ -79,8 +79,12 @@ function M.register(_ctx)
         return
     end
 
-    game.commands.handlers.register("core:command.actor.reward", handle_actor_reward)
-    game.commands.handlers.register("core:command.location.travel", handle_location_travel)
+    if not (game.commands.handlers.exists and game.commands.handlers.exists("core:command.actor.reward")) then
+        game.commands.handlers.register("core:command.actor.reward", handle_actor_reward)
+    end
+    if not (game.commands.handlers.exists and game.commands.handlers.exists("core:command.location.travel")) then
+        game.commands.handlers.register("core:command.location.travel", handle_location_travel)
+    end
 end
 
 return M

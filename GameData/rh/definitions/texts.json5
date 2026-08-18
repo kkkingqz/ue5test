@@ -58,5 +58,29 @@
       id: "rh:text.npc.merchant.name",
       data: { source_message: "Merchant" },
     },
+    {
+      id: "rh:text.error.command.unknown",
+      data: { source_message: "Error Command Unknown" },
+    },
+    {
+      id: "rh:text.error.location.wrong_location",
+      data: { source_message: "Error Location Wrong location" },
+    },
+    {
+      id: "rh:text.error.shop.insufficient_gold",
+      data: { source_message: "Error Shop Insufficient gold" },
+    },
+    {
+      id: "rh:text.error.travel.insufficient_stamina",
+      data: { source_message: "Error Travel Insufficient stamina" },
+    },
+    {
+      id: "rh:text.error.travel.not_connected",
+      data: { source_message: "Error Travel Not connected" },
+    },
+    {
+      id: "rh:text.error.work.insufficient_stamina",
+      data: { source_message: "Error Work Insufficient stamina" },
+    },
   ],
 }

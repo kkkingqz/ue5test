@@ -26,11 +26,14 @@ local function wrap_world(world_state)
             if k == "current_location" then
                 local player = game and game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player()
                 if player then
-                    if player.current_location ~= nil then
-                        return player.current_location
-                    elseif player.current_location_id ~= nil then
-                        return player.current_location_id
+                    local loc_val = player.current_location or player.current_location_id
+                    if type(loc_val) == "string" then
+                        local ok, properties_mod = pcall(require, "core:module.authoring.properties")
+                        if ok and properties_mod and properties_mod.wrap_definition then
+                            return properties_mod.wrap_definition(loc_val)
+                        end
                     end
+                    return loc_val
                 end
                 return nil
             end
