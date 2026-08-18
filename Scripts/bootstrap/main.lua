@@ -23,6 +23,7 @@ local authoring_tagged_ref = require("core:module.authoring.tagged_ref")
 local authoring_commands = require("core:module.authoring.commands")
 local authoring_presentation = require("core:module.authoring.presentation")
 local authoring_context = require("core:module.authoring.context")
+local presentation_source = require("core:module.runtime.presentation_source")
 
 return {
     id = "core:module.bootstrap.main",
@@ -49,6 +50,7 @@ return {
     authoring_properties = authoring_properties,
     authoring_tagged_ref = authoring_tagged_ref,
     authoring_presentation = authoring_presentation,
+    presentation_source = presentation_source,
     location_service = location_service,
     gameplay_root = gameplay_root,
 }

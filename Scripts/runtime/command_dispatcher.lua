@@ -186,6 +186,9 @@ function M.new(handlers_registry)
 
             if is_success then
                 event_bus.commit_command_context()
+                if game and game.presentation and game.presentation.resolve then
+                    game.presentation.resolve()
+                end
             else
                 event_bus.rollback_command_context()
             end

@@ -116,6 +116,14 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.runtime.presentation_source",
+            source = "runtime/presentation_source.lua",
+            dependencies = {
+                "core:module.presentation.screen_requests",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.resources.text",
             source = "resources/text.lua",
             dependencies = {
@@ -295,6 +303,7 @@ return {
                 "core:module.authoring.commands",
                 "core:module.authoring.presentation",
                 "core:module.authoring.context",
+                "core:module.runtime.presentation_source",
                 "core:module.gameplay.location_service",
                 "core:module.gameplay.root",
             },

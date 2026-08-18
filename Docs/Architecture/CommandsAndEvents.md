@@ -68,10 +68,10 @@ Expected refusal не является runtime fault. Failed result гарант
 8. Validate required postconditions.
 9. Commit command result and enqueue gameplay facts (or rollback on refusal / discard on fault).
 10. Drain EventBus FIFO/breadth-first.
-11. Execute deferred commands from queue sequentially.
-12. Rebuild affected UI/presentation desired model.
+11. Rebuild affected UI/presentation desired model via `game.presentation.resolve()` outside mutation window (SAS-14..16, ADR-0028).
+12. Execute deferred commands from queue sequentially.
 
-Синхронный путь вызова команд через `command_dispatcher` (`dispatch(request)`) выполняет точечный поиск обработчика в реестре `game.commands.handlers`, проверяет аргументы команды `request.args` на переносимость через общий примитив `core:module.runtime.portable_value` (DLA-04, ADR-0027), запускает валидаторы до открытия окна мутации, исполняет обработчик внутри `mutation_window` с делегированием доменным методам сущностей/Gameplay Services и возвращает структурированный результат `{ ok = true, value = ... }` либо отказ `{ ok = false, error = { code = "..." } }`. Цепочка обработчиков и обход массива отсутствуют.
+Синхронный путь вызова команд через `command_dispatcher` (`dispatch(request)`) выполняет точечный поиск обработчика в реестре `game.commands.handlers`, проверяет аргументы команды `request.args` на переносимость через общий примитив `core:module.runtime.portable_value` (DLA-04, ADR-0027), запускает валидаторы до открытия окна мутации, исполняет обработчик внутри `mutation_window` с делегированием доменным методам сущностей/Gameplay Services и возвращает структурированный результат `{ ok = true, value = ... }` либо отказ `{ ok = false, error = { code = "..." } }`. При успешном коммите автоматически вызывается зарегистрированный источник презентации (`game.presentation.resolve()`), перестраивая желаемое состояние активного экрана без участия геймплейного кода. Цепочка обработчиков и обход массива отсутствуют.
 
 Command handler не вызывает другой handler synchronously; вложенный вызов `dispatch` отклоняется типизированной ошибкой `CommandDispatchReentrant`. Отложенные команды ставятся в очередь `game.commands.enqueue` (также валидирующую аргументы через `portable_value`) и исполняются последовательно после завершения текущего цикла событий.
 

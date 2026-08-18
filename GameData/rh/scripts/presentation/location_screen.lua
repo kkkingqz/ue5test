@@ -99,8 +99,10 @@ function M.build_and_publish_screen()
     return M.build_screen_request(current_loc)
 end
 
-M.on("core:event.location.enter", function(_payload, _env)
-    M.build_and_publish_screen()
-end)
+function M.register(_ctx)
+    if game and game.presentation and game.presentation.register_source then
+        game.presentation.register_source(M.build_and_publish_screen)
+    end
+end
 
 return M

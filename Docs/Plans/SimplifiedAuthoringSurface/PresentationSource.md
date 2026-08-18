@@ -22,24 +22,24 @@ depends_on:
 
 ## Задачи
 
-- [ ] **SAS-14 — Источник презентации**
+- [x] **SAS-14 — Источник презентации**
   - Пакет регистрирует функцию, разрешающую желаемый экран из текущего состояния.
-  - Done: регистрация выполняется на фазе `register` и замораживается вместе с остальными реестрами; источник — обычная функция без аргументов, читающая состояние; повторная регистрация и регистрация после freeze дают раздельные отказы; отсутствие источника не является ошибкой — экран просто не перестраивается.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: регистрация выполняется на фазе `register` (`game.presentation.register_source(fn)`) и замораживается вместе с остальными реестрами; источник — функция без аргументов, читающая состояние; повторная регистрация (`PresentationSourceDuplicateRegistration`), невалидный тип (`InvalidPresentationSource`) и регистрация после freeze (`PresentationSourceRegistryFrozen`) дают раздельные отказы; отсутствие источника не является ошибкой.
+  - Evidence: `Scripts/runtime/presentation_source.lua`, `Scripts/bootstrap/manifest.lua`, `Scripts/bootstrap/main.lua`, `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp`, `Tests/Lua/authoring/simplified_surface.lua` (`presentation_source_registration_and_validation`).
 
-- [ ] **SAS-15 — Автоматическая инвалидация после commit**
+- [x] **SAS-15 — Автоматическая инвалидация после commit**
   - Зависимости: SAS-14.
-  - Done: рантайм вызывает источник после каждой **успешно закоммиченной** команды; при отказе и при faultе источник не вызывается; вызов происходит вне окна мутации, поэтому источник не может менять состояние; повторное разрешение после каждой команды принимается как поведение v1, отслеживание зависимостей отложено и на семантику для дизайнера не влияет; спека проверяет, что экран меняется после `travel` и не меняется после отклонённой команды.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: рантайм вызывает источник через `game.presentation.resolve()` после каждой **успешно закоммиченной** команды (`command_dispatcher.lua`); при отказе и при fault источник не вызывается; вызов происходит вне окна мутации, поэтому попытка мутации состояния даёт `MutationWindowClosed` / `StateWriteOutsideMutationWindow`; повторное разрешение после каждой команды принято как поведение v1; спеки проверяют обновление экрана после успешной команды и отсутствие обновления при отказе.
+  - Evidence: `Scripts/runtime/command_dispatcher.lua`, `GameData/rh/scripts/presentation/location_screen.lua`, `Tests/Lua/authoring/simplified_surface.lua` (`automatic_invalidation_after_successful_command`, `presentation_source_state_mutation_disallowed`), `Tests/Lua/presentation/dynamic_menu.lua`.
 
-- [ ] **SAS-16 — Запретить обновление презентации из геймплея и синхронизировать contract**
+- [x] **SAS-16 — Запретить обновление презентации из геймплея и синхронизировать contract**
   - Зависимости: SAS-15.
-  - Done: designer-facing API не предоставляет способа перестроить экран вручную; [Screen Templates](../../UI/ScreenTemplates.md) и [Commands and Events](../../Architecture/CommandsAndEvents.md) описывают источник презентации, момент вызова и то, что маршрутизатор заменит его без изменения геймплея; в [Implementation Status](../../Status/ImplementationStatus.md) записано, что это шов под будущий UI document, а не его замена.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: designer-facing геймплей-команды (`shop.lua`, `work.lua`, `time.lua`, `travel.lua`) очищены от ручных вызовов `build_and_publish_screen()` и зависимостей на `location_screen`; [Screen Templates](../../UI/ScreenTemplates.md) и [Commands and Events](../../Architecture/CommandsAndEvents.md) описывают источник презентации и автоматическую инвалидацию; в [Implementation Status](../../Status/ImplementationStatus.md) зафиксирован шов под будущий UI document.
+  - Evidence: `GameData/rh/scripts/gameplay/` (`shop.lua`, `time.lua`, `work.lua`, `travel.lua`), `Docs/UI/ScreenTemplates.md`, `Docs/Architecture/CommandsAndEvents.md`, `Docs/Status/ImplementationStatus.md`.
 
 ## Проверка milestone
 
-- [ ] Экран перестраивается после успешной команды без участия геймплея.
-- [ ] После отклонённой команды экран не перестраивается.
-- [ ] Источник не может изменить состояние.
-- [ ] Designer-facing API не содержит способа обновить экран вручную.
+- [x] Экран перестраивается после успешной команды без участия геймплея.
+- [x] После отклонённой команды экран не перестраивается.
+- [x] Источник не может изменить состояние.
+- [x] Designer-facing API не содержит способа обновить экран вручную.

@@ -30,7 +30,6 @@ return {
             source = "gameplay/shop.lua",
             dependencies = {
                 "core:module.authoring.context",
-                "rh:module.presentation.location_screen",
             },
             replaceable = false,
         },
@@ -39,7 +38,6 @@ return {
             source = "gameplay/time.lua",
             dependencies = {
                 "core:module.authoring.context",
-                "rh:module.presentation.location_screen",
             },
             replaceable = false,
         },
@@ -56,7 +54,6 @@ return {
             source = "gameplay/work.lua",
             dependencies = {
                 "core:module.authoring.context",
-                "rh:module.presentation.location_screen",
             },
             replaceable = false,
         },

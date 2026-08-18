@@ -6,6 +6,7 @@
 local authoring_context = require("core:module.authoring.context")
 local mutation_window = require("core:module.runtime.mutation_window")
 local handler_registry = require("core:module.runtime.handler_registry")
+local screens = require("core:module.presentation.screen_requests")
 
 return {
     environment_symbols_and_globals_isolation = function()
@@ -395,19 +396,166 @@ return {
 
             mod.register({})
 
-            mutation_window.execute_in_window(function()
-                game.runtime.dispatch_command({
-                    command_id = "rh:command.test_actor_api",
-                    args = {},
-                    sequence = 901,
-                })
-                local r = game.runtime.last_command_result
-                assert(r ~= nil and r.ok == true, "actor api test must succeed")
-                assert(hero.gold == 25, "gold must be 10 + 30 - 15 = 25")
-                assert(hero.stamina == 12, "stamina must be 10 + 10 - 8 = 12")
-                assert(hero.current_location == "rh:location.city.market" or env.player.current_location.id == "rh:location.city.market",
-                    "player location must be market")
-            end)
+            game.runtime.dispatch_command({
+                command_id = "rh:command.test_actor_api",
+                args = {},
+                sequence = 901,
+            })
+            local r = game.runtime.last_command_result
+            assert(r ~= nil and r.ok == true, "actor api test must succeed")
+            assert(hero.gold == 25, "gold must be 10 + 30 - 15 = 25")
+            assert(hero.stamina == 12, "stamina must be 10 + 10 - 8 = 12")
+            assert(hero.current_location == "rh:location.city.market" or env.player.current_location.id == "rh:location.city.market",
+                "player location must be market")
         end)
+    end,
+
+    presentation_source_registration_and_validation = function()
+        if not game.presentation then return end
+        game.presentation.clear_for_test()
+
+        -- 1. Invalid source type (non-function)
+        local bad_type_ok, bad_type_err = pcall(function()
+            game.presentation.register_source("not_a_function")
+        end)
+        assert(not bad_type_ok, "registering non-function must fail")
+        assert(tostring(bad_type_err):find("InvalidPresentationSource"),
+            "error must be InvalidPresentationSource, got: " .. tostring(bad_type_err))
+
+        -- 2. Valid source registration
+        local call_count = 0
+        local dummy_source = function()
+            call_count = call_count + 1
+            return {
+                screen_id = "rh:screen.location.market",
+                fields = {
+                    title = { schema_id = "core:schema.ui_field.text.v1", value = { text_id = "rh:text.location.market.title" } },
+                },
+            }
+        end
+        game.presentation.register_source(dummy_source)
+        assert(game.presentation.has_source() == true, "has_source must be true")
+
+        -- 3. Duplicate registration must fail
+        local dup_ok, dup_err = pcall(function()
+            game.presentation.register_source(dummy_source)
+        end)
+        assert(not dup_ok, "duplicate registration must fail")
+        assert(tostring(dup_err):find("PresentationSourceDuplicateRegistration"),
+            "error must be PresentationSourceDuplicateRegistration, got: " .. tostring(dup_err))
+
+        -- 4. Registration after freeze must fail
+        game.presentation.freeze()
+        assert(game.presentation.is_frozen() == true, "is_frozen must be true")
+
+        local late_ok, late_err = pcall(function()
+            game.presentation.register_source(dummy_source)
+        end)
+        assert(not late_ok, "late registration after freeze must fail")
+        assert(tostring(late_err):find("PresentationSourceRegistryFrozen"),
+            "error must be PresentationSourceRegistryFrozen, got: " .. tostring(late_err))
+
+        -- Clean up
+        game.presentation.clear_for_test()
+    end,
+
+    automatic_invalidation_after_successful_command = function()
+        handler_registry.with_isolated_handlers(function()
+            game.presentation.clear_for_test()
+
+            local mod, env = authoring_context.create_authoring_environment("rh")
+
+            mutation_window.execute_in_window(function()
+                local player = game.instances.actors.player()
+                if not player then
+                    local hero = game.instances.actors.create("rh:actor.character.hero", {
+                        stamina = 50,
+                        gold = 50,
+                        current_location = "rh:location.city.tavern",
+                    })
+                    game.state.meta.player_actor_id = hero.instance_id
+                else
+                    player.stamina = 50
+                    player.current_location = "rh:location.city.tavern"
+                end
+            end)
+
+            -- Register presentation source that produces screen for current location
+            local source_resolved_count = 0
+            game.presentation.register_source(function()
+                source_resolved_count = source_resolved_count + 1
+                local cur_loc = env.player.current_location
+                local loc_id = type(cur_loc) == "table" and cur_loc.id or cur_loc
+                return {
+                    screen_id = "rh:screen." .. (loc_id == "rh:location.city.market" and "location.market" or "location.tavern"),
+                    fields = {
+                        loc = { schema_id = "core:schema.ui_field.text.v1", value = { text_id = "core:text.sample" } },
+                    },
+                }
+            end)
+
+            env.commands.test_success_cmd = function()
+                env.player:travel("rh:location.city.market")
+            end
+
+            env.commands.test_refusal_cmd = function()
+                env.fail("some.refusal_error", {})
+            end
+
+            mod.register({})
+
+            -- Clear any pending screen before command
+            screens.take_pending()
+            source_resolved_count = 0
+
+            -- 1. Successful command must automatically trigger presentation resolution
+            game.runtime.dispatch_command({
+                command_id = "rh:command.test_success_cmd",
+                args = {},
+                sequence = 1001,
+            })
+            local r = game.runtime.last_command_result
+            assert(r ~= nil and r.ok == true, "command must succeed")
+
+            assert(source_resolved_count == 1, "presentation source must be resolved once after success")
+            local pending = screens.take_pending()
+            assert(pending ~= nil, "screen request must be published")
+            assert(pending.screen_id == "rh:screen.location.market", "published screen must match new location")
+
+            -- 2. Refused command must NOT trigger presentation resolution
+            source_resolved_count = 0
+            game.runtime.dispatch_command({
+                command_id = "rh:command.test_refusal_cmd",
+                args = {},
+                sequence = 1002,
+            })
+            local r_ref = game.runtime.last_command_result
+            assert(r_ref ~= nil and r_ref.ok == false, "command must be refused")
+
+            assert(source_resolved_count == 0, "presentation source must NOT be resolved after refusal")
+            assert(screens.take_pending() == nil, "no screen request must be pending after refusal")
+
+            -- Clean up
+            game.presentation.clear_for_test()
+        end)
+    end,
+
+    presentation_source_state_mutation_disallowed = function()
+        game.presentation.clear_for_test()
+
+        -- Presentation source attempting to mutate state outside mutation window
+        game.presentation.register_source(function()
+            game.state.meta.player_actor_id = "corrupted_id"
+        end)
+
+        local ok, err = pcall(function()
+            game.presentation.resolve()
+        end)
+
+        assert(not ok, "state mutation in presentation source must fail")
+        assert(tostring(err):find("MutationWindowClosed") or tostring(err):find("StateWriteOutsideMutationWindow"),
+            "mutation outside window must raise MutationWindowClosed / StateWriteOutsideMutationWindow, got: " .. tostring(err))
+
+        game.presentation.clear_for_test()
     end,
 }

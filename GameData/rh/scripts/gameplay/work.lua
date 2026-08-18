@@ -2,7 +2,6 @@
 -- Handles working in the tavern (+10 gold, -2 stamina), requiring stamina > 5.
 
 local authoring = require("core:module.authoring.context")
-local location_screen = require("rh:module.presentation.location_screen")
 
 local M = authoring.gameplay("rh")
 M.id = "rh:module.gameplay.work"
@@ -14,10 +13,6 @@ M.commands["work.do_work"] = function()
 
     M.player:spend_stamina(2)
     M.player:add_gold(10)
-
-    if location_screen and location_screen.build_and_publish_screen then
-        location_screen.build_and_publish_screen()
-    end
 
     return {
         gold_gained = 10,

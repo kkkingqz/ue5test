@@ -81,7 +81,7 @@ Contracts в `Docs/Architecture` и `Docs/UI` описывают целевое 
 | Централизованный UI theme и text pipeline | Реализовано | — |
 | Image Resource Catalog | Реализовано | `fixed_aspect`/`nine_slice`/`tile`, filesystem discovery |
 | Semantic input и UI binding registry | Реализовано | Bounded FIFO ingress, session-scoped bindings, stale-handle rejection |
-| UI document: routes, layers, overlays, modals | Не реализовано | Активен один screen за раз |
+| UI document: routes, layers, overlays, modals | Не реализовано | Активен один screen за раз; реализован зарегистрированный источник презентации (`game.presentation.source`, план [SimplifiedAuthoringSurface](../Plans/SimplifiedAuthoringSurface/README.md), SAS-14..16) с автоматической инвалидацией после commit вне окна мутации — архитектурный шов под будущий маршрутизатор UI document |
 | Presentation effects (one-shot) | Не реализовано | — |
 | Локализация по locale | Реализовано | Lua публикует неразрешённый `TextSpec` DTO; Presentation хоста резолвит `TextSpec` через `UGV2TextPipeline` и `FText::Format` по PO/StringTable каталогам темы с прозрачным fallback на `source_message` ([ADR-0022](../ADR/0022-external-translation-catalog.md), план [LocalizationPipeline](../Plans/Archive/LocalizationPipeline/README.md), M1–M4) |
 

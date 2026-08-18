@@ -2,7 +2,6 @@
 -- Handles buying sword and armor at the market, deducting gold and allocating item instances.
 
 local authoring = require("core:module.authoring.context")
-local location_screen = require("rh:module.presentation.location_screen")
 
 local M = authoring.gameplay("rh")
 M.id = "rh:module.gameplay.shop"
@@ -34,10 +33,6 @@ local function handle_buy(cmd_id)
 
     M.player:spend_gold(price)
     local instance_id = M.player:add_item(item_def)
-
-    if location_screen and location_screen.build_and_publish_screen then
-        location_screen.build_and_publish_screen()
-    end
 
     return {
         instance_id = instance_id,

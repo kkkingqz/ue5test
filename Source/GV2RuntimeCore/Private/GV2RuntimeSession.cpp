@@ -1726,6 +1726,7 @@ struct FRuntimeSession::FImpl
         FreezeGameRegistry({"events", "subscribers"});
         FreezeGameRegistry({"events"});
         FreezeGameRegistry({"instances", "actors"});
+        FreezeGameRegistry({"presentation"});
 
         // Freeze state validator reference fields registry (CBM-10)
         lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
