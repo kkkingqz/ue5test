@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 2.2
+version: 2.3
 updated: 2026-08-18
 ---
 
@@ -44,7 +44,7 @@ Proposal не изменяет нормативную архитектуру с�
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
-3. `SimplifiedAuthoringSurfaceProposal` — этапы 1–6 самодостаточны; этап 7 (декларативные экраны) ждёт тех же предусловий, что и редактор.
+3. `SimplifiedAuthoringSurfaceProposal` — в работе: план [SimplifiedAuthoringSurface](../Plans/SimplifiedAuthoringSurface/README.md). Декларативные экраны в план не вошли и ждут тех же предусловий, что и редактор.
 4. `ContentEditorPluginProposal` — начинается только после трёх блокирующих пунктов из его раздела 40: правило версионирования схем, правка поля в `Json5AstRewriter`, authoring-метаданные схем.
 5. `ModPackageLifecycleProposal`.
 6. `CommonUIRuntimeIntegrationProposal`.
