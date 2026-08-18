@@ -1,8 +1,8 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 2.13
-updated: 2026-08-17
+version: 2.14
+updated: 2026-08-18
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -11,6 +11,7 @@ decisions:
   - ../ADR/0007-lua-module-environment.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../ADR/0027-designer-lua-authoring-layer.md
 ---
 
 # Lua Runtime Contract
@@ -223,9 +224,9 @@ Marshaller обязан:
 
 `game.state` — обычная mutable Lua table, содержащая шесть канонических секций: `meta`, `actors`, `item_instances`, `world`, `quests`, `mods`. Список канонических секций объявлен ровно один раз — в модуле `core:module.runtime.state_validator` (`Scripts/runtime/state_validator.lua`), который является единственным владельцем правил валидации дерева состояния (`validate_state_tree`), структуры секции `meta` и конструирования начального дерева (`create_empty_canonical_state`). Host (C++) не дублирует список секций или правила валидации и обращается к модулю `state_validator`.
 
-Допустимые значения: `string`, `bool`, `int64`, finite `double`, dense arrays, string-key maps и `game.null`. Каноническое дерево оборачивается прокси-защитой `mutation_window.guard_state`.
+Допустимые значения: `string`, `bool`, `int64`, finite `double`, dense arrays, string-key maps и `game.null`. Каноническое дерево оборачивается прокси-защитой `mutation_window.guard_state`. Модуль `core:module.runtime.mutation_window` ведёт монотонный счётчик `write_revision`, увеличиваемый в `__newindex` guarded-прокси при любой мутации (прямое присваивание, доменный метод, Gameplay Service, `table.insert`/`table.remove`). Функция `unwrap_state` исключена из публичного экспорта модуля (`ADR-0027`): ни один геймплейный модуль, доменный метод или сервис не получает прямого доступа к сырой канонической таблице состояния.
 
-Нормативно state меняется только внутри active Command Handler через доменные методы сущностей или зарегистрированные Gameplay Services. Любая попытка мутации `game.state` вне активного окна исполнения команды отклоняется ошибкой `MutationWindowClosed: cannot mutate canonical state outside of active command handler`.
+Нормативно state меняется только внутри active Command Handler через доменные методы сущностей или зарегистрированные Gameplay Services. Любая попытка мутации `game.state` вне активного окна исполнения команды отклоняется ошибкой `MutationWindowClosed: cannot mutate canonical state outside of active command handler`. Переносимость значений аргументов команд, очереди и событий проверяется единым модулем ядра `core:module.runtime.portable_value`.
 
 State не содержит functions, metatables, userdata, UObject, operation handles, non-finite numbers (NaN/inf), sparse arrays, cycles, shared references, queues, subscriptions или definition copies. Валидация выполняется целиком в Lua VM перед переходом в `Ready` через `state_validator.validate_state_tree`.
 

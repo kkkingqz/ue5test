@@ -30,9 +30,17 @@ return {
             dependencies = { "core:module.runtime.stable_id" },
         },
         {
+            module_id = "core:module.runtime.portable_value",
+            source = "runtime/portable_value.lua",
+            dependencies = {},
+        },
+        {
             module_id = "core:module.runtime.event_envelope",
             source = "runtime/event_envelope.lua",
-            dependencies = { "core:module.runtime.stable_id" },
+            dependencies = {
+                "core:module.runtime.stable_id",
+                "core:module.runtime.portable_value",
+            },
         },
         {
             module_id = "core:module.runtime.subscriber_registry",
@@ -55,6 +63,7 @@ return {
                 "core:module.runtime.mutation_window",
                 "core:module.runtime.stable_id",
                 "core:module.runtime.event_bus",
+                "core:module.runtime.portable_value",
             },
         },
         {

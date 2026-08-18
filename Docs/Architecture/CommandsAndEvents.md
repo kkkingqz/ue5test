@@ -1,14 +1,15 @@
 ---
 title: Commands and Events
 status: normative
-version: 1.8
-updated: 2026-08-16
+version: 1.9
+updated: 2026-08-18
 depends_on:
   - LuaRuntimeContract.md
   - StableIDSpecification.md
 decisions:
   - ../ADR/0003-command-and-event-model.md
   - ../ADR/0004-lua-state-mutation.md
+  - ../ADR/0027-designer-lua-authoring-layer.md
 ---
 
 # Commands and Events
@@ -70,9 +71,9 @@ Expected refusal не является runtime fault. Failed result гарант
 11. Execute deferred commands from queue sequentially.
 12. Rebuild affected UI/presentation desired model.
 
-Синхронный путь вызова команд через `command_dispatcher` (`dispatch(request)`) выполняет точечный поиск обработчика в реестре `game.commands.handlers`, запускает валидаторы до открытия окна мутации, исполняет обработчик внутри `mutation_window` с делегированием доменным методам сущностей/Gameplay Services и возвращает структурированный результат `{ ok = true, value = ... }` либо отказ `{ ok = false, error = { code = "..." } }`. Цепочка обработчиков и обход массива отсутствуют.
+Синхронный путь вызова команд через `command_dispatcher` (`dispatch(request)`) выполняет точечный поиск обработчика в реестре `game.commands.handlers`, проверяет аргументы команды `request.args` на переносимость через общий примитив `core:module.runtime.portable_value` (DLA-04, ADR-0027), запускает валидаторы до открытия окна мутации, исполняет обработчик внутри `mutation_window` с делегированием доменным методам сущностей/Gameplay Services и возвращает структурированный результат `{ ok = true, value = ... }` либо отказ `{ ok = false, error = { code = "..." } }`. Цепочка обработчиков и обход массива отсутствуют.
 
-Command handler не вызывает другой handler synchronously; вложенный вызов `dispatch` отклоняется типизированной ошибкой `CommandDispatchReentrant`. Отложенные команды ставятся в очередь `game.commands.enqueue` и исполняются последовательно после завершения текущего цикла событий.
+Command handler не вызывает другой handler synchronously; вложенный вызов `dispatch` отклоняется типизированной ошибкой `CommandDispatchReentrant`. Отложенные команды ставятся в очередь `game.commands.enqueue` (также валидирующую аргументы через `portable_value`) и исполняются последовательно после завершения текущего цикла событий.
 
 ## Command validators
 

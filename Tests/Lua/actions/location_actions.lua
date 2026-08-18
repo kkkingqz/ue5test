@@ -4,6 +4,7 @@
 
 local mutation_window = require("core:module.runtime.mutation_window")
 local state_validator = require("core:module.runtime.state_validator")
+local canonical_codec = require("core:module.runtime.canonical_codec")
 
 local function ensure_player(initial_stamina, initial_gold)
     local player = game.instances.actors.player()
@@ -52,7 +53,7 @@ return {
             assert(item_entry.owner_id == player.instance_id)
 
             -- State validation
-            local raw_state = mutation_window.unwrap_state(game.state)
+            local raw_state = canonical_codec.deserialize(canonical_codec.serialize(game.state))
             state_validator.validate_state_tree(raw_state)
         end)
     end,

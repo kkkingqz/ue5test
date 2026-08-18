@@ -5,6 +5,7 @@
 local mutation_window = require("core:module.runtime.mutation_window")
 local stable_id = require("core:module.runtime.stable_id")
 local event_bus = require("core:module.runtime.event_bus")
+local portable_value = require("core:module.runtime.portable_value")
 
 local M = {
     id = "core:module.runtime.command_dispatcher",
@@ -21,8 +22,11 @@ local function validate_request(request)
     if type(request.command_id) ~= "string" or not stable_id.is_kind(request.command_id, "command") then
         error("InvalidCommandRequest: command_id must be a canonical Stable ID of kind 'command', got '" .. tostring(request.command_id) .. "'", 2)
     end
-    if request.args ~= nil and type(request.args) ~= "table" then
-        error("InvalidCommandRequest: args must be a table if present", 2)
+    if request.args ~= nil then
+        if type(request.args) ~= "table" then
+            error("InvalidCommandRequest: args must be a table if present", 2)
+        end
+        portable_value.validate(request.args, "request.args", "InvalidCommandArgs")
     end
     if request.sequence ~= nil and (type(request.sequence) ~= "number" or math.type(request.sequence) ~= "integer") then
         error("InvalidCommandRequest: sequence must be an integer if present", 2)

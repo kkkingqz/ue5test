@@ -14,12 +14,19 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.runtime.portable_value",
+            source = "runtime/portable_value.lua",
+            dependencies = {},
+            replaceable = false,
+        },
+        {
             module_id = "core:module.runtime.command_dispatcher",
             source = "runtime/command_dispatcher.lua",
             dependencies = {
                 "core:module.runtime.mutation_window",
                 "core:module.runtime.stable_id",
                 "core:module.runtime.event_bus",
+                "core:module.runtime.portable_value",
             },
             replaceable = false,
         },
@@ -176,6 +183,7 @@ return {
             source = "runtime/event_envelope.lua",
             dependencies = {
                 "core:module.runtime.stable_id",
+                "core:module.runtime.portable_value",
             },
             replaceable = false,
         },
@@ -219,6 +227,7 @@ return {
                 "core:module.runtime.save",
                 "core:module.runtime.load",
                 "core:module.runtime.mutation_window",
+                "core:module.runtime.portable_value",
                 "core:module.runtime.actor_registry",
                 "core:module.runtime.world",
                 "core:module.runtime.service_registry",

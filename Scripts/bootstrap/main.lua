@@ -8,6 +8,7 @@ local migrate = require("core:module.runtime.migrate")
 local save = require("core:module.runtime.save")
 local load_save = require("core:module.runtime.load")
 local mutation_window = require("core:module.runtime.mutation_window")
+local portable_value = require("core:module.runtime.portable_value")
 local actor_registry = require("core:module.runtime.actor_registry")
 local world = require("core:module.runtime.world")
 local service_registry = require("core:module.runtime.service_registry")
@@ -30,6 +31,7 @@ return {
     save = save,
     load = load_save,
     mutation_window = mutation_window,
+    portable_value = portable_value,
     actor_registry = actor_registry,
     world = world,
     service_registry = service_registry,

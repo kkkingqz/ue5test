@@ -61,6 +61,7 @@ bool StartCommandValidatorFixtureSession(
     };
     const std::vector<FRealModule> RealModules = {
         {"runtime/mutation_window.lua", "@core/runtime/mutation_window.lua"},
+        {"runtime/portable_value.lua", "@core/runtime/portable_value.lua"},
         {"runtime/stable_id.lua", "@core/runtime/stable_id.lua"},
         {"runtime/validator_registry.lua", "@core/runtime/validator_registry.lua"},
         {"runtime/handler_registry.lua", "@core/runtime/handler_registry.lua"},

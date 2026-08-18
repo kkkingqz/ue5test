@@ -4,6 +4,19 @@ local M = {
 
 local window_open = false
 
+-- Monotonic mutation revision counter (DLA-02, ADR-0027).
+-- Increments on every write to the guarded canonical state tree, whether direct,
+-- via domain method, or through a gameplay service.
+--
+-- Single-command exclusivity justification:
+-- 1. Synchronous nested command dispatch is forbidden (CommandDispatchReentrant).
+-- 2. EventBus subscribers execute with a closed mutation window (post-commit).
+-- 3. Deferred commands from the queue execute sequentially in their own separate
+--    mutation windows.
+-- Therefore, comparing write_revision before and after any block inside an active
+-- command handler deterministically indicates whether canonical state was mutated.
+local write_revision = 0
+
 function M.is_open()
     return window_open
 end
@@ -25,6 +38,10 @@ function M.execute_in_window(fn, ...)
         error(res_or_err, 0)
     end
     return res_or_err
+end
+
+function M.write_revision()
+    return write_revision
 end
 
 local raw_tables = setmetatable({}, { __mode = "k" })
@@ -67,6 +84,7 @@ local function wrap(raw_tbl)
             if not window_open then
                 error("MutationWindowClosed: cannot mutate canonical state outside of active command handler", 2)
             end
+            write_revision = write_revision + 1
             raw_tbl[key] = unwrap(val)
         end,
         __len = function(_)
@@ -92,9 +110,26 @@ local function wrap(raw_tbl)
 end
 
 M.guard_state = wrap
-M.unwrap_state = unwrap
 M.is_guarded = function(tbl)
     return type(tbl) == "table" and raw_tables[tbl] ~= nil
+end
+
+-- DLA-03: unwrap is deliberately isolated from M public exports.
+-- Neither gameplay modules nor mods can retrieve raw canonical state.
+function M.create_controller()
+    local controller = {
+        is_open = M.is_open,
+        open = M.open,
+        close = M.close,
+        execute_in_window = M.execute_in_window,
+        write_revision = M.write_revision,
+        guard_state = wrap,
+        is_guarded = M.is_guarded,
+    }
+    local admin = {
+        unwrap = unwrap,
+    }
+    return controller, admin
 end
 
 return M

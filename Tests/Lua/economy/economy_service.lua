@@ -31,21 +31,17 @@ return {
             assert(player.stamina == 20, "stamina must be accessible via wrapper")
             assert(player.gold == 50, "gold must be accessible via wrapper")
 
-            -- Validate state structure (raw unwrapped tree)
-            local raw_state = mutation_window.unwrap_state(game.state)
-            local ok_valid, err_valid = pcall(function()
-                state_validator.validate_state_tree(raw_state)
-            end)
-            assert(ok_valid, "state with stamina and gold must pass validation: " .. tostring(err_valid))
-
             -- Verify round-trip encoding and decoding
-            local encoded = canonical_codec.serialize(raw_state)
+            local encoded = canonical_codec.serialize(game.state)
             local decoded = canonical_codec.deserialize(encoded)
             assert(decoded.actors[player.instance_id].stamina == 20, "decoded stamina must match")
             assert(decoded.actors[player.instance_id].gold == 50, "decoded gold must match")
 
             -- Decoded state is also a valid raw state tree
-            state_validator.validate_state_tree(decoded)
+            local ok_valid, err_valid = pcall(function()
+                state_validator.validate_state_tree(decoded)
+            end)
+            assert(ok_valid, "state with stamina and gold must pass validation: " .. tostring(err_valid))
         end)
     end,
 

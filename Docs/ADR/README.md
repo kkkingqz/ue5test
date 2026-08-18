@@ -38,6 +38,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0024](0024-lua-spec-runner.md) | accepted | Lua-правила проверяются Lua-спеками из `Tests/Lua/` через один generic runner |
 | [0025](0025-lua-module-replacement-and-export-freezing.md) | accepted | Замещение модулей, запрет мутации таблиц экспорта и запечатанность по умолчанию |
 | [0026](0026-core-and-gameplay-ownership.md) | accepted | `core` владеет механизмами, пакет — семантикой; kind в реестре не означает владения схемой |
+| [0027](0027-designer-lua-authoring-layer.md) | accepted | Designer Lua Authoring: дескрипторы команд, fail() с write_revision, изоляция состояния, единый portable_value |
 
 ## Template
 
