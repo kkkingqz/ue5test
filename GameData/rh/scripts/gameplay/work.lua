@@ -1,4 +1,4 @@
--- Work Command Handlers for rh package (DLA-21)
+-- Work Command Handlers for rh package (SAS-10..13)
 -- Handles working in the tavern (+10 gold, -2 stamina), requiring stamina > 5.
 
 local authoring = require("core:module.authoring.context")
@@ -8,19 +8,9 @@ local M = authoring.gameplay("rh")
 M.id = "rh:module.gameplay.work"
 
 M.commands["work.do_work"] = function()
-    if M.player.current_location_id ~= "rh:location.city.tavern" then
-        return M.fail("location.wrong_location", {
-            required_location_id = "rh:location.city.tavern",
-            current_location_id = M.player.current_location_id,
-        })
-    end
-
-    if M.player.stamina <= 5 then
-        return M.fail("work.insufficient_stamina", {
-            current_stamina = M.player.stamina,
-            required_stamina = 6,
-        })
-    end
+    local tavern = M.location("rh:location.city.tavern")
+    M.player:require_location(tavern)
+    M.player:require_stamina(6, "work.insufficient_stamina")
 
     M.player:spend_stamina(2)
     M.player:add_gold(10)
@@ -30,13 +20,10 @@ M.commands["work.do_work"] = function()
     end
 
     return {
-        ok = true,
-        value = {
-            gold_gained = 10,
-            stamina_spent = 2,
-            current_gold = M.player.gold,
-            current_stamina = M.player.stamina,
-        },
+        gold_gained = 10,
+        stamina_spent = 2,
+        current_gold = M.player.gold,
+        current_stamina = M.player.stamina,
     }
 end
 

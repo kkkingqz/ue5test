@@ -1,4 +1,4 @@
--- Time Command Handlers for rh package (DLA-21)
+-- Time Command Handlers for rh package (SAS-10..13)
 -- Handles resting / waiting 1 day in the tavern, restoring stamina.
 
 local authoring = require("core:module.authoring.context")
@@ -8,12 +8,8 @@ local M = authoring.gameplay("rh")
 M.id = "rh:module.gameplay.time"
 
 M.commands["time.wait_day"] = function()
-    if M.player.current_location_id ~= "rh:location.city.tavern" then
-        return M.fail("location.wrong_location", {
-            required_location_id = "rh:location.city.tavern",
-            current_location_id = M.player.current_location_id,
-        })
-    end
+    local tavern = M.location("rh:location.city.tavern")
+    M.player:require_location(tavern)
 
     M.player:add_stamina(10)
 
@@ -22,11 +18,8 @@ M.commands["time.wait_day"] = function()
     end
 
     return {
-        ok = true,
-        value = {
-            stamina_gained = 10,
-            current_stamina = M.player.stamina,
-        },
+        stamina_gained = 10,
+        current_stamina = M.player.stamina,
     }
 end
 

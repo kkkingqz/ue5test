@@ -130,6 +130,9 @@ function M.create_registry()
                     end
                     local val = def_data and def_data[k]
                     if (fspec.kind == "ref" or fspec.kind == "ref_definition") and type(val) == "string" then
+                        if properties and properties.wrap_definition then
+                            return properties.wrap_definition(val)
+                        end
                         if game and game.repository and game.repository.get then
                             return game.repository.get(val)
                         end
@@ -144,8 +147,14 @@ function M.create_registry()
                     end
                     return raw_id
                 elseif fspec.kind == "ref" or fspec.kind == "ref_definition" then
-                    local raw_id = actor_state[k]
+                    local raw_id = actor_state[k] or (k == "current_location" and actor_state.current_location_id) or (k == "current_location_id" and actor_state.current_location)
+                    if k == "current_location_id" then
+                        return raw_id
+                    end
                     if type(raw_id) == "string" and raw_id ~= "" then
+                        if properties and properties.wrap_definition then
+                            return properties.wrap_definition(raw_id)
+                        end
                         if game and game.repository and game.repository.get then
                             return game.repository.get(raw_id)
                         end
@@ -155,12 +164,30 @@ function M.create_registry()
                     return properties.wrap_collection(actor_state, k, fspec)
                 end
             end
+            if k == "current_location" then
+                local raw_loc = actor_state.current_location or actor_state.current_location_id
+                if type(raw_loc) == "string" and raw_loc ~= "" then
+                    if properties and properties.wrap_definition then
+                        return properties.wrap_definition(raw_loc)
+                    end
+                end
+                return raw_loc
+            elseif k == "current_location_id" then
+                local raw_loc = actor_state.current_location or actor_state.current_location_id
+                return raw_loc
+            end
             return actor_state[k]
         end
 
         local function write_property(k, v)
             if k == "discriminator" or k == "instance_id" or k == "definition_id" then
                 error("ActorDiscriminatorImmutable: field '" .. tostring(k) .. "' is immutable on actor wrapper", 2)
+            end
+            if k == "current_location" or k == "current_location_id" then
+                local _, canonical_val = properties.validate_field_value(k, { kind = "ref_definition" }, v)
+                actor_state.current_location = canonical_val
+                actor_state.current_location_id = canonical_val
+                return
             end
             local schema = properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id))
             if schema and schema.fields and schema.fields[k] then

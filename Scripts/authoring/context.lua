@@ -152,10 +152,14 @@ function M.gameplay(package_id)
         __index = function(_, kind)
             return function(name)
                 local full_id
-                if stable_id.is_valid(name) then
+                if type(name) == "table" and (name.id or name.definition_id) then
+                    full_id = name.id or name.definition_id
+                elseif type(name) == "string" and stable_id.is_valid(name) then
                     full_id = name
-                else
+                elseif type(name) == "string" then
                     full_id = package_id .. ":" .. kind .. "." .. name
+                else
+                    error("InvalidDefinitionName: expected string or definition handle, got " .. type(name), 2)
                 end
                 return properties_module.wrap_definition(full_id)
             end
@@ -199,7 +203,7 @@ function M.gameplay(package_id)
         })
     end
 
-    function mod.fail(key, params)
+    function M.fail(key, params, opt_pkg)
         if active_command_context == nil then
             error("AuthoringFailOutsideCommand: fail() can only be called from within an active command handler", 2)
         end
@@ -212,11 +216,12 @@ function M.gameplay(package_id)
                 .. "). Move precondition checks before state mutations.", 2)
         end
 
-        local canonical_code = canonicalize_error_id(package_id, key)
+        local pkg = opt_pkg or active_command_context.package_id or "core"
+        local canonical_code = canonicalize_error_id(pkg, key)
         local canonical_params = tagged_ref.canonicalize_arg(params or {}, { allow_plain_id = true })
         portable_value.validate(canonical_params, "fail_params")
 
-        return {
+        local fail_obj = {
             ok = false,
             error = {
                 code = canonical_code,
@@ -224,6 +229,13 @@ function M.gameplay(package_id)
             },
             __gv2_fail = FAIL_SENTINEL,
         }
+
+        -- Non-local exit (SAS-10, SAS-11)
+        error(fail_obj, 0)
+    end
+
+    function mod.fail(key, params)
+        return M.fail(key, params, package_id)
     end
 
     function mod.actor(name)
@@ -289,6 +301,7 @@ function M.gameplay(package_id)
                 local prev_ctx = active_command_context
                 active_command_context = {
                     command_id = cmd_id,
+                    package_id = package_id,
                     initial_write_revision = initial_rev,
                 }
 
@@ -305,6 +318,26 @@ function M.gameplay(package_id)
                     ok, res = pcall(raw_handler, table.unpack(args_list, 1, #rehydrated))
                 elseif type(raw_args) == "table" and next(raw_args) == nil then
                     ok, res = pcall(raw_handler)
+                elseif type(rehydrated) == "table" then
+                    local primary_arg = rehydrated.target_location_id
+                        or rehydrated.location_id
+                        or rehydrated.target
+                        or rehydrated.item_id
+                        or rehydrated.item
+                        or rehydrated.destination
+                    if primary_arg ~= nil then
+                        if type(primary_arg) == "string" and stable_id.is_valid(primary_arg) then
+                            local ok_p, properties_mod = pcall(require, "core:module.authoring.properties")
+                            if ok_p and properties_mod and properties_mod.wrap_definition then
+                                if game and game.repository and game.repository.get and game.repository.get(primary_arg) then
+                                    primary_arg = properties_mod.wrap_definition(primary_arg)
+                                end
+                            end
+                        end
+                        ok, res = pcall(raw_handler, primary_arg, rehydrated)
+                    else
+                        ok, res = pcall(raw_handler, rehydrated)
+                    end
                 else
                     ok, res = pcall(raw_handler, rehydrated)
                 end
@@ -312,6 +345,12 @@ function M.gameplay(package_id)
                 active_command_context = prev_ctx
 
                 if not ok then
+                    if is_fail_result(res) then
+                        return {
+                            ok = false,
+                            error = res.error,
+                        }
+                    end
                     error(res, 0)
                 end
 

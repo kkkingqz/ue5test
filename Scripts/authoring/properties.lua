@@ -430,6 +430,46 @@ function M.wrap_definition(def_id)
     local def = get_def_data()
     local discriminator = def and (def.discriminator or (def.data and def.data.discriminator)) or kind
     local dec = registered_def_decorators[discriminator] or registered_def_decorators[kind]
+    if not dec and (kind == "location" or discriminator == "location") then
+        dec = function(def_base)
+            local wrapper = {}
+            function wrapper:is_connected(target)
+                local target_id = target
+                if type(target) == "table" then
+                    target_id = target.id or target.definition_id
+                end
+                if not target_id then return false end
+                local connected_ids = def_base.connected_location_ids or (def_base.data and def_base.data.connected_location_ids) or {}
+                for _, id in ipairs(connected_ids) do
+                    if id == target_id then
+                        return true
+                    end
+                end
+                return false
+            end
+            function wrapper:require_connected(target, opt_key)
+                local target_id = target
+                if type(target) == "table" then
+                    target_id = target.id or target.definition_id
+                end
+                if not self:is_connected(target) then
+                    local ok_ac, authoring_context = pcall(require, "core:module.authoring.context")
+                    if ok_ac and authoring_context and authoring_context.fail then
+                        authoring_context.fail(opt_key or "travel.not_connected", {
+                            from_location_id = def_base.id or def_base.definition_id,
+                            to_location_id = target_id or "",
+                        })
+                    else
+                        error("TravelNotConnected: location '" .. tostring(def_base.id) .. "' is not connected to '" .. tostring(target_id) .. "'", 2)
+                    end
+                end
+            end
+            return setmetatable(wrapper, {
+                __index = def_base,
+            })
+        end
+    end
+
     if dec then
         local decorated = dec(base_wrapper)
         if type(decorated) == "table" then
