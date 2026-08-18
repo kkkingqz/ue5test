@@ -69,7 +69,7 @@ Lua-часть `rh` — 791 строка на четыре правила игр
 ## Milestones
 
 - [x] M1 — [Authoring Environment](AuthoringEnvironment.md): окружение скрипта, прямые имена, неявный успех.
-- [ ] M2 — [Module Discovery](ModuleDiscovery.md): автообнаружение, генерируемый манифест, правила ID.
+- [x] M2 — [Module Discovery](ModuleDiscovery.md): автообнаружение, генерируемый манифест, правила ID.
 - [ ] M3 — [Domain API](DomainApi.md): предусловия, единый API актора, объекты вместо DTO.
 - [ ] M4 — [Presentation Source](PresentationSource.md): источник презентации и автоматическая инвалидация.
 - [ ] M5 — [RH Cleanup](RhCleanup.md): один файл правил, удаление инфраструктуры.

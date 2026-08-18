@@ -702,6 +702,99 @@ def main():
         assert res_repeat.returncode == 0
         assert "texts found in Lua scripts are already defined and present in PO catalogs." in res_repeat.stdout
 
+        # 37. Test generate_manifest.py (SAS-06..09 / ADR-0028)
+        print("[*] Testing 'generate_manifest.py' module discovery and validation...")
+        gen_manifest_py = os.path.join(os.path.dirname(__file__), "generate_manifest.py")
+
+        manifest_pkg = os.path.join(tmpdir, "manifest_pkg")
+        os.makedirs(os.path.join(manifest_pkg, "scripts", "runtime"), exist_ok=True)
+        os.makedirs(os.path.join(manifest_pkg, "scripts", "authoring"), exist_ok=True)
+
+        with open(os.path.join(manifest_pkg, "package.json5"), "w", encoding="utf-8") as f:
+            f.write('{\n  package_id: "manifest_pkg",\n  version: "0.1.0",\n}\n')
+
+        with open(os.path.join(manifest_pkg, "scripts", "runtime", "helper.lua"), "w", encoding="utf-8") as f:
+            f.write('local M = {}\nreturn M\n')
+
+        with open(os.path.join(manifest_pkg, "scripts", "authoring", "gameplay.lua"), "w", encoding="utf-8") as f:
+            f.write(
+                'local helper = require("manifest_pkg:module.runtime.helper")\n'
+                'function commands.test()\n'
+                'end\n'
+            )
+
+        # 37a. Positive manifest generation
+        res_gen = run_cmd([sys.executable, gen_manifest_py, manifest_pkg, "--format=json"])
+        assert res_gen.returncode == 0
+        doc = json.loads(res_gen.stdout)
+        assert doc["status"] == "ok"
+        assert doc["modules_count"] == 2
+
+        manifest_file = os.path.join(manifest_pkg, "scripts", "manifest.lua")
+        assert os.path.isfile(manifest_file)
+        manifest_text = open(manifest_file, "r", encoding="utf-8").read()
+        assert 'module_id = "manifest_pkg:module.authoring.gameplay"' in manifest_text
+        assert 'module_id = "manifest_pkg:module.runtime.helper"' in manifest_text
+        assert 'authoring = true' in manifest_text
+        assert '"manifest_pkg:module.runtime.helper"' in manifest_text
+
+        # 37b. Deterministic check passes
+        res_chk = run_cmd([sys.executable, gen_manifest_py, manifest_pkg, "--check", "--format=json"])
+        assert res_chk.returncode == 0
+        doc = json.loads(res_chk.stdout)
+        assert doc["status"] == "ok"
+
+        # 37c. Check fails when unlisted file is added
+        with open(os.path.join(manifest_pkg, "scripts", "runtime", "extra.lua"), "w", encoding="utf-8") as f:
+            f.write('local M = {}\nreturn M\n')
+
+        res_chk_fail = run_cmd([sys.executable, gen_manifest_py, manifest_pkg, "--check", "--format=json"], check=False)
+        assert res_chk_fail.returncode == 1
+        doc_fail = json.loads(res_chk_fail.stdout)
+        assert doc_fail["status"] == "error"
+        assert doc_fail["code"] == "ManifestMismatch"
+
+        # 37d. Negative test: replaceable module without explicit ID (SAS-07)
+        with open(os.path.join(manifest_pkg, "package.json5"), "w", encoding="utf-8") as f:
+            f.write(
+                '{\n'
+                '  package_id: "manifest_pkg",\n'
+                '  modules: [\n'
+                '    {\n'
+                '      source: "runtime/helper.lua",\n'
+                '      replaceable: true,\n'
+                '    }\n'
+                '  ]\n'
+                '}\n'
+            )
+        res_repl_fail = run_cmd([sys.executable, gen_manifest_py, manifest_pkg, "--format=json"], check=False)
+        assert res_repl_fail.returncode == 1
+        doc_repl = json.loads(res_repl_fail.stdout)
+        assert doc_repl["code"] == "ReplaceableModuleRequiresExplicitId"
+
+        # 37e. Negative test: dynamic require (SAS-08)
+        with open(os.path.join(manifest_pkg, "package.json5"), "w", encoding="utf-8") as f:
+            f.write('{\n  package_id: "manifest_pkg",\n}\n')
+        with open(os.path.join(manifest_pkg, "scripts", "authoring", "gameplay.lua"), "w", encoding="utf-8") as f:
+            f.write(
+                'local mod_name = "manifest_pkg:module.runtime.helper"\n'
+                'local helper = require(mod_name)\n'
+            )
+        res_dyn_fail = run_cmd([sys.executable, gen_manifest_py, manifest_pkg, "--format=json"], check=False)
+        assert res_dyn_fail.returncode == 1
+        doc_dyn = json.loads(res_dyn_fail.stdout)
+        assert doc_dyn["code"] == "DynamicRequireDisallowed"
+
+        # 37f. Negative test: circular dependency (SAS-08)
+        with open(os.path.join(manifest_pkg, "scripts", "runtime", "helper.lua"), "w", encoding="utf-8") as f:
+            f.write('local gp = require("manifest_pkg:module.authoring.gameplay")\nreturn {}\n')
+        with open(os.path.join(manifest_pkg, "scripts", "authoring", "gameplay.lua"), "w", encoding="utf-8") as f:
+            f.write('local h = require("manifest_pkg:module.runtime.helper")\n')
+        res_cyc_fail = run_cmd([sys.executable, gen_manifest_py, manifest_pkg, "--format=json"], check=False)
+        assert res_cyc_fail.returncode == 1
+        doc_cyc = json.loads(res_cyc_fail.stdout)
+        assert doc_cyc["code"] == "CircularDependencyDetected"
+
     print("[*] All authoring tools tests passed successfully!")
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ decisions:
   - ../ADR/0023-stable-id-publication-freeze.md
   - ../ADR/0024-lua-spec-runner.md
   - ../ADR/0026-core-and-gameplay-ownership.md
+  - ../ADR/0028-simplified-authoring-surface.md
 ---
 
 # Build and Tooling Contract
@@ -126,6 +127,15 @@ gv2-content coverage <package-root> [--locale=LOCALE] [--format=text|json]
 - **Автоматическая подсветка ошибок (Problem Matcher)**: фоновая задача `GV2: Watch Content (GameData/core)` запускает `gv2-content validate <package-root> --watch` и транслирует ошибки схем и синтаксиса в панель **Problems** редактора на конкретные строки файлов `.json5` сразу после сохранения.
 - **Подсказки и автодополнение**: скрипт `Tools/Editor/generate_vscode_snippets.py` запрашивает `gv2-content index <package-root> --format=json` и генерирует `.vscode/gv2-content.code-snippets` для автодополнения Stable ID в редакторе.
 - **Опциональность**: конфигурация редактора полностью изолирована и не является обязательной для сборки проекта; отсутствие файлов в `.vscode/` ничего не ломает. Подробная документация и regex для других IDE собраны в `Tools/Editor/README.md`.
+
+### Генерация манифеста модулей (`Tools/Content/generate_manifest.py`, ADR-0028)
+
+Инструмент сборки обходит каталог `scripts/` пакета в детерминированном (лексикографическом) порядке и генерирует канонический `scripts/manifest.lua`:
+- Для обычных (незамещаемых) модулей `module_id` выводится автоматически из относительного пути к файлу (`scripts/authoring/gameplay.lua` → `<pkg>:module.authoring.gameplay`, `scripts/runtime/actors.lua` → `<pkg>:module.runtime.actors`).
+- Для замещаемых модулей (`replaceable: true`) требуется явное объявление `module_id` в `package.json5` (секция `modules`); попытка объявить замещаемый модуль без явного ID отклоняется с кодом `ReplaceableModuleRequiresExplicitId`.
+- Зависимости модулей выводятся статическим сканированием литеральных вызовов `require("...")`. Динамический вызов `require(variable)` запрещён (`DynamicRequireDisallowed`).
+- Граф модулей проверяется на отсутствие циклов (`CircularDependencyDetected`) и дубликатов ID (`DuplicateModuleId`).
+- Флаг `--check` валидирует актуальность существующего файла манифеста на диске без его перезаписи, возвращая код 1 при расхождении (`ManifestMismatch`).
 
 ### `gv2-headless`
 
