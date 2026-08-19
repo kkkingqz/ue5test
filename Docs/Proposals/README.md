@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 3.1
+version: 3.2
 updated: 2026-08-19
 ---
 
@@ -50,7 +50,7 @@ Proposal не изменяет нормативную архитектуру с�
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
-3. `CommandValidatorAuthoringProposal` — сначала ADR и contract update, затем Lua-only adapter и общие cross-host specs; runtime registry и C++ не расширяются без измеренной необходимости.
+3. `CommandValidatorAuthoringProposal` — материализовано планом [CommandValidators](../Plans/CommandValidators/README.md): сначала очистка декодирования аргументов, затем Lua-only adapter и общие cross-host specs; runtime registry и C++ не расширяются без измеренной необходимости.
 4. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось. Декларативные экраны из `SimplifiedAuthoringSurfaceProposal` разблокированы тем же планом.
 5. `ModPackageLifecycleProposal`.
 6. `UiCompositionAndScalingProposal` — материализовано планом [UiComposition](../Plans/UiComposition/README.md): слои, оверлеи, вкладки, реконсиляция и масштабирование.
