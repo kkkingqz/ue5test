@@ -256,6 +256,12 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.authoring.field",
+            source = "authoring/field.lua",
+            dependencies = {},
+            replaceable = false,
+        },
+        {
             module_id = "core:module.authoring.context",
             source = "authoring/context.lua",
             dependencies = {
@@ -266,6 +272,7 @@ return {
                 "core:module.authoring.commands",
                 "core:module.authoring.properties",
                 "core:module.authoring.presentation",
+                "core:module.authoring.field",
                 "core:module.runtime.entity_extension_registry",
             },
             replaceable = false,
@@ -305,6 +312,7 @@ return {
                 "core:module.authoring.tagged_ref",
                 "core:module.authoring.commands",
                 "core:module.authoring.presentation",
+                "core:module.authoring.field",
                 "core:module.authoring.context",
                 "core:module.runtime.presentation_source",
             },

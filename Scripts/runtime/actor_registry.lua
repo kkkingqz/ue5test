@@ -134,7 +134,8 @@ function M.create_registry()
                     return ext_fn
                 end
             end
-            local schema = properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id))
+            local schema = (properties and properties.get_effective_schema and properties.get_effective_schema(discriminator, actor_state.definition_id, "Actor"))
+                or (properties and properties.get_schema and (properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id)) or properties.get_schema("Actor")))
             if schema and schema.fields and schema.fields[k] then
                 local fspec = schema.fields[k]
                 if fspec.storage == "definition" then
@@ -204,7 +205,8 @@ function M.create_registry()
                 actor_state.current_location_id = canonical_val
                 return
             end
-            local schema = properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id))
+            local schema = (properties and properties.get_effective_schema and properties.get_effective_schema(discriminator, actor_state.definition_id, "Actor"))
+                or (properties and properties.get_schema and (properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id)) or properties.get_schema("Actor")))
             if schema and schema.fields and schema.fields[k] then
                 local fspec = schema.fields[k]
                 if fspec.storage == "definition" then

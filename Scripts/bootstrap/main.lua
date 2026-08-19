@@ -22,6 +22,7 @@ local authoring_properties = require("core:module.authoring.properties")
 local authoring_tagged_ref = require("core:module.authoring.tagged_ref")
 local authoring_commands = require("core:module.authoring.commands")
 local authoring_presentation = require("core:module.authoring.presentation")
+local authoring_field = require("core:module.authoring.field")
 local authoring_context = require("core:module.authoring.context")
 local presentation_source = require("core:module.runtime.presentation_source")
 
@@ -52,5 +53,6 @@ return {
     authoring_properties = authoring_properties,
     authoring_tagged_ref = authoring_tagged_ref,
     authoring_presentation = authoring_presentation,
+    authoring_field = authoring_field,
     presentation_source = presentation_source,
 }

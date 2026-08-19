@@ -11,6 +11,58 @@ local M = {
 local registered_schemas = {}
 local registered_def_decorators = {}
 local is_frozen = false
+local effective_schema_cache = {}
+
+local function merge_field_spec(base_spec, over_spec, field_name, source_name)
+    if not base_spec then
+        local copy = {}
+        for k, v in pairs(over_spec) do copy[k] = v end
+        copy.source = copy.source or source_name
+        return copy
+    end
+    if over_spec.kind and base_spec.kind and over_spec.kind ~= base_spec.kind then
+        error("InvalidFieldOverrideKindMismatch: cannot override field '" .. tostring(field_name) .. "' of kind '" .. tostring(base_spec.kind) .. "' with kind '" .. tostring(over_spec.kind) .. "' from " .. tostring(source_name), 2)
+    end
+
+    local merged = {}
+    for k, v in pairs(base_spec) do merged[k] = v end
+    for k, v in pairs(over_spec) do merged[k] = v end
+
+    if base_spec.min ~= nil and over_spec.min ~= nil then
+        merged.min = math.max(base_spec.min, over_spec.min)
+    elseif base_spec.min ~= nil then
+        merged.min = base_spec.min
+    elseif over_spec.min ~= nil then
+        merged.min = over_spec.min
+    end
+
+    if base_spec.max ~= nil and over_spec.max ~= nil then
+        merged.max = math.min(base_spec.max, over_spec.max)
+    elseif base_spec.max ~= nil then
+        merged.max = base_spec.max
+    elseif over_spec.max ~= nil then
+        merged.max = over_spec.max
+    end
+
+    if base_spec.min_length ~= nil and over_spec.min_length ~= nil then
+        merged.min_length = math.max(base_spec.min_length, over_spec.min_length)
+    elseif base_spec.min_length ~= nil then
+        merged.min_length = base_spec.min_length
+    elseif over_spec.min_length ~= nil then
+        merged.min_length = over_spec.min_length
+    end
+
+    if base_spec.max_length ~= nil and over_spec.max_length ~= nil then
+        merged.max_length = math.min(base_spec.max_length, over_spec.max_length)
+    elseif base_spec.max_length ~= nil then
+        merged.max_length = base_spec.max_length
+    elseif over_spec.max_length ~= nil then
+        merged.max_length = over_spec.max_length
+    end
+
+    merged.source = source_name or over_spec.source or base_spec.source
+    return merged
+end
 
 function M.register_schema(discriminator_or_type, schema_def)
     if is_frozen then
@@ -22,7 +74,27 @@ function M.register_schema(discriminator_or_type, schema_def)
     if type(schema_def) ~= "table" or type(schema_def.fields) ~= "table" then
         error("InvalidSchemaDefinition: schema_def must be a table with a fields map", 2)
     end
-    registered_schemas[discriminator_or_type] = schema_def
+
+    if not registered_schemas[discriminator_or_type] then
+        local copy = { fields = {} }
+        for k, v in pairs(schema_def) do
+            if k ~= "fields" then copy[k] = v end
+        end
+        registered_schemas[discriminator_or_type] = copy
+    end
+
+    local existing = registered_schemas[discriminator_or_type]
+    for k, v in pairs(schema_def.fields) do
+        if existing.fields[k] ~= nil and v.override ~= true then
+            error("FieldAlreadyDeclared: field '" .. tostring(k) .. "' is already declared on '" .. tostring(discriminator_or_type) .. "'", 2)
+        end
+        local field_copy = {}
+        for fk, fv in pairs(v) do
+            field_copy[fk] = fv
+        end
+        field_copy.source = field_copy.source or discriminator_or_type
+        existing.fields[k] = field_copy
+    end
 end
 
 function M.register_definition_type(kind_or_discriminator, decorator_fn)
@@ -57,6 +129,54 @@ function M.get_schema(discriminator_or_type)
     return registered_schemas[discriminator_or_type]
 end
 
+function M.get_effective_schema(discriminator, definition_id, generic_kind)
+    local cache_key = tostring(generic_kind or "") .. "|" .. tostring(definition_id or "") .. "|" .. tostring(discriminator or "")
+    if is_frozen and effective_schema_cache[cache_key] then
+        return effective_schema_cache[cache_key]
+    end
+
+    local composed_fields = {}
+    local sources = {}
+
+    if generic_kind then
+        if registered_schemas[generic_kind] then
+            table.insert(sources, { name = generic_kind, schema = registered_schemas[generic_kind] })
+        elseif registered_schemas[generic_kind:lower()] then
+            table.insert(sources, { name = generic_kind:lower(), schema = registered_schemas[generic_kind:lower()] })
+        end
+    end
+
+    if definition_id and registered_schemas[definition_id] then
+        table.insert(sources, { name = definition_id, schema = registered_schemas[definition_id] })
+    end
+
+    if discriminator and registered_schemas[discriminator] then
+        table.insert(sources, { name = discriminator, schema = registered_schemas[discriminator] })
+    end
+
+    if #sources == 0 then
+        return nil
+    end
+
+    for _, src in ipairs(sources) do
+        if src.schema and src.schema.fields then
+            for f_name, f_spec in pairs(src.schema.fields) do
+                composed_fields[f_name] = merge_field_spec(composed_fields[f_name], f_spec, f_name, src.name)
+            end
+        end
+    end
+
+    local result = {
+        fields = composed_fields,
+    }
+
+    if is_frozen then
+        effective_schema_cache[cache_key] = result
+    end
+
+    return result
+end
+
 function M.schemas()
     local result = {}
     for k, v in pairs(registered_schemas) do
@@ -77,18 +197,30 @@ function M.with_isolated_state(fn)
     local prev_schemas = registered_schemas
     local prev_decorators = registered_def_decorators
     local prev_frozen = is_frozen
+    local prev_cache = effective_schema_cache
 
     registered_schemas = {}
-    for k, v in pairs(prev_schemas) do registered_schemas[k] = v end
+    for k, v in pairs(prev_schemas) do
+        local copy = { fields = {} }
+        for sk, sv in pairs(v) do
+            if sk ~= "fields" then copy[sk] = sv end
+        end
+        if v.fields then
+            for fk, fv in pairs(v.fields) do copy.fields[fk] = fv end
+        end
+        registered_schemas[k] = copy
+    end
     registered_def_decorators = {}
     for k, v in pairs(prev_decorators) do registered_def_decorators[k] = v end
     is_frozen = false
+    effective_schema_cache = {}
 
     local ok, res_or_err = pcall(fn)
 
     registered_schemas = prev_schemas
     registered_def_decorators = prev_decorators
     is_frozen = prev_frozen
+    effective_schema_cache = prev_cache
 
     if not ok then
         error(res_or_err, 0)
@@ -100,6 +232,7 @@ function M.clear_for_test()
     registered_schemas = {}
     registered_def_decorators = {}
     is_frozen = false
+    effective_schema_cache = {}
 end
 
 function M.canonicalize_value(val)

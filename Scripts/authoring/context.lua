@@ -18,6 +18,7 @@ local commands_module = require("core:module.authoring.commands")
 local properties_module = require("core:module.authoring.properties")
 local presentation_module = require("core:module.authoring.presentation")
 local entity_extension_registry = require("core:module.runtime.entity_extension_registry")
+local field_module = require("core:module.authoring.field")
 
 local M = {
     id = "core:module.authoring.context",
@@ -135,22 +136,36 @@ function M.create_entity_prototype_proxy(entity_kind, pkg_id, opt_mod_id)
     local mod_id = opt_mod_id or (pkg_id .. ":authoring." .. entity_kind:lower())
     local proxy = {}
     local mt = {
-        __newindex = function(_, method_name, fn)
-            if type(method_name) ~= "string" or method_name == "" then
-                error("InvalidMethodName: expected non-empty string method name for " .. tostring(entity_kind) .. ", got " .. tostring(method_name), 2)
+        __newindex = function(_, member_name, val)
+            if type(member_name) ~= "string" or member_name == "" then
+                error("InvalidMemberName: expected non-empty string member name for " .. tostring(entity_kind) .. ", got " .. tostring(member_name), 2)
             end
-            if type(fn) ~= "function" then
-                error("InvalidMethodImplementation: expected function for " .. tostring(entity_kind) .. ":" .. tostring(method_name) .. ", got " .. type(fn), 2)
-            end
-            if game and game.entity_extensions and game.entity_extensions.register then
-                game.entity_extensions.register(mod_id, pkg_id, entity_kind, method_name, fn)
+            if type(val) == "table" and val.__gv2_field_descriptor then
+                properties_module.register_schema(entity_kind, {
+                    fields = {
+                        [member_name] = val,
+                    },
+                })
+            elseif type(val) == "function" then
+                if game and game.entity_extensions and game.entity_extensions.register then
+                    game.entity_extensions.register(mod_id, pkg_id, entity_kind, member_name, val)
+                else
+                    entity_extension_registry.register(mod_id, pkg_id, entity_kind, member_name, val)
+                end
             else
-                entity_extension_registry.register(mod_id, pkg_id, entity_kind, method_name, fn)
+                error("InvalidPrototypeAssignment: expected function or field descriptor for " .. tostring(entity_kind) .. "." .. tostring(member_name) .. ", got " .. type(val), 2)
             end
         end,
-        __index = function(_, method_name)
+        __index = function(_, member_name)
             if game and game.entity_extensions and game.entity_extensions.get_method then
-                return game.entity_extensions.get_method(entity_kind, method_name)
+                local fn = game.entity_extensions.get_method(entity_kind, member_name)
+                if fn ~= nil then
+                    return fn
+                end
+            end
+            local schema = properties_module.get_schema(entity_kind)
+            if schema and schema.fields and schema.fields[member_name] then
+                return schema.fields[member_name]
             end
             return nil
         end,
@@ -240,6 +255,7 @@ function M.gameplay(package_id, opt_module_id)
     mod.Location = M.create_entity_prototype_proxy("Location", package_id, opt_module_id)
     mod.Quest = M.create_entity_prototype_proxy("Quest", package_id, opt_module_id)
     mod.Item = M.create_entity_prototype_proxy("Item", package_id, opt_module_id)
+    mod.field = field_module
 
     local def_proxy = setmetatable({}, {
         __index = function(_, kind)
@@ -522,6 +538,7 @@ function M.create_authoring_environment(package_id, opt_module_id)
         Location = mod.Location,
         Quest = mod.Quest,
         Item = mod.Item,
+        field = mod.field,
     }
 
     setmetatable(env, {

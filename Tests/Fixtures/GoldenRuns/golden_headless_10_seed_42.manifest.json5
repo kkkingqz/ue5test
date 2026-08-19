@@ -1,7 +1,7 @@
 {
   "lua_release_num": 50408,
   "repository_content_hash": "292a5ee53437e70fc8478cba179248adc035d688d83141ea5397a18e5e9d48e5",
-  "script_set_hash": "fd04461eb861d7297bea882496cd9c61e8d8b7b1a9272582735ac752f71ee8c3",
+  "script_set_hash": "51ff7acca5edbb5d08af8972b5ce3214f41e0f4c5a748501aa2394aecb9e4909",
   "seed": 42,
   "accepted_commands": [
     {
