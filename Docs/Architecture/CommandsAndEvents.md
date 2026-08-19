@@ -133,13 +133,22 @@ Gameplay Service обязан:
    - Аргументы проверяются примитивом `portable_value.validate`.
    - Конструктор `M.action(cmd_desc, ...)` канонизирует аргументы по тому же правилу, формируя DTO семантического действия `{ command_id = ..., args = ... }`.
 
-4. **Семантика `fail()` и правило мутации (`DLA-08`)**:
-   - `M.fail(key, params)` формирует типизированный отказ `{ ok = false, error = { code = "<package_id>:error.<key>", params = ... } }`.
-   - Если до вызова `fail()` произошла хотя бы одна мутация состояния (`mutation_window.write_revision()` увеличился относительно момента входа в команду), вызов немедленно бросает исключение `AuthoringFailAfterMutation`.
+4. **Семантика `fail()` и правило мутации (`DLA-08`, `ADR-0033`)**:
+   - `M.fail(key, params)` формирует типизированный отказ `{ ok = false, error = { code = "<package_id>:error.<key>", params = ... } }` в пространстве имён объявившего команду или валидатор пакета.
+   - Если до вызова `fail()` внутри обработчика команды произошла хотя бы одна мутация состояния (`mutation_window.write_revision()` увеличился относительно момента входа в команду), вызов немедленно бросает исключение `AuthoringFailAfterMutation`.
+   - Вызов `fail()` вне активного обработчика команды или валидатора отклоняется `AuthoringFailOutsideCommand`.
 
 5. **Методы исполнения `:run()` и `:later()` (`DLA-09`)**:
    - `cmd:run(...)` выполняет синхронную диспетчеризацию через `game.runtime.dispatch_command` в собственном окне мутации. Попытка вызвать `:run()` из активного обработчика отклоняется ошибкой `AuthoringNestedRunDisallowed`.
    - `cmd:later(...)` помещает канонизированный переносимый DTO в очередь отложенных команд `game.commands.enqueue`.
+
+6. **Авторские валидаторы `validate()` и единый execution scope (`ADR-0033`, `CVA-04..08`)**:
+   - `validate(command_ref, validator_name, validator_fn)` объявляет независимую read-only политику поверх существующей команды без прямого доступа к runtime-реестрам.
+   - `command_ref` принимает `CommandDescriptor` либо канонический Stable ID вида `<pkg>:command.<path>`.
+   - Stable ID валидатора строится по формуле `<declaring_package>:validator.<target_namespace>.<target_command_path>.<name>` и считается непрозрачным.
+   - Введён единый execution scope `none | command | validator | event`, восстанавливающийся в finally-подобном пути при успехе, типизированном отказе и исключении.
+   - Валидатор и обработчик получают результат одной функции `decode_authoring_args(raw_args)`.
+   - Разрешение целевой команды происходит на общей заморозке: отсутствующий target завершается `AuthoringValidatorTargetMissing`, а повторное объявление внутри пакета — `AuthoringValidatorDuplicate`.
 
 ## Runtime phases
 

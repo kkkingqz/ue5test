@@ -25,11 +25,16 @@ local M = {
     id = "core:module.authoring.context",
 }
 
-local active_command_context = nil
+local current_scope = { kind = "none" }
+local all_declared_validators = {}
 local FAIL_SENTINEL = setmetatable({}, { __tostring = function() return "AuthoringFailRefusal" end })
 
 local function is_fail_result(val)
     return type(val) == "table" and val.__gv2_fail == FAIL_SENTINEL
+end
+
+function M.get_current_scope()
+    return current_scope
 end
 
 local function canonicalize_error_id(package_id, key)
@@ -359,19 +364,21 @@ function M.gameplay(package_id, opt_module_id)
     end
 
     function M.fail(key, params, opt_pkg)
-        if active_command_context == nil then
-            error("AuthoringFailOutsideCommand: fail() can only be called from within an active command handler", 2)
+        if current_scope.kind ~= "command" and current_scope.kind ~= "validator" then
+            error("AuthoringFailOutsideCommand: fail() can only be called from within an active command handler or validator", 2)
         end
 
-        local cur_rev = mutation_window.write_revision()
-        if cur_rev > active_command_context.initial_write_revision then
-            error("AuthoringFailAfterMutation: command '" .. tostring(active_command_context.command_id)
-                .. "' attempted to fail() after state mutation (write_revision " .. cur_rev
-                .. " > " .. active_command_context.initial_write_revision
-                .. "). Move precondition checks before state mutations.", 2)
+        if current_scope.kind == "command" then
+            local cur_rev = mutation_window.write_revision()
+            if cur_rev > current_scope.initial_write_revision then
+                error("AuthoringFailAfterMutation: command '" .. tostring(current_scope.command_id)
+                    .. "' attempted to fail() after state mutation (write_revision " .. cur_rev
+                    .. " > " .. current_scope.initial_write_revision
+                    .. "). Move precondition checks before state mutations.", 2)
+            end
         end
 
-        local pkg = opt_pkg or active_command_context.package_id or "core"
+        local pkg = opt_pkg or current_scope.package_id or "core"
         local canonical_code = canonicalize_error_id(pkg, key)
         local canonical_params = tagged_ref.canonicalize_arg(params or {}, { allow_plain_id = true })
         portable_value.validate(canonical_params, "fail_params")
@@ -385,12 +392,69 @@ function M.gameplay(package_id, opt_module_id)
             __gv2_fail = FAIL_SENTINEL,
         }
 
-        -- Non-local exit (SAS-10, SAS-11)
+        -- Non-local exit (SAS-10, SAS-11, CVA-05)
         error(fail_obj, 0)
     end
 
     function mod.fail(key, params)
         return M.fail(key, params, package_id)
+    end
+
+    local declared_validators = {}
+    local declared_validators_order = {}
+    local is_module_frozen = false
+
+    function mod.validate(command_ref, validator_name, validator_fn)
+        if is_module_frozen or (proxy_ctrl and proxy_ctrl.is_frozen and proxy_ctrl.is_frozen()) then
+            error("AuthoringValidatorDeclarationAfterFreeze: cannot declare validator after freeze in package '" .. package_id .. "'", 2)
+        end
+
+        local target_command_id = nil
+        if type(command_ref) == "table" and command_ref.command_id then
+            if type(command_ref.command_id) == "string" and stable_id.is_kind(command_ref.command_id, "command") then
+                target_command_id = command_ref.command_id
+            end
+        elseif type(command_ref) == "string" and stable_id.is_kind(command_ref, "command") then
+            target_command_id = command_ref
+        end
+
+        if not target_command_id then
+            error("InvalidAuthoringValidatorCommand: command_ref must be a CommandDescriptor or canonical command Stable ID, got " .. tostring(command_ref), 2)
+        end
+
+        if type(validator_name) ~= "string" or validator_name == "" or not validator_name:match("^[a-z0-9_]+$") then
+            error("InvalidAuthoringValidatorName: validator_name must be a single lowercase alphanumeric segment, got " .. tostring(validator_name), 2)
+        end
+
+        if type(validator_fn) ~= "function" then
+            error("InvalidAuthoringValidatorFunction: validator_fn must be a function, got " .. type(validator_fn), 2)
+        end
+
+        local val_key = target_command_id .. ":" .. validator_name
+        if declared_validators[val_key] then
+            error("AuthoringValidatorDuplicate: validator '" .. validator_name .. "' for command '" .. target_command_id .. "' is already declared in package '" .. package_id .. "'", 2)
+        end
+
+        local target_pkg, target_path = target_command_id:match("^([a-z0-9_]+):command%.([a-z0-9_.]+)$")
+        if not target_pkg or not target_path then
+            error("InvalidAuthoringValidatorCommand: cannot parse target command Stable ID '" .. target_command_id .. "'", 2)
+        end
+        local validator_id = package_id .. ":validator." .. target_pkg .. "." .. target_path .. "." .. validator_name
+
+        local decl = {
+            validator_id = validator_id,
+            target_command_id = target_command_id,
+            target_namespace = target_pkg,
+            target_command_path = target_path,
+            name = validator_name,
+            declaring_package = package_id,
+            fn = validator_fn,
+        }
+        declared_validators[val_key] = decl
+        table.insert(declared_validators_order, decl)
+        table.insert(all_declared_validators, decl)
+
+        return decl
     end
 
     function mod.actor(name)
@@ -453,17 +517,18 @@ function M.gameplay(package_id, opt_module_id)
 
             local function wrapped_handler(request)
                 local initial_rev = mutation_window.write_revision()
-                local prev_ctx = active_command_context
-                active_command_context = {
-                    command_id = cmd_id,
+                local prev_scope = current_scope
+                current_scope = {
+                    kind = "command",
                     package_id = package_id,
+                    command_id = cmd_id,
                     initial_write_revision = initial_rev,
                 }
 
                 local args_list = M.decode_authoring_args(request.args)
                 local ok, res = pcall(raw_handler, table.unpack(args_list, 1, #args_list))
 
-                active_command_context = prev_ctx
+                current_scope = prev_scope
 
                 if not ok then
                     if is_fail_result(res) then
@@ -499,15 +564,74 @@ function M.gameplay(package_id, opt_module_id)
             end
         end
 
+        -- Register declared validators in declaration order (CVA-08)
+        for _, decl in ipairs(declared_validators_order) do
+            local validator_id = decl.validator_id
+            local target_cmd_id = decl.target_command_id
+            local raw_validator_fn = decl.fn
+            local declaring_pkg = decl.declaring_package
+
+            local function wrapped_validator(runtime_ctx)
+                if runtime_ctx.command_id ~= target_cmd_id then
+                    return true
+                end
+
+                local prev_scope = current_scope
+                current_scope = {
+                    kind = "validator",
+                    package_id = declaring_pkg,
+                    command_id = target_cmd_id,
+                    validator_id = validator_id,
+                }
+
+                local args_list = M.decode_authoring_args(runtime_ctx.payload)
+                local ok, res = pcall(raw_validator_fn, table.unpack(args_list, 1, #args_list))
+
+                current_scope = prev_scope
+
+                if not ok then
+                    if is_fail_result(res) then
+                        return false, res.error
+                    end
+                    error(res, 0)
+                end
+
+                return true
+            end
+
+            if game and game.commands and game.commands.validators and game.commands.validators.register then
+                game.commands.validators.register(validator_id, {
+                    validator_id = validator_id,
+                    target_command_id = target_cmd_id,
+                    declaring_package = declaring_pkg,
+                    validator_name = decl.name,
+                    validate = wrapped_validator,
+                })
+            end
+        end
+
         -- Register accumulated event subscribers
         for i, sub in ipairs(subscribers) do
             local clean_name = sub.event_name:gsub("[^a-zA-Z0-9_]", "_"):lower()
             local sub_id = package_id .. ":subscriber.authoring." .. clean_name .. ".s" .. tostring(i)
             local raw_handler = sub.handler
             local function wrapped_subscriber(env)
+                local prev_scope = current_scope
+                current_scope = {
+                    kind = "event",
+                    package_id = package_id,
+                    event_id = sub.event_id,
+                }
+
                 local raw_payload = env.payload or {}
                 local rehydrated = tagged_ref.rehydrate_arg(raw_payload)
-                raw_handler(rehydrated, env)
+                local ok, res = pcall(raw_handler, rehydrated, env)
+
+                current_scope = prev_scope
+
+                if not ok then
+                    error(res, 0)
+                end
             end
 
             if game and game.events and game.events.subscribers and game.events.subscribers.register then
@@ -522,10 +646,71 @@ function M.gameplay(package_id, opt_module_id)
             end
         end
 
+        is_module_frozen = true
         proxy_ctrl.freeze()
     end
 
+    function mod.freeze()
+        is_module_frozen = true
+        proxy_ctrl.freeze()
+    end
+
+    mod.validate = mod.validate
+
     return mod
+end
+
+function M.verify_validator_targets()
+    for _, decl in ipairs(all_declared_validators) do
+        local target_id = decl.target_command_id
+        local exists = false
+        if game and game.commands and game.commands.handlers and game.commands.handlers.exists then
+            exists = game.commands.handlers.exists(target_id)
+        end
+        if not exists then
+            error("AuthoringValidatorTargetMissing: target command '" .. tostring(target_id)
+                .. "' for validator '" .. tostring(decl.validator_id)
+                .. "' in package '" .. tostring(decl.declaring_package) .. "' is not registered", 2)
+        end
+    end
+end
+
+function M.freeze()
+    M.verify_validator_targets()
+end
+
+function M.with_isolated_validators(fn)
+    local validator_registry = require("core:module.runtime.validator_registry")
+    local old_validators = game and game.commands and game.commands.validators
+    local fresh_registry = validator_registry.create_registry()
+    if not game then game = {} end
+    if not game.commands then game.commands = {} end
+    game.commands.validators = fresh_registry
+
+    local prev_all = all_declared_validators
+    local prev_scope = current_scope
+    all_declared_validators = {}
+    current_scope = { kind = "none" }
+
+    local ok, err = pcall(fn)
+
+    all_declared_validators = prev_all
+    current_scope = prev_scope
+    game.commands.validators = old_validators
+
+    if not ok then
+        error(err, 0)
+    end
+end
+
+function M.with_isolated_context(fn)
+    local handler_registry = require("core:module.runtime.handler_registry")
+    local event_bus = require("core:module.runtime.event_bus")
+    return handler_registry.with_isolated_handlers(function()
+        return event_bus.with_isolated_subscribers(function()
+            return M.with_isolated_validators(fn)
+        end)
+    end)
 end
 
 function M.create_authoring_environment(package_id, opt_module_id)
@@ -533,6 +718,7 @@ function M.create_authoring_environment(package_id, opt_module_id)
     local env_values = {
         commands = mod.commands,
         actions = mod.actions,
+        validate = mod.validate,
         player = mod.player,
         world = mod.world,
         def = mod.def,

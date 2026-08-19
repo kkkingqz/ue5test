@@ -1,8 +1,8 @@
 {
-  "digest_hash": "05bdfda32f89ab342a94bfffd9be4f8fd0ed1d36c2c83be431337ee775925b06",
+  "digest_hash": "e6abf02f6b77220618e2110af8888b9803e8440b25d7cf2660a85fa30eb8c9f9",
   "lua_release_num": 50408,
   "repository_content_hash": "292a5ee53437e70fc8478cba179248adc035d688d83141ea5397a18e5e9d48e5",
-  "script_set_hash": "897b2f900ce2c822002669ee298e44b449854c295d85902f2e1f2d7dcf3da37d",
+  "script_set_hash": "efc14d0a86f01bb4d3259abfb0cbe08c3430bb9311111f54d3231823f491433b",
   "seed": 42,
   "executed_commands_count": 10,
   "success": true,
