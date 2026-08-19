@@ -1,4 +1,4 @@
--- Canonical Entity Extension Registry (ADR-0031 / EAE-02..04)
+-- Canonical Entity Extension Registry (ADR-0031, EEH-01..05)
 -- Manages registration, conflict validation, and lifecycle freezing of entity extension methods.
 
 local M = {
@@ -35,11 +35,10 @@ function M.create_registry()
 
         local existing = methods_by_kind[entity_kind] and methods_by_kind[entity_kind][method_name]
         if existing ~= nil then
-            if existing.source_module ~= source_module or existing.package_id ~= package_id then
-                error("entity_extension.method_conflict: method '" .. method_name .. "' on kind '" .. entity_kind .. "' declared by '" .. source_module .. "' (package '" .. package_id .. "') conflicts with existing declaration by '" .. existing.source_module .. "' (package '" .. existing.package_id .. "')", 2)
+            if existing.source_module == source_module and existing.package_id == package_id then
+                error("EntityExtensionDuplicateDeclaration: method '" .. method_name .. "' on kind '" .. entity_kind .. "' is already declared in module '" .. source_module .. "' (package '" .. package_id .. "')", 2)
             else
-                existing.fn = fn
-                return existing
+                error("entity_extension.method_conflict: method '" .. method_name .. "' on kind '" .. entity_kind .. "' declared by '" .. source_module .. "' (package '" .. package_id .. "') conflicts with existing declaration by '" .. existing.source_module .. "' (package '" .. existing.package_id .. "')", 2)
             end
         end
 
@@ -123,11 +122,8 @@ function M.create_registry()
         if type(entity_kind) ~= "string" or type(method_name) ~= "string" then
             return nil
         end
-        local methods = methods_by_kind[entity_kind]
-        if methods and methods[method_name] then
-            return methods[method_name].fn
-        end
-        return nil
+        local effective = registry.get_effective_methods(entity_kind)
+        return effective[method_name]
     end
 
     function registry.get_method_info(entity_kind, method_name)
@@ -136,7 +132,14 @@ function M.create_registry()
         end
         local methods = methods_by_kind[entity_kind]
         if methods and methods[method_name] then
-            return methods[method_name]
+            local record = methods[method_name]
+            return {
+                source_module = record.source_module,
+                package_id = record.package_id,
+                entity_kind = record.entity_kind,
+                method_name = record.method_name,
+                fn = record.fn,
+            }
         end
         return nil
     end
@@ -192,13 +195,25 @@ function M.create_registry()
         for kind, methods in pairs(prev_methods) do
             methods_by_kind[kind] = {}
             for m_name, record in pairs(methods) do
-                methods_by_kind[kind][m_name] = record
+                methods_by_kind[kind][m_name] = {
+                    source_module = record.source_module,
+                    package_id = record.package_id,
+                    entity_kind = record.entity_kind,
+                    method_name = record.method_name,
+                    fn = record.fn,
+                }
             end
         end
         for kind, decls in pairs(prev_declarations) do
             declarations_list[kind] = {}
             for _, decl in ipairs(decls) do
-                table.insert(declarations_list[kind], decl)
+                table.insert(declarations_list[kind], {
+                    source_module = decl.source_module,
+                    package_id = decl.package_id,
+                    entity_kind = decl.entity_kind,
+                    method_name = decl.method_name,
+                    fn = decl.fn,
+                })
             end
         end
 
@@ -218,10 +233,7 @@ function M.create_registry()
     local public_facade = {}
     local mt = {
         __index = function(_, k)
-            if registry[k] ~= nil then
-                return registry[k]
-            end
-            return methods_by_kind[k]
+            return registry[k]
         end,
         __newindex = function(_, _k, _v)
             error("EntityExtensionRegistryDirectAssignmentDisallowed: use registry.register(...) or authoring prototypes to register extension methods", 2)

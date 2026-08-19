@@ -295,8 +295,9 @@ Uncaught error после начала mutation не запускает унив
 
 - Реестр `game.entity_extensions` (`core:module.runtime.entity_extension_registry`) управляет централизованной регистрацией, валидацией конфликтов и композицией методов сущностей (`Actor`, `Location`, `Quest`, `Item` и пользовательские PascalCase-типы) ([ADR-0031](../ADR/0031-entity-authoring-extensions.md)).
 - Методы объявляются в авторских модулях естественным синтаксисом `function EntityKind:method_name(...)`. Метаметод `__newindex` прокси прототипа в `_ENV` делегирует регистрацию в `game.entity_extensions.register(source_module, package_id, entity_kind, method_name, fn)`.
-- Попытка повторного объявления одного и того же метода из разных пакетов или модулей отклоняется с ошибкой `entity_extension.method_conflict`.
-- На фазе `register` вызовом `freeze()` компилируется неизменяемая `effective method table` (`get_effective_methods(entity_kind)`). Поздняя регистрация после `freeze()` отклоняется с `EntityExtensionRegistryFrozen`, прямая модификация скомпонованной таблицы — с `EffectiveMethodTableFrozen`.
+- Повторное объявление метода внутри одного модуля отклоняется ошибкой `EntityExtensionDuplicateDeclaration`; повторное объявление из разных модулей или пакетов отклоняется ошибкой `entity_extension.method_conflict`.
+- Публичный фасад `game.entity_extensions` инкапсулирует внутренние записи и не допускает прямой мутации; интроспекция доступна через `describe`, `kinds` и `get_effective_methods`.
+- На фазе `register` вызовом `freeze()` компилируется неизменяемая `effective method table` (`get_effective_methods(entity_kind)`), которая служит **единственным путём разрешения методов**. Поздняя регистрация после `freeze()` отклоняется с `EntityExtensionRegistryFrozen`, прямая модификация скомпонованной таблицы — с `EffectiveMethodTableFrozen`.
 - Доступ к методам осуществляется прозрачно через обёртки экземпляров (`ActorWrapper`) и обёртки определений (`wrap_definition`), без необходимости ручного создания функций-декораторов `register_type`.
 - При вызове `fail(key, params)` из метода сущности код ошибки автоматически атрибутируется пространством имён пакета, в котором метод был **объявлен** (`<declaring_package_id>:error.<key>`).
 

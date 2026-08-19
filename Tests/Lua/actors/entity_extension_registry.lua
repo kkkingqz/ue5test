@@ -1,6 +1,6 @@
--- EAE-01..04: Entity Extension Registry Specification (ADR-0031)
+-- EAE-01..04, EEH-01..05: Entity Extension Registry Specification (ADR-0031)
 -- Verifies game.entity_extensions registry, method registration, conflict validation,
--- effective method table compilation, and freeze lifecycle.
+-- effective method table compilation, freeze lifecycle, facade encapsulation, and duplicate rejection.
 
 local entity_extension_registry = require("core:module.runtime.entity_extension_registry")
 
@@ -19,6 +19,9 @@ return {
         assert(not ok, "Registering a method after freeze must fail")
         assert(string.find(tostring(err), "EntityExtensionRegistryFrozen") ~= nil,
             "Error must contain EntityExtensionRegistryFrozen, got: " .. tostring(err))
+
+        -- Facade encapsulation (EEH-02): raw mutable records table is not exposed
+        assert(game.entity_extensions.Actor == nil, "game.entity_extensions.Actor must not return internal mutable table")
 
         local ok2, err2 = pcall(function()
             game.entity_extensions.Actor = {}
@@ -95,17 +98,23 @@ return {
             "Error must contain entity_extension.method_conflict, got: " .. tostring(err))
     end,
 
-    idempotent_registration_same_module = function()
+    duplicate_registration_same_module_rejected = function()
         local reg = entity_extension_registry.create_registry()
         local fn1 = function() return 1 end
         local fn2 = function() return 2 end
 
         reg.register("rh:authoring.actors", "rh", "Actor", "test_method", fn1)
-        -- Re-registering from same module/package updates the function without throwing conflict
-        reg.register("rh:authoring.actors", "rh", "Actor", "test_method", fn2)
+
+        -- Re-registering from same module/package must fail with EntityExtensionDuplicateDeclaration (EEH-04)
+        local ok, err = pcall(function()
+            reg.register("rh:authoring.actors", "rh", "Actor", "test_method", fn2)
+        end)
+        assert(not ok, "Duplicate method declaration inside same module must be rejected")
+        assert(string.find(tostring(err), "EntityExtensionDuplicateDeclaration") ~= nil,
+            "Error must contain EntityExtensionDuplicateDeclaration, got: " .. tostring(err))
 
         local active_fn = reg.get_method("Actor", "test_method")
-        assert(active_fn() == 2)
+        assert(active_fn() == 1, "First registration must remain active")
     end,
 
     invalid_registration_arguments_rejected = function()
@@ -171,11 +180,16 @@ return {
         reg.freeze()
         assert(reg.is_frozen() == true)
 
-        -- 1. Effective methods lookup
+        -- 1. Effective methods lookup (EEH-03)
         local effective = reg.get_effective_methods("Quest")
         assert(type(effective.is_active) == "function")
         assert(effective.is_active({ state = "active" }) == true)
         assert(effective.is_active({ state = "completed" }) == false)
+
+        -- get_method resolves through effective table
+        local method_fn = reg.get_method("Quest", "is_active")
+        assert(type(method_fn) == "function")
+        assert(method_fn({ state = "active" }) == true)
 
         -- 2. Modifying effective method table throws error
         local ok1, err1 = pcall(function()
@@ -199,8 +213,10 @@ return {
 
     test_isolation_helper = function()
         local reg = entity_extension_registry.create_registry()
-        reg.register("base:mod", "base", "Actor", "base_method", function() return 100 end)
+        local base_fn = function() return 100 end
+        reg.register("base:mod", "base", "Actor", "base_method", base_fn)
 
+        -- EEH-05: Isolation deep-clones records and does not mutate outer state
         reg.with_isolated_extensions(function()
             assert(type(reg.get_method("Actor", "base_method")) == "function")
             reg.register("test:mod", "test", "Actor", "test_only", function() return 200 end)
@@ -209,6 +225,7 @@ return {
 
         -- After isolated block, base_method remains and test_only is gone
         assert(type(reg.get_method("Actor", "base_method")) == "function")
+        assert(reg.get_method("Actor", "base_method") == base_fn)
         assert(reg.get_method("Actor", "test_only") == nil)
     end,
 }
