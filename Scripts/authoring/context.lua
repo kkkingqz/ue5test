@@ -17,6 +17,7 @@ local tagged_ref = require("core:module.authoring.tagged_ref")
 local commands_module = require("core:module.authoring.commands")
 local properties_module = require("core:module.authoring.properties")
 local presentation_module = require("core:module.authoring.presentation")
+local entity_extension_registry = require("core:module.runtime.entity_extension_registry")
 
 local M = {
     id = "core:module.authoring.context",
@@ -144,8 +145,7 @@ function M.create_entity_prototype_proxy(entity_kind, pkg_id, opt_mod_id)
             if game and game.entity_extensions and game.entity_extensions.register then
                 game.entity_extensions.register(mod_id, pkg_id, entity_kind, method_name, fn)
             else
-                local ext_reg = require("core:module.runtime.entity_extension_registry")
-                ext_reg.register(mod_id, pkg_id, entity_kind, method_name, fn)
+                entity_extension_registry.register(mod_id, pkg_id, entity_kind, method_name, fn)
             end
         end,
         __index = function(_, method_name)

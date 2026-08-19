@@ -23,23 +23,23 @@ decisions:
 
 ## Задачи
 
-- [ ] **EAE-08 — Миграция методов Actor в `textsystem`**
+- [x] **EAE-08 — Миграция методов Actor в `textsystem`**
   - Зависимости: EAE-06.
-  - Done: методы актора в `GameData/textsystem/` переведены на синтаксис `function Actor:is_player()`, `function Actor:is_npc()`, `function Actor:require_location(loc, opt_key)`, `function Actor:move_to(target)`; старый `actor_decorator` удален; регистрация ссылочного поля `current_location` сохранена.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: методы актора в `GameData/textsystem/scripts/gameplay/actors.lua` переведены на синтаксис `function Actor:is_player()`, `function Actor:is_npc()`, `function Actor:require_location(loc, opt_key)`, `function Actor:move_to(target)`, `function Actor:travel(target)`; старый `actor_decorator` и вызовы `register_type` удалены; регистрация ссылочного поля `current_location` сохранена.
+  - Evidence: `GameData/textsystem/scripts/gameplay/actors.lua`, `GameData/textsystem/package.json5`, `Tests/Lua/world/travel_command.lua`, `Tests/Lua/world/travel_events.lua`.
 
-- [ ] **EAE-09 — Миграция ресурсных и предметных методов Actor в `rh`**
+- [x] **EAE-09 — Миграция ресурсных и предметных методов Actor в `rh`**
   - Зависимости: EAE-08.
-  - Done: методы ресурсов и предметов в `GameData/rh/` переведены на синтаксис `function Actor:get_gold()`, `function Actor:add_gold(amt)`, `function Actor:require_gold(amt, opt_key)`, `function Actor:spend_gold(amt)`, `function Actor:get_stamina()`, `function Actor:add_stamina(amt)`, `function Actor:require_stamina(amt, opt_key)`, `function Actor:spend_stamina(amt)`, `function Actor:add_item(item)`; ручной `actor_decorator` и `setmetatable` удалены.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: методы ресурсов и предметов в `GameData/rh/scripts/gameplay/actors.lua` переведены на синтаксис `function Actor:get_gold()`, `function Actor:add_gold(amt)`, `function Actor:require_gold(amt, opt_key)`, `function Actor:spend_gold(amt)`, `function Actor:get_stamina()`, `function Actor:add_stamina(amt)`, `function Actor:require_stamina(amt, opt_key)`, `function Actor:spend_stamina(amt)`, `function Actor:add_item(item)`; ручной `actor_decorator`, `setmetatable` и вызовы `register_type` удалены.
+  - Evidence: `GameData/rh/scripts/gameplay/actors.lua`, `GameData/rh/package.json5`, `Tests/Lua/economy/actor_rh_economy.lua`, `Tests/Lua/economy/travel_stamina.lua`.
 
-- [ ] **EAE-10 — Очистка `actor_registry.lua` и унификация доступа к экземплярам**
+- [x] **EAE-10 — Очистка `actor_registry.lua` и унификация доступа к экземплярам**
   - Зависимости: EAE-09.
-  - Done: `ActorWrapper` получает доступ к методам напрямую из `effective method table` сущности `Actor`, построенной `entity_extension_registry`; ручная цепочка `type_decorators` удалена или упрощена; поведение существующих вызовов методов актора полностью сохранено.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: `ActorWrapper` получает доступ к методам напрямую из `effective method table` сущности `Actor`, построенной `entity_extension_registry`; ручная цепочка `type_decorators` и привязка по дискриминатору больше не требуются для `player`/`npc`; поведение существующих вызовов методов актора полностью сохранено.
+  - Evidence: `Scripts/runtime/actor_registry.lua`, `Tests/Lua/actors/actor_extension.lua`, `Tests/Lua/authoring/simplified_surface.lua`.
 
 ## Проверка milestone
 
-- [ ] В `GameData/textsystem` и `GameData/rh` не осталось ручных `register_type` и декораторов акторов.
-- [ ] Экземпляры акторов (`player`, `npc`) поддерживают как базовые методы `textsystem`, так и экономические методы `rh`.
-- [ ] Спеки `world/` (TextSystem tier) и `economy/` (FullGame tier) проходят без изменений в assertion-кодах.
+- [x] В `GameData/textsystem` и `GameData/rh` не осталось ручных `register_type` и декораторов акторов.
+- [x] Экземпляры акторов (`player`, `npc`) поддерживают как базовые методы `textsystem`, так и экономические методы `rh`.
+- [x] Спеки `world/` (TextSystem tier) и `economy/` (FullGame tier) проходят без изменений в assertion-кодах.

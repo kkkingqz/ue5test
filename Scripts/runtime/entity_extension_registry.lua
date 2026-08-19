@@ -234,14 +234,63 @@ function M.create_registry()
     return public_facade
 end
 
-local default_registry = nil
+local default_registry = M.create_registry()
+if _G.game and not _G.game.entity_extensions then
+    _G.game.entity_extensions = default_registry
+end
 
-function M.register(_ctx)
-    if not game then
-        game = {}
+M.register = function(_ctx)
+    if not _G.game then
+        _G.game = {}
     end
-    default_registry = M.create_registry()
-    game.entity_extensions = default_registry
+    if not _G.game.entity_extensions then
+        _G.game.entity_extensions = default_registry or M.create_registry()
+    end
+end
+
+M.get_method = function(entity_kind, method_name)
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.get_method(entity_kind, method_name)
+end
+
+M.get_method_info = function(entity_kind, method_name)
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.get_method_info(entity_kind, method_name)
+end
+
+M.get_effective_methods = function(entity_kind)
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.get_effective_methods(entity_kind)
+end
+
+M.describe = function(entity_kind)
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.describe(entity_kind)
+end
+
+M.kinds = function()
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.kinds()
+end
+
+M.freeze = function()
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.freeze()
+end
+
+M.is_frozen = function()
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.is_frozen()
+end
+
+M.with_isolated_extensions = function(fn)
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.with_isolated_extensions(fn)
+end
+
+M.clear_for_test = function()
+    local reg = (_G.game and _G.game.entity_extensions) or default_registry
+    return reg.clear_for_test()
 end
 
 return M

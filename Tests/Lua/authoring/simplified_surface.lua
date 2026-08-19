@@ -242,7 +242,7 @@ return {
                 })
                 local r4 = game.runtime.last_command_result
                 assert(r4 ~= nil and r4.ok == false, "unmet location precondition must fail")
-                assert(r4.error.code == "rh:error.location.wrong_location", "error code must match")
+                assert(r4.error.code == "textsystem:error.location.wrong_location", "error code must match")
             end)
         end)
     end,

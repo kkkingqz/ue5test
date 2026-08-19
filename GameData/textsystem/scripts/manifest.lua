@@ -4,11 +4,10 @@ return {
             module_id = "textsystem:module.gameplay.actors",
             source = "gameplay/actors.lua",
             dependencies = {
-                "core:module.authoring.context",
-                "core:module.authoring.properties",
                 "core:module.runtime.state_validator",
             },
             replaceable = false,
+            authoring = true,
         },
         {
             module_id = "textsystem:module.presentation.location_presenter",

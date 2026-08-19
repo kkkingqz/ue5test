@@ -112,7 +112,7 @@ return {
 
                 local result = game.runtime.last_command_result
                 assert(result ~= nil and result.ok == false, "travel market->gate must fail (not connected)")
-                assert(result.error ~= nil and result.error.code == "rh:error.travel.not_connected",
+                assert(result.error ~= nil and result.error.code == "textsystem:error.travel.not_connected",
                     "error code must be not_connected, got: " .. tostring(result.error and result.error.code))
 
                 assert(player.stamina == 20, "stamina must remain unchanged")

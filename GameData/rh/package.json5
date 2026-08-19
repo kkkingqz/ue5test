@@ -8,4 +8,10 @@
       load_after: true,
     },
   ],
+  modules: [
+    {
+      source: "gameplay/actors.lua",
+      authoring: true,
+    },
+  ],
 }

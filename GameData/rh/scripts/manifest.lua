@@ -11,10 +11,10 @@ return {
             module_id = "rh:module.gameplay.actors",
             source = "gameplay/actors.lua",
             dependencies = {
-                "core:module.authoring.context",
                 "core:module.runtime.instance_allocator",
             },
             replaceable = false,
+            authoring = true,
         },
     },
 }

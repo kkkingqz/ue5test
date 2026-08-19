@@ -105,7 +105,10 @@ function M.create_registry()
         local disc_key = discriminator or "unknown"
         local decorator = type_decorators[disc_key] or (discriminator and type_decorators[discriminator])
 
-        if not decorator then
+        local is_known_disc = (discriminator == "player" or discriminator == "npc" or discriminator == "character")
+            or (properties and (properties.get_schema(discriminator) ~= nil or properties.get_schema(disc_key) ~= nil))
+
+        if not decorator and not is_known_disc then
             error("ActorTypeNotRegistered: discriminator '" .. tostring(disc_key) .. "' is not registered", 2)
         end
 

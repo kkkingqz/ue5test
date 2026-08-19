@@ -82,8 +82,8 @@ return {
 
         local last_res = game.runtime.last_command_result
         assert(last_res ~= nil and last_res.ok == false, "command result must be ok = false")
-        assert(last_res.error.code == "sample:error.travel.not_connected",
-            "error code must be sample:error.travel.not_connected, got: " .. tostring(last_res.error and last_res.error.code))
+        assert(last_res.error.code == "textsystem:error.travel.not_connected",
+            "error code must be textsystem:error.travel.not_connected, got: " .. tostring(last_res.error and last_res.error.code))
         assert(last_res.error.params.from_location == "sample:location.east")
         assert(last_res.error.params.to_location == "sample:location.west")
     end,
