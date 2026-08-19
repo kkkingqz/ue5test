@@ -24,6 +24,7 @@ depends_on:
 
 ## Активные планы
 
+- [RHActorsSimplification](RHActorsSimplification/README.md) — Декларативные дескрипторы полей (`field.*`), валидация структурных инвариантов при записи, обобщённое создание инстансов (`instances.create`) и очистка `rh/scripts/gameplay/actors.lua`.
 - [UiComposition](UiComposition/README.md) — Слои, оверлеи, модалки и вкладки вместо одного активного экрана, переиспользование виджетов при реконсиляции, масштабирование раскладки по целевому разрешению.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).

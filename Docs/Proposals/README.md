@@ -38,6 +38,9 @@ Proposal не изменяет нормативную архитектуру с�
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | implemented | UI, Resources, Engine | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
 | [ImageResourcePackagedDeploymentProposal](ImageResourcePackagedDeploymentProposal.md) | accepted for planning | UI, Resources, Build | Проверка `NonUFS` staging и единого resource root в packaged build |
 | [ImageResourceDeferredLoadingProposal](ImageResourceDeferredLoadingProposal.md) | measurement required | UI, Resources, Operations | Условный async prepare/cache lifecycle после измерения startup и memory |
+| [EntityAuthoringExtensionProposal](EntityAuthoringExtensionProposal.md) | implemented | Architecture, Runtime, Authoring | Декларативное расширение доменных сущностей через авторские прототипы `_ENV` |
+| [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: слои, оверлеи, модалки, вкладки, реконсиляция и масштабирование |
+| [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | proposed | Runtime, Authoring, Gameplay | Контракты полей `field.*`, разделение инвариантов и предусловий, обобщённое создание инстансов |
 
 ## Рекомендуемый порядок
 

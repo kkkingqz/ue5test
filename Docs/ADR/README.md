@@ -43,6 +43,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0029](0029-content-authoring-and-schema-evolution.md) | accepted | Content Authoring and Schema Evolution: классификация изменений схем, точечная AST-правка, файлы-спутники authoring-метаданных |
 | [0030](0030-textsystem-layer-and-data-driven-package-set.md) | accepted | TextSystem Layer and Data-Driven Package Set: трёхуровневая архитектура, сборка набора пакетов из данных, исключение из ADR-0026 |
 | [0031](0031-entity-authoring-extensions.md) | accepted | Entity Authoring Extensions: декларативное расширение сущностей через прототипы _ENV, композиция effective method tables |
+| [0032](0032-field-contracts-and-generic-instance-creation.md) | accepted | Field Contracts and Generic Instance Creation: дескрипторы полей, валидация при записи, instances.create |
 
 ## Template
 
