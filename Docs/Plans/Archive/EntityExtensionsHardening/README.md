@@ -1,18 +1,18 @@
 ---
 title: Entity Extensions Hardening Implementation Plan
-status: normative
-version: 1.0
+status: archived
+version: 1.1
 updated: 2026-08-19
 depends_on:
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../Archive/EntityAuthoringExtensions/README.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../EntityAuthoringExtensions/README.md
 decisions:
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # План доработки расширений сущностей
 
-> **Материализует:** [ADR-0031](../../ADR/0031-entity-authoring-extensions.md) в части, не закрытой планом [EntityAuthoringExtensions](../Archive/EntityAuthoringExtensions/README.md).
+> **Материализует:** [ADR-0031](../../../ADR/0031-entity-authoring-extensions.md) в части, не закрытой планом [EntityAuthoringExtensions](../EntityAuthoringExtensions/README.md).
 > **Задачи:** EEH-01…08.
 > **Результат:** заморозка реестра расширений становится необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление — ошибкой, приём метода — строго `self`.
 
@@ -20,7 +20,7 @@ decisions:
 
 План закрывает замечания ревизии реализации Entity Authoring Extensions. Механизм работает и покрыт спеками; проблема в том, что три его гарантии заявлены, но не обеспечены, а одна конвенция расходится внутри одного файла.
 
-Ключевая из них — заморозка. Реестр замораживается на фазе `register`, но результат заморозки обходится одной строкой, а на неё ссылается [INV-006](../../Architecture/Invariants.md). Заморозка, которую можно обойти, хуже отсутствующей: она даёт ложное основание не проверять остальное.
+Ключевая из них — заморозка. Реестр замораживается на фазе `register`, но результат заморозки обходится одной строкой, а на неё ссылается [INV-006](../../../Architecture/Invariants.md). Заморозка, которую можно обойти, хуже отсутствующей: она даёт ложное основание не проверять остальное.
 
 ## Состояние на входе
 
@@ -49,9 +49,9 @@ decisions:
 
 Не входят:
 
-- **Явный `override` для методов сущностей.** [Предложение](../../Proposals/Archive/EntityAuthoringExtensionProposal.md) выделяет его отдельно (§8.2), потребителя сейчас нет. Появится вместе с первым модом, которому нужно заменить метод.
+- **Явный `override` для методов сущностей.** [Предложение](../../../Proposals/Archive/EntityAuthoringExtensionProposal.md) выделяет его отдельно (§8.2), потребителя сейчас нет. Появится вместе с первым модом, которому нужно заменить метод.
 - Переписывание архивного плана: это исторический record.
-- Изменения в `rh/scripts/gameplay/actors.lua` — принадлежат плану [RHActorsSimplification](../Archive/RHActorsSimplification/README.md).
+- Изменения в `rh/scripts/gameplay/actors.lua` — принадлежат плану [RHActorsSimplification](../RHActorsSimplification/README.md).
 
 ## Milestones
 
@@ -71,8 +71,8 @@ M2 отделён от M1 не зависимостью кода, а зоной 
 1. Ни одна задача не меняет наблюдаемое поведение игры: набор методов, их семантика и коды отказов остаются прежними.
 2. `final_screen_id`, `final_screen_fields`, хэш состояния и `repository_content_hash` в golden не меняются; `script_set_hash` и производный `digest_hash` меняются, потому что меняются скрипты.
 3. Каждое изменение правила сопровождается спекой на **отрицательный** случай: правило без проверки на нарушение не считается закрытым.
-4. Изменение правила отражается в [Lua Runtime Contract § Entity Extensions](../../Architecture/LuaRuntimeContract.md) в том же change set.
-5. EEH-06 пересекается по смыслу с RAS-09 из плана [RHActorsSimplification](../Archive/RHActorsSimplification/README.md): один убирает переход к игроку в `textsystem`, другой — в `rh`. Задачи независимы и не должны ждать друг друга.
+4. Изменение правила отражается в [Lua Runtime Contract § Entity Extensions](../../../Architecture/LuaRuntimeContract.md) в том же change set.
+5. EEH-06 пересекается по смыслу с RAS-09 из плана [RHActorsSimplification](../RHActorsSimplification/README.md): один убирает переход к игроку в `textsystem`, другой — в `rh`. Задачи независимы и не должны ждать друг друга.
 
 ## Итоговый Definition of Done
 

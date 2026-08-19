@@ -1,18 +1,18 @@
 ---
 title: Registry Integrity Tasks
-status: normative
-version: 1.0
+status: archived
+version: 1.1
 updated: 2026-08-19
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # M1 — Registry Integrity
 
-> **Материализует:** [ADR-0031 § 2.2](../../ADR/0031-entity-authoring-extensions.md) в части заморозки, композиции и разрешения конфликтов.
+> **Материализует:** [ADR-0031 § 2.2](../../../ADR/0031-entity-authoring-extensions.md) в части заморозки, композиции и разрешения конфликтов.
 > **Задачи:** EEH-01…05.
 > **Результат:** заморозку невозможно обойти, скомпонованная таблица участвует в разрешении метода, повторное объявление отклоняется всегда.
 

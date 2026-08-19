@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 4.1
-updated: 2026-08-16
+version: 4.2
+updated: 2026-08-19
 depends_on:
   - ../README.md
 ---
@@ -24,7 +24,6 @@ depends_on:
 
 ## Активные планы
 
-- [EntityExtensionsHardening](EntityExtensionsHardening/README.md) — Заморозка реестра расширений становится необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление — ошибкой, приём метода — строго `self`.
 - [CommandValidators](CommandValidators/README.md) — Авторский `validate()` для независимых policy поверх чужих команд, очистка декодирования аргументов от игровых имён в ядре, охранники побочных эффектов и явная заменяемость обработчика.
 - [DocumentationRework](DocumentationRework/README.md) — Политика совместимости и заметность правил, гейт на удалённый API в инструкциях, разделение `LuaRuntimeContract`, документация авторского слоя для дизайнера, переработка `Guides/` и сжатие архива. Выполняется после закрытия остальных активных планов.
 - [GameplayServices](GameplayServices/README.md) — Авторский синтаксис `services.<name> = { … }` для процессов, координирующих несколько сущностей, вместе с первым потребителем: торговцем в `rh`, который получает золото и теряет товар.
@@ -36,6 +35,7 @@ depends_on:
 
 | План | Завершён | Результат |
 |---|---|---|
+| [EntityExtensionsHardening](Archive/EntityExtensionsHardening/README.md) | 2026-08-19 | Заморозка реестра расширений стала необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление внутри модуля — ошибкой, приём метода в `textsystem` — строго `self` |
 | [EntityAuthoringExtensions](Archive/EntityAuthoringExtensions/README.md) | 2026-08-19 | Декларативное расширение сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы в `_ENV`, централизованный реестр расширений и скомпонованные effective method tables |
 | [TextSystemLayer](Archive/TextSystemLayer/README.md) | 2026-08-19 | Трёхуровневая архитектура (`core` ← `textsystem` ← `rh`), набор пакетов из данных, перенос владения локациями и переходами, декларативные экраны и трёхуровневые спеки |
 | [RHActorsSimplification](Archive/RHActorsSimplification/README.md) | 2026-08-19 | Декларативные контракты полей `field.*` с композицией схем, запрет повторного объявления, обобщённое создание экземпляров с реестром видов, чистый `rh/actors.lua` |

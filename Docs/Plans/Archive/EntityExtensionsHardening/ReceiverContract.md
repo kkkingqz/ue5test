@@ -1,19 +1,19 @@
 ---
 title: Receiver Contract Tasks
-status: normative
-version: 1.0
+status: archived
+version: 1.1
 updated: 2026-08-19
 depends_on:
   - RegistryIntegrity.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # M2 — Receiver Contract
 
-> **Материализует:** [ADR-0031 § 2.3](../../ADR/0031-entity-authoring-extensions.md) в части контракта `self`.
+> **Материализует:** [ADR-0031 § 2.3](../../../ADR/0031-entity-authoring-extensions.md) в части контракта `self`.
 > **Задачи:** EEH-06…08.
 > **Результат:** метод сущности отвечает о получателе, а не о том, кого он нашёл в глобальном состоянии.
 
@@ -31,7 +31,7 @@ decisions:
 
 - [x] **EEH-07 — Одна конвенция приёма на файл**
   - Зависимости: EEH-06.
-  - Done: все методы `Actor` и `Location` в `textsystem` объявлены единообразно и обращаются к полям через `self`; расхождений конвенции внутри файла не осталось; правило приёма метода записано в [Lua Runtime Contract § Entity Extensions](../../Architecture/LuaRuntimeContract.md) как нормативное, а не как стиль.
+  - Done: все методы `Actor` и `Location` в `textsystem` объявлены единообразно и обращаются к полям через `self`; расхождений конвенции внутри файла не осталось; правило приёма метода записано в [Lua Runtime Contract § Entity Extensions](../../../Architecture/LuaRuntimeContract.md) как нормативное, а не как стиль.
   - Evidence: `GameData/textsystem/scripts/gameplay/actors.lua`, `Docs/Architecture/LuaRuntimeContract.md`.
 
 - [x] **EEH-08 — Сквозная верификация**
