@@ -1,8 +1,8 @@
 ---
 title: Runtime Instances
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-18
 depends_on:
   - README.md
 ---
@@ -59,18 +59,28 @@ game.instances.actors.get(id)      -- получить обёртку
 game.instances.actors.create(...)  -- выделить instance_id и создать запись
 game.instances.actors.remove(id)   -- удалить, оставив дерево валидным
 game.instances.actors.player()     -- обёртка игрока
-game.instances.world()             -- singleton мира
+game.instances.world()             -- singleton мира (глобальные флаги, не локация игрока — см. ниже)
 ```
 
 Чего в реестре быть не должно: `game.instances.actors.add_gold(id, 20)`. Локальная доменная операция принадлежит обёртке, широкий сценарий над несколькими сущностями — сервису.
 
 Новая категория сущностей добавляется под `game.instances`, а не новым полем верхнего уровня: список полей фасада закрыт.
 
+**Обёртка расширяется по `discriminator`, а не патчем чужого кода.** Ядро владеет только identity и `discriminator` (чем актор является — игрок, NPC определённого вида); поведение конкретного вида регистрирует пакет через `game.instances.actors.register_type(discriminator, decorator)` ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)). `textsystem` добавляет так `move_to`/`current_location`, `rh` — `add_gold`/`spend_stamina` и подобное. Это тот же принцип, что и override для definitions: явная регистрация вместо мутации чужой таблицы.
+
 ## Игрок — обычный актор
 
 Отдельной модели персонажа игрока нет. Он лежит в `state.actors` наравне с NPC, а `meta.player_actor_id` указывает на него. Так не появляется второй набор полей, который пришлось бы синхронизировать.
 
 Различие «игрок или NPC» берётся из definition, а не дублируется в состоянии: два источника истины разошлись бы.
+
+## Локация — свойство актора, а не отдельный указатель
+
+Текущая локация персонажа хранится как `ref_definition<location>` прямо на акторе (`textsystem`, [ADR-0027](../ADR/0027-designer-lua-authoring-layer.md) DLA-16), а не отдельным полем `state.world.current_location_id`, указывающим на игрока снаружи. `game.instances.world().current_location`/`current_location_id` остаются как read-only accessor-ы для удобства, но они делегируют к актору игрока, а не хранят собственную копию — второго источника истины для «где сейчас игрок» нет. `state.world` как секция состояния сохраняется, но теперь это только действительно глобальные флаги, не касающиеся конкретного актора.
+
+## `definitions` — изменяемые поля неизменяемых описаний
+
+Секция состояния `state.definitions` (DLA-14) хранит разреженные runtime-переопределения полей, помеченных в схеме как `storage: "runtime_state"`: например, «эта дверь сейчас открыта» — свойство definition двери, но оно может меняться в конкретном прохождении. Чтение непереопределённого поля возвращает default из схемы, ничего не занимая в `state.definitions`; первая запись материализует запись, `:reset(field)` убирает переопределение. Это позволяет definition-у иметь mutable-в-рамках-прохождения свойства, не создавая для этого отдельный instance с собственным `instance_id`.
 
 ## Удаление и висячие ссылки
 

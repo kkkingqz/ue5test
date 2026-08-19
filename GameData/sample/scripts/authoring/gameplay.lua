@@ -6,7 +6,6 @@ local function handle_travel(target)
     player:move_to(target)
 end
 
-commands["sample:command.travel"] = handle_travel
 commands.travel = handle_travel
 
 -- Semantic action binding for textsystem travel

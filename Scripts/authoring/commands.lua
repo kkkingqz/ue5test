@@ -108,11 +108,16 @@ function M.create_commands_proxy(package_id)
                 error("InvalidCommandHandler: expected function for command '" .. tostring(key) .. "', got " .. type(fn), 2)
             end
 
-            if state.declared_handlers[key] ~= nil then
-                error("CommandAlreadyDefined: command '" .. tostring(key) .. "' is already declared in this module", 2)
-            end
-
             local command_id = canonicalize_command_id(package_id, key)
+
+            -- Ключуем по каноническому ID, а не по ключу: короткая форма и полная
+            -- дают один и тот же command_id, и проверка по ключу их не различала бы.
+            for existing_key, declared in pairs(state.declared_handlers) do
+                if declared.command_id == command_id then
+                    local via = (existing_key == key) and "" or (" (declared as '" .. tostring(existing_key) .. "')")
+                    error("CommandAlreadyDefined: command '" .. command_id .. "' is already declared in this module" .. via, 2)
+                end
+            end
             state.declared_handlers[key] = {
                 key = key,
                 command_id = command_id,

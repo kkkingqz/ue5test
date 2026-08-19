@@ -1,8 +1,8 @@
 ---
 title: Presentation Model
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-18
 depends_on:
   - README.md
 ---
@@ -46,6 +46,8 @@ Lua не описывает дерево виджетов и не знает п�
 
 **UI binding handle** — непрозрачный идентификатор, связывающий физическую кнопку с командой текущей ревизии интерфейса. Устаревший handle отклоняется, поэтому нажатие по исчезнувшему элементу не может выполнить чужую команду.
 
+**Presentation source** — функция, зарегистрированная через `game.presentation.register_source(fn)`, которая перестраивает и публикует desired presentation автоматически при каждом изменении состояния, от которого она зависит ([ADR-0028](../ADR/0028-simplified-authoring-surface.md)). Автору не нужно вручную вызывать `show_screen` после каждой команды, меняющей то, что видно на экране — источник сам инвалидируется и пересчитывается. Пример — `GameData/textsystem/scripts/presentation/location_presenter.lua`: собирает экран локации из definition локации, текущего экрана и кнопок соседних локаций.
+
 Нормативно: [Screen Templates](../UI/ScreenTemplates.md), [Widget Registry](../UI/WidgetRegistry.md), [Semantic Input](../UI/SemanticInput.md), [UI Document and Reconciliation](../UI/UIDocumentAndReconciliation.md), [Image Resources](../UI/ImageResources.md), [Presentation Snapshot and Effects](../UI/PresentationSnapshotAndEffects.md).
 
 ## Почему так
@@ -58,7 +60,7 @@ Lua не описывает дерево виджетов и не знает п�
 
 ## Что реализовано, а что нет
 
-Работают: реестр экранов с валидацией, набор базовых виджетов, адаптеры полей, централизованная тема, текстовый конвейер, каталог изображений, semantic input с проверкой устаревших handle.
+Работают: реестр экранов с валидацией, набор базовых виджетов, адаптеры полей, централизованная тема, текстовый конвейер, каталог изображений, semantic input с проверкой устаревших handle, source-based presentation с автоматической инвалидацией.
 
 Не реализовано: UI-документ с маршрутами, слоями, оверлеями и модальными окнами — сейчас активен ровно один экран; одноразовые presentation-эффекты. Актуальный объём — [Implementation Status](../Status/ImplementationStatus.md).
 

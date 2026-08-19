@@ -1,8 +1,8 @@
 ---
 title: Gameplay Model
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-18
 depends_on:
   - README.md
 ---
@@ -33,7 +33,7 @@ depends_on:
 
 **Validator** — проверка «можно ли» до любого изменения. Только читает.
 
-**Command Handler** — тонкая связка команды с логикой. Правил не содержит.
+**Command Handler** — тонкая связка команды с логикой. Правил не содержит. Диспетчер (`Scripts/runtime/command_dispatcher.lua`) не знает имён команд: он ищет обработчик по `command_id` в реестре `game.commands.handlers` (`core:module.runtime.handler_registry`) и вызывает найденный; неизвестный `command_id` — типизированный отказ `core:error.command.unknown` без открытия mutation window. Ядро и каждый пакет регистрируют свои обработчики сами, без правок C++ и без перечисления в `Scripts/boundary/ingress.lua`.
 
 **Gameplay Service** — работа, затрагивающая несколько сущностей: торговля, перемещение. Локальную операцию над одной сущностью делает метод обёртки.
 
@@ -81,9 +81,29 @@ UE приводит экран к описанному состоянию
 
 **Условие подписки проверяется в самом обработчике.** Подписка идёт по `event_id`; декларативных фильтров нет, и это осознанное решение, а не недоделка.
 
+## Как это выглядит для автора правил игры
+
+Всё выше — механика ядра. Автор игрового пакета (например, `rh`) пишет правила через упрощённый authoring-слой (`scripts/authoring/*.lua`, [ADR-0027](../ADR/0027-designer-lua-authoring-layer.md), [ADR-0028](../ADR/0028-simplified-authoring-surface.md)): свой лексический `_ENV` без префиксов `M.`, неявный успех команды (не нужно оборачивать результат в `{ ok = true }`) и глобальные `commands`/`actions` таблицы вместо ручной регистрации в `game.commands.handlers`.
+
+```lua
+-- GameData/rh/scripts/authoring/gameplay.lua (сокращённо)
+local tavern = location("city.tavern")
+
+commands["rh:command.travel"] = function(target)
+    player.current_location:require_connected(target)
+    player:require_stamina(5, "travel.insufficient_stamina")
+    player:spend_stamina(5)
+    player:move_to(target)
+end
+
+actions["textsystem:action.location.travel"] = "rh:command.travel"
+```
+
+Authoring-скрипты компилируются в обычные обработчики `game.commands.handlers`/`game.events.subscribers` загрузчиком — геймплейный контракт (валидаторы, mutation window, события) не меняется, меняется только то, сколько текста автор набирает руками.
+
 ## Где посмотреть работающий пример
 
-Перемещение между локациями реализовано целиком: `Scripts/gameplay/location_service.lua` (сервис и валидатор), `Scripts/gameplay/root.lua` (обработчик), `Tests/Lua/world/travel_command.lua` и `travel_events.lua` (проверки). Это самый короткий путь увидеть все этапы сразу.
+Перемещение между локациями реализовано на два слоя: базовая операция `move_to` и факты `leave`/`enter` — в `GameData/textsystem/scripts/gameplay/actors.lua` (переиспользуемая для любой текстовой игры часть), конкретные правила перехода (стоимость выносливости, где можно перемещаться) — в `GameData/rh/scripts/authoring/gameplay.lua` (authoring-слой конкретной игры). Проверки — `Tests/Lua/world/travel_command.lua`/`travel_events.lua` (на демо-пакете `sample`) и `Tests/Lua/economy/travel_stamina.lua` (на `rh`). Это самый короткий путь увидеть все этапы сразу.
 
 ## Дальше
 

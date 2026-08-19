@@ -17,7 +17,12 @@ function M.build_screen_request(location_id)
         return nil
     end
 
-    local screen_id = (loc.screen_ids and loc.screen_ids[1]) or "rh:screen.location.market"
+    -- Локация без экрана — ошибка контента, а не повод подставить чужой:
+    -- запасной идентификатор здесь означал бы данные игры внутри textsystem.
+    local screen_id = loc.screen_ids and loc.screen_ids[1]
+    if not screen_id then
+        return nil
+    end
     local screen_def = nil
     if game and game.repository and game.repository.get then
         screen_def = game.repository.get(screen_id)

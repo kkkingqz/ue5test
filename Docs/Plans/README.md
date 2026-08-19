@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: normative
-version: 4.0
+version: 4.1
 updated: 2026-08-16
 depends_on:
   - ../README.md
@@ -24,9 +24,7 @@ depends_on:
 
 ## Активные планы
 
-| План | Основание | Результат |
-|---|---|---|
-| [TextSystemLayer](TextSystemLayer/README.md) | [TextSystem Layer](../Proposals/TextSystemLayerProposal.md) | Набор пакетов из данных, слой `textsystem` с локациями и переходами, презентер и декларативные экраны, трёхуровневое разбиение спеков |
+Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
 
 После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
 
@@ -50,3 +48,4 @@ depends_on:
 | [DesignerAuthoringLayer](Archive/DesignerAuthoringLayer/README.md) | 2026-08-18 | Designer-facing Lua: `write_revision` и правило `fail()`, дескриптор команд, модель property, универсальная секция runtime-состояния, события и экраны; геймплей `rh` переписан |
 | [SimplifiedAuthoringSurface](Archive/SimplifiedAuthoringSurface/README.md) | 2026-08-18 | Окружение authoring-скрипта без `M.`, автообнаружение модулей и генерируемый манифест, предусловия и единый API актора, источник презентации; геймплей `rh` сведён к одному файлу правил |
 | [ContentEditorPrerequisites](Archive/ContentEditorPrerequisites/README.md) | 2026-08-18 | Классификация схемных изменений с сосуществованием версий, точечная правка поля и удаление записи в JSON5, метаданные представления в отдельном файле; редактор и декларативные экраны разблокированы |
+| [TextSystemLayer](Archive/TextSystemLayer/README.md) | 2026-08-19 | Набор пакетов из данных, слой `textsystem` с локациями и переходами, семантические действия и декларативные экраны, трёхуровневое разбиение спеков |

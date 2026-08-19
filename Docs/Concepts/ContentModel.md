@@ -1,8 +1,8 @@
 ---
 title: Content Model
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-18
 depends_on:
   - README.md
 ---
@@ -10,7 +10,7 @@ depends_on:
 # Модель контента
 
 > **Объясняет:** как файлы автора превращаются в данные, которые читает геймплей.
-> **Нормативно:** [GameDataRepository](../Architecture/GameDataRepositoryContract.md), [Definition Envelope](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Stable ID](../Architecture/StableIDSpecification.md).
+> **Нормативно:** [GameDataRepository](../Architecture/GameDataRepositoryContract.md), [Definition Envelope](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Stable ID](../Architecture/StableIDSpecification.md), [Modding](../Architecture/Modding.md).
 > **Не является нормативным:** при расхождении прав contract.
 
 Как файлы, которые пишет автор, превращаются в то, что читает геймплей. Нормативные правила — в contracts по ссылкам.
@@ -18,14 +18,17 @@ depends_on:
 ## Путь контента
 
 ```text
-GameData/                    контейнер пакетов (core, textsystem, rh)
+GameData/                    контейнер пакетов (core, textsystem, rh, sample)
+  mods.lock.json5              generated: набор, версии, fingerprints
   <package_id>/
     definitions/*.json5        что есть в игре/слое
     schemas/*.json5            какие поля допустимы
     localization/*.po          переводы
-    package.json5              манифест, зависимости, redirects и tombstones
+    package.json5              манифест: package_id, namespace, version,
+                                compatibility, dependencies, redirects, tombstones
         ↓
-  discovery                    сканирование контейнера, топологический порядок
+  discovery                    сканирование контейнера, граф зависимостей,
+                                топологический порядок, сверка с mods.lock.json5
         ↓
   BuildRepository()            парсинг, схемы, ссылки, override
         ↓
@@ -38,7 +41,9 @@ GameData/                    контейнер пакетов (core, textsystem
 
 ## Понятия
 
-**Package** — один каталог, чьё имя равно `package_id` и содержит `package.json5`. Базовый набор поставки состоит из трёх слоёв: `GameData/core` (движок: framework-схемы, базовые экраны, тексты, ресурсы), `GameData/textsystem` (текстовый движок: схемы локаций, действия переходов, презентер экрана локации) и `GameData/rh` (игра: схемы предметов/акторов, конкретные предметы, локации, персонажи, ресурсы и тексты). Движок не знает сущностей и предметных схем игры, а слои расширяют систему строго снизу вверх.
+**Package** — каталог с обязательным манифестом `package.json5` (`package_id`, `namespace` — обязано совпадать с `package_id`, `version`; опционально `compatibility` и `dependencies`). Identity не выводится из имени каталога — без манифеста пакет не собирается вообще. Базовый набор поставки состоит из трёх слоёв: `GameData/core` (движок: framework-схемы, базовые экраны, тексты, ресурсы), `GameData/textsystem` (текстовый движок: схемы локаций, действия переходов, презентер экрана локации) и `GameData/rh` (игра: схемы предметов/акторов, конкретные предметы, локации, персонажи, ресурсы и тексты). Движок не знает сущностей и предметных схем игры, а слои расширяют систему строго снизу вверх. `GameData/sample` — демо-контент для проверок и примеров, не часть боевой поставки.
+
+**`mods.lock.json5`** — generated-файл в корне контейнера: зафиксированный набор пакетов, их версии и fingerprints, сверяемые при каждой сборке. Не редактируется вручную и не является манифестом отдельного пакета.
 
 **Definition** — запись в `definitions/*.json5`. Имеет Stable ID, тип и поле `data`, устройство которого задаёт схема.
 
@@ -52,7 +57,7 @@ GameData/                    контейнер пакетов (core, textsystem
 
 **Redirect и tombstone** — способ переименовать или снять с публикации ID, не ломая сейвы и ссылки. Объявляются в `package.json5`.
 
-Нормативно: [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md) — сборка, разрешение, override, redirects, API чтения; [Definition Envelope and Schema Rules](../Architecture/DefinitionEnvelopeAndSchemaRules.md) — конверт файла, типы полей, значения по умолчанию, расширения; [Stable ID Specification](../Architecture/StableIDSpecification.md) — грамматика, владение namespace, жизненный цикл идентификаторов.
+Нормативно: [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md) — сборка, разрешение, override, redirects, API чтения; [Definition Envelope and Schema Rules](../Architecture/DefinitionEnvelopeAndSchemaRules.md) — конверт файла, типы полей, значения по умолчанию, расширения; [Stable ID Specification](../Architecture/StableIDSpecification.md) — грамматика, владение namespace, жизненный цикл идентификаторов; [Modding](../Architecture/Modding.md) — манифест, discovery контейнера, порядок загрузки, `mods.lock.json5`.
 
 ## Что важно понимать автору
 

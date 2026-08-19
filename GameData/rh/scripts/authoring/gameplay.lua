@@ -11,7 +11,6 @@ local function handle_travel(target)
     player:spend_stamina(5)
     player:move_to(target)
 end
-commands["rh:command.travel"] = handle_travel
 commands.travel = handle_travel
 
 local function handle_wait_day()

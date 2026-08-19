@@ -1,16 +1,16 @@
 ---
 title: Package Set Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - README.md
-  - ../../Architecture/Modding.md
+  - ../../../Architecture/Modding.md
 ---
 
 # M1 — Package Set
 
-> **Материализует:** [Modding § Load order](../../Architecture/Modding.md) и [Build and Tooling](../../Architecture/BuildAndTooling.md).
+> **Материализует:** [Modding § Load order](../../../Architecture/Modding.md) и [Build and Tooling](../../../Architecture/BuildAndTooling.md).
 > **Задачи:** TSL-01…05.
 > **Результат:** пакет становится подключаемым из данных; третий слой существует и пуст.
 
@@ -23,7 +23,7 @@ depends_on:
 ## Задачи
 
 - [x] **TSL-01 — Создать ADR по трёхуровневой границе**
-  - Done: ADR фиксирует три уровня и критерий выбора из трёх вопросов, расширяющий бинарный критерий [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md); **отдельно записывает, что это осознанное исключение** из правила «применимость доказывается второй игрой» — второй текстовой игры нет, а основанием служит цена момента, а не доказанная применимость; фиксирует, что набор пакетов собирается из данных; перечисляет отвергнутое — Quest foundation без потребителей, Inventory в `textsystem`, отдельная иерархия классов Lua; принят до первой отметки `[x]` ниже.
+  - Done: ADR фиксирует три уровня и критерий выбора из трёх вопросов, расширяющий бинарный критерий [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md); **отдельно записывает, что это осознанное исключение** из правила «применимость доказывается второй игрой» — второй текстовой игры нет, а основанием служит цена момента, а не доказанная применимость; фиксирует, что набор пакетов собирается из данных; перечисляет отвергнутое — Quest foundation без потребителей, Inventory в `textsystem`, отдельная иерархия классов Lua; принят до первой отметки `[x]` ниже.
   - Evidence: `Docs/ADR/0030-textsystem-layer-and-data-driven-package-set.md`, `Docs/ADR/README.md`.
 
 - [x] **TSL-02 — Набор пакетов из данных в хостах**

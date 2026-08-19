@@ -1,16 +1,16 @@
 ---
 title: Test Tiers Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - PackageSet.md
-  - ../../Architecture/HeadlessSimulationContract.md
+  - ../../../Architecture/HeadlessSimulationContract.md
 ---
 
 # M4 — Test Tiers
 
-> **Материализует:** [Headless Simulation Contract](../../Architecture/HeadlessSimulationContract.md) в части конфигураций сессий для спеков.
+> **Материализует:** [Headless Simulation Contract](../../../Architecture/HeadlessSimulationContract.md) в части конфигураций сессий для спеков.
 > **Задачи:** TSL-15…17.
 > **Результат:** уровень проверяется без слоёв выше него.
 
