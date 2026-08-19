@@ -65,11 +65,11 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Package Set](PackageSet.md): набор пакетов из данных и пустой `textsystem`.
-- [ ] M2 — [Location Ownership](LocationOwnership.md): локация и переход переезжают, ядро чистится.
-- [ ] M3 — [Presentation](Presentation.md): презентер, семантические действия, декларативные экраны.
-- [ ] M4 — [Test Tiers](TestTiers.md): трёхуровневое разбиение спеков.
-- [ ] M5 — [RH Cleanup](RhCleanup.md): чистка `actors.lua`.
+- [x] M1 — [Package Set](PackageSet.md): набор пакетов из данных и пустой `textsystem`.
+- [x] M2 — [Location Ownership](LocationOwnership.md): локация и переход переезжают, ядро чистится.
+- [x] M3 — [Presentation](Presentation.md): презентер, семантические действия, декларативные экраны.
+- [x] M4 — [Test Tiers](TestTiers.md): трёхуровневое разбиение спеков.
+- [x] M5 — [RH Cleanup](RhCleanup.md): чистка `actors.lua`.
 
 ## Критический путь
 
@@ -94,12 +94,12 @@ M1 завершается зелёным при **пустом** `textsystem`: �
 
 ## Итоговый Definition of Done
 
-- [ ] Добавление четвёртого пакета не требует ни строки C++.
-- [ ] `gv2-content` принимает контейнерный каталог.
-- [ ] В публичном API ядра нет `Actor`, `Location`, `Travel`, `Gold`, `Stamina`; каталог `Scripts/gameplay/` отсутствует.
-- [ ] Локация, переход и презентер работают в пакете-образце без `rh`.
-- [ ] `textsystem` не содержит данных `rh`.
-- [ ] `rh/actors.lua` не содержит кода локации; золото и выносливость не являются двумя копиями одного кода.
-- [ ] `rh/scripts/presentation/location_screen.lua` удалён.
-- [ ] Спеки уровня Core проходят без `textsystem` и `rh`; спеки TextSystem — без `rh`.
-- [ ] В геймплейном коде граница слоёв не видна.
+- [x] Добавление четвёртого пакета не требует ни строки C++.
+- [x] `gv2-content` принимает контейнерный каталог.
+- [x] В публичном API ядра нет `Actor`, `Location`, `Travel`, `Gold`, `Stamina`; каталог `Scripts/gameplay/` отсутствует.
+- [x] Локация, переход и презентер работают в пакете-образце без `rh`.
+- [x] `textsystem` не содержит данных `rh`.
+- [x] `rh/actors.lua` не содержит кода локации; золото и выносливость не являются двумя копиями одного кода.
+- [x] `rh/scripts/presentation/location_screen.lua` удалён.
+- [x] Спеки уровня Core проходят без `textsystem` и `rh`; спеки TextSystem — без `rh`.
+- [x] В геймплейном коде граница слоёв не видна.

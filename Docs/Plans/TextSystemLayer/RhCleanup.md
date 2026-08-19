@@ -2,7 +2,7 @@
 title: RH Cleanup Tasks
 status: draft
 version: 1.0
-updated: 2026-08-18
+updated: 2026-08-19
 depends_on:
   - LocationOwnership.md
 ---
@@ -15,30 +15,30 @@ depends_on:
 
 ## Результат этапа
 
-`rh/actors.lua` перестаёт быть местом, где живёт половина текстового движка.
+`rh/actors.lua` перестаёт быть местом, где живёт половина текстового движка. Методы управления ресурсами (золото, выносливость) генерируются таблично без дублирования. Документация репозитория полностью синхронизирована с трёхуровневой архитектурой.
 
 ## Задачи
 
-- [ ] **TSL-18 — Убрать из `actors.lua` ответственность `textsystem`**
+- [x] **TSL-18 — Убрать из `actors.lua` ответственность `textsystem`**
   - Зависимости: TSL-10.
   - Done: код локации, перехода, связности и регистрации ссылочного поля локации удалён — он живёт в `textsystem`; остаются золото, выносливость, `add_item` и регистрации игры; ни одна спека не обращается к удалённым методам через `rh`.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: `GameData/rh/scripts/gameplay/actors.lua`, `GameData/textsystem/scripts/gameplay/actors.lua`, спеки `Tests/Lua/economy/actor_rh_economy.lua`, `Tests/Lua/economy/location_actions.lua`.
 
-- [ ] **TSL-19 — Свести дублирование ресурсов**
+- [x] **TSL-19 — Свести дублирование ресурсов**
   - Зависимости: TSL-18.
   - Золото и выносливость сегодня реализованы двумя почти одинаковыми наборами методов.
-  - Done: проверка суммы существует в одном экземпляре; описание ресурса — поле состояния, код отказа, имена параметров — задаётся таблицей, а методы порождаются из неё; поведение и коды отказов не изменились, существующие спеки проходят с прежними ожиданиями; добавление третьего ресурса не требует копирования блока кода.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: проверка суммы существует в одном экземпляре (`validate_amount`); описание ресурса — поле состояния, код отказа, имена параметров — задаётся таблицей `RESOURCES`, а методы (`get_*`, `require_*`, `spend_*`, `add_*`) порождаются из неё генератором `attach_resource_methods`; поведение и коды отказов не изменились, существующие спеки проходят с прежними ожиданиями; добавление третьего ресурса требует лишь добавления записи в `RESOURCES`.
+  - Evidence: `GameData/rh/scripts/gameplay/actors.lua`, `Tests/Lua/economy/actor_rh_economy.lua`, `Tests/Lua/economy/location_actions.lua`.
 
-- [ ] **TSL-20 — Синхронизировать документацию**
+- [x] **TSL-20 — Синхронизировать документацию**
   - Зависимости: TSL-14, TSL-17, TSL-19.
-  - Про `get_gold`, `get_stamina`, `is_player` и `is_npc` ранее предлагалось «удалить, если не используются»; проверка выполнена — их использует `Tests/Lua/actors/actor_extension.lua`, поэтому либо меняется спека, либо методы остаются. Решение принимается в этой задаче и записывается.
-  - Done: [Modding](../../Architecture/Modding.md) описывает три уровня и критерий выбора; [Stable ID Specification](../../Architecture/StableIDSpecification.md) — kind `action` и namespace `textsystem`; [Build and Tooling](../../Architecture/BuildAndTooling.md) — набор пакетов из данных и контейнерный режим; [Concepts](../../Concepts/README.md) объясняют три слоя читателю; [Implementation Status](../../Status/ImplementationStatus.md) обновлён; в предложении проставлено `proposal_state: implemented`.
-  - Evidence: <!-- tests/commit/PR -->
+  - Решение по геттерам/хелперам (`get_gold`, `get_stamina`, `is_player`, `is_npc`): методы сохранены на декораторе как удобные явные хелперы предметной модели, покрыты спеками `Tests/Lua/economy/actor_rh_economy.lua`.
+  - Done: [Modding](../../Architecture/Modding.md) описывает три уровня и критерий выбора; [Stable ID Specification](../../Architecture/StableIDSpecification.md) — kind `action` и namespace `textsystem`; [Build and Tooling](../../Architecture/BuildAndTooling.md) — набор пакетов из данных и контейнерный режим; [Concepts](../../Concepts/README.md) и [ContentModel](../../Concepts/ContentModel.md) объясняют три слоя читателю; [Implementation Status](../../Status/ImplementationStatus.md) обновлён; в предложении [TextSystemLayerProposal](../../Proposals/TextSystemLayerProposal.md) проставлено `proposal_state: implemented`.
+  - Evidence: `Docs/Architecture/Modding.md`, `Docs/Architecture/StableIDSpecification.md`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Concepts/ContentModel.md`, `Docs/Status/ImplementationStatus.md`, `Docs/Proposals/TextSystemLayerProposal.md`.
 
 ## Проверка milestone
 
-- [ ] `rh/actors.lua` содержит только золото, выносливость, предметы и регистрации.
-- [ ] Добавление третьего ресурса не требует копирования блока кода.
-- [ ] Судьба неиспользуемых геттеров решена явно, а не оставлена как есть.
-- [ ] Документация описывает три слоя одинаково в contracts и Concepts.
+- [x] `rh/actors.lua` содержит только золото, выносливость, предметы и регистрации.
+- [x] Добавление третьего ресурса не требует копирования блока кода.
+- [x] Судьба неиспользуемых геттеров решена явно, а не оставлена как есть.
+- [x] Документация описывает три слоя одинаково в contracts и Concepts.

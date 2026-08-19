@@ -69,49 +69,46 @@ Conformance-набор `GV2RuntimeCore::Testing::RunSaveSlotStorageConformance()
 
 `Tools/Content` намеренно вынесен из `Content/` — последний является Unreal asset root.
 
-### Package root convention
+### Package root and Container directory conventions
 
-Package root — это один каталог, чьё имя равно `package_id` и обязано быть canonical `segment`:
+Package root — это каталог, содержащий манифест `package.json5` с обязательными полями `package_id`, `namespace` и `version`:
 
 ```text
 <package-root>/
-  package.json5          optional manifest: redirects, tombstones, freeze flags
+  package.json5          mandatory manifest: package_id, namespace, version, dependencies, redirects, tombstones
   definitions/*.json5    definition files
   schemas/*.json5        self-describing schema resources: id, definition_type, schema_version
   localization/*.po      optional translation catalogs: <locale>.po (ADR-0022)
+  scripts/               optional Lua modules and scripts/manifest.lua
 ```
 
-`GV2ContentHostSupport::DiscoverPackageFromDirectory()` — единственная реализация сканирования пакета; она сортирует файлы, выдаёт `core:diagnostic.package.discovery.*` при ошибках и возвращает `FPackageDescriptor`. Discovery пакета намеренно не сканирует каталог `localization/`: переводы хранятся во внешних PO-каталогах, ключуются Stable ID kind `text` (`text_id`), не меняют `FPackageDescriptor` и не влияют на `content_hash` репозитория. Мод поставляет переводы по той же структуре внутри своего package root. Multi-package root, mod discovery и load order не поддерживаются.
+`GV2ContentHostSupport::DiscoverPackageFromDirectory()` сканирует одиночный пакет, сортирует файлы, выдаёт `core:diagnostic.package.discovery.*` при ошибках и возвращает `FPackageDescriptor`.
 
-`package.json5` необязателен: его отсутствие эквивалентно пакету без retirement-таблиц и без заморозки. Он является manifest layer из [GameDataRepository Contract](GameDataRepositoryContract.md) и объявляет:
+`GV2ContentHostSupport::DiscoverPackagesFromContainer()` и `IsContainerDirectory()` сканируют контейнерный каталог (например, `GameData/`), находят все подкаталоги с `package.json5`, валидируют граф зависимостей (`dependencies`), отсутствие циклов, выстраивают топологический порядок загрузки и сверяют с `mods.lock.json5` ([ADR-0030](../ADR/0030-textsystem-layer-and-data-driven-package-set.md)). Базовый игровой набор включает `core`, `textsystem`, `rh`.
 
-| Поле | Значение |
-|---|---|
-| `redirects` | Объект `source_id → target_id`; source и target одного kind |
-| `tombstones` | Массив retired ID |
-| `frozen` / `published` | Пакет считается опубликованным: `gv2-content rename` отказывается переписывать ID на месте и требует объявить redirect ([ADR-0023](../ADR/0023-stable-id-publication-freeze.md)) |
+Discovery пакета не сканирует каталог `localization/`: переводы хранятся во внешних PO-каталогах, ключуются Stable ID kind `text` (`text_id`), не меняют `FPackageDescriptor` и не влияют на `content_hash` репозитория.
 
-Ни один существующий пакет манифеста пока не содержит: `GameData/core` и замороженный корпус его не имеют.
-
-Production package игры — `GameData/core`. Он staged в packaged build через `RuntimeDependencies` в `GV2.Build.cs` наравне со `Scripts/` и `Resources/`. UE host не читает test fixtures.
+UE-хост и Headless-хост обнаруживают набор пакетов из контейнерного каталога автоматически из данных без захардкоженных в C++ имён пакетов.
 
 ### `gv2-content`
 
 ```text
-gv2-content validate <package-root> [--watch] [--poll-interval=MS] [--max-iterations=N] [--format=text|json]
-gv2-content inspect  <package-root> <definition-id> [--provenance] [--format=text|json]
-gv2-content describe <package-root> <definition-type> [--format=text|json]
+gv2-content validate <package-or-container-root> [--watch] [--poll-interval=MS] [--max-iterations=N] [--format=text|json]
+gv2-content inspect  <package-or-container-root> <definition-id> [--provenance] [--format=text|json]
+gv2-content describe <package-or-container-root> <definition-type> [--format=text|json]
 gv2-content new      <package-root> <definition-type> <definition-id> [--format=text|json]
-gv2-content refs     <package-root> <definition-id> [--format=text|json]
+gv2-content refs     <package-or-container-root> <definition-id> [--format=text|json]
 gv2-content rename   <package-root> <old-id> <new-id> [--format=text|json]
 gv2-content set      <package-root> <definition-id> <json-pointer> <value> [--format=text|json]
 gv2-content delete   <package-root> <definition-id> [--format=text|json]
-gv2-content index    <package-root> [--format=text|json]
-gv2-content hash     <package-root> [--format=text|json]
-gv2-content coverage <package-root> [--locale=LOCALE] [--format=text|json]
+gv2-content index    <package-or-container-root> [--format=text|json]
+gv2-content hash     <package-or-container-root> [--format=text|json]
+gv2-content coverage <package-or-container-root> [--locale=LOCALE] [--format=text|json]
 ```
 
-- `validate` — полная валидация пакета (schema, envelope, references, semantic constraints); выводит `content_hash` или список диагностик с JSON Pointer и спанами. Флаг `--watch` запускает live loop непрерывного наблюдения за изменениями файлов пакета (`--poll-interval=MS`, `--max-iterations=N`); каждая итерация изолирована, не публикует репозиторий, не накапливает состояние и не прерывается из-за транзиентных синтаксических ошибок в редактируемых файлах; выход по сигналам `SIGINT`/`SIGTERM` корректен.
+Команды `validate`, `index`, `hash`, `coverage`, `inspect` и `refs` принимают контейнерный каталог (`GameData/`) наравне с одиночным package root или явным списком корней пакетов. При указании контейнера инструмент строит объединённый репозиторий с разрешением межпакетных зависимостей и схем.
+
+- `validate` — полная валидация пакета или контейнера пакетов (schema, envelope, references, semantic constraints); выводит `content_hash` или список диагностик с JSON Pointer и спанами. Флаг `--watch` запускает live loop непрерывного наблюдения за изменениями файлов пакета (`--poll-interval=MS`, `--max-iterations=N`); каждая итерация изолирована, не публикует репозиторий, не накапливает состояние и не прерывается из-за транзиентных синтаксических ошибок в редактируемых файлах; выход по сигналам `SIGINT`/`SIGTERM` корректен.
 - `inspect` — детальный просмотр одного definition по Stable ID; флаг `--provenance` добавляет source coordinates.
 - `describe` — динамический справочник полей схемы для указанного `definition_type`. Выводит имена полей, типы (`int64`, `double`, `boolean`, `string`, `enum`, `array`, `map`, `object`, `union`, `ref`, `text_id`, `resource_ref`), обязательность (`required`/`optional`), ограничения (`min`, `max`, `values`, `min_items`, `unique`), ожидаемый target kind для ссылок и resource class для ресурсов, а также зарегистрированные semantic validators и extension schemas. Вывод формируется напрямую из схемы и называет пакет, который ею владеет.
 - `new` — генерация валидной заготовки сущности с ID `<definition-id>` и типом `<definition-type>`. Проверяет синтаксис ID и соответствие `kind == <definition-type>`, гарантирует отсутствие дубликата ID в пакете. Заполняет обязательные поля типизированными плейсхолдерами с учётом ограничений схемы и опускает необязательные поля. Если файл нужного типа уже существует в `definitions/`, запись добавляется в существующий массив; если отсутствует — создаётся новый файл с валидным конвертом.

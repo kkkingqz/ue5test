@@ -42,8 +42,9 @@ segment      = lowercase-alpha *(lowercase-alpha / digit / "_")
 ```text
 rh:item.weapon.iron_sword
 rh:location.city.market
-core:command.location.travel
-core:event.location.enter
+rh:command.travel
+textsystem:action.location.travel
+textsystem:event.location.enter
 weather_mod:item.ring.storm
 ```
 
@@ -65,8 +66,9 @@ Editor/CLI может предложить отдельную fix-команду
 
 ## Namespace ownership
 
-- `core` принадлежит основной игре.
-- Namespace мода равен immutable `mod_id` из manifest.
+- `core` принадлежит GV2 framework (движку).
+- `textsystem` принадлежит переиспользуемому текстовому слою ([ADR-0030](../ADR/0030-textsystem-layer-and-data-driven-package-set.md)).
+- Namespace мода или игры равен immutable `mod_id` / `package_id` из manifest (например, `rh`).
 - Package создаёт новые IDs только в собственном namespace.
 - Package может полностью override существующий чужой ID, если он уже предоставлен более ранним provider.
 - Создание нового ID в чужом namespace — `ForeignNamespaceNewId`.
@@ -86,13 +88,17 @@ error, diagnostic, action
 
 Package может добавить новый kind только вместе с declarative schema binding. Конфликтующие bindings одного kind/schema version являются fatal. Kind не выводится из directory.
 
-**Наличие kind в реестре не означает владения его схемой** ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)). Реестр перечисляет категории пространства имён, а не предметную модель движка. Схема принадлежит `core` только тогда, когда её структура необходима самому runtime или host boundary; иначе она принадлежит пакету. Package вправе привязать schema к kind, объявленному ядром, если ядро само для этого kind binding не объявляет; перекрытие существующего binding по-прежнему запрещено.
+**Наличие kind в реестре не означает владения его схемой** ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)). Реестр перечисляет категории пространства имён, а не предметную модель движка. Схема принадлежит `core` только тогда, когда её структура необходима самому runtime или host boundary; иначе она принадлежит пакету. Package вправе привязать schema к kind, объявленному ядром, если ядро само для этого kind binding не объявляет; перекрытие существующего binding по-прежнему запрещено. Kind `action` используется для семантических действий (позднее связывание элементов презентации с командами через `game.actions`).
 
-## Namespace `core`
+## Namespace `core` и `textsystem`
 
-Namespace `core` принадлежит GV2 framework и используется только для сущностей, смысл которых не зависит от конкретной игры: механизмов, протоколов, framework-ошибок и диагностик. Конкретная игра и её сущности используют собственный namespace пакета ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)).
+Namespace `core` принадлежит GV2 framework и используется только для сущностей, смысл которых не зависит от конкретной игры: механизмов, протоколов, framework-ошибок и диагностик.
 
-Framework-отказы адресуются `core:error.*` и `core:diagnostic.*`; отказы правил игры — namespace её пакета (`rh:error.shop.not_enough_gold`).
+Namespace `textsystem` принадлежит промежуточному текстовому слою ([ADR-0030](../ADR/0030-textsystem-layer-and-data-driven-package-set.md)) и содержит сущности текстового движка (схемы локаций `textsystem:schema.definition.location.v1`, действия `textsystem:action.location.travel`, события `textsystem:event.location.enter` и т.д.).
+
+Конкретная игра и её сущности используют собственный namespace пакета ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md), например `rh`).
+
+Framework-отказы адресуются `core:error.*` и `core:diagnostic.*`; текстовые отказы — `textsystem:error.*`; отказы правил конкретной игры — namespace её пакета (`rh:error.shop.insufficient_gold`).
 
 ## Typed references
 
