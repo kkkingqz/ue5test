@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 3.0
+version: 3.1
 updated: 2026-08-19
 ---
 
@@ -33,6 +33,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [SimplifiedAuthoringSurfaceProposal](SimplifiedAuthoringSurfaceProposal.md) | implemented | Runtime, Authoring, Tooling | Окружение authoring-скрипта без `M.`, автообнаружение модулей, неявный успех команды, презентация без участия геймплея; переработка `rh` |
 | [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Modding | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [TextSystemLayerProposal](TextSystemLayerProposal.md) | implemented | Architecture, Modding, Content | Промежуточный слой `textsystem` между движком и игрой: локации, переходы, презентер; набор пакетов из данных |
+| [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
@@ -41,7 +42,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [ImageResourceDeferredLoadingProposal](ImageResourceDeferredLoadingProposal.md) | measurement required | UI, Resources, Operations | Условный async prepare/cache lifecycle после измерения startup и memory |
 | [EntityAuthoringExtensionProposal](EntityAuthoringExtensionProposal.md) | implemented | Architecture, Runtime, Authoring | Декларативное расширение доменных сущностей через авторские прототипы `_ENV` |
 | [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: слои, оверлеи, модалки, вкладки, реконсиляция и масштабирование |
-| [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | proposed | Runtime, Authoring, Gameplay | Контракты полей `field.*`, разделение инвариантов и предусловий, обобщённое создание инстансов |
+| [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | accepted for planning | Runtime, Authoring, Gameplay | Контракты полей `field.*`, разделение инвариантов и предусловий, обобщённое создание инстансов |
 
 ## Рекомендуемый порядок
 
@@ -52,8 +53,11 @@ Proposal не изменяет нормативную архитектуру с�
 3. `CommandValidatorAuthoringProposal` — сначала ADR и contract update, затем Lua-only adapter и общие cross-host specs; runtime registry и C++ не расширяются без измеренной необходимости.
 4. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось. Декларативные экраны из `SimplifiedAuthoringSurfaceProposal` разблокированы тем же планом.
 5. `ModPackageLifecycleProposal`.
-6. `CommonUIRuntimeIntegrationProposal`.
-7. `ScreenAuthoringWorkflowProposal`.
+6. `UiCompositionAndScalingProposal` — материализовано планом [UiComposition](../Plans/UiComposition/README.md): слои, оверлеи, вкладки, реконсиляция и масштабирование.
+7. `CommonUIRuntimeIntegrationProposal` — после предыдущего: фокус и Back опираются на слои и вкладки.
+8. `ScreenAuthoringWorkflowProposal`.
+
+`RHActorsLuaSimplificationProposal` материализовано планом [RHActorsSimplification](../Plans/RHActorsSimplification/README.md) и выполняется независимо от Content/UI-треков. `MutationWindowTransactionalityProposal` выделено из него: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
 
 `ImageResourceLookupOptimizationProposal` и `ImageResourcePackagedDeploymentProposal` могут выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 
