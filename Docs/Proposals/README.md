@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 2.9
-updated: 2026-08-18
+version: 3.0
+updated: 2026-08-19
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -31,6 +31,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [CoreGameplayBoundaryProposal](CoreGameplayBoundaryProposal.md) | implemented | Architecture, Modding, Content | Правило ownership между framework core и gameplay packages: механизмы в `core`, семантика и контент в пакетах |
 | [DesignerLuaAuthoringProposal](DesignerLuaAuthoringProposal.md) | implemented | Runtime, State, Authoring | Designer-facing Lua: дескриптор модуля с отложенной регистрацией, три вида property, `write_revision` и правило `fail()`, изоляция сырого состояния |
 | [SimplifiedAuthoringSurfaceProposal](SimplifiedAuthoringSurfaceProposal.md) | implemented | Runtime, Authoring, Tooling | Окружение authoring-скрипта без `M.`, автообнаружение модулей, неявный успех команды, презентация без участия геймплея; переработка `rh` |
+| [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Modding | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [TextSystemLayerProposal](TextSystemLayerProposal.md) | implemented | Architecture, Modding, Content | Промежуточный слой `textsystem` между движком и игрой: локации, переходы, презентер; набор пакетов из данных |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
@@ -48,10 +49,11 @@ Proposal не изменяет нормативную архитектуру с�
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
-3. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось. Декларативные экраны из `SimplifiedAuthoringSurfaceProposal` разблокированы тем же планом.
-4. `ModPackageLifecycleProposal`.
-5. `CommonUIRuntimeIntegrationProposal`.
-6. `ScreenAuthoringWorkflowProposal`.
+3. `CommandValidatorAuthoringProposal` — сначала ADR и contract update, затем Lua-only adapter и общие cross-host specs; runtime registry и C++ не расширяются без измеренной необходимости.
+4. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось. Декларативные экраны из `SimplifiedAuthoringSurfaceProposal` разблокированы тем же планом.
+5. `ModPackageLifecycleProposal`.
+6. `CommonUIRuntimeIntegrationProposal`.
+7. `ScreenAuthoringWorkflowProposal`.
 
 `ImageResourceLookupOptimizationProposal` и `ImageResourcePackagedDeploymentProposal` могут выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 
