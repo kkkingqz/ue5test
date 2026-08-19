@@ -1,8 +1,8 @@
 ---
 title: Concepts Index
 status: informative
-version: 1.0
-updated: 2026-08-15
+version: 1.1
+updated: 2026-08-18
 depends_on:
   - ../README.md
 ---
@@ -30,14 +30,17 @@ depends_on:
 | Понятие | Contract | Реализация | Проверки |
 |---|---|---|---|
 | Definition, schema, repository | [GameDataRepository](../Architecture/GameDataRepositoryContract.md), [DefinitionEnvelope](../Architecture/DefinitionEnvelopeAndSchemaRules.md) | `Source/GV2ContentCore/` | `RunJson5*Conformance`, `RunSchemaRegistryConformance` |
+| Манифест пакета, discovery, `mods.lock.json5` | [Modding](../Architecture/Modding.md) | `Source/GV2ContentHostSupport/Private/PackageDiscovery.cpp` | `RunPackageManifestConformance`, `RunPackageDiscoveryAndOrderConformance` |
 | Stable ID | [StableIDSpecification](../Architecture/StableIDSpecification.md) | `Source/GV2ContentCore/Private/StableId.cpp`, `Scripts/runtime/stable_id.lua` | `RunStableIdConformance` |
 | Canonical state | [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md) | `Scripts/runtime/state_validator.lua` | `Tests/Lua/lifecycle/state_sections.lua` |
 | Mutation window | [CommandsAndEvents](../Architecture/CommandsAndEvents.md) | `Scripts/runtime/mutation_window.lua` | `Tests/Lua/lifecycle/mutation_window.lua` |
-| Actor registry, обёртки | [LuaRuntimeContract](../Architecture/LuaRuntimeContract.md) | `Scripts/runtime/actor_registry.lua` | `Tests/Lua/world/domain_object.lua` |
-| Команды и валидаторы | [CommandsAndEvents](../Architecture/CommandsAndEvents.md) | `Scripts/runtime/command_dispatcher.lua`, `validator_registry.lua` | `Tests/Lua/commands/` |
+| Actor registry, обёртки, extension по discriminator | [LuaRuntimeContract](../Architecture/LuaRuntimeContract.md) | `Scripts/runtime/actor_registry.lua` | `Tests/Lua/world/domain_object.lua`, `Tests/Lua/actors/actor_extension.lua` |
+| Команды, обработчики, валидаторы | [CommandsAndEvents](../Architecture/CommandsAndEvents.md) | `Scripts/runtime/command_dispatcher.lua`, `handler_registry.lua`, `validator_registry.lua` | `Tests/Lua/commands/` |
+| Authoring-слой (`commands`/`actions`, `_ENV`) | [ADR-0027](../ADR/0027-designer-lua-authoring-layer.md), [ADR-0028](../ADR/0028-simplified-authoring-surface.md) | `GameData/rh/scripts/authoring/gameplay.lua` | `Tests/Lua/authoring/` |
 | События и подписки | [CommandsAndEvents](../Architecture/CommandsAndEvents.md) | `Scripts/runtime/event_bus.lua`, `subscriber_registry.lua` | `Tests/Lua/events/` |
 | Канонический хэш и digest | [HeadlessSimulation](../Architecture/HeadlessSimulationContract.md) | `Scripts/runtime/canonical_codec.lua`, `state_hasher.lua` | `Tests/Lua/save/canonical_codec.lua` |
-| Экраны и Screen Fields | [ScreenTemplates](../UI/ScreenTemplates.md) | `Source/GV2/Private/UI/`, `Scripts/presentation/` | `GV2.Runtime.Presentation.*` |
+| Save/load, миграции | [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md) | `Scripts/runtime/save.lua`, `load.lua`, `migrate.lua` | `Tests/Lua/save/`, `RunColdStartLoadConformance` |
+| Экраны, Screen Fields, presentation source | [ScreenTemplates](../UI/ScreenTemplates.md) | `Source/GV2/Private/UI/`, `Scripts/presentation/`, `Scripts/runtime/presentation_source.lua` | `GV2.Runtime.Presentation.*`, `Tests/Lua/presentation/` |
 | Текст и локализация | [BuildAndTooling](../Architecture/BuildAndTooling.md) | `Source/GV2ContentCore/Private/PoParser.cpp` | `RunPoParserConformance` |
 
 Что из этого уже реализовано и в каком объёме — в [Implementation Status](../Status/ImplementationStatus.md).
