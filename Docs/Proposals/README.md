@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 3.2
+version: 3.3
 updated: 2026-08-19
 ---
 
@@ -34,6 +34,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Modding | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [TextSystemLayerProposal](TextSystemLayerProposal.md) | implemented | Architecture, Modding, Content | Промежуточный слой `textsystem` между движком и игрой: локации, переходы, презентер; набор пакетов из данных |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
+| [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Gameplay | Авторский слой игровых сервисов для процессов из нескольких сущностей вместе с первым потребителем — торговцем в `rh` |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
@@ -56,6 +57,8 @@ Proposal не изменяет нормативную архитектуру с�
 6. `UiCompositionAndScalingProposal` — материализовано планом [UiComposition](../Plans/UiComposition/README.md): слои, оверлеи, вкладки, реконсиляция и масштабирование.
 7. `CommonUIRuntimeIntegrationProposal` — после предыдущего: фокус и Back опираются на слои и вкладки.
 8. `ScreenAuthoringWorkflowProposal`.
+
+`GameplayServiceAuthoringProposal` материализовано планом [GameplayServices](../Plans/GameplayServices/README.md) и выполняется после `CommandValidatorAuthoringProposal`: сервис наследует execution scope, который вводит тот план.
 
 `RHActorsLuaSimplificationProposal` материализовано планом [RHActorsSimplification](../Plans/RHActorsSimplification/README.md) и выполняется независимо от Content/UI-треков. `MutationWindowTransactionalityProposal` выделено из него: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
 

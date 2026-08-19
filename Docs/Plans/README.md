@@ -27,6 +27,7 @@ depends_on:
 - [RHActorsSimplification](RHActorsSimplification/README.md) — Декларативные дескрипторы полей (`field.*`), валидация структурных инвариантов при записи, обобщённое создание инстансов (`instances.create`) и очистка `rh/scripts/gameplay/actors.lua`.
 - [EntityExtensionsHardening](EntityExtensionsHardening/README.md) — Заморозка реестра расширений становится необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление — ошибкой, приём метода — строго `self`.
 - [CommandValidators](CommandValidators/README.md) — Авторский `validate()` для независимых policy поверх чужих команд, очистка декодирования аргументов от игровых имён в ядре, охранники побочных эффектов и явная заменяемость обработчика.
+- [GameplayServices](GameplayServices/README.md) — Авторский синтаксис `services.<name> = { … }` для процессов, координирующих несколько сущностей, вместе с первым потребителем: торговцем в `rh`, который получает золото и теряет товар.
 - [UiComposition](UiComposition/README.md) — Слои, оверлеи, модалки и вкладки вместо одного активного экрана, переиспользование виджетов при реконсиляции, масштабирование раскладки по целевому разрешению.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
