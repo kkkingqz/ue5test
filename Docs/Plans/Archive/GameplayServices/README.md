@@ -1,23 +1,23 @@
 ---
 title: Gameplay Services Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
-  - ../../Proposals/GameplayServiceAuthoringProposal.md
-  - ../../Architecture/CommandsAndEvents.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../Archive/CommandValidators/README.md
+  - ../../../Proposals/Archive/GameplayServiceAuthoringProposal.md
+  - ../../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../CommandValidators/README.md
 decisions:
-  - ../../ADR/0026-core-and-gameplay-ownership.md
-  - ../../ADR/0031-entity-authoring-extensions.md
-  - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
-  - ../../ADR/0034-gameplay-service-authoring.md
+  - ../../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../../ADR/0034-gameplay-service-authoring.md
 ---
 
 # План реализации игровых сервисов
 
-> **Материализует:** [Gameplay Service Authoring](../../Proposals/GameplayServiceAuthoringProposal.md).
+> **Материализует:** [Gameplay Service Authoring](../../../Proposals/Archive/GameplayServiceAuthoringProposal.md).
 > **Задачи:** GSA-01…09.
 > **Результат:** авторский синтаксис `services.<name> = { … }` и первый настоящий потребитель — торговец в `rh`, у которого покупка отнимает товар и приносит золото.
 
@@ -25,7 +25,7 @@ decisions:
 
 Дать авторскому слою stateless-процессы для операций, координирующих несколько сущностей, — и одновременно сделать в `rh` первую такую операцию.
 
-Второе не менее важно первого. Реестр сервисов существует в рантайме, но его единственный потребитель, `core:service.location`, был удалён планом [TextSystemLayer](../Archive/TextSystemLayer/README.md); сегодня `game.services` используется только собственной спекой жизненного цикла. Механизм без потребителя — это ровно та speculative generality, против которой написан [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md), поэтому потребитель входит в тот же план.
+Второе не менее важно первого. Реестр сервисов существует в рантайме, но его единственный потребитель, `core:service.location`, был удалён планом [TextSystemLayer](../TextSystemLayer/README.md); сегодня `game.services` используется только собственной спекой жизненного цикла. Механизм без потребителя — это ровно та speculative generality, против которой написан [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md), поэтому потребитель входит в тот же план.
 
 ## Состояние на входе
 
@@ -35,7 +35,7 @@ decisions:
 |---|---|
 | Реестр сервисов | `register`, `get`, `require`, `exists`, `list`, `freeze`; заморозка на фазе `register` наравне с остальными реестрами |
 | Проверка ID сервиса | Только «непустая строка»; `validator_registry` для сравнения требует `stable_id.is_kind(id, "validator")` |
-| Kind `service` | В реестре kinds [Stable ID Specification](../../Architecture/StableIDSpecification.md) отсутствует |
+| Kind `service` | В реестре kinds [Stable ID Specification](../../../Architecture/StableIDSpecification.md) отсутствует |
 | Зарегистрированные сервисы | Ни одного во всех пакетах |
 | Имя `services` в `_ENV` | Свободно |
 | `rh:actor.npc.merchant` | Определение существует, не участвует ни в чём |
@@ -68,15 +68,15 @@ decisions:
 
 | Что нужно | Откуда | Влияние |
 |---|---|---|
-| `instances.create` | [RHActorsSimplification](../Archive/RHActorsSimplification/README.md), RAS-05…07, RAS-16 | GSA-06 создаёт экземпляры торговца и предметов; без фасада пришлось бы импортировать `instance_allocator` в `rh`, что запрещено |
-| Охранники побочных эффектов | [CommandValidators](../Archive/CommandValidators/README.md), CVA-09 | GSA-05 определяет наследование scope; охранники CVA-09 применяются к телу сервиса |
+| `instances.create` | [RHActorsSimplification](../RHActorsSimplification/README.md), RAS-05…07, RAS-16 | GSA-06 создаёт экземпляры торговца и предметов; без фасада пришлось бы импортировать `instance_allocator` в `rh`, что запрещено |
+| Охранники побочных эффектов | [CommandValidators](../CommandValidators/README.md), CVA-09 | GSA-05 определяет наследование scope; охранники CVA-09 применяются к телу сервиса |
 
 Ни одна задача не дублирует эти механизмы: при их отсутствии соответствующая задача блокируется, а не обходит их.
 
 ## Milestones
 
 - [x] M1 — [Service Authoring](ServiceAuthoring.md): `services` в авторском окружении, идентичность, неизменяемость, наследование scope. GSA-01…05.
-- [ ] M2 — [Merchant Trade](MerchantTrade.md): торговец, инвентарь сторон, `services.trade.buy`, перевод покупки. GSA-06…09.
+- [x] M2 — [Merchant Trade](MerchantTrade.md): торговец, инвентарь сторон, `services.trade.buy`, перевод покупки. GSA-06…09.
 
 ## Критический путь
 
@@ -84,26 +84,26 @@ decisions:
 M1 ──► M2
 ```
 
-M2 обязателен для завершения плана: без него M1 остаётся механизмом без потребителя и по правилам [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) не должен был бы существовать.
+M2 обязателен для завершения плана: без него M1 остаётся механизмом без потребителя и по правилам [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md) не должен был бы существовать.
 
 ## Общие правила выполнения
 
-1. Сервис не открывает окно мутации и не является точкой входа мутации ([INV-003](../../Architecture/Invariants.md)).
-2. Ни одна задача не добавляет в `core` или `textsystem` понятий торговли, инвентаря и предметов ([INV-016](../../Architecture/Invariants.md)).
+1. Сервис не открывает окно мутации и не является точкой входа мутации ([INV-003](../../../Architecture/Invariants.md)).
+2. Ни одна задача не добавляет в `core` или `textsystem` понятий торговли, инвентаря и предметов ([INV-016](../../../Architecture/Invariants.md)).
 3. `service_registry.lua` меняется только в части проверки формы ID; второй реестр не создаётся.
-4. Правила проверяются спеками на **отрицательный** случай ([ADR-0024](../../ADR/0024-lua-spec-runner.md)).
+4. Правила проверяются спеками на **отрицательный** случай ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)).
 5. Изменение содержимого `rh` меняет `repository_content_hash` и golden осознанно и однократно; замороженный корпус `Tests/Fixtures/PortableContentCore/` не перестраивается.
 6. Новое observable behavior синхронно отражается в contract того же change set.
 
 ## Итоговый Definition of Done
 
-- [ ] `services.foo = { … }` регистрирует сервис в существующем реестре; ID генерируется автоматически.
-- [ ] Kind `service` внесён в реестр kinds, и реестр проверяет форму ID.
-- [ ] Таблица с полем-значением, распределённое объявление, дубликат, объявление после заморозки, подмена операции и обращение к неизвестному имени отклоняются типизированными ошибками.
-- [ ] Ссылка на несуществующий сервис обнаруживается на заморозке, а не в середине команды.
-- [ ] `fail()` из сервиса даёт код в пространстве имён объявившего пакета при вызове из другого пакета.
-- [ ] Сервис, вызванный из валидатора, подчиняется ограничениям валидатора.
-- [ ] Экземпляр торговца существует в состоянии, находится на рынке и владеет мечом и бронёй.
-- [ ] Покупка проходит через `services.trade.buy`: игрок платит, **торговец получает золото**, предмет меняет владельца.
-- [ ] Повторная покупка отсутствующего у торговца товара даёт отказ до мутации.
-- [ ] `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.
+- [x] `services.foo = { … }` регистрирует сервис в существующем реестре; ID генерируется автоматически.
+- [x] Kind `service` внесён в реестр kinds, и реестр проверяет форму ID.
+- [x] Таблица с полем-значением, распределённое объявление, дубликат, объявление после заморозки, подмена операции и обращение к неизвестному имени отклоняются типизированными ошибками.
+- [x] Ссылка на несуществующий сервис обнаруживается на заморозке, а не в середине команды.
+- [x] `fail()` из сервиса даёт код в пространстве имён объявившего пакета при вызове из другого пакета.
+- [x] Сервис, вызванный из валидатора, подчиняется ограничениям валидатора.
+- [x] Экземпляр торговца существует в состоянии, находится на рынке и владеет мечом и бронёй.
+- [x] Покупка проходит через `services.trade.buy`: игрок платит, **торговец получает золото**, предмет меняет владельца.
+- [x] Повторная покупка отсутствующего у торговца товара даёт отказ до мутации.
+- [x] `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.

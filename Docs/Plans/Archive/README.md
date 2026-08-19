@@ -15,6 +15,7 @@ depends_on:
 
 | План | Завершён | Результат |
 |---|---|---|
+| [GameplayServices](GameplayServices/README.md) | 2026-08-19 | Авторский синтаксис `services.<name> = { … }` для stateless-процессов, координация передачи предмета и начисления золота торговцу в `rh` |
 | [CommandValidators](CommandValidators/README.md) | 2026-08-19 | Авторский `validate()` для независимых policy поверх чужих команд, единое декодирование аргументов, охранники побочных эффектов и явная заменяемость обработчика |
 | [EntityExtensionsHardening](EntityExtensionsHardening/README.md) | 2026-08-19 | Заморозка реестра расширений стала необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление внутри модуля — ошибкой, приём метода в `textsystem` — строго `self` |
 | [EntityAuthoringExtensions](EntityAuthoringExtensions/README.md) | 2026-08-19 | Декларативное расширение сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы в `_ENV`, централизованный реестр расширений и скомпонованные effective method tables |

@@ -110,6 +110,30 @@ return {
                     assert(game.state.item_instances[item_id] ~= nil, "Item must be created in item_instances")
                     assert(game.state.item_instances[item_id].owner_id == player.instance_id, "Item owner must be player")
 
+                    -- Inventory domain methods (GSA-07)
+                    assert(player:has_item("rh:item.weapon.iron_sword") == true, "player must have sword")
+                    assert(player:has_item("rh:item.armor.leather_armor") == false, "player must not have armor")
+                    player:require_item("rh:item.weapon.iron_sword") -- passes
+
+                    local ok_req_item, err_req_item = pcall(function()
+                        player:require_item("rh:item.armor.leather_armor")
+                    end)
+                    assert(not ok_req_item, "require_item for unowned item must fail")
+
+                    -- take_item and receive_item
+                    local taken = player:take_item("rh:item.weapon.iron_sword")
+                    assert(taken ~= nil and taken.owner_id == nil, "take_item must unassign owner")
+                    assert(player:has_item("rh:item.weapon.iron_sword") == false, "player must no longer have sword")
+
+                    local ok_take_again, _ = pcall(function()
+                        player:take_item("rh:item.weapon.iron_sword")
+                    end)
+                    assert(not ok_take_again, "take_item on unowned item must error")
+
+                    player:receive_item(taken)
+                    assert(player:has_item("rh:item.weapon.iron_sword") == true, "receive_item must reassign owner")
+                    assert(game.state.item_instances[item_id].owner_id == player.instance_id)
+
                     -- Save container purity (INV-001, INV-008, RAS-12)
                     local payload = canonical_codec.serialize(game.state)
                     assert(payload ~= nil and #payload > 0, "Canonical game state must serialize cleanly")

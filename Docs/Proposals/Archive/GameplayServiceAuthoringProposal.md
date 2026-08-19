@@ -1,27 +1,28 @@
 ---
 title: Gameplay Service Authoring Proposal
-status: draft
-proposal_state: accepted_for_planning
+status: archived
+proposal_state: implemented
 version: 1.0
 updated: 2026-08-19
 depends_on:
-  - Archive/CommandValidatorAuthoringProposal.md
-  - Archive/EntityAuthoringExtensionProposal.md
-  - ../Architecture/CommandsAndEvents.md
-  - ../Architecture/LuaRuntimeContract.md
-  - ../Architecture/StableIDSpecification.md
+  - CommandValidatorAuthoringProposal.md
+  - EntityAuthoringExtensionProposal.md
+  - ../../Architecture/CommandsAndEvents.md
+  - ../../Architecture/LuaRuntimeContract.md
+  - ../../Architecture/StableIDSpecification.md
 decisions:
-  - ../ADR/0026-core-and-gameplay-ownership.md
-  - ../ADR/0027-designer-lua-authoring-layer.md
-  - ../ADR/0028-simplified-authoring-surface.md
-  - ../ADR/0031-entity-authoring-extensions.md
+  - ../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../ADR/0028-simplified-authoring-surface.md
+  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../ADR/0034-gameplay-service-authoring.md
 ---
 
 # Предложение по авторскому слою игровых сервисов
 
 > **Предлагает:** авторский синтаксис `services.<name> = { … }` для stateless-процессов, координирующих несколько сущностей, вместе с первым настоящим потребителем — торговцем в пакете `rh`.
-> **Затрагивает:** [Commands and Events](../Architecture/CommandsAndEvents.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Stable ID Specification](../Architecture/StableIDSpecification.md).
-> **Не является нормативным:** до принятия ADR и реализации действует текущий programmer API `game.services`.
+> **Затрагивает:** [Commands and Events](../../Architecture/CommandsAndEvents.md), [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Stable ID Specification](../../Architecture/StableIDSpecification.md).
+> **Не является нормативным:** реализовано планом [GameplayServices](../../Plans/Archive/GameplayServices/README.md), актуальное правило — в [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md).
 
 ## 1. Назначение
 
@@ -39,7 +40,7 @@ services.trade = {
 
 ## 2. Отношение к ADR-0026: механизм вводится вместе с потребителем
 
-[ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) отвергает создание подсистем «заранее», а план TextSystemLayer по этому же правилу отказался вводить Quest foundation: «подсистемы не существует, потребителей нет».
+[ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) отвергает создание подсистем «заранее», а план TextSystemLayer по этому же правилу отказался вводить Quest foundation: «подсистемы не существует, потребителей нет».
 
 **У реестра сервисов сегодня нет ни одного потребителя.** `game.services` используется только собственной спекой жизненного цикла. Единственный реальный сервис — `core:service.location` — был удалён планом TextSystemLayer, когда владение локацией переехало в `textsystem`, и заменён методами сущностей.
 
@@ -106,7 +107,7 @@ services.trade.buy(player, merchant, sword)
 
 Объявление `services.trade` в пакете `rh` создаёт `rh:service.trade`. Полный ID для локального сервиса автор не пишет.
 
-Kind `service` **отсутствует** в реестре kinds [Stable ID Specification](../Architecture/StableIDSpecification.md) и должен быть туда добавлен. Отдельно: `service_registry.register` сегодня проверяет только «непустая строка» — в отличие от `validator_registry`, требующего `stable_id.is_kind(id, "validator")`. Проверка формы ID добавляется в реестр вместе с kind.
+Kind `service` **отсутствует** в реестре kinds [Stable ID Specification](../../Architecture/StableIDSpecification.md) и должен быть туда добавлен. Отдельно: `service_registry.register` сегодня проверяет только «непустая строка» — в отличие от `validator_registry`, требующего `stable_id.is_kind(id, "validator")`. Проверка формы ID добавляется в реестр вместе с kind.
 
 Дубликат canonical ID — ошибка bootstrap, а не перекрытие.
 
@@ -182,13 +183,13 @@ local trade = services["rh:service.trade"]
 
 `fail()` и `emit()` доступны в теле сервиса и работают по обычным правилам команды: отказ до мутации, события — после успешного commit.
 
-**Атрибуция следует пакету объявления, а не вызывающему.** Сервис — замыкание в `_ENV` своего пакета, поэтому `fail("trade.item_not_available")` внутри `rh:service.trade` даёт `rh:error.trade.item_not_available` независимо от того, какой пакет вызвал сервис. Это тот же механизм, что у методов сущностей ([ADR-0031](../ADR/0031-entity-authoring-extensions.md)), и при межпакетных вызовах он становится наблюдаемым, поэтому фиксируется явно.
+**Атрибуция следует пакету объявления, а не вызывающему.** Сервис — замыкание в `_ENV` своего пакета, поэтому `fail("trade.item_not_available")` внутри `rh:service.trade` даёт `rh:error.trade.item_not_available` независимо от того, какой пакет вызвал сервис. Это тот же механизм, что у методов сущностей ([ADR-0031](../../ADR/0031-entity-authoring-extensions.md)), и при межпакетных вызовах он становится наблюдаемым, поэтому фиксируется явно.
 
 ## 14. Execution scope наследуется от вызывающего
 
 Сервис исполняется в scope вызывающего и не создаёт собственного. Практическое следствие: сервис, вызванный из валидатора, подчиняется ограничениям валидатора.
 
-Формулировка «мутирующий сервис из валидатора завершится ошибкой мутации» недостаточна: она срабатывает, только если сервис действительно пишет в состояние. Сервис, вызывающий `emit(...)` или `commands.*:later(...)`, прошёл бы незамеченным. Поэтому охранники побочных эффектов, вводимые планом [CommandValidators](../Plans/Archive/CommandValidators/README.md), применяются к телу сервиса так же, как к телу валидатора; «мутирующие точки входа Gameplay Service» из его перечня закрываются этим правилом.
+Формулировка «мутирующий сервис из валидатора завершится ошибкой мутации» недостаточна: она срабатывает, только если сервис действительно пишет в состояние. Сервис, вызывающий `emit(...)` или `commands.*:later(...)`, прошёл бы незамеченным. Поэтому охранники побочных эффектов, вводимые планом [CommandValidators](../../Plans/Archive/CommandValidators/README.md), применяются к телу сервиса так же, как к телу валидатора; «мутирующие точки входа Gameplay Service» из его перечня закрываются этим правилом.
 
 Вложенный вызов сервиса из сервиса — обычный вызов Lua: он не создаёт ни команды, ни окна мутации, ни отдельного commit.
 

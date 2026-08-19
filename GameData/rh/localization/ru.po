@@ -80,6 +80,10 @@ msgctxt "rh:text.error.travel.not_connected"
 msgid "Error Travel Not connected"
 msgstr ""
 
+msgctxt "rh:text.error.trade.item_not_available"
+msgid "Error Trade Item not available"
+msgstr ""
+
 msgctxt "rh:text.error.work.insufficient_stamina"
 msgid "Error Work Insufficient stamina"
 msgstr ""

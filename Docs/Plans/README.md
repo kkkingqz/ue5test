@@ -25,7 +25,6 @@ depends_on:
 ## Активные планы
 
 - [DocumentationRework](DocumentationRework/README.md) — Политика совместимости и заметность правил, гейт на удалённый API в инструкциях, разделение `LuaRuntimeContract`, документация авторского слоя для дизайнера, переработка `Guides/` и сжатие архива. Выполняется после закрытия остальных активных планов.
-- [GameplayServices](GameplayServices/README.md) — Авторский синтаксис `services.<name> = { … }` для процессов, координирующих несколько сущностей, вместе с первым потребителем: торговцем в `rh`, который получает золото и теряет товар.
 - [UiComposition](UiComposition/README.md) — Слои, оверлеи, модалки и вкладки вместо одного активного экрана, переиспользование виджетов при реконсиляции, масштабирование раскладки по целевому разрешению.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
@@ -34,6 +33,7 @@ depends_on:
 
 | План | Завершён | Результат |
 |---|---|---|
+| [GameplayServices](Archive/GameplayServices/README.md) | 2026-08-19 | Авторский синтаксис `services.<name> = { … }` для stateless-процессов, координация передачи предмета и начисления золота торговцу в `rh` |
 | [CommandValidators](Archive/CommandValidators/README.md) | 2026-08-19 | Авторский `validate()` для независимых policy поверх чужих команд, единое декодирование аргументов, охранники побочных эффектов и явная заменяемость обработчика |
 | [EntityExtensionsHardening](Archive/EntityExtensionsHardening/README.md) | 2026-08-19 | Заморозка реестра расширений стала необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление внутри модуля — ошибкой, приём метода в `textsystem` — строго `self` |
 | [EntityAuthoringExtensions](Archive/EntityAuthoringExtensions/README.md) | 2026-08-19 | Декларативное расширение сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы в `_ENV`, централизованный реестр расширений и скомпонованные effective method tables |

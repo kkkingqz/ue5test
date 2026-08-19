@@ -356,6 +356,21 @@ function M.create_registry()
     end
 
     function registry.create(definition_id, overrides)
+        if type(definition_id) == "table" and overrides == nil then
+            local payload = definition_id
+            local raw_def = payload.definition or payload.definition_id
+            if type(raw_def) == "table" then
+                raw_def = raw_def.id or raw_def.definition_id
+            end
+            definition_id = raw_def
+            overrides = {}
+            for k, v in pairs(payload) do
+                if k ~= "definition" and k ~= "definition_id" then
+                    overrides[k] = v
+                end
+            end
+        end
+
         if type(definition_id) ~= "string" or definition_id == "" then
             error("ActorCreationError: definition_id must be a non-empty string", 2)
         end
@@ -379,8 +394,17 @@ function M.create_registry()
         }
         if type(overrides) == "table" then
             for k, v in pairs(overrides) do
-                if k ~= "instance_id" and k ~= "definition_id" then
-                    actor_state[k] = v
+                if k ~= "instance_id" and k ~= "definition_id" and k ~= "is_player" then
+                    if (k == "current_location" or k == "current_location_id") and type(v) == "table" then
+                        actor_state[k] = v.id or v.definition_id or v
+                    else
+                        actor_state[k] = v
+                    end
+                end
+            end
+            if overrides.is_player == true then
+                if game and game.state and game.state.meta then
+                    game.state.meta.player_actor_id = instance_id
                 end
             end
         end

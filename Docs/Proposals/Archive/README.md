@@ -24,3 +24,4 @@ depends_on:
 | [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | [CommandValidators](../../Plans/Archive/CommandValidators/README.md) | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | — | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
 | [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification/README.md) | Контракты полей `field.*`, композиция схем, обобщённое создание экземпляров |
+| [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | [GameplayServices](../../Plans/Archive/GameplayServices/README.md) | Авторский синтаксис `services.<name> = { … }` для stateless-процессов и торговец в `rh` |

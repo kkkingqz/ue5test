@@ -28,12 +28,73 @@ local function handle_work()
 end
 commands["work.do_work"] = handle_work
 
+local function handle_start_game()
+    local hero = instances.create("actor", {
+        definition = def("character.hero"),
+        current_location = tavern,
+        gold = 50,
+        stamina = 20,
+        is_player = true,
+    })
+
+    local merchant_inst = instances.create("actor", {
+        definition = def("npc.merchant"),
+        current_location = market,
+        gold = 100,
+        stamina = 50,
+    })
+    merchant_inst:add_item("rh:item.weapon.iron_sword")
+    merchant_inst:add_item("rh:item.armor.leather_armor")
+
+    return {
+        player = hero,
+        merchant = merchant_inst,
+    }
+end
+commands.start_game = handle_start_game
+commands["game.start"] = handle_start_game
+
+services.trade = {
+    buy = function(buyer, seller, item)
+        local price = nil
+        if type(item) == "table" and item.price ~= nil then
+            price = item.price
+        elseif type(item) == "string" and game and game.repository and game.repository.get then
+            local item_def = game.repository.get(item)
+            if item_def and item_def.data and item_def.data.price then
+                price = item_def.data.price
+            end
+        end
+        if price == nil then
+            error("InvalidItemPrice: cannot determine price for item " .. tostring(item), 2)
+        end
+
+        buyer:require_gold(price, "shop.insufficient_gold")
+        seller:require_item(item, "trade.item_not_available")
+
+        buyer:spend_gold(price)
+        seller:add_gold(price)
+
+        local instance = seller:take_item(item)
+        buyer:receive_item(instance)
+
+        emit("trade.completed", {
+            buyer = buyer,
+            seller = seller,
+            item = item,
+            price = price,
+        })
+        return true
+    end,
+}
+
 commands.buy = function(item)
     player:require_location(market)
-    player:require_gold(item.price, "shop.insufficient_gold")
-
-    player:spend_gold(item.price)
-    player:add_item(item)
+    local merchant = actor("npc.merchant")
+    if type(item) == "table" and item.item ~= nil and item.price == nil and item.id == nil then
+        item = item.item
+    end
+    services.trade.buy(player, merchant, item)
 end
 
 -- Semantic action bindings (TSL-11, TSL-12, TSL-13)

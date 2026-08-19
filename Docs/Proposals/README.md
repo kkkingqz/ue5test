@@ -41,7 +41,6 @@ Proposal не изменяет нормативную архитектуру с�
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
-| [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Gameplay | Авторский слой игровых сервисов для процессов из нескольких сущностей вместе с первым потребителем — торговцем в `rh` |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
 | [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: слои, оверлеи, модалки, вкладки, реконсиляция и масштабирование |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
@@ -56,15 +55,14 @@ Proposal не изменяет нормативную архитектуру с�
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
 3. `CommandValidatorAuthoringProposal` — реализовано планом [CommandValidators](../Plans/Archive/CommandValidators/README.md).
-4. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось.
-5. `ModPackageLifecycleProposal`.
-6. `UiCompositionAndScalingProposal` — материализовано планом [UiComposition](../Plans/UiComposition/README.md): слои, оверлеи, вкладки, реконсиляция и масштабирование.
-7. `CommonUIRuntimeIntegrationProposal` — после предыдущего: фокус и Back опираются на слои и вкладки.
-8. `ScreenAuthoringWorkflowProposal`.
+4. `GameplayServiceAuthoringProposal` — реализовано планом [GameplayServices](../Plans/Archive/GameplayServices/README.md).
+5. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось.
+6. `ModPackageLifecycleProposal`.
+7. `UiCompositionAndScalingProposal` — материализовано планом [UiComposition](../Plans/UiComposition/README.md): слои, оверлеи, вкладки, реконсиляция и масштабирование.
+8. `CommonUIRuntimeIntegrationProposal` — после предыдущего: фокус и Back опираются на слои и вкладки.
+9. `ScreenAuthoringWorkflowProposal`.
 
-`GameplayServiceAuthoringProposal` материализовано планом [GameplayServices](../Plans/GameplayServices/README.md) и выполняется после `CommandValidatorAuthoringProposal`: сервис наследует execution scope, который вводит тот план.
-
-`MutationWindowTransactionalityProposal` выделено из него: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
+`MutationWindowTransactionalityProposal` выделено из авторского слоя: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
 
 `ImageResourcePackagedDeploymentProposal` может выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 

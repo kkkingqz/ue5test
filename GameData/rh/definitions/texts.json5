@@ -79,6 +79,10 @@
       data: { source_message: "Error Travel Not connected" },
     },
     {
+      id: "rh:text.error.trade.item_not_available",
+      data: { source_message: "Error Trade Item not available" },
+    },
+    {
       id: "rh:text.error.work.insufficient_stamina",
       data: { source_message: "Error Work Insufficient stamina" },
     },

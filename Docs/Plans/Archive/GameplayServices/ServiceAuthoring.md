@@ -1,21 +1,21 @@
 ---
 title: Service Authoring Tasks
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/StableIDSpecification.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/StableIDSpecification.md
 decisions:
-  - ../../ADR/0028-simplified-authoring-surface.md
-  - ../../ADR/0031-entity-authoring-extensions.md
-  - ../../ADR/0034-gameplay-service-authoring.md
+  - ../../../ADR/0028-simplified-authoring-surface.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0034-gameplay-service-authoring.md
 ---
 
 # M1 — Service Authoring
 
-> **Материализует:** разделы 6—14 [предложения](../../Proposals/GameplayServiceAuthoringProposal.md).
+> **Материализует:** разделы 6—14 [предложения](../../../Proposals/Archive/GameplayServiceAuthoringProposal.md).
 > **Задачи:** GSA-01…05.
 > **Результат:** пакет объявляет сервис одной таблицей и не видит устройства реестра.
 
@@ -34,7 +34,7 @@ decisions:
 - [x] **GSA-02 — Kind `service` и проверка формы ID**
   - Зависимости: GSA-01.
   - `service_registry.register` проверяет только «непустая строка», тогда как `validator_registry` требует `stable_id.is_kind(id, "validator")`.
-  - Done: kind `service` внесён в реестр kinds [Stable ID Specification](../../Architecture/StableIDSpecification.md); `service_registry.register` отклоняет ID, не являющийся каноническим Stable ID kind `service`; существующие спеки жизненного цикла, использующие `core:service.test.*`, продолжают проходить; отрицательный случай покрыт спекой.
+  - Done: kind `service` внесён в реестр kinds [Stable ID Specification](../../../Architecture/StableIDSpecification.md); `service_registry.register` отклоняет ID, не являющийся каноническим Stable ID kind `service`; существующие спеки жизненного цикла, использующие `core:service.test.*`, продолжают проходить; отрицательный случай покрыт спекой.
   - Evidence: `Docs/Architecture/StableIDSpecification.md`, `Scripts/runtime/service_registry.lua`, `Tests/Lua/lifecycle/lifecycle_phases.lua`.
 
 - [x] **GSA-03 — Прокси `services` и контракт таблицы**
@@ -48,7 +48,7 @@ decisions:
   - Evidence: `Scripts/authoring/context.lua`, `Tests/Lua/authoring/gameplay_services.lua`.
 
 - [x] **GSA-05 — Наследование execution scope**
-  - Зависимости: GSA-04, CVA-09 плана [CommandValidators](../Archive/CommandValidators/README.md).
+  - Зависимости: GSA-04, CVA-09 плана [CommandValidators](../CommandValidators/README.md).
   - Формулировка «мутирующий сервис из валидатора завершится ошибкой мутации» недостаточна: она срабатывает, только если сервис действительно пишет в состояние, и пропускает сервис, вызывающий `emit(...)` или `commands.*:later(...)`.
   - Done: сервис исполняется в scope вызывающего и собственного не создаёт; охранники побочных эффектов применяются к телу сервиса так же, как к телу валидатора; `fail()` и `emit()` из сервиса атрибутируются пакету объявления, что проверено межпакетным вызовом; вложенный вызов сервиса не создаёт команды, окна мутации и отдельного commit; мутация из сервиса вне команды отклоняется.
   - Evidence: `Scripts/authoring/context.lua`, `Tests/Lua/authoring/gameplay_services.lua`.

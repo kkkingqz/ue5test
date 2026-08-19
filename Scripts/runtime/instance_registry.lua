@@ -76,7 +76,7 @@ function M.create_registry()
             error("InvalidInstancePayload: expected table payload for instance kind '" .. tostring(kind) .. "', got " .. type(data), 2)
         end
 
-        if kind == "actor" then
+        if kind == "actor" or kind == "Actor" then
             if game and game.instances and game.instances.actors and game.instances.actors.create then
                 return game.instances.actors.create(data)
             else
