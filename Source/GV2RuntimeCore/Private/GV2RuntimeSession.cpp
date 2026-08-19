@@ -1754,6 +1754,7 @@ struct FRuntimeSession::FImpl
         FreezeGameRegistry({"events", "subscribers"});
         FreezeGameRegistry({"events"});
         FreezeGameRegistry({"instances", "actors"});
+        FreezeGameRegistry({"instances"});
         FreezeGameRegistry({"presentation"});
 
         // Freeze state validator reference fields registry (CBM-10)

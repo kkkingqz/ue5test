@@ -52,7 +52,7 @@ decisions:
 ## Milestones
 
 - [x] **M1 — [Field Contracts](FieldContracts.md)**: дескрипторы полей `field.*` (`core:module.authoring.field`), интеграция с авторскими прототипами `_ENV`, композиция схем, запрет повторного объявления, сохранение проверки вида актора. RAS-01…04, RAS-13…15.
-- [ ] **M2 — [Generic Instance Creation](GenericInstanceCreation.md)**: обобщённый фасад создания экземпляров `instances.create()`, канонизация дескрипторов/ссылок, реестр видов экземпляров без единого имени вида в ядре, изоляция `instance_allocator` и коллекций состояния. RAS-05…07, RAS-16.
+- [x] **M2 — [Generic Instance Creation](GenericInstanceCreation.md)**: обобщённый фасад создания экземпляров `instances.create()`, канонизация дескрипторов/ссылок, реестр видов экземпляров без единого имени вида в ядре, изоляция `instance_allocator` и коллекций состояния. RAS-05…07, RAS-16.
 - [ ] **M3 — [RH Actors Migration](RhActorsMigration.md)**: рефакторинг `GameData/rh/scripts/gameplay/actors.lua`, устранение `RESOURCES`, `validate_amount` и `instance_allocator`, чистые методы сущности `Actor`, локальная проверка аргументов. RAS-08…10, RAS-17.
 - [ ] **M4 — [Validation and Specs](ValidationAndSpecs.md)**: спеки валидации инвариантов полей, геймплейных отказов, создания экземпляров и кросс-хостового паритета. RAS-11…12.
 

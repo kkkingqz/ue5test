@@ -3,6 +3,7 @@ local resources = require("core:module.resources.service")
 local text = require("core:module.resources.text")
 local state_validator = require("core:module.runtime.state_validator")
 local instance_allocator = require("core:module.runtime.instance_allocator")
+local instance_registry = require("core:module.runtime.instance_registry")
 local state_hasher = require("core:module.runtime.state_hasher")
 local migrate = require("core:module.runtime.migrate")
 local save = require("core:module.runtime.save")
@@ -33,6 +34,7 @@ return {
     text = text,
     state_validator = state_validator,
     instance_allocator = instance_allocator,
+    instance_registry = instance_registry,
     state_hasher = state_hasher,
     migrate = migrate,
     save = save,

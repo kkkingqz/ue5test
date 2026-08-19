@@ -96,6 +96,17 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.runtime.instance_registry",
+            source = "runtime/instance_registry.lua",
+            dependencies = {
+                "core:module.runtime.instance_allocator",
+                "core:module.runtime.mutation_window",
+                "core:module.runtime.stable_id",
+                "core:module.authoring.properties",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.runtime.world",
             source = "runtime/world.lua",
             dependencies = {},
@@ -274,6 +285,7 @@ return {
                 "core:module.authoring.presentation",
                 "core:module.authoring.field",
                 "core:module.runtime.entity_extension_registry",
+                "core:module.runtime.instance_registry",
             },
             replaceable = false,
         },
@@ -292,6 +304,7 @@ return {
                 "core:module.resources.text",
                 "core:module.runtime.state_validator",
                 "core:module.runtime.instance_allocator",
+                "core:module.runtime.instance_registry",
                 "core:module.runtime.state_hasher",
                 "core:module.runtime.migrate",
                 "core:module.runtime.save",

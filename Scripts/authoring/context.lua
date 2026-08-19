@@ -19,6 +19,7 @@ local properties_module = require("core:module.authoring.properties")
 local presentation_module = require("core:module.authoring.presentation")
 local entity_extension_registry = require("core:module.runtime.entity_extension_registry")
 local field_module = require("core:module.authoring.field")
+local instance_registry = require("core:module.runtime.instance_registry")
 
 local M = {
     id = "core:module.authoring.context",
@@ -256,6 +257,22 @@ function M.gameplay(package_id, opt_module_id)
     mod.Quest = M.create_entity_prototype_proxy("Quest", package_id, opt_module_id)
     mod.Item = M.create_entity_prototype_proxy("Item", package_id, opt_module_id)
     mod.field = field_module
+
+    local instances_facade = {
+        create = function(kind, data)
+            if game and game.instances and game.instances.create then
+                return game.instances.create(kind, data)
+            end
+            return instance_registry.create(kind, data)
+        end,
+        register_kind = function(kind, opt_spec)
+            if game and game.instances and game.instances.register_kind then
+                return game.instances.register_kind(kind, opt_spec)
+            end
+            return instance_registry.register_kind(kind, opt_spec)
+        end,
+    }
+    mod.instances = instances_facade
 
     local def_proxy = setmetatable({}, {
         __index = function(_, kind)
@@ -518,7 +535,7 @@ end
 
 function M.create_authoring_environment(package_id, opt_module_id)
     local mod = M.gameplay(package_id, opt_module_id)
-    local env = {
+    local env_values = {
         commands = mod.commands,
         actions = mod.actions,
         player = mod.player,
@@ -539,10 +556,15 @@ function M.create_authoring_environment(package_id, opt_module_id)
         Quest = mod.Quest,
         Item = mod.Item,
         field = mod.field,
+        instances = mod.instances,
     }
 
+    local env = {}
     setmetatable(env, {
         __index = function(_, key)
+            if env_values[key] ~= nil then
+                return env_values[key]
+            end
             if type(key) == "string" and key:match("^[A-Z][a-zA-Z0-9_]*$") then
                 if mod[key] then
                     return mod[key]
