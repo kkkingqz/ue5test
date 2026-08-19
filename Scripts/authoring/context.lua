@@ -37,6 +37,14 @@ function M.get_current_scope()
     return current_scope
 end
 
+function M.guard_validator_side_effect(operation_name)
+    if current_scope.kind == "validator" then
+        error("AuthoringValidatorSideEffectDisallowed: validator '" .. tostring(current_scope.validator_id)
+            .. "' in package '" .. tostring(current_scope.package_id)
+            .. "' attempted side-effect operation '" .. tostring(operation_name or "unknown") .. "'", 2)
+    end
+end
+
 local function canonicalize_error_id(package_id, key)
     if stable_id.is_kind(key, "error") then
         return key
@@ -332,6 +340,7 @@ function M.gameplay(package_id, opt_module_id)
     end
 
     function mod.emit(event_name, payload)
+        M.guard_validator_side_effect("emit")
         local canonical_event_id = canonicalize_event_id(package_id, event_name)
         local canonical_payload = tagged_ref.canonicalize_arg(payload or {})
         portable_value.validate(canonical_payload, "event_payload")
@@ -399,6 +408,8 @@ function M.gameplay(package_id, opt_module_id)
     function mod.fail(key, params)
         return M.fail(key, params, package_id)
     end
+
+    mod.guard_validator_side_effect = M.guard_validator_side_effect
 
     local declared_validators = {}
     local declared_validators_order = {}
@@ -708,7 +719,17 @@ function M.with_isolated_context(fn)
     local event_bus = require("core:module.runtime.event_bus")
     return handler_registry.with_isolated_handlers(function()
         return event_bus.with_isolated_subscribers(function()
-            return M.with_isolated_validators(fn)
+            return M.with_isolated_validators(function()
+                local prev_phase = game and game.runtime and game.runtime.phase
+                local ok, res = pcall(fn)
+                if game and game.runtime and prev_phase then
+                    game.runtime.phase = prev_phase
+                end
+                if not ok then
+                    error(res, 0)
+                end
+                return res
+            end)
         end)
     end)
 end
@@ -726,6 +747,7 @@ function M.create_authoring_environment(package_id, opt_module_id)
         actor = mod.actor,
         actors = mod.actors,
         fail = mod.fail,
+        guard_validator_side_effect = M.guard_validator_side_effect,
         emit = mod.emit,
         on = mod.on,
         text = mod.text,

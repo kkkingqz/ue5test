@@ -64,7 +64,7 @@ Runtime для этого уже готов: реестр валидаторов
 
 - [x] M1 — [Argument Decoding](ArgumentDecoding.md): ядро перестаёт знать имена игровых параметров; одно декодирование на обработчик и валидатор. CVA-01…03.
 - [x] M2 — [Validator Authoring](ValidatorAuthoring.md): `validate()`, execution scope, `fail()` в scope валидатора, разрешение target на заморозке. CVA-04…08.
-- [ ] M3 — [Side Effect Guards](SideEffectGuards.md): охранники в четырёх точках и спеки на отказ. CVA-09…11.
+- [x] M3 — [Side Effect Guards](SideEffectGuards.md): охранники в четырёх точках и спеки на отказ. CVA-09…11.
 - [ ] M4 — [Handler Replacement](HandlerReplacement.md): явная заменяемость команды и сквозная верификация. CVA-12…13.
 
 ## Критический путь

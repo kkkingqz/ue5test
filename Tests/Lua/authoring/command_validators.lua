@@ -1,4 +1,4 @@
--- CVA-04..08: Command Validator Authoring Specification (ADR-0033)
+-- CVA-04..11: Command Validator Authoring Specification (ADR-0033)
 -- Verifies:
 --   1. Execution scope tracking (none | command | validator | event) and restoration on success, refusal, and exception.
 --   2. fail() in validator scope returning typed refusal with declaring package namespace.
@@ -10,10 +10,20 @@
 --   8. Ordered execution and first-refusal-wins skipping handler without fault.
 --   9. Identical argument decoding for handler and validator across positional, empty, and map forms.
 --  10. Presence of validate() in authoring environment _ENV.
+--  11. Side-effect guards in validator scope: emit, show_screen, commands.*:later, service mutation
+--      throwing AuthoringValidatorSideEffectDisallowed with package, validator ID, and operation name.
+--  12. State mutation (MutationWindowClosed) and nested run (CommandDispatchReentrant) rejection in validator.
+--  13. Allowed read-only queries: player/world, definitions, text spec, action DTO, pure computation.
+--  14. Deferred commands (later) passing through validators.
+--  15. Validators executing before handler lookup (unknown command returns validator refusal first).
 
 local authoring_context = require("core:module.authoring.context")
 local handler_registry = require("core:module.runtime.handler_registry")
 local mutation_window = require("core:module.runtime.mutation_window")
+local properties = require("core:module.authoring.properties")
+local actor_registry = require("core:module.runtime.actor_registry")
+local command_dispatcher = require("core:module.runtime.command_dispatcher")
+local validator_registry = require("core:module.runtime.validator_registry")
 
 return {
     execution_scope_tracking_and_restoration = function()
@@ -425,6 +435,340 @@ return {
 
             local res = env.commands.test_env_cmd:run()
             assert(res ~= nil and res.ok == true, "Command declared via _ENV must run successfully")
+        end)
+    end,
+
+    side_effect_emit_disallowed_in_validator = function()
+        authoring_context.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.commands.test_cmd = function() return { ok = true } end
+
+            -- 1. mod.emit() inside validator
+            M.validate(M.commands.test_cmd, "bad_emit", function()
+                M.emit("test_event", {})
+            end)
+
+            M.register()
+            authoring_context.freeze()
+
+            local ok, err = pcall(function()
+                M.commands.test_cmd:run()
+            end)
+            assert(not ok, "emit() inside validator must fail")
+            assert(string.find(tostring(err), "AuthoringValidatorSideEffectDisallowed"), "Error must mention AuthoringValidatorSideEffectDisallowed, got: " .. tostring(err))
+            assert(string.find(tostring(err), "rh:validator.rh.test_cmd.bad_emit"), "Error must mention validator ID")
+            assert(string.find(tostring(err), "emit"), "Error must mention attempted operation 'emit'")
+
+            -- 2. Direct game.events.enqueue inside validator
+            local M2 = authoring_context.gameplay("rh2")
+            M2.commands.test_cmd2 = function() return { ok = true } end
+            M2.validate(M2.commands.test_cmd2, "bad_direct_emit", function()
+                game.events.enqueue({
+                    event_id = "rh2:event.direct_event",
+                    payload = {},
+                })
+            end)
+            M2.register()
+            authoring_context.freeze()
+
+            local ok2, err2 = pcall(function()
+                M2.commands.test_cmd2:run()
+            end)
+            assert(not ok2, "direct game.events.enqueue inside validator must fail")
+            assert(string.find(tostring(err2), "AuthoringValidatorSideEffectDisallowed"), "Error must mention AuthoringValidatorSideEffectDisallowed, got: " .. tostring(err2))
+        end)
+    end,
+
+    side_effect_show_screen_disallowed_in_validator = function()
+        authoring_context.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.commands.test_cmd = function() return { ok = true } end
+
+            M.validate(M.commands.test_cmd, "bad_screen", function()
+                M.show_screen({
+                    template = "main",
+                    description = M.text("desc"),
+                    buttons = {},
+                })
+            end)
+
+            M.register()
+            authoring_context.freeze()
+
+            local ok, err = pcall(function()
+                M.commands.test_cmd:run()
+            end)
+            assert(not ok, "show_screen() inside validator must fail")
+            assert(string.find(tostring(err), "AuthoringValidatorSideEffectDisallowed"), "Error must mention AuthoringValidatorSideEffectDisallowed, got: " .. tostring(err))
+            assert(string.find(tostring(err), "rh:validator.rh.test_cmd.bad_screen"), "Error must mention validator ID")
+            assert(string.find(tostring(err), "show_screen"), "Error must mention operation 'show_screen'")
+        end)
+    end,
+
+    side_effect_later_disallowed_in_validator = function()
+        authoring_context.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.commands.target_cmd = function() return { ok = true } end
+            M.commands.other_cmd = function() return { ok = true } end
+
+            -- 1. Descriptor :later() inside validator
+            M.validate(M.commands.target_cmd, "bad_later", function()
+                M.commands.other_cmd:later()
+            end)
+
+            M.register()
+            authoring_context.freeze()
+
+            local ok, err = pcall(function()
+                M.commands.target_cmd:run()
+            end)
+            assert(not ok, ":later() inside validator must fail")
+            assert(string.find(tostring(err), "AuthoringValidatorSideEffectDisallowed"), "Error must mention AuthoringValidatorSideEffectDisallowed, got: " .. tostring(err))
+            assert(string.find(tostring(err), "rh:validator.rh.target_cmd.bad_later"), "Error must mention validator ID")
+            assert(string.find(tostring(err), "commands.*:later"), "Error must mention 'commands.*:later'")
+
+            -- 2. Direct game.commands.enqueue inside validator
+            local M2 = authoring_context.gameplay("rh2")
+            M2.commands.target_cmd2 = function() return { ok = true } end
+            M2.validate(M2.commands.target_cmd2, "bad_direct_enqueue", function()
+                game.commands.enqueue({
+                    command_id = "rh2:command.target_cmd2",
+                    args = {},
+                })
+            end)
+            M2.register()
+            authoring_context.freeze()
+
+            local ok2, err2 = pcall(function()
+                M2.commands.target_cmd2:run()
+            end)
+            assert(not ok2, "direct game.commands.enqueue inside validator must fail")
+            assert(string.find(tostring(err2), "AuthoringValidatorSideEffectDisallowed"), "Error must mention AuthoringValidatorSideEffectDisallowed, got: " .. tostring(err2))
+        end)
+    end,
+
+    side_effect_service_mutation_disallowed_in_validator = function()
+        authoring_context.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.commands.test_cmd = function() return { ok = true } end
+
+            -- Mutating service entry point
+            local mock_trade_service = {
+                transfer_gold = function(amount)
+                    authoring_context.guard_validator_side_effect("service.trade.transfer_gold")
+                end,
+            }
+
+            M.validate(M.commands.test_cmd, "bad_service_call", function()
+                mock_trade_service.transfer_gold(50)
+            end)
+
+            M.register()
+            authoring_context.freeze()
+
+            local ok, err = pcall(function()
+                M.commands.test_cmd:run()
+            end)
+            assert(not ok, "Mutating service call inside validator must fail")
+            assert(string.find(tostring(err), "AuthoringValidatorSideEffectDisallowed"), "Error must mention AuthoringValidatorSideEffectDisallowed, got: " .. tostring(err))
+            assert(string.find(tostring(err), "rh:validator.rh.test_cmd.bad_service_call"), "Error must mention validator ID")
+            assert(string.find(tostring(err), "service.trade.transfer_gold"), "Error must mention operation 'service.trade.transfer_gold'")
+        end)
+    end,
+
+    state_mutation_and_nested_run_disallowed_in_validator = function()
+        authoring_context.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            M.commands.target_cmd = function() return { ok = true } end
+            M.commands.nested_cmd = function() return { ok = true } end
+
+            -- 1. Direct state mutation in validator fails via closed mutation window
+            M.validate(M.commands.target_cmd, "bad_state_mutation", function()
+                game.state.world = { current_location_id = "core:location.city.tavern" }
+            end)
+
+            M.register()
+            authoring_context.freeze()
+
+            local ok_mut, err_mut = pcall(function()
+                M.commands.target_cmd:run()
+            end)
+            assert(not ok_mut, "State mutation in validator must fail")
+            assert(string.find(tostring(err_mut), "MutationWindowClosed"), "Error must mention MutationWindowClosed, got: " .. tostring(err_mut))
+
+            -- 2. Nested cmd:run() in validator fails via reentrant check
+            local M2 = authoring_context.gameplay("rh2")
+            M2.commands.target_cmd2 = function() return { ok = true } end
+            M2.commands.nested_cmd2 = function() return { ok = true } end
+            M2.validate(M2.commands.target_cmd2, "bad_nested_run", function()
+                M2.commands.nested_cmd2:run()
+            end)
+            M2.register()
+            authoring_context.freeze()
+
+            local ok_run, err_run = pcall(function()
+                M2.commands.target_cmd2:run()
+            end)
+            assert(not ok_run, "Nested run() in validator must fail")
+            assert(string.find(tostring(err_run), "CommandDispatchReentrant") ~= nil or string.find(tostring(err_run), "AuthoringNestedRunDisallowed") ~= nil,
+                "Error must mention reentrant / nested run error, got: " .. tostring(err_run))
+        end)
+    end,
+
+    allowed_read_only_operations_succeed_in_validator = function()
+        authoring_context.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            mutation_window.execute_in_window(function()
+                local reg = actor_registry.create_registry()
+                reg.register_type("character", function(base) return {} end)
+                game.instances = game.instances or {}
+                game.instances.actors = reg
+                local hero = reg.create("rh:actor.character.hero", {
+                    stamina = 100,
+                    gold = 50,
+                })
+                game.state.meta.player_actor_id = hero.instance_id
+            end)
+
+            local handler_called = false
+            M.commands.buy = function(cost)
+                handler_called = true
+                return { ok = true }
+            end
+
+            M.validate(M.commands.buy, "check_funds", function(cost)
+                -- 1. Read player wrapper properties
+                local p = M.player
+                assert(p ~= nil, "Player should be readable")
+                assert(p.gold == 50, "Player gold should be 50")
+                assert(p.stamina == 100, "Player stamina should be 100")
+
+                -- 2. Read world
+                local w = M.world
+                assert(w ~= nil, "World should be readable")
+
+                -- 3. Read repository
+                if game.repository and game.repository.exists then
+                    local exists = game.repository.exists("rh:actor.character.hero")
+                end
+
+                -- 4. Text spec creation (pure, no side effect)
+                local txt = M.text("some_key", { amount = cost })
+                assert(txt.text_id == "rh:text.some_key", "TextSpec should be created")
+
+                -- 5. Action creation (pure, no side effect)
+                local act = M.action(M.commands.buy, 10)
+                assert(act.command_id == "rh:command.buy", "Action should be created")
+
+                -- 6. Check condition and fail if cost > gold
+                if cost > p.gold then
+                    M.fail("insufficient_funds", { cost = cost, available = p.gold })
+                end
+            end)
+
+            M.register()
+            authoring_context.freeze()
+
+            -- Path A: Allowed
+            local res_ok = M.commands.buy:run(30)
+            assert(res_ok ~= nil and res_ok.ok == true, "Command should succeed when cost <= gold")
+            assert(handler_called == true, "Handler should be called")
+
+            -- Path B: Refused
+            handler_called = false
+            local res_fail = M.commands.buy:run(100)
+            assert(res_fail ~= nil and res_fail.ok == false, "Command should be refused when cost > gold")
+            assert(res_fail.error.code == "rh:error.insufficient_funds", "Refusal code should match")
+            assert(res_fail.error.params.cost == 100, "Params cost should match")
+            assert(res_fail.error.params.available == 50, "Params available should match")
+            assert(handler_called == false, "Handler should not be called")
+        end)
+    end,
+
+    deferred_command_later_executes_validators = function()
+        authoring_context.with_isolated_context(function()
+            local M = authoring_context.gameplay("rh")
+            mutation_window.execute_in_window(function()
+                if not (game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player()) then
+                    local reg = actor_registry.create_registry()
+                    reg.register_type("character", function(base) return {} end)
+                    game.instances = game.instances or {}
+                    game.instances.actors = reg
+                    local hero = reg.create("rh:actor.character.hero", {
+                        stamina = 20,
+                        gold = 50,
+                    })
+                    game.state.meta.player_actor_id = hero.instance_id
+                end
+            end)
+
+            local handler_calls = 0
+            M.commands.queued_action = function(val)
+                handler_calls = handler_calls + 1
+                return { ok = true }
+            end
+
+            M.validate(M.commands.queued_action, "positive_only", function(val)
+                if val < 0 then
+                    M.fail("negative_not_allowed", { val = val })
+                end
+            end)
+
+            M.register()
+            authoring_context.freeze()
+
+            game.commands.clear_queue()
+            M.commands.queued_action:later(-10)
+            M.commands.queued_action:later(20)
+
+            assert(game.commands.get_queue_length() == 2, "Queue length should be 2")
+
+            command_dispatcher.drain_queue()
+            assert(game.commands.get_queue_length() == 0, "Queue should be completely drained")
+            assert(handler_calls == 1, "Handler should have run only for the valid command, got " .. tostring(handler_calls))
+        end)
+    end,
+
+    validators_run_before_handler_lookup = function()
+        authoring_context.with_isolated_context(function()
+            -- Case A: Validator on unregistered command returns typed refusal
+            game.commands.validators.register("rh:validator.rh.unregistered.reject_all", {
+                validate = function(ctx)
+                    if ctx.command_id == "rh:command.unregistered_cmd" then
+                        return false, { code = "rh:error.custom_precondition", params = { checked = true } }
+                    end
+                    return true
+                end,
+            })
+
+            pcall(function()
+                game.runtime.dispatch_command({
+                    command_id = "rh:command.unregistered_cmd",
+                    args = {},
+                })
+            end)
+            local res_a = game.runtime.last_command_result
+            assert(res_a ~= nil and res_a.ok == false, "Command result should be false")
+            assert(res_a.error.code == "rh:error.custom_precondition", "Error should be validator's refusal, not unknown command: " .. tostring(res_a.error.code))
+
+            -- Case B: Validator allows, then dispatcher reports unknown command
+            authoring_context.with_isolated_context(function()
+                game.commands.validators.register("rh:validator.rh.unregistered_b.allow", {
+                    validate = function(ctx)
+                        return true
+                    end,
+                })
+
+                pcall(function()
+                    game.runtime.dispatch_command({
+                        command_id = "rh:command.unregistered_b",
+                        args = {},
+                    })
+                end)
+                local res_b = game.runtime.last_command_result
+                assert(res_b ~= nil and res_b.ok == false, "Command result should be false")
+                assert(res_b.error.code == "core:error.command.unknown", "Error should be core:error.command.unknown: " .. tostring(res_b.error.code))
+            end)
         end)
     end,
 }

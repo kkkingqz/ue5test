@@ -21,6 +21,10 @@ function M.create(screen_id, fields)
 end
 
 function M.publish(screen)
+    local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+    if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+        ctx_mod.guard_validator_side_effect("show_screen")
+    end
     assert(type(screen) == "table", "screen request must be a table")
     pending_screen = screen
 end

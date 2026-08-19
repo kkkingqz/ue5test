@@ -147,6 +147,11 @@ end
 
 function M.create_show_screen_helper(package_id)
     return function(spec)
+        local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+        if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+            ctx_mod.guard_validator_side_effect("show_screen")
+        end
+
         if type(spec) ~= "table" then
             error("InvalidShowScreenSpec: show_screen() requires a table specification", 2)
         end

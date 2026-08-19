@@ -49,6 +49,11 @@ function CommandDescriptorMethods:run(...)
 end
 
 function CommandDescriptorMethods:later(...)
+    local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+    if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+        ctx_mod.guard_validator_side_effect("commands.*:later")
+    end
+
     local canonical_args = tagged_ref.canonicalize_args(...)
     return game.commands.enqueue({
         command_id = self.command_id,

@@ -199,6 +199,11 @@ function M.with_isolated_subscribers(body)
 end
 
 function M.enqueue(spec)
+    local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+    if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+        ctx_mod.guard_validator_side_effect("emit")
+    end
+
     if current_context == nil and not is_pumping then
         error("EventEnqueueOutsideCommandContext: cannot enqueue event outside of active command execution or event pump context", 2)
     end

@@ -82,6 +82,11 @@ local function run_validators(request)
 end
 
 function M.enqueue(request)
+    local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+    if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+        ctx_mod.guard_validator_side_effect("commands.*:later")
+    end
+
     if #deferred_command_queue >= MAX_COMMAND_QUEUE_SIZE then
         error("CommandQueueFull: command queue capacity of " .. tostring(MAX_COMMAND_QUEUE_SIZE) .. " exceeded", 2)
     end
