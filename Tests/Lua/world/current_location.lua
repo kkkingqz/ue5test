@@ -69,4 +69,25 @@ return {
         end)
         assert(write_err, "Direct write to world.current_location_id must be rejected")
     end,
+
+    textsystem_actor_isolated_from_rh_economy = function()
+        local mutation_window = require("core:module.runtime.mutation_window")
+        local player
+        mutation_window.execute_in_window(function()
+            player = game.instances.actors.player()
+            if not player then
+                player = game.instances.actors.create("sample:actor.character.hero", {
+                    current_location_id = "sample:location.hub",
+                })
+                game.state.meta.player_actor_id = player.instance_id
+            end
+        end)
+        assert(player.is_player() == true)
+        -- In TextSystem tier (without rh), RH-specific methods must not exist (INV-016)
+        assert(player.get_gold == nil, "get_gold must not exist in TextSystem tier")
+        assert(player.spend_gold == nil, "spend_gold must not exist in TextSystem tier")
+        assert(player.get_stamina == nil, "get_stamina must not exist in TextSystem tier")
+        assert(player.spend_stamina == nil, "spend_stamina must not exist in TextSystem tier")
+        assert(player.add_item == nil, "add_item must not exist in TextSystem tier")
+    end,
 }

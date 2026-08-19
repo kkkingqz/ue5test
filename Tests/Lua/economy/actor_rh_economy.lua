@@ -1,8 +1,10 @@
--- RH Character Actor Economy Methods Specification (ADR-0031, ADR-0032, RAS-08..10, RAS-17)
+-- RH Character Actor Economy Methods Specification (ADR-0031, ADR-0032, RAS-08..12, RAS-17)
 -- Verifies is_player, is_npc, get/add/spend/require for gold and stamina, add_item,
--- negative amount rejection, and absence of raw runtime imports in actors.lua.
+-- negative amount rejection, field constraint rejection, fail non-local exit, and state purity.
 
 local mutation_window = require("core:module.runtime.mutation_window")
+local state_validator = require("core:module.runtime.state_validator")
+local canonical_codec = require("core:module.runtime.canonical_codec")
 
 return {
     rh_actor_decorators_provide_economy_methods = function()
@@ -48,6 +50,15 @@ return {
                     -- require_gold fail check
                     player:require_gold(40) -- passes
 
+                    -- require_gold failure throws fail object (RAS-12)
+                    local ok_req, err_req = pcall(function()
+                        player:require_gold(1000)
+                    end)
+                    assert(not ok_req, "require_gold exceeding balance must fail")
+                    if type(err_req) == "table" and err_req.error then
+                        assert(string.find(err_req.error.code, "insufficient_gold") ~= nil)
+                    end
+
                     -- spend without enough gold
                     local ok_spend, err_spend = pcall(function()
                         player:spend_gold(100)
@@ -55,7 +66,23 @@ return {
                     assert(not ok_spend, "Spending more gold than available must fail")
                     assert(string.find(tostring(err_spend), "PreconditionNotChecked") ~= nil)
 
-                    -- Negative amount rejection (RAS-17)
+                    -- Direct invalid field assignments rejected by field contract (RAS-11, RAS-12)
+                    local ok_neg_write, _ = pcall(function()
+                        player.gold = -5
+                    end)
+                    assert(not ok_neg_write, "Direct assignment of -5 to gold must fail")
+
+                    local ok_float_write, _ = pcall(function()
+                        player.gold = 1.5
+                    end)
+                    assert(not ok_float_write, "Direct assignment of float to gold must fail")
+
+                    local ok_str_write, _ = pcall(function()
+                        player.gold = "abc"
+                    end)
+                    assert(not ok_str_write, "Direct assignment of string to gold must fail")
+
+                    -- Negative amount rejection by domain methods (RAS-17)
                     local ok_neg_gold, err_neg_gold = pcall(function()
                         player:spend_gold(-10)
                     end)
@@ -82,6 +109,17 @@ return {
                     assert(string.find(item_id, "^item@%d+$") ~= nil, "item_id must be item@<counter>")
                     assert(game.state.item_instances[item_id] ~= nil, "Item must be created in item_instances")
                     assert(game.state.item_instances[item_id].owner_id == player.instance_id, "Item owner must be player")
+
+                    -- Save container purity (INV-001, INV-008, RAS-12)
+                    local payload = canonical_codec.serialize(game.state)
+                    assert(payload ~= nil and #payload > 0, "Canonical game state must serialize cleanly")
+                    local decoded = canonical_codec.deserialize(payload)
+                    assert(decoded.actors[player.instance_id].gold == 45, "Deserialized actor gold must match")
+                    assert(decoded.actors[player.instance_id].stamina == 25, "Deserialized actor stamina must match")
+                    local ok_validate, err_validate = pcall(function()
+                        state_validator.validate_state_tree(decoded)
+                    end)
+                    assert(ok_validate, "Deserialized state tree must pass state_validator: " .. tostring(err_validate))
                 end
             end)
         end

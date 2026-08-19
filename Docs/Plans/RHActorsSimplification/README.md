@@ -54,7 +54,7 @@ decisions:
 - [x] **M1 — [Field Contracts](FieldContracts.md)**: дескрипторы полей `field.*` (`core:module.authoring.field`), интеграция с авторскими прототипами `_ENV`, композиция схем, запрет повторного объявления, сохранение проверки вида актора. RAS-01…04, RAS-13…15.
 - [x] **M2 — [Generic Instance Creation](GenericInstanceCreation.md)**: обобщённый фасад создания экземпляров `instances.create()`, канонизация дескрипторов/ссылок, реестр видов экземпляров без единого имени вида в ядре, изоляция `instance_allocator` и коллекций состояния. RAS-05…07, RAS-16.
 - [x] **M3 — [RH Actors Migration](RhActorsMigration.md)**: рефакторинг `GameData/rh/scripts/gameplay/actors.lua`, устранение `RESOURCES`, `validate_amount` и `instance_allocator`, чистые методы сущности `Actor`, локальная проверка аргументов. RAS-08…10, RAS-17.
-- [ ] **M4 — [Validation and Specs](ValidationAndSpecs.md)**: спеки валидации инвариантов полей, геймплейных отказов, создания экземпляров и кросс-хостового паритета. RAS-11…12.
+- [x] **M4 — [Validation and Specs](ValidationAndSpecs.md)**: спеки валидации инвариантов полей, геймплейных отказов, создания экземпляров и кросс-хостового паритета. RAS-11…12.
 
 ## Критический путь
 
@@ -74,16 +74,16 @@ M1 (Field Contracts) ──► M2 (Generic Instances) ──► M3 (RH Migration
 
 ## Итоговый Definition of Done
 
-- [ ] `Actor.gold` и `Actor.stamina` объявлены через `field.non_negative_integer()`.
-- [ ] Попытка записать в `actor.gold` отрицательное, дробное или строковое значение отклоняется ошибкой валидации поля.
-- [ ] `require_gold` и `require_stamina` возвращают геймплейный отказ `fail()` до мутации при недостатке ресурса.
-- [ ] `spend_gold` и `spend_stamina` не содержат дублирующих проверок `validate_amount` и underflow.
-- [ ] `Actor:get_gold()` и `Actor:get_stamina()` работают строго с `self`.
-- [ ] `Actor:add_item()` использует `instances.create("item", ...)` без прямого импорта `instance_allocator` и обращения к `game.state`.
-- [ ] Из `GameData/rh/scripts/gameplay/actors.lua` полностью удалены `RESOURCES` и `validate_amount`.
-- [ ] Поле, объявленное на `Actor`, действует и для актора, имеющего схему по `discriminator`.
-- [ ] Повторное объявление поля без `override` отклоняется `FieldAlreadyDeclared`.
-- [ ] Неизвестный `discriminator` отклоняется независимо от объявленных полей.
-- [ ] В ядре нет ни одного имени вида экземпляра; неизвестный вид — типизированный отказ.
-- [ ] `spend_gold(-10)` отклоняется проверкой аргумента в `rh`, а не проходит молча.
-- [ ] Спеки всех уровней (`Core`, `TextSystem`, `FullGame`) и replay golden-run проходят на 100% на обоих хостах.
+- [x] `Actor.gold` и `Actor.stamina` объявлены через `field.non_negative_integer()`.
+- [x] Попытка записать в `actor.gold` отрицательное, дробное или строковое значение отклоняется ошибкой валидации поля.
+- [x] `require_gold` и `require_stamina` возвращают геймплейный отказ `fail()` до мутации при недостатке ресурса.
+- [x] `spend_gold` и `spend_stamina` не содержат дублирующих проверок `validate_amount` и underflow.
+- [x] `Actor:get_gold()` и `Actor:get_stamina()` работают строго с `self`.
+- [x] `Actor:add_item()` использует `instances.create("item", ...)` без прямого импорта `instance_allocator` и обращения к `game.state`.
+- [x] Из `GameData/rh/scripts/gameplay/actors.lua` полностью удалены `RESOURCES` и `validate_amount`.
+- [x] Поле, объявленное на `Actor`, действует и для актора, имеющего схему по `discriminator`.
+- [x] Повторное объявление поля без `override` отклоняется `FieldAlreadyDeclared`.
+- [x] Неизвестный `discriminator` отклоняется независимо от объявленных полей.
+- [x] В ядре нет ни одного имени вида экземпляра; неизвестный вид — типизированный отказ.
+- [x] `spend_gold(-10)` отклоняется проверкой аргумента в `rh`, а не проходит молча.
+- [x] Спеки всех уровней (`Core`, `TextSystem`, `FullGame`) и replay golden-run проходят на 100% на обоих хостах.
