@@ -130,7 +130,39 @@ function M.create_world_proxy()
     })
 end
 
-function M.gameplay(package_id)
+function M.create_entity_prototype_proxy(entity_kind, pkg_id, opt_mod_id)
+    local mod_id = opt_mod_id or (pkg_id .. ":authoring." .. entity_kind:lower())
+    local proxy = {}
+    local mt = {
+        __newindex = function(_, method_name, fn)
+            if type(method_name) ~= "string" or method_name == "" then
+                error("InvalidMethodName: expected non-empty string method name for " .. tostring(entity_kind) .. ", got " .. tostring(method_name), 2)
+            end
+            if type(fn) ~= "function" then
+                error("InvalidMethodImplementation: expected function for " .. tostring(entity_kind) .. ":" .. tostring(method_name) .. ", got " .. type(fn), 2)
+            end
+            if game and game.entity_extensions and game.entity_extensions.register then
+                game.entity_extensions.register(mod_id, pkg_id, entity_kind, method_name, fn)
+            else
+                local ext_reg = require("core:module.runtime.entity_extension_registry")
+                ext_reg.register(mod_id, pkg_id, entity_kind, method_name, fn)
+            end
+        end,
+        __index = function(_, method_name)
+            if game and game.entity_extensions and game.entity_extensions.get_method then
+                return game.entity_extensions.get_method(entity_kind, method_name)
+            end
+            return nil
+        end,
+        __tostring = function(_)
+            return entity_kind .. "AuthoringPrototype"
+        end,
+    }
+    setmetatable(proxy, mt)
+    return proxy
+end
+
+function M.gameplay(package_id, opt_module_id)
     if type(package_id) ~= "string" or package_id == "" then
         error("InvalidPackageId: package_id must be non-empty string, got " .. tostring(package_id), 2)
     end
@@ -173,7 +205,7 @@ function M.gameplay(package_id)
                 end
                 args = val.args or {}
             else
-                error("InvalidActionBinding: expected string or table, got " .. type(val), 2)
+                error("InvalidActionValue: expected string command ID or binding table, got " .. type(val), 2)
             end
 
             declared_actions[action_id] = {
@@ -204,6 +236,10 @@ function M.gameplay(package_id)
     mod.show_screen = presentation_module.create_show_screen_helper(package_id)
     mod.player = M.create_player_proxy()
     mod.world = M.create_world_proxy()
+    mod.Actor = M.create_entity_prototype_proxy("Actor", package_id, opt_module_id)
+    mod.Location = M.create_entity_prototype_proxy("Location", package_id, opt_module_id)
+    mod.Quest = M.create_entity_prototype_proxy("Quest", package_id, opt_module_id)
+    mod.Item = M.create_entity_prototype_proxy("Item", package_id, opt_module_id)
 
     local def_proxy = setmetatable({}, {
         __index = function(_, kind)
@@ -464,8 +500,8 @@ function M.gameplay(package_id)
     return mod
 end
 
-function M.create_authoring_environment(package_id)
-    local mod = M.gameplay(package_id)
+function M.create_authoring_environment(package_id, opt_module_id)
+    local mod = M.gameplay(package_id, opt_module_id)
     local env = {
         commands = mod.commands,
         actions = mod.actions,
@@ -482,10 +518,24 @@ function M.create_authoring_environment(package_id)
         button = mod.button,
         action = mod.action,
         show_screen = mod.show_screen,
+        Actor = mod.Actor,
+        Location = mod.Location,
+        Quest = mod.Quest,
+        Item = mod.Item,
     }
 
     setmetatable(env, {
-        __index = _G,
+        __index = function(_, key)
+            if type(key) == "string" and key:match("^[A-Z][a-zA-Z0-9_]*$") then
+                if mod[key] then
+                    return mod[key]
+                end
+                local proxy = M.create_entity_prototype_proxy(key, package_id, opt_module_id)
+                mod[key] = proxy
+                return proxy
+            end
+            return _G[key]
+        end,
         __newindex = function(_, key, _)
             error("AuthoringGlobalWriteDisallowed: cannot assign global variable '" .. tostring(key) .. "' in authoring module", 2)
         end,

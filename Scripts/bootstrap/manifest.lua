@@ -266,6 +266,7 @@ return {
                 "core:module.authoring.commands",
                 "core:module.authoring.properties",
                 "core:module.authoring.presentation",
+                "core:module.runtime.entity_extension_registry",
             },
             replaceable = false,
         },

@@ -23,24 +23,24 @@ decisions:
 
 ## Задачи
 
-- [ ] **EAE-05 — Контролируемые прокси-прототипы в `_ENV` (`authoring_context.lua`)**
+- [x] **EAE-05 — Контролируемые прокси-прототипы в `_ENV` (`authoring_context.lua`)**
   - Зависимости: EAE-04.
-  - Done: `Scripts/authoring/context.lua` инжектирует в `_ENV` прокси для `Actor`, `Location`, `Quest`, `Item`; метаметод `__newindex` валидирует типы и делегирует регистрацию в `entity_extension_registry` с автоматической передачей `source_module` и `package_id`; метаметод `__index` возвращает методы для инспекции.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: `Scripts/authoring/context.lua` инжектирует в `_ENV` прокси для `Actor`, `Location`, `Quest`, `Item`; метаметод `__newindex` валидирует типы и делегирует регистрацию в `entity_extension_registry` с автоматической передачей `source_module` и `package_id`; метаметод `__index` возвращает методы для инспекции; не-прототипные присваивания в `_ENV` отклоняются с `AuthoringGlobalWriteDisallowed`.
+  - Evidence: `Scripts/authoring/context.lua`, `Tests/Lua/authoring/simplified_surface.lua:entity_authoring_prototypes_and_method_registration`.
 
-- [ ] **EAE-06 — Атрибуция пакета и контекст `fail()` в методах сущностей**
+- [x] **EAE-06 — Атрибуция пакета и контекст `fail()` в методах сущностей**
   - Зависимости: EAE-05.
   - Done: при вызове метода сущности, использующего `authoring_context.fail(key, params)` или `fail(key, params)`, код ошибки канонизируется пространством имён пакета, в котором метод был **объявлен** (`declaring_package_id`), независимо от вызывающей команды.
-  - Evidence: <!-- tests/commit/PR -->
+  - Evidence: `Scripts/authoring/context.lua`, `Tests/Lua/authoring/simplified_surface.lua:entity_method_fail_package_attribution`.
 
-- [ ] **EAE-07 — Интеграция с валидацией Managed Properties (DLA-12)**
+- [x] **EAE-07 — Интеграция с валидацией Managed Properties (DLA-12)**
   - Зависимости: EAE-05.
-  - Done: фаза заморозки `actor_registry.freeze()` проверяет наличие заявленных в схеме managed-операций (`operations: [...]`) в скомпонованной `effective method table` сущности, а не в устаревших ручных фабриках декораторов.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: фаза заморозки `actor_registry.freeze()` проверяет наличие заявленных в схеме managed-операций (`operations: [...]`) в скомпонованной `effective method table` сущности (`game.entity_extensions`), поддерживая также обратную совместимость с legacy-декораторами.
+  - Evidence: `Scripts/runtime/actor_registry.lua`, `Tests/Lua/authoring/simplified_surface.lua:managed_properties_validation_with_entity_extensions`.
 
 ## Проверка milestone
 
-- [ ] Синтаксис `function Actor:test_method()` работает внутри authoring-скрипта без `register_type`.
-- [ ] Ошибки `fail()` внутри метода сущности имеют префикс пакета объявления метода.
-- [ ] Managed-поля схемы акторов корректно валидируются по `effective method table`.
-- [ ] Модули программиста и стандартный `_G` не подвергаются загрязнению глобальными переменными.
+- [x] Синтаксис `function Actor:test_method()` работает внутри authoring-скрипта без `register_type`.
+- [x] Ошибки `fail()` внутри метода сущности имеют префикс пакета объявления метода.
+- [x] Managed-поля схемы акторов корректно валидируются по `effective method table`.
+- [x] Модули программиста и стандартный `_G` не подвергаются загрязнению глобальными переменными.

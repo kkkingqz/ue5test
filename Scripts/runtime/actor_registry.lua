@@ -63,24 +63,26 @@ function M.create_registry()
         is_frozen = true
         properties.freeze()
 
-        -- Verify that for all registered schemas, any managed field's declared operations exist on the decorator (DLA-12)
+        -- Verify that for all registered schemas, any managed field's declared operations exist on the decorator or in entity_extension_registry (DLA-12 / EAE-07)
         for disc, schema in pairs(properties.schemas()) do
             if schema and schema.fields then
                 for field_name, fspec in pairs(schema.fields) do
                     if fspec.write_policy == "managed" and fspec.operations then
                         local decorator = type_decorators[disc]
-                        if not decorator then
-                            error("MissingDomainOperation: discriminator '" .. tostring(disc) .. "' has managed field '" .. tostring(field_name) .. "' but no decorator registered", 2)
-                        end
                         local dummy_base = {
                             instance_id = "test@0",
                             definition_id = "core:actor.test",
                             discriminator = disc,
                             get_state = function() return {} end,
                         }
-                        local dummy_decorated = decorator(dummy_base)
+                        local dummy_decorated = decorator and decorator(dummy_base)
                         for _, op_name in ipairs(fspec.operations) do
-                            if type(dummy_decorated[op_name]) ~= "function" then
+                            local exists_on_decorator = dummy_decorated and type(dummy_decorated[op_name]) == "function"
+                            local exists_in_extensions = false
+                            if game and game.entity_extensions and game.entity_extensions.get_method then
+                                exists_in_extensions = type(game.entity_extensions.get_method("Actor", op_name)) == "function"
+                            end
+                            if not exists_on_decorator and not exists_in_extensions then
                                 error("MissingDomainOperation: operation '" .. tostring(op_name) .. "' declared in schema for managed field '" .. tostring(field_name) .. "' is not defined on actor type '" .. tostring(disc) .. "'", 2)
                             end
                         end
@@ -122,6 +124,12 @@ function M.create_registry()
             end
             if decorated_val ~= nil then
                 return decorated_val
+            end
+            if game and game.entity_extensions and game.entity_extensions.get_method then
+                local ext_fn = game.entity_extensions.get_method("Actor", k)
+                if ext_fn ~= nil then
+                    return ext_fn
+                end
             end
             local schema = properties.get_schema(discriminator) or (actor_state.definition_id and properties.get_schema(actor_state.definition_id))
             if schema and schema.fields and schema.fields[k] then

@@ -37,7 +37,7 @@ decisions:
 ## Milestones
 
 - [x] **M1 — [Extension Registry](ExtensionRegistry.md)**: централизованный реестр расширений сущностей (`core:module.runtime.entity_extension_registry`), детерминированная композиция `effective method table`, проверка конфликтов и дубликатов на этапе инициализации.
-- [ ] **M2 — [Authoring Prototypes](AuthoringPrototypes.md)**: инжекция контролируемых прокси-прототипов (`Actor`, `Location`, `Quest`, `Item`) в `_ENV` authoring-скриптов, сбор деклараций через `__newindex`, контекст пакета для `fail()`, интеграция с валидацией managed properties (DLA-12).
+- [x] **M2 — [Authoring Prototypes](AuthoringPrototypes.md)**: инжекция контролируемых прокси-прототипов (`Actor`, `Location`, `Quest`, `Item`) в `_ENV` authoring-скриптов, сбор деклараций через `__newindex`, контекст пакета для `fail()`, интеграция с валидацией managed properties (DLA-12).
 - [ ] **M3 — [Actor Migration](ActorMigration.md)**: миграция методов `Actor` в `textsystem` (`is_player`, `is_npc`, `require_location`, `move_to`) и `rh` (`get_gold`, `add_gold`, `require_gold`, `spend_gold`, `add_item`), удаление низкоуровневых декораторов из игровых пакетов.
 - [ ] **M4 — [Definition Extension and Validation](DefinitionExtensionAndValidation.md)**: расширение определений (`Location`), контракт `self` для definition vs instance, кросс-слойная изоляция и спеки для всех уровней тестирования (`Core`, `TextSystem`, `FullGame`).
 

@@ -30,6 +30,12 @@ return {
         assert(type(env.action) == "function", "env.action must be a function")
         assert(type(env.show_screen) == "function", "env.show_screen must be a function")
 
+        -- Pre-bound entity authoring prototypes (EAE-05)
+        assert(env.Actor == mod.Actor, "env.Actor must map to mod.Actor")
+        assert(env.Location == mod.Location, "env.Location must map to mod.Location")
+        assert(env.Quest == mod.Quest, "env.Quest must map to mod.Quest")
+        assert(env.Item == mod.Item, "env.Item must map to mod.Item")
+
         -- Standard globals accessible via __index
         assert(env.type == type, "standard globals must be accessible via _ENV")
         assert(env.assert == assert, "standard globals must be accessible via _ENV")
@@ -626,6 +632,135 @@ return {
             local r3 = game.runtime.last_command_result
             assert(r3 ~= nil and r3.ok == true, "buy 3rd item definition must succeed without new Lua")
             assert(hero.gold == 50, "gold must be 65 - 15 = 50")
+        end)
+    end,
+
+    entity_authoring_prototypes_and_method_registration = function()
+        game.entity_extensions.with_isolated_extensions(function()
+            local mod, env = authoring_context.create_authoring_environment("rh", "rh:authoring.test_entities")
+
+            -- 1. Declare method on Actor prototype
+            function env.Actor:spec_add_points(pts)
+                self.points = (self.points or 0) + pts
+                return self.points
+            end
+
+            -- 2. Declare method on Location prototype
+            function env.Location:spec_is_peaceful()
+                return (self.danger_level or 0) == 0
+            end
+
+            -- 3. Declare method on dynamic PascalCase prototype (Faction)
+            function env.Faction:spec_reputation_level()
+                return "neutral"
+            end
+
+            -- 4. Verify methods registered in entity_extension_registry
+            assert(game and game.entity_extensions, "game.entity_extensions must exist")
+            local actor_fn = game.entity_extensions.get_method("Actor", "spec_add_points")
+            assert(type(actor_fn) == "function", "spec_add_points must be registered on Actor")
+
+            local loc_fn = game.entity_extensions.get_method("Location", "spec_is_peaceful")
+            assert(type(loc_fn) == "function", "spec_is_peaceful must be registered on Location")
+
+            local faction_fn = game.entity_extensions.get_method("Faction", "spec_reputation_level")
+            assert(type(faction_fn) == "function", "spec_reputation_level must be registered on Faction")
+
+            -- 5. Test invoking methods on mock objects
+            local test_actor = { points = 10 }
+            local new_pts = actor_fn(test_actor, 25)
+            assert(new_pts == 35 and test_actor.points == 35)
+
+            local test_loc = { danger_level = 0 }
+            assert(loc_fn(test_loc) == true)
+            test_loc.danger_level = 3
+            assert(loc_fn(test_loc) == false)
+        end)
+    end,
+
+    entity_method_fail_package_attribution = function()
+        game.entity_extensions.with_isolated_extensions(function()
+            handler_registry.with_isolated_handlers(function()
+                local mod, env = authoring_context.create_authoring_environment("rh", "rh:authoring.test_fail")
+
+                -- Declare an Actor method in package 'rh' that calls fail()
+                function env.Actor:spec_require_mana(required_mana)
+                    local current = self.mana or 0
+                    if current < required_mana then
+                        env.fail("insufficient_mana", {
+                            current_mana = current,
+                            required_mana = required_mana,
+                        })
+                    end
+                end
+
+                -- Declare a command calling the method
+                env.commands.test_cast_spell = function(args)
+                    local player_actor = { instance_id = "test@0", mana = 5 }
+                    local actor_require_mana = game.entity_extensions.get_method("Actor", "spec_require_mana")
+                    actor_require_mana(player_actor, 20)
+                end
+
+                mod.register({})
+
+                mutation_window.execute_in_window(function()
+                    game.runtime.dispatch_command({
+                        command_id = "rh:command.test_cast_spell",
+                        args = {},
+                        sequence = 1201,
+                    })
+                    local res = game.runtime.last_command_result
+                    assert(res ~= nil and res.ok == false, "command must fail when Actor:spec_require_mana fails")
+                    assert(res.error ~= nil, "error object must be present")
+                    -- Verify error code is canonicalized with package 'rh'
+                    assert(res.error.code == "rh:error.insufficient_mana",
+                        "error code must be attributed to package 'rh', got: " .. tostring(res.error.code))
+                    assert(res.error.params.required_mana == 20)
+                    assert(res.error.params.current_mana == 5)
+                end)
+            end)
+        end)
+    end,
+
+    managed_properties_validation_with_entity_extensions = function()
+        local actor_reg = require("core:module.runtime.actor_registry")
+        local properties_mod = require("core:module.authoring.properties")
+
+        properties_mod.with_isolated_state(function()
+            game.entity_extensions.with_isolated_extensions(function()
+                local reg = actor_reg.create_registry()
+
+                -- Register schema with a managed field requiring operation 'add_mana'
+                properties_mod.register_schema("mage", {
+                    fields = {
+                        mana = {
+                            storage = "state",
+                            write_policy = "managed",
+                            operations = { "add_mana" },
+                            schema = { type = "integer" },
+                        },
+                    },
+                })
+
+                -- 1. Without decorator and without extension method, freeze() fails with MissingDomainOperation
+                local ok1, err1 = pcall(function()
+                    reg.freeze()
+                end)
+                assert(not ok1, "freeze must fail when managed operation is missing")
+                assert(string.find(tostring(err1), "MissingDomainOperation") ~= nil,
+                    "error must be MissingDomainOperation, got: " .. tostring(err1))
+
+                -- 2. Register 'add_mana' via game.entity_extensions
+                game.entity_extensions.register("rh:authoring.mage", "rh", "Actor", "add_mana", function(self, amt)
+                    self.mana = (self.mana or 0) + amt
+                end)
+
+                -- 3. Now freeze() succeeds because operation exists in entity_extensions
+                local ok2, err2 = pcall(function()
+                    reg.freeze()
+                end)
+                assert(ok2, "freeze must succeed when managed operation is defined in entity_extensions: " .. tostring(err2))
+            end)
         end)
     end,
 }

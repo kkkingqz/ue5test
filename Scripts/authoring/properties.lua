@@ -342,6 +342,14 @@ function M.wrap_definition(def_id)
                 return base_wrapper[k]
             end
 
+            if game and game.entity_extensions and game.entity_extensions.get_method then
+                local pascal_kind = (type(kind) == "string" and kind ~= "") and (kind:sub(1,1):upper() .. kind:sub(2)) or kind
+                local ext_fn = game.entity_extensions.get_method(pascal_kind, k) or game.entity_extensions.get_method(kind, k)
+                if ext_fn ~= nil then
+                    return ext_fn
+                end
+            end
+
             local def = get_def_data()
             local discriminator = nil
             if def then
