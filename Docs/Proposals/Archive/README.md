@@ -21,5 +21,6 @@ depends_on:
 | [SimplifiedAuthoringSurfaceProposal](SimplifiedAuthoringSurfaceProposal.md) | [SimplifiedAuthoringSurface](../../Plans/Archive/SimplifiedAuthoringSurface/README.md) | Окружение authoring-скрипта без `M.`, автообнаружение модулей, источник презентации |
 | [TextSystemLayerProposal](TextSystemLayerProposal.md) | [TextSystemLayer](../../Plans/Archive/TextSystemLayer/README.md) | Слой `textsystem` между движком и игрой; набор пакетов из данных |
 | [EntityAuthoringExtensionProposal](EntityAuthoringExtensionProposal.md) | [EntityAuthoringExtensions](../../Plans/Archive/EntityAuthoringExtensions/README.md) | Декларативное расширение доменных сущностей через авторские прототипы `_ENV` |
+| [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | [CommandValidators](../../Plans/Archive/CommandValidators/README.md) | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | — | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
 | [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification/README.md) | Контракты полей `field.*`, композиция схем, обобщённое создание экземпляров |

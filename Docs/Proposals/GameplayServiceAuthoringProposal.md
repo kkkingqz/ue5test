@@ -5,7 +5,7 @@ proposal_state: accepted_for_planning
 version: 1.0
 updated: 2026-08-19
 depends_on:
-  - CommandValidatorAuthoringProposal.md
+  - Archive/CommandValidatorAuthoringProposal.md
   - Archive/EntityAuthoringExtensionProposal.md
   - ../Architecture/CommandsAndEvents.md
   - ../Architecture/LuaRuntimeContract.md
@@ -188,7 +188,7 @@ local trade = services["rh:service.trade"]
 
 Сервис исполняется в scope вызывающего и не создаёт собственного. Практическое следствие: сервис, вызванный из валидатора, подчиняется ограничениям валидатора.
 
-Формулировка «мутирующий сервис из валидатора завершится ошибкой мутации» недостаточна: она срабатывает, только если сервис действительно пишет в состояние. Сервис, вызывающий `emit(...)` или `commands.*:later(...)`, прошёл бы незамеченным. Поэтому охранники побочных эффектов, вводимые планом [CommandValidators](../Plans/CommandValidators/README.md), применяются к телу сервиса так же, как к телу валидатора; «мутирующие точки входа Gameplay Service» из его перечня закрываются этим правилом.
+Формулировка «мутирующий сервис из валидатора завершится ошибкой мутации» недостаточна: она срабатывает, только если сервис действительно пишет в состояние. Сервис, вызывающий `emit(...)` или `commands.*:later(...)`, прошёл бы незамеченным. Поэтому охранники побочных эффектов, вводимые планом [CommandValidators](../Plans/Archive/CommandValidators/README.md), применяются к телу сервиса так же, как к телу валидатора; «мутирующие точки входа Gameplay Service» из его перечня закрываются этим правилом.
 
 Вложенный вызов сервиса из сервиса — обычный вызов Lua: он не создаёт ни команды, ни окна мутации, ни отдельного commit.
 

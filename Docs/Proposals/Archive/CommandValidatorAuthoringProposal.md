@@ -1,25 +1,26 @@
 ---
 title: Command Validator Authoring Proposal
-status: draft
-proposal_state: accepted_for_planning
+status: archived
+proposal_state: implemented
 version: 1.1
 updated: 2026-08-19
 depends_on:
-  - Archive/DesignerLuaAuthoringProposal.md
-  - Archive/SimplifiedAuthoringSurfaceProposal.md
-  - ../Architecture/CommandsAndEvents.md
-  - ../Architecture/LuaRuntimeContract.md
-  - ../Architecture/Modding.md
+  - DesignerLuaAuthoringProposal.md
+  - SimplifiedAuthoringSurfaceProposal.md
+  - ../../Architecture/CommandsAndEvents.md
+  - ../../Architecture/LuaRuntimeContract.md
+  - ../../Architecture/Modding.md
 decisions:
-  - ../ADR/0003-command-and-event-model.md
-  - ../ADR/0027-designer-lua-authoring-layer.md
-  - ../ADR/0028-simplified-authoring-surface.md
+  - ../../ADR/0003-command-and-event-model.md
+  - ../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../ADR/0028-simplified-authoring-surface.md
+  - ../../ADR/0033-command-validator-authoring.md
 ---
 
 # Command Validator Authoring Proposal
 
 > **Предлагает:** минимальный designer-facing API `validate(command_ref, validator_name, validator_fn)` для независимых read-only policies поверх существующих Command.
-> **Затрагивает:** [Commands and Events](../Architecture/CommandsAndEvents.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Modding](../Architecture/Modding.md).
+> **Затрагивает:** [Commands and Events](../../Architecture/CommandsAndEvents.md), [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Modding](../../Architecture/Modding.md).
 > **Не является нормативным:** до принятия ADR и реализации действует текущий programmer API `game.commands.validators`.
 
 ## Контекст
@@ -189,7 +190,7 @@ local primary_arg = rehydrated.target_location_id
     or rehydrated.destination
 ```
 
-`item`, `location` и `destination` в `core` нарушают [INV-016](../Architecture/Invariants.md), и существующий гейт этого не ловит: `validate_core_boundary.py` проверяет определения, схемы и идентификаторы, а не имена переменных в Lua. Извлечение списка в общий helper удвоило бы число зависящих от него мест и превратило временную эвристику в разделяемый контракт.
+`item`, `location` и `destination` в `core` нарушают [INV-016](../../Architecture/Invariants.md), и существующий гейт этого не ловит: `validate_core_boundary.py` проверяет определения, схемы и идентификаторы, а не имена переменных в Lua. Извлечение списка в общий helper удвоило бы число зависящих от него мест и превратило временную эвристику в разделяемый контракт.
 
 Поэтому `decode_authoring_args` определяется без знания имён:
 
@@ -205,7 +206,7 @@ local primary_arg = rehydrated.target_location_id
 
 ### Целевая форма: объявленный контракт аргументов
 
-Позиционное декодирование остаётся выводом по форме значения, то есть догадкой. Целевая форма — объявленный контракт аргументов команды на словаре дескрипторов из [ADR-0032](../ADR/0032-field-contracts-and-generic-instance-creation.md):
+Позиционное декодирование остаётся выводом по форме значения, то есть догадкой. Целевая форма — объявленный контракт аргументов команды на словаре дескрипторов из [ADR-0032](../../ADR/0032-field-contracts-and-generic-instance-creation.md):
 
 ```lua
 commands.travel = {
@@ -214,7 +215,7 @@ commands.travel = {
 }
 ```
 
-Тогда декодирование становится детерминированным, Validator и handler получают одно и то же по построению, а проверка аргументов выполняется до вызова обоих — то есть закрывается и разрыв, оставленный [RHActorsSimplification](../Plans/Archive/RHActorsSimplification/README.md) при удалении `validate_amount`. Это отдельное направление со своим ADR и в v1 не входит; здесь фиксируется как цель, чтобы позиционное декодирование не закреплялось как окончательное.
+Тогда декодирование становится детерминированным, Validator и handler получают одно и то же по построению, а проверка аргументов выполняется до вызова обоих — то есть закрывается и разрыв, оставленный [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification/README.md) при удалении `validate_amount`. Это отдельное направление со своим ADR и в v1 не входит; здесь фиксируется как цель, чтобы позиционное декодирование не закреплялось как окончательное.
 
 Для одного request:
 
@@ -328,7 +329,7 @@ Validator является отдельной policy и не принадлеж�
 
 **Сегодня замена handler происходит молча.** Authoring adapter регистрирует обработчик как `register(cmd_id, wrapped_handler, { override = exists })`: более поздний пакет заменяет существующий обработчик без единого сигнала. Предложение впервые делает эту операцию значимой — Validators чужих пакетов переживают замену и продолжают ограничивать Command, реализацию которой они больше не видели.
 
-Поэтому замена обработчика переводится на явное объявление: команда, допускающая замену, помечается заменяемой, иначе повторная регистрация отклоняется. Это та же форма, что выбрана для замещения Lua-модулей ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)) и для повторного объявления поля ([ADR-0032](../ADR/0032-field-contracts-and-generic-instance-creation.md)): запечатано по умолчанию, заменяемо по явному признаку.
+Поэтому замена обработчика переводится на явное объявление: команда, допускающая замену, помечается заменяемой, иначе повторная регистрация отклоняется. Это та же форма, что выбрана для замещения Lua-модулей ([ADR-0025](../../ADR/0025-lua-module-replacement-and-export-freezing.md)) и для повторного объявления поля ([ADR-0032](../../ADR/0032-field-contracts-and-generic-instance-creation.md)): запечатано по умолчанию, заменяемо по явному признаку.
 
 Замена обработчика не принадлежит механизму Validators и выполняется отдельной задачей плана.
 

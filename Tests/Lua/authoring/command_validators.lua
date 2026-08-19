@@ -771,4 +771,85 @@ return {
             end)
         end)
     end,
+
+    command_replacement_rejected_when_not_declared_replaceable = function()
+        authoring_context.with_isolated_context(function()
+            local M_base = authoring_context.gameplay("base_pkg")
+            local M_mod = authoring_context.gameplay("mod_pkg")
+
+            -- Base package declares non-replaceable command
+            M_base.commands.sealed_action = function()
+                return { ok = true, from = "base_pkg" }
+            end
+            M_base.register()
+
+            -- Mod package attempts to replace sealed command
+            M_mod.commands["base_pkg:command.sealed_action"] = function()
+                return { ok = true, from = "mod_pkg" }
+            end
+
+            local ok_reg, err_reg = pcall(function()
+                M_mod.register()
+            end)
+
+            assert(not ok_reg, "Replacing sealed command must fail")
+            assert(string.find(tostring(err_reg), "CommandNotReplaceable"),
+                "Error must mention CommandNotReplaceable, got: " .. tostring(err_reg))
+            assert(string.find(tostring(err_reg), "base_pkg"),
+                "Error must mention declaring package 'base_pkg', got: " .. tostring(err_reg))
+            assert(string.find(tostring(err_reg), "mod_pkg"),
+                "Error must mention replacing package 'mod_pkg', got: " .. tostring(err_reg))
+        end)
+    end,
+
+    command_replacement_succeeded_when_declared_replaceable_and_preserves_validators = function()
+        authoring_context.with_isolated_context(function()
+            local M_base = authoring_context.gameplay("base_pkg")
+            local M_curse = authoring_context.gameplay("curse_pkg")
+            local M_mod = authoring_context.gameplay("mod_pkg")
+
+            -- 1. Base package declares replaceable command
+            M_base.commands.open_action = {
+                handler = function(val)
+                    return { ok = true, from = "base_pkg", val = val }
+                end,
+                replaceable = true,
+            }
+            M_base.register()
+
+            -- 2. Curse package attaches validator to the base command
+            M_curse.validate("base_pkg:command.open_action", "block_negative", function(val)
+                if val < 0 then
+                    M_curse.fail("blocked", { val = val })
+                end
+            end)
+            M_curse.register()
+
+            -- 3. Mod package replaces handler of the replaceable command
+            local mod_handler_called = false
+            M_mod.commands["base_pkg:command.open_action"] = function(val)
+                mod_handler_called = true
+                return { ok = true, from = "mod_pkg", val = val * 2 }
+            end
+            M_mod.register()
+
+            authoring_context.freeze()
+
+            -- Path A: Validator blocks negative input -> mod handler is NOT called
+            mod_handler_called = false
+            local res_blocked = M_base.commands.open_action:run(-5)
+            assert(res_blocked ~= nil and res_blocked.ok == false, "Command should be blocked by validator")
+            assert(res_blocked.error.code == "curse_pkg:error.blocked", "Error code should be validator refusal")
+            assert(mod_handler_called == false, "Replaced handler must not be called when validator refuses")
+
+            -- Path B: Validator allows positive input -> mod handler executes
+            mod_handler_called = false
+            local res_ok = M_base.commands.open_action:run(10)
+            assert(res_ok ~= nil and res_ok.ok == true, "Command should succeed")
+            assert(mod_handler_called == true, "Replaced handler must have been executed")
+            assert(res_ok.value.from == "mod_pkg", "Result must come from replaced handler")
+            assert(res_ok.value.val == 20, "Result value must reflect mod calculation")
+        end)
+    end,
 }
+

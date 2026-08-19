@@ -61,19 +61,15 @@ function CommandDescriptorMethods:later(...)
     })
 end
 
-local function create_command_descriptor(package_id, key, command_id)
-    local desc = {
-        __is_command_descriptor = true,
-        package_id = package_id,
-        key = key,
-        command_id = command_id,
-    }
-    return setmetatable(desc, {
-        __index = CommandDescriptorMethods,
-        __tostring = function(self)
-            return "CommandDescriptor(" .. self.command_id .. ")"
-        end,
-    })
+function CommandDescriptorMethods:set_replaceable(val)
+    if self.__set_replaceable then
+        self.__set_replaceable(val ~= false)
+    end
+    return self
+end
+
+function CommandDescriptorMethods:replaceable(val)
+    return self:set_replaceable(val)
 end
 
 function M.action(cmd_desc, ...)
@@ -96,21 +92,61 @@ end
 function M.create_commands_proxy(package_id)
     local state = {
         package_id = package_id,
-        declared_handlers = {}, -- key -> { key, command_id, handler }
+        declared_handlers = {}, -- key -> { key, command_id, handler, replaceable }
         declared_order = {},    -- array of keys
         descriptors = {},       -- key -> CommandDescriptor
         frozen = false,
     }
 
+    local function get_or_create_descriptor(key, command_id)
+        if not state.descriptors[key] then
+            local desc = {
+                __is_command_descriptor = true,
+                package_id = package_id,
+                key = key,
+                command_id = command_id,
+                __set_replaceable = function(is_repl)
+                    if state.declared_handlers[key] then
+                        state.declared_handlers[key].replaceable = (is_repl ~= false)
+                    else
+                        state.declared_handlers[key] = {
+                            key = key,
+                            command_id = command_id,
+                            handler = nil,
+                            replaceable = (is_repl ~= false),
+                        }
+                    end
+                end,
+            }
+            state.descriptors[key] = setmetatable(desc, {
+                __index = CommandDescriptorMethods,
+                __tostring = function(self)
+                    return "CommandDescriptor(" .. self.command_id .. ")"
+                end,
+            })
+        end
+        return state.descriptors[key]
+    end
+
     local proxy = {}
     local mt = {
-        __newindex = function(_, key, fn)
+        __newindex = function(_, key, val)
             if state.frozen then
                 error("CommandDeclarationAfterFreeze: cannot declare command '" .. tostring(key) .. "' after register phase", 2)
             end
 
+            local fn = nil
+            local is_replaceable = false
+            if type(val) == "function" then
+                fn = val
+                is_replaceable = false
+            elseif type(val) == "table" then
+                fn = val.handler or val.fn or val.run or val[1]
+                is_replaceable = (val.replaceable == true)
+            end
+
             if type(fn) ~= "function" then
-                error("InvalidCommandHandler: expected function for command '" .. tostring(key) .. "', got " .. type(fn), 2)
+                error("InvalidCommandHandler: expected function for command '" .. tostring(key) .. "', got " .. type(val), 2)
             end
 
             local command_id = canonicalize_command_id(package_id, key)
@@ -118,21 +154,28 @@ function M.create_commands_proxy(package_id)
             -- Ключуем по каноническому ID, а не по ключу: короткая форма и полная
             -- дают один и тот же command_id, и проверка по ключу их не различала бы.
             for existing_key, declared in pairs(state.declared_handlers) do
-                if declared.command_id == command_id then
+                if declared.command_id == command_id and declared.handler ~= nil then
                     local via = (existing_key == key) and "" or (" (declared as '" .. tostring(existing_key) .. "')")
                     error("CommandAlreadyDefined: command '" .. command_id .. "' is already declared in this module" .. via, 2)
                 end
             end
+
+            local existing = state.declared_handlers[key]
+            if existing and existing.replaceable then
+                is_replaceable = true
+            end
+
             state.declared_handlers[key] = {
                 key = key,
                 command_id = command_id,
                 handler = fn,
+                replaceable = is_replaceable,
             }
-            table.insert(state.declared_order, key)
-
-            if not state.descriptors[key] then
-                state.descriptors[key] = create_command_descriptor(package_id, key, command_id)
+            if not existing or not existing.handler then
+                table.insert(state.declared_order, key)
             end
+
+            get_or_create_descriptor(key, command_id)
         end,
 
         __index = function(_, key)
@@ -151,9 +194,7 @@ function M.create_commands_proxy(package_id)
 
             -- During module load (before freeze): create stable descriptor
             local command_id = canonicalize_command_id(package_id, key)
-            local desc = create_command_descriptor(package_id, key, command_id)
-            state.descriptors[key] = desc
-            return desc
+            return get_or_create_descriptor(key, command_id)
         end,
     }
 

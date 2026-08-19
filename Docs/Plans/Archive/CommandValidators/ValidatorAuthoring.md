@@ -1,19 +1,19 @@
 ---
 title: Validator Authoring Tasks
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - ArgumentDecoding.md
-  - ../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/CommandsAndEvents.md
 decisions:
-  - ../../ADR/0027-designer-lua-authoring-layer.md
-  - ../../ADR/0028-simplified-authoring-surface.md
+  - ../../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../../ADR/0028-simplified-authoring-surface.md
 ---
 
 # M2 — Validator Authoring
 
-> **Материализует:** разделы «Предлагаемый API», «Идентичность Validator», «Разрешение target Command» и «`fail()` и execution scope» [предложения](../../Proposals/CommandValidatorAuthoringProposal.md).
+> **Материализует:** разделы «Предлагаемый API», «Идентичность Validator», «Разрешение target Command» и «`fail()` и execution scope» [предложения](../../../Proposals/Archive/CommandValidatorAuthoringProposal.md).
 > **Задачи:** CVA-04…08.
 > **Результат:** пакет объявляет policy для чужой команды одной строкой; отказ атрибутируется объявившему пакету.
 

@@ -1,19 +1,19 @@
 ---
 title: Side Effect Guards Tasks
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - ValidatorAuthoring.md
-  - ../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/CommandsAndEvents.md
 decisions:
-  - ../../ADR/0003-command-and-event-model.md
-  - ../../ADR/0028-simplified-authoring-surface.md
+  - ../../../ADR/0003-command-and-event-model.md
+  - ../../../ADR/0028-simplified-authoring-surface.md
 ---
 
 # M3 — Side Effect Guards
 
-> **Материализует:** раздел «Read-only permission scope» [предложения](../../Proposals/CommandValidatorAuthoringProposal.md).
+> **Материализует:** раздел «Read-only permission scope» [предложения](../../../Proposals/Archive/CommandValidatorAuthoringProposal.md).
 > **Задачи:** CVA-09…11.
 > **Результат:** валидатор не может произвести наблюдаемый эффект, и это проверено на отказ в каждой точке.
 

@@ -7,7 +7,7 @@ depends_on:
   - ../../Proposals/GameplayServiceAuthoringProposal.md
   - ../../Architecture/CommandsAndEvents.md
   - ../../Architecture/LuaRuntimeContract.md
-  - ../CommandValidators/README.md
+  - ../Archive/CommandValidators/README.md
 decisions:
   - ../../ADR/0026-core-and-gameplay-ownership.md
   - ../../ADR/0031-entity-authoring-extensions.md
@@ -68,7 +68,7 @@ decisions:
 | Что нужно | Откуда | Влияние |
 |---|---|---|
 | `instances.create` | [RHActorsSimplification](../Archive/RHActorsSimplification/README.md), RAS-05…07, RAS-16 | GSA-06 создаёт экземпляры торговца и предметов; без фасада пришлось бы импортировать `instance_allocator` в `rh`, что запрещено |
-| Охранники побочных эффектов | [CommandValidators](../CommandValidators/README.md), CVA-09 | GSA-05 определяет наследование scope; охранники CVA-09 применяются к телу сервиса |
+| Охранники побочных эффектов | [CommandValidators](../Archive/CommandValidators/README.md), CVA-09 | GSA-05 определяет наследование scope; охранники CVA-09 применяются к телу сервиса |
 
 Ни одна задача не дублирует эти механизмы: при их отсутствии соответствующая задача блокируется, а не обходит их.
 

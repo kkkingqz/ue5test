@@ -28,6 +28,8 @@ function M.create_registry()
         end
 
         local is_override = false
+        local is_replaceable = false
+        local pkg_id = nil
         if options ~= nil then
             if type(options) ~= "table" then
                 error("InvalidCommandHandlerOptions: options must be a table", 2)
@@ -38,13 +40,47 @@ function M.create_registry()
                 end
                 is_override = options.override
             end
+            if options.replaceable ~= nil then
+                if type(options.replaceable) ~= "boolean" then
+                    error("InvalidCommandHandlerOptions: options.replaceable must be a boolean", 2)
+                end
+                is_replaceable = options.replaceable
+            end
+            if options.package_id ~= nil then
+                if type(options.package_id) ~= "string" then
+                    error("InvalidCommandHandlerOptions: options.package_id must be a string", 2)
+                end
+                pkg_id = options.package_id
+            end
+        end
+
+        if pkg_id == nil and stable_id.split then
+            pkg_id = stable_id.split(command_id)
         end
 
         if entries_by_id[command_id] ~= nil then
-            if not is_override then
-                error("CommandHandlerDuplicateRegistration: command handler for '" .. command_id .. "' is already registered", 2)
+            local existing = entries_by_id[command_id]
+            local existing_pkg = existing.package_id or (stable_id.split and stable_id.split(command_id)) or "unknown"
+            local new_pkg = pkg_id or "unknown"
+
+            if existing_pkg ~= new_pkg then
+                if not existing.replaceable then
+                    error("CommandNotReplaceable: cannot replace command '" .. command_id .. "' from package '" .. tostring(existing_pkg) .. "' in package '" .. tostring(new_pkg) .. "'", 2)
+                end
+                existing.handler = handler_fn
+                existing.replaced_by = new_pkg
+                if options and options.replaceable ~= nil then
+                    existing.replaceable = options.replaceable
+                end
+            else
+                if not is_override and not existing.replaceable then
+                    error("CommandHandlerDuplicateRegistration: command handler for '" .. command_id .. "' is already registered", 2)
+                end
+                existing.handler = handler_fn
+                if options and options.replaceable ~= nil then
+                    existing.replaceable = options.replaceable
+                end
             end
-            entries_by_id[command_id].handler = handler_fn
         else
             if is_override then
                 error("CommandHandlerOverrideMissing: cannot override unregistered command '" .. command_id .. "'", 2)
@@ -52,6 +88,8 @@ function M.create_registry()
             local entry = {
                 id = command_id,
                 handler = handler_fn,
+                package_id = pkg_id,
+                replaceable = is_replaceable,
                 sequence = next_sequence,
             }
             next_sequence = next_sequence + 1
@@ -60,6 +98,15 @@ function M.create_registry()
         end
 
         return handler_fn
+    end
+
+    function registry.is_replaceable(command_id)
+        local entry = entries_by_id[command_id]
+        return entry and (entry.replaceable == true) or false
+    end
+
+    function registry.get_entry(command_id)
+        return entries_by_id[command_id]
     end
 
     function registry.get(command_id)

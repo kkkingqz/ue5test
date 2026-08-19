@@ -40,7 +40,6 @@ Proposal не изменяет нормативную архитектуру с�
 | [ContentDiagnosticsAndToolingProposal](ContentDiagnosticsAndToolingProposal.md) | accepted for planning | Content, CI, Tooling | Source spans, deterministic diagnostics, CLI validation, fuzzing и будущий LSP |
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
-| [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Modding | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
 | [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Gameplay | Авторский слой игровых сервисов для процессов из нескольких сущностей вместе с первым потребителем — торговцем в `rh` |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
@@ -56,7 +55,7 @@ Proposal не изменяет нормативную архитектуру с�
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
-3. `CommandValidatorAuthoringProposal` — материализовано планом [CommandValidators](../Plans/CommandValidators/README.md): сначала очистка декодирования аргументов, затем Lua-only adapter и общие cross-host specs; runtime registry и C++ не расширяются без измеренной необходимости.
+3. `CommandValidatorAuthoringProposal` — реализовано планом [CommandValidators](../Plans/Archive/CommandValidators/README.md).
 4. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось.
 5. `ModPackageLifecycleProposal`.
 6. `UiCompositionAndScalingProposal` — материализовано планом [UiComposition](../Plans/UiComposition/README.md): слои, оверлеи, вкладки, реконсиляция и масштабирование.

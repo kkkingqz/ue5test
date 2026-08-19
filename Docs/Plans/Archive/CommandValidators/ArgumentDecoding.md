@@ -1,20 +1,20 @@
 ---
 title: Argument Decoding Tasks
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0026-core-and-gameplay-ownership.md
-  - ../../ADR/0028-simplified-authoring-surface.md
-  - ../../ADR/0033-command-validator-authoring.md
+  - ../../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../../ADR/0028-simplified-authoring-surface.md
+  - ../../../ADR/0033-command-validator-authoring.md
 ---
 
 # M1 — Argument Decoding
 
-> **Материализует:** раздел «Единая семантика аргументов» [предложения](../../Proposals/CommandValidatorAuthoringProposal.md).
+> **Материализует:** раздел «Единая семантика аргументов» [предложения](../../../Proposals/Archive/CommandValidatorAuthoringProposal.md).
 > **Задачи:** CVA-01…03.
 > **Результат:** ядро не знает имён игровых параметров; декодирование существует в одном экземпляре и готово к переиспользованию валидатором.
 
@@ -32,7 +32,7 @@ decisions:
 
 - [x] **CVA-02 — Убрать имена игровых параметров из ядра**
   - Зависимости: CVA-01.
-  - `Scripts/authoring/context.lua` выбирает «главный аргумент» по списку `target_location_id`, `location_id`, `target`, `item_id`, `item`, `destination`. Это понятия `textsystem` и `rh` внутри `core` ([INV-016](../../Architecture/Invariants.md)); гейт их не ловит, потому что `validate_core_boundary.py` проверяет определения, схемы и идентификаторы, а не имена переменных.
+  - `Scripts/authoring/context.lua` выбирает «главный аргумент» по списку `target_location_id`, `location_id`, `target`, `item_id`, `item`, `destination`. Это понятия `textsystem` и `rh` внутри `core` ([INV-016](../../../Architecture/Invariants.md)); гейт их не ловит, потому что `validate_core_boundary.py` проверяет определения, схемы и идентификаторы, а не имена переменных.
   - Done: список удалён; декодирование определяется формой значения — массив даёт позиционные аргументы, пустая таблица даёт вызов без аргументов, иная таблица передаётся целиком; позиционный аргумент, являющийся валидным Stable ID и разрешимым в pinned repository, передаётся как definition wrapper по форме значения, а не по имени параметра; единственный вызов, полагавшийся на список (`textsystem` передаёт `{ target_location_id = conn_id }`), переведён на позиционную форму; наблюдаемое поведение перехода между локациями не изменилось.
   - Evidence: `Scripts/authoring/context.lua`, `GameData/textsystem/scripts/presentation/location_presenter.lua`, `Tests/Lua/world/`, `Tests/Lua/economy/`.
 

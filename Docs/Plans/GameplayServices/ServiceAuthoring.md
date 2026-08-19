@@ -47,7 +47,7 @@ decisions:
   - Evidence: `Scripts/authoring/context.lua`, `Tests/Lua/authoring/gameplay_services.lua`.
 
 - [ ] **GSA-05 — Наследование execution scope**
-  - Зависимости: GSA-04, CVA-09 плана [CommandValidators](../CommandValidators/README.md).
+  - Зависимости: GSA-04, CVA-09 плана [CommandValidators](../Archive/CommandValidators/README.md).
   - Формулировка «мутирующий сервис из валидатора завершится ошибкой мутации» недостаточна: она срабатывает, только если сервис действительно пишет в состояние, и пропускает сервис, вызывающий `emit(...)` или `commands.*:later(...)`.
   - Done: сервис исполняется в scope вызывающего и собственного не создаёт; охранники побочных эффектов применяются к телу сервиса так же, как к телу валидатора; `fail()` и `emit()` из сервиса атрибутируются пакету объявления, что проверено межпакетным вызовом; вложенный вызов сервиса не создаёт команды, окна мутации и отдельного commit; мутация из сервиса вне команды отклоняется.
   - Evidence: `Scripts/authoring/context.lua`, `Tests/Lua/authoring/gameplay_services.lua`.

@@ -1,22 +1,22 @@
 ---
 title: Command Validators Implementation Plan
-status: normative
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
-  - ../../Proposals/CommandValidatorAuthoringProposal.md
-  - ../../Architecture/CommandsAndEvents.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Proposals/Archive/CommandValidatorAuthoringProposal.md
+  - ../../../Architecture/CommandsAndEvents.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0027-designer-lua-authoring-layer.md
-  - ../../ADR/0028-simplified-authoring-surface.md
-  - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
-  - ../../ADR/0033-command-validator-authoring.md
+  - ../../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../../ADR/0028-simplified-authoring-surface.md
+  - ../../../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../../ADR/0033-command-validator-authoring.md
 ---
 
 # План реализации валидаторов команд
 
-> **Материализует:** [Command Validator Authoring](../../Proposals/CommandValidatorAuthoringProposal.md).
+> **Материализует:** [Command Validator Authoring](../../../Proposals/Archive/CommandValidatorAuthoringProposal.md).
 > **Задачи:** CVA-01…13.
 > **Результат:** пакет может независимо ограничить чужую команду, не владея её реализацией; ядро перестаёт знать имена игровых параметров; замена обработчика становится явной.
 
@@ -36,7 +36,7 @@ Runtime для этого уже готов: реестр валидаторов
 | Запуск | `run_validators` до открытия окна мутации и **до** проверки наличия обработчика; первый отказ останавливает цепочку |
 | Авторский API | Отсутствует: пакет обязан знать устройство runtime-реестра |
 | Имя `validate` в `_ENV` | Свободно |
-| Kind `validator` | Уже описан в [Stable ID Specification](../../Architecture/StableIDSpecification.md) и принимается `stable_id.is_kind` |
+| Kind `validator` | Уже описан в [Stable ID Specification](../../../Architecture/StableIDSpecification.md) и принимается `stable_id.is_kind` |
 | `fail()` | Требует активного обработчика команды (`AuthoringFailOutsideCommand`) |
 | Декодирование аргументов | Захардкоженный список игровых имён (`item_id`, `location_id`, `destination`) внутри ядра; используется одно имя из шести |
 | Замена обработчика | `register(cmd_id, handler, { override = exists })` — молча, без диагностики |
@@ -46,7 +46,7 @@ Runtime для этого уже готов: реестр валидаторов
 - **Ядро не знает имён игровых параметров.** Декодирование определяется формой значения: массив, пустая таблица, одна таблица. Целевая форма — объявленный контракт аргументов на словаре `field.*` — записана в предложении и в этот план не входит.
 - **Target разрешается на заморозке, а не при объявлении.** Модули обнаруживаются автоматически, поэтому требование «target уже зарегистрирован» сделало бы порядок файлов частью контракта.
 - **Read-only enforcement ограничен перечнем из четырёх точек.** Валидатор исполняется внутри `dispatch` при закрытом окне мутации, поэтому запись в состояние, вложенный `run` и поздние регистрации уже отклоняются.
-- **Замена обработчика становится явной.** Запечатано по умолчанию, заменяемо по объявлению — та же форма, что в [ADR-0025](../../ADR/0025-lua-module-replacement-and-export-freezing.md) и [ADR-0032](../../ADR/0032-field-contracts-and-generic-instance-creation.md).
+- **Замена обработчика становится явной.** Запечатано по умолчанию, заменяемо по объявлению — та же форма, что в [ADR-0025](../../../ADR/0025-lua-module-replacement-and-export-freezing.md) и [ADR-0032](../../../ADR/0032-field-contracts-and-generic-instance-creation.md).
 - **ID валидатора непрозрачен.** Связь с target хранится полем записи, а не разбором строки.
 
 ## Границы
@@ -65,7 +65,7 @@ Runtime для этого уже готов: реестр валидаторов
 - [x] M1 — [Argument Decoding](ArgumentDecoding.md): ядро перестаёт знать имена игровых параметров; одно декодирование на обработчик и валидатор. CVA-01…03.
 - [x] M2 — [Validator Authoring](ValidatorAuthoring.md): `validate()`, execution scope, `fail()` в scope валидатора, разрешение target на заморозке. CVA-04…08.
 - [x] M3 — [Side Effect Guards](SideEffectGuards.md): охранники в четырёх точках и спеки на отказ. CVA-09…11.
-- [ ] M4 — [Handler Replacement](HandlerReplacement.md): явная заменяемость команды и сквозная верификация. CVA-12…13.
+- [x] M4 — [Handler Replacement](HandlerReplacement.md): явная заменяемость команды и сквозная верификация. CVA-12…13.
 
 ## Критический путь
 
@@ -79,24 +79,24 @@ M4 не зависит от M1–M3 технически, но выполняе�
 
 ## Общие правила выполнения
 
-1. Ни одна задача не добавляет в `core` знания об именах, идентификаторах или понятиях конкретной игры ([INV-016](../../Architecture/Invariants.md)).
+1. Ни одна задача не добавляет в `core` знания об именах, идентификаторах или понятиях конкретной игры ([INV-016](../../../Architecture/Invariants.md)).
 2. Валидатор не меняет каноническое состояние и не производит наблюдаемых эффектов; нарушение — programmer fault, а не геймплейный отказ.
 3. Перехватывается только внутренний sentinel `fail()`; любая другая ошибка Lua остаётся fault валидатора.
-4. Правила проверяются спеками на **отрицательный** случай ([ADR-0024](../../ADR/0024-lua-spec-runner.md)); правило без проверки на нарушение не считается закрытым.
+4. Правила проверяются спеками на **отрицательный** случай ([ADR-0024](../../../ADR/0024-lua-spec-runner.md)); правило без проверки на нарушение не считается закрытым.
 5. Дополнительная копия проверок на C++ не создаётся: одна spec suite исполняется обоими хостами.
 6. `validator_registry.lua`, `command_dispatcher.lua` и C++ не меняются, пока тесты не обнаружат отсутствующий runtime contract.
 7. Новое observable behavior синхронно отражается в contract того же change set.
 
 ## Итоговый Definition of Done
 
-- [ ] В `Scripts/` нет ни одного имени игрового параметра; декодирование определяется формой значения.
-- [ ] Обработчик и валидатор получают результат одной функции для позиционной, пустой и табличной форм.
-- [ ] Пакет объявляет policy для чужой команды одной строкой и без доступа к runtime-контексту.
-- [ ] `fail()` из валидатора даёт отказ в пространстве имён объявившего пакета; произвольная ошибка Lua остаётся fault.
-- [ ] Отсутствующий target обнаруживается на заморозке независимо от порядка модулей.
-- [ ] Повторное объявление policy внутри пакета отклоняется.
-- [ ] Мутация состояния, `emit`, `show_screen`, `later` и мутация сервиса из валидатора отклоняются `AuthoringValidatorSideEffectDisallowed`.
-- [ ] Отложенный вызов `commands.*:later(...)` проходит цепочку валидаторов.
-- [ ] Повторная регистрация обработчика для незаменяемой команды отклоняется `CommandNotReplaceable`.
-- [ ] Валидаторы чужих пакетов переживают законную замену обработчика.
-- [ ] `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные; в golden изменились только `script_set_hash` и производный `digest_hash`.
+- [x] В `Scripts/` нет ни одного имени игрового параметра; декодирование определяется формой значения.
+- [x] Обработчик и валидатор получают результат одной функции для позиционной, пустой и табличной форм.
+- [x] Пакет объявляет policy для чужой команды одной строкой и без доступа к runtime-контексту.
+- [x] `fail()` из валидатора даёт отказ в пространстве имён объявившего пакета; произвольная ошибка Lua остаётся fault.
+- [x] Отсутствующий target обнаруживается на заморозке независимо от порядка модулей.
+- [x] Повторное объявление policy внутри пакета отклоняется.
+- [x] Мутация состояния, `emit`, `show_screen`, `later` и мутация сервиса из валидатора отклоняются `AuthoringValidatorSideEffectDisallowed`.
+- [x] Отложенный вызов `commands.*:later(...)` проходит цепочку валидаторов.
+- [x] Повторная регистрация обработчика для незаменяемой команды отклоняется `CommandNotReplaceable`.
+- [x] Валидаторы чужих пакетов переживают законную замену обработчика.
+- [x] `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные; в golden изменились только `script_set_hash` и производный `digest_hash`.
