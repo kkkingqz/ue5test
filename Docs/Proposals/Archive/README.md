@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Proposals
 status: archived
-version: 1.0
+version: 1.1
 updated: 2026-08-19
 depends_on:
   - ../README.md
@@ -22,3 +22,4 @@ depends_on:
 | [TextSystemLayerProposal](TextSystemLayerProposal.md) | [TextSystemLayer](../../Plans/Archive/TextSystemLayer/README.md) | Слой `textsystem` между движком и игрой; набор пакетов из данных |
 | [EntityAuthoringExtensionProposal](EntityAuthoringExtensionProposal.md) | [EntityAuthoringExtensions](../../Plans/Archive/EntityAuthoringExtensions/README.md) | Декларативное расширение доменных сущностей через авторские прототипы `_ENV` |
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | — | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
+| [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification/README.md) | Контракты полей `field.*`, композиция схем, обобщённое создание экземпляров |

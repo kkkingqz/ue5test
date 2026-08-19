@@ -26,7 +26,7 @@ decisions:
 ## Задачи
 
 - [ ] **GSA-06 — Начальное состояние: игрок и торговец**
-  - Зависимости: GSA-05, RAS-16 и RAS-05…07 плана [RHActorsSimplification](../RHActorsSimplification/README.md).
+  - Зависимости: GSA-05, RAS-16 и RAS-05…07 плана [RHActorsSimplification](../Archive/RHActorsSimplification/README.md).
   - Определение `rh:actor.npc.merchant` существует, но экземпляра нет; экземпляр игрока сегодня создаётся только спеками через `game.instances.actors.create`, то есть у игры нет заводимого начального состояния.
   - Done: `rh` объявляет команду начала игры, создающую экземпляр игрока и экземпляр торговца через `instances.create`; торговец находится на рынке; торговцу принадлежат по одному экземпляру меча и брони; начальное золото сторон задано данными пакета, а не константами в коде ядра; `rh` не импортирует `instance_allocator` и не пишет в `game.state` напрямую; спеки `rh` переведены на эту команду вместо ручного создания актора.
   - Evidence: `GameData/rh/scripts/authoring/gameplay.lua`, `GameData/rh/definitions/`, `Tests/Lua/economy/`.

@@ -1,23 +1,23 @@
 ---
 title: RH Actors Lua Simplification Proposal
-status: draft
-proposal_state: accepted_for_planning
-version: 1.1
+status: archived
+proposal_state: implemented
+version: 1.2
 updated: 2026-08-19
 depends_on:
-  - Archive/EntityAuthoringExtensionProposal.md
-  - ../Architecture/LuaRuntimeContract.md
+  - EntityAuthoringExtensionProposal.md
+  - ../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../ADR/0027-designer-lua-authoring-layer.md
-  - ../ADR/0031-entity-authoring-extensions.md
-  - ../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
 ---
 
 # RH Actors Lua Simplification Proposal
 
 > **Предлагает:** декларативные контракты полей сущностей (`field.*`), разделение структурных инвариантов и геймплейных предусловий, обобщённое создание инстансов и устранение инфраструктурного кода из `rh/scripts/gameplay/actors.lua`.
-> **Затрагивает:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Gameplay Model](../Concepts/GameplayModel.md).
-> **Не является нормативным:** до реализации действует текущий contract.
+> **Затрагивает:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Gameplay Model](../../Concepts/GameplayModel.md).
+> **Состояние:** реализовано планом [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification/README.md); нормативное поведение — [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) и [ADR-0032](../../ADR/0032-field-contracts-and-generic-instance-creation.md).
 
 ## Context
 

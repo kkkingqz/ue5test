@@ -1,19 +1,19 @@
 ---
 title: Generic Instance Creation Tasks
-status: normative
+status: archived
 version: 1.1
 updated: 2026-08-19
 depends_on:
   - FieldContracts.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0020-cpp-scope-criterion.md
-  - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../../ADR/0020-cpp-scope-criterion.md
+  - ../../../ADR/0032-field-contracts-and-generic-instance-creation.md
 ---
 
 # M2 — Generic Instance Creation
 
-> **Материализует:** [ADR-0032 § 6](../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части создания динамических сущностей через фасад `instances.create()`.
+> **Материализует:** [ADR-0032 § 6](../../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части создания динамических сущностей через фасад `instances.create()`.
 > **Задачи:** RAS-05…07, RAS-16.
 > **Результат:** обобщённый фасад `instances.create(kind, payload)` в авторском `_ENV`, нормализация ссылок и инкапсуляция `instance_allocator` и коллекций состояния.
 

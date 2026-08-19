@@ -7,7 +7,7 @@ updated: 2026-08-19
 depends_on:
   - ../Architecture/CommandsAndEvents.md
   - ../Architecture/CanonicalStateAndSave.md
-  - RHActorsLuaSimplificationProposal.md
+  - Archive/RHActorsLuaSimplificationProposal.md
 decisions:
   - ../ADR/0027-designer-lua-authoring-layer.md
   - ../ADR/0032-field-contracts-and-generic-instance-creation.md

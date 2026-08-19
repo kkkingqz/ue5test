@@ -33,7 +33,7 @@ decisions:
 
 ## Предусловие выполнения
 
-План выполняется **после закрытия активных планов**: [RHActorsSimplification](../RHActorsSimplification/README.md), [EntityExtensionsHardening](../EntityExtensionsHardening/README.md), [CommandValidators](../CommandValidators/README.md), [GameplayServices](../GameplayServices/README.md), [UiComposition](../UiComposition/README.md).
+План выполняется **после закрытия активных планов**: [EntityExtensionsHardening](../EntityExtensionsHardening/README.md), [CommandValidators](../CommandValidators/README.md), [GameplayServices](../GameplayServices/README.md), [UiComposition](../UiComposition/README.md). Первый из списка, [RHActorsSimplification](../Archive/RHActorsSimplification/README.md), уже закрыт.
 
 Причина конкретна: три из них меняют авторский слой — добавляют `validate` и `services`, переделывают `field.*` и методы актора. Справочник инструментов авторского слоя, написанный раньше, пришлось бы переписывать сразу после написания.
 

@@ -1,19 +1,19 @@
 ---
 title: Field Contracts and Descriptors Tasks
-status: normative
+status: archived
 version: 1.1
 updated: 2026-08-19
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0027-designer-lua-authoring-layer.md
-  - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../../ADR/0032-field-contracts-and-generic-instance-creation.md
 ---
 
 # M1 — Field Contracts and Descriptors
 
-> **Материализует:** [ADR-0032 § 1—4](../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части дескрипторов полей `field.*`, их интеграции с авторскими прототипами `_ENV` и правил композиции схем.
+> **Материализует:** [ADR-0032 § 1—4](../../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части дескрипторов полей `field.*`, их интеграции с авторскими прототипами `_ENV` и правил композиции схем.
 > **Задачи:** RAS-01…04, RAS-13…15.
 > **Результат:** модуль `core:module.authoring.field`, сборка дескрипторов полей через `EntityKind.field_name = field.*`, валидация при записи по композиции схем трёх источников.
 

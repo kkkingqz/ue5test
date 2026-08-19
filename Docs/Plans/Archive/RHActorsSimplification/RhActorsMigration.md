@@ -1,19 +1,19 @@
 ---
 title: RH Actors Migration Tasks
-status: normative
+status: archived
 version: 1.1
 updated: 2026-08-19
 depends_on:
   - GenericInstanceCreation.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
-  - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
+  - ../../../ADR/0032-field-contracts-and-generic-instance-creation.md
 ---
 
 # M3 — RH Actors Migration
 
-> **Материализует:** [ADR-0032 § 5, 8, 9](../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части очистки и упрощения `GameData/rh/scripts/gameplay/actors.lua`.
+> **Материализует:** [ADR-0032 § 5, 8, 9](../../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части очистки и упрощения `GameData/rh/scripts/gameplay/actors.lua`.
 > **Задачи:** RAS-08…10, RAS-17.
 > **Результат:** `actors.lua` в пакете `rh` переведён на декларативные контракты полей и явные доменные методы; удалены `RESOURCES`, `validate_amount`, fallback на player и прямой импорт `instance_allocator`.
 
@@ -30,7 +30,7 @@ decisions:
 
 - [x] **RAS-09 — Упрощение методов ресурсов и удаление `RESOURCES` / `validate_amount`**
   - Зависимости: RAS-08.
-  - Done: методы `get_gold`, `require_gold`, `spend_gold`, `add_gold`, `get_stamina`, `require_stamina`, `spend_stamina`, `add_stamina` переписаны как чистые явные функции; удалены таблица `RESOURCES`, вспомогательная функция `validate_amount` и fallback `self -> player`; `spend_*` производит прямую арифметику `self.prop = self:get_prop() - amount`.
+  - Done: методы `get_gold`, `require_gold`, `spend_gold`, `add_gold`, `get_stamina`, `require_stamina`, `spend_stamina`, `add_stamina` переписаны как чистые явные функции; удалены таблица `RESOURCES` и fallback `self -> player`, а проверка аргумента сведена к одной локальной функции (RAS-17); `spend_*` производит прямую арифметику `self.prop = self:get_prop() - amount`.
   - Evidence: `GameData/rh/scripts/gameplay/actors.lua`.
 
 - [x] **RAS-10 — Перевод `Actor:add_item()` на `instances.create()` и очистка импортов**

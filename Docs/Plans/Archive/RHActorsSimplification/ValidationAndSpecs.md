@@ -1,19 +1,19 @@
 ---
 title: Multi-Tier Validation and Specs Tasks
-status: normative
+status: archived
 version: 1.1
 updated: 2026-08-19
 depends_on:
   - RhActorsMigration.md
-  - ../../Architecture/HeadlessSimulationContract.md
+  - ../../../Architecture/HeadlessSimulationContract.md
 decisions:
-  - ../../ADR/0024-lua-spec-runner.md
-  - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../../ADR/0024-lua-spec-runner.md
+  - ../../../ADR/0032-field-contracts-and-generic-instance-creation.md
 ---
 
 # M4 — Multi-Tier Validation and Specs
 
-> **Материализует:** [ADR-0032 § 1—8](../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части многоуровневой валидации инвариантов, геймплейных отказов и кросс-хостового детерминизма.
+> **Материализует:** [ADR-0032 § 1—8](../../../ADR/0032-field-contracts-and-generic-instance-creation.md) в части многоуровневой валидации инвариантов, геймплейных отказов и кросс-хостового детерминизма.
 > **Задачи:** RAS-11…12.
 > **Результат:** сквозное покрытие тестами на всех трёх уровнях (`Core`, `TextSystem`, `FullGame`), проверка детекции структурных нарушений, сохранение digest parity и чистоты save container.
 

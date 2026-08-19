@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: normative
-version: 4.0
+version: 4.1
 updated: 2026-08-19
 ---
 
@@ -43,7 +43,6 @@ Proposal не изменяет нормативную архитектуру с�
 | [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Modding | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
 | [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | accepted for planning | Runtime, Authoring, Gameplay | Авторский слой игровых сервисов для процессов из нескольких сущностей вместе с первым потребителем — торговцем в `rh` |
-| [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | accepted for planning | Runtime, Authoring, Gameplay | Контракты полей `field.*`, разделение инвариантов и предусловий, обобщённое создание инстансов |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
 | [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: слои, оверлеи, модалки, вкладки, реконсиляция и масштабирование |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
@@ -66,7 +65,7 @@ Proposal не изменяет нормативную архитектуру с�
 
 `GameplayServiceAuthoringProposal` материализовано планом [GameplayServices](../Plans/GameplayServices/README.md) и выполняется после `CommandValidatorAuthoringProposal`: сервис наследует execution scope, который вводит тот план.
 
-`RHActorsLuaSimplificationProposal` материализовано планом [RHActorsSimplification](../Plans/RHActorsSimplification/README.md) и выполняется независимо от Content/UI-треков. `MutationWindowTransactionalityProposal` выделено из него: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
+`MutationWindowTransactionalityProposal` выделено из него: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
 
 `ImageResourcePackagedDeploymentProposal` может выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
 

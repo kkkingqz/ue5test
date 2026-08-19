@@ -51,7 +51,7 @@ decisions:
 
 - **Явный `override` для методов сущностей.** [Предложение](../../Proposals/Archive/EntityAuthoringExtensionProposal.md) выделяет его отдельно (§8.2), потребителя сейчас нет. Появится вместе с первым модом, которому нужно заменить метод.
 - Переписывание архивного плана: это исторический record.
-- Изменения в `rh/scripts/gameplay/actors.lua` — принадлежат плану [RHActorsSimplification](../RHActorsSimplification/README.md).
+- Изменения в `rh/scripts/gameplay/actors.lua` — принадлежат плану [RHActorsSimplification](../Archive/RHActorsSimplification/README.md).
 
 ## Milestones
 
@@ -72,7 +72,7 @@ M2 отделён от M1 не зависимостью кода, а зоной 
 2. `final_screen_id`, `final_screen_fields`, хэш состояния и `repository_content_hash` в golden не меняются; `script_set_hash` и производный `digest_hash` меняются, потому что меняются скрипты.
 3. Каждое изменение правила сопровождается спекой на **отрицательный** случай: правило без проверки на нарушение не считается закрытым.
 4. Изменение правила отражается в [Lua Runtime Contract § Entity Extensions](../../Architecture/LuaRuntimeContract.md) в том же change set.
-5. EEH-06 пересекается по смыслу с RAS-09 из плана [RHActorsSimplification](../RHActorsSimplification/README.md): один убирает переход к игроку в `textsystem`, другой — в `rh`. Задачи независимы и не должны ждать друг друга.
+5. EEH-06 пересекается по смыслу с RAS-09 из плана [RHActorsSimplification](../Archive/RHActorsSimplification/README.md): один убирает переход к игроку в `textsystem`, другой — в `rh`. Задачи независимы и не должны ждать друг друга.
 
 ## Итоговый Definition of Done
 

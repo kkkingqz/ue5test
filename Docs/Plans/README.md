@@ -24,7 +24,6 @@ depends_on:
 
 ## Активные планы
 
-- [RHActorsSimplification](RHActorsSimplification/README.md) — Декларативные дескрипторы полей (`field.*`), валидация структурных инвариантов при записи, обобщённое создание инстансов (`instances.create`) и очистка `rh/scripts/gameplay/actors.lua`.
 - [EntityExtensionsHardening](EntityExtensionsHardening/README.md) — Заморозка реестра расширений становится необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление — ошибкой, приём метода — строго `self`.
 - [CommandValidators](CommandValidators/README.md) — Авторский `validate()` для независимых policy поверх чужих команд, очистка декодирования аргументов от игровых имён в ядре, охранники побочных эффектов и явная заменяемость обработчика.
 - [DocumentationRework](DocumentationRework/README.md) — Политика совместимости и заметность правил, гейт на удалённый API в инструкциях, разделение `LuaRuntimeContract`, документация авторского слоя для дизайнера, переработка `Guides/` и сжатие архива. Выполняется после закрытия остальных активных планов.
@@ -39,6 +38,7 @@ depends_on:
 |---|---|---|
 | [EntityAuthoringExtensions](Archive/EntityAuthoringExtensions/README.md) | 2026-08-19 | Декларативное расширение сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы в `_ENV`, централизованный реестр расширений и скомпонованные effective method tables |
 | [TextSystemLayer](Archive/TextSystemLayer/README.md) | 2026-08-19 | Трёхуровневая архитектура (`core` ← `textsystem` ← `rh`), набор пакетов из данных, перенос владения локациями и переходами, декларативные экраны и трёхуровневые спеки |
+| [RHActorsSimplification](Archive/RHActorsSimplification/README.md) | 2026-08-19 | Декларативные контракты полей `field.*` с композицией схем, запрет повторного объявления, обобщённое создание экземпляров с реестром видов, чистый `rh/actors.lua` |
 | [PortableContentCore](Archive/PortableContentCore/README.md) | 2026-08-14 | Общий pipeline `Packages → Definitions → Immutable Repository Snapshot` для CLI, Headless и UE плюс `game.repository` в Lua |
 | [HeadlessParityAndReplay](Archive/HeadlessParityAndReplay/README.md) | 2026-08-14 | Одна реализация на portable-проверку и воспроизводимый прогон с общим digest для UE и headless |
 | [CanonicalGameplayState](Archive/CanonicalGameplayState/README.md) | 2026-08-15 | `game.state`, instance identity, хэш состояния в digest, ActorRegistry и mutation window |
