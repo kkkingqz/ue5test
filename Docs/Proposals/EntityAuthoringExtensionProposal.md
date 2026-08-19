@@ -1,8 +1,8 @@
 ---
 title: Entity Authoring Extension Proposal
 status: draft
-proposal_state: accepted_for_planning
-version: 1.0
+proposal_state: implemented
+version: 1.1
 updated: 2026-08-19
 depends_on:
   - TextSystemLayerProposal.md
@@ -18,7 +18,7 @@ decisions:
 
 > **Предлагает:** декларативный механизм добавления методов к доменным сущностям через авторские прототипы `_ENV`.
 > **Затрагивает:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Modding](../Architecture/Modding.md).
-> **Не является нормативным:** до реализации действует текущий contract.
+> **Состояние:** реализовано планом [EntityAuthoringExtensions](../Plans/Archive/EntityAuthoringExtensions/README.md); нормативное поведение — [Lua Runtime Contract § Entity Extensions](../Architecture/LuaRuntimeContract.md).
 
 ## Summary
 
