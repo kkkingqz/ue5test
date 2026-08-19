@@ -6,7 +6,7 @@ version: 1.0
 updated: 2026-08-19
 depends_on:
   - CommandValidatorAuthoringProposal.md
-  - EntityAuthoringExtensionProposal.md
+  - Archive/EntityAuthoringExtensionProposal.md
   - ../Architecture/CommandsAndEvents.md
   - ../Architecture/LuaRuntimeContract.md
   - ../Architecture/StableIDSpecification.md

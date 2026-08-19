@@ -8,7 +8,7 @@ depends_on:
   - ../../../Architecture/StableIDSpecification.md
   - ../../../Architecture/LuaRuntimeContract.md
   - ../../../Architecture/CanonicalStateAndSave.md
-  - ../../../Proposals/CoreGameplayBoundaryProposal.md
+  - ../../../Proposals/Archive/CoreGameplayBoundaryProposal.md
 decisions:
   - ../../../ADR/0026-core-and-gameplay-ownership.md
   - ../../../ADR/0025-lua-module-replacement-and-export-freezing.md

@@ -44,8 +44,8 @@ depends_on:
 
 - [x] **CEP-12 — Синхронизация документации**
   - Зависимости: CEP-02, CEP-07, CEP-11.
-  - Done: [Definition Envelope and Schema Rules](../../../Architecture/DefinitionEnvelopeAndSchemaRules.md) описывает метаданные и их изоляцию; [Build and Tooling](../../../Architecture/BuildAndTooling.md) — новый гейт; в разделе 40 предложения о редакторе три пункта отмечены закрытыми со ссылкой на этот план; в [Simplified Authoring Surface](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md) снята пометка о блокировке декларативных экранов; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён.
-  - Evidence: Обновлены `Docs/Architecture/DefinitionEnvelopeAndSchemaRules.md`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Proposals/ContentEditorPluginProposal.md` §40, `Docs/Proposals/SimplifiedAuthoringSurfaceProposal.md` §11.1, `Docs/Plans/ContentEditorPrerequisites/README.md`, `Docs/Status/ImplementationStatus.md`; валидация `Tools/Documentation/validate_docs.py` пройдена без ошибок.
+  - Done: [Definition Envelope and Schema Rules](../../../Architecture/DefinitionEnvelopeAndSchemaRules.md) описывает метаданные и их изоляцию; [Build and Tooling](../../../Architecture/BuildAndTooling.md) — новый гейт; в разделе 40 предложения о редакторе три пункта отмечены закрытыми со ссылкой на этот план; в [Simplified Authoring Surface](../../../Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md) снята пометка о блокировке декларативных экранов; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён.
+  - Evidence: Обновлены `Docs/Architecture/DefinitionEnvelopeAndSchemaRules.md`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Proposals/ContentEditorPluginProposal.md` §40, `Docs/Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md` §11.1, `Docs/Plans/ContentEditorPrerequisites/README.md`, `Docs/Status/ImplementationStatus.md`; валидация `Tools/Documentation/validate_docs.py` пройдена без ошибок.
 
 ## Проверка milestone
 

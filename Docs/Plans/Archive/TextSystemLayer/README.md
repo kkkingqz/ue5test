@@ -4,7 +4,7 @@ status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
-  - ../../../Proposals/TextSystemLayerProposal.md
+  - ../../../Proposals/Archive/TextSystemLayerProposal.md
   - ../../../Architecture/Modding.md
   - ../../../Architecture/StableIDSpecification.md
   - ../../../Architecture/BuildAndTooling.md
@@ -15,7 +15,7 @@ decisions:
 
 # План выделения слоя TextSystem
 
-> **Материализует:** [TextSystem Layer](../../../Proposals/TextSystemLayerProposal.md).
+> **Материализует:** [TextSystem Layer](../../../Proposals/Archive/TextSystemLayerProposal.md).
 > **Задачи:** TSL-01…20.
 > **Результат:** три слоя вместо двух; локация и переход принадлежат `textsystem`, стоимость перехода — игре.
 
@@ -44,7 +44,7 @@ decisions:
 
 ## Принятые решения
 
-Зафиксированы в [предложении](../../../Proposals/TextSystemLayerProposal.md), выносятся в ADR первой задачей.
+Зафиксированы в [предложении](../../../Proposals/Archive/TextSystemLayerProposal.md), выносятся в ADR первой задачей.
 
 - **Три уровня и критерий выбора.** Нужна любой игре — `core`; любой текстовой, но не любой — `textsystem`; выражает правила конкретной игры — `rh`.
 - **Это осознанное исключение из [ADR-0026](../../../ADR/0026-core-and-gameplay-ownership.md).** Второй текстовой игры нет, а правило требует доказанной применимости. Основание — цена момента: разделять систему из двухсот строк дешевле, чем из двух тысяч. ADR обязан сформулировать это именно так, а не как доказанную применимость.

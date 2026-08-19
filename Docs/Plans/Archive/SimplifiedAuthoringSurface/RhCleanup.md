@@ -47,8 +47,8 @@ depends_on:
 - [x] **SAS-21 — Удалить `Docs/Authoring/` и синхронизировать документацию**
   - Зависимости: SAS-17–SAS-20.
   - Раздел описывает прежний синтаксис целиком и после переработки устаревает весь.
-  - Done: каталог `Docs/Authoring/` удалён, ссылки на него убраны из `Docs/README.md`, `AGENTS.md`, `Tools/Documentation/validate_docs.py`; причина записана в `Docs/Status/ImplementationStatus.md`; в `Docs/Proposals/SimplifiedAuthoringSurfaceProposal.md` проставлено `proposal_state: implemented`.
-  - Evidence: `Docs/README.md`, `AGENTS.md`, `Tools/Documentation/validate_docs.py`, `Docs/Status/ImplementationStatus.md`, `Docs/Proposals/SimplifiedAuthoringSurfaceProposal.md`.
+  - Done: каталог `Docs/Authoring/` удалён, ссылки на него убраны из `Docs/README.md`, `AGENTS.md`, `Tools/Documentation/validate_docs.py`; причина записана в `Docs/Status/ImplementationStatus.md`; в `Docs/Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md` проставлено `proposal_state: implemented`.
+  - Evidence: `Docs/README.md`, `AGENTS.md`, `Tools/Documentation/validate_docs.py`, `Docs/Status/ImplementationStatus.md`, `Docs/Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md`.
 
 ## Проверка milestone
 

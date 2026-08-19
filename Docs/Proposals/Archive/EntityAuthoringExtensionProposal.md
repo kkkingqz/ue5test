@@ -1,24 +1,24 @@
 ---
 title: Entity Authoring Extension Proposal
-status: draft
+status: archived
 proposal_state: implemented
 version: 1.1
 updated: 2026-08-19
 depends_on:
   - TextSystemLayerProposal.md
   - SimplifiedAuthoringSurfaceProposal.md
-  - ../Architecture/LuaRuntimeContract.md
+  - ../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../ADR/0028-simplified-authoring-surface.md
-  - ../ADR/0030-textsystem-layer-and-data-driven-package-set.md
-  - ../ADR/0031-entity-authoring-extensions.md
+  - ../../ADR/0028-simplified-authoring-surface.md
+  - ../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
+  - ../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # Entity Authoring Extension Proposal
 
 > **Предлагает:** декларативный механизм добавления методов к доменным сущностям через авторские прототипы `_ENV`.
-> **Затрагивает:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Modding](../Architecture/Modding.md).
-> **Состояние:** реализовано планом [EntityAuthoringExtensions](../Plans/Archive/EntityAuthoringExtensions/README.md); нормативное поведение — [Lua Runtime Contract § Entity Extensions](../Architecture/LuaRuntimeContract.md).
+> **Затрагивает:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Modding](../../Architecture/Modding.md).
+> **Состояние:** реализовано планом [EntityAuthoringExtensions](../../Plans/Archive/EntityAuthoringExtensions/README.md); нормативное поведение — [Lua Runtime Contract § Entity Extensions](../../Architecture/LuaRuntimeContract.md).
 
 ## Summary
 

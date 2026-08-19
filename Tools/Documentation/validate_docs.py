@@ -13,6 +13,13 @@ from urllib.parse import unquote
 
 FRONT_MATTER_BOUNDARY = "---"
 ARCHIVE_DIRECTORY = "Archive"
+# A proposal leaves the active set in one of two directions, and the direction
+# is the whole point of keeping it: Archive/ records what was built, Rejected/
+# records what was considered and turned down. Both are historical, so both
+# carry status 'archived'; separating them keeps "we already decided against
+# this" findable instead of lost among the delivered work.
+REJECTED_DIRECTORY = "Rejected"
+HISTORICAL_DIRECTORIES = (ARCHIVE_DIRECTORY, REJECTED_DIRECTORY)
 # Explanatory tiers. They never define architectural rules: at a conflict the
 # normative contract wins. Keeping the status tied to the location makes the
 # distinction impossible to lose in a move or a copy-paste.
@@ -92,6 +99,8 @@ class Validation:
         is_adr = relative.parts[0] == "ADR" and path.name != "README.md"
         is_proposal = relative.parts[0] == "Proposals" and path.name != "README.md"
         is_archived_location = ARCHIVE_DIRECTORY in relative.parts
+        is_rejected_location = REJECTED_DIRECTORY in relative.parts
+        is_historical_location = is_archived_location or is_rejected_location
         is_informative_location = relative.parts[0] in INFORMATIVE_DIRECTORIES
 
         required = {"title", "status"}
@@ -128,10 +137,16 @@ class Validation:
         # An archived document is a historical record: it is never normative and
         # never a source of tasks. Keep location and status in sync in both
         # directions so an archived plan cannot silently keep an active status.
-        if is_archived_location and status != "archived":
-            self.fail(path, f"document under {ARCHIVE_DIRECTORY}/ must use status 'archived', found '{status}'")
-        if status == "archived" and not is_archived_location:
-            self.fail(path, f"status 'archived' requires the document to live under {ARCHIVE_DIRECTORY}/")
+        if is_historical_location and status != "archived":
+            self.fail(
+                path,
+                f"document under {' or '.join(d + '/' for d in HISTORICAL_DIRECTORIES)} must use status 'archived', found '{status}'",
+            )
+        if status == "archived" and not is_historical_location:
+            self.fail(
+                path,
+                f"status 'archived' requires the document to live under {' or '.join(d + '/' for d in HISTORICAL_DIRECTORIES)}",
+            )
 
         version = metadata.get("version")
         if version and (not isinstance(version, str) or VERSION.fullmatch(version) is None):
@@ -144,10 +159,33 @@ class Validation:
             except ValueError:
                 self.fail(path, f"invalid ISO date '{date_value}'")
 
-        allowed_proposal_states = {"accepted_for_planning", "measurement_required", "implemented"}
+        allowed_proposal_states = {
+            "accepted_for_planning", "measurement_required", "implemented", "rejected",
+        }
         proposal_state = metadata.get("proposal_state")
         if is_proposal and proposal_state not in allowed_proposal_states:
             self.fail(path, f"invalid proposal_state '{proposal_state}'")
+
+        # A proposal's location is its state. An implemented or rejected
+        # proposal left in the active directory keeps showing up as work to do,
+        # and the index drifts from the directory within a release. Binding the
+        # two in both directions makes the move part of finishing the work.
+        if is_proposal:
+            expected_directory = {
+                "implemented": ARCHIVE_DIRECTORY,
+                "rejected": REJECTED_DIRECTORY,
+            }.get(str(proposal_state))
+            if expected_directory is not None and expected_directory not in relative.parts:
+                self.fail(
+                    path,
+                    f"proposal_state '{proposal_state}' requires the document to live under Proposals/{expected_directory}/",
+                )
+            if expected_directory is None and is_historical_location:
+                self.fail(
+                    path,
+                    f"proposal under {' or '.join(d + '/' for d in HISTORICAL_DIRECTORIES)} must use "
+                    f"proposal_state 'implemented' or 'rejected', found '{proposal_state}'",
+                )
 
         allowed_keys = {
             "title", "status", "version", "updated", "date", "language",
@@ -198,7 +236,7 @@ class Validation:
         relative = path.relative_to(self.docs_root)
         if path.name == "README.md":
             return
-        if ARCHIVE_DIRECTORY in relative.parts:
+        if any(directory in relative.parts for directory in HISTORICAL_DIRECTORIES):
             return
         field = HEADER_FIELD_BY_DIRECTORY.get(relative.parts[0])
         if field is None:

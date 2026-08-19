@@ -5,7 +5,7 @@ proposal_state: accepted_for_planning
 version: 0.2
 updated: 2026-08-14
 depends_on:
-  - PortableContentCoreProposal.md
+  - Archive/PortableContentCoreProposal.md
   - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
   - ../Architecture/GameDataRepositoryContract.md
   - ../Architecture/StableIDSpecification.md

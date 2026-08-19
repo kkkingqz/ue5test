@@ -4,7 +4,7 @@ status: archived
 version: 2.0
 updated: 2026-08-14
 depends_on:
-  - ../../../Proposals/PortableContentCoreProposal.md
+  - ../../../Proposals/Archive/PortableContentCoreProposal.md
   - ../../../Architecture/GameDataRepositoryContract.md
 ---
 
@@ -16,7 +16,7 @@ depends_on:
 
 Реализовать один portable `GV2ContentCore`, который принимает уже разрешённый набор package descriptors и детерминированно возвращает либо immutable repository candidate, либо ordered diagnostics. Один source set обязан использоваться CMake и Unreal Build Tool.
 
-План материализует [Portable Content Core Proposal](../../../Proposals/PortableContentCoreProposal.md), но не расширяет его scope.
+План материализует [Portable Content Core Proposal](../../../Proposals/Archive/PortableContentCoreProposal.md), но не расширяет его scope.
 
 ## Границы первого релиза
 

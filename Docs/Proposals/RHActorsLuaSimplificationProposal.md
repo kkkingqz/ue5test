@@ -5,7 +5,7 @@ proposal_state: accepted_for_planning
 version: 1.1
 updated: 2026-08-19
 depends_on:
-  - EntityAuthoringExtensionProposal.md
+  - Archive/EntityAuthoringExtensionProposal.md
   - ../Architecture/LuaRuntimeContract.md
 decisions:
   - ../ADR/0027-designer-lua-authoring-layer.md

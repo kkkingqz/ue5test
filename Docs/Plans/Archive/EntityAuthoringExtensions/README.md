@@ -4,7 +4,7 @@ status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
-  - ../../../Proposals/EntityAuthoringExtensionProposal.md
+  - ../../../Proposals/Archive/EntityAuthoringExtensionProposal.md
   - ../../../Architecture/LuaRuntimeContract.md
   - ../../../Architecture/Modding.md
 decisions:
@@ -16,7 +16,7 @@ decisions:
 
 # План реализации Entity Authoring Extensions
 
-> **Материализует:** [Entity Authoring Extension Proposal](../../../Proposals/EntityAuthoringExtensionProposal.md) и [ADR-0031](../../../ADR/0031-entity-authoring-extensions.md).
+> **Материализует:** [Entity Authoring Extension Proposal](../../../Proposals/Archive/EntityAuthoringExtensionProposal.md) и [ADR-0031](../../../ADR/0031-entity-authoring-extensions.md).
 > **Задачи:** EAE-01…12.
 > **Результат:** декларативное добавление методов к сущностям через синтаксис `function EntityKind:method()`, автоматическая композиция effective method tables, устранение низкоуровневых декораторов из геймплейных пакетов.
 

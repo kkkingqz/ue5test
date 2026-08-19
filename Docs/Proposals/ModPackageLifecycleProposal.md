@@ -5,7 +5,7 @@ proposal_state: accepted_for_planning
 version: 0.1
 updated: 2026-08-13
 depends_on:
-  - PortableContentCoreProposal.md
+  - Archive/PortableContentCoreProposal.md
   - ContentDiagnosticsAndToolingProposal.md
   - ../Architecture/Modding.md
   - ../Architecture/BootstrapAndSessionLifecycle.md

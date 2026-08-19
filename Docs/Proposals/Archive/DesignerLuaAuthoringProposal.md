@@ -1,28 +1,28 @@
 ---
 title: Designer Lua Authoring Proposal
-status: draft
+status: archived
 proposal_state: implemented
 version: 1.0
 updated: 2026-08-18
 depends_on:
-  - ../Architecture/LuaRuntimeContract.md
-  - ../Architecture/CommandsAndEvents.md
-  - ../Architecture/CanonicalStateAndSave.md
-  - ../Architecture/StableIDSpecification.md
-  - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../Architecture/LuaRuntimeContract.md
+  - ../../Architecture/CommandsAndEvents.md
+  - ../../Architecture/CanonicalStateAndSave.md
+  - ../../Architecture/StableIDSpecification.md
+  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
 decisions:
-  - ../ADR/0025-lua-module-replacement-and-export-freezing.md
-  - ../ADR/0026-core-and-gameplay-ownership.md
-  - ../ADR/0024-lua-spec-runner.md
+  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0024-lua-spec-runner.md
 ---
 
 # Предложение по designer-facing Lua
 
 > **Предлагает:** слой поверх фасада `game`, на котором геймдизайнер пишет обычный Lua, не видя Stable ID, реестров, конвертов команд и presentation DTO.
-> **Затрагивает:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Commands and Events](../Architecture/CommandsAndEvents.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
+> **Затрагивает:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Commands and Events](../../Architecture/CommandsAndEvents.md), [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md).
 > **Не является нормативным:** до реализации действует текущий contract.
 
-Документ заменяет `Human-Friendly Gameplay Authoring Layer v2` и `Designer-Friendly Lua Gameplay Authoring` — обсуждение по ним сведено здесь в принятые решения. Визуальный frontend — в [Content Editor Plugin](ContentEditorPluginProposal.md).
+Документ заменяет `Human-Friendly Gameplay Authoring Layer v2` и `Designer-Friendly Lua Gameplay Authoring` — обсуждение по ним сведено здесь в принятые решения. Визуальный frontend — в [Content Editor Plugin](../ContentEditorPluginProposal.md).
 
 ## Граница слоёв
 
@@ -134,7 +134,7 @@ button(text("market.buy_sword"), action(commands.buy, sword))
 
 Ни один геймплейный модуль, доменный метод или сервис не получает сырое каноническое состояние: все пишут через guarded-представление, и потому все проходят проверку окна и увеличивают `write_revision`.
 
-`unwrap_state` становится runtime-internal и возвращается отдельным `admin`-handle по образцу реестра подписчиков; `guard_state` остаётся в экспорте — его вызывает C++. После заморозки таблиц экспорта ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)) заново опубликовать `unwrap` подменой чужого экспорта невозможно, поэтому изоляция структурная, а не декоративная.
+`unwrap_state` становится runtime-internal и возвращается отдельным `admin`-handle по образцу реестра подписчиков; `guard_state` остаётся в экспорте — его вызывает C++. После заморозки таблиц экспорта ([ADR-0025](../../ADR/0025-lua-module-replacement-and-export-freezing.md)) заново опубликовать `unwrap` подменой чужого экспорта невозможно, поэтому изоляция структурная, а не декоративная.
 
 Стоимость перехода мала: продакшн-Lua `unwrap_state` не использует, затронуты два спека.
 
@@ -154,7 +154,7 @@ local player, world = M.player, M.world
 
 **До production-релиза обратная совместимость не поддерживается.** Сейв, снятый другой версией, может не грузиться; переименование чего угодно допустимо. Это снимает миграции с самых дорогих пунктов — универсальной секции состояния и переноса локации на актора.
 
-Правило действует **только до релиза**. После него включается [ADR-0023](../ADR/0023-stable-id-publication-freeze.md) и версии секций начинают что-то значить.
+Правило действует **только до релиза**. После него включается [ADR-0023](../../ADR/0023-stable-id-publication-freeze.md) и версии секций начинают что-то значить.
 
 ## Целевой вид файла
 
@@ -444,7 +444,7 @@ player:add_gold(10)       -- то же самое
 
 ## Проверки
 
-Всё выразимо в Lua, кроме `write_revision` и изоляции `unwrap_state` — они в модулях ядра, но тоже проверяются спеками ([ADR-0024](../ADR/0024-lua-spec-runner.md)).
+Всё выразимо в Lua, кроме `write_revision` и изоляции `unwrap_state` — они в модулях ядра, но тоже проверяются спеками ([ADR-0024](../../ADR/0024-lua-spec-runner.md)).
 
 Обязательные случаи:
 

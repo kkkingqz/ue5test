@@ -33,8 +33,8 @@ depends_on:
 - [x] **TSL-20 — Синхронизировать документацию**
   - Зависимости: TSL-14, TSL-17, TSL-19.
   - Решение по геттерам/хелперам (`get_gold`, `get_stamina`, `is_player`, `is_npc`): методы сохранены на декораторе как удобные явные хелперы предметной модели, покрыты спеками `Tests/Lua/economy/actor_rh_economy.lua`.
-  - Done: [Modding](../../../Architecture/Modding.md) описывает три уровня и критерий выбора; [Stable ID Specification](../../../Architecture/StableIDSpecification.md) — kind `action` и namespace `textsystem`; [Build and Tooling](../../../Architecture/BuildAndTooling.md) — набор пакетов из данных и контейнерный режим; [Concepts](../../../Concepts/README.md) и [ContentModel](../../../Concepts/ContentModel.md) объясняют три слоя читателю; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён; в предложении [TextSystemLayerProposal](../../../Proposals/TextSystemLayerProposal.md) проставлено `proposal_state: implemented`.
-  - Evidence: `Docs/Architecture/Modding.md`, `Docs/Architecture/StableIDSpecification.md`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Concepts/ContentModel.md`, `Docs/Status/ImplementationStatus.md`, `Docs/Proposals/TextSystemLayerProposal.md`.
+  - Done: [Modding](../../../Architecture/Modding.md) описывает три уровня и критерий выбора; [Stable ID Specification](../../../Architecture/StableIDSpecification.md) — kind `action` и namespace `textsystem`; [Build and Tooling](../../../Architecture/BuildAndTooling.md) — набор пакетов из данных и контейнерный режим; [Concepts](../../../Concepts/README.md) и [ContentModel](../../../Concepts/ContentModel.md) объясняют три слоя читателю; [Implementation Status](../../../Status/ImplementationStatus.md) обновлён; в предложении [TextSystemLayerProposal](../../../Proposals/Archive/TextSystemLayerProposal.md) проставлено `proposal_state: implemented`.
+  - Evidence: `Docs/Architecture/Modding.md`, `Docs/Architecture/StableIDSpecification.md`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Concepts/ContentModel.md`, `Docs/Status/ImplementationStatus.md`, `Docs/Proposals/Archive/TextSystemLayerProposal.md`.
 
 ## Проверка milestone
 

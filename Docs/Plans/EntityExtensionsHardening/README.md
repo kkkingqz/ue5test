@@ -49,7 +49,7 @@ decisions:
 
 Не входят:
 
-- **Явный `override` для методов сущностей.** [Предложение](../../Proposals/EntityAuthoringExtensionProposal.md) выделяет его отдельно (§8.2), потребителя сейчас нет. Появится вместе с первым модом, которому нужно заменить метод.
+- **Явный `override` для методов сущностей.** [Предложение](../../Proposals/Archive/EntityAuthoringExtensionProposal.md) выделяет его отдельно (§8.2), потребителя сейчас нет. Появится вместе с первым модом, которому нужно заменить метод.
 - Переписывание архивного плана: это исторический record.
 - Изменения в `rh/scripts/gameplay/actors.lua` — принадлежат плану [RHActorsSimplification](../RHActorsSimplification/README.md).
 

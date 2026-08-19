@@ -1,24 +1,24 @@
 ---
 title: Simplified Authoring Surface Proposal
-status: draft
+status: archived
 proposal_state: implemented
 version: 1.0
 updated: 2026-08-18
 depends_on:
   - DesignerLuaAuthoringProposal.md
-  - ContentEditorPluginProposal.md
-  - ../Architecture/LuaRuntimeContract.md
-  - ../Architecture/CommandsAndEvents.md
-  - ../Architecture/CanonicalStateAndSave.md
+  - ../ContentEditorPluginProposal.md
+  - ../../Architecture/LuaRuntimeContract.md
+  - ../../Architecture/CommandsAndEvents.md
+  - ../../Architecture/CanonicalStateAndSave.md
 decisions:
-  - ../ADR/0027-designer-lua-authoring-layer.md
-  - ../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../ADR/0026-core-and-gameplay-ownership.md
 ---
 
 # Предложение по упрощению авторской поверхности
 
 > **Предлагает:** убрать инфраструктурную обвязку из designer-facing Lua и переработать `rh` под неё.
-> **Затрагивает:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Commands and Events](../Architecture/CommandsAndEvents.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
+> **Затрагивает:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Commands and Events](../../Architecture/CommandsAndEvents.md), [Build and Tooling](../../Architecture/BuildAndTooling.md).
 > **Не является нормативным:** до реализации действует текущий contract.
 
 Продолжение [Designer Lua Authoring](DesignerLuaAuthoringProposal.md). Тот слой убрал из геймплея Stable ID, реестры и конверты; практическая переработка `rh` показала, что осталась вторая половина — обвязка самого слоя.
@@ -206,8 +206,8 @@ Command commit → состояние обновлено → презентац�
 
 ### 11.1. Статус предусловий
 
-Все три предусловия схемных изменений ([Content Editor Plugin](ContentEditorPluginProposal.md), раздел 40) выполнены в рамках плана `Docs/Plans/Archive/ContentEditorPrerequisites/` (Milestones 1–3):
-- Правило версионирования схем ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md));
+Все три предусловия схемных изменений ([Content Editor Plugin](../ContentEditorPluginProposal.md), раздел 40) выполнены в рамках плана `Docs/Plans/Archive/ContentEditorPrerequisites/` (Milestones 1–3):
+- Правило версионирования схем ([ADR-0029](../../ADR/0029-content-authoring-and-schema-evolution.md));
 - Точечная правка и удаление полей в `Json5AstRewriter` (`gv2-content set` / `delete`);
 - Authoring UI-метаданные схем (`schemas/<name>.ui.json5`).
 

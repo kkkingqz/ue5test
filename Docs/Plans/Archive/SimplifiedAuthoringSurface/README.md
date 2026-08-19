@@ -4,7 +4,7 @@ status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
-  - ../../../Proposals/SimplifiedAuthoringSurfaceProposal.md
+  - ../../../Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md
   - ../../../Architecture/LuaRuntimeContract.md
   - ../../../Architecture/CommandsAndEvents.md
   - ../../../Architecture/BuildAndTooling.md
@@ -15,7 +15,7 @@ decisions:
 
 # План упрощения авторской поверхности
 
-> **Материализует:** [Simplified Authoring Surface](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md).
+> **Материализует:** [Simplified Authoring Surface](../../../Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md).
 > **Задачи:** SAS-01…21.
 > **Результат:** геймплей `rh` — один файл правил игры без обвязки; инфраструктурных Lua-файлов в пакете не остаётся.
 
@@ -46,7 +46,7 @@ Lua-часть `rh` — 791 строка на четыре правила игр
 
 ## Принятые решения
 
-Зафиксированы в [предложении](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md), выносятся в ADR первой задачей. Кратко:
+Зафиксированы в [предложении](../../../Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md), выносятся в ADR первой задачей. Кратко:
 
 - authoring-скрипт получает собственное лексическое окружение с прямыми именами; это пересмотр решения о прологе, и ADR фиксирует, что именно не сошлось;
 - ID модуля выводится из пути **только для незамещаемых**; `replaceable` объявляет ID явно, потому что на него нацеливаются моды;

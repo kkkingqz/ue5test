@@ -20,7 +20,7 @@ decisions:
 
 Lua читает definitions из pinned immutable snapshot через `game.repository`. Один marshaller обслуживает оба portable value-типа. Headless и UE получают одинаковые значения, одинаковый порядок и одинаковые typed errors из одного corpus.
 
-Этап не расширяет scope [Portable Content Core Proposal](../../../Proposals/PortableContentCoreProposal.md): его ownership-диаграмма уже содержит путь `Immutable Repository Snapshot → GV2RuntimeCore / Lua queries`, а раздел ownership фиксирует, что `GV2RuntimeCore` читает pinned snapshot через typed read interface и не участвует в repository build. `game.repository` также уже нормативно объявлен в `LuaRuntimeContract` (`game` façade) и `GameDataRepositoryContract` (`Lua API`). M6 закрывает разрыв между этими нормативными описаниями и реализацией: до него pinned handle доходит до session coordinator и headless, но gameplay не может прочитать ни одного definition.
+Этап не расширяет scope [Portable Content Core Proposal](../../../Proposals/Archive/PortableContentCoreProposal.md): его ownership-диаграмма уже содержит путь `Immutable Repository Snapshot → GV2RuntimeCore / Lua queries`, а раздел ownership фиксирует, что `GV2RuntimeCore` читает pinned snapshot через typed read interface и не участвует в repository build. `game.repository` также уже нормативно объявлен в `LuaRuntimeContract` (`game` façade) и `GameDataRepositoryContract` (`Lua API`). M6 закрывает разрыв между этими нормативными описаниями и реализацией: до него pinned handle доходит до session coordinator и headless, но gameplay не может прочитать ни одного definition.
 
 ## Принятые решения
 

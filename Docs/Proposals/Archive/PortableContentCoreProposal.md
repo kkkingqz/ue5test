@@ -1,28 +1,28 @@
 ---
 title: Portable Content Core Proposal
-status: draft
+status: archived
 proposal_state: implemented
 version: 1.0
 updated: 2026-08-14
 depends_on:
-  - ../Architecture/SystemContextAndComponents.md
-  - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
-  - ../Architecture/GameDataRepositoryContract.md
-  - ../Architecture/HeadlessSimulationContract.md
-  - ../Architecture/Modding.md
+  - ../../Architecture/SystemContextAndComponents.md
+  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../Architecture/GameDataRepositoryContract.md
+  - ../../Architecture/HeadlessSimulationContract.md
+  - ../../Architecture/Modding.md
 decisions:
-  - ../ADR/0006-repository-reload-and-session-pinning.md
-  - ../ADR/0008-minimal-repository-indexes.md
-  - ../ADR/0010-portable-runtime-and-headless-simulation.md
+  - ../../ADR/0006-repository-reload-and-session-pinning.md
+  - ../../ADR/0008-minimal-repository-indexes.md
+  - ../../ADR/0010-portable-runtime-and-headless-simulation.md
 ---
 
 # Предложение по portable Content Core
 
 > **Предлагает:** общий portable pipeline `Packages → Definitions → Repository Snapshot → Runtime`.
-> **Затрагивает:** [GameDataRepository](../Architecture/GameDataRepositoryContract.md), [System Context](../Architecture/SystemContextAndComponents.md).
+> **Затрагивает:** [GameDataRepository](../../Architecture/GameDataRepositoryContract.md), [System Context](../../Architecture/SystemContextAndComponents.md).
 > **Состояние:** реализовано; нормативный результат перенесён в contracts, документ сохраняется как rationale.
 
-> **Реализовано.** Нормативное поведение перенесено в [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md), [Definition Envelope and Schema Rules](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md) и [Build and Tooling](../Architecture/BuildAndTooling.md). Ход выполнения — в архивном плане [PortableContentCore](../Plans/Archive/PortableContentCore/README.md). Документ сохраняется как rationale.
+> **Реализовано.** Нормативное поведение перенесено в [GameDataRepository Contract](../../Architecture/GameDataRepositoryContract.md), [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) и [Build and Tooling](../../Architecture/BuildAndTooling.md). Ход выполнения — в архивном плане [PortableContentCore](../../Plans/Archive/PortableContentCore/README.md). Документ сохраняется как rationale.
 
 ## Назначение и область
 

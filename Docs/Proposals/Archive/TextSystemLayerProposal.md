@@ -1,24 +1,24 @@
 ---
 title: TextSystem Layer Proposal
-status: draft
+status: archived
 proposal_state: implemented
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - SimplifiedAuthoringSurfaceProposal.md
-  - ContentEditorPluginProposal.md
-  - ../Architecture/Modding.md
-  - ../Architecture/StableIDSpecification.md
-  - ../Architecture/LuaRuntimeContract.md
+  - ../ContentEditorPluginProposal.md
+  - ../../Architecture/Modding.md
+  - ../../Architecture/StableIDSpecification.md
+  - ../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../ADR/0026-core-and-gameplay-ownership.md
-  - ../ADR/0028-simplified-authoring-surface.md
+  - ../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0028-simplified-authoring-surface.md
 ---
 
 # Предложение по слою TextSystem
 
 > **Предлагает:** промежуточный слой между движком и игрой — переиспользуемую основу текстовой игры.
-> **Затрагивает:** [Modding](../Architecture/Modding.md), [Stable ID Specification](../Architecture/StableIDSpecification.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
+> **Затрагивает:** [Modding](../../Architecture/Modding.md), [Stable ID Specification](../../Architecture/StableIDSpecification.md), [Build and Tooling](../../Architecture/BuildAndTooling.md).
 > **Не является нормативным:** до реализации действует текущий contract.
 
 ## 1. Назначение
@@ -39,7 +39,7 @@ rh           правила и сущности конкретной игры
 
 ## 2. Отношение к ADR-0026 — это осознанное исключение
 
-[ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) отвергает вынесение подсистем в feature package «заранее»: «повторная применимость доказывается второй игрой, а не ожиданием».
+[ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) отвергает вынесение подсистем в feature package «заранее»: «повторная применимость доказывается второй игрой, а не ожиданием».
 
 **Второй текстовой игры нет.** Значит предложение нарушает собственное правило проекта, и это должно быть записано, а не пройти незамеченным.
 
@@ -81,7 +81,7 @@ if (exists(GameDataDir / "rh"   / "package.json5")) Roots.push_back(…/"rh");
 
 ### 3.3. Автообнаружение модулей уже реализовано
 
-Part J исходной редакции описывает то, что сделано планом [SimplifiedAuthoringSurface](../Plans/Archive/SimplifiedAuthoringSurface/README.md): `generate_manifest.py`, вывод ID, скан литеральных `require`, гейт `rh_manifest_up_to_date_contract`.
+Part J исходной редакции описывает то, что сделано планом [SimplifiedAuthoringSurface](../../Plans/Archive/SimplifiedAuthoringSurface/README.md): `generate_manifest.py`, вывод ID, скан литеральных `require`, гейт `rh_manifest_up_to_date_contract`.
 
 Два уточнения к описанию: ручной манифест не удалён, а **стал генерируемым артефактом**, и ID выводится из пути **только для незамещаемых** модулей — замещаемые объявляют ID явно, потому что на них нацеливаются моды.
 
@@ -109,7 +109,7 @@ Part J исходной редакции описывает то, что сде�
 
 ### 3.8. Схемы переезжают второй раз
 
-`item_v1` и `location_v1` переехали из `core` в `rh` планом [CoreBoundaryMigration](../Plans/Archive/CoreBoundaryMigration/README.md). Теперь `location` уезжает в `textsystem` — тот же файл, вторая миграция за неделю. Не ошибка, критерий изменился законно, но должно быть названо.
+`item_v1` и `location_v1` переехали из `core` в `rh` планом [CoreBoundaryMigration](../../Plans/Archive/CoreBoundaryMigration/README.md). Теперь `location` уезжает в `textsystem` — тот же файл, вторая миграция за неделю. Не ошибка, критерий изменился законно, но должно быть названо.
 
 ### 3.9. Замороженный корпус под правило не подпадает
 
@@ -195,9 +195,9 @@ end
 
 Механизм уже есть — источник презентации регистрируется и вызывается рантаймом после успешного commit. Переносится владение, а не машинерия.
 
-Декларативные экраны становятся возможны: три предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md). Схема экрана получает описание, семантические действия и признак «включить переходы в связанные локации».
+Декларативные экраны становятся возможны: три предусловия закрыты планом [ContentEditorPrerequisites](../../Plans/Archive/ContentEditorPrerequisites/README.md). Схема экрана получает описание, семантические действия и признак «включить переходы в связанные локации».
 
-**Семантическое действие — новый механизм, а не переименование.** Сегодня `action(commands.buy, sword)` возвращает пару `command_id` плюс аргументы. Именованное действие с поздним связыванием (`textsystem:action.location.travel` → `rh:command.travel`) вводит реестр действий, которого нет, и **kind `action`, которого нет в реестре kind**. Добавление kind требует schema binding по [Stable ID Specification](../Architecture/StableIDSpecification.md). Это отдельная работа, и её нельзя описывать как деталь презентера.
+**Семантическое действие — новый механизм, а не переименование.** Сегодня `action(commands.buy, sword)` возвращает пару `command_id` плюс аргументы. Именованное действие с поздним связыванием (`textsystem:action.location.travel` → `rh:command.travel`) вводит реестр действий, которого нет, и **kind `action`, которого нет в реестре kind**. Добавление kind требует schema binding по [Stable ID Specification](../../Architecture/StableIDSpecification.md). Это отдельная работа, и её нельзя описывать как деталь презентера.
 
 # Part E. Структура пакетов
 

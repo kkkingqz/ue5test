@@ -5,7 +5,7 @@ version: 1.0
 updated: 2026-08-18
 depends_on:
   - ../../../Proposals/ContentEditorPluginProposal.md
-  - ../../../Proposals/SimplifiedAuthoringSurfaceProposal.md
+  - ../../../Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md
   - ../../../Architecture/DefinitionEnvelopeAndSchemaRules.md
   - ../../../Architecture/BuildAndTooling.md
 decisions:
@@ -23,7 +23,7 @@ decisions:
 
 Закрыть три возможности, без которых визуальный редактор будет порождать изменения, которые нечем проверить: правило версионирования схем, точечную правку поля в файле и метаданные представления для схем.
 
-Работа разблокирует сразу два направления — [Content Editor Plugin](../../../Proposals/ContentEditorPluginProposal.md) целиком и декларативные экраны из [Simplified Authoring Surface](../../../Proposals/SimplifiedAuthoringSurfaceProposal.md), которые не вошли в свой план по той же причине.
+Работа разблокирует сразу два направления — [Content Editor Plugin](../../../Proposals/ContentEditorPluginProposal.md) целиком и декларативные экраны из [Simplified Authoring Surface](../../../Proposals/Archive/SimplifiedAuthoringSurfaceProposal.md), которые не вошли в свой план по той же причине.
 
 Первые два пункта не требуют Unreal Editor вовсе и проверяются существующими средствами.
 

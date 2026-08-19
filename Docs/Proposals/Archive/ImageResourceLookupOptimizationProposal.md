@@ -1,25 +1,25 @@
 ---
 title: Image Resource Lookup Optimization Proposal
-status: draft
+status: archived
 proposal_state: implemented
 version: 0.2
 updated: 2026-08-13
 depends_on:
-  - ../Architecture/SystemContextAndComponents.md
-  - ../UI/ImageResources.md
+  - ../../Architecture/SystemContextAndComponents.md
+  - ../../UI/ImageResources.md
 decisions:
-  - ../ADR/0016-png-suffix-image-metadata.md
-  - ../ADR/0017-centralized-ui-presentation-paths.md
+  - ../../ADR/0016-png-suffix-image-metadata.md
+  - ../../ADR/0017-centralized-ui-presentation-paths.md
 ---
 
 # Предложение по оптимизации lookup Image Resource Catalog
 
 > **Предлагает:** immutable O(1) lookup и однократную подготовку resolved brush.
-> **Затрагивает:** [Image Resources](../UI/ImageResources.md).
+> **Затрагивает:** [Image Resources](../../UI/ImageResources.md).
 > **Состояние:** реализовано; нормативный результат перенесён в contracts, документ сохраняется как rationale.
 
 Реализовано 2026-08-13. Нормативное runtime-поведение зафиксировано в
-[`ImageResources.md`](../UI/ImageResources.md); этот документ сохраняет исходное
+[`ImageResources.md`](../../UI/ImageResources.md); этот документ сохраняет исходное
 обоснование и критерии реализации.
 
 ## Назначение и область

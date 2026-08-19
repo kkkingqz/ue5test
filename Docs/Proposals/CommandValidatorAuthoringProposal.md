@@ -5,8 +5,8 @@ proposal_state: accepted_for_planning
 version: 1.1
 updated: 2026-08-19
 depends_on:
-  - DesignerLuaAuthoringProposal.md
-  - SimplifiedAuthoringSurfaceProposal.md
+  - Archive/DesignerLuaAuthoringProposal.md
+  - Archive/SimplifiedAuthoringSurfaceProposal.md
   - ../Architecture/CommandsAndEvents.md
   - ../Architecture/LuaRuntimeContract.md
   - ../Architecture/Modding.md

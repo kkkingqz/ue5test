@@ -4,7 +4,7 @@ status: archived
 version: 1.0
 updated: 2026-08-18
 depends_on:
-  - ../../../Proposals/DesignerLuaAuthoringProposal.md
+  - ../../../Proposals/Archive/DesignerLuaAuthoringProposal.md
   - ../../../Architecture/LuaRuntimeContract.md
   - ../../../Architecture/CommandsAndEvents.md
   - ../../../Architecture/CanonicalStateAndSave.md
@@ -17,7 +17,7 @@ decisions:
 
 # План реализации designer-facing слоя
 
-> **Материализует:** [Designer Lua Authoring](../../../Proposals/DesignerLuaAuthoringProposal.md).
+> **Материализует:** [Designer Lua Authoring](../../../Proposals/Archive/DesignerLuaAuthoringProposal.md).
 > **Задачи:** DLA-01…23.
 > **Результат:** геймплей `rh` написан на designer-facing Lua; фасад в теле команд не встречается.
 
@@ -46,7 +46,7 @@ decisions:
 
 ## Принятые решения
 
-Все зафиксированы в [предложении](../../../Proposals/DesignerLuaAuthoringProposal.md) и выносятся в ADR первой задачей. Кратко:
+Все зафиксированы в [предложении](../../../Proposals/Archive/DesignerLuaAuthoringProposal.md) и выносятся в ADR первой задачей. Кратко:
 
 - команда именуется ключом дескриптора, регистрация отложена до фазы `register`;
 - `fail()` до первой мутации — отказ, после — `AuthoringFailAfterMutation`; признак даёт `write_revision` в самом окне мутации;

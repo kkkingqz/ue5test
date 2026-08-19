@@ -63,7 +63,7 @@ decisions:
 
 ## Связанные предложения
 
-- [Portable Content Core](PortableContentCoreProposal.md)
+- [Portable Content Core](Archive/PortableContentCoreProposal.md)
 - [Content Diagnostics and Tooling](ContentDiagnosticsAndToolingProposal.md)
 - [Mod Package Lifecycle](ModPackageLifecycleProposal.md)
 - [CommonUI Runtime Integration](CommonUIRuntimeIntegrationProposal.md)

@@ -1,24 +1,24 @@
 ---
 title: Core and Gameplay Boundary Proposal
-status: draft
+status: archived
 proposal_state: implemented
 version: 1.0
 updated: 2026-08-17
 depends_on:
-  - ../Architecture/Modding.md
-  - ../Architecture/StableIDSpecification.md
-  - ../Architecture/LuaRuntimeContract.md
-  - ../Architecture/GameDataRepositoryContract.md
+  - ../../Architecture/Modding.md
+  - ../../Architecture/StableIDSpecification.md
+  - ../../Architecture/LuaRuntimeContract.md
+  - ../../Architecture/GameDataRepositoryContract.md
 decisions:
-  - ../ADR/0025-lua-module-replacement-and-export-freezing.md
-  - ../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../../ADR/0026-core-and-gameplay-ownership.md
 ---
 
 # Предложение по границе GV2 Core и gameplay packages
 
 > **Предлагает:** правило ownership, по которому новая сущность однозначно относится к framework core либо к gameplay package.
-> **Затрагивает:** [Modding](../Architecture/Modding.md), [Stable ID Specification](../Architecture/StableIDSpecification.md), [GameDataRepository](../Architecture/GameDataRepositoryContract.md).
-> **Статус: реализовано.** Правило владения закреплено в [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) и перенесено в contracts ([Definition Envelope and Schema Rules](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [GameDataRepository Contract](../Architecture/GameDataRepositoryContract.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md), [Build and Tooling](../Architecture/BuildAndTooling.md)) в рамках плана [CoreBoundaryMigration](../Plans/Archive/CoreBoundaryMigration/README.md) (задачи CBM-01…CBM-16). Документ сохраняется как исходное обоснование и целевая картина.
+> **Затрагивает:** [Modding](../../Architecture/Modding.md), [Stable ID Specification](../../Architecture/StableIDSpecification.md), [GameDataRepository](../../Architecture/GameDataRepositoryContract.md).
+> **Статус: реализовано.** Правило владения закреплено в [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md) и перенесено в contracts ([Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md), [GameDataRepository Contract](../../Architecture/GameDataRepositoryContract.md), [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md), [Build and Tooling](../../Architecture/BuildAndTooling.md)) в рамках плана [CoreBoundaryMigration](../../Plans/Archive/CoreBoundaryMigration/README.md) (задачи CBM-01…CBM-16). Документ сохраняется как исходное обоснование и целевая картина.
 
 Цель — не изменить существующие runtime contracts без необходимости, а зафиксировать правило ownership, по которому новые сущности можно однозначно относить либо к framework core, либо к конкретной игре или feature package.
 
@@ -805,7 +805,7 @@ Gameplay:
 | **B. Реестр фабрик (как в §14)** | Gameplay отдаёт `function(actor_state) -> wrapper`, ядро только выбирает фабрику | Ядро теряет контроль над инвариантами, которые сейчас держит: неизменяемость `instance_id`/`definition_id`/`discriminator` и делегирование в `actor_state`. Каждый пакет обязан воспроизвести их сам |
 | **C. Фабрика-декоратор** | Ядро строит базовую обёртку с инвариантами, gameplay оборачивает: `register_type("rh:npc", function(base) return setmetatable({…}, { __index = base }) end)` | Чуть больше A; инварианты идентичности остаются в ядре, поверх — полная свобода |
 
-**Рекомендация: C.** Идиома `__index = base` уже принята в проекте для замещения модулей ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md)) — получается один приём на два случая вместо двух разных. Вариант A остаётся разумным меньшим стартом: он выражается через C позже без слома.
+**Рекомендация: C.** Идиома `__index = base` уже принята в проекте для замещения модулей ([ADR-0025](../../ADR/0025-lua-module-replacement-and-export-freezing.md)) — получается один приём на два случая вместо двух разных. Вариант A остаётся разумным меньшим стартом: он выражается через C позже без слома.
 
 Вариант B отклоняется: инварианты идентичности — ровно то, что ядро обязано удерживать, и раздавать их каждому пакету значит гарантировать расхождение.
 
@@ -823,7 +823,7 @@ Gameplay:
 
 ### 35.3. Схема существующего kind в пакете (§15, §16, §18)
 
-[Modding](../Architecture/Modding.md) сейчас говорит: «New kind требует declarative schema binding» и «мод не переопределяет основную schema существующего kind». Перенос `item`/`actor`/`location` в gameplay упирается в эту формулировку.
+[Modding](../../Architecture/Modding.md) сейчас говорит: «New kind требует declarative schema binding» и «мод не переопределяет основную schema существующего kind». Перенос `item`/`actor`/`location` в gameplay упирается в эту формулировку.
 
 | Вариант | Суть | Цена |
 |---|---|---|
