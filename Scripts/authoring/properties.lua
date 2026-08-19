@@ -20,8 +20,13 @@ local function merge_field_spec(base_spec, over_spec, field_name, source_name)
         copy.source = copy.source or source_name
         return copy
     end
+    local function is_int_family(k)
+        return k == "integer" or k == "int32" or k == "int64" or k == "uint32" or k == "uint64"
+    end
     if over_spec.kind and base_spec.kind and over_spec.kind ~= base_spec.kind then
-        error("InvalidFieldOverrideKindMismatch: cannot override field '" .. tostring(field_name) .. "' of kind '" .. tostring(base_spec.kind) .. "' with kind '" .. tostring(over_spec.kind) .. "' from " .. tostring(source_name), 2)
+        if not (is_int_family(base_spec.kind) and is_int_family(over_spec.kind)) then
+            error("InvalidFieldOverrideKindMismatch: cannot override field '" .. tostring(field_name) .. "' of kind '" .. tostring(base_spec.kind) .. "' with kind '" .. tostring(over_spec.kind) .. "' from " .. tostring(source_name), 2)
+        end
     end
 
     local merged = {}

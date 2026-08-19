@@ -109,15 +109,14 @@ function M.create_registry()
                 def_id = raw_def.id or raw_def.definition_id
             elseif type(raw_def) == "string" then
                 def_id = raw_def
+                if game and game.repository and game.repository.exists then
+                    if not game.repository.exists(def_id) then
+                        error("InstanceDefinitionNotFound: definition '" .. tostring(def_id) .. "' does not exist in repository", 2)
+                    end
+                end
             end
             if type(def_id) ~= "string" or def_id == "" then
                 error("InvalidDefinitionId: definition ID must be a non-empty string", 2)
-            end
-            if game and game.repository and game.repository.get then
-                local found = game.repository.get(def_id)
-                if not found then
-                    error("InstanceDefinitionNotFound: definition '" .. tostring(def_id) .. "' does not exist in repository", 2)
-                end
             end
         end
 
@@ -223,13 +222,14 @@ function M.register(_ctx)
     if not game.instances then
         game.instances = {}
     end
-    local reg = M.create_registry()
+    local reg = M.get_default_registry()
     game.instances.register_kind = reg.register_kind
     game.instances.is_registered_kind = reg.is_registered_kind
     game.instances.get_section_name = reg.get_section_name
     game.instances.create = reg.create
     game.instances.freeze = reg.freeze
     game.instances.kinds = reg.kinds
+    game.instances.clear_for_test = reg.clear_for_test
 end
 
 return M

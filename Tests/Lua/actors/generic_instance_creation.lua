@@ -7,7 +7,10 @@ local authoring_context = require("core:module.authoring.context")
 local mutation_window = require("core:module.runtime.mutation_window")
 local actor_registry = require("core:module.runtime.actor_registry")
 
+local original_game = nil
+
 local function setup_mock_game(kinds)
+    original_game = _G.game
     local mock_state = {
         meta = {
             instance_counters = {},
@@ -47,7 +50,7 @@ local function setup_mock_game(kinds)
 end
 
 local function cleanup_mock_game()
-    _G.game = nil
+    _G.game = original_game
 end
 
 return {

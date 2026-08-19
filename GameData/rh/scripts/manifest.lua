@@ -10,9 +10,7 @@ return {
         {
             module_id = "rh:module.gameplay.actors",
             source = "gameplay/actors.lua",
-            dependencies = {
-                "core:module.runtime.instance_allocator",
-            },
+            dependencies = {},
             replaceable = false,
             authoring = true,
         },

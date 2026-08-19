@@ -23,30 +23,30 @@ decisions:
 
 ## Задачи
 
-- [ ] **RAS-08 — Перевод полей `gold` и `stamina` на `field.non_negative_integer()`**
+- [x] **RAS-08 — Перевод полей `gold` и `stamina` на `field.non_negative_integer()`**
   - Зависимости: RAS-07.
   - Done: в `GameData/rh/scripts/gameplay/actors.lua` добавлены декларации `Actor.gold = field.non_negative_integer()` и `Actor.stamina = field.non_negative_integer()`.
   - Evidence: `GameData/rh/scripts/gameplay/actors.lua`.
 
-- [ ] **RAS-09 — Упрощение методов ресурсов и удаление `RESOURCES` / `validate_amount`**
+- [x] **RAS-09 — Упрощение методов ресурсов и удаление `RESOURCES` / `validate_amount`**
   - Зависимости: RAS-08.
   - Done: методы `get_gold`, `require_gold`, `spend_gold`, `add_gold`, `get_stamina`, `require_stamina`, `spend_stamina`, `add_stamina` переписаны как чистые явные функции; удалены таблица `RESOURCES`, вспомогательная функция `validate_amount` и fallback `self -> player`; `spend_*` производит прямую арифметику `self.prop = self:get_prop() - amount`.
   - Evidence: `GameData/rh/scripts/gameplay/actors.lua`.
 
-- [ ] **RAS-10 — Перевод `Actor:add_item()` на `instances.create()` и очистка импортов**
+- [x] **RAS-10 — Перевод `Actor:add_item()` на `instances.create()` и очистка импортов**
   - Зависимости: RAS-09.
   - Done: метод `Actor:add_item(item_def_or_id)` переведён на вызов `instances.create("item", { definition = item_def_or_id, owner = self })`; удалён импорт `instance_allocator` и прямое обращение к `game.state.item_instances`; в `GameData/rh/scripts/gameplay/actors.lua` не осталось импортов `core:module.runtime.*`.
   - Evidence: `GameData/rh/scripts/gameplay/actors.lua`.
 
-- [ ] **RAS-17 — Локальная проверка аргументов в `rh`**
+- [x] **RAS-17 — Локальная проверка аргументов в `rh`**
   - Зависимости: RAS-09.
   - Контракт поля защищает результирующее состояние и по построению не ловит `spend_gold(-10)`: такая запись увеличивает баланс и инварианта не нарушает. Удаление `validate_amount` без замены оставило бы методы без всякой проверки аргумента.
   - Done: `GameData/rh/scripts/gameplay/actors.lua` содержит одну локальную проверку аргумента, применяемую методами `require_*`, `spend_*` и `add_*`; проверка не поднимается в общие слои и не превращается в дескриптор; в плане записано, что она снимается при появлении валидаторов команд; отрицательный случай покрыт спекой.
-  - Evidence: `GameData/rh/scripts/gameplay/actors.lua`, `Tests/Lua/economy/`.
+  - Evidence: `GameData/rh/scripts/gameplay/actors.lua`, `Tests/Lua/economy/actor_rh_economy.lua`.
 
 ## Проверка milestone
 
-- [ ] Файл `GameData/rh/scripts/gameplay/actors.lua` не содержит импортов `core:module.runtime.*`.
-- [ ] В файле нет прямых обращений к `game.state`.
-- [ ] Все доменные методы актора (`get/require/spend/add` для золота и выносливости, `add_item`) работают корректно.
-- [ ] `spend_gold(-10)` отклоняется проверкой аргумента, а не проходит молча.
+- [x] Файл `GameData/rh/scripts/gameplay/actors.lua` не содержит импортов `core:module.runtime.*`.
+- [x] В файле нет прямых обращений к `game.state`.
+- [x] Все доменные методы актора (`get/require/spend/add` для золота и выносливости, `add_item`) работают корректно.
+- [x] `spend_gold(-10)` отклоняется проверкой аргумента, а не проходит молча.

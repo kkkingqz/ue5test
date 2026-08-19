@@ -357,6 +357,10 @@ return {
 
     unified_actor_domain_api = function()
         handler_registry.with_isolated_handlers(function()
+            if game and game.instances and game.instances.clear_for_test then
+                game.instances.clear_for_test()
+                game.instances.register_kind("item")
+            end
             local mod, env = authoring_context.create_authoring_environment("rh")
 
             local hero = nil
@@ -567,6 +571,10 @@ return {
 
     general_buy_command_supports_arbitrary_item_definitions = function()
         handler_registry.with_isolated_handlers(function()
+            if game and game.instances and game.instances.clear_for_test then
+                game.instances.clear_for_test()
+                game.instances.register_kind("item")
+            end
             local mod, env = authoring_context.create_authoring_environment("rh")
 
             -- Define buy handler as in authoring/gameplay.lua
