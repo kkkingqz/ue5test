@@ -17,6 +17,7 @@ local validator_registry = require("core:module.runtime.validator_registry")
 local handler_registry = require("core:module.runtime.handler_registry")
 local subscriber_registry = require("core:module.runtime.subscriber_registry")
 local event_bus = require("core:module.runtime.event_bus")
+local entity_extension_registry = require("core:module.runtime.entity_extension_registry")
 local authoring_properties = require("core:module.authoring.properties")
 local authoring_tagged_ref = require("core:module.authoring.tagged_ref")
 local authoring_commands = require("core:module.authoring.commands")
@@ -45,6 +46,7 @@ return {
     handler_registry = handler_registry,
     subscriber_registry = subscriber_registry,
     event_bus = event_bus,
+    entity_extension_registry = entity_extension_registry,
     authoring = authoring_context,
     authoring_commands = authoring_commands,
     authoring_properties = authoring_properties,

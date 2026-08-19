@@ -24,9 +24,7 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет. Следующее направление выбирается из [Proposals](../Proposals/README.md).
-
-После `TestArchitectureAndLuaSpecs` добавление контента в `GameData/core` не меняет ни одного pinned-значения. Pinned-значения принадлежат замороженному корпусу и golden-прогонам; задачи, меняющие их (`LOC-01`), остаются отдельными change set-ами.
+- [EntityAuthoringExtensions](EntityAuthoringExtensions/README.md) — Декларативное расширение доменных сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы авторского окружения `_ENV`, централизованный реестр расширений и сборка effective method tables.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
@@ -34,6 +32,7 @@ depends_on:
 
 | План | Завершён | Результат |
 |---|---|---|
+| [TextSystemLayer](Archive/TextSystemLayer/README.md) | 2026-08-19 | Трёхуровневая архитектура (`core` ← `textsystem` ← `rh`), набор пакетов из данных, перенос владения локациями и переходами, декларативные экраны и трёхуровневые спеки |
 | [PortableContentCore](Archive/PortableContentCore/README.md) | 2026-08-14 | Общий pipeline `Packages → Definitions → Immutable Repository Snapshot` для CLI, Headless и UE плюс `game.repository` в Lua |
 | [HeadlessParityAndReplay](Archive/HeadlessParityAndReplay/README.md) | 2026-08-14 | Одна реализация на portable-проверку и воспроизводимый прогон с общим digest для UE и headless |
 | [CanonicalGameplayState](Archive/CanonicalGameplayState/README.md) | 2026-08-15 | `game.state`, instance identity, хэш состояния в digest, ActorRegistry и mutation window |

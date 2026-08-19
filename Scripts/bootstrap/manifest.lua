@@ -270,6 +270,12 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.runtime.entity_extension_registry",
+            source = "runtime/entity_extension_registry.lua",
+            dependencies = {},
+            replaceable = false,
+        },
+        {
             module_id = "core:module.bootstrap.main",
             source = "bootstrap/main.lua",
             dependencies = {
@@ -293,6 +299,7 @@ return {
                 "core:module.runtime.subscriber_registry",
                 "core:module.runtime.event_envelope",
                 "core:module.runtime.event_bus",
+                "core:module.runtime.entity_extension_registry",
                 "core:module.authoring.properties",
                 "core:module.authoring.tagged_ref",
                 "core:module.authoring.commands",
