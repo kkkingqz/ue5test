@@ -173,7 +173,9 @@ return {
         {
             module_id = "core:module.runtime.service_registry",
             source = "runtime/service_registry.lua",
-            dependencies = {},
+            dependencies = {
+                "core:module.runtime.stable_id",
+            },
             replaceable = false,
         },
         {

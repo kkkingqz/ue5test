@@ -27,6 +27,7 @@ local M = {
 
 local current_scope = { kind = "none" }
 local all_declared_validators = {}
+local all_referenced_services = {}
 local FAIL_SENTINEL = setmetatable({}, { __tostring = function() return "AuthoringFailRefusal" end })
 
 local function is_fail_result(val)
@@ -228,6 +229,112 @@ function M.gameplay(package_id, opt_module_id)
     local commands_proxy, proxy_ctrl = commands_module.create_commands_proxy(package_id)
     local subscribers = {}
     local declared_actions = {}
+    local declared_services = {}
+    local declared_services_order = {}
+    local is_module_frozen = false
+
+    local services_proxy = setmetatable({}, {
+        __newindex = function(_, key, val)
+            if is_module_frozen or (proxy_ctrl and proxy_ctrl.is_frozen and proxy_ctrl.is_frozen()) then
+                error("ServiceDeclarationAfterFreeze: cannot declare service '" .. tostring(key) .. "' after freeze in package '" .. package_id .. "'", 2)
+            end
+
+            if type(key) ~= "string" or key == "" or not key:match("^[a-z][a-z0-9_]*$") then
+                error("InvalidServiceName: service name must be a single lowercase alphanumeric segment, got '" .. tostring(key) .. "'", 2)
+            end
+
+            if type(val) ~= "table" then
+                error("InvalidServiceImplementation: service implementation must be a table, got " .. type(val), 2)
+            end
+
+            for field_name, field_val in pairs(val) do
+                if type(field_val) ~= "function" then
+                    error("ServiceFieldNotFunction: service '" .. key .. "' field '" .. tostring(field_name) .. "' must be a function, got " .. type(field_val), 2)
+                end
+            end
+
+            local service_id = package_id .. ":service." .. key
+            if declared_services[key] ~= nil or (game and game.services and game.services.exists and game.services.exists(service_id)) then
+                error("ServiceDuplicateDeclaration: service '" .. key .. "' (id '" .. service_id .. "') is already declared in package '" .. package_id .. "'", 2)
+            end
+
+            local immutable_service = {}
+            local service_mt = {
+                __index = function(_, k)
+                    return val[k]
+                end,
+                __newindex = function(_, k, _)
+                    error("ServiceImmutableAfterRegistration: service '" .. key .. "' is immutable after registration", 2)
+                end,
+                __tostring = function(_)
+                    return "GameplayService(" .. service_id .. ")"
+                end,
+            }
+            setmetatable(immutable_service, service_mt)
+
+            local decl = {
+                service_id = service_id,
+                name = key,
+                impl = immutable_service,
+                raw_table = val,
+                declaring_package = package_id,
+            }
+            declared_services[key] = decl
+            table.insert(declared_services_order, decl)
+
+            if game and game.services and game.services.register and not (game.services.exists and game.services.exists(service_id)) then
+                game.services.register(service_id, immutable_service)
+            end
+
+            return immutable_service
+        end,
+
+        __index = function(_, key)
+            if type(key) ~= "string" or key == "" then
+                error("InvalidServiceName: expected string key, got " .. type(key), 2)
+            end
+
+            if stable_id.is_kind(key, "service") then
+                local ref = {
+                    declaring_package = package_id,
+                    requested_id = key,
+                }
+                table.insert(all_referenced_services, ref)
+
+                if game and game.services and game.services.exists and game.services.exists(key) then
+                    return game.services.get(key)
+                end
+
+                local lazy_proxy = setmetatable({}, {
+                    __index = function(_, method_name)
+                        if not (game and game.services and game.services.exists and game.services.exists(key)) then
+                            error("ServiceTargetMissing: service '" .. tostring(key) .. "' requested by package '" .. package_id .. "' is not registered", 2)
+                        end
+                        local svc = game.services.get(key)
+                        local fn = svc[method_name]
+                        if fn == nil then
+                            error("ServiceMethodNotFound: method '" .. tostring(method_name) .. "' not found on service '" .. tostring(key) .. "'", 2)
+                        end
+                        return fn
+                    end,
+                    __newindex = function(_, _, _)
+                        error("ServiceImmutableAfterRegistration: service '" .. tostring(key) .. "' is immutable after registration", 2)
+                    end,
+                    __tostring = function(_)
+                        return "LazyGameplayService(" .. key .. ")"
+                    end,
+                })
+                return lazy_proxy
+            end
+
+            local decl = declared_services[key]
+            if decl then
+                return decl.impl
+            end
+
+            error("UnknownServiceKey: service '" .. tostring(key) .. "' is not declared in package '" .. package_id .. "'", 2)
+        end,
+    })
 
     local actions_proxy = setmetatable({}, {
         __newindex = function(_, key, val)
@@ -288,6 +395,7 @@ function M.gameplay(package_id, opt_module_id)
 
     mod.commands = commands_proxy
     mod.actions = actions_proxy
+    mod.services = services_proxy
     mod.action = presentation_module.create_action_helper(package_id)
     mod.button = presentation_module.create_button_helper(package_id)
     mod.text = presentation_module.create_text_helper(package_id)
@@ -413,7 +521,6 @@ function M.gameplay(package_id, opt_module_id)
 
     local declared_validators = {}
     local declared_validators_order = {}
-    local is_module_frozen = false
 
     function mod.validate(command_ref, validator_name, validator_fn)
         if is_module_frozen or (proxy_ctrl and proxy_ctrl.is_frozen and proxy_ctrl.is_frozen()) then
@@ -652,6 +759,13 @@ function M.gameplay(package_id, opt_module_id)
             end
         end
 
+        -- Register declared services in declaration order
+        for _, decl in ipairs(declared_services_order) do
+            if game and game.services and game.services.register and not (game.services.exists and game.services.exists(decl.service_id)) then
+                game.services.register(decl.service_id, decl.impl)
+            end
+        end
+
         -- Register declared semantic actions
         if game and game.actions and game.actions.bind then
             for act_id, binding in pairs(declared_actions) do
@@ -688,8 +802,23 @@ function M.verify_validator_targets()
     end
 end
 
+function M.verify_service_targets()
+    for _, ref in ipairs(all_referenced_services) do
+        local req_id = ref.requested_id
+        local exists = false
+        if game and game.services and game.services.exists then
+            exists = game.services.exists(req_id)
+        end
+        if not exists then
+            error("ServiceTargetMissing: service '" .. tostring(req_id)
+                .. "' requested by package '" .. tostring(ref.declaring_package) .. "' is not registered", 2)
+        end
+    end
+end
+
 function M.freeze()
     M.verify_validator_targets()
+    M.verify_service_targets()
 end
 
 function M.with_isolated_validators(fn)
@@ -719,18 +848,24 @@ end
 function M.with_isolated_context(fn)
     local handler_registry = require("core:module.runtime.handler_registry")
     local event_bus = require("core:module.runtime.event_bus")
+    local service_registry = require("core:module.runtime.service_registry")
     return handler_registry.with_isolated_handlers(function()
         return event_bus.with_isolated_subscribers(function()
-            return M.with_isolated_validators(function()
-                local prev_phase = game and game.runtime and game.runtime.phase
-                local ok, res = pcall(fn)
-                if game and game.runtime and prev_phase then
-                    game.runtime.phase = prev_phase
-                end
-                if not ok then
-                    error(res, 0)
-                end
-                return res
+            return service_registry.with_isolated_services(function()
+                return M.with_isolated_validators(function()
+                    local prev_referenced_services = all_referenced_services
+                    all_referenced_services = {}
+                    local prev_phase = game and game.runtime and game.runtime.phase
+                    local ok, res = pcall(fn)
+                    all_referenced_services = prev_referenced_services
+                    if game and game.runtime and prev_phase then
+                        game.runtime.phase = prev_phase
+                    end
+                    if not ok then
+                        error(res, 0)
+                    end
+                    return res
+                end)
             end)
         end)
     end)
@@ -741,6 +876,7 @@ function M.create_authoring_environment(package_id, opt_module_id)
     local env_values = {
         commands = mod.commands,
         actions = mod.actions,
+        services = mod.services,
         validate = mod.validate,
         player = mod.player,
         world = mod.world,

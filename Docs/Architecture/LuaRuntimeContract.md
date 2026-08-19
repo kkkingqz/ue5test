@@ -14,6 +14,7 @@ decisions:
   - ../ADR/0027-designer-lua-authoring-layer.md
   - ../ADR/0028-simplified-authoring-surface.md
   - ../ADR/0031-entity-authoring-extensions.md
+  - ../ADR/0034-gameplay-service-authoring.md
 ---
 
 # Lua Runtime Contract
@@ -279,10 +280,14 @@ Uncaught error после начала mutation не запускает унив
 ## Gameplay Services
 
 - Реестр `game.services` (`core:module.runtime.service_registry`) предоставляет доступ к чистым Lua-сервисам предметной области.
-- Сервисы регистрируются во время lifecycle-фазы `register` через `game.services.register(id, service_impl)`.
-- По завершении фазы `register` реестр замораживается (`freeze()`). Поздняя регистрация сервиса после freeze отклоняется с ошибкой `ServiceRegistryFrozen`.
-- Прямая запись в таблицу реестра запрещена (`ServiceRegistryDirectAssignmentDisallowed`).
-- Gameplay Services предназначены для выполнения многосущностных workflow (например, торговля, передача предметов между акторами, квестовые цепочки), возвращают структурированный результат `{ ok = true, value = ... }` или `{ ok = false, error = { code = "..." } }`, не вызывают filesystem/UE API и не подменяют доменные методы единичных сущностей.
+- Сервисы регистрируются во время lifecycle-фазы `register` через `game.services.register(id, service_impl)` или декларативно в авторском слое через прокси `services.<name> = { … }` ([ADR-0034](../ADR/0034-gameplay-service-authoring.md)).
+- Идентификатор сервиса формируется как канонический Stable ID kind `service`: `<package_id>:service.<name>`. Невалидный ID отклоняется ошибкой `InvalidServiceId`.
+- Таблица сервиса обязана содержать исключительно функции; поля-значения отклоняются ошибкой `ServiceFieldNotFunction`.
+- После регистрации реализация сервиса защищена от модификации (`ServiceImmutableAfterRegistration`); повторное объявление отклоняется ошибкой `ServiceDuplicateDeclaration`.
+- По завершении фазы `register` реестр замораживается (`freeze()`). Поздняя регистрация сервиса после freeze отклоняется ошибкой `ServiceRegistryFrozen` (в авторском слое — `ServiceDeclarationAfterFreeze`).
+- Межпакетные ссылки `services["<package_id>:service.<name>"]` разрешаются на заморозке; отсутствие целевого сервиса даёт ошибку `ServiceTargetMissing`.
+- Прямая запись в таблицу реестра `game.services` запрещена (`ServiceRegistryDirectAssignmentDisallowed`).
+- Сервис исполняется в execution scope вызывающего, не открывает собственного окна мутации и не подменяет методы единичных сущностей. При вызове из валидатора сервис подчиняется охранникам побочных эффектов. Вызовы `fail()` и `emit()` атрибутируются к пакету объявления сервиса.
 
 ## Semantic Actions
 

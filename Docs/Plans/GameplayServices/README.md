@@ -12,6 +12,7 @@ decisions:
   - ../../ADR/0026-core-and-gameplay-ownership.md
   - ../../ADR/0031-entity-authoring-extensions.md
   - ../../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../../ADR/0034-gameplay-service-authoring.md
 ---
 
 # План реализации игровых сервисов
@@ -74,7 +75,7 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Service Authoring](ServiceAuthoring.md): `services` в авторском окружении, идентичность, неизменяемость, наследование scope. GSA-01…05.
+- [x] M1 — [Service Authoring](ServiceAuthoring.md): `services` в авторском окружении, идентичность, неизменяемость, наследование scope. GSA-01…05.
 - [ ] M2 — [Merchant Trade](MerchantTrade.md): торговец, инвентарь сторон, `services.trade.buy`, перевод покупки. GSA-06…09.
 
 ## Критический путь

@@ -1,5 +1,4 @@
--- Canonical Gameplay Services Registry
--- Manages registration, lookup, and lifecycle freezing of gameplay workflow services.
+local stable_id = require("core:module.runtime.stable_id")
 
 local M = {
     id = "core:module.runtime.service_registry",
@@ -15,8 +14,8 @@ function M.create_registry()
         if is_frozen then
             error("ServiceRegistryFrozen: cannot register service '" .. tostring(id) .. "' after register phase / freeze", 2)
         end
-        if type(id) ~= "string" or id == "" then
-            error("InvalidServiceId: service id must be a non-empty string", 2)
+        if type(id) ~= "string" or not stable_id.is_kind(id, "service") then
+            error("InvalidServiceId: service id must be a canonical Stable ID of kind 'service', got '" .. tostring(id) .. "'", 2)
         end
         if services_by_id[id] ~= nil then
             error("ServiceDuplicateRegistration: service '" .. id .. "' is already registered", 2)
@@ -92,6 +91,21 @@ function M.register(_ctx)
         game = {}
     end
     game.services = M.create_registry()
+end
+
+function M.with_isolated_services(fn)
+    local old_services = game and game.services
+    local fresh_registry = M.create_registry()
+    if not game then
+        game = {}
+    end
+    game.services = fresh_registry
+
+    local ok, err = pcall(fn)
+    game.services = old_services
+    if not ok then
+        error(err, 0)
+    end
 end
 
 return M
