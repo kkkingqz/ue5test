@@ -1,18 +1,18 @@
 ---
 title: Entity Extension Registry Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - README.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # M1 — Extension Registry
 
-> **Материализует:** [ADR-0031 § 2.2](../../ADR/0031-entity-authoring-extensions.md) в части централизованного реестра расширений и композиции методов.
+> **Материализует:** [ADR-0031 § 2.2](../../../ADR/0031-entity-authoring-extensions.md) в части централизованного реестра расширений и композиции методов.
 > **Задачи:** EAE-01…04.
 > **Результат:** `core:module.runtime.entity_extension_registry` собирает методы, валидирует конфликты и формирует неизменяемые effective method tables.
 

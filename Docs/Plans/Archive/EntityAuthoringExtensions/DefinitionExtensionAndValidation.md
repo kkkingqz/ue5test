@@ -1,19 +1,19 @@
 ---
 title: Definition Extension and Multi-Tier Validation Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - ActorMigration.md
-  - ../../Architecture/HeadlessSimulationContract.md
+  - ../../../Architecture/HeadlessSimulationContract.md
 decisions:
-  - ../../ADR/0024-lua-spec-runner.md
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0024-lua-spec-runner.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # M4 — Definition Extension and Multi-Tier Validation
 
-> **Материализует:** [ADR-0031 § 2.3](../../ADR/0031-entity-authoring-extensions.md) в части расширения определений (`Location`) и валидации изоляции уровней тестирования.
+> **Материализует:** [ADR-0031 § 2.3](../../../ADR/0031-entity-authoring-extensions.md) в части расширения определений (`Location`) и валидации изоляции уровней тестирования.
 > **Задачи:** EAE-11…12.
 > **Результат:** расширение `Location` через `function Location:method()`, контракт `self` для определений контента, сквозное покрытие тестами на трёх уровнях (`Core`, `TextSystem`, `FullGame`), проверка детекции конфликтов.
 

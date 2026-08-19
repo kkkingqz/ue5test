@@ -1,19 +1,19 @@
 ---
 title: Actor Entity Migration Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - AuthoringPrototypes.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # M3 — Actor Migration
 
-> **Материализует:** [ADR-0031 § 2.1, 2.3](../../ADR/0031-entity-authoring-extensions.md) в части миграции методов `Actor` в пакетах `textsystem` и `rh`.
+> **Материализует:** [ADR-0031 § 2.1, 2.3](../../../ADR/0031-entity-authoring-extensions.md) в части миграции методов `Actor` в пакетах `textsystem` и `rh`.
 > **Задачи:** EAE-08…10.
 > **Результат:** `textsystem` и `rh` объявляют методы `Actor` через `function Actor:method()`; ручные декораторы и `register_type` удалены.
 

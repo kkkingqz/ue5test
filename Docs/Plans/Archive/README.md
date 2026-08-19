@@ -15,6 +15,7 @@ depends_on:
 
 | План | Завершён | Результат |
 |---|---|---|
+| [EntityAuthoringExtensions](EntityAuthoringExtensions/README.md) | 2026-08-19 | Декларативное расширение сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы в `_ENV`, централизованный реестр расширений и скомпонованные effective method tables |
 | [PortableContentCore](PortableContentCore/README.md) | 2026-08-14 | Portable `GV2ContentCore`, JSON5 + schema validation, immutable repository snapshot, `gv2-content` CLI, интеграция UE/headless и `game.repository` в Lua |
 | [HeadlessParityAndReplay](HeadlessParityAndReplay/README.md) | 2026-08-14 | 21 общий conformance entry point вместо host-локальных дублей, run manifest/digest, replay и golden-прогоны |
 | [CanonicalGameplayState](CanonicalGameplayState/README.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |

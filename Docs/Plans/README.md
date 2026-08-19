@@ -24,7 +24,7 @@ depends_on:
 
 ## Активные планы
 
-- [EntityAuthoringExtensions](EntityAuthoringExtensions/README.md) — Декларативное расширение доменных сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы авторского окружения `_ENV`, централизованный реестр расширений и сборка effective method tables.
+- [UiComposition](UiComposition/README.md) — Слои, оверлеи, модалки и вкладки вместо одного активного экрана, переиспользование виджетов при реконсиляции, масштабирование раскладки по целевому разрешению.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
@@ -32,6 +32,7 @@ depends_on:
 
 | План | Завершён | Результат |
 |---|---|---|
+| [EntityAuthoringExtensions](Archive/EntityAuthoringExtensions/README.md) | 2026-08-19 | Декларативное расширение сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы в `_ENV`, централизованный реестр расширений и скомпонованные effective method tables |
 | [TextSystemLayer](Archive/TextSystemLayer/README.md) | 2026-08-19 | Трёхуровневая архитектура (`core` ← `textsystem` ← `rh`), набор пакетов из данных, перенос владения локациями и переходами, декларативные экраны и трёхуровневые спеки |
 | [PortableContentCore](Archive/PortableContentCore/README.md) | 2026-08-14 | Общий pipeline `Packages → Definitions → Immutable Repository Snapshot` для CLI, Headless и UE плюс `game.repository` в Lua |
 | [HeadlessParityAndReplay](Archive/HeadlessParityAndReplay/README.md) | 2026-08-14 | Одна реализация на portable-проверку и воспроизводимый прогон с общим digest для UE и headless |

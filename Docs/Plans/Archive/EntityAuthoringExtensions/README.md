@@ -1,22 +1,22 @@
 ---
 title: Entity Authoring Extensions Implementation Plan
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
-  - ../../Proposals/EntityAuthoringExtensionProposal.md
-  - ../../Architecture/LuaRuntimeContract.md
-  - ../../Architecture/Modding.md
+  - ../../../Proposals/EntityAuthoringExtensionProposal.md
+  - ../../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/Modding.md
 decisions:
-  - ../../ADR/0027-designer-lua-authoring-layer.md
-  - ../../ADR/0028-simplified-authoring-surface.md
-  - ../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0027-designer-lua-authoring-layer.md
+  - ../../../ADR/0028-simplified-authoring-surface.md
+  - ../../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # План реализации Entity Authoring Extensions
 
-> **Материализует:** [Entity Authoring Extension Proposal](../../Proposals/EntityAuthoringExtensionProposal.md) и [ADR-0031](../../ADR/0031-entity-authoring-extensions.md).
+> **Материализует:** [Entity Authoring Extension Proposal](../../../Proposals/EntityAuthoringExtensionProposal.md) и [ADR-0031](../../../ADR/0031-entity-authoring-extensions.md).
 > **Задачи:** EAE-01…12.
 > **Результат:** декларативное добавление методов к сущностям через синтаксис `function EntityKind:method()`, автоматическая композиция effective method tables, устранение низкоуровневых декораторов из геймплейных пакетов.
 
@@ -26,13 +26,13 @@ decisions:
 
 ## Состояние на входе
 
-| Что | Сейчас |
-|---|---|
-| Добавление методов к Actor | Низкоуровневые модули `scripts/gameplay/actors.lua` с ручными `register_type("player", decorator)` и `setmetatable` |
-| Покрытие типов акторов | Дублирование привязки методов для каждого дискриминатора (`player`, `npc`) |
-| Расширение Location | Декораторы определений через `properties.register_definition_type("location", decorator)` |
-| Разрешение конфликтов методов | Отсутствует: последний зарегистрированный декоратор оборачивает предыдущий без проверки коллизий имён методов |
-| Синтаксис авторских методов | Низкоуровневый процедурный код вместо декларативного `function Actor:method()` |
+| Что | Было | Стало |
+|---|---|---|
+| Добавление методов к Actor | Низкоуровневые модули `scripts/gameplay/actors.lua` с ручными `register_type("player", decorator)` и `setmetatable` | Декларативный синтаксис `function Actor:method()` через авторский прокси прототипа |
+| Покрытие типов акторов | Дублирование привязки методов для каждого дискриминатора (`player`, `npc`) | Единая таблица методов сущности `Actor`, доступная всем дискриминаторам |
+| Расширение Location | Декораторы определений через `properties.register_definition_type("location", decorator)` | Декларативный синтаксис `function Location:method()` и разрешение через `wrap_definition` |
+| Разрешение конфликтов методов | Отсутствует: последний зарегистрированный декоратор оборачивает предыдущий без проверки коллизий | `game.entity_extensions` обнаруживает дублирование методов между модулями/пакетами с ошибкой `entity_extension.method_conflict` |
+| Синтаксис авторских методов | Низкоуровневый процедурный код вместо декларативного | Естественный синтаксис `function EntityKind:method(...)` |
 
 ## Milestones
 
@@ -49,10 +49,10 @@ M1 (Registry & Composition) ──► M2 (Authoring Prototypes) ──► M3 (Ac
 
 ## Общие правила выполнения
 
-1. Никакие runtime-функции или метатаблицы не попадают в save container ([INV-001](../../Architecture/Invariants.md), [INV-008](../../Architecture/Invariants.md)).
-2. Мутация канонического состояния внутри методов сущностей разрешена только во время исполнения команд в открытом окне мутации ([INV-003](../../Architecture/Invariants.md)).
-3. Дублирование метода между независимыми пакетами — фатальная ошибка на этапе bootstrap ([INV-010](../../Architecture/Invariants.md)).
-4. Сохраняется строгая 3-слойная иерархия: `core` $\leftarrow$ `textsystem` $\leftarrow$ `rh` ([ADR-0030](../../ADR/0030-textsystem-layer-and-data-driven-package-set.md)).
+1. Никакие runtime-функции или метатаблицы не попадают в save container ([INV-001](../../../Architecture/Invariants.md), [INV-008](../../../Architecture/Invariants.md)).
+2. Мутация канонического состояния внутри методов сущностей разрешена только во время исполнения команд в открытом окне мутации ([INV-003](../../../Architecture/Invariants.md)).
+3. Дублирование метода между независимыми пакетами — фатальная ошибка на этапе bootstrap ([INV-010](../../../Architecture/Invariants.md)).
+4. Сохраняется строгая 3-слойная иерархия: `core` $\leftarrow$ `textsystem` $\leftarrow$ `rh` ([ADR-0030](../../../ADR/0030-textsystem-layer-and-data-driven-package-set.md)).
 5. Поведение и наблюдаемые результаты существующих спек остаются неизменными.
 
 ## Итоговый Definition of Done

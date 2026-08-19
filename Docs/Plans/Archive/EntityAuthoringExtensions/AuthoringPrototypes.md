@@ -1,19 +1,19 @@
 ---
 title: Authoring Prototypes and Environment Tasks
-status: draft
+status: archived
 version: 1.0
 updated: 2026-08-19
 depends_on:
   - ExtensionRegistry.md
-  - ../../Architecture/LuaRuntimeContract.md
+  - ../../../Architecture/LuaRuntimeContract.md
 decisions:
-  - ../../ADR/0028-simplified-authoring-surface.md
-  - ../../ADR/0031-entity-authoring-extensions.md
+  - ../../../ADR/0028-simplified-authoring-surface.md
+  - ../../../ADR/0031-entity-authoring-extensions.md
 ---
 
 # M2 — Authoring Prototypes and Environment
 
-> **Материализует:** [ADR-0031 § 2.1, 2.4](../../ADR/0031-entity-authoring-extensions.md) в части интеграции управляемых прототипов в `_ENV` authoring-скриптов.
+> **Материализует:** [ADR-0031 § 2.1, 2.4](../../../ADR/0031-entity-authoring-extensions.md) в части интеграции управляемых прототипов в `_ENV` authoring-скриптов.
 > **Задачи:** EAE-05…07.
 > **Результат:** в `_ENV` authoring-скриптов доступны `Actor`, `Location`, `Quest`, `Item`; методы объявляются синтаксисом `function EntityKind:method(...)`; `fail()` сохраняет контекст пакета объявления; managed-свойства валидируются по `effective method table`.
 
