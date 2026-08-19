@@ -1,7 +1,7 @@
 ---
 title: UI Composition Implementation Plan
 status: normative
-version: 1.0
+version: 1.1
 updated: 2026-08-19
 depends_on:
   - ../../Proposals/UiCompositionAndScalingProposal.md
@@ -67,11 +67,11 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — Identity: правило ключей и его гейт. UIC-01…05.
-- [ ] M2 — Reconciliation: слои, оверлеи, модалки, переиспользование. UIC-06…11.
-- [ ] M3 — Tabs: вложенный Screen Instance и вкладки. UIC-12…17.
-- [ ] M4 — Scaling: разрешение авторинга, масштаб, растягивание. UIC-18…22.
-- [ ] M5 — Theme: принадлежность ассетов слою и длина текста. UIC-23…27.
+- [ ] M1 — [Identity](Identity.md): правило ключей и его гейт. UIC-01…05.
+- [ ] M2 — [Reconciliation](Reconciliation.md): слои, оверлеи, модалки, переиспользование. UIC-06…11.
+- [ ] M3 — [Tabs](Tabs.md): вложенный Screen Instance и вкладки. UIC-12…17.
+- [ ] M4 — [Scaling](Scaling.md): разрешение авторинга, масштаб, растягивание. UIC-18…22.
+- [ ] M5 — [Theme](Theme.md): принадлежность ассетов слою и длина текста. UIC-23…27.
 
 ## Критический путь
 
