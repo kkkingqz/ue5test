@@ -23,25 +23,25 @@ decisions:
 
 ## Задачи
 
-- [ ] **EEH-06 — Убрать переход к игроку из `textsystem`**
+- [x] **EEH-06 — Убрать переход к игроку из `textsystem`**
   - Зависимости: EEH-03.
   - `Actor:is_player` и `Actor:is_npc` в `GameData/textsystem/scripts/gameplay/actors.lua` объявлены через двоеточие, то есть уже имеют неявный `self`, и при этом принимают дополнительный явный первый параметр: `self_or_nil or self or …player()`. Отсюда два следствия. Вызов `actor:is_player(other)` отвечает про `other`, а не про `actor`. Вызов без получателя молча отвечает про игрока — то есть `is_player()` всегда истинно. Соседний `Actor:require_location` в том же файле работает строго с `self`.
   - Done: методы принимают только получателя; дополнительный первый параметр удалён; переход к `game.instances.actors.player()` из `textsystem` удалён; вызов без получателя даёт типизированную ошибку, а не молчаливый ответ про игрока; спека TextSystem tier покрывает оба отрицательных случая.
-  - Evidence: `GameData/textsystem/scripts/gameplay/actors.lua`, `Tests/Lua/world/`.
+  - Evidence: `GameData/textsystem/scripts/gameplay/actors.lua`, `Tests/Lua/world/current_location.lua`.
 
-- [ ] **EEH-07 — Одна конвенция приёма на файл**
+- [x] **EEH-07 — Одна конвенция приёма на файл**
   - Зависимости: EEH-06.
   - Done: все методы `Actor` и `Location` в `textsystem` объявлены единообразно и обращаются к полям через `self`; расхождений конвенции внутри файла не осталось; правило приёма метода записано в [Lua Runtime Contract § Entity Extensions](../../Architecture/LuaRuntimeContract.md) как нормативное, а не как стиль.
   - Evidence: `GameData/textsystem/scripts/gameplay/actors.lua`, `Docs/Architecture/LuaRuntimeContract.md`.
 
-- [ ] **EEH-08 — Сквозная верификация**
+- [x] **EEH-08 — Сквозная верификация**
   - Зависимости: EEH-07.
   - Done: полный `ctest`, `gv2-headless --self-test`, `--check-scripts`, `validate_docs.py`, `validate_core_boundary.py` и Unreal automation зелёные; в golden изменились только `script_set_hash` и производный `digest_hash`, воспроизведённые манифестом; `final_screen_id`, `final_screen_fields`, хэш состояния и `repository_content_hash` не изменились; спеки уровней Core и TextSystem проходят без `rh`.
   - Evidence: отчёт CTest, golden-прогон.
 
 ## Проверка milestone
 
-- [ ] `Actor:is_player()` отвечает о получателе при любых аргументах.
-- [ ] Вызов метода сущности без получателя отклоняется.
-- [ ] В `textsystem` нет обращений к глобальному игроку из методов сущностей.
-- [ ] Спеки Core и TextSystem проходят без `rh`.
+- [x] `Actor:is_player()` отвечает о получателе при любых аргументах.
+- [x] Вызов метода сущности без получателя отклоняется.
+- [x] В `textsystem` нет обращений к глобальному игроку из методов сущностей.
+- [x] Спеки Core и TextSystem проходят без `rh`.

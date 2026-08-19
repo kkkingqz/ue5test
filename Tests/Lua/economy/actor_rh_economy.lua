@@ -18,8 +18,8 @@ return {
                 end
 
                 if player then
-                    assert(player.is_player() == true, "player actor is_player() must be true")
-                    assert(player.is_npc() == false, "player actor is_npc() must be false")
+                    assert(player:is_player() == true, "player actor is_player() must be true")
+                    assert(player:is_npc() == false, "player actor is_npc() must be false")
                     assert(type(player.get_gold) == "function", "player actor must have get_gold method")
                     assert(type(player.add_gold) == "function", "player actor must have add_gold method")
                     assert(type(player.spend_gold) == "function", "player actor must have spend_gold method")

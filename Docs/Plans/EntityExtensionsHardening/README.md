@@ -56,7 +56,7 @@ decisions:
 ## Milestones
 
 - [x] M1 — [Registry Integrity](RegistryIntegrity.md): заморозка становится необходимой, композиция — путём поиска, дубликат — ошибкой. EEH-01…05.
-- [ ] M2 — [Receiver Contract](ReceiverContract.md): метод работает с получателем; сквозная верификация. EEH-06…08.
+- [x] M2 — [Receiver Contract](ReceiverContract.md): метод работает с получателем; сквозная верификация. EEH-06…08.
 
 ## Критический путь
 
@@ -80,6 +80,6 @@ M2 отделён от M1 не зависимостью кода, а зоной 
 - [x] Разрешение метода экземпляра и определения идёт через скомпонованную таблицу; `get_effective_methods` перестаёт быть неиспользуемым API.
 - [x] Повторное объявление метода внутри одного модуля отклоняется с той же ошибкой, что и между модулями.
 - [x] Повторная регистрация внутри `with_isolated_extensions` не переживает выход из изоляции.
-- [ ] `Actor:is_player()` и `Actor:is_npc()` отвечают о получателе и ни при каких аргументах не отвечают об игроке.
-- [ ] В `textsystem/scripts/gameplay/actors.lua` одна конвенция приёма метода на весь файл.
-- [ ] `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные; в golden изменились только `script_set_hash` и `digest_hash`.
+- [x] `Actor:is_player()` и `Actor:is_npc()` отвечают о получателе и ни при каких аргументах не отвечают об игроке.
+- [x] В `textsystem/scripts/gameplay/actors.lua` одна конвенция приёма метода на весь файл.
+- [x] `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные; в golden изменились только `script_set_hash` и `digest_hash`.

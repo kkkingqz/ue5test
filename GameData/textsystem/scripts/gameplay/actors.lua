@@ -1,4 +1,4 @@
--- Actor and Location domain methods for textsystem package (ADR-0031)
+-- Actor and Location domain methods for textsystem package (ADR-0031, EEH-06, EEH-07)
 
 local state_validator = require("core:module.runtime.state_validator")
 if state_validator and state_validator.register_reference_field then
@@ -6,17 +6,30 @@ if state_validator and state_validator.register_reference_field then
     state_validator.register_reference_field("current_location_id", "location")
 end
 
-function Actor:is_player(self_or_nil)
-    local s = self_or_nil or self or (game and game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player())
-    return s and s.discriminator == "player"
+local function validate_actor_receiver(receiver, method_name)
+    if not receiver or type(receiver) ~= "table" then
+        error("MissingReceiver: Actor:" .. tostring(method_name) .. " requires an Actor receiver", 3)
+    end
 end
 
-function Actor:is_npc(self_or_nil)
-    local s = self_or_nil or self or (game and game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player())
-    return s and s.discriminator == "npc"
+local function validate_location_receiver(receiver, method_name)
+    if not receiver or type(receiver) ~= "table" then
+        error("MissingReceiver: Location:" .. tostring(method_name) .. " requires a Location receiver", 3)
+    end
+end
+
+function Actor:is_player()
+    validate_actor_receiver(self, "is_player")
+    return self.discriminator == "player"
+end
+
+function Actor:is_npc()
+    validate_actor_receiver(self, "is_npc")
+    return self.discriminator == "npc"
 end
 
 function Actor:require_location(target, opt_key)
+    validate_actor_receiver(self, "require_location")
     local target_id = target
     if type(target) == "table" then
         target_id = target.id or target.definition_id
@@ -38,6 +51,7 @@ function Actor:require_location(target, opt_key)
 end
 
 function Actor:move_to(target)
+    validate_actor_receiver(self, "move_to")
     local target_id = target
     if type(target) == "table" then
         target_id = target.id or target.definition_id
@@ -76,10 +90,12 @@ function Actor:move_to(target)
 end
 
 function Actor:travel(target)
+    validate_actor_receiver(self, "travel")
     return self:move_to(target)
 end
 
 function Location:is_connected(target)
+    validate_location_receiver(self, "is_connected")
     local target_id = target
     if type(target) == "table" then
         target_id = target.id or target.definition_id
@@ -95,6 +111,7 @@ function Location:is_connected(target)
 end
 
 function Location:require_connected(target, opt_key)
+    validate_location_receiver(self, "require_connected")
     local target_id = target
     if type(target) == "table" then
         target_id = target.id or target.definition_id
