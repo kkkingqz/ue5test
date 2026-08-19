@@ -42,7 +42,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | accepted for planning | UI, Editor Tooling, Content | Плагин Unreal Editor как визуальный frontend поверх канонических `.json5`; `.uasset` не становится хранилищем |
-| [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: слои, оверлеи, модалки, вкладки, реконсиляция и масштабирование |
+| [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: идентичность повторяемых элементов, слои, оверлеи, модалки, вкладки, принадлежность темы слою |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
 | [ImageResourcePackagedDeploymentProposal](ImageResourcePackagedDeploymentProposal.md) | accepted for planning | UI, Resources, Build | Проверка `NonUFS` staging и единого resource root в packaged build |
@@ -58,7 +58,7 @@ Proposal не изменяет нормативную архитектуру с�
 4. `GameplayServiceAuthoringProposal` — реализовано планом [GameplayServices](../Plans/Archive/GameplayServices/README.md).
 5. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites/README.md); блокировок не осталось.
 6. `ModPackageLifecycleProposal`.
-7. `UiCompositionAndScalingProposal` — материализовано планом [UiComposition](../Plans/UiComposition/README.md): слои, оверлеи, вкладки, реконсиляция и масштабирование.
+7. `CoreUIBaselineAndScalingProposal` и `UiCompositionAndScalingProposal` — материализованы одним планом [UiFoundation](../Plans/UiFoundation/README.md): базовый набор Core UI, отзывчивое масштабирование, слои, реконсиляция и вкладки. Раздел масштабирования первой редакции заменён вторым предложением; остальные её разделы действуют. `CoreUiExtendedElementSetProposal` планом не материализуется: каждая его строка входит вместе со своим потребителем.
 8. `CommonUIRuntimeIntegrationProposal` — после предыдущего: фокус и Back опираются на слои и вкладки.
 9. `ScreenAuthoringWorkflowProposal`.
 
