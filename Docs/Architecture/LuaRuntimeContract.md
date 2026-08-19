@@ -13,6 +13,7 @@ decisions:
   - ../ADR/0025-lua-module-replacement-and-export-freezing.md
   - ../ADR/0027-designer-lua-authoring-layer.md
   - ../ADR/0028-simplified-authoring-surface.md
+  - ../ADR/0031-entity-authoring-extensions.md
 ---
 
 # Lua Runtime Contract
@@ -289,6 +290,15 @@ Uncaught error после начала mutation не запускает унив
 - Попытка повторной привязки уже зарегистрированного действия отклоняется с ошибкой `DuplicateActionBinding`.
 - Запрос непривязанного действия через `game.actions.require(action_id)` завершается типизированной ошибкой `ActionNotBound`.
 - В авторском слое презентации помощник `action(action_id, args)` прозрачно разрешает семантическое действие в целевой `command_id` с объединением аргументов.
+
+## Entity Extensions (`game.entity_extensions`)
+
+- Реестр `game.entity_extensions` (`core:module.runtime.entity_extension_registry`) управляет централизованной регистрацией, валидацией конфликтов и композицией методов сущностей (`Actor`, `Location`, `Quest`, `Item` и пользовательские PascalCase-типы) ([ADR-0031](../ADR/0031-entity-authoring-extensions.md)).
+- Методы объявляются в авторских модулях естественным синтаксисом `function EntityKind:method_name(...)`. Метаметод `__newindex` прокси прототипа в `_ENV` делегирует регистрацию в `game.entity_extensions.register(source_module, package_id, entity_kind, method_name, fn)`.
+- Попытка повторного объявления одного и того же метода из разных пакетов или модулей отклоняется с ошибкой `entity_extension.method_conflict`.
+- На фазе `register` вызовом `freeze()` компилируется неизменяемая `effective method table` (`get_effective_methods(entity_kind)`). Поздняя регистрация после `freeze()` отклоняется с `EntityExtensionRegistryFrozen`, прямая модификация скомпонованной таблицы — с `EffectiveMethodTableFrozen`.
+- Доступ к методам осуществляется прозрачно через обёртки экземпляров (`ActorWrapper`) и обёртки определений (`wrap_definition`), без необходимости ручного создания функций-декораторов `register_type`.
+- При вызове `fail(key, params)` из метода сущности код ошибки автоматически атрибутируется пространством имён пакета, в котором метод был **объявлен** (`<declaring_package_id>:error.<key>`).
 
 ## Designer authoring layer
 

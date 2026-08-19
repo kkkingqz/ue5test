@@ -763,4 +763,45 @@ return {
             end)
         end)
     end,
+
+    full_game_tier_actor_and_location_composition = function()
+        local save_mod = require("core:module.runtime.save")
+        local state_val = require("core:module.runtime.state_validator")
+        local properties = require("core:module.authoring.properties")
+
+        mutation_window.execute_in_window(function()
+            local p = game.instances.actors.player()
+            if not p then
+                local hero = game.instances.actors.create("rh:actor.character.hero", { gold = 50, stamina = 100 })
+                game.state.meta.player_actor_id = hero.instance_id
+                p = hero
+            end
+
+            -- TextSystem domain methods
+            assert(p:is_player() == true)
+            assert(p:is_npc() == false)
+            assert(type(p.require_location) == "function")
+            assert(type(p.move_to) == "function")
+
+            -- RH domain methods
+            assert(type(p.get_gold) == "function")
+            assert(type(p.add_gold) == "function")
+            assert(type(p.require_gold) == "function")
+            assert(type(p.spend_gold) == "function")
+            assert(type(p.get_stamina) == "function")
+            assert(type(p.add_item) == "function")
+
+            -- Location definition methods
+            local market = properties.wrap_definition("rh:location.city.market")
+            assert(market ~= nil)
+            assert(type(market.is_connected) == "function")
+            assert(type(market.require_connected) == "function")
+
+            -- State purity invariant (INV-001, INV-008): methods are not stored in state
+            local canonical_codec = require("core:module.runtime.canonical_codec")
+            local serialized = canonical_codec.serialize(game.state)
+            assert(type(serialized) == "string" and #serialized > 0)
+            assert(string.find(serialized, "function") == nil, "serialized state must not contain function references")
+        end)
+    end,
 }

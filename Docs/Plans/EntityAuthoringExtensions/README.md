@@ -39,7 +39,7 @@ decisions:
 - [x] **M1 — [Extension Registry](ExtensionRegistry.md)**: централизованный реестр расширений сущностей (`core:module.runtime.entity_extension_registry`), детерминированная композиция `effective method table`, проверка конфликтов и дубликатов на этапе инициализации.
 - [x] **M2 — [Authoring Prototypes](AuthoringPrototypes.md)**: инжекция контролируемых прокси-прототипов (`Actor`, `Location`, `Quest`, `Item`) в `_ENV` authoring-скриптов, сбор деклараций через `__newindex`, контекст пакета для `fail()`, интеграция с валидацией managed properties (DLA-12).
 - [x] **M3 — [Actor Migration](ActorMigration.md)**: миграция методов `Actor` в `textsystem` (`is_player`, `is_npc`, `require_location`, `move_to`) и `rh` (`get_gold`, `add_gold`, `require_gold`, `spend_gold`, `add_item`), удаление низкоуровневых декораторов из игровых пакетов.
-- [ ] **M4 — [Definition Extension and Validation](DefinitionExtensionAndValidation.md)**: расширение определений (`Location`), контракт `self` для definition vs instance, кросс-слойная изоляция и спеки для всех уровней тестирования (`Core`, `TextSystem`, `FullGame`).
+- [x] **M4 — [Definition Extension and Validation](DefinitionExtensionAndValidation.md)**: расширение определений (`Location`), контракт `self` для definition vs instance, кросс-слойная изоляция и спеки для всех уровней тестирования (`Core`, `TextSystem`, `FullGame`).
 
 ## Критический путь
 
@@ -57,9 +57,9 @@ M1 (Registry & Composition) ──► M2 (Authoring Prototypes) ──► M3 (Ac
 
 ## Итоговый Definition of Done
 
-- [ ] Методы сущностей объявляются через обычный синтаксис `function EntityKind:method_name(...)`.
-- [ ] Из `textsystem` и `rh` полностью удалены ручные вызовы `register_type`, декораторы и `setmetatable`.
-- [ ] Конфликты методов между пакетами обнаруживаются до начала сессии с информативной ошибкой `entity_extension.method_conflict`.
-- [ ] Экземпляры сущностей получают методы через скомпонованную `effective method table`.
-- [ ] Вызовы `fail()` из методов сущностей детерминированно атрибутируются пространством имён пакета объявления.
-- [ ] Спеки всех трёх уровней (`Core`, `TextSystem`, `FullGame`) проходят успешно на обоих хостах (UE и Headless).
+- [x] Методы сущностей объявляются через обычный синтаксис `function EntityKind:method_name(...)`.
+- [x] Из `textsystem` и `rh` полностью удалены ручные вызовы `register_type`, декораторы и `setmetatable`.
+- [x] Конфликты методов между пакетами обнаруживаются до начала сессии с информативной ошибкой `entity_extension.method_conflict`.
+- [x] Экземпляры сущностей получают методы через скомпонованную `effective method table`.
+- [x] Вызовы `fail()` из методов сущностей детерминированно атрибутируются пространством имён пакета объявления.
+- [x] Спеки всех трёх уровней (`Core`, `TextSystem`, `FullGame`) проходят успешно на обоих хостах (UE и Headless).

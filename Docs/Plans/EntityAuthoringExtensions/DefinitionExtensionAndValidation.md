@@ -23,18 +23,18 @@ decisions:
 
 ## Задачи
 
-- [ ] **EAE-11 — Расширение Location через прототип в authoring-скриптах**
+- [x] **EAE-11 — Расширение Location через прототип в authoring-скриптах**
   - Зависимости: EAE-10.
-  - Done: методы определений локаций (`is_connected`, `require_connected`) переведены на синтаксис `function Location:is_connected(target)` и `function Location:require_connected(target, opt_key)`; `properties.register_definition_type` интегрирован с `entity_extension_registry`; `self` внутри метода корректно адресует поля снимка репозитория и динамические свойства.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: методы определений локаций (`is_connected`, `require_connected`) переведены на синтаксис `function Location:is_connected(target)` и `function Location:require_connected(target, opt_key)`; `properties.wrap_definition` интегрирован с `entity_extension_registry`; `self` внутри метода корректно адресует поля снимка репозитория и динамические свойства.
+  - Evidence: `Scripts/authoring/properties.lua`, `GameData/textsystem/scripts/gameplay/actors.lua`, `Tests/Lua/world/location_definition_extensions.lua`.
 
-- [ ] **EAE-12 — Спеки валидации конфликтов, композиции и изоляции уровней**
+- [x] **EAE-12 — Спеки валидации конфликтов, композиции и изоляции уровней**
   - Зависимости: EAE-11.
-  - Done: добавлены спеки Core tier (`Tests/Lua/actors/entity_extensions_core.lua`): регистрация, заморозка, обнаружение конфликта методов (`entity_extension.method_conflict`); спеки TextSystem tier: проверка `Actor` и `Location` без правил `rh`; спеки FullGame tier: сквозная композиция `textsystem` + `rh` и сохранение неизменяемости save-контейнера.
-  - Evidence: <!-- tests/commit/PR -->
+  - Done: добавлены спеки Core tier (`Tests/Lua/actors/entity_extension_registry.lua`): регистрация, заморозка, обнаружение конфликта методов (`entity_extension.method_conflict`); спеки TextSystem tier (`Tests/Lua/world/location_definition_extensions.lua`, `Tests/Lua/world/travel_command.lua`): проверка `Actor` и `Location` без правил `rh`; спеки FullGame tier (`Tests/Lua/authoring/simplified_surface.lua`, `Tests/Lua/economy/actor_rh_economy.lua`): сквозная композиция `textsystem` + `rh` и сохранение неизменяемости save-контейнера.
+  - Evidence: `Tests/Lua/actors/entity_extension_registry.lua`, `Tests/Lua/world/location_definition_extensions.lua`, `Tests/Lua/authoring/simplified_surface.lua`.
 
 ## Проверка milestone
 
-- [ ] Методы `Location` объявляются декларативно и доступны на объектах определений локаций.
-- [ ] Ошибка конфликта дубликатов методов (`entity_extension.method_conflict`) покрыта автоматическими тестами.
-- [ ] Полный набор тестов `ctest` (79+), `validate_docs.py`, `validate_core_boundary.py` и `gv2-headless --check-scripts` проходит на 100%.
+- [x] Методы `Location` объявляются декларативно и доступны на объектах определений локаций.
+- [x] Ошибка конфликта дубликатов методов (`entity_extension.method_conflict`) покрыта автоматическими тестами.
+- [x] Полный набор тестов `ctest` (79), `validate_docs.py`, `validate_core_boundary.py` и `gv2-headless --check-scripts` проходит на 100%.
