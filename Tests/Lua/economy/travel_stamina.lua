@@ -45,7 +45,7 @@ return {
 
                 local seq = game.runtime.dispatch_command({
                     command_id = "rh:command.travel",
-                    args = { target_location_id = "rh:location.city.tavern" },
+                    args = { "rh:location.city.tavern" },
                     sequence = 801,
                 })
                 assert(seq == 801, "dispatch sequence must match")
@@ -76,7 +76,7 @@ return {
 
                 local seq = game.runtime.dispatch_command({
                     command_id = "rh:command.travel",
-                    args = { target_location_id = "rh:location.city.tavern" },
+                    args = { "rh:location.city.tavern" },
                     sequence = 802,
                 })
                 assert(seq == 802, "dispatch sequence must match")
@@ -105,7 +105,7 @@ return {
 
                 local seq = game.runtime.dispatch_command({
                     command_id = "rh:command.travel",
-                    args = { target_location_id = "rh:location.city.gate" },
+                    args = { "rh:location.city.gate" },
                     sequence = 803,
                 })
                 assert(seq == 803, "dispatch sequence must match")

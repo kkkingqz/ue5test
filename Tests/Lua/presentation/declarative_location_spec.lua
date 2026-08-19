@@ -51,7 +51,7 @@ return {
         local b_travel = find_button(req.fields.buttons, "travel_city_tavern")
         assert(b_travel ~= nil)
         assert(b_travel.binding.command_id == "rh:command.travel")
-        assert(b_travel.binding.args.target_location_id == "rh:location.city.tavern")
+        assert(b_travel.binding.args[1] == "rh:location.city.tavern")
     end,
 
     declarative_tavern_screen_matches_schema = function()
@@ -73,10 +73,10 @@ return {
 
         local b_m = find_button(req.fields.buttons, "travel_city_market")
         assert(b_m ~= nil)
-        assert(b_m.binding.args.target_location_id == "rh:location.city.market")
+        assert(b_m.binding.args[1] == "rh:location.city.market")
 
         local b_g = find_button(req.fields.buttons, "travel_city_gate")
         assert(b_g ~= nil)
-        assert(b_g.binding.args.target_location_id == "rh:location.city.gate")
+        assert(b_g.binding.args[1] == "rh:location.city.gate")
     end,
 }

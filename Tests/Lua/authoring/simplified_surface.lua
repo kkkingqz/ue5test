@@ -334,10 +334,10 @@ return {
             mod.register({})
 
             mutation_window.execute_in_window(function()
-                -- Dispatch with named arg { target_location_id = "rh:location.city.market" }
+                -- Dispatch with positional arg { "rh:location.city.market" }
                 game.runtime.dispatch_command({
                     command_id = "rh:command.test_travel_handle",
-                    args = { target_location_id = "rh:location.city.market" },
+                    args = { "rh:location.city.market" },
                     sequence = 801,
                 })
                 local r = game.runtime.last_command_result
@@ -609,7 +609,7 @@ return {
             -- 1. Buy standard iron sword (price 10)
             game.runtime.dispatch_command({
                 command_id = "rh:command.buy",
-                args = { item = "rh:item.weapon.iron_sword" },
+                args = { "rh:item.weapon.iron_sword" },
                 sequence = 1101,
             })
             local r1 = game.runtime.last_command_result
@@ -619,7 +619,7 @@ return {
             -- 2. Buy standard leather armor (price 25)
             game.runtime.dispatch_command({
                 command_id = "rh:command.buy",
-                args = { item = "rh:item.armor.leather_armor" },
+                args = { "rh:item.armor.leather_armor" },
                 sequence = 1102,
             })
             local r2 = game.runtime.last_command_result
@@ -634,7 +634,7 @@ return {
             }
             game.runtime.dispatch_command({
                 command_id = "rh:command.buy",
-                args = { item = custom_potion_def },
+                args = { custom_potion_def },
                 sequence = 1103,
             })
             local r3 = game.runtime.last_command_result

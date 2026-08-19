@@ -117,9 +117,9 @@ return {
 
             M.register()
 
-            -- Call via :run() passing wrapper, string (that looks like an ID), number, and table
+            -- Call via :run() passing wrapper, string, number, and table
             local mock_def = { definition_id = "rh:location.city.tavern", __is_definition_handle = true }
-            local str_id = "rh:actor.character.hero"
+            local str_id = "custom_message_tag"
             local res = M.commands.check_args:run(player, str_id, 42, { target = mock_def, count = 3 })
 
             assert(res ~= nil and res.ok == true, "Command run must succeed")

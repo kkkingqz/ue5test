@@ -32,9 +32,7 @@ return {
 
         local seq = dispatcher.dispatch({
             command_id = "sample:command.travel",
-            args = {
-                target_location_id = "sample:location.east",
-            },
+            args = { "sample:location.east" },
             sequence = 701,
         })
         assert(seq == 701, "sequence must match")
@@ -48,9 +46,7 @@ return {
         -- Restore location to hub
         dispatcher.dispatch({
             command_id = "sample:command.travel",
-            args = {
-                target_location_id = "sample:location.hub",
-            },
+            args = { "sample:location.hub" },
             sequence = 702,
         })
         assert(game.instances.world().current_location_id == "sample:location.hub",
@@ -70,9 +66,7 @@ return {
         local ok, _err = pcall(function()
             dispatcher.dispatch({
                 command_id = "sample:command.travel",
-                args = {
-                    target_location_id = "sample:location.west",
-                },
+                args = { "sample:location.west" },
                 sequence = 703,
             })
         end)

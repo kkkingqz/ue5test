@@ -33,7 +33,7 @@ return {
             local initial_gold = player.gold
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.buy",
-                args = { item = "rh:item.weapon.iron_sword" },
+                args = { "rh:item.weapon.iron_sword" },
                 sequence = 901,
             })
             assert(seq == 901, "dispatch sequence must match")
@@ -61,7 +61,7 @@ return {
             local initial_gold = player.gold
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.buy",
-                args = { item = "rh:item.armor.leather_armor" },
+                args = { "rh:item.armor.leather_armor" },
                 sequence = 902,
             })
             assert(seq == 902, "dispatch sequence must match")
@@ -91,7 +91,7 @@ return {
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.buy",
-                args = { item = "rh:item.weapon.iron_sword" },
+                args = { "rh:item.weapon.iron_sword" },
                 sequence = 903,
             })
             assert(seq == 903, "dispatch sequence must match")
@@ -117,7 +117,7 @@ return {
 
             local seq = game.runtime.dispatch_command({
                 command_id = "rh:command.buy",
-                args = { item = "rh:item.weapon.iron_sword" },
+                args = { "rh:item.weapon.iron_sword" },
                 sequence = 904,
             })
             assert(seq == 904, "dispatch sequence must match")

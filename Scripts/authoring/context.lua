@@ -83,6 +83,35 @@ local function canonicalize_event_id(package_id, name)
     return canonical
 end
 
+local function decode_authoring_args(raw_args)
+    if raw_args == nil then
+        return {}
+    end
+    local rehydrated = tagged_ref.rehydrate_args(raw_args)
+    local is_array = (type(raw_args) == "table" and #raw_args > 0 and raw_args[1] ~= nil)
+    if is_array then
+        local args_list = {}
+        for i = 1, #rehydrated do
+            local arg = rehydrated[i]
+            if type(arg) == "string" and stable_id.is_valid(arg) then
+                if game and game.repository and game.repository.get and game.repository.get(arg) then
+                    local ok_p, properties_mod = pcall(require, "core:module.authoring.properties")
+                    if ok_p and properties_mod and properties_mod.wrap_definition then
+                        arg = properties_mod.wrap_definition(arg)
+                    end
+                end
+            end
+            args_list[i] = arg
+        end
+        return args_list
+    elseif type(raw_args) == "table" and next(raw_args) == nil then
+        return {}
+    else
+        return { rehydrated }
+    end
+end
+M.decode_authoring_args = decode_authoring_args
+
 function M.create_player_proxy()
     return setmetatable({}, {
         __index = function(_, key)
@@ -431,42 +460,8 @@ function M.gameplay(package_id, opt_module_id)
                     initial_write_revision = initial_rev,
                 }
 
-                local raw_args = request.args or {}
-                local rehydrated = tagged_ref.rehydrate_args(raw_args)
-
-                local is_array = (type(raw_args) == "table" and #raw_args > 0 and raw_args[1] ~= nil)
-                local ok, res
-                if is_array then
-                    local args_list = {}
-                    for i = 1, #rehydrated do
-                        args_list[i] = rehydrated[i]
-                    end
-                    ok, res = pcall(raw_handler, table.unpack(args_list, 1, #rehydrated))
-                elseif type(raw_args) == "table" and next(raw_args) == nil then
-                    ok, res = pcall(raw_handler)
-                elseif type(rehydrated) == "table" then
-                    local primary_arg = rehydrated.target_location_id
-                        or rehydrated.location_id
-                        or rehydrated.target
-                        or rehydrated.item_id
-                        or rehydrated.item
-                        or rehydrated.destination
-                    if primary_arg ~= nil then
-                        if type(primary_arg) == "string" and stable_id.is_valid(primary_arg) then
-                            local ok_p, properties_mod = pcall(require, "core:module.authoring.properties")
-                            if ok_p and properties_mod and properties_mod.wrap_definition then
-                                if game and game.repository and game.repository.get and game.repository.get(primary_arg) then
-                                    primary_arg = properties_mod.wrap_definition(primary_arg)
-                                end
-                            end
-                        end
-                        ok, res = pcall(raw_handler, primary_arg, rehydrated)
-                    else
-                        ok, res = pcall(raw_handler, rehydrated)
-                    end
-                else
-                    ok, res = pcall(raw_handler, rehydrated)
-                end
+                local args_list = M.decode_authoring_args(request.args)
+                local ok, res = pcall(raw_handler, table.unpack(args_list, 1, #args_list))
 
                 active_command_context = prev_ctx
 

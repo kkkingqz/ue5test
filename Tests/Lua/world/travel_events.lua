@@ -31,7 +31,7 @@ return {
             if world.current_location_id ~= "sample:location.hub" then
                 dispatcher.dispatch({
                     command_id = "sample:command.travel",
-                    args = { target_location_id = "sample:location.hub" },
+                    args = { "sample:location.hub" },
                     sequence = 800,
                 })
             end
@@ -65,7 +65,7 @@ return {
 
             dispatcher.dispatch({
                 command_id = "sample:command.travel",
-                args = { target_location_id = "sample:location.east" },
+                args = { "sample:location.east" },
                 sequence = 801,
             })
 
@@ -117,7 +117,7 @@ return {
             -- Dispatch travel to non-connected west from east -> validator will refuse
             dispatcher.dispatch({
                 command_id = "sample:command.travel",
-                args = { target_location_id = "sample:location.west" },
+                args = { "sample:location.west" },
                 sequence = 802,
             })
 
@@ -156,7 +156,7 @@ return {
             -- Move to hub first
             dispatcher.dispatch({
                 command_id = "sample:command.travel",
-                args = { target_location_id = "sample:location.hub" },
+                args = { "sample:location.hub" },
                 sequence = 803,
             })
             event_bus.clear_published_events()
@@ -164,7 +164,7 @@ return {
             -- Now travel to east
             dispatcher.dispatch({
                 command_id = "sample:command.travel",
-                args = { target_location_id = "sample:location.east" },
+                args = { "sample:location.east" },
                 sequence = 804,
             })
 
@@ -190,7 +190,7 @@ return {
             if game.instances.world().current_location_id ~= "sample:location.hub" then
                 dispatcher.dispatch({
                     command_id = "sample:command.travel",
-                    args = { target_location_id = "sample:location.hub" },
+                    args = { "sample:location.hub" },
                     sequence = 810,
                 })
             end
@@ -207,7 +207,7 @@ return {
                         -- Enqueue deferred return travel back to hub
                         game.commands.enqueue({
                             command_id = "sample:command.travel",
-                            args = { target_location_id = "sample:location.hub" },
+                            args = { "sample:location.hub" },
                         })
                     end
                 end
@@ -215,7 +215,7 @@ return {
 
             dispatcher.dispatch({
                 command_id = "sample:command.travel",
-                args = { target_location_id = "sample:location.east" },
+                args = { "sample:location.east" },
                 sequence = 811,
             })
 
