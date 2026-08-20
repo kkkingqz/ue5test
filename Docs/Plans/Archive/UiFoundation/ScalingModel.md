@@ -1,17 +1,17 @@
 ---
 title: Scaling Model Tasks
-status: active
+status: archived
 version: 1.1
 updated: 2026-08-20
 depends_on:
   - README.md
-  - ../../UI/ImageResources.md
-  - ../../UI/ScreenTemplates.md
+  - ../../../UI/ImageResources.md
+  - ../../../UI/ScreenTemplates.md
 ---
 
 # M2 — Scaling Model
 
-> **Материализует:** разделы 7—12 [Core UI Baseline](../../Proposals/CoreUIBaselineAndScalingProposal.md).
+> **Материализует:** разделы 7—12 [Core UI Baseline](../../../Proposals/CoreUIBaselineAndScalingProposal.md).
 > **Задачи:** UIF-06…10.
 > **Результат:** интерфейс перестаёт быть кадром, который масштабируют целиком, и становится раскладкой, распределяющей фактический viewport.
 

@@ -1,19 +1,19 @@
 ---
 title: Core Baseline Tasks
-status: active
+status: archived
 version: 1.2
 updated: 2026-08-20
 depends_on:
   - ScalingModel.md
-  - ../../UI/ScreenTemplates.md
+  - ../../../UI/ScreenTemplates.md
 decisions:
-  - ../../ADR/0013-unified-text-pipeline.md
-  - ../../ADR/0017-centralized-ui-presentation-paths.md
+  - ../../../ADR/0013-unified-text-pipeline.md
+  - ../../../ADR/0017-centralized-ui-presentation-paths.md
 ---
 
 # M3 — Core Baseline
 
-> **Материализует:** разделы 4—6 [Core UI Baseline](../../Proposals/CoreUIBaselineAndScalingProposal.md).
+> **Материализует:** разделы 4—6 [Core UI Baseline](../../../Proposals/CoreUIBaselineAndScalingProposal.md).
 > **Задачи:** UIF-11…16.
 > **Результат:** из базового набора можно собрать экран сложнее текстового блока с кнопками.
 
@@ -21,7 +21,7 @@ decisions:
 
 Появляются элементы, без которых невозможны ни вкладки, ни списки персонажей, ни поведение на 720p. Семь существующих виджетов перестают быть неуправляемыми данными.
 
-Каждый элемент вводится вместе с потребителем; элементы без потребителя вынесены в [Core UI Extended Element Set](../../Proposals/CoreUiExtendedElementSetProposal.md).
+Каждый элемент вводится вместе с потребителем; элементы без потребителя вынесены в [Core UI Extended Element Set](../../../Proposals/CoreUiExtendedElementSetProposal.md).
 
 ## Задачи
 

@@ -1,19 +1,19 @@
 ---
 title: Theme Ownership Tasks
-status: active
+status: archived
 version: 1.2
 updated: 2026-08-20
 depends_on:
   - README.md
-  - ../../Architecture/Modding.md
+  - ../../../Architecture/Modding.md
 decisions:
-  - ../../ADR/0012-centralized-ui-theme.md
-  - ../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
+  - ../../../ADR/0012-centralized-ui-theme.md
+  - ../../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
 ---
 
 # M6 — Theme Ownership
 
-> **Материализует:** разделы 7—8 [UI Composition and Scaling](../../Proposals/UiCompositionAndScalingProposal.md).
+> **Материализует:** разделы 7—8 [UI Composition and Scaling](../../../Proposals/UiCompositionAndScalingProposal.md).
 > **Задачи:** UIF-27…30.
 > **Результат:** принадлежность ассета слою наблюдаема и проверяема; перевод не обрезает текст.
 

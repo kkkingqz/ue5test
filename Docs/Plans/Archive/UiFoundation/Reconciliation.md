@@ -1,23 +1,23 @@
 ---
 title: Layered Reconciliation Tasks
-status: active
+status: archived
 version: 1.3
 updated: 2026-08-20
 depends_on:
   - Identity.md
   - CoreBaseline.md
-  - ../../UI/UIDocumentAndReconciliation.md
+  - ../../../UI/UIDocumentAndReconciliation.md
 ---
 
 # M4 — Reconciliation
 
-> **Материализует:** разделы «Game Shell», «Reconciliation» и «Route/layer rules» [UI Document](../../UI/UIDocumentAndReconciliation.md).
+> **Материализует:** разделы «Game Shell», «Reconciliation» и «Route/layer rules» [UI Document](../../../UI/UIDocumentAndReconciliation.md).
 > **Задачи:** UIF-17…21.
 > **Результат:** маршрут, оверлеи и модалки существуют одновременно; перестраивается только изменившееся.
 
 ## Результат этапа
 
-`UGV2RuntimeSubsystem` перестаёт быть держателем единственного активного экрана. Этап закрывает первый пункт ближайших пробелов из [Implementation Status](../../Status/ImplementationStatus.md).
+`UGV2RuntimeSubsystem` перестаёт быть держателем единственного активного экрана. Этап закрывает первый пункт ближайших пробелов из [Implementation Status](../../../Status/ImplementationStatus.md).
 
 ## Задачи
 

@@ -1,16 +1,16 @@
 ---
 title: Nested Instances and Tabs Tasks
-status: active
+status: archived
 version: 1.2
 updated: 2026-08-20
 depends_on:
   - Reconciliation.md
-  - ../../UI/SemanticInput.md
+  - ../../../UI/SemanticInput.md
 ---
 
 # M5 — Tabs
 
-> **Материализует:** раздел 5 [UI Composition and Scaling](../../Proposals/UiCompositionAndScalingProposal.md).
+> **Материализует:** раздел 5 [UI Composition and Scaling](../../../Proposals/UiCompositionAndScalingProposal.md).
 > **Задачи:** UIF-22…26.
 > **Результат:** Screen Instance становится рекурсивным; вкладка переключается без участия геймплея.
 
@@ -29,7 +29,7 @@ depends_on:
 
 - [x] **UIF-23 — Схема набора вкладок**
   - Зависимости: UIF-22, UIF-12.
-  - Done: схема набора вкладок описана в [Screen Templates](../../UI/ScreenTemplates.md) наравне с существующими; значение содержит ключ вкладки по умолчанию и упорядоченный список вкладок с `key`, заголовком в форме `TextSpec`, `screen_id` и полным набором полей; виджет (`WBP_TabContainer`) собран из реального экземпляра `WBP_ScrollArea` (`TabScrollArea`) с содержимым в его `ContentSlot` (`TabContentPanel`), не создаёт параллельных путей и объявляет политики масштабирования своих примитивов; `UGV2TabContainerWidgetBase` реально добавляет каждый созданный дочерний экран в `TabContentPanel` (`AddChild`), а не только отслеживает их в карте; сырая строка в заголовке отклоняется.
+  - Done: схема набора вкладок описана в [Screen Templates](../../../UI/ScreenTemplates.md) наравне с существующими; значение содержит ключ вкладки по умолчанию и упорядоченный список вкладок с `key`, заголовком в форме `TextSpec`, `screen_id` и полным набором полей; виджет (`WBP_TabContainer`) собран из реального экземпляра `WBP_ScrollArea` (`TabScrollArea`) с содержимым в его `ContentSlot` (`TabContentPanel`), не создаёт параллельных путей и объявляет политики масштабирования своих примитивов; `UGV2TabContainerWidgetBase` реально добавляет каждый созданный дочерний экран в `TabContentPanel` (`AddChild`), а не только отслеживает их в карте; сырая строка в заголовке отклоняется.
   - Evidence: `Docs/UI/ScreenTemplates.md`, `Content/UI/Widgets/WBP_TabContainer.uasset`, `Source/GV2/Private/UI/GV2TabContainerWidgetBase.cpp`.
 
 - [x] **UIF-24 — Рекурсивный apply**
@@ -44,7 +44,7 @@ depends_on:
 
 - [x] **UIF-26 — Интерактивна только активная вкладка**
   - Зависимости: UIF-25.
-  - Done: binding records создаются для всех вкладок, но Semantic Input принимает handle только активной и отклоняет остальные так же, как stale; переключение вкладки меняет множество интерактивных handles, не меняя ревизию документа; правило и его причина записаны в [Semantic Input](../../UI/SemanticInput.md); экран `rh` использует вкладки на реальном содержимом; сохранение и загрузка возвращают маршрут с начальной активной вкладкой.
+  - Done: binding records создаются для всех вкладок, но Semantic Input принимает handle только активной и отклоняет остальные так же, как stale; переключение вкладки меняет множество интерактивных handles, не меняя ревизию документа; правило и его причина записаны в [Semantic Input](../../../UI/SemanticInput.md); экран `rh` использует вкладки на реальном содержимом; сохранение и загрузка возвращают маршрут с начальной активной вкладкой.
   - Evidence: `Docs/UI/SemanticInput.md`, `GameData/rh/`, `Tests/Lua/`.
 
 ## Проверка milestone

@@ -1,16 +1,16 @@
 ---
 title: Element Identity Tasks
-status: active
+status: archived
 version: 1.1
 updated: 2026-08-20
 depends_on:
   - README.md
-  - ../../UI/UIDocumentAndReconciliation.md
+  - ../../../UI/UIDocumentAndReconciliation.md
 ---
 
 # M1 — Identity
 
-> **Материализует:** раздел 4 [UI Composition and Scaling](../../Proposals/UiCompositionAndScalingProposal.md).
+> **Материализует:** раздел 4 [UI Composition and Scaling](../../../Proposals/UiCompositionAndScalingProposal.md).
 > **Задачи:** UIF-01…05.
 > **Результат:** повторяемый элемент имеет проверяемую идентичность; реконсиляция получает основание переиспользовать виджет.
 
@@ -28,7 +28,7 @@ depends_on:
 
 - [x] **UIF-02 — Правило ключей в contract**
   - Зависимости: UIF-01.
-  - Сейчас в [UI Document](../../UI/UIDocumentAndReconciliation.md) одна строка: «Repeated field items обязаны иметь deterministic `key` из durable identity». Область уникальности, источник значения, последствия смены и проверка не заданы.
+  - Сейчас в [UI Document](../../../UI/UIDocumentAndReconciliation.md) одна строка: «Repeated field items обязаны иметь deterministic `key` из durable identity». Область уникальности, источник значения, последствия смены и проверка не заданы.
   - Done: contract задаёт обязательность ключа, область уникальности «непосредственный контейнер», порядок источников значения, запрет вывода из `text_id` и из изменяемого состояния, таблицу решений реконсиляции контейнера и класс ошибки для дубликата; `node_key_path` описан как полный путь `layer → instance → field → key`.
   - Evidence: `Docs/UI/UIDocumentAndReconciliation.md`, `Docs/UI/ScreenTemplates.md`.
 

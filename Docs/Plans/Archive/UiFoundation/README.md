@@ -1,22 +1,22 @@
 ---
 title: UI Foundation Implementation Plan
-status: active
+status: archived
 version: 1.3
 updated: 2026-08-20
 depends_on:
-  - ../../Proposals/CoreUIBaselineAndScalingProposal.md
-  - ../../Proposals/UiCompositionAndScalingProposal.md
-  - ../../UI/UIDocumentAndReconciliation.md
-  - ../../UI/ScreenTemplates.md
+  - ../../../Proposals/CoreUIBaselineAndScalingProposal.md
+  - ../../../Proposals/UiCompositionAndScalingProposal.md
+  - ../../../UI/UIDocumentAndReconciliation.md
+  - ../../../UI/ScreenTemplates.md
 decisions:
-  - ../../ADR/0013-unified-text-pipeline.md
-  - ../../ADR/0017-centralized-ui-presentation-paths.md
-  - ../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
+  - ../../../ADR/0013-unified-text-pipeline.md
+  - ../../../ADR/0017-centralized-ui-presentation-paths.md
+  - ../../../ADR/0030-textsystem-layer-and-data-driven-package-set.md
 ---
 
 # План основания UI
 
-> **Материализует:** [Core UI Baseline, Composition and Scaling](../../Proposals/CoreUIBaselineAndScalingProposal.md) и [UI Composition and Scaling](../../Proposals/UiCompositionAndScalingProposal.md).
+> **Материализует:** [Core UI Baseline, Composition and Scaling](../../../Proposals/CoreUIBaselineAndScalingProposal.md) и [UI Composition and Scaling](../../../Proposals/UiCompositionAndScalingProposal.md).
 > **Задачи:** UIF-01…30.
 > **Результат:** базовый набор виджетов с едиными конвейерами, отзывчивая раскладка от 4K до 720p, многослойный документ с реконсиляцией и вкладками, наблюдаемая принадлежность ассетов слою.
 
@@ -36,7 +36,7 @@ decisions:
 | Виджеты | 15 `WBP_*`; семь из них не управляются данными |
 | Контракты Screen Field | Пять из пятнадцати виджетов |
 | Повторяемый контент | Только `ButtonList` |
-| Слои, оверлеи, модалки | Описаны в [UI Document](../../UI/UIDocumentAndReconciliation.md), кода нет |
+| Слои, оверлеи, модалки | Описаны в [UI Document](../../../UI/UIDocumentAndReconciliation.md), кода нет |
 | Реконсиляция по `layer + instance_key` | Описана, не реализована |
 | Ключи повторяемых элементов | Одна нормативная строка без правил и проверки |
 | Режимы изображения | Три; проверка применимости есть только у `UGV2ImageWidgetBase` |
@@ -51,7 +51,7 @@ decisions:
 - **Текст масштабируется отдельной нелинейной кривой** с минимальным читаемым размером; ниже порога раскладка переносит и прокручивает, а не уменьшает.
 - **Минимальная поддерживаемая цель — 1280×720**, критерий «пригоден к использованию», а не «выглядит так же».
 - **Слоёв три.** Композит принадлежит `core`, `textsystem` или `rh` по критерию трёх вопросов; переиспользуемость внутри слоя не поднимает его выше.
-- **Элемент базового набора вводится вместе с потребителем.** Остальное — в [Core UI Extended Element Set](../../Proposals/CoreUiExtendedElementSetProposal.md).
+- **Элемент базового набора вводится вместе с потребителем.** Остальное — в [Core UI Extended Element Set](../../../Proposals/CoreUiExtendedElementSetProposal.md).
 - **Ключ повторяемого элемента обязателен**, уникален в контейнере и выведен из смысла, а не из позиции.
 - **Вкладка — вложенный Screen Instance**, активная вкладка UI-local и в сейв не попадает.
 
@@ -62,7 +62,7 @@ decisions:
 Не входят:
 
 - **Элементы без потребителя** — `Slider`, `Stepper`, `Toggle`, `ContextMenu`, `Toast`, `GridList`.
-- **Фокус, навигация геймпадом и Back** — отдельное [предложение по CommonUI](../../Proposals/CommonUIRuntimeIntegrationProposal.md); здесь закладываются только точки.
+- **Фокус, навигация геймпадом и Back** — отдельное [предложение по CommonUI](../../../Proposals/CommonUIRuntimeIntegrationProposal.md); здесь закладываются только точки.
 - Расширение дайджеста презентации: каноничен экран, всё поверх него UI-local.
 - Внешний редактор экранов, портретная ориентация, значения безопасной области.
 - Переопределение темы из контентного пакета.
@@ -95,7 +95,7 @@ M6 независим
 ## Общие правила выполнения
 
 1. Ассеты редактора (`.uasset`) создаются и меняются только через `unreal-mcp`, с последующим compile, save и проверкой контракта automation-тестом.
-2. Ни одна задача не переносит gameplay-авторитет в UE: UI остаётся восстановимой проекцией ([INV-014](../../Architecture/Invariants.md)).
+2. Ни одна задача не переносит gameplay-авторитет в UE: UI остаётся восстановимой проекцией ([INV-014](../../../Architecture/Invariants.md)).
 3. Ни одна задача не добавляет partial patch на boundary: Lua отправляет полный документ, diff остаётся внутренним делом Presentation.
 4. Ни один новый элемент не заводит собственного пути для текста, изображения или повторяемых детей; проверяется automation по полному инвентарю `/Game/UI`.
 5. Ни один элемент базового набора не вводится без потребителя в том же change set.
