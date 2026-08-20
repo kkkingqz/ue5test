@@ -29,6 +29,22 @@ bool IsCanonicalScreenId(const FString& Value)
 TArray<FString> DefaultRepositoryPackageRoots()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+
+#if WITH_DEV_AUTOMATION_TESTS
+    if (FGV2SessionCoordinator::bTestForceIncludeSamplePackage)
+    {
+        // Mirrors the LoadPortableRuntimeSources() override: GameData/sample
+        // and GameData/rh cannot coexist (both bind the shared
+        // "textsystem:action.location.travel" action), so tests that opt in
+        // get core+textsystem+sample instead of the default core+textsystem+rh.
+        return {
+            FPaths::Combine(GameDataDir, TEXT("core")),
+            FPaths::Combine(GameDataDir, TEXT("textsystem")),
+            FPaths::Combine(GameDataDir, TEXT("sample")),
+        };
+    }
+#endif
+
     const std::string GameDataDirUtf8 = TCHAR_TO_UTF8(*GameDataDir);
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
     std::vector<std::filesystem::path> OrderedRoots;
@@ -201,6 +217,25 @@ void UGV2RuntimeSubsystem::StartSession()
     {
         ActiveScreen->RemoveFromParent();
         ActiveScreen = nullptr;
+    }
+    if (ActiveGameShell != nullptr)
+    {
+        ActiveGameShell->RemoveFromParent();
+        ActiveGameShell = nullptr;
+    }
+    Reconciler->Reset();
+
+    const UGV2ScreenRegistrySettings* RegistrySettings = GetDefault<UGV2ScreenRegistrySettings>();
+    UClass* GameShellClass = RegistrySettings != nullptr
+        ? RegistrySettings->GameShellClass.LoadSynchronous()
+        : nullptr;
+    if (GameShellClass != nullptr && GetWorld() != nullptr)
+    {
+        ActiveGameShell = CreateWidget<UGV2GameShellWidgetBase>(GetWorld(), GameShellClass);
+        if (ActiveGameShell != nullptr && bActiveScreenAddedToViewport)
+        {
+            ActiveGameShell->AddToViewport();
+        }
     }
 
     if (!Coordinator->StartSession(RepositoryPublisher->GetCurrent(), RepositoryPublisher->GetVersion()))

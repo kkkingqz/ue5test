@@ -82,26 +82,46 @@ bool LoadPortableRuntimeSources(
     const std::string GameDataDirUtf8 = SessionCoordinatorToUtf8(GameDataDirectory);
     std::vector<GV2ContentCore::FDiagnostic> Diags;
     std::vector<std::filesystem::path> OrderedRoots;
-    if (GV2ContentHostSupport::DiscoverPackagesFromContainer(
+
+    bool bUseSampleOverride = false;
+#if WITH_DEV_AUTOMATION_TESTS
+    bUseSampleOverride = FGV2SessionCoordinator::bTestForceIncludeSamplePackage;
+#endif
+
+    if (bUseSampleOverride)
+    {
+        // CBM-03 override: GameData/sample and GameData/rh both bind the shared
+        // "textsystem:action.location.travel" action, so they cannot load
+        // together. Tests that opt in via bTestForceIncludeSamplePackage want
+        // the sample demo/debug-start screen, not rh's gameplay content, so
+        // this substitutes rh for sample instead of following mods.lock.json5.
+        OrderedRoots = {
+            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("textsystem")))),
+            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("sample")))),
+        };
+    }
+    else if (!GV2ContentHostSupport::DiscoverPackagesFromContainer(
             std::filesystem::path(GameDataDirUtf8),
             Diags,
             &OrderedRoots))
     {
-        for (const auto& Root : OrderedRoots)
+        return true;
+    }
+
+    for (const auto& Root : OrderedRoots)
+    {
+        std::vector<GV2ContentCore::FDiagnostic> PkgDiags;
+        auto Descriptor = GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, PkgDiags);
+        if (!Descriptor || Descriptor->GetPackageId() == "core")
         {
-            std::vector<GV2ContentCore::FDiagnostic> PkgDiags;
-            auto Descriptor = GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, PkgDiags);
-            if (!Descriptor || Descriptor->GetPackageId() == "core")
-            {
-                continue;
-            }
-            auto PkgSources = GV2ContentHostSupport::DiscoverPackageScripts(Root, Descriptor->GetPackageId());
-            for (auto& Src : PkgSources)
-            {
-                GV2RuntimeCore::FRuntimeSource& Source = OutSources.emplace_back();
-                Source.Name = std::move(Src.Name);
-                Source.Text = std::move(Src.Text);
-            }
+            continue;
+        }
+        auto PkgSources = GV2ContentHostSupport::DiscoverPackageScripts(Root, Descriptor->GetPackageId());
+        for (auto& Src : PkgSources)
+        {
+            GV2RuntimeCore::FRuntimeSource& Source = OutSources.emplace_back();
+            Source.Name = std::move(Src.Name);
+            Source.Text = std::move(Src.Text);
         }
     }
     return true;
@@ -158,6 +178,10 @@ FGV2SessionCoordinator::FGV2SessionCoordinator(const int32 InIngressCapacity)
     : IngressQueue(InIngressCapacity)
 {
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+bool FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false;
+#endif
 
 void FGV2SessionCoordinator::SetInteractionSink(FInteractionSink InSink)
 {
@@ -560,14 +584,17 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         }
     }
 
-    const FString UiInstanceId = OutModel.UiInstanceId.IsEmpty() ? FString::Printf(TEXT("ui@%d:1"), Status.SessionGeneration) : OutModel.UiInstanceId;
+    // The binding registry requires an "ui@<SessionGeneration>:..." instance
+    // id (see PublishScreenBindings/PrepareScreenRequest below), but Lua's
+    // presentation layer always publishes a fixed "ui@default" placeholder
+    // (screen_requests.lua) since it has no way to know the session
+    // generation. Trusting that placeholder here made PrepareBindings()
+    // reject every document (wrong generation), so mint the canonical id the
+    // same way the other binding call sites do instead of trusting Lua's.
+    const FString UiInstanceId = FString::Printf(TEXT("ui@%d:1"), Status.SessionGeneration);
     const int64 CandidateRevision = OutModel.Revision > 0 ? OutModel.Revision : (UiRevision + 1);
 
-    if (!BindingRegistry.PrepareBindings(
-            UiInstanceId,
-            CandidateRevision,
-            AllDefinitions,
-            OutBindings)
+    if (!BindingRegistry.PrepareBindings(UiInstanceId, CandidateRevision, AllDefinitions, OutBindings)
         || OutBindings.Handles.Num() != AllDefinitions.Num())
     {
         return false;

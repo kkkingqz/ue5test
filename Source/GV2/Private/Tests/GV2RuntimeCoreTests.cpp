@@ -73,6 +73,100 @@ std::vector<GV2RuntimeCore::FRuntimeSource> LoadTestRuntimeSources()
     return Sources;
 }
 
+// SafeEnvironmentAndProtectedEntry needs a "debug.start"-style command that
+// publishes a generic 5-field screen and a command that raises a Lua error,
+// to exercise the dispatcher/presentation/fault-handling round trip. That
+// content used to live in Scripts/debug/start.lua before it moved into a
+// non-core game data package during CoreBoundaryMigration; engine/core code
+// (including this test — see Tools/Content/validate_core_decoupling.py)
+// must not reference that package's namespace, so this test carries its own
+// self-contained fixture module instead of loading it.
+// Module graph discovery keys packages off the source name prefix
+// ("@<pkg>/manifest.lua"), so this fixture uses its own synthetic
+// "testfixture" package rather than declaring a module inside "core" itself
+// (which would need a manifest.lua edit affecting every core consumer).
+constexpr const char* TestFixtureManifestSource = R"(
+return {
+    modules = {
+        {
+            module_id = "testfixture:module.debug_start",
+            source = "debug_start.lua",
+            dependencies = {
+                "core:module.presentation.screen_requests",
+                "core:module.resources.text",
+            },
+        },
+    },
+}
+)";
+
+constexpr const char* TestFixtureDebugStartSource = R"(
+local screens = require("core:module.presentation.screen_requests")
+local text = require("core:module.resources.text")
+
+local M = { id = "testfixture:module.debug_start" }
+
+function M.register(_ctx)
+    game.commands.handlers.register("testfixture:command.debug.start", function(_req)
+        screens.publish(screens.create("testfixture:screen.test", {
+            description = {
+                schema_id = "core:schema.ui_field.rich_text.v3",
+                value = { text = text.spec("testfixture:text.description", nil, "default"), spans = {} },
+            },
+            buttons = {
+                schema_id = "core:schema.ui_field.button_list.v2",
+                value = { items = {} },
+            },
+            checkbox = {
+                schema_id = "core:schema.ui_field.checkbox.v1",
+                value = {
+                    text = text.spec("testfixture:text.checkbox", nil, "default"),
+                    is_checked = false,
+                    binding = { command_id = "testfixture:command.noop", args = {} },
+                },
+            },
+            player_name = {
+                schema_id = "core:schema.ui_field.input_field.v1",
+                value = {
+                    text = text.spec("testfixture:text.player_name", nil, "default"),
+                    placeholder_text = text.spec("testfixture:text.player_name", nil, "default"),
+                    value = "testfixture:item.placeholder",
+                    binding = { command_id = "testfixture:command.noop", args = {} },
+                },
+            },
+            class_select = {
+                schema_id = "core:schema.ui_field.dropdown_select.v1",
+                value = {
+                    placeholder = text.spec("testfixture:text.player_name", nil, "default"),
+                    selected_key = nil,
+                    items = {},
+                    binding = { command_id = "testfixture:command.noop", args = {} },
+                },
+            },
+        }))
+        return true
+    end)
+
+    game.commands.handlers.register("testfixture:command.force_error", function(_req)
+        error("forced test runtime error")
+    end)
+
+    game.commands.handlers.register("testfixture:command.noop", function(_req)
+        return true
+    end)
+end
+
+return M
+)";
+
+std::vector<GV2RuntimeCore::FRuntimeSource> LoadTestRuntimeSourcesWithDebugStartFixture()
+{
+    std::vector<GV2RuntimeCore::FRuntimeSource> Sources = LoadTestRuntimeSources();
+    Sources.push_back({"@testfixture/manifest.lua", TestFixtureManifestSource});
+    Sources.push_back({"@testfixture/debug_start.lua", TestFixtureDebugStartSource});
+    return Sources;
+}
+
 GV2ContentCore::FBuildResult MakeTestBuildResultFrom(const TCHAR* FixtureRelativePath)
 {
     const FString PackageRoot = FPaths::Combine(
@@ -171,7 +265,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
 {
     GV2RuntimeCore::FRuntimeSession Host;
     GV2RuntimeCore::FRuntimeFault Fault;
-    const std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources = LoadTestRuntimeSources();
+    const std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources = LoadTestRuntimeSourcesWithDebugStartFixture();
     TestTrue(TEXT("Manifest-driven Lua source tree is loadable"), RuntimeSources.size() >= 2);
     TestTrue(
         TEXT("Lua VM starts with the configured runtime sources"),
@@ -211,7 +305,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
         Host.DispatchCommand(DirectRequest, Fault));
 
     GV2RuntimeCore::FCommandRequest StartRequest;
-    StartRequest.CommandId = "core:command.debug.start";
+    StartRequest.CommandId = "testfixture:command.debug.start";
     StartRequest.Sequence = 3;
     TestTrue(
         TEXT("Lua debug handler accepts the start command"),
@@ -292,7 +386,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
                                 TestEqual(
                                     TEXT("First button binding target arg was read from repository definition"),
                                     FString(UTF8_TO_TCHAR(std::get<std::string>(TargetIt->second.Data).c_str())),
-                                    FString(TEXT("core:item.weapon.iron_sword")));
+                                    FString(TEXT("testfixture:item.placeholder")));
                             }
                         }
                     }
@@ -309,7 +403,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
                 TestEqual(
                     TEXT("Input field initial value was populated from repository definition"),
                     FString(UTF8_TO_TCHAR(std::get<std::string>(ValueIt->second.Data).c_str())),
-                    FString(TEXT("core:item.weapon.iron_sword")));
+                    FString(TEXT("testfixture:item.placeholder")));
             }
         }
     }
@@ -318,7 +412,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
         Host.TakePendingScreen(PendingScreen, Fault));
     TestFalse(TEXT("No presentation remains after consumption"), PendingScreen.has_value());
 
-    Item.CommandId = "core:command.test.force_error";
+    Item.CommandId = "testfixture:command.force_error";
     Item.Sequence = 4;
     TestFalse(
         TEXT("Lua runtime error is returned as a structured fault"),

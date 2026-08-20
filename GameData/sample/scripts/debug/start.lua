@@ -17,18 +17,18 @@ local function create_screen()
         end
     end
 
-    return screens.create("sample:screen.test", {
+    return screens.create("core:screen.test", {
         description = {
             schema_id = "core:schema.ui_field.rich_text.v3",
             value = {
-                text = text.spec("sample:text.screen.test.description", { player_name = "Игрок" }, "default"),
+                text = text.spec("core:text.screen.test.description", { player_name = "Игрок" }, "default"),
                 spans = {
                     {
                         key = "integration",
                         span_id = "integration",
                         hover = {
-                            title = text.spec("sample:text.screen.test.hover_title", nil, "tooltip_title"),
-                            description = text.spec("sample:text.screen.test.hover_description"),
+                            title = text.spec("core:text.screen.test.hover_title", nil, "tooltip_title"),
+                            description = text.spec("core:text.screen.test.hover_description"),
                         },
                         binding = {
                             command_id = "sample:command.test.inspect",
@@ -44,7 +44,7 @@ local function create_screen()
                 items = {
                     {
                         key = "inspect",
-                        text = text.spec("sample:text.screen.test.inspect", nil, "button"),
+                        text = text.spec("core:text.screen.test.inspect", nil, "button"),
                         binding = {
                             command_id = "sample:command.test.inspect",
                             args = { target = item_id },
@@ -52,7 +52,7 @@ local function create_screen()
                     },
                     {
                         key = "close",
-                        text = text.spec("sample:text.screen.test.close", nil, "button"),
+                        text = text.spec("core:text.screen.test.close", nil, "button"),
                         binding = { command_id = "sample:command.test.close", args = {} },
                     },
                 },
@@ -61,7 +61,7 @@ local function create_screen()
         checkbox = {
             schema_id = "core:schema.ui_field.checkbox.v1",
             value = {
-                text = text.spec("sample:text.screen.test.checkbox", nil, "default"),
+                text = text.spec("core:text.screen.test.checkbox", nil, "default"),
                 is_checked = checkbox_checked,
                 binding = {
                     command_id = "sample:command.test.checkbox_changed",
@@ -72,8 +72,8 @@ local function create_screen()
         player_name = {
             schema_id = "core:schema.ui_field.input_field.v1",
             value = {
-                text = text.spec("sample:text.screen.test.name_label", nil, "default"),
-                placeholder_text = text.spec("sample:text.screen.test.name_placeholder", nil, "default"),
+                text = text.spec("core:text.screen.test.name_label", nil, "default"),
+                placeholder_text = text.spec("core:text.screen.test.name_placeholder", nil, "default"),
                 value = player_name ~= "" and player_name or item_id,
                 binding = {
                     command_id = "sample:command.test.name_changed",
@@ -84,20 +84,20 @@ local function create_screen()
         class_select = {
             schema_id = "core:schema.ui_field.dropdown_select.v1",
             value = {
-                placeholder = text.spec("sample:text.screen.test.dropdown_placeholder", nil, "default"),
+                placeholder = text.spec("core:text.screen.test.dropdown_placeholder", nil, "default"),
                 selected_key = selected_class,
                 items = {
                     {
                         key = "warrior",
-                        text = text.spec("sample:text.screen.test.class_warrior", nil, "default"),
+                        text = text.spec("core:text.screen.test.class_warrior", nil, "default"),
                     },
                     {
                         key = "mage",
-                        text = text.spec("sample:text.screen.test.class_mage", nil, "default"),
+                        text = text.spec("core:text.screen.test.class_mage", nil, "default"),
                     },
                     {
                         key = "rogue",
-                        text = text.spec("sample:text.screen.test.class_rogue", nil, "default"),
+                        text = text.spec("core:text.screen.test.class_rogue", nil, "default"),
                     },
                 },
                 binding = {

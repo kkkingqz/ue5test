@@ -56,6 +56,15 @@ public:
     bool IsLuaVmStarted() const;
     int32 GetQueuedIngressCount() const;
 
+#if WITH_DEV_AUTOMATION_TESTS
+    // Test-only hook (CBM-03: "runs that need the demo screen connect sample
+    // explicitly"): GameData/sample is deliberately excluded from
+    // mods.lock.json5's default package set, so UI automation tests that
+    // need its demo screen/debug-start module opt in here instead of
+    // mutating the shipped lock file.
+    static bool bTestForceIncludeSamplePackage;
+#endif
+
 private:
     static bool ValidateInputValues(
         const FGV2UiBindingRecord& Binding,

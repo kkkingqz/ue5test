@@ -55,8 +55,7 @@ bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* Scre
     UPanelWidget* Host = FindHostForLayer(Layer);
     if (Host == nullptr)
     {
-        // If no explicit host panel is bound, falling back to viewport or returning true for testing
-        return true;
+        return false;
     }
 
     if (ScreenWidget->GetParent() != Host)

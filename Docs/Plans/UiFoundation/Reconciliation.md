@@ -1,7 +1,7 @@
 ---
 title: Layered Reconciliation Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-08-20
 depends_on:
   - Identity.md
@@ -23,8 +23,8 @@ depends_on:
 
 - [x] **UIF-17 — Слои Game Shell**
   - Зависимости: UIF-12.
-  - Done: `WBP_GameShell` содержит именованные хосты `background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`; реестр отклоняет запись с неизвестным слоем; порядок отрисовки зафиксирован в contract; ассеты изменены через `unreal-mcp`.
-  - Evidence: `Content/UI/Shell/WBP_GameShell.uasset`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`.
+  - Done: `WBP_GameShell` содержит шесть именованных хостов-панелей (`BackgroundHost`, `LocationContentHost`, `CharacterPresentationHost`, `CoreInterfaceHost`, `OverlayStackHost`, `ModalStackHost` — привязка по имени к `BindWidgetOptional`-полям `UGV2GameShellWidgetBase`); реестр отклоняет запись с неизвестным слоем; порядок отрисовки зафиксирован в contract; `UGV2RuntimeSubsystem::StartSession()` реально создаёт `ActiveGameShell` через сконфигурированный `GameShellClass` (`Config/DefaultGame.ini`, `GV2ScreenRegistrySettings`), а не только объявляет поле; `AttachScreenToLayer` возвращает честный `false`, если хост-панель не привязана, вместо прежнего маскирующего `return true`; ассеты изменены через `unreal-mcp`.
+  - Evidence: `Content/UI/Shell/WBP_GameShell.uasset`, `Config/DefaultGame.ini`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `Source/GV2/Private/UI/GV2GameShellWidgetBase.cpp`, `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `GV2.UI.LayeredReconciliationContract`.
 
 - [x] **UIF-18 — Конверт документа в Lua**
   - Зависимости: UIF-17.
@@ -41,10 +41,11 @@ depends_on:
   - Done: модалка блокирует нижние слои, интерактивна только верхняя пригодная; оверлей по умолчанию маршрут не блокирует; удаление владельца каскадно удаляет его модалки; неизвестный `screen_id`, несовместимый класс реестра и несовместимый контракт поля делают документ невалидным до интерактивного apply.
   - Evidence: `Source/GV2/Private/UI/`, `GV2.Runtime.Presentation.*`.
 
-- [x] **UIF-21 — Атомарность и переход `rh` на слои**
+- [ ] **UIF-21 — Атомарность и переход `rh` на слои** — blocked: у `rh` нет собственного presentation-кода, переносить на слои нечего
   - Зависимости: UIF-20.
-  - Done: отказ любого кандидата оставляет предыдущую ревизию и её handles без изменений; публикация binding set остаётся атомарной; экраны `rh` переведены на конверт со слоями, покупка использует модалку подтверждения; изменение `final_screen_fields` в golden воспроизведено манифестом и объяснено; полный `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.
-  - Evidence: `GameData/rh/scripts/`, golden-прогон, отчёт CTest.
+  - Done: отказ любого кандидата оставляет предыдущую ревизию и её handles без изменений; публикация binding set остаётся атомарной; полный `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.
+  - **Уточнение по итогам повторной проверки:** `rh` на момент завершения этапа не имеет собственного presentation-кода (`GameData/rh/` не вызывает `screens.publish`, `show_overlay` или `show_modal` ни разу) — единственный потребитель конверта документа в контенте остаётся `GameData/sample/scripts/debug/start.lua`. Формулировка «экраны `rh` переведены на конверт со слоями, покупка использует модалку подтверждения» была недостоверной и удалена; сам механизм (маршрут+оверлеи+модалки, атомарность, `AttachScreenToLayer` через реальный `WBP_GameShell`) реализован и проверен automation-тестом на синтетическом сценарии, но не имеет игрового потребителя в `rh` и не может считаться закрытым в исходной формулировке.
+  - Evidence: `GameData/rh/scripts/` (проверено на отсутствие presentation-вызовов), `GV2.UI.LayeredReconciliationContract`, golden-прогон, отчёт CTest.
 
 ## Проверка milestone
 

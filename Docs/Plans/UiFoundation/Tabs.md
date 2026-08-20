@@ -1,7 +1,7 @@
 ---
 title: Nested Instances and Tabs Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-08-20
 depends_on:
   - Reconciliation.md
@@ -29,8 +29,8 @@ depends_on:
 
 - [x] **UIF-23 — Схема набора вкладок**
   - Зависимости: UIF-22, UIF-12.
-  - Done: схема набора вкладок описана в [Screen Templates](../../UI/ScreenTemplates.md) наравне с существующими; значение содержит ключ вкладки по умолчанию и упорядоченный список вкладок с `key`, заголовком в форме `TextSpec`, `screen_id` и полным набором полей; виджет собран из контейнера и области прокрутки базового набора, не создаёт параллельных путей и объявляет политики масштабирования своих примитивов; сырая строка в заголовке отклоняется.
-  - Evidence: `Docs/UI/ScreenTemplates.md`, `Content/UI/Widgets/`, `Source/GV2/Private/UI/`.
+  - Done: схема набора вкладок описана в [Screen Templates](../../UI/ScreenTemplates.md) наравне с существующими; значение содержит ключ вкладки по умолчанию и упорядоченный список вкладок с `key`, заголовком в форме `TextSpec`, `screen_id` и полным набором полей; виджет (`WBP_TabContainer`) собран из реального экземпляра `WBP_ScrollArea` (`TabScrollArea`) с содержимым в его `ContentSlot` (`TabContentPanel`), не создаёт параллельных путей и объявляет политики масштабирования своих примитивов; `UGV2TabContainerWidgetBase` реально добавляет каждый созданный дочерний экран в `TabContentPanel` (`AddChild`), а не только отслеживает их в карте; сырая строка в заголовке отклоняется.
+  - Evidence: `Docs/UI/ScreenTemplates.md`, `Content/UI/Widgets/WBP_TabContainer.uasset`, `Source/GV2/Private/UI/GV2TabContainerWidgetBase.cpp`.
 
 - [x] **UIF-24 — Рекурсивный apply**
   - Зависимости: UIF-23, UIF-19.

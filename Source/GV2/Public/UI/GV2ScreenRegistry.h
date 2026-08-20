@@ -4,6 +4,7 @@
 #include "GV2ScreenRegistry.generated.h"
 
 class UGV2ScreenWidgetBase;
+class UGV2GameShellWidgetBase;
 
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenRegistryEntry
@@ -58,4 +59,7 @@ class GV2_API UGV2ScreenRegistrySettings : public UObject
 public:
     UPROPERTY(Config, EditAnywhere, Category = "GV2|UI|Screen Registry")
     TSoftObjectPtr<UGV2ScreenRegistry> RegistryAsset;
+
+    UPROPERTY(Config, EditAnywhere, Category = "GV2|UI|Screen Registry")
+    TSoftClassPtr<UGV2GameShellWidgetBase> GameShellClass;
 };

@@ -1,7 +1,7 @@
 ---
 title: Theme Ownership Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-08-20
 depends_on:
   - README.md
@@ -28,8 +28,8 @@ decisions:
 - [x] **UIF-27 — Каталоги слоёв**
   - Зависимости: UIF-01.
   - Сегодня всё лежит в `Content/UI/`, и принадлежность ассета слою не наблюдаема.
-  - Done: `Content/UI/` содержит инфраструктуру `core` — Game Shell, leaf-адаптеры, базовые примитивы, `WBP_ScreenBase`, реестр; тема, стили и шаблоны экранов текстовой игры переехали в `Content/TextSystem/UI/`; заведён `Content/RH/UI/`; переезд выполнен через `unreal-mcp` с исправлением ссылок; конвенция записана в contract.
-  - Evidence: `Content/TextSystem/UI/`, `Docs/UI/README.md`, `Docs/Architecture/Modding.md`.
+  - Done: `Content/UI/` содержит инфраструктуру `core` — Game Shell, leaf-адаптеры, базовые примитивы, `WBP_ScreenBase`, реестр, тестовый экран `core:screen.test`; тема (`DA_UITheme_Default`), пять `BP_UIStyle_*` и пять текстовых композитов (`WBP_RichText`, `WBP_RichTextPopover`, `WBP_ButtonList`, `WBP_Modal`, `WBP_Portrait`) переехали в `Content/TextSystem/UI/`; переезд выполнен через `unreal-mcp` (`move` для internally-referenced ассетов, `duplicate`+`delete` для `DA_UITheme_Default`, у которого единственная ссылка — `Config/DefaultGame.ini`, что не покрывается автоматическим fix-up); `Config/DefaultGame.ini` обновлён на новый путь темы; `Content/RH/UI/` пока не заведён — у `rh` нет собственных Widget Blueprint, откроется по факту появления первого ассета; конвенция записана в contract.
+  - Evidence: `Content/TextSystem/UI/`, `Config/DefaultGame.ini`, `Docs/UI/README.md`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
 - [x] **UIF-28 — Гейт реестра по каталогу слоя**
   - Зависимости: UIF-27.
@@ -39,8 +39,8 @@ decisions:
 - [x] **UIF-29 — Минимальная тема ядра**
   - Зависимости: UIF-27.
   - Из владения `textsystem` следует, что конфигурация без него остаётся без темы, а `core:screen.error`, `core:screen.loading` и `core:screen.recovery` обязаны отрисоваться в том числе при отказе загрузки контента.
-  - Done: `core` содержит минимальную тему, достаточную только для трёх аварийных экранов; тема `textsystem` её замещает; порядок разрешения зафиксирован в contract; конфигурация без `textsystem` отрисовывает все три экрана.
-  - Evidence: `Content/UI/Styles/`, `Source/GV2/Private/UI/GV2UiTheme.cpp`.
+  - Done: `core` содержит минимальную тему, достаточную только для трёх аварийных экранов (`UGV2UiTheme::GetCoreMinimalTheme()` — собирается программно в C++, не является отдельным ассетом); тема `textsystem` (`Content/TextSystem/UI/Styles/DA_UITheme_Default`, конфигурируется `Config/DefaultGame.ini`) её замещает, когда сконфигурирована; порядок разрешения зафиксирован в contract; конфигурация без сконфигурированной темы отрисовывает все три экрана.
+  - Evidence: `Content/TextSystem/UI/Styles/`, `Config/DefaultGame.ini`, `Source/GV2/Private/UI/GV2UiTheme.cpp`.
 
 - [x] **UIF-30 — Длина текста в локалях**
   - Зависимости: UIF-29, UIF-09.

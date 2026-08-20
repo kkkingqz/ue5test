@@ -9,6 +9,7 @@
 
 class UGV2ScreenWidgetBase;
 class UGV2ScreenRegistry;
+class UPanelWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FGV2OnTabChanged, FName, NewTabKey, int32, NewTabIndex);
 
@@ -78,6 +79,9 @@ protected:
 
     UPROPERTY(Transient)
     TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> TabScreenWidgets;
+
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
+    TObjectPtr<UPanelWidget> TabContentPanel;
 
     UFUNCTION(BlueprintImplementableEvent, Category = "GV2|UI|Tabs")
     void OnTabSelectionUpdated(FName NewTabKey, int32 NewTabIndex);

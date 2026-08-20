@@ -1,7 +1,7 @@
 ---
 title: Core Baseline Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-08-20
 depends_on:
   - ScalingModel.md
@@ -34,14 +34,14 @@ decisions:
 - [x] **UIF-12 — Контейнер и область прокрутки**
   - Зависимости: UIF-08, UIF-11.
   - Прокрутка не косметика: без неё требование 720p невыполнимо, потому что не помещающийся контент становится недостижимым.
-  - Done: созданы `Panel` и `ScrollArea` с явными политиками масштабирования своих визуальных примитивов; прокрутка остаётся UI-local и в сейв не попадает; ассеты созданы через `unreal-mcp` с compile и save; оба элемента участвуют в матрице разрешений.
-  - Evidence: `Content/UI/Widgets/`, `Source/GV2/Private/UI/`, `GV2.Runtime.Presentation.*`.
+  - Done: созданы `Panel` (`WBP_Panel`, `BackgroundBorder`+`ContentSlot`) и `ScrollArea` (`WBP_ScrollArea`, `ScrollBox`+`ContentSlot`) с явными политиками масштабирования своих визуальных примитивов; прокрутка остаётся UI-local и в сейв не попадает; ассеты созданы через `unreal-mcp` (`CreateWidgetBlueprint`+`AddWidget`+`CompileWidgetBlueprint`+`save_assets`); оба элемента входят в контрактный automation-инвентарь.
+  - Evidence: `Content/UI/Widgets/WBP_Panel.uasset`, `Content/UI/Widgets/WBP_ScrollArea.uasset`, `Source/GV2/Private/UI/`, `GV2.Runtime.UIKit.CentralThemeAndComponents`.
 
 - [x] **UIF-13 — Обобщённый список**
   - Зависимости: UIF-12, UIF-03.
   - Сегодня повторяемый контент существует только как `ButtonList` — частный случай, элемент которого может быть только кнопкой.
-  - Done: реализован обобщённый список с политикой раскладки (вертикальная, горизонтальная); элемент списка может быть композитом любого слоя; идентичность детей подчиняется правилу ключей M1 без исключений; `ButtonList` выражен через него с общей реализацией повторения; двумерное размещение в этот этап не входит.
-  - Evidence: `Content/UI/Widgets/`, `Docs/UI/ScreenTemplates.md`, `GV2.Runtime.Presentation.*`.
+  - Done: реализован обобщённый список с политикой раскладки (вертикальная, горизонтальная); элемент списка может быть композитом любого слоя; идентичность детей подчиняется правилу ключей M1 без исключений; `ButtonList` выражен через него с общей реализацией повторения; двумерное размещение в этот этап не входит; ассет `WBP_ListView` (`ContainerPanel`) создан через `unreal-mcp`.
+  - Evidence: `Content/UI/Widgets/WBP_ListView.uasset`, `Docs/UI/ScreenTemplates.md`, `GV2.Runtime.UIKit.CentralThemeAndComponents`.
 
 - [x] **UIF-14 — Контракты данных для существующих виджетов**
   - Зависимости: UIF-13.
@@ -51,8 +51,8 @@ decisions:
 
 - [x] **UIF-15 — Модалка и иконка**
   - Зависимости: UIF-14.
-  - Done: `Modal` получает контракт Screen Field и участвует в слое `modal_stack`; добавлена `Icon` как примитив с политикой `PreserveAspect`; оба элемента используют существующие конвейеры; сырые строки и прямая работа с brush отклоняются.
-  - Evidence: `Content/UI/Widgets/`, `Docs/UI/ScreenTemplates.md`.
+  - Done: `Modal` получает контракт Screen Field и участвует в слое `modal_stack`; добавлена `Icon` как примитив с политикой `PreserveAspect` (`WBP_Icon`, создан дублированием `WBP_Image` и перепривязкой к `UGV2IconWidgetBase` через `unreal-mcp`); оба элемента используют существующие конвейеры; сырые строки и прямая работа с brush отклоняются.
+  - Evidence: `Content/TextSystem/UI/Widgets/WBP_Modal.uasset`, `Content/UI/Widgets/WBP_Icon.uasset`, `Docs/UI/ScreenTemplates.md`.
 
 - [x] **UIF-16 — Соответствие конвейерам**
   - Зависимости: UIF-15.

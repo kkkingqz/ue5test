@@ -56,6 +56,22 @@
 #include "Engine/World.h"
 #include "Subsystems/SubsystemCollection.h"
 
+namespace
+{
+// CBM-03: GameData/sample carries the WBP_Testscreen demo/debug-start screen
+// but is deliberately excluded from the default package set (mods.lock.json5),
+// since it and GameData/rh both bind the shared
+// "textsystem:action.location.travel" action and cannot load together.
+// Tests that need the demo screen opt in explicitly via this scope guard,
+// matching the "runs that need the demo screen connect sample explicitly"
+// intent from CoreBoundaryMigration/DemoOut.md.
+struct FGV2ScopedSamplePackageOverride
+{
+    FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+    ~FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+};
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2StableIdConformanceTest,
     "GV2.Runtime.StableId.Conformance",
@@ -1290,6 +1306,8 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
         FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
     FARFilter UiAssetFilter;
     UiAssetFilter.PackagePaths.Add(TEXT("/Game/UI"));
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/TextSystem/UI"));
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/RH/UI"));
     UiAssetFilter.bRecursivePaths = true;
     TArray<FAssetData> UiAssets;
     AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
@@ -1339,7 +1357,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 bUsesTextPipelineBase);
         }
     }
-    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 17);
+    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 22);
     TestTrue(
         TEXT("Theme provides a visible separator brush"),
         Theme->SeparatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
@@ -1354,17 +1372,22 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     };
     const FComponentContract Components[] = {
         {TEXT("/Game/UI/Widgets/WBP_Text.WBP_Text_C"), UGV2TextWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_RichText.WBP_RichText_C"), UGV2RichTextWidgetBase::StaticClass()},
+        {TEXT("/Game/TextSystem/UI/Widgets/WBP_RichText.WBP_RichText_C"), UGV2RichTextWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"), UGV2ImageWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"), UGV2ButtonWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_Checkbox.WBP_Checkbox_C"), UGV2CheckboxWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_InputField.WBP_InputField_C"), UGV2InputFieldWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_DropdownSelect.WBP_DropdownSelect_C"), UGV2DropdownSelectWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_ButtonList.WBP_ButtonList_C"), UGV2ButtonListWidgetBase::StaticClass()},
+        {TEXT("/Game/TextSystem/UI/Widgets/WBP_ButtonList.WBP_ButtonList_C"), UGV2ButtonListWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"), UGV2ProgressBarWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_Separator.WBP_Separator_C"), UGV2SeparatorWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_LoadingIndicator.WBP_LoadingIndicator_C"), UGV2LoadingIndicatorWidgetBase::StaticClass()},
-        {TEXT("/Game/UI/Widgets/WBP_RichTextPopover.WBP_RichTextPopover_C"), UGV2RichTextPopoverWidgetBase::StaticClass()},
+        {TEXT("/Game/TextSystem/UI/Widgets/WBP_RichTextPopover.WBP_RichTextPopover_C"), UGV2RichTextPopoverWidgetBase::StaticClass()},
+        {TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"), UGV2IconWidgetBase::StaticClass()},
+        {TEXT("/Game/UI/Widgets/WBP_Panel.WBP_Panel_C"), UGV2PanelWidgetBase::StaticClass()},
+        {TEXT("/Game/UI/Widgets/WBP_ScrollArea.WBP_ScrollArea_C"), UGV2ScrollAreaWidgetBase::StaticClass()},
+        {TEXT("/Game/UI/Widgets/WBP_ListView.WBP_ListView_C"), UGV2ListViewWidgetBase::StaticClass()},
+        {TEXT("/Game/UI/Widgets/WBP_TabContainer.WBP_TabContainer_C"), UGV2TabContainerWidgetBase::StaticClass()},
     };
 
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
@@ -1666,8 +1689,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
 {
     for (const TCHAR* StylePath : {
-             TEXT("/Game/UI/Styles/BP_UIStyle_Text_Default.BP_UIStyle_Text_Default_C"),
-             TEXT("/Game/UI/Styles/BP_UIStyle_ButtonLabel_Default.BP_UIStyle_ButtonLabel_Default_C")})
+             TEXT("/Game/TextSystem/UI/Styles/BP_UIStyle_Text_Default.BP_UIStyle_Text_Default_C"),
+             TEXT("/Game/TextSystem/UI/Styles/BP_UIStyle_ButtonLabel_Default.BP_UIStyle_ButtonLabel_Default_C")})
     {
         const UClass* StyleClass = LoadClass<UCommonTextStyle>(nullptr, StylePath);
         const UCommonTextStyle* Style = StyleClass != nullptr
@@ -1682,6 +1705,8 @@ bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
             TestEqual(TEXT("CommonUI text style selects Regular typeface"), Font.TypefaceFontName, FName(TEXT("Regular")));
         }
     }
+
+    const FGV2ScopedSamplePackageOverride SampleOverride;
 
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();
@@ -1716,6 +1741,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();
     GameInstance->InitializeStandalone();
@@ -2102,11 +2129,34 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
     if (TestWorld != nullptr)
     {
-        UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
+        UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+            nullptr,
+            TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+        TestNotNull(TEXT("WBP_GameShell class is loadable"), GameShellClass);
+        UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(
+            TestWorld,
+            GameShellClass != nullptr ? GameShellClass : UGV2GameShellWidgetBase::StaticClass());
         TestNotNull(TEXT("Game shell instantiated"), Shell);
         if (Shell != nullptr)
         {
             Shell->AddToRoot();
+            const FName LayersToVerify[] = {
+                UGV2GameShellWidgetBase::LayerBackground,
+                UGV2GameShellWidgetBase::LayerLocationContent,
+                UGV2GameShellWidgetBase::LayerCharacterPresentation,
+                UGV2GameShellWidgetBase::LayerCoreInterface,
+                UGV2GameShellWidgetBase::LayerOverlayStack,
+                UGV2GameShellWidgetBase::LayerModalStack,
+            };
+            for (const FName& LayerToVerify : LayersToVerify)
+            {
+                UUserWidget* ProbeWidget = CreateWidget<UUserWidget>(TestWorld, UUserWidget::StaticClass());
+                const bool bAttached = Shell->AttachScreenToLayer(LayerToVerify, ProbeWidget);
+                TestTrue(
+                    *FString::Printf(TEXT("Game shell binds a host panel for layer '%s' in the real WBP asset"), *LayerToVerify.ToString()),
+                    bAttached);
+                Shell->DetachScreen(ProbeWidget);
+            }
         }
 
         FGV2LayeredUiReconciler Reconciler;

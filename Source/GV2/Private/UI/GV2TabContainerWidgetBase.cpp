@@ -1,5 +1,6 @@
 #include "UI/GV2TabContainerWidgetBase.h"
 
+#include "Components/PanelWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiTheme.h"
@@ -155,6 +156,10 @@ bool UGV2TabContainerWidgetBase::ApplyTabContainerModel(const FGV2TabContainerVi
             if (ChildWidget != nullptr)
             {
                 ChildWidget->ApplyScreenFields(Tab.Fields);
+                if (TabContentPanel != nullptr)
+                {
+                    TabContentPanel->AddChild(ChildWidget);
+                }
                 TabScreenWidgets.Add(Tab.Key, ChildWidget);
             }
         }

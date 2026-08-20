@@ -2762,7 +2762,16 @@ struct FRuntimeSession::FImpl
                 return false;
             }
             OutDoc.UiInstanceId = "ui@default";
-            OutDoc.Revision = 1;
+            lua_getfield(State, AbsoluteIndex, "revision");
+            if (lua_isinteger(State, -1))
+            {
+                OutDoc.Revision = static_cast<std::int64_t>(lua_tointeger(State, -1));
+            }
+            else
+            {
+                OutDoc.Revision = 1;
+            }
+            lua_pop(State, 1);
             OutDoc.Route = std::move(SingleInstance);
             OutDoc.Overlays.clear();
             OutDoc.Modals.clear();

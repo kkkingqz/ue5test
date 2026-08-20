@@ -1,7 +1,7 @@
 ---
 title: UI Foundation Implementation Plan
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-08-20
 depends_on:
   - ../../Proposals/CoreUIBaselineAndScalingProposal.md
@@ -72,7 +72,7 @@ decisions:
 - [x] M1 — [Identity](Identity.md): правило ключей и его гейт. UIF-01…05.
 - [x] M2 — [Scaling Model](ScalingModel.md): разрешения, отзывчивая раскладка, политики примитивов, кривая текста. UIF-06…10.
 - [x] M3 — [Core Baseline](CoreBaseline.md): контейнер, прокрутка, обобщённый список, иконка, контракты данных. UIF-11…16.
-- [x] M4 — [Reconciliation](Reconciliation.md): слои, оверлеи, модалки, переиспользование. UIF-17…21.
+- [ ] M4 — [Reconciliation](Reconciliation.md): слои, оверлеи, модалки, переиспользование. UIF-17…21. — blocked: UIF-21 (переход `rh` на слои) не может быть закрыт, у `rh` нет presentation-контента; механизм реализован и проверен automation на синтетическом сценарии.
 - [x] M5 — [Tabs](Tabs.md): вложенный Screen Instance и вкладки. UIF-22…26.
 - [x] M6 — [Theme Ownership](ThemeOwnership.md): каталоги слоёв, тема ядра, длина текста. UIF-27…30.
 
