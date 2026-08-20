@@ -216,6 +216,16 @@ void FGV2SessionCoordinator::ClearScreenSink()
     ScreenSink = nullptr;
 }
 
+void FGV2SessionCoordinator::SetDocumentSink(FDocumentSink InSink)
+{
+    DocumentSink = MoveTemp(InSink);
+}
+
+void FGV2SessionCoordinator::ClearDocumentSink()
+{
+    DocumentSink = nullptr;
+}
+
 bool FGV2SessionCoordinator::StartSession(
     const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
     const int64 InRepositoryVersion)
@@ -264,18 +274,28 @@ bool FGV2SessionCoordinator::StartSession(
     Status.SessionState = EGV2SessionState::Ready;
     Status.bIsReady = true;
 
-    std::optional<GV2RuntimeCore::FScreenRequest> PendingScreen;
-    if (RuntimeSession.TakePendingScreen(PendingScreen, Fault) && PendingScreen.has_value())
+    std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
+    if (RuntimeSession.TakePendingDocument(PendingDoc, Fault) && PendingDoc.has_value())
     {
-        if (ScreenSink)
+        FGV2UiDocumentViewModel DocModel;
+        FGV2PreparedBindingSet PreparedBindings;
+        if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings))
         {
-            FGV2ScreenViewModel Model;
-            FGV2PreparedBindingSet PreparedBindings;
-            if (PrepareScreenRequest(*PendingScreen, Model, PreparedBindings)
-                && ScreenSink(Model)
-                && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+            bool bApplied = false;
+            if (DocumentSink)
             {
-                ++UiRevision;
+                bApplied = DocumentSink(DocModel);
+            }
+            else if (ScreenSink && DocModel.bHasRoute)
+            {
+                FGV2ScreenViewModel ScreenModel;
+                ScreenModel.ScreenId = DocModel.Route.ScreenId;
+                ScreenModel.Fields = DocModel.Route.Fields;
+                bApplied = ScreenSink(ScreenModel);
+            }
+            if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+            {
+                UiRevision = DocModel.Revision;
             }
         }
     }
@@ -478,6 +498,141 @@ bool FGV2SessionCoordinator::ValidateInputValues(
     return true;
 }
 
+bool FGV2SessionCoordinator::PrepareDocumentRequest(
+    const GV2RuntimeCore::FUiDocument& Document,
+    FGV2UiDocumentViewModel& OutModel,
+    FGV2PreparedBindingSet& OutBindings)
+{
+    OutModel = {};
+    OutBindings = {};
+
+    OutModel.UiInstanceId = UTF8_TO_TCHAR(Document.UiInstanceId.c_str());
+    OutModel.Revision = Document.Revision;
+
+    const FGV2ScreenFieldAdapterRegistry& FieldAdapters = FGV2ScreenFieldAdapterRegistry::Get();
+    TArray<FGV2UiBindingDefinition> AllDefinitions;
+
+    auto PrepareInstanceDefs = [&](const GV2RuntimeCore::FScreenInstance& Inst, int32& OutDefStartIndex, int32& OutDefCount) -> bool
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = Inst.ScreenId;
+        Request.Fields = Inst.Fields;
+
+        TArray<FGV2UiBindingDefinition> InstDefs;
+        if (!FieldAdapters.PrepareBindingDefinitions(Request, InstDefs))
+        {
+            return false;
+        }
+
+        for (FGV2UiBindingDefinition& Def : InstDefs)
+        {
+            Def.NodeKeyPath.Insert(UTF8_TO_TCHAR(Inst.InstanceKey.c_str()), 0);
+            Def.NodeKeyPath.Insert(UTF8_TO_TCHAR(Inst.Layer.c_str()), 0);
+        }
+
+        OutDefStartIndex = AllDefinitions.Num();
+        OutDefCount = InstDefs.Num();
+        AllDefinitions.Append(InstDefs);
+        return true;
+    };
+
+    struct FInstDefRange
+    {
+        int32 Start = 0;
+        int32 Count = 0;
+    };
+
+    FInstDefRange RouteRange;
+    if (Document.Route.has_value())
+    {
+        if (!PrepareInstanceDefs(*Document.Route, RouteRange.Start, RouteRange.Count))
+        {
+            return false;
+        }
+    }
+
+    TArray<FInstDefRange> OverlayRanges;
+    OverlayRanges.SetNum(Document.Overlays.size());
+    for (size_t i = 0; i < Document.Overlays.size(); ++i)
+    {
+        if (!PrepareInstanceDefs(Document.Overlays[i], OverlayRanges[i].Start, OverlayRanges[i].Count))
+        {
+            return false;
+        }
+    }
+
+    TArray<FInstDefRange> ModalRanges;
+    ModalRanges.SetNum(Document.Modals.size());
+    for (size_t i = 0; i < Document.Modals.size(); ++i)
+    {
+        if (!PrepareInstanceDefs(Document.Modals[i], ModalRanges[i].Start, ModalRanges[i].Count))
+        {
+            return false;
+        }
+    }
+
+    const FString UiInstanceId = OutModel.UiInstanceId.IsEmpty() ? FString::Printf(TEXT("ui@%d:1"), Status.SessionGeneration) : OutModel.UiInstanceId;
+    const int64 CandidateRevision = OutModel.Revision > 0 ? OutModel.Revision : (UiRevision + 1);
+
+    if (!BindingRegistry.PrepareBindings(
+            UiInstanceId,
+            CandidateRevision,
+            AllDefinitions,
+            OutBindings)
+        || OutBindings.Handles.Num() != AllDefinitions.Num())
+    {
+        return false;
+    }
+
+    auto BuildInstanceModel = [&](const GV2RuntimeCore::FScreenInstance& Inst, const FInstDefRange& Range, FGV2ScreenInstanceViewModel& OutInstModel) -> bool
+    {
+        OutInstModel.Layer = FName(UTF8_TO_TCHAR(Inst.Layer.c_str()));
+        OutInstModel.InstanceKey = FName(UTF8_TO_TCHAR(Inst.InstanceKey.c_str()));
+        OutInstModel.ScreenId = UTF8_TO_TCHAR(Inst.ScreenId.c_str());
+
+        TArray<FGV2UiBindingHandle> InstHandles;
+        InstHandles.Reserve(Range.Count);
+        for (int32 i = 0; i < Range.Count; ++i)
+        {
+            InstHandles.Add(OutBindings.Handles[Range.Start + i]);
+        }
+
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = Inst.ScreenId;
+        Request.Fields = Inst.Fields;
+        return FieldAdapters.BuildFields(Request, InstHandles, OutInstModel.Fields);
+    };
+
+    if (Document.Route.has_value())
+    {
+        OutModel.bHasRoute = true;
+        if (!BuildInstanceModel(*Document.Route, RouteRange, OutModel.Route))
+        {
+            return false;
+        }
+    }
+
+    OutModel.Overlays.SetNum(Document.Overlays.size());
+    for (size_t i = 0; i < Document.Overlays.size(); ++i)
+    {
+        if (!BuildInstanceModel(Document.Overlays[i], OverlayRanges[i], OutModel.Overlays[i]))
+        {
+            return false;
+        }
+    }
+
+    OutModel.Modals.SetNum(Document.Modals.size());
+    for (size_t i = 0; i < Document.Modals.size(); ++i)
+    {
+        if (!BuildInstanceModel(Document.Modals[i], ModalRanges[i], OutModel.Modals[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void FGV2SessionCoordinator::PumpIngress()
 {
     check(IsInGameThread());
@@ -491,7 +646,7 @@ void FGV2SessionCoordinator::PumpIngress()
     FGV2UiIngressItem Item;
     while (Status.bIsReady && IngressQueue.Dequeue(Item))
     {
-        std::optional<GV2RuntimeCore::FScreenRequest> PendingScreen;
+        std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
         {
             TGuardValue<bool> ExecutionGuard(bExecutingRuntime, true);
             GV2RuntimeCore::FRuntimeFault Fault;
@@ -500,22 +655,35 @@ void FGV2SessionCoordinator::PumpIngress()
                 FailRuntime(Fault);
                 return;
             }
-            if (!RuntimeSession.TakePendingScreen(PendingScreen, Fault))
+            if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
             {
                 FailRuntime(Fault);
                 return;
             }
         }
 
-        if (PendingScreen && ScreenSink)
+        if (PendingDoc)
         {
-            FGV2ScreenViewModel Model;
+            FGV2UiDocumentViewModel DocModel;
             FGV2PreparedBindingSet PreparedBindings;
-            if (PrepareScreenRequest(*PendingScreen, Model, PreparedBindings)
-                && ScreenSink(Model)
-                && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+            if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings))
             {
-                ++UiRevision;
+                bool bApplied = false;
+                if (DocumentSink)
+                {
+                    bApplied = DocumentSink(DocModel);
+                }
+                else if (ScreenSink && DocModel.bHasRoute)
+                {
+                    FGV2ScreenViewModel ScreenModel;
+                    ScreenModel.ScreenId = DocModel.Route.ScreenId;
+                    ScreenModel.Fields = DocModel.Route.Fields;
+                    bApplied = ScreenSink(ScreenModel);
+                }
+                if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+                {
+                    UiRevision = DocModel.Revision;
+                }
             }
         }
         if (InteractionSink)

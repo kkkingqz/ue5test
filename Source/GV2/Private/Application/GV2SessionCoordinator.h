@@ -10,6 +10,7 @@ class FGV2SessionCoordinator
 public:
     using FInteractionSink = TFunction<void(const FGV2UiIngressItem&)>;
     using FScreenSink = TFunction<bool(const FGV2ScreenViewModel&)>;
+    using FDocumentSink = TFunction<bool(const FGV2UiDocumentViewModel&)>;
 
     explicit FGV2SessionCoordinator(int32 InIngressCapacity = 256);
 
@@ -17,6 +18,8 @@ public:
     void ClearInteractionSink();
     void SetScreenSink(FScreenSink InSink);
     void ClearScreenSink();
+    void SetDocumentSink(FDocumentSink InSink);
+    void ClearDocumentSink();
 
     // PCC-36: PinnedRepository must be a valid read handle obtained from the
     // Application-scope FGV2RepositoryPublisher current snapshot at the time
@@ -58,6 +61,10 @@ private:
         const GV2RuntimeCore::FScreenRequest& Request,
         FGV2ScreenViewModel& OutModel,
         FGV2PreparedBindingSet& OutBindings);
+    bool PrepareDocumentRequest(
+        const GV2RuntimeCore::FUiDocument& Document,
+        FGV2UiDocumentViewModel& OutModel,
+        FGV2PreparedBindingSet& OutBindings);
     void PumpIngress();
     void FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault);
 
@@ -68,6 +75,7 @@ private:
     GV2RuntimeCore::FRuntimeSession RuntimeSession;
     FInteractionSink InteractionSink;
     FScreenSink ScreenSink;
+    FDocumentSink DocumentSink;
     int64 NextInputSequence = 1;
     int64 UiRevision = 0;
     bool bPumpingIngress = false;

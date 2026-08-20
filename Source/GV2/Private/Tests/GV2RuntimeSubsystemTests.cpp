@@ -32,6 +32,8 @@
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2IconWidgetBase.h"
+#include "UI/GV2GameShellWidgetBase.h"
+#include "UI/GV2LayeredUiReconciler.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
@@ -2046,6 +2048,162 @@ bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
             TEXT("SubmitTextValue returns technical result from emitter"),
             SubmitResult,
             EGV2SubmitUiInteractionResult::RuntimeNotReady);
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiLayeredReconciliationContract,
+    "GV2.UI.LayeredReconciliationContract",
+    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
+{
+    // 1. UIF-17: Game Shell Layers Validation & Order
+    TestTrue(TEXT("background is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("background")));
+    TestTrue(TEXT("location_content is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("location_content")));
+    TestTrue(TEXT("character_presentation is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("character_presentation")));
+    TestTrue(TEXT("core_interface is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("core_interface")));
+    TestTrue(TEXT("overlay_stack is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("overlay_stack")));
+    TestTrue(TEXT("modal_stack is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("modal_stack")));
+    TestFalse(TEXT("arbitrary_layer is invalid"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("arbitrary_layer")));
+
+    const TArray<FName>& ApprovedLayers = UGV2GameShellWidgetBase::GetApprovedLayers();
+    TestEqual(TEXT("Exactly 6 approved layers"), ApprovedLayers.Num(), 6);
+    TestEqual(TEXT("Layer 0 is background"), ApprovedLayers[0], UGV2GameShellWidgetBase::LayerBackground);
+    TestEqual(TEXT("Layer 1 is location_content"), ApprovedLayers[1], UGV2GameShellWidgetBase::LayerLocationContent);
+    TestEqual(TEXT("Layer 2 is character_presentation"), ApprovedLayers[2], UGV2GameShellWidgetBase::LayerCharacterPresentation);
+    TestEqual(TEXT("Layer 3 is core_interface"), ApprovedLayers[3], UGV2GameShellWidgetBase::LayerCoreInterface);
+    TestEqual(TEXT("Layer 4 is overlay_stack"), ApprovedLayers[4], UGV2GameShellWidgetBase::LayerOverlayStack);
+    TestEqual(TEXT("Layer 5 is modal_stack"), ApprovedLayers[5], UGV2GameShellWidgetBase::LayerModalStack);
+
+    // 2. UIF-17: Screen Registry Validation
+    UGV2ScreenRegistry* Registry = NewObject<UGV2ScreenRegistry>();
+    FString ValidationError;
+    TestFalse(TEXT("Empty registry fails validation"), Registry->Validate(ValidationError));
+
+    // 3. UIF-19, UIF-20, UIF-21: Multi-layer Reconciliation, Reuse, Replacement, Modal Blocking, Atomicity
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    if (TestWorld != nullptr)
+    {
+        UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
+        TestNotNull(TEXT("Game shell instantiated"), Shell);
+
+        FGV2LayeredUiReconciler Reconciler;
+
+        TMap<FString, TSubclassOf<UGV2ScreenWidgetBase>> ScreenClasses;
+        ScreenClasses.Add(TEXT("core:screen.main"), UGV2ScreenWidgetBase::StaticClass());
+        ScreenClasses.Add(TEXT("core:screen.alt"), UGV2ScreenWidgetBase::StaticClass());
+        ScreenClasses.Add(TEXT("core:screen.modal_confirm"), UGV2ScreenWidgetBase::StaticClass());
+
+        int32 FactoryInstantiations = 0;
+        auto MockFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+        {
+            TSubclassOf<UGV2ScreenWidgetBase>* FoundClass = ScreenClasses.Find(ScreenId);
+            if (FoundClass == nullptr || *FoundClass == nullptr)
+            {
+                return nullptr;
+            }
+            ++FactoryInstantiations;
+            return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, *FoundClass);
+        };
+
+        // Step A: Initial Document with Route
+        FGV2UiDocumentViewModel Doc1;
+        Doc1.UiInstanceId = TEXT("ui@1:1");
+        Doc1.Revision = 1;
+        Doc1.bHasRoute = true;
+        Doc1.Route.Layer = TEXT("location_content");
+        Doc1.Route.InstanceKey = TEXT("main");
+        Doc1.Route.ScreenId = TEXT("core:screen.main");
+
+        FString ReconcileError;
+        TestTrue(TEXT("Reconcile initial Doc1 succeeds"), Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError));
+        TestEqual(TEXT("Factory instantiated 1 screen widget"), FactoryInstantiations, 1);
+
+        UGV2ScreenWidgetBase* RouteWidget1 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
+        TestNotNull(TEXT("Route widget exists in location_content layer"), RouteWidget1);
+
+        // Step B: Update Doc2 with same ScreenId -> Must REUSE widget instance (0 new instantiations)
+        FGV2UiDocumentViewModel Doc2;
+        Doc2.UiInstanceId = TEXT("ui@1:1");
+        Doc2.Revision = 2;
+        Doc2.bHasRoute = true;
+        Doc2.Route.Layer = TEXT("location_content");
+        Doc2.Route.InstanceKey = TEXT("main");
+        Doc2.Route.ScreenId = TEXT("core:screen.main");
+
+        TestTrue(TEXT("Reconcile Doc2 succeeds"), Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError));
+        TestEqual(TEXT("Widget reused without new instantiation"), FactoryInstantiations, 1);
+        UGV2ScreenWidgetBase* RouteWidget2 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
+        TestEqual(TEXT("Widget instance pointer is preserved across revisions"), RouteWidget2, RouteWidget1);
+
+        // Step C: Doc3 with changed ScreenId -> Replaces widget
+        FGV2UiDocumentViewModel Doc3;
+        Doc3.UiInstanceId = TEXT("ui@1:1");
+        Doc3.Revision = 3;
+        Doc3.bHasRoute = true;
+        Doc3.Route.Layer = TEXT("location_content");
+        Doc3.Route.InstanceKey = TEXT("main");
+        Doc3.Route.ScreenId = TEXT("core:screen.alt");
+
+        TestTrue(TEXT("Reconcile Doc3 succeeds"), Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError));
+        TestEqual(TEXT("Factory called to instantiate new screen class"), FactoryInstantiations, 2);
+        UGV2ScreenWidgetBase* RouteWidget3 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
+        TestNotNull(TEXT("New route widget exists"), RouteWidget3);
+        TestNotEqual(TEXT("Old route widget replaced"), RouteWidget3, RouteWidget1);
+
+        // Step D: Doc4 adds a modal -> Lower layers blocked, top modal interactive (UIF-20)
+        FGV2UiDocumentViewModel Doc4 = Doc3;
+        Doc4.Revision = 4;
+        FGV2ScreenInstanceViewModel ModalInst;
+        ModalInst.Layer = TEXT("modal_stack");
+        ModalInst.InstanceKey = TEXT("confirm_dialog");
+        ModalInst.ScreenId = TEXT("core:screen.modal_confirm");
+        Doc4.Modals.Add(ModalInst);
+
+        TestTrue(TEXT("Reconcile Doc4 with modal succeeds"), Reconciler.Reconcile(Shell, Doc4, MockFactory, ReconcileError));
+        TestEqual(TEXT("Factory instantiated modal widget"), FactoryInstantiations, 3);
+        TestFalse(TEXT("Location content layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("location_content")));
+        TestFalse(TEXT("Background layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("background")));
+        TestFalse(TEXT("Core interface layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("core_interface")));
+        TestTrue(TEXT("Modal stack layer is interactive"), Shell->IsLayerInteractive(TEXT("modal_stack")));
+
+        // Step E: Doc5 closes modal -> Lower layers unblocked
+        FGV2UiDocumentViewModel Doc5 = Doc3;
+        Doc5.Revision = 5;
+        Doc5.Modals.Empty();
+
+        TestTrue(TEXT("Reconcile Doc5 (modal closed) succeeds"), Reconciler.Reconcile(Shell, Doc5, MockFactory, ReconcileError));
+        TestTrue(TEXT("Location content layer is unblocked"), Shell->IsLayerInteractive(TEXT("location_content")));
+        TestNull(TEXT("Modal widget detached and removed from active list"), Reconciler.GetActiveScreen(TEXT("modal_stack"), TEXT("confirm_dialog")));
+
+        // Step F: Atomicity - Candidate with invalid ScreenId rejected without modifying active set (UIF-21)
+        FGV2UiDocumentViewModel BadDoc;
+        BadDoc.UiInstanceId = TEXT("ui@1:1");
+        BadDoc.Revision = 6;
+        BadDoc.bHasRoute = true;
+        BadDoc.Route.Layer = TEXT("location_content");
+        BadDoc.Route.InstanceKey = TEXT("main");
+        BadDoc.Route.ScreenId = TEXT("invalid:screen.does_not_exist");
+
+        TestFalse(TEXT("Reconcile BadDoc fails"), Reconciler.Reconcile(Shell, BadDoc, MockFactory, ReconcileError));
+        TestEqual(
+            TEXT("Previous active screen remains intact after rejected candidate"),
+            Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")),
+            RouteWidget3);
     }
 
     GameInstance->Shutdown();

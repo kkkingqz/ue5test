@@ -29,10 +29,16 @@ class GV2_API UGV2ScreenRegistry : public UDataAsset
     GENERATED_BODY()
 
 public:
+    static bool IsValidLayer(FName Layer);
+
+    bool Validate(FString& OutError) const;
+
     const TArray<FGV2ScreenRegistryEntry>& GetEntries() const
     {
         return Entries;
     }
+
+    const FGV2ScreenRegistryEntry* FindEntry(const FString& ScreenId) const;
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Registry", meta = (AllowPrivateAccess = "true"))

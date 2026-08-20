@@ -487,6 +487,60 @@ struct GV2_API FGV2ScreenViewModel
 };
 
 USTRUCT(BlueprintType)
+struct GV2_API FGV2ScreenInstanceViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
+    FName Layer = TEXT("location_content");
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
+    FName InstanceKey = TEXT("main");
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
+    FString ScreenId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    TArray<FGV2ScreenFieldValue> Fields;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2UiDocumentViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Document")
+    FString UiInstanceId = TEXT("ui@default");
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Document")
+    int64 Revision = 0;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Document")
+    bool bHasRoute = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Document")
+    FGV2ScreenInstanceViewModel Route;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Document")
+    TArray<FGV2ScreenInstanceViewModel> Overlays;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Document")
+    TArray<FGV2ScreenInstanceViewModel> Modals;
+
+    TArray<FGV2ScreenInstanceViewModel> GetAllScreenInstances() const
+    {
+        TArray<FGV2ScreenInstanceViewModel> Result;
+        if (bHasRoute)
+        {
+            Result.Add(Route);
+        }
+        Result.Append(Overlays);
+        Result.Append(Modals);
+        return Result;
+    }
+};
+
+USTRUCT(BlueprintType)
 struct GV2_API FGV2SessionStatus
 {
     GENERATED_BODY()

@@ -7,6 +7,7 @@
 
 class FGV2RepositoryPublisher;
 class FGV2SessionCoordinator;
+class UGV2GameShellWidgetBase;
 class UGV2ScreenRegistry;
 class UGV2ScreenWidgetBase;
 class UUserWidget;
@@ -40,14 +41,21 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     UUserWidget* GetActiveScreen() const;
 
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UGV2GameShellWidgetBase* GetActiveGameShell() const;
+
+    UGV2ScreenWidgetBase* GetActiveScreenInLayer(FName Layer, FName InstanceKey) const;
+
 private:
     bool LoadScreenRegistry();
     UClass* ResolveScreenClass(const FString& ScreenId) const;
     UGV2ScreenWidgetBase* CreateRegisteredScreen(
         const FGV2ScreenViewModel& Model,
         bool bAddToViewport);
+    UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
     bool HandleScreenRequested(const FGV2ScreenViewModel& Model);
+    bool HandleDocumentRequested(const FGV2UiDocumentViewModel& Document);
     void ReplaceActiveScreen(UUserWidget* NewScreen);
 
     TPimplPtr<FGV2SessionCoordinator> Coordinator;
@@ -61,6 +69,11 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UUserWidget> ActiveScreen;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UGV2GameShellWidgetBase> ActiveGameShell;
+
+    FGV2LayeredUiReconciler Reconciler;
 
     FDelegateHandle StartGameInstanceHandle;
     FString ImageCatalogBuildError;

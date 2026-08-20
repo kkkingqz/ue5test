@@ -2613,8 +2613,249 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
-    bool CallTakePendingScreen(
-        std::optional<FScreenRequest>& OutRequest,
+    bool ReadScreenInstance(
+        const int TableIndex,
+        const std::string& DefaultLayer,
+        const std::string& DefaultKey,
+        FScreenInstance& OutInstance,
+        FRuntimeFault& OutFault)
+    {
+        if (!lua_istable(State, TableIndex))
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Screen instance must be a table."};
+            return false;
+        }
+        const int AbsoluteIndex = lua_absindex(State, TableIndex);
+        FScreenInstance Candidate;
+
+        lua_getfield(State, AbsoluteIndex, "layer");
+        if (lua_type(State, -1) == LUA_TSTRING)
+        {
+            std::size_t LayerLen = 0;
+            const char* LayerStr = lua_tolstring(State, -1, &LayerLen);
+            Candidate.Layer.assign(LayerStr, LayerLen);
+        }
+        else
+        {
+            Candidate.Layer = DefaultLayer;
+        }
+        lua_pop(State, 1);
+
+        lua_getfield(State, AbsoluteIndex, "instance_key");
+        if (lua_type(State, -1) == LUA_TSTRING)
+        {
+            std::size_t KeyLen = 0;
+            const char* KeyStr = lua_tolstring(State, -1, &KeyLen);
+            Candidate.InstanceKey.assign(KeyStr, KeyLen);
+        }
+        else
+        {
+            Candidate.InstanceKey = DefaultKey;
+        }
+        lua_pop(State, 1);
+
+        lua_getfield(State, AbsoluteIndex, "screen_id");
+        if (lua_type(State, -1) != LUA_TSTRING)
+        {
+            lua_pop(State, 1);
+            OutFault = {"LuaScreenRequestInvalid", "Screen instance screen_id must be a string."};
+            return false;
+        }
+        std::size_t ScreenIdLength = 0;
+        const char* ScreenId = lua_tolstring(State, -1, &ScreenIdLength);
+        Candidate.ScreenId.assign(ScreenId, ScreenIdLength);
+        lua_pop(State, 1);
+        if (!FStableId::IsOfKind(Candidate.ScreenId, "screen"))
+        {
+            OutFault = {"LuaScreenRequestInvalid", "Screen instance returned an invalid screen_id."};
+            return false;
+        }
+
+        lua_getfield(State, AbsoluteIndex, "fields");
+        if (!lua_istable(State, -1) || lua_rawlen(State, -1) != 0)
+        {
+            lua_pop(State, 1);
+            OutFault = {"LuaScreenRequestInvalid", "Screen instance fields must be an object."};
+            return false;
+        }
+        const int FieldsIndex = lua_absindex(State, -1);
+        std::set<std::string, std::less<>> SeenFields;
+        std::size_t NodeCount = 0;
+        std::set<const void*> ActiveTables;
+        lua_pushnil(State);
+        while (lua_next(State, FieldsIndex) != 0)
+        {
+            if (lua_type(State, -2) != LUA_TSTRING || !lua_istable(State, -1)
+                || Candidate.Fields.size() >= 128)
+            {
+                lua_pop(State, 3);
+                OutFault = {"LuaScreenRequestInvalid", "Screen instance contains an invalid field entry."};
+                return false;
+            }
+            std::size_t FieldIdLength = 0;
+            const char* FieldId = lua_tolstring(State, -2, &FieldIdLength);
+            FScreenField& Field = Candidate.Fields.emplace_back();
+            Field.FieldId.assign(FieldId, FieldIdLength);
+            if (!FStableId::IsValidSegment(Field.FieldId) || !SeenFields.emplace(Field.FieldId).second)
+            {
+                lua_pop(State, 3);
+                OutFault = {"LuaScreenRequestInvalid", "Screen instance field_id is invalid or duplicated."};
+                return false;
+            }
+            const int FieldIndex = lua_absindex(State, -1);
+            lua_getfield(State, FieldIndex, "schema_id");
+            if (lua_type(State, -1) != LUA_TSTRING)
+            {
+                lua_pop(State, 4);
+                OutFault = {"LuaScreenRequestInvalid", "Screen Field schema_id must be a string."};
+                return false;
+            }
+            std::size_t SchemaLength = 0;
+            const char* SchemaId = lua_tolstring(State, -1, &SchemaLength);
+            Field.SchemaId.assign(SchemaId, SchemaLength);
+            lua_pop(State, 1);
+            if (!FStableId::IsOfKind(Field.SchemaId, "schema"))
+            {
+                lua_pop(State, 3);
+                OutFault = {"LuaScreenRequestInvalid", "Screen Field schema_id is invalid."};
+                return false;
+            }
+            lua_getfield(State, FieldIndex, "value");
+            const bool bValueValid = ReadPortableValue(
+                -1, Field.Value, 0, NodeCount, ActiveTables, OutFault);
+            lua_pop(State, 1);
+            if (!bValueValid)
+            {
+                lua_pop(State, 3);
+                return false;
+            }
+            lua_pop(State, 1);
+        }
+        lua_pop(State, 1);
+        std::sort(Candidate.Fields.begin(), Candidate.Fields.end(), [](const FScreenField& Left, const FScreenField& Right)
+        {
+            return Left.FieldId < Right.FieldId;
+        });
+        OutInstance = std::move(Candidate);
+        return true;
+    }
+
+    bool ReadUiDocument(const int TableIndex, FUiDocument& OutDoc, FRuntimeFault& OutFault)
+    {
+        if (!lua_istable(State, TableIndex))
+        {
+            OutFault = {"LuaScreenRequestInvalid", "UI document must be a table."};
+            return false;
+        }
+        const int AbsoluteIndex = lua_absindex(State, TableIndex);
+
+        // Check if this is a single legacy/direct screen request: { screen_id, fields }
+        lua_getfield(State, AbsoluteIndex, "screen_id");
+        const bool bIsSingleScreen = (lua_type(State, -1) == LUA_TSTRING);
+        lua_pop(State, 1);
+
+        if (bIsSingleScreen)
+        {
+            FScreenInstance SingleInstance;
+            if (!ReadScreenInstance(AbsoluteIndex, "location_content", "main", SingleInstance, OutFault))
+            {
+                return false;
+            }
+            OutDoc.UiInstanceId = "ui@default";
+            OutDoc.Revision = 1;
+            OutDoc.Route = std::move(SingleInstance);
+            OutDoc.Overlays.clear();
+            OutDoc.Modals.clear();
+            return true;
+        }
+
+        FUiDocument Doc;
+        lua_getfield(State, AbsoluteIndex, "ui_instance_id");
+        if (lua_type(State, -1) == LUA_TSTRING)
+        {
+            std::size_t IdLen = 0;
+            const char* IdStr = lua_tolstring(State, -1, &IdLen);
+            Doc.UiInstanceId.assign(IdStr, IdLen);
+        }
+        else
+        {
+            Doc.UiInstanceId = "ui@default";
+        }
+        lua_pop(State, 1);
+
+        lua_getfield(State, AbsoluteIndex, "revision");
+        if (lua_isinteger(State, -1))
+        {
+            Doc.Revision = static_cast<std::int64_t>(lua_tointeger(State, -1));
+        }
+        else
+        {
+            Doc.Revision = 1;
+        }
+        lua_pop(State, 1);
+
+        // route
+        lua_getfield(State, AbsoluteIndex, "route");
+        if (lua_istable(State, -1))
+        {
+            FScreenInstance RouteInstance;
+            if (!ReadScreenInstance(-1, "location_content", "main", RouteInstance, OutFault))
+            {
+                lua_pop(State, 1);
+                return false;
+            }
+            Doc.Route = std::move(RouteInstance);
+        }
+        lua_pop(State, 1);
+
+        // overlays
+        lua_getfield(State, AbsoluteIndex, "overlays");
+        if (lua_istable(State, -1))
+        {
+            const int OverlaysIndex = lua_absindex(State, -1);
+            const lua_Unsigned Len = lua_rawlen(State, OverlaysIndex);
+            for (lua_Unsigned i = 1; i <= Len; ++i)
+            {
+                lua_rawgeti(State, OverlaysIndex, static_cast<lua_Integer>(i));
+                FScreenInstance OverlayInst;
+                if (!ReadScreenInstance(-1, "overlay_stack", "overlay_" + std::to_string(i), OverlayInst, OutFault))
+                {
+                    lua_pop(State, 2);
+                    return false;
+                }
+                Doc.Overlays.push_back(std::move(OverlayInst));
+                lua_pop(State, 1);
+            }
+        }
+        lua_pop(State, 1);
+
+        // modals
+        lua_getfield(State, AbsoluteIndex, "modals");
+        if (lua_istable(State, -1))
+        {
+            const int ModalsIndex = lua_absindex(State, -1);
+            const lua_Unsigned Len = lua_rawlen(State, ModalsIndex);
+            for (lua_Unsigned i = 1; i <= Len; ++i)
+            {
+                lua_rawgeti(State, ModalsIndex, static_cast<lua_Integer>(i));
+                FScreenInstance ModalInst;
+                if (!ReadScreenInstance(-1, "modal_stack", "modal_" + std::to_string(i), ModalInst, OutFault))
+                {
+                    lua_pop(State, 2);
+                    return false;
+                }
+                Doc.Modals.push_back(std::move(ModalInst));
+                lua_pop(State, 1);
+            }
+        }
+        lua_pop(State, 1);
+
+        OutDoc = std::move(Doc);
+        return true;
+    }
+
+    bool CallTakePendingDocument(
+        std::optional<FUiDocument>& OutDocument,
         FRuntimeFault& OutFault)
     {
         if (!BeginEntry("take_pending_screen", OutFault))
@@ -2644,16 +2885,37 @@ struct FRuntimeSession::FImpl
         }
         if (lua_isnil(State, -1))
         {
-            OutRequest.reset();
+            OutDocument.reset();
             return true;
         }
 
-        FScreenRequest Candidate;
-        if (!ReadScreenRequest(-1, Candidate, OutFault))
+        FUiDocument Candidate;
+        if (!ReadUiDocument(-1, Candidate, OutFault))
         {
             return false;
         }
-        OutRequest = std::move(Candidate);
+        OutDocument = std::move(Candidate);
+        return true;
+    }
+
+    bool CallTakePendingScreen(
+        std::optional<FScreenRequest>& OutRequest,
+        FRuntimeFault& OutFault)
+    {
+        std::optional<FUiDocument> Doc;
+        if (!CallTakePendingDocument(Doc, OutFault))
+        {
+            return false;
+        }
+        if (!Doc.has_value() || !Doc->Route.has_value())
+        {
+            OutRequest.reset();
+            return true;
+        }
+        FScreenRequest Req;
+        Req.ScreenId = Doc->Route->ScreenId;
+        Req.Fields = Doc->Route->Fields;
+        OutRequest = std::move(Req);
         return true;
     }
 
@@ -3022,6 +3284,14 @@ bool FRuntimeSession::TakePendingScreen(
 {
     OutRequest.reset();
     return Impl->CallTakePendingScreen(OutRequest, OutFault);
+}
+
+bool FRuntimeSession::TakePendingDocument(
+    std::optional<FUiDocument>& OutDocument,
+    FRuntimeFault& OutFault)
+{
+    OutDocument.reset();
+    return Impl->CallTakePendingDocument(OutDocument, OutFault);
 }
 
 bool FRuntimeSession::IsStarted() const

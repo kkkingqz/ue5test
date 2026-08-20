@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
-status: draft
+status: normative
 version: 1.4
-updated: 2026-08-15
+updated: 2026-08-20
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -19,12 +19,10 @@ decisions:
 > **Владеет:** моделью желаемого UI-документа, маршрутами, слоями и правилами полной реконсиляции.
 > **Не владеет:** физическим деревом виджетов и локальным визуальным состоянием.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
-> **Реализация:** не реализовано — активен один экран; см. [Implementation Status](../Status/ImplementationStatus.md).
-> **Проверки:** появятся вместе с реализацией.
+> **Реализация:** реализована многослойная реконсиляция через `FGV2LayeredUiReconciler` и `UGV2GameShellWidgetBase` (слои `background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`); см. [Implementation Status](../Status/ImplementationStatus.md).
+> **Проверки:** `GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`.
 
 UI-document — полная декларативная desired model Screen instances для одной revision. Lua строит его из canonical state и pinned repository; Presentation разрешает `screen_id` через Screen Registry и reconciles document с UMG instances.
-
-Этот draft задаёт target contract полного layered reconciler. Реализованный scope явно перечислен в разделе [Current vertical slice](#current-vertical-slice); остальные lifecycle rules и соответствующие tests являются planned acceptance до появления layered document owner.
 
 ## Game Shell
 
@@ -222,28 +220,23 @@ Interactive fragment использует `<interactive id="market">…</interac
 
 Span descriptor содержит optional UE-local hover payload и optional Command binding. Presentation разрешает `TextSpec` и `resource_id`, создаёт opaque handle для clickable span и передаёт Widget только values/handle. Hover state/popover не входит в document identity или save. Добавление/удаление span участвует в full reconciliation и инвалидирует удалённый handle до exit animation.
 
-## Current vertical slice
+## Implementation and architecture
 
-Private `FGV2UiBindingRegistry` реализует prepared binding candidate и отдельный commit. Lua command handler публикует portable Screen request с `screen_id = "core:screen.test"` и generic fields; UE schema adapters готовят typed values и handles, runtime создаёт generic `UGV2ScreenWidgetBase`, применяет полный field set и только после success делает candidate revision current. `WBP_Testscreen` наследует `WBP_ScreenBase` и не содержит Lua callback.
+Private `FGV2UiBindingRegistry` реализует prepared binding candidate и отдельный commit. `FGV2LayeredUiReconciler` сопоставляет экраны по паре `layer + instance_key`, переиспользует существующие виджеты при неизменном `screen_id` (сохраняя UI-local состояние) и заменяет класс виджета при его смене.
 
-Vertical slice публикует generic `screen_id + fields[]` envelope. `FGV2ScreenFieldAdapterRegistry` поддерживает пять schemas: `core:schema.ui_field.rich_text.v3`, `core:schema.ui_field.button_list.v2`, `core:schema.ui_field.checkbox.v1`, `core:schema.ui_field.input_field.v1` и `core:schema.ui_field.dropdown_select.v1`; их typed values определены в [Blueprint Screen Template Contract](ScreenTemplates.md#dynamic-screen-element-contract). Runtime façade, coordinator и Screen Registry не содержат concrete field names. Текущий `UGV2RuntimeSubsystem` публикует один active Screen и при следующем accepted Screen request полностью строит replacement из Lua desired state. Layered reconciliation по `instance_key` для route/overlay/modal ещё не реализован; он расширит instance/layer lifecycle без замены field boundary.
+Слои Game Shell (`background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`) валидируются реестром и оболочкой `UGV2GameShellWidgetBase`. Модальные окна в `modal_stack` блокируют ввод нижних слоёв, оставляя интерактивным только верхнее активное модальное окно.
+
+`FGV2ScreenFieldAdapterRegistry` поддерживает schemas базового набора; их typed values определены в [Blueprint Screen Template Contract](ScreenTemplates.md#dynamic-screen-element-contract).
 
 ## Verification status
 
-Текущая automation обязана покрывать и покрывает:
+Automation-тесты (`GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`) проверяют:
 
-- Screen Registry validation и inheritance `WBP_ScreenBase → WBP_Testscreen`;
-- наличие всех пяти schema adapters и отклонение unknown schema;
-- полный five-field contract concrete Screen, missing/unknown/duplicate field и schema mismatch;
-- Lua → generic fields → typed adapters → UMG round-trip для RichText, ButtonList, Checkbox, InputField и DropdownSelect;
-- rebuild единственного active Screen из обновлённого Lua desired state после Checkbox/InputField/DropdownSelect Semantic Input;
-- binding candidate publication atomicity, сохранение предыдущего set при rejected candidate, superseded handle invalidation, stale generation rejection и monotonic revision.
-
-Следующие проверки являются planned acceptance criteria полноценного layered reconciler и не считаются существующими тестами до реализации соответствующего lifecycle:
-
-- same-instance Screen reuse и replacement при changed `screen_id`;
-- overlay/modal ordering и input eligibility верхнего modal;
-- logical removal до exit animation;
-- atomic rollback полного document при field apply failure;
-- full document rebuild after load;
-- потеря UI-local state при reconstruction без gameplay mutation.
+- Валидацию слоёв Game Shell и отклонение неразрешённых слоёв;
+- Валидацию Screen Registry и сопоставление классов экранов;
+- Сопоставление Screen Instances по `layer + instance_key`;
+- Переиспользование существующего виджета без пересоздания при неизменном `screen_id`;
+- Замену класса виджета при смене `screen_id`;
+- Блокировку интерактивности нижних слоёв при открытии модального окна и её восстановление при закрытии;
+- Атомарность публикации: отказ кандидата не разрушает и не мутирует активный набор экранов и биндингов;
+- Сохранение UI-local состояния между ревизиями при переиспользовании экземпляра.

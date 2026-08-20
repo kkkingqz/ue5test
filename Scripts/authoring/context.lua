@@ -400,6 +400,11 @@ function M.gameplay(package_id, opt_module_id)
     mod.button = presentation_module.create_button_helper(package_id)
     mod.text = presentation_module.create_text_helper(package_id)
     mod.show_screen = presentation_module.create_show_screen_helper(package_id)
+    mod.show_route = mod.show_screen
+    mod.show_overlay = presentation_module.create_show_overlay_helper(package_id)
+    mod.close_overlay = presentation_module.create_close_overlay_helper(package_id)
+    mod.show_modal = presentation_module.create_show_modal_helper(package_id)
+    mod.close_modal = presentation_module.create_close_modal_helper(package_id)
     mod.player = M.create_player_proxy()
     mod.world = M.create_world_proxy()
     mod.Actor = M.create_entity_prototype_proxy("Actor", package_id, opt_module_id)
@@ -892,6 +897,11 @@ function M.create_authoring_environment(package_id, opt_module_id)
         button = mod.button,
         action = mod.action,
         show_screen = mod.show_screen,
+        show_route = mod.show_route,
+        show_overlay = mod.show_overlay,
+        close_overlay = mod.close_overlay,
+        show_modal = mod.show_modal,
+        close_modal = mod.close_modal,
         Actor = mod.Actor,
         Location = mod.Location,
         Quest = mod.Quest,

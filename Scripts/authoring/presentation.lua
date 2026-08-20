@@ -209,6 +209,174 @@ function M.create_button_helper(package_id)
     end
 end
 
+local active_document_state = {
+    ui_instance_id = "ui@default",
+    revision = 0,
+    route = nil,
+    overlays = {}, -- map key -> instance
+    modals = {},   -- list of instances
+}
+
+function M.get_active_document_state()
+    return active_document_state
+end
+
+function M.clear_active_document_for_test()
+    active_document_state.ui_instance_id = "ui@default"
+    active_document_state.revision = 0
+    active_document_state.route = nil
+    active_document_state.overlays = {}
+    active_document_state.modals = {}
+end
+
+local function publish_current_document()
+    local current_max = screens_module.get_current_revision(active_document_state.ui_instance_id)
+    if active_document_state.revision <= current_max then
+        active_document_state.revision = current_max + 1
+    end
+    local overlay_list = {}
+    for _, inst in pairs(active_document_state.overlays) do
+        table.insert(overlay_list, inst)
+    end
+    table.sort(overlay_list, function(a, b) return a.instance_key < b.instance_key end)
+
+    local doc = screens_module.create_document(
+        active_document_state.ui_instance_id,
+        active_document_state.revision,
+        active_document_state.route,
+        overlay_list,
+        active_document_state.modals
+    )
+    screens_module.publish(doc)
+    return doc
+end
+
+local function build_screen_instance(package_id, spec, default_layer, default_key)
+    if type(spec) ~= "table" then
+        error("InvalidShowScreenSpec: specification must be a table", 3)
+    end
+
+    local template = spec.template or spec.screen_id
+    local screen_id = nil
+    if type(template) == "string" then
+        if stable_id.is_kind(template, "screen") then
+            screen_id = template
+        else
+            screen_id = package_id .. ":screen." .. template
+        end
+    elseif type(template) == "table" and template.id and stable_id.is_kind(template.id, "screen") then
+        screen_id = template.id
+    elseif type(template) == "table" and template.definition_id and stable_id.is_kind(template.definition_id, "screen") then
+        screen_id = template.definition_id
+    else
+        error("InvalidScreenTemplate: template must be a screen definition handle or Stable ID of kind 'screen', got " .. tostring(template), 3)
+    end
+
+    if not stable_id.is_valid(screen_id) then
+        error("InvalidScreenTemplate: invalid screen Stable ID '" .. tostring(screen_id) .. "'", 3)
+    end
+
+    local layer = spec.layer or default_layer
+    local instance_key = spec.instance_key or default_key
+
+    local fields = {}
+    if spec.fields and type(spec.fields) == "table" then
+        for k, v in pairs(spec.fields) do
+            fields[k] = v
+        end
+    else
+        if spec.title and spec.content then
+            local title = spec.title
+            if type(title) == "string" then
+                error("RawStringDisallowed: modal title requires a TextSpec (use text(\"key\")), raw string is disallowed", 3)
+            end
+            local content = spec.content
+            if type(content) == "string" then
+                error("RawStringDisallowed: modal content requires a TextSpec (use text(\"key\")), raw string is disallowed", 3)
+            end
+            local buttons = spec.buttons or {}
+            local seen_button_keys = {}
+            for i, btn in ipairs(buttons) do
+                if type(btn) == "string" or type(btn) ~= "table" or not btn.text or type(btn.text) == "string" then
+                    error("RawStringDisallowed: button #" .. i .. " text is a raw string or missing; use text(\"key\")", 3)
+                end
+                if not btn.key or type(btn.key) ~= "string" or #btn.key == 0 then
+                    error("UiElementKeyMissing: button #" .. i .. " is missing key", 3)
+                end
+                if not btn.key:match("^[a-z0-9_.-@:]+$") then
+                    error("UiElementKeyInvalid: button #" .. i .. " key '" .. tostring(btn.key) .. "' is invalid", 3)
+                end
+                if seen_button_keys[btn.key] then
+                    error("UiElementKeyDuplicate: duplicate button key '" .. tostring(btn.key) .. "'", 3)
+                end
+                seen_button_keys[btn.key] = true
+            end
+            fields["modal"] = {
+                schema_id = "core:schema.ui_field.modal.v1",
+                value = {
+                    title = title,
+                    content = content,
+                    buttons = buttons,
+                },
+            }
+        else
+            local description = spec.description
+            if description ~= nil then
+                if type(description) == "string" then
+                    error("RawStringDisallowed: show_screen() description requires a TextSpec (use text(\"key\")), raw string is disallowed", 3)
+                end
+                if type(description) ~= "table" or not description.text_id then
+                    error("InvalidTextSpec: show_screen() description requires a valid TextSpec table with text_id", 3)
+                end
+                fields["description"] = {
+                    schema_id = "core:schema.ui_field.rich_text.v3",
+                    value = {
+                        text = description,
+                        spans = {},
+                    },
+                }
+            end
+
+            local buttons = spec.buttons or {}
+            if type(buttons) ~= "table" then
+                error("InvalidButtonsList: show_screen() buttons must be a list", 3)
+            end
+
+            local seen_button_keys = {}
+            for i, btn in ipairs(buttons) do
+                if type(btn) == "string" then
+                    error("RawStringDisallowed: button #" .. i .. " is a raw string; use button(text(\"key\"), action(...))", 3)
+                end
+                if type(btn) ~= "table" or not btn.text or type(btn.text) == "string" then
+                    error("RawStringDisallowed: button #" .. i .. " text is a raw string or missing; use text(\"key\")", 3)
+                end
+                if not btn.key or type(btn.key) ~= "string" or #btn.key == 0 then
+                    error("UiElementKeyMissing: button #" .. i .. " is missing key", 3)
+                end
+                if not btn.key:match("^[a-z0-9_.-@:]+$") then
+                    error("UiElementKeyInvalid: button #" .. i .. " key '" .. tostring(btn.key) .. "' is invalid", 3)
+                end
+                if btn.key:match("^[%a_][%w_]*:text%.") or btn.key:match("^text:") then
+                    error("TextDisallowedAsKey: button #" .. i .. " key cannot be derived from localizable text", 3)
+                end
+                if seen_button_keys[btn.key] then
+                    error("UiElementKeyDuplicate: duplicate button key '" .. tostring(btn.key) .. "' in show_screen()", 3)
+                end
+                seen_button_keys[btn.key] = true
+            end
+
+            fields["buttons"] = {
+                schema_id = "core:schema.ui_field.button_list.v2",
+                value = {
+                    items = buttons,
+                },
+            }
+        end
+    end
+
+    return screens_module.create_instance(screen_id, fields, instance_key, layer)
+end
+
 function M.create_show_screen_helper(package_id)
     return function(spec)
         local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
@@ -216,84 +384,76 @@ function M.create_show_screen_helper(package_id)
             ctx_mod.guard_validator_side_effect("show_screen")
         end
 
-        if type(spec) ~= "table" then
-            error("InvalidShowScreenSpec: show_screen() requires a table specification", 2)
-        end
+        local inst = build_screen_instance(package_id, spec, "location_content", "main")
+        active_document_state.route = inst
+        return publish_current_document()
+    end
+end
 
-        local template = spec.template
-        local screen_id = nil
-        if type(template) == "string" then
-            if stable_id.is_kind(template, "screen") then
-                screen_id = template
+function M.create_show_overlay_helper(package_id)
+    return function(key, spec)
+        local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+        if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+            ctx_mod.guard_validator_side_effect("show_overlay")
+        end
+        if type(key) ~= "string" or #key == 0 then
+            error("InvalidInstanceKey: overlay key must be a non-empty string", 2)
+        end
+        local inst = build_screen_instance(package_id, spec, "overlay_stack", key)
+        active_document_state.overlays[key] = inst
+        return publish_current_document()
+    end
+end
+
+function M.create_close_overlay_helper(_package_id)
+    return function(key)
+        local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+        if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+            ctx_mod.guard_validator_side_effect("close_overlay")
+        end
+        if type(key) == "string" and active_document_state.overlays[key] ~= nil then
+            active_document_state.overlays[key] = nil
+            return publish_current_document()
+        end
+        return nil
+    end
+end
+
+function M.create_show_modal_helper(package_id)
+    return function(key, spec)
+        local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+        if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+            ctx_mod.guard_validator_side_effect("show_modal")
+        end
+        if type(key) ~= "string" or #key == 0 then
+            error("InvalidInstanceKey: modal key must be a non-empty string", 2)
+        end
+        local inst = build_screen_instance(package_id, spec, "modal_stack", key)
+        table.insert(active_document_state.modals, inst)
+        return publish_current_document()
+    end
+end
+
+function M.create_close_modal_helper(_package_id)
+    return function(key)
+        local ok_ctx, ctx_mod = pcall(require, "core:module.authoring.context")
+        if ok_ctx and ctx_mod and ctx_mod.guard_validator_side_effect then
+            ctx_mod.guard_validator_side_effect("close_modal")
+        end
+        local new_modals = {}
+        local removed = false
+        for _, m in ipairs(active_document_state.modals) do
+            if m.instance_key == key or (key == nil and not removed) then
+                removed = true
             else
-                screen_id = package_id .. ":screen." .. template
+                table.insert(new_modals, m)
             end
-        elseif type(template) == "table" and template.id and stable_id.is_kind(template.id, "screen") then
-            screen_id = template.id
-        elseif type(template) == "table" and template.definition_id and stable_id.is_kind(template.definition_id, "screen") then
-            screen_id = template.definition_id
-        else
-            error("InvalidScreenTemplate: template must be a screen definition handle or Stable ID of kind 'screen', got " .. tostring(template), 2)
         end
-
-        if not stable_id.is_valid(screen_id) then
-            error("InvalidScreenTemplate: invalid screen Stable ID '" .. tostring(screen_id) .. "'", 2)
+        if removed then
+            active_document_state.modals = new_modals
+            return publish_current_document()
         end
-
-        local description = spec.description
-        if type(description) == "string" then
-            error("RawStringDisallowed: show_screen() description requires a TextSpec (use text(\"key\")), raw string is disallowed", 2)
-        end
-        if type(description) ~= "table" or not description.text_id then
-            error("InvalidTextSpec: show_screen() description requires a valid TextSpec table with text_id", 2)
-        end
-
-        local buttons = spec.buttons or {}
-        if type(buttons) ~= "table" then
-            error("InvalidButtonsList: show_screen() buttons must be a list", 2)
-        end
-
-        local seen_button_keys = {}
-        for i, btn in ipairs(buttons) do
-            if type(btn) == "string" then
-                error("RawStringDisallowed: button #" .. i .. " is a raw string; use button(text(\"key\"), action(...))", 2)
-            end
-            if type(btn) ~= "table" or not btn.text or type(btn.text) == "string" then
-                error("RawStringDisallowed: button #" .. i .. " text is a raw string or missing; use text(\"key\")", 2)
-            end
-            if not btn.key or type(btn.key) ~= "string" or #btn.key == 0 then
-                error("UiElementKeyMissing: button #" .. i .. " is missing key", 2)
-            end
-            if not btn.key:match("^[a-z0-9_.-@:]+$") then
-                error("UiElementKeyInvalid: button #" .. i .. " key '" .. tostring(btn.key) .. "' is invalid", 2)
-            end
-            if btn.key:match("^[%a_][%w_]*:text%.") or btn.key:match("^text:") then
-                error("TextDisallowedAsKey: button #" .. i .. " key cannot be derived from localizable text", 2)
-            end
-            if seen_button_keys[btn.key] then
-                error("UiElementKeyDuplicate: duplicate button key '" .. tostring(btn.key) .. "' in show_screen()", 2)
-            end
-            seen_button_keys[btn.key] = true
-        end
-
-        local screen_req = screens_module.create(screen_id, {
-            description = {
-                schema_id = "core:schema.ui_field.rich_text.v3",
-                value = {
-                    text = description,
-                    spans = {},
-                },
-            },
-            buttons = {
-                schema_id = "core:schema.ui_field.button_list.v2",
-                value = {
-                    items = buttons,
-                },
-            },
-        })
-
-        screens_module.publish(screen_req)
-        return screen_req
+        return nil
     end
 end
 

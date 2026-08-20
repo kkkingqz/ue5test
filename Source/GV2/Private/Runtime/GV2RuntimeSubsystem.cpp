@@ -8,6 +8,7 @@
 #include "Engine/World.h"
 #include "Logging/LogMacros.h"
 #include "Misc/Paths.h"
+#include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
@@ -95,6 +96,10 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     {
         return HandleScreenRequested(Model);
     });
+    Coordinator->SetDocumentSink([this](const FGV2UiDocumentViewModel& Document)
+    {
+        return HandleDocumentRequested(Document);
+    });
 #if !UE_BUILD_SHIPPING
     StartGameInstanceHandle = FWorldDelegates::OnStartGameInstance.AddUObject(
         this,
@@ -109,6 +114,12 @@ void UGV2RuntimeSubsystem::Deinitialize()
         FWorldDelegates::OnStartGameInstance.Remove(StartGameInstanceHandle);
         StartGameInstanceHandle.Reset();
     }
+    Reconciler.Reset();
+    if (ActiveGameShell != nullptr)
+    {
+        ActiveGameShell->RemoveFromParent();
+        ActiveGameShell = nullptr;
+    }
     if (ActiveScreen != nullptr)
     {
         ActiveScreen->RemoveFromParent();
@@ -119,6 +130,7 @@ void UGV2RuntimeSubsystem::Deinitialize()
         Coordinator->EndSession(EGV2SessionState::Destroyed);
         Coordinator->ClearInteractionSink();
         Coordinator->ClearScreenSink();
+        Coordinator->ClearDocumentSink();
         Coordinator.Reset();
     }
     RegisteredScreenClasses.Reset();
@@ -221,6 +233,12 @@ void UGV2RuntimeSubsystem::EndSession()
 {
     check(IsInGameThread());
     check(Coordinator);
+    Reconciler.Reset();
+    if (ActiveGameShell != nullptr)
+    {
+        ActiveGameShell->RemoveFromParent();
+        ActiveGameShell = nullptr;
+    }
     if (ActiveScreen != nullptr)
     {
         ActiveScreen->RemoveFromParent();
@@ -232,7 +250,22 @@ void UGV2RuntimeSubsystem::EndSession()
 
 UUserWidget* UGV2RuntimeSubsystem::GetActiveScreen() const
 {
+    UGV2ScreenWidgetBase* RouteScreen = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerLocationContent, FName("main"));
+    if (RouteScreen != nullptr)
+    {
+        return RouteScreen;
+    }
     return ActiveScreen;
+}
+
+UGV2GameShellWidgetBase* UGV2RuntimeSubsystem::GetActiveGameShell() const
+{
+    return ActiveGameShell;
+}
+
+UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::GetActiveScreenInLayer(FName Layer, FName InstanceKey) const
+{
+    return Reconciler.GetActiveScreen(Layer, InstanceKey);
 }
 
 bool UGV2RuntimeSubsystem::LoadScreenRegistry()
@@ -249,7 +282,7 @@ bool UGV2RuntimeSubsystem::LoadScreenRegistry()
     for (const FGV2ScreenRegistryEntry& Entry : ScreenRegistry->GetEntries())
     {
         if (!IsCanonicalScreenId(Entry.ScreenId)
-            || Entry.Layer.IsNone()
+            || !UGV2ScreenRegistry::IsValidLayer(Entry.Layer)
             || Entry.WidgetClass.IsNull()
             || RegisteredScreenClasses.Contains(Entry.ScreenId))
         {
@@ -303,17 +336,21 @@ UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId) const
     return Found->Get();
 }
 
-UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::CreateRegisteredScreen(
-    const FGV2ScreenViewModel& Model,
-    const bool bAddToViewport)
+UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::InstantiateScreenWidget(const FString& ScreenId)
 {
-    UClass* ScreenClass = ResolveScreenClass(Model.ScreenId);
+    UClass* ScreenClass = ResolveScreenClass(ScreenId);
     if (ScreenClass == nullptr || GetGameInstance() == nullptr)
     {
         return nullptr;
     }
+    return CreateWidget<UGV2ScreenWidgetBase>(GetGameInstance(), ScreenClass);
+}
 
-    UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(GetGameInstance(), ScreenClass);
+UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::CreateRegisteredScreen(
+    const FGV2ScreenViewModel& Model,
+    const bool bAddToViewport)
+{
+    UGV2ScreenWidgetBase* Screen = InstantiateScreenWidget(Model.ScreenId);
     if (Screen == nullptr)
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Failed to instantiate registered screen '%s'"), *Model.ScreenId);
@@ -346,6 +383,32 @@ void UGV2RuntimeSubsystem::HandleStartGameInstance(UGameInstance* StartedGameIns
         bActiveScreenAddedToViewport = true;
         StartSession();
     }
+}
+
+bool UGV2RuntimeSubsystem::HandleDocumentRequested(
+    const FGV2UiDocumentViewModel& Document)
+{
+    FString ReconcileError;
+    auto ScreenFactory = [this](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+    {
+        return InstantiateScreenWidget(ScreenId);
+    };
+
+    if (!Reconciler.Reconcile(ActiveGameShell, Document, ScreenFactory, ReconcileError))
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("UI Document reconciliation failed: %s"), *ReconcileError);
+        return false;
+    }
+
+    if (ActiveGameShell == nullptr && Document.bHasRoute)
+    {
+        ActiveScreen = Reconciler.GetActiveScreen(Document.Route.Layer, Document.Route.InstanceKey);
+        if (bActiveScreenAddedToViewport && ActiveScreen != nullptr && ActiveScreen->GetParent() == nullptr && !ActiveScreen->IsInViewport())
+        {
+            ActiveScreen->AddToViewport();
+        }
+    }
+    return true;
 }
 
 bool UGV2RuntimeSubsystem::HandleScreenRequested(

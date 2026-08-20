@@ -78,12 +78,37 @@ struct FScreenField
     std::string FieldId;
     std::string SchemaId;
     FValue Value;
+
+    bool operator==(const FScreenField&) const = default;
+};
+
+struct FScreenInstance
+{
+    std::string Layer;
+    std::string InstanceKey;
+    std::string ScreenId;
+    std::vector<FScreenField> Fields;
+
+    bool operator==(const FScreenInstance&) const = default;
+};
+
+struct FUiDocument
+{
+    std::string UiInstanceId;
+    std::int64_t Revision = 0;
+    std::optional<FScreenInstance> Route;
+    std::vector<FScreenInstance> Overlays;
+    std::vector<FScreenInstance> Modals;
+
+    bool operator==(const FUiDocument&) const = default;
 };
 
 struct FScreenRequest
 {
     std::string ScreenId;
     std::vector<FScreenField> Fields;
+
+    bool operator==(const FScreenRequest&) const = default;
 };
 
 struct FRuntimeSource
@@ -189,6 +214,9 @@ public:
     bool DispatchCommand(const FCommandRequest& Request, FRuntimeFault& OutFault);
     bool TakePendingScreen(
         std::optional<FScreenRequest>& OutRequest,
+        FRuntimeFault& OutFault);
+    bool TakePendingDocument(
+        std::optional<FUiDocument>& OutDocument,
         FRuntimeFault& OutFault);
 
     bool IsStarted() const;
