@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(GV2Headless LANGUAGES C CXX)
 
 include(CTest)
+include("${CMAKE_CURRENT_SOURCE_DIR}/Tools/Testing/GV2CliContractTests.cmake")
 
 set(GV2_PCC_FIXTURE_ROOT
     "${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore"
@@ -14,6 +15,20 @@ add_subdirectory(Headless)
 
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(
+        NAME ctest_expected_failure_contract
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/Tools/Testing/ValidateNoWillFail.cmake"
+    )
+    add_test(
+        NAME ctest_process_contract_self_test
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/Tools/Testing/AssertProcessSelfTest.cmake"
+    )
     add_test(
         NAME documentation_contract
         COMMAND

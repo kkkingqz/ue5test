@@ -327,7 +327,10 @@ int RunSet(const std::vector<std::string>& Positional, EOutputFormat Format)
     const FRootBuildOutcome BuildOutcome = BuildFromPackageRoots({ TargetRoot });
     if (BuildOutcome.bToolFailure)
     {
-        return EmitToolFailure(BuildOutcome.ToolFailureMessage, Format);
+        return EmitToolFailure(
+            BuildOutcome.ToolFailureCode.empty() ? "tool_failure" : BuildOutcome.ToolFailureCode,
+            BuildOutcome.ToolFailureMessage,
+            Format);
     }
     if (BuildOutcome.Result.has_value() && BuildOutcome.Result->IsFailure())
     {

@@ -17,36 +17,19 @@ set_tests_properties(gv2_headless_self_test PROPERTIES
 
 # PCC-35: missing/invalid repository content must block session startup
 # before Lua bootstrap even runs.
-add_test(NAME gv2_headless_rejects_missing_content_root
-    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/does_not_exist
+gv2_add_cli_contract_test(
+    NAME gv2_headless_rejects_missing_content_root
+    TARGET gv2-headless
+    EXPECTED_EXIT_CODE 9
+    EXPECTED_OUTPUT_REGEX "core:diagnostic.package.discovery.root_not_found"
+    ARGS --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/does_not_exist
 )
-add_test(NAME gv2_headless_rejects_missing_content_root_exit_code
-    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/does_not_exist
-)
-add_test(NAME gv2_headless_rejects_invalid_content_root
-    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/invalid/duplicate_key/core
-)
-add_test(NAME gv2_headless_rejects_invalid_content_root_exit_code
-    COMMAND gv2-headless --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/invalid/duplicate_key/core
-)
-set_tests_properties(
-    gv2_headless_rejects_missing_content_root
-    PROPERTIES
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-        PASS_REGULAR_EXPRESSION "core:diagnostic.package.discovery.root_not_found"
-)
-set_tests_properties(
-    gv2_headless_rejects_invalid_content_root
-    PROPERTIES
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-        PASS_REGULAR_EXPRESSION "core:diagnostic.json5.duplicate_key"
-)
-set_tests_properties(
-    gv2_headless_rejects_missing_content_root_exit_code
-    gv2_headless_rejects_invalid_content_root_exit_code
-    PROPERTIES
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-        WILL_FAIL TRUE
+gv2_add_cli_contract_test(
+    NAME gv2_headless_rejects_invalid_content_root
+    TARGET gv2-headless
+    EXPECTED_EXIT_CODE 9
+    EXPECTED_OUTPUT_REGEX "core:diagnostic.json5.duplicate_key"
+    ARGS --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/invalid/duplicate_key/core
 )
 
 add_test(NAME gv2_headless_outputs_manifest_and_digest

@@ -323,9 +323,21 @@ int EmitToolFailure(
     std::ostream& Out,
     std::ostream& Err)
 {
+    return EmitToolFailure("tool_failure", Message, Format, Out, Err);
+}
+
+int EmitToolFailure(
+    std::string_view Code,
+    const std::string& Message,
+    EOutputFormat Format,
+    std::ostream& Out,
+    std::ostream& Err)
+{
     if (Format == EOutputFormat::Json)
     {
-        Out << "{\"status\":\"error\",\"code\":\"tool_failure\",\"message\":";
+        Out << "{\"status\":\"error\",\"code\":";
+        WriteJsonEscapedString(Out, std::string(Code));
+        Out << ",\"message\":";
         WriteJsonEscapedString(Out, Message);
         Out << "}\n";
     }

@@ -41,7 +41,11 @@ int RunValidate(
             {
                 if (Format == EOutputFormat::Json)
                 {
-                    std::cout << "{\"status\":\"error\",\"code\":\"tool_failure\",\"message\":";
+                    std::cout << "{\"status\":\"error\",\"code\":";
+                    WriteJsonEscapedString(
+                        std::cout,
+                        Outcome.ToolFailureCode.empty() ? "tool_failure" : Outcome.ToolFailureCode);
+                    std::cout << ",\"message\":";
                     WriteJsonEscapedString(std::cout, Outcome.ToolFailureMessage);
                     if (bWatch)
                     {

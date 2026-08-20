@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 2.7
-updated: 2026-08-18
+version: 2.8
+updated: 2026-08-20
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -25,7 +25,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `gv2_content_*`.
+> **Проверки:** `ctest_expected_failure_contract`, `ctest_process_contract_self_test`, `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -164,6 +164,10 @@ Exit code является machine-readable результатом; human-readab
 | 66 | — | Lua module tree not found |
 
 Exit code одинаков для `--format=text` и `--format=json`.
+
+Негативный CLI CTest обязан одним запуском проверить точный exit code и stable diagnostic/output code. `WILL_FAIL TRUE` запрещён: он принимает любой ненулевой результат, включая неправильную ветку ошибки и аварийное завершение. Общий `gv2_add_cli_contract_test()` запускает процесс через `AssertProcess.cmake`; signal, timeout и launch failure не считаются ожидаемым отказом. Гейт `ctest_expected_failure_contract` запрещает повторное появление `WILL_FAIL TRUE` в `CMakeLists.txt`, а `ctest_process_contract_self_test` доказывает отказ runner при неправильном коде, output marker и невозможности штатно запустить процесс.
+
+Для tool/configuration failures `gv2-content --format=json` публикует конкретный `code`, если причина известна. В частности, отсутствующий package root использует `package_root_not_found`, неверная область `--provenance` — `provenance_requires_inspect`, а `--watch` вне `validate` — `watch_requires_validate`. Тестам запрещено сопоставлять human-readable `message` вместо этих кодов.
 
 ## Shared fixtures and conformance
 

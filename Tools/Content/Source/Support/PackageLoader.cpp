@@ -41,6 +41,7 @@ FPackageSetDiscovery DiscoverPackageSet(const std::vector<std::filesystem::path>
     if (RawRoots.empty())
     {
         Set.bToolFailure = true;
+        Set.ToolFailureCode = "missing_package_root";
         Set.ToolFailureMessage = "no package roots specified";
         return Set;
     }
@@ -56,6 +57,7 @@ FPackageSetDiscovery DiscoverPackageSet(const std::vector<std::filesystem::path>
         if (!std::filesystem::is_directory(Root, Ec) || Ec)
         {
             Set.bToolFailure = true;
+            Set.ToolFailureCode = "package_root_not_found";
             Set.ToolFailureMessage = "package root not found or not a directory: " + Root.string();
             return Set;
         }
@@ -188,6 +190,7 @@ FRootBuildOutcome BuildFromPackageRoots(const std::vector<std::filesystem::path>
     if (Set.bToolFailure)
     {
         Outcome.bToolFailure = true;
+        Outcome.ToolFailureCode = std::move(Set.ToolFailureCode);
         Outcome.ToolFailureMessage = std::move(Set.ToolFailureMessage);
         return Outcome;
     }

@@ -37,6 +37,7 @@ private:
 struct FPackageSetDiscovery
 {
     bool bToolFailure = false;
+    std::string ToolFailureCode;
     std::string ToolFailureMessage;
     // Set when discovery itself produced diagnostics; Descriptors is empty in that case.
     bool bDiscoveryFailed = false;
@@ -63,6 +64,7 @@ bool FindSchemaBindingInSet(
 struct FRootBuildOutcome
 {
     bool bToolFailure = false;
+    std::string ToolFailureCode;
     std::string ToolFailureMessage;
     std::unique_ptr<GV2ContentCore::FPackageDescriptor> Descriptor;
     std::vector<GV2ContentCore::FPackageDescriptor> Descriptors;

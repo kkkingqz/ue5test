@@ -129,14 +129,28 @@ int main(int argc, char** argv)
 
     if (bProvenance && Command != "inspect")
     {
-        std::cerr << "gv2-content: --provenance is only supported for 'inspect'\n";
-        return static_cast<int>(EExitCode::ToolFailure);
+        if (Format == EOutputFormat::Text)
+        {
+            std::cerr << "gv2-content: --provenance is only supported for 'inspect'\n";
+            return static_cast<int>(EExitCode::ToolFailure);
+        }
+        return EmitToolFailure(
+            "provenance_requires_inspect",
+            "--provenance is only supported for 'inspect'",
+            Format);
     }
 
     if ((bWatch || PollIntervalMs != 500 || MaxIterations != 0) && Command != "validate")
     {
-        std::cerr << "gv2-content: --watch, --poll-interval, and --max-iterations are only supported for 'validate'\n";
-        return static_cast<int>(EExitCode::ToolFailure);
+        if (Format == EOutputFormat::Text)
+        {
+            std::cerr << "gv2-content: --watch, --poll-interval, and --max-iterations are only supported for 'validate'\n";
+            return static_cast<int>(EExitCode::ToolFailure);
+        }
+        return EmitToolFailure(
+            "watch_requires_validate",
+            "--watch, --poll-interval, and --max-iterations are only supported for 'validate'",
+            Format);
     }
 
     if (!Locale.empty() && Command != "coverage")

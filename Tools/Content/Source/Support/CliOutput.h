@@ -47,6 +47,13 @@ int EmitToolFailure(
     std::ostream& Out = std::cout,
     std::ostream& Err = std::cerr);
 
+int EmitToolFailure(
+    std::string_view Code,
+    const std::string& Message,
+    EOutputFormat Format,
+    std::ostream& Out = std::cout,
+    std::ostream& Err = std::cerr);
+
 int EmitDiagnosticsFailure(
     const std::vector<GV2ContentCore::FDiagnostic>& Diagnostics,
     EOutputFormat Format,
