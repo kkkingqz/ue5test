@@ -59,3 +59,45 @@ bool UGV2ImageWidgetBase::ApplyCentralStyle_Implementation()
     Image->SetColorAndOpacity(Theme->ImageTint);
     return true;
 }
+
+FGV2ScreenFieldDescriptor UGV2ImageWidgetBase::GetScreenFieldDescriptor_Implementation() const
+{
+    FGV2ScreenFieldDescriptor Desc;
+    Desc.FieldId = FieldId;
+    Desc.SchemaId = SchemaId;
+    Desc.bRequired = bIsRequired;
+    return Desc;
+}
+
+bool UGV2ImageWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const
+{
+    return Value.SchemaId == SchemaId && !Value.ImageValue.ResourceId.IsEmpty();
+}
+
+FGV2ScreenFieldValue UGV2ImageWidgetBase::CaptureScreenField_Implementation() const
+{
+    FGV2ImageFieldViewModel Model;
+    Model.ResourceId = AppliedResourceId;
+    return FGV2ScreenFieldValue::MakeImage(FieldId, Model);
+}
+
+bool UGV2ImageWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)
+{
+    if (!CanApplyScreenField_Implementation(Value))
+    {
+        return false;
+    }
+    FString Error;
+    return ApplyImageResource(Value.ImageValue.ResourceId, Error);
+}
+
+bool UGV2ImageWidgetBase::ResetScreenField_Implementation()
+{
+    AppliedResourceId.Reset();
+    ResolvedAspectRatio = 0.0f;
+    if (Image != nullptr)
+    {
+        Image->SetBrush(FSlateBrush());
+    }
+    return true;
+}

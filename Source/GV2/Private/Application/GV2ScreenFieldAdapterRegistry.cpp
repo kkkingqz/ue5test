@@ -13,6 +13,10 @@ constexpr std::string_view RichTextSchema = "core:schema.ui_field.rich_text.v3";
 constexpr std::string_view CheckboxSchema = "core:schema.ui_field.checkbox.v1";
 constexpr std::string_view InputFieldSchema = "core:schema.ui_field.input_field.v1";
 constexpr std::string_view DropdownSelectSchema = "core:schema.ui_field.dropdown_select.v1";
+constexpr std::string_view ImageSchema = "core:schema.ui_field.image.v1";
+constexpr std::string_view ProgressBarSchema = "core:schema.ui_field.progress_bar.v1";
+constexpr std::string_view PortraitSchema = "core:schema.ui_field.portrait.v1";
+constexpr std::string_view ModalSchema = "core:schema.ui_field.modal.v1";
 constexpr TCHAR CheckboxInputSchema[] = TEXT("core:schema.ui_input.checkbox_changed.v1");
 constexpr TCHAR InputFieldInputSchema[] = TEXT("core:schema.ui_input.text_changed.v1");
 constexpr TCHAR DropdownSelectInputSchema[] = TEXT("core:schema.ui_input.dropdown_selected.v1");
@@ -558,6 +562,242 @@ bool BuildDropdown(
     OutField = FGV2ScreenFieldValue::MakeDropdownSelect(FName(*FieldId(Field)), Model);
     return true;
 }
+
+bool PrepareImage(
+    const std::string& ScreenId,
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    TArray<FGV2UiBindingDefinition>& OutDefinitions)
+{
+    const std::string* ResourceId = FindString(Value, "resource_id");
+    if (ResourceId == nullptr || ResourceId->empty()
+        || !GV2RuntimeCore::FStableId::IsOfKind(*ResourceId, "resource"))
+    {
+        return false;
+    }
+    return true;
+}
+
+bool BuildImageField(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const TArray<FGV2UiBindingHandle>& Handles,
+    int32& HandleIndex,
+    FGV2ScreenFieldValue& OutField)
+{
+    const std::string* ResourceId = FindString(Value, "resource_id");
+    if (ResourceId == nullptr) return false;
+    FGV2ImageFieldViewModel Model;
+    Model.ResourceId = UTF8_TO_TCHAR(ResourceId->c_str());
+    OutField = FGV2ScreenFieldValue::MakeImage(FName(*FieldId(Field)), Model);
+    return true;
+}
+
+bool PrepareProgressBar(
+    const std::string& ScreenId,
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    TArray<FGV2UiBindingDefinition>& OutDefinitions)
+{
+    const GV2RuntimeCore::FValue* PercentVal = FindValue(Value, "percent");
+    if (PercentVal == nullptr) return false;
+    double Percent = 0.0;
+    if (const double* Dbl = std::get_if<double>(&PercentVal->Data))
+    {
+        Percent = *Dbl;
+    }
+    else if (const std::int64_t* Int = std::get_if<std::int64_t>(&PercentVal->Data))
+    {
+        Percent = static_cast<double>(*Int);
+    }
+    else
+    {
+        return false;
+    }
+    if (!FMath::IsFinite(Percent) || Percent < 0.0 || Percent > 1.0) return false;
+
+    if (const GV2RuntimeCore::FValue* LabelVal = FindValue(Value, "label"))
+    {
+        GV2RuntimeCore::FTextSpec LabelSpec;
+        if (!ReadTextSpec(*LabelVal, LabelSpec)) return false;
+    }
+    return true;
+}
+
+bool BuildProgressBarField(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const TArray<FGV2UiBindingHandle>& Handles,
+    int32& HandleIndex,
+    FGV2ScreenFieldValue& OutField)
+{
+    const GV2RuntimeCore::FValue* PercentVal = FindValue(Value, "percent");
+    if (PercentVal == nullptr) return false;
+    float Percent = 0.0f;
+    if (const double* Dbl = std::get_if<double>(&PercentVal->Data))
+    {
+        Percent = static_cast<float>(*Dbl);
+    }
+    else if (const std::int64_t* Int = std::get_if<std::int64_t>(&PercentVal->Data))
+    {
+        Percent = static_cast<float>(*Int);
+    }
+    else
+    {
+        return false;
+    }
+
+    FGV2ProgressBarViewModel Model;
+    Model.Percent = FMath::Clamp(Percent, 0.0f, 1.0f);
+    if (const GV2RuntimeCore::FValue* LabelVal = FindValue(Value, "label"))
+    {
+        if (!ResolveText(*LabelVal, Model.Label)) return false;
+    }
+    OutField = FGV2ScreenFieldValue::MakeProgressBar(FName(*FieldId(Field)), Model);
+    return true;
+}
+
+bool PreparePortrait(
+    const std::string& ScreenId,
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    TArray<FGV2UiBindingDefinition>& OutDefinitions)
+{
+    const std::string* ResourceId = FindString(Value, "resource_id");
+    if (ResourceId == nullptr || ResourceId->empty()
+        || !GV2RuntimeCore::FStableId::IsOfKind(*ResourceId, "resource"))
+    {
+        return false;
+    }
+    if (const std::string* FrameId = FindString(Value, "frame_resource_id"))
+    {
+        if (!FrameId->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*FrameId, "resource"))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool BuildPortraitField(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const TArray<FGV2UiBindingHandle>& Handles,
+    int32& HandleIndex,
+    FGV2ScreenFieldValue& OutField)
+{
+    const std::string* ResourceId = FindString(Value, "resource_id");
+    if (ResourceId == nullptr) return false;
+    FGV2PortraitViewModel Model;
+    Model.ResourceId = UTF8_TO_TCHAR(ResourceId->c_str());
+    if (const std::string* FrameId = FindString(Value, "frame_resource_id"))
+    {
+        Model.FrameResourceId = UTF8_TO_TCHAR(FrameId->c_str());
+    }
+    OutField = FGV2ScreenFieldValue::MakePortrait(FName(*FieldId(Field)), Model);
+    return true;
+}
+
+bool PrepareModal(
+    const std::string& ScreenId,
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    TArray<FGV2UiBindingDefinition>& OutDefinitions)
+{
+    const GV2RuntimeCore::FValue* TitleVal = FindValue(Value, "title");
+    const GV2RuntimeCore::FValue* ContentVal = FindValue(Value, "content");
+    if (TitleVal == nullptr || ContentVal == nullptr) return false;
+    GV2RuntimeCore::FTextSpec TitleSpec, ContentSpec;
+    if (!ReadTextSpec(*TitleVal, TitleSpec) || !ReadTextSpec(*ContentVal, ContentSpec)) return false;
+
+    if (const GV2RuntimeCore::FValue* ButtonsVal = FindValue(Value, "buttons"))
+    {
+        const FArray* Buttons = AsArray(*ButtonsVal);
+        if (Buttons == nullptr) return false;
+        TSet<FName> SeenKeys;
+        for (const GV2RuntimeCore::FValue& BtnVal : *Buttons)
+        {
+            const FObject* BtnObj = AsObject(BtnVal);
+            const std::string* Key = BtnObj != nullptr ? FindString(*BtnObj, "key") : nullptr;
+            const GV2RuntimeCore::FValue* Binding = BtnObj != nullptr ? FindValue(*BtnObj, "binding") : nullptr;
+            if (!ValidateRepeatedElementKey(Key, SeenKeys) || Binding == nullptr) return false;
+            FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
+            if (!ReadBinding(
+                    *Binding,
+                    {TEXT("route"), TEXT("main"), FieldId(Field), UTF8_TO_TCHAR(Key->c_str())},
+                    FString::Printf(
+                        TEXT("%s#widget.%s"),
+                        UTF8_TO_TCHAR(ScreenId.c_str()),
+                        UTF8_TO_TCHAR(Key->c_str())),
+                    Definition))
+            {
+                return false;
+            }
+        }
+    }
+
+    if (const GV2RuntimeCore::FValue* BackdropBinding = FindValue(Value, "backdrop_close_action"))
+    {
+        FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
+        if (!ReadBinding(
+                *BackdropBinding,
+                {TEXT("route"), TEXT("main"), FieldId(Field), TEXT("backdrop")},
+                FString::Printf(
+                    TEXT("%s#widget.backdrop"),
+                    UTF8_TO_TCHAR(ScreenId.c_str())),
+                Definition))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool BuildModalField(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const TArray<FGV2UiBindingHandle>& Handles,
+    int32& HandleIndex,
+    FGV2ScreenFieldValue& OutField)
+{
+    const GV2RuntimeCore::FValue* TitleVal = FindValue(Value, "title");
+    const GV2RuntimeCore::FValue* ContentVal = FindValue(Value, "content");
+    if (TitleVal == nullptr || ContentVal == nullptr) return false;
+    FGV2ModalViewModel Model;
+    if (!ResolveText(*TitleVal, Model.Title) || !ResolveText(*ContentVal, Model.Content)) return false;
+
+    if (const GV2RuntimeCore::FValue* ButtonsVal = FindValue(Value, "buttons"))
+    {
+        const FArray* Buttons = AsArray(*ButtonsVal);
+        if (Buttons != nullptr)
+        {
+            Model.Buttons.Reserve(static_cast<int32>(Buttons->size()));
+            for (const GV2RuntimeCore::FValue& BtnVal : *Buttons)
+            {
+                if (!Handles.IsValidIndex(HandleIndex)) return false;
+                const FObject* BtnObj = AsObject(BtnVal);
+                if (BtnObj == nullptr) return false;
+                const std::string* Key = FindString(*BtnObj, "key");
+                const GV2RuntimeCore::FValue* Text = FindValue(*BtnObj, "text");
+                if (Key == nullptr || Text == nullptr) return false;
+                FGV2ButtonViewModel& Btn = Model.Buttons.AddDefaulted_GetRef();
+                Btn.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
+                if (!ResolveText(*Text, Btn.Text)) return false;
+                Btn.Binding = Handles[HandleIndex++];
+            }
+        }
+    }
+
+    if (FindValue(Value, "backdrop_close_action") != nullptr)
+    {
+        if (!Handles.IsValidIndex(HandleIndex)) return false;
+        Model.BackdropCloseBinding = Handles[HandleIndex++];
+    }
+
+    OutField = FGV2ScreenFieldValue::MakeModal(FName(*FieldId(Field)), Model);
+    return true;
+}
 }
 
 const FGV2ScreenFieldAdapterRegistry& FGV2ScreenFieldAdapterRegistry::Get()
@@ -573,6 +813,10 @@ FGV2ScreenFieldAdapterRegistry::FGV2ScreenFieldAdapterRegistry()
         {CheckboxSchema, &PrepareCheckbox, &BuildCheckbox},
         {InputFieldSchema, &PrepareInputField, &BuildInputField},
         {DropdownSelectSchema, &PrepareDropdown, &BuildDropdown},
+        {ImageSchema, &PrepareImage, &BuildImageField},
+        {ProgressBarSchema, &PrepareProgressBar, &BuildProgressBarField},
+        {PortraitSchema, &PreparePortrait, &BuildPortraitField},
+        {ModalSchema, &PrepareModal, &BuildModalField},
     })
 {
     TSet<FString> SchemaIds;

@@ -266,6 +266,57 @@ struct GV2_API FGV2InteractiveRichTextViewModel
 };
 
 USTRUCT(BlueprintType)
+struct GV2_API FGV2ImageFieldViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Image")
+    FString ResourceId;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2ProgressBarViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ProgressBar")
+    float Percent = 0.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ProgressBar")
+    FGV2TextViewModel Label;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2PortraitViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Portrait")
+    FString ResourceId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Portrait")
+    FString FrameResourceId;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2ModalViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
+    FGV2TextViewModel Title;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
+    FGV2TextViewModel Content;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
+    TArray<FGV2ButtonViewModel> Buttons;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
+    FGV2UiBindingHandle BackdropCloseBinding;
+};
+
+USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenFieldDescriptor
 {
     GENERATED_BODY()
@@ -310,6 +361,18 @@ struct GV2_API FGV2ScreenFieldValue
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FGV2DropdownSelectViewModel DropdownSelectValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2ImageFieldViewModel ImageValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2ProgressBarViewModel ProgressBarValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2PortraitViewModel PortraitValue;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
+    FGV2ModalViewModel ModalValue;
 
     static FGV2ScreenFieldValue MakeButtonList(
         const FName InFieldId,
@@ -363,6 +426,50 @@ struct GV2_API FGV2ScreenFieldValue
         Value.FieldId = InFieldId;
         Value.SchemaId = TEXT("core:schema.ui_field.dropdown_select.v1");
         Value.DropdownSelectValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakeImage(
+        const FName InFieldId,
+        const FGV2ImageFieldViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.image.v1");
+        Value.ImageValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakeProgressBar(
+        const FName InFieldId,
+        const FGV2ProgressBarViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.progress_bar.v1");
+        Value.ProgressBarValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakePortrait(
+        const FName InFieldId,
+        const FGV2PortraitViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.portrait.v1");
+        Value.PortraitValue = InValue;
+        return Value;
+    }
+
+    static FGV2ScreenFieldValue MakeModal(
+        const FName InFieldId,
+        const FGV2ModalViewModel& InValue)
+    {
+        FGV2ScreenFieldValue Value;
+        Value.FieldId = InFieldId;
+        Value.SchemaId = TEXT("core:schema.ui_field.modal.v1");
+        Value.ModalValue = InValue;
         return Value;
     }
 };

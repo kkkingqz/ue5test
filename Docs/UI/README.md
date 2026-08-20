@@ -40,3 +40,23 @@ UI является перестраиваемой presentation projection. Lua 
 - Любой `WBP_*` с direct text primitive обязан использовать Text Pipeline native adapter; raw-`FText` runtime apply API запрещён и проверяется automation-тестом по полному `/Game/UI` inventory.
 - Composite Widget обязан составлять UI из approved leaf adapters. Собственные parallel paths для runtime text, content image, repeated-child construction или Semantic Input запрещены.
 - Screen publication использует generic Screen Field envelopes и становится input-ready только после atomic field apply и binding commit.
+
+## Three Layers of UI Ownership (ADR-0030, ADR-0035)
+
+Компоненты и ассеты UI строго распределены по трём слоям:
+
+1. **`core` (движок)**: визуальные примитивы, базовые контейнеры раскладки и конвейеры. Не зависят от жанра и правил.
+   - Примитивы: `Button`, `Text`, `Image`, `Checkbox`, `InputField`, `DropdownSelect`, `Separator`, `LoadingIndicator`, `ProgressBar`, `Icon`.
+   - Контейнеры и списки: `Panel`, `ScrollArea`, `ListView`.
+   - Конвейеры: Text Pipeline, Image Presentation, Keyed Collection.
+2. **`textsystem` (текстовый движок)**: общие композиты и шаблоны экранов для любых текстовых RPG.
+   - Композиты: `RichText`, `ButtonList`, `Modal`, `Portrait`, `Dialog`, `Inventory`.
+   - Шаблоны: `LocationScreen`, `DialogueScreen`, `ErrorScreen`, `LoadingScreen`, `RecoveryScreen`.
+3. **`rh` (игра)**: специфичные композиты и экраны конкретной игры (Red Hood).
+
+Критерий трёх вопросов применяется до реализации любого композита:
+1. Нужен ли в любой игре вообще? → `core`.
+2. Специфичен ли для текстовых RPG, но не для конкретного лора? → `textsystem`.
+3. Принадлежит ли конкретно Red Hood? → `rh`.
+
+Переиспользуемость внутри одного слоя не является основанием поднимать композит на уровень выше.

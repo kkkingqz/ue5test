@@ -26,6 +26,12 @@
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiTheme.h"
 #include "UI/GV2LayoutConstants.h"
+#include "UI/GV2PanelWidgetBase.h"
+#include "UI/GV2ScrollAreaWidgetBase.h"
+#include "UI/GV2ListViewWidgetBase.h"
+#include "UI/GV2PortraitWidgetBase.h"
+#include "UI/GV2ModalWidgetBase.h"
+#include "UI/GV2IconWidgetBase.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
@@ -584,6 +590,264 @@ bool FGV2UiScalingModelAndConstantsContract::RunTest(const FString& Parameters)
             TestTrue(
                 *FString::Printf(TEXT("%s body font size >= MinReadableFontSize"), Target.Label),
                 BodyFontSize >= Theme->MinReadableFontSize);
+        }
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiCoreBaselineAdaptersContract,
+    "GV2.Runtime.UIKit.CoreBaselineAdapters",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
+{
+    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
+    TestEqual(TEXT("Registry contains all 9 baseline and composite schemas"), Registry.Num(), 9);
+
+    // 1. Image Adapter (core:schema.ui_field.image.v1)
+    {
+        GV2RuntimeCore::FScreenRequest ValidReq;
+        ValidReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField ImgField;
+        ImgField.FieldId = "illustration";
+        ImgField.SchemaId = "core:schema.ui_field.image.v1";
+        GV2RuntimeCore::FValue::FObject ImgObj;
+        ImgObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.image.test"));
+        ImgField.Value = GV2RuntimeCore::FValue(MoveTemp(ImgObj));
+        ValidReq.Fields.push_back(MoveTemp(ImgField));
+
+        TArray<FGV2UiBindingDefinition> Defs;
+        TestTrue(TEXT("Image schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
+        TestEqual(TEXT("Image schema creates 0 binding definitions"), Defs.Num(), 0);
+
+        TArray<FGV2ScreenFieldValue> BuiltFields;
+        TestTrue(TEXT("Image schema build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
+        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
+        if (BuiltFields.Num() == 1)
+        {
+            TestEqual(TEXT("FieldId is illustration"), BuiltFields[0].FieldId, FName(TEXT("illustration")));
+            TestEqual(TEXT("SchemaId is image.v1"), BuiltFields[0].SchemaId, FString(TEXT("core:schema.ui_field.image.v1")));
+            TestEqual(TEXT("ResourceId is core:resource.image.test"), BuiltFields[0].ImageValue.ResourceId, FString(TEXT("core:resource.image.test")));
+        }
+
+        // Negative: missing / invalid resource_id
+        GV2RuntimeCore::FScreenRequest InvalidReq;
+        InvalidReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BadField;
+        BadField.FieldId = "illustration";
+        BadField.SchemaId = "core:schema.ui_field.image.v1";
+        GV2RuntimeCore::FValue::FObject BadObj;
+        BadObj["resource_id"] = GV2RuntimeCore::FValue(std::string("invalid_format_id"));
+        BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
+        InvalidReq.Fields.push_back(MoveTemp(BadField));
+        TArray<FGV2UiBindingDefinition> BadDefs;
+        TestFalse(TEXT("Invalid resource_id is rejected"), Registry.PrepareBindingDefinitions(InvalidReq, BadDefs));
+    }
+
+    // 2. ProgressBar Adapter (core:schema.ui_field.progress_bar.v1)
+    {
+        GV2RuntimeCore::FScreenRequest ValidReq;
+        ValidReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BarField;
+        BarField.FieldId = "hp_bar";
+        BarField.SchemaId = "core:schema.ui_field.progress_bar.v1";
+        GV2RuntimeCore::FValue::FObject BarObj;
+        BarObj["percent"] = GV2RuntimeCore::FValue(0.75);
+        GV2RuntimeCore::FValue::FObject LabelObj;
+        LabelObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.progress.health"));
+        BarObj["label"] = GV2RuntimeCore::FValue(MoveTemp(LabelObj));
+        BarField.Value = GV2RuntimeCore::FValue(MoveTemp(BarObj));
+        ValidReq.Fields.push_back(MoveTemp(BarField));
+
+        TArray<FGV2UiBindingDefinition> Defs;
+        TestTrue(TEXT("ProgressBar schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
+        TestEqual(TEXT("ProgressBar schema creates 0 binding definitions"), Defs.Num(), 0);
+
+        TArray<FGV2ScreenFieldValue> BuiltFields;
+        TestTrue(TEXT("ProgressBar schema build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
+        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
+        if (BuiltFields.Num() == 1)
+        {
+            TestEqual(TEXT("FieldId is hp_bar"), BuiltFields[0].FieldId, FName(TEXT("hp_bar")));
+            TestEqual(TEXT("SchemaId is progress_bar.v1"), BuiltFields[0].SchemaId, FString(TEXT("core:schema.ui_field.progress_bar.v1")));
+            TestEqual(TEXT("Percent is 0.75"), BuiltFields[0].ProgressBarValue.Percent, 0.75f);
+        }
+
+        // Negative: percent out of bounds
+        GV2RuntimeCore::FScreenRequest InvalidReq;
+        InvalidReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BadField;
+        BadField.FieldId = "hp_bar";
+        BadField.SchemaId = "core:schema.ui_field.progress_bar.v1";
+        GV2RuntimeCore::FValue::FObject BadObj;
+        BadObj["percent"] = GV2RuntimeCore::FValue(1.5);
+        BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
+        InvalidReq.Fields.push_back(MoveTemp(BadField));
+        TArray<FGV2UiBindingDefinition> BadDefs;
+        TestFalse(TEXT("Out of bounds percent is rejected"), Registry.PrepareBindingDefinitions(InvalidReq, BadDefs));
+    }
+
+    // 3. Portrait Adapter (core:schema.ui_field.portrait.v1)
+    {
+        GV2RuntimeCore::FScreenRequest ValidReq;
+        ValidReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField PortraitField;
+        PortraitField.FieldId = "hero_portrait";
+        PortraitField.SchemaId = "core:schema.ui_field.portrait.v1";
+        GV2RuntimeCore::FValue::FObject PortObj;
+        PortObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.image.hero"));
+        PortObj["frame_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.image.frame"));
+        PortraitField.Value = GV2RuntimeCore::FValue(MoveTemp(PortObj));
+        ValidReq.Fields.push_back(MoveTemp(PortraitField));
+
+        TArray<FGV2UiBindingDefinition> Defs;
+        TestTrue(TEXT("Portrait schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
+
+        TArray<FGV2ScreenFieldValue> BuiltFields;
+        TestTrue(TEXT("Portrait schema build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
+        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
+        if (BuiltFields.Num() == 1)
+        {
+            TestEqual(TEXT("Portrait resource_id matches"), BuiltFields[0].PortraitValue.ResourceId, FString(TEXT("core:resource.image.hero")));
+            TestEqual(TEXT("Frame resource_id matches"), BuiltFields[0].PortraitValue.FrameResourceId, FString(TEXT("core:resource.image.frame")));
+        }
+    }
+
+    // 4. Modal Adapter (core:schema.ui_field.modal.v1)
+    {
+        GV2RuntimeCore::FScreenRequest ValidReq;
+        ValidReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField ModalField;
+        ModalField.FieldId = "confirmation_dialog";
+        ModalField.SchemaId = "core:schema.ui_field.modal.v1";
+        GV2RuntimeCore::FValue::FObject ModalObj;
+        GV2RuntimeCore::FValue::FObject TitleObj;
+        TitleObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.modal.title"));
+        ModalObj["title"] = GV2RuntimeCore::FValue(MoveTemp(TitleObj));
+        GV2RuntimeCore::FValue::FObject ContentObj;
+        ContentObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.modal.content"));
+        ModalObj["content"] = GV2RuntimeCore::FValue(MoveTemp(ContentObj));
+
+        GV2RuntimeCore::FValue::FObject BtnObj;
+        BtnObj["key"] = GV2RuntimeCore::FValue(std::string("ok_btn"));
+        GV2RuntimeCore::FValue::FObject BtnTextObj;
+        BtnTextObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.button.ok"));
+        BtnObj["text"] = GV2RuntimeCore::FValue(MoveTemp(BtnTextObj));
+        GV2RuntimeCore::FValue::FObject BtnBindingObj;
+        BtnBindingObj["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.modal.confirm"));
+        BtnObj["binding"] = GV2RuntimeCore::FValue(MoveTemp(BtnBindingObj));
+
+        ModalObj["buttons"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{ GV2RuntimeCore::FValue(MoveTemp(BtnObj)) });
+        ModalField.Value = GV2RuntimeCore::FValue(MoveTemp(ModalObj));
+        ValidReq.Fields.push_back(MoveTemp(ModalField));
+
+        TArray<FGV2UiBindingDefinition> Defs;
+        TestTrue(TEXT("Modal schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
+        TestEqual(TEXT("Modal prepares 1 button binding definition"), Defs.Num(), 1);
+
+        TArray<FGV2UiBindingHandle> Handles = { FGV2UiBindingHandle::Create(TEXT("h_modal_btn")) };
+        TArray<FGV2ScreenFieldValue> BuiltFields;
+        TestTrue(TEXT("Modal schema build succeeds"), Registry.BuildFields(ValidReq, Handles, BuiltFields));
+        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
+        if (BuiltFields.Num() == 1)
+        {
+            TestEqual(TEXT("Modal has 1 button"), BuiltFields[0].ModalValue.Buttons.Num(), 1);
+            TestEqual(TEXT("Modal button key is ok_btn"), BuiltFields[0].ModalValue.Buttons[0].Key, FName(TEXT("ok_btn")));
+            TestEqual(TEXT("Modal button binding handle matches"), BuiltFields[0].ModalValue.Buttons[0].Binding.ToString(), FString(TEXT("h_modal_btn")));
+        }
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiCoreBaselineComponentsContract,
+    "GV2.Runtime.UIKit.CoreBaselineComponents",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
+{
+    // 1. Panel component defaults
+    {
+        UGV2PanelWidgetBase* Panel = NewObject<UGV2PanelWidgetBase>();
+        TestNotNull(TEXT("Transient panel widget created"), Panel);
+        if (Panel != nullptr)
+        {
+            TestEqual(TEXT("Panel default scale policy is NineSlice"), Panel->GetScalePolicy(), EGV2PrimitiveScalePolicy::NineSlice);
+            TestEqual(TEXT("Panel default content padding is 16"), Panel->GetContentPadding().Left, 16.0f);
+            Panel->SetContentPadding(FMargin(24.0f));
+            TestEqual(TEXT("Panel updated content padding is 24"), Panel->GetContentPadding().Left, 24.0f);
+        }
+    }
+
+    // 2. ScrollArea component defaults
+    {
+        UGV2ScrollAreaWidgetBase* ScrollArea = NewObject<UGV2ScrollAreaWidgetBase>();
+        TestNotNull(TEXT("Transient scroll area widget created"), ScrollArea);
+        if (ScrollArea != nullptr)
+        {
+            TestEqual(TEXT("ScrollArea default orientation is vertical"), ScrollArea->GetOrientation(), EOrientation::Orient_Vertical);
+            TestEqual(TEXT("ScrollArea initial scroll offset is 0"), ScrollArea->GetScrollOffset(), 0.0f);
+        }
+    }
+
+    // 3. ListView component defaults
+    {
+        UGV2ListViewWidgetBase* ListView = NewObject<UGV2ListViewWidgetBase>();
+        TestNotNull(TEXT("Transient list view widget created"), ListView);
+        if (ListView != nullptr)
+        {
+            TestEqual(TEXT("ListView default orientation is vertical"), ListView->GetOrientation(), EOrientation::Orient_Vertical);
+            TestEqual(TEXT("ListView initial entry count is 0"), ListView->GetEntryCount(), 0);
+            ListView->SetOrientation(EOrientation::Orient_Horizontal);
+            TestEqual(TEXT("ListView updated orientation is horizontal"), ListView->GetOrientation(), EOrientation::Orient_Horizontal);
+        }
+    }
+
+    // 4. Icon component defaults
+    {
+        UGV2IconWidgetBase* Icon = NewObject<UGV2IconWidgetBase>();
+        TestNotNull(TEXT("Transient icon widget created"), Icon);
+        if (Icon != nullptr)
+        {
+            TestEqual(TEXT("Icon default scale policy is PreserveAspect"), Icon->GetScalePolicy(), EGV2PrimitiveScalePolicy::PreserveAspect);
+        }
+    }
+
+    // 5. Dynamic Screen Element interface implementations
+    {
+        UGV2PortraitWidgetBase* Portrait = NewObject<UGV2PortraitWidgetBase>();
+        TestNotNull(TEXT("Transient portrait widget created"), Portrait);
+        if (Portrait != nullptr)
+        {
+            const FGV2ScreenFieldDescriptor Desc = Portrait->GetScreenFieldDescriptor_Implementation();
+            TestEqual(TEXT("Portrait schema is portrait.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.portrait.v1")));
+        }
+
+        UGV2ModalWidgetBase* Modal = NewObject<UGV2ModalWidgetBase>();
+        TestNotNull(TEXT("Transient modal widget created"), Modal);
+        if (Modal != nullptr)
+        {
+            const FGV2ScreenFieldDescriptor Desc = Modal->GetScreenFieldDescriptor_Implementation();
+            TestEqual(TEXT("Modal schema is modal.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.modal.v1")));
+        }
+
+        UGV2ProgressBarWidgetBase* ProgressBar = NewObject<UGV2ProgressBarWidgetBase>();
+        TestNotNull(TEXT("Transient progress bar widget created"), ProgressBar);
+        if (ProgressBar != nullptr)
+        {
+            const FGV2ScreenFieldDescriptor Desc = ProgressBar->GetScreenFieldDescriptor_Implementation();
+            TestEqual(TEXT("ProgressBar schema is progress_bar.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.progress_bar.v1")));
+        }
+
+        UGV2ImageWidgetBase* Image = NewObject<UGV2ImageWidgetBase>();
+        TestNotNull(TEXT("Transient image widget created"), Image);
+        if (Image != nullptr)
+        {
+            const FGV2ScreenFieldDescriptor Desc = Image->GetScreenFieldDescriptor_Implementation();
+            TestEqual(TEXT("Image schema is image.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.image.v1")));
         }
     }
 

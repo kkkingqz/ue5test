@@ -168,6 +168,10 @@ UE apply использует prepared typed `FGV2ScreenFieldValue`; portable bo
 | `core:schema.ui_field.checkbox.v1` | `WBP_Checkbox` / `UGV2CheckboxWidgetBase` | resolved `FGV2TextViewModel`, desired `is_checked: boolean` и opaque binding handle |
 | `core:schema.ui_field.input_field.v1` | `WBP_InputField` / `UGV2InputFieldWidgetBase` | resolved label/placeholder, desired `value: string` и opaque binding handle |
 | `core:schema.ui_field.dropdown_select.v1` | `WBP_DropdownSelect` / `UGV2DropdownSelectWidgetBase` | resolved placeholder/options, optional selected key и opaque binding handle |
+| `core:schema.ui_field.image.v1` | `WBP_Image` / `UGV2ImageWidgetBase` | resolved `FGV2ImageFieldViewModel` с валидируемым Stable ID ресурса |
+| `core:schema.ui_field.progress_bar.v1` | `WBP_ProgressBar` / `UGV2ProgressBarWidgetBase` | resolved `FGV2ProgressBarViewModel` с `percent: float` (0.0..1.0) и опциональным label |
+| `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | resolved `FGV2PortraitViewModel` с `fixed_aspect` portrait и опциональной рамкой |
+| `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | resolved `FGV2ModalViewModel` с `title`, `content`, кнопками и backdrop close binding |
 
 Каждый registry adapter выполняет две deterministic фазы. `PrepareBindings` валидирует schema-specific value и добавляет binding definitions в порядке обхода поля. После единой подготовки candidate binding set `BuildField` потребляет ровно соответствующие opaque handles и создаёт typed field value. Registry не публикует bindings и не меняет active Screen; атомарная публикация остаётся ответственностью Session Coordinator.
 
