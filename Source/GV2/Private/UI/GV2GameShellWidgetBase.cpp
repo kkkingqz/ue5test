@@ -1,7 +1,5 @@
 #include "UI/GV2GameShellWidgetBase.h"
 
-#include "Blueprint/WidgetTree.h"
-#include "Components/Overlay.h"
 #include "Components/PanelWidget.h"
 #include "UI/GV2UiTheme.h"
 
@@ -45,21 +43,6 @@ UPanelWidget* UGV2GameShellWidgetBase::FindHostForLayer(FName Layer) const
     else if (Layer == LayerCoreInterface) Host = CoreInterfaceHost;
     else if (Layer == LayerOverlayStack) Host = OverlayStackHost;
     else if (Layer == LayerModalStack) Host = ModalStackHost;
-
-    if (Host == nullptr && WidgetTree != nullptr)
-    {
-        UOverlay* FallbackHost = WidgetTree->ConstructWidget<UOverlay>(
-            UOverlay::StaticClass(),
-            *FString::Printf(TEXT("%sHost"), *Layer.ToString()));
-        UGV2GameShellWidgetBase* MutableThis = const_cast<UGV2GameShellWidgetBase*>(this);
-        if (Layer == LayerBackground) MutableThis->BackgroundHost = FallbackHost;
-        else if (Layer == LayerLocationContent) MutableThis->LocationContentHost = FallbackHost;
-        else if (Layer == LayerCharacterPresentation) MutableThis->CharacterPresentationHost = FallbackHost;
-        else if (Layer == LayerCoreInterface) MutableThis->CoreInterfaceHost = FallbackHost;
-        else if (Layer == LayerOverlayStack) MutableThis->OverlayStackHost = FallbackHost;
-        else if (Layer == LayerModalStack) MutableThis->ModalStackHost = FallbackHost;
-        Host = FallbackHost;
-    }
 
     return Host;
 }

@@ -1,7 +1,7 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.4
+version: 1.5
 updated: 2026-08-20
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -38,6 +38,8 @@ modal_stack
 ```
 
 Screen Template помещается только в разрешённый registry layer и не копирует Game Shell. Core UI и mod extensions используют explicit slots/extension points.
+
+Configured `WBP_GameShell` обязан наследовать native `UGV2GameShellWidgetBase` и содержать authored panel hosts `BackgroundHost`, `LocationContentHost`, `CharacterPresentationHost`, `CoreInterfaceHost`, `OverlayStackHost` и `ModalStackHost`. Каждый host обязан быть частью отображаемого Widget tree. Runtime запрещено создавать отсутствующий host как unattached fallback: отсутствие или несовместимость host отклоняет apply документа, чтобы session bootstrap не публиковал невидимый экран как успешный.
 
 ## Document envelope
 
@@ -226,6 +228,8 @@ Private `FGV2UiBindingRegistry` реализует prepared binding candidate и
 
 Слои Game Shell (`background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`) валидируются реестром и оболочкой `UGV2GameShellWidgetBase`. Модальные окна в `modal_stack` блокируют ввод нижних слоёв, оставляя интерактивным только верхнее активное модальное окно.
 
+`UGV2GameShellWidgetBase` разрешает слой только в соответствующий authored host. Динамическое создание host вне Widget tree запрещено: это скрывает ошибку Blueprint contract и приводит к логически применённому, но невидимому документу.
+
 `FGV2ScreenFieldAdapterRegistry` поддерживает schemas базового набора; их typed values определены в [Blueprint Screen Template Contract](ScreenTemplates.md#dynamic-screen-element-contract).
 
 ## Verification status
@@ -233,6 +237,7 @@ Private `FGV2UiBindingRegistry` реализует prepared binding candidate и
 Automation-тесты (`GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`) проверяют:
 
 - Валидацию слоёв Game Shell и отклонение неразрешённых слоёв;
+- Наследование `WBP_GameShell` от `UGV2GameShellWidgetBase`, наличие шести authored hosts в отображаемом Widget tree и фактическое присоединение Screen к требуемому host;
 - Валидацию Screen Registry и сопоставление классов экранов;
 - Сопоставление Screen Instances по `layer + instance_key`;
 - Переиспользование существующего виджета без пересоздания при неизменном `screen_id`;
@@ -240,3 +245,4 @@ Automation-тесты (`GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Pres
 - Блокировку интерактивности нижних слоёв при открытии модального окна и её восстановление при закрытии;
 - Атомарность публикации: отказ кандидата не разрушает и не мутирует активный набор экранов и биндингов;
 - Сохранение UI-local состояния между ревизиями при переиспользовании экземпляра.
+- Editor startup profile создаёт `WBP_Testscreen` через полный repository → Lua presentation → UI document → reconciliation pipeline и присоединяет его к `LocationContentHost` активной Game Shell.

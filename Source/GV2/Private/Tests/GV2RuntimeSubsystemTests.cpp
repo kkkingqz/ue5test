@@ -45,6 +45,7 @@
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
 #include "Components/Button.h"
+#include "Components/PanelWidget.h"
 #include "Components/RichTextBlock.h"
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
@@ -1763,6 +1764,18 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Lua start hook instantiates and applies WBP_Testscreen"), Screen);
         if (Screen != nullptr)
         {
+            UGV2GameShellWidgetBase* Shell = Runtime->GetActiveGameShell();
+            TestNotNull(TEXT("Lua start hook presents the test screen through WBP_GameShell"), Shell);
+            if (Shell != nullptr)
+            {
+                const TArray<UUserWidget*> LayerScreens = Shell->GetScreensInLayer(
+                    UGV2GameShellWidgetBase::LayerLocationContent);
+                TestEqual(TEXT("Game shell location layer contains one screen"), LayerScreens.Num(), 1);
+                if (LayerScreens.Num() == 1)
+                {
+                    TestTrue(TEXT("Active test screen is attached to the location layer"), LayerScreens[0] == Screen);
+                }
+            }
             const UGV2ScreenRegistrySettings* RegistrySettings = GetDefault<UGV2ScreenRegistrySettings>();
             UGV2ScreenRegistry* Registry = RegistrySettings != nullptr
                 ? RegistrySettings->RegistryAsset.LoadSynchronous()
@@ -2149,21 +2162,39 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         if (Shell != nullptr)
         {
             Shell->AddToRoot();
-            const FName LayersToVerify[] = {
-                UGV2GameShellWidgetBase::LayerBackground,
-                UGV2GameShellWidgetBase::LayerLocationContent,
-                UGV2GameShellWidgetBase::LayerCharacterPresentation,
-                UGV2GameShellWidgetBase::LayerCoreInterface,
-                UGV2GameShellWidgetBase::LayerOverlayStack,
-                UGV2GameShellWidgetBase::LayerModalStack,
+            const TPair<FName, FName> LayersToVerify[] = {
+                {UGV2GameShellWidgetBase::LayerBackground, TEXT("BackgroundHost")},
+                {UGV2GameShellWidgetBase::LayerLocationContent, TEXT("LocationContentHost")},
+                {UGV2GameShellWidgetBase::LayerCharacterPresentation, TEXT("CharacterPresentationHost")},
+                {UGV2GameShellWidgetBase::LayerCoreInterface, TEXT("CoreInterfaceHost")},
+                {UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("OverlayStackHost")},
+                {UGV2GameShellWidgetBase::LayerModalStack, TEXT("ModalStackHost")},
             };
-            for (const FName& LayerToVerify : LayersToVerify)
+            for (const TPair<FName, FName>& LayerAndHost : LayersToVerify)
             {
+                const FName LayerToVerify = LayerAndHost.Key;
+                UPanelWidget* AuthoredHost = Cast<UPanelWidget>(Shell->GetWidgetFromName(LayerAndHost.Value));
+                TestNotNull(
+                    *FString::Printf(TEXT("Game shell authors a visible host for layer '%s'"), *LayerToVerify.ToString()),
+                    AuthoredHost);
+                if (AuthoredHost != nullptr)
+                {
+                    TestTrue(
+                        *FString::Printf(TEXT("Layer host '%s' belongs to the rendered Widget Tree"), *LayerToVerify.ToString()),
+                        AuthoredHost == Shell->WidgetTree->RootWidget || AuthoredHost->GetParent() != nullptr);
+                }
                 UUserWidget* ProbeWidget = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
                 const bool bAttached = Shell->AttachScreenToLayer(LayerToVerify, ProbeWidget);
                 TestTrue(
                     *FString::Printf(TEXT("Game shell binds a host panel for layer '%s'"), *LayerToVerify.ToString()),
                     bAttached);
+                if (AuthoredHost != nullptr)
+                {
+                    TestEqual(
+                        *FString::Printf(TEXT("Layer '%s' attaches to its authored host"), *LayerToVerify.ToString()),
+                        ProbeWidget->GetParent(),
+                        AuthoredHost);
+                }
                 Shell->DetachScreen(ProbeWidget);
             }
         }
@@ -2827,4 +2858,3 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
 }
 
 #endif
-

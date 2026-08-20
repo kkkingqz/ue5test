@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: draft
-version: 1.2
+version: 1.3
 updated: 2026-08-20
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -127,6 +127,16 @@ UCommonUserWidget
         └── WBP_Testscreen
 ```
 
+Game Shell имеет отдельную обязательную иерархию:
+
+```text
+UCommonActivatableWidget
+└── UGV2GameShellWidgetBase
+    └── WBP_GameShell
+```
+
+`WBP_GameShell` владеет только layout слоёв и authored host-контейнерами; он не является Screen Template и не регистрируется по `screen_id`.
+
 Concrete screens не обязаны иметь собственный native subclass. Общие lifecycle hooks и field apply находятся в `UGV2ScreenWidgetBase`; визуально специфичное поведение остаётся Blueprint-local и не меняет field semantics.
 
 ## Dynamic Screen Element contract
@@ -238,6 +248,7 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 
 ## Verification
 
+- `WBP_GameShell` имеет native parent `UGV2GameShellWidgetBase`; все шесть layer hosts существуют в его отображаемом Widget tree. Отсутствующий host не заменяется runtime fallback-контейнером.
 - `WBP_ScreenBase` загружается как abstract Blueprint class и имеет native parent `UGV2ScreenWidgetBase`.
 - `WBP_Testscreen` является его child class и компилируется без test-specific native parent.
 - `DA_ScreenRegistry` загружается через config, содержит `core:screen.test` и разрешает concrete non-abstract child `WBP_ScreenBase`.
