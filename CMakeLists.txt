@@ -30,6 +30,16 @@ if(BUILD_TESTING)
             -P "${PROJECT_SOURCE_DIR}/Tools/Testing/AssertProcessSelfTest.cmake"
     )
     add_test(
+        NAME ctest_headless_json_contract_self_test
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DGV2_HEADLESS_PROGRAM=$<TARGET_FILE:gv2-headless>"
+            "-DGV2_GOLDEN_DIGEST=${PROJECT_SOURCE_DIR}/Tests/Fixtures/GoldenRuns/golden_headless_10_seed_42.digest.json5"
+            "-DGV2_FIXTURE_ROOT=${GV2_PCC_FIXTURE_ROOT}"
+            "-DGV2_WORKING_DIRECTORY=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/Tools/Testing/AssertHeadlessJsonSelfTest.cmake"
+    )
+    add_test(
         NAME documentation_contract
         COMMAND
             "${Python3_EXECUTABLE}"

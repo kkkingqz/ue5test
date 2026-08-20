@@ -2,13 +2,24 @@ add_executable(gv2-headless Source/main.cpp)
 target_compile_features(gv2-headless PRIVATE cxx_std_20)
 target_link_libraries(gv2-headless PRIVATE gv2_runtime_core gv2_content_core gv2_content_host_support gv2_test_support)
 
-# TAS-09: single source of truth. Read out of the golden digest fixture
-# itself rather than duplicating the value as a literal here.
-file(READ
+set(GV2_GOLDEN_DIGEST_PATH
     "${PROJECT_SOURCE_DIR}/Tests/Fixtures/GoldenRuns/golden_headless_10_seed_42.digest.json5"
-    GV2_GOLDEN_DIGEST_JSON
 )
-string(JSON GV2_GOLDEN_DIGEST_HASH GET "${GV2_GOLDEN_DIGEST_JSON}" digest_hash)
+
+function(gv2_add_headless_json_contract_test TEST_NAME MODE)
+    list(JOIN ARGN ";" TEST_ARGUMENTS)
+    add_test(
+        NAME ${TEST_NAME}
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DGV2_PROGRAM=$<TARGET_FILE:gv2-headless>"
+            "-DGV2_ARGUMENTS=${TEST_ARGUMENTS}"
+            "-DGV2_MODE=${MODE}"
+            "-DGV2_GOLDEN_DIGEST=${GV2_GOLDEN_DIGEST_PATH}"
+            "-DGV2_WORKING_DIRECTORY=${PROJECT_SOURCE_DIR}"
+            -P "${PROJECT_SOURCE_DIR}/Tools/Testing/AssertHeadlessJson.cmake"
+    )
+endfunction()
 
 add_test(NAME gv2_headless_self_test COMMAND gv2-headless --self-test)
 set_tests_properties(gv2_headless_self_test PROPERTIES
@@ -32,36 +43,41 @@ gv2_add_cli_contract_test(
     ARGS --content-root=${PROJECT_SOURCE_DIR}/Tests/Fixtures/PortableContentCore/invalid/duplicate_key/core
 )
 
-add_test(NAME gv2_headless_outputs_manifest_and_digest
-    COMMAND gv2-headless --commands=10 --seed=42
-)
-set_tests_properties(gv2_headless_outputs_manifest_and_digest
-    PROPERTIES
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-        PASS_REGULAR_EXPRESSION "\"digest_hash\":\"[0-9a-f]+\""
+gv2_add_headless_json_contract_test(
+    gv2_headless_outputs_manifest_and_digest
+    GOLDEN_RUN
+    --commands=10
+    --seed=42
+    --content-root=${GV2_PCC_FIXTURE_ROOT}/valid/core
 )
 
 # TAS-08: the golden run is pinned against the frozen test corpus
 # (Tests/Fixtures/PortableContentCore/valid/core), not the live GameData/core
 # — adding gameplay content never perturbs this digest.
-add_test(NAME gv2_headless_golden_replay_matches_digest
-    COMMAND gv2-headless
-        --manifest=${PROJECT_SOURCE_DIR}/Tests/Fixtures/GoldenRuns/golden_headless_10_seed_42.manifest.json5
-        --content-root=${GV2_PCC_FIXTURE_ROOT}/valid/core
-)
-set_tests_properties(gv2_headless_golden_replay_matches_digest
-    PROPERTIES
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-        PASS_REGULAR_EXPRESSION "\"digest_hash\":\"${GV2_GOLDEN_DIGEST_HASH}\""
+gv2_add_headless_json_contract_test(
+    gv2_headless_golden_replay_matches_digest
+    GOLDEN_RUN
+    --manifest=${PROJECT_SOURCE_DIR}/Tests/Fixtures/GoldenRuns/golden_headless_10_seed_42.manifest.json5
+    --content-root=${GV2_PCC_FIXTURE_ROOT}/valid/core
 )
 
-add_test(NAME gv2_headless_check_scripts
-    COMMAND gv2-headless --check-scripts
+gv2_add_headless_json_contract_test(
+    gv2_headless_check_scripts
+    GOLDEN_CHECK_SCRIPTS
+    --check-scripts
+    --content-root=${GV2_PCC_FIXTURE_ROOT}/valid/core
 )
-set_tests_properties(gv2_headless_check_scripts
-    PROPERTIES
-        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-        PASS_REGULAR_EXPRESSION "\"status\":\"ok\".*\"modules_checked\":[1-9][0-9]*"
+
+gv2_add_headless_json_contract_test(
+    gv2_headless_live_run_smoke
+    LIVE_RUN_SMOKE
+    --commands=1
+    --seed=42
+)
+gv2_add_headless_json_contract_test(
+    gv2_headless_check_scripts_live_smoke
+    LIVE_CHECK_SCRIPTS_SMOKE
+    --check-scripts
 )
 
 find_package(Python3 QUIET COMPONENTS Interpreter)

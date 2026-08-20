@@ -1,7 +1,7 @@
 ---
 title: Regenerate Golden Run
 status: informative
-version: 1.0
+version: 1.1
 updated: 2026-08-20
 depends_on:
   - README.md
@@ -44,12 +44,6 @@ depends_on:
    ```
 
 4. Проверьте diff всех полей manifest/digest и объясните каждое изменение.
-5. Повторно сконфигурируйте CMake: `Headless/CMakeLists.txt` читает `digest_hash` во время configure, поэтому обычная пересборка может сохранить старое значение.
-
-   ```bash
-   cmake -S . -B cmake-build-ci
-   ```
-
-6. Запустите golden replay и cross-host parity checks, используемые текущей конфигурацией проекта.
+5. Запустите golden run, `--check-scripts`, replay и cross-host parity checks. Headless CTest читает golden digest во время исполнения, поэтому повторный CMake configure после изменения fixture не требуется.
 
 Нельзя копировать hash из нового `--commands/--seed` прогона или менять fixture только ради зелёного теста.
