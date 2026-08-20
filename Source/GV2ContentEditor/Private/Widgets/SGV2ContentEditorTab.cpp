@@ -34,6 +34,7 @@ void SGV2ContentEditorTab::Construct(const FArguments& /*InArgs*/)
             [
                 SAssignNew(BrowserWidget, SGV2DefinitionBrowser, Adapter)
                 .OnDefinitionSelected(this, &SGV2ContentEditorTab::HandleDefinitionSelected)
+                .OnOperationCompleted(this, &SGV2ContentEditorTab::HandleSaveCompleted)
                 .OnDefinitionsChanged_Lambda([this]() {
                     if (PropertiesWidget.IsValid()) PropertiesWidget->RefreshProperties();
                     if (ReferenceWidget.IsValid()) ReferenceWidget->RefreshReferences();

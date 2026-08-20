@@ -65,9 +65,9 @@ TSharedRef<SWidget> SGV2DefinitionProperties::BuildToolbar()
             .Padding(2.0f)
             [
                 SNew(SButton)
-                .Text(FText::FromString(TEXT("Revert")))
+                .Text(FText::FromString(TEXT("Reload / Discard")))
                 .IsEnabled_Lambda([this]() {
-                    return Adapter.IsValid() && Adapter->IsDirty();
+                    return Adapter.IsValid() && Adapter->GetCurrentDefinition() != nullptr;
                 })
                 .OnClicked(this, &SGV2DefinitionProperties::HandleRevertClicked)
             ]
@@ -103,7 +103,7 @@ TSharedRef<SWidget> SGV2DefinitionProperties::BuildToolbar()
 
 FReply SGV2DefinitionProperties::HandleSaveClicked()
 {
-    if (Adapter.IsValid() && Adapter->IsDirty())
+    if (Adapter.IsValid() && Adapter->GetCurrentDefinition() != nullptr)
     {
         auto Result = Adapter->SaveCurrentDefinition();
         RefreshProperties();
@@ -117,13 +117,23 @@ FReply SGV2DefinitionProperties::HandleSaveClicked()
 
 FReply SGV2DefinitionProperties::HandleRevertClicked()
 {
-    if (Adapter.IsValid() && Adapter->IsDirty())
+    if (Adapter.IsValid() && Adapter->GetCurrentDefinition() != nullptr)
     {
-        Adapter->DiscardCurrentChanges();
+        const auto* Current = Adapter->GetCurrentDefinition();
+        const std::string DefinitionId = Current ? Current->Id : std::string();
+        std::vector<FGV2EditorDiagnostic> Diagnostics;
+        if (!DefinitionId.empty()) Adapter->LoadDefinition(DefinitionId, Diagnostics);
         RefreshProperties();
         if (OnFieldValueChanged.IsBound())
         {
             OnFieldValueChanged.Execute();
+        }
+        if (!Diagnostics.empty() && OnSaveCompleted.IsBound())
+        {
+            FGV2EditorAuthoringResult Result;
+            Result.Outcome = EEditorAuthoringOutcome::ValidationFailed;
+            Result.Diagnostics = std::move(Diagnostics);
+            OnSaveCompleted.Execute(Result);
         }
     }
     return FReply::Handled();
@@ -139,6 +149,8 @@ void SGV2DefinitionProperties::RefreshProperties()
 {
     if (!ContentScrollBox.IsValid()) return;
     ContentScrollBox->ClearChildren();
+    FieldWidgets.Empty();
+    OwnedOptionLists.Empty();
 
     if (!Adapter.IsValid()) return;
     const auto* CurrentDef = Adapter->GetCurrentDefinition();
@@ -177,7 +189,7 @@ void SGV2DefinitionProperties::RefreshProperties()
         ]
     ];
 
-    auto FormModelOpt = Adapter->GetFormModelForDefinitionType(CurrentDef->Type);
+    auto FormModelOpt = Adapter->GetFormModelForDefinitionType(CurrentDef->Type, CurrentDef->PackageId);
     if (!FormModelOpt.has_value())
     {
         ContentScrollBox->AddSlot()
@@ -197,6 +209,14 @@ void SGV2DefinitionProperties::RefreshProperties()
         [
             BuildCategorySection(Category)
         ];
+    }
+
+    if (!HighlightedPointer.IsEmpty())
+    {
+        if (const TSharedPtr<SWidget>* Widget = FieldWidgets.Find(HighlightedPointer); Widget && Widget->IsValid())
+        {
+            ContentScrollBox->ScrollDescendantIntoView(*Widget);
+        }
     }
 }
 
@@ -235,7 +255,18 @@ TSharedRef<SWidget> SGV2DefinitionProperties::BuildFieldRow(const FGV2FormFieldD
         UTF8_TO_TCHAR(Field.DisplayLabel.c_str()),
         Field.bRequired ? TEXT(" *") : TEXT(""));
 
-    return SNew(SHorizontalBox)
+    TSharedRef<SWidget> Control = CreateControlForField(Field);
+    const FString Pointer = UTF8_TO_TCHAR(Field.JsonPointer.c_str());
+    FieldWidgets.Add(Pointer, Control);
+
+    return SNew(SBorder)
+        .BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.GroupBorder"))
+        .BorderBackgroundColor(Pointer == HighlightedPointer
+            ? FLinearColor(0.35f, 0.25f, 0.05f, 1.0f)
+            : FLinearColor::Transparent)
+        .Padding(1.0f)
+        [
+        SNew(SHorizontalBox)
         + SHorizontalBox::Slot()
         .FillWidth(0.35f)
         .VAlign(VAlign_Center)
@@ -251,7 +282,8 @@ TSharedRef<SWidget> SGV2DefinitionProperties::BuildFieldRow(const FGV2FormFieldD
         .VAlign(VAlign_Center)
         .Padding(4.0f, 2.0f)
         [
-            CreateControlForField(Field)
+            Control
+        ]
         ];
 }
 
@@ -260,6 +292,47 @@ TSharedRef<SWidget> SGV2DefinitionProperties::CreateControlForField(const FGV2Fo
     auto CurrentValOpt = Adapter ? Adapter->GetCurrentFieldValue(Field.JsonPointer) : std::nullopt;
 
     std::string Ptr = Field.JsonPointer;
+
+    auto BuildPicker = [this, Ptr](
+        const std::vector<std::string>& Choices,
+        const FString& EmptyHint) -> TSharedRef<SWidget>
+    {
+        auto Options = MakeShared<TArray<TSharedPtr<FString>>>();
+        TSharedPtr<FString> Selected;
+        const auto Current = Adapter.IsValid() ? Adapter->GetCurrentFieldValue(Ptr) : std::nullopt;
+        const FString CurrentText = Current.has_value() && Current->IsString()
+            ? UTF8_TO_TCHAR(Current->AsString().c_str()) : FString();
+        for (const auto& Choice : Choices)
+        {
+            auto Item = MakeShared<FString>(UTF8_TO_TCHAR(Choice.c_str()));
+            Options->Add(Item);
+            if (*Item == CurrentText) Selected = Item;
+        }
+        OwnedOptionLists.Add(Options);
+
+        return SNew(SComboBox<TSharedPtr<FString>>)
+            .OptionsSource(&Options.Get())
+            .InitiallySelectedItem(Selected)
+            .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
+                return SNew(STextBlock).Text(FText::FromString(Item.IsValid() ? *Item : FString()));
+            })
+            .OnSelectionChanged_Lambda([this, Ptr](TSharedPtr<FString> Item, ESelectInfo::Type) {
+                if (Adapter.IsValid() && Item.IsValid())
+                {
+                    Adapter->SetCurrentFieldValue(Ptr, GV2ContentCore::FValue(TCHAR_TO_UTF8(**Item)));
+                    if (OnFieldValueChanged.IsBound()) OnFieldValueChanged.Execute();
+                }
+            })
+            [
+                SNew(STextBlock)
+                .Text_Lambda([this, Ptr, EmptyHint]() {
+                    const auto Value = Adapter.IsValid() ? Adapter->GetCurrentFieldValue(Ptr) : std::nullopt;
+                    return Value.has_value() && Value->IsString() && !Value->AsString().empty()
+                        ? FText::FromString(UTF8_TO_TCHAR(Value->AsString().c_str()))
+                        : FText::FromString(EmptyHint);
+                })
+            ];
+    };
 
     switch (Field.AdapterDescriptor.ControlType)
     {
@@ -295,6 +368,7 @@ TSharedRef<SWidget> SGV2DefinitionProperties::CreateControlForField(const FGV2Fo
             });
     }
     case EFieldControlType::DoubleNumeric:
+    case EFieldControlType::Slider:
     {
         double CurrentNum = (CurrentValOpt.has_value() && CurrentValOpt->IsNumber()) ? CurrentValOpt->AsNumber() : 0.0;
         double MinVal = Field.AdapterDescriptor.MinValue.value_or(-1000000.0);
@@ -312,6 +386,8 @@ TSharedRef<SWidget> SGV2DefinitionProperties::CreateControlForField(const FGV2Fo
                 }
             });
     }
+    case EFieldControlType::EnumDropdown:
+        return BuildPicker(Field.AdapterDescriptor.EnumChoices, TEXT("Select value..."));
     case EFieldControlType::MultilineText:
     {
         FString CurrentStr = (CurrentValOpt.has_value() && CurrentValOpt->IsString()) ? UTF8_TO_TCHAR(CurrentValOpt->AsString().c_str()) : TEXT("");
@@ -327,18 +403,141 @@ TSharedRef<SWidget> SGV2DefinitionProperties::CreateControlForField(const FGV2Fo
     }
     case EFieldControlType::ReferencePicker:
     {
-        FString CurrentRef = (CurrentValOpt.has_value() && CurrentValOpt->IsString()) ? UTF8_TO_TCHAR(CurrentValOpt->AsString().c_str()) : TEXT("");
-        return SNew(SEditableTextBox)
-            .Text(FText::FromString(CurrentRef))
-            .HintText(FText::FromString(FString::Printf(TEXT("ref<%s>"), UTF8_TO_TCHAR(Field.AdapterDescriptor.TargetReferenceKind.c_str()))))
-            .OnTextChanged_Lambda([this, Ptr](const FText& NewText) {
-                if (Adapter.IsValid())
-                {
-                    Adapter->SetCurrentFieldValue(Ptr, GV2ContentCore::FValue(TCHAR_TO_UTF8(*NewText.ToString())));
-                    if (OnFieldValueChanged.IsBound()) OnFieldValueChanged.Execute();
-                }
-            });
+        const auto Choices = Adapter.IsValid()
+            ? Adapter->GetCompatibleReferenceTargets(Field.AdapterDescriptor.TargetReferenceKind)
+            : std::vector<std::string>{};
+        return BuildPicker(Choices, FString::Printf(
+            TEXT("Select ref<%s>..."), UTF8_TO_TCHAR(Field.AdapterDescriptor.TargetReferenceKind.c_str())));
     }
+    case EFieldControlType::ResourcePicker:
+        return BuildPicker(
+            Adapter.IsValid() ? Adapter->GetCompatibleResourceTargets(Field.AdapterDescriptor.TargetResourceClass) : std::vector<std::string>{},
+            FString::Printf(TEXT("Select resource<%s>..."), UTF8_TO_TCHAR(Field.AdapterDescriptor.TargetResourceClass.c_str())));
+    case EFieldControlType::TextIdPicker:
+        return BuildPicker(
+            Adapter.IsValid() ? Adapter->GetCompatibleReferenceTargets("text") : std::vector<std::string>{},
+            TEXT("Select text ID..."));
+    case EFieldControlType::ArrayEditor:
+    {
+        TSharedRef<SVerticalBox> Rows = SNew(SVerticalBox);
+        GV2ContentCore::FValue::FArray Values;
+        if (CurrentValOpt.has_value() && CurrentValOpt->IsArray()) Values = CurrentValOpt->AsArray();
+
+        for (int32 Index = 0; Index < static_cast<int32>(Values.size()); ++Index)
+        {
+            const GV2ContentCore::FValue ItemValue = Values[static_cast<std::size_t>(Index)];
+            TSharedRef<SWidget> ItemControl = SNew(SEditableTextBox)
+                .Text(FText::FromString(ItemValue.IsString()
+                    ? UTF8_TO_TCHAR(ItemValue.AsString().c_str()) : TEXT("<value>")))
+                .IsReadOnly(!ItemValue.IsString())
+                .OnTextCommitted_Lambda([this, Ptr, Index](const FText& Text, ETextCommit::Type) {
+                    auto Value = Adapter.IsValid() ? Adapter->GetCurrentFieldValue(Ptr) : std::nullopt;
+                    if (!Value.has_value() || !Value->IsArray()) return;
+                    auto Array = Value->AsArray();
+                    Array[static_cast<std::size_t>(Index)] = GV2ContentCore::FValue(TCHAR_TO_UTF8(*Text.ToString()));
+                    Adapter->SetCurrentFieldValue(Ptr, GV2ContentCore::FValue(std::move(Array)));
+                    if (OnFieldValueChanged.IsBound()) OnFieldValueChanged.Execute();
+                });
+
+            if (Field.Spec && Field.Spec->Items
+                && Field.Spec->Items->Kind == GV2ContentCore::EFieldKind::Reference)
+            {
+                auto Options = MakeShared<TArray<TSharedPtr<FString>>>();
+                TSharedPtr<FString> Selected;
+                const auto Choices = Adapter.IsValid()
+                    ? Adapter->GetCompatibleReferenceTargets(Field.Spec->Items->ExpectedStableIdKind)
+                    : std::vector<std::string>{};
+                for (const auto& Choice : Choices)
+                {
+                    auto Option = MakeShared<FString>(UTF8_TO_TCHAR(Choice.c_str()));
+                    Options->Add(Option);
+                    if (ItemValue.IsString() && *Option == UTF8_TO_TCHAR(ItemValue.AsString().c_str())) Selected = Option;
+                }
+                OwnedOptionLists.Add(Options);
+                ItemControl = SNew(SComboBox<TSharedPtr<FString>>)
+                    .OptionsSource(&Options.Get())
+                    .InitiallySelectedItem(Selected)
+                    .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) {
+                        return SNew(STextBlock).Text(FText::FromString(Item.IsValid() ? *Item : FString()));
+                    })
+                    .OnSelectionChanged_Lambda([this, Ptr, Index](TSharedPtr<FString> Item, ESelectInfo::Type) {
+                        auto Value = Adapter.IsValid() ? Adapter->GetCurrentFieldValue(Ptr) : std::nullopt;
+                        if (!Item.IsValid() || !Value.has_value() || !Value->IsArray()) return;
+                        auto Array = Value->AsArray();
+                        Array[static_cast<std::size_t>(Index)] = GV2ContentCore::FValue(TCHAR_TO_UTF8(**Item));
+                        Adapter->SetCurrentFieldValue(Ptr, GV2ContentCore::FValue(std::move(Array)));
+                        if (OnFieldValueChanged.IsBound()) OnFieldValueChanged.Execute();
+                    })
+                    [ SNew(STextBlock).Text(FText::FromString(ItemValue.IsString() ? UTF8_TO_TCHAR(ItemValue.AsString().c_str()) : TEXT("Select..."))) ];
+            }
+            Rows->AddSlot().AutoHeight().Padding(0.0f, 1.0f)
+            [
+                SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1.0f)
+                [
+                    ItemControl
+                ]
+                + SHorizontalBox::Slot().AutoWidth()
+                [
+                    SNew(SButton).Text(FText::FromString(TEXT("Up")))
+                    .IsEnabled(Index > 0)
+                    .OnClicked_Lambda([this, Ptr, Index]() {
+                        auto Value = Adapter.IsValid() ? Adapter->GetCurrentFieldValue(Ptr) : std::nullopt;
+                        if (Value.has_value() && Value->IsArray() && Index > 0)
+                        {
+                            auto Array = Value->AsArray();
+                            std::swap(Array[Index], Array[Index - 1]);
+                            Adapter->SetCurrentFieldValue(Ptr, GV2ContentCore::FValue(std::move(Array)));
+                            RefreshProperties();
+                            if (OnFieldValueChanged.IsBound()) OnFieldValueChanged.Execute();
+                        }
+                        return FReply::Handled();
+                    })
+                ]
+                + SHorizontalBox::Slot().AutoWidth()
+                [
+                    SNew(SButton).Text(FText::FromString(TEXT("Delete")))
+                    .OnClicked_Lambda([this, Ptr, Index]() {
+                        auto Value = Adapter.IsValid() ? Adapter->GetCurrentFieldValue(Ptr) : std::nullopt;
+                        if (Value.has_value() && Value->IsArray())
+                        {
+                            auto Array = Value->AsArray();
+                            Array.erase(Array.begin() + Index);
+                            Adapter->SetCurrentFieldValue(Ptr, GV2ContentCore::FValue(std::move(Array)));
+                            RefreshProperties();
+                            if (OnFieldValueChanged.IsBound()) OnFieldValueChanged.Execute();
+                        }
+                        return FReply::Handled();
+                    })
+                ]
+            ];
+        }
+        Rows->AddSlot().AutoHeight().Padding(0.0f, 2.0f)
+        [
+            SNew(SButton).Text(FText::FromString(TEXT("Add")))
+            .OnClicked_Lambda([this, Ptr, Spec = Field.Spec]() {
+                auto Value = Adapter.IsValid() ? Adapter->GetCurrentFieldValue(Ptr) : std::nullopt;
+                auto Array = Value.has_value() && Value->IsArray()
+                    ? Value->AsArray() : GV2ContentCore::FValue::FArray{};
+                GV2ContentCore::FValue NewItem("");
+                if (Spec && Spec->Items)
+                {
+                    if (Spec->Items->DefaultValue.has_value()) NewItem = *Spec->Items->DefaultValue;
+                    else if (Spec->Items->Kind == GV2ContentCore::EFieldKind::Object) NewItem = GV2ContentCore::FValue::MakeObject({});
+                }
+                Array.push_back(std::move(NewItem));
+                Adapter->SetCurrentFieldValue(Ptr, GV2ContentCore::FValue(std::move(Array)));
+                RefreshProperties();
+                if (OnFieldValueChanged.IsBound()) OnFieldValueChanged.Execute();
+                return FReply::Handled();
+            })
+        ];
+        return Rows;
+    }
+    case EFieldControlType::ObjectEditor:
+        return SNew(STextBlock)
+            .Text(FText::FromString(TEXT("Nested fields are rendered from their schema.")))
+            .ColorAndOpacity(FSlateColor(FLinearColor(0.55f, 0.55f, 0.55f)));
     case EFieldControlType::Text:
     default:
     {

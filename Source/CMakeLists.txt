@@ -158,3 +158,9 @@ target_include_directories(gv2_content_editor
 )
 target_link_libraries(gv2_content_editor PUBLIC gv2_content_authoring gv2_content_host_support gv2_content_core)
 
+add_executable(gv2_content_editor_conformance
+    "${CMAKE_SOURCE_DIR}/Tools/ContentEditor/ContentEditorConformanceMain.cpp"
+)
+target_compile_features(gv2_content_editor_conformance PRIVATE cxx_std_20)
+target_link_libraries(gv2_content_editor_conformance PRIVATE gv2_content_editor)
+add_test(NAME content_editor_conformance COMMAND gv2_content_editor_conformance)

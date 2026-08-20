@@ -1,8 +1,7 @@
 #include "Commands/SetCommand.h"
 #include "Support/CliOutput.h"
-#include "Support/Json5AstRewriter.h"
 #include "Support/PackageLoader.h"
-#include "GV2ContentCore/DefinitionEnvelope.h"
+#include "GV2ContentAuthoring/AuthoringService.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/PackageDescriptor.h"
 #include "GV2ContentCore/StableId.h"
@@ -186,166 +185,56 @@ int RunSet(const std::vector<std::string>& Positional, EOutputFormat Format)
         }
     }
 
-    // Find which file contains DefinitionIdStr
-    std::string FoundRelativeSource;
-    std::string FoundFileContent;
-    std::size_t FoundEntryIndex = std::string::npos;
-    GV2ContentCore::FParseLimits Limits;
+    GV2ContentAuthoring::FSetFieldParams Params;
+    Params.PackageRoot = TargetRoot;
+    Params.DefinitionId = DefinitionIdStr;
+    Params.JsonPointer = JsonPointerArg;
+    Params.NewValue = ParseCliValue(RawValue);
+    const GV2ContentAuthoring::FAuthoringResult Result =
+        GV2ContentAuthoring::FAuthoringService::SetField(Params);
 
-    for (const std::string& RelSource : TargetDescriptor.GetRelativeSources())
+    if (!Result.IsSuccess())
     {
-        std::filesystem::path FullPath = TargetRoot / RelSource;
-        if (!std::filesystem::is_regular_file(FullPath))
+        if (!Result.Diagnostics.empty())
         {
-            continue;
+            return EmitDiagnosticsFailure(Result.Diagnostics, Format);
         }
 
-        std::ifstream InFile(FullPath);
-        std::string Content(
-            (std::istreambuf_iterator<char>(InFile)),
-            std::istreambuf_iterator<char>());
-
-        std::vector<GV2ContentCore::FDiagnostic> Diags;
-        auto ParsedDoc = GV2ContentCore::ParseJson5Document(
-            Content, Limits, Diags, TargetDescriptor.GetPackageId(), 0, RelSource);
-        if (!ParsedDoc.has_value() || !ParsedDoc->GetRootValue().IsObject())
-        {
-            continue;
-        }
-
-        const auto* DefsVal = ParsedDoc->GetRootValue().FindField("definitions");
-        if (DefsVal != nullptr && DefsVal->IsArray())
-        {
-            const auto& DefsArr = DefsVal->AsArray();
-            for (std::size_t i = 0; i < DefsArr.size(); ++i)
-            {
-                if (DefsArr[i].IsObject())
-                {
-                    const auto* IdField = DefsArr[i].FindField("id");
-                    if (IdField != nullptr && IdField->IsString() && IdField->AsString() == DefinitionIdStr)
-                    {
-                        FoundRelativeSource = RelSource;
-                        FoundFileContent = std::move(Content);
-                        FoundEntryIndex = i;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (FoundEntryIndex != std::string::npos)
-        {
-            break;
-        }
-    }
-
-    if (FoundEntryIndex == std::string::npos)
-    {
         if (Format == EOutputFormat::Json)
         {
-            std::cout << "{\"status\":\"error\",\"code\":\"definition_not_found\",\"message\":\"definition '"
-                      << DefinitionIdStr << "' not found in package '" << TargetDescriptor.GetPackageId()
-                      << "'\",\"definition_id\":\"" << DefinitionIdStr << "\"}\n";
+            std::cout << "{\"status\":\"error\",\"code\":";
+            WriteJsonEscapedString(std::cout, Result.ErrorCode.empty() ? "tool_failure" : Result.ErrorCode);
+            std::cout << ",\"message\":";
+            WriteJsonEscapedString(std::cout, Result.ErrorMessage);
+            std::cout << ",\"definition_id\":";
+            WriteJsonEscapedString(std::cout, DefinitionIdStr);
+            std::cout << ",\"json_pointer\":";
+            WriteJsonEscapedString(std::cout, JsonPointerArg);
+            std::cout << "}\n";
         }
         else
         {
-            std::cerr << "gv2-content: set failed: definition '" << DefinitionIdStr
-                      << "' not found in package '" << TargetDescriptor.GetPackageId() << "'\n";
+            std::cerr << "gv2-content: set failed: " << Result.ErrorMessage << "\n";
         }
         return static_cast<int>(EExitCode::ToolFailure);
     }
 
-    // Resolve JSON pointer
-    std::string ResolvedPointer;
-    if (JsonPointerArg.rfind("/definitions/", 0) == 0)
-    {
-        ResolvedPointer = JsonPointerArg;
-    }
-    else if (JsonPointerArg.rfind("/data/", 0) == 0 || JsonPointerArg == "/data")
-    {
-        ResolvedPointer = "/definitions/" + std::to_string(FoundEntryIndex) + JsonPointerArg;
-    }
-    else if (JsonPointerArg.rfind("data/", 0) == 0)
-    {
-        ResolvedPointer = "/definitions/" + std::to_string(FoundEntryIndex) + "/" + JsonPointerArg;
-    }
-    else if (JsonPointerArg == "/deprecated" || JsonPointerArg == "/tags"
-             || JsonPointerArg.rfind("/tags/", 0) == 0 || JsonPointerArg.rfind("/extensions", 0) == 0
-             || JsonPointerArg == "/id")
-    {
-        ResolvedPointer = "/definitions/" + std::to_string(FoundEntryIndex) + JsonPointerArg;
-    }
-    else if (JsonPointerArg.rfind("/", 0) == 0)
-    {
-        ResolvedPointer = "/definitions/" + std::to_string(FoundEntryIndex) + "/data" + JsonPointerArg;
-    }
-    else
-    {
-        ResolvedPointer = "/definitions/" + std::to_string(FoundEntryIndex) + "/data/" + JsonPointerArg;
-    }
-
-    GV2ContentCore::FValue NewValue = ParseCliValue(RawValue);
-    FSetFieldValueResult RewriteResult = SetFieldValue(
-        FoundFileContent, ResolvedPointer, NewValue, TargetDescriptor.GetPackageId(), FoundRelativeSource);
-
-    if (RewriteResult.Status != ESetFieldValueStatus::Success)
-    {
-        if (Format == EOutputFormat::Json)
-        {
-            std::cout << "{\"status\":\"error\",\"code\":\"" << RewriteResult.ErrorCode
-                      << "\",\"message\":\"" << RewriteResult.ErrorMessage
-                      << "\",\"definition_id\":\"" << DefinitionIdStr
-                      << "\",\"json_pointer\":\"" << JsonPointerArg << "\"}\n";
-        }
-        else
-        {
-            std::cerr << "gv2-content: set failed: " << RewriteResult.ErrorMessage << "\n";
-        }
-        return static_cast<int>(EExitCode::ToolFailure);
-    }
-
-    // Write updated content
-    std::filesystem::path TargetFilePath = TargetRoot / FoundRelativeSource;
-    std::ofstream OutFile(TargetFilePath, std::ios::trunc);
-    if (!OutFile.is_open())
-    {
-        if (Format == EOutputFormat::Json)
-        {
-            std::cout << "{\"status\":\"error\",\"code\":\"io_failure\",\"message\":\"failed to write to file "
-                      << FoundRelativeSource << "\"}\n";
-        }
-        else
-        {
-            std::cerr << "gv2-content: failed to write to file " << FoundRelativeSource << "\n";
-        }
-        return static_cast<int>(EExitCode::ToolFailure);
-    }
-    OutFile << RewriteResult.UpdatedContent;
-    OutFile.close();
-
-    // Validate the package set after edit
-    const FRootBuildOutcome BuildOutcome = BuildFromPackageRoots({ TargetRoot });
-    if (BuildOutcome.bToolFailure)
-    {
-        return EmitToolFailure(
-            BuildOutcome.ToolFailureCode.empty() ? "tool_failure" : BuildOutcome.ToolFailureCode,
-            BuildOutcome.ToolFailureMessage,
-            Format);
-    }
-    if (BuildOutcome.Result.has_value() && BuildOutcome.Result->IsFailure())
-    {
-        return EmitDiagnosticsFailure(BuildOutcome.Result->GetDiagnostics(), Format);
-    }
+    std::error_code RelativeError;
+    const std::filesystem::path RelativeFile =
+        std::filesystem::relative(Result.TargetFilePath, TargetRoot, RelativeError);
+    const std::string FileText = RelativeError
+        ? Result.TargetFilePath.generic_string()
+        : RelativeFile.generic_string();
 
     if (Format == EOutputFormat::Json)
     {
         std::cout << "{\"status\":\"ok\",\"definition_id\":\"" << DefinitionIdStr
                   << "\",\"json_pointer\":\"" << JsonPointerArg
-                  << "\",\"file\":\"" << FoundRelativeSource << "\"}\n";
+                  << "\",\"file\":\"" << FileText << "\"}\n";
     }
     else
     {
-        std::cout << "updated " << DefinitionIdStr << " (" << JsonPointerArg << ") in " << FoundRelativeSource << "\n";
+        std::cout << "updated " << DefinitionIdStr << " (" << JsonPointerArg << ") in " << FileText << "\n";
     }
 
     return static_cast<int>(EExitCode::Success);

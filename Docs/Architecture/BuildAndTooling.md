@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.0
+version: 3.1
 updated: 2026-08-20
 depends_on:
   - SystemContextAndComponents.md
@@ -17,6 +17,7 @@ decisions:
   - ../ADR/0026-core-and-gameplay-ownership.md
   - ../ADR/0028-simplified-authoring-surface.md
   - ../ADR/0029-content-authoring-and-schema-evolution.md
+  - ../ADR/0037-content-authoring-layer.md
 ---
 
 # Build and Tooling Contract
@@ -45,7 +46,10 @@ decisions:
 | `gv2_content_host_support` | `GV2ContentHostSupport` | Filesystem package discovery (ADR-0019); Lua spec file discovery (TAS-02, ADR-0024) | `gv2_content_core` |
 | `gv2_runtime_core` | `GV2RuntimeCore` | Lua 5.4.8 VM, runtime session, `FGV2LuaMarshaller`, slot-scoped save storage primitive (SAV-05/06, план [SaveAndLoad](../Plans/Archive/SaveAndLoad.md)) | `gv2_content_core` |
 | `gv2_test_support` | `GV2TestSupport` | Lua spec runner orchestration (TAS-04, ADR-0024); test-only, ни один gameplay host не линкует | `gv2_content_host_support`, `gv2_runtime_core` |
-| — | `GV2` | UE composition, Bridge, Presentation | все четыре |
+| `gv2_content_authoring` | `GV2ContentAuthoring` | Portable JSON5 authoring operations, optimistic file stamp, candidate validation и atomic replacement | `gv2_content_host_support`, `gv2_content_core` |
+| `gv2_content_editor` | `GV2ContentEditor` | Portable Editor Adapter, field adapters, schema form model и conformance; UBT module дополнительно владеет Slate frontend | `gv2_content_authoring`, `gv2_content_host_support`, `gv2_content_core` |
+| `gv2_content_editor_conformance` | `GV2.Editor.ContentEditor.AdapterConformance` | Один и тот же Content Editor conformance gate в CTest и Unreal automation | `gv2_content_editor` |
+| — | `GV2` | UE composition, Bridge, Presentation | runtime modules; authoring/test/editor modules — только при `Target.bBuildEditor` |
 
 Vendored Lua (`Source/GV2RuntimeCore/Private/ThirdParty/Lua54`) собирается только внутри `gv2_runtime_core` и не выставляется через public headers.
 
@@ -117,7 +121,7 @@ gv2-content coverage <package-or-container-root> [--locale=LOCALE] [--format=tex
 - **Разрешение схемы идёт по набору пакетов, а не по одному корню.** `describe` и `new`, как и `validate`, видят пакет вместе с его зависимостями: команда, направленная на игровой пакет, находит схему в `core`, запись при этом создаётся в целевом пакете. Тип, не связанный схемой ни в одном пакете набора, отклоняется с `unknown_definition_type`. Без этого authoring-инструменты неприменимы в том пакете, где дизайнер фактически работает.
 - `refs` — поиск всех входящих ссылок на указанный Stable ID (включая ссылки из `data`, `extensions` и редиректов). Выводит относительный путь к файлу, номер строки, колонку, JSON Pointer и ID ссылающегося определения. Если ссылок нет, выводит 0 ссылок и завершается с кодом 0.
 - `rename` — атомарное переименование определения и всех ссылок на него на этапе разработки (Pre-publication, [ADR-0023](../ADR/0023-stable-id-publication-freeze.md)). Проверяет валидность обоих ID, совпадение `kind`, наличие исходного определения и отсутствие дубликата нового ID. Точечно переписывает строковые токены через AST-парсер без разрушения комментариев и форматирования соседних записей. Если пакет помечен как замороженный (`frozen: true` или `published: true` в `package.json5`), команда отказывается выполнять переименование на месте, требуя объявления `redirects`.
-- `set` — точечная правка значения скалярного поля по JSON Pointer через AST-парсер (`Json5AstRewriter`). Заменяет текст в границах целевого узла, меняя в diff ровно одну строку; сохраняет комментарии до, внутри и после записи, отступы, порядок ключей и висячие запятые. Несуществующий указатель (`pointer_not_found`), указатель на контейнер (`target_is_container`) и непереносимое значение (`invalid_value`) дают раздельные типизированные отказы (exit code 2). Нарушение схемных ограничений после правки возвращает exit code 1 со списком диагностик. Запрещена в замороженных пакетах (`package_frozen`).
+- `set` — точечная замена значения по definition-relative JSON Pointer через AST-парсер (`Json5AstRewriter`). Scalar и container values проходят один путь; замена массива/объекта нужна schema-driven collection/object editors. Команда сохраняет весь текст вне span целевого значения, затем до публикации строит полный candidate через `BuildRepository()`. Несуществующий указатель даёт `pointer_not_found`; нарушение envelope/schema/reference/extension rules возвращает exit code 1 с ordered diagnostics, а исходный файл остаётся нетронутым. Запрещена в замороженных пакетах (`package_frozen`).
 - `delete` — удаление определения из файла через AST-парсер (`Json5AstRewriter`). Удаляет запись вместе с её запятой и отступами, не переформатируя соседние записи и комментарии. Удаление последней записи оставляет валидный пустой массив `definitions: []`. Если на удаляемое определение есть входящие ссылки из других определений пакета, удаление отклоняется (`referenced_by_definitions`, exit code 1) с перечислением всех ссылающихся определений и координат. Несуществующий ID даёт `definition_not_found` (exit code 2). Запрещена в замороженных пакетах (`package_frozen`).
 - `index` — выгрузка полного индекса Stable ID пакета в каноническом порядке. Группирует активные идентификаторы по `kind` (`actor`, `item`, `location`, `resource`, `screen`, `text`), а также отдельно выводит списки `redirects` (`source_id -> target_id`) и `tombstones`. Служит единым источником автодополнения для редакторов кода.
 - `hash` — вычисление и вывод канонического `content_hash` пакета.

@@ -60,6 +60,32 @@ def main():
         test_pkg = os.path.join(tmpdir, "core")
         shutil.copytree(core_pkg, test_pkg)
 
+        # Invalid candidates are validated before the atomic replacement.
+        # In particular, replacing the item object with a scalar must never
+        # modify the source file, even though the low-level JSON5 rewriter can
+        # represent that syntactic edit.
+        items_path = os.path.join(test_pkg, "definitions", "items.json5")
+        with open(items_path, "rb") as source_file:
+            items_before_invalid_set = source_file.read()
+        res = run_cmd([
+            gv2_content,
+            "set",
+            test_pkg,
+            "core:item.weapon.iron_sword",
+            "/data",
+            "10",
+            "--format=json",
+        ], check=False)
+        assert res.returncode == 1
+        invalid_set = json.loads(res.stdout)
+        assert invalid_set["status"] == "invalid"
+        assert any(
+            diagnostic["code"] == "core:diagnostic.schema.value.type_mismatch"
+            for diagnostic in invalid_set["diagnostics"]
+        )
+        with open(items_path, "rb") as source_file:
+            assert source_file.read() == items_before_invalid_set
+
         # 4. Test new actor (has no dangling refs, immediately passes validate)
         res = run_cmd([gv2_content, "new", test_pkg, "actor", "core:actor.npc.guard"])
         assert "created definition core:actor.npc.guard in definitions/actors.json5" in res.stdout
@@ -111,20 +137,32 @@ def main():
         with tempfile.TemporaryDirectory() as tmpdir2:
             test_pkg2 = os.path.join(tmpdir2, "core")
             shutil.copytree(core_pkg, test_pkg2)
-            screens_file = os.path.join(test_pkg2, "definitions", "screens.json5")
-            if os.path.exists(screens_file):
-                os.remove(screens_file)
+            badges_file = os.path.join(test_pkg2, "definitions", "badges.json5")
+            badge_schema = os.path.join(test_pkg2, "schemas", "badge_v1.schema.json5")
+            with open(badge_schema, "w", encoding="utf-8") as f:
+                f.write(
+                    "{\n"
+                    "  id: 'core:schema.definition.badge.v1',\n"
+                    "  definition_type: 'badge',\n"
+                    "  schema_version: 1,\n"
+                    "  root: { kind: 'object', fields: {\n"
+                    "    label: { kind: 'string', required: true },\n"
+                    "  } },\n"
+                    "  semantic_validators: [],\n"
+                    "  extensions: {},\n"
+                    "}\n"
+                )
 
-            res = run_cmd([gv2_content, "new", test_pkg2, "screen", "core:screen.dialog.main", "--format=json"])
+            res = run_cmd([gv2_content, "new", test_pkg2, "badge", "core:badge.dialog.main", "--format=json"])
             new_res = json.loads(res.stdout)
             assert new_res["status"] == "ok"
-            assert new_res["definition_id"] == "core:screen.dialog.main"
-            assert os.path.exists(screens_file)
+            assert new_res["definition_id"] == "core:badge.dialog.main"
+            assert os.path.exists(badges_file)
 
             # verify the file content is valid JSON5
-            with open(screens_file, "r") as f:
+            with open(badges_file, "r") as f:
                 content = f.read()
-            assert "core:screen.dialog.main" in content
+            assert "core:badge.dialog.main" in content
 
         # 9. Test creating screen and its referenced text and resource
         res = run_cmd([gv2_content, "new", test_pkg, "text", "core:text.screen.battle.title"])
@@ -875,11 +913,20 @@ def main():
         err_doc = json.loads(res_err_ptr.stdout)
         assert err_doc["code"] == "pointer_not_found"
 
-        # 38e. Negative test: target is container (exit 2)
+        # 38e. A container target is syntactically replaceable, but a
+        # schema-invalid candidate is rejected before the file changes.
+        with open(items_path, "rb") as f:
+            items_before_container_replacement = f.read()
         res_err_cont = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "/data", "10", "--format=json"], check=False)
-        assert res_err_cont.returncode == 2
+        assert res_err_cont.returncode == 1
         err_doc = json.loads(res_err_cont.stdout)
-        assert err_doc["code"] == "target_is_container"
+        assert err_doc["status"] == "invalid"
+        assert any(
+            diagnostic["code"] == "core:diagnostic.schema.value.type_mismatch"
+            for diagnostic in err_doc["diagnostics"]
+        )
+        with open(items_path, "rb") as f:
+            assert f.read() == items_before_container_replacement
 
         # 38f. Negative test: constraint violation (price < 0 should fail validation, exit 1)
         res_err_val = run_cmd([gv2_content, "set", test_pkg, "core:item.weapon.iron_sword", "price", "-10", "--format=json"], check=False)
@@ -1141,10 +1188,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
 
 
 

@@ -1,7 +1,7 @@
 #include "Commands/DeleteCommand.h"
 #include "Support/CliOutput.h"
-#include "Support/Json5AstRewriter.h"
 #include "Support/PackageLoader.h"
+#include "GV2ContentAuthoring/AuthoringService.h"
 #include "GV2ContentCore/DefinitionEnvelope.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/PackageDescriptor.h"
@@ -334,55 +334,33 @@ int RunDelete(const std::vector<std::string>& Positional, EOutputFormat Format)
         return static_cast<int>(EExitCode::InvalidContent);
     }
 
-    FRemoveDefinitionResult RemoveResult = RemoveDefinitionEntry(
-        FoundFileContent, DefinitionIdStr, TargetDescriptor.GetPackageId(), FoundRelativeSource);
+    GV2ContentAuthoring::FDeleteDefinitionParams Params;
+    Params.PackageRoot = TargetRoot;
+    Params.DefinitionId = DefinitionIdStr;
+    const GV2ContentAuthoring::FAuthoringResult Result =
+        GV2ContentAuthoring::FAuthoringService::DeleteDefinition(Params);
 
-    if (RemoveResult.Status != ERemoveDefinitionStatus::Success)
+    if (!Result.IsSuccess())
     {
+        if (!Result.Diagnostics.empty())
+        {
+            return EmitDiagnosticsFailure(Result.Diagnostics, Format);
+        }
         if (Format == EOutputFormat::Json)
         {
-            std::cout << "{\"status\":\"error\",\"code\":\"" << RemoveResult.ErrorCode
-                      << "\",\"message\":\"" << RemoveResult.ErrorMessage
-                      << "\",\"definition_id\":\"" << DefinitionIdStr << "\"}\n";
+            std::cout << "{\"status\":\"error\",\"code\":";
+            WriteJsonEscapedString(std::cout, Result.ErrorCode.empty() ? "tool_failure" : Result.ErrorCode);
+            std::cout << ",\"message\":";
+            WriteJsonEscapedString(std::cout, Result.ErrorMessage);
+            std::cout << ",\"definition_id\":";
+            WriteJsonEscapedString(std::cout, DefinitionIdStr);
+            std::cout << "}\n";
         }
         else
         {
-            std::cerr << "gv2-content: delete failed: " << RemoveResult.ErrorMessage << "\n";
+            std::cerr << "gv2-content: delete failed: " << Result.ErrorMessage << "\n";
         }
         return static_cast<int>(EExitCode::ToolFailure);
-    }
-
-    // Write updated content
-    std::filesystem::path TargetFilePath = TargetRoot / FoundRelativeSource;
-    std::ofstream OutFile(TargetFilePath, std::ios::trunc);
-    if (!OutFile.is_open())
-    {
-        if (Format == EOutputFormat::Json)
-        {
-            std::cout << "{\"status\":\"error\",\"code\":\"io_failure\",\"message\":\"failed to write to file "
-                      << FoundRelativeSource << "\"}\n";
-        }
-        else
-        {
-            std::cerr << "gv2-content: failed to write to file " << FoundRelativeSource << "\n";
-        }
-        return static_cast<int>(EExitCode::ToolFailure);
-    }
-    OutFile << RemoveResult.UpdatedContent;
-    OutFile.close();
-
-    // Validate the package set after edit
-    const FRootBuildOutcome BuildOutcome = BuildFromPackageRoots({ TargetRoot });
-    if (BuildOutcome.bToolFailure)
-    {
-        return EmitToolFailure(
-            BuildOutcome.ToolFailureCode.empty() ? "tool_failure" : BuildOutcome.ToolFailureCode,
-            BuildOutcome.ToolFailureMessage,
-            Format);
-    }
-    if (BuildOutcome.Result.has_value() && BuildOutcome.Result->IsFailure())
-    {
-        return EmitDiagnosticsFailure(BuildOutcome.Result->GetDiagnostics(), Format);
     }
 
     if (Format == EOutputFormat::Json)

@@ -21,7 +21,7 @@ decisions:
 > **Владеет:** составом logical modules, направлением зависимостей, ownership и lifetime scopes.
 > **Не владеет:** внутренним устройством модулей и физической раскладкой сборки ([Build and Tooling](BuildAndTooling.md)).
 > **Инварианты:** [INV-013](Invariants.md)
-> **Реализация:** `Source/GV2ContentCore/`, `Source/GV2ContentHostSupport/`, `Source/GV2RuntimeCore/`, `Source/GV2/`.
+> **Реализация:** `Source/GV2ContentCore/`, `Source/GV2ContentHostSupport/`, `Source/GV2RuntimeCore/`, `Source/GV2ContentAuthoring/`, `Source/GV2ContentEditor/`, `Source/GV2/`.
 > **Проверки:** запреты зависимостей — [Dependency Map](DependencyMap.md); границы модулей — `host_conformance_parity_contract`.
 
 Документ фиксирует logical modules, dependency direction, ownership и lifetime. Конкретное разбиение на Unreal Build Modules и имена private classes можно менять без ADR, если границы остаются теми же.
@@ -54,7 +54,9 @@ decisions:
 
 `GV2ContentHostSupport` (ADR-0019) — отдельная portable library, единственный владелец filesystem-based package discovery (`DiscoverPackageFromDirectory`: сканирует `definitions/*.json5` + self-describing `schemas/*.json5`). Она зависит от `GV2ContentCore` (типы `FPackageDescriptor`/`FDiagnostic`); обратная зависимость запрещена. `gv2-content`, `gv2-headless` и `GV2` (через `FGV2FilesystemContentSourceProvider`) — единственные consumers; ни один из них не дублирует discovery-логику самостоятельно.
 
-UE host строит repository из единственного package root `GameData/core`. Package/mod discovery, enabled-mod resolution и multi-package root не реализованы. Layout package root, staging и разделение production-контента и test corpus описаны в [Build and Tooling](BuildAndTooling.md).
+`GV2ContentAuthoring` (ADR-0037) — portable write library поверх Core/HostSupport. Она готовит candidate в памяти, вызывает authoritative `BuildRepository()`, проверяет optimistic file stamp и только затем заменяет файл. `GV2ContentEditor` состоит из portable Editor Adapter/form/reference части и editor-only Slate frontend. Gameplay runtime, Headless и Shipping target не зависят ни от authoring, ни от editor/test modules.
+
+UE host строит repository из canonical container/lock package set; интерактивный Editor может использовать config-owned development profile. Layout package root, staging и разделение production-контента и test corpus описаны в [Build and Tooling](BuildAndTooling.md).
 
 Canonical Stable ID parser `GV2ContentCore::FStableId` принадлежит нижней portable library и используется Content, LuaRuntime и обоими host-ами. UE может иметь только encoding adapter `FStringView → UTF-8`; отдельная UE grammar запрещена.
 
@@ -64,7 +66,7 @@ Canonical Stable ID parser `GV2ContentCore::FStableId` принадлежит н
 
 `GV2` не владеет canonical gameplay-state и не добавляет gameplay rules. Новые C++ классы должны сохранять logical ownership из таблицы выше: UE-facing adapters, UMG и DTO относятся к `Presentation` или `Bridge`, а gameplay mutation проходит через Lua `Command Dispatcher`.
 
-Physical mapping использует Unreal modules `GV2`, `GV2RuntimeCore`, `GV2ContentCore` и `GV2ContentHostSupport`. Shared `GV2ContentCore` implementation/public sources запрещено включать Unreal headers или вызывать Lua/filesystem API; filesystem-based package discovery принадлежит исключительно `GV2ContentHostSupport` (ADR-0019), который зависит от `GV2ContentCore`, но не наоборот. Тонкая generated Unreal module-bootstrap translation unit может иметь private dependency на UE `Core`; эта dependency не пересекает portable API и отсутствует у CMake static library. При добавлении native CommonUI bases `CommonUI` становится явной dependency `GV2`; Lua и optional serialization libraries остаются private implementation dependencies соответствующих host/runtime modules.
+Physical mapping использует runtime modules `GV2`, `GV2RuntimeCore`, `GV2ContentCore`, `GV2ContentHostSupport` и editor-only modules `GV2ContentAuthoring`, `GV2ContentEditor`, `GV2TestSupport`. Shared `GV2ContentCore` implementation/public sources запрещено включать Unreal headers или вызывать Lua/filesystem API; filesystem-based package discovery принадлежит исключительно `GV2ContentHostSupport` (ADR-0019), который зависит от `GV2ContentCore`, но не наоборот. Тонкая generated Unreal module-bootstrap translation unit может иметь private dependency на UE `Core`; эта dependency не пересекает portable API и отсутствует у CMake static library. При добавлении native CommonUI bases `CommonUI` становится явной dependency `GV2`; Lua и optional serialization libraries остаются private implementation dependencies соответствующих host/runtime modules.
 
 ### C++ implementation profile
 
@@ -88,6 +90,12 @@ Source/GV2ContentCore/
 Source/GV2ContentHostSupport/
   Public/            DiscoverPackageFromDirectory() и другие filesystem-based discovery helpers (ADR-0019)
   Private/           std::filesystem-based implementation; depends on GV2ContentCore, not vice versa
+Source/GV2ContentAuthoring/
+  Public/            authoring operations, typed outcomes и file-state stamp
+  Private/           comment-preserving rewrite, candidate validation и atomic file replacement
+Source/GV2ContentEditor/
+  Public/            Editor Adapter, schema form/reference DTO и Slate widgets
+  Private/           portable conformance плюс editor-only frontend; отсутствует в Shipping
 Headless/
   Source/            standalone simulation host и metadata-only adapters
 Tools/Content/

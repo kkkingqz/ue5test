@@ -60,11 +60,13 @@ void SetupWriteFixture(const std::filesystem::path& ContainerDir)
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.item.v1',\n"
         "  definition_type: 'item',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true },\n"
-        "    weight: { type: 'number', required: false, default: 1.0 },\n"
-        "    value: { type: 'integer', required: false, default: 0 }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 },\n"
+        "    value: { kind: 'int64', required: false, default: 0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n");
 
     WriteFile(CoreDir / "schemas/actor.schema.json5",
@@ -72,12 +74,14 @@ void SetupWriteFixture(const std::filesystem::path& ContainerDir)
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.actor.v1',\n"
         "  definition_type: 'actor',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true },\n"
-        "    health: { type: 'integer', required: false, default: 100 },\n"
-        "    equipped_weapon: { type: 'reference', target_kind: 'item', required: false },\n"
-        "    home_location: { type: 'reference', target_kind: 'location', required: false }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    health: { kind: 'int64', required: false, default: 100 },\n"
+        "    equipped_weapon: { kind: 'ref', target_kind: 'item', required: false },\n"
+        "    home_location: { kind: 'ref', target_kind: 'location', required: false }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n");
 
     WriteFile(CoreDir / "schemas/location.schema.json5",
@@ -85,15 +89,17 @@ void SetupWriteFixture(const std::filesystem::path& ContainerDir)
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.location.v1',\n"
         "  definition_type: 'location',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n");
 
     WriteFile(CoreDir / "definitions/items.json5",
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.iron_sword',\n"
@@ -105,7 +111,7 @@ void SetupWriteFixture(const std::filesystem::path& ContainerDir)
     WriteFile(CoreDir / "definitions/locations.json5",
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'location',\n"
+        "  type: 'location',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:location.tavern',\n"
@@ -117,7 +123,7 @@ void SetupWriteFixture(const std::filesystem::path& ContainerDir)
     WriteFile(CoreDir / "definitions/actors.json5",
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'actor',\n"
+        "  type: 'actor',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:actor.hero',\n"
@@ -153,9 +159,9 @@ bool TestBatchFieldEditingAndSave()
     }
 
     // Edit 3 fields
-    Adapter.SetCurrentFieldValue("/definitions/0/data/name", GV2ContentCore::FValue("Enchanted Sword"));
-    Adapter.SetCurrentFieldValue("/definitions/0/data/weight", GV2ContentCore::FValue(3.0));
-    Adapter.SetCurrentFieldValue("/definitions/0/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(150)));
+    Adapter.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Enchanted Sword"));
+    Adapter.SetCurrentFieldValue("/data/weight", GV2ContentCore::FValue(3.0));
+    Adapter.SetCurrentFieldValue("/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(150)));
 
     if (!Adapter.IsDirty() || Adapter.GetDirtyFields().size() != 3)
     {
@@ -171,7 +177,7 @@ bool TestBatchFieldEditingAndSave()
         return false;
     }
 
-    auto CurrentName = Adapter.GetCurrentFieldValue("/definitions/0/data/name");
+    auto CurrentName = Adapter.GetCurrentFieldValue("/data/name");
     if (!CurrentName.has_value() || CurrentName->AsString() != "Iron Sword")
     {
         std::filesystem::remove_all(TempDir);
@@ -179,9 +185,9 @@ bool TestBatchFieldEditingAndSave()
     }
 
     // Re-apply and save
-    Adapter.SetCurrentFieldValue("/definitions/0/data/name", GV2ContentCore::FValue("Enchanted Sword"));
-    Adapter.SetCurrentFieldValue("/definitions/0/data/weight", GV2ContentCore::FValue(3.0));
-    Adapter.SetCurrentFieldValue("/definitions/0/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(150)));
+    Adapter.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Enchanted Sword"));
+    Adapter.SetCurrentFieldValue("/data/weight", GV2ContentCore::FValue(3.0));
+    Adapter.SetCurrentFieldValue("/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(150)));
 
     auto SaveResult = Adapter.SaveCurrentDefinition();
     if (!SaveResult.IsSuccess() || Adapter.IsDirty())
@@ -304,10 +310,14 @@ bool TestCliBitwiseParityAndAtomicity()
     std::vector<FGV2EditorDiagnostic> DiagsA;
     AdapterA.Initialize(TempDirA, DiagsA);
     AdapterA.LoadDefinition("core:item.iron_sword", DiagsA);
-    AdapterA.SetCurrentFieldValue("/definitions/0/data/name", GV2ContentCore::FValue("Fine Iron Sword"));
-    AdapterA.SetCurrentFieldValue("/definitions/0/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(35)));
+    AdapterA.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Fine Iron Sword"));
+    AdapterA.SetCurrentFieldValue("/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(35)));
     auto SaveResultA = AdapterA.SaveCurrentDefinition();
-    if (!SaveResultA.IsSuccess())
+    const auto* ReloadedDefinition = AdapterA.GetCurrentDefinition();
+    if (!SaveResultA.IsSuccess()
+        || ReloadedDefinition == nullptr
+        || ReloadedDefinition->Id != "core:item.iron_sword"
+        || AdapterA.IsDirty())
     {
         std::filesystem::remove_all(TempDirA);
         std::filesystem::remove_all(TempDirB);
@@ -318,8 +328,8 @@ bool TestCliBitwiseParityAndAtomicity()
     GV2ContentAuthoring::FBatchSetFieldsParams ParamsB;
     ParamsB.PackageRoot = TempDirB / "core";
     ParamsB.DefinitionId = "core:item.iron_sword";
-    ParamsB.Changes.push_back({ "/definitions/0/data/name", GV2ContentCore::FValue("Fine Iron Sword") });
-    ParamsB.Changes.push_back({ "/definitions/0/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(35)) });
+    ParamsB.Changes.push_back({ "/data/name", GV2ContentCore::FValue("Fine Iron Sword") });
+    ParamsB.Changes.push_back({ "/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(35)) });
     auto ResultB = GV2ContentAuthoring::FAuthoringService::BatchSetFields(ParamsB);
     if (!ResultB.IsSuccess())
     {
@@ -341,7 +351,7 @@ bool TestCliBitwiseParityAndAtomicity()
     // Test mid-batch failure leaves file completely untouched
     std::string PreFailContent = ReadFile(TempDirA / "core/definitions/items.json5");
     AdapterA.LoadDefinition("core:item.iron_sword", DiagsA);
-    AdapterA.SetCurrentFieldValue("/definitions/0/data/name", GV2ContentCore::FValue("Broken Sword"));
+    AdapterA.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Broken Sword"));
     AdapterA.SetCurrentFieldValue("/nonexistent/field", GV2ContentCore::FValue("invalid"));
     auto FailSave = AdapterA.SaveCurrentDefinition();
     if (FailSave.IsSuccess())
@@ -353,6 +363,21 @@ bool TestCliBitwiseParityAndAtomicity()
 
     std::string PostFailContent = ReadFile(TempDirA / "core/definitions/items.json5");
     if (PreFailContent != PostFailContent)
+    {
+        std::filesystem::remove_all(TempDirA);
+        std::filesystem::remove_all(TempDirB);
+        return false;
+    }
+
+    // A syntactically valid value of the wrong schema type must be rejected by
+    // the authoritative repository builder before the file is replaced.
+    AdapterA.DiscardCurrentChanges();
+    AdapterA.LoadDefinition("core:item.iron_sword", DiagsA);
+    AdapterA.SetCurrentFieldValue("/data/value", GV2ContentCore::FValue("not_an_integer"));
+    auto SchemaFailSave = AdapterA.SaveCurrentDefinition();
+    if (SchemaFailSave.IsSuccess()
+        || SchemaFailSave.Outcome != EEditorAuthoringOutcome::ValidationFailed
+        || ReadFile(TempDirA / "core/definitions/items.json5") != PostFailContent)
     {
         std::filesystem::remove_all(TempDirA);
         std::filesystem::remove_all(TempDirB);

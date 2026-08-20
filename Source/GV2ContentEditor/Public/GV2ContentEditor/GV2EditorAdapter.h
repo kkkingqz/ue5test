@@ -143,7 +143,8 @@ public:
 
     /** Returns the schema form model built dynamically for a definition type (CED-11). */
     std::optional<FGV2SchemaFormModel> GetFormModelForDefinitionType(
-        const std::string& DefinitionType) const;
+        const std::string& DefinitionType,
+        const std::optional<std::string>& OwningPackageId = std::nullopt) const;
 
     /** Scans outgoing references for the active loaded definition ("Uses", CED-12). */
     std::vector<FGV2ReferenceItem> GetOutgoingReferences() const;
@@ -155,6 +156,10 @@ public:
     /** Returns compatible target definition IDs for a given expected kind (CED-12). */
     std::vector<std::string> GetCompatibleReferenceTargets(
         const std::string& ExpectedKind) const;
+
+    /** Returns resource definition IDs filtered by canonical resource_class. */
+    std::vector<std::string> GetCompatibleResourceTargets(
+        const std::string& ResourceClass) const;
 
 private:
     std::filesystem::path FindPackageRootById(const std::string& PackageId) const;

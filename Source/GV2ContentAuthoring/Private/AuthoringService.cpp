@@ -21,6 +21,7 @@
 #include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string>
@@ -159,14 +160,12 @@ bool AtomicWriteFile(const std::filesystem::path& TargetPath, const std::string&
     std::filesystem::rename(TempPath, TargetPath, Ec);
     if (Ec)
     {
-        // Fallback for cross-device / windows issues
-        std::filesystem::copy_file(TempPath, TargetPath, std::filesystem::copy_options::overwrite_existing, Ec);
-        std::filesystem::remove(TempPath, Ec);
-        if (Ec)
-        {
-            OutError = "Failed to replace target file: " + TargetPath.string() + " (" + Ec.message() + ")";
-            return false;
-        }
+        const std::string RenameError = Ec.message();
+        std::error_code RemoveError;
+        std::filesystem::remove(TempPath, RemoveError);
+        OutError = "Failed to atomically replace target file: " + TargetPath.string()
+            + " (" + RenameError + ")";
+        return false;
     }
 
     return true;
@@ -272,8 +271,187 @@ FDiscoveredPackageSet DiscoverSet(const std::filesystem::path& TargetRoot)
     Set.Roots = std::move(Roots);
     Set.Descriptors = std::move(*DiscoveredDescriptors);
     Set.TargetIndex = Set.Descriptors.empty() ? 0 : Set.Descriptors.size() - 1;
+
+    std::string ManifestContent;
+    if (!Set.Descriptors.empty()
+        && ReadEntireFile(Set.Roots[Set.TargetIndex] / "package.json5", ManifestContent))
+    {
+        GV2ContentCore::FParseLimits Limits;
+        std::vector<GV2ContentCore::FDiagnostic> ManifestDiagnostics;
+        auto Manifest = GV2ContentCore::ParseJson5Document(
+            ManifestContent, Limits, ManifestDiagnostics,
+            Set.Descriptors[Set.TargetIndex].GetPackageId(),
+            Set.Descriptors[Set.TargetIndex].GetLoadIndex(), "package.json5");
+        if (Manifest.has_value() && Manifest->GetRootValue().IsObject())
+        {
+            const auto* Frozen = Manifest->GetRootValue().FindField("frozen");
+            const auto* Published = Manifest->GetRootValue().FindField("published");
+            const bool bFrozen = Frozen && Frozen->IsBoolean() && Frozen->AsBoolean();
+            const bool bPublished = Published && Published->IsBoolean() && Published->AsBoolean();
+            if (bFrozen || bPublished)
+            {
+                Set.ErrorCode = "package_frozen";
+                Set.ErrorMessage = "package is published/frozen and cannot be modified in place";
+                return Set;
+            }
+        }
+    }
+
     Set.bSuccess = true;
     return Set;
+}
+
+using FCandidateOverrides = std::map<std::string, std::string, std::less<>>;
+
+class FCandidateSourceProvider final : public GV2ContentCore::IContentSourceProvider
+{
+public:
+    FCandidateSourceProvider(
+        const std::vector<GV2ContentCore::FPackageDescriptor>& InDescriptors,
+        const std::vector<std::filesystem::path>& InRoots,
+        std::string InTargetPackageId,
+        const FCandidateOverrides& InOverrides)
+        : Descriptors(InDescriptors)
+        , Roots(InRoots)
+        , TargetPackageId(std::move(InTargetPackageId))
+        , Overrides(InOverrides)
+    {
+    }
+
+    std::optional<std::string> ReadSource(
+        const std::string_view PackageId,
+        const std::string_view RelativeSource) const override
+    {
+        if (PackageId == TargetPackageId)
+        {
+            const auto Override = Overrides.find(std::string(RelativeSource));
+            if (Override != Overrides.end())
+            {
+                return Override->second;
+            }
+        }
+
+        for (std::size_t Index = 0; Index < Descriptors.size() && Index < Roots.size(); ++Index)
+        {
+            if (Descriptors[Index].GetPackageId() == PackageId)
+            {
+                std::string Content;
+                if (ReadEntireFile(Roots[Index] / std::string(RelativeSource), Content))
+                {
+                    return Content;
+                }
+                return std::nullopt;
+            }
+        }
+        return std::nullopt;
+    }
+
+private:
+    const std::vector<GV2ContentCore::FPackageDescriptor>& Descriptors;
+    const std::vector<std::filesystem::path>& Roots;
+    std::string TargetPackageId;
+    const FCandidateOverrides& Overrides;
+};
+
+std::vector<GV2ContentCore::FPackageDescriptor> MakeCandidateDescriptors(
+    const FDiscoveredPackageSet& Set,
+    const FCandidateOverrides& Overrides)
+{
+    std::vector<GV2ContentCore::FPackageDescriptor> CandidateDescriptors;
+    CandidateDescriptors.reserve(Set.Descriptors.size());
+    for (std::size_t Index = 0; Index < Set.Descriptors.size(); ++Index)
+    {
+        const auto& Descriptor = Set.Descriptors[Index];
+        if (Index != Set.TargetIndex)
+        {
+            CandidateDescriptors.push_back(Descriptor);
+            continue;
+        }
+
+        std::vector<std::string> Sources = Descriptor.GetRelativeSources();
+        for (const auto& [RelativeSource, Content] : Overrides)
+        {
+            (void)Content;
+            if (std::find(Sources.begin(), Sources.end(), RelativeSource) == Sources.end())
+            {
+                Sources.push_back(RelativeSource);
+            }
+        }
+        std::sort(Sources.begin(), Sources.end());
+
+        CandidateDescriptors.emplace_back(
+            Descriptor.GetPackageId(),
+            Descriptor.GetNamespace(),
+            Descriptor.GetLoadIndex(),
+            std::move(Sources),
+            Descriptor.GetSchemaBindings(),
+            Descriptor.GetExtensionSchemaBindings(),
+            Descriptor.GetRedirects(),
+            Descriptor.GetTombstones(),
+            Descriptor.GetVersion(),
+            Descriptor.GetDependencies());
+    }
+    return CandidateDescriptors;
+}
+
+bool ValidateCandidateRepository(
+    const FDiscoveredPackageSet& Set,
+    const FCandidateOverrides& Overrides,
+    FAuthoringResult& OutResult)
+{
+    auto CandidateDescriptors = MakeCandidateDescriptors(Set, Overrides);
+    const std::string& TargetPackageId = CandidateDescriptors[Set.TargetIndex].GetPackageId();
+    FCandidateSourceProvider Provider(CandidateDescriptors, Set.Roots, TargetPackageId, Overrides);
+    GV2ContentCore::FBuildOptions Options;
+    Options.SourceProvider = &Provider;
+    auto BuildResult = GV2ContentCore::BuildRepository(CandidateDescriptors, Options);
+    if (BuildResult.IsSuccess())
+    {
+        return true;
+    }
+
+    OutResult.Status = EAuthoringStatus::ValidationFailed;
+    OutResult.ErrorCode = "validation_failed";
+    OutResult.ErrorMessage = "Candidate repository failed authoritative validation";
+    OutResult.Diagnostics = BuildResult.GetDiagnostics();
+    return false;
+}
+
+std::string FormatDuplicatedDefinitionEntry(
+    GV2ContentCore::FValue SourceEntry,
+    const std::string& TargetDefinitionId)
+{
+    if (auto* Id = SourceEntry.FindField("id"))
+    {
+        *Id = GV2ContentCore::FValue(TargetDefinitionId);
+    }
+    std::ostringstream Output;
+    Output << "    ";
+    FormatJson5Value(Output, SourceEntry, 2);
+    Output << ",\n";
+    return Output.str();
+}
+
+std::string FormatNewDefinitionEntry(
+    const std::string& DefinitionId,
+    const GV2ContentCore::FValue& Data,
+    const std::vector<std::string>& Tags)
+{
+    GV2ContentCore::FValue::FArray TagValues;
+    TagValues.reserve(Tags.size());
+    for (const auto& Tag : Tags) TagValues.emplace_back(Tag);
+    GV2ContentCore::FValue Entry = GV2ContentCore::FValue::MakeObject({
+        {"id", GV2ContentCore::FValue(DefinitionId)},
+        {"data", Data},
+        {"tags", GV2ContentCore::FValue(std::move(TagValues))},
+        {"deprecated", GV2ContentCore::FValue(false)},
+        {"extensions", GV2ContentCore::FValue::MakeObject({})},
+    });
+    std::ostringstream Output;
+    Output << "    ";
+    FormatJson5Value(Output, Entry, 2);
+    Output << ",\n";
+    return Output.str();
 }
 
 } // namespace
@@ -366,7 +544,9 @@ FAuthoringResult FAuthoringService::CreateDefinition(const FCreateDefinitionPara
     {
         Result.Status = EAuthoringStatus::SchemaNotFound;
         Result.ErrorCode = "unknown_definition_type";
-        Result.ErrorMessage = "Unknown definition type '" + Params.DefinitionType + "'";
+        Result.ErrorMessage = "Unknown definition type '" + Params.DefinitionType
+            + "' in package '" + TargetDescriptor.GetPackageId()
+            + "' or its dependencies";
         return Result;
     }
 
@@ -455,7 +635,8 @@ FAuthoringResult FAuthoringService::CreateDefinition(const FCreateDefinitionPara
         }
     }
 
-    std::string FormattedEntry = FormatDefinitionEntry(Params.DefinitionId, DefData, 2);
+    std::string FormattedEntry = FormatNewDefinitionEntry(
+        Params.DefinitionId, DefData, Params.Tags);
     std::filesystem::path TargetFile = TargetRoot / TargetRelativeSource;
     Result.TargetFilePath = TargetFile;
 
@@ -498,15 +679,8 @@ FAuthoringResult FAuthoringService::CreateDefinition(const FCreateDefinitionPara
         NewContent = CreateNewDefinitionFileContent(1, Params.DefinitionType, FormattedEntry);
     }
 
-    // In-memory validate new content
-    std::vector<GV2ContentCore::FDiagnostic> Diags;
-    auto ParsedVal = GV2ContentCore::ParseJson5(NewContent, Limits, Diags);
-    if (!ParsedVal.has_value() || !Diags.empty())
+    if (!ValidateCandidateRepository(Set, {{TargetRelativeSource, NewContent}}, Result))
     {
-        Result.Status = EAuthoringStatus::ValidationFailed;
-        Result.ErrorCode = "json5_parse_failed";
-        Result.ErrorMessage = "Modified content failed JSON5 parsing";
-        Result.Diagnostics = Diags;
         return Result;
     }
 
@@ -524,6 +698,8 @@ FAuthoringResult FAuthoringService::CreateDefinition(const FCreateDefinitionPara
     Result.UpdatedFileContent = NewContent;
     Result.NewStamp = FFileStateStamp::FromContent(NewContent);
     Result.AffectedDefinitionsCount = 1;
+    Result.AffectedFilesCount = 1;
+    Result.AffectedFilePaths = {TargetFile};
     return Result;
 }
 
@@ -690,15 +866,8 @@ FAuthoringResult FAuthoringService::BatchSetFields(const FBatchSetFieldsParams& 
         CurrentContent = std::move(SetRes.UpdatedContent);
     }
 
-    // In-memory validate against JSON5
-    std::vector<GV2ContentCore::FDiagnostic> Diags;
-    auto ParsedVal = GV2ContentCore::ParseJson5(CurrentContent, Limits, Diags);
-    if (!ParsedVal.has_value() || !Diags.empty())
+    if (!ValidateCandidateRepository(Set, {{TargetRelativeSource, CurrentContent}}, Result))
     {
-        Result.Status = EAuthoringStatus::ValidationFailed;
-        Result.ErrorCode = "validation_failed";
-        Result.ErrorMessage = "Modified content failed JSON5 validation";
-        Result.Diagnostics = Diags;
         return Result;
     }
 
@@ -716,6 +885,8 @@ FAuthoringResult FAuthoringService::BatchSetFields(const FBatchSetFieldsParams& 
     Result.UpdatedFileContent = CurrentContent;
     Result.NewStamp = FFileStateStamp::FromContent(CurrentContent);
     Result.AffectedDefinitionsCount = 1;
+    Result.AffectedFilesCount = 1;
+    Result.AffectedFilePaths = {TargetFilePath};
     return Result;
 }
 
@@ -770,6 +941,7 @@ FAuthoringResult FAuthoringService::DuplicateDefinition(const FDuplicateDefiniti
     const auto& TargetRoot = Set.Roots[Set.TargetIndex];
 
     std::filesystem::path TargetFilePath;
+    std::string TargetRelativeSource;
     GV2ContentCore::FValue SourceEntryValue;
     bool bFoundSource = false;
     GV2ContentCore::FParseLimits Limits;
@@ -804,6 +976,7 @@ FAuthoringResult FAuthoringService::DuplicateDefinition(const FDuplicateDefiniti
                 if (IdVal->AsString() == Params.SourceDefinitionId)
                 {
                     TargetFilePath = FilePath;
+                    TargetRelativeSource = RelSource;
                     SourceEntryValue = Def;
                     bFoundSource = true;
                 }
@@ -843,10 +1016,8 @@ FAuthoringResult FAuthoringService::DuplicateDefinition(const FDuplicateDefiniti
         return Result;
     }
 
-    const auto* DataField = SourceEntryValue.FindField("data");
-    GV2ContentCore::FValue DataVal = DataField != nullptr ? *DataField : GV2ContentCore::FValue::MakeObject({});
-
-    std::string FormattedEntry = FormatDefinitionEntry(Params.TargetDefinitionId, DataVal, 2);
+    std::string FormattedEntry = FormatDuplicatedDefinitionEntry(
+        SourceEntryValue, Params.TargetDefinitionId);
     std::string NewContent;
     std::string ErrorMsg;
     if (!InsertDefinitionEntryIntoJson5(OriginalContent, FormattedEntry, NewContent, ErrorMsg))
@@ -857,15 +1028,8 @@ FAuthoringResult FAuthoringService::DuplicateDefinition(const FDuplicateDefiniti
         return Result;
     }
 
-    // In-memory validate
-    std::vector<GV2ContentCore::FDiagnostic> Diags;
-    auto ParsedVal = GV2ContentCore::ParseJson5(NewContent, Limits, Diags);
-    if (!ParsedVal.has_value() || !Diags.empty())
+    if (!ValidateCandidateRepository(Set, {{TargetRelativeSource, NewContent}}, Result))
     {
-        Result.Status = EAuthoringStatus::ValidationFailed;
-        Result.ErrorCode = "validation_failed";
-        Result.ErrorMessage = "Duplicated content failed validation";
-        Result.Diagnostics = Diags;
         return Result;
     }
 
@@ -883,6 +1047,8 @@ FAuthoringResult FAuthoringService::DuplicateDefinition(const FDuplicateDefiniti
     Result.UpdatedFileContent = NewContent;
     Result.NewStamp = FFileStateStamp::FromContent(NewContent);
     Result.AffectedDefinitionsCount = 1;
+    Result.AffectedFilesCount = 1;
+    Result.AffectedFilePaths = {TargetFilePath};
     return Result;
 }
 
@@ -993,15 +1159,8 @@ FAuthoringResult FAuthoringService::DeleteDefinition(const FDeleteDefinitionPara
 
     std::string NewContent = std::move(RemoveRes.UpdatedContent);
 
-    // In-memory validate
-    std::vector<GV2ContentCore::FDiagnostic> Diags;
-    auto ParsedVal = GV2ContentCore::ParseJson5(NewContent, Limits, Diags);
-    if (!ParsedVal.has_value() || !Diags.empty())
+    if (!ValidateCandidateRepository(Set, {{TargetRelativeSource, NewContent}}, Result))
     {
-        Result.Status = EAuthoringStatus::ValidationFailed;
-        Result.ErrorCode = "validation_failed";
-        Result.ErrorMessage = "Modified content failed validation";
-        Result.Diagnostics = Diags;
         return Result;
     }
 
@@ -1019,6 +1178,8 @@ FAuthoringResult FAuthoringService::DeleteDefinition(const FDeleteDefinitionPara
     Result.UpdatedFileContent = NewContent;
     Result.NewStamp = FFileStateStamp::FromContent(NewContent);
     Result.AffectedDefinitionsCount = 1;
+    Result.AffectedFilesCount = 1;
+    Result.AffectedFilePaths = {TargetFilePath};
     return Result;
 }
 
@@ -1050,6 +1211,12 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
         return Result;
     }
 
+    if (Params.OldDefinitionId == Params.NewDefinitionId)
+    {
+        Result.Status = EAuthoringStatus::Success;
+        return Result;
+    }
+
     auto Set = DiscoverSet(Params.PackageRoot);
     if (!Set.bSuccess)
     {
@@ -1062,14 +1229,77 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
     const auto& TargetDescriptor = Set.Descriptors[Set.TargetIndex];
     const auto& TargetRoot = Set.Roots[Set.TargetIndex];
 
-    std::vector<std::pair<std::filesystem::path, std::string>> FilesToUpdate;
+    for (const auto& Redirect : TargetDescriptor.GetRedirects())
+    {
+        if (Redirect.GetSourceId() == Params.NewDefinitionId
+            || Redirect.GetTargetId() == Params.NewDefinitionId)
+        {
+            Result.Status = EAuthoringStatus::DuplicateDefinitionId;
+            Result.ErrorCode = "duplicate_definition_id";
+            Result.ErrorMessage = "Definition ID '" + Params.NewDefinitionId
+                + "' is already reserved by a redirect";
+            return Result;
+        }
+    }
+    if (std::find(
+            TargetDescriptor.GetTombstones().begin(),
+            TargetDescriptor.GetTombstones().end(),
+            Params.NewDefinitionId) != TargetDescriptor.GetTombstones().end())
+    {
+        Result.Status = EAuthoringStatus::DuplicateDefinitionId;
+        Result.ErrorCode = "duplicate_definition_id";
+        Result.ErrorMessage = "Definition ID '" + Params.NewDefinitionId
+            + "' is reserved by a tombstone";
+        return Result;
+    }
+
+    struct FPendingFileUpdate
+    {
+        std::filesystem::path FilePath;
+        std::string RelativeSource;
+        std::string OriginalContent;
+        std::string Content;
+    };
+    std::vector<FPendingFileUpdate> FilesToUpdate;
     std::size_t TotalReplacements = 0;
+    bool bFoundDefinition = false;
+    std::filesystem::path DefinitionFilePath;
+    GV2ContentCore::FParseLimits Limits;
 
     for (const std::string& RelSource : TargetDescriptor.GetRelativeSources())
     {
         std::filesystem::path FilePath = TargetRoot / RelSource;
         std::string Content;
         if (!ReadEntireFile(FilePath, Content)) continue;
+
+        std::vector<GV2ContentCore::FDiagnostic> ParseDiagnostics;
+        auto ParsedDocument = GV2ContentCore::ParseJson5Document(
+            Content, Limits, ParseDiagnostics,
+            TargetDescriptor.GetPackageId(), TargetDescriptor.GetLoadIndex(), RelSource);
+        if (ParsedDocument.has_value())
+        {
+            const auto* Definitions = ParsedDocument->GetRootValue().FindField("definitions");
+            if (Definitions && Definitions->IsArray())
+            {
+                for (const auto& Definition : Definitions->AsArray())
+                {
+                    const auto* Id = Definition.IsObject() ? Definition.FindField("id") : nullptr;
+                    if (Id && Id->IsString() && Id->AsString() == Params.NewDefinitionId)
+                    {
+                        Result.Status = EAuthoringStatus::DuplicateDefinitionId;
+                        Result.ErrorCode = "duplicate_definition_id";
+                        Result.ErrorMessage = "Definition ID '" + Params.NewDefinitionId
+                            + "' already exists in package";
+                        return Result;
+                    }
+                    if (Id && Id->IsString() && Id->AsString() == Params.OldDefinitionId)
+                    {
+                        bFoundDefinition = true;
+                        DefinitionFilePath = FilePath;
+                    }
+                }
+            }
+        }
 
         auto RenameRes = ReplaceStringTokens(
             Content,
@@ -1080,50 +1310,78 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
 
         if (RenameRes.bSuccess && RenameRes.ReplacementsCount > 0)
         {
-            FilesToUpdate.emplace_back(FilePath, std::move(RenameRes.UpdatedContent));
+            FilesToUpdate.push_back({
+                FilePath, RelSource, Content, std::move(RenameRes.UpdatedContent)});
             TotalReplacements += RenameRes.ReplacementsCount;
         }
     }
 
-    if (TotalReplacements == 0)
+    if (!bFoundDefinition || TotalReplacements == 0)
     {
         Result.Status = EAuthoringStatus::DefinitionNotFound;
-        Result.ErrorCode = "definition_not_found";
+        Result.ErrorCode = "source_definition_not_found";
         Result.ErrorMessage = "Definition '" + Params.OldDefinitionId + "' not found in package";
         return Result;
     }
 
-    // In-memory validate all modified files
-    GV2ContentCore::FParseLimits Limits;
-    for (const auto& [FilePath, NewContent] : FilesToUpdate)
+    if (Params.ExpectedStamp.has_value()
+        && !FFileStateStamp::FromFile(DefinitionFilePath).Matches(*Params.ExpectedStamp))
     {
-        std::vector<GV2ContentCore::FDiagnostic> Diags;
-        auto ParsedVal = GV2ContentCore::ParseJson5(NewContent, Limits, Diags);
-        if (!ParsedVal.has_value() || !Diags.empty())
-        {
-            Result.Status = EAuthoringStatus::ValidationFailed;
-            Result.ErrorCode = "validation_failed";
-            Result.ErrorMessage = "Rename produced invalid content in: " + FilePath.string();
-            Result.Diagnostics = Diags;
-            return Result;
-        }
+        Result.Status = EAuthoringStatus::StaleFileState;
+        Result.ErrorCode = "stale_file_state";
+        Result.ErrorMessage = "Definition file on disk has been modified externally";
+        return Result;
     }
 
-    // Atomic write all files
-    for (const auto& [FilePath, NewContent] : FilesToUpdate)
+    FCandidateOverrides Overrides;
+    for (const auto& Update : FilesToUpdate)
+    {
+        Overrides.emplace(Update.RelativeSource, Update.Content);
+    }
+    if (!ValidateCandidateRepository(Set, Overrides, Result))
+    {
+        return Result;
+    }
+
+    // Each replacement is atomic. Candidate validation above guarantees that no
+    // invalid repository state is deliberately committed.
+    std::size_t CommittedCount = 0;
+    for (const auto& Update : FilesToUpdate)
     {
         std::string WriteErr;
-        if (!AtomicWriteFile(FilePath, NewContent, WriteErr))
+        if (!AtomicWriteFile(Update.FilePath, Update.Content, WriteErr))
         {
+            bool bRollbackSucceeded = true;
+            while (CommittedCount > 0)
+            {
+                --CommittedCount;
+                std::string RollbackError;
+                const auto& Committed = FilesToUpdate[CommittedCount];
+                if (!AtomicWriteFile(Committed.FilePath, Committed.OriginalContent, RollbackError))
+                {
+                    bRollbackSucceeded = false;
+                    WriteErr += "; rollback failed for " + Committed.FilePath.string()
+                        + ": " + RollbackError;
+                }
+            }
             Result.Status = EAuthoringStatus::FileWriteFailed;
             Result.ErrorCode = "file_write_failed";
-            Result.ErrorMessage = WriteErr;
+            Result.ErrorMessage = bRollbackSucceeded
+                ? WriteErr + "; previously replaced files were rolled back"
+                : WriteErr;
             return Result;
         }
+        ++CommittedCount;
     }
 
     Result.Status = EAuthoringStatus::Success;
     Result.AffectedDefinitionsCount = TotalReplacements;
+    Result.AffectedFilesCount = FilesToUpdate.size();
+    Result.ReplacementsCount = TotalReplacements;
+    for (const auto& Update : FilesToUpdate)
+    {
+        Result.AffectedFilePaths.push_back(Update.FilePath);
+    }
     return Result;
 }
 

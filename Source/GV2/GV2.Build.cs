@@ -6,6 +6,7 @@ public class GV2 : ModuleRules
     public GV2(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+        bEnableExceptions = true;
 
         PublicDependencyModuleNames.AddRange(new string[]
         {
@@ -17,9 +18,7 @@ public class GV2 : ModuleRules
             "CommonUI",
             "GV2RuntimeCore",
             "GV2ContentCore",
-            "GV2ContentHostSupport",
-            "GV2ContentAuthoring",
-            "GV2TestSupport"
+            "GV2ContentHostSupport"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]
@@ -32,6 +31,8 @@ public class GV2 : ModuleRules
 
         if (Target.bBuildEditor)
         {
+            PrivateDependencyModuleNames.Add("GV2ContentAuthoring");
+            PrivateDependencyModuleNames.Add("GV2TestSupport");
             PrivateDependencyModuleNames.Add("GV2ContentEditor");
         }
 

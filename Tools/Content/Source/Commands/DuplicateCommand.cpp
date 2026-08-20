@@ -56,12 +56,21 @@ int RunDuplicate(const std::vector<std::string>& Positional, EOutputFormat Forma
     GV2ContentAuthoring::FAuthoringResult Result = GV2ContentAuthoring::FAuthoringService::DuplicateDefinition(Params);
     if (!Result.IsSuccess())
     {
+        if (!Result.Diagnostics.empty())
+        {
+            return EmitDiagnosticsFailure(Result.Diagnostics, Format);
+        }
         if (Format == EOutputFormat::Json)
         {
-            std::cout << "{\"status\":\"error\",\"code\":\"" << Result.ErrorCode
-                      << "\",\"message\":\"" << Result.ErrorMessage
-                      << "\",\"source_id\":\"" << SourceIdStr
-                      << "\",\"target_id\":\"" << TargetIdStr << "\"}\n";
+            std::cout << "{\"status\":\"error\",\"code\":";
+            WriteJsonEscapedString(std::cout, Result.ErrorCode.empty() ? "tool_failure" : Result.ErrorCode);
+            std::cout << ",\"message\":";
+            WriteJsonEscapedString(std::cout, Result.ErrorMessage);
+            std::cout << ",\"source_id\":";
+            WriteJsonEscapedString(std::cout, SourceIdStr);
+            std::cout << ",\"target_id\":";
+            WriteJsonEscapedString(std::cout, TargetIdStr);
+            std::cout << "}\n";
         }
         else
         {
@@ -72,9 +81,17 @@ int RunDuplicate(const std::vector<std::string>& Positional, EOutputFormat Forma
 
     if (Format == EOutputFormat::Json)
     {
-        std::cout << "{\"status\":\"ok\",\"source_id\":\"" << SourceIdStr
-                  << "\",\"target_id\":\"" << TargetIdStr
-                  << "\",\"file\":\"" << Result.TargetFilePath.filename().string() << "\"}\n";
+        std::error_code RelativeError;
+        const auto RelativeFile = std::filesystem::relative(Result.TargetFilePath, Root, RelativeError);
+        std::cout << "{\"status\":\"ok\",\"source_id\":";
+        WriteJsonEscapedString(std::cout, SourceIdStr);
+        std::cout << ",\"target_id\":";
+        WriteJsonEscapedString(std::cout, TargetIdStr);
+        std::cout << ",\"file\":";
+        WriteJsonEscapedString(
+            std::cout,
+            RelativeError ? Result.TargetFilePath.generic_string() : RelativeFile.generic_string());
+        std::cout << "}\n";
     }
     else
     {

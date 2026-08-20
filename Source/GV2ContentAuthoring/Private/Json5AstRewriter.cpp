@@ -745,25 +745,6 @@ FSetFieldValueResult SetFieldValue(
         return Result;
     }
 
-    // Check if target is a container
-    const auto* TargetVal = FindValueByPointer(ParsedDoc->GetRootValue(), JsonPointer);
-    if (TargetVal != nullptr && (TargetVal->IsObject() || TargetVal->IsArray()))
-    {
-        Result.Status = ESetFieldValueStatus::TargetIsContainer;
-        Result.ErrorCode = "target_is_container";
-        Result.ErrorMessage = "JSON pointer '" + JsonPointer + "' refers to a container (object/array), expected scalar value";
-        return Result;
-    }
-
-    // Validate NewValue is not a container
-    if (NewValue.IsObject() || NewValue.IsArray())
-    {
-        Result.Status = ESetFieldValueStatus::InvalidValue;
-        Result.ErrorCode = "invalid_value";
-        Result.ErrorMessage = "Cannot set container value directly via set; value must be a scalar";
-        return Result;
-    }
-
     std::size_t StartByte = 0;
     std::size_t EndByte = 0;
     if (!SourceSpanToByteRange(OriginalContent, Location->ValueSpan, StartByte, EndByte))

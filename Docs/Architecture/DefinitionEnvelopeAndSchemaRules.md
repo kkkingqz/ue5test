@@ -1,7 +1,7 @@
 ---
 title: Definition Envelope and Schema Rules
 status: normative
-version: 2.7
+version: 2.8
 updated: 2026-08-20
 depends_on:
   - StableIDSpecification.md
@@ -11,6 +11,7 @@ decisions:
   - ../ADR/0022-external-translation-catalog.md
   - ../ADR/0026-core-and-gameplay-ownership.md
   - ../ADR/0029-content-authoring-and-schema-evolution.md
+  - ../ADR/0037-content-authoring-layer.md
 ---
 
 # Definition Envelope and Schema Rules
@@ -18,8 +19,8 @@ decisions:
 > **Владеет:** конвертом файла определений, устройством схем, типами полей, значениями по умолчанию, расширениями, метаданными авторинга и лимитами парсинга.
 > **Не владеет:** разрешением провайдеров и публикацией снимка ([GameDataRepository](GameDataRepositoryContract.md)).
 > **Инварианты:** [INV-011](Invariants.md)
-> **Реализация:** `Source/GV2ContentCore/Private/Json5Parser.cpp`, `SchemaRegistry.cpp`, `FieldValidation.cpp`, `DefinitionEnvelope.cpp`, `AuthoringMetadata.cpp`.
-> **Проверки:** `RunJson5ParserConformance`, `RunSchemaRegistryConformance`, `RunScalarValidationConformance`, `RunAuthoringMetadataConformance`.
+> **Реализация:** `Source/GV2ContentCore/Private/Json5Parser.cpp`, `SchemaRegistry.cpp`, `FieldValidation.cpp`, `DefinitionEnvelope.cpp`, `AuthoringMetadata.cpp`; `Source/GV2ContentAuthoring/`.
+> **Проверки:** `RunJson5ParserConformance`, `RunSchemaRegistryConformance`, `RunScalarValidationConformance`, `RunAuthoringMetadataConformance`, `content_editor_conformance`.
 
 Документ задаёт единую модель UTF-8 JSON5 definitions и declarative schemas. Runtime, editor, commandlet и CI используют одинаковые правила validation.
 
@@ -337,6 +338,18 @@ Extension schema resource является closed object с полями `id`, `
 10. Build provenance/minimal indexes/hash.
 11. Build immutable `RepositoryResolved` candidate.
 12. Publish atomically only when no errors exist.
+
+## Authoring operations
+
+`GV2ContentAuthoring` является единственным write path для CLI и Unreal Content Editor. Public field pointer обязан быть definition-relative: `/data/...`, `/extensions/<package>/...`, `/tags/...` или `/deprecated`. Document-relative `/definitions/<index>/...` является внутренней деталью AST rewrite и запрещён в Editor Adapter API.
+
+Каждая операция обязана выполнить последовательность `prepare in memory → BuildRepository(candidate package set) → atomic same-directory rename`. Одной проверки JSON5 syntax недостаточно. Любая envelope, schema, reference, Stable ID ownership или extension diagnostic блокирует замену файла; предыдущие bytes остаются неизменными. Non-atomic fallback с прямой перезаписью target запрещён.
+
+Пакет с `frozen: true` или `published: true` не может быть изменён ни одной authoring operation; отказ `package_frozen` формируется общей библиотекой до подготовки candidate.
+
+Scalar, array и object values заменяются одним и тем же span-based механизмом. Текст и комментарии вне span целевого значения сохраняются. Batch save готовит все изменения одного файла до единственной validation/write; optimistic `ExpectedStamp` отклоняет устаревшее представление как `stale_file_state`.
+
+Schema-driven Editor обязан показывать extension fields только namespace-а package, содержащего выбранную definition entry. Foreign extension block запрещён правилами выше и не становится редактируемой compositional моделью: full override не наследует extension blocks другого provider-а.
 
 Semantic validators перечисляются schema в стабильном порядке. `ISemanticValidator::Validate()` получает current materialized winner, `FSemanticCandidateView`, immutable provenance context и diagnostic sink. Candidate view предоставляет только read operations над winners; validator не может заменить definition или изменить candidate. Core и optional host registry ищутся по exact validator Stable ID. Unavailable validator, invalid/duplicate registration и любой validator diagnostic являются fatal. Lua hooks, I/O, mutation, locale/time-dependent logic и wall-clock dependency запрещены.
 

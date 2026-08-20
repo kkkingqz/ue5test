@@ -110,7 +110,7 @@ void SetupFourKindsFixture(const std::filesystem::path& ContainerDir)
         "  package_id: 'textsystem',\n"
         "  namespace: 'textsystem',\n"
         "  version: '1.0.0',\n"
-        "  dependencies: ['core']\n"
+        "  dependencies: [{ package_id: 'core' }]\n"
         "}\n");
 
     WriteFile(TextDir / "schemas/location_v1.schema.json5",
@@ -168,7 +168,7 @@ void SetupFourKindsFixture(const std::filesystem::path& ContainerDir)
         "  package_id: 'game',\n"
         "  namespace: 'game',\n"
         "  version: '1.0.0',\n"
-        "  dependencies: ['core', 'textsystem']\n"
+        "  dependencies: [{ package_id: 'core' }, { package_id: 'textsystem' }]\n"
         "}\n");
 
     WriteFile(GameDir / "schemas/item_v1.schema.json5",
@@ -292,9 +292,6 @@ void SetupFourKindsFixture(const std::filesystem::path& ContainerDir)
         "        discriminator: 'player'\n"
         "      },\n"
         "      extensions: {\n"
-        "        textsystem: {\n"
-        "          current_location: 'game:location.city.market'\n"
-        "        },\n"
         "        game: {\n"
         "          name_text_id: 'game:text.hero.name',\n"
         "          base_hp: 100\n"
@@ -315,6 +312,12 @@ bool TestItemKindAuthoring()
     std::vector<FGV2EditorDiagnostic> Diags;
     if (!Adapter.Initialize(TempDir, Diags))
     {
+        std::cerr << "item initialize failed";
+        for (const auto& Diagnostic : Diags)
+        {
+            std::cerr << " [" << Diagnostic.Code << ": " << Diagnostic.Message << "]";
+        }
+        std::cerr << '\n';
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -323,6 +326,7 @@ bool TestItemKindAuthoring()
     auto FormModelOpt = Adapter.GetFormModelForDefinitionType("item");
     if (!FormModelOpt.has_value())
     {
+        std::cerr << "item form model failed\n";
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -331,14 +335,16 @@ bool TestItemKindAuthoring()
     auto LoadedOpt = Adapter.LoadDefinition("game:item.weapon.iron_sword", Diags);
     if (!LoadedOpt.has_value())
     {
+        std::cerr << "item load failed\n";
         std::filesystem::remove_all(TempDir);
         return false;
     }
 
     // 3. Modify value
-    Adapter.SetCurrentFieldValue("/definitions/0/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(30)));
+    Adapter.SetCurrentFieldValue("/data/value", GV2ContentCore::FValue(static_cast<std::int64_t>(30)));
     if (!Adapter.IsDirty())
     {
+        std::cerr << "item dirty tracking failed\n";
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -346,6 +352,12 @@ bool TestItemKindAuthoring()
     auto SaveResult = Adapter.SaveCurrentDefinition();
     if (!SaveResult.IsSuccess() || Adapter.IsDirty())
     {
+        std::cerr << "item save failed: " << SaveResult.ErrorCode << " " << SaveResult.ErrorMessage;
+        for (const auto& Diagnostic : SaveResult.Diagnostics)
+        {
+            std::cerr << " [" << Diagnostic.Code << ": " << Diagnostic.Message << "]";
+        }
+        std::cerr << '\n';
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -356,6 +368,7 @@ bool TestItemKindAuthoring()
     {
         if (D.Severity == GV2ContentCore::EDiagnosticSeverity::Error)
         {
+            std::cerr << "item repository validation failed: " << D.Code << " " << D.Message << '\n';
             std::filesystem::remove_all(TempDir);
             return false;
         }
@@ -375,6 +388,7 @@ bool TestLocationKindAuthoringAndReferenceArrays()
     std::vector<FGV2EditorDiagnostic> Diags;
     if (!Adapter.Initialize(TempDir, Diags))
     {
+        std::cerr << "location initialize failed\n";
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -383,6 +397,7 @@ bool TestLocationKindAuthoringAndReferenceArrays()
     auto LoadedOpt = Adapter.LoadDefinition("game:location.city.market", Diags);
     if (!LoadedOpt.has_value())
     {
+        std::cerr << "location load failed\n";
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -391,11 +406,14 @@ bool TestLocationKindAuthoringAndReferenceArrays()
     GV2ContentCore::FValue::FArray ConnLocs;
     ConnLocs.push_back(GV2ContentCore::FValue("game:location.city.tavern"));
     ConnLocs.push_back(GV2ContentCore::FValue("game:location.city.gate"));
-    Adapter.SetCurrentFieldValue("/definitions/0/data/connected_location_ids", GV2ContentCore::FValue(ConnLocs));
+    Adapter.SetCurrentFieldValue("/data/connected_location_ids", GV2ContentCore::FValue(ConnLocs));
 
     auto SaveResult = Adapter.SaveCurrentDefinition();
     if (!SaveResult.IsSuccess() || Adapter.IsDirty())
     {
+        std::cerr << "location save failed: " << SaveResult.ErrorCode << " " << SaveResult.ErrorMessage;
+        for (const auto& Diagnostic : SaveResult.Diagnostics) std::cerr << " [" << Diagnostic.Code << ": " << Diagnostic.Message << "]";
+        std::cerr << '\n';
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -414,6 +432,7 @@ bool TestLocationKindAuthoringAndReferenceArrays()
 
     if (!bFoundMarket)
     {
+        std::cerr << "location incoming reference refresh failed\n";
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -422,6 +441,7 @@ bool TestLocationKindAuthoringAndReferenceArrays()
     auto CompatibleScreens = Adapter.GetCompatibleReferenceTargets("screen");
     if (CompatibleScreens.empty())
     {
+        std::cerr << "location compatible screens failed\n";
         std::filesystem::remove_all(TempDir);
         return false;
     }
@@ -445,7 +465,7 @@ bool TestActorKindAuthoringWithMultiPackageExtensions()
     }
 
     // 1. Check form model contains base fields + textsystem & game extension fields
-    auto FormModelOpt = Adapter.GetFormModelForDefinitionType("actor");
+    auto FormModelOpt = Adapter.GetFormModelForDefinitionType("actor", "game");
     if (!FormModelOpt.has_value())
     {
         std::filesystem::remove_all(TempDir);
@@ -464,7 +484,7 @@ bool TestActorKindAuthoringWithMultiPackageExtensions()
         if (Field.FieldName == "base_hp") bHasBaseHp = true;
     }
 
-    if (!bHasDiscriminator || !bHasCurrentLocation || !bHasBaseHp)
+    if (!bHasDiscriminator || bHasCurrentLocation || !bHasBaseHp)
     {
         std::filesystem::remove_all(TempDir);
         return false;
@@ -478,10 +498,36 @@ bool TestActorKindAuthoringWithMultiPackageExtensions()
         return false;
     }
 
-    // 3. Edit base field, textsystem extension field, and game extension field
-    Adapter.SetCurrentFieldValue("/definitions/0/data/discriminator", GV2ContentCore::FValue("player"));
-    Adapter.SetCurrentFieldValue("/definitions/0/extensions/textsystem/current_location", GV2ContentCore::FValue("game:location.city.market"));
-    Adapter.SetCurrentFieldValue("/definitions/0/extensions/game/base_hp", GV2ContentCore::FValue(static_cast<std::int64_t>(125)));
+    const auto ActorFile = TempDir / "game/definitions/actors.json5";
+    const std::string BeforeForeignWrite = ReadFile(ActorFile);
+    Adapter.SetCurrentFieldValue(
+        "/extensions/textsystem/current_location",
+        GV2ContentCore::FValue("game:location.city.market"));
+    const auto ForeignWrite = Adapter.SaveCurrentDefinition();
+    if (ForeignWrite.IsSuccess() || ReadFile(ActorFile) != BeforeForeignWrite)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    Adapter.DiscardCurrentChanges();
+
+    const auto ExistingHp = Adapter.GetCurrentFieldValue("/extensions/game/base_hp");
+    if (!ExistingHp.has_value() || !ExistingHp->IsInteger() || ExistingHp->AsInteger() != 100)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    Adapter.SetCurrentFieldValue("/extensions/game/base_hp", *ExistingHp);
+    if (Adapter.IsDirty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 3. Edit a base field and the extension namespace owned by the definition package.
+    Adapter.SetCurrentFieldValue("/data/discriminator", GV2ContentCore::FValue("player"));
+    Adapter.SetCurrentFieldValue("/extensions/game/base_hp", GV2ContentCore::FValue(static_cast<std::int64_t>(125)));
 
     auto SaveResult = Adapter.SaveCurrentDefinition();
     if (!SaveResult.IsSuccess() || Adapter.IsDirty())
@@ -492,8 +538,8 @@ bool TestActorKindAuthoringWithMultiPackageExtensions()
 
     // 4. Verify disk file has extension blocks preserved in game/definitions/actors.json5
     std::string DiskContent = ReadFile(TempDir / "game/definitions/actors.json5");
-    if (DiskContent.find("125") == std::string::npos ||
-        DiskContent.find("current_location") == std::string::npos)
+    if (DiskContent.find("125") == std::string::npos
+        || DiskContent.find("base_hp") == std::string::npos)
     {
         std::filesystem::remove_all(TempDir);
         return false;
@@ -567,4 +613,3 @@ std::string RunFourKindsConformance()
 }
 
 } // namespace GV2ContentEditor::Testing
-

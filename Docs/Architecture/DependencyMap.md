@@ -67,6 +67,8 @@ gv2-content   →  только Content Core, без Lua VM
 | `GV2ContentHostSupport` | Filesystem discovery пакетов | `GV2ContentCore` |
 | `GV2RuntimeCore` | Lua VM, сессия, marshalling | `GV2ContentCore` |
 | `GV2TestSupport` | Spec runner и тестовые фикстуры | `GV2RuntimeCore` |
-| `GV2` | UE composition, Bridge, Presentation | все выше |
+| `GV2ContentAuthoring` | Portable atomic authoring operations | `GV2ContentCore`, `GV2ContentHostSupport` |
+| `GV2ContentEditor` | Editor Adapter и Unreal Editor Slate frontend | `GV2ContentAuthoring`, `GV2ContentCore`, `GV2ContentHostSupport`; editor-only |
+| `GV2` | UE composition, Bridge, Presentation | runtime modules; `GV2TestSupport`, `GV2ContentAuthoring`, `GV2ContentEditor` только в Editor target |
 
 Точная физическая раскладка и build-таргеты — [Build and Tooling](BuildAndTooling.md).

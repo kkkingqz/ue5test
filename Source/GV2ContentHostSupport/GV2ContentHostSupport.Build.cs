@@ -7,6 +7,7 @@ public class GV2ContentHostSupport : ModuleRules
         PCHUsage = PCHUsageMode.NoPCHs;
         CppStandard = CppStandardVersion.Cpp20;
         bUseUnity = false;
+        bEnableExceptions = true;
 
         // Only the Unreal module bootstrap uses Core. Portable public headers and
         // implementation sources remain dependency-free (besides GV2ContentCore)

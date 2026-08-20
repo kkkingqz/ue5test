@@ -62,6 +62,9 @@ struct GV2_CONTENT_AUTHORING_API FAuthoringResult
     std::filesystem::path TargetFilePath;
     std::string UpdatedFileContent;
     std::size_t AffectedDefinitionsCount = 0;
+    std::size_t AffectedFilesCount = 0;
+    std::size_t ReplacementsCount = 0;
+    std::vector<std::filesystem::path> AffectedFilePaths;
 
     bool IsSuccess() const { return Status == EAuthoringStatus::Success; }
 };
@@ -97,7 +100,6 @@ struct FDeleteDefinitionParams
 {
     std::filesystem::path PackageRoot;
     std::string DefinitionId;
-    bool bCheckReferences = true;
     std::optional<FFileStateStamp> ExpectedStamp;
 };
 

@@ -15,6 +15,7 @@ namespace GV2ContentEditor
 
 DECLARE_DELEGATE_OneParam(FOnDefinitionSelected, const FString& /*DefinitionId*/);
 DECLARE_DELEGATE(FOnDefinitionsChanged);
+DECLARE_DELEGATE_OneParam(FOnDefinitionOperationCompleted, const FGV2EditorAuthoringResult&);
 
 class GV2_CONTENT_EDITOR_API SGV2DefinitionBrowser : public SCompoundWidget
 {
@@ -22,6 +23,7 @@ public:
     SLATE_BEGIN_ARGS(SGV2DefinitionBrowser) {}
         SLATE_EVENT(FOnDefinitionSelected, OnDefinitionSelected)
         SLATE_EVENT(FOnDefinitionsChanged, OnDefinitionsChanged)
+        SLATE_EVENT(FOnDefinitionOperationCompleted, OnOperationCompleted)
     SLATE_END_ARGS()
 
     void Construct(const FArguments& InArgs, TSharedPtr<FGV2EditorAdapter> InAdapter);
@@ -45,13 +47,17 @@ private:
     void FilterItems();
 
     void HandleCopyId();
+    FReply HandleCreate();
     void HandleDuplicate();
+    void HandleRename();
     void HandleDelete();
+    void ReportOperation(const FGV2EditorAuthoringResult& Result);
 
 private:
     TSharedPtr<FGV2EditorAdapter> Adapter;
     FOnDefinitionSelected OnDefinitionSelected;
     FOnDefinitionsChanged OnDefinitionsChanged;
+    FOnDefinitionOperationCompleted OnOperationCompleted;
 
     TArray<TSharedPtr<FGV2DefinitionSummary>> AllItems;
     TArray<TSharedPtr<FGV2DefinitionSummary>> FilteredItems;

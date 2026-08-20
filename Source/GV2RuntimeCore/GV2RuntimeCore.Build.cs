@@ -8,6 +8,7 @@ public class GV2RuntimeCore : ModuleRules
         PCHUsage = PCHUsageMode.NoPCHs;
         CppStandard = CppStandardVersion.Cpp20;
         bUseUnity = false;
+        bEnableExceptions = true;
 
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "GV2ContentCore" });
         PublicDefinitions.Add("GV2_RUNTIME_CORE_IMPORTS=1");

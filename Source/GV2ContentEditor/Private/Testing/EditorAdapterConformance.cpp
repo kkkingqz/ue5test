@@ -68,11 +68,13 @@ void SetupTestGameData(const std::filesystem::path& ContainerDir, const std::str
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.item.v1',\n"
         "  definition_type: 'item',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true },\n"
-        "    weight: { type: 'number', required: false, default: 1.0 },\n"
-        "    value: { type: 'integer', required: false, default: 0 }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 },\n"
+        "    value: { kind: 'int64', required: false, default: 0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n";
     WriteFile(CoreDir / "schemas/item.schema.json5", SchemaJson5);
 
@@ -86,7 +88,7 @@ bool TestAdapterInitializationAndIndexing()
     std::string InitialItems =
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.sword',\n"
@@ -155,7 +157,7 @@ bool TestAdapterLoadAndDirtyState()
     std::string InitialItems =
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.sword',\n"
@@ -243,7 +245,7 @@ bool TestAdapterAtomicSave()
         "// Sword definition file\n"
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      // The classic iron blade\n"
@@ -301,7 +303,7 @@ bool TestAdapterStaleFileDetectionAndRejection()
     std::string InitialItems =
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.sword',\n"
@@ -334,7 +336,7 @@ bool TestAdapterStaleFileDetectionAndRejection()
     std::string ExternalContent =
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.sword',\n"

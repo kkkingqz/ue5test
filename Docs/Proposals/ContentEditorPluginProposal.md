@@ -92,7 +92,6 @@ set
 delete
 rename
 duplicate
-schema field operations
 ```
 
 плюс точечной правкой JSON5 с сохранением комментариев и форматирования.
@@ -101,7 +100,7 @@ schema field operations
 
 ### 3.3. Транспорт скрыт адаптером
 
-`GV2 Editor Adapter` скрывает способ вызова. Если для отдельной операции временно потребуется CLI, это остаётся деталью адаптера и не проникает в UI и workflow.
+`GV2 Editor Adapter` скрывает способ вызова общей библиотеки. Запуск CLI-подпроцесса из Editor запрещён: это создало бы второй operation path с отличающимися lifecycle и error semantics.
 
 ## 3a. Атомарность записи
 
@@ -187,9 +186,9 @@ Canonical content изменяется только через authoring operati
 
 Не должно возникать конкурирующих моделей `PropertyBag → Editor Model → JSON5 AST → Repository` с отдельной synchronization logic.
 
-## 6. `FInstancedPropertyBag` как default renderer, а не canonical model
+## 6. Standard renderer не является canonical model
 
-`FInstancedPropertyBag` остаётся рекомендуемым механизмом для стандартных schema fields:
+Стандартные schema fields могут отображаться `FInstancedPropertyBag` либо единым Slate renderer-ом:
 
 ```text
 integer
@@ -209,11 +208,11 @@ Schema Field Descriptor
 Field Adapter Registry
         ↓
 Editor representation
-        ├─ PropertyBag default field
+        ├─ standard renderer row
         └─ custom editor row/widget
 ```
 
-Таким образом PropertyBag — implementation detail стандартного field adapter-а, а не canonical data model Editor-а.
+Выбор renderer-а является implementation detail field adapter-а и не вводит canonical Editor model.
 
 ## 7. Field Adapter Registry
 
@@ -799,22 +798,21 @@ Problems panel
 incoming/outgoing references
 ```
 
-Первый vertical slice охватывает основные игровые kind-ы сразу:
+Первый vertical slice охватывает три статических игровых kind-а:
 
 ```text
 actor
 item
 location
-world
 ```
 
-Это осознанно шире одного kind, потому что три из четырёх покрывают принципиально разные случаи и вместе проверяют pipeline целиком:
+Они покрывают принципиально разные случаи и вместе проверяют pipeline целиком:
 
 | Kind | Что проверяет |
 |---|---|
 | `item` | Плоская схема одного пакета; единственный kind, у которого уже есть файл метаданных представления `.ui.json5` |
 | `location` | Массив ссылок на определения (`connected_location_ids`) и ссылка на экран |
-| `actor` | Базовая схема `core` плюс два extension site из `textsystem` и `rh`: самый сложный случай отрисовки |
+| `actor` | Базовая schema из dependency package плюс package-owned extension site выбранного provider-а; foreign namespace должен быть недоступен для записи |
 
 **`world` требует предварительного решения.** Сегодня мир существует только как рантайм-состояние (`game.instances.world()`, `state.world`) и определением не является — редактировать в редакторе нечего. Чтобы он вошёл в срез, `world` сначала должен стать kind-ом со схемой, и это контентное решение (какому слою принадлежит, какие поля), а не задача редактора.
 
@@ -941,7 +939,7 @@ Shipping/runtime/headless build не получает dependency на `GV2Conten
 1. JSON5 остаётся source of truth.
 2. Библиотека авторинга и Content Core остаются authoritative authoring implementation; CLI и Editor — два её frontend-а.
 3. Editor не воспроизводит package/repository rules самостоятельно.
-4. PropertyBag не становится gameplay model.
+4. Standard renderer не становится gameplay model.
 5. Editor хранит UI/dirty state, но не второй canonical content model.
 6. Field-specific UI строится через небольшой Field Adapter Registry.
 7. Definition editing и Schema editing — разные workflows.

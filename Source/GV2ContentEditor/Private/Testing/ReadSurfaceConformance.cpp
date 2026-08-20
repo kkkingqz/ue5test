@@ -62,11 +62,13 @@ void SetupComprehensiveGameData(const std::filesystem::path& ContainerDir)
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.item.v1',\n"
         "  definition_type: 'item',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true },\n"
-        "    weight: { type: 'number', required: false, default: 1.0 },\n"
-        "    value: { type: 'integer', required: false, default: 0 }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 },\n"
+        "    value: { kind: 'int64', required: false, default: 0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n");
 
     // schemas/item.ui.json5
@@ -86,12 +88,14 @@ void SetupComprehensiveGameData(const std::filesystem::path& ContainerDir)
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.actor.v1',\n"
         "  definition_type: 'actor',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true },\n"
-        "    health: { type: 'integer', required: false, default: 100 },\n"
-        "    equipped_weapon: { type: 'reference', target_kind: 'item', required: false },\n"
-        "    home_location: { type: 'reference', target_kind: 'location', required: false }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    health: { kind: 'int64', required: false, default: 100 },\n"
+        "    equipped_weapon: { kind: 'ref', target_kind: 'item', required: false },\n"
+        "    home_location: { kind: 'ref', target_kind: 'location', required: false }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n");
 
     // schemas/location.schema.json5
@@ -100,16 +104,18 @@ void SetupComprehensiveGameData(const std::filesystem::path& ContainerDir)
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.location.v1',\n"
         "  definition_type: 'location',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n");
 
     // definitions/items.json5
     WriteFile(CoreDir / "definitions/items.json5",
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.iron_sword',\n"
@@ -126,7 +132,7 @@ void SetupComprehensiveGameData(const std::filesystem::path& ContainerDir)
     WriteFile(CoreDir / "definitions/locations.json5",
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'location',\n"
+        "  type: 'location',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:location.tavern',\n"
@@ -139,7 +145,7 @@ void SetupComprehensiveGameData(const std::filesystem::path& ContainerDir)
     WriteFile(CoreDir / "definitions/actors.json5",
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'actor',\n"
+        "  type: 'actor',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:actor.hero',\n"
@@ -253,6 +259,25 @@ bool TestFieldAdapterRegistryResolution()
     {
         return false;
     }
+
+    GV2ContentCore::FCompiledFieldSpec ResourceSpec;
+    ResourceSpec.Kind = GV2ContentCore::EFieldKind::ResourceReference;
+    ResourceSpec.ResourceClass = "image";
+    auto ResourceDesc = Registry.DescribeField(ResourceSpec, nullptr);
+    if (ResourceDesc.ControlType != EFieldControlType::ResourcePicker
+        || ResourceDesc.TargetResourceClass != "image") return false;
+
+    GV2ContentCore::FCompiledFieldSpec TextIdSpec;
+    TextIdSpec.Kind = GV2ContentCore::EFieldKind::TextId;
+    if (Registry.DescribeField(TextIdSpec, nullptr).ControlType != EFieldControlType::TextIdPicker) return false;
+
+    GV2ContentCore::FCompiledFieldSpec ArraySpec;
+    ArraySpec.Kind = GV2ContentCore::EFieldKind::Array;
+    if (Registry.DescribeField(ArraySpec, nullptr).ControlType != EFieldControlType::ArrayEditor) return false;
+
+    GV2ContentCore::FCompiledFieldSpec ObjectSpec;
+    ObjectSpec.Kind = GV2ContentCore::EFieldKind::Object;
+    if (Registry.DescribeField(ObjectSpec, nullptr).ControlType != EFieldControlType::ObjectEditor) return false;
 
     return true;
 }

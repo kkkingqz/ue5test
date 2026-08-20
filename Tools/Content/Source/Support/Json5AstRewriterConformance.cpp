@@ -140,17 +140,23 @@ bool TestSetFieldValue()
     if (ResMissing.Status != ESetFieldValueStatus::PointerNotFound) return false;
     if (ResMissing.ErrorCode != "pointer_not_found") return false;
 
-    // 4. Rejection: target is container
-    auto ResContainer = SetFieldValue(Doc, "/definitions/0/data", GV2ContentCore::FValue(static_cast<std::int64_t>(10)));
-    if (ResContainer.Status != ESetFieldValueStatus::TargetIsContainer) return false;
-    if (ResContainer.ErrorCode != "target_is_container") return false;
-
-    // 5. Rejection: container value
+    // 4. Container replacement is supported by the syntax-preserving
+    // rewriter. Authoritative schema validation belongs to AuthoringService.
     GV2ContentCore::FValue::FObject Obj;
     Obj.emplace_back("a", GV2ContentCore::FValue(static_cast<std::int64_t>(1)));
-    auto ResInvalidVal = SetFieldValue(Doc, "/definitions/0/data/price", GV2ContentCore::FValue(std::move(Obj)));
-    if (ResInvalidVal.Status != ESetFieldValueStatus::InvalidValue) return false;
-    if (ResInvalidVal.ErrorCode != "invalid_value") return false;
+    auto ResContainer = SetFieldValue(Doc, "/definitions/0/data", GV2ContentCore::FValue(std::move(Obj)));
+    if (ResContainer.Status != ESetFieldValueStatus::Success) return false;
+    if (ResContainer.UpdatedContent.find("data: {\n  a: 1,") == std::string::npos) return false;
+    if (ResContainer.UpdatedContent.find("// Sword entry comment") == std::string::npos) return false;
+
+    // 5. A container may also replace a scalar at the rewriter layer.
+    // The service rejects the candidate before writing when its schema disallows it.
+    GV2ContentCore::FValue::FArray Array;
+    Array.emplace_back(static_cast<std::int64_t>(1));
+    Array.emplace_back(static_cast<std::int64_t>(2));
+    auto ResArray = SetFieldValue(Doc, "/definitions/0/data/price", GV2ContentCore::FValue(std::move(Array)));
+    if (ResArray.Status != ESetFieldValueStatus::Success) return false;
+    if (ResArray.UpdatedContent.find("price: [\n  1,\n  2,") == std::string::npos) return false;
 
     return true;
 }

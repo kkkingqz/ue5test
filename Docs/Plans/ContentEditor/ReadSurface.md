@@ -27,7 +27,7 @@ depends_on:
 
 - [x] **CED-10 — Реестр адаптеров полей**
   - Зависимости: CED-09.
-  - Done: заведён внутренний реестр адаптеров, сопоставляющий вид поля схемы с представлением в редакторе; стандартные виды используют общий адаптер поверх `FInstancedPropertyBag`, специальные — собственные строки; `FInstancedPropertyBag` остаётся деталью реализации стандартного адаптера и каноничной моделью не становится; реестр не является публичной точкой расширения.
+  - Done: заведён внутренний реестр адаптеров, сопоставляющий вид поля схемы с descriptor-ом представления; единый Slate renderer реализует scalar, enum, slider, typed definition/resource/text pickers, reference arrays и recursively flattened simple objects; каноничной editor model не вводится, реестр не является публичной точкой расширения.
   - Evidence: `Source/GV2ContentEditor/Public/GV2ContentEditor/FieldAdapterRegistry.h`, `Source/GV2ContentEditor/Private/FieldAdapterRegistry.cpp`, `Source/GV2ContentEditor/Private/Testing/ReadSurfaceConformance.cpp`.
 
 - [x] **CED-11 — Форма по схеме и метаданные представления**

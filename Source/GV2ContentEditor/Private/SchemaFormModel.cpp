@@ -1,5 +1,6 @@
 #include "GV2ContentEditor/SchemaFormModel.h"
 #include <algorithm>
+#include <functional>
 #include <limits>
 
 namespace GV2ContentEditor
@@ -33,6 +34,46 @@ std::string FormatDefaultLabel(const std::string& Name)
     return Out;
 }
 
+void AppendFields(
+    FGV2SchemaFormModel& Model,
+    const std::vector<GV2ContentCore::FCompiledObjectField>& Fields,
+    const std::string& PointerPrefix,
+    const std::string& LabelPrefix,
+    const std::string& DefaultCategory,
+    std::int64_t& AutoOrder,
+    const GV2ContentCore::FSchemaUiMetadata* UiMetadata)
+{
+    for (const auto& Field : Fields)
+    {
+        if (Field.Spec == nullptr) continue;
+        const auto* UiField = UiMetadata ? UiMetadata->FindField(Field.Name) : nullptr;
+        const std::string FieldPointer = PointerPrefix + "/" + Field.Name;
+        const std::string FieldLabel = LabelPrefix + FormatDefaultLabel(Field.Name);
+
+        if (Field.Spec->Kind == GV2ContentCore::EFieldKind::Object)
+        {
+            AppendFields(
+                Model, Field.Spec->Fields, FieldPointer, FieldLabel + " / ",
+                UiField && UiField->Category.has_value() ? *UiField->Category : DefaultCategory,
+                AutoOrder, nullptr);
+            continue;
+        }
+
+        FGV2FormFieldDescriptor Desc;
+        Desc.FieldName = Field.Name;
+        Desc.JsonPointer = FieldPointer;
+        Desc.bRequired = Field.bRequired;
+        Desc.Spec = Field.Spec;
+        Desc.DisplayLabel = UiField && UiField->Label.has_value() ? *UiField->Label : FieldLabel;
+        if (UiField && UiField->Description.has_value()) Desc.Description = *UiField->Description;
+        Desc.Category = UiField && UiField->Category.has_value() ? *UiField->Category : DefaultCategory;
+        Desc.Order = UiField && UiField->Order.has_value() ? *UiField->Order : AutoOrder;
+        if (!(UiField && UiField->Order.has_value())) AutoOrder += 10;
+        Desc.AdapterDescriptor = FGV2FieldAdapterRegistry::Get().DescribeField(*Field.Spec, UiField);
+        Model.AllFields.push_back(std::move(Desc));
+    }
+}
+
 } // namespace
 
 FGV2SchemaFormModel FGV2SchemaFormModel::BuildFromSchema(
@@ -48,54 +89,7 @@ FGV2SchemaFormModel FGV2SchemaFormModel::BuildFromSchema(
     if (RootSpec != nullptr && RootSpec->Kind == GV2ContentCore::EFieldKind::Object)
     {
         std::int64_t AutoOrder = 100;
-        for (const auto& Field : RootSpec->Fields)
-        {
-            if (Field.Spec == nullptr) continue;
-
-            const auto* UiField = UiMetadata ? UiMetadata->FindField(Field.Name) : nullptr;
-
-            FGV2FormFieldDescriptor Desc;
-            Desc.FieldName = Field.Name;
-            Desc.JsonPointer = "/data/" + Field.Name;
-            Desc.bRequired = Field.bRequired;
-            Desc.Spec = Field.Spec;
-
-            if (UiField != nullptr && UiField->Label.has_value())
-            {
-                Desc.DisplayLabel = *UiField->Label;
-            }
-            else
-            {
-                Desc.DisplayLabel = FormatDefaultLabel(Field.Name);
-            }
-
-            if (UiField != nullptr && UiField->Description.has_value())
-            {
-                Desc.Description = *UiField->Description;
-            }
-
-            if (UiField != nullptr && UiField->Category.has_value())
-            {
-                Desc.Category = *UiField->Category;
-            }
-            else
-            {
-                Desc.Category = "General";
-            }
-
-            if (UiField != nullptr && UiField->Order.has_value())
-            {
-                Desc.Order = *UiField->Order;
-            }
-            else
-            {
-                Desc.Order = AutoOrder;
-                AutoOrder += 10;
-            }
-
-            Desc.AdapterDescriptor = FGV2FieldAdapterRegistry::Get().DescribeField(*Field.Spec, UiField);
-            Model.AllFields.push_back(std::move(Desc));
-        }
+        AppendFields(Model, RootSpec->Fields, "/data", "", "General", AutoOrder, UiMetadata);
     }
 
     // Process extension schemas
@@ -107,23 +101,10 @@ FGV2SchemaFormModel FGV2SchemaFormModel::BuildFromSchema(
             std::string ExtCategory = Ext.GetPackageId() + " Extension";
             std::int64_t ExtAutoOrder = 1000;
 
-            for (const auto& Field : ExtRootSpec->Fields)
-            {
-                if (Field.Spec == nullptr) continue;
-
-                FGV2FormFieldDescriptor Desc;
-                Desc.FieldName = Field.Name;
-                Desc.JsonPointer = "/extensions/" + Ext.GetPackageId() + "/" + Field.Name;
-                Desc.bRequired = Field.bRequired;
-                Desc.Spec = Field.Spec;
-                Desc.DisplayLabel = FormatDefaultLabel(Field.Name);
-                Desc.Category = ExtCategory;
-                Desc.Order = ExtAutoOrder;
-                ExtAutoOrder += 10;
-
-                Desc.AdapterDescriptor = FGV2FieldAdapterRegistry::Get().DescribeField(*Field.Spec, nullptr);
-                Model.AllFields.push_back(std::move(Desc));
-            }
+            AppendFields(
+                Model, ExtRootSpec->Fields,
+                "/extensions/" + Ext.GetKey().ExtensionNamespace,
+                "", ExtCategory, ExtAutoOrder, nullptr);
         }
     }
 

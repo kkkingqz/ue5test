@@ -60,11 +60,13 @@ void SetupTestPackage(const std::filesystem::path& PackageDir, const std::string
         "  schema_version: 1,\n"
         "  id: 'core:schema.definition.item.v1',\n"
         "  definition_type: 'item',\n"
-        "  fields: {\n"
-        "    name: { type: 'string', required: true },\n"
-        "    weight: { type: 'number', required: false, default: 1.0 },\n"
-        "    value: { type: 'integer', required: false, default: 0 }\n"
-        "  }\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 },\n"
+        "    value: { kind: 'int64', required: false, default: 0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
         "}\n";
     WriteFile(PackageDir / "schemas/item.schema.json5", SchemaJson5);
 
@@ -79,7 +81,7 @@ bool TestBatchSetAtomicFailureLeavesFileUntouched()
         "// Header comment\n"
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      // Item comment\n"
@@ -125,7 +127,7 @@ bool TestDuplicateDefinitionAtomic()
     std::string InitialItems =
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.sword',\n"
@@ -179,7 +181,7 @@ bool TestStaleFileStateDetection()
     std::string InitialItems =
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.sword',\n"
@@ -207,7 +209,7 @@ bool TestStaleFileStateDetection()
     std::string ExternalModified =
         "{\n"
         "  schema_version: 1,\n"
-        "  definition_type: 'item',\n"
+        "  type: 'item',\n"
         "  definitions: [\n"
         "    {\n"
         "      id: 'core:item.sword',\n"

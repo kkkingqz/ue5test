@@ -26,7 +26,7 @@ depends_on:
 ## Активные планы
 
 - [LocationScreen](LocationScreen/README.md) — Первый игровой экран: шаблон `textsystem` из четырёх композитов, наполняемый определением локации и текущим состоянием; интеграционная проверка базового набора UI.
-- [ContentEditor](ContentEditor/README.md) — Слой авторинга становится библиотекой, атомарная запись, редактор определений в Unreal Editor для `item`, `location`, `actor` и `world`.
+- [ContentEditor](ContentEditor/README.md) — Слой авторинга становится библиотекой, атомарная запись, редактор определений в Unreal Editor для `item`, `location` и `actor`; `world` остаётся runtime state.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 

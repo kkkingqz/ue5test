@@ -44,6 +44,7 @@ private:
 
     TSharedPtr<SScrollBox> ContentScrollBox;
     TMap<FString, TSharedPtr<SWidget>> FieldWidgets;
+    TArray<TSharedPtr<TArray<TSharedPtr<FString>>>> OwnedOptionLists;
     FString HighlightedPointer;
 };
 
