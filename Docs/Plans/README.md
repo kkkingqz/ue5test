@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 5.3
+version: 5.4
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -25,6 +25,7 @@ depends_on:
 
 ## Активные планы
 
+- [LocationScreen](LocationScreen/README.md) — Первый игровой экран: шаблон `textsystem` из четырёх композитов, наполняемый определением локации и текущим состоянием; интеграционная проверка базового набора UI.
 - [ContentEditor](ContentEditor/README.md) — Слой авторинга становится библиотекой, атомарная запись, редактор определений в Unreal Editor для `item`, `location`, `actor` и `world`.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
