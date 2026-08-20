@@ -80,25 +80,35 @@ GV2ContentCore::FBuildResult MakeTestBuildResultFrom(const TCHAR* FixtureRelativ
     return BuildGV2RepositoryFromDirectory(PackageRoot);
 }
 
-GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepositoryFrom(const TCHAR* FixtureRelativePath)
+GV2ContentCore::FRepositoryReadHandle RequirePinnedRepository(
+    FAutomationTestBase& Test,
+    const GV2ContentCore::FBuildResult& Result,
+    const FString& Context)
 {
-    GV2ContentCore::FBuildResult Result = MakeTestBuildResultFrom(FixtureRelativePath);
     if (Result.IsFailure())
     {
+        Test.AddError(FString::Printf(TEXT("%s repository build failed"), *Context));
+        for (const GV2ContentCore::FDiagnostic& Diagnostic : Result.GetDiagnostics())
+        {
+            Test.AddError(FString::Printf(
+                TEXT("[%s] %s (package=%s source=%s)"),
+                UTF8_TO_TCHAR(Diagnostic.Code.c_str()),
+                UTF8_TO_TCHAR(Diagnostic.Message.c_str()),
+                Diagnostic.PackageId.has_value()
+                    ? UTF8_TO_TCHAR(Diagnostic.PackageId->c_str()) : TEXT("<none>"),
+                Diagnostic.RelativeSource.has_value()
+                    ? UTF8_TO_TCHAR(Diagnostic.RelativeSource->c_str()) : TEXT("<none>")));
+        }
         return GV2ContentCore::FRepositoryReadHandle();
     }
     return Result.GetCandidate().GetReadHandle();
 }
 
-GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepository()
+GV2ContentCore::FRepositoryReadHandle MakeFrozenCoreFixturePinnedRepository(
+    FAutomationTestBase& Test)
 {
-    const FString CorePackageRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
-    const GV2ContentCore::FBuildResult Result = BuildGV2RepositoryFromDirectory(CorePackageRoot);
-    if (Result.IsSuccess())
-    {
-        return Result.GetCandidate().GetReadHandle();
-    }
-    return MakeTestPinnedRepositoryFrom(TEXT("valid/core"));
+    const GV2ContentCore::FBuildResult Result = MakeTestBuildResultFrom(TEXT("valid/core"));
+    return RequirePinnedRepository(Test, Result, TEXT("frozen valid/core fixture"));
 }
 
 class FTestMultiPackageSourceProvider final : public GV2ContentCore::IContentSourceProvider
@@ -120,7 +130,8 @@ public:
     }
 };
 
-GV2ContentCore::FRepositoryReadHandle MakeTestModdedPinnedRepository()
+GV2ContentCore::FRepositoryReadHandle MakeModdedFixturePinnedRepository(
+    FAutomationTestBase& Test)
 {
     using namespace GV2ContentCore;
     const FString FixtureRoot = FPaths::ConvertRelativePathToFull(FPaths::Combine(
@@ -135,11 +146,7 @@ GV2ContentCore::FRepositoryReadHandle MakeTestModdedPinnedRepository()
     FBuildOptions Options;
     Options.SourceProvider = &Provider;
     const FBuildResult BuildResult = BuildRepository({ Core, TestMod }, Options);
-    if (BuildResult.IsFailure())
-    {
-        return FRepositoryReadHandle();
-    }
-    return BuildResult.GetCandidate().GetReadHandle();
+    return RequirePinnedRepository(Test, BuildResult, TEXT("frozen core+test_mod fixture"));
 }
 
 // BuildRepository() requires a package literally named "core" at load_index 0
@@ -168,7 +175,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Manifest-driven Lua source tree is loadable"), RuntimeSources.size() >= 2);
     TestTrue(
         TEXT("Lua VM starts with the configured runtime sources"),
-        Host.Start(23, MakeTestPinnedRepository(), RuntimeSources, Fault));
+        Host.Start(23, MakeFrozenCoreFixturePinnedRepository(*this), RuntimeSources, Fault));
     TestTrue(TEXT("Lua VM reports started state"), Host.IsStarted());
     TestFalse(TEXT("Lua VM is idle after bootstrap"), Host.IsExecuting());
     if (!Host.IsStarted())
@@ -356,7 +363,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession MissingSourceHost;
     TestFalse(
         TEXT("Manifest rejects a missing declared module source"),
-        MissingSourceHost.Start(1, MakeTestPinnedRepository(), MissingSource, Fault));
+        MissingSourceHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), MissingSource, Fault));
     TestEqual(
         TEXT("Missing module source has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -375,7 +382,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession HiddenDependencyHost;
     TestFalse(
         TEXT("Module cannot import an undeclared dependency"),
-        HiddenDependencyHost.Start(1, MakeTestPinnedRepository(), HiddenDependency, Fault));
+        HiddenDependencyHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), HiddenDependency, Fault));
     TestEqual(
         TEXT("Hidden dependency fails during module initialization"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -389,7 +396,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession UnlistedSourceHost;
     TestFalse(
         TEXT("Unlisted Lua source is rejected"),
-        UnlistedSourceHost.Start(1, MakeTestPinnedRepository(), UnlistedSource, Fault));
+        UnlistedSourceHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), UnlistedSource, Fault));
     TestEqual(
         TEXT("Unlisted source has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -419,7 +426,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession CyclicHost;
     TestFalse(
         TEXT("Cyclic module dependencies are rejected"),
-        CyclicHost.Start(1, MakeTestPinnedRepository(), CyclicSources, Fault));
+        CyclicHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), CyclicSources, Fault));
     TestEqual(
         TEXT("Dependency cycle has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -497,7 +504,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession OverrideSession;
     TestTrue(
         TEXT("Runtime starts with valid multi-package module override"),
-        OverrideSession.Start(1, MakeTestPinnedRepository(), OverrideSources, Fault));
+        OverrideSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), OverrideSources, Fault));
 
     const std::string OverrideHash = OverrideSession.GetScriptSetHash();
     TestEqual(TEXT("Override session script set hash length is 64"), OverrideHash.length(), static_cast<std::size_t>(64));
@@ -520,7 +527,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     // Base sources without override produces a different ScriptSetHash
     const std::vector<GV2RuntimeCore::FRuntimeSource> BaseOnlySources = { OverrideSources[0], OverrideSources[1] };
     GV2RuntimeCore::FRuntimeSession BaseSession;
-    TestTrue(TEXT("Base session starts"), BaseSession.Start(1, MakeTestPinnedRepository(), BaseOnlySources, Fault));
+    TestTrue(TEXT("Base session starts"), BaseSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), BaseOnlySources, Fault));
     const std::string BaseHash = BaseSession.GetScriptSetHash();
     TestTrue(TEXT("Override changes ScriptSetHash"), BaseHash != OverrideHash);
     TestEqual(TEXT("Base session has 0 replaced modules"), BaseSession.GetReplacedModules().size(), static_cast<std::size_t>(0));
@@ -530,7 +537,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     std::string CheckHash;
     std::vector<GV2RuntimeCore::FReplacedModuleInfo> CheckReplaced;
     GV2RuntimeCore::FRuntimeSession CheckSession;
-    TestTrue(TEXT("CheckScripts succeeds"), CheckSession.CheckScripts(1, MakeTestPinnedRepository(), OverrideSources, &CheckedCount, &CheckHash, &CheckReplaced, Fault));
+    TestTrue(TEXT("CheckScripts succeeds"), CheckSession.CheckScripts(1, MakeFrozenCoreFixturePinnedRepository(*this), OverrideSources, &CheckedCount, &CheckHash, &CheckReplaced, Fault));
     TestEqual(TEXT("CheckScripts hash matches started session"), CheckHash, OverrideHash);
     TestEqual(TEXT("CheckScripts replaced modules count is 1"), CheckReplaced.size(), static_cast<std::size_t>(1));
 
@@ -575,7 +582,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession SealedSession;
     TestFalse(
         TEXT("Overriding sealed module is rejected"),
-        SealedSession.Start(1, MakeTestPinnedRepository(), SealedSources, Fault));
+        SealedSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), SealedSources, Fault));
     TestEqual(
         TEXT("Sealed module override error code is LuaModuleSealed"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -621,7 +628,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession ForeignNewSession;
     TestFalse(
         TEXT("Mod cannot introduce a new core module ID"),
-        ForeignNewSession.Start(1, MakeTestPinnedRepository(), ForeignNewSources, Fault));
+        ForeignNewSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), ForeignNewSources, Fault));
     TestEqual(
         TEXT("Foreign new ID error code is LuaModuleForeignNewId"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -730,7 +737,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
+    TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     TestTrue(TEXT("Lua VM belongs to the active session"), Coordinator.IsLuaVmStarted());
 
     TArray<FGV2UiBindingHandle> Handles;
@@ -801,7 +808,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator;
-    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
+    TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
 
     FGV2UiBindingDefinition Definition = MakeBindingDefinition(
         TEXT("form"),
@@ -883,7 +890,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
 {
     FGV2SessionCoordinator Coordinator(0);
-    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
+    TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
 
     TArray<FGV2UiBindingHandle> Handles;
     TestTrue(
@@ -932,15 +939,26 @@ bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Param
     const FPackageDescriptor TestModDesc = Testing::MakeRepresentativeTestModPackageDescriptor();
 
     FTestMultiPackageSourceProvider Provider;
-    Provider.PackageRoots.emplace("core", CorePackageRoot);
+    // MakeRepresentativeCorePackageDescriptor() lists definitions/*.json5 files
+    // that only exist in the "valid/core" fixture, not in the real
+    // GameData/core (its entity content moved to GameData/rh long ago), so
+    // this multi-package build must read from the fixture, not CorePackageRoot.
+    Provider.PackageRoots.emplace("core", FPaths::Combine(FixtureRoot, TEXT("valid/core")));
     Provider.PackageRoots.emplace("test_mod", FPaths::Combine(FixtureRoot, TEXT("valid/test_mod")));
 
     FBuildOptions Options;
     Options.SourceProvider = &Provider;
     const FBuildResult ResultB = BuildRepository({ CoreDesc, TestModDesc }, Options);
 
-    if (!TestTrue(TEXT("Fixture A builds"), ResultA.IsSuccess())
-        || !TestTrue(TEXT("Fixture B builds"), ResultB.IsSuccess()))
+    // This test intentionally mixes two explicitly named sources. ResultA is
+    // the live GameData/core integration gate; ResultB is a frozen repository
+    // fixture used only to obtain a distinct snapshot. Neither may substitute
+    // for the other when its build fails.
+    const FRepositoryReadHandle ValidatedGameDataCore = RequirePinnedRepository(
+        *this, ResultA, TEXT("live GameData/core"));
+    const FRepositoryReadHandle ValidatedModdedFixture = RequirePinnedRepository(
+        *this, ResultB, TEXT("frozen core+test_mod fixture"));
+    if (!ValidatedGameDataCore.IsValid() || !ValidatedModdedFixture.IsValid())
     {
         return false;
     }
@@ -1018,7 +1036,7 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
         EGV2SessionState::Failed);
 
     // 2. Start valid session, then call StartSession with invalid handle to ensure full teardown
-    TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeTestPinnedRepository(), 1));
+    TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     TestTrue(TEXT("Lua VM is started for valid session"), Coordinator.IsLuaVmStarted());
     TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
 
@@ -1082,7 +1100,7 @@ bool FGV2RuntimeSessionPinnedHandleTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Pinned handle remains invalid"), Session.GetPinnedRepository().IsValid());
 
     // 2. Valid handle starts session and stores handle
-    const GV2ContentCore::FRepositoryReadHandle PinnedHandle = MakeTestPinnedRepository();
+    const GV2ContentCore::FRepositoryReadHandle PinnedHandle = MakeFrozenCoreFixturePinnedRepository(*this);
     TestTrue(TEXT("Test pinned repository is valid"), PinnedHandle.IsValid());
     TestTrue(
         TEXT("Start succeeds with valid pinned handle"),
@@ -1283,7 +1301,7 @@ bool FGV2LuaRepositoryAccessTest::RunTest(const FString& Parameters)
         }
     };
 
-    const GV2ContentCore::FRepositoryReadHandle PinnedHandle = MakeTestModdedPinnedRepository();
+    const GV2ContentCore::FRepositoryReadHandle PinnedHandle = MakeModdedFixturePinnedRepository(*this);
     TestTrue(TEXT("Modded pinned repository is valid"), PinnedHandle.IsValid());
     TestTrue(
         TEXT("Start succeeds with test repository sources"),
