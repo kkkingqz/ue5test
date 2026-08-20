@@ -432,6 +432,21 @@ EGV2SubmitUiInteractionResult FGV2SessionCoordinator::SubmitUiInteraction(
         return EGV2SubmitUiInteractionResult::InvalidBindingHandle;
     }
 
+    // UIF-26: If binding belongs to a tab container (path length >= 6), only the active tab is interactive
+    if (Binding.NodeKeyPath.Num() >= 6)
+    {
+        const FString ContainerPath = FString::Printf(
+            TEXT("%s/%s/%s"),
+            *Binding.NodeKeyPath[0],
+            *Binding.NodeKeyPath[1],
+            *Binding.NodeKeyPath[2]);
+        const FString* ActiveTab = ActiveTabsByContainerPath.Find(ContainerPath);
+        if (ActiveTab != nullptr && *ActiveTab != Binding.NodeKeyPath[3])
+        {
+            return EGV2SubmitUiInteractionResult::StaleBindingHandle;
+        }
+    }
+
     if (!ValidateInputValues(Binding, InputValues))
     {
         return EGV2SubmitUiInteractionResult::InvalidInputValues;
@@ -451,6 +466,17 @@ EGV2SubmitUiInteractionResult FGV2SessionCoordinator::SubmitUiInteraction(
     ++NextInputSequence;
     PumpIngress();
     return EGV2SubmitUiInteractionResult::Accepted;
+}
+
+void FGV2SessionCoordinator::SetActiveTab(const FString& ContainerPath, const FString& TabKey)
+{
+    ActiveTabsByContainerPath.Add(ContainerPath, TabKey);
+}
+
+FString FGV2SessionCoordinator::GetActiveTab(const FString& ContainerPath) const
+{
+    const FString* Found = ActiveTabsByContainerPath.Find(ContainerPath);
+    return Found != nullptr ? *Found : FString();
 }
 
 bool FGV2SessionCoordinator::IsExecutingRuntime() const
@@ -600,7 +626,41 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = Inst.ScreenId;
         Request.Fields = Inst.Fields;
-        return FieldAdapters.BuildFields(Request, InstHandles, OutInstModel.Fields);
+        if (!FieldAdapters.BuildFields(Request, InstHandles, OutInstModel.Fields))
+        {
+            return false;
+        }
+
+        // Initialize / validate active tab state for tab container fields (UIF-25)
+        for (const FGV2ScreenFieldValue& FieldVal : OutInstModel.Fields)
+        {
+            if (FieldVal.TabContainerValue.IsValid())
+            {
+                const FString ContainerPath = FString::Printf(
+                    TEXT("%s/%s/%s"),
+                    *OutInstModel.Layer.ToString(),
+                    *OutInstModel.InstanceKey.ToString(),
+                    *FieldVal.FieldId.ToString());
+
+                const FGV2TabContainerViewModel& TabModel = *FieldVal.TabContainerValue;
+                const FString* ExistingActive = ActiveTabsByContainerPath.Find(ContainerPath);
+                const bool bExistingStillValid = ExistingActive != nullptr && TabModel.Tabs.ContainsByPredicate([ExistingActive](const FGV2TabItemViewModel& Tab)
+                {
+                    return Tab.Key.ToString() == *ExistingActive;
+                });
+
+                if (!bExistingStillValid)
+                {
+                    FName InitialKey = !TabModel.DefaultTabKey.IsNone() ? TabModel.DefaultTabKey : (TabModel.Tabs.Num() > 0 ? TabModel.Tabs[0].Key : NAME_None);
+                    if (!InitialKey.IsNone())
+                    {
+                        ActiveTabsByContainerPath.Add(ContainerPath, InitialKey.ToString());
+                    }
+                }
+            }
+        }
+
+        return true;
     };
 
     if (Document.Route.has_value())

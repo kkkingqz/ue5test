@@ -73,7 +73,7 @@ decisions:
 - [x] M2 — [Scaling Model](ScalingModel.md): разрешения, отзывчивая раскладка, политики примитивов, кривая текста. UIF-06…10.
 - [x] M3 — [Core Baseline](CoreBaseline.md): контейнер, прокрутка, обобщённый список, иконка, контракты данных. UIF-11…16.
 - [x] M4 — [Reconciliation](Reconciliation.md): слои, оверлеи, модалки, переиспользование. UIF-17…21.
-- [ ] M5 — [Tabs](Tabs.md): вложенный Screen Instance и вкладки. UIF-22…26.
+- [x] M5 — [Tabs](Tabs.md): вложенный Screen Instance и вкладки. UIF-22…26.
 - [ ] M6 — [Theme Ownership](ThemeOwnership.md): каталоги слоёв, тема ядра, длина текста. UIF-27…30.
 
 ## Критический путь

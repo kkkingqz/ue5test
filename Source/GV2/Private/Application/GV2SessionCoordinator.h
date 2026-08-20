@@ -49,6 +49,9 @@ public:
         const FGV2UiBindingHandle& BindingHandle,
         const TArray<FGV2UiControlValue>& InputValues);
 
+    void SetActiveTab(const FString& ContainerPath, const FString& TabKey);
+    FString GetActiveTab(const FString& ContainerPath) const;
+
     bool IsExecutingRuntime() const;
     bool IsLuaVmStarted() const;
     int32 GetQueuedIngressCount() const;
@@ -76,6 +79,7 @@ private:
     FInteractionSink InteractionSink;
     FScreenSink ScreenSink;
     FDocumentSink DocumentSink;
+    TMap<FString, FString> ActiveTabsByContainerPath;
     int64 NextInputSequence = 1;
     int64 UiRevision = 0;
     bool bPumpingIngress = false;

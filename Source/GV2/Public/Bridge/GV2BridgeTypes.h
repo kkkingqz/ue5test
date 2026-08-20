@@ -336,6 +336,8 @@ struct GV2_API FGV2ScreenFieldDescriptor
     }
 };
 
+struct FGV2TabContainerViewModel;
+
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenFieldValue
 {
@@ -373,6 +375,8 @@ struct GV2_API FGV2ScreenFieldValue
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FGV2ModalViewModel ModalValue;
+
+    TSharedPtr<FGV2TabContainerViewModel> TabContainerValue;
 
     static FGV2ScreenFieldValue MakeButtonList(
         const FName InFieldId,
@@ -472,7 +476,52 @@ struct GV2_API FGV2ScreenFieldValue
         Value.ModalValue = InValue;
         return Value;
     }
+
+    static FGV2ScreenFieldValue MakeTabContainer(
+        const FName InFieldId,
+        const FGV2TabContainerViewModel& InValue);
 };
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2TabItemViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
+    FName Key;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
+    FGV2TextViewModel Title;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
+    FString ScreenId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
+    TArray<FGV2ScreenFieldValue> Fields;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2TabContainerViewModel
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
+    FName DefaultTabKey;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
+    TArray<FGV2TabItemViewModel> Tabs;
+};
+
+inline FGV2ScreenFieldValue FGV2ScreenFieldValue::MakeTabContainer(
+    const FName InFieldId,
+    const FGV2TabContainerViewModel& InValue)
+{
+    FGV2ScreenFieldValue Value;
+    Value.FieldId = InFieldId;
+    Value.SchemaId = TEXT("core:schema.ui_field.tab_container.v1");
+    Value.TabContainerValue = MakeShared<FGV2TabContainerViewModel>(InValue);
+    return Value;
+}
 
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenViewModel

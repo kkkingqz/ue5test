@@ -4,9 +4,21 @@
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ScreenWidgetBase.h"
 
+const FName UGV2ScreenRegistry::LayerEmbedded = TEXT("embedded");
+
 bool UGV2ScreenRegistry::IsValidLayer(FName Layer)
 {
-    return UGV2GameShellWidgetBase::IsValidLayerName(Layer);
+    return Layer == LayerEmbedded || UGV2GameShellWidgetBase::IsValidLayerName(Layer);
+}
+
+bool UGV2ScreenRegistry::IsLayerAllowedForTopLevel(FName Layer)
+{
+    return Layer != LayerEmbedded && UGV2GameShellWidgetBase::IsValidLayerName(Layer);
+}
+
+bool UGV2ScreenRegistry::IsLayerAllowedForEmbedded(FName Layer)
+{
+    return Layer == LayerEmbedded;
 }
 
 const FGV2ScreenRegistryEntry* UGV2ScreenRegistry::FindEntry(const FString& ScreenId) const

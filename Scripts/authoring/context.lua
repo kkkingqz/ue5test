@@ -405,6 +405,9 @@ function M.gameplay(package_id, opt_module_id)
     mod.close_overlay = presentation_module.create_close_overlay_helper(package_id)
     mod.show_modal = presentation_module.create_show_modal_helper(package_id)
     mod.close_modal = presentation_module.create_close_modal_helper(package_id)
+    mod.tab = presentation_module.create_tab_helper(package_id)
+    mod.tab_container = presentation_module.create_tab_container_helper(package_id)
+    mod.tabs = mod.tab_container
     mod.player = M.create_player_proxy()
     mod.world = M.create_world_proxy()
     mod.Actor = M.create_entity_prototype_proxy("Actor", package_id, opt_module_id)
@@ -902,6 +905,9 @@ function M.create_authoring_environment(package_id, opt_module_id)
         close_overlay = mod.close_overlay,
         show_modal = mod.show_modal,
         close_modal = mod.close_modal,
+        tab = mod.tab,
+        tab_container = mod.tab_container,
+        tabs = mod.tabs,
         Actor = mod.Actor,
         Location = mod.Location,
         Quest = mod.Quest,

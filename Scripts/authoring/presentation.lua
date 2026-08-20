@@ -457,4 +457,70 @@ function M.create_close_modal_helper(_package_id)
     end
 end
 
+function M.create_tab_helper(package_id)
+    return function(key, title_spec, screen_spec, fields_opt)
+        if type(key) ~= "string" or not key:match("^[a-z0-9_.-@:]+$") or #key == 0 then
+            error("InvalidTabKey: tab key must be a non-empty canonical identifier, got " .. tostring(key), 2)
+        end
+        if key:match("^[%a_][%w_]*:text%.") or key:match("^text:") then
+            error("TextDisallowedAsKey: tab key cannot be derived from or set to localizable text", 2)
+        end
+        if type(title_spec) == "string" then
+            error("RawStringDisallowed: tab() requires a TextSpec for title (use text(\"key\")), raw string is disallowed", 2)
+        end
+        if type(title_spec) ~= "table" or not title_spec.text_id then
+            error("InvalidTextSpec: tab() requires a valid TextSpec table with text_id", 2)
+        end
+
+        local screen_id = nil
+        if type(screen_spec) == "string" then
+            if stable_id.is_kind(screen_spec, "screen") then
+                screen_id = screen_spec
+            else
+                screen_id = package_id .. ":screen." .. screen_spec
+            end
+        elseif type(screen_spec) == "table" and screen_spec.id and stable_id.is_kind(screen_spec.id, "screen") then
+            screen_id = screen_spec.id
+        elseif type(screen_spec) == "table" and screen_spec.definition_id and stable_id.is_kind(screen_spec.definition_id, "screen") then
+            screen_id = screen_spec.definition_id
+        else
+            error("InvalidScreenTemplate: tab screen must be a screen definition handle or Stable ID of kind 'screen', got " .. tostring(screen_spec), 2)
+        end
+
+        local fields = fields_opt or {}
+        if type(fields) ~= "table" then
+            error("InvalidFields: tab fields must be a table", 2)
+        end
+
+        return {
+            key = key,
+            title = title_spec,
+            screen_id = screen_id,
+            fields = fields,
+        }
+    end
+end
+
+function M.create_tab_container_helper(package_id)
+    return function(spec)
+        if type(spec) ~= "table" then
+            error("InvalidTabContainerSpec: tab_container requires a table specification", 2)
+        end
+        local tabs = spec.tabs or spec
+        if type(tabs) ~= "table" or #tabs == 0 then
+            error("InvalidTabContainerSpec: tabs list must be a non-empty array", 2)
+        end
+
+        local default_tab_key = spec.default_tab or spec.default_tab_key
+
+        return {
+            schema_id = "core:schema.ui_field.tab_container.v1",
+            value = {
+                default_tab_key = default_tab_key,
+                tabs = tabs,
+            },
+        }
+    end
+end
+
 return M

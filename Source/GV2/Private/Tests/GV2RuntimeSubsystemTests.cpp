@@ -34,6 +34,7 @@
 #include "UI/GV2IconWidgetBase.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2LayeredUiReconciler.h"
+#include "UI/GV2TabContainerWidgetBase.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
@@ -2216,4 +2217,388 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiNestedInstancesAndTabsContract,
+    "GV2.Runtime.UI.NestedInstancesAndTabsContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
+{
+    // =========================================================================
+    // UIF-22: Registry Layer 'embedded' and placement rules
+    // =========================================================================
+    {
+        TestTrue(TEXT("embedded is a valid registry layer"), UGV2ScreenRegistry::IsValidLayer(TEXT("embedded")));
+        TestFalse(TEXT("embedded is not allowed for top-level route/overlays/modals"), UGV2ScreenRegistry::IsLayerAllowedForTopLevel(TEXT("embedded")));
+        TestTrue(TEXT("embedded is allowed for nested/embedded content"), UGV2ScreenRegistry::IsLayerAllowedForEmbedded(TEXT("embedded")));
+        TestFalse(TEXT("location_content is not allowed for embedded tab content"), UGV2ScreenRegistry::IsLayerAllowedForEmbedded(TEXT("location_content")));
+        TestFalse(TEXT("modal_stack is not allowed for embedded tab content"), UGV2ScreenRegistry::IsLayerAllowedForEmbedded(TEXT("modal_stack")));
+    }
+
+    // =========================================================================
+    // UIF-23 & UIF-24: Tab Container Schema Adapter, Recursive Apply & Elongated Paths
+    // =========================================================================
+    const FGV2ScreenFieldAdapterRegistry& FieldAdapters = FGV2ScreenFieldAdapterRegistry::Get();
+    {
+        // 1. Rejection of empty tabs
+        GV2RuntimeCore::FScreenRequest BadEmptyTabsReq;
+        BadEmptyTabsReq.ScreenId = "core:screen.main";
+        GV2RuntimeCore::FScreenField EmptyField;
+        EmptyField.FieldId = "tabs";
+        EmptyField.SchemaId = "core:schema.ui_field.tab_container.v1";
+        GV2RuntimeCore::FValue::FObject EmptyObj;
+        EmptyObj["tabs"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{});
+        EmptyField.Value = GV2RuntimeCore::FValue(EmptyObj);
+        BadEmptyTabsReq.Fields.push_back(EmptyField);
+
+        TArray<FGV2UiBindingDefinition> BadDefs;
+        TestFalse(TEXT("Empty tabs list rejected"), FieldAdapters.PrepareBindingDefinitions(BadEmptyTabsReq, BadDefs));
+
+        // 2. Rejection of duplicate tab keys
+        GV2RuntimeCore::FScreenRequest DupTabsReq;
+        DupTabsReq.ScreenId = "core:screen.main";
+        GV2RuntimeCore::FScreenField DupField;
+        DupField.FieldId = "tabs";
+        DupField.SchemaId = "core:schema.ui_field.tab_container.v1";
+        GV2RuntimeCore::FValue::FObject DupObj;
+        GV2RuntimeCore::FValue::FArray DupTabs;
+        {
+            GV2RuntimeCore::FValue::FObject T1;
+            T1["key"] = GV2RuntimeCore::FValue(std::string("tab_a"));
+            GV2RuntimeCore::FValue::FObject Title1;
+            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.title_a"));
+            T1["title"] = GV2RuntimeCore::FValue(Title1);
+            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_a"));
+            DupTabs.push_back(GV2RuntimeCore::FValue(T1));
+
+            GV2RuntimeCore::FValue::FObject T2;
+            T2["key"] = GV2RuntimeCore::FValue(std::string("tab_a")); // duplicate key
+            GV2RuntimeCore::FValue::FObject Title2;
+            Title2["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.title_b"));
+            T2["title"] = GV2RuntimeCore::FValue(Title2);
+            T2["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_b"));
+            DupTabs.push_back(GV2RuntimeCore::FValue(T2));
+        }
+        DupObj["tabs"] = GV2RuntimeCore::FValue(DupTabs);
+        DupField.Value = GV2RuntimeCore::FValue(DupObj);
+        DupTabsReq.Fields.push_back(DupField);
+
+        TestFalse(TEXT("Duplicate tab keys rejected"), FieldAdapters.PrepareBindingDefinitions(DupTabsReq, BadDefs));
+
+        // 3. Rejection of nested tab containers (tabs inside tabs)
+        GV2RuntimeCore::FScreenRequest NestedTabsReq;
+        NestedTabsReq.ScreenId = "core:screen.main";
+        GV2RuntimeCore::FScreenField NestedField;
+        NestedField.FieldId = "tabs";
+        NestedField.SchemaId = "core:schema.ui_field.tab_container.v1";
+        GV2RuntimeCore::FValue::FObject NestedObj;
+        GV2RuntimeCore::FValue::FArray NestedTabs;
+        {
+            GV2RuntimeCore::FValue::FObject T1;
+            T1["key"] = GV2RuntimeCore::FValue(std::string("outer_tab"));
+            GV2RuntimeCore::FValue::FObject Title1;
+            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.title_a"));
+            T1["title"] = GV2RuntimeCore::FValue(Title1);
+            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_a"));
+
+            // Child field is another tab_container -> MUST BE REJECTED
+            GV2RuntimeCore::FValue::FObject InnerFields;
+            GV2RuntimeCore::FValue::FObject InnerTabField;
+            InnerTabField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.tab_container.v1"));
+            InnerTabField["value"] = GV2RuntimeCore::FValue(DupObj);
+            InnerFields["inner_tabs"] = GV2RuntimeCore::FValue(InnerTabField);
+            T1["fields"] = GV2RuntimeCore::FValue(InnerFields);
+            NestedTabs.push_back(GV2RuntimeCore::FValue(T1));
+        }
+        NestedObj["tabs"] = GV2RuntimeCore::FValue(NestedTabs);
+        NestedField.Value = GV2RuntimeCore::FValue(NestedObj);
+        NestedTabsReq.Fields.push_back(NestedField);
+
+        TestFalse(TEXT("Nested tab sets disallowed"), FieldAdapters.PrepareBindingDefinitions(NestedTabsReq, BadDefs));
+
+        // 4. Valid tab container with 2 tabs & recursive child fields
+        GV2RuntimeCore::FScreenRequest ValidTabReq;
+        ValidTabReq.ScreenId = "core:screen.main";
+        GV2RuntimeCore::FScreenField TabField;
+        TabField.FieldId = "tabs";
+        TabField.SchemaId = "core:schema.ui_field.tab_container.v1";
+        GV2RuntimeCore::FValue::FObject TabObj;
+        TabObj["default_tab_key"] = GV2RuntimeCore::FValue(std::string("skills"));
+        GV2RuntimeCore::FValue::FArray ValidTabs;
+        {
+            // Tab 1: inventory
+            GV2RuntimeCore::FValue::FObject T1;
+            T1["key"] = GV2RuntimeCore::FValue(std::string("inventory"));
+            GV2RuntimeCore::FValue::FObject Title1;
+            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_inventory"));
+            T1["title"] = GV2RuntimeCore::FValue(Title1);
+            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_inventory"));
+
+            GV2RuntimeCore::FValue::FObject T1Fields;
+            GV2RuntimeCore::FValue::FObject BtnField;
+            BtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
+            GV2RuntimeCore::FValue::FObject BtnVal;
+            GV2RuntimeCore::FValue::FArray Btns;
+            GV2RuntimeCore::FValue::FObject Btn1;
+            Btn1["key"] = GV2RuntimeCore::FValue(std::string("use_potion"));
+            GV2RuntimeCore::FValue::FObject Btn1Title;
+            Btn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_use"));
+            Btn1["text"] = GV2RuntimeCore::FValue(Btn1Title);
+            GV2RuntimeCore::FValue::FObject Action1;
+            Action1["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.item.use"));
+            Btn1["action"] = GV2RuntimeCore::FValue(Action1);
+            Btns.push_back(GV2RuntimeCore::FValue(Btn1));
+            BtnVal["buttons"] = GV2RuntimeCore::FValue(Btns);
+            BtnField["value"] = GV2RuntimeCore::FValue(BtnVal);
+            T1Fields["inventory_buttons"] = GV2RuntimeCore::FValue(BtnField);
+            T1["fields"] = GV2RuntimeCore::FValue(T1Fields);
+            ValidTabs.push_back(GV2RuntimeCore::FValue(T1));
+
+            // Tab 2: skills
+            GV2RuntimeCore::FValue::FObject T2;
+            T2["key"] = GV2RuntimeCore::FValue(std::string("skills"));
+            GV2RuntimeCore::FValue::FObject Title2;
+            Title2["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_skills"));
+            T2["title"] = GV2RuntimeCore::FValue(Title2);
+            T2["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_skills"));
+
+            GV2RuntimeCore::FValue::FObject T2Fields;
+            GV2RuntimeCore::FValue::FObject SkillBtnField;
+            SkillBtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
+            GV2RuntimeCore::FValue::FObject SkillBtnVal;
+            GV2RuntimeCore::FValue::FArray SkillBtns;
+            GV2RuntimeCore::FValue::FObject SkillBtn1;
+            SkillBtn1["key"] = GV2RuntimeCore::FValue(std::string("learn_fireball"));
+            GV2RuntimeCore::FValue::FObject SkillBtn1Title;
+            SkillBtn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_learn"));
+            SkillBtn1["text"] = GV2RuntimeCore::FValue(SkillBtn1Title);
+            GV2RuntimeCore::FValue::FObject Action2;
+            Action2["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.skill.learn"));
+            SkillBtn1["action"] = GV2RuntimeCore::FValue(Action2);
+            SkillBtns.push_back(GV2RuntimeCore::FValue(SkillBtn1));
+            SkillBtnVal["buttons"] = GV2RuntimeCore::FValue(SkillBtns);
+            SkillBtnField["value"] = GV2RuntimeCore::FValue(SkillBtnVal);
+            T2Fields["skill_buttons"] = GV2RuntimeCore::FValue(SkillBtnField);
+            T2["fields"] = GV2RuntimeCore::FValue(T2Fields);
+            ValidTabs.push_back(GV2RuntimeCore::FValue(T2));
+        }
+        TabObj["tabs"] = GV2RuntimeCore::FValue(ValidTabs);
+        TabField.Value = GV2RuntimeCore::FValue(TabObj);
+        ValidTabReq.Fields.push_back(TabField);
+
+        TArray<FGV2UiBindingDefinition> ValidDefs;
+        TestTrue(TEXT("PrepareBindingDefinitions for tab container succeeds"), FieldAdapters.PrepareBindingDefinitions(ValidTabReq, ValidDefs));
+        TestEqual(TEXT("Tab container produces 2 child button definitions"), ValidDefs.Num(), 2);
+
+        // Verify elongated paths: [field_id, tab_key, child_field_id, button_key]
+        TestEqual(TEXT("Tab1 binding path segment count"), ValidDefs[0].NodeKeyPath.Num(), 4);
+        TestEqual(TEXT("Tab1 binding path segment 0 (field_id)"), ValidDefs[0].NodeKeyPath[0], TEXT("tabs"));
+        TestEqual(TEXT("Tab1 binding path segment 1 (tab_key)"), ValidDefs[0].NodeKeyPath[1], TEXT("inventory"));
+        TestEqual(TEXT("Tab1 binding path segment 2 (child_field_id)"), ValidDefs[0].NodeKeyPath[2], TEXT("inventory_buttons"));
+        TestEqual(TEXT("Tab1 binding path segment 3 (btn_key)"), ValidDefs[0].NodeKeyPath[3], TEXT("use_potion"));
+
+        TestEqual(TEXT("Tab2 binding path segment count"), ValidDefs[1].NodeKeyPath.Num(), 4);
+        TestEqual(TEXT("Tab2 binding path segment 0 (field_id)"), ValidDefs[1].NodeKeyPath[0], TEXT("tabs"));
+        TestEqual(TEXT("Tab2 binding path segment 1 (tab_key)"), ValidDefs[1].NodeKeyPath[1], TEXT("skills"));
+        TestEqual(TEXT("Tab2 binding path segment 2 (child_field_id)"), ValidDefs[1].NodeKeyPath[2], TEXT("skill_buttons"));
+        TestEqual(TEXT("Tab2 binding path segment 3 (btn_key)"), ValidDefs[1].NodeKeyPath[3], TEXT("learn_fireball"));
+
+        // BuildFields verification
+        TArray<FGV2UiBindingHandle> Handles;
+        Handles.Add(FGV2UiBindingHandle::FromSerialized(TEXT("h_inv")));
+        Handles.Add(FGV2UiBindingHandle::FromSerialized(TEXT("h_skills")));
+
+        TArray<FGV2ScreenFieldValue> BuiltFields;
+        TestTrue(TEXT("BuildFields for tab container succeeds"), FieldAdapters.BuildFields(ValidTabReq, Handles, BuiltFields));
+        TestEqual(TEXT("1 built field produced"), BuiltFields.Num(), 1);
+        TestTrue(TEXT("TabContainerValue is populated"), BuiltFields[0].TabContainerValue.IsValid());
+        if (BuiltFields[0].TabContainerValue.IsValid())
+        {
+            TestEqual(TEXT("DefaultTabKey is skills"), BuiltFields[0].TabContainerValue->DefaultTabKey, FName("skills"));
+            TestEqual(TEXT("2 tabs in model"), BuiltFields[0].TabContainerValue->Tabs.Num(), 2);
+            TestEqual(TEXT("Tab1 Key is inventory"), BuiltFields[0].TabContainerValue->Tabs[0].Key, FName("inventory"));
+            TestEqual(TEXT("Tab2 Key is skills"), BuiltFields[0].TabContainerValue->Tabs[1].Key, FName("skills"));
+            TestEqual(TEXT("Tab1 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[0].Fields.Num(), 1);
+            TestEqual(TEXT("Tab2 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[1].Fields.Num(), 1);
+        }
+    }
+
+    // =========================================================================
+    // UIF-25: UI-Local Active Tab State & Widget Lifecycle
+    // =========================================================================
+    {
+        UGV2TabContainerWidgetBase* TabWidget = NewObject<UGV2TabContainerWidgetBase>();
+        TestNotNull(TEXT("Tab widget created"), TabWidget);
+
+        FGV2TabContainerViewModel TabModel;
+        TabModel.DefaultTabKey = FName("skills");
+        {
+            FGV2TabItemViewModel& T1 = TabModel.Tabs.AddDefaulted_GetRef();
+            T1.Key = FName("inventory");
+            T1.ScreenId = TEXT("core:screen.tab_inventory");
+
+            FGV2TabItemViewModel& T2 = TabModel.Tabs.AddDefaulted_GetRef();
+            T2.Key = FName("skills");
+            T2.ScreenId = TEXT("core:screen.tab_skills");
+        }
+
+        TestTrue(TEXT("Apply TabModel succeeds"), TabWidget->ApplyTabContainerModel(TabModel));
+        TestEqual(TEXT("Initial active tab is DefaultTabKey (skills)"), TabWidget->GetActiveTabKey(), FName("skills"));
+        TestEqual(TEXT("Active tab index is 1"), TabWidget->GetActiveTabIndex(), 1);
+
+        // Switch tab locally
+        TestTrue(TEXT("SelectTabByKey to inventory succeeds"), TabWidget->SelectTabByKey(FName("inventory")));
+        TestEqual(TEXT("Active tab changed to inventory"), TabWidget->GetActiveTabKey(), FName("inventory"));
+        TestEqual(TEXT("Active tab index changed to 0"), TabWidget->GetActiveTabIndex(), 0);
+
+        // Reconcile new revision with same tabs -> preserves active tab (inventory), not resetting to default
+        FGV2TabContainerViewModel Rev2Model = TabModel;
+        TestTrue(TEXT("Apply Rev2Model succeeds"), TabWidget->ApplyTabContainerModel(Rev2Model));
+        TestEqual(TEXT("Active tab preserved across revision (inventory)"), TabWidget->GetActiveTabKey(), FName("inventory"));
+
+        // Reconcile revision where active tab (inventory) was removed -> falls back to default (skills)
+        FGV2TabContainerViewModel Rev3Model;
+        Rev3Model.DefaultTabKey = FName("skills");
+        Rev3Model.Tabs.Add(TabModel.Tabs[1]); // only skills
+        TestTrue(TEXT("Apply Rev3Model succeeds"), TabWidget->ApplyTabContainerModel(Rev3Model));
+        TestEqual(TEXT("Fallback to default tab when active tab removed"), TabWidget->GetActiveTabKey(), FName("skills"));
+    }
+
+    // =========================================================================
+    // UIF-26: Semantic Input Filtering (Only Active Tab is Interactive)
+    // =========================================================================
+    {
+        FGV2SessionCoordinator Coordinator;
+        GV2ContentCore::FRepositorySnapshot Snapshot;
+        GV2ContentCore::FRepositoryReadHandle ReadHandle = Snapshot.GetReadHandle();
+        TestTrue(TEXT("Coordinator StartSession succeeds"), Coordinator.StartSession(ReadHandle, 1));
+
+        // Prepare document with route holding tab container with 'inventory' (default) and 'skills'
+        GV2RuntimeCore::FUiDocument Doc;
+        Doc.UiInstanceId = "ui@1:1";
+        Doc.Revision = 1;
+
+        GV2RuntimeCore::FScreenInstance RouteInst;
+        RouteInst.Layer = "location_content";
+        RouteInst.InstanceKey = "main";
+        RouteInst.ScreenId = "core:screen.main";
+
+        GV2RuntimeCore::FScreenField TabField;
+        TabField.FieldId = "tabs";
+        TabField.SchemaId = "core:schema.ui_field.tab_container.v1";
+        GV2RuntimeCore::FValue::FObject TabObj;
+        TabObj["default_tab_key"] = GV2RuntimeCore::FValue(std::string("inventory"));
+        GV2RuntimeCore::FValue::FArray TabsList;
+        {
+            // Tab 1: inventory with button
+            GV2RuntimeCore::FValue::FObject T1;
+            T1["key"] = GV2RuntimeCore::FValue(std::string("inventory"));
+            GV2RuntimeCore::FValue::FObject Title1;
+            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_inv"));
+            T1["title"] = GV2RuntimeCore::FValue(Title1);
+            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_inv"));
+            GV2RuntimeCore::FValue::FObject T1Fields;
+            GV2RuntimeCore::FValue::FObject BtnField;
+            BtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
+            GV2RuntimeCore::FValue::FObject BtnVal;
+            GV2RuntimeCore::FValue::FArray Btns;
+            GV2RuntimeCore::FValue::FObject Btn1;
+            Btn1["key"] = GV2RuntimeCore::FValue(std::string("use_potion"));
+            GV2RuntimeCore::FValue::FObject Btn1Title;
+            Btn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_use"));
+            Btn1["text"] = GV2RuntimeCore::FValue(Btn1Title);
+            GV2RuntimeCore::FValue::FObject Action1;
+            Action1["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.test.step"));
+            Btn1["action"] = GV2RuntimeCore::FValue(Action1);
+            Btns.push_back(GV2RuntimeCore::FValue(Btn1));
+            BtnVal["buttons"] = GV2RuntimeCore::FValue(Btns);
+            BtnField["value"] = GV2RuntimeCore::FValue(BtnVal);
+            T1Fields["inv_buttons"] = GV2RuntimeCore::FValue(BtnField);
+            T1["fields"] = GV2RuntimeCore::FValue(T1Fields);
+            TabsList.push_back(GV2RuntimeCore::FValue(T1));
+
+            // Tab 2: skills with button
+            GV2RuntimeCore::FValue::FObject T2;
+            T2["key"] = GV2RuntimeCore::FValue(std::string("skills"));
+            GV2RuntimeCore::FValue::FObject Title2;
+            Title2["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_skills"));
+            T2["title"] = GV2RuntimeCore::FValue(Title2);
+            T2["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_skills"));
+            GV2RuntimeCore::FValue::FObject T2Fields;
+            GV2RuntimeCore::FValue::FObject SkillBtnField;
+            SkillBtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
+            GV2RuntimeCore::FValue::FObject SkillBtnVal;
+            GV2RuntimeCore::FValue::FArray SkillBtns;
+            GV2RuntimeCore::FValue::FObject SkillBtn1;
+            SkillBtn1["key"] = GV2RuntimeCore::FValue(std::string("learn_fireball"));
+            GV2RuntimeCore::FValue::FObject SkillBtn1Title;
+            SkillBtn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_learn"));
+            SkillBtn1["text"] = GV2RuntimeCore::FValue(SkillBtn1Title);
+            GV2RuntimeCore::FValue::FObject Action2;
+            Action2["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.test.step"));
+            SkillBtn1["action"] = GV2RuntimeCore::FValue(Action2);
+            SkillBtns.push_back(GV2RuntimeCore::FValue(SkillBtn1));
+            SkillBtnVal["buttons"] = GV2RuntimeCore::FValue(SkillBtns);
+            SkillBtnField["value"] = GV2RuntimeCore::FValue(SkillBtnVal);
+            T2Fields["skill_buttons"] = GV2RuntimeCore::FValue(SkillBtnField);
+            T2["fields"] = GV2RuntimeCore::FValue(T2Fields);
+            TabsList.push_back(GV2RuntimeCore::FValue(T2));
+        }
+        TabObj["tabs"] = GV2RuntimeCore::FValue(TabsList);
+        TabField.Value = GV2RuntimeCore::FValue(TabObj);
+        RouteInst.Fields.push_back(TabField);
+        Doc.Route = RouteInst;
+
+        bool bDocumentHandled = false;
+        Coordinator.SetDocumentSink([&bDocumentHandled](const FGV2UiDocumentViewModel&) -> bool
+        {
+            bDocumentHandled = true;
+            return true;
+        });
+
+        // Publish bindings
+        TArray<FGV2UiBindingDefinition> Definitions;
+        TestTrue(TEXT("PrepareBindingDefinitions for Route succeeds"), FieldAdapters.PrepareBindingDefinitions(RouteInst, Definitions));
+        for (FGV2UiBindingDefinition& Def : Definitions)
+        {
+            Def.NodeKeyPath.Insert(TEXT("main"), 0);
+            Def.NodeKeyPath.Insert(TEXT("location_content"), 0);
+        }
+
+        TArray<FGV2UiBindingHandle> Handles;
+        TestTrue(TEXT("PublishUiBindings succeeds"), Coordinator.PublishUiBindings(TEXT("ui@1:1"), 1, Definitions, Handles));
+        TestEqual(TEXT("2 handles published"), Handles.Num(), 2);
+
+        const FGV2UiBindingHandle InventoryBtnHandle = Handles[0];
+        const FGV2UiBindingHandle SkillsBtnHandle = Handles[1];
+
+        // Active tab initially set to inventory
+        Coordinator.SetActiveTab(TEXT("location_content/main/tabs"), TEXT("inventory"));
+        TestEqual(TEXT("Coordinator active tab is inventory"), Coordinator.GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
+
+        // 1. Submit interaction on ACTIVE tab (inventory) -> Accepted
+        const EGV2SubmitUiInteractionResult Result1 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
+        TestEqual(TEXT("Active tab handle accepted"), Result1, EGV2SubmitUiInteractionResult::Accepted);
+
+        // 2. Submit interaction on INACTIVE tab (skills) -> StaleBindingHandle
+        const EGV2SubmitUiInteractionResult Result2 = Coordinator.SubmitUiInteraction(SkillsBtnHandle, {});
+        TestEqual(TEXT("Inactive tab handle rejected as stale"), Result2, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+
+        // 3. Switch active tab locally to skills (no commands / no revision mutation)
+        Coordinator.SetActiveTab(TEXT("location_content/main/tabs"), TEXT("skills"));
+        TestEqual(TEXT("Coordinator active tab is now skills"), Coordinator.GetActiveTab(TEXT("location_content/main/tabs")), TEXT("skills"));
+
+        // 4. Submit interaction on new ACTIVE tab (skills) -> Accepted
+        const EGV2SubmitUiInteractionResult Result3 = Coordinator.SubmitUiInteraction(SkillsBtnHandle, {});
+        TestEqual(TEXT("Skills handle accepted after tab switch"), Result3, EGV2SubmitUiInteractionResult::Accepted);
+
+        // 5. Submit interaction on newly INACTIVE tab (inventory) -> StaleBindingHandle
+        const EGV2SubmitUiInteractionResult Result4 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
+        TestEqual(TEXT("Inventory handle rejected after tab switch"), Result4, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+    }
+
+    return true;
+}
+
 #endif
+

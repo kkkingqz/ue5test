@@ -29,7 +29,11 @@ class GV2_API UGV2ScreenRegistry : public UDataAsset
     GENERATED_BODY()
 
 public:
+    static const FName LayerEmbedded;
+
     static bool IsValidLayer(FName Layer);
+    static bool IsLayerAllowedForTopLevel(FName Layer);
+    static bool IsLayerAllowedForEmbedded(FName Layer);
 
     bool Validate(FString& OutError) const;
 

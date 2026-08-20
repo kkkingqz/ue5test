@@ -17,6 +17,7 @@ constexpr std::string_view ImageSchema = "core:schema.ui_field.image.v1";
 constexpr std::string_view ProgressBarSchema = "core:schema.ui_field.progress_bar.v1";
 constexpr std::string_view PortraitSchema = "core:schema.ui_field.portrait.v1";
 constexpr std::string_view ModalSchema = "core:schema.ui_field.modal.v1";
+constexpr std::string_view TabContainerSchema = "core:schema.ui_field.tab_container.v1";
 constexpr TCHAR CheckboxInputSchema[] = TEXT("core:schema.ui_input.checkbox_changed.v1");
 constexpr TCHAR InputFieldInputSchema[] = TEXT("core:schema.ui_input.text_changed.v1");
 constexpr TCHAR DropdownSelectInputSchema[] = TEXT("core:schema.ui_input.dropdown_selected.v1");
@@ -798,6 +799,231 @@ bool BuildModalField(
     OutField = FGV2ScreenFieldValue::MakeModal(FName(*FieldId(Field)), Model);
     return true;
 }
+
+bool PrepareTabContainer(
+    const std::string& ScreenId,
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    TArray<FGV2UiBindingDefinition>& OutDefinitions)
+{
+    const FArray* TabsArray = nullptr;
+    if (const GV2RuntimeCore::FValue* TabsVal = FindValue(Value, "tabs"))
+    {
+        TabsArray = AsArray(*TabsVal);
+    }
+    if (TabsArray == nullptr || TabsArray->empty())
+    {
+        return false;
+    }
+
+    if (const std::string* DefaultKey = FindString(Value, "default_tab_key"))
+    {
+        if (!IsValidRepeatedElementKey(*DefaultKey))
+        {
+            return false;
+        }
+    }
+
+    TSet<FString> TabKeys;
+    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
+
+    for (const GV2RuntimeCore::FValue& TabVal : *TabsArray)
+    {
+        const FObject* TabObj = AsObject(TabVal);
+        if (TabObj == nullptr)
+        {
+            return false;
+        }
+
+        const std::string* Key = FindString(*TabObj, "key");
+        if (Key == nullptr || !IsValidRepeatedElementKey(*Key))
+        {
+            return false;
+        }
+
+        const FString TabKeyStr = UTF8_TO_TCHAR(Key->c_str());
+        if (TabKeys.Contains(TabKeyStr))
+        {
+            return false; // Duplicate tab key
+        }
+        TabKeys.Add(TabKeyStr);
+
+        const GV2RuntimeCore::FValue* TitleVal = FindValue(*TabObj, "title");
+        GV2RuntimeCore::FTextSpec TitleSpec;
+        if (TitleVal == nullptr || !ReadTextSpec(*TitleVal, TitleSpec))
+        {
+            return false; // Raw strings or invalid TextSpec rejected
+        }
+
+        const std::string* TabScreenId = FindString(*TabObj, "screen_id");
+        if (TabScreenId == nullptr || !GV2RuntimeCore::FStableId::IsOfKind(*TabScreenId, "screen"))
+        {
+            return false;
+        }
+
+        const GV2RuntimeCore::FValue* FieldsVal = FindValue(*TabObj, "fields");
+        const FObject* FieldsObj = FieldsVal != nullptr ? AsObject(*FieldsVal) : nullptr;
+        if (FieldsObj != nullptr)
+        {
+            for (const auto& [ChildFieldId, ChildFieldVal] : *FieldsObj)
+            {
+                const FObject* ChildFieldObj = AsObject(ChildFieldVal);
+                if (ChildFieldObj == nullptr)
+                {
+                    return false;
+                }
+                const std::string* ChildSchemaId = FindString(*ChildFieldObj, "schema_id");
+                const GV2RuntimeCore::FValue* ChildValue = FindValue(*ChildFieldObj, "value");
+                if (ChildSchemaId == nullptr || ChildValue == nullptr)
+                {
+                    return false;
+                }
+
+                // Check UIF-22: Tabs inside tabs disallowed
+                if (*ChildSchemaId == TabContainerSchema)
+                {
+                    return false;
+                }
+
+                const FObject* ChildValObj = AsObject(*ChildValue);
+                if (ChildValObj == nullptr)
+                {
+                    return false;
+                }
+
+                GV2RuntimeCore::FScreenField ChildField;
+                ChildField.FieldId = ChildFieldId;
+                ChildField.SchemaId = *ChildSchemaId;
+                ChildField.Value = *ChildValue;
+
+                const auto* ChildAdapter = Registry.Find(*ChildSchemaId);
+                if (ChildAdapter == nullptr)
+                {
+                    return false;
+                }
+
+                TArray<FGV2UiBindingDefinition> ChildDefs;
+                if (!ChildAdapter->PrepareBindings(*TabScreenId, ChildField, *ChildValObj, ChildDefs))
+                {
+                    return false;
+                }
+
+                for (FGV2UiBindingDefinition& Def : ChildDefs)
+                {
+                    Def.NodeKeyPath.Insert(TabKeyStr, 0);
+                    Def.NodeKeyPath.Insert(FieldId(Field), 0);
+                    OutDefinitions.Add(MoveTemp(Def));
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+bool BuildTabContainerField(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const TArray<FGV2UiBindingHandle>& Handles,
+    int32& InOutHandleIndex,
+    FGV2ScreenFieldValue& OutField)
+{
+    const FArray* TabsArray = nullptr;
+    if (const GV2RuntimeCore::FValue* TabsVal = FindValue(Value, "tabs"))
+    {
+        TabsArray = AsArray(*TabsVal);
+    }
+    if (TabsArray == nullptr || TabsArray->empty())
+    {
+        return false;
+    }
+
+    FGV2TabContainerViewModel Model;
+    if (const std::string* DefaultKey = FindString(Value, "default_tab_key"))
+    {
+        Model.DefaultTabKey = FName(UTF8_TO_TCHAR(DefaultKey->c_str()));
+    }
+
+    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
+
+    for (const GV2RuntimeCore::FValue& TabVal : *TabsArray)
+    {
+        const FObject* TabObj = AsObject(TabVal);
+        if (TabObj == nullptr)
+        {
+            return false;
+        }
+
+        const std::string* Key = FindString(*TabObj, "key");
+        if (Key == nullptr)
+        {
+            return false;
+        }
+
+        FGV2TabItemViewModel& TabItem = Model.Tabs.AddDefaulted_GetRef();
+        TabItem.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
+
+        const GV2RuntimeCore::FValue* TitleVal = FindValue(*TabObj, "title");
+        if (TitleVal == nullptr || !ResolveText(*TitleVal, TabItem.Title))
+        {
+            return false;
+        }
+
+        const std::string* TabScreenId = FindString(*TabObj, "screen_id");
+        if (TabScreenId == nullptr)
+        {
+            return false;
+        }
+        TabItem.ScreenId = UTF8_TO_TCHAR(TabScreenId->c_str());
+
+        const GV2RuntimeCore::FValue* FieldsVal = FindValue(*TabObj, "fields");
+        const FObject* FieldsObj = FieldsVal != nullptr ? AsObject(*FieldsVal) : nullptr;
+        if (FieldsObj != nullptr)
+        {
+            for (const auto& [ChildFieldId, ChildFieldVal] : *FieldsObj)
+            {
+                const FObject* ChildFieldObj = AsObject(ChildFieldVal);
+                if (ChildFieldObj == nullptr)
+                {
+                    return false;
+                }
+                const std::string* ChildSchemaId = FindString(*ChildFieldObj, "schema_id");
+                const GV2RuntimeCore::FValue* ChildValue = FindValue(*ChildFieldObj, "value");
+                if (ChildSchemaId == nullptr || ChildValue == nullptr)
+                {
+                    return false;
+                }
+
+                const FObject* ChildValObj = AsObject(*ChildValue);
+                if (ChildValObj == nullptr)
+                {
+                    return false;
+                }
+
+                GV2RuntimeCore::FScreenField ChildField;
+                ChildField.FieldId = ChildFieldId;
+                ChildField.SchemaId = *ChildSchemaId;
+                ChildField.Value = *ChildValue;
+
+                const auto* ChildAdapter = Registry.Find(*ChildSchemaId);
+                if (ChildAdapter == nullptr)
+                {
+                    return false;
+                }
+
+                FGV2ScreenFieldValue BuiltChildField;
+                if (!ChildAdapter->BuildField(ChildField, *ChildValObj, Handles, InOutHandleIndex, BuiltChildField))
+                {
+                    return false;
+                }
+                TabItem.Fields.Add(MoveTemp(BuiltChildField));
+            }
+        }
+    }
+
+    OutField = FGV2ScreenFieldValue::MakeTabContainer(FName(*FieldId(Field)), Model);
+    return true;
+}
 }
 
 const FGV2ScreenFieldAdapterRegistry& FGV2ScreenFieldAdapterRegistry::Get()
@@ -817,6 +1043,7 @@ FGV2ScreenFieldAdapterRegistry::FGV2ScreenFieldAdapterRegistry()
         {ProgressBarSchema, &PrepareProgressBar, &BuildProgressBarField},
         {PortraitSchema, &PreparePortrait, &BuildPortraitField},
         {ModalSchema, &PrepareModal, &BuildModalField},
+        {TabContainerSchema, &PrepareTabContainer, &BuildTabContainerField},
     })
 {
     TSet<FString> SchemaIds;

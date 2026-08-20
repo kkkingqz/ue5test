@@ -2,7 +2,7 @@
 title: Semantic Input Contract
 status: draft
 version: 1.4
-updated: 2026-08-15
+updated: 2026-08-20
 depends_on:
   - UIDocumentAndReconciliation.md
   - ../Architecture/CommandsAndEvents.md
@@ -87,6 +87,8 @@ Checkbox использует schema `core:schema.ui_input.checkbox_changed.v1`.
 Input field (поле ввода) использует schema `core:schema.ui_input.text_changed.v1`. Binding record объявляет единственное required control field `value: string`; physical `WBP_InputField` отправляет `SubmitUiInteraction(handle, {value})` при фиксации или изменении текста (`OnTextCommitted`). Значение является input: Lua command handler принимает строку через Command Dispatcher и публикует новое desired text state. Extra field, отсутствие `value`, неверный type или collision с bound args возвращают `InvalidInputValues` до входа в Lua.
 
 Dropdown использует schema `core:schema.ui_input.dropdown_selected.v1`. Binding record объявляет единственное required control field `selected_key: string`. Option button передаёт composite dropdown только deterministic local key и не отправляет interaction самостоятельно; `WBP_DropdownSelect` проверяет key против applied options и выполняет ровно один `SubmitUiInteraction(handle, {selected_key})`. Lua command handler принимает selection через Command Dispatcher и публикует новое desired state. Header open/close остаётся UE-local. Extra field, отсутствие `selected_key`, неверный type, неизвестный option key или collision с bound args отклоняются до изменения desired state.
+
+Tab container controls (набор вкладок) строят binding records для всех вкладок сразу с удлинённым `node_key_path` вида `[layer, instance_key, field_id, tab_key, ...]`. Однако Semantic Input принимает handles только текущей активной вкладки контейнера. Handles неактивных вкладок отклоняются как `StaleBindingHandle`. Переключение вкладки является чисто UI-local операцией, изменяющей множество интерактивных handles без изменения ревизии документа и без отправки геймплейных команд.
 
 ## Security/authority boundary
 

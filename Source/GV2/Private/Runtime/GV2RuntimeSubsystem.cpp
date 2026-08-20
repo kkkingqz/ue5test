@@ -268,6 +268,23 @@ UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::GetActiveScreenInLayer(FName Layer, 
     return Reconciler.GetActiveScreen(Layer, InstanceKey);
 }
 
+void UGV2RuntimeSubsystem::SetActiveTab(const FString& ContainerPath, const FString& TabKey)
+{
+    if (Coordinator.IsValid())
+    {
+        Coordinator->SetActiveTab(ContainerPath, TabKey);
+    }
+}
+
+FString UGV2RuntimeSubsystem::GetActiveTab(const FString& ContainerPath) const
+{
+    if (Coordinator.IsValid())
+    {
+        return Coordinator->GetActiveTab(ContainerPath);
+    }
+    return FString();
+}
+
 bool UGV2RuntimeSubsystem::LoadScreenRegistry()
 {
     RegisteredScreenClasses.Reset();

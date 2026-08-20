@@ -46,6 +46,12 @@ public:
 
     UGV2ScreenWidgetBase* GetActiveScreenInLayer(FName Layer, FName InstanceKey) const;
 
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetActiveTab(const FString& ContainerPath, const FString& TabKey);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    FString GetActiveTab(const FString& ContainerPath) const;
+
 private:
     bool LoadScreenRegistry();
     UClass* ResolveScreenClass(const FString& ScreenId) const;
