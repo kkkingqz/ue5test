@@ -52,7 +52,7 @@ function M.build_screen_request(location_id)
             local title_id = (conn_loc and conn_loc.title_text_id) or ("textsystem:text.location." .. path_str)
             table.insert(buttons, M.button(
                 M.text(title_id),
-                M.action("textsystem:action.location.travel", conn_id),
+                M.action("textsystem:action.location.travel", { target = conn_id }),
                 "travel_" .. path_str
             ))
         end

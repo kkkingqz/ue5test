@@ -5,6 +5,9 @@ local tavern = location("city.tavern")
 local market = location("city.market")
 
 local function handle_travel(target)
+    if type(target) == "table" and target.target ~= nil then
+        target = target.target
+    end
     player.current_location:require_connected(target)
     player:require_stamina(5, "travel.insufficient_stamina")
 
@@ -30,7 +33,7 @@ commands["work.do_work"] = handle_work
 
 local function handle_start_game()
     local hero = instances.create("actor", {
-        definition = def("character.hero"),
+        definition = def.actor("character.hero"),
         current_location = tavern,
         gold = 50,
         stamina = 20,
@@ -38,7 +41,7 @@ local function handle_start_game()
     })
 
     local merchant_inst = instances.create("actor", {
-        definition = def("npc.merchant"),
+        definition = def.actor("npc.merchant"),
         current_location = market,
         gold = 100,
         stamina = 50,
