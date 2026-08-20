@@ -1,7 +1,7 @@
 ---
 title: Architecture Index
 status: normative
-version: 1.3
+version: 1.4
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -21,7 +21,9 @@ depends_on:
 | [Glossary and Naming](GlossaryAndNaming.md) | Термины, имена, категории ID |
 | [System Context and Components](SystemContextAndComponents.md) | Модули, ownership, lifetime |
 | [Bootstrap and Session Lifecycle](BootstrapAndSessionLifecycle.md) | Cold start, session, restart, teardown |
-| [Lua Runtime Contract](LuaRuntimeContract.md) | VM, модули, фасад `game`, значения |
+| [Lua Runtime Contract](LuaRuntimeContract.md) | VM, модули, protected execution, value boundary |
+| [Runtime Facade and Registries](RuntimeFacadeAndRegistries.md) | Карта `game`, общий registry lifecycle и freeze gate |
+| [Lua Authoring Surface](AuthoringSurfaceContract.md) | Designer-facing `_ENV`, declarations и runtime adapters |
 | [Commands and Events](CommandsAndEvents.md) | Команды, валидаторы, mutation window, события, фазы |
 | [Canonical State and Save](CanonicalStateAndSave.md) | Форма состояния, инварианты экземпляров, сейв |
 | [GameDataRepository Contract](GameDataRepositoryContract.md) | Сборка репозитория, override, снимок, чтение |

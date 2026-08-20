@@ -7,6 +7,7 @@ date: 2026-08-18
 # ADR-0028: Simplified Authoring Surface
 
 > **Решение:** ввести класс authoring-скриптов (`scripts/authoring/*.lua`) с собственным лексическим окружением `_ENV`, создаваемым загрузчиком дескриптором модуля, запретом записи глобальных переменных, неявным успехом команд и источником презентации с автоматической инвалидацией.
+> **Нормативный текст:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Lua Runtime](../Architecture/LuaRuntimeContract.md), [Screen Templates](../UI/ScreenTemplates.md).
 
 ## 1. Контекст и проблема
 

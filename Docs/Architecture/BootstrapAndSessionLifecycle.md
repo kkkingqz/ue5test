@@ -1,12 +1,13 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 2.8
-updated: 2026-08-15
+version: 2.9
+updated: 2026-08-20
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
   - LuaRuntimeContract.md
+  - RuntimeFacadeAndRegistries.md
 decisions:
   - ../ADR/0006-repository-reload-and-session-pinning.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
@@ -29,7 +30,7 @@ decisions:
 - VM создаётся и уничтожается вместе с session.
 - Cold start создаёт full menu session с обычным lifecycle core и enabled mod modules и empty gameplay roots.
 - Initial repository строится до первой VM. Application может позднее опубликовать новый current snapshot, но active session остаётся pinned до restart.
-- Registries freeze после registration.
+- После registration host выполняет единый registry freeze gate по [Runtime Facade and Registries](RuntimeFacadeAndRegistries.md#host-side-freeze-sequence).
 - До `Ready` semantic input, commands, events, effects и save закрыты, кроме lifecycle-owned initial projection path.
 - Async result проверяет owner, session generation и operation token.
 - Failure candidate session заканчивается обязательным cleanup до `Destroyed`.
@@ -139,7 +140,7 @@ Order: core modules, затем mods по resolved load order. `stop`/`unregiste
 3. Build and atomically publish repository.
 4. On repository error, do not create Lua VM; show UE-native recovery surface.
 5. Create full Menu session pinned to repository.
-6. Register modules and freeze registries.
+6. Register modules and выполнить единый registry freeze gate.
 7. Build empty menu state, restore runtime objects, validate, start.
 8. Apply initial menu presentation.
 9. Commit session `Ready` and Application `MenuActive`.
@@ -147,7 +148,7 @@ Order: core modules, затем mods по resolved load order. `stop`/`unregiste
 ## New/load session build
 
 1. Allocate new session ID/generation, VM, Bridge and service set privately.
-2. Register modules and freeze registries.
+2. Register modules and выполнить единый registry freeze gate.
 3. Build temporary state: defaults for NewGame; decoded/migrated tree for LoadSave.
 4. Restore instances and validate module/global invariants.
 5. Assign canonical state only after full validation.

@@ -1,7 +1,7 @@
 ---
 title: Runtime Instances
 status: informative
-version: 1.3
+version: 1.4
 updated: 2026-08-20
 depends_on:
   - README.md
@@ -10,7 +10,7 @@ depends_on:
 # Экземпляры времени выполнения
 
 > **Объясняет:** разницу между описанием, экземпляром и объектом для работы с ним.
-> **Нормативно:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md), [Stable ID](../Architecture/StableIDSpecification.md).
+> **Нормативно:** [Runtime Facade](../Architecture/RuntimeFacadeAndRegistries.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md), [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Stable ID](../Architecture/StableIDSpecification.md).
 > **Не является нормативным:** при расхождении прав contract.
 
 Три разные вещи легко перепутать: описание, экземпляр и объект для работы с ним. Этот документ объясняет разницу и зачем она нужна.
@@ -38,7 +38,7 @@ core:actor.npc.merchant    actor@42                    временный объ
 
 Правило простое: **состояние переживает сессию, обёртка — нет**.
 
-Нормативно: [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md) — фасад, реестры, границы значений; [Canonical State and Save](../Architecture/CanonicalStateAndSave.md) — допустимые значения состояния и инварианты экземпляров.
+Нормативно: [Runtime Facade](../Architecture/RuntimeFacadeAndRegistries.md) — размещение реестров; [Canonical State and Save](../Architecture/CanonicalStateAndSave.md) — значения состояния, instances и effective methods.
 
 ## Identity
 

@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: draft
-version: 1.1
+version: 1.2
 updated: 2026-08-20
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -180,16 +180,7 @@ Production Lua document обязан использовать `TextSpec`; locali
 
 ### Designer Authoring Layer (ADR-0027)
 
-Для декларации экранов и кнопок в авторском слое геймдизайнера используются хелперы:
-
-- **`mod.text(key, args, style)`**: создаёт каноническую структуру `TextSpec` (`{ text_id = "<package_id>:text.<key>", args = args or {}, style = style or "default" }`).
-- **`mod.action(command_desc, ...)`**: строит дескриптор действия `{ command_id = ..., args = ... }`. Принимает дескриптор команды (`mod.commands.buy`) или короткое имя команды (`"buy"`). Передача произвольных замыканий/функций строго запрещена и отклоняется ошибкой `ActionClosureDisallowed`.
-- **`mod.button(text_spec, action_binding, key_opt)`**: конструирует запись кнопки. Принимает `TextSpec`, результат `mod.action` и опциональный `key_opt`. Передача сырых строк в текст кнопки строго запрещена (`RawStringDisallowed`). Если явный `key_opt` не передан, ключ выводится детерминированно из сущности действия или канонического `command_id` с аргументами. Передача локализуемого текста или `TextSpec` в качестве ключа запрещена (`TextDisallowedAsKey`, [ADR-0035](../ADR/0035-ui-foundation-and-composition.md)).
-- **`mod.tab(key, title_spec, screen_spec, fields)`**: конструирует запись вкладки со стабильным ключом, заголовком `TextSpec`, `screen_id` со слоем `embedded` и вложенными полями экрана. Сырые строки в заголовке отклоняются (`RawStringDisallowed`), `TextSpec` в роли ключа запрещён (`TextDisallowedAsKey`).
-- **`mod.tab_container(spec)` / `mod.tabs(spec)`**: конструирует поле набора вкладок со схемой `core:schema.ui_field.tab_container.v1` и списком вкладок `tabs`.
-- **`mod.show_screen({ template, description, buttons })`**: валидирует спецификацию экрана и публикует экранный запрос. Сырые строки в описании или кнопках отклоняются с `RawStringDisallowed`.
-- **Конвенция ошибок**: код отказа `<pkg>:error.<path>` соответствует тексту локализации `<pkg>:text.error.<path>`.
-- **Сборщик текстов**: утилита `Tools/Content/collect_texts.py <package_root>` выполняет статический анализ Lua-скриптов на наличие литералов `text("...")` и `fail("...")`, генерирует недостающие определения текстов в `definitions/texts.json5` и шаблоны в `localization/*.po` идемпотентно.
+Синтаксис `text`, `action`, `button`, `tab`, `tabs` и `show_*`, его package attribution и runtime adaptation задаёт [Authoring Surface Contract](../Architecture/AuthoringSurfaceContract.md). Этот contract владеет результатом: `TextSpec`, stable element keys, Screen Field schema, layer/instance identity и atomic apply. Authoring helper обязан создавать структуры этой модели и не может вводить callback, raw user-facing string или параллельный Screen format.
 
 ### Источник презентации и автоматическая инвалидация (SAS-14..16, ADR-0028)
 

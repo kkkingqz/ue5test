@@ -1,8 +1,8 @@
 ---
 title: Glossary and Naming
 status: normative
-version: 1.10
-updated: 2026-08-15
+version: 1.11
+updated: 2026-08-20
 depends_on:
   - StableIDSpecification.md
 ---
@@ -28,7 +28,7 @@ depends_on:
 | Actor | Каноническая сущность персонажа (игрока или NPC), хранящаяся в `state.actors` |
 | ActorRegistry | Реестр `game.instances.actors`, отвечающий за identity, lookup, CRUD-операции, детерминированное перечисление и выдачу disposable-обёрток |
 | Disposable Wrapper | Одноразовая обёртка runtime-объекта (например `ActorWrapper`, `WorldWrapper`), вычисляющая динамические свойства (`discriminator`) и предоставляющая доменные методы без загрязнения canonical state |
-| World | Канонический singleton runtime instance мира под `game.instances.world`, предоставляющий disposable wrapper над `state.world` (включая `current_location_id`) |
+| World | Singleton runtime instance под `game.instances.world`; wrapper читает global `state.world`, а location accessors делегируют к актору игрока |
 | Runtime instance | Сохраняемый экземпляр с `type_id`, `definition_id`, `instance_id` и instance state |
 | Runtime object | Любой transient объект Lua runtime; может не сохраняться |
 | Presentation-state | Локальное состояние UE/UX, не определяющее gameplay |

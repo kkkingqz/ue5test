@@ -7,6 +7,7 @@ date: 2026-08-19
 # ADR-0032: Field Contracts and Generic Instance Creation
 
 > **Решение:** декларативные дескрипторы полей (`field.*`) на прототипах сущностей, автоматическая валидация структурных инвариантов при записи, и обобщённый фасад создания динамических экземпляров (`instances.create`).
+> **Нормативный текст:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
 
 ## Context
 

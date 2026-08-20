@@ -7,6 +7,7 @@ date: 2026-08-18
 # ADR-0027: Designer Lua Authoring Layer
 
 > **Решение:** ввести designer-facing слой в Lua поверх фасада `game`, отложить регистрацию команд и событий до фазы `register`, связать семантику `fail()` со счётчиком `write_revision` окна мутации, изолировать сырое состояние и выделить единый примитив переносимого значения.
+> **Нормативный текст:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Commands and Events](../Architecture/CommandsAndEvents.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
 
 ## 1. Контекст и проблема
 

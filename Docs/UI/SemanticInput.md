@@ -1,26 +1,32 @@
 ---
 title: Semantic Input Contract
 status: draft
-version: 1.4
+version: 1.5
 updated: 2026-08-20
 depends_on:
   - UIDocumentAndReconciliation.md
   - ../Architecture/CommandsAndEvents.md
+  - ../Architecture/RuntimeFacadeAndRegistries.md
 decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0011-blueprint-screen-templates.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
+  - ../ADR/0027-designer-lua-authoring-layer.md
 ---
 
 # Semantic Input Contract
 
-> **Владеет:** конвертом пользовательского ввода, binding handle и правилами отклонения устаревшего ввода.
+> **Владеет:** semantic action binding, конвертом пользовательского ввода, binding handle и отклонением устаревшего ввода.
 > **Не владеет:** обработкой команды после её приёма ([Commands and Events](../Architecture/CommandsAndEvents.md)).
 > **Инварианты:** [INV-007](../Architecture/Invariants.md)
 > **Реализация:** `Source/GV2/Private/Bridge/GV2UiBindingRegistry.cpp`, `GV2RuntimeIngressQueue.cpp`, `Source/GV2/Private/UI/GV2UiInteractionEmitter.cpp`.
 > **Проверки:** `GV2.Runtime.Ingress.*`, `GV2.Runtime.UI.BindingRegistry`.
 
 Semantic input — value-only сообщение UE → Lua. Оно описывает смысл взаимодействия, а не Widget name, Blueprint callback или Lua function.
+
+## Semantic action binding
+
+`game.actions` связывает Stable ID kind `action` с immutable `{ command_id, args }` на фазе `register`. Duplicate binding даёт `DuplicateActionBinding`, late binding — `ActionRegistryFrozen`, lookup отсутствующего ID — `ActionNotBound`. Binding registry не выполняет command и не хранит callback: он только разрешает semantic action в Command Request до создания UI binding record. Authoring-синтаксис `actions.*` и `action(...)` задаёт [Authoring Surface](../Architecture/AuthoringSurfaceContract.md); общий freeze protocol — [Runtime Facade and Registries](../Architecture/RuntimeFacadeAndRegistries.md).
 
 ## Blueprint-facing ingress
 

@@ -1,7 +1,7 @@
 ---
 title: GV2 Documentation Index
 status: informative
-version: 4.0
+version: 4.1
 updated: 2026-08-20
 language: ru
 ---
@@ -16,6 +16,7 @@ language: ru
 | Найти обязательное правило | [Architecture](Architecture/README.md), [UI](UI/README.md), [Invariants](Architecture/Invariants.md) |
 | Понять причину решения | [ADR](ADR/README.md) |
 | Выполнить типовую задачу | [Guides](Guides/README.md) и owner contract |
+| Разобрать Lua VM, `game` API или authoring DSL | [Lua Runtime](Architecture/LuaRuntimeContract.md), [Runtime Facade](Architecture/RuntimeFacadeAndRegistries.md), [Authoring Surface](Architecture/AuthoringSurfaceContract.md) |
 | Выполнить запланированную работу | [Plans](Plans/README.md) |
 | Изучить открытые идеи | [Proposals](Proposals/README.md) |
 | Сверить contract и реализацию | [Implementation Status](Status/ImplementationStatus.md) |

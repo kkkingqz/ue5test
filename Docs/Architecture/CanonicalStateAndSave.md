@@ -1,21 +1,25 @@
 ---
 title: Canonical State and Save
 status: draft
-version: 1.9
+version: 2.0
 updated: 2026-08-20
 depends_on:
   - LuaRuntimeContract.md
+  - RuntimeFacadeAndRegistries.md
   - StableIDSpecification.md
   - BootstrapAndSessionLifecycle.md
 decisions:
   - ../ADR/0020-cpp-scope-criterion.md
   - ../ADR/0021-opaque-save-container.md
   - ../ADR/0026-core-and-gameplay-ownership.md
+  - ../ADR/0027-designer-lua-authoring-layer.md
+  - ../ADR/0031-entity-authoring-extensions.md
+  - ../ADR/0032-field-contracts-and-generic-instance-creation.md
 ---
 
 # Canonical State and Save
 
-> **Владеет:** формой canonical state, допустимыми значениями, identity экземпляров, конвертом сейва и последовательностью загрузки.
+> **Владеет:** canonical state, identity/lifecycle runtime instances, effective entity methods, конвертом сейва и последовательностью загрузки.
 > **Не владеет:** тем, когда состояние меняется ([Commands and Events](CommandsAndEvents.md)), и содержимым definitions ([GameDataRepository](GameDataRepositoryContract.md)).
 > **Инварианты:** [INV-001](Invariants.md), [INV-008](Invariants.md), [INV-015](Invariants.md)
 > **Реализация:** `Scripts/runtime/state_validator.lua`, `instance_allocator.lua`, `canonical_codec.lua`, `save.lua`, `load.lua`.
@@ -77,6 +81,18 @@ State содержит strings, bool, int64/finite double, dense arrays, string-
   - `actor_registry.remove(id)` отклоняет удаление актора с ошибкой `ActorHasDependentReferences`, если на него ссылаются зависимые предметы (`state.item_instances`) или квесты. Предметы должны быть явно переданы другому владельцу либо удалены до удаления актора.
   - Удаление игрока атомарно очищает `state.meta.player_actor_id`.
 - **Идентичности**: Definition, instance и UE projection identities не взаимозаменяемы.
+
+## Runtime instances and entity methods
+
+Persistent record хранит `instance_id`, `definition_id` и explicit state. Wrapper, method table, metatable и cache восстанавливаются и в canonical state не сохраняются.
+
+`game.instances` содержит category registries и singleton-объекты. Actor registry предоставляет `get`, `exists`, `create`, `remove`, deterministic `ids` и `player`; каждый lookup возвращает fresh disposable wrapper. Общий instance registry регистрирует новые kinds на фазе `register`, связывает kind с state section и после freeze запрещает новые categories. Создание всегда использует persistent allocator и pinned repository definition.
+
+`game.instances.world()` возвращает fresh wrapper над global `state.world`. Текущая локация принадлежит actor-у игрока; `world.current_location`/`current_location_id` — read-only accessors к этому actor field, а не второй state field.
+
+`game.entity_extensions` собирает методы по entity kind в immutable effective method table. Duplicate declaration, late registration и mutation table дают `EntityExtensionDuplicateDeclaration`, `EntityExtensionRegistryFrozen` и `EffectiveMethodTableFrozen`. Wrapper разрешает method только через effective table, требует корректный `self` (`MissingReceiver`) и не использует fallback на global player. Его `instance_id`, `definition_id` и `discriminator` read-only (`ActorDiscriminatorImmutable`). Authoring syntax методов и fields принадлежит [Authoring Surface](AuthoringSurfaceContract.md); managed field без объявленной operation даёт `MissingDomainOperation` при freeze.
+
+Для наблюдаемости Lua публикует fixed `game.runtime.get_canonical_state_hash`; host читает один скаляр через `FRuntimeSession::GetCanonicalStateHash()`. До создания `game.state` accessor возвращает `""` без fault; дерево state boundary не пересекает.
 
 ## Save container
 

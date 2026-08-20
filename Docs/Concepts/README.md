@@ -1,8 +1,8 @@
 ---
 title: Concepts Index
 status: informative
-version: 1.1
-updated: 2026-08-18
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - ../README.md
 ---
@@ -34,9 +34,9 @@ depends_on:
 | Stable ID | [StableIDSpecification](../Architecture/StableIDSpecification.md) | `Source/GV2ContentCore/Private/StableId.cpp`, `Scripts/runtime/stable_id.lua` | `RunStableIdConformance` |
 | Canonical state | [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md) | `Scripts/runtime/state_validator.lua` | `Tests/Lua/lifecycle/state_sections.lua` |
 | Mutation window | [CommandsAndEvents](../Architecture/CommandsAndEvents.md) | `Scripts/runtime/mutation_window.lua` | `Tests/Lua/lifecycle/mutation_window.lua` |
-| Actor registry, обёртки, extension по discriminator | [LuaRuntimeContract](../Architecture/LuaRuntimeContract.md) | `Scripts/runtime/actor_registry.lua` | `Tests/Lua/world/domain_object.lua`, `Tests/Lua/actors/actor_extension.lua` |
+| Actor registry, обёртки, extension по discriminator | [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md), [RuntimeFacade](../Architecture/RuntimeFacadeAndRegistries.md) | `Scripts/runtime/actor_registry.lua` | `Tests/Lua/world/domain_object.lua`, `Tests/Lua/actors/actor_extension.lua` |
 | Команды, обработчики, валидаторы | [CommandsAndEvents](../Architecture/CommandsAndEvents.md) | `Scripts/runtime/command_dispatcher.lua`, `handler_registry.lua`, `validator_registry.lua` | `Tests/Lua/commands/` |
-| Authoring-слой (`commands`/`actions`, `_ENV`) | [ADR-0027](../ADR/0027-designer-lua-authoring-layer.md), [ADR-0028](../ADR/0028-simplified-authoring-surface.md) | `GameData/rh/scripts/authoring/gameplay.lua` | `Tests/Lua/authoring/` |
+| Authoring-слой (`commands`/`actions`, `_ENV`) | [AuthoringSurfaceContract](../Architecture/AuthoringSurfaceContract.md) | `GameData/rh/scripts/authoring/gameplay.lua` | `Tests/Lua/authoring/` |
 | События и подписки | [CommandsAndEvents](../Architecture/CommandsAndEvents.md) | `Scripts/runtime/event_bus.lua`, `subscriber_registry.lua` | `Tests/Lua/events/` |
 | Канонический хэш и digest | [HeadlessSimulation](../Architecture/HeadlessSimulationContract.md) | `Scripts/runtime/canonical_codec.lua`, `state_hasher.lua` | `Tests/Lua/save/canonical_codec.lua` |
 | Save/load, миграции | [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md) | `Scripts/runtime/save.lua`, `load.lua`, `migrate.lua` | `Tests/Lua/save/`, `RunColdStartLoadConformance` |

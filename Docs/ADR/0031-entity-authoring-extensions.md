@@ -7,6 +7,7 @@ date: 2026-08-19
 # ADR-0031: Entity Authoring Extensions
 
 > **Решение:** ввести в authoring-окружение управляемые прототипы доменных сущностей (`Actor`, `Location`, `Quest`, `Item`), перехватывающие декларации методов через `__newindex` и регистрирующие их в централизованном `EntityExtensionRegistry`; собирать неизменяемые эффективные таблицы методов (`effective method tables`) на фазе `register`; квалифицировать повторное объявление метода из разных модулей как фатальную ошибку конфигурации.
+> **Нормативный текст:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md), [Runtime Facade](../Architecture/RuntimeFacadeAndRegistries.md).
 
 ## 1. Контекст и проблема
 

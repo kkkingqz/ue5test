@@ -1,7 +1,7 @@
 ---
 title: Add Actor Wrapper
 status: informative
-version: 1.4
+version: 1.5
 updated: 2026-08-20
 depends_on:
   - README.md
@@ -12,7 +12,7 @@ depends_on:
 > **Задача:** дать категории сущностей доменные методы вместо ручной правки таблиц состояния.
 > **Предмет:** authoring API доменных методов Runtime Instance.
 > **Нужно:** понимание разницы definition / экземпляр / обёртка — [RuntimeInstances](../Concepts/RuntimeInstances.md).
-> **Нормативно:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md), [Commands and Events](../Architecture/CommandsAndEvents.md).
+> **Нормативно:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md), [Commands and Events](../Architecture/CommandsAndEvents.md).
 
 ## Шаги
 

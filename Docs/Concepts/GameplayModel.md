@@ -1,7 +1,7 @@
 ---
 title: Gameplay Model
 status: informative
-version: 1.3
+version: 1.4
 updated: 2026-08-20
 depends_on:
   - README.md
@@ -10,7 +10,7 @@ depends_on:
 # Модель геймплея
 
 > **Объясняет:** как действие игрока становится изменением состояния и возвращается на экран.
-> **Нормативно:** [Commands and Events](../Architecture/CommandsAndEvents.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
+> **Нормативно:** [Commands and Events](../Architecture/CommandsAndEvents.md), [Runtime Facade](../Architecture/RuntimeFacadeAndRegistries.md), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md).
 > **Не является нормативным:** при расхождении прав contract.
 
 Объяснение того, как действие игрока превращается в изменение состояния и обратно в картинку. Нормативные правила каждого этапа — в contracts, на которые ссылается текст.
@@ -67,7 +67,7 @@ Desired Presentation
 UE приводит экран к описанному состоянию
 ```
 
-Точная семантика этапов: [Commands and Events](../Architecture/CommandsAndEvents.md) — конверт команды, порядок валидаторов, момент публикации фактов, фазы и очереди; [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md) — фасад `game`, права обработчиков, границы значений; [Semantic Input](../UI/SemanticInput.md) — как нажатие становится командой.
+Точная семантика этапов: [Commands and Events](../Architecture/CommandsAndEvents.md) — конверт, валидаторы, mutation и события; [Runtime Facade](../Architecture/RuntimeFacadeAndRegistries.md) — карта `game` и registry lifecycle; [Semantic Input](../UI/SemanticInput.md) — как нажатие становится командой.
 
 ## Что из этого следует на практике
 

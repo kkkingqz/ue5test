@@ -7,6 +7,7 @@ date: 2026-08-19
 # ADR-0033: Command Validator Authoring and Read-Only Policy Enforcement
 
 > **Решение:** авторский синтаксис `validate(command_ref, name, fn)` для независимых read-only политик поверх команд, декодирование аргументов по форме значения без знания игровых имён в ядре, единый execution scope для `fail()`, разрешение target при заморозке и явная заменяемость обработчиков команд.
+> **Нормативный текст:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Commands and Events](../Architecture/CommandsAndEvents.md).
 
 ## Context
 

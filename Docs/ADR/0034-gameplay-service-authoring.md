@@ -7,6 +7,7 @@ date: 2026-08-19
 # ADR-0034: Gameplay Service Authoring
 
 > **Решение:** авторский синтаксис `services.<name> = { … }` для stateless-процессов, координирующих несколько сущностей, атомарное объявление, контракт «только функции», неизменяемость после регистрации, наследование execution scope вызывающего, атрибуция `fail()` и `emit()` к пакету объявления и обязательное введение механизма вместе с потребителем.
+> **Нормативный текст:** [Authoring Surface](../Architecture/AuthoringSurfaceContract.md), [Commands and Events](../Architecture/CommandsAndEvents.md), [Runtime Facade](../Architecture/RuntimeFacadeAndRegistries.md).
 
 ## Context
 

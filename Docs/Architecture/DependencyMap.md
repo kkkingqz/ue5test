@@ -1,8 +1,8 @@
 ---
 title: Dependency Map
 status: normative
-version: 1.1
-updated: 2026-08-17
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - Overview.md
   - SystemContextAndComponents.md
@@ -48,6 +48,8 @@ gv2-content   →  только Content Core, без Lua VM
 | Content Core не выполняет filesystem I/O; discovery принадлежит host-support | [ADR-0018](../ADR/0018-portable-content-core-module.md), [ADR-0019](../ADR/0019-content-host-support-module.md) |
 | Lua не получает UObject, указатели, пути к ассетам и filesystem API | [Lua Runtime Contract](LuaRuntimeContract.md), [Overview § Trust model](Overview.md) |
 | Canonical gameplay-state не пересекает C++/Lua boundary | [ADR-0021](../ADR/0021-opaque-save-container.md), [Lua Runtime Contract](LuaRuntimeContract.md) |
+| Authoring declarations адаптируются в единственный runtime; второго пути мутации и presentation model нет | [Authoring Surface Contract](AuthoringSurfaceContract.md) |
+| Top-level `game` и production registries не расширяются ad hoc | [Runtime Facade and Registries](RuntimeFacadeAndRegistries.md) |
 | UE Presentation не меняет canonical state и не принимает gameplay-решений | [Overview](Overview.md), [UI Index](../UI/README.md) |
 | Headless не требует presentation-состояния и не грузит media | [Headless Simulation Contract](HeadlessSimulationContract.md) |
 | Runtime instance ссылается на definition по Stable ID, а не хранит копию | [Canonical State and Save](CanonicalStateAndSave.md), [Stable ID Specification](StableIDSpecification.md) |

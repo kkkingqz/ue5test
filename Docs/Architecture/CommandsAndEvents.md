@@ -1,20 +1,23 @@
 ---
 title: Commands and Events
 status: normative
-version: 1.9
-updated: 2026-08-18
+version: 2.0
+updated: 2026-08-20
 depends_on:
   - LuaRuntimeContract.md
+  - RuntimeFacadeAndRegistries.md
   - StableIDSpecification.md
 decisions:
   - ../ADR/0003-command-and-event-model.md
   - ../ADR/0004-lua-state-mutation.md
   - ../ADR/0027-designer-lua-authoring-layer.md
+  - ../ADR/0033-command-validator-authoring.md
+  - ../ADR/0034-gameplay-service-authoring.md
 ---
 
 # Commands and Events
 
-> **Владеет:** конвертом команды, порядком валидаторов, mutation window, семантикой отказа, публикацией и доставкой событий, фазами и очередями.
+> **Владеет:** конвертом команды, handler/validator/subscriber/service semantics, mutation window, отказами, событиями, фазами и очередями.
 > **Не владеет:** конкретными командами и правилами игры — они принадлежат геймплейным модулям.
 > **Инварианты:** [INV-003](Invariants.md), [INV-004](Invariants.md)
 > **Реализация:** `Scripts/runtime/command_dispatcher.lua`, `handler_registry.lua`, `validator_registry.lua`, `event_bus.lua`, `subscriber_registry.lua`, `mutation_window.lua`.
@@ -75,6 +78,8 @@ Expected refusal не является runtime fault. Failed result гарант
 
 Command handler не вызывает другой handler synchronously; вложенный вызов `dispatch` отклоняется типизированной ошибкой `CommandDispatchReentrant`. Отложенные команды ставятся в очередь `game.commands.enqueue` (также валидирующую аргументы через `portable_value`) и исполняются последовательно после завершения текущего цикла событий.
 
+`game.commands.handlers` принимает только command ID и function (`InvalidCommandId`, `InvalidCommandHandler`). Duplicate внутри package даёт `CommandHandlerDuplicateRegistration`; cross-package replacement разрешён только для явно replaceable command (`CommandNotReplaceable`), а override отсутствующего target даёт `CommandHandlerOverrideMissing`. Direct assignment и late registration дают `CommandHandlerRegistryDirectAssignmentDisallowed` и `CommandHandlerRegistryFrozen`. Законная замена handler-а сохраняет validators target command.
+
 ## Command validators
 
 Validators заменяют cancellable `before_*` events.
@@ -87,7 +92,7 @@ Validators заменяют cancellable `before_*` events.
 - Exception/error validator-а — runtime fault, не normal refusal.
 - Валидаторы применяются к каждому dispatch независимо от источника запроса, включая отложенные команды `commands.*:later(...)`; внутренним вызовом их обойти нельзя.
 
-Registry (`game.commands.validators`, `registry.register(id, validator_impl, options)`/`freeze()`/`ordered()`) реализован — [LuaRuntimeContract](LuaRuntimeContract.md#gamecommandsvalidators-gew-01) (GEW-01).
+`game.commands.validators` реализует локальные `register(id, validator_impl, options)` и `ordered()`; общий lifecycle `register → freeze` задаёт [Runtime Facade and Registries](RuntimeFacadeAndRegistries.md). Validator ID имеет kind `validator`; `options.priority` — integer, по умолчанию `0`.
 
 Запуск (GEW-02) реализован в `core:module.runtime.command_dispatcher`: перед шагом 4 Lifecycle (`Invoke one handler`) диспетчер вызывает `game.commands.validators.ordered()` целиком, до поиска обработчика команды. Для неизвестной команды сначала исполняются зарегистрированные валидаторы, а если валидаторы пропустили команду — возвращается `core:error.command.unknown` (гарантия наличия обработчика для авторских валидаторов обеспечивается проверкой target на общей заморозке `authoring_context.freeze()`).
 
@@ -113,47 +118,11 @@ Gameplay Service обязан:
 - enqueue facts через текущий command context;
 - не публиковать events до command commit.
 
-## Designer authoring command layer
+`game.services` регистрирует service ID kind `service` (`InvalidServiceId`) и immutable table только из functions. Duplicate, direct assignment и late registration дают `ServiceDuplicateDeclaration`, `ServiceRegistryDirectAssignmentDisallowed` и `ServiceRegistryFrozen`; mutation implementation после регистрации — `ServiceImmutableAfterRegistration`. Cross-package target обязан существовать к общей заморозке. Service наследует execution scope вызывающего, не открывает собственного mutation window или commit и в validator scope подчиняется тем же side-effect guards. Синтаксис объявления и package attribution задаёт [Authoring Surface](AuthoringSurfaceContract.md).
 
-Для игрового кода и модов ядро предоставляет авторский слой команд (`core:module.authoring.commands`, `core:module.authoring.context`, `core:module.authoring.tagged_ref`, [ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)):
+## Authoring adapter
 
-1. **Дескриптор и прокси `commands` (`DLA-05`)**:
-   - `local M = authoring.gameplay(package_id)` создаёт авторский контекст.
-   - `M.commands[key] = function(...) ... end` накапливает объявления команд при загрузке модуля.
-   - `__newindex` принимает только функцию, отклоняет повторные объявления того же ключа (`CommandAlreadyDefined`) и объявления после завершения фазы регистрации (`CommandDeclarationAfterFreeze`).
-   - `__index` по неизвестному ключу во время исполнения бросает ошибку `UnknownCommandKey` (никогда не возвращает `nil`).
-   - Дескриптор команды стабилен для ключа: `action(M.commands.buy, ...)` корректен при создании на этапе загрузки модуля.
-   - Краткий ключ канонизируется в `<package_id>:command.<key>`.
-
-2. **Отложенная регистрация (`DLA-06`)**:
-   - На фазе `register` вызывается `M.register(ctx)`, который детерминированно сортирует команды по `command_id`, оборачивает обработчики и регистрирует их в каноническом реестре `game.commands.handlers.register`.
-   - После этого прокси замораживается (`is_frozen = true`).
-
-3. **Канонизация аргументов и помеченные ссылки (`DLA-07`)**:
-   - На границе вызова команды высокоуровневые объекты разворачиваются в переносимые помеченные ссылки:
-     - `ActorWrapper` $\rightarrow$ `{ __gv2_ref = "instance", id = ... }`
-     - `DefinitionHandle` $\rightarrow$ `{ __gv2_ref = "definition", id = ... }`
-   - Скаляры (строки, совпадающие со Stable ID, числа, булевы флаги) остаются неизменными.
-   - На входе в тело обработчика помеченная ссылка превращается в свежую disposable-обёртку, а обычная строка остаётся строкой.
-   - Аргументы проверяются примитивом `portable_value.validate`.
-   - Конструктор `M.action(cmd_desc, ...)` канонизирует аргументы по тому же правилу, формируя DTO семантического действия `{ command_id = ..., args = ... }`.
-
-4. **Семантика `fail()` и правило мутации (`DLA-08`, `ADR-0033`)**:
-   - `M.fail(key, params)` формирует типизированный отказ `{ ok = false, error = { code = "<package_id>:error.<key>", params = ... } }` в пространстве имён объявившего команду или валидатор пакета.
-   - Если до вызова `fail()` внутри обработчика команды произошла хотя бы одна мутация состояния (`mutation_window.write_revision()` увеличился относительно момента входа в команду), вызов немедленно бросает исключение `AuthoringFailAfterMutation`.
-   - Вызов `fail()` вне активного обработчика команды или валидатора отклоняется `AuthoringFailOutsideCommand`.
-
-5. **Методы исполнения `:run()` и `:later()` (`DLA-09`)**:
-   - `cmd:run(...)` выполняет синхронную диспетчеризацию через `game.runtime.dispatch_command` в собственном окне мутации. Попытка вызвать `:run()` из активного обработчика отклоняется ошибкой `AuthoringNestedRunDisallowed`.
-   - `cmd:later(...)` помещает канонизированный переносимый DTO в очередь отложенных команд `game.commands.enqueue`.
-
-6. **Авторские валидаторы `validate()` и единый execution scope (`ADR-0033`, `CVA-04..08`)**:
-   - `validate(command_ref, validator_name, validator_fn)` объявляет независимую read-only политику поверх существующей команды без прямого доступа к runtime-реестрам.
-   - `command_ref` принимает `CommandDescriptor` либо канонический Stable ID вида `<pkg>:command.<path>`.
-   - Stable ID валидатора строится по формуле `<declaring_package>:validator.<target_namespace>.<target_command_path>.<name>` и считается непрозрачным.
-   - Введён единый execution scope `none | command | validator | event`, восстанавливающийся в finally-подобном пути при успехе, типизированном отказе и исключении.
-   - Валидатор и обработчик получают результат одной функции `decode_authoring_args(raw_args)`.
-   - Разрешение целевой команды происходит на общей заморозке: отсутствующий target завершается `AuthoringValidatorTargetMissing`, а повторное объявление внутри пакета — `AuthoringValidatorDuplicate`.
+Синтаксис `commands.*`, `validate`, `fail`, tagged references, `:run()`/`:later()` и их адаптацию в runtime задаёт [Authoring Surface Contract](AuthoringSurfaceContract.md). Результат адаптации обязан проходить тот же envelope, validator order, mutation window, refusal normalization и event pump, что programmer API; отдельного designer command path нет.
 
 ## Runtime phases
 
