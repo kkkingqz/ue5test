@@ -9,19 +9,20 @@ decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0016-png-suffix-image-metadata.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
+  - ../ADR/0035-ui-foundation-and-composition.md
 ---
 
 # Image Resource Contract
 
-> **Владеет:** тремя режимами изображений, конвенцией суффиксов файлов и правилами разрешения `resource_id`.
+> **Владеет:** тремя режимами изображений, конвенцией суффиксов файлов, правилами разрешения `resource_id` и политикой масштабирования растра.
 > **Не владеет:** тем, где изображение используется, и раскладкой экрана.
 > **Инварианты:** [INV-007](../Architecture/Invariants.md)
-> **Реализация:** `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, `GV2ImagePresentation.cpp`, `Resources/`.
-> **Проверки:** `GV2.Runtime.Presentation.ImageCatalog*`.
+> **Реализация:** `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, `GV2ImagePresentation.cpp`, `GV2LayoutConstants.h`, `Resources/`.
+> **Проверки:** `GV2.Runtime.Presentation.ImageCatalog*`, `GV2.Runtime.UIKit.ScalingModelAndConstants`.
 
 ## Purpose and scope
 
-Документ задаёт canonical metadata и rendering rules bitmap-ресурсов UI. Он не определяет Screen composition, streaming lifecycle других media kinds или gameplay semantics.
+Документ задаёт canonical metadata, rendering rules bitmap-ресурсов UI и модель масштабирования визуальных примитивов. Он не определяет Screen composition, streaming lifecycle других media kinds или gameplay semantics.
 
 ## Ownership and source of truth
 
@@ -32,6 +33,28 @@ decisions:
 - Screen Template владеет геометрией принимающего image block.
 
 Raw `/Game/...` locator, `UTexture2D`, `FSlateBrush`, source pixels и render mode запрещены через Lua/C++ boundary.
+
+## Dual Resolution and Scaling Model (ADR-0035)
+
+Для интерфейса действуют два раздельных координатных базиса:
+
+- **Разрешение авторинга растра (4K / 3840 × 2160)**: текстуры, 9-slice маркеры и фоновые тайлы рисуются в 4K для сохранения четкости и отсутствия артефактов при даунскейлинге на меньшие разрешения.
+- **Единицы виртуальной раскладки (1080p / 1920 × 1080)**: координаты, отступы и размеры слотов задаются в виртуальных единицах 1080p.
+- **Коэффициент пересчета**: `RasterToLayoutScale = 2.0` (`FGV2LayoutConstants::RasterToLayoutScale`).
+- **Минимальная цель**: 1280 × 720 (720p).
+
+### Primitive Scale Policy
+
+Каждый визуальный примитив объявляет политику масштабирования (`EGV2PrimitiveScalePolicy`), которая проверяется на совместимость с объявленным `EGV2ImageRenderMode` ресурса до мутации виджета:
+
+| Политика примитива | Совместимый режим ресурса | Поведение |
+|---|---|---|
+| `FreeStretch` | `tile` | Свободное растяжение текстуры без сохранения пропорций |
+| `Tile` | `tile` | Повторение текстуры по X/Y с сохранением исходного размера тайла |
+| `NineSlice` | `nine_slice` | Фиксированные углы, растяжение ребер по одной оси, центра по двум |
+| `PreserveAspect` | `fixed_aspect` | Сохранение пропорций (aspect ratio) ресурса внутри слота |
+
+Попытка применить ресурс с несовместимым режимом отклоняется на этапе `FGV2ImagePresentation::ResolveAndApply` без модификации свойств виджета.
 
 ## Invariants
 

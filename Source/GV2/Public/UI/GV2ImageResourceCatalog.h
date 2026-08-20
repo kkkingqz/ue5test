@@ -15,6 +15,32 @@ enum class EGV2ImageRenderMode : uint8
     Tile
 };
 
+UENUM(BlueprintType)
+enum class EGV2PrimitiveScalePolicy : uint8
+{
+    FreeStretch,
+    Tile,
+    NineSlice,
+    PreserveAspect
+};
+
+inline bool IsScalePolicyCompatible(EGV2PrimitiveScalePolicy Policy, EGV2ImageRenderMode RenderMode)
+{
+    switch (Policy)
+    {
+    case EGV2PrimitiveScalePolicy::FreeStretch:
+        return RenderMode == EGV2ImageRenderMode::Tile;
+    case EGV2PrimitiveScalePolicy::Tile:
+        return RenderMode == EGV2ImageRenderMode::Tile;
+    case EGV2PrimitiveScalePolicy::NineSlice:
+        return RenderMode == EGV2ImageRenderMode::NineSlice;
+    case EGV2PrimitiveScalePolicy::PreserveAspect:
+        return RenderMode == EGV2ImageRenderMode::FixedAspect;
+    default:
+        return false;
+    }
+}
+
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ImageResourceDefinition
 {

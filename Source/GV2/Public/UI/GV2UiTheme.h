@@ -25,6 +25,23 @@ class GV2_API UGV2UiTheme : public UDataAsset
     GENERATED_BODY()
 
 public:
+    UGV2UiTheme();
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography|Scaling")
+    FRuntimeFloatCurve TextScaleCurve;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography|Scaling", meta = (ClampMin = "6.0"))
+    float MinReadableFontSize = 10.0f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography|Scaling", meta = (ClampMin = "360.0"))
+    float ReferenceViewportHeight = 1080.0f;
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Typography")
+    float EvaluateTextScale(float ViewportHeight) const;
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Typography")
+    float GetEffectiveFontSize(FName TextSizeToken, float ViewportHeight) const;
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography|Pipeline")
     FName DefaultTextStyleToken = TEXT("default");
 

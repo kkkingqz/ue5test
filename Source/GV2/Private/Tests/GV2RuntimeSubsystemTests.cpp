@@ -25,6 +25,7 @@
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiTheme.h"
+#include "UI/GV2LayoutConstants.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
@@ -424,6 +425,168 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TestFalse(TEXT("Portable request has no concrete description member"), PortableHeader.Contains(TEXT("DescriptionText")));
         TestFalse(TEXT("Portable request has no concrete button member"), PortableHeader.Contains(TEXT("std::vector<FScreenButton>")));
     }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiScalingModelAndConstantsContract,
+    "GV2.Runtime.UIKit.ScalingModelAndConstants",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiScalingModelAndConstantsContract::RunTest(const FString& Parameters)
+{
+    // 1. UIF-06: Dual Resolution Constants
+    TestEqual(
+        TEXT("Raster authoring width is 3840 (4K)"),
+        FGV2LayoutConstants::RasterAuthoringWidth,
+        3840.0f);
+    TestEqual(
+        TEXT("Raster authoring height is 2160 (4K)"),
+        FGV2LayoutConstants::RasterAuthoringHeight,
+        2160.0f);
+    TestEqual(
+        TEXT("Virtual layout unit width is 1920 (1080p)"),
+        FGV2LayoutConstants::VirtualLayoutWidth,
+        1920.0f);
+    TestEqual(
+        TEXT("Virtual layout unit height is 1080 (1080p)"),
+        FGV2LayoutConstants::VirtualLayoutHeight,
+        1080.0f);
+    TestEqual(
+        TEXT("Raster to layout scale factor is 2.0"),
+        FGV2LayoutConstants::RasterToLayoutScale,
+        2.0f);
+    TestEqual(
+        TEXT("Minimum supported viewport width is 1280 (720p)"),
+        FGV2LayoutConstants::MinSupportedViewportWidth,
+        1280.0f);
+    TestEqual(
+        TEXT("Minimum supported viewport height is 720 (720p)"),
+        FGV2LayoutConstants::MinSupportedViewportHeight,
+        720.0f);
+
+    // 2. UIF-08: Primitive Scale Policy & Resource Compatibility
+    TestTrue(
+        TEXT("FreeStretch policy is compatible with Tile render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::Tile));
+    TestFalse(
+        TEXT("FreeStretch policy is incompatible with NineSlice render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::NineSlice));
+    TestFalse(
+        TEXT("FreeStretch policy is incompatible with FixedAspect render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::FixedAspect));
+
+    TestTrue(
+        TEXT("Tile policy is compatible with Tile render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::Tile));
+    TestFalse(
+        TEXT("Tile policy is incompatible with NineSlice render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::NineSlice));
+
+    TestTrue(
+        TEXT("NineSlice policy is compatible with NineSlice render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::NineSlice, EGV2ImageRenderMode::NineSlice));
+    TestFalse(
+        TEXT("NineSlice policy is incompatible with Tile render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::NineSlice, EGV2ImageRenderMode::Tile));
+
+    TestTrue(
+        TEXT("PreserveAspect policy is compatible with FixedAspect render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::FixedAspect));
+    TestFalse(
+        TEXT("PreserveAspect policy is incompatible with NineSlice render mode"),
+        IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::NineSlice));
+
+    // 3. UIF-09: Text Scale Curve & Minimum Readable Font Size
+    UGV2UiTheme* Theme = NewObject<UGV2UiTheme>();
+    TestNotNull(TEXT("Transient theme instance created"), Theme);
+    if (Theme != nullptr)
+    {
+        Theme->TextSizeTokens.Add(TEXT("body"), 14.0f);
+        Theme->TextSizeTokens.Add(TEXT("small"), 10.0f);
+        Theme->TextSizeTokens.Add(TEXT("heading"), 22.0f);
+
+        // Evaluation at standard heights
+        const float Scale720 = Theme->EvaluateTextScale(720.0f);
+        const float Scale1080 = Theme->EvaluateTextScale(1080.0f);
+        const float Scale1440 = Theme->EvaluateTextScale(1440.0f);
+        const float Scale2160 = Theme->EvaluateTextScale(2160.0f);
+
+        TestTrue(TEXT("Scale at 720p preserves readability (around 0.85)"), Scale720 >= 0.80f && Scale720 <= 0.90f);
+        TestEqual(TEXT("Scale at 1080p is baseline (1.0)"), Scale1080, 1.0f);
+        TestTrue(TEXT("Scale at 1440p grows modestly (around 1.25)"), Scale1440 >= 1.20f && Scale1440 <= 1.30f);
+        TestTrue(TEXT("Scale at 4K (2160p) is bounded (around 1.60)"), Scale2160 >= 1.50f && Scale2160 <= 1.70f);
+
+        // Monotonic growth
+        TestTrue(TEXT("Scale grows monotonically: 720p <= 1080p"), Scale720 <= Scale1080);
+        TestTrue(TEXT("Scale grows monotonically: 1080p <= 1440p"), Scale1080 <= Scale1440);
+        TestTrue(TEXT("Scale grows monotonically: 1440p <= 2160p"), Scale1440 <= Scale2160);
+
+        // Minimum readable font size threshold (10 pt)
+        const float SmallSizeAt720 = Theme->GetEffectiveFontSize(TEXT("small"), 720.0f);
+        TestTrue(
+            TEXT("Effective font size never drops below MinReadableFontSize"),
+            SmallSizeAt720 >= Theme->MinReadableFontSize);
+        TestEqual(TEXT("Small size at 720p clamped to MinReadableFontSize"), SmallSizeAt720, 10.0f);
+
+        const float BodySizeAt720 = Theme->GetEffectiveFontSize(TEXT("body"), 720.0f);
+        TestTrue(TEXT("Body text size at 720p is readable (>= 10pt)"), BodySizeAt720 >= 10.0f);
+    }
+
+    // 4. UIF-10: Resolution Matrix Coverage
+    struct FResolutionTarget
+    {
+        float Width;
+        float Height;
+        const TCHAR* Label;
+        bool bIsUltrawide;
+    };
+
+    const FResolutionTarget ResolutionMatrix[] = {
+        { 3840.0f, 2160.0f, TEXT("4K UHD (16:9)"), false },
+        { 2560.0f, 1440.0f, TEXT("QHD (16:9)"), false },
+        { 1920.0f, 1080.0f, TEXT("FHD (16:9)"), false },
+        { 1280.0f, 720.0f,  TEXT("HD (16:9 minimum target)"), false },
+        { 3440.0f, 1440.0f, TEXT("UWQHD (21:9)"), true },
+        { 2560.0f, 1080.0f, TEXT("UWFHD (21:9)"), true }
+    };
+
+    for (const FResolutionTarget& Target : ResolutionMatrix)
+    {
+        const float Aspect = Target.Width / Target.Height;
+        if (Target.bIsUltrawide)
+        {
+            TestTrue(
+                *FString::Printf(TEXT("%s aspect ratio is ultrawide (~2.33)"), Target.Label),
+                FMath::IsNearlyEqual(Aspect, FGV2LayoutConstants::UltrawideAspectRatio, 0.06f));
+        }
+        else
+        {
+            TestTrue(
+                *FString::Printf(TEXT("%s aspect ratio is standard 16:9 (~1.78)"), Target.Label),
+                FMath::IsNearlyEqual(Aspect, FGV2LayoutConstants::StandardAspectRatio, 0.01f));
+        }
+
+        TestTrue(
+            *FString::Printf(TEXT("%s width >= MinSupportedViewportWidth"), Target.Label),
+            Target.Width >= FGV2LayoutConstants::MinSupportedViewportWidth);
+        TestTrue(
+            *FString::Printf(TEXT("%s height >= MinSupportedViewportHeight"), Target.Label),
+            Target.Height >= FGV2LayoutConstants::MinSupportedViewportHeight);
+
+        if (Theme != nullptr)
+        {
+            const float Scale = Theme->EvaluateTextScale(Target.Height);
+            TestTrue(
+                *FString::Printf(TEXT("%s evaluated scale is positive and bounded"), Target.Label),
+                Scale >= 0.80f && Scale <= 2.0f);
+            const float BodyFontSize = Theme->GetEffectiveFontSize(TEXT("body"), Target.Height);
+            TestTrue(
+                *FString::Printf(TEXT("%s body font size >= MinReadableFontSize"), Target.Label),
+                BodyFontSize >= Theme->MinReadableFontSize);
+        }
+    }
+
     return true;
 }
 

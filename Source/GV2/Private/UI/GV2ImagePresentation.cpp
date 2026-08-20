@@ -38,3 +38,40 @@ bool FGV2ImagePresentation::ResolveAndApply(
     OutError.Reset();
     return true;
 }
+
+bool FGV2ImagePresentation::ResolveAndApply(
+    UImage* Widget,
+    const FString& ResourceId,
+    const EGV2PrimitiveScalePolicy ScalePolicy,
+    const TOptional<float> FixedAspectRatio,
+    FGV2ResolvedImageResource& OutResource,
+    FString& OutError)
+{
+    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    if (Widget == nullptr || Catalog == nullptr)
+    {
+        OutError = Widget == nullptr
+            ? TEXT("Image widget is unavailable.")
+            : TEXT("Configured Image Resource Catalog is unavailable.");
+        return false;
+    }
+    FGV2ResolvedImageResource Candidate;
+    if (!Catalog->Resolve(ResourceId, Candidate, OutError)) return false;
+    if (!IsScalePolicyCompatible(ScalePolicy, Candidate.RenderMode))
+    {
+        OutError = TEXT("Image resource render mode is incompatible with the primitive scaling policy.");
+        return false;
+    }
+    if (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio.IsSet()
+        && (!FMath::IsFinite(FixedAspectRatio.GetValue()) || FixedAspectRatio.GetValue() <= 0.0f
+            || !FMath::IsNearlyEqual(Candidate.FixedAspectRatio, FixedAspectRatio.GetValue(), 0.001f)))
+    {
+        OutError = TEXT("fixed_aspect resource ratio does not match the target block ratio.");
+        return false;
+    }
+    Widget->SetBrush(Candidate.Brush);
+    Widget->SetDesiredSizeOverride(Candidate.Brush.ImageSize);
+    OutResource = MoveTemp(Candidate);
+    OutError.Reset();
+    return true;
+}

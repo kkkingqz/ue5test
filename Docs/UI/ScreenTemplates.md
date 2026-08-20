@@ -47,6 +47,45 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Scrollable Dynamic Screen Element обязан получать конечную viewport geometry от layout concrete Screen Template. Template не может оставлять такой элемент с unbounded desired height: overflow policy принадлежит reusable component, а доступная доля экрана — concrete layout.
 - Generic runtime принимает только ordered `field_id + schema_id + value` envelopes и запрещает concrete field names. Schema-specific conversion принадлежит registered field adapter.
 - Registry строится до первого использования, не хранит session state и запрещает duplicate `schema_id`. Unknown schema отклоняет весь candidate Screen request.
+- Равномерное масштабирование кадра (uniform frame scale) запрещено: раскладка отзывчивая (responsive) и распределяет фактический viewport.
+- Текст масштабируется нелинейной кривой темы и никогда не опускается ниже `MinReadableFontSize` (10 pt).
+
+## Responsive Layout and Scaling Model (ADR-0035)
+
+Верстка экранов строится на принципах отзывчивого адаптивного дизайна:
+
+### Dual Resolution Basis
+
+1. **Разрешение авторинга растра (4K / 3840 × 2160)**: все растровые фоны, 9-slice плашки и иконки создаются с высоким разрешением для чистого даунскейлинга (`FGV2LayoutConstants::RasterAuthoringWidth/Height`).
+2. **Единицы виртуальной раскладки (1080p / 1920 × 1080)**: размеры отступов, слотов и сеток проектируются в базисе 1920×1080 (`FGV2LayoutConstants::VirtualLayoutWidth/Height`).
+
+### Разделение Layout Policy и Content Scaling Policy
+
+Контракт строго разделяет внешнее распределение пространства слота и внутреннее поведение визуального примитива:
+
+- **Layout Policy (внешнее)**: правила контейнеров UMG (anchors, margins, safe zone offsets, Auto/Fill, Min/Max dimensions, Grid/Box slots). Контейнер распределяет доступный прямоугольник viewport.
+- **Content Scaling Policy (внутреннее)**: режим заполнения слота примитивом (`EGV2PrimitiveScalePolicy`: `FreeStretch`, `Tile`, `NineSlice`, `PreserveAspect`). Примитив обязан быть совместим с режимом ресурса.
+
+### Нелинейная кривая масштаба текста (Non-linear Text Scaling)
+
+В отличие от растра, текст не масштабируется линейно пропорционально высоте экрана, чтобы избежать нечитаемости на малых экранах и чрезмерно гигантского шрифта на 4K:
+
+- Применяется `UGV2UiTheme::EvaluateTextScale(ViewportHeight)` на основе настраиваемой кривой `TextScaleCurve`.
+- На 720p масштаб составляет ~0.85 (вместо линейного 0.66), гарантируя читаемость.
+- На 1080p масштаб составляет 1.0 (базовый).
+- На 1440p масштаб составляет ~1.25.
+- На 4K (2160p) масштаб составляет ~1.60 (вместо линейного 2.0).
+- Итоговый физический размер шрифта ограничен снизу порогом `MinReadableFontSize` (10 pt) через `UGV2UiTheme::GetEffectiveFontSize`.
+
+### Матрица целевых разрешений
+
+Шаблоны экранов тестируются и сохраняют целостность на 6 стандартных разрешениях:
+1. `3840 × 2160` (4K 16:9)
+2. `2560 × 1440` (QHD 16:9)
+3. `1920 × 1080` (FHD 16:9 — reference)
+4. `1280 × 720` (HD 16:9 — минимальная цель, обязательные контролы не обрезаются)
+5. `3440 × 1440` (UWQHD 21:9 — ultrawide safe area)
+6. `2560 × 1080` (UWFHD 21:9 — ultrawide safe area)
 
 ## Screen Registry
 

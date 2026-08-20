@@ -70,7 +70,7 @@ decisions:
 ## Milestones
 
 - [x] M1 — [Identity](Identity.md): правило ключей и его гейт. UIF-01…05.
-- [ ] M2 — [Scaling Model](ScalingModel.md): разрешения, отзывчивая раскладка, политики примитивов, кривая текста. UIF-06…10.
+- [x] M2 — [Scaling Model](ScalingModel.md): разрешения, отзывчивая раскладка, политики примитивов, кривая текста. UIF-06…10.
 - [ ] M3 — [Core Baseline](CoreBaseline.md): контейнер, прокрутка, обобщённый список, иконка, контракты данных. UIF-11…16.
 - [ ] M4 — [Reconciliation](Reconciliation.md): слои, оверлеи, модалки, переиспользование. UIF-17…21.
 - [ ] M5 — [Tabs](Tabs.md): вложенный Screen Instance и вкладки. UIF-22…26.

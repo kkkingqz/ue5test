@@ -28,6 +28,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     float GetResolvedAspectRatio() const;
 
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    EGV2PrimitiveScalePolicy GetScalePolicy() const
+    {
+        return ScalePolicy;
+    }
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:
@@ -37,9 +43,12 @@ protected:
     TObjectPtr<UImage> Image;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
+    EGV2PrimitiveScalePolicy ScalePolicy = EGV2PrimitiveScalePolicy::PreserveAspect;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
     EGV2ImageRenderMode AcceptedRenderMode = EGV2ImageRenderMode::FixedAspect;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract", meta = (ClampMin = "0.01", EditCondition = "AcceptedRenderMode == EGV2ImageRenderMode::FixedAspect", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract", meta = (ClampMin = "0.01", EditCondition = "ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect", EditConditionHides))
     float FixedAspectRatio = 1.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")

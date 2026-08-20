@@ -21,11 +21,11 @@ void UGV2ImageWidgetBase::NativePreConstruct()
 bool UGV2ImageWidgetBase::ApplyImageResource(const FString& ResourceId, FString& OutError)
 {
     FGV2ResolvedImageResource Resource;
-    const TOptional<float> RequiredAspect = AcceptedRenderMode == EGV2ImageRenderMode::FixedAspect
+    const TOptional<float> RequiredAspect = ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect
         ? TOptional<float>(FixedAspectRatio)
         : TOptional<float>();
     if (!FGV2ImagePresentation::ResolveAndApply(
-        Image, ResourceId, AcceptedRenderMode, RequiredAspect, Resource, OutError))
+        Image, ResourceId, ScalePolicy, RequiredAspect, Resource, OutError))
     {
         return false;
     }
