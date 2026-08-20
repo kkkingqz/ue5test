@@ -2,8 +2,8 @@
 title: Content Editor Plugin Proposal
 status: draft
 proposal_state: accepted_for_planning
-version: 0.1
-updated: 2026-08-18
+version: 1.0
+updated: 2026-08-20
 depends_on:
   - Archive/DesignerLuaAuthoringProposal.md
   - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
@@ -13,19 +13,18 @@ depends_on:
 decisions:
   - ../ADR/0018-portable-content-core-module.md
   - ../ADR/0026-core-and-gameplay-ownership.md
+  - ../ADR/0029-content-authoring-and-schema-evolution.md
 ---
 
 # Предложение по редактору контента в Unreal Editor
 
-> **Предлагает:** плагин Unreal Editor как визуальный frontend поверх канонических `.json5`, без переноса данных в `.uasset`.
-> **Затрагивает:** [Definition Envelope](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
-> **Не является нормативным:** до реализации действует текущий contract.
-
-Плагин — один из frontend авторского слоя наравне с `gv2-content` и правкой файлов вручную. Lua-часть авторского слоя — в [Designer Lua Authoring](Archive/DesignerLuaAuthoringProposal.md).
+> **Предлагает:** Unreal Editor plugin как UE-native frontend поверх существующего GV2 authoring/tooling stack и канонических `.json5`.
+>
+> **Не предлагает:** новую gameplay-модель, второй repository, gameplay `UObject` model или перенос canonical content в `.uasset`.
 
 ## 1. Цель
 
-Предоставить разработчику и gameplay designer встроенную в Unreal Editor среду для работы с:
+Предоставить разработчику и gameplay designer встроенную в Unreal Editor среду для работы с GV2 definitions:
 
 ```text
 Actors
@@ -34,16 +33,18 @@ Locations
 Schemas
 References
 Resources
-Text
-Scenarios
+Text references
+Scenarios как обычные definitions
 другими gameplay definitions
 ```
 
 без необходимости вручную редактировать JSON5 в типовых случаях.
 
-## 2. Главный принцип
+Plugin является одним из frontend авторского слоя наряду с `gv2-content`, ручным редактированием файлов и Lua authoring layer.
 
-> **Plugin редактирует GV2 data, но не превращает GV2 data в Unreal assets.**
+## 2. Главный архитектурный принцип
+
+> **GV2 Content Editor Plugin — frontend к существующей GV2 authoring architecture, а не отдельная content architecture внутри Unreal Editor.**
 
 Source of truth остаётся:
 
@@ -51,766 +52,286 @@ Source of truth остаётся:
 GameData/<package>/...
 ```
 
-Plugin не должен требовать создания `.uasset` для gameplay definitions.
+Gameplay definitions не превращаются в `UDataAsset`, canonical `UDataTable`, generated USTRUCT model или persistent gameplay UObject graph.
 
-## 3. Общая архитектура
+Runtime и Headless не зависят от Editor plugin.
+
+## 3. Authoritative backend
+
+Authoritative реализация авторинга — **общая библиотека**, а не подпроцесс.
 
 ```text
-GameData JSON5
-      ↓
-GV2 Content Core / Authoring API
-      ↓
-GV2 Editor Model
-      ↓
-FInstancedPropertyBag
-      ↓
-PropertyEditor / DetailsView
-      ↓
 Unreal Editor UI
+        ↓
+GV2 Editor Adapter
+        ↓
+gv2_content_authoring  (библиотека)
+        ↓
+GameData JSON5
+```
+
+Та же библиотека является backend-ом `gv2-content`. CLI и Editor становятся двумя frontend-ами одной реализации; ни один из них не является backend-ом другого.
+
+### 3.1. Почему не CLI как backend
+
+Цель «одна реализация авторинга на CLI, Editor, CI и тесты» правильная, но подпроцесс её не даёт: он добавляет границу процесса поверх кода, который и так общий.
+
+Для **чтения** общая реализация доступна редактору напрямую уже сегодня: UE-модуль линкует `GV2ContentCore` и `GV2ContentHostSupport`, поэтому построение репозитория, разрешение схем и валидация выполняются в процессе.
+
+Для **записи** препятствие реальное: `Json5AstRewriter` и реализации операций находятся внутри исполняемого таргета `gv2-content`, а не в библиотеке. Их нельзя вызвать ниоткуда, кроме самого CLI.
+
+Отсюда предусловие: **слой авторинга поднимается в библиотеку до начала работы над плагином.** Это не оптимизация «на потом», а буквальное исполнение принципа единственной реализации.
+
+### 3.2. Состав библиотеки
+
+Библиотека владеет операциями, меняющими канонический контент:
+
+```text
+new
+set
+delete
+rename
+duplicate
+schema field operations
+```
+
+плюс точечной правкой JSON5 с сохранением комментариев и форматирования.
+
+Чтение (`describe`, `index`, `refs`, `validate`) остаётся за `GV2ContentCore` и `GV2ContentHostSupport`, которые уже являются библиотеками.
+
+### 3.3. Транспорт скрыт адаптером
+
+`GV2 Editor Adapter` скрывает способ вызова. Если для отдельной операции временно потребуется CLI, это остаётся деталью адаптера и не проникает в UI и workflow.
+
+## 3a. Атомарность записи
+
+Операция сохранения обязана быть атомарной на диске: либо применены все изменённые поля, либо ни одного.
+
+Последовательность из нескольких независимых `set`, каждый из которых перезаписывает файл, этому не удовлетворяет: отказ на третьем поле оставляет применёнными первые два, а состояние редактора расходится с файлом. То же относится к дублированию определения, если оно выражено серией `set`: сбой посередине оставляет в репозитории наполовину скопированное определение.
+
+Требования:
+
+- набор изменённых полей применяется **одной операцией**, а не серией независимых;
+- запись выполняется по схеме «подготовить результат → провалидировать → заменить файл»;
+- отказ на любом шаге оставляет файл в исходном состоянии;
+- дублирование является одной операцией библиотеки, а не оркестрацией в редакторе.
+
+Формулировка «UI воспринимает несколько операций как один Save» описывает поведение интерфейса и гарантией на диске не является.
+
+## 3b. Внешние изменения файла
+
+Канонический контент — текстовые файлы под контролем версий, и это ценно (см. раздел о source control). Обратная сторона: файл может измениться под редактором — `git pull`, правка руками, второй экземпляр редактора, внешний инструмент.
+
+Редактор обязан:
+
+- фиксировать состояние файла в момент загрузки определения;
+- отказывать в записи, если файл изменился с этого момента, — типизированной ошибкой, а не молчаливой перезаписью;
+- предлагать перезагрузку с явной потерей несохранённых правок либо их сохранение в отдельное место;
+- обнаруживать изменение и без попытки записи, чтобы показанные значения не расходились с диском незаметно.
+
+Молчаливая перезапись чужой правки — худший из возможных исходов для редактора поверх файлов под git.
+
+## 4. Общая архитектура
+
+```text
+                    Unreal Editor
+                         │
+                  GV2 Content Tab
+                         │
+                  GV2 Editor Adapter
+                   /              \
+                  /                \
+          Field Adapters        Diagnostics UI
+                │
+                ▼
+        PropertyBag / custom rows
+                │
+                ▼
+        gv2_content_authoring
+                │
+                ▼
+             GameData
 ```
 
 При сохранении:
 
 ```text
-Details UI
+edited UI fields
       ↓
-PropertyBag
+dirty field set
       ↓
-GV2 Authoring Model
+одна атомарная операция авторинга
       ↓
-JSON5 serializer
+authoritative validation
       ↓
-GameData
+reload canonical definition DTO
       ↓
-GV2 validation
+refresh UI/reference/diagnostics views
 ```
 
-## 4. Почему `FInstancedPropertyBag`
+## 5. Не вводить отдельную mutable Editor content model
 
-Не рекомендуется генерировать отдельный `USTRUCT` для каждого gameplay schema.
+Plugin не должен поддерживать полноценную вторую mutable копию GV2 definition model.
 
-Например нежелательно:
-
-```cpp
-USTRUCT()
-struct FRHActor
-{
-    UPROPERTY()
-    int32 HP;
-
-    UPROPERTY()
-    int32 Gold;
-};
-```
-
-потому что изменение gameplay schema потребует изменения C++.
-
-Вместо этого plugin должен строить dynamic property model из GV2 schema.
-
-Пример:
+В памяти Editor достаточно иметь:
 
 ```text
-GV2 Actor Schema
-
-runtime_type → enum
-hp           → integer
-gold         → integer
-home         → ref<location>
-
-            ↓
-
-FInstancedPropertyBag
-
-            ↓
-
-UE Details Panel
+LoadedDefinitionDTO
+current UI values
+dirty fields
+selection state
+temporary widget/editor state
 ```
 
-## 5. Основной Editor Tab
+Canonical content изменяется только через authoring operations.
 
-Plugin должен регистрировать отдельную вкладку Unreal Editor:
+Не должно возникать конкурирующих моделей `PropertyBag → Editor Model → JSON5 AST → Repository` с отдельной synchronization logic.
+
+## 6. `FInstancedPropertyBag` как default renderer, а не canonical model
+
+`FInstancedPropertyBag` остаётся рекомендуемым механизмом для стандартных schema fields:
+
+```text
+integer
+number
+boolean
+string
+enum
+simple arrays
+simple nested objects
+```
+
+Но plugin не предполагает, что любой GV2 field обязан полностью выражаться стандартным PropertyBag.
+
+```text
+Schema Field Descriptor
+        ↓
+Field Adapter Registry
+        ↓
+Editor representation
+        ├─ PropertyBag default field
+        └─ custom editor row/widget
+```
+
+Таким образом PropertyBag — implementation detail стандартного field adapter-а, а не canonical data model Editor-а.
+
+## 7. Field Adapter Registry
+
+Plugin содержит небольшой внутренний registry field adapters. Это не публичная plugin system.
+
+```text
+integer              → DefaultPropertyAdapter
+number               → DefaultPropertyAdapter
+boolean              → DefaultPropertyAdapter
+string               → DefaultPropertyAdapter
+enum                 → EnumAdapter
+ref<kind>             → DefinitionReferenceAdapter
+resource<class>       → ResourceAdapter
+text                  → TextReferenceAdapter
+stable_id             → StableIdAdapter
+```
+
+Adapter отвечает за создание editor row/widget, чтение current value, формирование нового authoring value, локальную UI validation и optional preview/chooser behavior.
+
+Authoritative validation всё равно выполняет GV2 tooling.
+
+## 8. Schema UI metadata
+
+Существующие `schemas/<name>.ui.json5` используются для editor presentation metadata:
+
+```text
+label
+description
+category
+order
+widget_hint
+```
+
+`widget_hint` может выбирать специализированный Field Adapter, но не меняет gameplay schema semantics.
+
+Например:
+
+```text
+integer + widget_hint=slider
+    → SliderAdapter
+
+string + widget_hint=multiline
+    → MultilineTextAdapter
+```
+
+Authoring UI metadata остаются отделены от canonical gameplay content и не влияют на package content hash согласно существующему contract.
+
+
+## 9. Основной Editor Tab
+
+Plugin регистрирует:
 
 ```text
 GV2 Content
 ```
 
-Предлагаемая структура:
+Предлагаемый layout:
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│ GV2 Content                                                  │
+│ GV2 Content                                                   │
 ├────────────────┬────────────────────────────┬────────────────┤
 │ Definitions    │ Properties                 │ References     │
 │                │                            │                │
-│ Actors         │ Actor: Aria                │ Used by        │
-│  Aria          │                            │ quest.main     │
-│  Cassia        │ Type     NPC               │ tavern_intro   │
+│ Actors         │ Actor: Aria                │ Uses           │
+│  Aria          │                            │  Tavern         │
+│  Cassia        │ Type     NPC               │  AriaPortrait  │
 │  Marcus        │ HP       100               │                │
-│                │ Gold     50                │                │
-│ Items          │ Home     Tavern            │                │
-│  Sword         │ Portrait AriaPortrait      │                │
+│                │ Gold     50                │ Used by        │
+│ Items          │ Home     Tavern            │  quest.main    │
+│  Sword         │ Portrait AriaPortrait      │  tavern_intro  │
 │                │                            │                │
-│ Locations      │ [+ Property]               │                │
-│  Tavern        │ [+ Scenario]               │                │
+│ Locations      │ [Open Actor Schema]        │                │
+│  Tavern        │                            │                │
 ├────────────────┴────────────────────────────┴────────────────┤
-│ + New   Duplicate   Delete      Validate      Save           │
+│ + New   Duplicate   Delete   Validate   Save                  │
+├──────────────────────────────────────────────────────────────┤
+│ Problems (3)                                                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-## 6. Definition Browser
+## 10. Definition Browser
 
 Левая панель показывает definitions по kind.
 
-Например:
+Источник данных — операция построения индекса библиотеки; та же, что стоит за `gv2-content index`.
+
+Browser не реализует собственную package overlay logic.
+
+Поддерживаются:
 
 ```text
-Actors
-├── Aria
-├── Cassia
-└── Marcus
-
-Items
-├── Sword
-└── Bread
-
-Locations
-├── Tavern
-└── Market
+filter/search
+group by kind
+package indicator
+Stable ID tooltip/copy
+dirty state indication
 ```
 
-Browser должен получать данные через GV2 Content tooling, а не напрямую интерпретировать package overlay independently.
-
-## 7. Definition Selection
+## 11. Definition Selection
 
 При выборе definition plugin:
 
-1. определяет Stable ID;
-2. получает canonical/authoring data;
-3. определяет применимую schema;
-4. создаёт dynamic PropertyBag;
-5. показывает его через DetailsView.
+1. получает canonical identifier;
+2. получает schema/field description через `describe`;
+3. получает authoring UI metadata;
+4. строит field adapters;
+5. показывает Properties;
+6. получает reference information;
+7. отображает incoming/outgoing references.
 
-## 8. Property Mapping
+## 12. References panel
 
-Минимальное отображение:
-
-```text
-GV2 type       UE property
-
-integer     → int
-number      → float/double
-boolean     → bool
-string      → FString
-enum        → enum-like selector
-array       → array
-object      → nested property group
-```
-
-GV2-specific types получают custom editor widgets.
-
-## 9. Custom GV2 Property Widgets
-
-Минимальный набор custom controls:
+Правая панель разделяется минимум на:
 
 ```text
-Definition Reference Picker
-Resource Picker
-Text Picker
-Stable ID Viewer
-Package Reference Picker
-```
-
-## 10. Definition Reference Picker
-
-Поле:
-
-```text
-home : ref<location>
-```
-
-не должно отображаться как обычный string.
-
-Вместо:
-
-```text
-rh:location.tavern
-```
-
-показывается:
-
-```text
-Home Location
-[Tavern ▼] [Find]
-```
-
-Dropdown получает список compatible definitions через GV2 tooling.
-
-## 11. Resource Picker
-
-Для resource reference:
-
-```text
-Portrait
-[AriaPortrait] [Browse...] [Preview]
-```
-
-Plugin может использовать UE Asset Browser только как chooser physical presentation asset, если это соответствует Resource contract.
-
-В gameplay data сохраняется GV2 Resource ID, а не physical asset path, если runtime contract требует именно этого.
-
-## 12. Text Picker
-
-Для text references:
-
-```text
-Name
-[Aria]
-[Edit Text...]
-```
-
-Plugin может открывать отдельный text/localization editor.
-
-Однако text workflow реализуется отдельным этапом и не должен менять existing Text contract.
-
-## 13. Categories и Layout
-
-Schema authoring metadata может задавать:
-
-```text
-category
-display name
-order
-description
-editor hint
-```
-
-Например:
-
-```text
-General
-  Runtime Type
-  Name
-
-Gameplay
-  HP
-  Gold
-
-World
-  Home Location
-
-Presentation
-  Portrait
-```
-
-DetailsView использует metadata для группировки.
-
-## 14. Create Definition
-
-Кнопка:
-
-```text
-+ New
-```
-
-открывает selection:
-
-```text
-Actor
-Item
-Location
-Scenario
-...
-```
-
-После выбора:
-
-```text
-Package: rh
-Local ID: aria
-```
-
-Plugin создаёт корректный authoring file:
-
-```text
-GameData/rh/actors/aria.json5
-```
-
-и заполняет defaults из schema.
-
-## 15. Duplicate Definition
-
-`Duplicate` должен:
-
-1. предложить новый local ID;
-2. создать новый definition;
-3. скопировать допустимые authoring values;
-4. не копировать Stable ID буквально;
-5. выполнить validation.
-
-## 16. Delete Definition
-
-Удаление должно проверять references.
-
-Если definition используется:
-
-```text
-rh:actor.aria
-
-Used by:
-rh:quest.main
-rh:scenario.tavern_intro
-```
-
-Plugin должен показать impact и следовать существующему removal/reference contract.
-
-Silent delete с dangling references запрещён.
-
-## 17. Find Usages
-
-Правая панель:
-
-```text
-References / Used by
-```
-
-показывает входящие ссылки.
-
-Например:
-
-```text
-rh:quest.main
-rh:scenario.tavern_intro
-rh:location.tavern
-```
-
-Источник данных — existing Content Core/reference index.
-
-## 18. Add Property
-
-Для schema-backed entity должна быть доступна:
-
-```text
-+ Add Property
-```
-
-Это **Schema Authoring operation**, а не вставка произвольного JSON key.
-
-## 19. Add Property Dialog
-
-Пример:
-
-```text
-Add Property
-
-Name:        reputation
-Type:        Integer
-Required:    No
-Default:     0
-Category:    Social
-
-[Add]
-```
-
-После подтверждения:
-
-```text
-Gameplay Schema
-      ↓
-new field
-      ↓
-PropertyBag rebuilt
-      ↓
-DetailsView updated
-```
-
-## 20. Scope Property
-
-Если architecture допускает несколько schema layers, UI может спрашивать:
-
-```text
-Apply to:
-
-Actor
-NPC
-Specific extension
-```
-
-На v1 следует показывать только реально поддерживаемые scopes.
-
-Не следует вводить arbitrary per-definition properties.
-
-## 21. Property Operations
-
-Context menu property может содержать:
-
-```text
-Edit Schema Field
-Rename
-Set Default
-Change Category
-Find Usages
-Remove
-```
-
-Операции должны проходить через Schema Authoring API.
-
-## 22. Schema Change Validation
-
-Изменение schema может влиять на множество definitions.
-
-Например изменение:
-
-```text
-reputation: integer
-```
-
-на:
-
-```text
-reputation: enum
-```
-
-должно вызвать impact analysis.
-
-Plugin должен показать:
-
-```text
-Affected definitions: 17
-Invalid after change: 3
-```
-
-и не silently ломать package.
-
-## 23. Create Scenario/Event
-
-Для Actor/NPC UI может показывать:
-
-```text
-Scenarios
-
-First Meeting      tavern_intro
-Recruited          —
-Death              —
-
-[+ Create Scenario]
-[Link Existing]
-```
-
-## 24. Create Scenario Dialog
-
-Пример:
-
-```text
-Create Scenario
-
-ID:        aria_first_meeting
-
-Trigger:
-[ Actor enters location ▼ ]
-
-Actor:
-[ Aria ]
-
-Location:
-[ Tavern ]
-
-Conditions:
-[ + Add ]
-
-Actions:
-[ + Add ]
-
-[Create]
-```
-
-Точная структура зависит от принятой scenario architecture.
-
-## 25. Gameplay Event и Scenario
-
-Plugin должен различать:
-
-```text
-Gameplay Event
-```
-
-как runtime post-fact event:
-
-```text
-rh:event.actor.recruited
-```
-
-и:
-
-```text
-Scenario
-```
-
-как content definition, реагирующую на trigger/event.
-
-UI не должен использовать одно слово `Event` для обеих сущностей без пояснения.
-
-## 26. Scenario Stub Generation
-
-Если scenario требует Lua handler, plugin может создать минимальный stub.
-
-Например:
-
-```lua
-scenario("aria_first_meeting", function(ctx)
-    -- TODO
-end)
-```
-
-Но generation должен использовать documented template/API.
-
-Plugin не должен генерировать gameplay code, обходящий canonical authoring/runtime layer.
-
-## 27. Link Existing
-
-Кнопка:
-
-```text
-Link Existing...
-```
-
-показывает совместимые definitions.
-
-Например для Actor Scenario:
-
-```text
-tavern_intro
-aria_recruited
-aria_defeated
-```
-
-и сохраняет canonical/package-relative reference согласно authoring contract.
-
-## 28. Validation Button
-
-`Validate` запускает authoritative GV2 validation.
-
-UI-level PropertyBag validation не считается достаточной.
-
-Pipeline:
-
-```text
-UI validation
-     ↓
-Serialize temporary authoring model
-     ↓
-GV2 Content validation
-     ↓
-Diagnostics
-```
-
-## 29. Diagnostics Panel
-
-Ошибки должны отображаться в human-friendly виде.
-
-Например:
-
-```text
-Aria → Home Location
-
-"tavrn" does not resolve to a Location.
-
-Did you mean:
-Tavern
-```
-
-При возможности diagnostic должен содержать:
-
-```text
-file
-field
-Stable ID
-schema field
-typed error code
-```
-
-## 30. Save
-
-`Save`:
-
-1. синхронизирует PropertyBag в authoring model;
-2. сериализует JSON5;
-3. запускает required validation;
-4. обновляет reference view;
-5. сохраняет обычный filesystem file.
-
-## 31. Auto-Save
-
-Auto-save не рекомендуется вводить на первом этапе.
-
-Изменение schema или references может иметь широкий impact.
-
-Предпочтительно explicit Save + dirty state indication.
-
-## 32. JSON5 Raw View
-
-Для advanced users может существовать:
-
-```text
-[Properties] [Raw JSON5]
-```
-
-Raw mode не является обязательным для v1.
-
-Если он реализуется, переключение назад в Properties должно повторно parse/validate content.
-
-## 33. Source Control
-
-Поскольку data остаются обычными text files, plugin автоматически сохраняет совместимость с Git.
-
-Дополнительная Git integration может быть добавлена позже, но не является обязанностью первого этапа.
-
-## 34. UE Editor Only
-
-Plugin находится в Editor module и не должен попадать в shipping runtime dependency.
-
-Например:
-
-```text
-GV2ContentEditor
-Type = Editor
-```
-
-Runtime/Headless остаются независимыми.
-
-## 35. Предлагаемые модули
-
-Концептуальная структура:
-
-```text
-Plugins/GV2/
-
-Source/
-├── GV2Runtime/
-├── GV2ContentCore/
-└── GV2ContentEditor/
-```
-
-или существующая equivalent project structure.
-
-`GV2ContentEditor` зависит от runtime/content tooling, но runtime не зависит от Editor module.
-
-## 36. UI Technology
-
-Рекомендуется использовать:
-
-```text
-Slate
-PropertyEditor
-DetailsView
-FInstancedPropertyBag
-```
-
-Editor Utility Widgets могут использоваться для prototype, но production version рекомендуется оформить как полноценный Editor Plugin.
-
-## 37. Почему не DataAsset
-
-Gameplay definitions не рекомендуется превращать в `UDataAsset`.
-
-Это ухудшит:
-
-```text
-headless compatibility
-external modding
-text diffs
-LLM access
-CLI tooling
-UE independence
-```
-
-`UObject`/PropertyBag используются только как temporary editor representation.
-
-## 38. Почему не DataTable как основное хранилище
-
-DataTable может быть полезен как optional bulk-view:
-
-```text
-Actor    HP   Gold
-Aria     100  50
-Cassia    80  25
-```
-
-но не подходит как canonical representation сложных nested definitions.
-
-Поэтому DataTable не заменяет Details-based editor.
-
-## 39. Возможный Bulk Editor
-
-На последующем этапе можно добавить табличный режим:
-
-```text
-[Details] [Table]
-```
-
-для однотипных scalar fields.
-
-Например:
-
-```text
-Actor     HP   Gold   Home
-Aria      100  50     Tavern
-Cassia     80  20     Market
-Marcus    120  10     Tavern
-```
-
-## 40. Предусловия и статус готовности к реализации
-
-Раздел добавлен при review. Все три базовых блокирующих предусловия закрыты в рамках плана `Docs/Plans/Archive/ContentEditorPrerequisites/` (Milestones 1–3):
-
-### 40.1. Реализованные блокирующие предусловия
-
-1. **Правило версионирования схем ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md), M1)**:
-   - Зафиксирована классификация изменений (non-breaking, breaking with migration, unsupported in-place).
-   - Определена совместимость с runtime-сохранениями и сессиями.
-2. **Точечная модификация и удаление полей ([CEP-05..07](../Plans/Archive/ContentEditorPrerequisites.md), M2)**:
-   - В `Json5AstRewriter` реализованы операции `SetFieldValue` и `RemoveDefinitionEntry`.
-   - В CLI добавлены команды `gv2-content set` и `gv2-content delete` с сохранением комментариев, структуры и отступов JSON5.
-3. **Authoring UI-метаданные схем ([CEP-08..12](../Plans/Archive/ContentEditorPrerequisites.md), M3)**:
-   - Введён формат `schemas/<name>.ui.json5` с декларацией `label`, `description`, `category`, `order`, `widget_hint`.
-   - Метаданные изолированы от репозитория и не влияют на `content_hash` пакета.
-   - `gv2-content describe --format=json` отдаёт блок `"ui"` для каждого поля и упорядочивает поля согласно `order`.
-   - Специфицирован CI-гейт `validate_authoring_metadata.py` и переносимый conformance `RunAuthoringMetadataConformance`.
-
-### 40.2. Инструментарий CLI для плагина
-
-| Возможность плагина | Чем закрыта сегодня |
-|---|---|
-| Схема и UI-метаданные для построения формы | `gv2-content describe --format=json` отдаёт типы, обязательность, ограничения, `target_kind` ссылок, `resource_class`, а также `"ui"` метаданные и сортировку полей по `order` |
-| Find Usages | `gv2-content refs --format=json` с файлом, строкой, колонкой и JSON-указателем |
-| Create Definition | `gv2-content new` создаёт запись с плейсхолдерами и создаёт файл, если его нет |
-| Точечное изменение поля | `gv2-content set <pkg> <id> <ptr> <val>` с сохранением комментариев и форматирования |
-| Удаление определения | `gv2-content delete <pkg> <id>` с проверкой отсутствия входящих ссылок |
-| Переименование со ссылками | `gv2-content rename` с проверкой `package_frozen` |
-| Валидация и диагностика | `gv2-content validate --format=json`, диагностики с позицией и `definition_id` |
-| Списки для пикеров | `gv2-content index --format=json` |
-| Разрешение схем по набору пакетов | Реализовано: команды видят пакет вместе с его зависимостями |
-
-Отдельно: `duplicate` в CLI нет, хотя раздел про дублирование его предполагает — либо добавить в CLI, либо реализовать в плагине через `new` плюс копирование значений.
-
-### 40.3. Дальнейшие шаги
-
-1. Прототип формы только на чтение в Unreal Editor — проверить, что `FInstancedPropertyBag` покрывает реальные схемы `rh`.
-2. Запись через CLI `set`/`delete`/`new`, начиная с одного kind (`actor`).
-
-## 41. Первый Prototype
-
-Первый prototype должен поддерживать только:
-
-```text
-Actor Browser
-Actor Details
-GV2 schema → PropertyBag
-integer field
-enum field
-string field
-location reference picker
-load JSON5
-save JSON5
-Validate
+Uses
+Used by
 ```
 
 Пример:
@@ -818,51 +339,544 @@ Validate
 ```text
 Actor: Aria
 
-Type             NPC
-HP               100
-Gold             50
-Home Location    Tavern
+Uses:
+  Home       → Tavern
+  Portrait   → AriaPortrait
+
+Used by:
+  quest.main
+  tavern_intro
 ```
 
-## 42. Второй этап
+Источником остаётся существующее GV2 reference tooling.
 
-После успешного prototype:
+Double-click/reference activation переводит Editor к соответствующей definition, если она доступна.
+
+## 13. Property mapping
+
+Базовое отображение:
 
 ```text
-create/duplicate/delete
-find usages
+GV2 type         Editor representation
+
+integer          numeric field
+number           numeric field
+boolean          checkbox
+string           text field
+enum             selector
+array            collection editor
+object           nested/group editor
+ref<T>           Definition Reference Picker
+resource<T>      Resource Picker
+text             Text Reference Picker/Preview
+stable_id        Stable ID Viewer
+```
+
+Сложные случаи не должны заставлять расширять canonical C++ schema model.
+
+## 14. Definition Reference Picker
+
+Поле:
+
+```text
+home : ref<location>
+```
+
+отображается не как raw string, а как typed chooser:
+
+```text
+Home Location
+[Tavern ▼] [Find]
+```
+
+Compatible targets берутся из GV2 tooling/index.
+
+В canonical data сохраняется Stable ID/reference в формате, установленном существующим contract.
+
+## 15. Resource Picker
+
+Resource field:
+
+```text
+Portrait
+[AriaPortrait] [Browse...] [Preview]
+```
+
+UE Asset Browser может использоваться как chooser физического asset-а только там, где это соответствует Resource contract.
+
+В gameplay data сохраняется GV2 Resource ID, а не произвольный UE asset path, если canonical contract требует Resource ID.
+
+## 16. Text field behavior
+
+На первом этапе Text support ограничивается:
+
+```text
+Text reference selection
+preview resolved text
+Find/Open source when available
+```
+
+Полноценный localization workspace не входит в MVP и остаётся отдельным future feature.
+
+Plugin не меняет существующий Text contract.
+
+## 17. Definition editing и Schema editing — разные workflows
+
+Обычный Definition Editor редактирует значения конкретной definition.
+
+Например:
+
+```text
+Actor: Aria
+
+Type        NPC
+HP          100
+Gold         50
+Home        Tavern
+```
+
+Он **не должен** показывать обычную кнопку `+ Property`, потому что добавление schema field меняет модель всех compatible definitions.
+
+Вместо этого:
+
+```text
+[Open Actor Schema]
+```
+
+открывает отдельный Schema Editor.
+
+## 18. Schema Editor
+
+Schema Editor работает отдельно от Definition Editor.
+
+Пример:
+
+```text
+Actor Schema
+
+Fields
+  runtime_type
+  hp
+  gold
+  home
+
+[+ Field]
+```
+
+Schema operations:
+
+```text
+Add Field
+Edit Field
+Rename Field
+Set Default
+Change Category
+Change UI metadata
+Find Usages
+Remove Field
+```
+
+выполняются через существующий Schema Authoring API/tooling.
+
+Arbitrary per-definition properties не вводятся.
+
+## 19. Schema change validation
+
+Изменение schema всегда требует impact analysis.
+
+Например:
+
+```text
+reputation: integer
+    ↓
+reputation: enum
+```
+
+UI должен показать:
+
+```text
+Affected definitions: 17
+Invalid after change: 3
+```
+
+и потребовать explicit confirmation для поддерживаемых migration operations.
+
+**Второе число нечем получить.** Количество затронутых определений даёт существующий `refs`; «сколько станет невалидным» — это пробный прогон валидации против изменённой схемы, которого не выполняет ни одна существующая операция.
+
+Поэтому анализ влияния является **предусловием этапа со Schema Editor**, а не следствием уже имеющегося tooling: библиотека авторинга обязана получить операцию пробного применения изменения схемы, возвращающую список определений, которые станут невалидными, без записи на диск.
+
+Unsupported in-place changes следуют существующему schema evolution contract.
+
+
+## 20. Create Definition
+
+`+ New` открывает:
+
+```text
+Kind:     Actor
+Package:  rh
+Local ID: aria
+```
+
+Plugin вызывает операцию создания библиотеки авторинга и затем перечитывает созданную definition через authoritative tooling.
+
+Defaults и placeholders определяются существующим authoring contract, а не Editor-specific logic.
+
+## 21. Duplicate Definition
+
+Duplicate является **одной операцией библиотеки авторинга**, а не оркестрацией в редакторе.
+
+Выражение дублирования серией `set` неприемлемо: сбой посередине оставляет в репозитории наполовину скопированное определение — ровно тот случай, который запрещает раздел об атомарности записи.
+
+Не копируются буквально:
+
+```text
+Stable ID
+source path identity
+computed/derived values
+```
+
+Если позднее duplicate semantics станут сложнее, отдельная CLI operation может быть добавлена без изменения Editor UI.
+
+## 22. Delete Definition
+
+Delete:
+
+1. получает incoming references;
+2. показывает impact;
+3. вызывает canonical delete operation;
+4. не допускает silent dangling references;
+5. refresh-ит index/reference views;
+6. запускает validation.
+
+## 23. Rename Definition
+
+Rename выполняется операцией библиотеки авторинга и соблюдает существующие package/reference/frozen rules.
+
+Editor не реализует собственную rename propagation logic.
+
+## 24. Dirty field model
+
+При изменении Properties plugin отслеживает:
+
+```text
+original value
+current value
+dirty flag
+```
+
+Save не сериализует definition заново целиком: библиотека поддерживает точечную правку с сохранением комментариев и форматирования.
+
+Preferred flow:
+
+```text
+dirty fields
+    ↓
+одна атомарная операция авторинга
+    ↓
+validate
+    ↓
+reload canonical DTO
+```
+
+Это сохраняет comments, formatting и file structure согласно возможностям существующего JSON5 AST rewriter.
+
+## 25. Save
+
+`Save`:
+
+1. собирает dirty fields;
+2. выполняет необходимые authoring operations;
+3. запускает authoritative validation;
+4. при успехе reload-ит canonical data;
+5. обновляет references;
+6. очищает dirty state.
+
+Набор изменённых полей применяется одной операцией: несколько независимых записей нарушили бы атомарность.
+
+На v1 не требуется создавать новый monolithic JSON5 serializer внутри Editor plugin.
+
+## 26. Auto-save
+
+Auto-save не вводится в первой версии.
+
+Причины:
+
+```text
+schema changes may have broad impact
+reference edits can fail validation
+multi-field edits benefit from explicit commit point
+```
+
+Используется explicit:
+
+```text
+Save
+Revert/Reload
+dirty indicator
+```
+
+## 27. Validation
+
+Есть два уровня.
+
+### 27.1 UI validation
+
+Field Adapter может сразу обнаружить очевидные ошибки:
+
+```text
+wrong numeric format
+invalid enum selection
+empty required local input
+```
+
+### 27.2 Authoritative GV2 validation
+
+Всегда выполняется authoritative validation через `GV2ContentCore` — та же, что исполняет CLI и CI.
+
+UI-level validation не считается достаточной.
+
+Editor не воспроизводит самостоятельно repository/content validation rules.
+
+## 28. Problems / Diagnostics panel
+
+Structured diagnostics отображаются как first-class Editor panel:
+
+```text
+Problems (3)
+
+Error   Aria.home       unresolved location "tavrn"
+Warning Sword.damage    ...
+```
+
+Diagnostic может содержать:
+
+```text
+severity
+typed error code
+message
+file
+line
+column
+Stable ID
+schema field / JSON pointer
+```
+
+При double-click Editor:
+
+```text
+selects definition
+focuses corresponding field
+```
+
+если mapping возможен.
+
+## 29. Raw JSON5 view
+
+Raw JSON5 view не входит в MVP.
+
+Позже возможен:
+
+```text
+[Properties] [Raw JSON5]
+```
+
+При возврате из Raw mode content должен быть заново parse/validate-нут через canonical tooling.
+
+Raw editor не должен иметь отдельную semantics.
+
+## 30. Bulk editor
+
+Bulk/table mode остаётся future optimization для однотипных scalar fields.
+
+Например:
+
+```text
+Actor     HP   Gold   Home
+Aria      100  50     Tavern
+Cassia     80  20     Market
+```
+
+Он использует те же Editor Adapter, Field descriptors, authoring operations и validation и не становится отдельным storage model.
+
+## 31. Понятия, которых ещё нет
+
+Редактор работает с существующими kind-ами: `actor`, `item`, `location`, `action`, `resource`, `screen`, `text`.
+
+Понятие «сценарий» в проекте отсутствует — его нет ни в схемах, ни в определениях, ни в нормативной документации. Поэтому редактор не вводит для него ни отображения, ни терминологии: специализированный визуальный workflow проектируется отдельным предложением **после** того, как соответствующий контентный и рантайм-контракт появится.
+
+То же относится к любому будущему kind: редактор получает его бесплатно, как только у kind есть схема, потому что формы строятся из схемы. Специальный workflow — отдельное решение.
+
+## 33. Source control
+
+Поскольку canonical content остаётся text files, автоматически сохраняются:
+
+```text
+Git
+diff
+merge
+external tooling
+LLM access
+```
+
+Специальная Git integration не входит в v1.
+
+## 34. UE Editor-only module
+
+Plugin находится только в Editor module.
+
+Conceptually:
+
+```text
+Plugins/GV2/
+Source/
+├── GV2Runtime/
+├── GV2ContentCore/
+└── GV2ContentEditor/
+```
+
+или equivalent существующей структуре проекта.
+
+`GV2ContentEditor` может зависеть от Editor APIs, Content tooling adapter и shared value/DTO definitions, но runtime/headless не зависят от Editor module.
+
+## 35. UI technology
+
+Recommended:
+
+```text
+Slate
+PropertyEditor
+DetailsView
+FInstancedPropertyBag
+custom detail/property rows
+```
+
+Editor Utility Widgets допустимы для быстрых prototypes, но production implementation должен быть полноценным Editor plugin.
+
+## 36. Почему не DataAsset
+
+Gameplay definitions не превращаются в `UDataAsset`.
+
+Это сохраняет:
+
+```text
+headless compatibility
+external modding
+text diffs
+CLI tooling
+LLM access
+UE independence
+```
+
+`UObject`/PropertyBag допустимы только как temporary/editor representation.
+
+## 37. Почему не DataTable
+
+DataTable может быть полезен только как future bulk view.
+
+Он не заменяет canonical JSON5 representation сложных nested definitions.
+
+## 38. MVP scope
+
+Первая production-версия должна поддерживать:
+
+```text
+Definition Browser
+Actor Details
+schema → field adapters
+integer
+number
+boolean
+string
+enum
+location reference picker
+load
+edit
+dirty state
+atomic save through authoring library
+validate
+Problems panel
+incoming/outgoing references
+```
+
+Первый vertical slice охватывает основные игровые kind-ы сразу:
+
+```text
+actor
+item
+location
+world
+```
+
+Это осознанно шире одного kind, потому что три из четырёх покрывают принципиально разные случаи и вместе проверяют pipeline целиком:
+
+| Kind | Что проверяет |
+|---|---|
+| `item` | Плоская схема одного пакета; единственный kind, у которого уже есть файл метаданных представления `.ui.json5` |
+| `location` | Массив ссылок на определения (`connected_location_ids`) и ссылка на экран |
+| `actor` | Базовая схема `core` плюс два extension site из `textsystem` и `rh`: самый сложный случай отрисовки |
+
+**`world` требует предварительного решения.** Сегодня мир существует только как рантайм-состояние (`game.instances.world()`, `state.world`) и определением не является — редактировать в редакторе нечего. Чтобы он вошёл в срез, `world` сначала должен стать kind-ом со схемой, и это контентное решение (какому слою принадлежит, какие поля), а не задача редактора.
+
+Порядок внутри среза: `item` первым как самый простой, `actor` последним как самый сложный.
+
+## 39. MVP success criteria
+
+MVP успешен, если gameplay designer может:
+
+1. открыть `GV2 Content`;
+2. выбрать любое определение из `actor`, `item` или `location`;
+3. увидеть schema-driven form;
+4. изменить scalar field;
+5. выбрать `Home Location` через typed reference picker;
+6. сохранить;
+7. получить обычный корректно изменённый JSON5;
+8. запустить authoritative validation;
+9. увидеть structured diagnostics;
+10. открыть incoming/outgoing references;
+11. не знать внутреннюю реализацию PropertyBag, JSON5 AST rewriter, repository или Stable ID parser.
+
+## 40. Stage 2
+
+После подтверждения MVP:
+
+```text
+create
+duplicate
+delete
+rename
 resource picker
-text picker
-schema categories
-Add Property
+text reference picker
+additional kinds
+schema categories/UI metadata polish
 ```
 
-## 43. Третий этап
+## 41. Stage 3
 
-После подтверждения workflow реальным gameplay:
+После подтверждения реальным gameplay:
 
 ```text
-Create Scenario
-Link Scenario
-schema editing
-impact analysis
+separate Schema Editor
+schema field operations
+impact analysis UI
 raw JSON5 view
-bulk edit
+bulk editor
 ```
 
-## 44. Четвёртый этап
+## 42. Stage 4
 
-Только при необходимости:
+Только при отдельной необходимости и отдельном design proposal:
 
 ```text
-visual conditions/actions
+scenario-specific visual authoring
+conditions/actions editor
 scenario graph
 localization workspace
-external mod editor
 live content preview
+external mod editor
 ```
 
-## 45. Не входит в Plugin
+## 43. Не входит в Plugin
 
 Plugin не должен:
 
@@ -873,50 +887,94 @@ Plugin не должен:
 изменять save format
 создавать gameplay UObject model
 делать UE обязательным для mods/headless
-обходить Content Core validation
+обходить authoring library/Content Core validation
+самостоятельно интерпретировать package overlay
+создавать отдельный schema semantics
 ```
 
-## 46. Критерии успеха
+## 44. Testing
 
-Plugin считается успешным, если gameplay designer может:
+Минимальные integration tests.
 
-1. открыть `GV2 Content`;
-2. выбрать `Actors → Aria`;
-3. изменить `HP`;
-4. выбрать `Home Location` из dropdown;
-5. добавить новый schema property через UI;
-6. создать/привязать scenario;
-7. сохранить;
-8. получить обычный валидный GV2 JSON5 content;
-9. не знать внутреннюю реализацию `FInstancedPropertyBag`, Repository или Stable ID parser.
+### Read
 
-## 47. Главный архитектурный инвариант
+```text
+index → browser
+describe → form
+refs → references
+```
 
-> **GV2 Content Editor Plugin — это UE-native frontend к существующей data-driven архитектуре GV2, а не новая gameplay architecture внутри Unreal Editor.**
+### Write
 
-## 48. Ожидаемый результат
+```text
+edit one scalar
+save
+verify JSON5 changed
+verify comments/format retained
+validate
+reload
+```
 
-Типичный workflow должен выглядеть так:
+### Reference
+
+```text
+choose compatible location
+save
+validate
+find usage
+```
+
+### Error
+
+```text
+attempt invalid edit
+receive structured diagnostic
+navigate to field
+```
+
+### Headless independence
+
+Shipping/runtime/headless build не получает dependency на `GV2ContentEditor`.
+
+## 45. Architectural invariants
+
+1. JSON5 остаётся source of truth.
+2. Библиотека авторинга и Content Core остаются authoritative authoring implementation; CLI и Editor — два её frontend-а.
+3. Editor не воспроизводит package/repository rules самостоятельно.
+4. PropertyBag не становится gameplay model.
+5. Editor хранит UI/dirty state, но не второй canonical content model.
+6. Field-specific UI строится через небольшой Field Adapter Registry.
+7. Definition editing и Schema editing — разные workflows.
+8. Scenario-specific visual tooling не блокирует generic Content Editor.
+9. Runtime/Headless не зависят от Editor plugin.
+10. Save атомарен и всегда заканчивается authoritative validation.
+11. Запись по устаревшему представлению файла отклоняется, а не выполняется молча.
+
+## 46. Ожидаемый результат
+
+Типичный MVP workflow:
 
 ```text
 GV2 Content
-  ↓
+    ↓
 Actors
-  ↓
+    ↓
 Aria
-  ↓
-edit form
-  ↓
-+ Property
-  ↓
-+ Scenario
-  ↓
-Validate
-  ↓
+    ↓
+schema-driven form
+    ↓
+edit HP / Home
+    ↓
 Save
+    ↓
+atomic authoring operation
+    ↓
+Validate
+    ↓
+reload canonical JSON5
 ```
 
-а результатом остаются:
+На диске результатом остаются:
 
 ```text
 JSON5 definitions
@@ -926,4 +984,8 @@ Stable IDs
 canonical Commands/Events
 ```
 
-без необходимости вручную работать с ними в большинстве типовых authoring-задач.
+без создания параллельной Unreal gameplay model.
+
+## 47. Главный принцип
+
+> **GV2 Content Editor Plugin должен быть тонким UE-native frontend к уже существующему GV2 authoring toolchain. Чем меньше canonical content logic живёт внутри Editor module, тем лучше.**

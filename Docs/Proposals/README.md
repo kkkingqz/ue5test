@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.3
+version: 4.4
 updated: 2026-08-20
 ---
 
@@ -56,7 +56,7 @@ Proposal не изменяет нормативную архитектуру с�
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.
 3. `CommandValidatorAuthoringProposal` — реализовано планом [CommandValidators](../Plans/Archive/CommandValidators.md).
 4. `GameplayServiceAuthoringProposal` — реализовано планом [GameplayServices](../Plans/Archive/GameplayServices.md).
-5. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites.md); блокировок не осталось.
+5. `ContentEditorPluginProposal` — материализовано планом [ContentEditor](../Plans/ContentEditor/README.md). Предусловия по схемам закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites.md); оставшееся предусловие — выделение слоя авторинга в библиотеку — входит первым этапом самого плана.
 6. `ModPackageLifecycleProposal`.
 7. `CoreUIBaselineAndScalingProposal` и `UiCompositionAndScalingProposal` — материализованы одним планом [UiFoundation](../Plans/Archive/UiFoundation.md): базовый набор Core UI, отзывчивое масштабирование, слои, реконсиляция и вкладки. Раздел масштабирования первой редакции заменён вторым предложением; остальные её разделы действуют. `CoreUiExtendedElementSetProposal` планом не материализуется: каждая его строка входит вместе со своим потребителем.
 8. `CommonUIRuntimeIntegrationProposal` — после предыдущего: фокус и Back опираются на слои и вкладки.
