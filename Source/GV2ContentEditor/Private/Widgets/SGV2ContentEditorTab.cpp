@@ -23,24 +23,42 @@ void SGV2ContentEditorTab::Construct(const FArguments& /*InArgs*/)
     ChildSlot
     [
         SNew(SSplitter)
-        .Orientation(Orient_Horizontal)
+        .Orientation(Orient_Vertical)
+        + SSplitter::Slot()
+        .Value(0.75f)
+        [
+            SNew(SSplitter)
+            .Orientation(Orient_Horizontal)
+            + SSplitter::Slot()
+            .Value(0.25f)
+            [
+                SAssignNew(BrowserWidget, SGV2DefinitionBrowser, Adapter)
+                .OnDefinitionSelected(this, &SGV2ContentEditorTab::HandleDefinitionSelected)
+                .OnDefinitionsChanged_Lambda([this]() {
+                    if (PropertiesWidget.IsValid()) PropertiesWidget->RefreshProperties();
+                    if (ReferenceWidget.IsValid()) ReferenceWidget->RefreshReferences();
+                    if (DiagnosticsWidget.IsValid()) DiagnosticsWidget->RefreshDiagnostics();
+                })
+            ]
+            + SSplitter::Slot()
+            .Value(0.50f)
+            [
+                SAssignNew(PropertiesWidget, SGV2DefinitionProperties, Adapter)
+                .OnFieldValueChanged(this, &SGV2ContentEditorTab::HandleFieldValueChanged)
+                .OnSaveCompleted(this, &SGV2ContentEditorTab::HandleSaveCompleted)
+            ]
+            + SSplitter::Slot()
+            .Value(0.25f)
+            [
+                SAssignNew(ReferenceWidget, SGV2ReferencePanel, Adapter)
+                .OnNavigateToDefinition(this, &SGV2ContentEditorTab::HandleNavigateToDefinition)
+            ]
+        ]
         + SSplitter::Slot()
         .Value(0.25f)
         [
-            SAssignNew(BrowserWidget, SGV2DefinitionBrowser, Adapter)
-            .OnDefinitionSelected(this, &SGV2ContentEditorTab::HandleDefinitionSelected)
-        ]
-        + SSplitter::Slot()
-        .Value(0.50f)
-        [
-            SAssignNew(PropertiesWidget, SGV2DefinitionProperties, Adapter)
-            .OnFieldValueChanged(this, &SGV2ContentEditorTab::HandleFieldValueChanged)
-        ]
-        + SSplitter::Slot()
-        .Value(0.25f)
-        [
-            SAssignNew(ReferenceWidget, SGV2ReferencePanel, Adapter)
-            .OnNavigateToDefinition(this, &SGV2ContentEditorTab::HandleNavigateToDefinition)
+            SAssignNew(DiagnosticsWidget, SGV2DiagnosticsPanel, Adapter)
+            .OnNavigateToDiagnostic(this, &SGV2ContentEditorTab::HandleNavigateToDiagnostic)
         ]
     ];
 }
@@ -60,6 +78,10 @@ void SGV2ContentEditorTab::HandleDefinitionSelected(const FString& DefinitionId)
     {
         std::vector<FGV2EditorDiagnostic> LoadDiags;
         Adapter->LoadDefinition(TCHAR_TO_UTF8(*DefinitionId), LoadDiags);
+        if (DiagnosticsWidget.IsValid())
+        {
+            DiagnosticsWidget->SetDiagnostics(LoadDiags);
+        }
     }
 
     if (PropertiesWidget.IsValid())
@@ -84,9 +106,37 @@ void SGV2ContentEditorTab::HandleFieldValueChanged()
     }
 }
 
+void SGV2ContentEditorTab::HandleSaveCompleted(const FGV2EditorAuthoringResult& Result)
+{
+    if (BrowserWidget.IsValid())
+    {
+        BrowserWidget->RefreshList();
+    }
+    if (ReferenceWidget.IsValid())
+    {
+        ReferenceWidget->RefreshReferences();
+    }
+    if (DiagnosticsWidget.IsValid())
+    {
+        DiagnosticsWidget->SetDiagnostics(Result.Diagnostics);
+    }
+}
+
 void SGV2ContentEditorTab::HandleNavigateToDefinition(const FString& DefinitionId)
 {
     OpenDefinition(DefinitionId);
+}
+
+void SGV2ContentEditorTab::HandleNavigateToDiagnostic(const FString& DefinitionId, const FString& JsonPointer)
+{
+    if (!DefinitionId.IsEmpty())
+    {
+        OpenDefinition(DefinitionId);
+    }
+    if (PropertiesWidget.IsValid())
+    {
+        PropertiesWidget->FocusField(JsonPointer);
+    }
 }
 
 } // namespace GV2ContentEditor

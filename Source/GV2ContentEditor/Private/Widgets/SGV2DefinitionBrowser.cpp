@@ -1,6 +1,7 @@
 #include "GV2ContentEditor/Widgets/SGV2DefinitionBrowser.h"
 
 #if defined(__UNREAL__) || defined(UE_GAME) || defined(UE_EDITOR) || defined(WITH_ENGINE)
+#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -16,6 +17,7 @@ void SGV2DefinitionBrowser::Construct(const FArguments& InArgs, TSharedPtr<FGV2E
 {
     Adapter = InAdapter;
     OnDefinitionSelected = InArgs._OnDefinitionSelected;
+    OnDefinitionsChanged = InArgs._OnDefinitionsChanged;
 
     ChildSlot
     [
@@ -36,6 +38,7 @@ void SGV2DefinitionBrowser::Construct(const FArguments& InArgs, TSharedPtr<FGV2E
             .ListItemsSource(&FilteredItems)
             .OnGenerateRow(this, &SGV2DefinitionBrowser::OnGenerateRow)
             .OnSelectionChanged(this, &SGV2DefinitionBrowser::OnSelectionChanged)
+            .OnContextMenuOpening(this, &SGV2DefinitionBrowser::OnContextMenuOpening)
             .SelectionMode(ESelectionMode::Single)
         ]
     ];
@@ -160,6 +163,85 @@ void SGV2DefinitionBrowser::OnSelectionChanged(
     if (SelectedItem.IsValid() && OnDefinitionSelected.IsBound())
     {
         OnDefinitionSelected.Execute(UTF8_TO_TCHAR(SelectedItem->Id.c_str()));
+    }
+}
+
+TSharedPtr<SWidget> SGV2DefinitionBrowser::OnContextMenuOpening()
+{
+    auto SelectedItems = ListView ? ListView->GetSelectedItems() : TArray<TSharedPtr<FGV2DefinitionSummary>>();
+    if (SelectedItems.IsEmpty() || !SelectedItems[0].IsValid())
+    {
+        return nullptr;
+    }
+
+    FMenuBuilder MenuBuilder(true, nullptr);
+
+    MenuBuilder.AddMenuEntry(
+        FText::FromString(TEXT("Copy Stable ID")),
+        FText::FromString(TEXT("Copy definition ID to clipboard")),
+        FSlateIcon(),
+        FUIAction(FExecuteAction::CreateSP(this, &SGV2DefinitionBrowser::HandleCopyId)));
+
+    MenuBuilder.AddMenuEntry(
+        FText::FromString(TEXT("Duplicate")),
+        FText::FromString(TEXT("Duplicate this definition")),
+        FSlateIcon(),
+        FUIAction(FExecuteAction::CreateSP(this, &SGV2DefinitionBrowser::HandleDuplicate)));
+
+    MenuBuilder.AddMenuEntry(
+        FText::FromString(TEXT("Delete")),
+        FText::FromString(TEXT("Delete this definition")),
+        FSlateIcon(),
+        FUIAction(FExecuteAction::CreateSP(this, &SGV2DefinitionBrowser::HandleDelete)));
+
+    return MenuBuilder.MakeWidget();
+}
+
+void SGV2DefinitionBrowser::HandleCopyId()
+{
+    auto SelectedItems = ListView ? ListView->GetSelectedItems() : TArray<TSharedPtr<FGV2DefinitionSummary>>();
+    if (!SelectedItems.IsEmpty() && SelectedItems[0].IsValid())
+    {
+        FPlatformApplicationMisc::ClipboardCopy(UTF8_TO_TCHAR(SelectedItems[0]->Id.c_str()));
+    }
+}
+
+void SGV2DefinitionBrowser::HandleDuplicate()
+{
+    auto SelectedItems = ListView ? ListView->GetSelectedItems() : TArray<TSharedPtr<FGV2DefinitionSummary>>();
+    if (!SelectedItems.IsEmpty() && SelectedItems[0].IsValid() && Adapter.IsValid())
+    {
+        std::string SourceId = SelectedItems[0]->Id;
+        std::string TargetId = SourceId + "_copy";
+        auto Result = Adapter->DuplicateDefinition(SourceId, TargetId);
+        if (Result.IsSuccess())
+        {
+            RefreshList();
+            SetSelectedDefinition(UTF8_TO_TCHAR(TargetId.c_str()));
+            if (OnDefinitionsChanged.IsBound()) OnDefinitionsChanged.Execute();
+        }
+    }
+}
+
+void SGV2DefinitionBrowser::HandleDelete()
+{
+    auto SelectedItems = ListView ? ListView->GetSelectedItems() : TArray<TSharedPtr<FGV2DefinitionSummary>>();
+    if (!SelectedItems.IsEmpty() && SelectedItems[0].IsValid() && Adapter.IsValid())
+    {
+        std::string TargetId = SelectedItems[0]->Id;
+        auto InRefs = Adapter->GetIncomingReferences(TargetId);
+        if (!InRefs.empty())
+        {
+            // CED-14: Deletion check - prevent deletion if referenced
+            return;
+        }
+
+        auto Result = Adapter->DeleteDefinition(TargetId);
+        if (Result.IsSuccess())
+        {
+            RefreshList();
+            if (OnDefinitionsChanged.IsBound()) OnDefinitionsChanged.Execute();
+        }
     }
 }
 

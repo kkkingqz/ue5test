@@ -22,12 +22,116 @@ void SGV2DefinitionProperties::Construct(const FArguments& InArgs, TSharedPtr<FG
 {
     Adapter = InAdapter;
     OnFieldValueChanged = InArgs._OnFieldValueChanged;
+    OnSaveCompleted = InArgs._OnSaveCompleted;
 
     ChildSlot
     [
-        SAssignNew(ContentScrollBox, SScrollBox)
+        SNew(SVerticalBox)
+        + SVerticalBox::Slot()
+        .AutoHeight()
+        [
+            BuildToolbar()
+        ]
+        + SVerticalBox::Slot()
+        .FillHeight(1.0f)
+        [
+            SAssignNew(ContentScrollBox, SScrollBox)
+        ]
     ];
 
+    RefreshProperties();
+}
+
+TSharedRef<SWidget> SGV2DefinitionProperties::BuildToolbar()
+{
+    return SNew(SBorder)
+        .BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.GroupBorder"))
+        .Padding(4.0f)
+        [
+            SNew(SHorizontalBox)
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(2.0f)
+            [
+                SNew(SButton)
+                .Text(FText::FromString(TEXT("Save (Atomic)")))
+                .IsEnabled_Lambda([this]() {
+                    return Adapter.IsValid() && Adapter->IsDirty();
+                })
+                .OnClicked(this, &SGV2DefinitionProperties::HandleSaveClicked)
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .Padding(2.0f)
+            [
+                SNew(SButton)
+                .Text(FText::FromString(TEXT("Revert")))
+                .IsEnabled_Lambda([this]() {
+                    return Adapter.IsValid() && Adapter->IsDirty();
+                })
+                .OnClicked(this, &SGV2DefinitionProperties::HandleRevertClicked)
+            ]
+            + SHorizontalBox::Slot()
+            .FillWidth(1.0f)
+            [
+                SNew(SSpacer)
+            ]
+            + SHorizontalBox::Slot()
+            .AutoWidth()
+            .VAlign(VAlign_Center)
+            .Padding(4.0f, 0.0f)
+            [
+                SNew(STextBlock)
+                .Text_Lambda([this]() {
+                    if (Adapter.IsValid() && Adapter->IsDirty())
+                    {
+                        return FText::FromString(FString::Printf(TEXT("%d unsaved change(s)"), static_cast<int32>(Adapter->GetDirtyFields().size())));
+                    }
+                    return FText::FromString(TEXT("Clean"));
+                })
+                .ColorAndOpacity_Lambda([this]() {
+                    if (Adapter.IsValid() && Adapter->IsDirty())
+                    {
+                        return FSlateColor(FLinearColor(1.0f, 0.8f, 0.2f));
+                    }
+                    return FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f));
+                })
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
+            ]
+        ];
+}
+
+FReply SGV2DefinitionProperties::HandleSaveClicked()
+{
+    if (Adapter.IsValid() && Adapter->IsDirty())
+    {
+        auto Result = Adapter->SaveCurrentDefinition();
+        RefreshProperties();
+        if (OnSaveCompleted.IsBound())
+        {
+            OnSaveCompleted.Execute(Result);
+        }
+    }
+    return FReply::Handled();
+}
+
+FReply SGV2DefinitionProperties::HandleRevertClicked()
+{
+    if (Adapter.IsValid() && Adapter->IsDirty())
+    {
+        Adapter->DiscardCurrentChanges();
+        RefreshProperties();
+        if (OnFieldValueChanged.IsBound())
+        {
+            OnFieldValueChanged.Execute();
+        }
+    }
+    return FReply::Handled();
+}
+
+void SGV2DefinitionProperties::FocusField(const FString& JsonPointer)
+{
+    HighlightedPointer = JsonPointer;
     RefreshProperties();
 }
 

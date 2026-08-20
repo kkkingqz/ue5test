@@ -19,6 +19,7 @@ public class GV2ContentEditor : ModuleRules
 
         PrivateDependencyModuleNames.AddRange(new string[]
         {
+            "ApplicationCore",
             "InputCore",
             "Slate",
             "SlateCore",

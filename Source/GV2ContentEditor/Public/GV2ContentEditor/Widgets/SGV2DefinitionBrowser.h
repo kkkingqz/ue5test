@@ -14,12 +14,14 @@ namespace GV2ContentEditor
 {
 
 DECLARE_DELEGATE_OneParam(FOnDefinitionSelected, const FString& /*DefinitionId*/);
+DECLARE_DELEGATE(FOnDefinitionsChanged);
 
 class GV2_CONTENT_EDITOR_API SGV2DefinitionBrowser : public SCompoundWidget
 {
 public:
     SLATE_BEGIN_ARGS(SGV2DefinitionBrowser) {}
         SLATE_EVENT(FOnDefinitionSelected, OnDefinitionSelected)
+        SLATE_EVENT(FOnDefinitionsChanged, OnDefinitionsChanged)
     SLATE_END_ARGS()
 
     void Construct(const FArguments& InArgs, TSharedPtr<FGV2EditorAdapter> InAdapter);
@@ -36,13 +38,20 @@ private:
         TSharedPtr<FGV2DefinitionSummary> SelectedItem,
         ESelectInfo::Type SelectInfo);
 
+    TSharedPtr<SWidget> OnContextMenuOpening();
+
     void OnSearchTextChanged(const FText& InSearchText);
 
     void FilterItems();
 
+    void HandleCopyId();
+    void HandleDuplicate();
+    void HandleDelete();
+
 private:
     TSharedPtr<FGV2EditorAdapter> Adapter;
     FOnDefinitionSelected OnDefinitionSelected;
+    FOnDefinitionsChanged OnDefinitionsChanged;
 
     TArray<TSharedPtr<FGV2DefinitionSummary>> AllItems;
     TArray<TSharedPtr<FGV2DefinitionSummary>> FilteredItems;

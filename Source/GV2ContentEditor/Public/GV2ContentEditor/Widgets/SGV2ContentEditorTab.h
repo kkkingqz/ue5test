@@ -4,6 +4,7 @@
 #include "GV2ContentEditor/GV2EditorAdapter.h"
 #include "GV2ContentEditor/Widgets/SGV2DefinitionBrowser.h"
 #include "GV2ContentEditor/Widgets/SGV2DefinitionProperties.h"
+#include "GV2ContentEditor/Widgets/SGV2DiagnosticsPanel.h"
 #include "GV2ContentEditor/Widgets/SGV2ReferencePanel.h"
 
 #if defined(__UNREAL__) || defined(UE_GAME) || defined(UE_EDITOR) || defined(WITH_ENGINE)
@@ -28,7 +29,9 @@ public:
 private:
     void HandleDefinitionSelected(const FString& DefinitionId);
     void HandleFieldValueChanged();
+    void HandleSaveCompleted(const FGV2EditorAuthoringResult& Result);
     void HandleNavigateToDefinition(const FString& DefinitionId);
+    void HandleNavigateToDiagnostic(const FString& DefinitionId, const FString& JsonPointer);
 
 private:
     TSharedPtr<FGV2EditorAdapter> Adapter;
@@ -36,6 +39,7 @@ private:
     TSharedPtr<SGV2DefinitionBrowser> BrowserWidget;
     TSharedPtr<SGV2DefinitionProperties> PropertiesWidget;
     TSharedPtr<SGV2ReferencePanel> ReferenceWidget;
+    TSharedPtr<SGV2DiagnosticsPanel> DiagnosticsWidget;
 };
 
 } // namespace GV2ContentEditor
