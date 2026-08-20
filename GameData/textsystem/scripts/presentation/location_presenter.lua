@@ -12,6 +12,35 @@ M.id = "textsystem:module.presentation.location_presenter"
 local LOCATION_SCREEN_TEMPLATE_ID = "textsystem:screen.location"
 local LOCATION_SCREEN_INSTANCE_KEY = "location"
 
+local function extension_with_field(definition, field)
+    for _, block in pairs((definition and definition.extensions) or {}) do
+        if type(block) == "table" and block[field] ~= nil then return block end
+    end
+    return {}
+end
+
+local function current_player()
+    return game and game.instances and game.instances.actors and game.instances.actors.player
+        and game.instances.actors.player() or nil
+end
+
+local function player_values()
+    local player = current_player()
+    local gold = player and player.get_gold and player:get_gold() or (player and player.gold) or 0
+    local stamina = player and player.get_stamina and player:get_stamina() or (player and player.stamina) or 0
+    local actor_def = player and game and game.repository and game.repository.get and game.repository.get(player.definition_id) or nil
+    local actor_extension = extension_with_field(actor_def, "name_text_id")
+    local items = {}
+    for _, item in pairs((game and game.state and game.state.item_instances) or {}) do
+        if player and item.owner_id == player.instance_id then
+            local item_def = game.repository and game.repository.get and game.repository.get(item.definition_id)
+            if item_def and item_def.data and item_def.data.icon_resource_id then table.insert(items, item_def.data.icon_resource_id) end
+        end
+    end
+    table.sort(items)
+    return player, gold, stamina, actor_extension, items
+end
+
 function M.build_screen_request(location_id)
     if not location_id then
         return nil
@@ -34,6 +63,7 @@ function M.build_screen_request(location_id)
     end
 
     local screen_data = (screen_def and screen_def.data) or {}
+    local scene_data = extension_with_field(screen_def, "background_resource_id")
     local description_text_id = screen_data.description_text_id or loc.title_text_id
 
     local buttons = {}
@@ -63,11 +93,32 @@ function M.build_screen_request(location_id)
         end
     end
 
+    local player, gold, stamina, actor_extension, item_icons = player_values()
+    local day = (game and game.state and game.state.meta and game.state.meta.day) or 1
     return M.show_screen({
         template = LOCATION_SCREEN_TEMPLATE_ID,
         instance_key = LOCATION_SCREEN_INSTANCE_KEY,
-        description = M.text(description_text_id),
-        buttons = buttons,
+        fields = {
+            top_bar = { schema_id = "textsystem:schema.ui_field.location_top_bar.v1", value = {
+                day = M.text("textsystem:text.location.day", { day = day }),
+                location = M.text(loc.title_text_id),
+                primary_resource = M.text("textsystem:text.location.gold", { gold = gold }),
+            } },
+            player_status = { schema_id = "textsystem:schema.ui_field.location_player_status.v1", value = {
+                portrait_resource_id = actor_extension.portrait_resource_id or "textsystem:resource.ui.missing_portrait",
+                name = M.text(actor_extension.name_text_id or loc.title_text_id),
+                meters = { { percent = math.min(1, stamina / 100), label = M.text("textsystem:text.location.stamina", { stamina = stamina }) } },
+                item_icon_resource_ids = item_icons,
+                effect_icon_resource_ids = {},
+            } },
+            scene = { schema_id = "textsystem:schema.ui_field.location_scene.v1", value = {
+                background_tile_resource_id = "core:resource.ui.old_paper_tile_256",
+                background_resource_id = scene_data.background_resource_id or "textsystem:resource.ui.missing_background",
+                character_resource_ids = scene_data.character_resource_id and { scene_data.character_resource_id } or { "textsystem:resource.ui.missing_character" },
+                context_text = M.text(description_text_id),
+            } },
+            commands = { schema_id = "textsystem:schema.ui_field.location_commands.v1", value = { items = buttons } },
+        },
     })
 end
 

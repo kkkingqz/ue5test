@@ -46,6 +46,37 @@ bool UGV2ImageWidgetBase::ApplyImageResource(const FString& ResourceId, FString&
     return true;
 }
 
+bool UGV2ImageWidgetBase::ApplyOptionalImageResource(
+    const FString& ResourceId,
+    const FString& PlaceholderResourceId,
+    FString& OutError)
+{
+    FGV2ResolvedImageResource Resource;
+    EGV2PrimitiveScalePolicy EffectivePolicy = ScalePolicy;
+    if (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && AcceptedRenderMode != EGV2ImageRenderMode::FixedAspect)
+    {
+        if (AcceptedRenderMode == EGV2ImageRenderMode::Tile)
+        {
+            EffectivePolicy = EGV2PrimitiveScalePolicy::Tile;
+        }
+        else if (AcceptedRenderMode == EGV2ImageRenderMode::NineSlice)
+        {
+            EffectivePolicy = EGV2PrimitiveScalePolicy::NineSlice;
+        }
+    }
+    const TOptional<float> RequiredAspect = EffectivePolicy == EGV2PrimitiveScalePolicy::PreserveAspect
+        ? TOptional<float>(FixedAspectRatio)
+        : TOptional<float>();
+    if (!FGV2ImagePresentation::ResolveOptionalAndApply(
+        Image, ResourceId, PlaceholderResourceId, EffectivePolicy, RequiredAspect, Resource, OutError))
+    {
+        return false;
+    }
+    AppliedResourceId = Resource.ResourceId;
+    ResolvedAspectRatio = Resource.FixedAspectRatio;
+    return true;
+}
+
 FSlateBrush UGV2ImageWidgetBase::GetImageBrush() const
 {
     return Image != nullptr ? Image->GetBrush() : FSlateBrush();

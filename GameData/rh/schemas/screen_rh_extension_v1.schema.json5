@@ -1,0 +1,14 @@
+{
+  id: "rh:schema.extension.screen.entry.v1",
+  definition_type: "screen",
+  schema_version: 1,
+  extension_site: "definition_entry",
+  extension_namespace: "rh",
+  root: {
+    kind: "object",
+    fields: {
+      background_resource_id: { kind: "resource_ref", resource_class: "texture_2d", required: true },
+      character_resource_id: { kind: "resource_ref", resource_class: "texture_2d", required: false },
+    },
+  },
+}

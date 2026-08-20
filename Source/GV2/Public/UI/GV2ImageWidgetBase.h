@@ -21,6 +21,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     bool ApplyImageResource(const FString& ResourceId, FString& OutError);
 
+    /** Applies ResourceId, using PlaceholderResourceId and emitting a diagnostic when it cannot resolve. */
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    bool ApplyOptionalImageResource(const FString& ResourceId, const FString& PlaceholderResourceId, FString& OutError);
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FSlateBrush GetImageBrush() const;
 

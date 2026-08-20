@@ -1,0 +1,10 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    { id: "textsystem:text.location.day", data: { source_message: "Day {day}" } },
+    { id: "textsystem:text.location.gold", data: { source_message: "Gold: {gold}" } },
+    { id: "textsystem:text.location.stamina", data: { source_message: "Stamina: {stamina}" } },
+  ],
+  extensions: {},
+}

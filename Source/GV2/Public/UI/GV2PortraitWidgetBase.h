@@ -25,6 +25,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Portrait")
     bool ApplyPortrait(const FString& ResourceId, const FString& FrameResourceId, FString& OutError);
 
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Portrait")
+    bool ApplyOptionalPortrait(const FString& ResourceId, const FString& PlaceholderResourceId, const FString& FrameResourceId, FString& OutError);
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
     FString GetPortraitResourceId() const { return AppliedPortraitId; }
 

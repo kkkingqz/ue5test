@@ -16,5 +16,10 @@
         required: true,
       },
     },
+    { id: "rh:resource.location.market", data: { resource_class: "texture_2d", required: true } },
+    { id: "rh:resource.location.tavern", data: { resource_class: "texture_2d", required: true } },
+    { id: "rh:resource.location.gate", data: { resource_class: "texture_2d", required: true } },
+    { id: "rh:resource.character.tavern_keeper", data: { resource_class: "texture_2d", required: false } },
+    { id: "rh:resource.portrait.hero", data: { resource_class: "texture_2d", required: false } },
   ],
 }

@@ -1,0 +1,11 @@
+{
+  schema_version: 1,
+  type: "resource",
+  definitions: [
+    { id: "textsystem:resource.ui.missing_background", data: { resource_class: "texture_2d", required: true } },
+    { id: "textsystem:resource.ui.missing_character", data: { resource_class: "texture_2d", required: true } },
+    { id: "textsystem:resource.ui.missing_portrait", data: { resource_class: "texture_2d", required: true } },
+    { id: "textsystem:resource.ui.missing_icon", data: { resource_class: "texture_2d", required: true } },
+  ],
+  extensions: {},
+}

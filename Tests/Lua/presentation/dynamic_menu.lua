@@ -62,7 +62,7 @@ return {
             assert(published.screen_id == "textsystem:screen.location",
                 "republished screen must use the LocationScreen template, got: " .. tostring(published.screen_id))
             assert(published.instance_key == "location", "location route identity must remain stable")
-            assert(find_button(published.fields.buttons, "wait_day") ~= nil,
+            assert(find_button(published.fields.commands, "wait_day") ~= nil,
                 "republished menu must still contain the location actions")
 
             assert(player.stamina == 30, "wait_day must add 10 stamina, got: " .. tostring(player.stamina))
@@ -103,12 +103,12 @@ return {
         assert(req.screen_id == "textsystem:screen.location", "screen_id must be the shared LocationScreen template")
         assert(req.instance_key == "location", "location route identity must be stable")
 
-        local desc = req.fields.description
-        assert(desc ~= nil and desc.schema_id == "core:schema.ui_field.rich_text.v3")
-        assert(desc.value.text.text_id == "rh:text.screen.market.description")
+        local scene = req.fields.scene
+        assert(scene ~= nil and scene.schema_id == "textsystem:schema.ui_field.location_scene.v1")
+        assert(scene.value.context_text.text_id == "rh:text.screen.market.description")
 
-        local buttons = req.fields.buttons
-        assert(buttons ~= nil and buttons.schema_id == "core:schema.ui_field.button_list.v2")
+        local buttons = req.fields.commands
+        assert(buttons ~= nil and buttons.schema_id == "textsystem:schema.ui_field.location_commands.v1")
         assert(#buttons.value.items == 3, "market must have 3 buttons (2 actions + 1 travel), got: " .. tostring(#buttons.value.items))
 
         local btn_sword = find_button(buttons, "buy_sword")
@@ -132,10 +132,10 @@ return {
         assert(req ~= nil, "screen request must be generated for tavern")
         assert(req.screen_id == "textsystem:screen.location", "screen_id must be the shared LocationScreen template")
 
-        local desc = req.fields.description
-        assert(desc.value.text.text_id == "rh:text.screen.tavern.description")
+        local scene = req.fields.scene
+        assert(scene.value.context_text.text_id == "rh:text.screen.tavern.description")
 
-        local buttons = req.fields.buttons
+        local buttons = req.fields.commands
         assert(#buttons.value.items == 4, "tavern must have 4 buttons (2 actions + 2 travel), got: " .. tostring(#buttons.value.items))
 
         local btn_wait = find_button(buttons, "wait_day")
@@ -160,10 +160,10 @@ return {
         assert(req ~= nil, "screen request must be generated for gate")
         assert(req.screen_id == "textsystem:screen.location", "screen_id must be the shared LocationScreen template")
 
-        local desc = req.fields.description
-        assert(desc.value.text.text_id == "rh:text.screen.gate.description")
+        local scene = req.fields.scene
+        assert(scene.value.context_text.text_id == "rh:text.screen.gate.description")
 
-        local buttons = req.fields.buttons
+        local buttons = req.fields.commands
         assert(#buttons.value.items == 1, "gate must have 1 button (travel to tavern), got: " .. tostring(#buttons.value.items))
 
         local btn_tavern = find_button(buttons, "travel_city_tavern")
@@ -197,7 +197,7 @@ return {
                 "screen_id must remain the LocationScreen template, got: " .. tostring(screen_tavern.screen_id))
             assert(screen_tavern.instance_key == screen_market.instance_key,
                 "travel must retain the location screen instance")
-            assert(#screen_tavern.fields.buttons.value.items == 4, "tavern menu must have 4 buttons")
+            assert(#screen_tavern.fields.commands.value.items == 4, "tavern menu must have 4 buttons")
         end)
     end,
 }

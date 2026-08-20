@@ -281,6 +281,8 @@ extensions: {
 - Unknown, unregistered или foreign extension block — fatal. Block проверяется общим `CompileFieldSpec()`/`ValidateFieldValue()` как отдельный closed object DTO; root extension FieldSpec другого kind запрещён.
 - Full override хранит собственные `data`, metadata и `extensions` как одну entry. Extension blocks shadowed provider-а не наследуются и не merge-ятся.
 
+Для `LocationScreen` это означает, что `textsystem` владеет шаблоном и presenter-ом, но поля сцены definition `rh:screen.*` записываются в extension block `rh`. `textsystem` не может объявить либо записать foreign block в definition, поставляемой `rh`; presenter читает materialized value без зависимости от ID пакета игры.
+
 ```json5
 // manifest fragment of weather_mod
 extension_schemas: [

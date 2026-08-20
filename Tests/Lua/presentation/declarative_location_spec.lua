@@ -24,32 +24,29 @@ return {
         assert(req.screen_id == "textsystem:screen.location")
         assert(req.instance_key == "location")
 
-        -- Text is rich_text
-        assert(req.fields.description ~= nil)
-        assert(req.fields.description.schema_id == "core:schema.ui_field.rich_text.v3")
-        assert(req.fields.description.value.text.text_id == "rh:text.screen.market.description")
+        assert(req.fields.top_bar.schema_id == "textsystem:schema.ui_field.location_top_bar.v1")
+        assert(req.fields.scene.schema_id == "textsystem:schema.ui_field.location_scene.v1")
+        assert(req.fields.scene.value.context_text.text_id == "rh:text.screen.market.description")
 
-        -- Buttons are button_list
-        assert(req.fields.buttons ~= nil)
-        assert(req.fields.buttons.schema_id == "core:schema.ui_field.button_list.v2")
-        assert(#req.fields.buttons.value.items == 3)
+        assert(req.fields.commands.schema_id == "textsystem:schema.ui_field.location_commands.v1")
+        assert(#req.fields.commands.value.items == 3)
 
         -- Action 1: buy_sword
-        local b_sword = find_button(req.fields.buttons, "buy_sword")
+        local b_sword = find_button(req.fields.commands, "buy_sword")
         assert(b_sword ~= nil)
         assert(b_sword.text.text_id == "rh:text.action.buy_sword")
         assert(b_sword.binding.command_id == "rh:command.request_buy")
         assert(b_sword.binding.args.item == "rh:item.weapon.iron_sword")
 
         -- Action 2: buy_armor
-        local b_armor = find_button(req.fields.buttons, "buy_armor")
+        local b_armor = find_button(req.fields.commands, "buy_armor")
         assert(b_armor ~= nil)
         assert(b_armor.text.text_id == "rh:text.action.buy_armor")
         assert(b_armor.binding.command_id == "rh:command.request_buy")
         assert(b_armor.binding.args.item == "rh:item.armor.leather_armor")
 
         -- Travel button
-        local b_travel = find_button(req.fields.buttons, "travel_city_tavern")
+        local b_travel = find_button(req.fields.commands, "travel_city_tavern")
         assert(b_travel ~= nil)
         assert(b_travel.binding.command_id == "rh:command.travel")
         assert(b_travel.binding.args.target == "rh:location.city.tavern")
@@ -61,23 +58,23 @@ return {
         assert(req.screen_id == "textsystem:screen.location")
         assert(req.instance_key == "location")
 
-        assert(#req.fields.buttons.value.items == 4)
+        assert(#req.fields.commands.value.items == 4)
 
-        local b_wait = find_button(req.fields.buttons, "wait_day")
+        local b_wait = find_button(req.fields.commands, "wait_day")
         assert(b_wait ~= nil)
         assert(b_wait.text.text_id == "rh:text.action.wait_day")
         assert(b_wait.binding.command_id == "rh:command.time.wait_day")
 
-        local b_work = find_button(req.fields.buttons, "do_work")
+        local b_work = find_button(req.fields.commands, "do_work")
         assert(b_work ~= nil)
         assert(b_work.text.text_id == "rh:text.action.do_work")
         assert(b_work.binding.command_id == "rh:command.work.do_work")
 
-        local b_m = find_button(req.fields.buttons, "travel_city_market")
+        local b_m = find_button(req.fields.commands, "travel_city_market")
         assert(b_m ~= nil)
         assert(b_m.binding.args.target == "rh:location.city.market")
 
-        local b_g = find_button(req.fields.buttons, "travel_city_gate")
+        local b_g = find_button(req.fields.commands, "travel_city_gate")
         assert(b_g ~= nil)
         assert(b_g.binding.args.target == "rh:location.city.gate")
     end,

@@ -69,7 +69,7 @@ decisions:
 
 - [x] M1 — [Screen Contract](ScreenContract.md): разделение шаблона и набора значений, поля и схемы, устойчивая идентичность. GLS-01…04.
 - [x] M2 — [Composites](Composites.md): четыре композита и шаблон в `Content/TextSystem/UI/`. GLS-05…09.
-- [ ] M3 — [Presenter and Data](PresenterAndData.md): презентер, расширение схемы, определения и ресурсы `rh`. GLS-10…13.
+- [x] M3 — [Presenter and Data](PresenterAndData.md): презентер, расширение схемы, определения и ресурсы `rh`. GLS-10…13.
 - [ ] M4 — [Verification](Verification.md): матрица разрешений, сценарий перехода, покрытие базового набора. GLS-14…16.
 
 ## Критический путь

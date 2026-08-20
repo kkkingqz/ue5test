@@ -13,6 +13,7 @@
         rh: {
           name_text_id: "rh:text.character.hero.name",
           base_hp: 100,
+          portrait_resource_id: "rh:resource.portrait.hero",
         },
       },
     },

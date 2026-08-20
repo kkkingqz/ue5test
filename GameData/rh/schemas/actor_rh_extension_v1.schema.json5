@@ -16,6 +16,11 @@
         required: true,
         min: 1,
       },
+      portrait_resource_id: {
+        kind: "resource_ref",
+        resource_class: "texture_2d",
+        required: false,
+      },
     },
   },
 }

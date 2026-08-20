@@ -50,6 +50,48 @@ bool UGV2PortraitWidgetBase::ApplyPortrait(
     return true;
 }
 
+bool UGV2PortraitWidgetBase::ApplyOptionalPortrait(
+    const FString& ResourceId,
+    const FString& PlaceholderResourceId,
+    const FString& FrameResourceId,
+    FString& OutError)
+{
+    if (PortraitImage != nullptr)
+    {
+        FGV2ResolvedImageResource Res;
+        if (!FGV2ImagePresentation::ResolveOptionalAndApply(
+            PortraitImage,
+            ResourceId,
+            PlaceholderResourceId,
+            EGV2PrimitiveScalePolicy::PreserveAspect,
+            TOptional<float>(PortraitAspectRatio),
+            Res,
+            OutError))
+        {
+            return false;
+        }
+        AppliedPortraitId = Res.ResourceId;
+    }
+
+    if (FrameImage != nullptr && !FrameResourceId.IsEmpty())
+    {
+        FGV2ResolvedImageResource FrameRes;
+        if (!FGV2ImagePresentation::ResolveAndApply(
+            FrameImage,
+            FrameResourceId,
+            EGV2PrimitiveScalePolicy::NineSlice,
+            TOptional<float>(),
+            FrameRes,
+            OutError))
+        {
+            return false;
+        }
+        AppliedFrameId = FrameResourceId;
+    }
+
+    return true;
+}
+
 FGV2ScreenFieldDescriptor UGV2PortraitWidgetBase::GetScreenFieldDescriptor_Implementation() const
 {
     FGV2ScreenFieldDescriptor Desc;

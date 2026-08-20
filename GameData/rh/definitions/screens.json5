@@ -23,7 +23,11 @@
       },
       tags: ["location", "market"],
       deprecated: false,
-      extensions: {},
+      extensions: {
+        rh: {
+          background_resource_id: "rh:resource.location.market",
+        },
+      },
     },
     {
       id: "rh:screen.location.tavern",
@@ -46,7 +50,12 @@
       },
       tags: ["location", "tavern"],
       deprecated: false,
-      extensions: {},
+      extensions: {
+        rh: {
+          background_resource_id: "rh:resource.location.tavern",
+          character_resource_id: "rh:resource.character.tavern_keeper",
+        },
+      },
     },
     {
       id: "rh:screen.location.gate",
@@ -58,7 +67,11 @@
       },
       tags: ["location", "gate"],
       deprecated: false,
-      extensions: {},
+      extensions: {
+        rh: {
+          background_resource_id: "rh:resource.location.gate",
+        },
+      },
     },
   ],
   extensions: {},
