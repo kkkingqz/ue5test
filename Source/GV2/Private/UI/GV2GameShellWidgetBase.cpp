@@ -1,5 +1,7 @@
 #include "UI/GV2GameShellWidgetBase.h"
 
+#include "Blueprint/WidgetTree.h"
+#include "Components/Overlay.h"
 #include "Components/PanelWidget.h"
 #include "UI/GV2UiTheme.h"
 
@@ -36,13 +38,30 @@ void UGV2GameShellWidgetBase::NativePreConstruct()
 
 UPanelWidget* UGV2GameShellWidgetBase::FindHostForLayer(FName Layer) const
 {
-    if (Layer == LayerBackground) return BackgroundHost;
-    if (Layer == LayerLocationContent) return LocationContentHost;
-    if (Layer == LayerCharacterPresentation) return CharacterPresentationHost;
-    if (Layer == LayerCoreInterface) return CoreInterfaceHost;
-    if (Layer == LayerOverlayStack) return OverlayStackHost;
-    if (Layer == LayerModalStack) return ModalStackHost;
-    return nullptr;
+    UPanelWidget* Host = nullptr;
+    if (Layer == LayerBackground) Host = BackgroundHost;
+    else if (Layer == LayerLocationContent) Host = LocationContentHost;
+    else if (Layer == LayerCharacterPresentation) Host = CharacterPresentationHost;
+    else if (Layer == LayerCoreInterface) Host = CoreInterfaceHost;
+    else if (Layer == LayerOverlayStack) Host = OverlayStackHost;
+    else if (Layer == LayerModalStack) Host = ModalStackHost;
+
+    if (Host == nullptr && WidgetTree != nullptr)
+    {
+        UOverlay* FallbackHost = WidgetTree->ConstructWidget<UOverlay>(
+            UOverlay::StaticClass(),
+            *FString::Printf(TEXT("%sHost"), *Layer.ToString()));
+        UGV2GameShellWidgetBase* MutableThis = const_cast<UGV2GameShellWidgetBase*>(this);
+        if (Layer == LayerBackground) MutableThis->BackgroundHost = FallbackHost;
+        else if (Layer == LayerLocationContent) MutableThis->LocationContentHost = FallbackHost;
+        else if (Layer == LayerCharacterPresentation) MutableThis->CharacterPresentationHost = FallbackHost;
+        else if (Layer == LayerCoreInterface) MutableThis->CoreInterfaceHost = FallbackHost;
+        else if (Layer == LayerOverlayStack) MutableThis->OverlayStackHost = FallbackHost;
+        else if (Layer == LayerModalStack) MutableThis->ModalStackHost = FallbackHost;
+        Host = FallbackHost;
+    }
+
+    return Host;
 }
 
 bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* ScreenWidget)

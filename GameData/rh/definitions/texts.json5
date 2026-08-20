@@ -86,5 +86,25 @@
       id: "rh:text.error.work.insufficient_stamina",
       data: { source_message: "Error Work Insufficient stamina" },
     },
+    {
+      id: "rh:text.shop.confirm.title",
+      data: { source_message: "Confirm Purchase" },
+    },
+    {
+      id: "rh:text.shop.confirm.sword",
+      data: { source_message: "Buy Iron sword for 10 gold?" },
+    },
+    {
+      id: "rh:text.shop.confirm.armor",
+      data: { source_message: "Buy Leather armor for 25 gold?" },
+    },
+    {
+      id: "rh:text.action.confirm",
+      data: { source_message: "Confirm" },
+    },
+    {
+      id: "rh:text.action.cancel",
+      data: { source_message: "Cancel" },
+    },
   ],
 }

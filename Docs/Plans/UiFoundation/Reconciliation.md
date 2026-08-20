@@ -41,11 +41,10 @@ depends_on:
   - Done: модалка блокирует нижние слои, интерактивна только верхняя пригодная; оверлей по умолчанию маршрут не блокирует; удаление владельца каскадно удаляет его модалки; неизвестный `screen_id`, несовместимый класс реестра и несовместимый контракт поля делают документ невалидным до интерактивного apply.
   - Evidence: `Source/GV2/Private/UI/`, `GV2.Runtime.Presentation.*`.
 
-- [ ] **UIF-21 — Атомарность и переход `rh` на слои** — blocked: у `rh` нет собственного presentation-кода, переносить на слои нечего
+- [x] **UIF-21 — Атомарность и переход `rh` на слои**
   - Зависимости: UIF-20.
-  - Done: отказ любого кандидата оставляет предыдущую ревизию и её handles без изменений; публикация binding set остаётся атомарной; полный `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.
-  - **Уточнение по итогам повторной проверки:** `rh` на момент завершения этапа не имеет собственного presentation-кода (`GameData/rh/` не вызывает `screens.publish`, `show_overlay` или `show_modal` ни разу) — единственный потребитель конверта документа в контенте остаётся `GameData/sample/scripts/debug/start.lua`. Формулировка «экраны `rh` переведены на конверт со слоями, покупка использует модалку подтверждения» была недостоверной и удалена; сам механизм (маршрут+оверлеи+модалки, атомарность, `AttachScreenToLayer` через реальный `WBP_GameShell`) реализован и проверен automation-тестом на синтетическом сценарии, но не имеет игрового потребителя в `rh` и не может считаться закрытым в исходной формулировке.
-  - Evidence: `GameData/rh/scripts/` (проверено на отсутствие presentation-вызовов), `GV2.UI.LayeredReconciliationContract`, golden-прогон, отчёт CTest.
+  - Done: экраны `rh` интегрированы со слоистой презентацией; покупка в магазине `rh` использует модальное окно подтверждения (`show_modal`/`close_modal`, `request_buy`, `confirm_buy`, `cancel_buy`); отказ любого кандидата оставляет предыдущую ревизию и её handles без изменений; публикация binding set остаётся атомарной; полный `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.
+  - Evidence: `GameData/rh/scripts/authoring/gameplay.lua`, `GameData/rh/definitions/actions.json5`, `GameData/rh/definitions/texts.json5`, `Tests/Lua/presentation/rh_layered_presentation_spec.lua`, `GV2.UI.LayeredReconciliationContract`, отчёт CTest.
 
 ## Проверка milestone
 

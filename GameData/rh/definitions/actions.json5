@@ -38,6 +38,24 @@
       deprecated: false,
       extensions: {},
     },
+    {
+      id: "rh:action.confirm_buy",
+      data: {
+        title_text_id: "rh:text.action.confirm",
+      },
+      tags: ["shop", "confirm"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "rh:action.cancel_buy",
+      data: {
+        title_text_id: "rh:text.action.cancel",
+      },
+      tags: ["shop", "cancel"],
+      deprecated: false,
+      extensions: {},
+    },
   ],
   extensions: {},
 }
