@@ -1,7 +1,7 @@
 ---
 title: Architecture Index
 status: normative
-version: 1.4
+version: 1.5
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -9,7 +9,7 @@ depends_on:
 
 # Архитектурные контракты
 
-Раздел нормативный: он определяет, как GV2 обязан работать. Объяснения «зачем и как понимать» живут в [Concepts](../Concepts/README.md), инструкции «как сделать» — в [Guides](../Guides/README.md), причины выбора — в [ADR](../ADR/README.md).
+Раздел нормативный: он определяет, как GV2 обязан работать. Объяснения живут в [Concepts](../Concepts/README.md), programmer-инструкции — в [Guides](../Guides/README.md), designer-facing Lua reference — в [Authoring](../Authoring/README.md), причины выбора — в [ADR](../ADR/README.md).
 
 ## Навигация
 
@@ -36,7 +36,7 @@ depends_on:
 
 ## Authority, lifecycle и header
 
-`status: normative` допустим только для contracts в `Architecture/` и `UI/`; ADR используют decision statuses. Активные Plans имеют `active`, архивы — `archived`, Concepts, Guides, Status, Project Brief и ненормативные routers — `informative`. Активные Proposals сохраняют `draft` и отдельный `proposal_state`. Валидатор проверяет status в обе стороны.
+`status: normative` допустим только для contracts в `Architecture/` и `UI/`; ADR используют decision statuses. Активные Plans имеют `active`, архивы — `archived`, Concepts, Guides, Authoring, Status, Project Brief и ненормативные routers — `informative`. Активные Proposals сохраняют `draft` и отдельный `proposal_state`. Валидатор проверяет status в обе стороны.
 
 После заголовка документ открывает blockquote с первым полем из таблицы. Индексы и исторические records header не требуют.
 
@@ -45,6 +45,7 @@ depends_on:
 | `Architecture/`, `UI/` | **Владеет** | Не владеет, Инварианты, Реализация, Проверки |
 | `Concepts/` | **Объясняет** | Нормативно, Не является нормативным |
 | `Guides/` | **Задача** | Нужно, Нормативно |
+| `Authoring/` | **Помогает** | Нормативно, Источник примера, Типичные ошибки |
 | `ADR/` | **Решение** | Нормативный текст |
 | `Proposals/` | **Предлагает** | Затрагивает, Не является нормативным (или Состояние, если реализовано) |
 | `Plans/` | **Материализует** | Задачи, Результат |

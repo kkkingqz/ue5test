@@ -1,7 +1,7 @@
 ---
 title: GV2 Documentation Index
 status: informative
-version: 4.1
+version: 4.2
 updated: 2026-08-20
 language: ru
 ---
@@ -16,6 +16,7 @@ language: ru
 | Найти обязательное правило | [Architecture](Architecture/README.md), [UI](UI/README.md), [Invariants](Architecture/Invariants.md) |
 | Понять причину решения | [ADR](ADR/README.md) |
 | Выполнить типовую задачу | [Guides](Guides/README.md) и owner contract |
+| Написать gameplay или экран на authoring Lua | [Authoring](Authoring/README.md) — ненормативный справочник |
 | Разобрать Lua VM, `game` API или authoring DSL | [Lua Runtime](Architecture/LuaRuntimeContract.md), [Runtime Facade](Architecture/RuntimeFacadeAndRegistries.md), [Authoring Surface](Architecture/AuthoringSurfaceContract.md) |
 | Выполнить запланированную работу | [Plans](Plans/README.md) |
 | Изучить открытые идеи | [Proposals](Proposals/README.md) |
@@ -31,7 +32,7 @@ Accepted ADR фиксирует решение и причины, subsystem cont
 | `ADR/NNNN-*.md` | decision status | Решения |
 | Активные Plans | `active` | Выполняемая работа, не architecture authority |
 | Активные Proposals | `draft` + `proposal_state` | Открытый вопрос |
-| Concepts, Guides, Status, Project Brief и routers | `informative` | Объяснение, инструкция, навигация |
+| Concepts, Guides, Authoring, Status, Project Brief и routers | `informative` | Объяснение, инструкция, навигация |
 | `Archive/`, `Rejected/` | `archived` | История, не источник правил или задач |
 
 Экспортированные и внешние копии не являются источником истины. Соответствие статуса и расположения проверяет `Tools/Documentation/validate_docs.py`.
@@ -50,6 +51,6 @@ Accepted ADR фиксирует решение и причины, subsystem cont
 ## Ведение
 
 - Архитектурное решение сначала фиксируется ADR, затем синхронно отражается в owner contracts.
-- Concepts и Guides ссылаются на правило, не копируют его.
+- Concepts, Guides и Authoring ссылаются на правило, не заменяют его.
 - Публичные примеры являются fixtures и обязаны соответствовать grammar и schemas.
 - Новая абстракция требует конкретного сценария или измеренной проблемы.

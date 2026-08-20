@@ -23,7 +23,7 @@ HISTORICAL_DIRECTORIES = (ARCHIVE_DIRECTORY, REJECTED_DIRECTORY)
 # Explanatory tiers. They never define architectural rules: at a conflict the
 # normative contract wins. Keeping the status tied to the location makes the
 # distinction impossible to lose in a move or a copy-paste.
-INFORMATIVE_DIRECTORIES = ("Concepts", "Guides", "Status")
+INFORMATIVE_DIRECTORIES = ("Concepts", "Guides", "Authoring", "Status")
 INFORMATIVE_FILES = {
     "README.md",
     "ProjectBrief.md",
@@ -92,6 +92,7 @@ HEADER_FIELD_BY_DIRECTORY = {
     "UI": "Владеет",
     "Concepts": "Объясняет",
     "Guides": "Задача",
+    "Authoring": "Помогает",
     "ADR": "Решение",
     "Proposals": "Предлагает",
     "Plans": "Материализует",
@@ -516,6 +517,7 @@ def run_self_test(docs_root: Path) -> int:
         ("root router", "README.md", {**common, "status": "informative"}, True),
         ("project brief", "ProjectBrief.md", {**common, "status": "informative"}, True),
         ("status report", "Status/Fixture.md", {**common, "status": "informative"}, True),
+        ("authoring reference", "Authoring/Fixture.md", {**common, "status": "informative"}, True),
         ("active plan", "Plans/Work/Step.md", {**common, "status": "active"}, True),
         (
             "active proposal",
@@ -530,6 +532,7 @@ def run_self_test(docs_root: Path) -> int:
         ("normative status", "Status/Fixture.md", {**common, "status": "normative"}, False),
         ("active architecture", "Architecture/Fixture.md", {**common, "status": "active"}, False),
         ("draft concept", "Concepts/Fixture.md", {**common, "status": "draft"}, False),
+        ("draft authoring reference", "Authoring/Fixture.md", {**common, "status": "draft"}, False),
         ("informative contract", "Architecture/Fixture.md", {**common, "status": "informative"}, False),
         ("active archive", "Plans/Archive/Fixture.md", {**common, "status": "active"}, False),
     ]
@@ -542,6 +545,33 @@ def run_self_test(docs_root: Path) -> int:
         passed = not validation.errors
         if passed != should_pass:
             failures.append(f"{name}: expected {'pass' if should_pass else 'failure'}")
+    header_cases: list[tuple[str, str, str, bool]] = [
+        (
+            "authoring header",
+            "Authoring/Fixture.md",
+            "# Fixture\n\n> **Помогает:** использовать authoring surface.",
+            True,
+        ),
+        (
+            "missing authoring header",
+            "Authoring/Fixture.md",
+            "# Fixture\n\nТекст без обязательной шапки.",
+            False,
+        ),
+        (
+            "wrong authoring header",
+            "Authoring/Fixture.md",
+            "# Fixture\n\n> **Задача:** неверное поле тира.",
+            False,
+        ),
+    ]
+    for name, relative, text, should_pass in header_cases:
+        validation = Validation(root)
+        validation.validate_header(root / relative, text)
+        passed = not validation.errors
+        if passed != should_pass:
+            failures.append(f"{name}: expected {'pass' if should_pass else 'failure'}")
+
     legacy_cases: list[tuple[str, str, str, bool]] = [
         (
             "guide actor decorator",
@@ -619,7 +649,7 @@ def run_self_test(docs_root: Path) -> int:
         return 1
     print(
         "Documentation validator self-test passed: "
-        f"{len(cases) + len(legacy_cases)} cases."
+        f"{len(cases) + len(header_cases) + len(legacy_cases)} cases."
     )
     return 0
 

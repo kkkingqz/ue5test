@@ -5,7 +5,7 @@
 ## Documentation authority
 
 - Нормативная документация находится только в `Docs/Architecture/`, `Docs/UI/` и accepted ADR.
-- Concepts, Guides, Status, Project Brief и ненормативные routers имеют `informative`; активные Plans — `active`; архивы — `archived`. Они не вводят правил и при расхождении уступают contract.
+- Concepts, Guides, Authoring, Status, Project Brief и ненормативные routers имеют `informative`; активные Plans — `active`; архивы — `archived`. Они не вводят правил и при расхождении уступают contract.
 - Начальная точка для любой задачи: `Docs/README.md`.
 - Архивные, экспортированные или внешние копии документации не являются источником истины. Это относится и к реализованным предложениям в `Docs/Proposals/Archive/`, и к отклонённым в `Docs/Proposals/Rejected/`.
 - Accepted ADR фиксирует решение и причины; subsystem contract содержит его актуальное полное правило.
@@ -17,9 +17,10 @@
 
 1. Прочитать `Docs/README.md`.
 2. Для задачи «понять или спроектировать»: релевантный документ из `Docs/Concepts/`, затем contract затронутой подсистемы, затем связанные `accepted` ADR.
-3. Для задачи «выполнить типовое изменение»: релевантный `Docs/Guides/` плюс contract, на который он ссылается, плюс активный план, если задача из него.
-4. `Docs/Architecture/DependencyMap.md` — если вопрос про допустимость зависимости. `Docs/Architecture/Invariants.md` — если нужно найти нормативный источник правила по его ID.
-5. Проверить соседние контракты, если изменение пересекает ownership, Stable ID, command/event, save, repository, Lua/UE boundary, lifecycle, UI или modding.
+3. Для задачи «написать gameplay или presentation на authoring Lua»: релевантный reference из `Docs/Authoring/`, затем указанный в нём owner contract.
+4. Для задачи «выполнить типовое изменение кода»: релевантный `Docs/Guides/` плюс contract, на который он ссылается, плюс активный план, если задача из него.
+5. `Docs/Architecture/DependencyMap.md` — если вопрос про допустимость зависимости. `Docs/Architecture/Invariants.md` — если нужно найти нормативный источник правила по его ID.
+6. Проверить соседние контракты, если изменение пересекает ownership, Stable ID, command/event, save, repository, Lua/UE boundary, lifecycle, UI или modding.
 
 Не загружать `Docs/Architecture` целиком. Не полагаться на память, если соответствующий контракт можно прочитать из `Docs/`.
 
@@ -80,7 +81,7 @@ Pure refactor без изменения behavior не требует переп�
 Нельзя откладывать обязательное обновление документации как отдельный будущий task, если изменение уже реализовано.
 
 - Если изменяемая code surface является предметом Guide, Guide обязан быть переработан в том же change set.
-- Изменение authoring surface обязано обновить owner contract и, после появления `Docs/Authoring/`, соответствующий human-facing reference в том же change set.
+- Изменение authoring surface обязано обновить owner contract и соответствующий human-facing reference в `Docs/Authoring/` в том же change set.
 
 ## Creating new documentation
 
@@ -92,6 +93,7 @@ Pure refactor без изменения behavior не требует переп�
 - `Docs/UI/` — UI document, semantic input, widgets, presentation snapshots/effects и UX-facing contracts.
 - `Docs/Concepts/` — объяснение понятия обычным языком со ссылками на нормативный источник; новых правил не вводит.
 - `Docs/Guides/` — инструкция по типовой задаче через уже существующие точки расширения; contract не меняет и его формулировки не копирует.
+- `Docs/Authoring/` — понятный человеку справочник designer-facing Lua: назначение, сигнатуры, примеры и типичные ошибки; новых правил не вводит.
 - `Docs/Status/` — состояние реализации относительно contracts.
 - `Docs/ADR/` — принятые или предложенные архитектурные решения.
 - `Docs/Proposals/` — открытые предложения. Реализованное переносится в `Docs/Proposals/Archive/`, отклонённое — в `Docs/Proposals/Rejected/`; каталог является состоянием предложения.
@@ -102,7 +104,7 @@ Pure refactor без изменения behavior не требует переп�
 
 ### Standard filenames
 
-- Architecture/UI contract: English PascalCase без пробелов, например `SaveContainerContract.md`, `AssetLoadingPolicy.md`, `LocationScreenContract.md`.
+- Architecture/UI contract и Authoring reference: English PascalCase без пробелов, например `SaveContainerContract.md`, `LuaGameplayReference.md`.
 - Общий обзор каталога: `README.md`.
 - ADR: `NNNN-short-kebab-case-title.md`, например `0010-save-container-format.md`.
 - Номер ADR резервируется только созданием файла. До этого Plan/Proposal ссылается на решение по названию и не указывает будущий path/номер.
@@ -128,9 +130,9 @@ decisions:
 
 Не добавлять пустые `depends_on`/`decisions`. Dependencies должны существовать и не образовывать cycles.
 
-Сразу после заголовка документ открывается блоком-цитатой с обязательным первым полем: `Владеет` для contracts, `Объясняет` для Concepts, `Задача` для Guides, `Решение` для ADR, `Предлагает` для Proposals, `Материализует` для Plans, `Показывает` для Status. Header не повторяет front matter. Полная схема — `Docs/Architecture/README.md`; наличие проверяется валидатором.
+Сразу после заголовка документ открывается блоком-цитатой с обязательным первым полем: `Владеет` для contracts, `Объясняет` для Concepts, `Задача` для Guides, `Помогает` для Authoring, `Решение` для ADR, `Предлагает` для Proposals, `Материализует` для Plans, `Показывает` для Status. Header не повторяет front matter. Полная схема — `Docs/Architecture/README.md`; наличие проверяется валидатором.
 
-Contracts в `Architecture/` и `UI/` используют `draft | normative | deprecated`. Активный Plan использует `active`, active Proposal — `draft` плюс `proposal_state`, исторический record в `Archive/`/`Rejected/` — `archived`, Concepts/Guides/Status/Project Brief и ненормативные routers — `informative`. Validator проверяет status и location в обе стороны.
+Contracts в `Architecture/` и `UI/` используют `draft | normative | deprecated`. Активный Plan использует `active`, active Proposal — `draft` плюс `proposal_state`, исторический record в `Archive/`/`Rejected/` — `archived`, Concepts/Guides/Authoring/Status/Project Brief и ненормативные routers — `informative`. Validator проверяет status и location в обе стороны.
 
 ADR использует:
 
@@ -170,6 +172,7 @@ date: YYYY-MM-DD
 - Не вводить синонимы для Command, Event, Definition, Runtime Instance, UI Component и Widget.
 - Mermaid/table использовать только когда они упрощают flow, state machine, ownership или repeated mappings.
 - Все внутренние links — relative Markdown links.
+- В `Docs/Authoring/` ясность и рабочие примеры важнее минимального объёма; каждый public helper получает назначение, сигнатуру, пример и ссылку на owner contract.
 
 ## Standardization and validation
 
