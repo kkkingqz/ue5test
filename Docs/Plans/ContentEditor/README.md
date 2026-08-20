@@ -68,7 +68,7 @@ decisions:
 - [x] M2 — [Editor Adapter](EditorAdapter.md): редакторский модуль, адаптер, обнаружение внешних изменений. CED-05…08.
 - [x] M3 — [Read Surface](ReadSurface.md): браузер, форма по схеме, адаптеры полей, ссылки. CED-09…12.
 - [x] M4 — [Write Surface](WriteSurface.md): изменённые поля, сохранение, создание и удаление, диагностика. CED-13…16.
-- [ ] M5 — [Four Kinds](FourKinds.md): `item`, `location`, `actor`, `world`. CED-17…20.
+- [x] M5 — [Four Kinds](FourKinds.md): `item`, `location`, `actor`, `world`. CED-17…20.
 
 ## Критический путь
 

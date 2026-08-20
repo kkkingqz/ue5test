@@ -150,6 +150,7 @@ add_library(gv2_content_editor STATIC
     "${GV2_CONTENT_EDITOR_DIR}/Private/Testing/EditorAdapterConformance.cpp"
     "${GV2_CONTENT_EDITOR_DIR}/Private/Testing/ReadSurfaceConformance.cpp"
     "${GV2_CONTENT_EDITOR_DIR}/Private/Testing/WriteSurfaceConformance.cpp"
+    "${GV2_CONTENT_EDITOR_DIR}/Private/Testing/FourKindsConformance.cpp"
 )
 target_compile_features(gv2_content_editor PUBLIC cxx_std_20)
 target_include_directories(gv2_content_editor

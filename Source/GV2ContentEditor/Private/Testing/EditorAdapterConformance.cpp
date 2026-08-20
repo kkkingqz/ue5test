@@ -1,6 +1,7 @@
 #include "GV2ContentEditor/Testing/EditorAdapterConformance.h"
 #include "GV2ContentEditor/Testing/ReadSurfaceConformance.h"
 #include "GV2ContentEditor/Testing/WriteSurfaceConformance.h"
+#include "GV2ContentEditor/Testing/FourKindsConformance.h"
 #include "GV2ContentEditor/GV2EditorAdapter.h"
 #include "GV2ContentEditor/EditorAdapterTypes.h"
 #include "GV2ContentCore/Diagnostic.h"
@@ -442,6 +443,12 @@ std::string RunEditorAdapterConformance()
     if (!WriteSurfaceError.empty())
     {
         return WriteSurfaceError;
+    }
+
+    std::string FourKindsError = RunFourKindsConformance();
+    if (!FourKindsError.empty())
+    {
+        return FourKindsError;
     }
 
     return "";
