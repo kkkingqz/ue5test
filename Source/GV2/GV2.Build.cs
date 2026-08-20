@@ -30,6 +30,11 @@ public class GV2 : ModuleRules
             "SlateCore"
         });
 
+        if (Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.Add("GV2ContentEditor");
+        }
+
         foreach (string ScriptFile in Directory.GetFiles(
             Path.Combine(ModuleDirectory, "..", "..", "Scripts"),
             "*.lua",

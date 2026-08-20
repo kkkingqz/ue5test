@@ -9,5 +9,6 @@ public class GV2EditorTarget : TargetRules
         IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_8;
         CppStandard = CppStandardVersion.Cpp20;
         ExtraModuleNames.Add("GV2");
+        ExtraModuleNames.Add("GV2ContentEditor");
     }
 }

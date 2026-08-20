@@ -138,3 +138,17 @@ target_include_directories(gv2_content_authoring
 )
 target_link_libraries(gv2_content_authoring PUBLIC gv2_content_host_support gv2_content_core)
 
+# ADR-0037 / CED-05: Editor Adapter layer for content authoring and inspection
+set(GV2_CONTENT_EDITOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/GV2ContentEditor")
+
+add_library(gv2_content_editor STATIC
+    "${GV2_CONTENT_EDITOR_DIR}/Private/GV2ContentEditor.cpp"
+    "${GV2_CONTENT_EDITOR_DIR}/Private/GV2EditorAdapter.cpp"
+    "${GV2_CONTENT_EDITOR_DIR}/Private/Testing/EditorAdapterConformance.cpp"
+)
+target_compile_features(gv2_content_editor PUBLIC cxx_std_20)
+target_include_directories(gv2_content_editor
+    PUBLIC "${GV2_CONTENT_EDITOR_DIR}/Public"
+)
+target_link_libraries(gv2_content_editor PUBLIC gv2_content_authoring gv2_content_host_support gv2_content_core)
+

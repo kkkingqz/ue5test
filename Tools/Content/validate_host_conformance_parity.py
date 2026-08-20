@@ -20,6 +20,9 @@ def find_conformance_entry_points() -> list[str]:
     entry_points: list[str] = []
     pattern = re.compile(r"\bRun([A-Za-z0-9_]+Conformance)\s*\(")
     for header in SOURCE_DIR.glob("*/Public/*/Testing/*.h"):
+        if "GV2ContentEditor" in header.parts:
+            # Editor-only module (CED-05): Headless intentionally does not link it.
+            continue
         content = header.read_text(encoding="utf-8")
         for match in pattern.finditer(content):
             fn_name = "Run" + match.group(1)

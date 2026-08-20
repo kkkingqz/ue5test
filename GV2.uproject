@@ -30,6 +30,11 @@
 			"Name": "GV2",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "GV2ContentEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
 		}
 	]
 }

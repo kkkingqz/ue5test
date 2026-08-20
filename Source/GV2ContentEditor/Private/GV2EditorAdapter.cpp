@@ -1,0 +1,741 @@
+#include "GV2ContentEditor/GV2EditorAdapter.h"
+#include "GV2ContentAuthoring/AuthoringService.h"
+#include "GV2ContentAuthoring/AuthoringTypes.h"
+#include "GV2ContentCore/DefinitionEnvelope.h"
+#include "GV2ContentCore/Diagnostic.h"
+#include "GV2ContentCore/Json5Parser.h"
+#include "GV2ContentCore/ParseLimits.h"
+#include "GV2ContentCore/RepositoryBuilder.h"
+#include "GV2ContentCore/StableId.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
+
+#include <algorithm>
+#include <fstream>
+#include <iterator>
+#include <set>
+#include <system_error>
+
+namespace GV2ContentEditor
+{
+
+namespace
+{
+
+bool ReadFileContent(const std::filesystem::path& Path, std::string& OutContent)
+{
+    std::ifstream Stream(Path, std::ios::binary);
+    if (!Stream.is_open())
+    {
+        return false;
+    }
+    OutContent.assign(
+        std::istreambuf_iterator<char>(Stream),
+        std::istreambuf_iterator<char>());
+    return true;
+}
+
+std::string NormalizePointer(const std::string& Pointer)
+{
+    if (Pointer.empty() || Pointer == "/") return "/";
+    if (Pointer.front() != '/') return "/" + Pointer;
+    return Pointer;
+}
+
+const GV2ContentCore::FValue* ResolveValueByPointer(
+    const GV2ContentCore::FValue& Root,
+    const std::string& Pointer)
+{
+    if (Pointer.empty() || Pointer == "/") return &Root;
+
+    const GV2ContentCore::FValue* Current = &Root;
+    std::size_t Pos = 0;
+    while (Pos < Pointer.size())
+    {
+        if (Pointer[Pos] == '/') ++Pos;
+        if (Pos >= Pointer.size()) break;
+
+        std::size_t NextSlash = Pointer.find('/', Pos);
+        std::string Token = (NextSlash == std::string::npos)
+            ? Pointer.substr(Pos)
+            : Pointer.substr(Pos, NextSlash - Pos);
+        Pos = (NextSlash == std::string::npos) ? Pointer.size() : NextSlash;
+
+        if (Current->IsObject())
+        {
+            Current = Current->FindField(Token);
+            if (Current == nullptr) return nullptr;
+        }
+        else if (Current->IsArray())
+        {
+            try
+            {
+                std::size_t Index = std::stoul(Token);
+                const auto& Arr = Current->AsArray();
+                if (Index >= Arr.size()) return nullptr;
+                Current = &Arr[Index];
+            }
+            catch (...)
+            {
+                return nullptr;
+            }
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+    return Current;
+}
+
+} // namespace
+
+bool FGV2EditorAdapter::Initialize(
+    const std::filesystem::path& InContentRoot,
+    std::vector<FGV2EditorDiagnostic>& OutDiagnostics)
+{
+    ContentRoot = InContentRoot;
+    DiscoveredPackages.clear();
+    PackageRoots.clear();
+    IndexedDefinitions.clear();
+    CurrentDefinition.reset();
+    CurrentValues.clear();
+    DirtyFields.clear();
+
+    std::error_code Ec;
+    if (!std::filesystem::is_directory(ContentRoot, Ec) || Ec)
+    {
+        FGV2EditorDiagnostic Diag;
+        Diag.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
+        Diag.Code = "core:diagnostic.package.discovery.root_not_found";
+        Diag.Message = "Content root directory not found: " + ContentRoot.string();
+        OutDiagnostics.push_back(std::move(Diag));
+        return false;
+    }
+
+    std::vector<GV2ContentCore::FDiagnostic> DiscoveryDiags;
+    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Discovered;
+
+    if (std::filesystem::exists(ContentRoot / "package.json5", Ec))
+    {
+        auto SinglePkg = GV2ContentHostSupport::DiscoverPackageFromDirectory(ContentRoot, DiscoveryDiags);
+        if (SinglePkg.has_value())
+        {
+            PackageRoots = { ContentRoot };
+            DiscoveredPackages.push_back(std::move(*SinglePkg));
+        }
+    }
+    else
+    {
+        Discovered = GV2ContentHostSupport::DiscoverPackagesFromContainer(ContentRoot, DiscoveryDiags, &PackageRoots);
+        if (Discovered.has_value())
+        {
+            DiscoveredPackages = std::move(*Discovered);
+        }
+    }
+
+    for (const auto& D : DiscoveryDiags)
+    {
+        OutDiagnostics.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+    }
+
+    if (DiscoveredPackages.empty())
+    {
+        return false;
+    }
+
+    return RefreshIndex(OutDiagnostics);
+}
+
+bool FGV2EditorAdapter::RefreshIndex(std::vector<FGV2EditorDiagnostic>& OutDiagnostics)
+{
+    IndexedDefinitions.clear();
+    GV2ContentCore::FParseLimits Limits;
+
+    for (std::size_t PkgIdx = 0; PkgIdx < DiscoveredPackages.size(); ++PkgIdx)
+    {
+        const auto& PkgDesc = DiscoveredPackages[PkgIdx];
+        const auto& PkgRoot = PackageRoots[PkgIdx];
+
+        for (const std::string& RelSource : PkgDesc.GetRelativeSources())
+        {
+            std::filesystem::path FilePath = PkgRoot / RelSource;
+            std::string Content;
+            if (!ReadFileContent(FilePath, Content)) continue;
+
+            std::vector<GV2ContentCore::FDiagnostic> ParseDiags;
+            auto ParsedDoc = GV2ContentCore::ParseJson5Document(
+                Content, Limits, ParseDiags, PkgDesc.GetPackageId(), PkgDesc.GetLoadIndex(), RelSource);
+
+            for (const auto& D : ParseDiags)
+            {
+                OutDiagnostics.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+            }
+
+            if (!ParsedDoc.has_value()) continue;
+
+            std::vector<GV2ContentCore::FDiagnostic> EnvDiags;
+            auto DefFileOpt = GV2ContentCore::ParseDefinitionFileEnvelope(
+                *ParsedDoc, PkgDesc.GetPackageId(), PkgDesc.GetLoadIndex(), RelSource, EnvDiags);
+
+            for (const auto& D : EnvDiags)
+            {
+                OutDiagnostics.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+            }
+
+            if (!DefFileOpt.has_value()) continue;
+
+            for (const auto& Entry : DefFileOpt->GetDefinitions())
+            {
+                FGV2DefinitionSummary Summary;
+                Summary.Id = Entry.GetId();
+                Summary.Type = DefFileOpt->GetDefinitionType();
+                Summary.PackageId = PkgDesc.GetPackageId();
+                Summary.RelativeSource = RelSource;
+                Summary.bDeprecated = Entry.IsDeprecated();
+                Summary.Tags = Entry.GetTags();
+                IndexedDefinitions.push_back(std::move(Summary));
+            }
+        }
+    }
+
+    return true;
+}
+
+std::vector<FGV2DefinitionSummary> FGV2EditorAdapter::ListDefinitions(
+    const std::optional<std::string>& FilterType) const
+{
+    if (!FilterType.has_value() || FilterType->empty())
+    {
+        return IndexedDefinitions;
+    }
+
+    std::vector<FGV2DefinitionSummary> Filtered;
+    for (const auto& Summary : IndexedDefinitions)
+    {
+        if (Summary.Type == *FilterType)
+        {
+            Filtered.push_back(Summary);
+        }
+    }
+    return Filtered;
+}
+
+std::vector<std::string> FGV2EditorAdapter::GetAvailableDefinitionTypes() const
+{
+    std::set<std::string> Types;
+    for (const auto& Pkg : DiscoveredPackages)
+    {
+        for (const auto& Binding : Pkg.GetSchemaBindings())
+        {
+            Types.insert(Binding.GetDefinitionType());
+        }
+    }
+    for (const auto& Summary : IndexedDefinitions)
+    {
+        Types.insert(Summary.Type);
+    }
+    return std::vector<std::string>(Types.begin(), Types.end());
+}
+
+std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
+    const std::string& DefinitionId,
+    std::vector<FGV2EditorDiagnostic>& OutDiagnostics)
+{
+    CurrentDefinition.reset();
+    CurrentValues.clear();
+    DirtyFields.clear();
+
+    const FGV2DefinitionSummary* FoundSummary = nullptr;
+    for (const auto& Summary : IndexedDefinitions)
+    {
+        if (Summary.Id == DefinitionId)
+        {
+            FoundSummary = &Summary;
+            break;
+        }
+    }
+
+    if (FoundSummary == nullptr)
+    {
+        FGV2EditorDiagnostic Diag;
+        Diag.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
+        Diag.Code = "core:diagnostic.definition_not_found";
+        Diag.Message = "Definition not found: " + DefinitionId;
+        Diag.StableId = DefinitionId;
+        OutDiagnostics.push_back(std::move(Diag));
+        return std::nullopt;
+    }
+
+    std::filesystem::path PkgRoot = FindPackageRootById(FoundSummary->PackageId);
+    std::filesystem::path FilePath = PkgRoot / FoundSummary->RelativeSource;
+
+    std::string Content;
+    if (!ReadFileContent(FilePath, Content))
+    {
+        FGV2EditorDiagnostic Diag;
+        Diag.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
+        Diag.Code = "core:diagnostic.io_read_failed";
+        Diag.Message = "Failed to read definition file: " + FilePath.string();
+        Diag.RelativeSource = FoundSummary->RelativeSource;
+        Diag.StableId = DefinitionId;
+        OutDiagnostics.push_back(std::move(Diag));
+        return std::nullopt;
+    }
+
+    GV2ContentCore::FParseLimits Limits;
+    std::vector<GV2ContentCore::FDiagnostic> ParseDiags;
+    auto ParsedDoc = GV2ContentCore::ParseJson5Document(
+        Content, Limits, ParseDiags, FoundSummary->PackageId, 0, FoundSummary->RelativeSource);
+
+    for (const auto& D : ParseDiags)
+    {
+        OutDiagnostics.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+    }
+
+    if (!ParsedDoc.has_value() || !ParsedDoc->GetRootValue().IsObject())
+    {
+        return std::nullopt;
+    }
+
+    const auto* DefsArr = ParsedDoc->GetRootValue().FindField("definitions");
+    if (DefsArr == nullptr || !DefsArr->IsArray())
+    {
+        return std::nullopt;
+    }
+
+    const GV2ContentCore::FValue* TargetDefVal = nullptr;
+    for (const auto& Def : DefsArr->AsArray())
+    {
+        if (!Def.IsObject()) continue;
+        const auto* IdVal = Def.FindField("id");
+        if (IdVal != nullptr && IdVal->IsString() && IdVal->AsString() == DefinitionId)
+        {
+            TargetDefVal = &Def;
+            break;
+        }
+    }
+
+    if (TargetDefVal == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    FGV2LoadedDefinition Loaded;
+    Loaded.Id = DefinitionId;
+    Loaded.Type = FoundSummary->Type;
+    Loaded.PackageId = FoundSummary->PackageId;
+    Loaded.RelativeSource = FoundSummary->RelativeSource;
+    Loaded.AbsolutePath = FilePath;
+    Loaded.Stamp = GV2ContentAuthoring::FFileStateStamp::FromContent(Content);
+
+    const auto* DataField = TargetDefVal->FindField("data");
+    if (DataField != nullptr)
+    {
+        Loaded.CanonicalData = *DataField;
+    }
+    else
+    {
+        Loaded.CanonicalData = GV2ContentCore::FValue::MakeObject({});
+    }
+
+    const auto* TagsField = TargetDefVal->FindField("tags");
+    if (TagsField != nullptr && TagsField->IsArray())
+    {
+        for (const auto& T : TagsField->AsArray())
+        {
+            if (T.IsString()) Loaded.Tags.push_back(T.AsString());
+        }
+    }
+
+    const auto* DepField = TargetDefVal->FindField("deprecated");
+    if (DepField != nullptr && DepField->IsBoolean())
+    {
+        Loaded.bDeprecated = DepField->AsBoolean();
+    }
+
+    const auto* ExtField = TargetDefVal->FindField("extensions");
+    if (ExtField != nullptr)
+    {
+        Loaded.Extensions = *ExtField;
+    }
+
+    CurrentDefinition = Loaded;
+    return CurrentDefinition;
+}
+
+const FGV2LoadedDefinition* FGV2EditorAdapter::GetCurrentDefinition() const
+{
+    return CurrentDefinition.has_value() ? &(*CurrentDefinition) : nullptr;
+}
+
+void FGV2EditorAdapter::SetCurrentFieldValue(
+    const std::string& JsonPointer,
+    const GV2ContentCore::FValue& NewValue)
+{
+    if (!CurrentDefinition.has_value()) return;
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    CurrentValues[NormPtr] = NewValue;
+
+    // Check against canonical baseline
+    std::string LookupPtr = NormPtr;
+    if (LookupPtr.rfind("/data/", 0) == 0)
+    {
+        LookupPtr = LookupPtr.substr(5);
+    }
+    else if (LookupPtr == "/data")
+    {
+        LookupPtr = "";
+    }
+
+    const auto* BaselineVal = ResolveValueByPointer(CurrentDefinition->CanonicalData, LookupPtr);
+    if (BaselineVal != nullptr && *BaselineVal == NewValue)
+    {
+        DirtyFields.erase(NormPtr);
+    }
+    else
+    {
+        DirtyFields[NormPtr] = NewValue;
+    }
+}
+
+std::optional<GV2ContentCore::FValue> FGV2EditorAdapter::GetCurrentFieldValue(
+    const std::string& JsonPointer) const
+{
+    if (!CurrentDefinition.has_value()) return std::nullopt;
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    auto It = CurrentValues.find(NormPtr);
+    if (It != CurrentValues.end())
+    {
+        return It->second;
+    }
+
+    std::string LookupPtr = NormPtr;
+    if (LookupPtr.rfind("/data/", 0) == 0)
+    {
+        LookupPtr = LookupPtr.substr(5);
+    }
+    else if (LookupPtr == "/data")
+    {
+        LookupPtr = "";
+    }
+
+    const auto* BaselineVal = ResolveValueByPointer(CurrentDefinition->CanonicalData, LookupPtr);
+    if (BaselineVal != nullptr)
+    {
+        return *BaselineVal;
+    }
+    return std::nullopt;
+}
+
+bool FGV2EditorAdapter::IsDirty() const
+{
+    return !DirtyFields.empty();
+}
+
+void FGV2EditorAdapter::DiscardCurrentChanges()
+{
+    CurrentValues.clear();
+    DirtyFields.clear();
+}
+
+bool FGV2EditorAdapter::CheckFileState() const
+{
+    if (!CurrentDefinition.has_value()) return true;
+
+    auto DiskStamp = GV2ContentAuthoring::FFileStateStamp::FromFile(CurrentDefinition->AbsolutePath);
+    return DiskStamp.Matches(CurrentDefinition->Stamp);
+}
+
+FGV2EditorAuthoringResult FGV2EditorAdapter::SaveCurrentDefinition()
+{
+    FGV2EditorAuthoringResult Result;
+    if (!CurrentDefinition.has_value())
+    {
+        Result.Outcome = EEditorAuthoringOutcome::DefinitionNotFound;
+        Result.ErrorCode = "no_definition_loaded";
+        Result.ErrorMessage = "No definition currently loaded in editor adapter";
+        return Result;
+    }
+
+    if (DirtyFields.empty())
+    {
+        Result.Outcome = EEditorAuthoringOutcome::Success;
+        Result.AffectedFile = CurrentDefinition->AbsolutePath;
+        Result.NewStamp = CurrentDefinition->Stamp;
+        return Result;
+    }
+
+    // CED-07: check stale file state
+    if (!CheckFileState())
+    {
+        Result.Outcome = EEditorAuthoringOutcome::StaleFileState;
+        Result.ErrorCode = "stale_file_state";
+        Result.ErrorMessage = "File on disk has been modified externally since load";
+        Result.AffectedFile = CurrentDefinition->AbsolutePath;
+        return Result;
+    }
+
+    GV2ContentAuthoring::FBatchSetFieldsParams BatchParams;
+    BatchParams.PackageRoot = FindPackageRootForDefinition(CurrentDefinition->Id);
+    BatchParams.DefinitionId = CurrentDefinition->Id;
+    BatchParams.ExpectedStamp = CurrentDefinition->Stamp;
+
+    for (const auto& [Ptr, Val] : DirtyFields)
+    {
+        GV2ContentAuthoring::FFieldChange Change;
+        Change.JsonPointer = Ptr;
+        Change.NewValue = Val;
+        BatchParams.Changes.push_back(std::move(Change));
+    }
+
+    auto AuthResult = GV2ContentAuthoring::FAuthoringService::BatchSetFields(BatchParams);
+    Result = ConvertAuthoringResult(AuthResult);
+
+    if (Result.IsSuccess())
+    {
+        // Reload definition into memory to update baseline and stamp
+        std::vector<FGV2EditorDiagnostic> ReloadDiags;
+        LoadDefinition(CurrentDefinition->Id, ReloadDiags);
+        for (auto& D : ReloadDiags)
+        {
+            Result.Diagnostics.push_back(std::move(D));
+        }
+    }
+
+    return Result;
+}
+
+FGV2EditorAuthoringResult FGV2EditorAdapter::CreateDefinition(
+    const std::string& PackageId,
+    const std::string& DefinitionId,
+    const std::string& DefinitionType,
+    const std::optional<GV2ContentCore::FValue>& InitialData)
+{
+    GV2ContentAuthoring::FCreateDefinitionParams Params;
+    Params.PackageRoot = FindPackageRootById(PackageId);
+    Params.DefinitionId = DefinitionId;
+    Params.DefinitionType = DefinitionType;
+    Params.InitialData = InitialData;
+
+    auto AuthResult = GV2ContentAuthoring::FAuthoringService::CreateDefinition(Params);
+    auto Result = ConvertAuthoringResult(AuthResult);
+
+    if (Result.IsSuccess())
+    {
+        std::vector<FGV2EditorDiagnostic> Diags;
+        RefreshIndex(Diags);
+    }
+
+    return Result;
+}
+
+FGV2EditorAuthoringResult FGV2EditorAdapter::DuplicateDefinition(
+    const std::string& SourceDefinitionId,
+    const std::string& TargetDefinitionId)
+{
+    GV2ContentAuthoring::FDuplicateDefinitionParams Params;
+    Params.PackageRoot = FindPackageRootForDefinition(SourceDefinitionId);
+    Params.SourceDefinitionId = SourceDefinitionId;
+    Params.TargetDefinitionId = TargetDefinitionId;
+
+    auto AuthResult = GV2ContentAuthoring::FAuthoringService::DuplicateDefinition(Params);
+    auto Result = ConvertAuthoringResult(AuthResult);
+
+    if (Result.IsSuccess())
+    {
+        std::vector<FGV2EditorDiagnostic> Diags;
+        RefreshIndex(Diags);
+    }
+
+    return Result;
+}
+
+FGV2EditorAuthoringResult FGV2EditorAdapter::DeleteDefinition(
+    const std::string& DefinitionId)
+{
+    GV2ContentAuthoring::FDeleteDefinitionParams Params;
+    Params.PackageRoot = FindPackageRootForDefinition(DefinitionId);
+    Params.DefinitionId = DefinitionId;
+
+    auto AuthResult = GV2ContentAuthoring::FAuthoringService::DeleteDefinition(Params);
+    auto Result = ConvertAuthoringResult(AuthResult);
+
+    if (Result.IsSuccess())
+    {
+        if (CurrentDefinition.has_value() && CurrentDefinition->Id == DefinitionId)
+        {
+            CurrentDefinition.reset();
+            CurrentValues.clear();
+            DirtyFields.clear();
+        }
+        std::vector<FGV2EditorDiagnostic> Diags;
+        RefreshIndex(Diags);
+    }
+
+    return Result;
+}
+
+FGV2EditorAuthoringResult FGV2EditorAdapter::RenameDefinition(
+    const std::string& OldDefinitionId,
+    const std::string& NewDefinitionId)
+{
+    GV2ContentAuthoring::FRenameDefinitionParams Params;
+    Params.PackageRoot = FindPackageRootForDefinition(OldDefinitionId);
+    Params.OldDefinitionId = OldDefinitionId;
+    Params.NewDefinitionId = NewDefinitionId;
+
+    auto AuthResult = GV2ContentAuthoring::FAuthoringService::RenameDefinition(Params);
+    auto Result = ConvertAuthoringResult(AuthResult);
+
+    if (Result.IsSuccess())
+    {
+        std::vector<FGV2EditorDiagnostic> Diags;
+        RefreshIndex(Diags);
+        if (CurrentDefinition.has_value() && CurrentDefinition->Id == OldDefinitionId)
+        {
+            LoadDefinition(NewDefinitionId, Diags);
+        }
+    }
+
+    return Result;
+}
+
+std::vector<FGV2EditorDiagnostic> FGV2EditorAdapter::ValidateRepository() const
+{
+    std::vector<FGV2EditorDiagnostic> Out;
+
+    struct FMemoryContentSourceProvider final : public GV2ContentCore::IContentSourceProvider
+    {
+        const std::vector<GV2ContentCore::FPackageDescriptor>& Descriptors;
+        const std::vector<std::filesystem::path>& Roots;
+
+        FMemoryContentSourceProvider(
+            const std::vector<GV2ContentCore::FPackageDescriptor>& InDesc,
+            const std::vector<std::filesystem::path>& InRoots)
+            : Descriptors(InDesc), Roots(InRoots) {}
+
+        std::optional<std::string> ReadSource(
+            std::string_view RequestedPackageId,
+            std::string_view RelativeSource) const override
+        {
+            for (std::size_t i = 0; i < Descriptors.size(); ++i)
+            {
+                if (Descriptors[i].GetPackageId() == RequestedPackageId)
+                {
+                    std::string Content;
+                    if (ReadFileContent(Roots[i] / std::string(RelativeSource), Content))
+                    {
+                        return Content;
+                    }
+                }
+            }
+            return std::nullopt;
+        }
+    };
+
+    FMemoryContentSourceProvider SourceProvider(DiscoveredPackages, PackageRoots);
+    GV2ContentCore::FBuildOptions Options;
+    Options.SourceProvider = &SourceProvider;
+    auto BuildResult = GV2ContentCore::BuildRepository(DiscoveredPackages, Options);
+
+    for (const auto& D : BuildResult.GetDiagnostics())
+    {
+        Out.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+    }
+
+    return Out;
+}
+
+std::filesystem::path FGV2EditorAdapter::FindPackageRootById(const std::string& PackageId) const
+{
+    for (std::size_t i = 0; i < DiscoveredPackages.size(); ++i)
+    {
+        if (DiscoveredPackages[i].GetPackageId() == PackageId)
+        {
+            return PackageRoots[i];
+        }
+    }
+    return ContentRoot;
+}
+
+std::filesystem::path FGV2EditorAdapter::FindPackageRootForDefinition(const std::string& DefinitionId) const
+{
+    for (const auto& Summary : IndexedDefinitions)
+    {
+        if (Summary.Id == DefinitionId)
+        {
+            return FindPackageRootById(Summary.PackageId);
+        }
+    }
+
+    GV2ContentCore::FStableIdView IdView;
+    if (GV2ContentCore::FStableId::Parse(DefinitionId, IdView))
+    {
+        return FindPackageRootById(std::string(IdView.Namespace));
+    }
+
+    return ContentRoot;
+}
+
+FGV2EditorAuthoringResult FGV2EditorAdapter::ConvertAuthoringResult(
+    const GV2ContentAuthoring::FAuthoringResult& InResult)
+{
+    FGV2EditorAuthoringResult Out;
+    Out.ErrorCode = InResult.ErrorCode;
+    Out.ErrorMessage = InResult.ErrorMessage;
+    Out.AffectedFile = InResult.TargetFilePath;
+    Out.NewStamp = InResult.NewStamp;
+    Out.AffectedDefinitionsCount = InResult.AffectedDefinitionsCount;
+
+    switch (InResult.Status)
+    {
+    case GV2ContentAuthoring::EAuthoringStatus::Success:
+        Out.Outcome = EEditorAuthoringOutcome::Success;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::StaleFileState:
+        Out.Outcome = EEditorAuthoringOutcome::StaleFileState;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::ValidationFailed:
+        Out.Outcome = EEditorAuthoringOutcome::ValidationFailed;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::DefinitionNotFound:
+        Out.Outcome = EEditorAuthoringOutcome::DefinitionNotFound;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::DuplicateDefinitionId:
+        Out.Outcome = EEditorAuthoringOutcome::DuplicateDefinitionId;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::InvalidDefinitionId:
+        Out.Outcome = EEditorAuthoringOutcome::InvalidDefinitionId;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::IdKindMismatch:
+        Out.Outcome = EEditorAuthoringOutcome::IdKindMismatch;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::PackageNotFound:
+        Out.Outcome = EEditorAuthoringOutcome::PackageNotFound;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::SchemaNotFound:
+        Out.Outcome = EEditorAuthoringOutcome::SchemaNotFound;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::PointerNotFound:
+        Out.Outcome = EEditorAuthoringOutcome::PointerNotFound;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::TargetIsContainer:
+        Out.Outcome = EEditorAuthoringOutcome::TargetIsContainer;
+        break;
+    case GV2ContentAuthoring::EAuthoringStatus::FileWriteFailed:
+    default:
+        Out.Outcome = EEditorAuthoringOutcome::IOError;
+        break;
+    }
+
+    for (const auto& D : InResult.Diagnostics)
+    {
+        Out.Diagnostics.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+    }
+
+    return Out;
+}
+
+} // namespace GV2ContentEditor
