@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.1
+version: 2.2
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -38,6 +38,7 @@ depends_on:
 | [TestArchitectureAndLuaSpecs](TestArchitectureAndLuaSpecs.md) | 2026-08-15 | Lua spec runner в `Tests/Lua/`, замороженный тестовый корпус, единый источник pinned-значений, миграция world и command validators в спеки |
 | [TestGameplaySlice](TestGameplaySlice.md) | 2026-08-17 | Три локации и экрана, карта `market↔tavern↔gate`, перемещение за выносливость, покупки и заработок; первый Lua внутри игрового пакета и первое перекрытие модуля ядра |
 | [TextSystemLayer](TextSystemLayer.md) | 2026-08-19 | Три слоя вместо двух: набор пакетов собирается из данных, локации и переходы принадлежат `textsystem`, стоимость перехода — игре; `Scripts/gameplay/` в ядре удалён |
+| [UiFoundation](UiFoundation.md) | 2026-08-20 | Базовый набор виджетов с едиными конвейерами, отзывчивая раскладка от 4K до 720p, многослойный документ с реконсиляцией и вкладками, наблюдаемая принадлежность ассетов слою |
 
 ## Как архивировать следующий план
 

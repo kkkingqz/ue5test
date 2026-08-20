@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 5.1
+version: 5.2
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -25,7 +25,7 @@ depends_on:
 
 ## Активные планы
 
-- [UiFoundation](UiFoundation/README.md) — Базовый набор виджетов с едиными конвейерами, отзывчивая раскладка от 4K до 720p, многослойный документ с реконсиляцией и вкладками, принадлежность ассетов слою.
+Активных планов нет.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
