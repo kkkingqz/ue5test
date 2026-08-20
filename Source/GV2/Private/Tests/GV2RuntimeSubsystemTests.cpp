@@ -293,6 +293,130 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TEXT("Unknown Screen Field schema leaves no partial binding definitions"),
         UnknownDefinitions.IsEmpty());
 
+    // Helper lambda to construct a button item
+    auto MakeButtonItem = [](const std::string* Key, const std::string& CommandId) -> GV2RuntimeCore::FValue
+    {
+        GV2RuntimeCore::FValue::FObject Item;
+        if (Key != nullptr)
+        {
+            Item["key"] = GV2RuntimeCore::FValue(*Key);
+        }
+        GV2RuntimeCore::FValue::FObject TextObj;
+        TextObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.button.ok"));
+        Item["text"] = GV2RuntimeCore::FValue(MoveTemp(TextObj));
+        GV2RuntimeCore::FValue::FObject BindingObj;
+        BindingObj["command_id"] = GV2RuntimeCore::FValue(CommandId);
+        Item["binding"] = GV2RuntimeCore::FValue(MoveTemp(BindingObj));
+        return GV2RuntimeCore::FValue(MoveTemp(Item));
+    };
+
+    // 1. Valid button list with distinct keys
+    {
+        GV2RuntimeCore::FScreenRequest ValidReq;
+        ValidReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BtnField;
+        BtnField.FieldId = "buttons";
+        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        const std::string KeyA = "btn_a";
+        const std::string KeyB = "btn_b";
+        GV2RuntimeCore::FValue::FObject ValueObj;
+        ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+            MakeButtonItem(&KeyA, "core:command.screen.action_a"),
+            MakeButtonItem(&KeyB, "core:command.screen.action_b")
+        });
+        BtnField.Value = GV2RuntimeCore::FValue(MoveTemp(ValueObj));
+        ValidReq.Fields.push_back(MoveTemp(BtnField));
+        TArray<FGV2UiBindingDefinition> ValidDefs;
+        TestTrue(
+            TEXT("Valid button list with distinct keys is accepted"),
+            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(ValidReq, ValidDefs));
+        TestEqual(TEXT("Prepares two binding definitions"), ValidDefs.Num(), 2);
+    }
+
+    // 2. Button list missing key
+    {
+        GV2RuntimeCore::FScreenRequest MissingKeyReq;
+        MissingKeyReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BtnField;
+        BtnField.FieldId = "buttons";
+        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        GV2RuntimeCore::FValue::FObject ValueObj;
+        ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+            MakeButtonItem(nullptr, "core:command.screen.action_a")
+        });
+        BtnField.Value = GV2RuntimeCore::FValue(MoveTemp(ValueObj));
+        MissingKeyReq.Fields.push_back(MoveTemp(BtnField));
+        TArray<FGV2UiBindingDefinition> MissingDefs;
+        TestFalse(
+            TEXT("Button list with missing key is rejected (UiElementKeyMissing)"),
+            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(MissingKeyReq, MissingDefs));
+        TestTrue(TEXT("Rejected candidate leaves definitions empty"), MissingDefs.IsEmpty());
+    }
+
+    // 3. Button list duplicate key
+    {
+        GV2RuntimeCore::FScreenRequest DupKeyReq;
+        DupKeyReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BtnField;
+        BtnField.FieldId = "buttons";
+        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        const std::string KeyDup = "btn_same";
+        GV2RuntimeCore::FValue::FObject ValueObj;
+        ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+            MakeButtonItem(&KeyDup, "core:command.screen.action_a"),
+            MakeButtonItem(&KeyDup, "core:command.screen.action_b")
+        });
+        BtnField.Value = GV2RuntimeCore::FValue(MoveTemp(ValueObj));
+        DupKeyReq.Fields.push_back(MoveTemp(BtnField));
+        TArray<FGV2UiBindingDefinition> DupDefs;
+        TestFalse(
+            TEXT("Button list with duplicate key is rejected (UiElementKeyDuplicate)"),
+            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(DupKeyReq, DupDefs));
+        TestTrue(TEXT("Rejected duplicate key leaves definitions empty"), DupDefs.IsEmpty());
+    }
+
+    // 4. Button list text-derived key
+    {
+        GV2RuntimeCore::FScreenRequest TextKeyReq;
+        TextKeyReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BtnField;
+        BtnField.FieldId = "buttons";
+        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        const std::string KeyText = "core:text.button.ok";
+        GV2RuntimeCore::FValue::FObject ValueObj;
+        ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+            MakeButtonItem(&KeyText, "core:command.screen.action_a")
+        });
+        BtnField.Value = GV2RuntimeCore::FValue(MoveTemp(ValueObj));
+        TextKeyReq.Fields.push_back(MoveTemp(BtnField));
+        TArray<FGV2UiBindingDefinition> TextDefs;
+        TestFalse(
+            TEXT("Button list with text-derived key is rejected (UiElementKeyTextDerived)"),
+            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(TextKeyReq, TextDefs));
+        TestTrue(TEXT("Rejected text key leaves definitions empty"), TextDefs.IsEmpty());
+    }
+
+    // 5. Button list invalid grammar key
+    {
+        GV2RuntimeCore::FScreenRequest InvalidKeyReq;
+        InvalidKeyReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenField BtnField;
+        BtnField.FieldId = "buttons";
+        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        const std::string KeyInvalid = "BTN #1!";
+        GV2RuntimeCore::FValue::FObject ValueObj;
+        ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+            MakeButtonItem(&KeyInvalid, "core:command.screen.action_a")
+        });
+        BtnField.Value = GV2RuntimeCore::FValue(MoveTemp(ValueObj));
+        InvalidKeyReq.Fields.push_back(MoveTemp(BtnField));
+        TArray<FGV2UiBindingDefinition> InvalidDefs;
+        TestFalse(
+            TEXT("Button list with invalid grammar key is rejected (UiElementKeyInvalid)"),
+            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(InvalidKeyReq, InvalidDefs));
+        TestTrue(TEXT("Rejected invalid key leaves definitions empty"), InvalidDefs.IsEmpty());
+    }
+
     FString PortableHeader;
     if (ReadSource(TEXT("Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2RuntimeSession.h"), PortableHeader))
     {

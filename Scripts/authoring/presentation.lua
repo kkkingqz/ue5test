@@ -117,6 +117,62 @@ function M.create_action_helper(package_id)
     end
 end
 
+local function format_arg_segment(val)
+    local s = nil
+    if type(val) == "string" then
+        s = val
+    elseif type(val) == "table" and (val.__gv2_ref or val.id or val.instance_id) then
+        s = val.id or val.instance_id
+    elseif type(val) == "number" or type(val) == "boolean" then
+        return tostring(val)
+    end
+    if s then
+        local p = s:match("^[^:]+:[^.]+%.(.+)$")
+        if p then
+            return p:gsub("[^a-z0-9_]", "_")
+        end
+        return s:gsub("[^a-z0-9_]", "_")
+    end
+    return nil
+end
+
+local function derive_button_key_from_action(action_result)
+    local cmd_id = action_result.command_id
+    local _, _, path_str = cmd_id:match("^([^:]+):([^.]+)%.(.+)$")
+    local base_key = (path_str or cmd_id):gsub("%.", "_")
+    local args = action_result.args
+    if not args or (type(args) == "table" and next(args) == nil) then
+        return base_key
+    end
+    if type(args) == "table" then
+        local parts = { base_key }
+        if #args > 0 then
+            for _, arg in ipairs(args) do
+                local seg = format_arg_segment(arg)
+                if seg and #seg > 0 then
+                    table.insert(parts, seg)
+                end
+            end
+        else
+            local sorted_keys = {}
+            for k in pairs(args) do
+                table.insert(sorted_keys, k)
+            end
+            table.sort(sorted_keys)
+            for _, k in ipairs(sorted_keys) do
+                local seg = format_arg_segment(args[k])
+                if seg and #seg > 0 then
+                    table.insert(parts, tostring(k) .. "_" .. seg)
+                end
+            end
+        end
+        if #parts > 1 then
+            return table.concat(parts, "_")
+        end
+    end
+    return base_key
+end
+
 function M.create_button_helper(package_id)
     return function(text_spec, action_result, key_opt)
         if type(text_spec) == "string" then
@@ -131,10 +187,18 @@ function M.create_button_helper(package_id)
         end
 
         local button_key = key_opt
-        if not button_key then
-            local cmd_id = action_result.command_id
-            local _, _, path_str = cmd_id:match("^([^:]+):([^.]+)%.(.+)$")
-            button_key = (path_str or cmd_id):gsub("%.", "_")
+        if button_key ~= nil then
+            if type(button_key) == "table" or (type(button_key) == "string" and (button_key:match("^[%a_][%w_]*:text%.") or button_key:match("^text:"))) then
+                error("TextDisallowedAsKey: button key cannot be derived from or set to localizable text", 2)
+            end
+            if type(button_key) ~= "string" then
+                error("InvalidButtonKey: button key must be a string", 2)
+            end
+            if not button_key:match("^[a-z0-9_.-@:]+$") or #button_key == 0 then
+                error("InvalidButtonKey: button key must be a valid lowercase identifier, got '" .. tostring(button_key) .. "'", 2)
+            end
+        else
+            button_key = derive_button_key_from_action(action_result)
         end
 
         return {
@@ -189,6 +253,7 @@ function M.create_show_screen_helper(package_id)
             error("InvalidButtonsList: show_screen() buttons must be a list", 2)
         end
 
+        local seen_button_keys = {}
         for i, btn in ipairs(buttons) do
             if type(btn) == "string" then
                 error("RawStringDisallowed: button #" .. i .. " is a raw string; use button(text(\"key\"), action(...))", 2)
@@ -196,6 +261,19 @@ function M.create_show_screen_helper(package_id)
             if type(btn) ~= "table" or not btn.text or type(btn.text) == "string" then
                 error("RawStringDisallowed: button #" .. i .. " text is a raw string or missing; use text(\"key\")", 2)
             end
+            if not btn.key or type(btn.key) ~= "string" or #btn.key == 0 then
+                error("UiElementKeyMissing: button #" .. i .. " is missing key", 2)
+            end
+            if not btn.key:match("^[a-z0-9_.-@:]+$") then
+                error("UiElementKeyInvalid: button #" .. i .. " key '" .. tostring(btn.key) .. "' is invalid", 2)
+            end
+            if btn.key:match("^[%a_][%w_]*:text%.") or btn.key:match("^text:") then
+                error("TextDisallowedAsKey: button #" .. i .. " key cannot be derived from localizable text", 2)
+            end
+            if seen_button_keys[btn.key] then
+                error("UiElementKeyDuplicate: duplicate button key '" .. tostring(btn.key) .. "' in show_screen()", 2)
+            end
+            seen_button_keys[btn.key] = true
         end
 
         local screen_req = screens_module.create(screen_id, {

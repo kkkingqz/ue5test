@@ -218,9 +218,9 @@ return {
             end
             assert(raw_btn_err, "Raw string in button() must be rejected")
 
-            -- 2. Valid button
+            -- 2. Valid button (key derived from command + arg)
             local btn = rh.button(rh.text("action.buy_sword"), rh.action("shop.buy_sword", sword))
-            assert(btn.key == "shop_buy_sword", "Key should be generated from command_id")
+            assert(btn.key == "shop_buy_sword_weapon_iron_sword", "Key should be derived from command_id and entity arg, got: " .. tostring(btn.key))
             assert(btn.text.text_id == "rh:text.action.buy_sword")
             assert(btn.binding.command_id == "rh:command.shop.buy_sword")
 
@@ -267,6 +267,53 @@ return {
             local pending = screen_requests.take_pending()
             assert(pending ~= nil, "Screen request must be published to screen_requests")
             assert(pending.screen_id == "rh:screen.location.market")
+        end)
+    end,
+
+    button_key_derivation_and_rejection_of_text = function()
+        run_with_mock_environment(function(registry)
+            local rh = authoring_context.gameplay("rh")
+            local sword = rh.def.item("weapon.iron_sword")
+
+            -- 1. Command without args
+            local btn_no_args = rh.button(rh.text("action.save"), rh.action("game.save"))
+            assert(btn_no_args.key == "game_save", "Key should be derived from command: " .. tostring(btn_no_args.key))
+
+            -- 2. Command with args
+            local btn_args = rh.button(rh.text("action.buy"), rh.action("shop.buy", sword))
+            assert(btn_args.key == "shop_buy_weapon_iron_sword", "Key should incorporate arg: " .. tostring(btn_args.key))
+
+            -- 3. Explicit key precedence
+            local btn_custom = rh.button(rh.text("action.buy"), rh.action("shop.buy", sword), "my_custom_key")
+            assert(btn_custom.key == "my_custom_key", "Explicit key must take precedence")
+
+            -- 4. Rejection of TextSpec table as key
+            local ok_t1, err_t1 = pcall(function()
+                rh.button(rh.text("action.buy"), rh.action("shop.buy"), rh.text("action.buy"))
+            end)
+            assert(not ok_t1 and string.find(tostring(err_t1), "TextDisallowedAsKey"), "TextSpec as key must be rejected: " .. tostring(err_t1))
+
+            -- 5. Rejection of text Stable ID string as key
+            local ok_t2, err_t2 = pcall(function()
+                rh.button(rh.text("action.buy"), rh.action("shop.buy"), "rh:text.action.buy")
+            end)
+            assert(not ok_t2 and string.find(tostring(err_t2), "TextDisallowedAsKey"), "text Stable ID as key must be rejected: " .. tostring(err_t2))
+
+            -- 6. Rejection of invalid key grammar
+            local ok_bad_key, err_bad_key = pcall(function()
+                rh.button(rh.text("action.buy"), rh.action("shop.buy"), "Invalid Key!")
+            end)
+            assert(not ok_bad_key and string.find(tostring(err_bad_key), "InvalidButtonKey"), "Invalid key grammar must be rejected: " .. tostring(err_bad_key))
+
+            -- 7. show_screen rejects duplicate button keys
+            local ok_dup, err_dup = pcall(function()
+                rh.show_screen({
+                    template = "location.market",
+                    description = rh.text("screen.market.description"),
+                    buttons = { btn_custom, btn_custom },
+                })
+            end)
+            assert(not ok_dup and string.find(tostring(err_dup), "UiElementKeyDuplicate"), "Duplicate button key must be rejected by show_screen: " .. tostring(err_dup))
         end)
     end,
 

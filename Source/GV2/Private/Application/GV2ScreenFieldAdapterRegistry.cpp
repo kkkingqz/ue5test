@@ -124,6 +124,43 @@ bool ResolveText(const GV2RuntimeCore::FValue& Value, FGV2TextViewModel& OutText
         Error);
 }
 
+bool IsValidRepeatedElementKey(const std::string& Key)
+{
+    if (Key.empty() || Key.length() > 192)
+    {
+        return false;
+    }
+    for (char C : Key)
+    {
+        if (!((C >= 'a' && C <= 'z') || (C >= '0' && C <= '9') || C == '_' || C == '-' || C == '.' || C == '@' || C == ':'))
+        {
+            return false;
+        }
+    }
+    if (Key.rfind("text:", 0) == 0 || GV2RuntimeCore::FStableId::IsOfKind(Key, "text"))
+    {
+        return false;
+    }
+    return true;
+}
+
+bool ValidateRepeatedElementKey(
+    const std::string* Key,
+    TSet<FName>& InOutSeenKeys)
+{
+    if (Key == nullptr || !IsValidRepeatedElementKey(*Key))
+    {
+        return false;
+    }
+    const FName KeyName(UTF8_TO_TCHAR(Key->c_str()));
+    if (InOutSeenKeys.Contains(KeyName))
+    {
+        return false;
+    }
+    InOutSeenKeys.Add(KeyName);
+    return true;
+}
+
 bool ReadBinding(
     const GV2RuntimeCore::FValue& Value,
     const TArray<FString>& NodePath,
@@ -202,13 +239,13 @@ bool PrepareButtonList(
     const GV2RuntimeCore::FValue* ItemsValue = FindValue(Value, "items");
     const FArray* Items = ItemsValue != nullptr ? AsArray(*ItemsValue) : nullptr;
     if (Items == nullptr) return false;
+    TSet<FName> SeenKeys;
     for (const GV2RuntimeCore::FValue& ItemValue : *Items)
     {
         const FObject* Item = AsObject(ItemValue);
         const std::string* Key = Item != nullptr ? FindString(*Item, "key") : nullptr;
         const GV2RuntimeCore::FValue* Binding = Item != nullptr ? FindValue(*Item, "binding") : nullptr;
-        if (Key == nullptr || !GV2RuntimeCore::FStableId::IsValidSegment(*Key)
-            || Binding == nullptr) return false;
+        if (!ValidateRepeatedElementKey(Key, SeenKeys) || Binding == nullptr) return false;
         FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
         if (!ReadBinding(
                 *Binding,
@@ -238,10 +275,13 @@ bool BuildButtonList(
     for (const GV2RuntimeCore::FValue& ItemValue : *Items)
     {
         if (!Handles.IsValidIndex(HandleIndex)) return false;
-        const FObject& Item = *AsObject(ItemValue);
-        const GV2RuntimeCore::FValue* Text = FindValue(Item, "text");
+        const FObject* Item = AsObject(ItemValue);
+        if (Item == nullptr) return false;
+        const std::string* Key = FindString(*Item, "key");
+        if (Key == nullptr) return false;
+        const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
         FGV2ButtonViewModel& Button = Buttons.AddDefaulted_GetRef();
-        Button.Key = FName(UTF8_TO_TCHAR(FindString(Item, "key")->c_str()));
+        Button.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
         if (Text == nullptr || !ResolveText(*Text, Button.Text)) return false;
         Button.Binding = Handles[HandleIndex++];
     }
@@ -258,12 +298,13 @@ bool PrepareRichText(
     const GV2RuntimeCore::FValue* SpansValue = FindValue(Value, "spans");
     const FArray* Spans = SpansValue != nullptr ? AsArray(*SpansValue) : nullptr;
     if (Spans == nullptr) return false;
+    TSet<FName> SeenKeys;
     for (const GV2RuntimeCore::FValue& SpanValue : *Spans)
     {
         const FObject* Span = AsObject(SpanValue);
         const std::string* Key = Span != nullptr ? FindString(*Span, "key") : nullptr;
         const GV2RuntimeCore::FValue* Binding = Span != nullptr ? FindValue(*Span, "binding") : nullptr;
-        if (Key == nullptr || !GV2RuntimeCore::FStableId::IsValidSegment(*Key)) return false;
+        if (!ValidateRepeatedElementKey(Key, SeenKeys)) return false;
         if (Binding != nullptr)
         {
             FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
@@ -436,8 +477,7 @@ bool ValidateDropdownOptions(const FObject& Value)
         ? std::get_if<std::string>(&SelectedValue->Data)
         : nullptr;
     if (SelectedValue != nullptr
-        && (SelectedKey == nullptr
-            || !GV2RuntimeCore::FStableId::IsValidSegment(*SelectedKey)))
+        && (SelectedKey == nullptr || !IsValidRepeatedElementKey(*SelectedKey)))
     {
         return false;
     }
@@ -452,14 +492,11 @@ bool ValidateDropdownOptions(const FObject& Value)
         const std::string* Key = Item != nullptr ? FindString(*Item, "key") : nullptr;
         const GV2RuntimeCore::FValue* Text = Item != nullptr ? FindValue(*Item, "text") : nullptr;
         GV2RuntimeCore::FTextSpec TextSpec;
-        if (Key == nullptr || !GV2RuntimeCore::FStableId::IsValidSegment(*Key) || Text == nullptr
+        if (!ValidateRepeatedElementKey(Key, Keys) || Text == nullptr
             || !ReadTextSpec(*Text, TextSpec))
         {
             return false;
         }
-        const FName Name(UTF8_TO_TCHAR(Key->c_str()));
-        if (Keys.Contains(Name)) return false;
-        Keys.Add(Name);
         SelectedFound = SelectedFound || (SelectedKey != nullptr && *SelectedKey == *Key);
     }
     return SelectedFound;
@@ -507,13 +544,15 @@ bool BuildDropdown(
     const FArray& Items = *AsArray(*FindValue(Value, "items"));
     for (const GV2RuntimeCore::FValue& ItemValue : Items)
     {
-        const FObject& Item = *AsObject(ItemValue);
-        const std::string& Key = *FindString(Item, "key");
-        const GV2RuntimeCore::FValue* Text = FindValue(Item, "text");
+        const FObject* Item = AsObject(ItemValue);
+        if (Item == nullptr) return false;
+        const std::string* Key = FindString(*Item, "key");
+        if (Key == nullptr) return false;
+        const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
         FGV2DropdownOptionViewModel& Option = Model.Options.AddDefaulted_GetRef();
-        Option.Key = FName(UTF8_TO_TCHAR(Key.c_str()));
+        Option.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
         if (Text == nullptr || !ResolveText(*Text, Option.Text)) return false;
-        Option.bSelected = SelectedKey != nullptr && *SelectedKey == Key;
+        Option.bSelected = SelectedKey != nullptr && *SelectedKey == *Key;
     }
     Model.Binding = Handles[HandleIndex++];
     OutField = FGV2ScreenFieldValue::MakeDropdownSelect(FName(*FieldId(Field)), Model);

@@ -10,6 +10,7 @@ decisions:
   - ../ADR/0011-blueprint-screen-templates.md
   - ../ADR/0013-unified-text-pipeline.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
+  - ../ADR/0035-ui-foundation-and-composition.md
 ---
 
 # Blueprint Screen Template Contract
@@ -139,7 +140,7 @@ Production Lua document обязан использовать `TextSpec`; locali
 
 - **`mod.text(key, args, style)`**: создаёт каноническую структуру `TextSpec` (`{ text_id = "<package_id>:text.<key>", args = args or {}, style = style or "default" }`).
 - **`mod.action(command_desc, ...)`**: строит дескриптор действия `{ command_id = ..., args = ... }`. Принимает дескриптор команды (`mod.commands.buy`) или короткое имя команды (`"buy"`). Передача произвольных замыканий/функций строго запрещена и отклоняется ошибкой `ActionClosureDisallowed`.
-- **`mod.button(text_spec, action_binding, key_opt)`**: конструирует запись кнопки. Принимает `TextSpec` и результат `mod.action`. Передача сырых строк в текст кнопки строго запрещена и отклоняется ошибкой `RawStringDisallowed`.
+- **`mod.button(text_spec, action_binding, key_opt)`**: конструирует запись кнопки. Принимает `TextSpec`, результат `mod.action` и опциональный `key_opt`. Передача сырых строк в текст кнопки строго запрещена (`RawStringDisallowed`). Если явный `key_opt` не передан, ключ выводится детерминированно из сущности действия или канонического `command_id` с аргументами. Передача локализуемого текста или `TextSpec` в качестве ключа запрещена (`TextDisallowedAsKey`, [ADR-0035](../ADR/0035-ui-foundation-and-composition.md)).
 - **`mod.show_screen({ template, description, buttons })`**: валидирует спецификацию экрана и публикует экранный запрос. Сырые строки в описании или кнопках отклоняются с `RawStringDisallowed`.
 - **Конвенция ошибок**: код отказа `<pkg>:error.<path>` соответствует тексту локализации `<pkg>:text.error.<path>`.
 - **Сборщик текстов**: утилита `Tools/Content/collect_texts.py <package_root>` выполняет статический анализ Lua-скриптов на наличие литералов `text("...")` и `fail("...")`, генерирует недостающие определения текстов в `definitions/texts.json5` и шаблоны в `localization/*.po` идемпотентно.

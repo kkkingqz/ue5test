@@ -46,6 +46,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0032](0032-field-contracts-and-generic-instance-creation.md) | accepted | Field Contracts and Generic Instance Creation: дескрипторы полей, валидация при записи, instances.create |
 | [0033](0033-command-validator-authoring.md) | accepted | Command Validator Authoring: авторский API `validate()`, декодирование аргументов по форме значения, единый execution scope, разрешение target при заморозке |
 | [0034](0034-gameplay-service-authoring.md) | accepted | Gameplay Service Authoring: авторский `services.<name>`, контракт «только функции», неизменяемость, наследование scope, привязка к потребителю |
+| [0035](0035-ui-foundation-and-composition.md) | accepted | UI Foundation and Composition: идентичность элементов, каноничность экрана, вложенные Screen Instances, отзывчивая раскладка, трёхуровневое владение |
 
 ## Template
 
