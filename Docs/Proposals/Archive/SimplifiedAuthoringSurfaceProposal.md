@@ -6,7 +6,7 @@ version: 1.0
 updated: 2026-08-18
 depends_on:
   - DesignerLuaAuthoringProposal.md
-  - ../ContentEditorPluginProposal.md
+  - ContentEditorPluginProposal.md
   - ../../Architecture/LuaRuntimeContract.md
   - ../../Architecture/CommandsAndEvents.md
   - ../../Architecture/CanonicalStateAndSave.md
@@ -206,7 +206,7 @@ Command commit → состояние обновлено → презентац�
 
 ### 11.1. Статус предусловий
 
-Все три предусловия схемных изменений ([Content Editor Plugin](../ContentEditorPluginProposal.md), раздел 40) выполнены в рамках плана `Docs/Plans/Archive/ContentEditorPrerequisites/` (Milestones 1–3):
+Все три предусловия схемных изменений ([Content Editor Plugin](ContentEditorPluginProposal.md), раздел 40) выполнены в рамках плана [ContentEditorPrerequisites](../../Plans/Archive/ContentEditorPrerequisites.md) (Milestones 1–3):
 - Правило версионирования схем ([ADR-0029](../../ADR/0029-content-authoring-and-schema-evolution.md));
 - Точечная правка и удаление полей в `Json5AstRewriter` (`gv2-content set` / `delete`);
 - Authoring UI-метаданные схем (`schemas/<name>.ui.json5`).

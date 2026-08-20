@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Proposals
 status: archived
-version: 1.1
-updated: 2026-08-19
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - ../README.md
 ---
@@ -25,3 +25,4 @@ depends_on:
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | — | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
 | [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification.md) | Контракты полей `field.*`, композиция схем, обобщённое создание экземпляров |
 | [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | [GameplayServices](../../Plans/Archive/GameplayServices.md) | Авторский синтаксис `services.<name> = { … }` для stateless-процессов и торговец в `rh` |
+| [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | [ContentEditor](../../Plans/Archive/ContentEditor.md) | Unreal Editor frontend поверх общей atomic authoring library и канонических JSON5 definitions |

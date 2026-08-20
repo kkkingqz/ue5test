@@ -6,7 +6,7 @@ version: 1.0
 updated: 2026-08-19
 depends_on:
   - SimplifiedAuthoringSurfaceProposal.md
-  - ../ContentEditorPluginProposal.md
+  - ContentEditorPluginProposal.md
   - ../../Architecture/Modding.md
   - ../../Architecture/StableIDSpecification.md
   - ../../Architecture/LuaRuntimeContract.md

@@ -22,7 +22,7 @@ decisions:
 > **Затрагивает:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Commands and Events](../../Architecture/CommandsAndEvents.md), [Canonical State and Save](../../Architecture/CanonicalStateAndSave.md).
 > **Не является нормативным:** до реализации действует текущий contract.
 
-Документ заменяет `Human-Friendly Gameplay Authoring Layer v2` и `Designer-Friendly Lua Gameplay Authoring` — обсуждение по ним сведено здесь в принятые решения. Визуальный frontend — в [Content Editor Plugin](../ContentEditorPluginProposal.md).
+Документ заменяет `Human-Friendly Gameplay Authoring Layer v2` и `Designer-Friendly Lua Gameplay Authoring` — обсуждение по ним сведено здесь в принятые решения. Визуальный frontend — в [Content Editor Plugin](ContentEditorPluginProposal.md).
 
 ## Граница слоёв
 

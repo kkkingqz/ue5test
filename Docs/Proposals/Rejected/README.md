@@ -1,8 +1,8 @@
 ---
 title: Rejected Implementation Proposals
 status: archived
-version: 1.0
-updated: 2026-08-19
+version: 1.1
+updated: 2026-08-20
 depends_on:
   - ../README.md
 ---
@@ -18,3 +18,5 @@ depends_on:
 Отклонённое предложение не является нормативным и не источник задач.
 
 Отклонённых предложений пока нет.
+
+Реализованные предложения перечислены в [Archive](../Archive/README.md).

@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.2
+version: 2.3
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -19,6 +19,7 @@ depends_on:
 | [ContentAuthoringTools](ContentAuthoringTools.md) | 2026-08-15 | Справочник и заготовки из схем, быстрая проверка Lua-модулей, обратные ссылки и переименование ID, живой цикл валидации и индекс для автодополнения |
 | [ContentCliModularization](ContentCliModularization.md) | 2026-08-15 | Разбиение `gv2-content` на модули команд и поддержки вместо монолитного `main.cpp` |
 | [ContentEditorPrerequisites](ContentEditorPrerequisites.md) | 2026-08-18 | Три блокирующих предусловия редактора: строгая классификация схемных изменений, `SetFieldValue`/`RemoveDefinitionEntry` с сохранением комментариев, `.ui.json5` вне `content_hash` с гейтом на устаревшие ключи |
+| [ContentEditor](ContentEditor.md) | 2026-08-20 | Общий atomic authoring path для CLI/Editor, schema-driven Slate frontend, CRUD, typed references и conformance в CTest/Unreal |
 | [CoreBoundaryMigration](CoreBoundaryMigration.md) | 2026-08-17 | Приведение ядра к [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md): демо в пакет `sample`, `register_type` для обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до одного поля, гейт `core_boundary_gate_contract` |
 | [DesignerAuthoringLayer](DesignerAuthoringLayer.md) | 2026-08-18 | Слой авторинга: признак записи в окне мутации, изоляция сырого состояния, дескриптор команд с отложенной регистрацией, `Storage`/`WritePolicy`, sparse runtime-состояние, `emit`/`on`/`show_screen`, перевод геймплея `rh` |
 | [DocumentationRework](DocumentationRework.md) | 2026-08-20 | Authority и совместимость сделаны явными, Lua-контракты разделены, создан `Authoring/`, инструкции очищены, а архив планов свёрнут в проверяемые summaries |

@@ -1,19 +1,19 @@
 ---
 title: Content Editor Plugin Proposal
-status: draft
-proposal_state: accepted_for_planning
+status: archived
+proposal_state: implemented
 version: 1.0
 updated: 2026-08-20
 depends_on:
-  - Archive/DesignerLuaAuthoringProposal.md
-  - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
-  - ../Architecture/GameDataRepositoryContract.md
-  - ../Architecture/BuildAndTooling.md
-  - ../UI/ScreenTemplates.md
+  - DesignerLuaAuthoringProposal.md
+  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../Architecture/GameDataRepositoryContract.md
+  - ../../Architecture/BuildAndTooling.md
+  - ../../UI/ScreenTemplates.md
 decisions:
-  - ../ADR/0018-portable-content-core-module.md
-  - ../ADR/0026-core-and-gameplay-ownership.md
-  - ../ADR/0029-content-authoring-and-schema-evolution.md
+  - ../../ADR/0018-portable-content-core-module.md
+  - ../../ADR/0026-core-and-gameplay-ownership.md
+  - ../../ADR/0029-content-authoring-and-schema-evolution.md
 ---
 
 # Предложение по редактору контента в Unreal Editor
