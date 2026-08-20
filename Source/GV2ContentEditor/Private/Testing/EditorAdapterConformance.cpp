@@ -1,4 +1,5 @@
 #include "GV2ContentEditor/Testing/EditorAdapterConformance.h"
+#include "GV2ContentEditor/Testing/ReadSurfaceConformance.h"
 #include "GV2ContentEditor/GV2EditorAdapter.h"
 #include "GV2ContentEditor/EditorAdapterTypes.h"
 #include "GV2ContentCore/Diagnostic.h"
@@ -429,6 +430,13 @@ std::string RunEditorAdapterConformance()
     {
         return "TestAdapterStructuredDiagnosticsLossless failed";
     }
+
+    std::string ReadSurfaceError = RunReadSurfaceConformance();
+    if (!ReadSurfaceError.empty())
+    {
+        return ReadSurfaceError;
+    }
+
     return "";
 }
 

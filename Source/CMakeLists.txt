@@ -144,7 +144,11 @@ set(GV2_CONTENT_EDITOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/GV2ContentEditor")
 add_library(gv2_content_editor STATIC
     "${GV2_CONTENT_EDITOR_DIR}/Private/GV2ContentEditor.cpp"
     "${GV2_CONTENT_EDITOR_DIR}/Private/GV2EditorAdapter.cpp"
+    "${GV2_CONTENT_EDITOR_DIR}/Private/FieldAdapterRegistry.cpp"
+    "${GV2_CONTENT_EDITOR_DIR}/Private/SchemaFormModel.cpp"
+    "${GV2_CONTENT_EDITOR_DIR}/Private/ReferenceScanner.cpp"
     "${GV2_CONTENT_EDITOR_DIR}/Private/Testing/EditorAdapterConformance.cpp"
+    "${GV2_CONTENT_EDITOR_DIR}/Private/Testing/ReadSurfaceConformance.cpp"
 )
 target_compile_features(gv2_content_editor PUBLIC cxx_std_20)
 target_include_directories(gv2_content_editor

@@ -2,6 +2,8 @@
 
 #include "GV2ContentEditor/GV2ContentEditor.h"
 #include "GV2ContentEditor/EditorAdapterTypes.h"
+#include "GV2ContentEditor/ReferenceScanner.h"
+#include "GV2ContentEditor/SchemaFormModel.h"
 #include "GV2ContentAuthoring/AuthoringService.h"
 #include "GV2ContentAuthoring/AuthoringTypes.h"
 #include "GV2ContentCore/PackageDescriptor.h"
@@ -138,6 +140,21 @@ public:
      * Runs authoritative repository validation across the entire content set.
      */
     std::vector<FGV2EditorDiagnostic> ValidateRepository() const;
+
+    /** Returns the schema form model built dynamically for a definition type (CED-11). */
+    std::optional<FGV2SchemaFormModel> GetFormModelForDefinitionType(
+        const std::string& DefinitionType) const;
+
+    /** Scans outgoing references for the active loaded definition ("Uses", CED-12). */
+    std::vector<FGV2ReferenceItem> GetOutgoingReferences() const;
+
+    /** Scans incoming references targeting a definition ("Used by", CED-12). */
+    std::vector<FGV2ReferenceItem> GetIncomingReferences(
+        const std::string& DefinitionId) const;
+
+    /** Returns compatible target definition IDs for a given expected kind (CED-12). */
+    std::vector<std::string> GetCompatibleReferenceTargets(
+        const std::string& ExpectedKind) const;
 
 private:
     std::filesystem::path FindPackageRootById(const std::string& PackageId) const;

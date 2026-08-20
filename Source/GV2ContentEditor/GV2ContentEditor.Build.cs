@@ -19,10 +19,12 @@ public class GV2ContentEditor : ModuleRules
 
         PrivateDependencyModuleNames.AddRange(new string[]
         {
+            "InputCore",
             "Slate",
             "SlateCore",
             "UnrealEd",
-            "PropertyEditor"
+            "PropertyEditor",
+            "WorkspaceMenuStructure"
         });
     }
 }

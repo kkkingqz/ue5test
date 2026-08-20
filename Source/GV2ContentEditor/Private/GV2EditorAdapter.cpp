@@ -1,11 +1,16 @@
 #include "GV2ContentEditor/GV2EditorAdapter.h"
+#include "GV2ContentEditor/ReferenceScanner.h"
+#include "GV2ContentEditor/SchemaFormModel.h"
 #include "GV2ContentAuthoring/AuthoringService.h"
 #include "GV2ContentAuthoring/AuthoringTypes.h"
+#include "GV2ContentCore/AuthoringMetadata.h"
 #include "GV2ContentCore/DefinitionEnvelope.h"
 #include "GV2ContentCore/Diagnostic.h"
+#include "GV2ContentCore/ExtensionSchema.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
 #include "GV2ContentCore/RepositoryBuilder.h"
+#include "GV2ContentCore/SchemaRegistry.h"
 #include "GV2ContentCore/StableId.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 
@@ -646,6 +651,137 @@ std::vector<FGV2EditorDiagnostic> FGV2EditorAdapter::ValidateRepository() const
     }
 
     return Out;
+}
+
+std::optional<FGV2SchemaFormModel> FGV2EditorAdapter::GetFormModelForDefinitionType(
+    const std::string& DefinitionType) const
+{
+    const GV2ContentCore::FPackageDescriptor* SchemaPkgDesc = nullptr;
+    const GV2ContentCore::FSchemaBinding* MatchingBinding = nullptr;
+    std::filesystem::path SchemaPkgRoot;
+
+    for (std::size_t i = 0; i < DiscoveredPackages.size(); ++i)
+    {
+        for (const auto& Binding : DiscoveredPackages[i].GetSchemaBindings())
+        {
+            if (Binding.GetDefinitionType() == DefinitionType)
+            {
+                SchemaPkgDesc = &DiscoveredPackages[i];
+                MatchingBinding = &Binding;
+                SchemaPkgRoot = PackageRoots[i];
+                break;
+            }
+        }
+        if (SchemaPkgDesc != nullptr) break;
+    }
+
+    if (SchemaPkgDesc == nullptr || MatchingBinding == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    std::filesystem::path SchemaPath = SchemaPkgRoot / MatchingBinding->GetRelativePath();
+    std::string SchemaContent;
+    if (!ReadFileContent(SchemaPath, SchemaContent))
+    {
+        return std::nullopt;
+    }
+
+    GV2ContentCore::FParseLimits Limits;
+    std::vector<GV2ContentCore::FDiagnostic> Diags;
+    auto SchemaDoc = GV2ContentCore::ParseJson5Document(
+        SchemaContent, Limits, Diags, SchemaPkgDesc->GetPackageId(), SchemaPkgDesc->GetLoadIndex(), MatchingBinding->GetRelativePath());
+    if (!SchemaDoc.has_value()) return std::nullopt;
+
+    auto SchemaResourceOpt = GV2ContentCore::ParseSchemaResource(
+        *SchemaDoc, *MatchingBinding, SchemaPkgDesc->GetPackageId(), SchemaPkgDesc->GetLoadIndex(), MatchingBinding->GetRelativePath(), Diags);
+    if (!SchemaResourceOpt.has_value()) return std::nullopt;
+
+    // Load UI metadata if present
+    std::string UiMetaRelPath = MatchingBinding->GetRelativePath();
+    if (UiMetaRelPath.size() >= 13 && UiMetaRelPath.compare(UiMetaRelPath.size() - 13, 13, ".schema.json5") == 0)
+    {
+        UiMetaRelPath = UiMetaRelPath.substr(0, UiMetaRelPath.size() - 13) + ".ui.json5";
+    }
+    else if (UiMetaRelPath.size() >= 6 && UiMetaRelPath.compare(UiMetaRelPath.size() - 6, 6, ".json5") == 0)
+    {
+        UiMetaRelPath = UiMetaRelPath.substr(0, UiMetaRelPath.size() - 6) + ".ui.json5";
+    }
+    else
+    {
+        UiMetaRelPath += ".ui.json5";
+    }
+
+    std::optional<GV2ContentCore::FSchemaUiMetadata> UiMeta;
+    std::filesystem::path UiMetaPath = SchemaPkgRoot / UiMetaRelPath;
+    std::string UiMetaContent;
+    if (ReadFileContent(UiMetaPath, UiMetaContent))
+    {
+        std::vector<GV2ContentCore::FDiagnostic> UiDiags;
+        UiMeta = GV2ContentCore::ParseSchemaUiMetadata(
+            UiMetaContent, *SchemaResourceOpt, UiDiags, SchemaPkgDesc->GetPackageId(), UiMetaRelPath);
+    }
+
+    // Load any extension schemas
+    std::vector<GV2ContentCore::FExtensionSchemaResource> ExtensionSchemas;
+    for (std::size_t i = 0; i < DiscoveredPackages.size(); ++i)
+    {
+        for (const auto& ExtBinding : DiscoveredPackages[i].GetExtensionSchemaBindings())
+        {
+            if (ExtBinding.GetDefinitionType() == DefinitionType)
+            {
+                std::filesystem::path ExtPath = PackageRoots[i] / ExtBinding.GetRelativePath();
+                std::string ExtContent;
+                if (ReadFileContent(ExtPath, ExtContent))
+                {
+                    std::vector<GV2ContentCore::FDiagnostic> ExtDiags;
+                    auto ExtDoc = GV2ContentCore::ParseJson5Document(
+                        ExtContent, Limits, ExtDiags, DiscoveredPackages[i].GetPackageId(), DiscoveredPackages[i].GetLoadIndex(), ExtBinding.GetRelativePath());
+                    if (ExtDoc.has_value())
+                    {
+                        auto ExtResOpt = GV2ContentCore::ParseExtensionSchemaResource(
+                            *ExtDoc, ExtBinding, DiscoveredPackages[i].GetPackageId(), DiscoveredPackages[i].GetLoadIndex(), ExtBinding.GetRelativePath(), ExtDiags);
+                        if (ExtResOpt.has_value())
+                        {
+                            ExtensionSchemas.push_back(std::move(*ExtResOpt));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return FGV2SchemaFormModel::BuildFromSchema(
+        *SchemaResourceOpt,
+        UiMeta.has_value() ? &(*UiMeta) : nullptr,
+        ExtensionSchemas);
+}
+
+std::vector<FGV2ReferenceItem> FGV2EditorAdapter::GetOutgoingReferences() const
+{
+    if (!CurrentDefinition.has_value())
+    {
+        return {};
+    }
+    return FGV2ReferenceScanner::FindOutgoingReferences(*CurrentDefinition);
+}
+
+std::vector<FGV2ReferenceItem> FGV2EditorAdapter::GetIncomingReferences(
+    const std::string& DefinitionId) const
+{
+    return FGV2ReferenceScanner::FindIncomingReferences(
+        DefinitionId,
+        IndexedDefinitions,
+        PackageRoots,
+        DiscoveredPackages);
+}
+
+std::vector<std::string> FGV2EditorAdapter::GetCompatibleReferenceTargets(
+    const std::string& ExpectedKind) const
+{
+    return FGV2ReferenceScanner::FindCompatibleTargets(
+        ExpectedKind,
+        IndexedDefinitions);
 }
 
 std::filesystem::path FGV2EditorAdapter::FindPackageRootById(const std::string& PackageId) const
