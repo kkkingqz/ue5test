@@ -1,10 +1,60 @@
-#include "Support/Json5AstRewriter.h"
-#include "Support/CliOutput.h"
+#include "GV2ContentAuthoring/Json5AstRewriter.h"
+
+#include <algorithm>
+#include <iomanip>
+#include <ostream>
+#include <sstream>
+#include <string>
+
+namespace
+{
+std::string FormatDouble(double Value)
+{
+    std::ostringstream Stream;
+    Stream << Value;
+    std::string Str = Stream.str();
+    if (Str.find('.') == std::string::npos && Str.find('e') == std::string::npos && Str.find('E') == std::string::npos)
+    {
+        Str += ".0";
+    }
+    return Str;
+}
+
+void WriteJsonEscapedString(std::ostream& Out, const std::string& Text)
+{
+    Out << '"';
+    for (char C : Text)
+    {
+        switch (C)
+        {
+        case '"': Out << "\""; break;
+        case '\\': Out << "\\\\"; break;
+        case '\b': Out << "\\b"; break;
+        case '\f': Out << "\\f"; break;
+        case '\n': Out << "\\n"; break;
+        case '\r': Out << "\\r"; break;
+        case '\t': Out << "\\t"; break;
+        default:
+            if (static_cast<unsigned char>(C) < 0x20)
+            {
+                Out << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(C)) << std::dec;
+            }
+            else
+            {
+                Out << C;
+            }
+            break;
+        }
+    }
+    Out << '"';
+}
+}
+
 
 #include <algorithm>
 #include <sstream>
 
-namespace GV2ContentCli
+namespace GV2ContentAuthoring
 {
 
 bool IsValidJson5Identifier(std::string_view Key)
@@ -338,15 +388,26 @@ bool InsertDefinitionEntryIntoJson5(
     const std::size_t OpenOffset = Tokens[SquareOpenIdx].ByteOffset;
     const std::size_t CloseOffset = Tokens[SquareCloseIdx].ByteOffset;
 
-    bool bEmptyArray = true;
-    for (std::size_t i = SquareOpenIdx + 1; i < SquareCloseIdx; ++i)
+    std::size_t LastTokenBeforeClose = std::string::npos;
+    for (std::size_t i = SquareCloseIdx; i > SquareOpenIdx; --i)
     {
-        if (Tokens[i].Kind != GV2ContentCore::EJson5TokenKind::Comment)
+        if (Tokens[i - 1].Kind != GV2ContentCore::EJson5TokenKind::Comment)
         {
-            bEmptyArray = false;
+            LastTokenBeforeClose = i - 1;
             break;
         }
     }
+
+    bool bNeedsLeadingComma = false;
+    if (LastTokenBeforeClose != std::string::npos && LastTokenBeforeClose != SquareOpenIdx)
+    {
+        if (Tokens[LastTokenBeforeClose].Kind != GV2ContentCore::EJson5TokenKind::Comma)
+        {
+            bNeedsLeadingComma = true;
+        }
+    }
+
+    const bool bEmptyArray = (LastTokenBeforeClose == std::string::npos || LastTokenBeforeClose == SquareOpenIdx);
 
     if (bEmptyArray)
     {
@@ -359,9 +420,21 @@ bool InsertDefinitionEntryIntoJson5(
         std::size_t LastNewline = OriginalContent.rfind('\n', CloseOffset);
         if (LastNewline != std::string::npos)
         {
-            OutNewContent = OriginalContent.substr(0, LastNewline + 1)
-                + FormattedEntry
-                + OriginalContent.substr(LastNewline + 1);
+            if (bNeedsLeadingComma && LastTokenBeforeClose != std::string::npos)
+            {
+                const std::size_t PrevTokenEnd = Tokens[LastTokenBeforeClose].ByteOffset + Tokens[LastTokenBeforeClose].ByteLength;
+                OutNewContent = OriginalContent.substr(0, PrevTokenEnd)
+                    + ","
+                    + OriginalContent.substr(PrevTokenEnd, LastNewline + 1 - PrevTokenEnd)
+                    + FormattedEntry
+                    + OriginalContent.substr(LastNewline + 1);
+            }
+            else
+            {
+                OutNewContent = OriginalContent.substr(0, LastNewline + 1)
+                    + FormattedEntry
+                    + OriginalContent.substr(LastNewline + 1);
+            }
         }
         else
         {
@@ -885,4 +958,4 @@ FRemoveDefinitionResult RemoveDefinitionEntry(
     return Result;
 }
 
-} // namespace GV2ContentCli
+} // namespace GV2ContentAuthoring

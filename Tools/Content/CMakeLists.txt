@@ -2,12 +2,12 @@ add_executable(gv2-content
     Source/main.cpp
     Source/Support/CliOutput.cpp
     Source/Support/DirectoryWatcher.cpp
-    Source/Support/Json5AstRewriter.cpp
     Source/Support/Json5AstRewriterConformance.cpp
     Source/Support/PackageLoader.cpp
     Source/Commands/CoverageCommand.cpp
     Source/Commands/DeleteCommand.cpp
     Source/Commands/DescribeCommand.cpp
+    Source/Commands/DuplicateCommand.cpp
     Source/Commands/HashCommand.cpp
     Source/Commands/IndexCommand.cpp
     Source/Commands/InspectCommand.cpp
@@ -19,7 +19,7 @@ add_executable(gv2-content
 )
 target_compile_features(gv2-content PRIVATE cxx_std_20)
 target_include_directories(gv2-content PRIVATE Source)
-target_link_libraries(gv2-content PRIVATE gv2_content_core gv2_content_host_support)
+target_link_libraries(gv2-content PRIVATE gv2_content_authoring gv2_content_core gv2_content_host_support)
 
 if(BUILD_TESTING)
     # TAS-07: GameData/core (live gameplay content) and

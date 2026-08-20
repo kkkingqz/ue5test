@@ -1,6 +1,6 @@
 add_executable(gv2-headless Source/main.cpp)
 target_compile_features(gv2-headless PRIVATE cxx_std_20)
-target_link_libraries(gv2-headless PRIVATE gv2_runtime_core gv2_content_core gv2_content_host_support gv2_test_support)
+target_link_libraries(gv2-headless PRIVATE gv2_runtime_core gv2_content_core gv2_content_host_support gv2_content_authoring gv2_test_support)
 
 set(GV2_GOLDEN_DIGEST_PATH
     "${PROJECT_SOURCE_DIR}/Tests/Fixtures/GoldenRuns/golden_headless_10_seed_42.digest.json5"

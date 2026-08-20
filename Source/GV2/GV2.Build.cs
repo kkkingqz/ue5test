@@ -18,6 +18,7 @@ public class GV2 : ModuleRules
             "GV2RuntimeCore",
             "GV2ContentCore",
             "GV2ContentHostSupport",
+            "GV2ContentAuthoring",
             "GV2TestSupport"
         });
 

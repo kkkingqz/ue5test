@@ -18,6 +18,7 @@ void PrintUsage(std::ostream& Out)
         << "  new      <package-root> <definition-type> <definition-id> [--format=text|json]\n"
         << "  refs     <package-root> <definition-id> [--format=text|json]\n"
         << "  rename   <package-root> <old-id> <new-id> [--format=text|json]\n"
+        << "  duplicate <package-root> <source-id> <target-id> [--format=text|json]\n"
         << "  set      <package-root> <definition-id> <json-pointer> <value> [--format=text|json]\n"
         << "  delete   <package-root> <definition-id> [--format=text|json]\n"
         << "  index    <package-root> [--format=text|json]\n"

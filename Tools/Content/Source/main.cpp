@@ -1,6 +1,7 @@
 #include "Commands/CoverageCommand.h"
 #include "Commands/DeleteCommand.h"
 #include "Commands/DescribeCommand.h"
+#include "Commands/DuplicateCommand.h"
 #include "Commands/HashCommand.h"
 #include "Commands/IndexCommand.h"
 #include "Commands/InspectCommand.h"
@@ -11,6 +12,7 @@
 #include "Commands/ValidateCommand.h"
 #include "Support/CliOutput.h"
 #include "Support/Json5AstRewriterConformance.h"
+#include "GV2ContentAuthoring/Testing/AuthoringLibraryConformance.h"
 #include "GV2ContentCore/Testing/AuthoringMetadataConformance.h"
 
 #include <iostream>
@@ -41,6 +43,12 @@ int main(int argc, char** argv)
         if (!Error.empty())
         {
             std::cerr << "json5_ast_rewriter_conformance_failed: " << Error << "\n";
+            return static_cast<int>(EExitCode::ToolFailure);
+        }
+        const std::string AuthError = GV2ContentAuthoring::Testing::RunAuthoringLibraryConformance();
+        if (!AuthError.empty())
+        {
+            std::cerr << "authoring_library_conformance_failed: " << AuthError << "\n";
             return static_cast<int>(EExitCode::ToolFailure);
         }
         const std::string MetaError = GV2ContentCore::Testing::RunAuthoringMetadataConformance();
@@ -182,6 +190,10 @@ int main(int argc, char** argv)
     if (Command == "rename")
     {
         return RunRename(Positional, Format);
+    }
+    if (Command == "duplicate")
+    {
+        return RunDuplicate(Positional, Format);
     }
     if (Command == "index")
     {

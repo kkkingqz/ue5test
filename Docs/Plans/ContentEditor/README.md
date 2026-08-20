@@ -64,7 +64,7 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Authoring Library](AuthoringLibrary.md): слой авторинга становится библиотекой; запись атомарна. CED-01…04.
+- [x] M1 — [Authoring Library](AuthoringLibrary.md): слой авторинга становится библиотекой; запись атомарна. CED-01…04.
 - [ ] M2 — [Editor Adapter](EditorAdapter.md): редакторский модуль, адаптер, обнаружение внешних изменений. CED-05…08.
 - [ ] M3 — [Read Surface](ReadSurface.md): браузер, форма по схеме, адаптеры полей, ссылки. CED-09…12.
 - [ ] M4 — [Write Surface](WriteSurface.md): изменённые поля, сохранение, создание и удаление, диагностика. CED-13…16.

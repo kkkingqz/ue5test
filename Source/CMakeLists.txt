@@ -121,3 +121,20 @@ target_include_directories(gv2_test_support
     PUBLIC "${GV2_TEST_SUPPORT_DIR}/Public"
 )
 target_link_libraries(gv2_test_support PUBLIC gv2_content_host_support gv2_runtime_core)
+
+# ADR-0037: portable content authoring library for definition mutations,
+# atomic writes, optimistic locking, and comment-preserving AST rewrites.
+set(GV2_CONTENT_AUTHORING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/GV2ContentAuthoring")
+
+add_library(gv2_content_authoring STATIC
+    "${GV2_CONTENT_AUTHORING_DIR}/Private/GV2ContentAuthoring.cpp"
+    "${GV2_CONTENT_AUTHORING_DIR}/Private/AuthoringService.cpp"
+    "${GV2_CONTENT_AUTHORING_DIR}/Private/Json5AstRewriter.cpp"
+    "${GV2_CONTENT_AUTHORING_DIR}/Private/Testing/AuthoringLibraryConformance.cpp"
+)
+target_compile_features(gv2_content_authoring PUBLIC cxx_std_20)
+target_include_directories(gv2_content_authoring
+    PUBLIC "${GV2_CONTENT_AUTHORING_DIR}/Public"
+)
+target_link_libraries(gv2_content_authoring PUBLIC gv2_content_host_support gv2_content_core)
+

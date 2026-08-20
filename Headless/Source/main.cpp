@@ -29,6 +29,7 @@
 #include "GV2ContentCore/Testing/SpecialFieldValidationConformance.h"
 #include "GV2ContentCore/Testing/ValueModelConformance.h"
 #include "GV2ContentCore/Value.h"
+#include "GV2ContentAuthoring/Testing/AuthoringLibraryConformance.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "GV2ContentHostSupport/Testing/PackageDiscoveryAndOrderConformance.h"
 #include "GV2ContentHostSupport/Testing/PackageManifestConformance.h"
@@ -880,6 +881,11 @@ int Run(
     if (const std::string Error = GV2ContentCore::Testing::RunAuthoringMetadataConformance(); !Error.empty())
     {
         std::cerr << "pcc_authoring_metadata_self_test_failed: " << Error << "\n";
+        return 1;
+    }
+    if (const std::string Error = GV2ContentAuthoring::Testing::RunAuthoringLibraryConformance(); !Error.empty())
+    {
+        std::cerr << "pcc_authoring_library_self_test_failed: " << Error << "\n";
         return 1;
     }
     if (!RunSharedJson5FixtureConformance())
