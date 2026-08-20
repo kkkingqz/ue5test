@@ -21,7 +21,8 @@ return {
     declarative_market_screen_matches_schema = function()
         local req = location_presenter.build_screen_request("rh:location.city.market")
         assert(req ~= nil, "screen request must be generated for market")
-        assert(req.screen_id == "rh:screen.location.market")
+        assert(req.screen_id == "textsystem:screen.location")
+        assert(req.instance_key == "location")
 
         -- Text is rich_text
         assert(req.fields.description ~= nil)
@@ -57,7 +58,8 @@ return {
     declarative_tavern_screen_matches_schema = function()
         local req = location_presenter.build_screen_request("rh:location.city.tavern")
         assert(req ~= nil, "screen request must be generated for tavern")
-        assert(req.screen_id == "rh:screen.location.tavern")
+        assert(req.screen_id == "textsystem:screen.location")
+        assert(req.instance_key == "location")
 
         assert(#req.fields.buttons.value.items == 4)
 

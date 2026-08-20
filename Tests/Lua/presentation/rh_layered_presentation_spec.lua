@@ -56,7 +56,8 @@ return {
             local state = presentation_authoring.get_active_document_state()
             assert(state ~= nil, "active document state must exist")
             assert(state.route ~= nil, "route must exist")
-            assert(state.route.screen_id == "rh:screen.location.market", "route screen must be market")
+            assert(state.route.screen_id == "textsystem:screen.location", "route screen must use LocationScreen template")
+            assert(state.route.instance_key == "location", "route instance must be stable across locations")
             assert(#state.modals == 0, "modal stack must initially be empty")
 
             -- 2. Dispatch request_buy -> opens modal

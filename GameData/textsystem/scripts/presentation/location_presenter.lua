@@ -7,6 +7,11 @@ local authoring = require("core:module.authoring.context")
 local M = authoring.gameplay("textsystem")
 M.id = "textsystem:module.presentation.location_presenter"
 
+-- This is the UE template identity, not a gameplay screen Definition ID.
+-- `screen_ids` below continues to select the Definition that supplies values.
+local LOCATION_SCREEN_TEMPLATE_ID = "textsystem:screen.location"
+local LOCATION_SCREEN_INSTANCE_KEY = "location"
+
 function M.build_screen_request(location_id)
     if not location_id then
         return nil
@@ -59,7 +64,8 @@ function M.build_screen_request(location_id)
     end
 
     return M.show_screen({
-        template = screen_id,
+        template = LOCATION_SCREEN_TEMPLATE_ID,
+        instance_key = LOCATION_SCREEN_INSTANCE_KEY,
         description = M.text(description_text_id),
         buttons = buttons,
     })

@@ -120,7 +120,7 @@ Mapping в Slate:
 
 ## Failure and recovery semantics
 
-Invalid ID, missing texture, duplicate ID, unknown mode, non-positive ratio/tile size, collapsed nine-slice center и target incompatibility возвращают presentation failure до Widget mutation. Required missing resource блокирует owning prepare/apply; optional use применяет type-compatible placeholder согласно общему Presentation policy.
+Invalid ID, missing texture, duplicate ID, unknown mode, non-positive ratio/tile size, collapsed nine-slice center и target incompatibility возвращают presentation failure до Widget mutation. Required missing resource блокирует owning prepare/apply. Optional resource применяется через `FGV2ImagePresentation::ResolveOptionalAndApply`: failed requested ID записывается в UE diagnostic log, после чего тот же resolver пытается применить type-compatible placeholder. Если placeholder отсутствует или несовместим с target block, apply блокируется как configuration error.
 
 Startup Image Catalog является required application dependency. Failed configured catalog build обязан оставить Runtime Subsystem в non-ready bootstrap state и запретить создание/публикацию session `Ready`. Атомарное сохранение ранее опубликованного catalog защищает существующего consumer-а от partial mutation, но не разрешает новой session использовать stale catalog после failed rebuild.
 

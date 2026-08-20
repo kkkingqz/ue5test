@@ -59,8 +59,9 @@ return {
 
             local published = screens.take_pending()
             assert(published ~= nil, "a successful action must republish the screen")
-            assert(published.screen_id == "rh:screen.location.tavern",
-                "republished screen must be the current location's, got: " .. tostring(published.screen_id))
+            assert(published.screen_id == "textsystem:screen.location",
+                "republished screen must use the LocationScreen template, got: " .. tostring(published.screen_id))
+            assert(published.instance_key == "location", "location route identity must remain stable")
             assert(find_button(published.fields.buttons, "wait_day") ~= nil,
                 "republished menu must still contain the location actions")
 
@@ -99,7 +100,8 @@ return {
     market_screen_structure_and_buttons = function()
         local req = location_presenter.build_screen_request("rh:location.city.market")
         assert(req ~= nil, "screen request must be generated for market")
-        assert(req.screen_id == "rh:screen.location.market", "screen_id must match market screen")
+        assert(req.screen_id == "textsystem:screen.location", "screen_id must be the shared LocationScreen template")
+        assert(req.instance_key == "location", "location route identity must be stable")
 
         local desc = req.fields.description
         assert(desc ~= nil and desc.schema_id == "core:schema.ui_field.rich_text.v3")
@@ -128,7 +130,7 @@ return {
     tavern_screen_structure_and_buttons = function()
         local req = location_presenter.build_screen_request("rh:location.city.tavern")
         assert(req ~= nil, "screen request must be generated for tavern")
-        assert(req.screen_id == "rh:screen.location.tavern", "screen_id must match tavern screen")
+        assert(req.screen_id == "textsystem:screen.location", "screen_id must be the shared LocationScreen template")
 
         local desc = req.fields.description
         assert(desc.value.text.text_id == "rh:text.screen.tavern.description")
@@ -156,7 +158,7 @@ return {
     gate_screen_structure_and_buttons = function()
         local req = location_presenter.build_screen_request("rh:location.city.gate")
         assert(req ~= nil, "screen request must be generated for gate")
-        assert(req.screen_id == "rh:screen.location.gate", "screen_id must match gate screen")
+        assert(req.screen_id == "textsystem:screen.location", "screen_id must be the shared LocationScreen template")
 
         local desc = req.fields.description
         assert(desc.value.text.text_id == "rh:text.screen.gate.description")
@@ -178,7 +180,7 @@ return {
             -- Publish market screen
             location_presenter.build_and_publish_screen()
             local screen_market = screens.take_pending()
-            assert(screen_market ~= nil and screen_market.screen_id == "rh:screen.location.market")
+            assert(screen_market ~= nil and screen_market.screen_id == "textsystem:screen.location")
 
             -- Dispatch travel to tavern
             local seq = game.runtime.dispatch_command({
@@ -191,8 +193,10 @@ return {
             -- Event subscriber should have published tavern screen
             local screen_tavern = screens.take_pending()
             assert(screen_tavern ~= nil, "tavern screen must be published after travel event")
-            assert(screen_tavern.screen_id == "rh:screen.location.tavern",
-                "screen_id must be tavern screen, got: " .. tostring(screen_tavern.screen_id))
+            assert(screen_tavern.screen_id == "textsystem:screen.location",
+                "screen_id must remain the LocationScreen template, got: " .. tostring(screen_tavern.screen_id))
+            assert(screen_tavern.instance_key == screen_market.instance_key,
+                "travel must retain the location screen instance")
             assert(#screen_tavern.fields.buttons.value.items == 4, "tavern menu must have 4 buttons")
         end)
     end,

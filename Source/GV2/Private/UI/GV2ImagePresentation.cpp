@@ -1,6 +1,32 @@
 #include "UI/GV2ImagePresentation.h"
 
 #include "Components/Image.h"
+#include "Logging/LogMacros.h"
+
+bool FGV2ImagePresentation::ResolveOptionalAndApply(
+    UImage* Widget,
+    const FString& ResourceId,
+    const FString& PlaceholderResourceId,
+    const EGV2PrimitiveScalePolicy ScalePolicy,
+    const TOptional<float> FixedAspectRatio,
+    FGV2ResolvedImageResource& OutResource,
+    FString& OutError)
+{
+    FString RequestedError;
+    if (ResolveAndApply(Widget, ResourceId, ScalePolicy, FixedAspectRatio, OutResource, RequestedError))
+    {
+        OutError.Reset();
+        return true;
+    }
+    UE_LOG(LogTemp, Warning, TEXT("GV2 optional image '%s' unavailable: %s; using placeholder '%s'."), *ResourceId, *RequestedError, *PlaceholderResourceId);
+    if (PlaceholderResourceId.IsEmpty()
+        || !ResolveAndApply(Widget, PlaceholderResourceId, ScalePolicy, FixedAspectRatio, OutResource, OutError))
+    {
+        OutError = FString::Printf(TEXT("Optional resource '%s' failed (%s); placeholder '%s' failed (%s)."), *ResourceId, *RequestedError, *PlaceholderResourceId, *OutError);
+        return false;
+    }
+    return true;
+}
 
 bool FGV2ImagePresentation::ResolveAndApply(
     UImage* Widget,

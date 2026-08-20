@@ -250,9 +250,9 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         }
     }
     TestEqual(
-        TEXT("Adapter registry contains all 10 baseline and composite schemas"),
+        TEXT("Adapter registry contains all 14 baseline and LocationScreen schemas"),
         FGV2ScreenFieldAdapterRegistry::Get().Num(),
-        10);
+        14);
 
     FString ScreenTemplatesContract;
     if (ReadSource(
@@ -638,7 +638,11 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     }
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TestEqual(TEXT("Registry contains all 10 baseline and composite schemas"), Registry.Num(), 10);
+    TestEqual(TEXT("Registry contains all 14 baseline and LocationScreen schemas"), Registry.Num(), 14);
+    TestNotNull(TEXT("Location top bar adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_top_bar.v1"));
+    TestNotNull(TEXT("Location player status adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_player_status.v1"));
+    TestNotNull(TEXT("Location scene adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_scene.v1"));
+    TestNotNull(TEXT("Location commands adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_commands.v1"));
 
     // 1. Image Adapter (core:schema.ui_field.image.v1)
     {

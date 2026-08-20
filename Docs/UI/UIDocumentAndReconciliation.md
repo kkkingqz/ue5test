@@ -232,6 +232,10 @@ Private `FGV2UiBindingRegistry` реализует prepared binding candidate и
 
 `FGV2ScreenFieldAdapterRegistry` поддерживает schemas базового набора; их typed values определены в [Blueprint Screen Template Contract](ScreenTemplates.md#dynamic-screen-element-contract).
 
+### Устойчивая идентичность LocationScreen
+
+LocationScreen — один route instance. Его `screen_id` всегда `textsystem:screen.location`, а `instance_key` всегда `location`; `location.screen_ids` выбирает values definition и не участвует в route identity. Поэтому переход между локациями обязан обновлять Screen Fields в существующем widget, а не создавать новый. Изменение template или instance key допустимо только как явная route replacement.
+
 ## Verification status
 
 Automation-тесты (`GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`) проверяют:

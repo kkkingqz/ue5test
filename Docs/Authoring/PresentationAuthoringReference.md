@@ -125,13 +125,14 @@ local buttons = {
 }
 
 show_screen({
-    template = "rh:screen.location.tavern",
+    template = "textsystem:screen.location",
+    instance_key = "location",
     description = text("location.tavern.description"),
     buttons = buttons,
 })
 ```
 
-`template` и `screen_id` — aliases; значение может быть коротким key, полным Screen Stable ID или screen Definition wrapper. `description` + `buttons` — удобная форма для стандартных schemas. Универсальная форма передаёт полную map полей:
+`template` и `screen_id` — aliases и всегда обозначают UE Screen Template, а не Definition с values. Например, `rh:screen.location.tavern` выбирается через `screen_ids` внутри presentation source и запрещён как `template`. `description` + `buttons` — удобная форма для стандартных schemas. Универсальная форма передаёт полную map полей:
 
 ```lua
 show_route({

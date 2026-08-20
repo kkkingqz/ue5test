@@ -384,7 +384,11 @@ function M.create_show_screen_helper(package_id)
             ctx_mod.guard_validator_side_effect("show_screen")
         end
 
-        local inst = build_screen_instance(package_id, spec, "location_content", "main")
+        local instance_key = spec and spec.instance_key or "main"
+        if type(instance_key) ~= "string" or #instance_key == 0 then
+            error("InvalidInstanceKey: route key must be a non-empty string", 2)
+        end
+        local inst = build_screen_instance(package_id, spec, "location_content", instance_key)
         active_document_state.route = inst
         return publish_current_document()
     end

@@ -31,6 +31,8 @@ local doc_mt = {
     __index = function(t, k)
         if k == "screen_id" then
             return t.route and t.route.screen_id
+        elseif k == "instance_key" then
+            return t.route and t.route.instance_key
         elseif k == "fields" then
             return t.route and t.route.fields
         end

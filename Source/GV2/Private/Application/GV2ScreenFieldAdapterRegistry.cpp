@@ -18,6 +18,10 @@ constexpr std::string_view ProgressBarSchema = "core:schema.ui_field.progress_ba
 constexpr std::string_view PortraitSchema = "core:schema.ui_field.portrait.v1";
 constexpr std::string_view ModalSchema = "core:schema.ui_field.modal.v1";
 constexpr std::string_view TabContainerSchema = "core:schema.ui_field.tab_container.v1";
+constexpr std::string_view LocationTopBarSchema = "textsystem:schema.ui_field.location_top_bar.v1";
+constexpr std::string_view LocationPlayerStatusSchema = "textsystem:schema.ui_field.location_player_status.v1";
+constexpr std::string_view LocationSceneSchema = "textsystem:schema.ui_field.location_scene.v1";
+constexpr std::string_view LocationCommandsSchema = "textsystem:schema.ui_field.location_commands.v1";
 constexpr TCHAR CheckboxInputSchema[] = TEXT("core:schema.ui_input.checkbox_changed.v1");
 constexpr TCHAR InputFieldInputSchema[] = TEXT("core:schema.ui_input.text_changed.v1");
 constexpr TCHAR DropdownSelectInputSchema[] = TEXT("core:schema.ui_input.dropdown_selected.v1");
@@ -1028,6 +1032,84 @@ bool BuildTabContainerField(
     OutField = FGV2ScreenFieldValue::MakeTabContainer(FName(*FieldId(Field)), Model);
     return true;
 }
+
+bool ReadOptionalResource(const FObject& Value, const std::string_view Name, FString& OutValue)
+{
+    if (const GV2RuntimeCore::FValue* Candidate = FindValue(Value, Name))
+    {
+        const std::string* ResourceId = std::get_if<std::string>(&Candidate->Data);
+        if (ResourceId == nullptr || !GV2RuntimeCore::FStableId::IsOfKind(*ResourceId, "resource")) return false;
+        OutValue = UTF8_TO_TCHAR(ResourceId->c_str());
+    }
+    return true;
+}
+
+bool PrepareLocationTopBar(const std::string&, const GV2RuntimeCore::FScreenField&, const FObject& Value, TArray<FGV2UiBindingDefinition>&)
+{
+    for (const char* Name : {"day", "location", "primary_resource"})
+    {
+        GV2RuntimeCore::FTextSpec Spec;
+        const GV2RuntimeCore::FValue* Text = FindValue(Value, Name);
+        if (Text == nullptr || !ReadTextSpec(*Text, Spec)) return false;
+    }
+    return true;
+}
+
+bool BuildLocationTopBar(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
+{
+    FGV2LocationTopBarViewModel Model;
+    return ResolveText(*FindValue(Value, "day"), Model.Day)
+        && ResolveText(*FindValue(Value, "location"), Model.Location)
+        && ResolveText(*FindValue(Value, "primary_resource"), Model.PrimaryResource)
+        && (OutField = FGV2ScreenFieldValue::MakeLocationTopBar(FName(*FieldId(Field)), Model), true);
+}
+
+bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScreenField&, const FObject& Value, TArray<FGV2UiBindingDefinition>&)
+{
+    const GV2RuntimeCore::FValue* Name = FindValue(Value, "name");
+    GV2RuntimeCore::FTextSpec Spec;
+    FString PortraitResourceId;
+    return Name != nullptr && ReadTextSpec(*Name, Spec) && ReadOptionalResource(Value, "portrait_resource_id", PortraitResourceId);
+}
+
+bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
+{
+    FGV2LocationPlayerStatusViewModel Model;
+    if (!ReadOptionalResource(Value, "portrait_resource_id", Model.PortraitResourceId)
+        || !ResolveText(*FindValue(Value, "name"), Model.Name)) return false;
+    OutField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(FName(*FieldId(Field)), Model);
+    return true;
+}
+
+bool PrepareLocationScene(const std::string&, const GV2RuntimeCore::FScreenField&, const FObject& Value, TArray<FGV2UiBindingDefinition>&)
+{
+    FString Ignored;
+    if (!ReadOptionalResource(Value, "background_tile_resource_id", Ignored)
+        || !ReadOptionalResource(Value, "background_resource_id", Ignored)) return false;
+    if (const GV2RuntimeCore::FValue* Context = FindValue(Value, "context_text")) { GV2RuntimeCore::FTextSpec Spec; return ReadTextSpec(*Context, Spec); }
+    return true;
+}
+
+bool BuildLocationScene(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
+{
+    FGV2LocationSceneViewModel Model;
+    if (!ReadOptionalResource(Value, "background_tile_resource_id", Model.BackgroundTileResourceId)
+        || !ReadOptionalResource(Value, "background_resource_id", Model.BackgroundResourceId)) return false;
+    if (const GV2RuntimeCore::FValue* Context = FindValue(Value, "context_text") ; Context != nullptr && !ResolveText(*Context, Model.ContextText)) return false;
+    OutField = FGV2ScreenFieldValue::MakeLocationScene(FName(*FieldId(Field)), Model);
+    return true;
+}
+
+bool PrepareLocationCommands(const std::string& ScreenId, const GV2RuntimeCore::FScreenField& Field, const FObject& Value, TArray<FGV2UiBindingDefinition>& Definitions)
+{ return PrepareButtonList(ScreenId, Field, Value, Definitions); }
+
+bool BuildLocationCommands(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>& Handles, int32& HandleIndex, FGV2ScreenFieldValue& OutField)
+{
+    FGV2ScreenFieldValue ButtonList;
+    if (!BuildButtonList(Field, Value, Handles, HandleIndex, ButtonList)) return false;
+    OutField = FGV2ScreenFieldValue::MakeLocationCommands(FName(*FieldId(Field)), ButtonList.ButtonListValue);
+    return true;
+}
 }
 
 const FGV2ScreenFieldAdapterRegistry& FGV2ScreenFieldAdapterRegistry::Get()
@@ -1048,6 +1130,10 @@ FGV2ScreenFieldAdapterRegistry::FGV2ScreenFieldAdapterRegistry()
         {PortraitSchema, &PreparePortrait, &BuildPortraitField},
         {ModalSchema, &PrepareModal, &BuildModalField},
         {TabContainerSchema, &PrepareTabContainer, &BuildTabContainerField},
+        {LocationTopBarSchema, &PrepareLocationTopBar, &BuildLocationTopBar},
+        {LocationPlayerStatusSchema, &PrepareLocationPlayerStatus, &BuildLocationPlayerStatus},
+        {LocationSceneSchema, &PrepareLocationScene, &BuildLocationScene},
+        {LocationCommandsSchema, &PrepareLocationCommands, &BuildLocationCommands},
     })
 {
     TSet<FString> SchemaIds;

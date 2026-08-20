@@ -34,6 +34,14 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Dynamic Screen Element владеет преобразованием одного declared field schema в local Widget state.
 - Screen Registry является единственным UE presentation mapping `screen_id → trusted Widget Blueprint class`.
 
+### LocationScreen: template и values definition
+
+`textsystem:screen.location` — единственный `screen_id` шаблона LocationScreen в Screen Registry. Он разрешается в `WBP_LocationScreen` слоя `location_content` и не содержит gameplay content.
+
+`<game>:screen.location.<path>` — Definition, выбранное из `location.screen_ids`; оно поставляет набор значений для того же шаблона. Такой ID **запрещено** передавать как `screen_id`, добавлять в Screen Registry или разрешать как Widget Blueprint class. Один ID не может одновременно быть template и values definition.
+
+Маршрут LocationScreen обязан публиковать `screen_id: "textsystem:screen.location"` и `instance_key: "location"`. Переход между локациями меняет только fields; неизменная пара сохраняет physical widget и UE-local state.
+
 ## Invariants
 
 - Concrete Screen Blueprint обязан наследовать `WBP_ScreenBase`; сам `WBP_ScreenBase` обязан оставаться abstract.
@@ -183,6 +191,10 @@ UE apply использует prepared typed `FGV2ScreenFieldValue`; portable bo
 | `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | resolved `FGV2PortraitViewModel` с `fixed_aspect` portrait и опциональной рамкой |
 | `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | resolved `FGV2ModalViewModel` с `title`, `content`, кнопками и backdrop close binding |
 | `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | resolved `FGV2TabContainerViewModel` с `default_tab_key`, упорядоченным списком вкладок `{key, title: TextSpec, screen_id, fields}` |
+| `textsystem:schema.ui_field.location_top_bar.v1` | LocationScreen TopBar | required `day`, `location`, `primary_resource` as `TextSpec` |
+| `textsystem:schema.ui_field.location_player_status.v1` | LocationScreen PlayerStatusPanel | required `name: TextSpec`, optional portrait resource |
+| `textsystem:schema.ui_field.location_scene.v1` | LocationScreen SceneView | optional tile/fixed-aspect background resources and context `TextSpec` |
+| `textsystem:schema.ui_field.location_commands.v1` | LocationScreen CommandPanel | keyed `items` with `TextSpec` and opaque semantic bindings |
 
 Каждый registry adapter выполняет две deterministic фазы. `PrepareBindings` валидирует schema-specific value и добавляет binding definitions в порядке обхода поля. После единой подготовки candidate binding set `BuildField` потребляет ровно соответствующие opaque handles и создаёт typed field value. Registry не публикует bindings и не меняет active Screen; атомарная публикация остаётся ответственностью Session Coordinator.
 
@@ -245,6 +257,7 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 - Опубликованный `screen_id` или field schema Stable ID не переиспользуется для другого смысла.
 - Layout/style/animation могут меняться без schema version, если observable field/input contract сохраняется.
 - Новый field schema добавляет один adapter и registry entry, DTO/contract fixtures и tests; Session Coordinator изменять запрещено.
+- LocationScreen fields принадлежат `textsystem`; raw string, raw asset path, physical layout value and invalid resource ID are rejected before apply. Каждый adapter выполняет `PrepareBindings` и `BuildField`; semantic bindings создаёт только commands field.
 
 ## Verification
 
