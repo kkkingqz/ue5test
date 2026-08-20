@@ -1,7 +1,7 @@
 ---
 title: Add Command
 status: informative
-version: 1.3
+version: 1.4
 updated: 2026-08-20
 depends_on:
   - README.md
@@ -18,28 +18,30 @@ depends_on:
 
 **1. Выбрать `command_id`.** Kind `command`, например `core:command.shop.buy` (для ядра) или `my_mod:command.craft` (для мода). Имя описывает действие, а не запись в поле: `set_gold` недопустимо как публичная команда.
 
-**2. Написать валидатор, если действие может быть недопустимо.** Валидатор только читает состояние и репозиторий, ничего не меняет и возвращает либо разрешение, либо типизированный отказ с кодом kind `error`. Регистрируется на фазе `register` через `game.commands.validators.register`.
-
-**3. Зарегистрировать обработчик.** Обработчик регистрируется на фазе `register` через реестр `game.commands.handlers.register`. Он остаётся тонким: делегирует логику сервису или доменному методу, инициирует факты событий и возвращает результат.
+**2. Объявить обработчик в authoring-скрипте.** `_ENV` уже содержит `commands`, сущности, services, `fail` и `emit`. Package namespace добавляется автоматически.
 
 ```lua
-function M.register(_ctx)
-    game.commands.handlers.register("core:command.shop.buy", function(request)
-        local trade_service = game.services.get("core:service.trade")
-        if not trade_service then
-            return {
-                ok = false,
-                error = { code = "core:error.service.not_found", params = { service_id = "core:service.trade" } },
-            }
-        end
-        return trade_service.buy(request.args)
-    end)
+commands["shop.buy"] = function(item)
+    player:require_gold(item.price)
+    services.trade.buy(player, item)
 end
 ```
 
-Никаких правок `ingress.lua` или C++ не требуется: диспетчер находит обработчик по ключу автоматически.
+Отсутствие `return` означает успех. Для отказа вызывается `fail(...)`; ручной `{ ok = ... }` envelope запрещён как авторская идиома.
 
-**4. Разместить логику.** Операция над одной сущностью — метод обёртки (`actor.add_gold`). Сценарий над несколькими — Gameplay Service (`game.services.register`).
+**3. Добавить независимую политику через `validate`, если она нужна.** Валидатор только читает state и вызывает `fail` при отказе:
+
+```lua
+validate(commands["shop.buy"], "shop_open", function(_item)
+    if not world.shop_open then
+        fail("shop.closed")
+    end
+end)
+```
+
+Проверка, являющаяся частью самой операции, остаётся доменным методом вроде `player:require_gold(...)`, а не отдельным validator.
+
+**4. Разместить логику.** Операция одного владельца — метод сущности. Координация нескольких сущностей — Gameplay Service.
 
 **5. Добавить спеку.** Как минимум: успешный путь, отказ валидатора (состояние не изменилось), отказ на неизвестную команду, отсутствие изменения хэша состояния при отказе. См. [AddLuaSpec](AddLuaSpec.md).
 
@@ -57,7 +59,7 @@ end
 
 **Команда как запись в поле.** `set_health` раскрывает устройство состояния; правильный уровень — действие, которое к этому изменению приводит.
 
-**Правила в обработчике.** Сто пятьдесят строк торговли в обработчике — признак того, что нужен сервис.
+**Весь процесс в обработчике.** Длинный сценарий торговли означает, что нужен service или доменный метод.
 
 **Мутация вне окна.** Изменить состояние можно только пока выполняется обработчик команды. Попытка из подписчика события, из инициализации модуля или из presentation отклоняется и ловится спекой.
 

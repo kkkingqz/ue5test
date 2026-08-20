@@ -1,8 +1,8 @@
 ---
 title: Guides Index
 status: informative
-version: 1.0
-updated: 2026-08-15
+version: 1.1
+updated: 2026-08-20
 depends_on:
   - ../README.md
 ---
@@ -24,15 +24,6 @@ depends_on:
 | [AddActorWrapper](AddActorWrapper.md) | Доменные методы для категории сущностей |
 | [AddUIScreen](AddUIScreen.md) | Новый экран и его поля |
 | [AddLuaSpec](AddLuaSpec.md) | Проверка правила, исполняемая обоими хостами |
-
-## Чего пока нет
-
-Руководства пишутся под существующие workflow, а не про запас. Не написаны, потому что соответствующей реализации нет:
-
-- **CreateModPackage** — мод-discovery, порядок загрузки и `mods.lock` не реализованы; хост грузит ровно один пакет.
-- **AddSaveableState** — запись сейва работает, загрузка ещё нет; писать инструкцию по половине цикла преждевременно.
-
-Актуальный объём реализованного — [Implementation Status](../Status/ImplementationStatus.md).
 
 ## Структура руководства
 

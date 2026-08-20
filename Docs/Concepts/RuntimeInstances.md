@@ -1,8 +1,8 @@
 ---
 title: Runtime Instances
 status: informative
-version: 1.2
-updated: 2026-08-18
+version: 1.3
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -66,7 +66,7 @@ game.instances.world()             -- singleton мира (глобальные �
 
 Новая категория сущностей добавляется под `game.instances`, а не новым полем верхнего уровня: список полей фасада закрыт.
 
-**Обёртка расширяется по `discriminator`, а не патчем чужого кода.** Ядро владеет только identity и `discriminator` (чем актор является — игрок, NPC определённого вида); поведение конкретного вида регистрирует пакет через `game.instances.actors.register_type(discriminator, decorator)` ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)). `textsystem` добавляет так `move_to`/`current_location`, `rh` — `add_gold`/`spend_stamina` и подобное. Это тот же принцип, что и override для definitions: явная регистрация вместо мутации чужой таблицы.
+**Методы собираются из деклараций пакетов.** Authoring-скрипт объявляет `function Actor:add_gold(...)` или метод другого управляемого прототипа. Runtime проверяет конфликты, строит immutable effective method table и подключает её к каждой свежей обёртке. Ручная сборка wrapper и патч чужой таблицы не нужны ([ADR-0031](../ADR/0031-entity-authoring-extensions.md)).
 
 ## Игрок — обычный актор
 
@@ -91,4 +91,4 @@ game.instances.world()             -- singleton мира (глобальные �
 ## Дальше
 
 - Как экземпляры меняются — [GameplayModel](GameplayModel.md).
-- Добавить свою категорию обёрток — [Guides/AddActorWrapper](../Guides/AddActorWrapper.md).
+- Добавить доменные методы сущности — [Guides/AddActorWrapper](../Guides/AddActorWrapper.md).

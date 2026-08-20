@@ -1,8 +1,8 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 2.14
-updated: 2026-08-18
+version: 2.15
+updated: 2026-08-20
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -256,20 +256,16 @@ Uncaught error после начала mutation не запускает унив
 - Persistent state хранит `instance_id`, `definition_id` и explicit instance state.
 - Runtime wrappers/methods/metatables перестраиваются dynamically и не сохраняются в canonical state.
 - **Actor Registry (`game.instances.actors`)**:
-  - `game.instances.actors.register_type(discriminator, decorator)` регистрирует фабрику-декоратор обёртки для указанного `discriminator` на фазе `register` ([ADR-0026](../ADR/0026-core-and-gameplay-ownership.md)). Регистрация замораживается после фазы `register` (`ActorTypeRegistryFrozen`); повторная регистрация отклоняется (`ActorTypeDuplicateRegistration`); `decorator` обязан быть функцией, возвращающей таблицу (`InvalidActorDecorator`, `ActorDecoratorInvalid`).
-  - `game.instances.actors.types()` возвращает отсортированный детерминированный список зарегистрированных дискриминаторов.
   - `game.instances.actors.get(instance_id)` возвращает disposable `ActorWrapper` либо `nil`.
   - `game.instances.actors.exists(instance_id)` возвращает boolean.
   - `game.instances.actors.create(definition_id, overrides)` аллоцирует `instance_id` через `instance_allocator` и создаёт экземпляр в `state.actors`.
   - `game.instances.actors.remove(instance_id)` удаляет актора, предварительно проверяя отсутствие зависимых ссылок (например, `owner_id` в `state.item_instances`).
   - `game.instances.actors.ids(filter_fn)` возвращает детерминированный отсортированный список идентификаторов с возможностью фильтрации по дискриминатору/предикату.
   - `game.instances.actors.player()` возвращает wrapper для текущего игрока (`state.meta.player_actor_id`).
-- **Disposable Actor Wrapper & Decorator Extension**:
-  - Ядро формирует базовую обёртку вокруг сырой таблицы `actor_state`, предоставляющую доступ к полям состояния, `instance_id`, `definition_id`, `discriminator` и вспомогательному методу `get_state()`.
-  - Идентификационные поля (`instance_id`, `definition_id`, `discriminator`) защищены от перезаписи и переопределения (`ActorDiscriminatorImmutable`).
-  - Пакет регистрирует декоратор `decorator(base) -> wrapper`, надстраивающий доменные методы сущности (например `is_player()`, `get_gold()`, `add_gold(amount)`) через `{ __index = base }`.
-  - Незарегистрированный `discriminator` отклоняется типизированной ошибкой (`ActorTypeNotRegistered`), за исключением переходного списка известных нерегистраций ядра.
-  - Сам wrapper никогда не попадает в `game.state` и не кэшируется между вызовами.
+- **Disposable Actor Wrapper**:
+  - Wrapper даёт доступ к state, identity и immutable effective method table из `game.entity_extensions`.
+  - `instance_id`, `definition_id` и `discriminator` защищены от перезаписи (`ActorDiscriminatorImmutable`).
+  - Wrapper не сохраняется в `game.state` и не кэшируется между вызовами.
 - **World Domain Object (`game.instances.world`)** (план [GameplayEventsAndWorld](../Plans/Archive/GameplayEventsAndWorld/README.md), GEW-04):
   - Мир — singleton runtime instance, а не registry: `game.instances.world` — функция (`core:module.runtime.world`), а не таблица с методами `get`/`create`/`remove`.
   - `game.instances.world()` возвращает свежий disposable wrapper над `state.world` при каждом вызове; wrapper не кэшируется, повторный вызов не гарантирует ту же таблицу.
@@ -305,7 +301,7 @@ Uncaught error после начала mutation не запускает унив
 - Повторное объявление метода внутри одного модуля отклоняется ошибкой `EntityExtensionDuplicateDeclaration`; повторное объявление из разных модулей или пакетов отклоняется ошибкой `entity_extension.method_conflict`.
 - Публичный фасад `game.entity_extensions` инкапсулирует внутренние записи и не допускает прямой мутации; интроспекция доступна через `describe`, `kinds` и `get_effective_methods`.
 - На фазе `register` вызовом `freeze()` компилируется неизменяемая `effective method table` (`get_effective_methods(entity_kind)`), которая служит **единственным путём разрешения методов**. Поздняя регистрация после `freeze()` отклоняется с `EntityExtensionRegistryFrozen`, прямая модификация скомпонованной таблицы — с `EffectiveMethodTableFrozen`.
-- Доступ к методам осуществляется прозрачно через обёртки экземпляров (`ActorWrapper`) и обёртки определений (`wrap_definition`), без необходимости ручного создания функций-декораторов `register_type`.
+- Доступ к методам осуществляется через обёртки экземпляров (`ActorWrapper`) и definitions (`wrap_definition`); ручные wrapper-декораторы не участвуют.
 - **Контракт получателя (`self`):** методы сущностей обязаны работать строго с получателем `self` и не должны использовать неявный fallback на глобальное состояние (например, `game.instances.actors.player()`). Вызов метода без получателя (`self == nil` или некорректный тип) отклоняется ошибкой `MissingReceiver`.
 - При вызове `fail(key, params)` из метода сущности код ошибки автоматически атрибутируется пространством имён пакета, в котором метод был **объявлен** (`<declaring_package_id>:error.<key>`).
 

@@ -1,7 +1,7 @@
 ---
 title: Add Actor Wrapper
 status: informative
-version: 1.3
+version: 1.4
 updated: 2026-08-20
 depends_on:
   - README.md
@@ -16,40 +16,40 @@ depends_on:
 
 ## Шаги
 
-**1. Определить дискриминатор.** Дискриминатор (например, `"player"` или `"npc"`) задаётся в definition актора (`definitions/actors.json5`) и читается ядром для выбора подходящего декоратора обёртки.
-
-**2. Зарегистрировать декоратор в пакете.** На фазе `register` пакет регистрирует фабрику-декоратор для своего дискриминатора через `game.instances.actors.register_type`:
+**1. Объявить поля состояния.** Структурные ограничения принадлежат `field.*`, а не повторяются в каждом методе.
 
 ```lua
-local function actor_decorator(base)
-    return setmetatable({
-        get_gold = function() return base.gold or 0 end,
-        add_gold = function(amount)
-            assert(type(amount) == "number" and amount >= 0)
-            base.gold = (base.gold or 0) + amount
-            return { ok = true, value = { gold = base.gold } }
-        end,
-    }, {
-        __index = base,
-        __newindex = base,
-    })
+Actor.gold = field.non_negative_integer()
+```
+
+**2. Объявить методы на управляемом прототипе.** Authoring-скрипт находится в `<package>/scripts/authoring/`; `_ENV` уже содержит `Actor`, `field` и `fail`.
+
+```lua
+function Actor:require_gold(amount)
+    if self.gold < amount then
+        fail("economy.insufficient_gold", {
+            available = self.gold,
+            required = amount,
+        })
+    end
 end
 
-function M.register(_ctx)
-    game.instances.actors.register_type("player", actor_decorator)
+function Actor:add_gold(amount)
+    assert(type(amount) == "number" and amount > 0)
+    self.gold = self.gold + amount
 end
 ```
 
-**3. Полагаться на инварианты ядра.** Базовая обёртка (`base`) автоматически защищает `instance_id`, `definition_id`, `discriminator` от изменения (`ActorDiscriminatorImmutable`), транслирует чтение и запись свойств в состояние инстанса, и не кэшируется.
+Метод получает текущую disposable wrapper как `self`. Возвращать result envelope не нужно; отсутствие `return` означает успех команды.
 
-**4. Разделить ответственность.** Реестр — identity, поиск, создание, удаление, детерминированное перечисление. Обёртка — локальные операции над одной сущностью. Сервис — сценарии над несколькими сущностями.
+**3. Разделить ответственность.** Метод принадлежит одной сущности. Процесс над несколькими равноправными сущностями оформляется через `services.<name> = { ... }`.
 
-**5. Добавить спеку.** Полезные кейсы: повторный `get` возвращает свежую таблицу; запись через обёртку видна в состоянии; сохранение обёртки в состояние отвергается валидатором; методы декоратора работают.
+**4. Добавить спеку.** Проверить успешный вызов, типизированный отказ до мутации, field invariant и конфликт повторного объявления метода.
 
 ## Типичные ошибки
 
-**Мутирующие методы в реестре.** `registry.add_gold(id, 20)` превращает реестр в менеджер сущностей. Правильно — `registry.get(id):add_gold(20)`.
+**Мутирующие методы в реестре.** `registry.add_gold(id, 20)` превращает реестр в manager. Правильно — `registry.get(id):add_gold(20)`.
 
-**Регистрация после фазы register.** Реестр декораторов замораживается (`ActorTypeRegistryFrozen`).
+**Изменение без команды.** Field и метод не открывают mutation window; запись допустима только из Command path.
 
-**Попытка переопределить identity-поля.** Попытка изменить или подделать `instance_id`, `definition_id`, `discriminator` в декораторе отклоняется ядром.
+**Молчаливое переопределение метода.** Дубликаты отклоняются; порядок пакетов не является override-механизмом.

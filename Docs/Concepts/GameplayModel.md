@@ -1,8 +1,8 @@
 ---
 title: Gameplay Model
 status: informative
-version: 1.2
-updated: 2026-08-18
+version: 1.3
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -83,7 +83,7 @@ UE приводит экран к описанному состоянию
 
 ## Как это выглядит для автора правил игры
 
-Всё выше — механика ядра. Автор игрового пакета (например, `rh`) пишет правила через упрощённый authoring-слой (`scripts/authoring/*.lua`, [ADR-0027](../ADR/0027-designer-lua-authoring-layer.md), [ADR-0028](../ADR/0028-simplified-authoring-surface.md)): свой лексический `_ENV` без префиксов `M.`, неявный успех команды (не нужно оборачивать результат в `{ ok = true }`) и глобальные `commands`/`actions` таблицы вместо ручной регистрации в `game.commands.handlers`.
+Всё выше — механика ядра. Автор игрового пакета (например, `rh`) пишет правила через упрощённый authoring-слой (`scripts/authoring/*.lua`, [ADR-0027](../ADR/0027-designer-lua-authoring-layer.md), [ADR-0028](../ADR/0028-simplified-authoring-surface.md)): свой лексический `_ENV` без префиксов `M.`, неявный успех команды (не нужно оборачивать результат в `{ ok = true }`) и глобальные `commands`/`actions` вместо низкоуровневых registry calls.
 
 ```lua
 -- GameData/rh/scripts/authoring/gameplay.lua (сокращённо)

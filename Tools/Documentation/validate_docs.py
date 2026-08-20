@@ -556,6 +556,18 @@ def run_self_test(docs_root: Path) -> int:
             False,
         ),
         (
+            "concept manual authoring descriptor",
+            "Concepts/Fixture.md",
+            "Create M.commands through authoring.gameplay.",
+            False,
+        ),
+        (
+            "guide manual field helper",
+            "Guides/Fixture.md",
+            "Validate RESOURCES with validate_amount.",
+            False,
+        ),
+        (
             "authoring raw asset path",
             "Authoring/Fixture.md",
             "Set icon = '/Game/UI/T_Icon'.",
@@ -579,6 +591,19 @@ def run_self_test(docs_root: Path) -> int:
             "Editor source is /Game/UI/T_Icon. "
             "<!-- legacy-allow: raw_ue_asset_path Editor-only picker value -->",
             True,
+        ),
+        (
+            "reasoned programmer exception",
+            "Guides/Fixture.md",
+            "Call game.commands.handlers.register. "
+            "<!-- legacy-allow: low_level_command_registration programmer-only runtime registry -->",
+            True,
+        ),
+        (
+            "unreasoned exception",
+            "Authoring/Fixture.md",
+            "Use /Game/UI/T_Icon. <!-- legacy-allow: raw_ue_asset_path -->",
+            False,
         ),
     ]
     for name, relative, text, should_pass in legacy_cases:

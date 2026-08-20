@@ -15,6 +15,19 @@ add_subdirectory(Headless)
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(
+        NAME documentation_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Documentation/validate_docs.py"
+    )
+    add_test(
+        NAME documentation_contract_self_test
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Documentation/validate_docs.py"
+            "--self-test"
+    )
+    add_test(
         NAME pcc_shared_fixture_contract
         COMMAND
             "${Python3_EXECUTABLE}"

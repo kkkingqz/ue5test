@@ -1,7 +1,7 @@
 ---
 title: Modding Architecture
 status: draft
-version: 0.10
+version: 0.11
 updated: 2026-08-20
 depends_on:
   - StableIDSpecification.md
@@ -108,7 +108,7 @@ optional cooked Pak
 - Хуки жизненного цикла (`register`, `validate_state` и др.) вызываются только у активного победителя.
 ## Package commands
 
-- Мод регистрирует свои команды в хуке жизненного цикла `M.register(ctx)` своего модуля через `game.commands.handlers.register("pkg:command.name", handler_fn, options)` либо через авторский фасад `M.commands.name = fn`.
+- Authoring-скрипт мода объявляет обработчик через `commands.<name> = fn`; package namespace добавляется автоматически. Низкоуровневые programmer modules используют runtime registry только по [Lua Runtime Contract](LuaRuntimeContract.md).
 - Идентификаторы команд принадлежат собственному namespace мода (`<mod_id>:command.<path>`).
 - **Запечатано по умолчанию**: команды запечатаны по умолчанию. Повторная регистрация обработчика для команды, не объявленной исходным пакетом как заменяемая (`replaceable: true`), отклоняется ошибкой `CommandNotReplaceable` с указанием обоих пакетов ([ADR-0025](../ADR/0025-lua-module-replacement-and-export-freezing.md), [ADR-0033](../ADR/0033-command-validator-authoring.md)). Правило «поздний пакет побеждает» для команд не применяется: механику нельзя тихо подменить порядком загрузки пакетов.
 - **Явное замещение**: команда объявляется заменяемой явно (`replaceable: true` в дескрипторе или объявлении). Замещающий пакет обязан строго сохранять argument contract и семантику опубликованного `command_id`.
