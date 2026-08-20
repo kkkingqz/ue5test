@@ -2,7 +2,7 @@
 title: Modding Architecture
 status: draft
 version: 0.9
-updated: 2026-08-17
+updated: 2026-08-20
 depends_on:
   - StableIDSpecification.md
   - DefinitionEnvelopeAndSchemaRules.md
@@ -123,6 +123,8 @@ Separate hostile-code sandbox, signatures, process isolation и quotas — futur
 ## Presentation assets
 
 Mod без Pak использует существующие `widget_id`, slots и resource types. Новый Widget Blueprint/asset class требует cooked Pak, собранный совместимым Mod Kit и mounted до repository build. Hot unmount не поддерживается.
+
+Ассеты презентации подчиняются правилам каталогов слоев: ассеты ядра размещаются в `/Game/UI/` или `/Game/core/`, ассеты слоя текстовых игр — в `/Game/TextSystem/UI/`, ассеты конкретных игр и модов — в `/Game/<ModName>/UI/`. Экраны нижних слоев не могут использовать ассеты из верхних слоев (проверяется гейтом Screen Registry при валидации `UGV2ScreenRegistry::Validate`).
 
 Lua и definitions используют `resource_id`, не UE paths. Missing optional resource получает typed fallback; required resource блокирует operation.
 

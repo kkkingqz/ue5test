@@ -42,6 +42,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Typography")
     float GetEffectiveFontSize(FName TextSizeToken, float ViewportHeight) const;
 
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Theme")
+    static UGV2UiTheme* GetCoreMinimalTheme(UObject* WorldContextObject = nullptr);
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Typography|Pipeline")
     FName DefaultTextStyleToken = TEXT("default");
 

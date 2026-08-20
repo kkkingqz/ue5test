@@ -44,6 +44,43 @@ float UGV2UiTheme::GetEffectiveFontSize(FName TextSizeToken, float ViewportHeigh
     return FMath::Max(MinReadableFontSize, ScaledSize);
 }
 
+UGV2UiTheme* UGV2UiTheme::GetCoreMinimalTheme(UObject* WorldContextObject)
+{
+    static TWeakObjectPtr<UGV2UiTheme> CachedMinimalTheme;
+    if (CachedMinimalTheme.IsValid())
+    {
+        return CachedMinimalTheme.Get();
+    }
+
+    UGV2UiTheme* Theme = NewObject<UGV2UiTheme>(GetTransientPackage(), TEXT("CoreMinimalTheme"));
+    Theme->AddToRoot();
+
+    Theme->DefaultTextStyleToken = TEXT("default");
+    Theme->TextSizeTokens.Add(TEXT("default"), 14.0f);
+    Theme->TextSizeTokens.Add(TEXT("title"), 20.0f);
+    Theme->TextSizeTokens.Add(TEXT("body"), 14.0f);
+    Theme->TextSizeTokens.Add(TEXT("small"), 12.0f);
+
+    Theme->TextColorTokens.Add(TEXT("default"), FLinearColor::White);
+    Theme->TextColorTokens.Add(TEXT("title"), FLinearColor::White);
+    Theme->TextColorTokens.Add(TEXT("error"), FLinearColor(1.0f, 0.2f, 0.2f, 1.0f));
+    Theme->TextColorTokens.Add(TEXT("subdued"), FLinearColor(0.7f, 0.7f, 0.7f, 1.0f));
+
+    Theme->MinReadableFontSize = 10.0f;
+    Theme->ReferenceViewportHeight = 1080.0f;
+
+    Theme->TextCatalog.Add(TEXT("core:text.screen.error.title"), FText::FromString(TEXT("Error")));
+    Theme->TextCatalog.Add(TEXT("core:text.screen.error.description"), FText::FromString(TEXT("An unexpected error has occurred.")));
+    Theme->TextCatalog.Add(TEXT("core:text.screen.loading.title"), FText::FromString(TEXT("Loading...")));
+    Theme->TextCatalog.Add(TEXT("core:text.screen.recovery.title"), FText::FromString(TEXT("Recovery")));
+    Theme->TextCatalog.Add(TEXT("core:text.screen.recovery.description"), FText::FromString(TEXT("Attempting session recovery.")));
+    Theme->TextCatalog.Add(TEXT("core:text.button.close"), FText::FromString(TEXT("Close")));
+    Theme->TextCatalog.Add(TEXT("core:text.button.retry"), FText::FromString(TEXT("Retry")));
+
+    CachedMinimalTheme = Theme;
+    return Theme;
+}
+
 FName UGV2UiThemeSettings::GetCategoryName() const
 {
     return TEXT("Game");
@@ -52,5 +89,10 @@ FName UGV2UiThemeSettings::GetCategoryName() const
 UGV2UiTheme* UGV2UiThemeSettings::GetConfiguredTheme()
 {
     const UGV2UiThemeSettings* Settings = GetDefault<UGV2UiThemeSettings>();
-    return Settings != nullptr ? Settings->ThemeAsset.LoadSynchronous() : nullptr;
+    UGV2UiTheme* Theme = Settings != nullptr ? Settings->ThemeAsset.LoadSynchronous() : nullptr;
+    if (Theme != nullptr)
+    {
+        return Theme;
+    }
+    return UGV2UiTheme::GetCoreMinimalTheme();
 }

@@ -34,6 +34,7 @@ public:
     static bool IsValidLayer(FName Layer);
     static bool IsLayerAllowedForTopLevel(FName Layer);
     static bool IsLayerAllowedForEmbedded(FName Layer);
+    static bool IsAssetAllowedForScreenNamespace(const FString& ScreenNamespace, const FString& AssetPath);
 
     bool Validate(FString& OutError) const;
 

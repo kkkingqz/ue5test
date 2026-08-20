@@ -1118,6 +1118,25 @@ def main():
         assert res_gamedata_val.returncode == 0
         assert "ok content_hash=" in res_gamedata_val.stdout
 
+        # 42. generate_pseudolocale.py test
+        pseudo_pkg = os.path.join(tmpdir, "pseudo_pkg")
+        loc_dir = os.path.join(pseudo_pkg, "localization")
+        os.makedirs(loc_dir, exist_ok=True)
+        po_path = os.path.join(loc_dir, "en.po")
+        with open(po_path, "w", encoding="utf-8") as f:
+            f.write('msgid ""\nmsgstr ""\n"Language: en\\n"\n\nmsgctxt "test:text.hello"\nmsgid "Hello {name}!"\nmsgstr "Hello {name}!"\n')
+        
+        pseudo_tool = os.path.join(os.path.dirname(__file__), "generate_pseudolocale.py")
+        res_pseudo = run_cmd([sys.executable, pseudo_tool, pseudo_pkg, "--source-locale=en", "--target-locale=qps-ploc", "--expansion-ratio=0.3"])
+        assert res_pseudo.returncode == 0
+        
+        target_po = os.path.join(loc_dir, "qps-ploc.po")
+        assert os.path.isfile(target_po)
+        with open(target_po, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "{name}" in content
+        assert "msgctxt \"test:text.hello\"" in content
+
     print("[*] All authoring tools tests passed successfully!")
 
 if __name__ == "__main__":

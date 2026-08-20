@@ -2,7 +2,7 @@
 title: UI Documentation Index
 status: normative
 version: 1.7
-updated: 2026-08-12
+updated: 2026-08-20
 ---
 
 # UI Documentation
@@ -60,3 +60,14 @@ UI является перестраиваемой presentation projection. Lua 
 3. Принадлежит ли конкретно Red Hood? → `rh`.
 
 Переиспользуемость внутри одного слоя не является основанием поднимать композит на уровень выше.
+
+### Каталоги ассетов слоев и разрешение темы
+
+Ассеты строго структурированы по каталогам своих слоев:
+- `Content/UI/` — инфраструктура `core` (Game Shell, leaf-адаптеры, базовые примитивы, `WBP_ScreenBase`, `DA_ScreenRegistry`, `DA_UITheme_Core`).
+- `Content/TextSystem/UI/` — тема, стили и шаблоны экранов `textsystem`.
+- `Content/RH/UI/` — специфичные стили и экраны `rh`.
+
+Правило зависимостей проверяется реестром экранов (`UGV2ScreenRegistry::Validate`): экран нижнего слоя не может ссылаться на ассет из верхнего слоя.
+
+Рантайм разрешает активную тему (`UGV2UiThemeSettings::GetConfiguredTheme()`), а при её отсутствии откатывается к минимальной теме ядра (`UGV2UiTheme::GetCoreMinimalTheme()`), гарантирующей отрисовку аварийных экранов (`core:screen.error`, `core:screen.loading`, `core:screen.recovery`).

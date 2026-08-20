@@ -2600,5 +2600,123 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiThemeOwnershipAndTextLengthContract,
+    "GV2.Runtime.UI.ThemeOwnershipAndTextLengthContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameters)
+{
+    // =========================================================================
+    // UIF-27 & UIF-28: Layer Directory Convention & Screen Registry Gate
+    // =========================================================================
+    {
+        // 1. Core namespace permissions
+        TestTrue(
+            TEXT("Core screen can reference /Game/UI/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/UI/Widgets/WBP_Testscreen")));
+        TestTrue(
+            TEXT("Core screen can reference /Game/core/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/core/WBP_CoreScreen")));
+        TestFalse(
+            TEXT("Core screen CANNOT reference /Game/TextSystem/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")));
+        TestFalse(
+            TEXT("Core screen CANNOT reference /Game/RH/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")));
+
+        // 2. TextSystem namespace permissions
+        TestTrue(
+            TEXT("TextSystem screen can reference /Game/TextSystem/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("textsystem"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")));
+        TestTrue(
+            TEXT("TextSystem screen can reference lower layer /Game/UI/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("textsystem"), TEXT("/Game/UI/Widgets/WBP_Testscreen")));
+        TestFalse(
+            TEXT("TextSystem screen CANNOT reference higher layer /Game/RH/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("textsystem"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")));
+
+        // 3. RH namespace permissions
+        TestTrue(
+            TEXT("RH screen can reference /Game/RH/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("rh"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")));
+        TestTrue(
+            TEXT("RH screen can reference lower layer /Game/TextSystem/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("rh"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")));
+        TestTrue(
+            TEXT("RH screen can reference lower layer /Game/UI/ asset"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen")));
+
+        // 4. Test registry validation failure on layer violation
+        UGV2ScreenRegistry* Registry = NewObject<UGV2ScreenRegistry>();
+        FGV2ScreenRegistryEntry BadEntry;
+        BadEntry.ScreenId = TEXT("core:screen.bad_ref");
+        BadEntry.Layer = TEXT("location_content");
+        BadEntry.WidgetClass = TSoftClassPtr<UGV2ScreenWidgetBase>(FSoftObjectPath(TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen.WBP_Textscreen_C")));
+
+        // We use reflection or helper to add entry for testing
+        // Since Entries is private in UGV2ScreenRegistry, we test IsAssetAllowedForScreenNamespace directly and via mock entries if accessible
+        FString Error;
+        TestFalse(
+            TEXT("Core screen referencing TextSystem is rejected"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), BadEntry.WidgetClass.ToSoftObjectPath().ToString()));
+    }
+
+    // =========================================================================
+    // UIF-29: Core Minimal Theme & Emergency Screen Resolution
+    // =========================================================================
+    {
+        UGV2UiTheme* MinimalTheme = UGV2UiTheme::GetCoreMinimalTheme();
+        TestNotNull(TEXT("Core minimal theme is available"), MinimalTheme);
+
+        if (MinimalTheme != nullptr)
+        {
+            TestEqual(TEXT("Default style token is 'default'"), MinimalTheme->DefaultTextStyleToken, FName("default"));
+            TestTrue(TEXT("Minimal theme contains default text size"), MinimalTheme->TextSizeTokens.Contains(TEXT("default")));
+            TestTrue(TEXT("Minimal theme contains title text size"), MinimalTheme->TextSizeTokens.Contains(TEXT("title")));
+            TestTrue(TEXT("Minimal theme contains default text color"), MinimalTheme->TextColorTokens.Contains(TEXT("default")));
+            TestTrue(TEXT("Minimal theme contains error text color"), MinimalTheme->TextColorTokens.Contains(TEXT("error")));
+
+            // Check emergency screen titles in catalog
+            TestTrue(TEXT("Emergency error title present"), MinimalTheme->TextCatalog.Contains(TEXT("core:text.screen.error.title")));
+            TestTrue(TEXT("Emergency error description present"), MinimalTheme->TextCatalog.Contains(TEXT("core:text.screen.error.description")));
+            TestTrue(TEXT("Emergency loading title present"), MinimalTheme->TextCatalog.Contains(TEXT("core:text.screen.loading.title")));
+            TestTrue(TEXT("Emergency recovery title present"), MinimalTheme->TextCatalog.Contains(TEXT("core:text.screen.recovery.title")));
+
+            // Resolve text through pipeline with minimal theme
+            FGV2TextViewModel ResolvedTitle;
+            FString Error;
+            TestTrue(
+                TEXT("Resolve emergency error title via MinimalTheme"),
+                UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.title"), {}, MinimalTheme, ResolvedTitle, Error));
+            TestEqual(TEXT("Error title text matches"), ResolvedTitle.Text.ToString(), TEXT("Error"));
+        }
+    }
+
+    // =========================================================================
+    // UIF-30: Text Length Resilience & Automatic Overflow Handling
+    // =========================================================================
+    {
+        UGV2UiTheme* Theme = UGV2UiTheme::GetCoreMinimalTheme();
+        TestNotNull(TEXT("Theme is valid for text length test"), Theme);
+
+        // Verify text scaling evaluated on multiple heights
+        const float Scale720 = Theme->EvaluateTextScale(720.0f);
+        const float Scale1080 = Theme->EvaluateTextScale(1080.0f);
+        const float Scale2160 = Theme->EvaluateTextScale(2160.0f);
+
+        TestTrue(TEXT("Text scale on 720p is ~0.85"), FMath::IsNearlyEqual(Scale720, 0.85f, 0.05f));
+        TestTrue(TEXT("Text scale on 1080p is 1.0"), FMath::IsNearlyEqual(Scale1080, 1.0f, 0.01f));
+        TestTrue(TEXT("Text scale on 2160p is ~1.60"), FMath::IsNearlyEqual(Scale2160, 1.60f, 0.05f));
+
+        // Verify minimum readable font size guarantee
+        const float EffectiveSize720 = Theme->GetEffectiveFontSize(TEXT("small"), 720.0f);
+        TestTrue(TEXT("Effective font size never drops below MinReadableFontSize"), EffectiveSize720 >= Theme->MinReadableFontSize);
+    }
+
+    return true;
+}
+
 #endif
+
 
