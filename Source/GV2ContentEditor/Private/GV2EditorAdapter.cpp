@@ -645,9 +645,12 @@ std::vector<FGV2EditorDiagnostic> FGV2EditorAdapter::ValidateRepository() const
     Options.SourceProvider = &SourceProvider;
     auto BuildResult = GV2ContentCore::BuildRepository(DiscoveredPackages, Options);
 
-    for (const auto& D : BuildResult.GetDiagnostics())
+    if (BuildResult.IsFailure())
     {
-        Out.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+        for (const auto& D : BuildResult.GetDiagnostics())
+        {
+            Out.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+        }
     }
 
     return Out;

@@ -16,7 +16,7 @@ void SGV2ContentEditorTab::Construct(const FArguments& /*InArgs*/)
 {
     Adapter = MakeShared<FGV2EditorAdapter>();
 
-    FString ContentRootPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+    FString ContentRootPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData")));
     std::vector<FGV2EditorDiagnostic> InitDiags;
     Adapter->Initialize(TCHAR_TO_UTF8(*ContentRootPath), InitDiags);
 
