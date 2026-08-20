@@ -1,7 +1,7 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.0
+version: 2.1
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -21,6 +21,7 @@ depends_on:
 | [ContentEditorPrerequisites](ContentEditorPrerequisites.md) | 2026-08-18 | Три блокирующих предусловия редактора: строгая классификация схемных изменений, `SetFieldValue`/`RemoveDefinitionEntry` с сохранением комментариев, `.ui.json5` вне `content_hash` с гейтом на устаревшие ключи |
 | [CoreBoundaryMigration](CoreBoundaryMigration.md) | 2026-08-17 | Приведение ядра к [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md): демо в пакет `sample`, `register_type` для обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до одного поля, гейт `core_boundary_gate_contract` |
 | [DesignerAuthoringLayer](DesignerAuthoringLayer.md) | 2026-08-18 | Слой авторинга: признак записи в окне мутации, изоляция сырого состояния, дескриптор команд с отложенной регистрацией, `Storage`/`WritePolicy`, sparse runtime-состояние, `emit`/`on`/`show_screen`, перевод геймплея `rh` |
+| [DocumentationRework](DocumentationRework.md) | 2026-08-20 | Authority и совместимость сделаны явными, Lua-контракты разделены, создан `Authoring/`, инструкции очищены, а архив планов свёрнут в проверяемые summaries |
 | [EntityAuthoringExtensions](EntityAuthoringExtensions.md) | 2026-08-19 | Декларативное расширение сущностей (`Actor`, `Location`, `Quest`, `Item`) через прототипы в `_ENV`, централизованный реестр расширений и скомпонованные effective method tables |
 | [EntityExtensionsHardening](EntityExtensionsHardening.md) | 2026-08-19 | Заморозка реестра расширений стала необходимой, скомпонованная таблица методов — единственным путём поиска, повторное объявление внутри модуля — ошибкой, приём метода в `textsystem` — строго `self` |
 | [GameplayEventsAndWorld](GameplayEventsAndWorld.md) | 2026-08-15 | Ordered command validators, конверт и шина событий, подписка по `event_id`, отложенные команды, доменный объект мира и travel-слайс целиком |
