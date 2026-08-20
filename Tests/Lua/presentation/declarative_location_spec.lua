@@ -37,14 +37,14 @@ return {
         local b_sword = find_button(req.fields.buttons, "buy_sword")
         assert(b_sword ~= nil)
         assert(b_sword.text.text_id == "rh:text.action.buy_sword")
-        assert(b_sword.binding.command_id == "rh:command.buy")
+        assert(b_sword.binding.command_id == "rh:command.request_buy")
         assert(b_sword.binding.args.item == "rh:item.weapon.iron_sword")
 
         -- Action 2: buy_armor
         local b_armor = find_button(req.fields.buttons, "buy_armor")
         assert(b_armor ~= nil)
         assert(b_armor.text.text_id == "rh:text.action.buy_armor")
-        assert(b_armor.binding.command_id == "rh:command.buy")
+        assert(b_armor.binding.command_id == "rh:command.request_buy")
         assert(b_armor.binding.args.item == "rh:item.armor.leather_armor")
 
         -- Travel button

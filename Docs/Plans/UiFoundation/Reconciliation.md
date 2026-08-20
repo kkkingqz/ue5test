@@ -1,7 +1,7 @@
 ---
 title: Layered Reconciliation Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-08-20
 depends_on:
   - Identity.md
@@ -43,8 +43,8 @@ depends_on:
 
 - [x] **UIF-21 — Атомарность и переход `rh` на слои**
   - Зависимости: UIF-20.
-  - Done: экраны `rh` интегрированы со слоистой презентацией; покупка в магазине `rh` использует модальное окно подтверждения (`show_modal`/`close_modal`, `request_buy`, `confirm_buy`, `cancel_buy`); отказ любого кандидата оставляет предыдущую ревизию и её handles без изменений; публикация binding set остаётся атомарной; полный `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.
-  - Evidence: `GameData/rh/scripts/authoring/gameplay.lua`, `GameData/rh/definitions/actions.json5`, `GameData/rh/definitions/texts.json5`, `Tests/Lua/presentation/rh_layered_presentation_spec.lua`, `GV2.UI.LayeredReconciliationContract`, отчёт CTest.
+  - Done: покупка в магазине `rh` использует модальное окно подтверждения (`show_modal`/`close_modal`, `request_buy`, `confirm_buy`, `cancel_buy`); модалка — отдельный зарегистрированный экран `core:screen.modal_confirm` (`WBP_ModalConfirmScreen`, слой `modal_stack`, единственное поле `modal` схемы `core:schema.ui_field.modal.v1`), а не поле, встроенное в маршрутный экран — `WBP_Modal` является `CommonActivatableWidget`, и его статическое встраивание внутрь `WBP_Testscreen` ломало `NativeConstruct` (ensure `bInputDataLoaded` в `CommonInputSettings`) при построении дерева виджетов; реальные экшены покупки (`rh:action.buy_sword`, `rh:action.buy_armor`) переключены на `request_buy` — при первой реализации они по-прежнему указывали на `buy` напрямую, и подтверждение было недостижимо ни для одной кнопки в игре; отказ любого кандидата оставляет предыдущую ревизию и её handles без изменений; публикация binding set остаётся атомарной; полный `ctest`, `gv2-headless --self-test`, `--check-scripts` и Unreal automation зелёные.
+  - Evidence: `GameData/rh/scripts/authoring/gameplay.lua`, `GameData/rh/definitions/actions.json5`, `GameData/rh/definitions/texts.json5`, `Content/UI/Widgets/WBP_ModalConfirmScreen.uasset`, `Content/UI/Registry/DA_ScreenRegistry.uasset`, `Tests/Lua/presentation/rh_layered_presentation_spec.lua`, `Tests/Lua/presentation/declarative_location_spec.lua`, `Tests/Lua/presentation/dynamic_menu.lua`, `GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.UIKit.CentralThemeAndComponents`, отчёт CTest.
 
 ## Проверка milestone
 

@@ -1357,7 +1357,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 bUsesTextPipelineBase);
         }
     }
-    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 22);
+    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 23);
     TestTrue(
         TEXT("Theme provides a visible separator brush"),
         Theme->SeparatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
@@ -1555,19 +1555,12 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
         ? RegistrySettings->RegistryAsset.LoadSynchronous()
         : nullptr;
     TestNotNull(TEXT("Configured Screen Registry is loadable"), Registry);
-    TestEqual(
-        TEXT("Screen Registry contains the test screen entry"),
-        Registry != nullptr ? Registry->GetEntries().Num() : 0,
-        1);
-    if (Registry != nullptr && Registry->GetEntries().Num() == 1)
-    {
-        TestEqual(
-            TEXT("Screen Registry maps the canonical test screen_id"),
-            Registry->GetEntries()[0].ScreenId,
-            FString(TEXT("core:screen.test")));
-    }
-    UClass* TestScreenClass = Registry != nullptr && Registry->GetEntries().Num() == 1
-        ? Registry->GetEntries()[0].WidgetClass.LoadSynchronous()
+    const FGV2ScreenRegistryEntry* TestScreenEntry = Registry != nullptr
+        ? Registry->FindEntry(TEXT("core:screen.test"))
+        : nullptr;
+    TestNotNull(TEXT("Screen Registry contains the test screen entry"), TestScreenEntry);
+    UClass* TestScreenClass = TestScreenEntry != nullptr
+        ? TestScreenEntry->WidgetClass.LoadSynchronous()
         : nullptr;
     TestNotNull(TEXT("Screen Registry resolves the test Screen class"), TestScreenClass);
     UClass* ScreenBaseClass = TestScreenClass != nullptr ? TestScreenClass->GetSuperClass() : nullptr;
@@ -1763,8 +1756,11 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
             UGV2ScreenRegistry* Registry = RegistrySettings != nullptr
                 ? RegistrySettings->RegistryAsset.LoadSynchronous()
                 : nullptr;
-            UClass* RegisteredClass = Registry != nullptr && Registry->GetEntries().Num() == 1
-                ? Registry->GetEntries()[0].WidgetClass.LoadSynchronous()
+            const FGV2ScreenRegistryEntry* RegisteredEntry = Registry != nullptr
+                ? Registry->FindEntry(TEXT("core:screen.test"))
+                : nullptr;
+            UClass* RegisteredClass = RegisteredEntry != nullptr
+                ? RegisteredEntry->WidgetClass.LoadSynchronous()
                 : nullptr;
             TestEqual(
                 TEXT("Created screen class comes from the configured registry entry"),

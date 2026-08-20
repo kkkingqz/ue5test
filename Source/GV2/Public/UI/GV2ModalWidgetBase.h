@@ -50,7 +50,7 @@ protected:
     TObjectPtr<UButton> BackdropButton;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Modal")
-    FName FieldId;
+    FName FieldId = TEXT("modal");
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Modal")
     FString SchemaId = TEXT("core:schema.ui_field.modal.v1");

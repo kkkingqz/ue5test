@@ -107,7 +107,7 @@ commands.request_buy = function(item)
     merchant:require_item(item, "trade.item_not_available")
 
     show_modal("confirm_purchase", {
-        template = "core:screen.test",
+        template = "core:screen.modal_confirm",
         title = title_text,
         content = desc_text,
         buttons = {
@@ -135,8 +135,8 @@ end
 
 -- Semantic action bindings (TSL-11, TSL-12, TSL-13)
 actions["textsystem:action.location.travel"] = "rh:command.travel"
-actions["rh:action.buy_sword"] = { command = "buy", args = { item = "rh:item.weapon.iron_sword" } }
-actions["rh:action.buy_armor"] = { command = "buy", args = { item = "rh:item.armor.leather_armor" } }
+actions["rh:action.buy_sword"] = { command = "request_buy", args = { item = "rh:item.weapon.iron_sword" } }
+actions["rh:action.buy_armor"] = { command = "request_buy", args = { item = "rh:item.armor.leather_armor" } }
 actions["rh:action.confirm_buy"] = "rh:command.buy"
 actions["rh:action.cancel_buy"] = "rh:command.cancel_buy"
 actions["rh:action.wait_day"] = "time.wait_day"
