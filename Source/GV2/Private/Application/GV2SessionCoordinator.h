@@ -28,7 +28,8 @@ public:
     // "Active session никогда не переключает pinned handle").
     bool StartSession(
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
-        int64 RepositoryVersion);
+        int64 RepositoryVersion,
+        const TArray<FString>& RuntimePackageRoots = {});
     void FailBootstrap(const FString& Code, const FString& Message);
     void EndSession(EGV2SessionState FinalState = EGV2SessionState::Destroyed);
 

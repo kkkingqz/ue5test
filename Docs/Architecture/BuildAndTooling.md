@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 2.9
+version: 3.0
 updated: 2026-08-20
 depends_on:
   - SystemContextAndComponents.md
@@ -86,9 +86,11 @@ Package root — это каталог, содержащий манифест `p
 
 `GV2ContentHostSupport::DiscoverPackagesFromContainer()` и `IsContainerDirectory()` сканируют контейнерный каталог (например, `GameData/`), находят все подкаталоги с `package.json5`, валидируют граф зависимостей (`dependencies`), отсутствие циклов, выстраивают топологический порядок загрузки и сверяют с `mods.lock.json5` ([ADR-0030](../ADR/0030-textsystem-layer-and-data-driven-package-set.md)). Базовый игровой набор включает `core`, `textsystem`, `rh`.
 
+Интерактивный Unreal Editor может временно задавать development package profile через `UGV2RuntimeSettings.EditorPackageRoots` в `DefaultGame.ini`. Это упорядоченный список package roots, а не список C++-известных package IDs: хост валидирует манифесты обычным multi-package discovery и передаёт один resolved список одновременно repository builder и Lua runtime loader. Относительные пути считаются от project root. Пустой список использует обычный container discovery; commandlet, unattended automation, Headless и Shipping всегда используют canonical container/lock path. Текущий profile `core + textsystem + sample` существует только для показа полного `WBP_Testscreen` до появления первого зарегистрированного игрового Screen.
+
 Discovery пакета не сканирует каталог `localization/`: переводы хранятся во внешних PO-каталогах, ключуются Stable ID kind `text` (`text_id`), не меняют `FPackageDescriptor` и не влияют на `content_hash` репозитория.
 
-UE-хост и Headless-хост обнаруживают набор пакетов из контейнерного каталога автоматически из данных без захардкоженных в C++ имён пакетов.
+UE-хост и Headless-хост обнаруживают набор пакетов из данных без захардкоженных в C++ имён пакетов. Обычный путь использует container/lock discovery; интерактивный Editor может использовать описанный выше config-owned development profile.
 
 ### `gv2-content`
 

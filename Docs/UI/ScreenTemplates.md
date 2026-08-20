@@ -250,5 +250,5 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 - Dropdown option activation пересекает boundary ровно один раз как opaque handle + `selected_key`, после чего Lua публикует новое desired state.
 - Добавление нового Screen Blueprint и registry entry не требует изменения C++.
 - Runtime source не содержит `/Game/UI/Widgets/WBP_Testscreen` и не принимает Blueprint class из Lua/Blueprint façade.
-- Session Coordinator не содержит concrete Screen Field schema IDs; fixed adapter registry содержит ровно пять опубликованных schemas и отклоняет unknown/duplicate registration.
+- Session Coordinator не содержит concrete Screen Field schema IDs; fixed adapter registry содержит десять опубликованных schemas из таблицы этого contract и отклоняет unknown/duplicate registration.
 - Automation проходит через обычные Session, Semantic Input и Screen request entry points; test-only runtime methods отсутствуют.

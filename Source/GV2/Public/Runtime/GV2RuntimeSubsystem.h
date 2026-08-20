@@ -13,6 +13,19 @@ class UGV2ScreenRegistry;
 class UGV2ScreenWidgetBase;
 class UUserWidget;
 
+UCLASS(Config = Game, DefaultConfig)
+class GV2_API UGV2RuntimeSettings : public UObject
+{
+    GENERATED_BODY()
+
+public:
+    // Interactive Editor sessions may use a content profile different from
+    // the canonical mods.lock package set. Relative paths are resolved from
+    // the project directory. Commandlets, automation and Shipping ignore it.
+    UPROPERTY(Config, EditAnywhere, Category = "GV2|Runtime|Development")
+    TArray<FString> EditorPackageRoots;
+};
+
 UCLASS()
 class GV2_API UGV2RuntimeSubsystem : public UGameInstanceSubsystem
 {
@@ -86,6 +99,7 @@ private:
     FString ImageCatalogBuildError;
     bool bImageCatalogReady = false;
     FString RepositoryBuildError;
+    TArray<FString> RepositoryPackageRoots;
     bool bRepositoryReady = false;
     bool bActiveScreenAddedToViewport = false;
 };

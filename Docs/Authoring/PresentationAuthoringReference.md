@@ -56,7 +56,7 @@ local binding = action(command_descriptor_or_action_or_id, ...)
 ```lua
 local buy = action("shop.buy", def.item("weapon.iron_sword"), 1)
 local travel = action("textsystem:action.location.travel", {
-    target_location_id = "rh:location.city.tavern",
+    target = "rh:location.city.tavern",
 })
 local wait = action(commands["time.wait_day"])
 ```
@@ -95,7 +95,7 @@ Production-form из location presenter:
 ```lua
 local travel_button = button(
     text("location.market.title"),
-    action("textsystem:action.location.travel", "rh:location.city.market"),
+    action("textsystem:action.location.travel", { target = "rh:location.city.market" }),
     "travel_city_market"
 )
 ```
@@ -119,7 +119,7 @@ Production-form из `GameData/textsystem/scripts/presentation/location_presente
 local buttons = {
     button(
         text("action.travel_market"),
-        action("textsystem:action.location.travel", "rh:location.city.market"),
+        action("textsystem:action.location.travel", { target = "rh:location.city.market" }),
         "travel_city_market"
     ),
 }

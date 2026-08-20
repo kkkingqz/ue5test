@@ -18,7 +18,8 @@ std::string SessionCoordinatorToUtf8(const FString& Value)
 
 bool LoadPortableRuntimeSources(
     std::vector<GV2RuntimeCore::FRuntimeSource>& OutSources,
-    GV2RuntimeCore::FRuntimeFault& OutFault)
+    GV2RuntimeCore::FRuntimeFault& OutFault,
+    const TArray<FString>& RuntimePackageRoots)
 {
     OutSources.clear();
     FString ScriptsDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
@@ -88,7 +89,15 @@ bool LoadPortableRuntimeSources(
     bUseSampleOverride = FGV2SessionCoordinator::bTestForceIncludeSamplePackage;
 #endif
 
-    if (bUseSampleOverride)
+    if (!RuntimePackageRoots.IsEmpty())
+    {
+        OrderedRoots.reserve(RuntimePackageRoots.Num());
+        for (const FString& Root : RuntimePackageRoots)
+        {
+            OrderedRoots.emplace_back(SessionCoordinatorToUtf8(Root));
+        }
+    }
+    else if (bUseSampleOverride)
     {
         // CBM-03 override: GameData/sample and GameData/rh both bind the shared
         // "textsystem:action.location.travel" action, so they cannot load
@@ -215,7 +224,8 @@ void FGV2SessionCoordinator::ClearDocumentSink()
 
 bool FGV2SessionCoordinator::StartSession(
     const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
-    const int64 InRepositoryVersion)
+    const int64 InRepositoryVersion,
+    const TArray<FString>& RuntimePackageRoots)
 {
     check(IsInGameThread());
 
@@ -250,7 +260,7 @@ bool FGV2SessionCoordinator::StartSession(
 
     GV2RuntimeCore::FRuntimeFault Fault;
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
-    if (!LoadPortableRuntimeSources(RuntimeSources, Fault)
+    if (!LoadPortableRuntimeSources(RuntimeSources, Fault, RuntimePackageRoots)
         || !RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, RuntimeSources, Fault))
     {
         FailRuntime(Fault);

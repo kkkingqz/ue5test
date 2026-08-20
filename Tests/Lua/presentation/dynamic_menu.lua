@@ -122,7 +122,7 @@ return {
         local btn_travel = find_button(buttons, "travel_city_tavern")
         assert(btn_travel ~= nil, "travel to tavern button must exist")
         assert(btn_travel.binding.command_id == "rh:command.travel")
-        assert(btn_travel.binding.args[1] == "rh:location.city.tavern")
+        assert(btn_travel.binding.args.target == "rh:location.city.tavern")
     end,
 
     tavern_screen_structure_and_buttons = function()
@@ -146,11 +146,11 @@ return {
 
         local btn_market = find_button(buttons, "travel_city_market")
         assert(btn_market ~= nil, "travel to market button must exist")
-        assert(btn_market.binding.args[1] == "rh:location.city.market")
+        assert(btn_market.binding.args.target == "rh:location.city.market")
 
         local btn_gate = find_button(buttons, "travel_city_gate")
         assert(btn_gate ~= nil, "travel to gate button must exist")
-        assert(btn_gate.binding.args[1] == "rh:location.city.gate")
+        assert(btn_gate.binding.args.target == "rh:location.city.gate")
     end,
 
     gate_screen_structure_and_buttons = function()
@@ -166,7 +166,7 @@ return {
 
         local btn_tavern = find_button(buttons, "travel_city_tavern")
         assert(btn_tavern ~= nil, "travel to tavern button must exist")
-        assert(btn_tavern.binding.args[1] == "rh:location.city.tavern")
+        assert(btn_tavern.binding.args.target == "rh:location.city.tavern")
     end,
 
     screen_updates_on_travel_event = function()

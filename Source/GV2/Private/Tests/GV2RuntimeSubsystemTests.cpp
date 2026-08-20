@@ -203,6 +203,17 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TestFalse(TEXT("Generic runtime does not assemble button field"), RuntimeSource.Contains(TEXT("MakeButtonList")));
         TestFalse(TEXT("Generic runtime does not contain description field literal"), RuntimeSource.Contains(TEXT("TEXT(\"description\")")));
         TestFalse(TEXT("Generic runtime does not contain buttons field literal"), RuntimeSource.Contains(TEXT("TEXT(\"buttons\")")));
+        TestFalse(TEXT("Generic runtime does not know the test screen ID"), RuntimeSource.Contains(TEXT("core:screen.test")));
+        TestFalse(TEXT("Generic runtime does not know the test Widget class"), RuntimeSource.Contains(TEXT("WBP_Testscreen")));
+    }
+
+    const UGV2RuntimeSettings* RuntimeSettings = GetDefault<UGV2RuntimeSettings>();
+    TestNotNull(TEXT("Runtime development settings are available"), RuntimeSettings);
+    if (RuntimeSettings != nullptr)
+    {
+        TestTrue(
+            TEXT("Editor development profile connects the sample package"),
+            RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/sample")));
     }
 
     FString CoordinatorSource;
@@ -2816,5 +2827,4 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
 }
 
 #endif
-
 

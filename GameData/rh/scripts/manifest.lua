@@ -14,11 +14,5 @@ return {
             replaceable = false,
             authoring = true,
         },
-        {
-            module_id = "rh:module.presentation.bootstrap",
-            source = "presentation/bootstrap.lua",
-            dependencies = {},
-            replaceable = false,
-        },
     },
 }

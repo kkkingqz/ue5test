@@ -7,6 +7,7 @@
 #include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
 #include "Logging/LogMacros.h"
+#include "Misc/App.h"
 #include "Misc/Paths.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
@@ -26,7 +27,7 @@ bool IsCanonicalScreenId(const FString& Value)
 }
 
 // TSL-02: default package roots discovered dynamically from GameData container.
-TArray<FString> DefaultRepositoryPackageRoots()
+TArray<FString> DiscoverDefaultRepositoryPackageRoots()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
 
@@ -62,6 +63,42 @@ TArray<FString> DefaultRepositoryPackageRoots()
     }
     return {};
 }
+
+TArray<FString> ResolveRepositoryPackageRoots()
+{
+#if WITH_DEV_AUTOMATION_TESTS
+    if (FGV2SessionCoordinator::bTestForceIncludeSamplePackage)
+    {
+        return DiscoverDefaultRepositoryPackageRoots();
+    }
+#endif
+
+#if WITH_EDITOR
+    if (GIsEditor && !IsRunningCommandlet() && !FApp::IsUnattended())
+    {
+        const UGV2RuntimeSettings* Settings = GetDefault<UGV2RuntimeSettings>();
+        if (Settings != nullptr && !Settings->EditorPackageRoots.IsEmpty())
+        {
+            TArray<FString> Roots;
+            Roots.Reserve(Settings->EditorPackageRoots.Num());
+            for (const FString& ConfiguredRoot : Settings->EditorPackageRoots)
+            {
+                FString Root = ConfiguredRoot;
+                if (FPaths::IsRelative(Root))
+                {
+                    Root = FPaths::Combine(FPaths::ProjectDir(), Root);
+                }
+                Root = FPaths::ConvertRelativePathToFull(Root);
+                FPaths::NormalizeDirectoryName(Root);
+                Roots.Add(MoveTemp(Root));
+            }
+            return Roots;
+        }
+    }
+#endif
+
+    return DiscoverDefaultRepositoryPackageRoots();
+}
 }
 
 UGV2RuntimeSubsystem::UGV2RuntimeSubsystem(const FObjectInitializer& ObjectInitializer)
@@ -88,9 +125,10 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     }
     LoadScreenRegistry();
 
+    RepositoryPackageRoots = ResolveRepositoryPackageRoots();
     RepositoryPublisher = MakePimpl<FGV2RepositoryPublisher>();
     bRepositoryReady = RepositoryPublisher->PublishCandidate(
-        BuildGV2RepositoryFromDirectories(DefaultRepositoryPackageRoots()));
+        BuildGV2RepositoryFromDirectories(RepositoryPackageRoots));
     if (!bRepositoryReady)
     {
         RepositoryBuildError = TEXT("failed to build the initial GameDataRepository");
@@ -157,6 +195,7 @@ void UGV2RuntimeSubsystem::Deinitialize()
     bImageCatalogReady = false;
     ImageCatalogBuildError.Reset();
     RepositoryPublisher.Reset();
+    RepositoryPackageRoots.Reset();
     bRepositoryReady = false;
     RepositoryBuildError.Reset();
 
@@ -238,7 +277,10 @@ void UGV2RuntimeSubsystem::StartSession()
         }
     }
 
-    if (!Coordinator->StartSession(RepositoryPublisher->GetCurrent(), RepositoryPublisher->GetVersion()))
+    if (!Coordinator->StartSession(
+            RepositoryPublisher->GetCurrent(),
+            RepositoryPublisher->GetVersion(),
+            RepositoryPackageRoots))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
         if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed && GetGameInstance() != nullptr)
