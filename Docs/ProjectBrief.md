@@ -1,8 +1,8 @@
 ---
 title: GV2 Project Brief
-status: normative
-version: 1.3
-updated: 2026-08-15
+status: informative
+version: 1.4
+updated: 2026-08-20
 depends_on:
   - Architecture/Overview.md
   - Architecture/GlossaryAndNaming.md

@@ -1,8 +1,8 @@
 ---
 title: Add Command
 status: informative
-version: 1.2
-updated: 2026-08-16
+version: 1.3
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -10,6 +10,7 @@ depends_on:
 # Добавить команду
 
 > **Задача:** добавить действие, меняющее состояние, вместе с проверкой допустимости.
+> **Предмет:** authoring и runtime API Command/Validator.
 > **Нужно:** понимание пути команды — [GameplayModel](../Concepts/GameplayModel.md).
 > **Нормативно:** [Commands and Events](../Architecture/CommandsAndEvents.md), [Stable ID](../Architecture/StableIDSpecification.md), [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md).
 

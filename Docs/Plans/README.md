@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
-status: normative
-version: 4.2
-updated: 2026-08-19
+status: informative
+version: 4.3
+updated: 2026-08-20
 depends_on:
   - ../README.md
 ---
@@ -24,7 +24,7 @@ depends_on:
 
 ## Активные планы
 
-- [DocumentationRework](DocumentationRework/README.md) — Политика совместимости и заметность правил, гейт на удалённый API в инструкциях, разделение `LuaRuntimeContract`, документация авторского слоя для дизайнера, переработка `Guides/` и сжатие архива. Выполняется после закрытия остальных активных планов.
+- [DocumentationRework](DocumentationRework/README.md) — Политика совместимости и заметность правил, гейт на удалённый API, разделение `LuaRuntimeContract`, документация авторского слоя, переработка `Guides/` и сжатие архива. M1 завершён; ожидание code-части UiFoundation снято владельцем проекта.
 - [UiFoundation](UiFoundation/README.md) — Базовый набор виджетов с едиными конвейерами, отзывчивая раскладка от 4K до 720p, многослойный документ с реконсиляцией и вкладками, принадлежность ассетов слою.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).

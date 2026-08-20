@@ -1,8 +1,8 @@
 ---
 title: Architecture Invariants Index
 status: normative
-version: 1.1
-updated: 2026-08-17
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - Overview.md
 ---
@@ -35,6 +35,7 @@ depends_on:
 | INV-014 | Presentation восстановима и не является источником gameplay-истины | [Overview](Overview.md), [UI Index](../UI/README.md) |
 | INV-015 | Runtime instance ссылается на definition по Stable ID и не хранит его копию | [Canonical State and Save](CanonicalStateAndSave.md) |
 | INV-016 | `core` владеет механизмами, пакет — семантикой; наличие kind в ядре не означает владения его схемой | [Modding](Modding.md), [Stable ID Specification](StableIDSpecification.md), [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) |
+| INV-017 | До project version 1.0 обратная совместимость между релизами не гарантируется; breaking changes остаются явными и проверяемыми | [Compatibility Policy](CompatibilityPolicy.md), [ADR-0036](../ADR/0036-pre-1-0-compatibility-policy.md) |
 
 ## Как использовать
 

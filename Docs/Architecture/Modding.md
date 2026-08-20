@@ -1,7 +1,7 @@
 ---
 title: Modding Architecture
 status: draft
-version: 0.9
+version: 0.10
 updated: 2026-08-20
 depends_on:
   - StableIDSpecification.md
@@ -65,6 +65,8 @@ optional cooked Pak
 ```
 
 `compatibility.{game,api,schema}` — каждая ось `{min, max}` целых чисел, сверяется с текущими версиями build-а (`GV2ContentHostSupport::Current{Game,Api,Schema}Version`); несовместимый диапазон отвергает пакет диагностикой `core:diagnostic.package.manifest.incompatible_range`, называющей и требуемый диапазон, и фактическую версию. `core` не объявляет `compatibility` вовсе — движок всегда совместим сам с собой.
+
+`version` пакета `core` также является canonical project version. Публичные гарантии и граница `1.0.0` определены только в [Compatibility Policy](CompatibilityPolicy.md); protocol ranges выше её не заменяют.
 
 `dependencies[].load_after` — подсказка редактору порядка, не меняющая runtime order (см. «Load order» ниже); зависимость проверяется на присутствие в наборе и на циклы отдельным этапом (M2 Discovery and Order), здесь — только форма записи.
 
@@ -130,7 +132,7 @@ Lua и definitions используют `resource_id`, не UE paths. Missing op
 
 ## Save compatibility
 
-Save metadata хранит enabled mods, order, versions и fingerprints. Disabled/missing mod state остаётся opaque orphaned section. Re-enable требует compatibility check и module migration before restore.
+Save metadata хранит enabled mods, order, versions и fingerprints. Disabled/missing mod state остаётся opaque orphaned section. Re-enable требует compatibility check и module migration before restore. Объём публичной гарантии задаёт [Compatibility Policy](CompatibilityPolicy.md), а последовательность загрузки — [Canonical State and Save](CanonicalStateAndSave.md).
 
 Удаление mod может оставить missing definitions; affected state/reference policy обязана быть explicit. Runtime не перепривязывает ID к похожему core object автоматически.
 

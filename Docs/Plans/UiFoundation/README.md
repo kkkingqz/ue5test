@@ -1,7 +1,7 @@
 ---
 title: UI Foundation Implementation Plan
-status: normative
-version: 1.0
+status: active
+version: 1.1
 updated: 2026-08-20
 depends_on:
   - ../../Proposals/CoreUIBaselineAndScalingProposal.md

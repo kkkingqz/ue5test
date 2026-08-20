@@ -1,8 +1,8 @@
 ---
 title: Architecture Index
 status: normative
-version: 1.2
-updated: 2026-08-18
+version: 1.3
+updated: 2026-08-20
 depends_on:
   - ../README.md
 ---
@@ -27,13 +27,16 @@ depends_on:
 | [GameDataRepository Contract](GameDataRepositoryContract.md) | Сборка репозитория, override, снимок, чтение |
 | [Definition Envelope and Schema Rules](DefinitionEnvelopeAndSchemaRules.md) | Конверт файла, схемы, значения по умолчанию |
 | [Stable ID Specification](StableIDSpecification.md) | Грамматика, namespace, redirects, жизненный цикл |
+| [Compatibility Policy](CompatibilityPolicy.md) | Project version и гарантии по save, schemas, API и Stable ID |
 | [Headless Simulation Contract](HeadlessSimulationContract.md) | Роли UE-free хоста, conformance, manifest и digest |
 | [Build and Tooling](BuildAndTooling.md) | Таргеты, хосты, CLI, фикстуры, CI |
 | [Modding](Modding.md) | Пакеты модов, границы доверия |
 
-## Header документов
+## Authority, lifecycle и header
 
-Каждый документ открывается блоком-цитатой сразу после заголовка. Первое поле обязательно и проверяется валидатором; набор полей зависит от типа документа, потому что полезный вопрос у типов разный.
+`status: normative` допустим только для contracts в `Architecture/` и `UI/`; ADR используют decision statuses. Активные Plans имеют `active`, архивы — `archived`, Concepts, Guides, Status, Project Brief и ненормативные routers — `informative`. Активные Proposals сохраняют `draft` и отдельный `proposal_state`. Валидатор проверяет status в обе стороны.
+
+После заголовка документ открывает blockquote с первым полем из таблицы. Индексы и исторические records header не требуют.
 
 | Раздел | Обязательное поле | Остальные поля |
 |---|---|---|
@@ -42,7 +45,6 @@ depends_on:
 | `Guides/` | **Задача** | Нужно, Нормативно |
 | `ADR/` | **Решение** | Нормативный текст |
 | `Proposals/` | **Предлагает** | Затрагивает, Не является нормативным (или Состояние, если реализовано) |
-| `Proposals/Archive/`, `Proposals/Rejected/` | — | Header не требуется: исторический record |
 | `Plans/` | **Материализует** | Задачи, Результат |
 | `Status/` | **Показывает** | Не является нормативным, Обновляется |
 
@@ -56,8 +58,4 @@ depends_on:
 > **Проверки:** `Tests/Lua/commands/`, `Tests/Lua/events/`.
 ```
 
-Header **не повторяет front matter**. Статус, зависимости и связанные ADR уже объявлены машинно-читаемо и проверяются валидатором; дублировать их прозой значит завести второй источник, который разойдётся молча. Назначение документа тоже не дублируется: его несёт первый абзац.
-
-Строка `Не владеет` для GV2 особенно полезна. Архитектура построена на единственном владельце данных, и типичная ошибка проектирования — не спор о правилах, а тихое присвоение соседней ответственности.
-
-Header не имеют индексы (`README.md`) — они сами являются навигацией, — и архивные планы: это исторические записи, которые не переписываются.
+Header не повторяет front matter или назначение документа. Для contract строка `Не владеет` фиксирует границу ответственности и предотвращает второго владельца.

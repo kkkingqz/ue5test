@@ -1,8 +1,8 @@
 ---
 title: Definition Envelope and Schema Rules
 status: normative
-version: 2.6
-updated: 2026-08-18
+version: 2.7
+updated: 2026-08-20
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -342,7 +342,7 @@ Semantic validators перечисляются schema в стабильном п
 
 ## Schema evolution
 
-Эволюция схем определений подчиняется строгой классификации изменений ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md)):
+Этот раздел владеет механикой эволюции схем. Объём публичной гарантии между project releases задаёт [Compatibility Policy](CompatibilityPolicy.md). Эволюция схем подчиняется строгой классификации ([ADR-0029](../ADR/0029-content-authoring-and-schema-evolution.md)):
 
 | Класс изменения | Правило версии | Влияние на существующие definitions | Влияние на сохранения (Saves) |
 |---|---|---|---|

@@ -1,8 +1,8 @@
 ---
 title: Состояние реализации
-status: normative
-version: 1.26
-updated: 2026-08-19
+status: informative
+version: 1.27
+updated: 2026-08-20
 depends_on:
   - ../README.md
   - ../Architecture/Overview.md

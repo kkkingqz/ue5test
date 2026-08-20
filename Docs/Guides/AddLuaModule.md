@@ -1,8 +1,8 @@
 ---
 title: Add Lua Module
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -10,6 +10,7 @@ depends_on:
 # Добавить Lua-модуль
 
 > **Задача:** завести новый модуль в `Scripts/` так, чтобы его загрузили оба хоста.
+> **Предмет:** Lua module manifest, exports и lifecycle hooks.
 > **Нужно:** собранный `gv2-headless`.
 > **Нормативно:** [Lua Runtime Contract](../Architecture/LuaRuntimeContract.md), [Bootstrap and Session Lifecycle](../Architecture/BootstrapAndSessionLifecycle.md).
 

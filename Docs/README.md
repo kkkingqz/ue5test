@@ -1,63 +1,54 @@
 ---
 title: GV2 Documentation Index
-status: normative
-version: 3.1
-updated: 2026-08-16
+status: informative
+version: 4.0
+updated: 2026-08-20
 language: ru
 ---
 
 # Документация GV2
 
-Документация разделена по типу задачи читателя. Markdown предназначен одновременно для разработчиков, инструментов и AI-агентов.
+Этот файл только направляет читателя. Нормативные правила находятся в `Architecture/`, `UI/` и accepted ADR.
 
-| Раздел | Отвечает на вопрос | Нормативность |
+| Нужно | Читать |
+|---|---|
+| Понять цель проекта | [Project Brief](ProjectBrief.md), [Concepts](Concepts/README.md) |
+| Найти обязательное правило | [Architecture](Architecture/README.md), [UI](UI/README.md), [Invariants](Architecture/Invariants.md) |
+| Понять причину решения | [ADR](ADR/README.md) |
+| Выполнить типовую задачу | [Guides](Guides/README.md) и owner contract |
+| Выполнить запланированную работу | [Plans](Plans/README.md) |
+| Изучить открытые идеи | [Proposals](Proposals/README.md) |
+| Сверить contract и реализацию | [Implementation Status](Status/ImplementationStatus.md) |
+
+## Authority и lifecycle
+
+Accepted ADR фиксирует решение и причины, subsystem contract — актуальное полное правило. Более конкретный contract сильнее `Architecture/Overview.md`. При конфликте ненормативный документ уступает contract.
+
+| Документы | `status` | Роль |
 |---|---|---|
-| [ProjectBrief](ProjectBrief.md) | Что это за проект | нет |
-| [Concepts](Concepts/README.md) | Что это и зачем | нет |
-| [Architecture](Architecture/README.md), [UI](UI/README.md) | Какие правила обязательны | **да** |
-| [Guides](Guides/README.md) | Как выполнить типовую задачу | нет |
-| [ADR](ADR/README.md) | Почему принято такое решение | **да** |
-| [Plans](Plans/README.md) | Как конкретное изменение будет реализовано | нет |
-| [Proposals](Proposals/README.md) | Что рассматривается, но не принято; реализованное и отклонённое — в `Archive/` и `Rejected/` | нет |
-| [Status](Status/ImplementationStatus.md) | Что из спецификации реализовано | нет |
+| `Architecture/`, `UI/` | `draft`, `normative`, `deprecated` | Contracts |
+| `ADR/NNNN-*.md` | decision status | Решения |
+| Активные Plans | `active` | Выполняемая работа, не architecture authority |
+| Активные Proposals | `draft` + `proposal_state` | Открытый вопрос |
+| Concepts, Guides, Status, Project Brief и routers | `informative` | Объяснение, инструкция, навигация |
+| `Archive/`, `Rejected/` | `archived` | История, не источник правил или задач |
 
-## Иерархия источников
+Экспортированные и внешние копии не являются источником истины. Соответствие статуса и расположения проверяет `Tools/Documentation/validate_docs.py`.
 
-1. `ADR/*.md` со `status: accepted` фиксируют принятые архитектурные решения.
-2. Contract подсистемы уточняет `Architecture/Overview.md`.
-3. `Architecture/Overview.md` задаёт общие границы и инварианты.
+## Ключевые архитектурные гейты
 
-При конфликте применяется более конкретный документ. Заменённый ADR обязан иметь `status: superseded` и ссылку на замену.
+- [INV-013](Architecture/Invariants.md): код принадлежит C++ только если требует недоступной Lua возможности либо обязан работать до создания VM; полный критерий — [Overview § Границы C++](Architecture/Overview.md#границы-c).
+- [INV-017](Architecture/Invariants.md): до project version `1.0.0` обратная совместимость между релизами не гарантируется, но breaking change обязан быть явным; полный контракт — [Compatibility Policy](Architecture/CompatibilityPolicy.md).
 
-**Ненормативные тиры не спорят с нормативными.** Concepts и Guides объясняют и инструктируют, но правил не вводят: при расхождении прав contract. Это закреплено статусом `informative`, который валидатор требует внутри `Concepts/` и `Guides/` и запрещает снаружи. Аналогично `archived` допустим только внутри `Archive/` и `Rejected/` и обязателен там. Предложение переезжает в один из этих каталогов, как только вопрос закрыт: реализованное — в `Proposals/Archive/`, отклонённое — в `Proposals/Rejected/`; соответствие `proposal_state` и каталога валидатор проверяет в обе стороны.
+## Минимальный маршрут
 
-Экспортированные и внешние копии нормативными не являются и рядом с canonical Markdown не хранятся.
+Для проектирования: релевантный Concept → owner contract → связанные accepted ADR. Для типового изменения: Guide → owner contract → активный Plan, если он есть. При пересечении ownership, Stable ID, command/event, save, repository, Lua/UE boundary, lifecycle, UI или modding проверить соседние contracts. Не загружать `Architecture/` целиком.
 
-## Маршрут загрузки контекста
+Карта допустимых зависимостей — [Dependency Map](Architecture/DependencyMap.md), сборка и CI — [Build and Tooling](Architecture/BuildAndTooling.md).
 
-Не загружайте `Docs/Architecture` целиком. Минимальный путь зависит от задачи.
+## Ведение
 
-**Разобраться в архитектуре или спроектировать изменение:**
-
-1. [ProjectBrief](ProjectBrief.md)
-2. Нужный документ из [Concepts](Concepts/README.md)
-3. Contract затронутой подсистемы
-4. Связанные accepted ADR
-5. [Implementation Status](Status/ImplementationStatus.md) и ссылки на код
-
-**Выполнить типовую задачу:** нужный [Guide](Guides/README.md) + contract, на который он ссылается + активный [план](Plans/README.md), если задача из него.
-
-**Сориентироваться в зависимостях:** [Dependency Map](Architecture/DependencyMap.md). **Найти нормативный источник правила:** [Invariants](Architecture/Invariants.md). **Найти код и тесты по понятию:** таблица в [Concepts](Concepts/README.md).
-
-## Правила ведения
-
-- Сначала ADR, если меняется источник истины, идентичность, command/event semantics, save compatibility, trust model или направление зависимостей.
-- Затем — все затронутые contracts в том же изменении.
-- Concepts и Guides объясняют и ссылаются, но не переписывают нормативные формулировки: два описания одного правила расходятся.
-- Публичный пример считается тестовым fixture и обязан соответствовать грамматике и терминологии.
-- Новая абстракция вводится под конкретный сценарий или измеренную проблему.
-- Изменение объёма реализованного отражается в [Implementation Status](Status/ImplementationStatus.md).
-
-## Сборка и CI
-
-Таргеты, хосты, коды возврата, фикстуры и обязательный integration gate — [Build and Tooling](Architecture/BuildAndTooling.md).
+- Архитектурное решение сначала фиксируется ADR, затем синхронно отражается в owner contracts.
+- Concepts и Guides ссылаются на правило, не копируют его.
+- Публичные примеры являются fixtures и обязаны соответствовать grammar и schemas.
+- Новая абстракция требует конкретного сценария или измеренной проблемы.

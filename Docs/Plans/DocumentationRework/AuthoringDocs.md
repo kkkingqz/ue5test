@@ -1,8 +1,8 @@
 ---
 title: Authoring Documentation Tasks
-status: normative
-version: 1.1
-updated: 2026-08-19
+status: active
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - ContractSplit.md
   - ../../Architecture/README.md

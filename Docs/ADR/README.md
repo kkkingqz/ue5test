@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
-status: normative
-version: 2.2
-updated: 2026-08-15
+status: informative
+version: 2.3
+updated: 2026-08-20
 ---
 
 # Architecture Decision Records
@@ -47,6 +47,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0033](0033-command-validator-authoring.md) | accepted | Command Validator Authoring: авторский API `validate()`, декодирование аргументов по форме значения, единый execution scope, разрешение target при заморозке |
 | [0034](0034-gameplay-service-authoring.md) | accepted | Gameplay Service Authoring: авторский `services.<name>`, контракт «только функции», неизменяемость, наследование scope, привязка к потребителю |
 | [0035](0035-ui-foundation-and-composition.md) | accepted | UI Foundation and Composition: идентичность элементов, каноничность экрана, вложенные Screen Instances, отзывчивая раскладка, трёхуровневое владение |
+| [0036](0036-pre-1-0-compatibility-policy.md) | accepted | Project version в descriptor `core`; до 1.0 нет гарантии совместимости, но breaking changes явны |
 
 ## Template
 

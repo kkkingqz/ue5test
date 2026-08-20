@@ -1,8 +1,8 @@
 ---
 title: Add Definition
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -10,6 +10,7 @@ depends_on:
 # Добавить definition
 
 > **Задача:** добавить предмет, локацию, актора, экран, текст или ресурс.
+> **Предмет:** JSON5 Definition Envelope, schema и content CLI.
 > **Нужно:** собранный `gv2-content`; понимание [ContentModel](../Concepts/ContentModel.md).
 > **Нормативно:** [Definition Envelope](../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Stable ID](../Architecture/StableIDSpecification.md), [GameDataRepository](../Architecture/GameDataRepositoryContract.md).
 

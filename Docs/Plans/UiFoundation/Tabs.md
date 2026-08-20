@@ -1,8 +1,8 @@
 ---
 title: Nested Instances and Tabs Tasks
-status: normative
-version: 1.0
-updated: 2026-08-19
+status: active
+version: 1.1
+updated: 2026-08-20
 depends_on:
   - Reconciliation.md
   - ../../UI/SemanticInput.md

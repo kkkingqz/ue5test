@@ -1,8 +1,8 @@
 ---
 title: Contract Split Tasks
-status: normative
-version: 1.1
-updated: 2026-08-19
+status: active
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - README.md
   - ../../Architecture/LuaRuntimeContract.md
@@ -36,7 +36,7 @@ decisions:
 ## Задачи
 
 - [ ] **DOC-07 — Выделить контракт авторского слоя**
-  - Зависимости: закрытие активных планов (см. [предусловие](README.md#предусловие-выполнения)).
+  - Зависимости: ожидание UiFoundation снято решением из [execution baseline](README.md#execution-baseline).
   - Поверхность дизайнера — `commands`, `actions`, `Actor.*`, `field.*`, `validate`, `services`, `fail`, `emit`, `on`, `text`, `button`, `show_screen` — не имеет владельца и размазана по трём документам и пяти ADR.
   - Done: создан `Docs/Architecture/AuthoringSurfaceContract.md`, владеющий составом авторского окружения, правилами объявления и отложенной регистрации, адаптацией в runtime registries, заморозкой, атрибуцией `fail()` и `emit()` пакету объявления, execution scope и его наследованием; authoring-specific разделы удалены из `LuaRuntimeContract.md`, а из `ScreenTemplates.md` переносится только syntax/adaptation — Screen Document и Presentation semantics остаются у UI contract; ссылки в затронутых документах перенаправлены в том же change set; `DependencyMap.md` и `Docs/README.md` знают о новом документе.
   - Evidence: `Docs/Architecture/AuthoringSurfaceContract.md`, `Docs/Architecture/LuaRuntimeContract.md`, `Docs/README.md`.

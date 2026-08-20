@@ -1,8 +1,8 @@
 ---
 title: Add Lua Spec
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -10,6 +10,7 @@ depends_on:
 # Добавить проверку
 
 > **Задача:** проверить правило так, чтобы проверка исполнялась обоими хостами.
+> **Предмет:** portable Lua spec и общий spec runner.
 > **Нужно:** собранный `gv2-headless`.
 > **Нормативно:** [Headless Simulation](../Architecture/HeadlessSimulationContract.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
 

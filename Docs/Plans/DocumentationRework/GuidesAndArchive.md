@@ -1,7 +1,7 @@
 ---
 title: Guides and Archive Tasks
-status: normative
-version: 1.2
+status: active
+version: 1.3
 updated: 2026-08-20
 depends_on:
   - AuthoringDocs.md

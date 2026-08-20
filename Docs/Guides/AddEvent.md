@@ -1,8 +1,8 @@
 ---
 title: Add Event
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -10,6 +10,7 @@ depends_on:
 # Добавить событие и реакцию
 
 > **Задача:** опубликовать факт о произошедшем изменении и обработать его в другом модуле.
+> **Предмет:** runtime API Event и Subscriber.
 > **Нужно:** команда, из которой факт публикуется — [AddCommand](AddCommand.md).
 > **Нормативно:** [Commands and Events](../Architecture/CommandsAndEvents.md).
 

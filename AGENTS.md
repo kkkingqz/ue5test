@@ -4,8 +4,8 @@
 
 ## Documentation authority
 
-- Нормативная документация находится только в `Docs/Architecture/`, `Docs/UI/` и `Docs/ADR/`.
-- `Docs/Concepts/` и `Docs/Guides/` объясняют и инструктируют, но правил не вводят: при расхождении прав contract. Это закреплено статусом `informative`, обязательным внутри этих каталогов и запрещённым снаружи.
+- Нормативная документация находится только в `Docs/Architecture/`, `Docs/UI/` и accepted ADR.
+- Concepts, Guides, Status, Project Brief и ненормативные routers имеют `informative`; активные Plans — `active`; архивы — `archived`. Они не вводят правил и при расхождении уступают contract.
 - Начальная точка для любой задачи: `Docs/README.md`.
 - Архивные, экспортированные или внешние копии документации не являются источником истины. Это относится и к реализованным предложениям в `Docs/Proposals/Archive/`, и к отклонённым в `Docs/Proposals/Rejected/`.
 - Accepted ADR фиксирует решение и причины; subsystem contract содержит его актуальное полное правило.
@@ -27,7 +27,7 @@
 
 - Stable ID имеет вид `<namespace>:<kind>.<path>` и использует strict lowercase ASCII.
 - Lua владеет canonical gameplay-state.
-- Код принадлежит C++ только если требует возможности, недоступной Lua по trust model, либо обязан работать до создания VM. Иначе он принадлежит Lua. Новый C++ module или сервис без ответа на этот вопрос — дефект проектирования.
+- Код принадлежит C++ только если требует возможности, недоступной Lua по trust model, либо обязан работать до создания VM. Иначе он принадлежит Lua. Новый C++ module или service без ответа на этот вопрос — дефект проектирования ([INV-013](Docs/Architecture/Invariants.md), [owner](Docs/Architecture/Overview.md#границы-c)).
 - Данные пересекают boundary минимальным представлением: скаляр вместо структуры, ID вместо объекта, непрозрачные байты вместо разобранного дерева. Canonical state boundary не пересекает.
 - Gameplay mutation проходит через Command Dispatcher и Gameplay Services.
 - EventBus публикует только post-commit gameplay facts.
@@ -37,12 +37,13 @@
 - Runtime text, content images, repeated elements, Screen Fields и Semantic Input используют только централизованные presentation paths; composite Widgets не создают parallel mechanisms.
 - Definitions используют full override by ID; implicit deep merge отсутствует.
 - Опубликованный Stable ID не переиспользуется для другого смысла.
+- До project version `1.0.0` совместимость между релизами не гарантируется, но breaking change обязан быть явно классифицирован, версионирован и покрыт migration либо typed отказом и тестами ([INV-017](Docs/Architecture/Invariants.md), [owner](Docs/Architecture/CompatibilityPolicy.md)).
 
 Изменение любого из этих правил требует нового ADR и синхронного обновления затронутых контрактов.
 
 ## Proposal lifecycle
 
-Предложение остаётся в `Docs/Proposals/` ровно столько, сколько остаётся открытым вопросом. Как только вопрос закрыт, документ переезжает, и **каталог становится состоянием предложения**.
+Каталог является состоянием предложения:
 
 | `proposal_state` | Расположение |
 |---|---|
@@ -50,14 +51,7 @@
 | `implemented` | `Docs/Proposals/Archive/` |
 | `rejected` | `Docs/Proposals/Rejected/` |
 
-Правила:
-
-- Перенос является частью завершения работы, а не последующей уборкой. Реализованное предложение, оставшееся в активном каталоге, продолжает выглядеть работой, которую надо сделать.
-- При переносе документ получает `status: archived`, а относительные ссылки обновляются в том же change set.
-- Отклонённое предложение **не удаляется**: причина отказа — такой же результат размышления, как и принятое решение. Документ обязан содержать раздел с причиной отказа и условиями, при которых вопрос имеет смысл открыть заново.
-- Индексы `Docs/Proposals/README.md`, `Archive/README.md` и `Rejected/README.md` обновляются тем же change set.
-
-Соответствие `proposal_state` и каталога проверяет `Tools/Documentation/validate_docs.py` в обе стороны.
+Перенос входит в завершение работы: поставить `status: archived`, обновить ссылки и три index-файла в том же change set. Rejected proposal не удалять; записать причину и условие повторного открытия. Validator проверяет state и location в обе стороны.
 
 ## Documentation is part of every code change
 
@@ -85,6 +79,9 @@ Pure refactor без изменения behavior не требует переп�
 
 Нельзя откладывать обязательное обновление документации как отдельный будущий task, если изменение уже реализовано.
 
+- Если изменяемая code surface является предметом Guide, Guide обязан быть переработан в том же change set.
+- Изменение authoring surface обязано обновить owner contract и, после появления `Docs/Authoring/`, соответствующий human-facing reference в том же change set.
+
 ## Creating new documentation
 
 Создавать новый документ только когда информация не помещается естественно в существующий contract. Предпочитать обновление одного authoritative файла созданию дублирующего overview/specification.
@@ -108,6 +105,7 @@ Pure refactor без изменения behavior не требует переп�
 - Architecture/UI contract: English PascalCase без пробелов, например `SaveContainerContract.md`, `AssetLoadingPolicy.md`, `LocationScreenContract.md`.
 - Общий обзор каталога: `README.md`.
 - ADR: `NNNN-short-kebab-case-title.md`, например `0010-save-container-format.md`.
+- Номер ADR резервируется только созданием файла. До этого Plan/Proposal ссылается на решение по названию и не указывает будущий path/номер.
 - Не использовать `final`, `new`, `copy`, даты, языковые суффиксы, версии в filename или скобки вроде `(1)`.
 - Один concept — один canonical filename. При rename обновить все relative links в том же change set.
 
@@ -118,7 +116,7 @@ Pure refactor без изменения behavior не требует переп�
 ```yaml
 ---
 title: Human Readable Title
-status: draft | normative | deprecated | archived | informative
+status: draft | normative | deprecated
 version: 0.1
 updated: YYYY-MM-DD
 depends_on:
@@ -132,11 +130,7 @@ decisions:
 
 Сразу после заголовка документ открывается блоком-цитатой с обязательным первым полем: `Владеет` для contracts, `Объясняет` для Concepts, `Задача` для Guides, `Решение` для ADR, `Предлагает` для Proposals, `Материализует` для Plans, `Показывает` для Status. Header не повторяет front matter. Полная схема — `Docs/Architecture/README.md`; наличие проверяется валидатором.
 
-`archived` означает исторический record: документ не нормативен и не является источником задач. Он допустим только внутри каталогов `Archive/` и `Rejected/`, и наоборот — любой документ внутри них обязан иметь `status: archived`.
-
-`informative` означает объясняющий или инструктирующий документ: он не вводит архитектурных правил и при расхождении уступает contract. Допустим только внутри `Concepts/` и `Guides/`, и обязателен там.
-
-Оба правила проверяет `Tools/Documentation/validate_docs.py` в обе стороны.
+Contracts в `Architecture/` и `UI/` используют `draft | normative | deprecated`. Активный Plan использует `active`, active Proposal — `draft` плюс `proposal_state`, исторический record в `Archive/`/`Rejected/` — `archived`, Concepts/Guides/Status/Project Brief и ненормативные routers — `informative`. Validator проверяет status и location в обе стороны.
 
 ADR использует:
 

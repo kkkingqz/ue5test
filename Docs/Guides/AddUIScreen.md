@@ -1,8 +1,8 @@
 ---
 title: Add UI Screen
 status: informative
-version: 1.1
-updated: 2026-08-15
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - README.md
 ---
@@ -10,6 +10,7 @@ depends_on:
 # Добавить экран
 
 > **Задача:** добавить экран и научить Lua его запрашивать.
+> **Предмет:** Screen Definition, template registry и desired presentation.
 > **Нужно:** Unreal Editor для шагов с Blueprint; понимание [PresentationModel](../Concepts/PresentationModel.md).
 > **Нормативно:** [Screen Templates](../UI/ScreenTemplates.md), [Widget Registry](../UI/WidgetRegistry.md), [Semantic Input](../UI/SemanticInput.md).
 

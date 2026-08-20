@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
-status: normative
-version: 4.1
-updated: 2026-08-19
+status: informative
+version: 4.2
+updated: 2026-08-20
 ---
 
 # Индекс предложений по реализации (Proposals)

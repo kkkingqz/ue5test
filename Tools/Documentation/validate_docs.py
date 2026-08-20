@@ -23,7 +23,15 @@ HISTORICAL_DIRECTORIES = (ARCHIVE_DIRECTORY, REJECTED_DIRECTORY)
 # Explanatory tiers. They never define architectural rules: at a conflict the
 # normative contract wins. Keeping the status tied to the location makes the
 # distinction impossible to lose in a move or a copy-paste.
-INFORMATIVE_DIRECTORIES = ("Concepts", "Guides")
+INFORMATIVE_DIRECTORIES = ("Concepts", "Guides", "Status")
+INFORMATIVE_FILES = {
+    "README.md",
+    "ProjectBrief.md",
+    "ADR/README.md",
+    "Plans/README.md",
+    "Proposals/README.md",
+}
+NORMATIVE_DIRECTORIES = ("Architecture", "UI")
 # Header opens every document with the one thing its front matter cannot carry.
 # The field differs by document type because the useful question differs: a
 # contract is defined by what it owns, a guide by the task it solves.
@@ -101,7 +109,17 @@ class Validation:
         is_archived_location = ARCHIVE_DIRECTORY in relative.parts
         is_rejected_location = REJECTED_DIRECTORY in relative.parts
         is_historical_location = is_archived_location or is_rejected_location
-        is_informative_location = relative.parts[0] in INFORMATIVE_DIRECTORIES
+        relative_name = relative.as_posix()
+        is_informative_location = (
+            relative.parts[0] in INFORMATIVE_DIRECTORIES
+            or relative_name in INFORMATIVE_FILES
+        ) and not is_historical_location
+        is_active_plan = (
+            relative.parts[0] == "Plans"
+            and relative_name != "Plans/README.md"
+            and not is_historical_location
+        )
+        is_normative_location = relative.parts[0] in NORMATIVE_DIRECTORIES
 
         required = {"title", "status"}
         required |= {"date"} if is_adr else {"version", "updated"}
@@ -115,23 +133,31 @@ class Validation:
         allowed_status = (
             {"proposed", "accepted", "superseded", "rejected"}
             if is_adr
-            else {"draft", "normative", "deprecated", "archived", "informative"}
+            else {"active", "draft", "normative", "deprecated", "archived", "informative"}
         )
         if status and status not in allowed_status:
             self.fail(path, f"invalid status '{status}'")
 
-        # Concepts/ and Guides/ explain and instruct; they never carry normative
-        # rules. Binding the tier to the directory keeps a second source of truth
-        # from appearing by accident.
+        # Informative tiers and routers explain, instruct or navigate; active
+        # plans describe executable work. Neither is an architecture authority.
         if is_informative_location and status != "informative":
             self.fail(
                 path,
-                f"document under {' or '.join(d + '/' for d in INFORMATIVE_DIRECTORIES)} must use status 'informative', found '{status}'",
+                f"informative document or router must use status 'informative', found '{status}'",
             )
         if status == "informative" and not is_informative_location:
             self.fail(
                 path,
-                f"status 'informative' requires the document to live under {' or '.join(d + '/' for d in INFORMATIVE_DIRECTORIES)}",
+                "status 'informative' is not allowed at this location",
+            )
+        if is_active_plan and status != "active":
+            self.fail(path, f"active plan must use status 'active', found '{status}'")
+        if status == "active" and not is_active_plan:
+            self.fail(path, "status 'active' is allowed only for active plan documents")
+        if status == "normative" and not is_normative_location:
+            self.fail(
+                path,
+                "status 'normative' is allowed only under Architecture/ or UI/",
             )
 
         # An archived document is a historical record: it is never normative and
@@ -393,8 +419,59 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parents[2] / "Docs",
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run positive and negative status/lifecycle cases",
+    )
     arguments = parser.parse_args()
+    if arguments.self_test:
+        return run_self_test(arguments.docs_root)
     return Validation(arguments.docs_root).run()
+
+
+def run_self_test(docs_root: Path) -> int:
+    """Exercise status/location rules without creating fixture files."""
+
+    common = {"title": "Fixture", "version": "1.0", "updated": "2026-08-20"}
+    cases: list[tuple[str, str, dict[str, object], bool]] = [
+        ("architecture", "Architecture/Fixture.md", {**common, "status": "normative"}, True),
+        ("ui draft", "UI/Fixture.md", {**common, "status": "draft"}, True),
+        ("root router", "README.md", {**common, "status": "informative"}, True),
+        ("project brief", "ProjectBrief.md", {**common, "status": "informative"}, True),
+        ("status report", "Status/Fixture.md", {**common, "status": "informative"}, True),
+        ("active plan", "Plans/Work/Step.md", {**common, "status": "active"}, True),
+        (
+            "active proposal",
+            "Proposals/Fixture.md",
+            {**common, "status": "draft", "proposal_state": "accepted_for_planning"},
+            True,
+        ),
+        ("accepted ADR", "ADR/0042-fixture.md", {"title": "ADR", "status": "accepted", "date": "2026-08-20"}, True),
+        ("archived plan", "Plans/Archive/Fixture.md", {**common, "status": "archived"}, True),
+        ("normative root", "Fixture.md", {**common, "status": "normative"}, False),
+        ("normative plan", "Plans/Work/Step.md", {**common, "status": "normative"}, False),
+        ("normative status", "Status/Fixture.md", {**common, "status": "normative"}, False),
+        ("active architecture", "Architecture/Fixture.md", {**common, "status": "active"}, False),
+        ("draft concept", "Concepts/Fixture.md", {**common, "status": "draft"}, False),
+        ("informative contract", "Architecture/Fixture.md", {**common, "status": "informative"}, False),
+        ("active archive", "Plans/Archive/Fixture.md", {**common, "status": "active"}, False),
+    ]
+
+    failures: list[str] = []
+    root = docs_root.resolve()
+    for name, relative, metadata, should_pass in cases:
+        validation = Validation(root)
+        validation.validate_front_matter(root / relative, metadata)
+        passed = not validation.errors
+        if passed != should_pass:
+            failures.append(f"{name}: expected {'pass' if should_pass else 'failure'}")
+    if failures:
+        for failure in failures:
+            print(f"ERROR: self-test {failure}", file=sys.stderr)
+        return 1
+    print(f"Documentation validator self-test passed: {len(cases)} cases.")
+    return 0
 
 
 if __name__ == "__main__":

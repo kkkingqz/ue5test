@@ -1,13 +1,14 @@
 ---
 title: Rules and Visibility Tasks
-status: normative
-version: 1.1
-updated: 2026-08-19
+status: active
+version: 1.2
+updated: 2026-08-20
 depends_on:
   - README.md
   - ../../Architecture/Invariants.md
 decisions:
   - ../../ADR/0020-cpp-scope-criterion.md
+  - ../../ADR/0036-pre-1-0-compatibility-policy.md
 ---
 
 # M1 — Rules and Visibility
@@ -22,40 +23,40 @@ Execution baseline воспроизводим, front matter совпадает �
 
 ## Задачи
 
-- [ ] **DOC-00 — Зафиксировать baseline и выровнять authority статусов**
-  - Зависимости: закрытие активных планов (см. [предусловие](README.md#предусловие-выполнения)).
-  - Предварительные числа в плане неизбежно устаревают, пока выполняются планы-предусловия. Кроме того, `Docs/README.md` называет Plans и Status ненормативными, но их front matter использует `status: normative`.
-  - Done: в `README.md` записан полный `baseline_commit` после закрытия предусловий; от него повторно измерены число Markdown-файлов и слов, ссылки на `LuaRuntimeContract.md`, legacy-формы, объём active/archive plans и список документов-сирот; validator и правила front matter различают authority и lifecycle: task-документы active Plans используют отдельный `status: active`, архивные Plans — `archived`, Project Brief, Status и ненормативные routers (`Docs/README.md`, `Plans/README.md`, `Proposals/README.md`) — `informative`, active Proposals сохраняют `draft` плюс `proposal_state`; `status: normative` разрешён только внутри `Architecture/` и `UI/`, а ADR используют собственные decision statuses; `Docs/README.md`, `Docs/Architecture/README.md`, `AGENTS.md` и validator описывают одну и ту же классификацию.
+- [x] **DOC-00 — Зафиксировать baseline и выровнять authority статусов**
+  - Зависимости: ожидание UiFoundation снято явным решением владельца; основание записано в [execution baseline](README.md#execution-baseline).
+  - Причина: метрики устаревали, а Plans и Status объявлялись ненормативными в тексте, но имели `status: normative`.
+  - Done: `README.md` содержит полный `baseline_commit`, воспроизводимые метрики и список сирот; validator различает authority и lifecycle: active Plans — `active`, архивы — `archived`, Project Brief, Status и ненормативные routers — `informative`, active Proposals — `draft` плюс `proposal_state`, `normative` — только `Architecture/` и `UI/`, ADR — decision statuses. Root router, Architecture index, `AGENTS.md` и validator согласованы.
   - Отдельный status не превращает Plans в источник архитектурных правил: они по-прежнему только материализуют уже принятые направления.
   - Evidence: `README.md`, `Docs/README.md`, `Docs/Architecture/README.md`, `AGENTS.md`, `Tools/Documentation/validate_docs.py`.
 
-- [ ] **DOC-01 — Политика совместимости**
+- [x] **DOC-01 — Политика совместимости**
   - Правило «до выхода 1.0 обратная совместимость не поддерживается» применяется постоянно, но **не записано нигде**: в корпусе есть только частные следствия вроде «смена namespace ломает старые сейвы». При споре сослаться не на что.
   - Done: создан контракт `Docs/Architecture/CompatibilityPolicy.md` — единственный владелец ответа «что мы обещаем и с какого момента»; он называет canonical источник project version и точную границу `1.0`, разделяет оси совместимости (сохранения, схемы контента, API пакетов, Stable ID) и для каждой указывает состояние до 1.0 и после; принят ADR по политике совместимости; правило получает номер в [реестре инвариантов](../../Architecture/Invariants.md); существующие частные формулировки в `Modding.md`, `CanonicalStateAndSave.md` и `DefinitionEnvelopeAndSchemaRules.md` заменены ссылками на новый контракт, а не продублированы; правило видно в `Docs/README.md` и в разделе «Architecture rules that must not drift» файла `AGENTS.md`.
   - Формулировка «гарантия обратной совместимости до 1.0 отсутствует» не разрешает тихие breaking changes: изменение обязано быть явно классифицировано и синхронно менять version/migration/tests; опубликованный Stable ID не переиспользуется; существующие обязательства текущего `save_format_version` и schema version действуют до их явного изменения по contract.
   - Evidence: `Docs/Architecture/CompatibilityPolicy.md`, `Docs/Architecture/Invariants.md`, `Docs/README.md`, `AGENTS.md`.
 
-- [ ] **DOC-02 — Заметность правила о минимуме C++**
+- [x] **DOC-02 — Заметность правила о минимуме C++**
   - Правило существует и имеет владельца — [INV-013](../../Architecture/Invariants.md), [ADR-0020](../../ADR/0020-cpp-scope-criterion.md), `Overview § Границы C++`. Не хватает только видимости: строка в середине списка инвариантов.
   - Done: формулировка «код принадлежит C++ только если требует недоступной Lua возможности либо обязан работать до создания VM» вынесена в `Docs/README.md` рядом с политикой совместимости; существующая формулировка в `AGENTS.md` проверена и снабжена ссылкой на владельца; **второго источника не создано** — оба места ссылаются на существующего владельца; проверено, что формулировка нигде не разошлась по смыслу.
   - Evidence: `Docs/README.md`, `AGENTS.md`.
 
-- [ ] **DOC-03 — Правило выделения номера ADR**
+- [x] **DOC-03 — Правило выделения номера ADR**
   - За одну сессию номера ADR столкнулись трижды: два плана независимо закрепили один и тот же свободный номер, а параллельная работа заняла ещё два.
   - Done: в `AGENTS.md` записано, что номер занимается **созданием файла ADR**, а до этого план и предложение ссылаются на решение по названию; существующие ссылки вида «`Docs/ADR/00NN-*.md`» в активных планах заменены на названия решений; правило применяется в этом плане с первой задачи.
   - Evidence: `AGENTS.md`, активные планы.
 
-- [ ] **DOC-04 — Правила переработки документации при изменении кода**
+- [x] **DOC-04 — Правила переработки документации при изменении кода**
   - Раздел «Documentation is part of every code change» перечисляет подсистемы и контракты, но не инструкции: `Guides/` и будущий `Docs/Authoring/` гниют бесшумно, что и произошло.
   - Done: в `AGENTS.md` добавлены два правила — изменение кода, на который есть гайд, обязано переработать гайд в том же change set; изменение авторского слоя обязано переработать его документацию в том же change set; у каждого гайда явно назван предмет, чтобы правило было проверяемым; правила сформулированы как обязанность, а не как рекомендация.
   - Evidence: `AGENTS.md`.
 
 ## Проверка milestone
 
-- [ ] Execution baseline содержит commit и воспроизводимые измерения.
-- [ ] `status: normative` не используется в ненормативных тирах; lifecycle Plans/Proposals/Archive проверяется validator-ом.
-- [ ] Политика совместимости имеет единственного владельца и номер инварианта.
-- [ ] Политика отличает отсутствие публичной гарантии от разрешения на неявный breaking change.
-- [ ] Оба ключевых правила видны в корневом router-е.
-- [ ] Ни одно правило не получило второго источника истины.
-- [ ] Номера ADR в активных планах заменены названиями решений.
+- [x] Execution baseline содержит commit и воспроизводимые измерения.
+- [x] `status: normative` не используется в ненормативных тирах; lifecycle Plans/Proposals/Archive проверяется validator-ом.
+- [x] Политика совместимости имеет единственного владельца и номер инварианта.
+- [x] Политика отличает отсутствие публичной гарантии от разрешения на неявный breaking change.
+- [x] Оба ключевых правила видны в корневом router-е.
+- [x] Ни одно правило не получило второго источника истины.
+- [x] Номера ADR в активных планах заменены названиями решений.
