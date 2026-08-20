@@ -42,8 +42,11 @@ private:
         FBuildField BuildField = nullptr;
     };
 
-    FGV2ScreenFieldAdapterRegistry();
+public:
     const FAdapter* Find(std::string_view SchemaId) const;
+
+private:
+    FGV2ScreenFieldAdapterRegistry();
 
     TArray<FAdapter> Adapters;
 };

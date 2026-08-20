@@ -16,7 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
     FString, TextValue,
     EGV2SubmitUiInteractionResult, Result);
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2InputFieldWidgetBase
     : public UCommonUserWidget
     , public IGV2DynamicScreenElement

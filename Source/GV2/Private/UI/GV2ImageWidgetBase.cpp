@@ -21,11 +21,23 @@ void UGV2ImageWidgetBase::NativePreConstruct()
 bool UGV2ImageWidgetBase::ApplyImageResource(const FString& ResourceId, FString& OutError)
 {
     FGV2ResolvedImageResource Resource;
-    const TOptional<float> RequiredAspect = ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect
+    EGV2PrimitiveScalePolicy EffectivePolicy = ScalePolicy;
+    if (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && AcceptedRenderMode != EGV2ImageRenderMode::FixedAspect)
+    {
+        if (AcceptedRenderMode == EGV2ImageRenderMode::Tile)
+        {
+            EffectivePolicy = EGV2PrimitiveScalePolicy::Tile;
+        }
+        else if (AcceptedRenderMode == EGV2ImageRenderMode::NineSlice)
+        {
+            EffectivePolicy = EGV2PrimitiveScalePolicy::NineSlice;
+        }
+    }
+    const TOptional<float> RequiredAspect = EffectivePolicy == EGV2PrimitiveScalePolicy::PreserveAspect
         ? TOptional<float>(FixedAspectRatio)
         : TOptional<float>();
     if (!FGV2ImagePresentation::ResolveAndApply(
-        Image, ResourceId, ScalePolicy, RequiredAspect, Resource, OutError))
+        Image, ResourceId, EffectivePolicy, RequiredAspect, Resource, OutError))
     {
         return false;
     }
@@ -74,11 +86,12 @@ bool UGV2ImageWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFie
     return Value.SchemaId == SchemaId && !Value.ImageValue.ResourceId.IsEmpty();
 }
 
-FGV2ScreenFieldValue UGV2ImageWidgetBase::CaptureScreenField_Implementation() const
+bool UGV2ImageWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
 {
     FGV2ImageFieldViewModel Model;
     Model.ResourceId = AppliedResourceId;
-    return FGV2ScreenFieldValue::MakeImage(FieldId, Model);
+    OutFieldValue = FGV2ScreenFieldValue::MakeImage(FieldId, Model);
+    return true;
 }
 
 bool UGV2ImageWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)

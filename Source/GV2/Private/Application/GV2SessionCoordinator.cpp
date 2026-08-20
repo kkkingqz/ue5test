@@ -1,5 +1,6 @@
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2ScreenFieldAdapterRegistry.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -78,66 +79,28 @@ bool LoadPortableRuntimeSources(
     }
 
     const FString GameDataDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
-    if (FPaths::DirectoryExists(GameDataDirectory))
+    const std::string GameDataDirUtf8 = SessionCoordinatorToUtf8(GameDataDirectory);
+    std::vector<GV2ContentCore::FDiagnostic> Diags;
+    std::vector<std::filesystem::path> OrderedRoots;
+    if (GV2ContentHostSupport::DiscoverPackagesFromContainer(
+            std::filesystem::path(GameDataDirUtf8),
+            Diags,
+            &OrderedRoots))
     {
-        TArray<FString> PackageFolders;
-        IFileManager::Get().FindFiles(PackageFolders, *(GameDataDirectory / TEXT("*")), false, true);
-        PackageFolders.Sort();
-        for (const FString& PkgDirName : PackageFolders)
+        for (const auto& Root : OrderedRoots)
         {
-            if (PkgDirName == TEXT("core"))
+            std::vector<GV2ContentCore::FDiagnostic> PkgDiags;
+            auto Descriptor = GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, PkgDiags);
+            if (!Descriptor || Descriptor->GetPackageId() == "core")
             {
                 continue;
             }
-            FString PkgScriptsDir = FPaths::Combine(GameDataDirectory, PkgDirName, TEXT("scripts"));
-            FPaths::NormalizeDirectoryName(PkgScriptsDir);
-            if (!FPaths::DirectoryExists(PkgScriptsDir))
+            auto PkgSources = GV2ContentHostSupport::DiscoverPackageScripts(Root, Descriptor->GetPackageId());
+            for (auto& Src : PkgSources)
             {
-                PkgScriptsDir = FPaths::Combine(GameDataDirectory, PkgDirName, TEXT("Scripts"));
-                FPaths::NormalizeDirectoryName(PkgScriptsDir);
-                if (!FPaths::DirectoryExists(PkgScriptsDir))
-                {
-                    continue;
-                }
-            }
-            const FString PkgScriptsPrefix = PkgScriptsDir + TEXT("/");
-            TArray<FString> PkgSourceFiles;
-            IFileManager::Get().FindFilesRecursive(PkgSourceFiles, *PkgScriptsDir, TEXT("*.lua"), true, false, false);
-            PkgSourceFiles.Sort();
-            for (const FString& FullPath : PkgSourceFiles)
-            {
-                TArray<uint8> Bytes;
-                if (!FFileHelper::LoadFileToArray(Bytes, *FullPath))
-                {
-                    OutFault = {
-                        "LuaRuntimeSourceMissing",
-                        SessionCoordinatorToUtf8(FString::Printf(TEXT("Lua source could not be read: %s"), *FullPath))};
-                    return false;
-                }
-                int32 Offset = 0;
-                if (Bytes.Num() >= 3 && Bytes[0] == 0xef && Bytes[1] == 0xbb && Bytes[2] == 0xbf)
-                {
-                    Offset = 3;
-                }
-                if (Bytes.Num() <= Offset)
-                {
-                    OutFault = {
-                        "LuaRuntimeSourceInvalid",
-                        SessionCoordinatorToUtf8(FString::Printf(TEXT("Lua source is empty: %s"), *FullPath))};
-                    return false;
-                }
-                FString NormalizedFullPath = FullPath;
-                FPaths::NormalizeFilename(NormalizedFullPath);
-                if (!NormalizedFullPath.StartsWith(PkgScriptsPrefix, ESearchCase::CaseSensitive))
-                {
-                    continue;
-                }
-                const FString RelativePath = NormalizedFullPath.RightChop(PkgScriptsPrefix.Len());
                 GV2RuntimeCore::FRuntimeSource& Source = OutSources.emplace_back();
-                Source.Name = "@" + SessionCoordinatorToUtf8(PkgDirName) + "/" + SessionCoordinatorToUtf8(RelativePath);
-                Source.Text.assign(
-                    reinterpret_cast<const char*>(Bytes.GetData() + Offset),
-                    static_cast<std::size_t>(Bytes.Num() - Offset));
+                Source.Name = std::move(Src.Name);
+                Source.Text = std::move(Src.Text);
             }
         }
     }

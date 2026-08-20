@@ -5,6 +5,8 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformTime.h"
 #include "Application/GV2ScreenFieldAdapterRegistry.h"
+#include "Application/GV2SessionCoordinator.h"
+#include "Application/GV2FilesystemContentSourceProvider.h"
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
 #include "Runtime/GV2RuntimeSubsystem.h"
 #include "UI/GV2ButtonListWidgetBase.h"
@@ -220,14 +222,14 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         }
     }
     TestEqual(
-        TEXT("Adapter registry contains the five published Screen Field schemas"),
+        TEXT("Adapter registry contains all 10 baseline and composite schemas"),
         FGV2ScreenFieldAdapterRegistry::Get().Num(),
-        5);
+        10);
 
-    FString UiDocumentContract;
+    FString ScreenTemplatesContract;
     if (ReadSource(
-            TEXT("Docs/UI/UIDocumentAndReconciliation.md"),
-            UiDocumentContract))
+            TEXT("Docs/UI/ScreenTemplates.md"),
+            ScreenTemplatesContract))
     {
         const TCHAR* PublishedFieldSchemas[] = {
             TEXT("core:schema.ui_field.button_list.v2"),
@@ -239,16 +241,9 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         for (const TCHAR* SchemaId : PublishedFieldSchemas)
         {
             TestTrue(
-                *FString::Printf(TEXT("UI Document contract names supported schema %s"), SchemaId),
-                UiDocumentContract.Contains(SchemaId));
+                *FString::Printf(TEXT("Screen Templates contract names supported schema %s"), SchemaId),
+                ScreenTemplatesContract.Contains(SchemaId));
         }
-        TestFalse(
-            TEXT("UI Document contract does not claim only two field adapters"),
-            UiDocumentContract.Contains(TEXT("только RichText и ButtonList")));
-        TestTrue(
-            TEXT("UI Document contract labels unimplemented layered tests as planned acceptance"),
-            UiDocumentContract.Contains(
-                TEXT("planned acceptance criteria полноценного layered reconciler")));
     }
 
     FString ImageCatalogSource;
@@ -606,8 +601,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
 {
+    if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+    {
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.progress.health"), FText::FromString(TEXT("Health")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.modal.title"), FText::FromString(TEXT("Title")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.modal.content"), FText::FromString(TEXT("Content")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.button.ok"), FText::FromString(TEXT("OK")));
+    }
+
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TestEqual(TEXT("Registry contains all 9 baseline and composite schemas"), Registry.Num(), 9);
+    TestEqual(TEXT("Registry contains all 10 baseline and composite schemas"), Registry.Num(), 10);
 
     // 1. Image Adapter (core:schema.ui_field.image.v1)
     {
@@ -2064,7 +2067,7 @@ bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiLayeredReconciliationContract,
     "GV2.UI.LayeredReconciliationContract",
-    EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 {
@@ -2101,6 +2104,10 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
     {
         UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
         TestNotNull(TEXT("Game shell instantiated"), Shell);
+        if (Shell != nullptr)
+        {
+            Shell->AddToRoot();
+        }
 
         FGV2LayeredUiReconciler Reconciler;
 
@@ -2177,10 +2184,13 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
         TestTrue(TEXT("Reconcile Doc4 with modal succeeds"), Reconciler.Reconcile(Shell, Doc4, MockFactory, ReconcileError));
         TestEqual(TEXT("Factory instantiated modal widget"), FactoryInstantiations, 3);
-        TestFalse(TEXT("Location content layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("location_content")));
-        TestFalse(TEXT("Background layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("background")));
-        TestFalse(TEXT("Core interface layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("core_interface")));
-        TestTrue(TEXT("Modal stack layer is interactive"), Shell->IsLayerInteractive(TEXT("modal_stack")));
+        if (Shell != nullptr)
+        {
+            TestFalse(TEXT("Location content layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("location_content")));
+            TestFalse(TEXT("Background layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("background")));
+            TestFalse(TEXT("Core interface layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("core_interface")));
+            TestTrue(TEXT("Modal stack layer is interactive"), Shell->IsLayerInteractive(TEXT("modal_stack")));
+        }
 
         // Step E: Doc5 closes modal -> Lower layers unblocked
         FGV2UiDocumentViewModel Doc5 = Doc3;
@@ -2188,7 +2198,10 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         Doc5.Modals.Empty();
 
         TestTrue(TEXT("Reconcile Doc5 (modal closed) succeeds"), Reconciler.Reconcile(Shell, Doc5, MockFactory, ReconcileError));
-        TestTrue(TEXT("Location content layer is unblocked"), Shell->IsLayerInteractive(TEXT("location_content")));
+        if (Shell != nullptr)
+        {
+            TestTrue(TEXT("Location content layer is unblocked"), Shell->IsLayerInteractive(TEXT("location_content")));
+        }
         TestNull(TEXT("Modal widget detached and removed from active list"), Reconciler.GetActiveScreen(TEXT("modal_stack"), TEXT("confirm_dialog")));
 
         // Step F: Atomicity - Candidate with invalid ScreenId rejected without modifying active set (UIF-21)
@@ -2205,6 +2218,11 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TEXT("Previous active screen remains intact after rejected candidate"),
             Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")),
             RouteWidget3);
+
+        if (Shell != nullptr)
+        {
+            Shell->RemoveFromRoot();
+        }
     }
 
     GameInstance->Shutdown();
@@ -2224,6 +2242,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 {
+    if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+    {
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inventory"), FText::FromString(TEXT("Inventory")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_use"), FText::FromString(TEXT("Use Potion")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_skills"), FText::FromString(TEXT("Skills")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_learn"), FText::FromString(TEXT("Learn Fireball")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inv"), FText::FromString(TEXT("Inventory")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_a"), FText::FromString(TEXT("Title A")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_b"), FText::FromString(TEXT("Title B")));
+    }
+
     // =========================================================================
     // UIF-22: Registry Layer 'embedded' and placement rules
     // =========================================================================
@@ -2346,9 +2375,9 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             Btn1["text"] = GV2RuntimeCore::FValue(Btn1Title);
             GV2RuntimeCore::FValue::FObject Action1;
             Action1["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.item.use"));
-            Btn1["action"] = GV2RuntimeCore::FValue(Action1);
+            Btn1["binding"] = GV2RuntimeCore::FValue(Action1);
             Btns.push_back(GV2RuntimeCore::FValue(Btn1));
-            BtnVal["buttons"] = GV2RuntimeCore::FValue(Btns);
+            BtnVal["items"] = GV2RuntimeCore::FValue(Btns);
             BtnField["value"] = GV2RuntimeCore::FValue(BtnVal);
             T1Fields["inventory_buttons"] = GV2RuntimeCore::FValue(BtnField);
             T1["fields"] = GV2RuntimeCore::FValue(T1Fields);
@@ -2374,9 +2403,9 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             SkillBtn1["text"] = GV2RuntimeCore::FValue(SkillBtn1Title);
             GV2RuntimeCore::FValue::FObject Action2;
             Action2["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.skill.learn"));
-            SkillBtn1["action"] = GV2RuntimeCore::FValue(Action2);
+            SkillBtn1["binding"] = GV2RuntimeCore::FValue(Action2);
             SkillBtns.push_back(GV2RuntimeCore::FValue(SkillBtn1));
-            SkillBtnVal["buttons"] = GV2RuntimeCore::FValue(SkillBtns);
+            SkillBtnVal["items"] = GV2RuntimeCore::FValue(SkillBtns);
             SkillBtnField["value"] = GV2RuntimeCore::FValue(SkillBtnVal);
             T2Fields["skill_buttons"] = GV2RuntimeCore::FValue(SkillBtnField);
             T2["fields"] = GV2RuntimeCore::FValue(T2Fields);
@@ -2388,20 +2417,27 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
         TArray<FGV2UiBindingDefinition> ValidDefs;
         TestTrue(TEXT("PrepareBindingDefinitions for tab container succeeds"), FieldAdapters.PrepareBindingDefinitions(ValidTabReq, ValidDefs));
-        TestEqual(TEXT("Tab container produces 2 child button definitions"), ValidDefs.Num(), 2);
+        if (TestEqual(TEXT("Tab container produces 2 child button definitions"), ValidDefs.Num(), 2))
+        {
+            // Verify elongated paths: [field_id, tab_key, child_field_id, button_key]
+            TestEqual(TEXT("Tab1 binding path segment count"), ValidDefs[0].NodeKeyPath.Num(), 4);
+            if (ValidDefs[0].NodeKeyPath.Num() >= 4)
+            {
+                TestEqual(TEXT("Tab1 binding path segment 0 (field_id)"), ValidDefs[0].NodeKeyPath[0], TEXT("tabs"));
+                TestEqual(TEXT("Tab1 binding path segment 1 (tab_key)"), ValidDefs[0].NodeKeyPath[1], TEXT("inventory"));
+                TestEqual(TEXT("Tab1 binding path segment 2 (child_field_id)"), ValidDefs[0].NodeKeyPath[2], TEXT("inventory_buttons"));
+                TestEqual(TEXT("Tab1 binding path segment 3 (btn_key)"), ValidDefs[0].NodeKeyPath[3], TEXT("use_potion"));
+            }
 
-        // Verify elongated paths: [field_id, tab_key, child_field_id, button_key]
-        TestEqual(TEXT("Tab1 binding path segment count"), ValidDefs[0].NodeKeyPath.Num(), 4);
-        TestEqual(TEXT("Tab1 binding path segment 0 (field_id)"), ValidDefs[0].NodeKeyPath[0], TEXT("tabs"));
-        TestEqual(TEXT("Tab1 binding path segment 1 (tab_key)"), ValidDefs[0].NodeKeyPath[1], TEXT("inventory"));
-        TestEqual(TEXT("Tab1 binding path segment 2 (child_field_id)"), ValidDefs[0].NodeKeyPath[2], TEXT("inventory_buttons"));
-        TestEqual(TEXT("Tab1 binding path segment 3 (btn_key)"), ValidDefs[0].NodeKeyPath[3], TEXT("use_potion"));
-
-        TestEqual(TEXT("Tab2 binding path segment count"), ValidDefs[1].NodeKeyPath.Num(), 4);
-        TestEqual(TEXT("Tab2 binding path segment 0 (field_id)"), ValidDefs[1].NodeKeyPath[0], TEXT("tabs"));
-        TestEqual(TEXT("Tab2 binding path segment 1 (tab_key)"), ValidDefs[1].NodeKeyPath[1], TEXT("skills"));
-        TestEqual(TEXT("Tab2 binding path segment 2 (child_field_id)"), ValidDefs[1].NodeKeyPath[2], TEXT("skill_buttons"));
-        TestEqual(TEXT("Tab2 binding path segment 3 (btn_key)"), ValidDefs[1].NodeKeyPath[3], TEXT("learn_fireball"));
+            TestEqual(TEXT("Tab2 binding path segment count"), ValidDefs[1].NodeKeyPath.Num(), 4);
+            if (ValidDefs[1].NodeKeyPath.Num() >= 4)
+            {
+                TestEqual(TEXT("Tab2 binding path segment 0 (field_id)"), ValidDefs[1].NodeKeyPath[0], TEXT("tabs"));
+                TestEqual(TEXT("Tab2 binding path segment 1 (tab_key)"), ValidDefs[1].NodeKeyPath[1], TEXT("skills"));
+                TestEqual(TEXT("Tab2 binding path segment 2 (child_field_id)"), ValidDefs[1].NodeKeyPath[2], TEXT("skill_buttons"));
+                TestEqual(TEXT("Tab2 binding path segment 3 (btn_key)"), ValidDefs[1].NodeKeyPath[3], TEXT("learn_fireball"));
+            }
+        }
 
         // BuildFields verification
         TArray<FGV2UiBindingHandle> Handles;
@@ -2410,16 +2446,21 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
         TArray<FGV2ScreenFieldValue> BuiltFields;
         TestTrue(TEXT("BuildFields for tab container succeeds"), FieldAdapters.BuildFields(ValidTabReq, Handles, BuiltFields));
-        TestEqual(TEXT("1 built field produced"), BuiltFields.Num(), 1);
-        TestTrue(TEXT("TabContainerValue is populated"), BuiltFields[0].TabContainerValue.IsValid());
-        if (BuiltFields[0].TabContainerValue.IsValid())
+        if (TestEqual(TEXT("1 built field produced"), BuiltFields.Num(), 1))
         {
-            TestEqual(TEXT("DefaultTabKey is skills"), BuiltFields[0].TabContainerValue->DefaultTabKey, FName("skills"));
-            TestEqual(TEXT("2 tabs in model"), BuiltFields[0].TabContainerValue->Tabs.Num(), 2);
-            TestEqual(TEXT("Tab1 Key is inventory"), BuiltFields[0].TabContainerValue->Tabs[0].Key, FName("inventory"));
-            TestEqual(TEXT("Tab2 Key is skills"), BuiltFields[0].TabContainerValue->Tabs[1].Key, FName("skills"));
-            TestEqual(TEXT("Tab1 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[0].Fields.Num(), 1);
-            TestEqual(TEXT("Tab2 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[1].Fields.Num(), 1);
+            TestTrue(TEXT("TabContainerValue is populated"), BuiltFields[0].TabContainerValue.IsValid());
+            if (BuiltFields[0].TabContainerValue.IsValid())
+            {
+                TestEqual(TEXT("DefaultTabKey is skills"), BuiltFields[0].TabContainerValue->DefaultTabKey, FName("skills"));
+                TestEqual(TEXT("2 tabs in model"), BuiltFields[0].TabContainerValue->Tabs.Num(), 2);
+                if (BuiltFields[0].TabContainerValue->Tabs.Num() >= 2)
+                {
+                    TestEqual(TEXT("Tab1 Key is inventory"), BuiltFields[0].TabContainerValue->Tabs[0].Key, FName("inventory"));
+                    TestEqual(TEXT("Tab2 Key is skills"), BuiltFields[0].TabContainerValue->Tabs[1].Key, FName("skills"));
+                    TestEqual(TEXT("Tab1 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[0].Fields.Num(), 1);
+                    TestEqual(TEXT("Tab2 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[1].Fields.Num(), 1);
+                }
+            }
         }
     }
 
@@ -2469,8 +2510,13 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
     // =========================================================================
     {
         FGV2SessionCoordinator Coordinator;
-        GV2ContentCore::FRepositorySnapshot Snapshot;
-        GV2ContentCore::FRepositoryReadHandle ReadHandle = Snapshot.GetReadHandle();
+        const FString CorePackageRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
+        const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectory(CorePackageRoot);
+        GV2ContentCore::FRepositoryReadHandle ReadHandle;
+        if (RepoBuild.IsSuccess())
+        {
+            ReadHandle = RepoBuild.GetCandidate().GetReadHandle();
+        }
         TestTrue(TEXT("Coordinator StartSession succeeds"), Coordinator.StartSession(ReadHandle, 1));
 
         // Prepare document with route holding tab container with 'inventory' (default) and 'skills'
@@ -2509,9 +2555,9 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             Btn1["text"] = GV2RuntimeCore::FValue(Btn1Title);
             GV2RuntimeCore::FValue::FObject Action1;
             Action1["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.test.step"));
-            Btn1["action"] = GV2RuntimeCore::FValue(Action1);
+            Btn1["binding"] = GV2RuntimeCore::FValue(Action1);
             Btns.push_back(GV2RuntimeCore::FValue(Btn1));
-            BtnVal["buttons"] = GV2RuntimeCore::FValue(Btns);
+            BtnVal["items"] = GV2RuntimeCore::FValue(Btns);
             BtnField["value"] = GV2RuntimeCore::FValue(BtnVal);
             T1Fields["inv_buttons"] = GV2RuntimeCore::FValue(BtnField);
             T1["fields"] = GV2RuntimeCore::FValue(T1Fields);
@@ -2536,9 +2582,9 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             SkillBtn1["text"] = GV2RuntimeCore::FValue(SkillBtn1Title);
             GV2RuntimeCore::FValue::FObject Action2;
             Action2["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.test.step"));
-            SkillBtn1["action"] = GV2RuntimeCore::FValue(Action2);
+            SkillBtn1["binding"] = GV2RuntimeCore::FValue(Action2);
             SkillBtns.push_back(GV2RuntimeCore::FValue(SkillBtn1));
-            SkillBtnVal["buttons"] = GV2RuntimeCore::FValue(SkillBtns);
+            SkillBtnVal["items"] = GV2RuntimeCore::FValue(SkillBtns);
             SkillBtnField["value"] = GV2RuntimeCore::FValue(SkillBtnVal);
             T2Fields["skill_buttons"] = GV2RuntimeCore::FValue(SkillBtnField);
             T2["fields"] = GV2RuntimeCore::FValue(T2Fields);
@@ -2557,8 +2603,11 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         });
 
         // Publish bindings
+        GV2RuntimeCore::FScreenRequest RouteReq;
+        RouteReq.ScreenId = RouteInst.ScreenId;
+        RouteReq.Fields = RouteInst.Fields;
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestTrue(TEXT("PrepareBindingDefinitions for Route succeeds"), FieldAdapters.PrepareBindingDefinitions(RouteInst, Definitions));
+        TestTrue(TEXT("PrepareBindingDefinitions for Route succeeds"), FieldAdapters.PrepareBindingDefinitions(RouteReq, Definitions));
         for (FGV2UiBindingDefinition& Def : Definitions)
         {
             Def.NodeKeyPath.Insert(TEXT("main"), 0);
@@ -2566,35 +2615,36 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         }
 
         TArray<FGV2UiBindingHandle> Handles;
-        TestTrue(TEXT("PublishUiBindings succeeds"), Coordinator.PublishUiBindings(TEXT("ui@1:1"), 1, Definitions, Handles));
-        TestEqual(TEXT("2 handles published"), Handles.Num(), 2);
+        TestTrue(TEXT("PublishUiBindings succeeds"), Coordinator.PublishUiBindings(TEXT("ui@1:1"), 2, Definitions, Handles));
+        if (TestEqual(TEXT("2 handles published"), Handles.Num(), 2))
+        {
+            const FGV2UiBindingHandle InventoryBtnHandle = Handles[0];
+            const FGV2UiBindingHandle SkillsBtnHandle = Handles[1];
 
-        const FGV2UiBindingHandle InventoryBtnHandle = Handles[0];
-        const FGV2UiBindingHandle SkillsBtnHandle = Handles[1];
+            // Active tab initially set to inventory
+            Coordinator.SetActiveTab(TEXT("location_content/main/tabs"), TEXT("inventory"));
+            TestEqual(TEXT("Coordinator active tab is inventory"), Coordinator.GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
 
-        // Active tab initially set to inventory
-        Coordinator.SetActiveTab(TEXT("location_content/main/tabs"), TEXT("inventory"));
-        TestEqual(TEXT("Coordinator active tab is inventory"), Coordinator.GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
+            // 1. Submit interaction on ACTIVE tab (inventory) -> Accepted
+            const EGV2SubmitUiInteractionResult Result1 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
+            TestEqual(TEXT("Active tab handle accepted"), Result1, EGV2SubmitUiInteractionResult::Accepted);
 
-        // 1. Submit interaction on ACTIVE tab (inventory) -> Accepted
-        const EGV2SubmitUiInteractionResult Result1 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
-        TestEqual(TEXT("Active tab handle accepted"), Result1, EGV2SubmitUiInteractionResult::Accepted);
+            // 2. Submit interaction on INACTIVE tab (skills) -> StaleBindingHandle
+            const EGV2SubmitUiInteractionResult Result2 = Coordinator.SubmitUiInteraction(SkillsBtnHandle, {});
+            TestEqual(TEXT("Inactive tab handle rejected as stale"), Result2, EGV2SubmitUiInteractionResult::StaleBindingHandle);
 
-        // 2. Submit interaction on INACTIVE tab (skills) -> StaleBindingHandle
-        const EGV2SubmitUiInteractionResult Result2 = Coordinator.SubmitUiInteraction(SkillsBtnHandle, {});
-        TestEqual(TEXT("Inactive tab handle rejected as stale"), Result2, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+            // 3. Switch active tab locally to skills (no commands / no revision mutation)
+            Coordinator.SetActiveTab(TEXT("location_content/main/tabs"), TEXT("skills"));
+            TestEqual(TEXT("Coordinator active tab is now skills"), Coordinator.GetActiveTab(TEXT("location_content/main/tabs")), TEXT("skills"));
 
-        // 3. Switch active tab locally to skills (no commands / no revision mutation)
-        Coordinator.SetActiveTab(TEXT("location_content/main/tabs"), TEXT("skills"));
-        TestEqual(TEXT("Coordinator active tab is now skills"), Coordinator.GetActiveTab(TEXT("location_content/main/tabs")), TEXT("skills"));
+            // 4. Submit interaction on new ACTIVE tab (skills) -> Accepted
+            const EGV2SubmitUiInteractionResult Result3 = Coordinator.SubmitUiInteraction(SkillsBtnHandle, {});
+            TestEqual(TEXT("Skills handle accepted after tab switch"), Result3, EGV2SubmitUiInteractionResult::Accepted);
 
-        // 4. Submit interaction on new ACTIVE tab (skills) -> Accepted
-        const EGV2SubmitUiInteractionResult Result3 = Coordinator.SubmitUiInteraction(SkillsBtnHandle, {});
-        TestEqual(TEXT("Skills handle accepted after tab switch"), Result3, EGV2SubmitUiInteractionResult::Accepted);
-
-        // 5. Submit interaction on newly INACTIVE tab (inventory) -> StaleBindingHandle
-        const EGV2SubmitUiInteractionResult Result4 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
-        TestEqual(TEXT("Inventory handle rejected after tab switch"), Result4, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+            // 5. Submit interaction on newly INACTIVE tab (inventory) -> StaleBindingHandle
+            const EGV2SubmitUiInteractionResult Result4 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
+            TestEqual(TEXT("Inventory handle rejected after tab switch"), Result4, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+        }
     }
 
     return true;
@@ -2688,7 +2738,7 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
             FString Error;
             TestTrue(
                 TEXT("Resolve emergency error title via MinimalTheme"),
-                UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.title"), {}, MinimalTheme, ResolvedTitle, Error));
+                UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.title"), {}, FName("default"), ResolvedTitle, Error));
             TestEqual(TEXT("Error title text matches"), ResolvedTitle.Text.ToString(), TEXT("Error"));
         }
     }

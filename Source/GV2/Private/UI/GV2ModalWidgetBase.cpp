@@ -25,9 +25,10 @@ bool UGV2ModalWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFie
     return Value.SchemaId == SchemaId;
 }
 
-FGV2ScreenFieldValue UGV2ModalWidgetBase::CaptureScreenField_Implementation() const
+bool UGV2ModalWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
 {
-    return FGV2ScreenFieldValue::MakeModal(FieldId, CurrentModel);
+    OutFieldValue = FGV2ScreenFieldValue::MakeModal(FieldId, CurrentModel);
+    return true;
 }
 
 bool UGV2ModalWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)
@@ -47,7 +48,7 @@ bool UGV2ModalWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldV
     }
     if (ButtonList != nullptr)
     {
-        ButtonList->ApplyButtons(CurrentModel.Buttons);
+        ButtonList->ApplyButtonModels(CurrentModel.Buttons);
     }
     return true;
 }
@@ -65,7 +66,7 @@ bool UGV2ModalWidgetBase::ResetScreenField_Implementation()
     }
     if (ButtonList != nullptr)
     {
-        ButtonList->ResetButtons();
+        ButtonList->ResetScreenField();
     }
     return true;
 }

@@ -15,7 +15,7 @@ class UGV2ButtonListWidgetBase;
  * Belongs to the modal_stack presentation layer and blocks lower layers from interaction.
  * Implements IGV2DynamicScreenElement for "core:schema.ui_field.modal.v1".
  */
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2ModalWidgetBase
     : public UCommonUserWidget
     , public IGV2DynamicScreenElement
@@ -27,7 +27,7 @@ public:
     // IGV2DynamicScreenElement
     virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
     virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;
-    virtual FGV2ScreenFieldValue CaptureScreenField_Implementation() const override;
+    virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const override;
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
 

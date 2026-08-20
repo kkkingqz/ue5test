@@ -14,14 +14,12 @@ UGV2TabContainerWidgetBase::UGV2TabContainerWidgetBase(const FObjectInitializer&
 {
 }
 
-FName UGV2TabContainerWidgetBase::GetConfiguredScreenFieldId_Implementation() const
+FGV2ScreenFieldDescriptor UGV2TabContainerWidgetBase::GetScreenFieldDescriptor_Implementation() const
 {
-    return ConfiguredScreenFieldId;
-}
-
-FString UGV2TabContainerWidgetBase::GetDeclaredSchemaId_Implementation() const
-{
-    return TabContainerDeclaredSchemaId;
+    FGV2ScreenFieldDescriptor Desc;
+    Desc.FieldId = ConfiguredScreenFieldId;
+    Desc.SchemaId = TabContainerDeclaredSchemaId;
+    return Desc;
 }
 
 bool UGV2TabContainerWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& FieldValue) const
@@ -42,25 +40,34 @@ bool UGV2TabContainerWidgetBase::ApplyScreenField_Implementation(const FGV2Scree
     return ApplyTabContainerModel(*FieldValue.TabContainerValue);
 }
 
-void UGV2TabContainerWidgetBase::ResetScreenField_Implementation()
+bool UGV2TabContainerWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
 {
-    ResetTabContainerModel();
+    OutFieldValue = FGV2ScreenFieldValue::MakeTabContainer(ConfiguredScreenFieldId, Model);
+    return true;
 }
 
-void UGV2TabContainerWidgetBase::ApplyUiTheme_Implementation(UGV2UiTheme* Theme)
+bool UGV2TabContainerWidgetBase::ResetScreenField_Implementation()
 {
+    ResetTabContainerModel();
+    return true;
+}
+
+bool UGV2TabContainerWidgetBase::ApplyCentralStyle_Implementation()
+{
+    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
     if (Theme == nullptr)
     {
-        return;
+        return false;
     }
 
     for (const auto& Pair : TabScreenWidgets)
     {
         if (Pair.Value != nullptr && Pair.Value->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
         {
-            IGV2UiStyleConsumer::Execute_ApplyUiTheme(Pair.Value, Theme);
+            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(Pair.Value);
         }
     }
+    return true;
 }
 
 bool UGV2TabContainerWidgetBase::CanApplyTabContainerModel(const FGV2TabContainerViewModel& InModel) const

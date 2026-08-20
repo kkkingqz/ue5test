@@ -910,6 +910,10 @@ bool PrepareTabContainer(
 
                 for (FGV2UiBindingDefinition& Def : ChildDefs)
                 {
+                    if (Def.NodeKeyPath.Num() >= 2 && Def.NodeKeyPath[0] == TEXT("route") && Def.NodeKeyPath[1] == TEXT("main"))
+                    {
+                        Def.NodeKeyPath.RemoveAt(0, 2);
+                    }
                     Def.NodeKeyPath.Insert(TabKeyStr, 0);
                     Def.NodeKeyPath.Insert(FieldId(Field), 0);
                     OutDefinitions.Add(MoveTemp(Def));

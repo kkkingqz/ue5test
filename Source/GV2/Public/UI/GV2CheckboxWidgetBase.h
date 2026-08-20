@@ -15,7 +15,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
     bool, bIsChecked,
     EGV2SubmitUiInteractionResult, Result);
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2CheckboxWidgetBase
     : public UCommonUserWidget
     , public IGV2DynamicScreenElement

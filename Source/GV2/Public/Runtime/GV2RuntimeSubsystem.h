@@ -5,6 +5,7 @@
 #include "Templates/PimplPtr.h"
 #include "GV2RuntimeSubsystem.generated.h"
 
+class FGV2LayeredUiReconciler;
 class FGV2RepositoryPublisher;
 class FGV2SessionCoordinator;
 class UGV2GameShellWidgetBase;
@@ -79,7 +80,7 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<UGV2GameShellWidgetBase> ActiveGameShell;
 
-    FGV2LayeredUiReconciler Reconciler;
+    TPimplPtr<FGV2LayeredUiReconciler> Reconciler;
 
     FDelegateHandle StartGameInstanceHandle;
     FString ImageCatalogBuildError;

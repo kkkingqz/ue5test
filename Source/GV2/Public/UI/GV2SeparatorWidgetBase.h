@@ -7,7 +7,7 @@
 class UImage;
 class USizeBox;
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2SeparatorWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer

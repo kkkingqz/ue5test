@@ -12,7 +12,7 @@ class UPanelWidget;
  * Generalized list container supporting vertical or horizontal layout.
  * Reconciles child widgets by unique non-empty keys using FGV2KeyedCollection.
  */
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2ListViewWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer

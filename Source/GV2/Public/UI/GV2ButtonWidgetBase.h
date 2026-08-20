@@ -16,7 +16,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(
     FGV2ButtonActivated,
     FName, Key);
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2ButtonWidgetBase
     : public UCommonButtonBase
     , public IGV2UiStyleConsumer

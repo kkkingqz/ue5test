@@ -14,7 +14,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
     FGV2UiBindingHandle, BindingHandle,
     EGV2SubmitUiInteractionResult, Result);
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2ButtonListWidgetBase
     : public UCommonUserWidget
     , public IGV2DynamicScreenElement

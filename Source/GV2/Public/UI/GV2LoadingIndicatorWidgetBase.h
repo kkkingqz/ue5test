@@ -6,7 +6,7 @@
 
 class UCircularThrobber;
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2LoadingIndicatorWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer

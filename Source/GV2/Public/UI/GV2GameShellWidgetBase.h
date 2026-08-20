@@ -17,7 +17,7 @@ class UNamedSlot;
  * - overlay_stack (Z: 40)
  * - modal_stack (Z: 50)
  */
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2GameShellWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer
@@ -79,5 +79,6 @@ protected:
     UPanelWidget* FindHostForLayer(FName Layer) const;
 
 private:
+    UPROPERTY(Transient)
     TMap<FName, bool> LayerInteractivity;
 };

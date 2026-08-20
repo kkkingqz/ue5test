@@ -7,7 +7,7 @@
 
 class UCommonTextBlock;
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2TextWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer

@@ -9,7 +9,7 @@ void UGV2ScrollAreaWidgetBase::NativePreConstruct()
     if (ScrollBox != nullptr)
     {
         ScrollBox->SetOrientation(Orientation);
-        ScrollBox->SetScrollBarVisibility(bAlwaysShowScrollbar ? ESlateVisibility::Visible : ESlateVisibility::Auto);
+        ScrollBox->SetScrollBarVisibility(bAlwaysShowScrollbar ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
     }
 }
 

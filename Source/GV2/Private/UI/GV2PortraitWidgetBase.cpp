@@ -64,12 +64,13 @@ bool UGV2PortraitWidgetBase::CanApplyScreenField_Implementation(const FGV2Screen
     return Value.SchemaId == SchemaId && !Value.PortraitValue.ResourceId.IsEmpty();
 }
 
-FGV2ScreenFieldValue UGV2PortraitWidgetBase::CaptureScreenField_Implementation() const
+bool UGV2PortraitWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
 {
     FGV2PortraitViewModel Model;
     Model.ResourceId = AppliedPortraitId;
     Model.FrameResourceId = AppliedFrameId;
-    return FGV2ScreenFieldValue::MakePortrait(FieldId, Model);
+    OutFieldValue = FGV2ScreenFieldValue::MakePortrait(FieldId, Model);
+    return true;
 }
 
 bool UGV2PortraitWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)

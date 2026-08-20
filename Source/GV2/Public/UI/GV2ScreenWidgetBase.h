@@ -4,7 +4,7 @@
 #include "CommonUserWidget.h"
 #include "GV2ScreenWidgetBase.generated.h"
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2ScreenWidgetBase : public UCommonUserWidget
 {
     GENERATED_BODY()

@@ -10,6 +10,7 @@
 #include "Misc/Paths.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
@@ -80,6 +81,8 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
         UE_LOG(LogGV2Runtime, Error, TEXT("%s"), *RepositoryBuildError);
     }
 
+    Reconciler = MakePimpl<FGV2LayeredUiReconciler>();
+
     Coordinator = MakePimpl<FGV2SessionCoordinator>();
     Coordinator->SetInteractionSink([this](const FGV2UiIngressItem& Item)
     {
@@ -114,7 +117,7 @@ void UGV2RuntimeSubsystem::Deinitialize()
         FWorldDelegates::OnStartGameInstance.Remove(StartGameInstanceHandle);
         StartGameInstanceHandle.Reset();
     }
-    Reconciler.Reset();
+    Reconciler->Reset();
     if (ActiveGameShell != nullptr)
     {
         ActiveGameShell->RemoveFromParent();
@@ -233,7 +236,7 @@ void UGV2RuntimeSubsystem::EndSession()
 {
     check(IsInGameThread());
     check(Coordinator);
-    Reconciler.Reset();
+    Reconciler->Reset();
     if (ActiveGameShell != nullptr)
     {
         ActiveGameShell->RemoveFromParent();
@@ -250,7 +253,7 @@ void UGV2RuntimeSubsystem::EndSession()
 
 UUserWidget* UGV2RuntimeSubsystem::GetActiveScreen() const
 {
-    UGV2ScreenWidgetBase* RouteScreen = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerLocationContent, FName("main"));
+    UGV2ScreenWidgetBase* RouteScreen = Reconciler->GetActiveScreen(UGV2GameShellWidgetBase::LayerLocationContent, FName("main"));
     if (RouteScreen != nullptr)
     {
         return RouteScreen;
@@ -265,7 +268,7 @@ UGV2GameShellWidgetBase* UGV2RuntimeSubsystem::GetActiveGameShell() const
 
 UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::GetActiveScreenInLayer(FName Layer, FName InstanceKey) const
 {
-    return Reconciler.GetActiveScreen(Layer, InstanceKey);
+    return Reconciler->GetActiveScreen(Layer, InstanceKey);
 }
 
 void UGV2RuntimeSubsystem::SetActiveTab(const FString& ContainerPath, const FString& TabKey)
@@ -411,7 +414,7 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
         return InstantiateScreenWidget(ScreenId);
     };
 
-    if (!Reconciler.Reconcile(ActiveGameShell, Document, ScreenFactory, ReconcileError))
+    if (!Reconciler->Reconcile(ActiveGameShell, Document, ScreenFactory, ReconcileError))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("UI Document reconciliation failed: %s"), *ReconcileError);
         return false;
@@ -419,7 +422,7 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
 
     if (ActiveGameShell == nullptr && Document.bHasRoute)
     {
-        ActiveScreen = Reconciler.GetActiveScreen(Document.Route.Layer, Document.Route.InstanceKey);
+        ActiveScreen = Reconciler->GetActiveScreen(Document.Route.Layer, Document.Route.InstanceKey);
         if (bActiveScreenAddedToViewport && ActiveScreen != nullptr && ActiveScreen->GetParent() == nullptr && !ActiveScreen->IsInViewport())
         {
             ActiveScreen->AddToViewport();

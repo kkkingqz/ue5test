@@ -11,7 +11,7 @@ class UGV2RichTextWidgetBase;
 class UImage;
 class USizeBox;
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2RichTextPopoverWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer

@@ -92,6 +92,12 @@ GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepositoryFrom(const TCHAR* 
 
 GV2ContentCore::FRepositoryReadHandle MakeTestPinnedRepository()
 {
+    const FString CorePackageRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
+    const GV2ContentCore::FBuildResult Result = BuildGV2RepositoryFromDirectory(CorePackageRoot);
+    if (Result.IsSuccess())
+    {
+        return Result.GetCandidate().GetReadHandle();
+    }
     return MakeTestPinnedRepositoryFrom(TEXT("valid/core"));
 }
 
@@ -916,8 +922,23 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Parameters)
 {
-    const GV2ContentCore::FBuildResult ResultA = MakeTestBuildResultFrom(TEXT("valid/core"));
-    const GV2ContentCore::FBuildResult ResultB = MakeEmptyCoreBuildResult();
+    const FString CorePackageRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
+    const GV2ContentCore::FBuildResult ResultA = BuildGV2RepositoryFromDirectory(CorePackageRoot);
+
+    using namespace GV2ContentCore;
+    const FString FixtureRoot = FPaths::ConvertRelativePathToFull(FPaths::Combine(
+        FPaths::ProjectDir(), TEXT("Tests/Fixtures/PortableContentCore")));
+    const FPackageDescriptor CoreDesc = Testing::MakeRepresentativeCorePackageDescriptor();
+    const FPackageDescriptor TestModDesc = Testing::MakeRepresentativeTestModPackageDescriptor();
+
+    FTestMultiPackageSourceProvider Provider;
+    Provider.PackageRoots.emplace("core", CorePackageRoot);
+    Provider.PackageRoots.emplace("test_mod", FPaths::Combine(FixtureRoot, TEXT("valid/test_mod")));
+
+    FBuildOptions Options;
+    Options.SourceProvider = &Provider;
+    const FBuildResult ResultB = BuildRepository({ CoreDesc, TestModDesc }, Options);
+
     if (!TestTrue(TEXT("Fixture A builds"), ResultA.IsSuccess())
         || !TestTrue(TEXT("Fixture B builds"), ResultB.IsSuccess()))
     {

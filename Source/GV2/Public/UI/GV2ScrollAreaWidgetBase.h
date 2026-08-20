@@ -13,7 +13,7 @@ class UNamedSlot;
  * Scroll state is strictly UI-local and does not persist across session/save boundaries.
  * Enables responsive layouts on smaller viewports (e.g. 720p) without clipping.
  */
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2ScrollAreaWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer

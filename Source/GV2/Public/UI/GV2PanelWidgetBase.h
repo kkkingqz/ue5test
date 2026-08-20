@@ -14,7 +14,7 @@ class UBorder;
  * Base layout panel container providing a background surface, content slot, and padding.
  * Scaling policy for the background surface defaults to NineSlice.
  */
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2PanelWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer

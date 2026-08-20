@@ -50,12 +50,13 @@ bool UGV2ProgressBarWidgetBase::CanApplyScreenField_Implementation(const FGV2Scr
     return Value.SchemaId == SchemaId && Value.ProgressBarValue.Percent >= 0.0f && Value.ProgressBarValue.Percent <= 1.0f;
 }
 
-FGV2ScreenFieldValue UGV2ProgressBarWidgetBase::CaptureScreenField_Implementation() const
+bool UGV2ProgressBarWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
 {
     FGV2ProgressBarViewModel Model;
     Model.Percent = CurrentPercent;
     Model.Label = CurrentLabel;
-    return FGV2ScreenFieldValue::MakeProgressBar(FieldId, Model);
+    OutFieldValue = FGV2ScreenFieldValue::MakeProgressBar(FieldId, Model);
+    return true;
 }
 
 bool UGV2ProgressBarWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)

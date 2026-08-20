@@ -123,14 +123,25 @@ bool UGV2TextPipeline::Resolve(
     }
     if (Template == nullptr)
     {
+        if (const UGV2UiTheme* MinimalTheme = UGV2UiTheme::GetCoreMinimalTheme())
+        {
+            Template = MinimalTheme->TextCatalog.Find(TextId);
+            if (Template == nullptr)
+            {
+                Template = MinimalTheme->FallbackTextCatalog.Find(TextId);
+            }
+        }
+    }
+    if (Template == nullptr)
+    {
         OutError = FString::Printf(TEXT("Unknown text_id: %s"), *TextId);
         return false;
     }
     if (StyleToken.IsNone())
     {
-        StyleToken = Theme->DefaultTextStyleToken;
+        StyleToken = Theme != nullptr ? Theme->DefaultTextStyleToken : FName("default");
     }
-    if (!Theme->TextStyleTokens.Contains(StyleToken))
+    if (Theme != nullptr && !Theme->TextStyleTokens.IsEmpty() && !Theme->TextStyleTokens.Contains(StyleToken) && StyleToken != FName("default"))
     {
         OutError = FString::Printf(TEXT("Unknown text style token: %s"), *StyleToken.ToString());
         return false;

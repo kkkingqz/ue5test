@@ -32,6 +32,56 @@ INFORMATIVE_FILES = {
     "Proposals/README.md",
 }
 NORMATIVE_DIRECTORIES = ("Architecture", "UI")
+INSTRUCTIONAL_DIRECTORIES = ("Concepts", "Guides", "Authoring")
+# One table owns retired documentation forms. Scope is deliberate: contracts,
+# ADR, plans and proposals may need to name a forbidden or historical form.
+# Instructional text must use the current surface or carry a line-local,
+# reasoned exception marker: <!-- legacy-allow: <rule_id> <reason> -->.
+LEGACY_RULES: tuple[dict[str, object], ...] = (
+    {
+        "id": "actor_decorator_api",
+        "pattern": r"\bregister_type\b|\bactor_decorator\b",
+        "directories": INSTRUCTIONAL_DIRECTORIES,
+        "reason": "manual actor wrapper decorators were replaced by entity extensions",
+        "replacement": "managed EntityKind methods such as 'function Actor:method(...)'",
+        "exceptions": ("historical/normative documents", "explicitly reasoned comparison"),
+    },
+    {
+        "id": "low_level_command_registration",
+        "pattern": r"game\.commands\.(?:handlers|validators)\.register",
+        "directories": INSTRUCTIONAL_DIRECTORIES,
+        "reason": "instructional code uses the authoring command surface",
+        "replacement": "commands.<name> = fn and validate(command_ref, name, fn)",
+        "exceptions": ("runtime contract", "explicitly reasoned programmer-only guide"),
+    },
+    {
+        "id": "manual_authoring_descriptor",
+        "pattern": r"\bauthoring\.gameplay\b|\bM\.commands\b",
+        "directories": ("Concepts", "Authoring"),
+        "reason": "authoring scripts receive an injected _ENV",
+        "replacement": "injected commands, Actor, field, services, fail and related names",
+        "exceptions": ("programmer Lua modules", "historical/normative documents"),
+    },
+    {
+        "id": "manual_field_validation",
+        "pattern": r"\bvalidate_amount\b|\bRESOURCES\b",
+        "directories": INSTRUCTIONAL_DIRECTORIES,
+        "reason": "manual field descriptor helpers were replaced by field contracts",
+        "replacement": "field.* descriptors and domain preconditions",
+        "exceptions": ("historical/normative documents",),
+    },
+    {
+        "id": "raw_ue_asset_path",
+        "pattern": r"/Game/",
+        "directories": INSTRUCTIONAL_DIRECTORIES,
+        "reason": "gameplay and Lua data address presentation assets by resource_id",
+        "replacement": "resource_id",
+        "exceptions": ("normative prohibition", "reasoned Editor-only asset example"),
+    },
+)
+LEGACY_ALLOW_MARKER = re.compile(
+    r"<!--\s*legacy-allow:\s*([a-z0-9_]+)\s+([^>]*\S)\s*-->",
+)
 # Header opens every document with the one thing its front matter cannot carry.
 # The field differs by document type because the useful question differs: a
 # contract is defined by what it owns, a guide by the task it solves.
@@ -274,6 +324,31 @@ class Validation:
                 f"(see Docs/Architecture/README.md)",
             )
 
+    def validate_legacy_text(self, path: Path, text: str) -> None:
+        relative = path.relative_to(self.docs_root)
+        if not relative.parts or relative.parts[0] not in INSTRUCTIONAL_DIRECTORIES:
+            return
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            allowances = {
+                rule_id for rule_id, reason in LEGACY_ALLOW_MARKER.findall(line)
+                if reason.strip()
+            }
+            for rule in LEGACY_RULES:
+                directories = rule["directories"]
+                assert isinstance(directories, tuple)
+                if relative.parts[0] not in directories:
+                    continue
+                pattern = rule["pattern"]
+                assert isinstance(pattern, str)
+                rule_id = str(rule["id"])
+                if re.search(pattern, line) is None or rule_id in allowances:
+                    continue
+                self.fail(
+                    path,
+                    f"line {line_number}: removed documentation form '{rule_id}': "
+                    f"{rule['reason']}; use {rule['replacement']}",
+                )
+
     def validate_links(self, path: Path, text: str, texts: dict[Path, str]) -> None:
         in_fence = False
         for line_number, line in enumerate(text.splitlines(), start=1):
@@ -397,6 +472,7 @@ class Validation:
             self.validate_front_matter(path, metadata)
             self.validate_metadata_links(path, metadata)
             self.validate_header(path, text)
+            self.validate_legacy_text(path, text)
 
         for path, text in texts.items():
             self.validate_links(path, text, texts)
@@ -431,7 +507,7 @@ def main() -> int:
 
 
 def run_self_test(docs_root: Path) -> int:
-    """Exercise status/location rules without creating fixture files."""
+    """Exercise status, lifecycle and legacy rules without fixture files."""
 
     common = {"title": "Fixture", "version": "1.0", "updated": "2026-08-20"}
     cases: list[tuple[str, str, dict[str, object], bool]] = [
@@ -466,11 +542,60 @@ def run_self_test(docs_root: Path) -> int:
         passed = not validation.errors
         if passed != should_pass:
             failures.append(f"{name}: expected {'pass' if should_pass else 'failure'}")
+    legacy_cases: list[tuple[str, str, str, bool]] = [
+        (
+            "guide actor decorator",
+            "Guides/Fixture.md",
+            "Use game.instances.actors.register_type with actor_decorator.",
+            False,
+        ),
+        (
+            "concept low-level command registry",
+            "Concepts/Fixture.md",
+            "Call game.commands.handlers.register directly.",
+            False,
+        ),
+        (
+            "authoring raw asset path",
+            "Authoring/Fixture.md",
+            "Set icon = '/Game/UI/T_Icon'.",
+            False,
+        ),
+        (
+            "normative prohibition",
+            "UI/Fixture.md",
+            "Raw /Game/UI/T_Icon is forbidden through the boundary.",
+            True,
+        ),
+        (
+            "historical plan",
+            "Plans/Archive/Fixture.md",
+            "Removed validate_amount, RESOURCES and register_type.",
+            True,
+        ),
+        (
+            "reasoned editor exception",
+            "Authoring/Fixture.md",
+            "Editor source is /Game/UI/T_Icon. "
+            "<!-- legacy-allow: raw_ue_asset_path Editor-only picker value -->",
+            True,
+        ),
+    ]
+    for name, relative, text, should_pass in legacy_cases:
+        validation = Validation(root)
+        validation.validate_legacy_text(root / relative, text)
+        passed = not validation.errors
+        if passed != should_pass:
+            failures.append(f"{name}: expected {'pass' if should_pass else 'failure'}")
+
     if failures:
         for failure in failures:
             print(f"ERROR: self-test {failure}", file=sys.stderr)
         return 1
-    print(f"Documentation validator self-test passed: {len(cases)} cases.")
+    print(
+        "Documentation validator self-test passed: "
+        f"{len(cases) + len(legacy_cases)} cases."
+    )
     return 0
 
 

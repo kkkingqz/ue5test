@@ -1,10 +1,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CommonUserWidget.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "UI/GV2DynamicScreenElement.h"
 #include "UI/GV2UiStyleConsumer.h"
-#include "UI/GV2WidgetBase.h"
 #include "GV2TabContainerWidgetBase.generated.h"
 
 class UGV2ScreenWidgetBase;
@@ -13,7 +13,7 @@ class UGV2ScreenRegistry;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FGV2OnTabChanged, FName, NewTabKey, int32, NewTabIndex);
 
 UCLASS(BlueprintType, Blueprintable)
-class GV2_API UGV2TabContainerWidgetBase : public UGV2WidgetBase, public IGV2DynamicScreenElement, public IGV2UiStyleConsumer
+class GV2_API UGV2TabContainerWidgetBase : public UCommonUserWidget, public IGV2DynamicScreenElement, public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
@@ -21,14 +21,14 @@ public:
     UGV2TabContainerWidgetBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
     // IGV2DynamicScreenElement
-    virtual FName GetConfiguredScreenFieldId_Implementation() const override;
-    virtual FString GetDeclaredSchemaId_Implementation() const override;
+    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
     virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& FieldValue) const override;
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& FieldValue) override;
-    virtual void ResetScreenField_Implementation() override;
+    virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const override;
+    virtual bool ResetScreenField_Implementation() override;
 
     // IGV2UiStyleConsumer
-    virtual void ApplyUiTheme_Implementation(UGV2UiTheme* Theme) override;
+    virtual bool ApplyCentralStyle_Implementation() override;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Tabs")
     bool CanApplyTabContainerModel(const FGV2TabContainerViewModel& InModel) const;

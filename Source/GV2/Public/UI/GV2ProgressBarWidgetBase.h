@@ -8,7 +8,7 @@
 class UProgressBar;
 class UCommonTextBlock;
 
-UCLASS(Abstract, Blueprintable)
+UCLASS(Blueprintable)
 class GV2_API UGV2ProgressBarWidgetBase
     : public UCommonUserWidget
     , public IGV2DynamicScreenElement
@@ -26,7 +26,7 @@ public:
     // IGV2DynamicScreenElement
     virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
     virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;
-    virtual FGV2ScreenFieldValue CaptureScreenField_Implementation() const override;
+    virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const override;
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
 

@@ -76,6 +76,11 @@ public:
         return Handle;
     }
 
+    static FGV2UiBindingHandle FromSerialized(FString InValue)
+    {
+        return Create(MoveTemp(InValue));
+    }
+
     bool operator==(const FGV2UiBindingHandle& Other) const
     {
         return Value == Other.Value;
