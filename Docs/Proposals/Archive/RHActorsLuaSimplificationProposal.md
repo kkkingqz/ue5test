@@ -17,7 +17,7 @@ decisions:
 
 > **Предлагает:** декларативные контракты полей сущностей (`field.*`), разделение структурных инвариантов и геймплейных предусловий, обобщённое создание инстансов и устранение инфраструктурного кода из `rh/scripts/gameplay/actors.lua`.
 > **Затрагивает:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Gameplay Model](../../Concepts/GameplayModel.md).
-> **Состояние:** реализовано планом [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification/README.md); нормативное поведение — [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) и [ADR-0032](../../ADR/0032-field-contracts-and-generic-instance-creation.md).
+> **Состояние:** реализовано планом [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification.md); нормативное поведение — [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) и [ADR-0032](../../ADR/0032-field-contracts-and-generic-instance-creation.md).
 
 ## Context
 

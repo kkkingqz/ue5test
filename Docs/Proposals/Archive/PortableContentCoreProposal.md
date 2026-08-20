@@ -22,7 +22,7 @@ decisions:
 > **Затрагивает:** [GameDataRepository](../../Architecture/GameDataRepositoryContract.md), [System Context](../../Architecture/SystemContextAndComponents.md).
 > **Состояние:** реализовано; нормативный результат перенесён в contracts, документ сохраняется как rationale.
 
-> **Реализовано.** Нормативное поведение перенесено в [GameDataRepository Contract](../../Architecture/GameDataRepositoryContract.md), [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) и [Build and Tooling](../../Architecture/BuildAndTooling.md). Ход выполнения — в архивном плане [PortableContentCore](../../Plans/Archive/PortableContentCore/README.md). Документ сохраняется как rationale.
+> **Реализовано.** Нормативное поведение перенесено в [GameDataRepository Contract](../../Architecture/GameDataRepositoryContract.md), [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md), [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md) и [Build and Tooling](../../Architecture/BuildAndTooling.md). Ход выполнения — в архивном плане [PortableContentCore](../../Plans/Archive/PortableContentCore.md). Документ сохраняется как rationale.
 
 ## Назначение и область
 

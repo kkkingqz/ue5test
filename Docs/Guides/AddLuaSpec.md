@@ -1,28 +1,33 @@
 ---
 title: Add Lua Spec
 status: informative
-version: 1.2
+version: 2.0
 updated: 2026-08-20
 depends_on:
   - README.md
+  - ../Architecture/HeadlessSimulationContract.md
 ---
 
-# Добавить проверку
+# Добавить portable Lua spec
 
-> **Задача:** проверить правило так, чтобы проверка исполнялась обоими хостами.
-> **Предмет:** portable Lua spec и общий spec runner.
-> **Нужно:** собранный `gv2-headless`.
+> **Задача:** проверить Lua-правило одной реализацией в headless и UE.
+> **Предмет:** `Tests/Lua/`, `ELuaSpecTier`, изоляция case и общий spec runner.
 > **Нормативно:** [Headless Simulation](../Architecture/HeadlessSimulationContract.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
 
-## Когда спека, а когда C++
+Если проверяется C++ API — parser, marshalling, storage, manifest/digest serialization или сам runner — нужен shared C++ conformance entry point. Gameplay/Lua rule в C++ дублировать запрещено.
 
-Правило целиком выражено в Lua — спека. Проверяется C++ API (сериализация, парсинг, marshalling, storage) — C++ conformance entry point. Новый C++-набор на Lua-правило запрещён и ломает CI.
+## Выбрать tier
 
-## Шаги
+| Tier | Packages/session | Подкаталоги |
+|---|---|---|
+| `Core` | `core` | `actions`, `actors`, `events`, `lifecycle`, `resources`, `save` |
+| `TextSystem` | `core`, `textsystem`, `sample` | `world` |
+| `FullGame` | `core`, `textsystem`, `rh` | `authoring`, `economy`, `presentation` |
+| `FixtureCommands` | изолированная command fixture | `commands` |
 
-**1. Выбрать под-дерево.** `Tests/Lua/world/`, `events/`, `lifecycle/`, `resources/`, `save/` — на production-сессии; `Tests/Lua/commands/` — на изолированной fixture-сессии, потому что регистрация тестовых валидаторов и команд требует собственной сессии.
+Новый top-level subtree сначала требует явной записи в `GV2TestSupport` и host mapping. Необъявленный subtree отклоняется кодом 16.
 
-**2. Написать файл, возвращающий именованные кейсы.**
+## Написать spec
 
 ```lua
 return {
@@ -36,26 +41,15 @@ return {
 }
 ```
 
-Кейс независим и не полагается на порядок исполнения. Если кейсу нужно изменить состояние, он открывает mutation window явно: на production-сессии окно закрыто.
+- Filename и case key используют lowercase `snake_case`.
+- Case не зависит от порядка и восстанавливает изменённое state/registries.
+- Нужные до freeze declarations помещаются в подходящий fixture tier, а не внедряются в production session.
+- Проверка включает отрицательный case и убеждается, что без исправления действительно падает.
 
-**3. Убрать за собой.** Кейс, менявший состояние или реестры, восстанавливает исходное перед возвратом — следующий кейс не должен зависеть от того, что было раньше.
-
-**4. Запустить.**
+Запуск:
 
 ```bash
 ./cmake-build-ci/Headless/gv2-headless --self-test
 ```
 
-Провал печатает стабильный идентификатор `<spec>.<case>` — тот же в обоих хостах.
-
-**5. Проверить, что спека действительно ловит.** Полезная привычка: временно сломать проверяемое поведение и убедиться, что нужный кейс упал с ожидаемым идентификатором, затем откатить.
-
-## Типичные ошибки
-
-**Новое под-дерево.** Список под-деревьев сейчас перечислен в коде обоих хостов, поэтому новое под-дерево требует правки двух C++-файлов; иначе спеки будут исполняться только в headless. Внутри существующего под-дерева новый файл подхватывается сам.
-
-**Зависимость между кейсами.** Порядок обнаружения отсортирован, но опираться на него нельзя.
-
-**Проверка C++ API спекой.** Сериализацию манифеста, digest и marshalling проверяет C++ conformance — там спека ничего не даст.
-
-**Мутация без окна.** На production-сессии запись в `game.state` вне окна отклоняется; это правило, а не помеха тестированию.
+Failure identity одинакова в обоих host-ах: `<spec>.<case>`.

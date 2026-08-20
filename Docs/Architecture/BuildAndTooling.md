@@ -43,13 +43,13 @@ decisions:
 |---|---|---|---|
 | `gv2_content_core` | `GV2ContentCore` | Value model, Stable ID, JSON5, schemas, repository build/snapshot | — |
 | `gv2_content_host_support` | `GV2ContentHostSupport` | Filesystem package discovery (ADR-0019); Lua spec file discovery (TAS-02, ADR-0024) | `gv2_content_core` |
-| `gv2_runtime_core` | `GV2RuntimeCore` | Lua 5.4.8 VM, runtime session, `FGV2LuaMarshaller`, slot-scoped save storage primitive (SAV-05/06, план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md)) | `gv2_content_core` |
+| `gv2_runtime_core` | `GV2RuntimeCore` | Lua 5.4.8 VM, runtime session, `FGV2LuaMarshaller`, slot-scoped save storage primitive (SAV-05/06, план [SaveAndLoad](../Plans/Archive/SaveAndLoad.md)) | `gv2_content_core` |
 | `gv2_test_support` | `GV2TestSupport` | Lua spec runner orchestration (TAS-04, ADR-0024); test-only, ни один gameplay host не линкует | `gv2_content_host_support`, `gv2_runtime_core` |
 | — | `GV2` | UE composition, Bridge, Presentation | все четыре |
 
 Vendored Lua (`Source/GV2RuntimeCore/Private/ThirdParty/Lua54`) собирается только внутри `gv2_runtime_core` и не выставляется через public headers.
 
-### Save slot storage primitive (SAV-05/06/07, план [SaveAndLoad](../Plans/Archive/SaveAndLoad/README.md))
+### Save slot storage primitive (SAV-05/06/07, план [SaveAndLoad](../Plans/Archive/SaveAndLoad.md))
 
 `GV2RuntimeCore::ISaveSlotStorage` (`Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2HostServices.h`) — единственный C++ примитив плана SaveAndLoad (ADR-0021): чтение и запись непрозрачных байт по `save_slot_id`, с типизированным результатом (`Ok`/`NotFound`/`Unreadable`/`Failure`). Интерфейс не содержит путей, `FString`, UObject и filesystem-типов; отсутствие конкретной реализации не мешает `FRuntimeSession::Start` — примитив не является параметром сессии, как и `IResourceCatalog`/`ILocalizationAdapter` рядом с ним.
 
@@ -169,13 +169,13 @@ Exit code одинаков для `--format=text` и `--format=json`.
 
 `Tests/Fixtures/PortableContentCore` — общий corpus для всех трёх host-ов: `valid/core`, `valid/test_mod` и именованные `invalid/*` случаи. `fixtures.index` содержит bytewise-sorted inventory; `Tools/Content/validate_pcc_fixtures.py` проверяет соответствие дерева этому inventory (CTest `pcc_shared_fixture_contract`) и, отдельным правилом (PCC-01), запрещает любой файл `expected*` внутри самого дерева — pinned-значения корпуса живут снаружи, рядом с ним.
 
-**Заморожен (TAS-06, план [TestArchitectureAndLuaSpecs](../Plans/Archive/TestArchitectureAndLuaSpecs/README.md)).** `valid/core`/`valid/test_mod` больше не зеркалируют `GameData/core`: рост игрового контента их не трогает; изменение допустимо только когда предметом изменения являются сами правила разрешения контента (parsing/schema/override/redirect/tombstone/provenance), а не gameplay-сущности. Правило записано также в `Tests/Fixtures/PortableContentCore/README.md`, рядом с корпусом.
+**Заморожен (TAS-06, план [TestArchitectureAndLuaSpecs](../Plans/Archive/TestArchitectureAndLuaSpecs.md)).** `valid/core`/`valid/test_mod` больше не зеркалируют `GameData/core`: рост игрового контента их не трогает; изменение допустимо только когда предметом изменения являются сами правила разрешения контента (parsing/schema/override/redirect/tombstone/provenance), а не gameplay-сущности. Правило записано также в `Tests/Fixtures/PortableContentCore/README.md`, рядом с корпусом.
 
 **Раздельные pinned-значения (TAS-07).** `Tests/Fixtures/expected_core_content_hash.txt` пинит хэш ТОЛЬКО замороженного тестового корпуса (`valid/core`); сверяется CTest `gv2_content_hash_core_fixture` и Unreal automation (`GV2.Runtime.ContentCore.CrossHostParity`). `GameData/core` не пинит content hash вовсе — CTest `gv2_content_validate_gamedata_core` остаётся smoke-проверкой (`gv2-content validate`, без сравнения хэша), поэтому рост игрового контента никогда не требует правки pinned-значения.
  
-**Гейт развязки core и rh (RH-11, план [RhGamePackage](../Plans/Archive/RhGamePackage/README.md)).** `Tools/Content/validate_core_decoupling.py` сканирует `Scripts/`, `GameData/core/` и `Source/` на отсутствие ссылок на пространство имён `rh:` (CTest `core_decoupling_gate_contract`). Негативный тест `core_decoupling_gate_negative_contract` подтверждает срабатывание гейта при обнаружении нарушений.
+**Гейт развязки core и rh (RH-11, план [RhGamePackage](../Plans/Archive/RhGamePackage.md)).** `Tools/Content/validate_core_decoupling.py` сканирует `Scripts/`, `GameData/core/` и `Source/` на отсутствие ссылок на пространство имён `rh:` (CTest `core_decoupling_gate_contract`). Негативный тест `core_decoupling_gate_negative_contract` подтверждает срабатывание гейта при обнаружении нарушений.
  
-**Гейт границы ядра (CBM-14, план [CoreBoundaryMigration](../Plans/Archive/CoreBoundaryMigration/README.md)).** `Tools/Content/validate_core_boundary.py` сканирует `GameData/core/definitions/` и `GameData/core/schemas/`, запрещая размещение игровых определений (`actor`, `item`, `location`) и игровых схем в ядре (CTest `core_boundary_gate_contract`). Негативный тест `core_boundary_gate_negative_contract` подтверждает отказ при внесении игровых определений или схем в ядро.
+**Гейт границы ядра (CBM-14, план [CoreBoundaryMigration](../Plans/Archive/CoreBoundaryMigration.md)).** `Tools/Content/validate_core_boundary.py` сканирует `GameData/core/definitions/` и `GameData/core/schemas/`, запрещая размещение игровых определений (`actor`, `item`, `location`) и игровых схем в ядре (CTest `core_boundary_gate_contract`). Негативный тест `core_boundary_gate_negative_contract` подтверждает отказ при внесении игровых определений или схем в ядро.
 
 Экраны гейт различает не по kind: [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) допускает в ядре framework/system UI (`core:screen.error`, `core:screen.loading`, `core:screen.recovery`), но не экраны игры. Поэтому они заданы явным списком, а любой другой `core:screen.*` отклоняется.
 
@@ -185,7 +185,7 @@ Conformance-наборы объявлены в portable headers (`Source/<Module
 
 ### Формат Lua-спеки (`Tests/Lua/`)
 
-Правило, целиком выраженное в Lua, проверяется Lua-спекой, а не новым C++ conformance entry point (план [TestArchitectureAndLuaSpecs](../Plans/Archive/TestArchitectureAndLuaSpecs/README.md), [ADR-0024](../ADR/0024-lua-spec-runner.md)). Обнаружение и исполнение спек — generic portable runner (TAS-02); этот раздел фиксирует только формат, которому обязан следовать файл спеки, чтобы runner мог его исполнить.
+Правило, целиком выраженное в Lua, проверяется Lua-спекой, а не новым C++ conformance entry point (план [TestArchitectureAndLuaSpecs](../Plans/Archive/TestArchitectureAndLuaSpecs.md), [ADR-0024](../ADR/0024-lua-spec-runner.md)). Обнаружение и исполнение спек — generic portable runner (TAS-02); этот раздел фиксирует только формат, которому обязан следовать файл спеки, чтобы runner мог его исполнить.
 
 Обнаружение (`GV2ContentHostSupport::DiscoverLuaSpecFiles()`), исполнение (`FRuntimeSession::RunLuaSpec()`) и деривация идентификатора провала (`GV2ContentHostSupport::LuaSpecIdentity` — `DeriveLuaSpecId()`, `MakeLuaSpecCaseFailure()`, `MakeLuaSpecFault()`, TAS-03) связаны в один вызов модулем `GV2TestSupport` (CMake target `gv2_test_support`, UBT module `GV2TestSupport`; зависит от `gv2_content_host_support` и `gv2_runtime_core` — единственный слой, зависящий от обоих, поскольку они сиблинги друг друга не видят). `GV2TestSupport::RunLuaSpecs(SpecRoot, Session, OutResult)` обнаруживает `*.lua` под `SpecRoot` на уже запущенной `Session` и агрегирует провалы (TAS-04). Test-only — ни один gameplay host его не линкует.
 

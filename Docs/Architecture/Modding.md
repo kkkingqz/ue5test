@@ -15,7 +15,7 @@ depends_on:
 > **Владеет:** границами мод-пакета, тем, что мод может расширять, и trust model расширений.
 > **Не владеет:** механикой сборки репозитория и разрешения override ([GameDataRepository](GameDataRepositoryContract.md)).
 > **Инварианты:** [INV-009](Invariants.md), [INV-010](Invariants.md)
-> **Реализация:** манифест пакета (M1) и discovery набора пакетов, порядок загрузки, валидация зависимостей, циклов, `load_after` и `mods.lock.json5` (M2) реализованы (план [PackageSupport](../Plans/Archive/PackageSupport/README.md)); Lua из пакетов и save metadata остаются future work (M3–M4). См. [Implementation Status](../Status/ImplementationStatus.md).
+> **Реализация:** манифест пакета (M1) и discovery набора пакетов, порядок загрузки, валидация зависимостей, циклов, `load_after` и `mods.lock.json5` (M2) реализованы (план [PackageSupport](../Plans/Archive/PackageSupport.md)); Lua из пакетов и save metadata остаются future work (M3–M4). См. [Implementation Status](../Status/ImplementationStatus.md).
 Mod — trusted content package с одним immutable `mod_id`, который одновременно является его namespace.
 
 ## Уровни пакетов поставки (`core`, `textsystem`, `rh`)
@@ -45,7 +45,7 @@ resources/
 optional cooked Pak
 ```
 
-**Manифест реализован (PKG-01/02/03, план [PackageSupport](../Plans/Archive/PackageSupport/README.md)).** `package.json5` обязателен: пакет без него, с невалидным JSON5 или с отсутствующими/некорректными identity-полями отвергается диагностикой (`core:diagnostic.package.manifest.*`) до чтения `definitions/`/`schemas/`. Identity больше не выводится из имени каталога.
+**Manифест реализован (PKG-01/02/03, план [PackageSupport](../Plans/Archive/PackageSupport.md)).** `package.json5` обязателен: пакет без него, с невалидным JSON5 или с отсутствующими/некорректными identity-полями отвергается диагностикой (`core:diagnostic.package.manifest.*`) до чтения `definitions/`/`schemas/`. Identity больше не выводится из имени каталога.
 
 ```json5
 {

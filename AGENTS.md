@@ -54,6 +54,17 @@
 
 Перенос входит в завершение работы: поставить `status: archived`, обновить ссылки и три index-файла в том же change set. Rejected proposal не удалять; записать причину и условие повторного открытия. Validator проверяет state и location в обе стороны.
 
+## Plan archive lifecycle
+
+Выполненный план архивируется только двухкоммитной процедурой:
+
+1. В первом commit полный `Docs/Plans/<PlanName>/` ещё существует, а все tasks и milestones уже отмечены выполненными. Полный hash этого commit становится `source_commit`.
+2. Во втором commit создаётся один плоский `Docs/Plans/Archive/<PlanName>.md` со `status: archived`: цель/результат, краткий итог каждого этапа, каждый task ID и исходное название ровно один раз, ссылки на актуальные owner contracts, полный `source_commit` и кликабельная ссылка на него в repository web UI.
+3. До удаления проверить каждый исходный path через `git cat-file -e <source_commit>:<path>` и восстановить минимум один representative файл через `git show`.
+4. Удалить исходный каталог, убрать план из активного списка и обновить `Docs/Plans/Archive/README.md` тем же archive commit.
+
+`Docs/Plans/README.md` содержит только ссылку на archive index, не перечень выполненных планов. Подкаталоги завершённых планов, zip и альтернативная копия полной истории в `Docs/Plans/Archive/` запрещены.
+
 ## Documentation is part of every code change
 
 Добавление или изменение кода считается завершённым только после проверки и синхронизации документации.
@@ -82,6 +93,7 @@ Pure refactor без изменения behavior не требует переп�
 
 - Если изменяемая code surface является предметом Guide, Guide обязан быть переработан в том же change set.
 - Изменение authoring surface обязано обновить owner contract и соответствующий human-facing reference в `Docs/Authoring/` в том же change set.
+- `Docs/Status/ImplementationStatus.md` перечисляет только подтверждённые незакрытые gaps contract ↔ code. Полностью реализованную возможность туда не добавлять; частичный gap записывать со ссылкой на точное нормативное правило и evidence, а при полном закрытии удалять строку в том же change set.
 
 ## Creating new documentation
 

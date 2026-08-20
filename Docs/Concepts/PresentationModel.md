@@ -67,4 +67,4 @@ Lua не описывает дерево виджетов и не знает п�
 ## Дальше
 
 - Что происходит до появления desired presentation — [GameplayModel](GameplayModel.md).
-- Добавить экран — [Guides/AddUIScreen](../Guides/AddUIScreen.md).
+- Добавить экран — [Authoring/AddUIScreen](../Authoring/AddUIScreen.md).

@@ -78,4 +78,4 @@ GameData/                    контейнер пакетов (core, textsystem
 ## Дальше
 
 - Как definition превращается в экземпляр — [RuntimeInstances](RuntimeInstances.md).
-- Добавить свой definition — [Guides/AddDefinition](../Guides/AddDefinition.md).
+- Добавить свой Definition — [Authoring/AddDefinition](../Authoring/AddDefinition.md).

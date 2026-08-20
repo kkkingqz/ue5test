@@ -110,4 +110,4 @@ Authoring-скрипты компилируются в обычные обраб
 - Откуда берутся definitions — [ContentModel](ContentModel.md).
 - Чем экземпляр отличается от definition и как устроены обёртки — [RuntimeInstances](RuntimeInstances.md).
 - Что происходит после desired presentation — [PresentationModel](PresentationModel.md).
-- Добавить свою команду — [Guides/AddCommand](../Guides/AddCommand.md).
+- Добавить свою Command — [Authoring/AddCommand](../Authoring/AddCommand.md).

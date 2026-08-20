@@ -15,13 +15,13 @@ depends_on:
 
 | Предложение | Реализовано планом | Результат |
 |---|---|---|
-| [PortableContentCoreProposal](PortableContentCoreProposal.md) | [PortableContentCore](../../Plans/Archive/PortableContentCore/README.md) | Общий portable pipeline `Packages → Definitions → Repository Snapshot → Runtime` |
-| [CoreGameplayBoundaryProposal](CoreGameplayBoundaryProposal.md) | [CoreBoundaryMigration](../../Plans/Archive/CoreBoundaryMigration/README.md) | Правило ownership между framework core и gameplay packages |
-| [DesignerLuaAuthoringProposal](DesignerLuaAuthoringProposal.md) | [DesignerAuthoringLayer](../../Plans/Archive/DesignerAuthoringLayer/README.md) | Designer-facing Lua: отложенная регистрация, три вида property, `write_revision` и правило `fail()` |
-| [SimplifiedAuthoringSurfaceProposal](SimplifiedAuthoringSurfaceProposal.md) | [SimplifiedAuthoringSurface](../../Plans/Archive/SimplifiedAuthoringSurface/README.md) | Окружение authoring-скрипта без `M.`, автообнаружение модулей, источник презентации |
-| [TextSystemLayerProposal](TextSystemLayerProposal.md) | [TextSystemLayer](../../Plans/Archive/TextSystemLayer/README.md) | Слой `textsystem` между движком и игрой; набор пакетов из данных |
-| [EntityAuthoringExtensionProposal](EntityAuthoringExtensionProposal.md) | [EntityAuthoringExtensions](../../Plans/Archive/EntityAuthoringExtensions/README.md) | Декларативное расширение доменных сущностей через авторские прототипы `_ENV` |
-| [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | [CommandValidators](../../Plans/Archive/CommandValidators/README.md) | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
+| [PortableContentCoreProposal](PortableContentCoreProposal.md) | [PortableContentCore](../../Plans/Archive/PortableContentCore.md) | Общий portable pipeline `Packages → Definitions → Repository Snapshot → Runtime` |
+| [CoreGameplayBoundaryProposal](CoreGameplayBoundaryProposal.md) | [CoreBoundaryMigration](../../Plans/Archive/CoreBoundaryMigration.md) | Правило ownership между framework core и gameplay packages |
+| [DesignerLuaAuthoringProposal](DesignerLuaAuthoringProposal.md) | [DesignerAuthoringLayer](../../Plans/Archive/DesignerAuthoringLayer.md) | Designer-facing Lua: отложенная регистрация, три вида property, `write_revision` и правило `fail()` |
+| [SimplifiedAuthoringSurfaceProposal](SimplifiedAuthoringSurfaceProposal.md) | [SimplifiedAuthoringSurface](../../Plans/Archive/SimplifiedAuthoringSurface.md) | Окружение authoring-скрипта без `M.`, автообнаружение модулей, источник презентации |
+| [TextSystemLayerProposal](TextSystemLayerProposal.md) | [TextSystemLayer](../../Plans/Archive/TextSystemLayer.md) | Слой `textsystem` между движком и игрой; набор пакетов из данных |
+| [EntityAuthoringExtensionProposal](EntityAuthoringExtensionProposal.md) | [EntityAuthoringExtensions](../../Plans/Archive/EntityAuthoringExtensions.md) | Декларативное расширение доменных сущностей через авторские прототипы `_ENV` |
+| [CommandValidatorAuthoringProposal](CommandValidatorAuthoringProposal.md) | [CommandValidators](../../Plans/Archive/CommandValidators.md) | Designer-facing Validators как независимые read-only policies поверх существующего Command pipeline |
 | [ImageResourceLookupOptimizationProposal](ImageResourceLookupOptimizationProposal.md) | — | Immutable $O(1)$ lookup и однократная подготовка resolved brush |
-| [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification/README.md) | Контракты полей `field.*`, композиция схем, обобщённое создание экземпляров |
-| [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | [GameplayServices](../../Plans/Archive/GameplayServices/README.md) | Авторский синтаксис `services.<name> = { … }` для stateless-процессов и торговец в `rh` |
+| [RHActorsLuaSimplificationProposal](RHActorsLuaSimplificationProposal.md) | [RHActorsSimplification](../../Plans/Archive/RHActorsSimplification.md) | Контракты полей `field.*`, композиция схем, обобщённое создание экземпляров |
+| [GameplayServiceAuthoringProposal](GameplayServiceAuthoringProposal.md) | [GameplayServices](../../Plans/Archive/GameplayServices.md) | Авторский синтаксис `services.<name> = { … }` для stateless-процессов и торговец в `rh` |

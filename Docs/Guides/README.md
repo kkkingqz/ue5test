@@ -1,7 +1,7 @@
 ---
 title: Guides Index
 status: informative
-version: 1.1
+version: 2.0
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -17,13 +17,14 @@ depends_on:
 
 | Руководство | Задача |
 |---|---|
-| [AddDefinition](AddDefinition.md) | Добавить предмет, локацию, актора, текст или ресурс |
-| [AddLuaModule](AddLuaModule.md) | Завести новый модуль в `Scripts/` |
-| [AddCommand](AddCommand.md) | Новая команда с валидатором и обработчиком |
-| [AddEvent](AddEvent.md) | Новый факт и реакция на него |
-| [AddActorWrapper](AddActorWrapper.md) | Доменные методы для категории сущностей |
-| [AddUIScreen](AddUIScreen.md) | Новый экран и его поля |
-| [AddLuaSpec](AddLuaSpec.md) | Проверка правила, исполняемая обоими хостами |
+| [Add Lua Module](AddLuaModule.md) | Добавить programmer Lua module в общий graph |
+| [Add Lua Spec](AddLuaSpec.md) | Проверить Lua-правило обоими host-ами на правильном tier |
+| [Add Authoring Surface](AddAuthoringSurface.md) | Расширить designer-facing `_ENV` и adapter |
+| [Add Screen Field](AddScreenField.md) | Добавить reusable Screen Field schema и Dynamic Screen Element |
+| [Regenerate Golden](RegenerateGolden.md) | Воспроизвести и обновить golden manifest/digest |
+| [When to Write C++](WhenToWriteCpp.md) | Применить C++ scope criterion к конкретной задаче |
+
+Задачи автора игры — Definitions, Commands, Events и Screens — находятся в [Authoring](../Authoring/README.md), а не здесь.
 
 ## Структура руководства
 

@@ -1,7 +1,7 @@
 ---
 title: Lua Authoring Reference Index
 status: informative
-version: 1.0
+version: 1.1
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -17,6 +17,15 @@ depends_on:
 1. Для команд, сущностей, полей, сервисов и событий откройте [Lua Gameplay Reference](LuaGameplayReference.md).
 2. Для текста, действий, кнопок, экранов, overlays, modals и tabs — [Presentation Authoring Reference](PresentationAuthoringReference.md).
 3. Authoring-файл размещается в `<package>/scripts/authoring/` и получает инструменты через `_ENV`; импортировать authoring infrastructure вручную не нужно.
+
+## Типовые задачи
+
+| Задача | Инструкция |
+|---|---|
+| Добавить content record | [Add Definition](AddDefinition.md) |
+| Добавить меняющее gameplay действие | [Add Command](AddCommand.md) |
+| Опубликовать факт и обработать его | [Add Event](AddEvent.md) |
+| Добавить экран на существующих Screen Fields | [Add UI Screen](AddUIScreen.md) |
 
 Рабочие production-примеры взяты из `GameData/rh`, `GameData/sample` и `GameData/textsystem`. Если инструмент пока не используется production package, рядом указан conformance fixture из `Tests/Lua/`; пример повторяет проверяемую им форму.
 

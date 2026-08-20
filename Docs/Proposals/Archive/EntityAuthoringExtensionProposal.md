@@ -18,7 +18,7 @@ decisions:
 
 > **Предлагает:** декларативный механизм добавления методов к доменным сущностям через авторские прототипы `_ENV`.
 > **Затрагивает:** [Lua Runtime Contract](../../Architecture/LuaRuntimeContract.md), [Modding](../../Architecture/Modding.md).
-> **Состояние:** реализовано планом [EntityAuthoringExtensions](../../Plans/Archive/EntityAuthoringExtensions/README.md); нормативное поведение — [Lua Runtime Contract § Entity Extensions](../../Architecture/LuaRuntimeContract.md).
+> **Состояние:** реализовано планом [EntityAuthoringExtensions](../../Plans/Archive/EntityAuthoringExtensions.md); нормативное поведение — [Lua Runtime Contract § Entity Extensions](../../Architecture/LuaRuntimeContract.md).
 
 ## Summary
 

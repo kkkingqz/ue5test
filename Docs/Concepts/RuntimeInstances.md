@@ -91,4 +91,4 @@ game.instances.world()             -- singleton мира (глобальные �
 ## Дальше
 
 - Как экземпляры меняются — [GameplayModel](GameplayModel.md).
-- Добавить доменные методы сущности — [Guides/AddActorWrapper](../Guides/AddActorWrapper.md).
+- Добавить fields и методы сущности — [Lua Gameplay Reference](../Authoring/LuaGameplayReference.md#объявить-поля-и-методы-сущности).
