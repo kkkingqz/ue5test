@@ -58,7 +58,7 @@ Proposal не изменяет нормативную архитектуру с�
 4. `GameplayServiceAuthoringProposal` — реализовано планом [GameplayServices](../Plans/Archive/GameplayServices.md).
 5. `ContentEditorPluginProposal` — предусловия закрыты планом [ContentEditorPrerequisites](../Plans/Archive/ContentEditorPrerequisites.md); блокировок не осталось.
 6. `ModPackageLifecycleProposal`.
-7. `CoreUIBaselineAndScalingProposal` и `UiCompositionAndScalingProposal` — материализованы одним планом [UiFoundation](../Plans/UiFoundation/README.md): базовый набор Core UI, отзывчивое масштабирование, слои, реконсиляция и вкладки. Раздел масштабирования первой редакции заменён вторым предложением; остальные её разделы действуют. `CoreUiExtendedElementSetProposal` планом не материализуется: каждая его строка входит вместе со своим потребителем.
+7. `CoreUIBaselineAndScalingProposal` и `UiCompositionAndScalingProposal` — материализованы одним планом [UiFoundation](../Plans/Archive/UiFoundation.md): базовый набор Core UI, отзывчивое масштабирование, слои, реконсиляция и вкладки. Раздел масштабирования первой редакции заменён вторым предложением; остальные её разделы действуют. `CoreUiExtendedElementSetProposal` планом не материализуется: каждая его строка входит вместе со своим потребителем.
 8. `CommonUIRuntimeIntegrationProposal` — после предыдущего: фокус и Back опираются на слои и вкладки.
 9. `ScreenAuthoringWorkflowProposal`.
 
