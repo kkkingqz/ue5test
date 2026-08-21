@@ -18,7 +18,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **UIH-09 — Унифицировать `ResetScreenField`**
+- [x] **UIH-09 — Унифицировать `ResetScreenField`**
   - Done: после reset visual tree соответствует default/empty captured state.
   - `TopBar`: старые day/location/resource больше не видны.
   - `PlayerStatus`: очищены name, portrait, meters, item/effect collections.
@@ -27,7 +27,7 @@ depends_on:
   - Test: Apply A → Reset → Capture/visual assertions не содержат A.
   - Evidence: `GV2LocationCompositeWidgetBases.*`, automation.
 
-- [ ] **UIH-10 — Исправить placeholder semantics**
+- [x] **UIH-10 — Исправить placeholder semantics**
   - Done:
     - пустая background illustration → остаётся только tile;
     - missing/invalid character image → silhouette placeholder;
@@ -37,14 +37,14 @@ depends_on:
   - Diagnostic: fallback остаётся наблюдаемым.
   - Evidence: resource fixtures, composite code, negative tests.
 
-- [ ] **UIH-11 — Унифицировать Screen Field validation**
+- [x] **UIH-11 — Унифицировать Screen Field validation**
   - Done: все четыре composites проверяют ожидаемые `field_id`,
     `schema_id` и структурную применимость до mutation; ошибочный field с
     правильной schema не принимается; `CanApply` не изменяет widget.
   - Evidence: `GV2LocationCompositeWidgetBases.*`,
     adapter/composite negative tests.
 
-- [ ] **UIH-12 — Устранить молчаливое усечение массивов presentation**
+- [x] **UIH-12 — Устранить молчаливое усечение массивов presentation**
   - Зависимости: UIH-01, UIH-04.
   - Done: renderer не использует `[0]` как скрытую реализацию массива.
     Character entries отображаются repeated collection.
@@ -58,8 +58,8 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Reset не оставляет stale visual state.
-- [ ] Empty character показывает принятую заглушку.
-- [ ] Optional resource failure не ломает весь Screen.
-- [ ] FieldId проверяется всеми composites.
-- [ ] Ни character, ни meter arrays не обрезаются молча.
+- [x] Reset не оставляет stale visual state.
+- [x] Empty character показывает принятую заглушку.
+- [x] Optional resource failure не ломает весь Screen.
+- [x] FieldId проверяется всеми composites.
+- [x] Ни character, ни meter arrays не обрезаются молча.

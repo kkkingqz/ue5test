@@ -37,6 +37,7 @@
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "Components/VerticalBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/WrapBox.h"
@@ -3254,6 +3255,153 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Tile compatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::Tile));
     TestFalse(TEXT("Tile incompatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::FixedAspect));
 
+    return true;
+}
+
+// =========================================================================
+// UIH-09..UIH-12: Location Composite Semantics & Validation Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationCompositeSemanticsTest,
+    "GV2.Runtime.UI.LocationCompositeSemantics",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>();
+    GameInstance->AddToRoot();
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    if (TestWorld != nullptr)
+    {
+        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+        WorldContext.SetCurrentWorld(TestWorld);
+        GameInstance->Init();
+
+        // 1. TopBar validation & semantics
+        {
+            UGV2LocationTopBarWidgetBase* TopBar = NewObject<UGV2LocationTopBarWidgetBase>(TestWorld);
+            TestNotNull(TEXT("TopBar created"), TopBar);
+
+            // Mismatched FieldId / SchemaId rejected by CanApply
+            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("wrong_field"), {});
+            TestFalse(TEXT("TopBar rejects mismatched FieldId"), TopBar->CanApplyScreenField(WrongField));
+
+            FGV2ScreenFieldValue WrongSchema;
+            WrongSchema.FieldId = TEXT("top_bar");
+            WrongSchema.SchemaId = TEXT("wrong:schema");
+            TestFalse(TEXT("TopBar rejects mismatched SchemaId"), TopBar->CanApplyScreenField(WrongSchema));
+
+            // ResetScreenField clears applied state
+            TopBar->ResetScreenField();
+            FGV2ScreenFieldValue Captured;
+            TopBar->CaptureScreenField(Captured);
+            TestTrue(TEXT("TopBar captured day is empty after reset"), Captured.LocationTopBarValue.Day.Text.IsEmpty());
+        }
+
+        // 2. PlayerStatus validation & semantics (0/1/N meters & icons)
+        {
+            UGV2LocationPlayerStatusWidgetBase* PlayerStatus = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+            TestNotNull(TEXT("PlayerStatus created"), PlayerStatus);
+
+            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("wrong_field"), {});
+            TestFalse(TEXT("PlayerStatus rejects mismatched FieldId"), PlayerStatus->CanApplyScreenField(WrongField));
+
+            // Populate with N items & effects
+            FGV2LocationPlayerStatusViewModel Model;
+            Model.Name.Text = FText::FromString(TEXT("Hero"));
+            Model.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+            FGV2ProgressBarViewModel Meter1;
+            Meter1.Percent = 0.75f;
+            Model.Meters.Add(Meter1);
+            Model.ItemIconResourceIds = { TEXT("item1"), TEXT("item2"), TEXT("item3") };
+            Model.EffectIconResourceIds = { TEXT("effect1"), TEXT("effect2") };
+
+            FGV2ScreenFieldValue ValidField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model);
+            TestTrue(TEXT("PlayerStatus accepts valid field descriptor"), PlayerStatus->CanApplyScreenField(ValidField));
+
+            PlayerStatus->ApplyScreenField(ValidField);
+            FGV2ScreenFieldValue Captured;
+            PlayerStatus->CaptureScreenField(Captured);
+            TestEqual(TEXT("PlayerStatus items count preserved"), Captured.LocationPlayerStatusValue.ItemIconResourceIds.Num(), 3);
+            TestEqual(TEXT("PlayerStatus effects count preserved"), Captured.LocationPlayerStatusValue.EffectIconResourceIds.Num(), 2);
+            TestEqual(TEXT("PlayerStatus meters count preserved"), Captured.LocationPlayerStatusValue.Meters.Num(), 1);
+
+            // ResetScreenField clears everything
+            PlayerStatus->ResetScreenField();
+            PlayerStatus->CaptureScreenField(Captured);
+            TestEqual(TEXT("PlayerStatus items empty after reset"), Captured.LocationPlayerStatusValue.ItemIconResourceIds.Num(), 0);
+            TestEqual(TEXT("PlayerStatus effects empty after reset"), Captured.LocationPlayerStatusValue.EffectIconResourceIds.Num(), 0);
+            TestEqual(TEXT("PlayerStatus meters empty after reset"), Captured.LocationPlayerStatusValue.Meters.Num(), 0);
+        }
+
+        // 3. SceneView validation & semantics (0/1/N characters)
+        {
+            UGV2LocationSceneWidgetBase* SceneView = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+            TestNotNull(TEXT("SceneView created"), SceneView);
+
+            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("wrong_field"), {});
+            TestFalse(TEXT("SceneView rejects mismatched FieldId"), SceneView->CanApplyScreenField(WrongField));
+
+            // Populate with N characters
+            FGV2LocationSceneViewModel SceneModel;
+            SceneModel.CharacterResourceIds = { TEXT("char_a"), TEXT("char_b") };
+            FGV2ScreenFieldValue ValidScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel);
+            TestTrue(TEXT("SceneView accepts valid field"), SceneView->CanApplyScreenField(ValidScene));
+
+            SceneView->ApplyScreenField(ValidScene);
+            FGV2ScreenFieldValue Captured;
+            SceneView->CaptureScreenField(Captured);
+            TestEqual(TEXT("SceneView character count preserved"), Captured.LocationSceneValue.CharacterResourceIds.Num(), 2);
+
+            // ResetScreenField
+            SceneView->ResetScreenField();
+            SceneView->CaptureScreenField(Captured);
+            TestEqual(TEXT("SceneView characters empty after reset"), Captured.LocationSceneValue.CharacterResourceIds.Num(), 0);
+        }
+
+        // 4. CommandPanel validation & semantics
+        {
+            UGV2LocationCommandPanelWidgetBase* CommandPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+            TestNotNull(TEXT("CommandPanel created"), CommandPanel);
+
+            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("wrong_field"), {});
+            TestFalse(TEXT("CommandPanel rejects mismatched FieldId"), CommandPanel->CanApplyScreenField(WrongField));
+
+            // Duplicate keys rejected
+            FGV2ButtonViewModel Btn1;
+            Btn1.Key = FName(TEXT("btn"));
+            Btn1.Binding = FGV2UiBindingHandle::Create(TEXT("binding1"));
+            FGV2ButtonViewModel Btn2;
+            Btn2.Key = FName(TEXT("btn"));
+            Btn2.Binding = FGV2UiBindingHandle::Create(TEXT("binding2"));
+
+            FGV2ScreenFieldValue DupField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { Btn1, Btn2 });
+            TestFalse(TEXT("CommandPanel rejects duplicate button keys"), CommandPanel->CanApplyScreenField(DupField));
+
+            // Valid buttons applied and captured
+            Btn2.Key = FName(TEXT("btn2"));
+            FGV2ScreenFieldValue ValidCmds = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { Btn1, Btn2 });
+            TestTrue(TEXT("CommandPanel accepts valid buttons"), CommandPanel->CanApplyScreenField(ValidCmds));
+
+            CommandPanel->ApplyScreenField(ValidCmds);
+            FGV2ScreenFieldValue Captured;
+            CommandPanel->CaptureScreenField(Captured);
+            TestEqual(TEXT("CommandPanel button count preserved"), Captured.ButtonListValue.Num(), 2);
+
+            // Reset
+            CommandPanel->ResetScreenField();
+            CommandPanel->CaptureScreenField(Captured);
+            TestEqual(TEXT("CommandPanel button count 0 after reset"), Captured.ButtonListValue.Num(), 0);
+        }
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
     return true;
 }
 
