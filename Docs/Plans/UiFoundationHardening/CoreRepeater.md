@@ -23,7 +23,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **UIH-01 — Сделать `UGV2ListViewWidgetBase` настоящим Repeater**
+- [x] **UIH-01 — Сделать `UGV2ListViewWidgetBase` настоящим Repeater**
   - Done: Core component умеет принять ordered keyed entries, проверить
     non-empty/unique keys, создать отсутствующие widgets, переиспользовать
     существующие, удалить исчезнувшие и восстановить заданный order;
@@ -36,7 +36,7 @@ depends_on:
     `Source/GV2/Private/UI/GV2ListViewWidgetBase.*`,
     `Source/GV2/Private/Tests/`.
 
-- [ ] **UIH-02 — Перевести `CommandPanel` на Core Repeater**
+- [x] **UIH-02 — Перевести `CommandPanel` на Core Repeater**
   - Зависимости: UIH-01.
   - Done: `UGV2LocationCommandPanelWidgetBase` больше не содержит собственного
     `ButtonsByKey` и прямого вызова `FGV2KeyedCollection::Reconcile`;
@@ -46,7 +46,7 @@ depends_on:
     `Content/TextSystem/UI/Widgets/WBP_CommandPanel.uasset`,
     automation reuse/reorder test.
 
-- [ ] **UIH-03 — Перевести item/effect collections на Core Repeater**
+- [x] **UIH-03 — Перевести item/effect collections на Core Repeater**
   - Зависимости: UIH-01.
   - Done: удалён локальный `ApplyIcons`; item и effect остаются двумя
     независимыми presentation collections, но обе используют один Core
@@ -55,7 +55,7 @@ depends_on:
   - Evidence: `GV2LocationCompositeWidgetBases.*`,
     `WBP_PlayerStatusPanel.uasset`, automation.
 
-- [ ] **UIH-04 — Сделать Character Layer повторяемой коллекцией**
+- [x] **UIH-04 — Сделать Character Layer повторяемой коллекцией**
   - Зависимости: UIH-01.
   - Done: SceneView не имеет single `Character` leaf, которому передаётся
     только `CharacterResourceIds[0]`; character layer является keyed
@@ -70,8 +70,8 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Core Repeater создаёт/reuses/removes/reorders children по key.
-- [ ] Duplicate и empty key отклоняются до mutation.
-- [ ] CommandPanel не имеет собственного keyed map.
-- [ ] Item/effect collections не имеют собственного reconciliation helper.
-- [ ] Character layer структурно является `0..N`, а не скрытым `0..1`.
+- [x] Core Repeater создаёт/reuses/removes/reorders children по key.
+- [x] Duplicate и empty key отклоняются до mutation.
+- [x] CommandPanel не имеет собственного keyed map.
+- [x] Item/effect collections не имеют собственного reconciliation helper.
+- [x] Character layer структурно является `0..N`, а не скрытым `0..1`.

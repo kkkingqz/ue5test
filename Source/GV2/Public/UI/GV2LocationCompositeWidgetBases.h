@@ -2,6 +2,7 @@
 
 #include "CommonUserWidget.h"
 #include "UI/GV2DynamicScreenElement.h"
+#include "UI/GV2ListViewWidgetBase.h"
 #include "GV2LocationCompositeWidgetBases.generated.h"
 
 class UGV2TextWidgetBase;
@@ -10,6 +11,7 @@ class UGV2ProgressBarWidgetBase;
 class UGV2ImageWidgetBase;
 class UGV2ButtonWidgetBase;
 class UWrapBox;
+class UPanelWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
     FGV2LocationCommandBindingInvoked,
@@ -47,12 +49,18 @@ protected:
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PlayerNameText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2PortraitWidgetBase> Portrait;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ProgressBarWidgetBase> StaminaMeter;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> ItemRepeater;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> EffectRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> ItemIcons;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> EffectIcons;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> IconWidgetClass;
-private: FGV2LocationPlayerStatusViewModel Applied;
-    UPROPERTY(Transient) TMap<FName, TObjectPtr<UGV2ImageWidgetBase>> ItemWidgetsByKey;
-    UPROPERTY(Transient) TMap<FName, TObjectPtr<UGV2ImageWidgetBase>> EffectWidgetsByKey;
+private:
+    FGV2LocationPlayerStatusViewModel Applied;
+    UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalItemRepeater;
+    UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalEffectRepeater;
+    UGV2ListViewWidgetBase* ResolveItemRepeater();
+    UGV2ListViewWidgetBase* ResolveEffectRepeater();
+    TSubclassOf<UGV2ImageWidgetBase> ResolveIconWidgetClass() const;
 };
 
 UCLASS(Blueprintable)
@@ -69,8 +77,15 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> SceneContextText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Background;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> BackgroundTile;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> CharacterRepeater;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Character;
-private: FGV2LocationSceneViewModel Applied;
+    UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;
+private:
+    FGV2LocationSceneViewModel Applied;
+    UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalCharacterRepeater;
+    UGV2ListViewWidgetBase* ResolveCharacterRepeater();
+    TSubclassOf<UGV2ImageWidgetBase> ResolveCharacterWidgetClass() const;
 };
 
 /** LocationScreen's command field is a ButtonList with a textsystem schema. */
@@ -90,11 +105,13 @@ public:
     virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutValue) const override;
     virtual bool ResetScreenField_Implementation() override;
 protected:
-    UPROPERTY(meta=(BindWidget)) TObjectPtr<UWrapBox> ButtonContainer;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> ButtonRepeater;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> ButtonContainer;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="GV2|UI") TSubclassOf<UGV2ButtonWidgetBase> ButtonWidgetClass;
 private:
     UFUNCTION() void HandleButtonBindingInvoked(FGV2UiBindingHandle BindingHandle, EGV2SubmitUiInteractionResult Result);
     TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
+    UGV2ListViewWidgetBase* ResolveRepeater();
     UPROPERTY(Transient) TArray<FGV2ButtonViewModel> AppliedButtonModels;
-    UPROPERTY(Transient) TMap<FName, TObjectPtr<UGV2ButtonWidgetBase>> ButtonsByKey;
+    UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalRepeater;
 };

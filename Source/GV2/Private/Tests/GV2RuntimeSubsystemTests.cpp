@@ -37,6 +37,9 @@
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "Components/VerticalBox.h"
+#include "Components/HorizontalBox.h"
+#include "Components/WrapBox.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
@@ -3053,6 +3056,125 @@ bool FGV2LocationTransitionFlowTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Screen widget instance is reused across locations (same UObject pointer)"), ScreenBefore, ScreenAfter);
 
         Runtime->EndSession();
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+// =========================================================================
+// UIH-01..04: Core Repeater & Composite Reconciliation Contract Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CoreRepeaterContractTest,
+    "GV2.Runtime.UI.CoreRepeaterContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    // 1. UIH-01: Test UGV2ListViewWidgetBase directly
+    {
+        UGV2ListViewWidgetBase* ListView = NewObject<UGV2ListViewWidgetBase>(TestWorld);
+        UVerticalBox* Container = NewObject<UVerticalBox>(TestWorld);
+        ListView->SetContainerPanel(Container);
+
+        struct FTestItem
+        {
+            FName Key;
+            FString Text;
+        };
+
+        const TArray<FTestItem> InitialItems = {
+            { FName(TEXT("item_a")), TEXT("Item A") },
+            { FName(TEXT("item_b")), TEXT("Item B") },
+            { FName(TEXT("item_c")), TEXT("Item C") }
+        };
+
+        // Positive: Reconcile creates items in order
+        bool bSuccess = ListView->ReconcileEntries<UGV2ButtonWidgetBase, FTestItem>(
+            InitialItems,
+            [](const FTestItem& Item) { return Item.Key; },
+            [TestWorld]() -> UGV2ButtonWidgetBase* { return NewObject<UGV2ButtonWidgetBase>(TestWorld); },
+            [](UGV2ButtonWidgetBase& Widget, const FTestItem& Item) -> bool { return true; });
+
+        TestTrue(TEXT("Initial reconciliation succeeds"), bSuccess);
+        TestEqual(TEXT("Entry count is 3"), ListView->GetEntryCount(), 3);
+        TestEqual(TEXT("Container child count is 3"), Container->GetChildrenCount(), 3);
+
+        UGV2ButtonWidgetBase* WidgetA = ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_a")));
+        UGV2ButtonWidgetBase* WidgetB = ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_b")));
+        UGV2ButtonWidgetBase* WidgetC = ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_c")));
+        TestNotNull(TEXT("Widget A exists"), WidgetA);
+        TestNotNull(TEXT("Widget B exists"), WidgetB);
+        TestNotNull(TEXT("Widget C exists"), WidgetC);
+
+        // Positive: Reorder and remove C, add D -> reuse existing A and B
+        const TArray<FTestItem> UpdatedItems = {
+            { FName(TEXT("item_b")), TEXT("Item B") },
+            { FName(TEXT("item_d")), TEXT("Item D") },
+            { FName(TEXT("item_a")), TEXT("Item A") }
+        };
+
+        bSuccess = ListView->ReconcileEntries<UGV2ButtonWidgetBase, FTestItem>(
+            UpdatedItems,
+            [](const FTestItem& Item) { return Item.Key; },
+            [TestWorld]() -> UGV2ButtonWidgetBase* { return NewObject<UGV2ButtonWidgetBase>(TestWorld); },
+            [](UGV2ButtonWidgetBase& Widget, const FTestItem& Item) -> bool { return true; });
+
+        TestTrue(TEXT("Updated reconciliation succeeds"), bSuccess);
+        TestEqual(TEXT("Entry count is 3 after update"), ListView->GetEntryCount(), 3);
+        TestEqual(TEXT("Widget B is reused (same pointer)"), ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_b"))), WidgetB);
+        TestEqual(TEXT("Widget A is reused (same pointer)"), ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_a"))), WidgetA);
+        TestNull(TEXT("Widget C is removed"), ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_c"))));
+        TestNotNull(TEXT("Widget D is created"), ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_d"))));
+
+        // Negative: Empty key rejected without modifying state
+        const TArray<FTestItem> BadEmptyKey = {
+            { FName(), TEXT("Bad Item") }
+        };
+        bSuccess = ListView->ReconcileEntries<UGV2ButtonWidgetBase, FTestItem>(
+            BadEmptyKey,
+            [](const FTestItem& Item) { return Item.Key; },
+            [TestWorld]() -> UGV2ButtonWidgetBase* { return NewObject<UGV2ButtonWidgetBase>(TestWorld); },
+            [](UGV2ButtonWidgetBase& Widget, const FTestItem& Item) -> bool { return true; });
+        TestFalse(TEXT("Empty key is rejected"), bSuccess);
+        TestEqual(TEXT("Entry count unchanged after rejected empty key"), ListView->GetEntryCount(), 3);
+
+        // Negative: Duplicate key rejected without modifying state
+        const TArray<FTestItem> BadDuplicateKey = {
+            { FName(TEXT("dup")), TEXT("Dup 1") },
+            { FName(TEXT("dup")), TEXT("Dup 2") }
+        };
+        bSuccess = ListView->ReconcileEntries<UGV2ButtonWidgetBase, FTestItem>(
+            BadDuplicateKey,
+            [](const FTestItem& Item) { return Item.Key; },
+            [TestWorld]() -> UGV2ButtonWidgetBase* { return NewObject<UGV2ButtonWidgetBase>(TestWorld); },
+            [](UGV2ButtonWidgetBase& Widget, const FTestItem& Item) -> bool { return true; });
+        TestFalse(TEXT("Duplicate key is rejected"), bSuccess);
+        TestEqual(TEXT("Entry count unchanged after rejected duplicate key"), ListView->GetEntryCount(), 3);
+
+        // Negative: Failed apply item aborts without modifying state
+        const TArray<FTestItem> BadApplyItems = {
+            { FName(TEXT("item_x")), TEXT("Item X") }
+        };
+        bSuccess = ListView->ReconcileEntries<UGV2ButtonWidgetBase, FTestItem>(
+            BadApplyItems,
+            [](const FTestItem& Item) { return Item.Key; },
+            [TestWorld]() -> UGV2ButtonWidgetBase* { return NewObject<UGV2ButtonWidgetBase>(TestWorld); },
+            [](UGV2ButtonWidgetBase& Widget, const FTestItem& Item) -> bool { return false; });
+        TestFalse(TEXT("Failed ApplyItem is rejected"), bSuccess);
+        TestEqual(TEXT("Entry count unchanged after rejected apply"), ListView->GetEntryCount(), 3);
     }
 
     GameInstance->Shutdown();
