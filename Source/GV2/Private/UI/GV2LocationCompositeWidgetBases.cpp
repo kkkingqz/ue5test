@@ -48,28 +48,24 @@ bool UGV2LocationPlayerStatusWidgetBase::CaptureScreenField_Implementation(FGV2S
 UGV2ListViewWidgetBase* UGV2LocationPlayerStatusWidgetBase::ResolveItemRepeater()
 {
     if (ItemRepeater != nullptr) return ItemRepeater;
+    if (ItemIcons == nullptr) return nullptr;
     if (InternalItemRepeater == nullptr)
     {
         InternalItemRepeater = NewObject<UGV2ListViewWidgetBase>(this);
     }
-    if (ItemIcons != nullptr)
-    {
-        InternalItemRepeater->SetContainerPanel(ItemIcons);
-    }
+    InternalItemRepeater->SetContainerPanel(ItemIcons);
     return InternalItemRepeater;
 }
 
 UGV2ListViewWidgetBase* UGV2LocationPlayerStatusWidgetBase::ResolveEffectRepeater()
 {
     if (EffectRepeater != nullptr) return EffectRepeater;
+    if (EffectIcons == nullptr) return nullptr;
     if (InternalEffectRepeater == nullptr)
     {
         InternalEffectRepeater = NewObject<UGV2ListViewWidgetBase>(this);
     }
-    if (EffectIcons != nullptr)
-    {
-        InternalEffectRepeater->SetContainerPanel(EffectIcons);
-    }
+    InternalEffectRepeater->SetContainerPanel(EffectIcons);
     return InternalEffectRepeater;
 }
 
@@ -126,7 +122,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                 {
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
-                        : CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass);
+                        : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
                 },
                 [](UGV2ImageWidgetBase& Icon, const FString& ResourceId) -> bool
                 {
@@ -148,7 +144,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                 {
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
-                        : CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass);
+                        : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
                 },
                 [](UGV2ImageWidgetBase& Icon, const FString& ResourceId) -> bool
                 {
@@ -202,14 +198,12 @@ bool UGV2LocationSceneWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFi
 UGV2ListViewWidgetBase* UGV2LocationSceneWidgetBase::ResolveCharacterRepeater()
 {
     if (CharacterRepeater != nullptr) return CharacterRepeater;
+    if (CharacterContainer == nullptr) return nullptr;
     if (InternalCharacterRepeater == nullptr)
     {
         InternalCharacterRepeater = NewObject<UGV2ListViewWidgetBase>(this);
     }
-    if (CharacterContainer != nullptr)
-    {
-        InternalCharacterRepeater->SetContainerPanel(CharacterContainer);
-    }
+    InternalCharacterRepeater->SetContainerPanel(CharacterContainer);
     return InternalCharacterRepeater;
 }
 
@@ -277,7 +271,7 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
                 {
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), CharClass)
-                        : CreateWidget<UGV2ImageWidgetBase>(GetWorld(), CharClass);
+                        : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), CharClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), CharClass));
                 },
                 [](UGV2ImageWidgetBase& CharWidget, const FString& ResourceId) -> bool
                 {
@@ -328,14 +322,12 @@ bool UGV2LocationSceneWidgetBase::ResetScreenField_Implementation()
 UGV2ListViewWidgetBase* UGV2LocationCommandPanelWidgetBase::ResolveRepeater()
 {
     if (ButtonRepeater != nullptr) return ButtonRepeater;
+    if (ButtonContainer == nullptr) return nullptr;
     if (InternalRepeater == nullptr)
     {
         InternalRepeater = NewObject<UGV2ListViewWidgetBase>(this);
     }
-    if (ButtonContainer != nullptr)
-    {
-        InternalRepeater->SetContainerPanel(ButtonContainer);
-    }
+    InternalRepeater->SetContainerPanel(ButtonContainer);
     return InternalRepeater;
 }
 
@@ -378,7 +370,7 @@ bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2Butt
             }
             return GetOwningPlayer()
                 ? CreateWidget<UGV2ButtonWidgetBase>(GetOwningPlayer(), Class)
-                : CreateWidget<UGV2ButtonWidgetBase>(GetWorld(), Class);
+                : (GetWorld() ? CreateWidget<UGV2ButtonWidgetBase>(GetWorld(), Class) : NewObject<UGV2ButtonWidgetBase>(GetTransientPackage(), Class));
         },
         [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
         {

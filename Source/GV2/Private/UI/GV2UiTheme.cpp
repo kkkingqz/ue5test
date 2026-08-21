@@ -46,13 +46,13 @@ float UGV2UiTheme::GetEffectiveFontSize(FName TextSizeToken, float ViewportHeigh
 
 UGV2UiTheme* UGV2UiTheme::GetCoreMinimalTheme(UObject* WorldContextObject)
 {
-    static TWeakObjectPtr<UGV2UiTheme> CachedMinimalTheme;
+    static TStrongObjectPtr<UGV2UiTheme> CachedMinimalTheme;
     if (CachedMinimalTheme.IsValid())
     {
         return CachedMinimalTheme.Get();
     }
 
-    UGV2UiTheme* Theme = NewObject<UGV2UiTheme>(GetTransientPackage(), TEXT("CoreMinimalTheme"));
+    UGV2UiTheme* Theme = NewObject<UGV2UiTheme>(GetTransientPackage(), NAME_None, RF_Transient | RF_Public | RF_Standalone);
     Theme->AddToRoot();
 
     Theme->DefaultTextStyleToken = TEXT("default");
@@ -77,7 +77,7 @@ UGV2UiTheme* UGV2UiTheme::GetCoreMinimalTheme(UObject* WorldContextObject)
     Theme->TextCatalog.Add(TEXT("core:text.button.close"), FText::FromString(TEXT("Close")));
     Theme->TextCatalog.Add(TEXT("core:text.button.retry"), FText::FromString(TEXT("Retry")));
 
-    CachedMinimalTheme = Theme;
+    CachedMinimalTheme.Reset(Theme);
     return Theme;
 }
 
@@ -89,10 +89,16 @@ FName UGV2UiThemeSettings::GetCategoryName() const
 UGV2UiTheme* UGV2UiThemeSettings::GetConfiguredTheme()
 {
     const UGV2UiThemeSettings* Settings = GetDefault<UGV2UiThemeSettings>();
-    UGV2UiTheme* Theme = Settings != nullptr ? Settings->ThemeAsset.LoadSynchronous() : nullptr;
-    if (Theme != nullptr)
+    if (Settings != nullptr && !Settings->ThemeAsset.IsNull())
     {
-        return Theme;
+        if (UGV2UiTheme* Loaded = Settings->ThemeAsset.Get())
+        {
+            return Loaded;
+        }
+        if (!IsInAsyncLoadingThread() && !IsGarbageCollecting())
+        {
+            return Settings->ThemeAsset.LoadSynchronous();
+        }
     }
     return UGV2UiTheme::GetCoreMinimalTheme();
 }
