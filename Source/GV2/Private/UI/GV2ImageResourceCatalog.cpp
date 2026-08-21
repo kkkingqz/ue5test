@@ -252,18 +252,12 @@ bool UGV2ImageResourceCatalog::BuildFromDirectory(
             break;
         }
 
-        UTexture2D* Texture = UTexture2D::CreateTransient(
-            SourceImage.SizeX,
-            SourceImage.SizeY,
-            PF_B8G8R8A8,
-            NAME_None,
-            MakeArrayView(SourceImage.RawData));
+        UTexture2D* Texture = FImageUtils::CreateTexture2DFromImage(SourceImage);
         if (Texture == nullptr)
         {
             OutError = FString::Printf(TEXT("Cannot create runtime texture: %s"), *PngFile);
             return false;
         }
-        Texture->SRGB = true;
         Texture->NeverStream = true;
 
         Definition.Texture = Texture;
@@ -371,6 +365,7 @@ bool UGV2ImageResourceCatalog::ResolveDefinition(
     Brush.ImageSize = FVector2D(TextureWidth, TextureHeight);
     Brush.DrawAs = ESlateBrushDrawType::Image;
     Brush.Tiling = ESlateBrushTileType::NoTile;
+    Brush.ImageType = ESlateBrushImageType::FullColor;
 
     switch (Definition.RenderMode)
     {
