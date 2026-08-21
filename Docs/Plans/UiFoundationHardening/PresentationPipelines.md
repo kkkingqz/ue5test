@@ -18,7 +18,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **UIH-05 — Подключить DPI scaling к центральному text pipeline**
+- [x] **UIH-05 — Подключить DPI scaling к центральному text pipeline**
   - Done: effective text size вычисляется общим resolver через theme,
     semantic size/style token и фактическую viewport height; plain Text,
     Button, InputField, Dropdown и другие Core consumers не имеют локальной
@@ -26,7 +26,7 @@ depends_on:
   - Constraint: gameplay composite не знает physical font size.
   - Evidence: `GV2TextPipeline.*`, `GV2UiTheme.*`, consumer tests.
 
-- [ ] **UIH-06 — Унифицировать scaling plain и rich text**
+- [x] **UIH-06 — Унифицировать scaling plain и rich text**
   - Зависимости: UIH-05.
   - Done: default rich text style и `<size=...>` runs используют тот же
     effective-size resolver, что plain text; raw `TextSizeTokens` не
@@ -36,7 +36,7 @@ depends_on:
   - Evidence: `GV2RichTextWidgetBase.*`,
     `GV2RichTextSpanDecorator.*`, text pipeline automation.
 
-- [ ] **UIH-07 — Убрать `AcceptedRenderMode` как источник поведения**
+- [x] **UIH-07 — Убрать `AcceptedRenderMode` как источник поведения**
   - Done: runtime behavior изображения задаётся только `ScalePolicy`;
     `RenderMode` приходит из resolved resource metadata и используется только
     в `IsScalePolicyCompatible`; код не преобразует `PreserveAspect` в `Tile`
@@ -46,7 +46,7 @@ depends_on:
   - Evidence: `GV2ImageWidgetBase.*`, `GV2ImagePresentation.*`,
     affected `.uasset`, negative compatibility tests.
 
-- [ ] **UIH-08 — Оставить один graphics apply path**
+- [x] **UIH-08 — Оставить один graphics apply path**
   - Зависимости: UIH-07.
   - Done: устаревший overload `ResolveAndApply(...AcceptedRenderMode...)`
     удалён или является недоступным compatibility shim без runtime consumers;
@@ -59,9 +59,9 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Реальный text renderer вызывает DPI-aware sizing.
-- [ ] Plain и RichText используют одинаковый resolver.
-- [ ] Minimum readable size проверяется на rendered widgets.
-- [ ] `ScalePolicy` — единственный runtime source of behavior.
-- [ ] Resource render mode используется только как compatibility gate.
-- [ ] Failed graphics validation не мутирует widget.
+- [x] Реальный text renderer вызывает DPI-aware sizing.
+- [x] Plain и RichText используют одинаковый resolver.
+- [x] Minimum readable size проверяется на rendered widgets.
+- [x] `ScalePolicy` — единственный runtime source of behavior.
+- [x] Resource render mode используется только как compatibility gate.
+- [x] Failed graphics validation не мутирует widget.

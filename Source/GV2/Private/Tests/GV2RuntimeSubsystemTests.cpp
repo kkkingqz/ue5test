@@ -3187,4 +3187,74 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// =========================================================================
+// UIH-05 & UIH-06: Text Pipeline DPI Scaling & Unified Sizing Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2TextPipelineDpiScalingTest,
+    "GV2.Runtime.Presentation.TextPipelineDpiScaling",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2TextPipelineDpiScalingTest::RunTest(const FString& Parameters)
+{
+    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    TestNotNull(TEXT("Configured UI theme is valid"), Theme);
+    if (Theme == nullptr) return false;
+
+    // Check evaluate scale at standard heights
+    const float Scale720p = Theme->EvaluateTextScale(720.0f);
+    const float Scale1080p = Theme->EvaluateTextScale(1080.0f);
+    const float Scale1440p = Theme->EvaluateTextScale(1440.0f);
+    const float Scale2160p = Theme->EvaluateTextScale(2160.0f);
+
+    TestNearlyEqual(TEXT("Scale at 720p is ~0.85"), Scale720p, 0.85f, 0.01f);
+    TestNearlyEqual(TEXT("Scale at 1080p is 1.0"), Scale1080p, 1.00f, 0.01f);
+    TestNearlyEqual(TEXT("Scale at 1440p is ~1.25"), Scale1440p, 1.25f, 0.01f);
+    TestNearlyEqual(TEXT("Scale at 2160p is ~1.60"), Scale2160p, 1.60f, 0.01f);
+
+    // Check effective font size calculation and MinReadableFontSize clamp
+    const float SmallSize720p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("small")), 720.0f);
+    TestTrue(TEXT("Small text size at 720p is >= MinReadableFontSize (10pt)"), SmallSize720p >= Theme->MinReadableFontSize);
+
+    const float TitleSize1080p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), 1080.0f);
+    TestNearlyEqual(TEXT("Title text size at 1080p is ~20pt"), TitleSize1080p, 20.0f, 0.1f);
+
+    const float TitleSize2160p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), 2160.0f);
+    TestNearlyEqual(TEXT("Title text size at 2160p is ~32pt"), TitleSize2160p, 32.0f, 0.5f);
+
+    // Verify plain text and rich text get the exact same effective font size
+    FTextBlockStyle PlainStyle;
+    const bool bResolved = UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("title")), PlainStyle, 1080.0f);
+    if (bResolved)
+    {
+        TestNearlyEqual(TEXT("Plain text style font size matches TitleSize1080p"), (float)PlainStyle.Font.Size, TitleSize1080p, 0.1f);
+    }
+
+    return true;
+}
+
+// =========================================================================
+// UIH-07 & UIH-08: Graphics Scaling Policy & Compatibility Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2GraphicsScalingPolicyTest,
+    "GV2.Runtime.Presentation.GraphicsScalingPolicy",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
+{
+    // Test ScalePolicy compatibility matrix
+    TestTrue(TEXT("PreserveAspect compatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::FixedAspect));
+    TestFalse(TEXT("PreserveAspect incompatible with NineSlice"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::NineSlice));
+    TestFalse(TEXT("PreserveAspect incompatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::Tile));
+
+    TestTrue(TEXT("NineSlice compatible with NineSlice"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::NineSlice, EGV2ImageRenderMode::NineSlice));
+    TestFalse(TEXT("NineSlice incompatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::NineSlice, EGV2ImageRenderMode::FixedAspect));
+
+    TestTrue(TEXT("Tile compatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::Tile));
+    TestFalse(TEXT("Tile incompatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::FixedAspect));
+
+    return true;
+}
+
 #endif

@@ -3,7 +3,6 @@
 UGV2IconWidgetBase::UGV2IconWidgetBase()
 {
     ScalePolicy = EGV2PrimitiveScalePolicy::PreserveAspect;
-    AcceptedRenderMode = EGV2ImageRenderMode::FixedAspect;
     FixedAspectRatio = 1.0f;
 }
 

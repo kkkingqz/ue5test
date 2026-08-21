@@ -89,7 +89,7 @@ bool UGV2RichTextPopoverWidgetBase::ApplyImageResource_Implementation(
     return FGV2ImagePresentation::ResolveAndApply(
         Icon,
         ResourceId,
-        EGV2ImageRenderMode::FixedAspect,
+        EGV2PrimitiveScalePolicy::PreserveAspect,
         {},
         Resolved,
         Error);

@@ -111,7 +111,7 @@ LocationScreen
 ## Milestones
 
 - [x] M1 — [Core Repeater](CoreRepeater.md): один механизм identity и reconciliation для повторяемого UI. UIH-01…04.
-- [ ] M2 — [Presentation Pipelines](PresentationPipelines.md): реальный DPI-aware text path и один graphics scale contract. UIH-05…08.
+- [x] M2 — [Presentation Pipelines](PresentationPipelines.md): реальный DPI-aware text path и один graphics scale contract. UIH-05…08.
 - [ ] M3 — [Location Composite Semantics](LocationCompositeSemantics.md): repeated characters/meters, placeholders, reset и field validation. UIH-09…12.
 - [ ] M4 — [Verification](Verification.md): реальные layout-тесты, transition scenario и закрытие GLS-14…16. UIH-13…16.
 

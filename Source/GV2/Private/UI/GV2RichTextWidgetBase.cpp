@@ -242,24 +242,27 @@ TSharedRef<IToolTip> UGV2RichTextWidgetBase::CreateSpanToolTip(const FName SpanI
 }
 
 FTextBlockStyle UGV2RichTextWidgetBase::ResolveRunTextStyle(
-    const FName Style,
-    const FName Color,
-    const FName Size) const
+    FName Style,
+    FName Color,
+    FName Size) const
 {
     FTextBlockStyle Result;
     const FName EffectiveStyle = Style.IsNone() ? CurrentContent.Text.StyleToken : Style;
-    if (!UGV2TextPipeline::ResolveStyle(EffectiveStyle, Result) && RichTextBlock != nullptr)
+    if (!UGV2TextPipeline::ResolveStyle(EffectiveStyle, Result, this) && RichTextBlock != nullptr)
     {
         Result = RichTextBlock->GetCurrentDefaultTextStyle();
+        const float EffectiveSize = UGV2TextPipeline::ResolveEffectiveFontSize(EffectiveStyle, this);
+        Result.SetFontSize(EffectiveSize);
     }
     const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
     if (const FLinearColor* ResolvedColor = Theme != nullptr ? Theme->TextColorTokens.Find(Color) : nullptr)
     {
         Result.SetColorAndOpacity(*ResolvedColor);
     }
-    if (const float* ResolvedSize = Theme != nullptr ? Theme->TextSizeTokens.Find(Size) : nullptr)
+    if (!Size.IsNone())
     {
-        Result.SetFontSize(*ResolvedSize);
+        const float EffectiveFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(Size, this);
+        Result.SetFontSize(EffectiveFontSize);
     }
     return Result;
 }

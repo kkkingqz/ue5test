@@ -174,21 +174,83 @@ bool UGV2TextPipeline::Resolve(
     return NormalizeMarkup(OutText.Text.ToString(), OutText.NormalizedMarkup, OutError);
 }
 
-bool UGV2TextPipeline::ResolveStyle(const FName StyleToken, FTextBlockStyle& OutStyle)
+float UGV2TextPipeline::GetViewportHeight(const UWidget* ContextWidget)
 {
     const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    const float DefaultHeight = Theme != nullptr ? Theme->ReferenceViewportHeight : 1080.0f;
+
+    if (GEngine != nullptr && GEngine->GameViewport != nullptr)
+    {
+        FVector2D ViewportSize;
+        GEngine->GameViewport->GetViewportSize(ViewportSize);
+        if (ViewportSize.Y > 0.0f)
+        {
+            return ViewportSize.Y;
+        }
+    }
+
+    if (ContextWidget != nullptr)
+    {
+        if (const UWorld* World = ContextWidget->GetWorld())
+        {
+            if (const UGameViewportClient* ViewportClient = World->GetGameViewport())
+            {
+                FVector2D ViewportSize;
+                ViewportClient->GetViewportSize(ViewportSize);
+                if (ViewportSize.Y > 0.0f)
+                {
+                    return ViewportSize.Y;
+                }
+            }
+        }
+    }
+
+    return DefaultHeight;
+}
+
+float UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(const FName TextSizeToken, const float ViewportHeight)
+{
+    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    if (Theme == nullptr)
+    {
+        return 14.0f;
+    }
+    const FName Token = TextSizeToken.IsNone() ? Theme->DefaultTextStyleToken : TextSizeToken;
+    return Theme->GetEffectiveFontSize(Token, ViewportHeight);
+}
+
+float UGV2TextPipeline::ResolveEffectiveFontSize(const FName TextSizeToken, const UWidget* ContextWidget)
+{
+    const float ViewportHeight = GetViewportHeight(ContextWidget);
+    return ResolveEffectiveFontSizeForHeight(TextSizeToken, ViewportHeight);
+}
+
+bool UGV2TextPipeline::ResolveStyleForHeight(const FName StyleToken, FTextBlockStyle& OutStyle, const float ViewportHeight)
+{
+    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    const FName EffectiveToken = StyleToken.IsNone() ? (Theme != nullptr ? Theme->DefaultTextStyleToken : FName("default")) : StyleToken;
     const FGV2TextStyleToken* Token = Theme != nullptr
-        ? Theme->TextStyleTokens.Find(StyleToken.IsNone() ? Theme->DefaultTextStyleToken : StyleToken)
+        ? Theme->TextStyleTokens.Find(EffectiveToken)
         : nullptr;
     const UCommonTextStyle* Style = Token != nullptr && Token->Style != nullptr
         ? Cast<UCommonTextStyle>(Token->Style->GetDefaultObject())
-        : nullptr;
+        : (Theme != nullptr && Theme->TextStyle != nullptr ? Cast<UCommonTextStyle>(Theme->TextStyle->GetDefaultObject()) : nullptr);
     if (Style == nullptr)
     {
         return false;
     }
     Style->ToTextBlockStyle(OutStyle);
+
+    // Apply DPI scaling and clamp to MinReadableFontSize
+    const float EffectiveSize = ResolveEffectiveFontSizeForHeight(EffectiveToken, ViewportHeight);
+    OutStyle.SetFontSize(EffectiveSize);
     return true;
+}
+
+bool UGV2TextPipeline::ResolveStyle(const FName StyleToken, FTextBlockStyle& OutStyle, const UWidget* ContextWidget)
+{
+    const float ViewportHeight = GetViewportHeight(ContextWidget);
+    return ResolveStyleForHeight(StyleToken, OutStyle, ViewportHeight);
 }
 
 TSubclassOf<UCommonTextStyle> UGV2TextPipeline::ResolveStyleClass(const FName StyleToken)
@@ -208,6 +270,13 @@ bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& 
     if (Widget == nullptr || Style == nullptr || Text.NormalizedMarkup.Contains(TEXT("<gv2"))) return false;
     Widget->SetStyle(Style);
     Widget->SetText(Text.Text);
+
+    // Apply DPI-aware scaled font size
+    FTextBlockStyle BlockStyle;
+    if (ResolveStyle(Text.StyleToken, BlockStyle, Widget))
+    {
+        Widget->SetFont(BlockStyle.Font);
+    }
     return true;
 }
 

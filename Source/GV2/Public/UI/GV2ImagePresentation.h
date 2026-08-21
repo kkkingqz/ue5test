@@ -22,14 +22,6 @@ public:
     static bool ResolveAndApply(
         UImage* Widget,
         const FString& ResourceId,
-        EGV2ImageRenderMode AcceptedRenderMode,
-        TOptional<float> FixedAspectRatio,
-        FGV2ResolvedImageResource& OutResource,
-        FString& OutError);
-
-    static bool ResolveAndApply(
-        UImage* Widget,
-        const FString& ResourceId,
         EGV2PrimitiveScalePolicy ScalePolicy,
         TOptional<float> FixedAspectRatio,
         FGV2ResolvedImageResource& OutResource,
