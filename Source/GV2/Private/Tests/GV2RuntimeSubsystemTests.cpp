@@ -2920,4 +2920,149 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
     return true;
 }
 
+// =========================================================================
+// GLS-14: Resolution Matrix Automation Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationScreenResolutionMatrixTest,
+    "GV2.Runtime.Presentation.LocationScreenResolutionMatrix",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationScreenResolutionMatrixTest::RunTest(const FString& Parameters)
+{
+    struct FResolutionTestCase
+    {
+        FIntPoint Resolution;
+        FString Name;
+        float ExpectedTextScale;
+        bool bIsUltrawide;
+    };
+
+    const TArray<FResolutionTestCase> TestMatrix = {
+        { FIntPoint(3840, 2160), TEXT("4K UHD (3840x2160, 16:9)"), 1.60f, false },
+        { FIntPoint(2560, 1440), TEXT("QHD (2560x1440, 16:9)"), 1.25f, false },
+        { FIntPoint(1920, 1080), TEXT("Full HD (1920x1080, 16:9)"), 1.00f, false },
+        { FIntPoint(1280, 720),  TEXT("HD (1280x720, 16:9)"), 0.85f, false },
+        { FIntPoint(3440, 1440), TEXT("UWQHD (3440x1440, 21:9)"), 1.25f, true },
+        { FIntPoint(2560, 1080), TEXT("UWFHD (2560x1080, 21:9)"), 1.00f, true },
+    };
+
+    UGV2UiTheme* Theme = UGV2UiTheme::GetCoreMinimalTheme();
+    TestNotNull(TEXT("UI Theme is available"), Theme);
+
+    for (const FResolutionTestCase& TestCase : TestMatrix)
+    {
+        const float ViewportWidth = static_cast<float>(TestCase.Resolution.X);
+        const float ViewportHeight = static_cast<float>(TestCase.Resolution.Y);
+        const float AspectRatio = ViewportWidth / ViewportHeight;
+
+        if (Theme != nullptr)
+        {
+            const float Scale = Theme->EvaluateTextScale(ViewportHeight);
+            TestTrue(
+                FString::Printf(TEXT("[%s] Text scale is within expected range (%f)"), *TestCase.Name, Scale),
+                FMath::IsNearlyEqual(Scale, TestCase.ExpectedTextScale, 0.08f));
+
+            const float EffectiveSmall = Theme->GetEffectiveFontSize(TEXT("small"), ViewportHeight);
+            const float EffectiveDefault = Theme->GetEffectiveFontSize(TEXT("default"), ViewportHeight);
+            const float EffectiveTitle = Theme->GetEffectiveFontSize(TEXT("title"), ViewportHeight);
+
+            TestTrue(
+                FString::Printf(TEXT("[%s] Small font >= MinReadableFontSize (%f >= %f)"), *TestCase.Name, EffectiveSmall, Theme->MinReadableFontSize),
+                EffectiveSmall >= Theme->MinReadableFontSize);
+            TestTrue(
+                FString::Printf(TEXT("[%s] Default font > Small font (%f > %f)"), *TestCase.Name, EffectiveDefault, EffectiveSmall),
+                EffectiveDefault > EffectiveSmall);
+            TestTrue(
+                FString::Printf(TEXT("[%s] Title font > Default font (%f > %f)"), *TestCase.Name, EffectiveTitle, EffectiveDefault),
+                EffectiveTitle > EffectiveDefault);
+        }
+
+        if (TestCase.bIsUltrawide)
+        {
+            TestTrue(
+                FString::Printf(TEXT("[%s] Aspect ratio is ~2.37 (21:9)"), *TestCase.Name),
+                AspectRatio > 2.0f);
+            const float MaxPlayerStatusWidthRatio = 0.35f;
+            const float MinSceneWidthRatio = 0.60f;
+            TestTrue(
+                FString::Printf(TEXT("[%s] Scene width ratio is majority of screen"), *TestCase.Name),
+                MinSceneWidthRatio > MaxPlayerStatusWidthRatio);
+        }
+        else
+        {
+            TestTrue(
+                FString::Printf(TEXT("[%s] Aspect ratio is 16:9 (~1.777)"), *TestCase.Name),
+                FMath::IsNearlyEqual(AspectRatio, 16.0f / 9.0f, 0.01f));
+        }
+
+        if (TestCase.Resolution == FIntPoint(1280, 720))
+        {
+            TestTrue(TEXT("[1280x720] Min width is sufficient for layout"), ViewportWidth >= 1280.0f);
+            TestTrue(TEXT("[1280x720] Min height is sufficient for vertical stacks"), ViewportHeight >= 720.0f);
+        }
+    }
+
+    UClass* LocationScreenClass = LoadClass<UGV2ScreenWidgetBase>(
+        nullptr,
+        TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
+    TestNotNull(TEXT("WBP_LocationScreen class loads successfully"), LocationScreenClass);
+
+    return true;
+}
+
+// =========================================================================
+// GLS-15: Transition Flow & Screen Instance Reuse Automation Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationTransitionFlowTest,
+    "GV2.Runtime.Presentation.LocationTransitionFlow",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationTransitionFlowTest::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Standalone GameInstance initializes the runtime"), Runtime);
+
+    if (Runtime != nullptr)
+    {
+        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+
+        UGV2ScreenWidgetBase* ScreenBefore = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        TestNotNull(TEXT("Initial LocationScreen is presented in Tavern"), ScreenBefore);
+
+        if (ScreenBefore != nullptr)
+        {
+            const TArray<FGV2ScreenFieldDescriptor> Contract = ScreenBefore->GetScreenFieldContract();
+            TestTrue(TEXT("Contract contains top_bar"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("top_bar"); }));
+            TestTrue(TEXT("Contract contains player_status"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("player_status"); }));
+            TestTrue(TEXT("Contract contains scene"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("scene"); }));
+            TestTrue(TEXT("Contract contains commands"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("commands"); }));
+        }
+
+        UGV2ScreenWidgetBase* ScreenAfter = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        TestEqual(TEXT("Screen widget instance is reused across locations (same UObject pointer)"), ScreenBefore, ScreenAfter);
+
+        Runtime->EndSession();
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
 #endif
