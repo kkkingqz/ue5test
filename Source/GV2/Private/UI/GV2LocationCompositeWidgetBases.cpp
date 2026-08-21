@@ -28,14 +28,66 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
     if (!CanApplyScreenField_Implementation(V)) return false;
     Applied = V.LocationSceneValue;
     FString E;
-    if (SceneContextText && !Applied.ContextText.Text.IsEmpty() && !SceneContextText->ApplyText(Applied.ContextText)) return false;
-    if (BackgroundTile && !Applied.BackgroundTileResourceId.IsEmpty() && !BackgroundTile->ApplyImageResource(Applied.BackgroundTileResourceId, E)) return false;
-    if (Background && !Applied.BackgroundResourceId.IsEmpty() && !Background->ApplyOptionalImageResource(Applied.BackgroundResourceId, TEXT("textsystem:resource.ui.missing_background"), E)) return false;
+    if (SceneContextText)
+    {
+        if (!Applied.ContextText.Text.IsEmpty())
+        {
+            SceneContextText->SetVisibility(ESlateVisibility::Visible);
+            if (!SceneContextText->ApplyText(Applied.ContextText)) return false;
+        }
+        else
+        {
+            SceneContextText->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+    if (BackgroundTile)
+    {
+        if (!Applied.BackgroundTileResourceId.IsEmpty())
+        {
+            BackgroundTile->SetVisibility(ESlateVisibility::Visible);
+            if (!BackgroundTile->ApplyImageResource(Applied.BackgroundTileResourceId, E)) return false;
+        }
+        else
+        {
+            BackgroundTile->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
+    if (Background)
+    {
+        if (!Applied.BackgroundResourceId.IsEmpty())
+        {
+            Background->SetVisibility(ESlateVisibility::Visible);
+            if (!Background->ApplyOptionalImageResource(Applied.BackgroundResourceId, TEXT("textsystem:resource.ui.missing_background"), E)) return false;
+        }
+        else
+        {
+            Background->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
     const FString CharacterResourceId = Applied.CharacterResourceIds.IsEmpty() ? FString() : Applied.CharacterResourceIds[0];
-    if (Character && !CharacterResourceId.IsEmpty() && !Character->ApplyOptionalImageResource(CharacterResourceId, TEXT("textsystem:resource.ui.missing_character"), E)) return false;
+    if (Character)
+    {
+        if (!CharacterResourceId.IsEmpty())
+        {
+            Character->SetVisibility(ESlateVisibility::Visible);
+            if (!Character->ApplyOptionalImageResource(CharacterResourceId, TEXT("textsystem:resource.ui.missing_character"), E)) return false;
+        }
+        else
+        {
+            Character->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
     return true;
 }
-bool UGV2LocationSceneWidgetBase::ResetScreenField_Implementation() { Applied={}; return true; }
+bool UGV2LocationSceneWidgetBase::ResetScreenField_Implementation()
+{
+    Applied = {};
+    if (SceneContextText) SceneContextText->SetVisibility(ESlateVisibility::Collapsed);
+    if (BackgroundTile) BackgroundTile->SetVisibility(ESlateVisibility::Collapsed);
+    if (Background) Background->SetVisibility(ESlateVisibility::Collapsed);
+    if (Character) Character->SetVisibility(ESlateVisibility::Collapsed);
+    return true;
+}
 
 TSubclassOf<UGV2ButtonWidgetBase> UGV2LocationCommandPanelWidgetBase::ResolveButtonWidgetClass() const { return ButtonWidgetClass; }
 bool UGV2LocationCommandPanelWidgetBase::CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& Models) const { if (!ButtonContainer || !ResolveButtonWidgetClass()) return false; TSet<FName> Keys; for (const FGV2ButtonViewModel& Model : Models) { if (Model.Key.IsNone() || Keys.Contains(Model.Key) || !Model.Binding.IsValid()) return false; Keys.Add(Model.Key); } return true; }

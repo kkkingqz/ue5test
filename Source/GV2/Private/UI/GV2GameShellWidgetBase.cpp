@@ -1,5 +1,6 @@
 #include "UI/GV2GameShellWidgetBase.h"
 
+#include "Components/OverlaySlot.h"
 #include "Components/PanelWidget.h"
 #include "UI/GV2UiTheme.h"
 
@@ -66,7 +67,17 @@ bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* Scre
         {
             ScreenWidget->RemoveFromParent();
         }
-        Host->AddChild(ScreenWidget);
+        UPanelSlot* NewSlot = Host->AddChild(ScreenWidget);
+        if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(NewSlot))
+        {
+            OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
+            OverlaySlot->SetVerticalAlignment(VAlign_Fill);
+        }
+    }
+    else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(ScreenWidget->Slot))
+    {
+        OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
+        OverlaySlot->SetVerticalAlignment(VAlign_Fill);
     }
     return true;
 }
