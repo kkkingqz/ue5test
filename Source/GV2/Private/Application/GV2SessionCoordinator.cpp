@@ -267,35 +267,53 @@ bool FGV2SessionCoordinator::StartSession(
         return false;
     }
 
+    std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
+    if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
+    {
+        FailRuntime(Fault);
+        return false;
+    }
+    if (!PendingDoc.has_value())
+    {
+        FailRuntime({"InitialPresentationMissing", "Session start did not publish an initial UI document."});
+        return false;
+    }
+
+    FGV2UiDocumentViewModel DocModel;
+    FGV2PreparedBindingSet PreparedBindings;
+    if (!PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings))
+    {
+        FailRuntime({"InitialPresentationInvalid", "Initial UI document failed binding preparation."});
+        return false;
+    }
+
+    bool bApplied = false;
+    if (DocumentSink)
+    {
+        bApplied = DocumentSink(DocModel);
+    }
+    else if (ScreenSink && DocModel.bHasRoute)
+    {
+        FGV2ScreenViewModel ScreenModel;
+        ScreenModel.ScreenId = DocModel.Route.ScreenId;
+        ScreenModel.Fields = DocModel.Route.Fields;
+        bApplied = ScreenSink(ScreenModel);
+    }
+    if (!bApplied)
+    {
+        FailRuntime({"InitialPresentationApplyFailed", "Initial UI document could not be applied."});
+        return false;
+    }
+    if (!BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+    {
+        FailRuntime({"InitialPresentationCommitFailed", "Initial UI binding candidate could not be committed."});
+        return false;
+    }
+
+    UiRevision = DocModel.Revision;
     Status.ApplicationState = EGV2ApplicationState::MenuActive;
     Status.SessionState = EGV2SessionState::Ready;
     Status.bIsReady = true;
-
-    std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
-    if (RuntimeSession.TakePendingDocument(PendingDoc, Fault) && PendingDoc.has_value())
-    {
-        FGV2UiDocumentViewModel DocModel;
-        FGV2PreparedBindingSet PreparedBindings;
-        if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings))
-        {
-            bool bApplied = false;
-            if (DocumentSink)
-            {
-                bApplied = DocumentSink(DocModel);
-            }
-            else if (ScreenSink && DocModel.bHasRoute)
-            {
-                FGV2ScreenViewModel ScreenModel;
-                ScreenModel.ScreenId = DocModel.Route.ScreenId;
-                ScreenModel.Fields = DocModel.Route.Fields;
-                bApplied = ScreenSink(ScreenModel);
-            }
-            if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
-            {
-                UiRevision = DocModel.Revision;
-            }
-        }
-    }
 
     return true;
 }
@@ -544,6 +562,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         TArray<FGV2UiBindingDefinition> InstDefs;
         if (!FieldAdapters.PrepareBindingDefinitions(Request, InstDefs))
         {
+            UE_LOG(LogTemp, Error, TEXT("GV2 initial document has unsupported fields for screen '%s'"), UTF8_TO_TCHAR(Inst.ScreenId.c_str()));
             return false;
         }
 
@@ -607,6 +626,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
     if (!BindingRegistry.PrepareBindings(UiInstanceId, CandidateRevision, AllDefinitions, OutBindings)
         || OutBindings.Handles.Num() != AllDefinitions.Num())
     {
+        UE_LOG(LogTemp, Error, TEXT("GV2 initial document bindings are invalid: instance='%s' revision=%lld definitions=%d handles=%d"), *UiInstanceId, CandidateRevision, AllDefinitions.Num(), OutBindings.Handles.Num());
         return false;
     }
 
@@ -628,6 +648,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         Request.Fields = Inst.Fields;
         if (!FieldAdapters.BuildFields(Request, InstHandles, OutInstModel.Fields))
         {
+            UE_LOG(LogTemp, Error, TEXT("GV2 initial document fields could not be built for screen '%s'"), *OutInstModel.ScreenId);
             return false;
         }
 

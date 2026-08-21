@@ -1,7 +1,7 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 3.0
+version: 3.1
 updated: 2026-08-20
 depends_on:
   - SystemContextAndComponents.md
@@ -77,9 +77,9 @@ Public readiness — один bool `is_ready`. Он становится true т
 
 До открытия session `UGV2RuntimeSubsystem` обязан успешно построить configured `UGV2ImageResourceCatalog`, загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка любого required presentation catalog/registry или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (выставляя явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
 
-Debug start sequence: `GameInstance` start → Screen Registry ready → session `Ready` (`StartSession()`) → Lua module `start` lifecycle hook публикует initial Screen request (`screens.publish(...)`) → coordinator забирает pending screen → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child (`WBP_Testscreen`) → atomic field apply → binding revision commit → активный экран отображается во viewport. Screen replacement выполняется после выхода из Lua.
+Start sequence: `GameInstance` start → Screen Registry ready → package modules register and freeze registries → package-owned `start` hook may create its initial gameplay state exclusively through a registered Command Dispatcher command → presentation source resolves the resulting state and publishes an initial Screen request → coordinator забирает pending screen → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit → активный экран отображается во viewport. Screen replacement выполняется после выхода из Lua. C++ не знает ни стартовой команды пакета, ни `screen_id`, ни Widget class.
 
-Пока первый игровой Screen не введён в Screen Registry, интерактивный Editor использует data-driven development profile `UGV2RuntimeSettings.EditorPackageRoots` из `DefaultGame.ini`: `sample` подключает существующий Lua debug-start module и публикует полный `core:screen.test`. Одни и те же resolved package roots обязаны использоваться и для repository build, и для загрузки package Lua sources; расхождение этих наборов запрещено. C++ при этом не знает `screen_id`, Widget class или состав полей тестового экрана. Commandlet, unattended automation, Headless и Shipping игнорируют Editor profile и используют обычный package set; automation, которой нужен fixture, подключает `sample` явно. Automatic debug fixture запрещён в Shipping и не добавляет отдельный test API.
+Интерактивный Editor использует data-driven development profile `UGV2RuntimeSettings.EditorPackageRoots` из `DefaultGame.ini`: production profile `core + textsystem + rh` открывает `textsystem:screen.location` из начального RH gameplay-state. Одни и те же resolved package roots обязаны использоваться и для repository build, и для загрузки package Lua sources; расхождение этих наборов запрещено. Commandlet, unattended automation, Headless и Shipping игнорируют Editor profile и используют обычный package set; automation, которой нужен fixture, подключает `sample` явно. Automatic debug fixture запрещён в Shipping и не добавляет отдельный test API.
 
 `FGV2SessionCoordinator` является private UE owner active/candidate session. Он создаёт для каждой generation отдельную portable runtime session, Bridge context, ingress queue, UI binding registry и operation registry. Ни один из этих объектов не переживает уничтожение owning session. `GV2RuntimeCore` не зависит от UObject/UMG и назначает вызывающий Game Thread owner thread-ом VM; standalone host использует тот же lifecycle на своём worker thread.
 
@@ -130,7 +130,7 @@ Order: core modules, затем mods по resolved load order. `stop`/`unregiste
 | `register` | No | Registration API only |
 | `create_default_state`/`migrate_state` | Temporary tree only | No |
 | `restore_instances`/`validate_state` | Temporary/session-local reconstruction | No external effects |
-| `start` | Internal initialization only | Gates closed |
+| `start` | Internal initialization; package может выполнить один идемпотентный initial Command Dispatcher command | Gates closed, кроме lifecycle-owned initial command path |
 | `build_initial_projection` | Read-only state | Returns declarative snapshot |
 | Ready runtime | Commands/services only | Normal rules |
 | `stop`/`unregister` | No gameplay mutation | Local cleanup only |

@@ -181,6 +181,11 @@ return {
             location_presenter.build_and_publish_screen()
             local screen_market = screens.take_pending()
             assert(screen_market ~= nil and screen_market.screen_id == "textsystem:screen.location")
+            assert(screen_market.fields.top_bar.value.location.text_id == "rh:text.location.market.title")
+            assert(screen_market.fields.scene.value.background_resource_id == "rh:resource.location.market")
+            assert(#screen_market.fields.scene.value.character_resource_ids == 1
+                and screen_market.fields.scene.value.character_resource_ids[1] == "textsystem:resource.ui.missing_character")
+            assert(find_button(screen_market.fields.commands, "buy_sword") ~= nil)
 
             -- Dispatch travel to tavern
             local seq = game.runtime.dispatch_command({
@@ -197,6 +202,18 @@ return {
                 "screen_id must remain the LocationScreen template, got: " .. tostring(screen_tavern.screen_id))
             assert(screen_tavern.instance_key == screen_market.instance_key,
                 "travel must retain the location screen instance")
+            assert(screen_tavern.fields.top_bar.value.location.text_id == "rh:text.location.tavern.title",
+                "top bar must receive the destination location")
+            assert(screen_tavern.fields.scene.value.background_resource_id == "rh:resource.location.tavern",
+                "scene must receive the destination background")
+            assert(screen_tavern.fields.scene.value.character_resource_ids[1] == "rh:resource.character.tavern_keeper",
+                "scene must receive the tavern character")
+            assert(find_button(screen_tavern.fields.commands, "wait_day") ~= nil,
+                "destination commands must replace the market command set")
+            assert(find_button(screen_tavern.fields.commands, "buy_sword") == nil,
+                "market command must not survive the transition")
+            assert(player.current_location_id == "rh:location.city.tavern",
+                "semantic travel command must mutate canonical location state")
             assert(#screen_tavern.fields.commands.value.items == 4, "tavern menu must have 4 buttons")
         end)
     end,

@@ -1189,6 +1189,15 @@ bool FGV2ScreenFieldAdapterRegistry::BuildFields(
         if (Value == nullptr || Adapter == nullptr
             || !Adapter->BuildField(Field, *Value, Handles, HandleIndex, BuiltField))
         {
+            UE_LOG(
+                LogTemp,
+                Error,
+                TEXT("GV2 Screen Field build failed: screen='%s' field='%s' schema='%s' handles=%d index=%d"),
+                UTF8_TO_TCHAR(Request.ScreenId.c_str()),
+                UTF8_TO_TCHAR(Field.FieldId.c_str()),
+                UTF8_TO_TCHAR(Field.SchemaId.c_str()),
+                Handles.Num(),
+                HandleIndex);
             OutFields.Reset();
             return false;
         }
@@ -1196,6 +1205,13 @@ bool FGV2ScreenFieldAdapterRegistry::BuildFields(
     }
     if (HandleIndex != Handles.Num())
     {
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Screen Field build left unused handles: screen='%s' handles=%d index=%d"),
+            UTF8_TO_TCHAR(Request.ScreenId.c_str()),
+            Handles.Num(),
+            HandleIndex);
         OutFields.Reset();
         return false;
     }

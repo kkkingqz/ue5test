@@ -35,7 +35,14 @@ end
 function M.resolve()
     if registered_source ~= nil then
         local res = registered_source()
-        if type(res) == "table" and res.screen_id and res.fields then
+        -- Authoring show_screen() returns an already-published UiDocument. Its
+        -- metatable exposes route fields for legacy reads, so test its native
+        -- document shape first and never publish it a second time.
+        local is_document = type(res) == "table"
+            and res.ui_instance_id ~= nil
+            and res.revision ~= nil
+            and res.route ~= nil
+        if not is_document and type(res) == "table" and res.screen_id and res.fields then
             screens_module.publish(res)
         end
         return res

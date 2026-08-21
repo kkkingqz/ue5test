@@ -1,7 +1,7 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.5
+version: 1.6
 updated: 2026-08-20
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -191,6 +191,8 @@ Exit animation не продлевает logical input lifetime removed Screen I
 ## Full update policy
 
 Lua всегда отправляет complete document/revision, не operations patch. Internally Presentation может вычислять diff. Boundary-level partial patch, JSON Patch и mutation operations отсутствуют.
+
+Presentation source, который возвращает уже опубликованный `UiDocument` из `show_screen`, не публикует его повторно. Legacy route-shaped screen request нормализуется в document только когда он не содержит native envelope (`ui_instance_id`, `revision`, `route`); метatable convenience-поля документа не меняют это правило. Поэтому initial document сохраняет свою первую revision и проходит binding validation один раз.
 
 ## Route/layer rules
 

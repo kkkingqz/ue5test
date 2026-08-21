@@ -213,7 +213,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     if (RuntimeSettings != nullptr)
     {
         TestTrue(
-            TEXT("Editor development profile connects the sample package"),
+            TEXT("Editor development profile connects the RH gameplay package"),
+            RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/rh")));
+        TestFalse(
+            TEXT("Editor development profile does not replace gameplay with the sample fixture"),
             RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/sample")));
     }
 
@@ -1730,6 +1733,62 @@ bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
         UGV2ScreenWidgetBase* Screen = Cast<UGV2ScreenWidgetBase>(
             Runtime->GetActiveScreen());
         TestNotNull(TEXT("GameInstance start directly opens the registered WBP_Testscreen"), Screen);
+        Runtime->EndSession();
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2RhStartScreenFlow,
+    "GV2.Runtime.Presentation.RhStartOpensLocationScreen",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
+{
+    const UGV2RuntimeSettings* RuntimeSettings = GetDefault<UGV2RuntimeSettings>();
+    TestNotNull(TEXT("Runtime development settings are available"), RuntimeSettings);
+    if (RuntimeSettings != nullptr)
+    {
+        TestTrue(
+            TEXT("Editor startup profile uses RH"),
+            RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/rh")));
+        TestFalse(
+            TEXT("Editor startup profile excludes the sample test screen"),
+            RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/sample")));
+    }
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Standalone GameInstance initializes the runtime"), Runtime);
+    if (Runtime != nullptr)
+    {
+        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+        UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        TestNotNull(TEXT("RH startup opens the registered LocationScreen"), Screen);
+        if (Screen != nullptr)
+        {
+            UClass* LocationScreenClass = LoadClass<UUserWidget>(
+                nullptr,
+                TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
+            TestNotNull(TEXT("LocationScreen class is loadable"), LocationScreenClass);
+            TestTrue(
+                TEXT("RH startup presents WBP_LocationScreen"),
+                LocationScreenClass != nullptr && Screen->IsA(LocationScreenClass));
+        }
         Runtime->EndSession();
     }
 
