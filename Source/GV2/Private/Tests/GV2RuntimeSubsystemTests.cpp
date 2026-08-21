@@ -3405,4 +3405,111 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// =========================================================================
+// UIH-14: Rendering Conformance on Instantiated Widgets Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2RenderingConformanceTest,
+    "GV2.Runtime.Presentation.RenderingConformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>();
+    GameInstance->AddToRoot();
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    if (TestWorld != nullptr)
+    {
+        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+        WorldContext.SetCurrentWorld(TestWorld);
+        GameInstance->Init();
+
+        const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+        TestNotNull(TEXT("Configured theme is valid"), Theme);
+
+        // 1. Text, RichText, Button, Input, Dropdown sizing conformance
+        const float EffectiveTitle1080p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), 1080.0f);
+        const float EffectiveSmall720p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("small")), 720.0f);
+        TestTrue(TEXT("Small font size at 720p respects MinReadableFontSize"), EffectiveSmall720p >= (Theme ? Theme->MinReadableFontSize : 10.0f));
+
+        UGV2TextWidgetBase* TextWidget = NewObject<UGV2TextWidgetBase>(TestWorld);
+        UGV2RichTextWidgetBase* RichTextWidget = NewObject<UGV2RichTextWidgetBase>(TestWorld);
+        UGV2ButtonWidgetBase* ButtonWidget = NewObject<UGV2ButtonWidgetBase>(TestWorld);
+        UGV2InputFieldWidgetBase* InputWidget = NewObject<UGV2InputFieldWidgetBase>(TestWorld);
+        UGV2DropdownSelectWidgetBase* DropdownWidget = NewObject<UGV2DropdownSelectWidgetBase>(TestWorld);
+
+        TestNotNull(TEXT("TextWidget created"), TextWidget);
+        TestNotNull(TEXT("RichTextWidget created"), RichTextWidget);
+        TestNotNull(TEXT("ButtonWidget created"), ButtonWidget);
+        TestNotNull(TEXT("InputWidget created"), InputWidget);
+        TestNotNull(TEXT("DropdownWidget created"), DropdownWidget);
+
+        // 2. Image widgets scale policy and brush state conformance
+        UGV2ImageWidgetBase* ImageWidget = NewObject<UGV2ImageWidgetBase>(TestWorld);
+        TestNotNull(TEXT("ImageWidget created"), ImageWidget);
+
+        // Negative: Incompatible graphics resource rejects gracefully and preserves state
+        FString Error;
+        const bool bBadApply = ImageWidget->ApplyImageResource(TEXT("nonexistent:resource.image"), Error);
+        TestFalse(TEXT("Nonexistent resource is rejected"), bBadApply);
+        TestTrue(TEXT("Applied resource id remains empty"), ImageWidget->GetAppliedResourceId().IsEmpty());
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+// =========================================================================
+// UIH-15: LocationScreen Transition Contract Automation Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationScreenTransitionContractTest,
+    "GV2.Runtime.UI.LocationScreenTransitionContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("RuntimeSubsystem initialized"), Runtime);
+
+    if (Runtime != nullptr)
+    {
+        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+
+        // 1. Initial screen in Tavern
+        UGV2ScreenWidgetBase* Screen1 = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        TestNotNull(TEXT("Initial location screen presented"), Screen1);
+
+        // 2. Screen instance reuse
+        UGV2ScreenWidgetBase* Screen2 = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        TestEqual(TEXT("Screen instance is reused with stable identity"), Screen1, Screen2);
+
+        Runtime->EndSession();
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
 #endif

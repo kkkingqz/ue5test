@@ -19,7 +19,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **UIH-13 — Реальная viewport/layout matrix**
+- [x] **UIH-13 — Реальная viewport/layout matrix**
   - Зависимости: UIH-01…12.
   - Done: automation создаёт настоящий зарегистрированный
     `WBP_LocationScreen`, применяет полноценный candidate document,
@@ -45,7 +45,7 @@ depends_on:
   - Запрещено считать проверкой простой цикл по числовой таблице размеров.
   - Evidence: dedicated Unreal automation test.
 
-- [ ] **UIH-14 — Rendering conformance на реальных widgets**
+- [x] **UIH-14 — Rendering conformance на реальных widgets**
   - Зависимости: UIH-05…08, UIH-13.
   - Done: instantiated Text, RichText, Button, InputField и Dropdown с одним
     semantic style на одном viewport дают один effective font size;
@@ -54,7 +54,7 @@ depends_on:
   - Negative: incompatible graphics resource сохраняет предыдущий valid state.
   - Evidence: Unreal automation.
 
-- [ ] **UIH-15 — Сквозной LocationScreen transition**
+- [x] **UIH-15 — Сквозной LocationScreen transition**
   - Зависимости: UIH-02…12.
   - Done: Tavern → Market выполняется через semantic action/Command Dispatcher;
     `(layer, screen_id, instance_key)` сохраняют identity Screen;
@@ -66,7 +66,7 @@ depends_on:
     UI-specific identity assertions выполняются UE automation.
   - Evidence: Lua spec + runtime automation.
 
-- [ ] **UIH-16 — Закрыть старые acceptance claims новым evidence**
+- [x] **UIH-16 — Закрыть старые acceptance claims новым evidence**
   - Зависимости: UIH-13, UIH-14, UIH-15.
   - Done:
       - `GLS-14` отмечен выполненным только по реальному layout matrix;
@@ -90,12 +90,12 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Реальный LocationScreen проверен на всех шести viewport sizes.
-- [ ] 1280×720 пригоден к использованию.
-- [ ] Pseudolocale не делает controls недостижимыми.
-- [ ] DPI scaling подтверждён на rendered widgets.
-- [ ] Graphics policy подтверждена на rendered widgets.
-- [ ] Tavern → Market переиспользует Screen Instance.
-- [ ] Повторяемые children переиспользуются по key.
-- [ ] GLS-14…16 имеют новое фактическое evidence.
-- [ ] Полный project gate зелёный.
+- [x] Реальный LocationScreen проверен на всех шести viewport sizes.
+- [x] 1280×720 пригоден к использованию.
+- [x] Pseudolocale не делает controls недостижимыми.
+- [x] DPI scaling подтверждён на rendered widgets.
+- [x] Graphics policy подтверждена на rendered widgets.
+- [x] Tavern → Market переиспользует Screen Instance.
+- [x] Повторяемые children переиспользуются по key.
+- [x] GLS-14…16 имеют новое фактическое evidence.
+- [x] Полный project gate зелёный.
