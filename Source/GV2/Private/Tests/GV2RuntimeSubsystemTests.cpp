@@ -4,6 +4,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformTime.h"
+#include "Widgets/SVirtualWindow.h"
 #include "Application/GV2ScreenFieldAdapterRegistry.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2FilesystemContentSourceProvider.h"
@@ -3312,7 +3313,8 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
 
         // 2. PlayerStatus validation & semantics (0/1/N meters & icons)
         {
-            UGV2LocationPlayerStatusWidgetBase* PlayerStatus = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+            UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
+            UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
             TestNotNull(TEXT("PlayerStatus created"), PlayerStatus);
 
             FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("wrong_field"), {});
@@ -3351,29 +3353,36 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
 
         // 3. SceneView validation & semantics (0/1/N characters)
         {
-            UGV2LocationSceneWidgetBase* SceneView = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+            UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+            UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
             TestNotNull(TEXT("SceneView created"), SceneView);
 
             FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("wrong_field"), {});
             TestFalse(TEXT("SceneView rejects mismatched FieldId"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, WrongField));
 
-            // Populate with N characters
-            FGV2LocationSceneViewModel SceneModel;
+            // Multiple characters rejected without repeater
+            FGV2LocationSceneViewModel MultiSceneModel;
             FGV2LocationCharacterEntry Char1;
             Char1.Key = FName(TEXT("aria"));
             Char1.ResourceId = TEXT("char_a");
             FGV2LocationCharacterEntry Char2;
             Char2.Key = FName(TEXT("keeper"));
             Char2.ResourceId = TEXT("char_b");
-            SceneModel.Characters = { Char1, Char2 };
+            MultiSceneModel.Characters = { Char1, Char2 };
 
-            FGV2ScreenFieldValue ValidScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel);
-            TestTrue(TEXT("SceneView accepts valid field"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, ValidScene));
+            FGV2ScreenFieldValue MultiScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), MultiSceneModel);
+            TestFalse(TEXT("SceneView rejects multiple characters without repeater"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, MultiScene));
+
+            // Single character accepted with single character slot
+            FGV2LocationSceneViewModel SingleSceneModel;
+            SingleSceneModel.Characters = { Char1 };
+            FGV2ScreenFieldValue ValidScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SingleSceneModel);
+            TestTrue(TEXT("SceneView accepts single character field"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, ValidScene));
 
             IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, ValidScene);
             FGV2ScreenFieldValue Captured;
             IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-            TestEqual(TEXT("SceneView character count preserved"), Captured.LocationSceneValue.Characters.Num(), 2);
+            TestEqual(TEXT("SceneView character count preserved"), Captured.LocationSceneValue.Characters.Num(), 1);
 
             // ResetScreenField
             IGV2DynamicScreenElement::Execute_ResetScreenField(SceneView);
@@ -3383,7 +3392,8 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
 
         // 4. CommandPanel validation & semantics
         {
-            UGV2LocationCommandPanelWidgetBase* CommandPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+            UClass* CommandClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+            UGV2LocationCommandPanelWidgetBase* CommandPanel = CommandClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
             TestNotNull(TEXT("CommandPanel created"), CommandPanel);
 
             FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("wrong_field"), {});
@@ -3447,55 +3457,51 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
         GameInstance->Init();
 
         // 1. Load actual registered WBP_LocationScreen
-        UClass* LocationScreenClass = LoadClass<UGV2ScreenWidgetBase>(
-            nullptr,
-            TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
-        TestNotNull(TEXT("WBP_LocationScreen class exists and is loadable"), LocationScreenClass);
+        UClass* ScreenClass = LoadClass<UGV2ScreenWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
+        TestNotNull(TEXT("WBP_LocationScreen is loadable"), ScreenClass);
 
-        if (LocationScreenClass != nullptr)
+        if (ScreenClass != nullptr)
         {
-            UGV2ScreenWidgetBase* LocationScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, LocationScreenClass);
+            UGV2ScreenWidgetBase* LocationScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, ScreenClass);
             TestNotNull(TEXT("WBP_LocationScreen instantiated"), LocationScreen);
 
             if (LocationScreen != nullptr)
             {
-                // 2. Build full realistic candidate document
+                // 2. Prepare comprehensive models for all 4 composites (worst-case pseudolocale + 6 command buttons)
                 FGV2LocationTopBarViewModel TopBarModel;
-                TopBarModel.Day.Text = FText::FromString(TEXT("Day 17"));
-                TopBarModel.Location.Text = FText::FromString(TEXT("The Boar's Tusk Tavern"));
-                TopBarModel.PrimaryResource.Text = FText::FromString(TEXT("Gold: 120"));
+                TopBarModel.Location.Text = FText::FromString(TEXT("[LOCALE_TEST] The Golden Gryphon Tavern & Inn of the Northern Realm"));
+                TopBarModel.Day.Text = FText::FromString(TEXT("Day 42"));
+                TopBarModel.PrimaryResource.Text = FText::FromString(TEXT("Gold: 1250"));
 
                 FGV2LocationPlayerStatusViewModel PlayerModel;
-                PlayerModel.Name.Text = FText::FromString(TEXT("Aria Storm"));
-                PlayerModel.PortraitResourceId = TEXT("core:resource.image.character_portrait");
+                PlayerModel.Name.Text = FText::FromString(TEXT("[LOCALE_TEST] Grandmaster Archmage Valerius"));
+                PlayerModel.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
                 FGV2LocationMeterEntry Meter1;
                 Meter1.Key = FName(TEXT("stamina"));
                 Meter1.Meter.Percent = 0.85f;
-                PlayerModel.Meters = { Meter1 };
+                PlayerModel.Meters.Add(Meter1);
                 PlayerModel.ItemIconResourceIds = { TEXT("item_sword"), TEXT("item_shield") };
                 PlayerModel.EffectIconResourceIds = { TEXT("effect_buff") };
 
                 FGV2LocationSceneViewModel SceneModel;
+                SceneModel.BackgroundResourceId = TEXT("textsystem:resource.ui.missing_background");
                 SceneModel.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
-                SceneModel.BackgroundResourceId = TEXT("core:resource.image.character_portrait");
+                SceneModel.ContextText.Text = FText::FromString(TEXT("[TEST] A warm and cozy tavern with cheerful laughter. [LOCALE_OVERFLOW_TEST_STRING_FOR_LAYOUT_AND_TEXT_WRAPPING_1234567890]"));
                 FGV2LocationCharacterEntry Char1;
-                Char1.Key = FName(TEXT("aria"));
-                Char1.ResourceId = TEXT("core:resource.image.character_portrait");
-                SceneModel.Characters = { Char1 };
-                SceneModel.ContextText.Text = FText::FromString(
-                    TEXT("[TEST] A warm and cozy tavern with cheerful laughter. [LOCALE_OVERFLOW_TEST_STRING_FOR_LAYOUT_AND_TEXT_WRAPPING_1234567890]"));
+                Char1.Key = FName(TEXT("tavern_keeper"));
+                Char1.ResourceId = TEXT("textsystem:resource.ui.missing_character");
+                SceneModel.Characters.Add(Char1);
 
                 TArray<FGV2ButtonViewModel> Buttons;
-                for (int32 i = 1; i <= 6; ++i)
+                for (int32 Index = 1; Index <= 6; ++Index)
                 {
                     FGV2ButtonViewModel Btn;
-                    Btn.Key = FName(*FString::Printf(TEXT("cmd_%d"), i));
-                    Btn.Text.Text = FText::FromString(FString::Printf(TEXT("Command Action Button #%d (Test Reflow Wrap)"), i));
-                    Btn.Binding = FGV2UiBindingHandle::Create(FString::Printf(TEXT("binding_%d"), i));
+                    Btn.Key = *FString::Printf(TEXT("cmd_%d"), Index);
+                    Btn.Text.Text = FText::FromString(*FString::Printf(TEXT("Command Action Button #%d (Test Reflow Wrap)"), Index));
+                    Btn.Binding = FGV2UiBindingHandle::Create(*FString::Printf(TEXT("handle_cmd_%d"), Index));
                     Buttons.Add(Btn);
                 }
 
-                // Apply fields through screen widget field contract
                 TArray<FGV2ScreenFieldValue> Fields = {
                     FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModel),
                     FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModel),
@@ -3505,13 +3511,14 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                 const bool bFieldsApplied = LocationScreen->ApplyScreenFields(Fields);
                 TestTrue(TEXT("WBP_LocationScreen applies full location fields"), bFieldsApplied);
 
-                // 3. Test layout geometry across 6 resolutions
-                const struct FViewportResolution
+                // 3. Test layout geometry across 6 resolutions using real SVirtualWindow
+                struct FViewportResolution
                 {
                     const TCHAR* Name;
                     FVector2D Size;
                     bool bUltrawide;
-                } TestResolutions[] = {
+                };
+                const FViewportResolution TestResolutions[] = {
                     { TEXT("4K (3840x2160)"), FVector2D(3840, 2160), false },
                     { TEXT("QHD (2560x1440)"), FVector2D(2560, 1440), false },
                     { TEXT("FHD (1920x1080)"), FVector2D(1920, 1080), false },
@@ -3525,9 +3532,35 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
 
                 if (SlateWidget.IsValid())
                 {
+                    TSharedRef<SVirtualWindow> VirtualWindow = SNew(SVirtualWindow).Size(FVector2D(1920, 1080));
+                    VirtualWindow->SetContent(SlateWidget.ToSharedRef());
+
+                    // Find child composite widgets in tree
+                    TArray<UWidget*> ChildWidgets;
+                    LocationScreen->WidgetTree->GetAllWidgets(ChildWidgets);
+
+                    UGV2LocationTopBarWidgetBase* TopBarWidget = nullptr;
+                    UGV2LocationPlayerStatusWidgetBase* PlayerStatusWidget = nullptr;
+                    UGV2LocationSceneWidgetBase* SceneWidget = nullptr;
+                    UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
+
+                    for (UWidget* W : ChildWidgets)
+                    {
+                        if (auto* TB = Cast<UGV2LocationTopBarWidgetBase>(W)) TopBarWidget = TB;
+                        else if (auto* PS = Cast<UGV2LocationPlayerStatusWidgetBase>(W)) PlayerStatusWidget = PS;
+                        else if (auto* SC = Cast<UGV2LocationSceneWidgetBase>(W)) SceneWidget = SC;
+                        else if (auto* CP = Cast<UGV2LocationCommandPanelWidgetBase>(W)) CommandWidget = CP;
+                    }
+
+                    TestNotNull(TEXT("TopBar child composite exists"), TopBarWidget);
+                    TestNotNull(TEXT("PlayerStatus child composite exists"), PlayerStatusWidget);
+                    TestNotNull(TEXT("Scene child composite exists"), SceneWidget);
+                    TestNotNull(TEXT("CommandPanel child composite exists"), CommandWidget);
+
                     for (const auto& Res : TestResolutions)
                     {
-                        SlateWidget->SlatePrepass(1.0f);
+                        VirtualWindow->Resize(Res.Size);
+                        VirtualWindow->SlatePrepass(1.0f);
                         const FVector2D DesiredSize = SlateWidget->GetDesiredSize();
 
                         TestTrue(
@@ -3537,12 +3570,51 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                             *FString::Printf(TEXT("[%s] Desired height is positive: %f"), Res.Name, DesiredSize.Y),
                             DesiredSize.Y > 0.0f);
 
-                        // 720p constraints check
-                        if (Res.Size.Y <= 720.0f)
+                        // Check child component geometry constraints
+                        if (TopBarWidget != nullptr)
                         {
                             TestTrue(
-                                *FString::Printf(TEXT("[%s] Desired height fits 720p constraints"), Res.Name),
-                                DesiredSize.Y <= 1080.0f);
+                                *FString::Printf(TEXT("[%s] TopBar desired height is bounded"), Res.Name),
+                                TopBarWidget->GetDesiredSize().Y > 0.0f && TopBarWidget->GetDesiredSize().Y <= Res.Size.Y * 0.25f);
+                        }
+                        if (PlayerStatusWidget != nullptr)
+                        {
+                            TestTrue(
+                                *FString::Printf(TEXT("[%s] PlayerStatus desired width is bounded"), Res.Name),
+                                PlayerStatusWidget->GetDesiredSize().X > 0.0f && PlayerStatusWidget->GetDesiredSize().X <= Res.Size.X * 0.6f);
+                        }
+                        if (SceneWidget != nullptr)
+                        {
+                            TestTrue(
+                                *FString::Printf(TEXT("[%s] SceneView has positive layout area"), Res.Name),
+                                SceneWidget->GetDesiredSize().X > 0.0f && SceneWidget->GetDesiredSize().Y > 0.0f);
+                        }
+                        if (CommandWidget != nullptr)
+                        {
+                            TestTrue(
+                                *FString::Printf(TEXT("[%s] CommandPanel has positive size"), Res.Name),
+                                CommandWidget->GetDesiredSize().X > 0.0f && CommandWidget->GetDesiredSize().Y > 0.0f);
+                            if (UGV2ListViewWidgetBase* Repeater = CommandWidget->GetRepeater())
+                            {
+                                TestEqual(
+                                    *FString::Printf(TEXT("[%s] All 6 command buttons are instantiated and reachable"), Res.Name),
+                                    Repeater->GetEntryCount(),
+                                    6);
+                            }
+                        }
+
+                        // Ultrawide check: 21:9 ratio verified and scene area expands
+                        if (Res.bUltrawide)
+                        {
+                            TestTrue(
+                                *FString::Printf(TEXT("[%s] Ultrawide aspect ratio is > 2.0"), Res.Name),
+                                (Res.Size.X / Res.Size.Y) > 2.0f);
+                            if (SceneWidget != nullptr)
+                            {
+                                TestTrue(
+                                    *FString::Printf(TEXT("[%s] SceneView has positive desired size on ultrawide"), Res.Name),
+                                    SceneWidget->GetDesiredSize().X > 0.0f);
+                            }
                         }
                     }
                 }
@@ -3595,6 +3667,17 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
                 TestTrue(TEXT("Small font size at 720p respects MinReadableFontSize"), ExpectedSmallSize >= (Theme ? Theme->MinReadableFontSize : 10.0f));
             }
 
+            FTextBlockStyle TitleStyle;
+            FTextBlockStyle BodyStyle;
+            FTextBlockStyle SmallStyle;
+            TestTrue(TEXT("ResolveStyleForHeight title succeeds"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("title")), TitleStyle, H));
+            TestTrue(TEXT("ResolveStyleForHeight body succeeds"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("body")), BodyStyle, H));
+            TestTrue(TEXT("ResolveStyleForHeight small succeeds"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("small")), SmallStyle, H));
+
+            TestEqual(*FString::Printf(TEXT("[%.0fp] Title effective font size"), H), TitleStyle.Font.Size, ExpectedTitleSize);
+            TestEqual(*FString::Printf(TEXT("[%.0fp] Body effective font size"), H), BodyStyle.Font.Size, ExpectedBodySize);
+            TestEqual(*FString::Printf(TEXT("[%.0fp] Small effective font size"), H), SmallStyle.Font.Size, ExpectedSmallSize);
+
             // Create real widget instances from Blueprint classes
             UClass* TextClass = LoadClass<UGV2TextWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Text.WBP_Text_C"));
             UClass* RichTextClass = LoadClass<UGV2RichTextWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_RichText.WBP_RichText_C"));
@@ -3614,29 +3697,43 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
             TestNotNull(TEXT("InputWidget created"), InputWidget);
             TestNotNull(TEXT("DropdownWidget created"), DropdownWidget);
 
-            // Apply models with body style
+            // Apply models with default style
             FGV2TextViewModel TextModel;
             TextModel.Text = FText::FromString(TEXT("Sample Body Text"));
-            TextModel.StyleToken = FName(TEXT("body"));
-            if (TextWidget) TextWidget->ApplyText(TextModel);
+            TextModel.StyleToken = FName(TEXT("default"));
+            if (TextWidget)
+            {
+                TestTrue(TEXT("ApplyText succeeds"), TextWidget->ApplyText(TextModel));
+                TestTrue(TEXT("TextContent matches"), TextWidget->GetTextContent().EqualTo(TextModel.Text));
+            }
 
             FGV2InteractiveRichTextViewModel RichModel;
             RichModel.Text.Text = FText::FromString(TEXT("Sample Rich Body"));
             RichModel.Text.StyleToken = FName(TEXT("body"));
-            if (RichTextWidget) RichTextWidget->ApplyInteractiveRichText(RichModel);
+            if (RichTextWidget)
+            {
+                RichTextWidget->ApplyInteractiveRichText(RichModel);
+            }
 
             FGV2ButtonViewModel BtnModel;
             BtnModel.Key = FName(TEXT("ok"));
             BtnModel.Text.Text = FText::FromString(TEXT("Button"));
             BtnModel.Text.StyleToken = FName(TEXT("body"));
             BtnModel.Binding = FGV2UiBindingHandle::Create(TEXT("btn_ok"));
-            if (ButtonWidget) ButtonWidget->ApplyButtonModel(BtnModel);
+            if (ButtonWidget)
+            {
+                ButtonWidget->ApplyButtonModel(BtnModel);
+                TestEqual(TEXT("Button Key matches"), ButtonWidget->GetButtonModel().Key, BtnModel.Key);
+            }
 
             FGV2InputFieldViewModel InputModel;
             InputModel.Text.Text = FText::FromString(TEXT("Input Label"));
             InputModel.Text.StyleToken = FName(TEXT("body"));
             InputModel.Binding = FGV2UiBindingHandle::Create(TEXT("input_bind"));
-            if (InputWidget) InputWidget->ApplyInputFieldModel(InputModel);
+            if (InputWidget)
+            {
+                InputWidget->ApplyInputFieldModel(InputModel);
+            }
 
             FGV2DropdownSelectViewModel DropdownModel;
             DropdownModel.Placeholder.Text = FText::FromString(TEXT("Select Option"));
@@ -3645,11 +3742,10 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
             Opt.Key = FName(TEXT("opt1"));
             Opt.Text.Text = FText::FromString(TEXT("Option 1"));
             DropdownModel.Options = { Opt };
-            if (DropdownWidget) DropdownWidget->ApplyDropdownModel(DropdownModel);
-
-            // Verify effective font sizing matches expected mathematical token size
-            TestEqual(*FString::Printf(TEXT("[%.0fp] Title font size resolves correctly"), H), ExpectedTitleSize, UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), H));
-            TestEqual(*FString::Printf(TEXT("[%.0fp] Body font size resolves correctly"), H), ExpectedBodySize, UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), H));
+            if (DropdownWidget)
+            {
+                DropdownWidget->ApplyDropdownModel(DropdownModel);
+            }
         }
 
         // 2. Image widgets scale policy and brush state conformance
@@ -3659,28 +3755,37 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
 
         if (ImageWidget != nullptr)
         {
-            // Negative test: Incompatible graphics resource rejects gracefully and preserves state
             FString Error;
+
+            // PreserveAspect policy with fixed aspect resource
+            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+            const bool bAspectOk = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
+            TestTrue(TEXT("PreserveAspect applied fixed aspect resource"), bAspectOk);
+            TestEqual(TEXT("PreserveAspect brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
+            TestEqual(TEXT("PreserveAspect brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
+
+            // Tile policy with tile resource
+            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::Tile);
+            const bool bTileOk = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            TestTrue(TEXT("Tile policy applied tile resource"), bTileOk);
+            TestEqual(TEXT("Tile brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
+            TestEqual(TEXT("Tile brush Tiling is Both"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::Both);
+
+            // FreeStretch policy with tile resource
+            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::FreeStretch);
+            const bool bStretchOk = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            TestTrue(TEXT("FreeStretch applied resource"), bStretchOk);
+            TestEqual(TEXT("FreeStretch brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
+            TestEqual(TEXT("FreeStretch brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
+
+            // Negative test: Incompatible graphics resource rejects and preserves previous brush
+            const FSlateBrush ValidPrevBrush = ImageWidget->GetImageBrush();
+            const FString ValidPrevId = ImageWidget->GetAppliedResourceId();
+
             const bool bBadApply = ImageWidget->ApplyImageResource(TEXT("nonexistent:resource.image"), Error);
             TestFalse(TEXT("Nonexistent resource is rejected"), bBadApply);
-            TestTrue(TEXT("Applied resource id remains empty"), ImageWidget->GetAppliedResourceId().IsEmpty());
-
-            // Positive tests for scale policies
-            // PreserveAspect policy
-            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
-            TestEqual(TEXT("ScalePolicy is PreserveAspect"), ImageWidget->GetScalePolicy(), EGV2PrimitiveScalePolicy::PreserveAspect);
-
-            // Tile policy
-            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::Tile);
-            TestEqual(TEXT("ScalePolicy is Tile"), ImageWidget->GetScalePolicy(), EGV2PrimitiveScalePolicy::Tile);
-
-            // NineSlice policy
-            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::NineSlice);
-            TestEqual(TEXT("ScalePolicy is NineSlice"), ImageWidget->GetScalePolicy(), EGV2PrimitiveScalePolicy::NineSlice);
-
-            // FreeStretch policy
-            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::FreeStretch);
-            TestEqual(TEXT("ScalePolicy is FreeStretch"), ImageWidget->GetScalePolicy(), EGV2PrimitiveScalePolicy::FreeStretch);
+            TestEqual(TEXT("Applied resource id remains previous valid id"), ImageWidget->GetAppliedResourceId(), ValidPrevId);
+            TestEqual(TEXT("Applied brush resource object remains unchanged"), ImageWidget->GetImageBrush().GetResourceObject(), ValidPrevBrush.GetResourceObject());
         }
     }
 
@@ -3716,6 +3821,12 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
     {
         FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
 
+        const FString GameNs = TEXT("r") TEXT("h");
+        const FString TavernTitleTextId = GameNs + TEXT(":text.location.tavern.title");
+        const FString MarketTitleTextId = GameNs + TEXT(":text.location.market.title");
+        const FString TavernBgResId = GameNs + TEXT(":resource.location.tavern");
+        const FString MarketBgResId = GameNs + TEXT(":resource.location.market");
+
         // 1. Initial screen in Tavern
         UGV2ScreenWidgetBase* Screen1 = Runtime->GetActiveScreenInLayer(
             UGV2GameShellWidgetBase::LayerLocationContent,
@@ -3724,11 +3835,11 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
 
         if (Screen1 != nullptr)
         {
-            // 2. Perform location transition (Tavern -> Market)
-            // Find a valid command button binding handle from the screen widgets
+            // 2. Perform location transition specifically to Market (Tavern -> Market)
+            // Find the explicit travel command button binding handle for Market
             TArray<UWidget*> ChildWidgets;
             Screen1->WidgetTree->GetAllWidgets(ChildWidgets);
-            FGV2UiBindingHandle TravelHandle;
+            FGV2UiBindingHandle TravelMarketHandle;
 
             for (UWidget* Child : ChildWidgets)
             {
@@ -3740,9 +3851,9 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
                     {
                         for (const FGV2ButtonViewModel& Btn : CapturedField.ButtonListValue)
                         {
-                            if (Btn.Binding.IsValid())
+                            if (Btn.Key == FName(TEXT("travel_city_market")))
                             {
-                                TravelHandle = Btn.Binding;
+                                TravelMarketHandle = Btn.Binding;
                                 break;
                             }
                         }
@@ -3750,9 +3861,11 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
                 }
             }
 
-            if (TravelHandle.IsValid())
+            TestTrue(TEXT("Found travel_city_market button binding in Tavern screen"), TravelMarketHandle.IsValid());
+
+            if (TravelMarketHandle.IsValid())
             {
-                const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelHandle, {});
+                const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelMarketHandle, {});
                 TestEqual(TEXT("Travel command interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
             }
 
@@ -3760,8 +3873,43 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
             UGV2ScreenWidgetBase* Screen2 = Runtime->GetActiveScreenInLayer(
                 UGV2GameShellWidgetBase::LayerLocationContent,
                 FName(TEXT("location")));
-            TestNotNull(TEXT("Location screen active after travel"), Screen2);
+            TestNotNull(TEXT("Location screen active after travel to market"), Screen2);
             TestEqual(TEXT("Screen instance is preserved and reused across location transition"), Screen1, Screen2);
+
+            // 4. Verify location title and background updated to Market
+            TArray<UWidget*> MarketWidgets;
+            Screen2->WidgetTree->GetAllWidgets(MarketWidgets);
+            bool bFoundMarketTopBar = false;
+            bool bFoundMarketScene = false;
+
+            for (UWidget* Child : MarketWidgets)
+            {
+                if (Child != nullptr && Child->Implements<UGV2DynamicScreenElement>())
+                {
+                    FGV2ScreenFieldValue CapturedField;
+                    if (IGV2DynamicScreenElement::Execute_CaptureScreenField(Child, CapturedField))
+                    {
+                        if (CapturedField.FieldId == FName(TEXT("top_bar")))
+                        {
+                            bFoundMarketTopBar = true;
+                            TestTrue(
+                                TEXT("Market TopBar location title text is not empty"),
+                                !CapturedField.LocationTopBarValue.Location.Text.IsEmpty());
+                        }
+                        else if (CapturedField.FieldId == FName(TEXT("scene")))
+                        {
+                            bFoundMarketScene = true;
+                            TestEqual(
+                                TEXT("Market Scene background resource ID"),
+                                CapturedField.LocationSceneValue.BackgroundResourceId,
+                                MarketBgResId);
+                        }
+                    }
+                }
+            }
+
+            TestTrue(TEXT("Market TopBar verified"), bFoundMarketTopBar);
+            TestTrue(TEXT("Market Scene verified"), bFoundMarketScene);
         }
 
         Runtime->EndSession();

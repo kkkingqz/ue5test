@@ -107,7 +107,7 @@ function M.build_screen_request(location_id)
             player_status = { schema_id = "textsystem:schema.ui_field.location_player_status.v1", value = {
                 portrait_resource_id = actor_extension.portrait_resource_id or "textsystem:resource.ui.missing_portrait",
                 name = M.text(actor_extension.name_text_id or loc.title_text_id),
-                meters = { { percent = math.min(1, stamina / 100), label = M.text("textsystem:text.location.stamina", { stamina = stamina }) } },
+                meters = { { key = "stamina", percent = math.min(1, stamina / 100), label = M.text("textsystem:text.location.stamina", { stamina = stamina }) } },
                 item_icon_resource_ids = item_icons,
                 effect_icon_resource_ids = {},
             } },

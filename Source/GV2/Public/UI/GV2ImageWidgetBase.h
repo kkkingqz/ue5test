@@ -56,6 +56,7 @@ public:
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:
+    virtual void PostLoad() override;
     virtual void NativePreConstruct() override;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))

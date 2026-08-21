@@ -78,6 +78,30 @@ bool UGV2LocationPlayerStatusWidgetBase::CanApplyScreenField_Implementation(cons
         MeterKeys.Add(Meter.Key);
     }
 
+    // Structural check: if multiple meters provided, a meter repeater is mandatory
+    if (Model.Meters.Num() > 1 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveMeterRepeater() == nullptr)
+    {
+        return false;
+    }
+
+    // If single meter provided, either repeater or StaminaMeter must exist
+    if (Model.Meters.Num() == 1 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveMeterRepeater() == nullptr && StaminaMeter == nullptr)
+    {
+        return false;
+    }
+
+    // If items provided, item repeater must exist
+    if (Model.ItemIconResourceIds.Num() > 0 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveItemRepeater() == nullptr)
+    {
+        return false;
+    }
+
+    // If effects provided, effect repeater must exist
+    if (Model.EffectIconResourceIds.Num() > 0 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveEffectRepeater() == nullptr)
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -293,6 +317,18 @@ bool UGV2LocationSceneWidgetBase::CanApplyScreenField_Implementation(const FGV2S
         CharacterKeys.Add(Entry.Key);
     }
 
+    // Structural check: if multiple characters, character repeater is mandatory
+    if (Model.Characters.Num() > 1 && const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater() == nullptr)
+    {
+        return false;
+    }
+
+    // If single character provided, either repeater or Character widget must exist
+    if (Model.Characters.Num() == 1 && const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater() == nullptr && Character == nullptr)
+    {
+        return false;
+    }
+
     return true;
 }
 
@@ -424,7 +460,7 @@ bool UGV2LocationSceneWidgetBase::ResetScreenField_Implementation()
     if (Character)
     {
         Character->SetVisibility(ESlateVisibility::Collapsed);
-        Character->ResetScreenField();
+        IGV2DynamicScreenElement::Execute_ResetScreenField(Character);
     }
     if (UGV2ListViewWidgetBase* CharRep = ResolveCharacterRepeater())
     {
@@ -460,6 +496,11 @@ TSubclassOf<UGV2ButtonWidgetBase> UGV2LocationCommandPanelWidgetBase::ResolveBut
 
 bool UGV2LocationCommandPanelWidgetBase::CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& Models) const
 {
+    if (Models.Num() > 0 && const_cast<UGV2LocationCommandPanelWidgetBase*>(this)->ResolveRepeater() == nullptr)
+    {
+        return false;
+    }
+
     TSet<FName> Keys;
     for (const FGV2ButtonViewModel& Model : Models)
     {
@@ -472,9 +513,12 @@ bool UGV2LocationCommandPanelWidgetBase::CanApplyButtonModels(const TArray<FGV2B
 bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2ButtonViewModel>& Models)
 {
     if (!CanApplyButtonModels(Models)) return false;
-    AppliedButtonModels = Models;
     UGV2ListViewWidgetBase* Repeater = ResolveRepeater();
-    if (Repeater == nullptr) return true;
+    if (Repeater == nullptr)
+    {
+        return Models.Num() == 0;
+    }
+    AppliedButtonModels = Models;
     const TSubclassOf<UGV2ButtonWidgetBase> Class = ResolveButtonWidgetClass();
 
     const bool bSuccess = Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(

@@ -108,6 +108,8 @@ public:
     bool ApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels);
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     bool CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels) const;
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetRepeater() { return ResolveRepeater(); }
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI") FGV2LocationCommandBindingInvoked OnBindingInvoked;
     virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
     virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;

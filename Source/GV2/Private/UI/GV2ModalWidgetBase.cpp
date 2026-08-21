@@ -66,7 +66,7 @@ bool UGV2ModalWidgetBase::ResetScreenField_Implementation()
     }
     if (ButtonList != nullptr)
     {
-        ButtonList->ResetScreenField();
+        IGV2DynamicScreenElement::Execute_ResetScreenField(ButtonList);
     }
     return true;
 }

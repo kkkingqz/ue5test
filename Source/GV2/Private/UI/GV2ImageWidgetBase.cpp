@@ -4,6 +4,30 @@
 #include "UI/GV2ImagePresentation.h"
 #include "UI/GV2UiTheme.h"
 
+void UGV2ImageWidgetBase::PostLoad()
+{
+    Super::PostLoad();
+    if (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && !InitialResourceId.IsEmpty())
+    {
+        if (const UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog())
+        {
+            FGV2ResolvedImageResource Res;
+            FString ResolveError;
+            if (Catalog->Resolve(InitialResourceId, Res, ResolveError))
+            {
+                if (Res.RenderMode == EGV2ImageRenderMode::Tile)
+                {
+                    ScalePolicy = EGV2PrimitiveScalePolicy::Tile;
+                }
+                else if (Res.RenderMode == EGV2ImageRenderMode::NineSlice)
+                {
+                    ScalePolicy = EGV2PrimitiveScalePolicy::NineSlice;
+                }
+            }
+        }
+    }
+}
+
 void UGV2ImageWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
@@ -13,25 +37,7 @@ void UGV2ImageWidgetBase::NativePreConstruct()
         FString Error;
         if (!ApplyImageResource(InitialResourceId, Error))
         {
-            UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
-            FGV2ResolvedImageResource Candidate;
-            FString TempErr;
-            if (Catalog != nullptr && Catalog->Resolve(InitialResourceId, Candidate, TempErr))
-            {
-                if (Candidate.RenderMode == EGV2ImageRenderMode::Tile)
-                {
-                    ScalePolicy = EGV2PrimitiveScalePolicy::Tile;
-                }
-                else if (Candidate.RenderMode == EGV2ImageRenderMode::NineSlice)
-                {
-                    ScalePolicy = EGV2PrimitiveScalePolicy::NineSlice;
-                }
-                ApplyImageResource(InitialResourceId, Error);
-            }
-            if (AppliedResourceId.IsEmpty())
-            {
-                UE_LOG(LogTemp, Warning, TEXT("Cannot apply initial image resource '%s': %s"), *InitialResourceId, *Error);
-            }
+            UE_LOG(LogTemp, Warning, TEXT("Cannot apply initial image resource '%s': %s"), *InitialResourceId, *Error);
         }
     }
 }
