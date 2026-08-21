@@ -3793,7 +3793,7 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
     {
         FGV2ResolvedImageResource MarketRes;
         FString Error;
-        const bool bMarketResolved = Catalog->Resolve(TEXT("rh:resource.location.market"), MarketRes, Error);
+        const bool bMarketResolved = Catalog->Resolve(TEXT("textsystem:resource.ui.missing_background"), MarketRes, Error);
         TestTrue(*FString::Printf(TEXT("Market resource resolved: %s"), *Error), bMarketResolved);
         if (bMarketResolved)
         {
@@ -3835,11 +3835,11 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
 
                 FGV2LocationPlayerStatusViewModel PlayerModel;
                 PlayerModel.Name.Text = FText::FromString(TEXT("Hero"));
-                PlayerModel.PortraitResourceId = TEXT("rh:resource.portrait.hero");
+                PlayerModel.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
 
                 FGV2LocationSceneViewModel SceneModel;
                 SceneModel.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
-                SceneModel.BackgroundResourceId = TEXT("rh:resource.location.market");
+                SceneModel.BackgroundResourceId = TEXT("textsystem:resource.ui.missing_background");
                 SceneModel.ContextText.Text = FText::FromString(TEXT("Market square"));
 
                 TArray<FGV2ButtonViewModel> Buttons;
