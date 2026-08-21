@@ -830,7 +830,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
 {
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
     FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     TestTrue(TEXT("Lua VM belongs to the active session"), Coordinator.IsLuaVmStarted());
 
@@ -839,7 +846,7 @@ bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
         TEXT("Two bindings are published"),
         Coordinator.PublishUiBindings(
             TEXT("ui@1:1"),
-            1,
+            2,
             {
                 MakeBindingDefinition(TEXT("first"), TEXT("core:command.test.first")),
                 MakeBindingDefinition(TEXT("second"), TEXT("core:command.test.second"))
@@ -901,7 +908,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
 {
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
     FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
 
     FGV2UiBindingDefinition Definition = MakeBindingDefinition(
@@ -915,7 +929,7 @@ bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
     TArray<FGV2UiBindingHandle> Handles;
     TestTrue(
         TEXT("Typed input binding is published"),
-        Coordinator.PublishUiBindings(TEXT("ui@1:1"), 1, {Definition}, Handles));
+        Coordinator.PublishUiBindings(TEXT("ui@1:1"), 2, {Definition}, Handles));
     if (Handles.Num() != 1)
     {
         return false;
@@ -983,7 +997,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
 {
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
     FGV2SessionCoordinator Coordinator(0);
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
 
     TArray<FGV2UiBindingHandle> Handles;
@@ -991,7 +1012,7 @@ bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
         TEXT("Binding is published for capacity test"),
         Coordinator.PublishUiBindings(
             TEXT("ui@1:1"),
-            1,
+            2,
             {MakeBindingDefinition(TEXT("only"), TEXT("core:command.test.only"))},
             Handles));
     if (Handles.Num() != 1)
@@ -1023,6 +1044,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Parameters)
 {
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
     const FString CorePackageRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
     const GV2ContentCore::FBuildResult ResultA = BuildGV2RepositoryFromDirectory(CorePackageRoot);
 
@@ -1072,6 +1099,7 @@ bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Param
     }
 
     FGV2SessionCoordinator Coordinator(4);
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) { return true; });
     TestTrue(TEXT("Session starts pinned to repository A"), Coordinator.StartSession(ReadHandleA, 1));
     TestEqual(
         TEXT("Active session is pinned to A's content hash"),
@@ -1112,7 +1140,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
 {
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
     FGV2SessionCoordinator Coordinator(4);
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
 
     // 1. Initial StartSession with invalid handle
     AddExpectedError(

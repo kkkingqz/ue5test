@@ -1,4 +1,5 @@
 #include "UI/GV2UiTheme.h"
+#include "CommonTextBlock.h"
 
 UGV2UiTheme::UGV2UiTheme()
 {
@@ -37,8 +38,35 @@ float UGV2UiTheme::EvaluateTextScale(float ViewportHeight) const
 
 float UGV2UiTheme::GetEffectiveFontSize(FName TextSizeToken, float ViewportHeight) const
 {
-    const float* BaseSize = TextSizeTokens.Find(TextSizeToken);
-    const float UnscaledSize = (BaseSize != nullptr && *BaseSize > 0.0f) ? *BaseSize : 14.0f;
+    float UnscaledSize = 0.0f;
+    if (const float* BaseSize = TextSizeTokens.Find(TextSizeToken))
+    {
+        if (*BaseSize > 0.0f)
+        {
+            UnscaledSize = *BaseSize;
+        }
+    }
+    if (UnscaledSize <= 0.0f)
+    {
+        if (const FGV2TextStyleToken* StyleToken = TextStyleTokens.Find(TextSizeToken))
+        {
+            if (StyleToken->Style != nullptr)
+            {
+                if (const UCommonTextStyle* StyleCDO = Cast<UCommonTextStyle>(StyleToken->Style->GetDefaultObject()))
+                {
+                    FSlateFontInfo FontInfo;
+                    StyleCDO->GetFont(FontInfo);
+                    UnscaledSize = FontInfo.Size;
+                }
+            }
+        }
+    }
+    if (UnscaledSize <= 0.0f)
+    {
+        if (TextSizeToken == TEXT("title")) UnscaledSize = 20.0f;
+        else if (TextSizeToken == TEXT("small")) UnscaledSize = 12.0f;
+        else UnscaledSize = 14.0f;
+    }
     const float Scale = EvaluateTextScale(ViewportHeight);
     const float ScaledSize = UnscaledSize * Scale;
     return FMath::Max(MinReadableFontSize, ScaledSize);

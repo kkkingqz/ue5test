@@ -39,6 +39,8 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI")
     FGV2ButtonBindingInvoked OnBindingInvoked;
 
+    UCommonTextBlock* GetLabelText() const { return LabelText; }
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:

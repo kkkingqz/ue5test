@@ -40,6 +40,12 @@ public:
         return ScalePolicy;
     }
 
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetScalePolicy(EGV2PrimitiveScalePolicy InScalePolicy)
+    {
+        ScalePolicy = InScalePolicy;
+    }
+
     // IGV2DynamicScreenElement
     virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
     virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;
@@ -71,7 +77,7 @@ protected:
     EGV2ImageRenderMode AcceptedRenderMode_DEPRECATED = EGV2ImageRenderMode::FixedAspect;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract", meta = (ClampMin = "0.01", EditCondition = "ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect", EditConditionHides))
-    float FixedAspectRatio = 1.0f;
+    float FixedAspectRatio = 0.0f;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
     FString InitialResourceId;

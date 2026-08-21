@@ -96,7 +96,7 @@ Render mode кодируется suffix имени source-файла:
 
 `UGV2ImageWidgetBase.InitialResourceId` может быть задан конкретным Screen Blueprint для статической composition. При `NativePreConstruct` компонент разрешает его тем же `ApplyImageResource` path; Blueprint не обязан дублировать event graph. Пустое значение означает, что resource будет передан динамически.
 
-Image block Blueprint задаёт `AcceptedRenderMode`. Для `fixed_aspect` он также задаёт `FixedAspectRatio` и обязан использовать layout constraint с одинаковыми minimum/maximum aspect ratio. Concrete resource не может менять aspect ratio Screen layout-а.
+Image block Blueprint задаёт политику масштабирования `ScalePolicy` (`EGV2PrimitiveScalePolicy`). Для `PreserveAspect` он также может задавать `FixedAspectRatio` и обязан использовать layout constraint с одинаковыми minimum/maximum aspect ratio. Объявленный в ресурсе `RenderMode` является authoring capability и проверяется на совместимость со `ScalePolicy` до применения кисти. Concrete resource не может менять aspect ratio Screen layout-а.
 
 ## Processing flow
 
@@ -107,7 +107,7 @@ Image block Blueprint задаёт `AcceptedRenderMode`. Для `fixed_aspect` �
 5. Application bootstrap фиксирует successful build как required readiness prerequisite; только после этого может создавать session candidate.
 6. Presentation готовит required resource согласно общему prepare/prefetch lifecycle.
 7. Resolver строго проверяет requested Stable ID и выполняет immutable lookup без catalog-wide validation, texture loading или повторного построения brush.
-8. Image Widget сверяет render mode и для `fixed_aspect` ratio target block.
+8. Image Widget сверяет совместимость `ScalePolicy` с `RenderMode` и для `PreserveAspect` ratio target block.
 9. Только после успешных проверок Widget заменяет brush и applied `resource_id`.
 
 Mapping в Slate:

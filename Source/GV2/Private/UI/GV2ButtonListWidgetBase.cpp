@@ -39,10 +39,11 @@ bool UGV2ButtonListWidgetBase::ApplyButtonModels(const TArray<FGV2ButtonViewMode
                 ? CreateWidget<UGV2ButtonWidgetBase>(GetWorld(), ResolvedButtonWidgetClass)
                 : nullptr;
         },
-        [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model)
+        [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
         {
             Button.ApplyButtonModel(Model);
             Button.OnBindingInvoked.AddUniqueDynamic(this, &ThisClass::HandleButtonBindingInvoked);
+            return true;
         },
         OrderedButtons))
     {

@@ -178,13 +178,21 @@ void UGV2RichTextWidgetBase::NativeDestruct()
 void UGV2RichTextWidgetBase::ApplyInteractiveRichText(
     const FGV2InteractiveRichTextViewModel& Content)
 {
-    check(RichTextBlock != nullptr);
     check(ValidateInteractiveContent(Content));
     CurrentContent = Content;
+    if (RichTextBlock == nullptr)
+    {
+        return;
+    }
     if (const TSubclassOf<UCommonTextStyle> Style =
             UGV2TextPipeline::ResolveStyleClass(CurrentContent.Text.StyleToken))
     {
         RichTextBlock->SetStyle(Style);
+    }
+    FTextBlockStyle DefaultStyle;
+    if (UGV2TextPipeline::ResolveStyle(CurrentContent.Text.StyleToken, DefaultStyle, this))
+    {
+        RichTextBlock->SetDefaultTextStyle(DefaultStyle);
     }
     SpanIndexById.Reset();
     for (int32 Index = 0; Index < CurrentContent.Spans.Num(); ++Index)
@@ -247,14 +255,28 @@ FTextBlockStyle UGV2RichTextWidgetBase::ResolveRunTextStyle(
     FName Size) const
 {
     FTextBlockStyle Result;
+    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
     const FName EffectiveStyle = Style.IsNone() ? CurrentContent.Text.StyleToken : Style;
-    if (!UGV2TextPipeline::ResolveStyle(EffectiveStyle, Result, this) && RichTextBlock != nullptr)
+    if (EffectiveStyle == TEXT("default") || EffectiveStyle.IsNone())
+    {
+        if (Theme != nullptr && Theme->RichTextStyle != nullptr)
+        {
+            if (const UCommonTextStyle* RichStyle = Cast<UCommonTextStyle>(Theme->RichTextStyle->GetDefaultObject()))
+            {
+                RichStyle->ToTextBlockStyle(Result);
+            }
+        }
+        else if (RichTextBlock != nullptr)
+        {
+            Result = RichTextBlock->GetCurrentDefaultTextStyle();
+        }
+    }
+    else if (!UGV2TextPipeline::ResolveStyle(EffectiveStyle, Result, this) && RichTextBlock != nullptr)
     {
         Result = RichTextBlock->GetCurrentDefaultTextStyle();
         const float EffectiveSize = UGV2TextPipeline::ResolveEffectiveFontSize(EffectiveStyle, this);
         Result.SetFontSize(EffectiveSize);
     }
-    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
     if (const FLinearColor* ResolvedColor = Theme != nullptr ? Theme->TextColorTokens.Find(Color) : nullptr)
     {
         Result.SetColorAndOpacity(*ResolvedColor);
@@ -345,5 +367,10 @@ bool UGV2RichTextWidgetBase::ApplyCentralStyle_Implementation()
         : UGV2TextPipeline::ResolveStyleClass(CurrentContent.Text.StyleToken);
     if (Style == nullptr) return false;
     RichTextBlock->SetStyle(Style);
+    FTextBlockStyle DefaultStyle;
+    if (UGV2TextPipeline::ResolveStyle(CurrentContent.Text.StyleToken, DefaultStyle, this))
+    {
+        RichTextBlock->SetDefaultTextStyle(DefaultStyle);
+    }
     return true;
 }

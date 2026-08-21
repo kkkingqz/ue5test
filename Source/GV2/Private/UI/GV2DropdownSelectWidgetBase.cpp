@@ -71,11 +71,12 @@ bool UGV2DropdownSelectWidgetBase::ApplyDropdownModel(
                 ? CreateWidget<UGV2ButtonWidgetBase>(GetWorld(), ResolvedOptionClass)
                 : nullptr;
         },
-        [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model)
+        [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
         {
             Button.ApplyButtonModel(Model);
             Button.SetAutomaticInteractionSubmission(false);
             Button.OnActivated.AddUniqueDynamic(this, &ThisClass::HandleOptionActivated);
+            return true;
         },
         OrderedWidgets))
     {

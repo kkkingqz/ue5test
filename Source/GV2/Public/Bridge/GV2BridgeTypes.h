@@ -334,12 +334,36 @@ struct GV2_API FGV2LocationTopBarViewModel
 };
 
 USTRUCT(BlueprintType)
+struct GV2_API FGV2LocationCharacterEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
+    FName Key;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
+    FString ResourceId;
+};
+
+USTRUCT(BlueprintType)
+struct GV2_API FGV2LocationMeterEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
+    FName Key;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
+    FGV2ProgressBarViewModel Meter;
+};
+
+USTRUCT(BlueprintType)
 struct GV2_API FGV2LocationPlayerStatusViewModel
 {
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FString PortraitResourceId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel Name;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2ProgressBarViewModel> Meters;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationMeterEntry> Meters;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FString> ItemIconResourceIds;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FString> EffectIconResourceIds;
 };
@@ -350,7 +374,7 @@ struct GV2_API FGV2LocationSceneViewModel
     GENERATED_BODY()
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FString BackgroundTileResourceId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FString BackgroundResourceId;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FString> CharacterResourceIds;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationCharacterEntry> Characters;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel ContextText;
 };
 

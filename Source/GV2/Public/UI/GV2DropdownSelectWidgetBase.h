@@ -40,6 +40,8 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI")
     FGV2DropdownSelectionInvoked OnSelectionInvoked;
 
+    UGV2ButtonWidgetBase* GetHeaderButton() const { return HeaderButton; }
+
     virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
     virtual bool CanApplyScreenField_Implementation(
         const FGV2ScreenFieldValue& FieldValue) const override;

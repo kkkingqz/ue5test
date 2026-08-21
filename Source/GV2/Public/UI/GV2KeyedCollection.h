@@ -22,10 +22,21 @@ public:
         TMap<FName, TObjectPtr<WidgetType>>& InOutWidgetsByKey,
         TFunctionRef<FName(const ModelType&)> GetKey,
         TFunctionRef<WidgetType*()> CreateItem,
-        TFunctionRef<void(WidgetType&, const ModelType&)> ApplyItem,
-        TArray<WidgetType*>& OutOrderedWidgets)
+        TFunctionRef<bool(WidgetType&, const ModelType&)> ApplyItem,
+        TArray<WidgetType*>& OutOrderedWidgets,
+        TFunction<bool(const ModelType&)> CanApplyItem = nullptr)
     {
         if (Container == nullptr) return false;
+
+        // 1. Validation phase (keys non-empty, unique, can apply)
+        TSet<FName> Keys;
+        for (const ModelType& Model : Models)
+        {
+            const FName Key = GetKey(Model);
+            if (Key.IsNone() || Keys.Contains(Key)) return false;
+            if (CanApplyItem && !CanApplyItem(Model)) return false;
+            Keys.Add(Key);
+        }
 
 #if !UE_BUILD_SHIPPING
         const int32 PreviousWidgetCount = InOutWidgetsByKey.Num();
@@ -38,7 +49,6 @@ public:
         for (const ModelType& Model : Models)
         {
             const FName Key = GetKey(Model);
-            if (Key.IsNone() || CandidateByKey.Contains(Key)) return false;
             WidgetType* Widget = InOutWidgetsByKey.FindRef(Key);
             if (Widget == nullptr)
             {
@@ -58,14 +68,29 @@ public:
             OutOrderedWidgets.Add(Widget);
         }
 
+        // Apply items to widgets
         for (int32 Index = 0; Index < Models.Num(); ++Index)
         {
-            ApplyItem(*OutOrderedWidgets[Index], Models[Index]);
+            if (!ApplyItem(*OutOrderedWidgets[Index], Models[Index]))
+            {
+                return false;
+            }
         }
+
+        // Commit to Container atomically
+        const TArray<UWidget*> PreviousChildren = Container->GetAllChildren();
         Container->ClearChildren();
         for (WidgetType* Widget : OutOrderedWidgets)
         {
-            if (Container->AddChild(Widget) == nullptr) return false;
+            if (Container->AddChild(Widget) == nullptr)
+            {
+                Container->ClearChildren();
+                for (UWidget* Prev : PreviousChildren)
+                {
+                    Container->AddChild(Prev);
+                }
+                return false;
+            }
         }
         InOutWidgetsByKey = MoveTemp(CandidateByKey);
 

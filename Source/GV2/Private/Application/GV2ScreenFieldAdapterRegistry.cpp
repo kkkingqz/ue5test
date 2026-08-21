@@ -1077,6 +1077,46 @@ bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const 
     FGV2LocationPlayerStatusViewModel Model;
     if (!ReadOptionalResource(Value, "portrait_resource_id", Model.PortraitResourceId)
         || !ResolveText(*FindValue(Value, "name"), Model.Name)) return false;
+
+    if (const GV2RuntimeCore::FValue* MetersVal = FindValue(Value, "meters"))
+    {
+        if (const FArray* MetersArray = AsArray(*MetersVal))
+        {
+            for (int32 Index = 0; Index < static_cast<int32>(MetersArray->size()); ++Index)
+            {
+                const GV2RuntimeCore::FValue& EntryVal = (*MetersArray)[Index];
+                FGV2LocationMeterEntry MeterEntry;
+                if (const FObject* MeterObj = std::get_if<FObject>(&EntryVal.Data))
+                {
+                    if (const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key"))
+                    {
+                        if (const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data))
+                        {
+                            MeterEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
+                        }
+                    }
+                    if (MeterEntry.Key.IsNone())
+                    {
+                        MeterEntry.Key = FName(*FString::Printf(TEXT("meter_%d"), Index));
+                    }
+                    if (const GV2RuntimeCore::FValue* PercentVal = FindValue(*MeterObj, "percent"))
+                    {
+                        if (const double* P = std::get_if<double>(&PercentVal->Data))
+                        {
+                            MeterEntry.Meter.Percent = static_cast<float>(*P);
+                        }
+                    }
+                }
+                else if (const double* P = std::get_if<double>(&EntryVal.Data))
+                {
+                    MeterEntry.Key = FName(*FString::Printf(TEXT("meter_%d"), Index));
+                    MeterEntry.Meter.Percent = static_cast<float>(*P);
+                }
+                Model.Meters.Add(MeterEntry);
+            }
+        }
+    }
+
     OutField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(FName(*FieldId(Field)), Model);
     return true;
 }
@@ -1096,6 +1136,43 @@ bool BuildLocationScene(const GV2RuntimeCore::FScreenField& Field, const FObject
     if (!ReadOptionalResource(Value, "background_tile_resource_id", Model.BackgroundTileResourceId)
         || !ReadOptionalResource(Value, "background_resource_id", Model.BackgroundResourceId)) return false;
     if (const GV2RuntimeCore::FValue* Context = FindValue(Value, "context_text") ; Context != nullptr && !ResolveText(*Context, Model.ContextText)) return false;
+
+    if (const GV2RuntimeCore::FValue* CharsVal = FindValue(Value, "characters"))
+    {
+        if (const FArray* CharsArray = AsArray(*CharsVal))
+        {
+            for (int32 Index = 0; Index < static_cast<int32>(CharsArray->size()); ++Index)
+            {
+                const GV2RuntimeCore::FValue& EntryVal = (*CharsArray)[Index];
+                FGV2LocationCharacterEntry CharEntry;
+                if (const FObject* CharObj = std::get_if<FObject>(&EntryVal.Data))
+                {
+                    if (const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key"))
+                    {
+                        if (const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data))
+                        {
+                            CharEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
+                        }
+                    }
+                    ReadOptionalResource(*CharObj, "resource_id", CharEntry.ResourceId);
+                    if (CharEntry.Key.IsNone())
+                    {
+                        CharEntry.Key = FName(*CharEntry.ResourceId);
+                    }
+                }
+                else if (const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data))
+                {
+                    CharEntry.ResourceId = UTF8_TO_TCHAR(ResStr->c_str());
+                    CharEntry.Key = FName(*CharEntry.ResourceId);
+                }
+                if (!CharEntry.Key.IsNone())
+                {
+                    Model.Characters.Add(CharEntry);
+                }
+            }
+        }
+    }
+
     OutField = FGV2ScreenFieldValue::MakeLocationScene(FName(*FieldId(Field)), Model);
     return true;
 }

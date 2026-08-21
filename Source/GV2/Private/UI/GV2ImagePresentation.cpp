@@ -58,9 +58,30 @@ bool FGV2ImagePresentation::ResolveAndApply(
         OutError = TEXT("fixed_aspect resource ratio does not match the target block ratio.");
         return false;
     }
-    Widget->SetBrush(Candidate.Brush);
-    Widget->SetDesiredSizeOverride(Candidate.Brush.ImageSize);
+    FSlateBrush ResolvedBrush = Candidate.Brush;
+    if (Candidate.RenderMode == EGV2ImageRenderMode::Tile && ScalePolicy != EGV2PrimitiveScalePolicy::FreeStretch)
+    {
+        ResolvedBrush.Tiling = ESlateBrushTileType::Both;
+        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
+    }
+    else if (ScalePolicy == EGV2PrimitiveScalePolicy::Tile)
+    {
+        ResolvedBrush.Tiling = ESlateBrushTileType::Both;
+        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
+    }
+    else if (ScalePolicy == EGV2PrimitiveScalePolicy::NineSlice || Candidate.RenderMode == EGV2ImageRenderMode::NineSlice)
+    {
+        ResolvedBrush.DrawAs = ESlateBrushDrawType::Box;
+    }
+    else
+    {
+        ResolvedBrush.Tiling = ESlateBrushTileType::NoTile;
+        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
+    }
+    Widget->SetBrush(ResolvedBrush);
+    Widget->SetDesiredSizeOverride(ResolvedBrush.ImageSize);
     OutResource = MoveTemp(Candidate);
+    OutResource.Brush = ResolvedBrush;
     OutError.Reset();
     return true;
 }

@@ -13,7 +13,25 @@ void UGV2ImageWidgetBase::NativePreConstruct()
         FString Error;
         if (!ApplyImageResource(InitialResourceId, Error))
         {
-            UE_LOG(LogTemp, Warning, TEXT("Cannot apply initial image resource '%s': %s"), *InitialResourceId, *Error);
+            UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+            FGV2ResolvedImageResource Candidate;
+            FString TempErr;
+            if (Catalog != nullptr && Catalog->Resolve(InitialResourceId, Candidate, TempErr))
+            {
+                if (Candidate.RenderMode == EGV2ImageRenderMode::Tile)
+                {
+                    ScalePolicy = EGV2PrimitiveScalePolicy::Tile;
+                }
+                else if (Candidate.RenderMode == EGV2ImageRenderMode::NineSlice)
+                {
+                    ScalePolicy = EGV2PrimitiveScalePolicy::NineSlice;
+                }
+                ApplyImageResource(InitialResourceId, Error);
+            }
+            if (AppliedResourceId.IsEmpty())
+            {
+                UE_LOG(LogTemp, Warning, TEXT("Cannot apply initial image resource '%s': %s"), *InitialResourceId, *Error);
+            }
         }
     }
 }
@@ -21,7 +39,7 @@ void UGV2ImageWidgetBase::NativePreConstruct()
 bool UGV2ImageWidgetBase::ApplyImageResource(const FString& ResourceId, FString& OutError)
 {
     FGV2ResolvedImageResource Resource;
-    const TOptional<float> RequiredAspect = ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect
+    const TOptional<float> RequiredAspect = (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio > 0.0f)
         ? TOptional<float>(FixedAspectRatio)
         : TOptional<float>();
     if (!FGV2ImagePresentation::ResolveAndApply(
@@ -40,7 +58,7 @@ bool UGV2ImageWidgetBase::ApplyOptionalImageResource(
     FString& OutError)
 {
     FGV2ResolvedImageResource Resource;
-    const TOptional<float> RequiredAspect = ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect
+    const TOptional<float> RequiredAspect = (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio > 0.0f)
         ? TOptional<float>(FixedAspectRatio)
         : TOptional<float>();
     if (!FGV2ImagePresentation::ResolveOptionalAndApply(

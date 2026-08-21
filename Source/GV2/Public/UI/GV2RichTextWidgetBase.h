@@ -39,6 +39,8 @@ public:
     FTextBlockStyle ResolveRunTextStyle(FName Style, FName Color, FName Size) const;
     FHyperlinkStyle ResolveInteractiveTextStyle(const FTextBlockStyle& RunStyle) const;
 
+    UCommonRichTextBlock* GetRichTextBlock() const { return RichTextBlock; }
+
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI|Rich Text")
     FGV2RichTextSpanInvoked OnSpanInvoked;
 

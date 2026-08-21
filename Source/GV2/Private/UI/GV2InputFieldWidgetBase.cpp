@@ -129,6 +129,8 @@ bool UGV2InputFieldWidgetBase::ApplyCentralStyle_Implementation()
     }
 
     EditableTextBox->WidgetStyle = Theme->InputFieldStyle;
+    const float ScaledFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(FName(TEXT("body")), this);
+    EditableTextBox->WidgetStyle.TextStyle.Font.Size = ScaledFontSize;
 
     if (LabelText != nullptr && Theme->InputFieldLabelStyle != nullptr)
     {

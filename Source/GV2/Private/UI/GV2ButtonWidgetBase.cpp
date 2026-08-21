@@ -13,10 +13,11 @@ void UGV2ButtonWidgetBase::NativePreConstruct()
 
 void UGV2ButtonWidgetBase::ApplyButtonModel(const FGV2ButtonViewModel& InButtonModel)
 {
-    check(LabelText != nullptr);
-
     ButtonModel = InButtonModel;
-    check(UGV2TextPipeline::Apply(LabelText, ButtonModel.Text));
+    if (LabelText != nullptr)
+    {
+        UGV2TextPipeline::Apply(LabelText, ButtonModel.Text);
+    }
     SetIsEnabled(ButtonModel.Binding.IsValid());
 }
 

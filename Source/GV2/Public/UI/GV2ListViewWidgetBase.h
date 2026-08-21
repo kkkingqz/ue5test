@@ -68,68 +68,47 @@ public:
         TConstArrayView<ModelType> Models,
         TFunctionRef<FName(const ModelType&)> GetKey,
         TFunctionRef<WidgetType*()> CreateItem,
-        TFunctionRef<bool(WidgetType&, const ModelType&)> ApplyItem)
+        TFunctionRef<bool(WidgetType&, const ModelType&)> ApplyItem,
+        TFunction<bool(const ModelType&)> CanApplyItem = nullptr)
     {
         if (ContainerPanel == nullptr)
         {
             return false;
         }
 
-        // 1. Validation phase (keys must be valid and unique)
-        TSet<FName> Keys;
-        for (const ModelType& Model : Models)
+        TMap<FName, TObjectPtr<WidgetType>> TypedActiveByKey;
+        for (const auto& Pair : ActiveWidgetsByKey)
         {
-            const FName Key = GetKey(Model);
-            if (Key.IsNone() || Keys.Contains(Key))
+            if (WidgetType* TypedWidget = Cast<WidgetType>(Pair.Value))
             {
-                return false;
-            }
-            Keys.Add(Key);
-        }
-
-        // 2. Stage candidate widgets (reuse existing or create new)
-        TMap<FName, TObjectPtr<UWidget>> CandidateByKey;
-        TArray<WidgetType*> StagedWidgets;
-        StagedWidgets.Reserve(Models.Num());
-
-        for (const ModelType& Model : Models)
-        {
-            const FName Key = GetKey(Model);
-            WidgetType* Widget = Cast<WidgetType>(ActiveWidgetsByKey.FindRef(Key));
-            if (Widget == nullptr)
-            {
-                Widget = CreateItem();
-                if (Widget == nullptr)
-                {
-                    return false;
-                }
-            }
-
-            CandidateByKey.Add(Key, Widget);
-            StagedWidgets.Add(Widget);
-        }
-
-        // 3. Apply items to widgets (transactional: abort if any apply returns false)
-        for (int32 Index = 0; Index < Models.Num(); ++Index)
-        {
-            if (!ApplyItem(*StagedWidgets[Index], Models[Index]))
-            {
-                return false;
+                TypedActiveByKey.Add(Pair.Key, TypedWidget);
             }
         }
 
-        // 4. Commit to container panel and active map
-        ContainerPanel->ClearChildren();
-        for (WidgetType* Widget : StagedWidgets)
-        {
-            if (ContainerPanel->AddChild(Widget) == nullptr)
+        TArray<WidgetType*> OutWidgets;
+        const bool bSuccess = FGV2KeyedCollection::Reconcile<WidgetType, ModelType>(
+            ContainerPanel,
+            Models,
+            TypedActiveByKey,
+            GetKey,
+            CreateItem,
+            [&ApplyItem](WidgetType& Item, const ModelType& Model) -> bool
             {
-                return false;
-            }
-        }
+                return ApplyItem(Item, Model);
+            },
+            OutWidgets,
+            CanApplyItem);
 
-        ActiveWidgetsByKey = MoveTemp(CandidateByKey);
-        return true;
+        if (bSuccess)
+        {
+            ActiveWidgetsByKey.Reset();
+            for (const auto& Pair : TypedActiveByKey)
+            {
+                ActiveWidgetsByKey.Add(Pair.Key, Pair.Value);
+            }
+            return true;
+        }
+        return false;
     }
 
 protected:
