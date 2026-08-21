@@ -271,11 +271,13 @@ bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& 
     Widget->SetStyle(Style);
     Widget->SetText(Text.Text);
 
-    // Apply DPI-aware scaled font size
-    FTextBlockStyle BlockStyle;
-    if (ResolveStyle(Text.StyleToken, BlockStyle, Widget))
+    // Apply DPI-aware scaled font size without wiping out the widget's FontObject/typeface
+    const float ScaledFontSize = ResolveEffectiveFontSize(Text.StyleToken, Widget);
+    FSlateFontInfo FontInfo = Widget->GetFont();
+    if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
     {
-        Widget->SetFont(BlockStyle.Font);
+        FontInfo.Size = ScaledFontSize;
+        Widget->SetFont(FontInfo);
     }
     return true;
 }

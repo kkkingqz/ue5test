@@ -76,6 +76,10 @@ UGV2ListViewWidgetBase* UGV2LocationPlayerStatusWidgetBase::ResolveEffectRepeate
 TSubclassOf<UGV2ImageWidgetBase> UGV2LocationPlayerStatusWidgetBase::ResolveIconWidgetClass() const
 {
     if (IconWidgetClass != nullptr) return IconWidgetClass;
+    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C")))
+    {
+        return Found;
+    }
     return LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"));
 }
 
@@ -212,6 +216,10 @@ UGV2ListViewWidgetBase* UGV2LocationSceneWidgetBase::ResolveCharacterRepeater()
 TSubclassOf<UGV2ImageWidgetBase> UGV2LocationSceneWidgetBase::ResolveCharacterWidgetClass() const
 {
     if (CharacterWidgetClass != nullptr) return CharacterWidgetClass;
+    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C")))
+    {
+        return Found;
+    }
     return LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"));
 }
 
@@ -334,6 +342,10 @@ UGV2ListViewWidgetBase* UGV2LocationCommandPanelWidgetBase::ResolveRepeater()
 TSubclassOf<UGV2ButtonWidgetBase> UGV2LocationCommandPanelWidgetBase::ResolveButtonWidgetClass() const
 {
     if (ButtonWidgetClass != nullptr) return ButtonWidgetClass;
+    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
+    {
+        return Found;
+    }
     return LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
 }
 
