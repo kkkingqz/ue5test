@@ -3878,6 +3878,11 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
                             static_cast<int32>(Bg->GetVisibility()),
                             Bg->GetImageBrush().GetResourceObject() ? *Bg->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
                     }
+                    UGV2ImageWidgetBase* CharWidget = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("Character"))));
+                    if (CharWidget != nullptr)
+                    {
+                        TestEqual(TEXT("Character widget collapsed when no characters"), CharWidget->GetVisibility(), ESlateVisibility::Collapsed);
+                    }
                     if (BgTile != nullptr)
                     {
                         AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),

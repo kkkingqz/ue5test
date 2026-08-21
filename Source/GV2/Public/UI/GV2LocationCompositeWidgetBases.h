@@ -29,9 +29,12 @@ public:
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
 protected:
+    virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> DayText;
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> LocationText;
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PrimaryResourceText;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWidget> ResourceIcon;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> DayLocationSeparator;
 private: FGV2LocationTopBarViewModel Applied;
 };
 
@@ -80,9 +83,11 @@ public:
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
 protected:
+    virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> SceneContextText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Background;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> BackgroundTile;
+    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Character;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> CharacterRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;

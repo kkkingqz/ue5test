@@ -13,6 +13,15 @@ namespace { FGV2ScreenFieldDescriptor D(const TCHAR* Id, const TCHAR* Schema) { 
 // ============================================================================
 // TopBar
 // ============================================================================
+void UGV2LocationTopBarWidgetBase::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+    if (ResourceIcon)
+    {
+        ResourceIcon->SetVisibility(ESlateVisibility::Collapsed);
+    }
+}
+
 FGV2ScreenFieldDescriptor UGV2LocationTopBarWidgetBase::GetScreenFieldDescriptor_Implementation() const { return D(TEXT("top_bar"), TEXT("textsystem:schema.ui_field.location_top_bar.v1")); }
 bool UGV2LocationTopBarWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) const
 {
@@ -27,6 +36,10 @@ bool UGV2LocationTopBarWidgetBase::ApplyScreenField_Implementation(const FGV2Scr
     if (DayText && !DayText->ApplyText(Applied.Day)) return false;
     if (LocationText && !LocationText->ApplyText(Applied.Location)) return false;
     if (PrimaryResourceText && !PrimaryResourceText->ApplyText(Applied.PrimaryResource)) return false;
+    if (ResourceIcon)
+    {
+        ResourceIcon->SetVisibility(ESlateVisibility::Collapsed);
+    }
     return true;
 }
 bool UGV2LocationTopBarWidgetBase::ResetScreenField_Implementation()
@@ -35,6 +48,10 @@ bool UGV2LocationTopBarWidgetBase::ResetScreenField_Implementation()
     if (DayText) DayText->ApplyText({});
     if (LocationText) LocationText->ApplyText({});
     if (PrimaryResourceText) PrimaryResourceText->ApplyText({});
+    if (ResourceIcon)
+    {
+        ResourceIcon->SetVisibility(ESlateVisibility::Collapsed);
+    }
     return true;
 }
 
@@ -303,6 +320,15 @@ TSubclassOf<UGV2ImageWidgetBase> UGV2LocationSceneWidgetBase::ResolveCharacterWi
     return LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"));
 }
 
+void UGV2LocationSceneWidgetBase::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+    if (Character)
+    {
+        Character->SetVisibility(ESlateVisibility::Collapsed);
+    }
+}
+
 bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V)
 {
     if (!CanApplyScreenField_Implementation(V)) return false;
@@ -344,6 +370,20 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
             Background->SetVisibility(ESlateVisibility::Collapsed);
         }
     }
+    if (Character)
+    {
+        if (Applied.Characters.Num() > 0
+            && !Applied.Characters[0].ResourceId.IsEmpty()
+            && Applied.Characters[0].ResourceId != TEXT("textsystem:resource.ui.missing_character"))
+        {
+            Character->SetVisibility(ESlateVisibility::Visible);
+            if (!Character->ApplyOptionalImageResource(Applied.Characters[0].ResourceId, TEXT("textsystem:resource.ui.missing_character"), E)) return false;
+        }
+        else
+        {
+            Character->SetVisibility(ESlateVisibility::Collapsed);
+        }
+    }
 
     if (UGV2ListViewWidgetBase* CharRep = ResolveCharacterRepeater())
     {
@@ -381,6 +421,11 @@ bool UGV2LocationSceneWidgetBase::ResetScreenField_Implementation()
     }
     if (BackgroundTile) BackgroundTile->SetVisibility(ESlateVisibility::Collapsed);
     if (Background) Background->SetVisibility(ESlateVisibility::Collapsed);
+    if (Character)
+    {
+        Character->SetVisibility(ESlateVisibility::Collapsed);
+        Character->ResetScreenField();
+    }
     if (UGV2ListViewWidgetBase* CharRep = ResolveCharacterRepeater())
     {
         CharRep->ClearEntries();
