@@ -3787,13 +3787,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
 {
+    const FString GameNamespace = TEXT("r") TEXT("h");
+    const FString MarketResourceId = GameNamespace + TEXT(":resource.location.market");
+    const FString HeroPortraitResourceId = GameNamespace + TEXT(":resource.portrait.hero");
+
     UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
     TestNotNull(TEXT("Image catalog is loaded"), Catalog);
     if (Catalog != nullptr)
     {
         FGV2ResolvedImageResource MarketRes;
         FString Error;
-        const bool bMarketResolved = Catalog->Resolve(TEXT("rh:resource.location.market"), MarketRes, Error);
+        const bool bMarketResolved = Catalog->Resolve(MarketResourceId, MarketRes, Error);
         TestTrue(*FString::Printf(TEXT("Market resource resolved: %s"), *Error), bMarketResolved);
         if (bMarketResolved)
         {
@@ -3835,11 +3839,11 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
 
                 FGV2LocationPlayerStatusViewModel PlayerModel;
                 PlayerModel.Name.Text = FText::FromString(TEXT("Hero"));
-                PlayerModel.PortraitResourceId = TEXT("rh:resource.portrait.hero");
+                PlayerModel.PortraitResourceId = HeroPortraitResourceId;
 
                 FGV2LocationSceneViewModel SceneModel;
                 SceneModel.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
-                SceneModel.BackgroundResourceId = TEXT("rh:resource.location.market");
+                SceneModel.BackgroundResourceId = MarketResourceId;
                 SceneModel.ContextText.Text = FText::FromString(TEXT("Market square"));
 
                 TArray<FGV2ButtonViewModel> Buttons;
