@@ -3777,4 +3777,145 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
     return true;
 }
 
+// =========================================================================
+// Diagnostic: LocationScene Image & Hierarchy Audit
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationSceneDiagnostic,
+    "GV2.Runtime.Presentation.LocationSceneDiagnostic",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
+{
+    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    TestNotNull(TEXT("Image catalog is loaded"), Catalog);
+    if (Catalog != nullptr)
+    {
+        FGV2ResolvedImageResource MarketRes;
+        FString Error;
+        const bool bMarketResolved = Catalog->Resolve(TEXT("rh:resource.location.market"), MarketRes, Error);
+        TestTrue(*FString::Printf(TEXT("Market resource resolved: %s"), *Error), bMarketResolved);
+        if (bMarketResolved)
+        {
+            UObject* ResObj = MarketRes.Brush.GetResourceObject();
+            TestNotNull(TEXT("Market brush resource object is valid"), ResObj);
+            UTexture2D* Tex = Cast<UTexture2D>(ResObj);
+            TestNotNull(TEXT("Market resource is UTexture2D"), Tex);
+            if (Tex != nullptr)
+            {
+                AddInfo(FString::Printf(TEXT("Market Texture size: %dx%d, SRGB=%d, HasPlatformData=%d"),
+                    Tex->GetSizeX(), Tex->GetSizeY(), Tex->SRGB, Tex->GetPlatformData() != nullptr));
+            }
+        }
+    }
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>();
+    GameInstance->AddToRoot();
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    if (TestWorld != nullptr)
+    {
+        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+        WorldContext.SetCurrentWorld(TestWorld);
+        GameInstance->Init();
+
+        UClass* LocationScreenClass = LoadClass<UGV2ScreenWidgetBase>(
+            nullptr,
+            TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
+        TestNotNull(TEXT("LocationScreenClass loaded"), LocationScreenClass);
+        if (LocationScreenClass != nullptr)
+        {
+            UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, LocationScreenClass);
+            TestNotNull(TEXT("Screen created"), Screen);
+            if (Screen != nullptr)
+            {
+                FGV2LocationTopBarViewModel TopBarModel;
+                TopBarModel.Day.Text = FText::FromString(TEXT("Day 1"));
+                TopBarModel.Location.Text = FText::FromString(TEXT("Market"));
+                TopBarModel.PrimaryResource.Text = FText::FromString(TEXT("Gold: 60"));
+
+                FGV2LocationPlayerStatusViewModel PlayerModel;
+                PlayerModel.Name.Text = FText::FromString(TEXT("Hero"));
+                PlayerModel.PortraitResourceId = TEXT("rh:resource.portrait.hero");
+
+                FGV2LocationSceneViewModel SceneModel;
+                SceneModel.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
+                SceneModel.BackgroundResourceId = TEXT("rh:resource.location.market");
+                SceneModel.ContextText.Text = FText::FromString(TEXT("Market square"));
+
+                TArray<FGV2ButtonViewModel> Buttons;
+                FGV2ButtonViewModel Btn1;
+                Btn1.Key = FName(TEXT("btn1"));
+                Btn1.Text.Text = FText::FromString(TEXT("Buy Sword"));
+                Btn1.Binding = FGV2UiBindingHandle::Create(TEXT("b1"));
+                Buttons.Add(Btn1);
+
+                TArray<FGV2ScreenFieldValue> Fields = {
+                    FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModel),
+                    FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModel),
+                    FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel),
+                    FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), Buttons)
+                };
+                const bool bApplied = Screen->ApplyScreenFields(Fields);
+                TestTrue(TEXT("Screen applied fields"), bApplied);
+
+                // Find Scene widget inside Screen
+                UWidget* SceneWidget = Screen->GetWidgetFromName(FName(TEXT("Scene")));
+                TestNotNull(TEXT("Scene found in screen"), SceneWidget);
+                UGV2LocationSceneWidgetBase* SceneView = Cast<UGV2LocationSceneWidgetBase>(SceneWidget);
+                TestNotNull(TEXT("Scene is UGV2LocationSceneWidgetBase"), SceneView);
+
+                if (SceneView != nullptr)
+                {
+                    UGV2ImageWidgetBase* Bg = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("Background"))));
+                    UGV2ImageWidgetBase* BgTile = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("BackgroundTile"))));
+                    TestNotNull(TEXT("Background widget found"), Bg);
+                    TestNotNull(TEXT("BackgroundTile widget found"), BgTile);
+
+                    if (Bg != nullptr)
+                    {
+                        AddInfo(FString::Printf(TEXT("Background: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
+                            *Bg->GetAppliedResourceId(),
+                            static_cast<int32>(Bg->GetVisibility()),
+                            Bg->GetImageBrush().GetResourceObject() ? *Bg->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
+                    }
+                    if (BgTile != nullptr)
+                    {
+                        AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
+                            *BgTile->GetAppliedResourceId(),
+                            static_cast<int32>(BgTile->GetVisibility()),
+                            BgTile->GetImageBrush().GetResourceObject() ? *BgTile->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
+                    }
+
+                    // Check overlay slot indices
+                    if (Bg != nullptr && BgTile != nullptr)
+                    {
+                        UPanelWidget* ParentPanel = Bg->GetParent();
+                        AddInfo(FString::Printf(TEXT("ParentPanel: %s"), ParentPanel ? *ParentPanel->GetName() : TEXT("nullptr")));
+                        if (ParentPanel != nullptr)
+                        {
+                            const int32 BgIndex = ParentPanel->GetChildIndex(Bg);
+                            const int32 BgTileIndex = ParentPanel->GetChildIndex(BgTile);
+                            AddInfo(FString::Printf(TEXT("Child indices: Background=%d, BackgroundTile=%d, TotalChildren=%d"),
+                                BgIndex, BgTileIndex, ParentPanel->GetChildrenCount()));
+                            for (int32 i = 0; i < ParentPanel->GetChildrenCount(); ++i)
+                            {
+                                UWidget* Child = ParentPanel->GetChildAt(i);
+                                AddInfo(FString::Printf(TEXT("Child [%d]: %s (Class=%s, Visibility=%d)"),
+                                    i, *Child->GetName(), *Child->GetClass()->GetName(), static_cast<int32>(Child->GetVisibility())));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        GameInstance->Shutdown();
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
 #endif
+
