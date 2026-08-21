@@ -23,7 +23,18 @@ bool UGV2LocationPlayerStatusWidgetBase::ResetScreenField_Implementation() { App
 FGV2ScreenFieldDescriptor UGV2LocationSceneWidgetBase::GetScreenFieldDescriptor_Implementation() const { return D(TEXT("scene"), TEXT("textsystem:schema.ui_field.location_scene.v1")); }
 bool UGV2LocationSceneWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) const { return V.SchemaId==TEXT("textsystem:schema.ui_field.location_scene.v1"); }
 bool UGV2LocationSceneWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& O) const { O=FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"),Applied); return true; }
-bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) { if(!CanApplyScreenField_Implementation(V)) return false; Applied=V.LocationSceneValue; FString E; if(SceneContextText && !Applied.ContextText.Text.IsEmpty() && !SceneContextText->ApplyText(Applied.ContextText)) return false; if(BackgroundTile && !Applied.BackgroundTileResourceId.IsEmpty() && !BackgroundTile->ApplyImageResource(Applied.BackgroundTileResourceId,E)) return false; if(Background && !Background->ApplyOptionalImageResource(Applied.BackgroundResourceId,TEXT("textsystem:resource.ui.missing_background"),E)) return false; const FString CharacterResourceId = Applied.CharacterResourceIds.IsEmpty() ? FString() : Applied.CharacterResourceIds[0]; if(Character && !Character->ApplyOptionalImageResource(CharacterResourceId,TEXT("textsystem:resource.ui.missing_character"),E)) return false; return true; }
+bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V)
+{
+    if (!CanApplyScreenField_Implementation(V)) return false;
+    Applied = V.LocationSceneValue;
+    FString E;
+    if (SceneContextText && !Applied.ContextText.Text.IsEmpty() && !SceneContextText->ApplyText(Applied.ContextText)) return false;
+    if (BackgroundTile && !Applied.BackgroundTileResourceId.IsEmpty() && !BackgroundTile->ApplyImageResource(Applied.BackgroundTileResourceId, E)) return false;
+    if (Background && !Applied.BackgroundResourceId.IsEmpty() && !Background->ApplyOptionalImageResource(Applied.BackgroundResourceId, TEXT("textsystem:resource.ui.missing_background"), E)) return false;
+    const FString CharacterResourceId = Applied.CharacterResourceIds.IsEmpty() ? FString() : Applied.CharacterResourceIds[0];
+    if (Character && !CharacterResourceId.IsEmpty() && !Character->ApplyOptionalImageResource(CharacterResourceId, TEXT("textsystem:resource.ui.missing_character"), E)) return false;
+    return true;
+}
 bool UGV2LocationSceneWidgetBase::ResetScreenField_Implementation() { Applied={}; return true; }
 
 TSubclassOf<UGV2ButtonWidgetBase> UGV2LocationCommandPanelWidgetBase::ResolveButtonWidgetClass() const { return ButtonWidgetClass; }
