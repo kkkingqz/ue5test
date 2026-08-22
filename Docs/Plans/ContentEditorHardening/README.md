@@ -128,11 +128,11 @@ Editor / CLI frontends
 
 ## Milestones
 
-- [ ] M1 — [Authoring Index and Tree Browser](AuthoringIndexAndTreeBrowser.md): provider-aware identity и Stable-ID tree. CEH-01…05.
-- [ ] M2 — [Schema-Driven Property Editing](SchemaDrivenPropertyEditing.md): presence model и структурные Add/Remove/Override operations. CEH-06…12.
-- [ ] M3 — [Typed References and Rename](TypedReferencesAndRename.md): typed reference index, impact и безопасный rename. CEH-13…17.
-- [ ] M4 — [Session Safety and Performance](SessionSafetyAndPerformance.md): dirty/stale safety и отсутствие expensive refresh на каждый input event. CEH-18…22.
-- [ ] M5 — [Verification](Verification.md): portable + Slate conformance, scale fixture и финальный gate. CEH-23…26.
+- [x] M1 — [Authoring Index and Tree Browser](AuthoringIndexAndTreeBrowser.md): provider-aware identity и Stable-ID tree. CEH-01…05.
+- [x] M2 — [Schema-Driven Property Editing](SchemaDrivenPropertyEditing.md): presence model и структурные Add/Remove/Override operations. CEH-06…12.
+- [x] M3 — [Typed References and Rename](TypedReferencesAndRename.md): typed reference index, impact и безопасный rename. CEH-13…17.
+- [x] M4 — [Session Safety and Performance](SessionSafetyAndPerformance.md): dirty/stale safety и отсутствие expensive refresh на каждый input event. CEH-18…22.
+- [x] M5 — [Verification](Verification.md): portable + Slate conformance, scale fixture и финальный gate. CEH-23…26.
 
 ## Критический путь
 
@@ -160,30 +160,30 @@ M2 ───────┘
 
 ## Итоговый Definition of Done
 
-- [ ] Browser использует `STreeView` и Stable-ID hierarchy.
-- [ ] Tree строится через canonical Stable ID parser.
-- [ ] Search сохраняет matching leaves и ancestors; ancestors auto-expand.
-- [ ] После очистки search пользовательское expansion state восстанавливается.
-- [ ] Definition node может одновременно иметь definition payload и children.
-- [ ] Editor selection различает physical provider entries одного Stable ID.
-- [ ] Effective winner и shadowed providers не вычисляются отдельной editor overlay logic.
-- [ ] Dirty navigation не может silently discard edits.
-- [ ] External file modification видна до Save.
-- [ ] Integer slider round-trip сохраняет integer semantic type.
-- [ ] Form отличает Absent / ImplicitDefault / Explicit / RequiredMissing.
-- [ ] `Add Property` предлагает только schema-declared absent optional fields.
-- [ ] Explicit optional property можно Remove/Reset без immediate disk write.
-- [ ] Arrays поддерживают Add / Remove / Reorder.
-- [ ] Nested objects используют ту же presence/edit model.
-- [ ] Nested и extension UI metadata разрешаются по canonical field path.
-- [ ] References основаны только на typed schema sites.
-- [ ] Unsaved reference edit отражается в Outgoing panel до Save.
-- [ ] Delete blocker использует typed incoming references.
-- [ ] Resource/reference pickers не перечитывают весь GameData на каждый open/change.
-- [ ] Rename показывает own-package и external-package impact.
-- [ ] Rename не переписывает unrelated string fields.
-- [ ] External references не изменяются молча.
-- [ ] Multi-file authoring имеет crash-safe recovery contract либо эквивалентный transaction mechanism.
-- [ ] Text editing не вызывает full reference/index rebuild на каждый символ.
-- [ ] Init diagnostics и полный multi-file authoring result не теряются в Editor adapter.
-- [ ] Portable, CLI parity, Slate interaction, override/provider, stale/dirty и performance tests зелёные.
+- [x] Browser использует `STreeView` и Stable-ID hierarchy.
+- [x] Tree строится через canonical Stable ID parser.
+- [x] Search сохраняет matching leaves и ancestors; ancestors auto-expand.
+- [x] После очистки search пользовательское expansion state восстанавливается.
+- [x] Definition node может одновременно иметь definition payload и children.
+- [x] Editor selection различает physical provider entries одного Stable ID.
+- [x] Effective winner и shadowed providers не вычисляются отдельной editor overlay logic.
+- [x] Dirty navigation не может silently discard edits.
+- [x] External file modification видна до Save.
+- [x] Integer slider round-trip сохраняет integer semantic type.
+- [x] Form отличает Absent / ImplicitDefault / Explicit / RequiredMissing.
+- [x] `Add Property` предлагает только schema-declared absent optional fields.
+- [x] Explicit optional property можно Remove/Reset без immediate disk write.
+- [x] Arrays поддерживают Add / Remove / Reorder.
+- [x] Nested objects используют ту же presence/edit model.
+- [x] Nested и extension UI metadata разрешаются по canonical field path.
+- [x] References основаны только на typed schema sites.
+- [x] Unsaved reference edit отражается в Outgoing panel до Save.
+- [x] Delete blocker использует typed incoming references.
+- [x] Resource/reference pickers не перечитывают весь GameData на каждый open/change.
+- [x] Rename показывает own-package и external-package impact.
+- [x] Rename не переписывает unrelated string fields.
+- [x] External references не изменяются молча.
+- [x] Multi-file authoring имеет crash-safe recovery contract либо эквивалентный transaction mechanism.
+- [x] Text editing не вызывает full reference/index rebuild на каждый символ.
+- [x] Init diagnostics и полный multi-file authoring result не теряются в Editor adapter.
+- [x] Portable, CLI parity, Slate interaction, override/provider, stale/dirty и performance tests зелёные.

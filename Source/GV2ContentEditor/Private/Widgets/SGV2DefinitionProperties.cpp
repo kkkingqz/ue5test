@@ -83,18 +83,36 @@ TSharedRef<SWidget> SGV2DefinitionProperties::BuildToolbar()
             [
                 SNew(STextBlock)
                 .Text_Lambda([this]() {
-                    if (Adapter.IsValid() && Adapter->IsDirty())
+                    if (!Adapter.IsValid()) return FText::FromString(TEXT(""));
+                    switch (Adapter->GetSessionState())
                     {
+                    case EDefinitionSessionState::Clean:
+                        return FText::FromString(TEXT("Clean"));
+                    case EDefinitionSessionState::Dirty:
                         return FText::FromString(FString::Printf(TEXT("%d unsaved change(s)"), static_cast<int32>(Adapter->GetDirtyFields().size())));
+                    case EDefinitionSessionState::Stale:
+                        return FText::FromString(TEXT("Stale (modified on disk)"));
+                    case EDefinitionSessionState::DirtyAndStale:
+                        return FText::FromString(TEXT("Conflict: Dirty + Stale"));
+                    default:
+                        return FText::FromString(TEXT(""));
                     }
-                    return FText::FromString(TEXT("Clean"));
                 })
                 .ColorAndOpacity_Lambda([this]() {
-                    if (Adapter.IsValid() && Adapter->IsDirty())
+                    if (!Adapter.IsValid()) return FSlateColor(FLinearColor::White);
+                    switch (Adapter->GetSessionState())
                     {
+                    case EDefinitionSessionState::Clean:
+                        return FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f));
+                    case EDefinitionSessionState::Dirty:
                         return FSlateColor(FLinearColor(1.0f, 0.8f, 0.2f));
+                    case EDefinitionSessionState::Stale:
+                        return FSlateColor(FLinearColor(1.0f, 0.5f, 0.1f));
+                    case EDefinitionSessionState::DirtyAndStale:
+                        return FSlateColor(FLinearColor(1.0f, 0.2f, 0.2f));
+                    default:
+                        return FSlateColor(FLinearColor::White);
                     }
-                    return FSlateColor(FLinearColor(0.5f, 0.5f, 0.5f));
                 })
                 .Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
             ]
@@ -119,10 +137,8 @@ FReply SGV2DefinitionProperties::HandleRevertClicked()
 {
     if (Adapter.IsValid() && Adapter->GetCurrentDefinition() != nullptr)
     {
-        const auto* Current = Adapter->GetCurrentDefinition();
-        const std::string DefinitionId = Current ? Current->Id : std::string();
         std::vector<FGV2EditorDiagnostic> Diagnostics;
-        if (!DefinitionId.empty()) Adapter->LoadDefinition(DefinitionId, Diagnostics);
+        Adapter->DiscardAndReload(Diagnostics);
         RefreshProperties();
         if (OnFieldValueChanged.IsBound())
         {

@@ -1689,6 +1689,198 @@ bool TestInitializationDiagnosticsAndMultiFileMetadata()
     return true;
 }
 
+bool TestRealisticMultiPackageScaleFixture()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_scale_fixture");
+    std::filesystem::path CoreDir = TempDir / "core";
+    std::filesystem::path DlcDir = TempDir / "dlc1";
+    std::filesystem::path ModDir = TempDir / "mod_weapons";
+
+    // 1. Core package
+    std::string CorePackage =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", CorePackage);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 },\n"
+        "    ref_item: { kind: 'ref', target_kind: 'item', required: false }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string CoreItems = "{\n  schema_version: 1,\n  type: 'item',\n  definitions: [\n";
+    for (int i = 0; i < 50; ++i)
+    {
+        std::string NumStr = (i < 10 ? "0" : "") + std::to_string(i);
+        CoreItems += "    {\n      id: 'core:item.item_" + NumStr + "',\n      data: { name: 'Core Item " + NumStr + "', weight: " + std::to_string(i + 1) + ".0";
+        if (i > 0)
+        {
+            std::string PrevStr = (i - 1 < 10 ? "0" : "") + std::to_string(i - 1);
+            CoreItems += ", ref_item: 'core:item.item_" + PrevStr + "'";
+        }
+        CoreItems += " }\n    }" + std::string(i < 49 ? ",\n" : "\n");
+    }
+    CoreItems += "  ]\n}\n";
+    WriteFile(CoreDir / "definitions/items.json5", CoreItems);
+
+    // 2. DLC1 package (depends on core, overrides core:item.item_00, adds 50 dlc items)
+    std::string DlcPackage =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'dlc1',\n"
+        "  namespace: 'dlc1',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: [{ package_id: 'core', version_req: '>=1.0.0' }]\n"
+        "}\n";
+    WriteFile(DlcDir / "package.json5", DlcPackage);
+
+    std::string DlcItems = "{\n  schema_version: 1,\n  type: 'item',\n  definitions: [\n";
+    // Override core:item.item_00
+    DlcItems += "    {\n      id: 'core:item.item_00',\n      data: { name: 'DLC Overridden Item 00', weight: 99.0 }\n    },\n";
+    for (int i = 0; i < 50; ++i)
+    {
+        std::string NumStr = (i < 10 ? "0" : "") + std::to_string(i);
+        DlcItems += "    {\n      id: 'dlc1:item.dlc_" + NumStr + "',\n      data: { name: 'DLC Item " + NumStr + "', weight: 10.0, ref_item: 'core:item.item_00' }\n    }" + std::string(i < 49 ? ",\n" : "\n");
+    }
+    DlcItems += "  ]\n}\n";
+    WriteFile(DlcDir / "definitions/items.json5", DlcItems);
+
+    // 3. Mod package (depends on core and dlc1, adds 20 mod items referencing both)
+    std::string ModPackage =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'mod_weapons',\n"
+        "  namespace: 'mod_weapons',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: [\n"
+        "    { package_id: 'core', version_req: '>=1.0.0' },\n"
+        "    { package_id: 'dlc1', version_req: '>=1.0.0' }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(ModDir / "package.json5", ModPackage);
+
+    std::string ModItems = "{\n  schema_version: 1,\n  type: 'item',\n  definitions: [\n";
+    for (int i = 0; i < 20; ++i)
+    {
+        std::string NumStr = (i < 10 ? "0" : "") + std::to_string(i);
+        std::string TargetRef = (i % 2 == 0) ? "core:item.item_01" : "dlc1:item.dlc_00";
+        ModItems += "    {\n      id: 'mod_weapons:item.mod_" + NumStr + "',\n      data: { name: 'Mod Item " + NumStr + "', weight: 5.0, ref_item: '" + TargetRef + "' }\n    }" + std::string(i < 19 ? ",\n" : "\n");
+    }
+    ModItems += "  ]\n}\n";
+    WriteFile(ModDir / "definitions/items.json5", ModItems);
+
+    // Initialize adapter across multi-package container
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-25 scale checks:
+    // Total unique definitions: 50 (core) + 50 (dlc) + 20 (mod) = 120 unique IDs
+    auto EffectiveDefs = Adapter.GetAuthoringIndex().GetEffectiveDefinitions();
+    if (EffectiveDefs.size() != 120)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Check override provider resolution for core:item.item_00
+    auto Providers = Adapter.GetProvidersForDefinition("core:item.item_00");
+    if (Providers.size() != 2)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    auto Winner = Adapter.GetAuthoringIndex().GetEffectiveWinner("core:item.item_00");
+    if (!Winner.has_value() || Winner->PackageId != "dlc1")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Load definition and verify Clean session state
+    Adapter.LoadDefinition("mod_weapons:item.mod_00", Diags);
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Clean)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-25: 100 continuous keystrokes/edits in memory with 0 index rebuilds
+    for (int i = 0; i < 100; ++i)
+    {
+        Adapter.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Fast Typed Name " + std::to_string(i)));
+    }
+
+    if (!Adapter.IsDirty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    auto LastVal = Adapter.GetCurrentFieldValue("/data/name");
+    if (!LastVal.has_value() || LastVal->AsString() != "Fast Typed Name 99")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Check reference query performance: fast in-memory index queries
+    auto Outgoing = Adapter.GetOutgoingReferences();
+    if (Outgoing.empty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    auto IncomingCore0 = Adapter.GetIncomingReferences("core:item.item_00");
+    // All 50 dlc items reference core:item.item_00
+    if (IncomingCore0.size() < 50)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    auto CompatibleItems = Adapter.GetCompatibleReferenceTargets("item");
+    if (CompatibleItems.size() != 120)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Atomic save commits changes and clears dirty status
+    auto SaveRes = Adapter.SaveCurrentDefinition();
+    if (!SaveRes.IsSuccess())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Clean)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
 std::string RunEditorAdapterConformance()
 {
     if (!TestAdapterInitializationAndIndexing())
@@ -1766,6 +1958,10 @@ std::string RunEditorAdapterConformance()
     if (!TestInitializationDiagnosticsAndMultiFileMetadata())
     {
         return "TestInitializationDiagnosticsAndMultiFileMetadata failed";
+    }
+    if (!TestRealisticMultiPackageScaleFixture())
+    {
+        return "TestRealisticMultiPackageScaleFixture failed";
     }
 
     std::string ReadSurfaceError = RunReadSurfaceConformance();

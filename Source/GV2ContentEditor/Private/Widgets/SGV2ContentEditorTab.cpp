@@ -1,6 +1,7 @@
 #include "GV2ContentEditor/Widgets/SGV2ContentEditorTab.h"
 
 #if defined(__UNREAL__) || defined(UE_GAME) || defined(UE_EDITOR) || defined(WITH_ENGINE)
+#include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -78,11 +79,49 @@ void SGV2ContentEditorTab::HandleDefinitionSelected(const FString& DefinitionId)
 {
     if (Adapter.IsValid())
     {
-        std::vector<FGV2EditorDiagnostic> LoadDiags;
-        Adapter->LoadDefinition(TCHAR_TO_UTF8(*DefinitionId), LoadDiags);
+        std::vector<FGV2EditorDiagnostic> Diags;
+        if (Adapter->IsDirty())
+        {
+            const EAppReturnType::Type Reply = FMessageDialog::Open(
+                EAppMsgType::YesNoCancel,
+                FText::FromString(TEXT("You have unsaved changes. Save before navigating?")));
+
+            ENavigationDirtyResolution Resolution = ENavigationDirtyResolution::CancelIfDirty;
+            if (Reply == EAppReturnType::Yes)
+            {
+                Resolution = ENavigationDirtyResolution::SaveIfDirty;
+            }
+            else if (Reply == EAppReturnType::No)
+            {
+                Resolution = ENavigationDirtyResolution::DiscardIfDirty;
+            }
+            else
+            {
+                if (BrowserWidget.IsValid() && Adapter->GetCurrentLocator().has_value())
+                {
+                    BrowserWidget->SetSelectedDefinition(UTF8_TO_TCHAR(Adapter->GetCurrentLocator()->DefinitionId.c_str()));
+                }
+                return;
+            }
+
+            auto GateRes = Adapter->RequestNavigateTo(TCHAR_TO_UTF8(*DefinitionId), Resolution, Diags);
+            if (GateRes != ENavigationGateResult::Navigated)
+            {
+                if (DiagnosticsWidget.IsValid())
+                {
+                    DiagnosticsWidget->SetDiagnostics(Diags);
+                }
+                return;
+            }
+        }
+        else
+        {
+            Adapter->RequestNavigateTo(TCHAR_TO_UTF8(*DefinitionId), ENavigationDirtyResolution::CancelIfDirty, Diags);
+        }
+
         if (DiagnosticsWidget.IsValid())
         {
-            DiagnosticsWidget->SetDiagnostics(LoadDiags);
+            DiagnosticsWidget->SetDiagnostics(Diags);
         }
     }
 
@@ -100,11 +139,45 @@ void SGV2ContentEditorTab::HandleLocatorSelected(const GV2ContentAuthoring::FAut
 {
     if (Adapter.IsValid())
     {
-        std::vector<FGV2EditorDiagnostic> LoadDiags;
-        Adapter->LoadDefinition(Locator, LoadDiags);
+        std::vector<FGV2EditorDiagnostic> Diags;
+        if (Adapter->IsDirty())
+        {
+            const EAppReturnType::Type Reply = FMessageDialog::Open(
+                EAppMsgType::YesNoCancel,
+                FText::FromString(TEXT("You have unsaved changes. Save before switching provider?")));
+
+            ENavigationDirtyResolution Resolution = ENavigationDirtyResolution::CancelIfDirty;
+            if (Reply == EAppReturnType::Yes)
+            {
+                Resolution = ENavigationDirtyResolution::SaveIfDirty;
+            }
+            else if (Reply == EAppReturnType::No)
+            {
+                Resolution = ENavigationDirtyResolution::DiscardIfDirty;
+            }
+            else
+            {
+                return;
+            }
+
+            auto GateRes = Adapter->RequestNavigateTo(Locator, Resolution, Diags);
+            if (GateRes != ENavigationGateResult::Navigated)
+            {
+                if (DiagnosticsWidget.IsValid())
+                {
+                    DiagnosticsWidget->SetDiagnostics(Diags);
+                }
+                return;
+            }
+        }
+        else
+        {
+            Adapter->RequestNavigateTo(Locator, ENavigationDirtyResolution::CancelIfDirty, Diags);
+        }
+
         if (DiagnosticsWidget.IsValid())
         {
-            DiagnosticsWidget->SetDiagnostics(LoadDiags);
+            DiagnosticsWidget->SetDiagnostics(Diags);
         }
     }
 
