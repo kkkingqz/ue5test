@@ -54,6 +54,9 @@ public:
     UGV2ListViewWidgetBase* GetEffectRepeater() { return ResolveEffectRepeater(); }
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     UGV2ListViewWidgetBase* GetMeterRepeater() { return ResolveMeterRepeater(); }
+    bool HasUsableMeterRepeaterHost() const;
+    bool HasUsableItemRepeaterHost() const;
+    bool HasUsableEffectRepeaterHost() const;
 protected:
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PlayerNameText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2PortraitWidgetBase> Portrait;
@@ -90,6 +93,7 @@ public:
     virtual bool ResetScreenField_Implementation() override;
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     UGV2ListViewWidgetBase* GetCharacterRepeater() { return ResolveCharacterRepeater(); }
+    bool HasUsableCharacterRepeaterHost() const;
 protected:
     virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> SceneContextText;
@@ -116,6 +120,7 @@ public:
     bool ApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels);
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     bool CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels) const;
+    bool HasUsableRepeaterHost() const;
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     UGV2ListViewWidgetBase* GetRepeater() { return ResolveRepeater(); }
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI") FGV2LocationCommandBindingInvoked OnBindingInvoked;

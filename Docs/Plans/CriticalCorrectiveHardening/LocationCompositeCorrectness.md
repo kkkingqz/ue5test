@@ -21,7 +21,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **CCF-06 — Сделать `CanApply*` полностью non-mutating**
+- [x] **CCF-06 — Сделать `CanApply*` полностью non-mutating**
   - Зависимости: CCF-01…05.
   - Файлы:
     - `Source/GV2/Private/UI/GV2LocationCompositeWidgetBases.cpp`;
@@ -64,7 +64,7 @@ depends_on:
   7. `Ensure...Repeater()` разрешён только после successful preflight.
   8. Повторно запустить test.
 
-- [ ] **CCF-07 — Удалить legacy single `Character` rendering path**
+- [x] **CCF-07 — Удалить legacy single `Character` rendering path**
   - Зависимости: CCF-06.
   - Done:
     - SceneView не читает `Characters[0]`;
@@ -105,7 +105,7 @@ depends_on:
      rg -n "Characters\[0\]" Source/GV2
      ```
 
-- [ ] **CCF-08 — Удалить legacy `StaminaMeter` / `Meters[0]` path**
+- [x] **CCF-08 — Удалить legacy `StaminaMeter` / `Meters[0]` path**
   - Зависимости: CCF-06.
   - Done:
     - PlayerStatus не читает `Meters[0]`;
@@ -141,7 +141,7 @@ depends_on:
      rg -n "Meters\[0\]|StaminaMeter" Source/GV2
      ```
 
-- [ ] **CCF-09 — Добавить regression tests на partial composite apply**
+- [x] **CCF-09 — Добавить regression tests на partial composite apply**
   - Зависимости: CCF-07, CCF-08.
   - Done:
     - существует SceneView failure test;
@@ -193,7 +193,7 @@ depends_on:
 
   После failure всё остаётся baseline.
 
-- [ ] **CCF-10 — Разделить composite apply на pure preflight и commit**
+- [x] **CCF-10 — Разделить composite apply на pure preflight и commit**
   - Зависимости: CCF-09.
   - Done:
     - все ожидаемые failures возникают до visual mutation;
@@ -231,7 +231,7 @@ depends_on:
   9. Запустить CCF-09.
   10. Запустить весь Location composite suite.
 
-- [ ] **CCF-11 — Зафиксировать reset semantics для всех четырёх composites**
+- [x] **CCF-11 — Зафиксировать reset semantics для всех четырёх composites**
   - Зависимости: CCF-10.
   - Done:
     - `ResetScreenField()` очищает captured model;
@@ -256,7 +256,7 @@ depends_on:
 
   Если test уже проходит, production code не менять.
 
-- [ ] **CCF-12 — Зафиксировать существующую placeholder semantics**
+- [x] **CCF-12 — Зафиксировать существующую placeholder semantics**
   - Зависимости: CCF-07…11.
   - Done:
     - missing/invalid character resource использует существующий silhouette
@@ -274,12 +274,12 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] `CanApply*` pure.
-- [ ] Нет production `Characters[0]`.
-- [ ] Нет production `Meters[0]`.
-- [ ] Repeated characters/meters используют только Core Repeater.
-- [ ] Failed composite apply сохраняет old state.
-- [ ] `Applied` обновляется последним.
-- [ ] Reset очищает captured и visible state.
-- [ ] Placeholder behavior подтверждён tests.
-- [ ] Полный LocationScreen-related automation зелёный.
+- [x] `CanApply*` pure.
+- [x] Нет production `Characters[0]`.
+- [x] Нет production `Meters[0]`.
+- [x] Repeated characters/meters используют только Core Repeater.
+- [x] Failed composite apply сохраняет old state.
+- [x] `Applied` обновляется последним.
+- [x] Reset очищает captured и visible state.
+- [x] Placeholder behavior подтверждён tests.
+- [x] Полный LocationScreen-related automation зелёный.

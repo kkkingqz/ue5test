@@ -23,25 +23,30 @@ void UGV2LocationTopBarWidgetBase::NativePreConstruct()
 }
 
 FGV2ScreenFieldDescriptor UGV2LocationTopBarWidgetBase::GetScreenFieldDescriptor_Implementation() const { return D(TEXT("top_bar"), TEXT("textsystem:schema.ui_field.location_top_bar.v1")); }
+
 bool UGV2LocationTopBarWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) const
 {
     return V.FieldId == TEXT("top_bar")
         && V.SchemaId == TEXT("textsystem:schema.ui_field.location_top_bar.v1");
 }
+
 bool UGV2LocationTopBarWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& O) const { O=FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"),Applied); return true; }
+
 bool UGV2LocationTopBarWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V)
 {
     if (!CanApplyScreenField_Implementation(V)) return false;
-    Applied = V.LocationTopBarValue;
-    if (DayText && !DayText->ApplyText(Applied.Day)) return false;
-    if (LocationText && !LocationText->ApplyText(Applied.Location)) return false;
-    if (PrimaryResourceText && !PrimaryResourceText->ApplyText(Applied.PrimaryResource)) return false;
+    const FGV2LocationTopBarViewModel& Candidate = V.LocationTopBarValue;
+    if (DayText && !DayText->ApplyText(Candidate.Day)) return false;
+    if (LocationText && !LocationText->ApplyText(Candidate.Location)) return false;
+    if (PrimaryResourceText && !PrimaryResourceText->ApplyText(Candidate.PrimaryResource)) return false;
     if (ResourceIcon)
     {
         ResourceIcon->SetVisibility(ESlateVisibility::Collapsed);
     }
+    Applied = Candidate;
     return true;
 }
+
 bool UGV2LocationTopBarWidgetBase::ResetScreenField_Implementation()
 {
     Applied = {};
@@ -59,6 +64,21 @@ bool UGV2LocationTopBarWidgetBase::ResetScreenField_Implementation()
 // PlayerStatus
 // ============================================================================
 FGV2ScreenFieldDescriptor UGV2LocationPlayerStatusWidgetBase::GetScreenFieldDescriptor_Implementation() const { return D(TEXT("player_status"), TEXT("textsystem:schema.ui_field.location_player_status.v1")); }
+
+bool UGV2LocationPlayerStatusWidgetBase::HasUsableMeterRepeaterHost() const
+{
+    return MeterRepeater != nullptr || MeterContainer != nullptr;
+}
+
+bool UGV2LocationPlayerStatusWidgetBase::HasUsableItemRepeaterHost() const
+{
+    return ItemRepeater != nullptr || ItemIcons != nullptr;
+}
+
+bool UGV2LocationPlayerStatusWidgetBase::HasUsableEffectRepeaterHost() const
+{
+    return EffectRepeater != nullptr || EffectIcons != nullptr;
+}
 
 bool UGV2LocationPlayerStatusWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) const
 {
@@ -78,26 +98,20 @@ bool UGV2LocationPlayerStatusWidgetBase::CanApplyScreenField_Implementation(cons
         MeterKeys.Add(Meter.Key);
     }
 
-    // Structural check: if multiple meters provided, a meter repeater is mandatory
-    if (Model.Meters.Num() > 1 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveMeterRepeater() == nullptr)
+    // Repeated meters require usable repeater host
+    if (Model.Meters.Num() > 0 && !HasUsableMeterRepeaterHost())
     {
         return false;
     }
 
-    // If single meter provided, either repeater or StaminaMeter must exist
-    if (Model.Meters.Num() == 1 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveMeterRepeater() == nullptr && StaminaMeter == nullptr)
+    // Repeated items require usable repeater host
+    if (Model.ItemIconResourceIds.Num() > 0 && !HasUsableItemRepeaterHost())
     {
         return false;
     }
 
-    // If items provided, item repeater must exist
-    if (Model.ItemIconResourceIds.Num() > 0 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveItemRepeater() == nullptr)
-    {
-        return false;
-    }
-
-    // If effects provided, effect repeater must exist
-    if (Model.EffectIconResourceIds.Num() > 0 && const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveEffectRepeater() == nullptr)
+    // Repeated effects require usable repeater host
+    if (Model.EffectIconResourceIds.Num() > 0 && !HasUsableEffectRepeaterHost())
     {
         return false;
     }
@@ -166,15 +180,16 @@ TSubclassOf<UGV2ProgressBarWidgetBase> UGV2LocationPlayerStatusWidgetBase::Resol
 bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V)
 {
     if (!CanApplyScreenField_Implementation(V)) return false;
-    Applied = V.LocationPlayerStatusValue;
+    const FGV2LocationPlayerStatusViewModel& Candidate = V.LocationPlayerStatusValue;
+
     FString E;
-    if (PlayerNameText && !PlayerNameText->ApplyText(Applied.Name)) return false;
+    if (PlayerNameText && !PlayerNameText->ApplyText(Candidate.Name)) return false;
     if (Portrait)
     {
-        if (!Applied.PortraitResourceId.IsEmpty())
+        if (!Candidate.PortraitResourceId.IsEmpty())
         {
             Portrait->SetVisibility(ESlateVisibility::Visible);
-            if (!Portrait->ApplyOptionalPortrait(Applied.PortraitResourceId, TEXT("textsystem:resource.ui.missing_portrait"), TEXT(""), E)) return false;
+            if (!Portrait->ApplyOptionalPortrait(Candidate.PortraitResourceId, TEXT("textsystem:resource.ui.missing_portrait"), TEXT(""), E)) return false;
         }
         else
         {
@@ -188,7 +203,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
         if (Class != nullptr)
         {
             const bool bMetersOk = MeterRep->ReconcileEntries<UGV2ProgressBarWidgetBase, FGV2LocationMeterEntry>(
-                Applied.Meters,
+                Candidate.Meters,
                 [](const FGV2LocationMeterEntry& Entry) { return Entry.Key; },
                 [this, Class]() -> UGV2ProgressBarWidgetBase*
                 {
@@ -204,18 +219,6 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
             if (!bMetersOk) return false;
         }
     }
-    else if (StaminaMeter)
-    {
-        if (Applied.Meters.Num() > 0)
-        {
-            StaminaMeter->SetVisibility(ESlateVisibility::Visible);
-            StaminaMeter->ApplyProgress(Applied.Meters[0].Meter.Percent);
-        }
-        else
-        {
-            StaminaMeter->SetVisibility(ESlateVisibility::Collapsed);
-        }
-    }
 
     if (UGV2ListViewWidgetBase* ItemRep = ResolveItemRepeater())
     {
@@ -223,7 +226,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
         if (IconClass != nullptr)
         {
             const bool bItemsOk = ItemRep->ReconcileEntries<UGV2ImageWidgetBase, FString>(
-                Applied.ItemIconResourceIds,
+                Candidate.ItemIconResourceIds,
                 [](const FString& ResourceId) { return FName(*ResourceId); },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
@@ -246,7 +249,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
         if (IconClass != nullptr)
         {
             const bool bEffectsOk = EffectRep->ReconcileEntries<UGV2ImageWidgetBase, FString>(
-                Applied.EffectIconResourceIds,
+                Candidate.EffectIconResourceIds,
                 [](const FString& ResourceId) { return FName(*ResourceId); },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
@@ -263,6 +266,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
         }
     }
 
+    Applied = Candidate;
     return true;
 }
 
@@ -302,6 +306,11 @@ bool UGV2LocationPlayerStatusWidgetBase::ResetScreenField_Implementation()
 // ============================================================================
 FGV2ScreenFieldDescriptor UGV2LocationSceneWidgetBase::GetScreenFieldDescriptor_Implementation() const { return D(TEXT("scene"), TEXT("textsystem:schema.ui_field.location_scene.v1")); }
 
+bool UGV2LocationSceneWidgetBase::HasUsableCharacterRepeaterHost() const
+{
+    return CharacterRepeater != nullptr || CharacterContainer != nullptr;
+}
+
 bool UGV2LocationSceneWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) const
 {
     if (V.FieldId != TEXT("scene") || V.SchemaId != TEXT("textsystem:schema.ui_field.location_scene.v1"))
@@ -317,14 +326,8 @@ bool UGV2LocationSceneWidgetBase::CanApplyScreenField_Implementation(const FGV2S
         CharacterKeys.Add(Entry.Key);
     }
 
-    // Structural check: if multiple characters, character repeater is mandatory
-    if (Model.Characters.Num() > 1 && const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater() == nullptr)
-    {
-        return false;
-    }
-
-    // If single character provided, either repeater or Character widget must exist
-    if (Model.Characters.Num() == 1 && const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater() == nullptr && Character == nullptr)
+    // Repeated characters require usable character repeater host
+    if (Model.Characters.Num() > 0 && !HasUsableCharacterRepeaterHost())
     {
         return false;
     }
@@ -368,14 +371,15 @@ void UGV2LocationSceneWidgetBase::NativePreConstruct()
 bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V)
 {
     if (!CanApplyScreenField_Implementation(V)) return false;
-    Applied = V.LocationSceneValue;
+    const FGV2LocationSceneViewModel& Candidate = V.LocationSceneValue;
+
     FString E;
     if (SceneContextText)
     {
-        if (!Applied.ContextText.Text.IsEmpty())
+        if (!Candidate.ContextText.Text.IsEmpty())
         {
             SceneContextText->SetVisibility(ESlateVisibility::Visible);
-            if (!SceneContextText->ApplyText(Applied.ContextText)) return false;
+            if (!SceneContextText->ApplyText(Candidate.ContextText)) return false;
         }
         else
         {
@@ -384,10 +388,10 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
     }
     if (BackgroundTile)
     {
-        if (!Applied.BackgroundTileResourceId.IsEmpty())
+        if (!Candidate.BackgroundTileResourceId.IsEmpty())
         {
             BackgroundTile->SetVisibility(ESlateVisibility::Visible);
-            if (!BackgroundTile->ApplyImageResource(Applied.BackgroundTileResourceId, E)) return false;
+            if (!BackgroundTile->ApplyImageResource(Candidate.BackgroundTileResourceId, E)) return false;
         }
         else
         {
@@ -396,28 +400,14 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
     }
     if (Background)
     {
-        if (!Applied.BackgroundResourceId.IsEmpty())
+        if (!Candidate.BackgroundResourceId.IsEmpty())
         {
             Background->SetVisibility(ESlateVisibility::Visible);
-            if (!Background->ApplyOptionalImageResource(Applied.BackgroundResourceId, TEXT("textsystem:resource.ui.missing_background"), E)) return false;
+            if (!Background->ApplyOptionalImageResource(Candidate.BackgroundResourceId, TEXT("textsystem:resource.ui.missing_background"), E)) return false;
         }
         else
         {
             Background->SetVisibility(ESlateVisibility::Collapsed);
-        }
-    }
-    if (Character)
-    {
-        if (Applied.Characters.Num() > 0
-            && !Applied.Characters[0].ResourceId.IsEmpty()
-            && Applied.Characters[0].ResourceId != TEXT("textsystem:resource.ui.missing_character"))
-        {
-            Character->SetVisibility(ESlateVisibility::Visible);
-            if (!Character->ApplyOptionalImageResource(Applied.Characters[0].ResourceId, TEXT("textsystem:resource.ui.missing_character"), E)) return false;
-        }
-        else
-        {
-            Character->SetVisibility(ESlateVisibility::Collapsed);
         }
     }
 
@@ -427,7 +417,7 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
         if (CharClass != nullptr)
         {
             const bool bCharsOk = CharRep->ReconcileEntries<UGV2ImageWidgetBase, FGV2LocationCharacterEntry>(
-                Applied.Characters,
+                Candidate.Characters,
                 [](const FGV2LocationCharacterEntry& Entry) { return Entry.Key; },
                 [this, CharClass]() -> UGV2ImageWidgetBase*
                 {
@@ -444,6 +434,7 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
         }
     }
 
+    Applied = Candidate;
     return true;
 }
 
@@ -494,9 +485,14 @@ TSubclassOf<UGV2ButtonWidgetBase> UGV2LocationCommandPanelWidgetBase::ResolveBut
     return LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
 }
 
+bool UGV2LocationCommandPanelWidgetBase::HasUsableRepeaterHost() const
+{
+    return ButtonRepeater != nullptr || ButtonContainer != nullptr;
+}
+
 bool UGV2LocationCommandPanelWidgetBase::CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& Models) const
 {
-    if (Models.Num() > 0 && const_cast<UGV2LocationCommandPanelWidgetBase*>(this)->ResolveRepeater() == nullptr)
+    if (Models.Num() > 0 && !HasUsableRepeaterHost())
     {
         return false;
     }
@@ -516,9 +512,9 @@ bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2Butt
     UGV2ListViewWidgetBase* Repeater = ResolveRepeater();
     if (Repeater == nullptr)
     {
+        AppliedButtonModels = Models;
         return Models.Num() == 0;
     }
-    AppliedButtonModels = Models;
     const TSubclassOf<UGV2ButtonWidgetBase> Class = ResolveButtonWidgetClass();
 
     const bool bSuccess = Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(
@@ -542,6 +538,7 @@ bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2Butt
         });
 
     if (!bSuccess) return false;
+    AppliedButtonModels = Models;
     return true;
 }
 

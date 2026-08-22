@@ -3610,6 +3610,341 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
 }
 
 // =========================================================================
+// CCF-06..12: Location Composite Correctness Contract Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationCompositeContractTest,
+    "GV2.Runtime.UI.LocationCompositeContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    // -------------------------------------------------------------------------
+    // CCF-06: CanApply* is completely non-mutating
+    // -------------------------------------------------------------------------
+    {
+        UGV2LocationPlayerStatusWidgetBase* PlayerWidget = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+        UVerticalBox* MeterBox = NewObject<UVerticalBox>(TestWorld);
+        UWrapBox* ItemBox = NewObject<UWrapBox>(TestWorld);
+        UWrapBox* EffectBox = NewObject<UWrapBox>(TestWorld);
+        // Bind containers via reflection or child panel check
+        FGV2LocationPlayerStatusViewModel PreflightModel;
+        PreflightModel.Name.Text = FText::FromString(TEXT("Preflight Test"));
+        FGV2LocationMeterEntry M1;
+        M1.Key = FName(TEXT("hp"));
+        M1.Meter.Percent = 0.5f;
+        PreflightModel.Meters = { M1 };
+        PreflightModel.ItemIconResourceIds = { TEXT("item_1") };
+
+        FGV2ScreenFieldValue Field = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PreflightModel);
+
+        // Before CanApply: internal repeaters null
+        TestNull(TEXT("CCF-06: MeterRepeater null before CanApply"), PlayerWidget->GetMeterRepeater());
+        TestNull(TEXT("CCF-06: ItemRepeater null before CanApply"), PlayerWidget->GetItemRepeater());
+
+        // CanApply without container panel returns false because no repeater host
+        TestFalse(TEXT("CCF-06: CanApply without host returns false"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerWidget, Field));
+        TestNull(TEXT("CCF-06: MeterRepeater remains null after failed CanApply"), PlayerWidget->GetMeterRepeater());
+
+        // SceneView preflight non-mutation
+        UGV2LocationSceneWidgetBase* SceneWidget = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        FGV2LocationSceneViewModel SceneModel;
+        FGV2LocationCharacterEntry C1;
+        C1.Key = FName(TEXT("aria"));
+        SceneModel.Characters = { C1 };
+        FGV2ScreenFieldValue SceneField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel);
+
+        TestNull(TEXT("CCF-06: CharacterRepeater null before CanApply"), SceneWidget->GetCharacterRepeater());
+        TestFalse(TEXT("CCF-06: SceneView CanApply without host returns false"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneWidget, SceneField));
+        TestNull(TEXT("CCF-06: CharacterRepeater remains null after failed CanApply"), SceneWidget->GetCharacterRepeater());
+
+        // CommandPanel preflight non-mutation
+        UGV2LocationCommandPanelWidgetBase* CmdWidget = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+        FGV2ButtonViewModel Btn;
+        Btn.Key = FName(TEXT("btn_1"));
+        Btn.Binding = FGV2UiBindingHandle::Create(TEXT("cmd_1"));
+        TArray<FGV2ButtonViewModel> CmdBtns = { Btn };
+        TestNull(TEXT("CCF-06: Command Repeater null before CanApply"), CmdWidget->GetRepeater());
+        TestFalse(TEXT("CCF-06: CommandPanel CanApply without host returns false"), CmdWidget->CanApplyButtonModels(CmdBtns));
+        TestNull(TEXT("CCF-06: Command Repeater remains null after failed CanApply"), CmdWidget->GetRepeater());
+    }
+
+    // -------------------------------------------------------------------------
+    // CCF-07 & CCF-08: Repeated elements go through Repeater only (0, 1, 2 cases)
+    // -------------------------------------------------------------------------
+    {
+        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+
+        // 0 characters
+        FGV2LocationSceneViewModel Scene0;
+        FGV2ScreenFieldValue Field0 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), Scene0);
+        TestTrue(TEXT("CCF-07: 0 characters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, Field0));
+        UGV2ListViewWidgetBase* CharRep = SceneView->GetCharacterRepeater();
+        if (CharRep != nullptr)
+        {
+            TestEqual(TEXT("CCF-07: Repeater count 0 for empty characters"), CharRep->GetEntryCount(), 0);
+        }
+
+        // 1 character
+        FGV2LocationSceneViewModel Scene1;
+        FGV2LocationCharacterEntry CharA;
+        CharA.Key = FName(TEXT("c_aria"));
+        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        Scene1.Characters = { CharA };
+        FGV2ScreenFieldValue Field1 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), Scene1);
+        TestTrue(TEXT("CCF-07: 1 character applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, Field1));
+        if (CharRep != nullptr)
+        {
+            TestEqual(TEXT("CCF-07: Repeater count 1 for 1 character"), CharRep->GetEntryCount(), 1);
+            TestNotNull(TEXT("CCF-07: CharA entry in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_aria"))));
+        }
+
+        // 2 characters
+        FGV2LocationSceneViewModel Scene2;
+        FGV2LocationCharacterEntry CharB;
+        CharB.Key = FName(TEXT("c_merchant"));
+        CharB.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        Scene2.Characters = { CharA, CharB };
+        FGV2ScreenFieldValue Field2 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), Scene2);
+        TestTrue(TEXT("CCF-07: 2 characters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, Field2));
+        if (CharRep != nullptr)
+        {
+            TestEqual(TEXT("CCF-07: Repeater count 2 for 2 characters"), CharRep->GetEntryCount(), 2);
+            TestNotNull(TEXT("CCF-07: CharA still in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_aria"))));
+            TestNotNull(TEXT("CCF-07: CharB in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_merchant"))));
+        }
+
+        // CCF-08: PlayerStatus 0, 1, 2 meters
+        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
+        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+
+        // 0 meters
+        FGV2LocationPlayerStatusViewModel Status0;
+        Status0.Name.Text = FText::FromString(TEXT("Player"));
+        FGV2ScreenFieldValue StatusField0 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Status0);
+        TestTrue(TEXT("CCF-08: 0 meters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, StatusField0));
+        UGV2ListViewWidgetBase* MeterRep = PlayerStatus->GetMeterRepeater();
+        if (MeterRep != nullptr)
+        {
+            TestEqual(TEXT("CCF-08: Meter count 0"), MeterRep->GetEntryCount(), 0);
+        }
+
+        // 1 meter
+        FGV2LocationPlayerStatusViewModel Status1 = Status0;
+        FGV2LocationMeterEntry M_Stam;
+        M_Stam.Key = FName(TEXT("stamina"));
+        M_Stam.Meter.Percent = 0.7f;
+        Status1.Meters = { M_Stam };
+        FGV2ScreenFieldValue StatusField1 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Status1);
+        TestTrue(TEXT("CCF-08: 1 meter applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, StatusField1));
+        if (MeterRep != nullptr)
+        {
+            TestEqual(TEXT("CCF-08: Meter count 1"), MeterRep->GetEntryCount(), 1);
+            TestNotNull(TEXT("CCF-08: Stamina meter in repeater"), MeterRep->GetEntryWidget(FName(TEXT("stamina"))));
+        }
+
+        // 2 meters
+        FGV2LocationPlayerStatusViewModel Status2 = Status0;
+        FGV2LocationMeterEntry M_Hp;
+        M_Hp.Key = FName(TEXT("hp"));
+        M_Hp.Meter.Percent = 0.9f;
+        Status2.Meters = { M_Stam, M_Hp };
+        FGV2ScreenFieldValue StatusField2 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Status2);
+        TestTrue(TEXT("CCF-08: 2 meters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, StatusField2));
+        if (MeterRep != nullptr)
+        {
+            TestEqual(TEXT("CCF-08: Meter count 2"), MeterRep->GetEntryCount(), 2);
+            TestNotNull(TEXT("CCF-08: Stamina meter in repeater"), MeterRep->GetEntryWidget(FName(TEXT("stamina"))));
+            TestNotNull(TEXT("CCF-08: HP meter in repeater"), MeterRep->GetEntryWidget(FName(TEXT("hp"))));
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // CCF-09 & CCF-10: Partial composite apply atomicity on failure
+    // -------------------------------------------------------------------------
+    {
+        // PlayerStatus partial apply rejection
+        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
+        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+
+        FGV2LocationPlayerStatusViewModel Baseline;
+        Baseline.Name.Text = FText::FromString(TEXT("Old Player Name"));
+        Baseline.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        FGV2LocationMeterEntry M_Base;
+        M_Base.Key = FName(TEXT("stamina"));
+        M_Base.Meter.Percent = 0.70f;
+        Baseline.Meters = { M_Base };
+
+        FGV2ScreenFieldValue BaseField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Baseline);
+        TestTrue(TEXT("CCF-09: PlayerStatus baseline applies"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, BaseField));
+
+        // Candidate has valid new name/portrait, but invalid duplicate meter keys
+        FGV2LocationPlayerStatusViewModel BadCandidate = Baseline;
+        BadCandidate.Name.Text = FText::FromString(TEXT("New Player Name"));
+        BadCandidate.PortraitResourceId = TEXT("textsystem:resource.ui.missing_character");
+        BadCandidate.Meters = { M_Base, M_Base }; // duplicate key
+
+        FGV2ScreenFieldValue BadField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), BadCandidate);
+        TestFalse(TEXT("CCF-09: Candidate with duplicate meter keys rejected by CanApply"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, BadField));
+        TestFalse(TEXT("CCF-09: Candidate with duplicate meter keys rejected by Apply"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, BadField));
+
+        // Verify state is completely preserved as Baseline
+        FGV2ScreenFieldValue Captured;
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, Captured);
+        TestEqual(TEXT("CCF-09: Captured name remains Old Player Name"), Captured.LocationPlayerStatusValue.Name.Text.ToString(), TEXT("Old Player Name"));
+        TestEqual(TEXT("CCF-09: Captured portrait remains baseline"), Captured.LocationPlayerStatusValue.PortraitResourceId, TEXT("textsystem:resource.ui.missing_portrait"));
+        TestEqual(TEXT("CCF-09: Captured meter count remains 1"), Captured.LocationPlayerStatusValue.Meters.Num(), 1);
+
+        // SceneView partial apply rejection
+        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+
+        FGV2LocationSceneViewModel SceneBase;
+        SceneBase.ContextText.Text = FText::FromString(TEXT("Old Context"));
+        SceneBase.BackgroundResourceId = TEXT("textsystem:resource.ui.missing_background");
+        FGV2LocationCharacterEntry CharA;
+        CharA.Key = FName(TEXT("aria"));
+        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        SceneBase.Characters = { CharA };
+
+        FGV2ScreenFieldValue SceneBaseField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneBase);
+        TestTrue(TEXT("CCF-09: SceneView baseline applies"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneBaseField));
+
+        // Candidate has new context text, but invalid empty character key
+        FGV2LocationSceneViewModel SceneBad = SceneBase;
+        SceneBad.ContextText.Text = FText::FromString(TEXT("New Context"));
+        FGV2LocationCharacterEntry BadChar;
+        BadChar.Key = FName(); // empty key
+        BadChar.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        SceneBad.Characters = { BadChar };
+
+        FGV2ScreenFieldValue SceneBadField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneBad);
+        TestFalse(TEXT("CCF-09: SceneView candidate with empty key rejected"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneBadField));
+
+        FGV2ScreenFieldValue SceneCaptured;
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, SceneCaptured);
+        TestEqual(TEXT("CCF-09: SceneView captured context text remains Old Context"), SceneCaptured.LocationSceneValue.ContextText.Text.ToString(), TEXT("Old Context"));
+        TestEqual(TEXT("CCF-09: SceneView character count remains 1"), SceneCaptured.LocationSceneValue.Characters.Num(), 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // CCF-11: Reset semantics for all 4 composites
+    // -------------------------------------------------------------------------
+    {
+        // 1. TopBar Reset
+        UClass* TopBarClass = LoadClass<UGV2LocationTopBarWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_TopBar.WBP_TopBar_C"));
+        UGV2LocationTopBarWidgetBase* TopBar = TopBarClass ? CreateWidget<UGV2LocationTopBarWidgetBase>(TestWorld, TopBarClass) : NewObject<UGV2LocationTopBarWidgetBase>(TestWorld);
+
+        FGV2LocationTopBarViewModel TopA;
+        TopA.Day.Text = FText::FromString(TEXT("Day 10"));
+        TopA.Location.Text = FText::FromString(TEXT("Tavern"));
+        TopA.PrimaryResource.Text = FText::FromString(TEXT("Gold: 100"));
+        IGV2DynamicScreenElement::Execute_ApplyScreenField(TopBar, FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopA));
+
+        IGV2DynamicScreenElement::Execute_ResetScreenField(TopBar);
+        FGV2ScreenFieldValue TopCaptured;
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, TopCaptured);
+        TestTrue(TEXT("CCF-11: TopBar captured Day is empty after reset"), TopCaptured.LocationTopBarValue.Day.Text.IsEmpty());
+
+        FGV2LocationTopBarViewModel TopB;
+        TopB.Day.Text = FText::FromString(TEXT("Day 11"));
+        TopB.Location.Text = FText::FromString(TEXT("Forest"));
+        TopB.PrimaryResource.Text = FText::FromString(TEXT("Gold: 50"));
+        IGV2DynamicScreenElement::Execute_ApplyScreenField(TopBar, FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopB));
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, TopCaptured);
+        TestEqual(TEXT("CCF-11: TopBar has only Model B after reset and re-apply"), TopCaptured.LocationTopBarValue.Location.Text.ToString(), TEXT("Forest"));
+
+        // 2. PlayerStatus Reset
+        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
+        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+
+        FGV2LocationPlayerStatusViewModel StatusA;
+        StatusA.Name.Text = FText::FromString(TEXT("Player A"));
+        FGV2LocationMeterEntry M_A;
+        M_A.Key = FName(TEXT("sta"));
+        M_A.Meter.Percent = 0.5f;
+        StatusA.Meters = { M_A };
+        IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), StatusA));
+
+        IGV2DynamicScreenElement::Execute_ResetScreenField(PlayerStatus);
+        FGV2ScreenFieldValue StatusCaptured;
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, StatusCaptured);
+        TestTrue(TEXT("CCF-11: PlayerStatus captured Name is empty after reset"), StatusCaptured.LocationPlayerStatusValue.Name.Text.IsEmpty());
+        TestEqual(TEXT("CCF-11: PlayerStatus captured meter count 0 after reset"), StatusCaptured.LocationPlayerStatusValue.Meters.Num(), 0);
+
+        // 3. SceneView Reset
+        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+
+        FGV2LocationSceneViewModel SceneA;
+        SceneA.ContextText.Text = FText::FromString(TEXT("Context A"));
+        FGV2LocationCharacterEntry CharA;
+        CharA.Key = FName(TEXT("aria"));
+        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        SceneA.Characters = { CharA };
+        IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneA));
+
+        IGV2DynamicScreenElement::Execute_ResetScreenField(SceneView);
+        FGV2ScreenFieldValue SceneCap;
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, SceneCap);
+        TestTrue(TEXT("CCF-11: SceneView context empty after reset"), SceneCap.LocationSceneValue.ContextText.Text.IsEmpty());
+        TestEqual(TEXT("CCF-11: SceneView character count 0 after reset"), SceneCap.LocationSceneValue.Characters.Num(), 0);
+
+        // 4. CommandPanel Reset
+        UClass* CmdClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+        UGV2LocationCommandPanelWidgetBase* CmdPanel = CmdClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+
+        FGV2ButtonViewModel BtnA;
+        BtnA.Key = FName(TEXT("b1"));
+        BtnA.Binding = FGV2UiBindingHandle::Create(TEXT("cmd1"));
+        IGV2DynamicScreenElement::Execute_ApplyScreenField(CmdPanel, FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { BtnA }));
+
+        IGV2DynamicScreenElement::Execute_ResetScreenField(CmdPanel);
+        FGV2ScreenFieldValue CmdCap;
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(CmdPanel, CmdCap);
+        TestEqual(TEXT("CCF-11: CommandPanel count 0 after reset"), CmdCap.ButtonListValue.Num(), 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // CCF-12: Placeholder semantics verification
+    // -------------------------------------------------------------------------
+    {
+        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+
+        // Character with missing/invalid resource ID gracefully falls back to missing_character placeholder
+        FGV2LocationSceneViewModel ScenePlaceholder;
+        FGV2LocationCharacterEntry CharPlaceholder;
+        CharPlaceholder.Key = FName(TEXT("unknown_char"));
+        CharPlaceholder.ResourceId = TEXT("nonexistent:resource.invalid_char");
+        ScenePlaceholder.Characters = { CharPlaceholder };
+
+        FGV2ScreenFieldValue PlaceholderField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ScenePlaceholder);
+        TestTrue(TEXT("CCF-12: Character with invalid resource uses placeholder fallback and succeeds"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, PlaceholderField));
+
+        // Absence of optional background collapses background without failing
+        ScenePlaceholder.BackgroundResourceId = TEXT("");
+        FGV2ScreenFieldValue NoBgField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ScenePlaceholder);
+        TestTrue(TEXT("CCF-12: Absence of optional background applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, NoBgField));
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+// =========================================================================
 // UIH-05 & UIH-06: Text Pipeline DPI Scaling & Unified Sizing Test
 // =========================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(

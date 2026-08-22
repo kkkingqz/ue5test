@@ -163,7 +163,7 @@ git status --short
 - [x] M1 — [Repeater Atomicity and Identity](RepeaterAtomicity.md): failed
   reconciliation не мутирует live widgets, repeated entries имеют только
   stable explicit keys. CCF-01…05.
-- [ ] M2 — [Location Composite Correctness](LocationCompositeCorrectness.md):
+- [x] M2 — [Location Composite Correctness](LocationCompositeCorrectness.md):
   pure preflight, отсутствие `[0]` fallback paths, atomic composite apply,
   корректные reset/placeholders. CCF-06…12.
 - [ ] M3 — [Graphics Contract](GraphicsContract.md): `ScalePolicy` остаётся
