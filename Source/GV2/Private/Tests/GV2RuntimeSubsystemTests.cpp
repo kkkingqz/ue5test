@@ -3415,8 +3415,8 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Tile compatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::Tile));
     TestFalse(TEXT("Tile incompatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::FixedAspect));
 
-    TestTrue(TEXT("FreeStretch compatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::FixedAspect));
-    TestTrue(TEXT("FreeStretch compatible with NineSlice"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::NineSlice));
+    TestFalse(TEXT("FreeStretch incompatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::FixedAspect));
+    TestFalse(TEXT("FreeStretch incompatible with NineSlice"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::NineSlice));
     TestTrue(TEXT("FreeStretch compatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::Tile));
 
     // 2. Test ImageWidget atomic rollback on incompatible resource apply
@@ -3429,7 +3429,8 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
         WorldContext.SetCurrentWorld(TestWorld);
         GameInstance->Init();
 
-        UGV2ImageWidgetBase* ImageWidget = NewObject<UGV2ImageWidgetBase>(TestWorld);
+        UClass* ImageClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"));
+        UGV2ImageWidgetBase* ImageWidget = ImageClass ? CreateWidget<UGV2ImageWidgetBase>(TestWorld, ImageClass) : NewObject<UGV2ImageWidgetBase>(TestWorld);
         TestNotNull(TEXT("ImageWidget created"), ImageWidget);
 
         if (ImageWidget != nullptr)
@@ -3518,6 +3519,18 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             Model.ItemIconResourceIds = { TEXT("item1"), TEXT("item2"), TEXT("item3") };
             Model.EffectIconResourceIds = { TEXT("effect1"), TEXT("effect2") };
 
+            // Multiple meters rejected without meter repeater
+            FGV2LocationPlayerStatusViewModel MultiMeterModel = Model;
+            FGV2LocationMeterEntry Meter2;
+            Meter2.Key = FName(TEXT("mana"));
+            Meter2.Meter.Percent = 0.5f;
+            MultiMeterModel.Meters.Add(Meter2);
+            FGV2ScreenFieldValue MultiMeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MultiMeterModel);
+            if (PlayerStatus->GetMeterRepeater() == nullptr)
+            {
+                TestFalse(TEXT("PlayerStatus rejects multiple meters without repeater"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, MultiMeterField));
+            }
+
             FGV2ScreenFieldValue ValidField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model);
             TestTrue(TEXT("PlayerStatus accepts valid field descriptor"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, ValidField));
 
@@ -3527,6 +3540,13 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("PlayerStatus items count preserved"), Captured.LocationPlayerStatusValue.ItemIconResourceIds.Num(), 3);
             TestEqual(TEXT("PlayerStatus effects count preserved"), Captured.LocationPlayerStatusValue.EffectIconResourceIds.Num(), 2);
             TestEqual(TEXT("PlayerStatus meters count preserved"), Captured.LocationPlayerStatusValue.Meters.Num(), 1);
+
+            // Optional missing/placeholder resources do not fail screen apply
+            FGV2LocationPlayerStatusViewModel MissingResModel = Model;
+            MissingResModel.PortraitResourceId = TEXT("nonexistent:resource.portrait");
+            MissingResModel.ItemIconResourceIds = { TEXT("nonexistent:resource.item") };
+            FGV2ScreenFieldValue MissingResField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MissingResModel);
+            TestTrue(TEXT("PlayerStatus applies even with optional missing resources via placeholders"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, MissingResField));
 
             // ResetScreenField clears everything
             IGV2DynamicScreenElement::Execute_ResetScreenField(PlayerStatus);
@@ -3568,6 +3588,15 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             FGV2ScreenFieldValue Captured;
             IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
             TestEqual(TEXT("SceneView character count preserved"), Captured.LocationSceneValue.Characters.Num(), 1);
+
+            // Optional missing character image uses placeholder without failing
+            FGV2LocationSceneViewModel MissingCharScene;
+            FGV2LocationCharacterEntry MissingChar;
+            MissingChar.Key = FName(TEXT("npc"));
+            MissingChar.ResourceId = TEXT("nonexistent:resource.character");
+            MissingCharScene.Characters = { MissingChar };
+            FGV2ScreenFieldValue MissingCharField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), MissingCharScene);
+            TestTrue(TEXT("SceneView applies with missing character resource via placeholder"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, MissingCharField));
 
             // ResetScreenField
             IGV2DynamicScreenElement::Execute_ResetScreenField(SceneView);
