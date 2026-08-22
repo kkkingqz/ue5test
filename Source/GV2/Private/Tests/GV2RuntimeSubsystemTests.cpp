@@ -3381,6 +3381,16 @@ bool FGV2TextPipelineDpiScalingTest::RunTest(const FString& Parameters)
         TestNearlyEqual(TEXT("Plain text style font size matches TitleSize1080p"), (float)PlainStyle.Font.Size, TitleSize1080p, 0.1f);
     }
 
+    FTextBlockStyle BodyPlainStyle;
+    TestTrue(TEXT("Body style resolves for 1080p"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("body")), BodyPlainStyle, 1080.0f));
+    const float BodySize1080p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), 1080.0f);
+    TestNearlyEqual(TEXT("Body style font size matches BodySize1080p"), (float)BodyPlainStyle.Font.Size, BodySize1080p, 0.1f);
+
+    // Negative: Minimum readable font size is respected across all heights
+    const float MinReadable = Theme->MinReadableFontSize;
+    const float SmallAtLowRes = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("small")), 480.0f);
+    TestTrue(TEXT("Effective font size at 480p is clamped to >= MinReadableFontSize"), SmallAtLowRes >= MinReadable);
+
     return true;
 }
 
@@ -3394,7 +3404,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
 {
-    // Test ScalePolicy compatibility matrix
+    // 1. Test ScalePolicy compatibility matrix
     TestTrue(TEXT("PreserveAspect compatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::FixedAspect));
     TestFalse(TEXT("PreserveAspect incompatible with NineSlice"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::NineSlice));
     TestFalse(TEXT("PreserveAspect incompatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::Tile));
@@ -3405,6 +3415,44 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Tile compatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::Tile));
     TestFalse(TEXT("Tile incompatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::Tile, EGV2ImageRenderMode::FixedAspect));
 
+    TestTrue(TEXT("FreeStretch compatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::FixedAspect));
+    TestTrue(TEXT("FreeStretch compatible with NineSlice"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::NineSlice));
+    TestTrue(TEXT("FreeStretch compatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::Tile));
+
+    // 2. Test ImageWidget atomic rollback on incompatible resource apply
+    UGameInstance* GameInstance = NewObject<UGameInstance>();
+    GameInstance->AddToRoot();
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    if (TestWorld != nullptr)
+    {
+        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+        WorldContext.SetCurrentWorld(TestWorld);
+        GameInstance->Init();
+
+        UGV2ImageWidgetBase* ImageWidget = NewObject<UGV2ImageWidgetBase>(TestWorld);
+        TestNotNull(TEXT("ImageWidget created"), ImageWidget);
+
+        if (ImageWidget != nullptr)
+        {
+            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+
+            // Apply valid PreserveAspect resource
+            FString Error;
+            const bool bAppliedValid = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
+            TestTrue(TEXT("Valid PreserveAspect resource applies"), bAppliedValid);
+            TestEqual(TEXT("AppliedResourceId is missing_portrait"), ImageWidget->GetAppliedResourceId(), FString(TEXT("textsystem:resource.ui.missing_portrait")));
+
+            // Attempt to apply incompatible Tile resource
+            const bool bAppliedIncompatible = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            TestFalse(TEXT("Incompatible Tile resource is rejected under PreserveAspect"), bAppliedIncompatible);
+            TestEqual(TEXT("AppliedResourceId remains missing_portrait after rejected apply"), ImageWidget->GetAppliedResourceId(), FString(TEXT("textsystem:resource.ui.missing_portrait")));
+        }
+
+        GameInstance->Shutdown();
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
     return true;
 }
 
