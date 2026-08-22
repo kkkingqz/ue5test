@@ -181,6 +181,7 @@ struct FRenameDefinitionParams
     std::string OldDefinitionId;
     std::string NewDefinitionId;
     std::optional<FFileStateStamp> ExpectedStamp;
+    bool bCreateRedirect = false;
 };
 
 struct FDuplicateDefinitionParams

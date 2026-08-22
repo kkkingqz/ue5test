@@ -16,6 +16,7 @@ public:
     static FAuthoringResult DeleteDefinition(const FDeleteDefinitionParams& Params);
     static FAuthoringResult RenameDefinition(const FRenameDefinitionParams& Params);
     static FAuthoringResult DuplicateDefinition(const FDuplicateDefinitionParams& Params);
+    static FAuthoringResult RecoverPendingJournal(const std::filesystem::path& PackageRoot);
 
     static FFileStateStamp GetFileStateStamp(const std::filesystem::path& FilePath);
     static FFileStateStamp ComputeStamp(std::string_view Content);

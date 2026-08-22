@@ -817,6 +817,351 @@ bool TestArrayStructuralOperations()
     return true;
 }
 
+bool TestTypedReferencesAndLiveOverlay()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_typed_refs");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    description: { kind: 'string', required: false, default: '' },\n"
+        "    ref_item: { kind: 'ref', target_kind: 'item', required: false },\n"
+        "    text_title: { kind: 'text_id', required: false },\n"
+        "    icon_ref: { kind: 'resource_ref', resource_class: 'icon', required: false }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string ResourceSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.resource.v1',\n"
+        "  definition_type: 'resource',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    resource_class: { kind: 'string', required: true },\n"
+        "    path: { kind: 'string', required: true }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/resource.schema.json5", ResourceSchema);
+
+    std::string ItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.target_sword',\n"
+        "      data: { name: 'Target Sword', description: 'Just a sword' }\n"
+        "    },\n"
+        "    {\n"
+        "      id: 'core:item.other_sword',\n"
+        "      data: { name: 'Other Sword', description: 'Another sword' }\n"
+        "    },\n"
+        "    {\n"
+        "      id: 'core:item.referencing_hero',\n"
+        "      data: {\n"
+        "        name: 'Hero',\n"
+        "        description: 'core:item.fake_ref',\n"
+        "        ref_item: 'core:item.target_sword',\n"
+        "        text_title: 'core:text.sample.title',\n"
+        "        icon_ref: 'core:resource.item_icon'\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ItemsContent);
+
+    std::string ResourcesContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'resource',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:resource.item_icon',\n"
+        "      data: { resource_class: 'icon', path: 'textures/icon.png' }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/resources.json5", ResourcesContent);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-14: Test pickers without disk re-reading
+    auto IconTargets = Adapter.GetCompatibleResourceTargets("icon");
+    if (IconTargets.size() != 1 || IconTargets[0] != "core:resource.item_icon")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    auto ItemTargets = Adapter.GetCompatibleReferenceTargets("item");
+    if (ItemTargets.size() != 3)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-13: Negative false-positive test - description string 'core:item.fake_ref' is NOT a reference
+    auto FakeIncoming = Adapter.GetIncomingReferences("core:item.fake_ref");
+    if (!FakeIncoming.empty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Incoming reference for true typed ref target
+    auto TargetIncoming = Adapter.GetIncomingReferences("core:item.target_sword");
+    if (TargetIncoming.size() != 1 || TargetIncoming[0].SourceDefinitionId != "core:item.referencing_hero")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Load referencing definition
+    Adapter.LoadDefinition("core:item.referencing_hero", Diags);
+    auto Outgoing = Adapter.GetOutgoingReferences();
+    if (Outgoing.size() != 3)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-15: Dynamic in-memory overlay test
+    // Change ref_item to 'core:item.other_sword' without saving to disk
+    Adapter.SetCurrentFieldValue("/data/ref_item", GV2ContentCore::FValue("core:item.other_sword"));
+
+    auto OutgoingAfterEdit = Adapter.GetOutgoingReferences();
+    bool bHasOtherSword = false;
+    for (const auto& Ref : OutgoingAfterEdit)
+    {
+        if (Ref.TargetDefinitionId == "core:item.other_sword") bHasOtherSword = true;
+    }
+    if (!bHasOtherSword)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Check that target_sword no longer has incoming reference in overlay
+    auto TargetIncomingAfterEdit = Adapter.GetIncomingReferences("core:item.target_sword");
+    if (!TargetIncomingAfterEdit.empty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Check that other_sword now has incoming reference in overlay
+    auto OtherIncomingAfterEdit = Adapter.GetIncomingReferences("core:item.other_sword");
+    if (OtherIncomingAfterEdit.size() != 1 || OtherIncomingAfterEdit[0].SourceDefinitionId != "core:item.referencing_hero")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Discard changes
+    Adapter.DiscardCurrentChanges();
+    auto TargetIncomingAfterDiscard = Adapter.GetIncomingReferences("core:item.target_sword");
+    if (TargetIncomingAfterDiscard.size() != 1)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
+bool TestRenameImpactAndSchemaAwareRename()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_rename_impact");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    description: { kind: 'string', required: false, default: '' },\n"
+        "    ref_item: { kind: 'ref', target_kind: 'item', required: false }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string ItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.original_sword',\n"
+        "      data: { name: 'Original Sword', description: 'Original description' }\n"
+        "    },\n"
+        "    {\n"
+        "      id: 'core:item.wielder',\n"
+        "      data: {\n"
+        "        name: 'Wielder',\n"
+        "        description: 'core:item.original_sword',\n"
+        "        ref_item: 'core:item.original_sword'\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ItemsContent);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-16: Rename Impact Report
+    auto Impact = Adapter.CalculateRenameImpact("core:item.original_sword", "core:item.renamed_sword");
+    if (!Impact.bCanRenameDirectly || Impact.bHasExternalReferences || Impact.TotalReplacements != 2 || Impact.OwnPackageReferences.size() != 1)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-17: Schema-Aware Rename
+    auto RenameRes = Adapter.RenameDefinition("core:item.original_sword", "core:item.renamed_sword", true);
+    if (!RenameRes.IsSuccess())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Verify rewritten file content
+    std::string Rewritten = ReadFile(CoreDir / "definitions/items.json5");
+    // Definition ID must be updated
+    if (Rewritten.find("'core:item.renamed_sword'") == std::string::npos &&
+        Rewritten.find("\"core:item.renamed_sword\"") == std::string::npos)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Scalar description string must NOT be changed!
+    if (Rewritten.find("description: 'core:item.original_sword'") == std::string::npos &&
+        Rewritten.find("description: \"core:item.original_sword\"") == std::string::npos)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Redirect created in package.json5
+    std::string PkgJson = ReadFile(CoreDir / "package.json5");
+    if (PkgJson.find("core:item.original_sword") == std::string::npos ||
+        PkgJson.find("core:item.renamed_sword") == std::string::npos)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
+bool TestTransactionJournalRecovery()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_journal_recovery");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string OrigContent = "{\n  schema_version: 1,\n  type: 'item',\n  definitions: []\n}\n";
+    WriteFile(CoreDir / "definitions/items.json5", OrigContent);
+
+    // Create journal simulating crash mid-transaction
+    std::string JournalContent =
+        "{\n"
+        "  transaction_id: 'crash_test',\n"
+        "  entries: [\n"
+        "    {\n"
+        "      relative_path: 'definitions/items.json5',\n"
+        "      original_content: '{\\n  schema_version: 1,\\n  type: \\'item\\',\\n  definitions: []\\n}\\n'\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / ".gv2_authoring_journal.json5", JournalContent);
+
+    // Corrupt the file on disk as if partially written
+    WriteFile(CoreDir / "definitions/items.json5", "{ corrupted partial content");
+
+    auto RecovRes = GV2ContentAuthoring::FAuthoringService::RecoverPendingJournal(CoreDir);
+    if (RecovRes.Status != GV2ContentAuthoring::EAuthoringStatus::Success)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Verify file restored
+    std::string Restored = ReadFile(CoreDir / "definitions/items.json5");
+    if (Restored != OrigContent)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Verify journal file cleaned up
+    if (std::filesystem::exists(CoreDir / ".gv2_authoring_journal.json5"))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
 std::string RunEditorAdapterConformance()
 {
     if (!TestAdapterInitializationAndIndexing())
@@ -862,6 +1207,18 @@ std::string RunEditorAdapterConformance()
     if (!TestArrayStructuralOperations())
     {
         return "TestArrayStructuralOperations failed";
+    }
+    if (!TestTypedReferencesAndLiveOverlay())
+    {
+        return "TestTypedReferencesAndLiveOverlay failed";
+    }
+    if (!TestRenameImpactAndSchemaAwareRename())
+    {
+        return "TestRenameImpactAndSchemaAwareRename failed";
+    }
+    if (!TestTransactionJournalRecovery())
+    {
+        return "TestTransactionJournalRecovery failed";
     }
 
     std::string ReadSurfaceError = RunReadSurfaceConformance();

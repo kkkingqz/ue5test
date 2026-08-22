@@ -197,11 +197,19 @@ public:
         const std::string& TargetDefinitionId);
 
     /**
-     * Renames an existing definition across all references in the owning package (CED-04).
+     * Calculates pre-rename impact assessment (CEH-16).
+     */
+    FRenameImpactReport CalculateRenameImpact(
+        const std::string& OldDefinitionId,
+        const std::string& NewDefinitionId) const;
+
+    /**
+     * Renames an existing definition across all typed references in the owning package (CED-04, CEH-17).
      */
     FGV2EditorAuthoringResult RenameDefinition(
         const std::string& OldDefinitionId,
-        const std::string& NewDefinitionId);
+        const std::string& NewDefinitionId,
+        bool bCreateRedirect = false);
 
     /**
      * Deletes an existing definition atomically (CED-03).
@@ -220,22 +228,23 @@ public:
         const std::string& DefinitionType,
         const std::optional<std::string>& OwningPackageId = std::nullopt) const;
 
-    /** Scans outgoing references for the active loaded definition ("Uses", CED-12). */
+    /** Scans outgoing references for the active loaded definition ("Uses", CED-12, CEH-15). */
     std::vector<FGV2ReferenceItem> GetOutgoingReferences() const;
 
-    /** Scans incoming references targeting a definition ("Used by", CED-12). */
+    /** Scans incoming references targeting a definition ("Used by", CED-12, CEH-15). */
     std::vector<FGV2ReferenceItem> GetIncomingReferences(
         const std::string& DefinitionId) const;
 
-    /** Returns compatible target definition IDs for a given expected kind (CED-12). */
+    /** Returns compatible target definition IDs for a given expected kind (CED-12, CEH-14). */
     std::vector<std::string> GetCompatibleReferenceTargets(
         const std::string& ExpectedKind) const;
 
-    /** Returns resource definition IDs filtered by canonical resource_class. */
+    /** Returns resource definition IDs filtered by canonical resource_class (CEH-14). */
     std::vector<std::string> GetCompatibleResourceTargets(
         const std::string& ResourceClass) const;
 
 private:
+    void UpdatePendingReferenceOverlay();
     std::filesystem::path FindPackageRootById(const std::string& PackageId) const;
     std::filesystem::path FindPackageRootForDefinition(const std::string& DefinitionId) const;
     static FGV2EditorAuthoringResult ConvertAuthoringResult(
@@ -246,6 +255,7 @@ private:
     std::vector<GV2ContentCore::FPackageDescriptor> DiscoveredPackages;
     std::vector<std::filesystem::path> PackageRoots;
     GV2ContentAuthoring::FAuthoringIndex AuthoringIndex;
+    FGV2AuthoringReferenceIndex AuthoringReferenceIndex;
     std::vector<FGV2DefinitionSummary> IndexedDefinitions;
 
     std::optional<FGV2LoadedDefinition> CurrentDefinition;

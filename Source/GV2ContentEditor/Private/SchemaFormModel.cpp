@@ -97,6 +97,8 @@ FGV2SchemaFormModel FGV2SchemaFormModel::BuildFromSchema(
     FGV2SchemaFormModel Model;
     Model.DefinitionType = Schema.GetKey().DefinitionType;
     Model.SchemaId = Schema.GetSchemaId();
+    Model.CompiledRootSpec = Schema.GetCompiledRootSpec();
+    Model.ExtensionSchemas = ExtensionSchemas;
 
     const auto& RootSpec = Schema.GetCompiledRootSpec();
     if (RootSpec != nullptr && RootSpec->Kind == GV2ContentCore::EFieldKind::Object)

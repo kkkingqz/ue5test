@@ -3,6 +3,7 @@
 
 #include "GV2ContentCore/DefinitionEnvelope.h"
 #include "GV2ContentCore/Diagnostic.h"
+#include "GV2ContentCore/ExtensionSchema.h"
 #include "GV2ContentCore/FieldValidation.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/PackageDescriptor.h"
@@ -27,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <unordered_map>
 #include <vector>
 
 namespace GV2ContentAuthoring
@@ -369,9 +371,50 @@ std::vector<GV2ContentCore::FPackageDescriptor> MakeCandidateDescriptors(
         }
 
         std::vector<std::string> Sources = Descriptor.GetRelativeSources();
+        auto Redirects = Descriptor.GetRedirects();
+        auto Tombstones = Descriptor.GetTombstones();
+
         for (const auto& [RelativeSource, Content] : Overrides)
         {
-            (void)Content;
+            if (RelativeSource == "package.json5")
+            {
+                GV2ContentCore::FParseLimits Limits;
+                std::vector<GV2ContentCore::FDiagnostic> Diags;
+                auto PkgDoc = GV2ContentCore::ParseJson5Document(Content, Limits, Diags, Descriptor.GetPackageId(), Descriptor.GetLoadIndex(), "package.json5");
+                if (PkgDoc.has_value() && PkgDoc->GetRootValue().IsObject())
+                {
+                    if (const auto* RedVal = PkgDoc->GetRootValue().FindField("redirects"))
+                    {
+                        if (RedVal->IsObject())
+                        {
+                            Redirects.clear();
+                            for (const auto& [SrcId, TgtVal] : RedVal->AsObject())
+                            {
+                                if (TgtVal.IsString())
+                                {
+                                    Redirects.emplace_back(SrcId, TgtVal.AsString());
+                                }
+                            }
+                        }
+                    }
+                    if (const auto* TombVal = PkgDoc->GetRootValue().FindField("tombstones"))
+                    {
+                        if (TombVal->IsArray())
+                        {
+                            Tombstones.clear();
+                            for (const auto& T : TombVal->AsArray())
+                            {
+                                if (T.IsString())
+                                {
+                                    Tombstones.push_back(T.AsString());
+                                }
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+
             if (std::find(Sources.begin(), Sources.end(), RelativeSource) == Sources.end())
             {
                 Sources.push_back(RelativeSource);
@@ -386,8 +429,8 @@ std::vector<GV2ContentCore::FPackageDescriptor> MakeCandidateDescriptors(
             std::move(Sources),
             Descriptor.GetSchemaBindings(),
             Descriptor.GetExtensionSchemaBindings(),
-            Descriptor.GetRedirects(),
-            Descriptor.GetTombstones(),
+            std::move(Redirects),
+            std::move(Tombstones),
             Descriptor.GetVersion(),
             Descriptor.GetDependencies());
     }
@@ -1433,6 +1476,129 @@ FAuthoringResult FAuthoringService::DeleteDefinition(const FDeleteDefinitionPara
     return Result;
 }
 
+namespace
+{
+
+std::string EscapeJsonPointerSegment(std::string_view Token)
+{
+    std::string Escaped;
+    for (const char Character : Token)
+    {
+        if (Character == '~')
+        {
+            Escaped += "~0";
+        }
+        else if (Character == '/')
+        {
+            Escaped += "~1";
+        }
+        else
+        {
+            Escaped.push_back(Character);
+        }
+    }
+    return Escaped;
+}
+
+struct FLoadedSchemas
+{
+    std::unordered_map<std::string, GV2ContentCore::FSchemaResource> SchemasByType;
+    std::vector<GV2ContentCore::FExtensionSchemaResource> ExtensionSchemas;
+};
+
+void CollectTypedReferencePointers(
+    const GV2ContentCore::FValue& Value,
+    const GV2ContentCore::FCompiledFieldSpec* Spec,
+    const std::string& Pointer,
+    const std::string& TargetDefinitionId,
+    std::vector<std::string>& OutPointers)
+{
+    if (Spec == nullptr || Value.IsNull()) return;
+
+    if (Spec->Kind == GV2ContentCore::EFieldKind::Reference ||
+        Spec->Kind == GV2ContentCore::EFieldKind::TextId ||
+        Spec->Kind == GV2ContentCore::EFieldKind::ResourceReference)
+    {
+        if (Value.IsString() && Value.AsString() == TargetDefinitionId)
+        {
+            OutPointers.push_back(Pointer);
+        }
+        return;
+    }
+
+    if (Spec->Kind == GV2ContentCore::EFieldKind::Object && Value.IsObject())
+    {
+        for (const auto& Field : Spec->Fields)
+        {
+            const auto* ChildVal = Value.FindField(Field.Name);
+            if (ChildVal != nullptr)
+            {
+                CollectTypedReferencePointers(
+                    *ChildVal,
+                    Field.Spec.get(),
+                    Pointer + "/" + EscapeJsonPointerSegment(Field.Name),
+                    TargetDefinitionId,
+                    OutPointers);
+            }
+        }
+        return;
+    }
+
+    if (Spec->Kind == GV2ContentCore::EFieldKind::Array && Value.IsArray())
+    {
+        const auto& Arr = Value.AsArray();
+        for (std::size_t i = 0; i < Arr.size(); ++i)
+        {
+            CollectTypedReferencePointers(
+                Arr[i],
+                Spec->Items.get(),
+                Pointer + "/" + std::to_string(i),
+                TargetDefinitionId,
+                OutPointers);
+        }
+        return;
+    }
+
+    if (Spec->Kind == GV2ContentCore::EFieldKind::Map && Value.IsObject())
+    {
+        for (const auto& [Key, ChildVal] : Value.AsObject())
+        {
+            CollectTypedReferencePointers(
+                ChildVal,
+                Spec->MapValues.get(),
+                Pointer + "/" + EscapeJsonPointerSegment(Key),
+                TargetDefinitionId,
+                OutPointers);
+        }
+        return;
+    }
+
+    if (Spec->Kind == GV2ContentCore::EFieldKind::Union && Value.IsObject())
+    {
+        const auto* DiscVal = Value.FindField(Spec->Discriminator);
+        if (DiscVal != nullptr && DiscVal->IsString())
+        {
+            const std::string& DiscStr = DiscVal->AsString();
+            for (const auto& Variant : Spec->Variants)
+            {
+                if (Variant.DiscriminatorValue == DiscStr)
+                {
+                    CollectTypedReferencePointers(
+                        Value,
+                        Variant.Spec.get(),
+                        Pointer,
+                        TargetDefinitionId,
+                        OutPointers);
+                    break;
+                }
+            }
+        }
+        return;
+    }
+}
+
+} // namespace
+
 FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionParams& Params)
 {
     FAuthoringResult Result;
@@ -1503,6 +1669,56 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
         return Result;
     }
 
+    // Load all schemas and extension schemas across packages in the set
+    std::vector<FLoadedSchemas> LoadedSchemas(Set.Descriptors.size());
+    GV2ContentCore::FParseLimits Limits;
+
+    for (std::size_t PkgIdx = 0; PkgIdx < Set.Descriptors.size(); ++PkgIdx)
+    {
+        const auto& Pkg = Set.Descriptors[PkgIdx];
+        const auto& Root = Set.Roots[PkgIdx];
+
+        for (const auto& Binding : Pkg.GetSchemaBindings())
+        {
+            std::filesystem::path SchemaPath = Root / Binding.GetRelativePath();
+            std::string SchemaContent;
+            if (!ReadEntireFile(SchemaPath, SchemaContent)) continue;
+
+            std::vector<GV2ContentCore::FDiagnostic> Diags;
+            auto SchemaDoc = GV2ContentCore::ParseJson5Document(
+                SchemaContent, Limits, Diags, Pkg.GetPackageId(), Pkg.GetLoadIndex(), Binding.GetRelativePath());
+            if (SchemaDoc.has_value())
+            {
+                auto SchemaRes = GV2ContentCore::ParseSchemaResource(
+                    *SchemaDoc, Binding, Pkg.GetPackageId(), Pkg.GetLoadIndex(), Binding.GetRelativePath(), Diags);
+                if (SchemaRes.has_value())
+                {
+                    LoadedSchemas[PkgIdx].SchemasByType.emplace(Binding.GetDefinitionType(), std::move(*SchemaRes));
+                }
+            }
+        }
+
+        for (const auto& ExtBinding : Pkg.GetExtensionSchemaBindings())
+        {
+            std::filesystem::path ExtPath = Root / ExtBinding.GetRelativePath();
+            std::string ExtContent;
+            if (!ReadEntireFile(ExtPath, ExtContent)) continue;
+
+            std::vector<GV2ContentCore::FDiagnostic> Diags;
+            auto ExtDoc = GV2ContentCore::ParseJson5Document(
+                ExtContent, Limits, Diags, Pkg.GetPackageId(), Pkg.GetLoadIndex(), ExtBinding.GetRelativePath());
+            if (ExtDoc.has_value())
+            {
+                auto ExtRes = GV2ContentCore::ParseExtensionSchemaResource(
+                    *ExtDoc, ExtBinding, Pkg.GetPackageId(), Pkg.GetLoadIndex(), ExtBinding.GetRelativePath(), Diags);
+                if (ExtRes.has_value())
+                {
+                    LoadedSchemas[PkgIdx].ExtensionSchemas.push_back(std::move(*ExtRes));
+                }
+            }
+        }
+    }
+
     struct FPendingFileUpdate
     {
         std::filesystem::path FilePath;
@@ -1514,7 +1730,6 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
     std::size_t TotalReplacements = 0;
     bool bFoundDefinition = false;
     std::filesystem::path DefinitionFilePath;
-    GV2ContentCore::FParseLimits Limits;
 
     for (const std::string& RelSource : TargetDescriptor.GetRelativeSources())
     {
@@ -1526,43 +1741,110 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
         auto ParsedDocument = GV2ContentCore::ParseJson5Document(
             Content, Limits, ParseDiagnostics,
             TargetDescriptor.GetPackageId(), TargetDescriptor.GetLoadIndex(), RelSource);
-        if (ParsedDocument.has_value())
+        if (!ParsedDocument.has_value() || !ParsedDocument->GetRootValue().IsObject()) continue;
+
+        const auto* TypeVal = ParsedDocument->GetRootValue().FindField("type");
+        if (TypeVal == nullptr || !TypeVal->IsString()) continue;
+        const std::string DefType = TypeVal->AsString();
+
+        // Find schema for DefType
+        const GV2ContentCore::FSchemaResource* SchemaRes = nullptr;
+        for (std::size_t SearchIdx = 0; SearchIdx < Set.Descriptors.size(); ++SearchIdx)
         {
-            const auto* Definitions = ParsedDocument->GetRootValue().FindField("definitions");
-            if (Definitions && Definitions->IsArray())
+            auto It = LoadedSchemas[SearchIdx].SchemasByType.find(DefType);
+            if (It != LoadedSchemas[SearchIdx].SchemasByType.end())
             {
-                for (const auto& Definition : Definitions->AsArray())
+                SchemaRes = &It->second;
+                break;
+            }
+        }
+
+        const auto* Definitions = ParsedDocument->GetRootValue().FindField("definitions");
+        if (Definitions == nullptr || !Definitions->IsArray()) continue;
+
+        std::vector<std::string> PointersToReplace;
+
+        for (std::size_t DefIdx = 0; DefIdx < Definitions->AsArray().size(); ++DefIdx)
+        {
+            const auto& Definition = Definitions->AsArray()[DefIdx];
+            if (!Definition.IsObject()) continue;
+
+            const auto* Id = Definition.FindField("id");
+            if (Id && Id->IsString())
+            {
+                if (Id->AsString() == Params.NewDefinitionId)
                 {
-                    const auto* Id = Definition.IsObject() ? Definition.FindField("id") : nullptr;
-                    if (Id && Id->IsString() && Id->AsString() == Params.NewDefinitionId)
+                    Result.Status = EAuthoringStatus::DuplicateDefinitionId;
+                    Result.ErrorCode = "duplicate_definition_id";
+                    Result.ErrorMessage = "Definition ID '" + Params.NewDefinitionId
+                        + "' already exists in package";
+                    return Result;
+                }
+                if (Id->AsString() == Params.OldDefinitionId)
+                {
+                    bFoundDefinition = true;
+                    DefinitionFilePath = FilePath;
+                    PointersToReplace.push_back("/definitions/" + std::to_string(DefIdx) + "/id");
+                }
+            }
+
+            // Scan typed references in data
+            const auto* DataVal = Definition.FindField("data");
+            if (SchemaRes != nullptr && DataVal != nullptr)
+            {
+                CollectTypedReferencePointers(
+                    *DataVal,
+                    SchemaRes->GetCompiledRootSpec().get(),
+                    "/definitions/" + std::to_string(DefIdx) + "/data",
+                    Params.OldDefinitionId,
+                    PointersToReplace);
+            }
+
+            // Scan typed references in extensions
+            const auto* ExtVal = Definition.FindField("extensions");
+            if (ExtVal != nullptr && ExtVal->IsObject())
+            {
+                for (const auto& [ExtNs, ExtBlock] : ExtVal->AsObject())
+                {
+                    for (const auto& ExtPkg : LoadedSchemas)
                     {
-                        Result.Status = EAuthoringStatus::DuplicateDefinitionId;
-                        Result.ErrorCode = "duplicate_definition_id";
-                        Result.ErrorMessage = "Definition ID '" + Params.NewDefinitionId
-                            + "' already exists in package";
-                        return Result;
-                    }
-                    if (Id && Id->IsString() && Id->AsString() == Params.OldDefinitionId)
-                    {
-                        bFoundDefinition = true;
-                        DefinitionFilePath = FilePath;
+                        for (const auto& ExtSchema : ExtPkg.ExtensionSchemas)
+                        {
+                            if (ExtSchema.GetKey().DefinitionType == DefType && ExtSchema.GetKey().ExtensionNamespace == ExtNs)
+                            {
+                                CollectTypedReferencePointers(
+                                    ExtBlock,
+                                    ExtSchema.GetCompiledRootSpec().get(),
+                                    "/definitions/" + std::to_string(DefIdx) + "/extensions/" + EscapeJsonPointerSegment(ExtNs),
+                                    Params.OldDefinitionId,
+                                    PointersToReplace);
+                            }
+                        }
                     }
                 }
             }
         }
 
-        auto RenameRes = ReplaceStringTokens(
-            Content,
-            Params.OldDefinitionId,
-            Params.NewDefinitionId,
-            TargetDescriptor.GetPackageId(),
-            RelSource);
-
-        if (RenameRes.bSuccess && RenameRes.ReplacementsCount > 0)
+        if (!PointersToReplace.empty())
         {
+            std::string UpdatedContent = Content;
+            for (const auto& Ptr : PointersToReplace)
+            {
+                auto SetRes = SetFieldValue(
+                    UpdatedContent,
+                    Ptr,
+                    GV2ContentCore::FValue(Params.NewDefinitionId),
+                    TargetDescriptor.GetPackageId(),
+                    RelSource);
+                if (SetRes.Status == ESetFieldValueStatus::Success)
+                {
+                    UpdatedContent = std::move(SetRes.UpdatedContent);
+                }
+            }
+
             FilesToUpdate.push_back({
-                FilePath, RelSource, Content, std::move(RenameRes.UpdatedContent)});
-            TotalReplacements += RenameRes.ReplacementsCount;
+                FilePath, RelSource, Content, std::move(UpdatedContent)});
+            TotalReplacements += PointersToReplace.size();
         }
     }
 
@@ -1583,6 +1865,83 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
         return Result;
     }
 
+    // Handle package.json5 redirects
+    std::filesystem::path PkgJsonPath = TargetRoot / "package.json5";
+    std::string PkgJsonContent;
+    if (ReadEntireFile(PkgJsonPath, PkgJsonContent))
+    {
+        std::vector<GV2ContentCore::FDiagnostic> PkgDiags;
+        auto PkgDoc = GV2ContentCore::ParseJson5Document(
+            PkgJsonContent, Limits, PkgDiags, TargetDescriptor.GetPackageId(), TargetDescriptor.GetLoadIndex(), "package.json5");
+        if (PkgDoc.has_value() && PkgDoc->GetRootValue().IsObject())
+        {
+            bool bPkgJsonModified = false;
+            std::string UpdatedPkgJson = PkgJsonContent;
+
+            // Check existing redirects
+            const auto* RedVal = PkgDoc->GetRootValue().FindField("redirects");
+            if (RedVal != nullptr && RedVal->IsObject())
+            {
+                for (const auto& [SrcId, TgtVal] : RedVal->AsObject())
+                {
+                    if (TgtVal.IsString() && TgtVal.AsString() == Params.OldDefinitionId)
+                    {
+                        auto SetRes = SetFieldValue(
+                            UpdatedPkgJson,
+                            "/redirects/" + EscapeJsonPointerSegment(SrcId),
+                            GV2ContentCore::FValue(Params.NewDefinitionId),
+                            TargetDescriptor.GetPackageId(),
+                            "package.json5");
+                        if (SetRes.Status == ESetFieldValueStatus::Success)
+                        {
+                            UpdatedPkgJson = std::move(SetRes.UpdatedContent);
+                            bPkgJsonModified = true;
+                            TotalReplacements++;
+                        }
+                    }
+                }
+            }
+
+            if (Params.bCreateRedirect)
+            {
+                if (RedVal != nullptr && RedVal->IsObject())
+                {
+                    auto SetRes = SetFieldValue(
+                        UpdatedPkgJson,
+                        "/redirects/" + EscapeJsonPointerSegment(Params.OldDefinitionId),
+                        GV2ContentCore::FValue(Params.NewDefinitionId),
+                        TargetDescriptor.GetPackageId(),
+                        "package.json5");
+                    if (SetRes.Status == ESetFieldValueStatus::Success)
+                    {
+                        UpdatedPkgJson = std::move(SetRes.UpdatedContent);
+                        bPkgJsonModified = true;
+                    }
+                }
+                else
+                {
+                    auto NewRoot = PkgDoc->GetRootValue();
+                    NewRoot.AsObject().push_back({
+                        "redirects",
+                        GV2ContentCore::FValue::MakeObject({
+                            {Params.OldDefinitionId, GV2ContentCore::FValue(Params.NewDefinitionId)}
+                        })
+                    });
+                    std::ostringstream Oss;
+                    FormatJson5Value(Oss, NewRoot, 0);
+                    UpdatedPkgJson = Oss.str() + "\n";
+                    bPkgJsonModified = true;
+                }
+            }
+
+            if (bPkgJsonModified)
+            {
+                FilesToUpdate.push_back({
+                    PkgJsonPath, "package.json5", PkgJsonContent, std::move(UpdatedPkgJson)});
+            }
+        }
+    }
+
     FCandidateOverrides Overrides;
     for (const auto& Update : FilesToUpdate)
     {
@@ -1593,8 +1952,39 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
         return Result;
     }
 
-    // Each replacement is atomic. Candidate validation above guarantees that no
-    // invalid repository state is deliberately committed.
+    // Write transaction journal for crash safety (CEH-17)
+    std::filesystem::path JournalPath = TargetRoot / ".gv2_authoring_journal.json5";
+    {
+        GV2ContentCore::FValue::FArray JournalEntries;
+        for (const auto& Update : FilesToUpdate)
+        {
+            JournalEntries.push_back(GV2ContentCore::FValue::MakeObject({
+                {"relative_path", GV2ContentCore::FValue(Update.RelativeSource)},
+                {"original_content", GV2ContentCore::FValue(Update.OriginalContent)}
+            }));
+        }
+        auto JournalObj = GV2ContentCore::FValue::MakeObject({
+            {"transaction_id", GV2ContentCore::FValue("rename_" + Params.OldDefinitionId + "_to_" + Params.NewDefinitionId)},
+            {"package_id", GV2ContentCore::FValue(TargetDescriptor.GetPackageId())},
+            {"old_id", GV2ContentCore::FValue(Params.OldDefinitionId)},
+            {"new_id", GV2ContentCore::FValue(Params.NewDefinitionId)},
+            {"entries", GV2ContentCore::FValue(std::move(JournalEntries))}
+        });
+
+        std::ostringstream Oss;
+        FormatJson5Value(Oss, JournalObj, 0);
+        std::string JournalContent = Oss.str() + "\n";
+        std::string JournalWriteErr;
+        if (!AtomicWriteFile(JournalPath, JournalContent, JournalWriteErr))
+        {
+            Result.Status = EAuthoringStatus::FileWriteFailed;
+            Result.ErrorCode = "journal_write_failed";
+            Result.ErrorMessage = "Failed to write transaction journal: " + JournalWriteErr;
+            return Result;
+        }
+    }
+
+    // Commit each file atomically
     std::size_t CommittedCount = 0;
     for (const auto& Update : FilesToUpdate)
     {
@@ -1614,6 +2004,7 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
                         + ": " + RollbackError;
                 }
             }
+            std::filesystem::remove(JournalPath);
             Result.Status = EAuthoringStatus::FileWriteFailed;
             Result.ErrorCode = "file_write_failed";
             Result.ErrorMessage = bRollbackSucceeded
@@ -1624,6 +2015,9 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
         ++CommittedCount;
     }
 
+    // Transaction committed successfully: clean up journal
+    std::filesystem::remove(JournalPath);
+
     Result.Status = EAuthoringStatus::Success;
     Result.AffectedDefinitionsCount = TotalReplacements;
     Result.AffectedFilesCount = FilesToUpdate.size();
@@ -1632,6 +2026,63 @@ FAuthoringResult FAuthoringService::RenameDefinition(const FRenameDefinitionPara
     {
         Result.AffectedFilePaths.push_back(Update.FilePath);
     }
+    return Result;
+}
+
+FAuthoringResult FAuthoringService::RecoverPendingJournal(const std::filesystem::path& PackageRoot)
+{
+    FAuthoringResult Result;
+    std::filesystem::path JournalPath = PackageRoot / ".gv2_authoring_journal.json5";
+    if (!std::filesystem::exists(JournalPath))
+    {
+        Result.Status = EAuthoringStatus::Success;
+        return Result;
+    }
+
+    std::string JournalContent;
+    if (!ReadEntireFile(JournalPath, JournalContent))
+    {
+        Result.Status = EAuthoringStatus::ToolFailure;
+        Result.ErrorCode = "journal_read_failed";
+        Result.ErrorMessage = "Failed to read pending transaction journal";
+        return Result;
+    }
+
+    GV2ContentCore::FParseLimits Limits;
+    std::vector<GV2ContentCore::FDiagnostic> Diags;
+    auto Doc = GV2ContentCore::ParseJson5Document(JournalContent, Limits, Diags, "", 0, ".gv2_authoring_journal.json5");
+    if (!Doc.has_value() || !Doc->GetRootValue().IsObject())
+    {
+        std::filesystem::remove(JournalPath);
+        Result.Status = EAuthoringStatus::InvalidValue;
+        Result.ErrorCode = "invalid_journal";
+        Result.ErrorMessage = "Corrupt transaction journal removed";
+        return Result;
+    }
+
+    const auto* Entries = Doc->GetRootValue().FindField("entries");
+    if (Entries != nullptr && Entries->IsArray())
+    {
+        for (const auto& Entry : Entries->AsArray())
+        {
+            if (Entry.IsObject())
+            {
+                const auto* RelPath = Entry.FindField("relative_path");
+                const auto* OrigContent = Entry.FindField("original_content");
+                if (RelPath && RelPath->IsString() && OrigContent && OrigContent->IsString())
+                {
+                    std::filesystem::path FilePath = PackageRoot / RelPath->AsString();
+                    std::string WriteErr;
+                    AtomicWriteFile(FilePath, OrigContent->AsString(), WriteErr);
+                    Result.AffectedFilePaths.push_back(FilePath);
+                }
+            }
+        }
+    }
+
+    std::filesystem::remove(JournalPath);
+    Result.Status = EAuthoringStatus::Success;
+    Result.AffectedFilesCount = Result.AffectedFilePaths.size();
     return Result;
 }
 

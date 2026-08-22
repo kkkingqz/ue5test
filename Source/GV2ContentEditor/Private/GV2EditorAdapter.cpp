@@ -278,6 +278,8 @@ bool FGV2EditorAdapter::RefreshIndex(std::vector<FGV2EditorDiagnostic>& OutDiagn
         IndexedDefinitions.push_back(FGV2DefinitionSummary::FromLocator(Loc));
     }
 
+    AuthoringReferenceIndex.BuildIndex(PackageRoots, DiscoveredPackages, IndexedDefinitions);
+
     return true;
 }
 
@@ -464,6 +466,7 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
     DirtyFields.clear();
 
     CurrentDefinition = Loaded;
+    AuthoringReferenceIndex.ClearPendingDefinitionReferences(Loaded.Id);
     return CurrentDefinition;
 }
 
@@ -521,6 +524,29 @@ void FGV2EditorAdapter::SetCurrentFieldValue(
     {
         PendingOperations.push_back(GV2ContentAuthoring::FFieldOp::MakeSet(Ptr, Val));
     }
+
+    UpdatePendingReferenceOverlay();
+}
+
+void FGV2EditorAdapter::UpdatePendingReferenceOverlay()
+{
+    if (!CurrentDefinition.has_value()) return;
+
+    auto FormModel = GetFormModelForDefinitionType(CurrentDefinition->Type, CurrentDefinition->PackageId);
+    const auto* RootSpec = FormModel.has_value() ? FormModel->CompiledRootSpec.get() : nullptr;
+    const auto* DataVal = CandidateDefinitionValue.FindField("data");
+    const auto* ExtVal = CandidateDefinitionValue.FindField("extensions");
+
+    auto PendingRefs = FGV2ReferenceScanner::ExtractTypedReferences(
+        DataVal ? *DataVal : GV2ContentCore::FValue(),
+        RootSpec,
+        ExtVal ? *ExtVal : GV2ContentCore::FValue(),
+        FormModel.has_value() ? FormModel->ExtensionSchemas : std::vector<GV2ContentCore::FExtensionSchemaResource>{},
+        CurrentDefinition->Id,
+        CurrentDefinition->PackageId,
+        CurrentDefinition->RelativeSource);
+
+    AuthoringReferenceIndex.SetPendingDefinitionReferences(CurrentDefinition->Id, PendingRefs);
 }
 
 std::optional<GV2ContentCore::FValue> FGV2EditorAdapter::GetCurrentFieldValue(
@@ -621,6 +647,7 @@ void FGV2EditorAdapter::RemoveCurrentProperty(const std::string& JsonPointer)
     PendingOperations.push_back(GV2ContentAuthoring::FFieldOp::MakeRemoveProperty(NormPtr));
     CurrentValues.erase(NormPtr);
     DirtyFields[NormPtr] = GV2ContentCore::FValue::MakeNull();
+    UpdatePendingReferenceOverlay();
 }
 
 void FGV2EditorAdapter::ResetCurrentFieldToDefault(const std::string& JsonPointer)
@@ -648,6 +675,7 @@ void FGV2EditorAdapter::InsertCurrentArrayElement(
         DirtyFields[NormPtr] = *NewArr;
         CurrentValues[NormPtr] = *NewArr;
     }
+    UpdatePendingReferenceOverlay();
 }
 
 void FGV2EditorAdapter::RemoveCurrentArrayElement(
@@ -669,6 +697,7 @@ void FGV2EditorAdapter::RemoveCurrentArrayElement(
         DirtyFields[NormPtr] = *NewArr;
         CurrentValues[NormPtr] = *NewArr;
     }
+    UpdatePendingReferenceOverlay();
 }
 
 void FGV2EditorAdapter::MoveCurrentArrayElement(
@@ -691,6 +720,7 @@ void FGV2EditorAdapter::MoveCurrentArrayElement(
         DirtyFields[NormPtr] = *NewArr;
         CurrentValues[NormPtr] = *NewArr;
     }
+    UpdatePendingReferenceOverlay();
 }
 
 std::vector<FGV2FormFieldDescriptor> FGV2EditorAdapter::GetAllAbsentOptionalFields() const
@@ -751,6 +781,7 @@ void FGV2EditorAdapter::DiscardCurrentChanges()
             {"deprecated", GV2ContentCore::FValue(CurrentDefinition->bDeprecated)},
             {"extensions", CurrentDefinition->Extensions}
         });
+        AuthoringReferenceIndex.ClearPendingDefinitionReferences(CurrentDefinition->Id);
     }
     PendingOperations.clear();
     CurrentValues.clear();
@@ -805,9 +836,9 @@ FGV2EditorAuthoringResult FGV2EditorAdapter::SaveCurrentDefinition()
 
     if (Result.IsSuccess())
     {
-        // Reload exact definition locator into memory to update baseline and stamp
         const auto SavedLocator = CurrentDefinition->Locator;
         std::vector<FGV2EditorDiagnostic> ReloadDiags;
+        RefreshIndex(ReloadDiags);
         LoadDefinition(SavedLocator, ReloadDiags);
         for (auto& D : ReloadDiags)
         {
@@ -898,12 +929,14 @@ FGV2EditorAuthoringResult FGV2EditorAdapter::DeleteDefinition(
 
 FGV2EditorAuthoringResult FGV2EditorAdapter::RenameDefinition(
     const std::string& OldDefinitionId,
-    const std::string& NewDefinitionId)
+    const std::string& NewDefinitionId,
+    bool bCreateRedirect)
 {
     GV2ContentAuthoring::FRenameDefinitionParams Params;
     Params.PackageRoot = FindPackageRootForDefinition(OldDefinitionId);
     Params.OldDefinitionId = OldDefinitionId;
     Params.NewDefinitionId = NewDefinitionId;
+    Params.bCreateRedirect = bCreateRedirect;
     if (CurrentDefinition.has_value() && CurrentDefinition->Id == OldDefinitionId)
     {
         Params.ExpectedStamp = CurrentDefinition->Stamp;
@@ -923,6 +956,92 @@ FGV2EditorAuthoringResult FGV2EditorAdapter::RenameDefinition(
     }
 
     return Result;
+}
+
+FRenameImpactReport FGV2EditorAdapter::CalculateRenameImpact(
+    const std::string& OldDefinitionId,
+    const std::string& NewDefinitionId) const
+{
+    FRenameImpactReport Report;
+    Report.OldDefinitionId = OldDefinitionId;
+    Report.NewDefinitionId = NewDefinitionId;
+
+    for (const auto& Summary : IndexedDefinitions)
+    {
+        if (Summary.Id == OldDefinitionId)
+        {
+            Report.SourcePackageId = Summary.PackageId;
+            Report.SourceFilePath = FindPackageRootById(Summary.PackageId) / Summary.RelativeSource;
+            break;
+        }
+    }
+
+    GV2ContentCore::FStableIdView OldIdView, NewIdView;
+    if (!GV2ContentCore::FStableId::Parse(OldDefinitionId, OldIdView) ||
+        !GV2ContentCore::FStableId::Parse(NewDefinitionId, NewIdView))
+    {
+        Report.bCanRenameDirectly = false;
+        return Report;
+    }
+
+    if (Report.SourcePackageId.empty())
+    {
+        Report.SourcePackageId = std::string(OldIdView.Namespace);
+        Report.SourceFilePath = FindPackageRootById(Report.SourcePackageId);
+    }
+
+    if (OldIdView.Kind != NewIdView.Kind)
+    {
+        Report.bCanRenameDirectly = false;
+        return Report;
+    }
+
+    // Check redirect and tombstone conflicts
+    for (const auto& Pkg : DiscoveredPackages)
+    {
+        for (const auto& Redirect : Pkg.GetRedirects())
+        {
+            if (Redirect.GetSourceId() == NewDefinitionId || Redirect.GetTargetId() == NewDefinitionId)
+            {
+                Report.RedirectConflicts.push_back(Redirect.GetSourceId() + " -> " + Redirect.GetTargetId());
+                Report.bCanRenameDirectly = false;
+            }
+        }
+        for (const auto& Tombstone : Pkg.GetTombstones())
+        {
+            if (Tombstone == NewDefinitionId)
+            {
+                Report.TombstoneConflicts.push_back(Tombstone);
+                Report.bCanRenameDirectly = false;
+            }
+        }
+    }
+
+    // Find incoming references
+    auto InRefs = AuthoringReferenceIndex.GetIncomingReferences(OldDefinitionId);
+    std::set<std::string> UniqueFiles;
+    UniqueFiles.insert(Report.SourceFilePath.string());
+    Report.TotalReplacements = 1; // The definition id itself
+
+    for (const auto& Ref : InRefs)
+    {
+        if (Ref.SourceLocator.PackageId == Report.SourcePackageId)
+        {
+            Report.OwnPackageReferences.push_back(Ref);
+            UniqueFiles.insert(Ref.RelativeSource);
+            Report.TotalReplacements++;
+        }
+        else
+        {
+            FGV2ReferenceItem ExtRef = Ref;
+            ExtRef.bIsExternal = true;
+            Report.ExternalPackageReferences.push_back(ExtRef);
+            Report.bHasExternalReferences = true;
+        }
+    }
+
+    Report.TotalFilesAffected = UniqueFiles.size();
+    return Report;
 }
 
 std::vector<FGV2EditorDiagnostic> FGV2EditorAdapter::ValidateRepository() const
@@ -1087,58 +1206,25 @@ std::vector<FGV2ReferenceItem> FGV2EditorAdapter::GetOutgoingReferences() const
     {
         return {};
     }
-    return FGV2ReferenceScanner::FindOutgoingReferences(*CurrentDefinition);
+    return AuthoringReferenceIndex.GetOutgoingReferences(CurrentDefinition->Id);
 }
 
 std::vector<FGV2ReferenceItem> FGV2EditorAdapter::GetIncomingReferences(
     const std::string& DefinitionId) const
 {
-    return FGV2ReferenceScanner::FindIncomingReferences(
-        DefinitionId,
-        IndexedDefinitions,
-        PackageRoots,
-        DiscoveredPackages);
+    return AuthoringReferenceIndex.GetIncomingReferences(DefinitionId);
 }
 
 std::vector<std::string> FGV2EditorAdapter::GetCompatibleReferenceTargets(
     const std::string& ExpectedKind) const
 {
-    return FGV2ReferenceScanner::FindCompatibleTargets(
-        ExpectedKind,
-        IndexedDefinitions);
+    return AuthoringReferenceIndex.GetCompatibleReferenceTargets(ExpectedKind);
 }
 
 std::vector<std::string> FGV2EditorAdapter::GetCompatibleResourceTargets(
     const std::string& ResourceClass) const
 {
-    std::vector<std::string> Result;
-    GV2ContentCore::FParseLimits Limits;
-    for (const auto& Summary : IndexedDefinitions)
-    {
-        if (Summary.Type != "resource") continue;
-        std::string Content;
-        if (!ReadFileContent(FindPackageRootById(Summary.PackageId) / Summary.RelativeSource, Content)) continue;
-        std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-        auto Document = GV2ContentCore::ParseJson5Document(
-            Content, Limits, Diagnostics, Summary.PackageId, 0, Summary.RelativeSource);
-        if (!Document.has_value()) continue;
-        const auto* Definitions = Document->GetRootValue().FindField("definitions");
-        if (Definitions == nullptr || !Definitions->IsArray()) continue;
-        for (const auto& Definition : Definitions->AsArray())
-        {
-            const auto* Id = Definition.FindField("id");
-            const auto* Data = Definition.FindField("data");
-            const auto* Class = Data && Data->IsObject() ? Data->FindField("resource_class") : nullptr;
-            if (Id && Id->IsString() && Id->AsString() == Summary.Id
-                && Class && Class->IsString() && Class->AsString() == ResourceClass)
-            {
-                Result.push_back(Summary.Id);
-                break;
-            }
-        }
-    }
-    std::sort(Result.begin(), Result.end());
-    return Result;
+    return AuthoringReferenceIndex.GetCompatibleResourceTargets(ResourceClass);
 }
 
 std::filesystem::path FGV2EditorAdapter::FindPackageRootById(const std::string& PackageId) const

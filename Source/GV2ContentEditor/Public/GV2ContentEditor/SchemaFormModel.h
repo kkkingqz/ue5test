@@ -57,6 +57,8 @@ struct GV2_CONTENT_EDITOR_API FGV2SchemaFormModel final
 {
     std::string DefinitionType;
     std::string SchemaId;
+    GV2ContentCore::FCompiledFieldSpecPtr CompiledRootSpec;
+    std::vector<GV2ContentCore::FExtensionSchemaResource> ExtensionSchemas;
     std::vector<FGV2FormCategorySection> Categories;
     std::vector<FGV2FormFieldDescriptor> AllFields;
 
