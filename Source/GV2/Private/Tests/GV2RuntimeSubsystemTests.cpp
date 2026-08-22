@@ -3191,6 +3191,143 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Entry count unchanged after rejected apply"), ListView->GetEntryCount(), 3);
     }
 
+    // 2. UIH-02: Test CommandPanel using Core Repeater
+    {
+        UClass* CommandClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+        UGV2LocationCommandPanelWidgetBase* CmdPanel = CommandClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+        TestNotNull(TEXT("CmdPanel instantiated"), CmdPanel);
+
+        FGV2ButtonViewModel BtnA;
+        BtnA.Key = FName(TEXT("btn_a"));
+        BtnA.Text.Text = FText::FromString(TEXT("Action A"));
+        BtnA.Binding = FGV2UiBindingHandle::Create(TEXT("binding_a"));
+
+        FGV2ButtonViewModel BtnB;
+        BtnB.Key = FName(TEXT("btn_b"));
+        BtnB.Text.Text = FText::FromString(TEXT("Action B"));
+        BtnB.Binding = FGV2UiBindingHandle::Create(TEXT("binding_b"));
+
+        FGV2ButtonViewModel BtnC;
+        BtnC.Key = FName(TEXT("btn_c"));
+        BtnC.Text.Text = FText::FromString(TEXT("Action C"));
+        BtnC.Binding = FGV2UiBindingHandle::Create(TEXT("binding_c"));
+
+        const TArray<FGV2ButtonViewModel> InitialButtons = { BtnA, BtnB, BtnC };
+        FGV2ScreenFieldValue InitialField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), InitialButtons);
+        TestTrue(TEXT("Initial buttons apply successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(CmdPanel, InitialField));
+
+        UGV2ListViewWidgetBase* Repeater = CmdPanel->GetRepeater();
+        TestNotNull(TEXT("CommandPanel has active Repeater"), Repeater);
+        if (Repeater != nullptr)
+        {
+            TestEqual(TEXT("CommandPanel Repeater has 3 entries"), Repeater->GetEntryCount(), 3);
+            UWidget* WidgetA = Repeater->GetEntryWidget(FName(TEXT("btn_a")));
+            UWidget* WidgetB = Repeater->GetEntryWidget(FName(TEXT("btn_b")));
+            TestNotNull(TEXT("Button A widget exists"), WidgetA);
+            TestNotNull(TEXT("Button B widget exists"), WidgetB);
+
+            // Reorder & update: { BtnB, BtnD, BtnA } -> BtnB & BtnA must be reused
+            FGV2ButtonViewModel BtnD;
+            BtnD.Key = FName(TEXT("btn_d"));
+            BtnD.Text.Text = FText::FromString(TEXT("Action D"));
+            BtnD.Binding = FGV2UiBindingHandle::Create(TEXT("binding_d"));
+
+            const TArray<FGV2ButtonViewModel> UpdatedButtons = { BtnB, BtnD, BtnA };
+            FGV2ScreenFieldValue UpdatedField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), UpdatedButtons);
+            TestTrue(TEXT("Updated buttons apply successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(CmdPanel, UpdatedField));
+
+            TestEqual(TEXT("CommandPanel Repeater has 3 entries after update"), Repeater->GetEntryCount(), 3);
+            TestEqual(TEXT("Button B widget reused (same pointer)"), Repeater->GetEntryWidget(FName(TEXT("btn_b"))), WidgetB);
+            TestEqual(TEXT("Button A widget reused (same pointer)"), Repeater->GetEntryWidget(FName(TEXT("btn_a"))), WidgetA);
+            TestNull(TEXT("Button C widget removed"), Repeater->GetEntryWidget(FName(TEXT("btn_c"))));
+            TestNotNull(TEXT("Button D widget created"), Repeater->GetEntryWidget(FName(TEXT("btn_d"))));
+        }
+
+        // Negative: Duplicate button key rejected
+        FGV2ButtonViewModel BadBtn;
+        BadBtn.Key = FName(TEXT("btn_b"));
+        BadBtn.Binding = FGV2UiBindingHandle::Create(TEXT("bad_binding"));
+        FGV2ScreenFieldValue DupField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { BtnB, BadBtn });
+        TestFalse(TEXT("Duplicate button key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CmdPanel, DupField));
+
+        // Negative: Empty button key rejected
+        FGV2ButtonViewModel EmptyKeyBtn;
+        EmptyKeyBtn.Key = FName();
+        EmptyKeyBtn.Binding = FGV2UiBindingHandle::Create(TEXT("empty_binding"));
+        FGV2ScreenFieldValue EmptyKeyField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { EmptyKeyBtn });
+        TestFalse(TEXT("Empty button key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CmdPanel, EmptyKeyField));
+    }
+
+    // 3. UIH-03: Test PlayerStatus item/effect collections using Core Repeater
+    {
+        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
+        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+        TestNotNull(TEXT("PlayerStatus instantiated"), PlayerStatus);
+
+        FGV2LocationPlayerStatusViewModel Model1;
+        Model1.Name.Text = FText::FromString(TEXT("Player"));
+        Model1.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        Model1.ItemIconResourceIds = { TEXT("item_sword"), TEXT("item_shield") };
+        Model1.EffectIconResourceIds = { TEXT("effect_buff") };
+
+        FGV2ScreenFieldValue Field1 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model1);
+        TestTrue(TEXT("PlayerStatus Field1 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field1));
+
+        UGV2ListViewWidgetBase* ItemRep = PlayerStatus->GetItemRepeater();
+        TestNotNull(TEXT("ItemRepeater exists"), ItemRep);
+        if (ItemRep != nullptr)
+        {
+            TestEqual(TEXT("ItemRepeater count is 2"), ItemRep->GetEntryCount(), 2);
+            UWidget* SwordWidget = ItemRep->GetEntryWidget(FName(TEXT("item_sword")));
+            TestNotNull(TEXT("Sword item widget exists"), SwordWidget);
+
+            // Reorder and add item: { item_shield, item_potion, item_sword }
+            FGV2LocationPlayerStatusViewModel Model2 = Model1;
+            Model2.ItemIconResourceIds = { TEXT("item_shield"), TEXT("item_potion"), TEXT("item_sword") };
+            FGV2ScreenFieldValue Field2 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model2);
+            TestTrue(TEXT("PlayerStatus Field2 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field2));
+
+            TestEqual(TEXT("ItemRepeater count is 3 after update"), ItemRep->GetEntryCount(), 3);
+            TestEqual(TEXT("Sword item widget reused (same pointer)"), ItemRep->GetEntryWidget(FName(TEXT("item_sword"))), SwordWidget);
+            TestNotNull(TEXT("Potion item widget created"), ItemRep->GetEntryWidget(FName(TEXT("item_potion"))));
+        }
+    }
+
+    // 4. UIH-04: Test SceneView character collection using Core Repeater
+    {
+        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        TestNotNull(TEXT("SceneView instantiated"), SceneView);
+
+        // Positive single character with key identity
+        FGV2LocationSceneViewModel SceneModel;
+        FGV2LocationCharacterEntry CharA;
+        CharA.Key = FName(TEXT("aria"));
+        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        SceneModel.Characters = { CharA };
+
+        FGV2ScreenFieldValue SceneField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel);
+        TestTrue(TEXT("SceneView accepts character entry"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, SceneField));
+        TestTrue(TEXT("SceneView applies character entry"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneField));
+
+        FGV2ScreenFieldValue Captured;
+        IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
+        TestEqual(TEXT("Captured character count is 1"), Captured.LocationSceneValue.Characters.Num(), 1);
+        if (Captured.LocationSceneValue.Characters.Num() > 0)
+        {
+            TestEqual(TEXT("Captured character key matches"), Captured.LocationSceneValue.Characters[0].Key, FName(TEXT("aria")));
+        }
+
+        // Negative: Empty character key rejected
+        FGV2LocationCharacterEntry EmptyChar;
+        EmptyChar.Key = FName();
+        EmptyChar.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
+        FGV2LocationSceneViewModel BadModel;
+        BadModel.Characters = { EmptyChar };
+        FGV2ScreenFieldValue BadField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), BadModel);
+        TestFalse(TEXT("Empty character key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, BadField));
+    }
+
     GameInstance->Shutdown();
     if (TestWorld != nullptr)
     {

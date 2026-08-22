@@ -48,6 +48,12 @@ public:
     virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutValue) const override;
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetItemRepeater() { return ResolveItemRepeater(); }
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetEffectRepeater() { return ResolveEffectRepeater(); }
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetMeterRepeater() { return ResolveMeterRepeater(); }
 protected:
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PlayerNameText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2PortraitWidgetBase> Portrait;
@@ -82,6 +88,8 @@ public:
     virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutValue) const override;
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetCharacterRepeater() { return ResolveCharacterRepeater(); }
 protected:
     virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> SceneContextText;
