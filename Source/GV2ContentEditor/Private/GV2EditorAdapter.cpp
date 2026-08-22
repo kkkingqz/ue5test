@@ -3,6 +3,7 @@
 #include "GV2ContentEditor/SchemaFormModel.h"
 #include "GV2ContentAuthoring/AuthoringService.h"
 #include "GV2ContentAuthoring/AuthoringTypes.h"
+#include "GV2ContentAuthoring/Json5AstRewriter.h"
 #include "GV2ContentCore/AuthoringMetadata.h"
 #include "GV2ContentCore/DefinitionEnvelope.h"
 #include "GV2ContentCore/Diagnostic.h"
@@ -111,6 +112,48 @@ const GV2ContentCore::FValue* ResolveDefinitionRelativeValue(
     if (Pointer.rfind("/extensions/", 0) == 0)
     {
         return ResolveValueByPointer(Definition.Extensions, Pointer.substr(11));
+    }
+    return nullptr;
+}
+
+const GV2ContentCore::FValue* ResolveDefinitionRelativeValue(
+    const GV2ContentCore::FValue& DefVal,
+    const std::string& Pointer)
+{
+    if (Pointer == "/data")
+    {
+        return DefVal.FindField("data");
+    }
+    if (Pointer.rfind("/data/", 0) == 0)
+    {
+        const auto* Data = DefVal.FindField("data");
+        return Data ? ResolveValueByPointer(*Data, Pointer.substr(5)) : nullptr;
+    }
+    if (Pointer == "/extensions")
+    {
+        return DefVal.FindField("extensions");
+    }
+    if (Pointer.rfind("/extensions/", 0) == 0)
+    {
+        const auto* Ext = DefVal.FindField("extensions");
+        return Ext ? ResolveValueByPointer(*Ext, Pointer.substr(11)) : nullptr;
+    }
+    if (Pointer == "/tags")
+    {
+        return DefVal.FindField("tags");
+    }
+    if (Pointer.rfind("/tags/", 0) == 0)
+    {
+        const auto* Tags = DefVal.FindField("tags");
+        return Tags ? ResolveValueByPointer(*Tags, Pointer.substr(5)) : nullptr;
+    }
+    if (Pointer == "/deprecated")
+    {
+        return DefVal.FindField("deprecated");
+    }
+    if (Pointer == "/id")
+    {
+        return DefVal.FindField("id");
     }
     return nullptr;
 }
@@ -405,6 +448,21 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
         Loaded.Extensions = *ExtField;
     }
 
+    GV2ContentCore::FValue::FArray TagsArr;
+    for (const auto& T : Loaded.Tags) TagsArr.emplace_back(T);
+
+    CandidateDefinitionValue = GV2ContentCore::FValue::MakeObject({
+        {"id", GV2ContentCore::FValue(Loaded.Id)},
+        {"data", Loaded.CanonicalData},
+        {"tags", GV2ContentCore::FValue(std::move(TagsArr))},
+        {"deprecated", GV2ContentCore::FValue(Loaded.bDeprecated)},
+        {"extensions", Loaded.Extensions}
+    });
+
+    PendingOperations.clear();
+    CurrentValues.clear();
+    DirtyFields.clear();
+
     CurrentDefinition = Loaded;
     return CurrentDefinition;
 }
@@ -440,6 +498,12 @@ void FGV2EditorAdapter::SetCurrentFieldValue(
     {
         return;
     }
+
+    std::string Err;
+    GV2ContentAuthoring::ApplyFieldOpToDefinitionValue(
+        CandidateDefinitionValue, NormPtr,
+        GV2ContentAuthoring::FFieldOp::MakeSet(NormPtr, NewValue), Err);
+
     CurrentValues[NormPtr] = NewValue;
 
     const auto* BaselineVal = ResolveDefinitionRelativeValue(*CurrentDefinition, NormPtr);
@@ -450,6 +514,12 @@ void FGV2EditorAdapter::SetCurrentFieldValue(
     else
     {
         DirtyFields[NormPtr] = NewValue;
+    }
+
+    PendingOperations.clear();
+    for (const auto& [Ptr, Val] : DirtyFields)
+    {
+        PendingOperations.push_back(GV2ContentAuthoring::FFieldOp::MakeSet(Ptr, Val));
     }
 }
 
@@ -463,18 +533,203 @@ std::optional<GV2ContentCore::FValue> FGV2EditorAdapter::GetCurrentFieldValue(
     {
         return std::nullopt;
     }
-    auto It = CurrentValues.find(NormPtr);
-    if (It != CurrentValues.end())
-    {
-        return It->second;
-    }
 
-    const auto* BaselineVal = ResolveDefinitionRelativeValue(*CurrentDefinition, NormPtr);
-    if (BaselineVal != nullptr)
+    const auto* Val = ResolveDefinitionRelativeValue(CandidateDefinitionValue, NormPtr);
+    if (Val != nullptr)
     {
-        return *BaselineVal;
+        return *Val;
     }
     return std::nullopt;
+}
+
+EPropertyPresence FGV2EditorAdapter::GetPropertyPresence(
+    const std::string& JsonPointer,
+    const GV2ContentCore::FCompiledFieldSpec* Spec,
+    bool bRequired) const
+{
+    if (!CurrentDefinition.has_value())
+    {
+        return EPropertyPresence::Absent;
+    }
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    const auto* Val = ResolveDefinitionRelativeValue(CandidateDefinitionValue, NormPtr);
+    if (Val != nullptr)
+    {
+        return EPropertyPresence::Explicit;
+    }
+
+    if (Spec != nullptr && Spec->DefaultValue.has_value())
+    {
+        return EPropertyPresence::ImplicitDefault;
+    }
+
+    if (bRequired)
+    {
+        return EPropertyPresence::RequiredMissing;
+    }
+
+    return EPropertyPresence::Absent;
+}
+
+void FGV2EditorAdapter::AddCurrentOptionalProperty(const std::string& JsonPointer)
+{
+    if (!CurrentDefinition.has_value()) return;
+
+    auto FormModelOpt = GetFormModelForDefinitionType(CurrentDefinition->Type, CurrentDefinition->PackageId);
+    if (!FormModelOpt.has_value()) return;
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    const FGV2FormFieldDescriptor* TargetField = nullptr;
+    for (const auto& Field : FormModelOpt->AllFields)
+    {
+        if (NormalizePointer(Field.JsonPointer) == NormPtr)
+        {
+            TargetField = &Field;
+            break;
+        }
+    }
+
+    GV2ContentCore::FValue InitialVal = GV2ContentCore::FValue::MakeString("");
+    if (TargetField != nullptr && TargetField->Spec != nullptr)
+    {
+        if (TargetField->Spec->DefaultValue.has_value())
+        {
+            InitialVal = *TargetField->Spec->DefaultValue;
+        }
+        else
+        {
+            InitialVal = GV2ContentAuthoring::GeneratePlaceholderValue(
+                *TargetField->Spec, CurrentDefinition->PackageId,
+                CurrentDefinition->Type, TargetField->FieldName, TargetField->FieldName);
+        }
+    }
+
+    SetCurrentFieldValue(NormPtr, InitialVal);
+}
+
+void FGV2EditorAdapter::RemoveCurrentProperty(const std::string& JsonPointer)
+{
+    if (!CurrentDefinition.has_value()) return;
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    std::string Err;
+    GV2ContentAuthoring::ApplyFieldOpToDefinitionValue(
+        CandidateDefinitionValue, NormPtr,
+        GV2ContentAuthoring::FFieldOp::MakeRemoveProperty(NormPtr), Err);
+
+    PendingOperations.push_back(GV2ContentAuthoring::FFieldOp::MakeRemoveProperty(NormPtr));
+    CurrentValues.erase(NormPtr);
+    DirtyFields[NormPtr] = GV2ContentCore::FValue::MakeNull();
+}
+
+void FGV2EditorAdapter::ResetCurrentFieldToDefault(const std::string& JsonPointer)
+{
+    RemoveCurrentProperty(JsonPointer);
+}
+
+void FGV2EditorAdapter::InsertCurrentArrayElement(
+    const std::string& JsonPointer,
+    std::size_t Index,
+    const GV2ContentCore::FValue& Value)
+{
+    if (!CurrentDefinition.has_value()) return;
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    std::string Err;
+    GV2ContentAuthoring::ApplyFieldOpToDefinitionValue(
+        CandidateDefinitionValue, NormPtr,
+        GV2ContentAuthoring::FFieldOp::MakeInsertArrayElement(NormPtr, Index, Value), Err);
+
+    PendingOperations.push_back(GV2ContentAuthoring::FFieldOp::MakeInsertArrayElement(NormPtr, Index, Value));
+    const auto* NewArr = ResolveDefinitionRelativeValue(CandidateDefinitionValue, NormPtr);
+    if (NewArr != nullptr)
+    {
+        DirtyFields[NormPtr] = *NewArr;
+        CurrentValues[NormPtr] = *NewArr;
+    }
+}
+
+void FGV2EditorAdapter::RemoveCurrentArrayElement(
+    const std::string& JsonPointer,
+    std::size_t Index)
+{
+    if (!CurrentDefinition.has_value()) return;
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    std::string Err;
+    GV2ContentAuthoring::ApplyFieldOpToDefinitionValue(
+        CandidateDefinitionValue, NormPtr,
+        GV2ContentAuthoring::FFieldOp::MakeRemoveArrayElement(NormPtr, Index), Err);
+
+    PendingOperations.push_back(GV2ContentAuthoring::FFieldOp::MakeRemoveArrayElement(NormPtr, Index));
+    const auto* NewArr = ResolveDefinitionRelativeValue(CandidateDefinitionValue, NormPtr);
+    if (NewArr != nullptr)
+    {
+        DirtyFields[NormPtr] = *NewArr;
+        CurrentValues[NormPtr] = *NewArr;
+    }
+}
+
+void FGV2EditorAdapter::MoveCurrentArrayElement(
+    const std::string& JsonPointer,
+    std::size_t FromIndex,
+    std::size_t ToIndex)
+{
+    if (!CurrentDefinition.has_value()) return;
+
+    std::string NormPtr = NormalizePointer(JsonPointer);
+    std::string Err;
+    GV2ContentAuthoring::ApplyFieldOpToDefinitionValue(
+        CandidateDefinitionValue, NormPtr,
+        GV2ContentAuthoring::FFieldOp::MakeMoveArrayElement(NormPtr, FromIndex, ToIndex), Err);
+
+    PendingOperations.push_back(GV2ContentAuthoring::FFieldOp::MakeMoveArrayElement(NormPtr, FromIndex, ToIndex));
+    const auto* NewArr = ResolveDefinitionRelativeValue(CandidateDefinitionValue, NormPtr);
+    if (NewArr != nullptr)
+    {
+        DirtyFields[NormPtr] = *NewArr;
+        CurrentValues[NormPtr] = *NewArr;
+    }
+}
+
+std::vector<FGV2FormFieldDescriptor> FGV2EditorAdapter::GetAllAbsentOptionalFields() const
+{
+    std::vector<FGV2FormFieldDescriptor> Result;
+    if (!CurrentDefinition.has_value()) return Result;
+
+    auto FormModelOpt = GetFormModelForDefinitionType(CurrentDefinition->Type, CurrentDefinition->PackageId);
+    if (!FormModelOpt.has_value()) return Result;
+
+    for (const auto& Field : FormModelOpt->AllFields)
+    {
+        if (Field.bRequired) continue;
+        if (GetPropertyPresence(Field.JsonPointer, Field.Spec.get(), Field.bRequired) == EPropertyPresence::Absent)
+        {
+            Result.push_back(Field);
+        }
+    }
+    return Result;
+}
+
+std::vector<FGV2FormFieldDescriptor> FGV2EditorAdapter::GetAbsentOptionalFieldsForCategory(
+    const std::string& CategoryName) const
+{
+    std::vector<FGV2FormFieldDescriptor> Result;
+    if (!CurrentDefinition.has_value()) return Result;
+
+    auto FormModelOpt = GetFormModelForDefinitionType(CurrentDefinition->Type, CurrentDefinition->PackageId);
+    if (!FormModelOpt.has_value()) return Result;
+
+    for (const auto& Field : FormModelOpt->AllFields)
+    {
+        if (Field.bRequired || Field.Category != CategoryName) continue;
+        if (GetPropertyPresence(Field.JsonPointer, Field.Spec.get(), Field.bRequired) == EPropertyPresence::Absent)
+        {
+            Result.push_back(Field);
+        }
+    }
+    return Result;
 }
 
 bool FGV2EditorAdapter::IsDirty() const
@@ -484,6 +739,20 @@ bool FGV2EditorAdapter::IsDirty() const
 
 void FGV2EditorAdapter::DiscardCurrentChanges()
 {
+    if (CurrentDefinition.has_value())
+    {
+        GV2ContentCore::FValue::FArray TagsArr;
+        for (const auto& T : CurrentDefinition->Tags) TagsArr.emplace_back(T);
+
+        CandidateDefinitionValue = GV2ContentCore::FValue::MakeObject({
+            {"id", GV2ContentCore::FValue(CurrentDefinition->Id)},
+            {"data", CurrentDefinition->CanonicalData},
+            {"tags", GV2ContentCore::FValue(std::move(TagsArr))},
+            {"deprecated", GV2ContentCore::FValue(CurrentDefinition->bDeprecated)},
+            {"extensions", CurrentDefinition->Extensions}
+        });
+    }
+    PendingOperations.clear();
     CurrentValues.clear();
     DirtyFields.clear();
 }
@@ -507,7 +776,7 @@ FGV2EditorAuthoringResult FGV2EditorAdapter::SaveCurrentDefinition()
         return Result;
     }
 
-    if (DirtyFields.empty())
+    if (!IsDirty())
     {
         Result.Outcome = EEditorAuthoringOutcome::Success;
         Result.AffectedFile = CurrentDefinition->AbsolutePath;
@@ -525,20 +794,13 @@ FGV2EditorAuthoringResult FGV2EditorAdapter::SaveCurrentDefinition()
         return Result;
     }
 
-    GV2ContentAuthoring::FBatchSetFieldsParams BatchParams;
-    BatchParams.PackageRoot = FindPackageRootById(CurrentDefinition->PackageId);
-    BatchParams.DefinitionId = CurrentDefinition->Id;
-    BatchParams.ExpectedStamp = CurrentDefinition->Stamp;
+    GV2ContentAuthoring::FApplyOperationsParams OpParams;
+    OpParams.PackageRoot = FindPackageRootById(CurrentDefinition->PackageId);
+    OpParams.DefinitionId = CurrentDefinition->Id;
+    OpParams.ExpectedStamp = CurrentDefinition->Stamp;
+    OpParams.Operations = PendingOperations;
 
-    for (const auto& [Ptr, Val] : DirtyFields)
-    {
-        GV2ContentAuthoring::FFieldChange Change;
-        Change.JsonPointer = Ptr;
-        Change.NewValue = Val;
-        BatchParams.Changes.push_back(std::move(Change));
-    }
-
-    auto AuthResult = GV2ContentAuthoring::FAuthoringService::BatchSetFields(BatchParams);
+    auto AuthResult = GV2ContentAuthoring::FAuthoringService::ApplyOperations(OpParams);
     Result = ConvertAuthoringResult(AuthResult);
 
     if (Result.IsSuccess())

@@ -15,6 +15,14 @@
 namespace GV2ContentEditor
 {
 
+enum class EPropertyPresence : std::uint8_t
+{
+    RequiredMissing,
+    Absent,
+    ImplicitDefault,
+    Explicit
+};
+
 /**
  * Descriptor of a single field in the schema-driven form.
  */
@@ -27,6 +35,8 @@ struct GV2_CONTENT_EDITOR_API FGV2FormFieldDescriptor final
     std::string Description;
     std::string Category = "General";
     std::int64_t Order = 0;
+    EPropertyPresence Presence = EPropertyPresence::Explicit;
+    std::optional<GV2ContentCore::FValue> DefaultValue;
     FFieldAdapterDescriptor AdapterDescriptor;
     GV2ContentCore::FCompiledFieldSpecPtr Spec;
 };

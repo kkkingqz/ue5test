@@ -856,7 +856,7 @@ FAuthoringResult FAuthoringService::BatchSetFields(const FBatchSetFieldsParams& 
             }
             else
             {
-                Result.Status = EAuthoringStatus::ValidationFailed;
+                Result.Status = EAuthoringStatus::SpanMappingFailed;
             }
             Result.ErrorCode = SetRes.ErrorCode.empty() ? "set_field_failed" : SetRes.ErrorCode;
             Result.ErrorMessage = SetRes.ErrorMessage.empty() ? "Failed to set field value" : SetRes.ErrorMessage;
@@ -884,6 +884,256 @@ FAuthoringResult FAuthoringService::BatchSetFields(const FBatchSetFieldsParams& 
     Result.Status = EAuthoringStatus::Success;
     Result.UpdatedFileContent = CurrentContent;
     Result.NewStamp = FFileStateStamp::FromContent(CurrentContent);
+    Result.AffectedDefinitionsCount = 1;
+    Result.AffectedFilesCount = 1;
+    Result.AffectedFilePaths = {TargetFilePath};
+    return Result;
+}
+
+FAuthoringResult FAuthoringService::ApplyOperations(const FApplyOperationsParams& Params)
+{
+    FAuthoringResult Result;
+    if (Params.Operations.empty())
+    {
+        Result.Status = EAuthoringStatus::Success;
+        return Result;
+    }
+
+    auto Set = DiscoverSet(Params.PackageRoot);
+    if (!Set.bSuccess)
+    {
+        Result.Status = EAuthoringStatus::PackageNotFound;
+        Result.ErrorCode = Set.ErrorCode;
+        Result.ErrorMessage = Set.ErrorMessage;
+        return Result;
+    }
+
+    const auto& TargetDescriptor = Set.Descriptors[Set.TargetIndex];
+    const auto& TargetRoot = Set.Roots[Set.TargetIndex];
+
+    std::filesystem::path TargetFilePath;
+    std::string TargetRelativeSource;
+    std::size_t TargetDefIndex = std::string::npos;
+    GV2ContentCore::FParseLimits Limits;
+    std::optional<GV2ContentCore::FParsedDocument> TargetParsedDoc;
+    std::string CurrentContent;
+
+    for (const std::string& RelSource : TargetDescriptor.GetRelativeSources())
+    {
+        std::filesystem::path FilePath = TargetRoot / RelSource;
+        std::string Content;
+        if (!ReadEntireFile(FilePath, Content)) continue;
+
+        std::vector<GV2ContentCore::FDiagnostic> Diags;
+        auto ParsedDoc = GV2ContentCore::ParseJson5Document(
+            Content, Limits, Diags, TargetDescriptor.GetPackageId(), TargetDescriptor.GetLoadIndex(), RelSource);
+        if (!ParsedDoc || !ParsedDoc->GetRootValue().IsObject()) continue;
+
+        const auto* DefsArr = ParsedDoc->GetRootValue().FindField("definitions");
+        if (DefsArr == nullptr || !DefsArr->IsArray()) continue;
+
+        for (std::size_t i = 0; i < DefsArr->AsArray().size(); ++i)
+        {
+            const auto& Def = DefsArr->AsArray()[i];
+            if (!Def.IsObject()) continue;
+            const auto* IdVal = Def.FindField("id");
+            if (IdVal != nullptr && IdVal->IsString() && IdVal->AsString() == Params.DefinitionId)
+            {
+                TargetFilePath = FilePath;
+                TargetRelativeSource = RelSource;
+                TargetDefIndex = i;
+                TargetParsedDoc = std::move(ParsedDoc);
+                CurrentContent = std::move(Content);
+                break;
+            }
+        }
+        if (TargetDefIndex != std::string::npos) break;
+    }
+
+    if (TargetDefIndex == std::string::npos || !TargetParsedDoc.has_value())
+    {
+        Result.Status = EAuthoringStatus::DefinitionNotFound;
+        Result.ErrorCode = "definition_not_found";
+        Result.ErrorMessage = "Definition '" + Params.DefinitionId + "' not found in package";
+        return Result;
+    }
+
+    Result.TargetFilePath = TargetFilePath;
+
+    // Check ExpectedStamp
+    if (Params.ExpectedStamp.has_value())
+    {
+        FFileStateStamp CurrentStamp = FFileStateStamp::FromFile(TargetFilePath);
+        if (!CurrentStamp.Matches(*Params.ExpectedStamp))
+        {
+            Result.Status = EAuthoringStatus::StaleFileState;
+            Result.ErrorCode = "stale_file_state";
+            Result.ErrorMessage = "File on disk has been modified externally";
+            return Result;
+        }
+    }
+
+    bool bCanUseSpanUpdates = true;
+    for (const auto& Op : Params.Operations)
+    {
+        if (Op.OpType != EFieldOpType::Set)
+        {
+            bCanUseSpanUpdates = false;
+            break;
+        }
+    }
+
+    if (bCanUseSpanUpdates)
+    {
+        std::string ProposedContent = CurrentContent;
+        bool bAllSpansSucceeded = true;
+        for (const auto& Op : Params.Operations)
+        {
+            std::string FullPointer = Op.JsonPointer;
+            if (FullPointer.rfind("/definitions/", 0) != 0)
+            {
+                if (FullPointer.rfind("/data/", 0) == 0 || FullPointer == "/data")
+                {
+                    FullPointer = "/definitions/" + std::to_string(TargetDefIndex) + FullPointer;
+                }
+                else if (FullPointer.rfind("data/", 0) == 0)
+                {
+                    FullPointer = "/definitions/" + std::to_string(TargetDefIndex) + "/" + FullPointer;
+                }
+                else if (FullPointer == "/deprecated" || FullPointer == "/tags"
+                         || FullPointer.rfind("/tags/", 0) == 0 || FullPointer.rfind("/extensions", 0) == 0
+                         || FullPointer == "/id")
+                {
+                    FullPointer = "/definitions/" + std::to_string(TargetDefIndex) + FullPointer;
+                }
+                else if (FullPointer.rfind("/", 0) == 0)
+                {
+                    FullPointer = "/definitions/" + std::to_string(TargetDefIndex) + "/data" + FullPointer;
+                }
+                else
+                {
+                    FullPointer = "/definitions/" + std::to_string(TargetDefIndex) + "/data/" + FullPointer;
+                }
+            }
+
+            auto SetRes = SetFieldValue(
+                ProposedContent,
+                FullPointer,
+                Op.Value,
+                TargetDescriptor.GetPackageId(),
+                TargetRelativeSource);
+
+            if (SetRes.Status == ESetFieldValueStatus::Success)
+            {
+                ProposedContent = std::move(SetRes.UpdatedContent);
+            }
+            else
+            {
+                bAllSpansSucceeded = false;
+                break;
+            }
+        }
+
+        if (bAllSpansSucceeded)
+        {
+            if (!ValidateCandidateRepository(Set, {{TargetRelativeSource, ProposedContent}}, Result))
+            {
+                return Result;
+            }
+
+            std::string WriteErr;
+            if (!AtomicWriteFile(TargetFilePath, ProposedContent, WriteErr))
+            {
+                Result.Status = EAuthoringStatus::FileWriteFailed;
+                Result.ErrorCode = "file_write_failed";
+                Result.ErrorMessage = WriteErr;
+                return Result;
+            }
+
+            Result.Status = EAuthoringStatus::Success;
+            Result.UpdatedFileContent = ProposedContent;
+            Result.NewStamp = FFileStateStamp::FromContent(ProposedContent);
+            Result.AffectedDefinitionsCount = 1;
+            Result.AffectedFilesCount = 1;
+            Result.AffectedFilePaths = {TargetFilePath};
+            return Result;
+        }
+    }
+
+    // Clone definition value
+    auto CandidateDef = TargetParsedDoc->GetRootValue().FindField("definitions")->AsArray()[TargetDefIndex];
+
+    // Apply all operations to CandidateDef
+    for (const auto& Op : Params.Operations)
+    {
+        std::string OpErr;
+        if (!ApplyFieldOpToDefinitionValue(CandidateDef, Op.JsonPointer, Op, OpErr))
+        {
+            Result.Status = EAuthoringStatus::InvalidValue;
+            Result.ErrorCode = "operation_failed";
+            Result.ErrorMessage = OpErr.empty() ? "Failed to apply operation to definition" : OpErr;
+            return Result;
+        }
+    }
+
+    // Format updated candidate definition and replace it in CurrentContent
+    const std::string EntryPointer = "/definitions/" + std::to_string(TargetDefIndex);
+    const auto* Location = TargetParsedDoc->FindLocation(EntryPointer);
+    if (Location == nullptr)
+    {
+        Result.Status = EAuthoringStatus::SpanMappingFailed;
+        Result.ErrorCode = "span_mapping_failed";
+        Result.ErrorMessage = "Failed to find location span for " + EntryPointer;
+        return Result;
+    }
+
+    std::size_t StartByte = 0;
+    std::size_t EndByte = 0;
+    if (!SourceSpanToByteRange(CurrentContent, Location->ValueSpan, StartByte, EndByte))
+    {
+        Result.Status = EAuthoringStatus::SpanMappingFailed;
+        Result.ErrorCode = "span_mapping_failed";
+        Result.ErrorMessage = "Failed to map location span to byte offsets";
+        return Result;
+    }
+
+    std::ostringstream DefStream;
+    FormatJson5Value(DefStream, CandidateDef, 2);
+    std::string FormattedDef = DefStream.str();
+
+    std::string UpdatedContent = CurrentContent.substr(0, StartByte)
+        + FormattedDef
+        + CurrentContent.substr(EndByte);
+
+    std::vector<GV2ContentCore::FDiagnostic> VerifyDiagnostics;
+    auto VerifyDoc = GV2ContentCore::ParseJson5Document(
+        UpdatedContent, Limits, VerifyDiagnostics, TargetDescriptor.GetPackageId(), 0, TargetRelativeSource);
+    if (!VerifyDoc.has_value())
+    {
+        Result.Status = EAuthoringStatus::ValidationFailed;
+        Result.ErrorCode = "rewritten_document_invalid";
+        Result.ErrorMessage = "Rewritten document failed to parse";
+        return Result;
+    }
+
+    if (!ValidateCandidateRepository(Set, {{TargetRelativeSource, UpdatedContent}}, Result))
+    {
+        return Result;
+    }
+
+    // Atomic write
+    std::string WriteErr;
+    if (!AtomicWriteFile(TargetFilePath, UpdatedContent, WriteErr))
+    {
+        Result.Status = EAuthoringStatus::FileWriteFailed;
+        Result.ErrorCode = "file_write_failed";
+        Result.ErrorMessage = WriteErr;
+        return Result;
+    }
+
+    Result.Status = EAuthoringStatus::Success;
+    Result.UpdatedFileContent = UpdatedContent;
+    Result.NewStamp = FFileStateStamp::FromContent(UpdatedContent);
     Result.AffectedDefinitionsCount = 1;
     Result.AffectedFilesCount = 1;
     Result.AffectedFilePaths = {TargetFilePath};

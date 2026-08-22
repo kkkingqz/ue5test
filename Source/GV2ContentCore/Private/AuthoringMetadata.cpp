@@ -60,6 +60,40 @@ std::optional<FSourceSpan> GetKeySpan(const FParsedDocument& Doc, std::string_vi
     return Loc ? Loc->KeySpan : std::nullopt;
 }
 
+bool CheckFieldPathExistsInSpec(const FCompiledFieldSpec& RootSpec, std::string_view FieldPath)
+{
+    if (FieldPath.rfind("data.", 0) == 0)
+    {
+        FieldPath = FieldPath.substr(5);
+    }
+
+    const FCompiledFieldSpec* Current = &RootSpec;
+    std::size_t Pos = 0;
+    while (Pos < FieldPath.size())
+    {
+        if (Current == nullptr || Current->Kind != EFieldKind::Object) return false;
+
+        std::size_t DotPos = FieldPath.find('.', Pos);
+        std::string_view Token = (DotPos == std::string_view::npos)
+            ? FieldPath.substr(Pos)
+            : FieldPath.substr(Pos, DotPos - Pos);
+        Pos = (DotPos == std::string_view::npos) ? FieldPath.size() : DotPos + 1;
+
+        const FCompiledFieldSpec* Next = nullptr;
+        for (const auto& Field : Current->Fields)
+        {
+            if (Field.Name == Token)
+            {
+                Next = Field.Spec.get();
+                break;
+            }
+        }
+        if (Next == nullptr) return false;
+        Current = Next;
+    }
+    return true;
+}
+
 } // namespace
 
 std::optional<FSchemaUiMetadata> ParseSchemaUiMetadata(
@@ -148,15 +182,7 @@ std::optional<FSchemaUiMetadata> ParseSchemaUiMetadata(
         const std::string FieldPointer = "/fields/" + FieldName;
 
         // Verify that FieldName exists in Schema
-        bool bFieldExists = false;
-        for (const auto& SchemaField : RootSpec->Fields)
-        {
-            if (SchemaField.Name == FieldName)
-            {
-                bFieldExists = true;
-                break;
-            }
-        }
+        bool bFieldExists = CheckFieldPathExistsInSpec(*RootSpec, FieldName);
 
         if (!bFieldExists)
         {

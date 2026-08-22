@@ -52,6 +52,78 @@ struct FFieldChange
     GV2ContentCore::FValue NewValue;
 };
 
+enum class EFieldOpType : std::uint8_t
+{
+    Set,
+    RemoveProperty,
+    InsertArrayElement,
+    RemoveArrayElement,
+    MoveArrayElement
+};
+
+struct GV2_CONTENT_AUTHORING_API FFieldOp final
+{
+    EFieldOpType OpType = EFieldOpType::Set;
+    std::string JsonPointer;
+    GV2ContentCore::FValue Value;
+    std::size_t TargetIndex = 0;
+    std::size_t SourceIndex = 0;
+
+    static FFieldOp MakeSet(std::string JsonPointer, GV2ContentCore::FValue Value)
+    {
+        FFieldOp Op;
+        Op.OpType = EFieldOpType::Set;
+        Op.JsonPointer = std::move(JsonPointer);
+        Op.Value = std::move(Value);
+        return Op;
+    }
+
+    static FFieldOp MakeRemoveProperty(std::string JsonPointer)
+    {
+        FFieldOp Op;
+        Op.OpType = EFieldOpType::RemoveProperty;
+        Op.JsonPointer = std::move(JsonPointer);
+        return Op;
+    }
+
+    static FFieldOp MakeInsertArrayElement(std::string JsonPointer, std::size_t Index, GV2ContentCore::FValue Value)
+    {
+        FFieldOp Op;
+        Op.OpType = EFieldOpType::InsertArrayElement;
+        Op.JsonPointer = std::move(JsonPointer);
+        Op.TargetIndex = Index;
+        Op.Value = std::move(Value);
+        return Op;
+    }
+
+    static FFieldOp MakeRemoveArrayElement(std::string JsonPointer, std::size_t Index)
+    {
+        FFieldOp Op;
+        Op.OpType = EFieldOpType::RemoveArrayElement;
+        Op.JsonPointer = std::move(JsonPointer);
+        Op.TargetIndex = Index;
+        return Op;
+    }
+
+    static FFieldOp MakeMoveArrayElement(std::string JsonPointer, std::size_t FromIndex, std::size_t ToIndex)
+    {
+        FFieldOp Op;
+        Op.OpType = EFieldOpType::MoveArrayElement;
+        Op.JsonPointer = std::move(JsonPointer);
+        Op.SourceIndex = FromIndex;
+        Op.TargetIndex = ToIndex;
+        return Op;
+    }
+};
+
+struct FApplyOperationsParams
+{
+    std::filesystem::path PackageRoot;
+    std::string DefinitionId;
+    std::vector<FFieldOp> Operations;
+    std::optional<FFileStateStamp> ExpectedStamp;
+};
+
 struct GV2_CONTENT_AUTHORING_API FAuthoringResult
 {
     EAuthoringStatus Status = EAuthoringStatus::Success;

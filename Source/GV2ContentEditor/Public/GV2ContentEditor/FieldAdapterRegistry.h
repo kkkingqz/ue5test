@@ -34,6 +34,8 @@ struct GV2_CONTENT_EDITOR_API FFieldAdapterDescriptor final
 {
     std::string AdapterName;
     EFieldControlType ControlType = EFieldControlType::Text;
+    GV2ContentCore::EFieldKind SemanticKind = GV2ContentCore::EFieldKind::Scalar;
+    std::optional<GV2ContentCore::EScalarFieldKind> ScalarKind;
     bool bAllowsDirectTextEntry = true;
     std::vector<std::string> EnumChoices;
     std::string TargetReferenceKind;

@@ -396,6 +396,95 @@ bool TestReferenceScannerBidirectional()
     return true;
 }
 
+bool TestNestedAndExtensionMetadataResolution()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_nested_meta");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    WriteFile(CoreDir / "package.json5",
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n");
+
+    WriteFile(CoreDir / "schemas/character.schema.json5",
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.character.v1',\n"
+        "  definition_type: 'character',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    stats: { kind: 'object', required: false, fields: {\n"
+        "      strength: { kind: 'int64', required: false, default: 10 },\n"
+        "      agility: { kind: 'int64', required: false, default: 10 }\n"
+        "    } }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n");
+
+    WriteFile(CoreDir / "schemas/character.ui.json5",
+        "{\n"
+        "  schema_version: 1,\n"
+        "  fields: {\n"
+        "    'stats.strength': { label: 'Hero Strength', description: 'Raw physical power', category: 'Attributes', order: 10, widget_hint: 'slider' },\n"
+        "    'data.stats.agility': { label: 'Hero Agility', description: 'Nimbleness and reflexes', category: 'Attributes', order: 20 }\n"
+        "  }\n"
+        "}\n");
+
+    WriteFile(CoreDir / "definitions/characters.json5",
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'character',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:character.hero',\n"
+        "      data: {\n"
+        "        name: 'Hero',\n"
+        "        stats: { strength: 18 }\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n");
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    Adapter.Initialize(TempDir, Diags);
+
+    auto FormModelOpt = Adapter.GetFormModelForDefinitionType("character", "core");
+    if (!FormModelOpt.has_value())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    const FGV2FormFieldDescriptor* StrengthField = nullptr;
+    const FGV2FormFieldDescriptor* AgilityField = nullptr;
+    for (const auto& Field : FormModelOpt->AllFields)
+    {
+        if (Field.JsonPointer == "/data/stats/strength") StrengthField = &Field;
+        if (Field.JsonPointer == "/data/stats/agility") AgilityField = &Field;
+    }
+
+    if (!StrengthField || StrengthField->DisplayLabel != "Hero Strength" || StrengthField->Category != "Attributes" || StrengthField->AdapterDescriptor.ControlType != EFieldControlType::Slider)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    if (!AgilityField || AgilityField->DisplayLabel != "Hero Agility" || AgilityField->Category != "Attributes")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
 } // namespace
 
 std::string RunReadSurfaceConformance()
@@ -415,6 +504,10 @@ std::string RunReadSurfaceConformance()
     if (!TestReferenceScannerBidirectional())
     {
         return "TestReferenceScannerBidirectional failed";
+    }
+    if (!TestNestedAndExtensionMetadataResolution())
+    {
+        return "TestNestedAndExtensionMetadataResolution failed";
     }
     return "";
 }

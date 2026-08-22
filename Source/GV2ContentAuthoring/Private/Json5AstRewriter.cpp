@@ -939,4 +939,241 @@ FRemoveDefinitionResult RemoveDefinitionEntry(
     return Result;
 }
 
+std::vector<std::string> SplitJsonPointer(std::string_view Pointer)
+{
+    std::vector<std::string> Segments;
+    if (Pointer.empty()) return Segments;
+    std::size_t Start = (Pointer.front() == '/') ? 1 : 0;
+    while (Start < Pointer.size())
+    {
+        std::size_t Slash = Pointer.find('/', Start);
+        std::string_view Seg = (Slash == std::string_view::npos)
+            ? Pointer.substr(Start)
+            : Pointer.substr(Start, Slash - Start);
+        Segments.push_back(UnescapeJsonPointerToken(Seg));
+        if (Slash == std::string_view::npos) break;
+        Start = Slash + 1;
+    }
+    return Segments;
+}
+
+bool ApplyFieldOpToDefinitionValue(
+    GV2ContentCore::FValue& DefValue,
+    const std::string& RawPointer,
+    const FFieldOp& Op,
+    std::string& OutError)
+{
+    std::string Normalized = RawPointer;
+    if (Normalized.rfind("/definitions/", 0) == 0)
+    {
+        std::size_t SecondSlash = Normalized.find('/', 13);
+        if (SecondSlash != std::string::npos)
+        {
+            Normalized = Normalized.substr(SecondSlash);
+        }
+        else
+        {
+            Normalized = "";
+        }
+    }
+    else if (Normalized.rfind("/data", 0) != 0 &&
+             Normalized.rfind("/tags", 0) != 0 &&
+             Normalized.rfind("/deprecated", 0) != 0 &&
+             Normalized.rfind("/extensions", 0) != 0 &&
+             Normalized.rfind("/id", 0) != 0)
+    {
+        if (Normalized.empty() || Normalized == "/")
+        {
+            Normalized = "/data";
+        }
+        else if (Normalized.front() == '/')
+        {
+            Normalized = "/data" + Normalized;
+        }
+        else
+        {
+            Normalized = "/data/" + Normalized;
+        }
+    }
+
+    auto Segments = SplitJsonPointer(Normalized);
+    if (Segments.empty())
+    {
+        if (Op.OpType == EFieldOpType::Set)
+        {
+            DefValue = Op.Value;
+            return true;
+        }
+        OutError = "Cannot apply structural operation to root definition";
+        return false;
+    }
+
+    GV2ContentCore::FValue* Current = &DefValue;
+    for (std::size_t i = 0; i + 1 < Segments.size(); ++i)
+    {
+        const std::string& Seg = Segments[i];
+        if (Current->IsObject())
+        {
+            auto* Next = Current->FindField(Seg);
+            if (Next == nullptr)
+            {
+                Current->AsObject().emplace_back(Seg, GV2ContentCore::FValue::MakeObject({}));
+                Next = Current->FindField(Seg);
+            }
+            Current = Next;
+        }
+        else if (Current->IsArray())
+        {
+            std::size_t ArrIdx = 0;
+            try { ArrIdx = std::stoul(Seg); } catch (...) { OutError = "Invalid array index " + Seg; return false; }
+            auto& Arr = Current->AsArray();
+            if (ArrIdx >= Arr.size())
+            {
+                OutError = "Array index out of bounds: " + Seg;
+                return false;
+            }
+            Current = &Arr[ArrIdx];
+        }
+        else
+        {
+            OutError = "Cannot traverse non-container field at segment " + Seg;
+            return false;
+        }
+    }
+
+    const std::string& LeafKey = Segments.back();
+
+    switch (Op.OpType)
+    {
+    case EFieldOpType::Set:
+    {
+        if (Current->IsObject())
+        {
+            auto* Field = Current->FindField(LeafKey);
+            if (Field != nullptr)
+            {
+                *Field = Op.Value;
+            }
+            else
+            {
+                Current->AsObject().emplace_back(LeafKey, Op.Value);
+            }
+            return true;
+        }
+        else if (Current->IsArray())
+        {
+            std::size_t ArrIdx = 0;
+            try { ArrIdx = std::stoul(LeafKey); } catch (...) { OutError = "Invalid array index " + LeafKey; return false; }
+            auto& Arr = Current->AsArray();
+            if (ArrIdx < Arr.size())
+            {
+                Arr[ArrIdx] = Op.Value;
+            }
+            else if (ArrIdx == Arr.size())
+            {
+                Arr.push_back(Op.Value);
+            }
+            else
+            {
+                OutError = "Array index out of bounds: " + LeafKey;
+                return false;
+            }
+            return true;
+        }
+        OutError = "Cannot set property on non-container";
+        return false;
+    }
+    case EFieldOpType::RemoveProperty:
+    {
+        if (Current->IsObject())
+        {
+            auto& Obj = Current->AsObject();
+            auto It = std::remove_if(Obj.begin(), Obj.end(), [&](const auto& Pair) {
+                return Pair.first == LeafKey;
+            });
+            Obj.erase(It, Obj.end());
+            return true;
+        }
+        OutError = "Cannot remove property from non-object";
+        return false;
+    }
+    case EFieldOpType::InsertArrayElement:
+    {
+        GV2ContentCore::FValue* TargetArrVal = Current;
+        if (Current->IsObject())
+        {
+            TargetArrVal = Current->FindField(LeafKey);
+            if (TargetArrVal == nullptr)
+            {
+                Current->AsObject().emplace_back(LeafKey, GV2ContentCore::FValue::MakeArray({}));
+                TargetArrVal = Current->FindField(LeafKey);
+            }
+        }
+        if (TargetArrVal != nullptr && TargetArrVal->IsArray())
+        {
+            auto& Arr = TargetArrVal->AsArray();
+            if (Op.TargetIndex >= Arr.size())
+            {
+                Arr.push_back(Op.Value);
+            }
+            else
+            {
+                Arr.insert(Arr.begin() + Op.TargetIndex, Op.Value);
+            }
+            return true;
+        }
+        OutError = "Cannot insert array element into non-array";
+        return false;
+    }
+    case EFieldOpType::RemoveArrayElement:
+    {
+        GV2ContentCore::FValue* TargetArrVal = Current;
+        if (Current->IsObject())
+        {
+            TargetArrVal = Current->FindField(LeafKey);
+        }
+        if (TargetArrVal != nullptr && TargetArrVal->IsArray())
+        {
+            auto& Arr = TargetArrVal->AsArray();
+            if (Op.TargetIndex < Arr.size())
+            {
+                Arr.erase(Arr.begin() + Op.TargetIndex);
+                return true;
+            }
+            OutError = "Array index out of bounds for removal";
+            return false;
+        }
+        OutError = "Cannot remove array element from non-array";
+        return false;
+    }
+    case EFieldOpType::MoveArrayElement:
+    {
+        GV2ContentCore::FValue* TargetArrVal = Current;
+        if (Current->IsObject())
+        {
+            TargetArrVal = Current->FindField(LeafKey);
+        }
+        if (TargetArrVal != nullptr && TargetArrVal->IsArray())
+        {
+            auto& Arr = TargetArrVal->AsArray();
+            if (Op.SourceIndex < Arr.size() && Op.TargetIndex < Arr.size())
+            {
+                if (Op.SourceIndex != Op.TargetIndex)
+                {
+                    auto Item = std::move(Arr[Op.SourceIndex]);
+                    Arr.erase(Arr.begin() + Op.SourceIndex);
+                    Arr.insert(Arr.begin() + Op.TargetIndex, std::move(Item));
+                }
+                return true;
+            }
+            OutError = "Array index out of bounds for move";
+            return false;
+        }
+        OutError = "Cannot move array element in non-array";
+        return false;
+    }
+    }
+    return false;
+}
+
 } // namespace GV2ContentAuthoring

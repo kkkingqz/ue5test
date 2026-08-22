@@ -31,8 +31,8 @@ public:
 private:
     TSharedRef<SWidget> BuildToolbar();
     TSharedRef<SWidget> BuildCategorySection(const FGV2FormCategorySection& Category);
-    TSharedRef<SWidget> BuildFieldRow(const FGV2FormFieldDescriptor& Field);
-    TSharedRef<SWidget> CreateControlForField(const FGV2FormFieldDescriptor& Field);
+    TSharedRef<SWidget> BuildFieldRow(const FGV2FormFieldDescriptor& Field, EPropertyPresence Presence);
+    TSharedRef<SWidget> CreateControlForField(const FGV2FormFieldDescriptor& Field, EPropertyPresence Presence);
 
     FReply HandleSaveClicked();
     FReply HandleRevertClicked();

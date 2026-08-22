@@ -20,10 +20,12 @@ public:
     {
         FFieldAdapterDescriptor Desc;
         Desc.AdapterName = GetAdapterName();
+        Desc.SemanticKind = Spec.Kind;
 
         if (Spec.Kind == GV2ContentCore::EFieldKind::Scalar && Spec.Scalar.has_value())
         {
             const auto& S = *Spec.Scalar;
+            Desc.ScalarKind = S.Kind;
             switch (S.Kind)
             {
             case GV2ContentCore::EScalarFieldKind::Boolean:
@@ -85,11 +87,13 @@ public:
     {
         FFieldAdapterDescriptor Desc;
         Desc.AdapterName = GetAdapterName();
+        Desc.SemanticKind = Spec.Kind;
         Desc.ControlType = EFieldControlType::EnumDropdown;
         Desc.bAllowsDirectTextEntry = false;
 
         if (Spec.Kind == GV2ContentCore::EFieldKind::Scalar && Spec.Scalar.has_value())
         {
+            Desc.ScalarKind = Spec.Scalar->Kind;
             for (const auto& Val : Spec.Scalar->EnumValues)
             {
                 if (Val.IsString())
@@ -118,6 +122,7 @@ public:
     {
         FFieldAdapterDescriptor Desc;
         Desc.AdapterName = GetAdapterName();
+        Desc.SemanticKind = Spec.Kind;
         Desc.ControlType = EFieldControlType::ReferencePicker;
         Desc.TargetReferenceKind = Spec.ExpectedStableIdKind;
         return Desc;
@@ -136,6 +141,7 @@ public:
     {
         FFieldAdapterDescriptor Desc;
         Desc.AdapterName = GetAdapterName();
+        Desc.SemanticKind = Spec.Kind;
         Desc.ControlType = EFieldControlType::ResourcePicker;
         Desc.TargetResourceClass = Spec.ResourceClass;
         return Desc;
@@ -149,11 +155,12 @@ public:
     EFieldControlType GetControlType() const override { return EFieldControlType::TextIdPicker; }
 
     FFieldAdapterDescriptor Describe(
-        const GV2ContentCore::FCompiledFieldSpec& /*Spec*/,
+        const GV2ContentCore::FCompiledFieldSpec& Spec,
         const GV2ContentCore::FFieldUiMetadata* /*UiMeta*/) const override
     {
         FFieldAdapterDescriptor Desc;
         Desc.AdapterName = GetAdapterName();
+        Desc.SemanticKind = Spec.Kind;
         Desc.ControlType = EFieldControlType::TextIdPicker;
         return Desc;
     }
@@ -166,11 +173,12 @@ public:
     EFieldControlType GetControlType() const override { return EFieldControlType::ArrayEditor; }
 
     FFieldAdapterDescriptor Describe(
-        const GV2ContentCore::FCompiledFieldSpec& /*Spec*/,
+        const GV2ContentCore::FCompiledFieldSpec& Spec,
         const GV2ContentCore::FFieldUiMetadata* /*UiMeta*/) const override
     {
         FFieldAdapterDescriptor Desc;
         Desc.AdapterName = GetAdapterName();
+        Desc.SemanticKind = Spec.Kind;
         Desc.ControlType = EFieldControlType::ArrayEditor;
         Desc.bAllowsDirectTextEntry = false;
         return Desc;
@@ -184,11 +192,12 @@ public:
     EFieldControlType GetControlType() const override { return EFieldControlType::ObjectEditor; }
 
     FFieldAdapterDescriptor Describe(
-        const GV2ContentCore::FCompiledFieldSpec& /*Spec*/,
+        const GV2ContentCore::FCompiledFieldSpec& Spec,
         const GV2ContentCore::FFieldUiMetadata* /*UiMeta*/) const override
     {
         FFieldAdapterDescriptor Desc;
         Desc.AdapterName = GetAdapterName();
+        Desc.SemanticKind = Spec.Kind;
         Desc.ControlType = EFieldControlType::ObjectEditor;
         Desc.bAllowsDirectTextEntry = false;
         return Desc;

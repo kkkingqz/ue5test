@@ -103,11 +103,65 @@ public:
     std::optional<GV2ContentCore::FValue> GetCurrentFieldValue(
         const std::string& JsonPointer) const;
 
+    /**
+     * Gets the property presence for a given JSON pointer (CEH-07).
+     */
+    EPropertyPresence GetPropertyPresence(
+        const std::string& JsonPointer,
+        const GV2ContentCore::FCompiledFieldSpec* Spec = nullptr,
+        bool bRequired = false) const;
+
+    /**
+     * Materializes an absent optional property into the current definition candidate (CEH-09).
+     */
+    void AddCurrentOptionalProperty(const std::string& JsonPointer);
+
+    /**
+     * Removes an explicit object property from the current definition candidate (CEH-09).
+     */
+    void RemoveCurrentProperty(const std::string& JsonPointer);
+
+    /**
+     * Resets an explicit property back to schema default or removes it (CEH-09).
+     */
+    void ResetCurrentFieldToDefault(const std::string& JsonPointer);
+
+    /**
+     * Inserts an element into an array at the given index (CEH-08, CEH-11).
+     */
+    void InsertCurrentArrayElement(
+        const std::string& JsonPointer,
+        std::size_t Index,
+        const GV2ContentCore::FValue& Value);
+
+    /**
+     * Removes an element from an array at the given index (CEH-08, CEH-11).
+     */
+    void RemoveCurrentArrayElement(
+        const std::string& JsonPointer,
+        std::size_t Index);
+
+    /**
+     * Reorders array elements by moving an element from one index to another (CEH-08, CEH-11).
+     */
+    void MoveCurrentArrayElement(
+        const std::string& JsonPointer,
+        std::size_t FromIndex,
+        std::size_t ToIndex);
+
+    /**
+     * Returns schema-declared absent optional fields for the currently loaded definition.
+     */
+    std::vector<FGV2FormFieldDescriptor> GetAbsentOptionalFieldsForCategory(
+        const std::string& CategoryName) const;
+    std::vector<FGV2FormFieldDescriptor> GetAllAbsentOptionalFields() const;
+
     /** Returns true if there are unsaved field modifications. */
     bool IsDirty() const;
 
     /** Returns the map of dirty JSON pointers and their modified values. */
     const std::map<std::string, GV2ContentCore::FValue>& GetDirtyFields() const { return DirtyFields; }
+    const std::vector<GV2ContentAuthoring::FFieldOp>& GetPendingOperations() const { return PendingOperations; }
 
     /** Discards all unsaved field modifications and reverts to canonical baseline. */
     void DiscardCurrentChanges();
@@ -195,6 +249,8 @@ private:
     std::vector<FGV2DefinitionSummary> IndexedDefinitions;
 
     std::optional<FGV2LoadedDefinition> CurrentDefinition;
+    GV2ContentCore::FValue CandidateDefinitionValue;
+    std::vector<GV2ContentAuthoring::FFieldOp> PendingOperations;
     std::map<std::string, GV2ContentCore::FValue> CurrentValues;
     std::map<std::string, GV2ContentCore::FValue> DirtyFields;
 };

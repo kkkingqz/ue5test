@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GV2ContentAuthoring/GV2ContentAuthoring.h"
+#include "GV2ContentAuthoring/AuthoringTypes.h"
 #include "GV2ContentCore/FieldValidation.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/Value.h"
@@ -115,5 +116,11 @@ GV2_CONTENT_AUTHORING_API FRemoveDefinitionResult RemoveDefinitionEntry(
     const std::string& DefinitionId,
     const std::string& PackageId = "",
     const std::string& RelativeSource = "");
+
+GV2_CONTENT_AUTHORING_API bool ApplyFieldOpToDefinitionValue(
+    GV2ContentCore::FValue& DefValue,
+    const std::string& RawPointer,
+    const FFieldOp& Op,
+    std::string& OutError);
 
 } // namespace GV2ContentAuthoring

@@ -628,6 +628,195 @@ bool TestStableIdTreeHierarchyAndFiltering()
 
 } // namespace
 
+#include "GV2ContentEditor/FieldAdapterRegistry.h"
+#include "GV2ContentCore/ScalarValidation.h"
+
+bool TestSemanticKindAndFieldAdapter()
+{
+    GV2ContentCore::FCompiledFieldSpec IntSpec;
+    IntSpec.Kind = GV2ContentCore::EFieldKind::Scalar;
+    GV2ContentCore::FScalarFieldSpec IntScalar;
+    IntScalar.Kind = GV2ContentCore::EScalarFieldKind::Integer;
+    IntSpec.Scalar = IntScalar;
+
+    GV2ContentCore::FFieldUiMetadata SliderMeta;
+    SliderMeta.WidgetHint = "slider";
+
+    auto Desc = FGV2FieldAdapterRegistry::Get().DescribeField(IntSpec, &SliderMeta);
+    if (Desc.ControlType != EFieldControlType::Slider ||
+        Desc.SemanticKind != GV2ContentCore::EFieldKind::Scalar ||
+        !Desc.ScalarKind.has_value() ||
+        *Desc.ScalarKind != GV2ContentCore::EScalarFieldKind::Integer)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool TestPropertyPresenceAndStructuralOperations()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_adapter_presence");
+    std::string InitialItems =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.presence_test',\n"
+        "      data: {\n"
+        "        name: 'Presence Test Item'\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+
+    SetupTestGameData(TempDir, InitialItems);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    Adapter.Initialize(TempDir, Diags);
+    auto Loaded = Adapter.LoadDefinition("core:item.presence_test", Diags);
+    if (!Loaded.has_value())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Name is explicit
+    auto NamePresence = Adapter.GetPropertyPresence("/data/name", nullptr, true);
+    if (NamePresence != EPropertyPresence::Explicit)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Weight has default 1.0 -> should be ImplicitDefault
+    GV2ContentCore::FCompiledFieldSpec WeightSpec;
+    WeightSpec.Kind = GV2ContentCore::EFieldKind::Scalar;
+    WeightSpec.DefaultValue = GV2ContentCore::FValue(1.0);
+    auto WeightPresence = Adapter.GetPropertyPresence("/data/weight", &WeightSpec, false);
+    if (WeightPresence != EPropertyPresence::ImplicitDefault)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Absent optional property
+    auto AbsentPresence = Adapter.GetPropertyPresence("/data/nonexistent", nullptr, false);
+    if (AbsentPresence != EPropertyPresence::Absent)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Required missing property
+    auto MissingReqPresence = Adapter.GetPropertyPresence("/data/missing_req", nullptr, true);
+    if (MissingReqPresence != EPropertyPresence::RequiredMissing)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Materialize optional property
+    Adapter.AddCurrentOptionalProperty("/data/weight");
+    if (Adapter.GetPropertyPresence("/data/weight", &WeightSpec, false) != EPropertyPresence::Explicit)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Save and verify atomic disk update
+    auto SaveRes = Adapter.SaveCurrentDefinition();
+    if (!SaveRes.IsSuccess())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::string DiskContent = ReadFile(TempDir / "core/definitions/items.json5");
+    if (DiskContent.find("weight") == std::string::npos)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Remove property
+    Adapter.RemoveCurrentProperty("/data/weight");
+    auto SaveRes2 = Adapter.SaveCurrentDefinition();
+    if (!SaveRes2.IsSuccess())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
+bool TestArrayStructuralOperations()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_adapter_arrays");
+    std::string InitialItems =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.array_test',\n"
+        "      data: {\n"
+        "        name: 'Array Test Item'\n"
+        "      },\n"
+        "      tags: ['a', 'b', 'c']\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+
+    SetupTestGameData(TempDir, InitialItems);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    Adapter.Initialize(TempDir, Diags);
+    Adapter.LoadDefinition("core:item.array_test", Diags);
+
+    // Insert element at index 1
+    Adapter.InsertCurrentArrayElement("/tags", 1, GV2ContentCore::FValue("inserted"));
+    auto TagsVal = Adapter.GetCurrentFieldValue("/tags");
+    if (!TagsVal.has_value() || !TagsVal->IsArray() || TagsVal->AsArray().size() != 4 || TagsVal->AsArray()[1].AsString() != "inserted")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Move element from 1 to 3
+    Adapter.MoveCurrentArrayElement("/tags", 1, 3);
+    TagsVal = Adapter.GetCurrentFieldValue("/tags");
+    if (!TagsVal.has_value() || !TagsVal->IsArray() || TagsVal->AsArray()[3].AsString() != "inserted")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Remove element at index 3
+    Adapter.RemoveCurrentArrayElement("/tags", 3);
+    TagsVal = Adapter.GetCurrentFieldValue("/tags");
+    if (!TagsVal.has_value() || !TagsVal->IsArray() || TagsVal->AsArray().size() != 3)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    auto SaveRes = Adapter.SaveCurrentDefinition();
+    if (!SaveRes.IsSuccess())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
 std::string RunEditorAdapterConformance()
 {
     if (!TestAdapterInitializationAndIndexing())
@@ -661,6 +850,18 @@ std::string RunEditorAdapterConformance()
     if (!TestStableIdTreeHierarchyAndFiltering())
     {
         return "TestStableIdTreeHierarchyAndFiltering failed";
+    }
+    if (!TestSemanticKindAndFieldAdapter())
+    {
+        return "TestSemanticKindAndFieldAdapter failed";
+    }
+    if (!TestPropertyPresenceAndStructuralOperations())
+    {
+        return "TestPropertyPresenceAndStructuralOperations failed";
+    }
+    if (!TestArrayStructuralOperations())
+    {
+        return "TestArrayStructuralOperations failed";
     }
 
     std::string ReadSurfaceError = RunReadSurfaceConformance();

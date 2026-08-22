@@ -12,6 +12,7 @@ public:
     static FAuthoringResult CreateDefinition(const FCreateDefinitionParams& Params);
     static FAuthoringResult SetField(const FSetFieldParams& Params);
     static FAuthoringResult BatchSetFields(const FBatchSetFieldsParams& Params);
+    static FAuthoringResult ApplyOperations(const FApplyOperationsParams& Params);
     static FAuthoringResult DeleteDefinition(const FDeleteDefinitionParams& Params);
     static FAuthoringResult RenameDefinition(const FRenameDefinitionParams& Params);
     static FAuthoringResult DuplicateDefinition(const FDuplicateDefinitionParams& Params);
