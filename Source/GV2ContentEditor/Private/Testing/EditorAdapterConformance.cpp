@@ -1162,6 +1162,533 @@ bool TestTransactionJournalRecovery()
     return true;
 }
 
+bool TestNavigationGateAndDirtyResolution()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_nav_gate");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string ItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: { name: 'Iron Sword', weight: 2.0 }\n"
+        "    },\n"
+        "    {\n"
+        "      id: 'core:item.shield',\n"
+        "      data: { name: 'Wooden Shield', weight: 4.0 }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ItemsContent);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 1. Load sword
+    Adapter.LoadDefinition("core:item.sword", Diags);
+    Adapter.SetCurrentFieldValue("/data/weight", GV2ContentCore::FValue(2.5));
+    if (!Adapter.IsDirty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 2. CEH-18: CancelIfDirty preserves current selection and pending edits
+    auto NavResCancel = Adapter.RequestNavigateTo("core:item.shield", ENavigationDirtyResolution::CancelIfDirty, Diags);
+    if (NavResCancel != ENavigationGateResult::Cancelled)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (!Adapter.GetCurrentLocator().has_value() || Adapter.GetCurrentLocator()->DefinitionId != "core:item.sword")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (!Adapter.IsDirty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 3. CEH-18: SaveIfDirty saves sword and navigates to shield
+    auto NavResSave = Adapter.RequestNavigateTo("core:item.shield", ENavigationDirtyResolution::SaveIfDirty, Diags);
+    if (NavResSave != ENavigationGateResult::Navigated)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (!Adapter.GetCurrentLocator().has_value() || Adapter.GetCurrentLocator()->DefinitionId != "core:item.shield")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (Adapter.IsDirty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 4. CEH-18: DiscardIfDirty discards dirty edits and navigates immediately
+    Adapter.SetCurrentFieldValue("/data/weight", GV2ContentCore::FValue(5.0));
+    if (!Adapter.IsDirty())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    auto NavResDiscard = Adapter.RequestNavigateTo("core:item.sword", ENavigationDirtyResolution::DiscardIfDirty, Diags);
+    if (NavResDiscard != ENavigationGateResult::Navigated)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (!Adapter.GetCurrentLocator().has_value() || Adapter.GetCurrentLocator()->DefinitionId != "core:item.sword")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    // Verify sword has the saved weight (2.5) from earlier SaveIfDirty
+    auto SwordWeight = Adapter.GetCurrentFieldValue("/data/weight");
+    if (!SwordWeight.has_value() || !SwordWeight->IsNumber() || SwordWeight->AsNumber() != 2.5)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
+bool TestStaleStateClassificationAndRejection()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_stale_state");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string ItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: { name: 'Iron Sword', weight: 2.0 }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ItemsContent);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    Adapter.LoadDefinition("core:item.sword", Diags);
+
+    // CEH-19: Initial state is Clean
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Clean)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Local edit -> Dirty
+    Adapter.SetCurrentFieldValue("/data/weight", GV2ContentCore::FValue(3.0));
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Dirty)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // External modification on disk -> DirtyAndStale
+    std::string ModifiedItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: { name: 'Steel Sword', weight: 2.0 }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ModifiedItemsContent);
+
+    if (Adapter.GetSessionState() != EDefinitionSessionState::DirtyAndStale)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Save over stale state is rejected
+    auto SaveRes = Adapter.SaveCurrentDefinition();
+    if (SaveRes.Outcome != EEditorAuthoringOutcome::StaleFileState)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Discard local edits -> Stale
+    Adapter.DiscardCurrentChanges();
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Stale)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // DiscardAndReload -> Clean with external changes visible
+    if (!Adapter.DiscardAndReload(Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Clean)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    auto NameVal = Adapter.GetCurrentFieldValue("/data/name");
+    if (!NameVal.has_value() || !NameVal->IsString() || NameVal->AsString() != "Steel Sword")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
+bool TestDraftExportAndReapply()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_draft_recovery");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string ItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: { name: 'Iron Sword', weight: 2.0 }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ItemsContent);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    Adapter.LoadDefinition("core:item.sword", Diags);
+    Adapter.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Super Sword"));
+    Adapter.SetCurrentFieldValue("/data/weight", GV2ContentCore::FValue(5.0));
+
+    // External modification on disk
+    std::string ExternalModified =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: { name: 'External Modified Sword', weight: 1.0 }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ExternalModified);
+
+    // CEH-20: Export draft to resolve conflict
+    std::filesystem::path DraftPath = TempDir / "sword_draft.json5";
+    std::string OutError;
+    if (!Adapter.ExportCurrentDraft(DraftPath, OutError))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Discard and reload disk content
+    if (!Adapter.DiscardAndReload(Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Clean)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Reapply draft
+    if (!Adapter.ImportAndApplyDraft(DraftPath, Diags, OutError))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    if (Adapter.GetSessionState() != EDefinitionSessionState::Dirty)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+    auto NameVal = Adapter.GetCurrentFieldValue("/data/name");
+    auto WeightVal = Adapter.GetCurrentFieldValue("/data/weight");
+    if (!NameVal.has_value() || NameVal->AsString() != "Super Sword" ||
+        !WeightVal.has_value() || WeightVal->AsNumber() != 5.0)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Save now commits draft changes cleanly over updated baseline
+    auto SaveRes = Adapter.SaveCurrentDefinition();
+    if (!SaveRes.IsSuccess())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
+bool TestEditEventPerformanceAndIsolation()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_perf_isolation");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    weight: { kind: 'number', required: false, default: 1.0 }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string ItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: { name: 'Iron Sword', weight: 2.0 }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ItemsContent);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    Adapter.LoadDefinition("core:item.sword", Diags);
+
+    // CEH-21: Perform 50 sequential field edits
+    for (int i = 0; i < 50; ++i)
+    {
+        Adapter.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Sword " + std::to_string(i)));
+    }
+
+    auto FinalName = Adapter.GetCurrentFieldValue("/data/name");
+    if (!FinalName.has_value() || FinalName->AsString() != "Sword 49")
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // Index and trees were not modified during field typing
+    if (Adapter.ListDefinitions().size() != 1)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
+bool TestInitializationDiagnosticsAndMultiFileMetadata()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_meta_diags");
+    std::filesystem::path CoreDir = TempDir / "core";
+
+    std::string PackageJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", PackageJson5);
+
+    std::string ItemSchema =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true },\n"
+        "    ref_item: { kind: 'ref', target_kind: 'item', required: false }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", ItemSchema);
+
+    std::string ItemsContent =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.target_sword',\n"
+        "      data: { name: 'Target Sword' }\n"
+        "    },\n"
+        "    {\n"
+        "      id: 'core:item.wielder',\n"
+        "      data: { name: 'Wielder', ref_item: 'core:item.target_sword' }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", ItemsContent);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // CEH-22: Check InitializationDiagnostics
+    const auto& InitDiags = Adapter.GetInitializationDiagnostics();
+    (void)InitDiags;
+
+    // CEH-22: Check multi-file rename result metadata
+    auto RenameRes = Adapter.RenameDefinition("core:item.target_sword", "core:item.renamed_sword", true);
+    if (!RenameRes.IsSuccess())
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    if (RenameRes.AffectedFilesCount < 1 || RenameRes.AffectedFilePaths.empty() || RenameRes.ReplacementsCount < 2)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
 std::string RunEditorAdapterConformance()
 {
     if (!TestAdapterInitializationAndIndexing())
@@ -1219,6 +1746,26 @@ std::string RunEditorAdapterConformance()
     if (!TestTransactionJournalRecovery())
     {
         return "TestTransactionJournalRecovery failed";
+    }
+    if (!TestNavigationGateAndDirtyResolution())
+    {
+        return "TestNavigationGateAndDirtyResolution failed";
+    }
+    if (!TestStaleStateClassificationAndRejection())
+    {
+        return "TestStaleStateClassificationAndRejection failed";
+    }
+    if (!TestDraftExportAndReapply())
+    {
+        return "TestDraftExportAndReapply failed";
+    }
+    if (!TestEditEventPerformanceAndIsolation())
+    {
+        return "TestEditEventPerformanceAndIsolation failed";
+    }
+    if (!TestInitializationDiagnosticsAndMultiFileMetadata())
+    {
+        return "TestInitializationDiagnosticsAndMultiFileMetadata failed";
     }
 
     std::string ReadSurfaceError = RunReadSurfaceConformance();

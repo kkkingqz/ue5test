@@ -243,6 +243,52 @@ public:
     std::vector<std::string> GetCompatibleResourceTargets(
         const std::string& ResourceClass) const;
 
+    /**
+     * Unified navigation gate preventing silent loss of unsaved edits (CEH-18).
+     */
+    ENavigationGateResult RequestNavigateTo(
+        const GV2ContentAuthoring::FAuthoringLocator& TargetLocator,
+        ENavigationDirtyResolution Resolution,
+        std::vector<FGV2EditorDiagnostic>& OutDiags);
+
+    ENavigationGateResult RequestNavigateTo(
+        const std::string& DefinitionId,
+        ENavigationDirtyResolution Resolution,
+        std::vector<FGV2EditorDiagnostic>& OutDiags);
+
+    /**
+     * Returns the 4-state session lifecycle status for the active loaded definition (CEH-19).
+     */
+    EDefinitionSessionState GetSessionState() const;
+
+    /**
+     * Exports active dirty edits to an offline JSON5 draft (CEH-20).
+     */
+    bool ExportCurrentDraft(
+        const std::filesystem::path& DraftFilePath,
+        std::string& OutError) const;
+
+    /**
+     * Imports an offline JSON5 draft and reapplies pending edits over the current definition (CEH-20).
+     */
+    bool ImportAndApplyDraft(
+        const std::filesystem::path& DraftFilePath,
+        std::vector<FGV2EditorDiagnostic>& OutDiags,
+        std::string& OutError);
+
+    /**
+     * Discards local in-memory edits and reloads baseline from disk (CEH-20).
+     */
+    bool DiscardAndReload(std::vector<FGV2EditorDiagnostic>& OutDiags);
+
+    /**
+     * Returns initialization diagnostics retained after Initialize() (CEH-22).
+     */
+    const std::vector<FGV2EditorDiagnostic>& GetInitializationDiagnostics() const
+    {
+        return InitializationDiagnostics;
+    }
+
 private:
     void UpdatePendingReferenceOverlay();
     std::filesystem::path FindPackageRootById(const std::string& PackageId) const;
@@ -257,6 +303,7 @@ private:
     GV2ContentAuthoring::FAuthoringIndex AuthoringIndex;
     FGV2AuthoringReferenceIndex AuthoringReferenceIndex;
     std::vector<FGV2DefinitionSummary> IndexedDefinitions;
+    std::vector<FGV2EditorDiagnostic> InitializationDiagnostics;
 
     std::optional<FGV2LoadedDefinition> CurrentDefinition;
     GV2ContentCore::FValue CandidateDefinitionValue;

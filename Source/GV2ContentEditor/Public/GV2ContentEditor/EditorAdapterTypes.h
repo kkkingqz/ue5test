@@ -99,6 +99,51 @@ struct GV2_CONTENT_EDITOR_API FGV2LoadedDefinition final
 };
 
 /**
+ * Session lifecycle state of the currently loaded definition (CEH-19).
+ */
+enum class EDefinitionSessionState : std::uint8_t
+{
+    Clean = 0,        // Not modified in memory, file on disk matches load stamp
+    Dirty,            // Modified in memory, file on disk matches load stamp
+    Stale,            // Not modified in memory, file on disk changed externally
+    DirtyAndStale     // Modified in memory AND file on disk changed externally (conflict)
+};
+
+/**
+ * Resolution policy when navigating away from a dirty definition (CEH-18).
+ */
+enum class ENavigationDirtyResolution : std::uint8_t
+{
+    CancelIfDirty = 0, // Abort navigation if currently dirty (preserve current selection and edits)
+    SaveIfDirty,       // Attempt to save current definition before navigating (stay if save fails)
+    DiscardIfDirty     // Discard in-memory modifications and navigate immediately
+};
+
+/**
+ * Result of requesting navigation through the session navigation gate (CEH-18).
+ */
+enum class ENavigationGateResult : std::uint8_t
+{
+    Navigated = 0,            // Navigation succeeded (target definition loaded)
+    Cancelled,                // Navigation was cancelled (dirty definition preserved)
+    SaveFailedStayOnCurrent,  // Save attempted but failed validation/IO; stayed on current definition
+    TargetNotFound            // Target definition was not found in package index
+};
+
+/**
+ * Portable JSON5 draft for preserving unsaved modifications during external conflicts (CEH-20).
+ */
+struct GV2_CONTENT_EDITOR_API FGV2EditorDraft final
+{
+    GV2ContentAuthoring::FAuthoringLocator Locator;
+    std::string BaseStamp;
+    std::string CreatedAtIso;
+    GV2ContentCore::FValue CandidateValue;
+    std::vector<GV2ContentAuthoring::FFieldOp> PendingOperations;
+    std::map<std::string, GV2ContentCore::FValue> DirtyFields;
+};
+
+/**
  * Distinct outcome categories for authoring operations in the editor (CED-07).
  * Specifically separates StaleFileState (external modification) from ValidationFailed.
  */
@@ -128,6 +173,9 @@ struct GV2_CONTENT_EDITOR_API FGV2EditorAuthoringResult final
     std::string ErrorMessage;
     std::vector<FGV2EditorDiagnostic> Diagnostics;
     std::filesystem::path AffectedFile;
+    std::vector<std::filesystem::path> AffectedFilePaths;
+    std::size_t AffectedFilesCount = 0;
+    std::size_t ReplacementsCount = 0;
     GV2ContentAuthoring::FFileStateStamp NewStamp;
     std::size_t AffectedDefinitionsCount = 0;
 

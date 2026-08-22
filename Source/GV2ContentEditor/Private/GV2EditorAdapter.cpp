@@ -40,6 +40,25 @@ bool ReadFileContent(const std::filesystem::path& Path, std::string& OutContent)
     return true;
 }
 
+bool WriteEntireFile(const std::filesystem::path& Path, const std::string& Content, std::string& OutError)
+{
+    std::error_code Ec;
+    std::filesystem::create_directories(Path.parent_path(), Ec);
+    std::ofstream Stream(Path, std::ios::binary | std::ios::trunc);
+    if (!Stream.is_open())
+    {
+        OutError = "Failed to open file for writing: " + Path.string();
+        return false;
+    }
+    Stream.write(Content.data(), static_cast<std::streamsize>(Content.size()));
+    if (!Stream.good())
+    {
+        OutError = "Failed to write file: " + Path.string();
+        return false;
+    }
+    return true;
+}
+
 std::string NormalizePointer(const std::string& Pointer)
 {
     if (Pointer.empty() || Pointer == "/") return "/";
@@ -204,9 +223,12 @@ bool FGV2EditorAdapter::Initialize(
         }
     }
 
+    InitializationDiagnostics.clear();
     for (const auto& D : DiscoveryDiags)
     {
-        OutDiagnostics.push_back(FGV2EditorDiagnostic::FromDiagnostic(D));
+        auto Diag = FGV2EditorDiagnostic::FromDiagnostic(D);
+        OutDiagnostics.push_back(Diag);
+        InitializationDiagnostics.push_back(std::move(Diag));
     }
 
     if (DiscoveredPackages.empty())
@@ -1258,13 +1280,228 @@ std::filesystem::path FGV2EditorAdapter::FindPackageRootForDefinition(const std:
     return ContentRoot;
 }
 
+ENavigationGateResult FGV2EditorAdapter::RequestNavigateTo(
+    const GV2ContentAuthoring::FAuthoringLocator& TargetLocator,
+    ENavigationDirtyResolution Resolution,
+    std::vector<FGV2EditorDiagnostic>& OutDiags)
+{
+    if (CurrentDefinition.has_value() && CurrentDefinition->Locator == TargetLocator)
+    {
+        return ENavigationGateResult::Navigated;
+    }
+
+    if (IsDirty())
+    {
+        switch (Resolution)
+        {
+        case ENavigationDirtyResolution::CancelIfDirty:
+            return ENavigationGateResult::Cancelled;
+
+        case ENavigationDirtyResolution::SaveIfDirty:
+        {
+            auto SaveRes = SaveCurrentDefinition();
+            if (!SaveRes.IsSuccess())
+            {
+                for (auto& D : SaveRes.Diagnostics)
+                {
+                    OutDiags.push_back(std::move(D));
+                }
+                return ENavigationGateResult::SaveFailedStayOnCurrent;
+            }
+            break;
+        }
+
+        case ENavigationDirtyResolution::DiscardIfDirty:
+            DiscardCurrentChanges();
+            break;
+        }
+    }
+
+    auto Loaded = LoadDefinition(TargetLocator, OutDiags);
+    if (!Loaded.has_value())
+    {
+        return ENavigationGateResult::TargetNotFound;
+    }
+    return ENavigationGateResult::Navigated;
+}
+
+ENavigationGateResult FGV2EditorAdapter::RequestNavigateTo(
+    const std::string& DefinitionId,
+    ENavigationDirtyResolution Resolution,
+    std::vector<FGV2EditorDiagnostic>& OutDiags)
+{
+    auto Loc = AuthoringIndex.GetEffectiveWinner(DefinitionId);
+    if (!Loc.has_value())
+    {
+        return ENavigationGateResult::TargetNotFound;
+    }
+    return RequestNavigateTo(*Loc, Resolution, OutDiags);
+}
+
+EDefinitionSessionState FGV2EditorAdapter::GetSessionState() const
+{
+    if (!CurrentDefinition.has_value())
+    {
+        return EDefinitionSessionState::Clean;
+    }
+
+    const bool bDirty = IsDirty();
+    const bool bDiskMatches = CheckFileState();
+
+    if (!bDirty && bDiskMatches)
+    {
+        return EDefinitionSessionState::Clean;
+    }
+    if (bDirty && bDiskMatches)
+    {
+        return EDefinitionSessionState::Dirty;
+    }
+    if (!bDirty && !bDiskMatches)
+    {
+        return EDefinitionSessionState::Stale;
+    }
+    return EDefinitionSessionState::DirtyAndStale;
+}
+
+bool FGV2EditorAdapter::ExportCurrentDraft(
+    const std::filesystem::path& DraftFilePath,
+    std::string& OutError) const
+{
+    if (!CurrentDefinition.has_value())
+    {
+        OutError = "No definition currently loaded to export draft";
+        return false;
+    }
+
+    GV2ContentCore::FValue::FArray DirtyArray;
+    for (const auto& [Ptr, Val] : DirtyFields)
+    {
+        GV2ContentCore::FValue::FObject EntryFields;
+        EntryFields.emplace_back("pointer", GV2ContentCore::FValue(Ptr));
+        EntryFields.emplace_back("value", Val);
+        DirtyArray.push_back(GV2ContentCore::FValue::MakeObject(std::move(EntryFields)));
+    }
+
+    GV2ContentCore::FValue::FObject LocatorFields;
+    LocatorFields.emplace_back("definition_id", GV2ContentCore::FValue(CurrentDefinition->Locator.DefinitionId));
+    LocatorFields.emplace_back("definition_type", GV2ContentCore::FValue(CurrentDefinition->Locator.DefinitionType));
+    LocatorFields.emplace_back("package_id", GV2ContentCore::FValue(CurrentDefinition->Locator.PackageId));
+    LocatorFields.emplace_back("relative_source", GV2ContentCore::FValue(CurrentDefinition->Locator.RelativeSource));
+    LocatorFields.emplace_back("load_index", GV2ContentCore::FValue(static_cast<std::int64_t>(CurrentDefinition->Locator.LoadIndex)));
+    auto LocatorObj = GV2ContentCore::FValue::MakeObject(std::move(LocatorFields));
+
+    GV2ContentCore::FValue::FObject DraftFields;
+    DraftFields.emplace_back("schema_version", GV2ContentCore::FValue(1));
+    DraftFields.emplace_back("locator", std::move(LocatorObj));
+    DraftFields.emplace_back("base_stamp", GV2ContentCore::FValue(CurrentDefinition->Stamp.ContentHash));
+    DraftFields.emplace_back("candidate_value", CandidateDefinitionValue);
+    DraftFields.emplace_back("dirty_fields", GV2ContentCore::FValue(std::move(DirtyArray)));
+    auto DraftObj = GV2ContentCore::FValue::MakeObject(std::move(DraftFields));
+
+    std::ostringstream Oss;
+    GV2ContentAuthoring::FormatJson5Value(Oss, DraftObj, 0);
+    std::string Content = Oss.str() + "\n";
+
+    return WriteEntireFile(DraftFilePath, Content, OutError);
+}
+
+bool FGV2EditorAdapter::ImportAndApplyDraft(
+    const std::filesystem::path& DraftFilePath,
+    std::vector<FGV2EditorDiagnostic>& OutDiags,
+    std::string& OutError)
+{
+    std::string Content;
+    if (!ReadFileContent(DraftFilePath, Content))
+    {
+        OutError = "Failed to read draft file: " + DraftFilePath.string();
+        return false;
+    }
+
+    GV2ContentCore::FParseLimits Limits;
+    std::vector<GV2ContentCore::FDiagnostic> Diags;
+    auto Doc = GV2ContentCore::ParseJson5Document(Content, Limits, Diags, "", 0, DraftFilePath.filename().string());
+    if (!Doc.has_value() || !Doc->GetRootValue().IsObject())
+    {
+        OutError = "Invalid draft document structure";
+        return false;
+    }
+
+    const auto* LocVal = Doc->GetRootValue().FindField("locator");
+    if (LocVal == nullptr || !LocVal->IsObject())
+    {
+        OutError = "Draft missing locator";
+        return false;
+    }
+
+    const auto* DefIdVal = LocVal->FindField("definition_id");
+    if (DefIdVal == nullptr || !DefIdVal->IsString())
+    {
+        OutError = "Draft missing definition_id in locator";
+        return false;
+    }
+    const std::string DefId = DefIdVal->AsString();
+
+    // If target definition is not loaded, load it
+    if (!CurrentDefinition.has_value() || CurrentDefinition->Id != DefId)
+    {
+        auto Loaded = LoadDefinition(DefId, OutDiags);
+        if (!Loaded.has_value())
+        {
+            OutError = "Failed to load target definition for draft: " + DefId;
+            return false;
+        }
+    }
+
+    // Apply dirty fields
+    const auto* DirtyArray = Doc->GetRootValue().FindField("dirty_fields");
+    if (DirtyArray != nullptr && DirtyArray->IsArray())
+    {
+        for (const auto& Entry : DirtyArray->AsArray())
+        {
+            if (Entry.IsObject())
+            {
+                const auto* PtrVal = Entry.FindField("pointer");
+                const auto* ValVal = Entry.FindField("value");
+                if (PtrVal && PtrVal->IsString() && ValVal)
+                {
+                    SetCurrentFieldValue(PtrVal->AsString(), *ValVal);
+                }
+            }
+        }
+    }
+    else if (const auto* CandVal = Doc->GetRootValue().FindField("candidate_value"))
+    {
+        if (CandVal->IsObject())
+        {
+            CandidateDefinitionValue = *CandVal;
+            UpdatePendingReferenceOverlay();
+        }
+    }
+
+    return true;
+}
+
+bool FGV2EditorAdapter::DiscardAndReload(std::vector<FGV2EditorDiagnostic>& OutDiags)
+{
+    if (!CurrentDefinition.has_value()) return false;
+    const auto SavedLocator = CurrentDefinition->Locator;
+    DiscardCurrentChanges();
+    auto Loaded = LoadDefinition(SavedLocator, OutDiags);
+    return Loaded.has_value();
+}
+
 FGV2EditorAuthoringResult FGV2EditorAdapter::ConvertAuthoringResult(
     const GV2ContentAuthoring::FAuthoringResult& InResult)
 {
     FGV2EditorAuthoringResult Out;
     Out.ErrorCode = InResult.ErrorCode;
     Out.ErrorMessage = InResult.ErrorMessage;
-    Out.AffectedFile = InResult.TargetFilePath;
+    Out.AffectedFile = InResult.TargetFilePath.empty()
+        ? (InResult.AffectedFilePaths.empty() ? std::filesystem::path{} : InResult.AffectedFilePaths.front())
+        : InResult.TargetFilePath;
+    Out.AffectedFilePaths = InResult.AffectedFilePaths;
+    Out.AffectedFilesCount = InResult.AffectedFilesCount;
+    Out.ReplacementsCount = InResult.ReplacementsCount;
     Out.NewStamp = InResult.NewStamp;
     Out.AffectedDefinitionsCount = InResult.AffectedDefinitionsCount;
 
