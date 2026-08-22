@@ -1069,7 +1069,27 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
     const GV2RuntimeCore::FValue* Name = FindValue(Value, "name");
     GV2RuntimeCore::FTextSpec Spec;
     FString PortraitResourceId;
-    return Name != nullptr && ReadTextSpec(*Name, Spec) && ReadOptionalResource(Value, "portrait_resource_id", PortraitResourceId);
+    if (Name == nullptr || !ReadTextSpec(*Name, Spec) || !ReadOptionalResource(Value, "portrait_resource_id", PortraitResourceId))
+    {
+        return false;
+    }
+    if (const GV2RuntimeCore::FValue* MetersVal = FindValue(Value, "meters"))
+    {
+        const FArray* MetersArray = AsArray(*MetersVal);
+        if (MetersArray == nullptr) return false;
+        TSet<std::string> MeterKeys;
+        for (const GV2RuntimeCore::FValue& EntryVal : *MetersArray)
+        {
+            const FObject* MeterObj = std::get_if<FObject>(&EntryVal.Data);
+            if (MeterObj == nullptr) return false;
+            const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key");
+            if (KeyVal == nullptr) return false;
+            const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
+            if (KeyStr == nullptr || KeyStr->empty() || MeterKeys.Contains(*KeyStr)) return false;
+            MeterKeys.Add(*KeyStr);
+        }
+    }
+    return true;
 }
 
 bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
@@ -1080,40 +1100,33 @@ bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const 
 
     if (const GV2RuntimeCore::FValue* MetersVal = FindValue(Value, "meters"))
     {
-        if (const FArray* MetersArray = AsArray(*MetersVal))
+        const FArray* MetersArray = AsArray(*MetersVal);
+        if (MetersArray == nullptr) return false;
+        TSet<FName> MeterKeys;
+        for (int32 Index = 0; Index < static_cast<int32>(MetersArray->size()); ++Index)
         {
-            for (int32 Index = 0; Index < static_cast<int32>(MetersArray->size()); ++Index)
+            const GV2RuntimeCore::FValue& EntryVal = (*MetersArray)[Index];
+            const FObject* MeterObj = std::get_if<FObject>(&EntryVal.Data);
+            if (MeterObj == nullptr) return false;
+
+            FGV2LocationMeterEntry MeterEntry;
+            const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key");
+            if (KeyVal == nullptr) return false;
+            const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
+            if (KeyStr == nullptr || KeyStr->empty()) return false;
+
+            MeterEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
+            if (MeterEntry.Key.IsNone() || MeterKeys.Contains(MeterEntry.Key)) return false;
+            MeterKeys.Add(MeterEntry.Key);
+
+            if (const GV2RuntimeCore::FValue* PercentVal = FindValue(*MeterObj, "percent"))
             {
-                const GV2RuntimeCore::FValue& EntryVal = (*MetersArray)[Index];
-                FGV2LocationMeterEntry MeterEntry;
-                if (const FObject* MeterObj = std::get_if<FObject>(&EntryVal.Data))
+                if (const double* P = std::get_if<double>(&PercentVal->Data))
                 {
-                    if (const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key"))
-                    {
-                        if (const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data))
-                        {
-                            MeterEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
-                        }
-                    }
-                    if (MeterEntry.Key.IsNone())
-                    {
-                        MeterEntry.Key = FName(*FString::Printf(TEXT("meter_%d"), Index));
-                    }
-                    if (const GV2RuntimeCore::FValue* PercentVal = FindValue(*MeterObj, "percent"))
-                    {
-                        if (const double* P = std::get_if<double>(&PercentVal->Data))
-                        {
-                            MeterEntry.Meter.Percent = static_cast<float>(*P);
-                        }
-                    }
-                }
-                else if (const double* P = std::get_if<double>(&EntryVal.Data))
-                {
-                    MeterEntry.Key = FName(*FString::Printf(TEXT("meter_%d"), Index));
                     MeterEntry.Meter.Percent = static_cast<float>(*P);
                 }
-                Model.Meters.Add(MeterEntry);
             }
+            Model.Meters.Add(MeterEntry);
         }
     }
 
@@ -1126,7 +1139,23 @@ bool PrepareLocationScene(const std::string&, const GV2RuntimeCore::FScreenField
     FString Ignored;
     if (!ReadOptionalResource(Value, "background_tile_resource_id", Ignored)
         || !ReadOptionalResource(Value, "background_resource_id", Ignored)) return false;
-    if (const GV2RuntimeCore::FValue* Context = FindValue(Value, "context_text")) { GV2RuntimeCore::FTextSpec Spec; return ReadTextSpec(*Context, Spec); }
+    if (const GV2RuntimeCore::FValue* Context = FindValue(Value, "context_text")) { GV2RuntimeCore::FTextSpec Spec; if (!ReadTextSpec(*Context, Spec)) return false; }
+    if (const GV2RuntimeCore::FValue* CharsVal = FindValue(Value, "characters"))
+    {
+        const FArray* CharsArray = AsArray(*CharsVal);
+        if (CharsArray == nullptr) return false;
+        TSet<std::string> CharKeys;
+        for (const GV2RuntimeCore::FValue& EntryVal : *CharsArray)
+        {
+            const FObject* CharObj = std::get_if<FObject>(&EntryVal.Data);
+            if (CharObj == nullptr) return false;
+            const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key");
+            if (KeyVal == nullptr) return false;
+            const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
+            if (KeyStr == nullptr || KeyStr->empty() || CharKeys.Contains(*KeyStr)) return false;
+            CharKeys.Add(*KeyStr);
+        }
+    }
     return true;
 }
 
@@ -1139,37 +1168,27 @@ bool BuildLocationScene(const GV2RuntimeCore::FScreenField& Field, const FObject
 
     if (const GV2RuntimeCore::FValue* CharsVal = FindValue(Value, "characters"))
     {
-        if (const FArray* CharsArray = AsArray(*CharsVal))
+        const FArray* CharsArray = AsArray(*CharsVal);
+        if (CharsArray == nullptr) return false;
+        TSet<FName> CharacterKeys;
+        for (int32 Index = 0; Index < static_cast<int32>(CharsArray->size()); ++Index)
         {
-            for (int32 Index = 0; Index < static_cast<int32>(CharsArray->size()); ++Index)
-            {
-                const GV2RuntimeCore::FValue& EntryVal = (*CharsArray)[Index];
-                FGV2LocationCharacterEntry CharEntry;
-                if (const FObject* CharObj = std::get_if<FObject>(&EntryVal.Data))
-                {
-                    if (const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key"))
-                    {
-                        if (const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data))
-                        {
-                            CharEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
-                        }
-                    }
-                    ReadOptionalResource(*CharObj, "resource_id", CharEntry.ResourceId);
-                    if (CharEntry.Key.IsNone())
-                    {
-                        CharEntry.Key = FName(*CharEntry.ResourceId);
-                    }
-                }
-                else if (const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data))
-                {
-                    CharEntry.ResourceId = UTF8_TO_TCHAR(ResStr->c_str());
-                    CharEntry.Key = FName(*CharEntry.ResourceId);
-                }
-                if (!CharEntry.Key.IsNone())
-                {
-                    Model.Characters.Add(CharEntry);
-                }
-            }
+            const GV2RuntimeCore::FValue& EntryVal = (*CharsArray)[Index];
+            const FObject* CharObj = std::get_if<FObject>(&EntryVal.Data);
+            if (CharObj == nullptr) return false;
+
+            FGV2LocationCharacterEntry CharEntry;
+            const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key");
+            if (KeyVal == nullptr) return false;
+            const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
+            if (KeyStr == nullptr || KeyStr->empty()) return false;
+
+            CharEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
+            if (CharEntry.Key.IsNone() || CharacterKeys.Contains(CharEntry.Key)) return false;
+            CharacterKeys.Add(CharEntry.Key);
+
+            if (!ReadOptionalResource(*CharObj, "resource_id", CharEntry.ResourceId)) return false;
+            Model.Characters.Add(CharEntry);
         }
     }
 

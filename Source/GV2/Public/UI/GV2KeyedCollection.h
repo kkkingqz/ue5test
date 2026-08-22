@@ -45,7 +45,8 @@ public:
 #endif
 
         TMap<FName, TObjectPtr<WidgetType>> CandidateByKey;
-        OutOrderedWidgets.Reset(Models.Num());
+        TArray<WidgetType*> TempOrderedWidgets;
+        TempOrderedWidgets.Reset(Models.Num());
         for (const ModelType& Model : Models)
         {
             const FName Key = GetKey(Model);
@@ -65,13 +66,13 @@ public:
             }
             if (Widget == nullptr) return false;
             CandidateByKey.Add(Key, Widget);
-            OutOrderedWidgets.Add(Widget);
+            TempOrderedWidgets.Add(Widget);
         }
 
         // Apply items to widgets
         for (int32 Index = 0; Index < Models.Num(); ++Index)
         {
-            if (!ApplyItem(*OutOrderedWidgets[Index], Models[Index]))
+            if (!ApplyItem(*TempOrderedWidgets[Index], Models[Index]))
             {
                 return false;
             }
@@ -80,7 +81,7 @@ public:
         // Commit to Container atomically
         const TArray<UWidget*> PreviousChildren = Container->GetAllChildren();
         Container->ClearChildren();
-        for (WidgetType* Widget : OutOrderedWidgets)
+        for (WidgetType* Widget : TempOrderedWidgets)
         {
             if (Container->AddChild(Widget) == nullptr)
             {
@@ -93,6 +94,7 @@ public:
             }
         }
         InOutWidgetsByKey = MoveTemp(CandidateByKey);
+        OutOrderedWidgets = MoveTemp(TempOrderedWidgets);
 
 #if !UE_BUILD_SHIPPING
         if (Models.Num() > 0 && PreviousWidgetCount > 0)

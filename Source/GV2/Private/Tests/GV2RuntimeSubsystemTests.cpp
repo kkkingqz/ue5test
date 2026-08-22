@@ -3189,6 +3189,198 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             [](UGV2ButtonWidgetBase& Widget, const FTestItem& Item) -> bool { return false; });
         TestFalse(TEXT("Failed ApplyItem is rejected"), bSuccess);
         TestEqual(TEXT("Entry count unchanged after rejected apply"), ListView->GetEntryCount(), 3);
+
+        // CCF-01 / CCF-02: Atomic reconciliation - failed candidate does not mutate live reused widgets
+        {
+            struct FTestProgressItem
+            {
+                FName Key;
+                float Value = 0.0f;
+            };
+
+            UGV2ListViewWidgetBase* AtomicListView = NewObject<UGV2ListViewWidgetBase>(TestWorld);
+            UVerticalBox* AtomicContainer = NewObject<UVerticalBox>(TestWorld);
+            AtomicListView->SetContainerPanel(AtomicContainer);
+
+            const TArray<FTestProgressItem> AtomicInitial = {
+                { FName(TEXT("item_a")), 10.0f },
+                { FName(TEXT("item_b")), 20.0f }
+            };
+
+            bool bAtomicInit = AtomicListView->ReconcileEntries<UGV2ProgressBarWidgetBase, FTestProgressItem>(
+                AtomicInitial,
+                [](const FTestProgressItem& Item) { return Item.Key; },
+                [TestWorld]() -> UGV2ProgressBarWidgetBase* { return NewObject<UGV2ProgressBarWidgetBase>(TestWorld); },
+                [](UGV2ProgressBarWidgetBase& Widget, const FTestProgressItem& Item) -> bool
+                {
+                    Widget.ApplyProgress(Item.Value);
+                    return true;
+                });
+            TestTrue(TEXT("Atomic baseline reconciliation succeeds"), bAtomicInit);
+            UGV2ProgressBarWidgetBase* ProgA = AtomicListView->GetEntry<UGV2ProgressBarWidgetBase>(FName(TEXT("item_a")));
+            UGV2ProgressBarWidgetBase* ProgB = AtomicListView->GetEntry<UGV2ProgressBarWidgetBase>(FName(TEXT("item_b")));
+            TestNotNull(TEXT("ProgA exists"), ProgA);
+            TestNotNull(TEXT("ProgB exists"), ProgB);
+            TestEqual(TEXT("ProgA baseline value is 10"), ProgA->GetProgress(), 10.0f);
+            TestEqual(TEXT("ProgB baseline value is 20"), ProgB->GetProgress(), 20.0f);
+            TestEqual(TEXT("Container child count is 2"), AtomicContainer->GetChildrenCount(), 2);
+
+            // Attempt reconcile where item_a has valid 100.0f, but item_b is invalid (fails preflight)
+            const TArray<FTestProgressItem> AtomicCandidate = {
+                { FName(TEXT("item_a")), 100.0f },
+                { FName(TEXT("item_b")), -1.0f }
+            };
+
+            bool bAtomicCandidate = AtomicListView->ReconcileEntries<UGV2ProgressBarWidgetBase, FTestProgressItem>(
+                AtomicCandidate,
+                [](const FTestProgressItem& Item) { return Item.Key; },
+                [TestWorld]() -> UGV2ProgressBarWidgetBase* { return NewObject<UGV2ProgressBarWidgetBase>(TestWorld); },
+                [](UGV2ProgressBarWidgetBase& Widget, const FTestProgressItem& Item) -> bool
+                {
+                    Widget.ApplyProgress(Item.Value);
+                    return true;
+                },
+                [](const FTestProgressItem& Item) -> bool
+                {
+                    return Item.Value >= 0.0f; // item_b fails preflight
+                });
+            TestFalse(TEXT("Reconciliation fails due to invalid second candidate"), bAtomicCandidate);
+            TestEqual(TEXT("ProgA pointer unchanged after failure"), AtomicListView->GetEntry<UGV2ProgressBarWidgetBase>(FName(TEXT("item_a"))), ProgA);
+            TestEqual(TEXT("ProgB pointer unchanged after failure"), AtomicListView->GetEntry<UGV2ProgressBarWidgetBase>(FName(TEXT("item_b"))), ProgB);
+            TestEqual(TEXT("ProgA value remains 10 (NOT mutated to 100)"), ProgA->GetProgress(), 10.0f);
+            TestEqual(TEXT("ProgB value remains 20"), ProgB->GetProgress(), 20.0f);
+            TestEqual(TEXT("Child count remains 2"), AtomicContainer->GetChildrenCount(), 2);
+            TestEqual(TEXT("Child 0 remains ProgA"), AtomicContainer->GetChildAt(0), Cast<UWidget>(ProgA));
+            TestEqual(TEXT("Child 1 remains ProgB"), AtomicContainer->GetChildAt(1), Cast<UWidget>(ProgB));
+        }
+
+        // CCF-05: Complete Repeater Regression Matrix
+        {
+            UGV2ListViewWidgetBase* MatrixList = NewObject<UGV2ListViewWidgetBase>(TestWorld);
+            UVerticalBox* MatrixContainer = NewObject<UVerticalBox>(TestWorld);
+            MatrixList->SetContainerPanel(MatrixContainer);
+
+            auto ReconcileHelper = [&](const TArray<FTestItem>& Items, TFunction<bool(const FTestItem&)> CanApply = nullptr) -> bool
+            {
+                return MatrixList->ReconcileEntries<UGV2ButtonWidgetBase, FTestItem>(
+                    Items,
+                    [](const FTestItem& Item) { return Item.Key; },
+                    [TestWorld]() -> UGV2ButtonWidgetBase* { return NewObject<UGV2ButtonWidgetBase>(TestWorld); },
+                    [](UGV2ButtonWidgetBase& Widget, const FTestItem& Item) -> bool { return true; },
+                    CanApply);
+            };
+
+            // 1. empty -> 1
+            const TArray<FTestItem> OneItem = { { FName(TEXT("k1")), TEXT("V1") } };
+            TestTrue(TEXT("Matrix: empty -> 1 succeeds"), ReconcileHelper(OneItem));
+            TestEqual(TEXT("Matrix: count is 1"), MatrixList->GetEntryCount(), 1);
+            UGV2ButtonWidgetBase* W1 = MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k1")));
+            TestNotNull(TEXT("Matrix: W1 created"), W1);
+
+            // 2. 1 -> 3
+            const TArray<FTestItem> ThreeItems = {
+                { FName(TEXT("k1")), TEXT("V1_new") },
+                { FName(TEXT("k2")), TEXT("V2") },
+                { FName(TEXT("k3")), TEXT("V3") }
+            };
+            TestTrue(TEXT("Matrix: 1 -> 3 succeeds"), ReconcileHelper(ThreeItems));
+            TestEqual(TEXT("Matrix: count is 3"), MatrixList->GetEntryCount(), 3);
+            TestEqual(TEXT("Matrix: W1 reused"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k1"))), W1);
+            UGV2ButtonWidgetBase* W2 = MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k2")));
+            UGV2ButtonWidgetBase* W3 = MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3")));
+            TestNotNull(TEXT("Matrix: W2 created"), W2);
+            TestNotNull(TEXT("Matrix: W3 created"), W3);
+
+            // 3. 3 -> 1
+            TestTrue(TEXT("Matrix: 3 -> 1 succeeds"), ReconcileHelper(OneItem));
+            TestEqual(TEXT("Matrix: count is 1"), MatrixList->GetEntryCount(), 1);
+            TestEqual(TEXT("Matrix: W1 still reused"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k1"))), W1);
+            TestNull(TEXT("Matrix: W2 removed"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k2"))));
+            TestNull(TEXT("Matrix: W3 removed"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3"))));
+
+            // Back to 3 items:
+            TestTrue(TEXT("Matrix: re-expand to 3"), ReconcileHelper(ThreeItems));
+            W2 = MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k2")));
+            W3 = MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3")));
+
+            // 4. same keys + same order + changed values (reuse pointers)
+            const TArray<FTestItem> ThreeItemsUpdated = {
+                { FName(TEXT("k1")), TEXT("V1_updated") },
+                { FName(TEXT("k2")), TEXT("V2_updated") },
+                { FName(TEXT("k3")), TEXT("V3_updated") }
+            };
+            TestTrue(TEXT("Matrix: same keys same order updated succeeds"), ReconcileHelper(ThreeItemsUpdated));
+            TestEqual(TEXT("Matrix: W1 reused"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k1"))), W1);
+            TestEqual(TEXT("Matrix: W2 reused"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k2"))), W2);
+            TestEqual(TEXT("Matrix: W3 reused"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3"))), W3);
+
+            // 5. same keys + reordered: { k3, k1, k2 }
+            const TArray<FTestItem> ThreeItemsReordered = {
+                { FName(TEXT("k3")), TEXT("V3") },
+                { FName(TEXT("k1")), TEXT("V1") },
+                { FName(TEXT("k2")), TEXT("V2") }
+            };
+            TestTrue(TEXT("Matrix: reorder succeeds"), ReconcileHelper(ThreeItemsReordered));
+            TestEqual(TEXT("Matrix: W1 reused after reorder"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k1"))), W1);
+            TestEqual(TEXT("Matrix: W2 reused after reorder"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k2"))), W2);
+            TestEqual(TEXT("Matrix: W3 reused after reorder"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3"))), W3);
+            TArray<UWidget*> Ordered = MatrixList->GetOrderedEntries();
+            TestEqual(TEXT("Matrix: Order 0 is W3"), Ordered[0], Cast<UWidget>(W3));
+            TestEqual(TEXT("Matrix: Order 1 is W1"), Ordered[1], Cast<UWidget>(W1));
+            TestEqual(TEXT("Matrix: Order 2 is W2"), Ordered[2], Cast<UWidget>(W2));
+
+            // 6. remove one key: remove k2 -> { k3, k1 }
+            const TArray<FTestItem> TwoItems = {
+                { FName(TEXT("k3")), TEXT("V3") },
+                { FName(TEXT("k1")), TEXT("V1") }
+            };
+            TestTrue(TEXT("Matrix: remove one key succeeds"), ReconcileHelper(TwoItems));
+            TestEqual(TEXT("Matrix: count is 2"), MatrixList->GetEntryCount(), 2);
+            TestEqual(TEXT("Matrix: W3 retained"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3"))), W3);
+            TestEqual(TEXT("Matrix: W1 retained"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k1"))), W1);
+            TestNull(TEXT("Matrix: W2 removed"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k2"))));
+
+            // 7. add one key: add k4 -> { k3, k1, k4 }
+            const TArray<FTestItem> AddItem = {
+                { FName(TEXT("k3")), TEXT("V3") },
+                { FName(TEXT("k1")), TEXT("V1") },
+                { FName(TEXT("k4")), TEXT("V4") }
+            };
+            TestTrue(TEXT("Matrix: add one key succeeds"), ReconcileHelper(AddItem));
+            TestEqual(TEXT("Matrix: count is 3"), MatrixList->GetEntryCount(), 3);
+            TestEqual(TEXT("Matrix: W3 retained"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3"))), W3);
+            TestEqual(TEXT("Matrix: W1 retained"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k1"))), W1);
+            UGV2ButtonWidgetBase* W4 = MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k4")));
+            TestNotNull(TEXT("Matrix: W4 created"), W4);
+
+            // 8. empty key (rejected, live state unchanged)
+            const TArray<FTestItem> EmptyKeyItem = { { FName(), TEXT("Bad") } };
+            TestFalse(TEXT("Matrix: empty key rejected"), ReconcileHelper(EmptyKeyItem));
+            TestEqual(TEXT("Matrix: count unchanged after empty key"), MatrixList->GetEntryCount(), 3);
+            TestEqual(TEXT("Matrix: W3 retained after empty key rejection"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3"))), W3);
+
+            // 9. duplicate key (rejected, live state unchanged)
+            const TArray<FTestItem> DupItems = {
+                { FName(TEXT("dup")), TEXT("D1") },
+                { FName(TEXT("dup")), TEXT("D2") }
+            };
+            TestFalse(TEXT("Matrix: duplicate key rejected"), ReconcileHelper(DupItems));
+            TestEqual(TEXT("Matrix: count unchanged after dup key"), MatrixList->GetEntryCount(), 3);
+
+            // 10. preflight failure (rejected, live state unchanged)
+            const TArray<FTestItem> PreflightFailItems = {
+                { FName(TEXT("k3")), TEXT("VALID") },
+                { FName(TEXT("k1")), TEXT("INVALID") }
+            };
+            TestFalse(TEXT("Matrix: preflight rejection"), ReconcileHelper(PreflightFailItems, [](const FTestItem& Item) { return Item.Text != TEXT("INVALID"); }));
+            TestEqual(TEXT("Matrix: count unchanged after preflight fail"), MatrixList->GetEntryCount(), 3);
+            TestEqual(TEXT("Matrix: W3 retained after preflight fail"), MatrixList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("k3"))), W3);
+
+            // 11. Clear / reset
+            MatrixList->ClearEntries();
+            TestEqual(TEXT("Matrix: count 0 after clear"), MatrixList->GetEntryCount(), 0);
+            TestEqual(TEXT("Matrix: container child count 0 after clear"), MatrixContainer->GetChildrenCount(), 0);
+        }
     }
 
     // 2. UIH-02: Test CommandPanel using Core Repeater
@@ -3258,7 +3450,7 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         TestFalse(TEXT("Empty button key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CmdPanel, EmptyKeyField));
     }
 
-    // 3. UIH-03: Test PlayerStatus item/effect collections using Core Repeater
+    // 3. UIH-03 & CCF-03: Test PlayerStatus item/effect/meter collections using Core Repeater
     {
         UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
         UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
@@ -3269,6 +3461,14 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         Model1.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
         Model1.ItemIconResourceIds = { TEXT("item_sword"), TEXT("item_shield") };
         Model1.EffectIconResourceIds = { TEXT("effect_buff") };
+
+        FGV2LocationMeterEntry StaminaMeterEntry;
+        StaminaMeterEntry.Key = FName(TEXT("stamina"));
+        StaminaMeterEntry.Meter.Percent = 0.5f;
+        FGV2LocationMeterEntry HealthMeterEntry;
+        HealthMeterEntry.Key = FName(TEXT("health"));
+        HealthMeterEntry.Meter.Percent = 0.8f;
+        Model1.Meters = { StaminaMeterEntry, HealthMeterEntry };
 
         FGV2ScreenFieldValue Field1 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model1);
         TestTrue(TEXT("PlayerStatus Field1 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field1));
@@ -3291,9 +3491,55 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("Sword item widget reused (same pointer)"), ItemRep->GetEntryWidget(FName(TEXT("item_sword"))), SwordWidget);
             TestNotNull(TEXT("Potion item widget created"), ItemRep->GetEntryWidget(FName(TEXT("item_potion"))));
         }
+
+        // CCF-03: Meter Repeater reuse, reorder and negative tests
+        UGV2ListViewWidgetBase* MeterRep = PlayerStatus->GetMeterRepeater();
+        TestNotNull(TEXT("MeterRepeater exists"), MeterRep);
+        if (MeterRep != nullptr)
+        {
+            TestEqual(TEXT("Meter count is 2"), MeterRep->GetEntryCount(), 2);
+            UWidget* StaminaWidget = MeterRep->GetEntryWidget(FName(TEXT("stamina")));
+            UWidget* HealthWidget = MeterRep->GetEntryWidget(FName(TEXT("health")));
+            TestNotNull(TEXT("Stamina meter widget exists"), StaminaWidget);
+            TestNotNull(TEXT("Health meter widget exists"), HealthWidget);
+
+            // Reorder: { health, stamina } with new percentages
+            FGV2LocationPlayerStatusViewModel ModelReorderMeters = Model1;
+            FGV2LocationMeterEntry HealthMeterEntry2;
+            HealthMeterEntry2.Key = FName(TEXT("health"));
+            HealthMeterEntry2.Meter.Percent = 0.9f;
+            FGV2LocationMeterEntry StaminaMeterEntry2;
+            StaminaMeterEntry2.Key = FName(TEXT("stamina"));
+            StaminaMeterEntry2.Meter.Percent = 0.6f;
+            ModelReorderMeters.Meters = { HealthMeterEntry2, StaminaMeterEntry2 };
+
+            FGV2ScreenFieldValue FieldReorderMeters = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), ModelReorderMeters);
+            TestTrue(TEXT("Reordered meters apply successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, FieldReorderMeters));
+            TestEqual(TEXT("Health widget reused (same pointer)"), MeterRep->GetEntryWidget(FName(TEXT("health"))), HealthWidget);
+            TestEqual(TEXT("Stamina widget reused (same pointer)"), MeterRep->GetEntryWidget(FName(TEXT("stamina"))), StaminaWidget);
+            TestEqual(TEXT("Meter count remains 2"), MeterRep->GetEntryCount(), 2);
+            TArray<UWidget*> OrderedMeters = MeterRep->GetOrderedEntries();
+            TestEqual(TEXT("Ordered entry 0 is Health"), OrderedMeters[0], HealthWidget);
+            TestEqual(TEXT("Ordered entry 1 is Stamina"), OrderedMeters[1], StaminaWidget);
+        }
+
+        // Negative CCF-03: Empty meter key rejected
+        FGV2LocationPlayerStatusViewModel BadMeterModel = Model1;
+        FGV2LocationMeterEntry EmptyMeterEntry;
+        EmptyMeterEntry.Key = FName();
+        EmptyMeterEntry.Meter.Percent = 0.5f;
+        BadMeterModel.Meters = { EmptyMeterEntry };
+        FGV2ScreenFieldValue BadMeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), BadMeterModel);
+        TestFalse(TEXT("Empty meter key rejected by CanApplyScreenField"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, BadMeterField));
+
+        // Negative CCF-03: Duplicate meter keys rejected
+        FGV2LocationPlayerStatusViewModel DupMeterModel = Model1;
+        DupMeterModel.Meters = { StaminaMeterEntry, StaminaMeterEntry };
+        FGV2ScreenFieldValue DupMeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), DupMeterModel);
+        TestFalse(TEXT("Duplicate meter keys rejected by CanApplyScreenField"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, DupMeterField));
     }
 
-    // 4. UIH-04: Test SceneView character collection using Core Repeater
+    // 4. UIH-04 & CCF-04: Test SceneView character collection using Core Repeater and key identity
     {
         UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
         UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
@@ -3310,6 +3556,9 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("SceneView accepts character entry"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, SceneField));
         TestTrue(TEXT("SceneView applies character entry"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneField));
 
+        UGV2ListViewWidgetBase* CharRep = SceneView->GetCharacterRepeater();
+        UWidget* CharAWidgetBefore = (CharRep != nullptr) ? CharRep->GetEntryWidget(FName(TEXT("aria"))) : nullptr;
+
         FGV2ScreenFieldValue Captured;
         IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
         TestEqual(TEXT("Captured character count is 1"), Captured.LocationSceneValue.Characters.Num(), 1);
@@ -3318,7 +3567,23 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("Captured character key matches"), Captured.LocationSceneValue.Characters[0].Key, FName(TEXT("aria")));
         }
 
-        // Negative: Empty character key rejected
+        // CCF-04: Changing resource ID for same character key preserves widget pointer
+        FGV2LocationSceneViewModel SceneModel2;
+        FGV2LocationCharacterEntry CharA_NewRes;
+        CharA_NewRes.Key = FName(TEXT("aria"));
+        CharA_NewRes.ResourceId = TEXT("textsystem:resource.ui.missing_character");
+        SceneModel2.Characters = { CharA_NewRes };
+
+        FGV2ScreenFieldValue SceneField2 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel2);
+        TestTrue(TEXT("SceneView accepts character update with changed resource"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneField2));
+
+        if (CharRep != nullptr && CharAWidgetBefore != nullptr)
+        {
+            UWidget* CharAWidgetAfter = CharRep->GetEntryWidget(FName(TEXT("aria")));
+            TestEqual(TEXT("Character widget pointer preserved across resource change"), CharAWidgetAfter, CharAWidgetBefore);
+        }
+
+        // Negative CCF-04: Empty character key rejected
         FGV2LocationCharacterEntry EmptyChar;
         EmptyChar.Key = FName();
         EmptyChar.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
@@ -3326,6 +3591,12 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         BadModel.Characters = { EmptyChar };
         FGV2ScreenFieldValue BadField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), BadModel);
         TestFalse(TEXT("Empty character key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, BadField));
+
+        // Negative CCF-04: Duplicate character keys rejected
+        FGV2LocationSceneViewModel DupSceneModel;
+        DupSceneModel.Characters = { CharA, CharA };
+        FGV2ScreenFieldValue DupSceneField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), DupSceneModel);
+        TestFalse(TEXT("Duplicate character keys rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, DupSceneField));
     }
 
     GameInstance->Shutdown();
