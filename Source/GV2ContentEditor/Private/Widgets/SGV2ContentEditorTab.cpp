@@ -34,6 +34,7 @@ void SGV2ContentEditorTab::Construct(const FArguments& /*InArgs*/)
             [
                 SAssignNew(BrowserWidget, SGV2DefinitionBrowser, Adapter)
                 .OnDefinitionSelected(this, &SGV2ContentEditorTab::HandleDefinitionSelected)
+                .OnLocatorSelected(this, &SGV2ContentEditorTab::HandleLocatorSelected)
                 .OnOperationCompleted(this, &SGV2ContentEditorTab::HandleSaveCompleted)
                 .OnDefinitionsChanged_Lambda([this]() {
                     if (PropertiesWidget.IsValid()) PropertiesWidget->RefreshProperties();
@@ -79,6 +80,28 @@ void SGV2ContentEditorTab::HandleDefinitionSelected(const FString& DefinitionId)
     {
         std::vector<FGV2EditorDiagnostic> LoadDiags;
         Adapter->LoadDefinition(TCHAR_TO_UTF8(*DefinitionId), LoadDiags);
+        if (DiagnosticsWidget.IsValid())
+        {
+            DiagnosticsWidget->SetDiagnostics(LoadDiags);
+        }
+    }
+
+    if (PropertiesWidget.IsValid())
+    {
+        PropertiesWidget->RefreshProperties();
+    }
+    if (ReferenceWidget.IsValid())
+    {
+        ReferenceWidget->RefreshReferences();
+    }
+}
+
+void SGV2ContentEditorTab::HandleLocatorSelected(const GV2ContentAuthoring::FAuthoringLocator& Locator)
+{
+    if (Adapter.IsValid())
+    {
+        std::vector<FGV2EditorDiagnostic> LoadDiags;
+        Adapter->LoadDefinition(Locator, LoadDiags);
         if (DiagnosticsWidget.IsValid())
         {
             DiagnosticsWidget->SetDiagnostics(LoadDiags);

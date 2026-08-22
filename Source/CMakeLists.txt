@@ -128,6 +128,7 @@ set(GV2_CONTENT_AUTHORING_DIR "${CMAKE_CURRENT_SOURCE_DIR}/GV2ContentAuthoring")
 
 add_library(gv2_content_authoring STATIC
     "${GV2_CONTENT_AUTHORING_DIR}/Private/GV2ContentAuthoring.cpp"
+    "${GV2_CONTENT_AUTHORING_DIR}/Private/AuthoringIndex.cpp"
     "${GV2_CONTENT_AUTHORING_DIR}/Private/AuthoringService.cpp"
     "${GV2_CONTENT_AUTHORING_DIR}/Private/Json5AstRewriter.cpp"
     "${GV2_CONTENT_AUTHORING_DIR}/Private/Testing/AuthoringLibraryConformance.cpp"

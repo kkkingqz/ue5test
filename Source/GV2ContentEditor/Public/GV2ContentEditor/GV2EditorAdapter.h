@@ -61,14 +61,33 @@ public:
 
     /**
      * Loads a definition by ID into memory as current active definition.
+     * Selects the effective winning provider if multiple packages contain this ID.
      * Clears any dirty field state.
      */
     std::optional<FGV2LoadedDefinition> LoadDefinition(
         const std::string& DefinitionId,
         std::vector<FGV2EditorDiagnostic>& OutDiagnostics);
 
+    /**
+     * Loads a specific physical definition provider into memory (CEH-02).
+     * Clears any dirty field state.
+     */
+    std::optional<FGV2LoadedDefinition> LoadDefinition(
+        const GV2ContentAuthoring::FAuthoringLocator& Locator,
+        std::vector<FGV2EditorDiagnostic>& OutDiagnostics);
+
     /** Gets the currently loaded definition, or nullptr if none loaded. */
     const FGV2LoadedDefinition* GetCurrentDefinition() const;
+
+    /** Gets the active authoring locator if a definition is loaded (CEH-02). */
+    std::optional<GV2ContentAuthoring::FAuthoringLocator> GetCurrentLocator() const;
+
+    /** Gets all physical provider locators for a Stable ID (CEH-01, CEH-05). */
+    std::vector<GV2ContentAuthoring::FAuthoringLocator> GetProvidersForDefinition(
+        const std::string& DefinitionId) const;
+
+    /** Gets the authoring index (CEH-01). */
+    const GV2ContentAuthoring::FAuthoringIndex& GetAuthoringIndex() const { return AuthoringIndex; }
 
     /**
      * Sets an edited field value for the current definition at the given JSON pointer.
@@ -124,17 +143,18 @@ public:
         const std::string& TargetDefinitionId);
 
     /**
-     * Deletes a definition.
-     */
-    FGV2EditorAuthoringResult DeleteDefinition(
-        const std::string& DefinitionId);
-
-    /**
-     * Renames a definition across all references.
+     * Renames an existing definition across all references in the owning package (CED-04).
      */
     FGV2EditorAuthoringResult RenameDefinition(
         const std::string& OldDefinitionId,
         const std::string& NewDefinitionId);
+
+    /**
+     * Deletes an existing definition atomically (CED-03).
+     * Rejects deletion if referenced by other definitions.
+     */
+    FGV2EditorAuthoringResult DeleteDefinition(
+        const std::string& DefinitionId);
 
     /**
      * Runs authoritative repository validation across the entire content set.
@@ -171,6 +191,7 @@ private:
     std::filesystem::path ContentRoot;
     std::vector<GV2ContentCore::FPackageDescriptor> DiscoveredPackages;
     std::vector<std::filesystem::path> PackageRoots;
+    GV2ContentAuthoring::FAuthoringIndex AuthoringIndex;
     std::vector<FGV2DefinitionSummary> IndexedDefinitions;
 
     std::optional<FGV2LoadedDefinition> CurrentDefinition;

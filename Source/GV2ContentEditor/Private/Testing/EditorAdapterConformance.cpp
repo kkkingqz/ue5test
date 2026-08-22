@@ -410,6 +410,222 @@ bool TestAdapterStructuredDiagnosticsLossless()
     return true;
 }
 
+bool TestAuthoringIndexAndLocators()
+{
+    GV2ContentAuthoring::FAuthoringIndex Index;
+
+    GV2ContentAuthoring::FAuthoringLocator BaseSword;
+    BaseSword.PackageId = "core";
+    BaseSword.RelativeSource = "definitions/items.json5";
+    BaseSword.DefinitionId = "core:item.sword";
+    BaseSword.DefinitionType = "item";
+    BaseSword.LoadIndex = 0;
+    Index.AddEntry(BaseSword);
+
+    GV2ContentAuthoring::FAuthoringLocator ModSword;
+    ModSword.PackageId = "mod_a";
+    ModSword.RelativeSource = "definitions/items.json5";
+    ModSword.DefinitionId = "core:item.sword";
+    ModSword.DefinitionType = "item";
+    ModSword.LoadIndex = 1;
+    Index.AddEntry(ModSword);
+
+    GV2ContentAuthoring::FAuthoringLocator BaseShield;
+    BaseShield.PackageId = "core";
+    BaseShield.RelativeSource = "definitions/items.json5";
+    BaseShield.DefinitionId = "core:item.shield";
+    BaseShield.DefinitionType = "item";
+    BaseShield.LoadIndex = 0;
+    Index.AddEntry(BaseShield);
+
+    Index.Finalize();
+
+    if (Index.NumEffective() != 2 || Index.NumTotal() != 3) return false;
+
+    auto WinnerSword = Index.GetEffectiveWinner("core:item.sword");
+    if (!WinnerSword.has_value() || WinnerSword->PackageId != "mod_a" || !WinnerSword->bIsWinner || WinnerSword->bIsShadowed)
+    {
+        return false;
+    }
+
+    auto SwordProviders = Index.GetEntriesForDefinition("core:item.sword");
+    if (SwordProviders.size() != 2) return false;
+
+    auto ShadowedSword = Index.FindLocator("core", "core:item.sword");
+    if (!ShadowedSword.has_value() || ShadowedSword->PackageId != "core" || ShadowedSword->bIsWinner || !ShadowedSword->bIsShadowed)
+    {
+        return false;
+    }
+
+    auto EffectiveDefs = Index.GetEffectiveDefinitions();
+    if (EffectiveDefs.size() != 2) return false;
+
+    return true;
+}
+
+bool TestProviderAwareAdapterSelection()
+{
+    std::filesystem::path ContainerDir = CreateTempDir("gv2_adapter_override");
+    std::filesystem::path CoreDir = ContainerDir / "core";
+    std::filesystem::path ModDir = ContainerDir / "mod_a";
+
+    // core package
+    std::string CorePkgJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'core',\n"
+        "  namespace: 'core',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: []\n"
+        "}\n";
+    WriteFile(CoreDir / "package.json5", CorePkgJson5);
+
+    std::string SchemaJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  id: 'core:schema.definition.item.v1',\n"
+        "  definition_type: 'item',\n"
+        "  root: { kind: 'object', fields: {\n"
+        "    name: { kind: 'string', required: true }\n"
+        "  } },\n"
+        "  semantic_validators: [],\n"
+        "  extensions: {}\n"
+        "}\n";
+    WriteFile(CoreDir / "schemas/item.schema.json5", SchemaJson5);
+
+    std::string CoreItems =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: {\n"
+        "        name: 'Iron Sword'\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(CoreDir / "definitions/items.json5", CoreItems);
+
+    // mod package overriding core:item.sword
+    std::string ModPkgJson5 =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  package_id: 'mod_a',\n"
+        "  namespace: 'mod_a',\n"
+        "  version: '1.0.0',\n"
+        "  dependencies: [\n"
+        "    { package_id: 'core' }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(ModDir / "package.json5", ModPkgJson5);
+
+    std::string ModItems =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: {\n"
+        "        name: 'Legendary Modded Sword'\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+    WriteFile(ModDir / "definitions/items.json5", ModItems);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> InitDiags;
+    if (!Adapter.Initialize(ContainerDir, InitDiags))
+    {
+        return false;
+    }
+
+    auto EffectiveDefs = Adapter.ListDefinitions();
+    if (EffectiveDefs.size() != 1) return false;
+    if (EffectiveDefs[0].PackageId != "mod_a") return false;
+
+    // Load by ID loads the effective winner (mod_a)
+    std::vector<FGV2EditorDiagnostic> LoadDiags;
+    auto LoadedOpt = Adapter.LoadDefinition("core:item.sword", LoadDiags);
+    if (!LoadedOpt.has_value() || LoadedOpt->PackageId != "mod_a")
+    {
+        return false;
+    }
+    const auto* NameVal = LoadedOpt->CanonicalData.FindField("name");
+    if (NameVal == nullptr || !NameVal->IsString() || NameVal->AsString() != "Legendary Modded Sword")
+    {
+        return false;
+    }
+
+    // Inspect providers
+    auto Providers = Adapter.GetProvidersForDefinition("core:item.sword");
+    if (Providers.size() != 2) return false;
+
+    GV2ContentAuthoring::FAuthoringLocator CoreLoc;
+    for (const auto& P : Providers)
+    {
+        if (P.PackageId == "core") CoreLoc = P;
+    }
+    if (CoreLoc.PackageId != "core") return false;
+
+    // Load explicit shadowed locator
+    auto CoreLoadedOpt = Adapter.LoadDefinition(CoreLoc, LoadDiags);
+    if (!CoreLoadedOpt.has_value() || CoreLoadedOpt->PackageId != "core")
+    {
+        return false;
+    }
+    const auto* CoreNameVal = CoreLoadedOpt->CanonicalData.FindField("name");
+    if (CoreNameVal == nullptr || !CoreNameVal->IsString() || CoreNameVal->AsString() != "Iron Sword")
+    {
+        return false;
+    }
+
+    // Modify shadowed and save -> modifies core file without touching mod
+    Adapter.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue::MakeString("Steel Sword"));
+    auto SaveResult = Adapter.SaveCurrentDefinition();
+    if (!SaveResult.IsSuccess()) return false;
+
+    std::string CoreContentAfter = ReadFile(CoreDir / "definitions/items.json5");
+    std::string ModContentAfter = ReadFile(ModDir / "definitions/items.json5");
+    if (CoreContentAfter.find("Steel Sword") == std::string::npos) return false;
+    if (ModContentAfter.find("Legendary Modded Sword") == std::string::npos) return false;
+
+    return true;
+}
+
+bool TestStableIdTreeHierarchyAndFiltering()
+{
+    // Test parsing Stable IDs into Namespace -> Kind -> PathSegments
+    std::vector<std::string> TestIds = {
+        "core:item.sword",
+        "core:item.armor.plate",
+        "textsystem:screen.location",
+        "textsystem:resource.ui.missing_portrait"
+    };
+
+    std::map<std::string, std::map<std::string, std::vector<std::string>>> Hierarchy;
+    for (const auto& FullId : TestIds)
+    {
+        auto ColonPos = FullId.find(':');
+        std::string Ns = FullId.substr(0, ColonPos);
+        std::string Rem = FullId.substr(ColonPos + 1);
+        auto DotPos = Rem.find('.');
+        std::string Kind = Rem.substr(0, DotPos);
+        std::string Path = Rem.substr(DotPos + 1);
+        Hierarchy[Ns][Kind].push_back(Path);
+    }
+
+    if (Hierarchy.size() != 2) return false; // "core", "textsystem"
+    if (Hierarchy["core"].size() != 1) return false; // "item"
+    if (Hierarchy["core"]["item"].size() != 2) return false; // "sword", "armor.plate"
+    if (Hierarchy["textsystem"].size() != 2) return false; // "screen", "resource"
+
+    return true;
+}
+
 } // namespace
 
 std::string RunEditorAdapterConformance()
@@ -433,6 +649,18 @@ std::string RunEditorAdapterConformance()
     if (!TestAdapterStructuredDiagnosticsLossless())
     {
         return "TestAdapterStructuredDiagnosticsLossless failed";
+    }
+    if (!TestAuthoringIndexAndLocators())
+    {
+        return "TestAuthoringIndexAndLocators failed";
+    }
+    if (!TestProviderAwareAdapterSelection())
+    {
+        return "TestProviderAwareAdapterSelection failed";
+    }
+    if (!TestStableIdTreeHierarchyAndFiltering())
+    {
+        return "TestStableIdTreeHierarchyAndFiltering failed";
     }
 
     std::string ReadSurfaceError = RunReadSurfaceConformance();

@@ -176,6 +176,7 @@ bool FGV2EditorAdapter::Initialize(
 
 bool FGV2EditorAdapter::RefreshIndex(std::vector<FGV2EditorDiagnostic>& OutDiagnostics)
 {
+    AuthoringIndex.Clear();
     IndexedDefinitions.clear();
     GV2ContentCore::FParseLimits Limits;
 
@@ -214,16 +215,24 @@ bool FGV2EditorAdapter::RefreshIndex(std::vector<FGV2EditorDiagnostic>& OutDiagn
 
             for (const auto& Entry : DefFileOpt->GetDefinitions())
             {
-                FGV2DefinitionSummary Summary;
-                Summary.Id = Entry.GetId();
-                Summary.Type = DefFileOpt->GetDefinitionType();
-                Summary.PackageId = PkgDesc.GetPackageId();
-                Summary.RelativeSource = RelSource;
-                Summary.bDeprecated = Entry.IsDeprecated();
-                Summary.Tags = Entry.GetTags();
-                IndexedDefinitions.push_back(std::move(Summary));
+                GV2ContentAuthoring::FAuthoringLocator Loc;
+                Loc.PackageId = PkgDesc.GetPackageId();
+                Loc.RelativeSource = RelSource;
+                Loc.DefinitionId = Entry.GetId();
+                Loc.DefinitionType = DefFileOpt->GetDefinitionType();
+                Loc.LoadIndex = PkgDesc.GetLoadIndex();
+                Loc.bDeprecated = Entry.IsDeprecated();
+                Loc.Tags = Entry.GetTags();
+                AuthoringIndex.AddEntry(Loc);
             }
         }
+    }
+
+    AuthoringIndex.Finalize();
+
+    for (const auto& Loc : AuthoringIndex.GetEffectiveDefinitions())
+    {
+        IndexedDefinitions.push_back(FGV2DefinitionSummary::FromLocator(Loc));
     }
 
     return true;
@@ -232,20 +241,12 @@ bool FGV2EditorAdapter::RefreshIndex(std::vector<FGV2EditorDiagnostic>& OutDiagn
 std::vector<FGV2DefinitionSummary> FGV2EditorAdapter::ListDefinitions(
     const std::optional<std::string>& FilterType) const
 {
-    if (!FilterType.has_value() || FilterType->empty())
+    std::vector<FGV2DefinitionSummary> Result;
+    for (const auto& Loc : AuthoringIndex.GetEffectiveDefinitions(FilterType))
     {
-        return IndexedDefinitions;
+        Result.push_back(FGV2DefinitionSummary::FromLocator(Loc));
     }
-
-    std::vector<FGV2DefinitionSummary> Filtered;
-    for (const auto& Summary : IndexedDefinitions)
-    {
-        if (Summary.Type == *FilterType)
-        {
-            Filtered.push_back(Summary);
-        }
-    }
-    return Filtered;
+    return Result;
 }
 
 std::vector<std::string> FGV2EditorAdapter::GetAvailableDefinitionTypes() const
@@ -258,9 +259,9 @@ std::vector<std::string> FGV2EditorAdapter::GetAvailableDefinitionTypes() const
             Types.insert(Binding.GetDefinitionType());
         }
     }
-    for (const auto& Summary : IndexedDefinitions)
+    for (const auto& Type : AuthoringIndex.GetAvailableDefinitionTypes())
     {
-        Types.insert(Summary.Type);
+        Types.insert(Type);
     }
     return std::vector<std::string>(Types.begin(), Types.end());
 }
@@ -269,21 +270,8 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
     const std::string& DefinitionId,
     std::vector<FGV2EditorDiagnostic>& OutDiagnostics)
 {
-    CurrentDefinition.reset();
-    CurrentValues.clear();
-    DirtyFields.clear();
-
-    const FGV2DefinitionSummary* FoundSummary = nullptr;
-    for (const auto& Summary : IndexedDefinitions)
-    {
-        if (Summary.Id == DefinitionId)
-        {
-            FoundSummary = &Summary;
-            break;
-        }
-    }
-
-    if (FoundSummary == nullptr)
+    auto WinnerOpt = AuthoringIndex.GetEffectiveWinner(DefinitionId);
+    if (!WinnerOpt.has_value())
     {
         FGV2EditorDiagnostic Diag;
         Diag.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
@@ -294,8 +282,30 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
         return std::nullopt;
     }
 
-    std::filesystem::path PkgRoot = FindPackageRootById(FoundSummary->PackageId);
-    std::filesystem::path FilePath = PkgRoot / FoundSummary->RelativeSource;
+    return LoadDefinition(*WinnerOpt, OutDiagnostics);
+}
+
+std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
+    const GV2ContentAuthoring::FAuthoringLocator& Locator,
+    std::vector<FGV2EditorDiagnostic>& OutDiagnostics)
+{
+    CurrentDefinition.reset();
+    CurrentValues.clear();
+    DirtyFields.clear();
+
+    if (Locator.DefinitionId.empty() || Locator.PackageId.empty())
+    {
+        FGV2EditorDiagnostic Diag;
+        Diag.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
+        Diag.Code = "core:diagnostic.invalid_locator";
+        Diag.Message = "Invalid authoring locator: " + Locator.ToDebugString();
+        Diag.StableId = Locator.DefinitionId;
+        OutDiagnostics.push_back(std::move(Diag));
+        return std::nullopt;
+    }
+
+    std::filesystem::path PkgRoot = FindPackageRootById(Locator.PackageId);
+    std::filesystem::path FilePath = PkgRoot / Locator.RelativeSource;
 
     std::string Content;
     if (!ReadFileContent(FilePath, Content))
@@ -304,8 +314,8 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
         Diag.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
         Diag.Code = "core:diagnostic.io_read_failed";
         Diag.Message = "Failed to read definition file: " + FilePath.string();
-        Diag.RelativeSource = FoundSummary->RelativeSource;
-        Diag.StableId = DefinitionId;
+        Diag.RelativeSource = Locator.RelativeSource;
+        Diag.StableId = Locator.DefinitionId;
         OutDiagnostics.push_back(std::move(Diag));
         return std::nullopt;
     }
@@ -313,7 +323,7 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
     GV2ContentCore::FParseLimits Limits;
     std::vector<GV2ContentCore::FDiagnostic> ParseDiags;
     auto ParsedDoc = GV2ContentCore::ParseJson5Document(
-        Content, Limits, ParseDiags, FoundSummary->PackageId, 0, FoundSummary->RelativeSource);
+        Content, Limits, ParseDiags, Locator.PackageId, 0, Locator.RelativeSource);
 
     for (const auto& D : ParseDiags)
     {
@@ -336,7 +346,7 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
     {
         if (!Def.IsObject()) continue;
         const auto* IdVal = Def.FindField("id");
-        if (IdVal != nullptr && IdVal->IsString() && IdVal->AsString() == DefinitionId)
+        if (IdVal != nullptr && IdVal->IsString() && IdVal->AsString() == Locator.DefinitionId)
         {
             TargetDefVal = &Def;
             break;
@@ -345,15 +355,23 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
 
     if (TargetDefVal == nullptr)
     {
+        FGV2EditorDiagnostic Diag;
+        Diag.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
+        Diag.Code = "core:diagnostic.definition_not_found";
+        Diag.Message = "Definition not found in source file: " + Locator.DefinitionId;
+        Diag.RelativeSource = Locator.RelativeSource;
+        Diag.StableId = Locator.DefinitionId;
+        OutDiagnostics.push_back(std::move(Diag));
         return std::nullopt;
     }
 
     FGV2LoadedDefinition Loaded;
-    Loaded.Id = DefinitionId;
-    Loaded.Type = FoundSummary->Type;
-    Loaded.PackageId = FoundSummary->PackageId;
-    Loaded.RelativeSource = FoundSummary->RelativeSource;
+    Loaded.Id = Locator.DefinitionId;
+    Loaded.Type = Locator.DefinitionType;
+    Loaded.PackageId = Locator.PackageId;
+    Loaded.RelativeSource = Locator.RelativeSource;
     Loaded.AbsolutePath = FilePath;
+    Loaded.Locator = Locator;
     Loaded.Stamp = GV2ContentAuthoring::FFileStateStamp::FromContent(Content);
 
     const auto* DataField = TargetDefVal->FindField("data");
@@ -389,6 +407,21 @@ std::optional<FGV2LoadedDefinition> FGV2EditorAdapter::LoadDefinition(
 
     CurrentDefinition = Loaded;
     return CurrentDefinition;
+}
+
+std::optional<GV2ContentAuthoring::FAuthoringLocator> FGV2EditorAdapter::GetCurrentLocator() const
+{
+    if (CurrentDefinition.has_value())
+    {
+        return CurrentDefinition->Locator;
+    }
+    return std::nullopt;
+}
+
+std::vector<GV2ContentAuthoring::FAuthoringLocator> FGV2EditorAdapter::GetProvidersForDefinition(
+    const std::string& DefinitionId) const
+{
+    return AuthoringIndex.GetEntriesForDefinition(DefinitionId);
 }
 
 const FGV2LoadedDefinition* FGV2EditorAdapter::GetCurrentDefinition() const
@@ -493,7 +526,7 @@ FGV2EditorAuthoringResult FGV2EditorAdapter::SaveCurrentDefinition()
     }
 
     GV2ContentAuthoring::FBatchSetFieldsParams BatchParams;
-    BatchParams.PackageRoot = FindPackageRootForDefinition(CurrentDefinition->Id);
+    BatchParams.PackageRoot = FindPackageRootById(CurrentDefinition->PackageId);
     BatchParams.DefinitionId = CurrentDefinition->Id;
     BatchParams.ExpectedStamp = CurrentDefinition->Stamp;
 
@@ -510,10 +543,10 @@ FGV2EditorAuthoringResult FGV2EditorAdapter::SaveCurrentDefinition()
 
     if (Result.IsSuccess())
     {
-        // Reload definition into memory to update baseline and stamp
-        const std::string DefinitionId = CurrentDefinition->Id;
+        // Reload exact definition locator into memory to update baseline and stamp
+        const auto SavedLocator = CurrentDefinition->Locator;
         std::vector<FGV2EditorDiagnostic> ReloadDiags;
-        LoadDefinition(DefinitionId, ReloadDiags);
+        LoadDefinition(SavedLocator, ReloadDiags);
         for (auto& D : ReloadDiags)
         {
             Result.Diagnostics.push_back(std::move(D));

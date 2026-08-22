@@ -28,6 +28,7 @@ public:
 
 private:
     void HandleDefinitionSelected(const FString& DefinitionId);
+    void HandleLocatorSelected(const GV2ContentAuthoring::FAuthoringLocator& Locator);
     void HandleFieldValueChanged();
     void HandleSaveCompleted(const FGV2EditorAuthoringResult& Result);
     void HandleNavigateToDefinition(const FString& DefinitionId);

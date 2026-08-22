@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GV2ContentEditor/GV2ContentEditor.h"
+#include "GV2ContentAuthoring/AuthoringIndex.h"
 #include "GV2ContentAuthoring/AuthoringTypes.h"
 #include "GV2ContentCore/Diagnostic.h"
 #include "GV2ContentCore/Value.h"
@@ -62,6 +63,20 @@ struct GV2_CONTENT_EDITOR_API FGV2DefinitionSummary final
     std::string RelativeSource;
     bool bDeprecated = false;
     std::vector<std::string> Tags;
+    GV2ContentAuthoring::FAuthoringLocator Locator;
+
+    static FGV2DefinitionSummary FromLocator(const GV2ContentAuthoring::FAuthoringLocator& Loc)
+    {
+        FGV2DefinitionSummary Out;
+        Out.Id = Loc.DefinitionId;
+        Out.Type = Loc.DefinitionType;
+        Out.PackageId = Loc.PackageId;
+        Out.RelativeSource = Loc.RelativeSource;
+        Out.bDeprecated = Loc.bDeprecated;
+        Out.Tags = Loc.Tags;
+        Out.Locator = Loc;
+        return Out;
+    }
 };
 
 /**
@@ -75,6 +90,7 @@ struct GV2_CONTENT_EDITOR_API FGV2LoadedDefinition final
     std::string PackageId;
     std::string RelativeSource;
     std::filesystem::path AbsolutePath;
+    GV2ContentAuthoring::FAuthoringLocator Locator;
     GV2ContentAuthoring::FFileStateStamp Stamp;
     GV2ContentCore::FValue CanonicalData;
     std::vector<std::string> Tags;
