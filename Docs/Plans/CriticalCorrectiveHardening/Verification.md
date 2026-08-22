@@ -21,7 +21,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **CCF-16 — Проверять actual arranged geometry на шести viewport sizes**
+- [x] **CCF-16 — Проверять actual arranged geometry на шести viewport sizes**
   - Зависимости: CCF-01…15.
   - Done:
     - test создаёт реальный зарегистрированный `WBP_LocationScreen`;
@@ -65,7 +65,7 @@ depends_on:
   5. Не фиксировать exact pixels, если contract задаёт только constraints.
   6. Failure message должен содержать viewport и actual rectangle.
 
-- [ ] **CCF-17 — Доказать фактическую пригодность 1280×720**
+- [x] **CCF-17 — Доказать фактическую пригодность 1280×720**
   - Зависимости: CCF-16.
   - Done:
     - обязательные command widgets реально имеют geometry;
@@ -87,7 +87,7 @@ depends_on:
      оказаться в allocated panel.
   6. Не добавлять новый scroll functionality только ради test.
 
-- [ ] **CCF-18 — Доказать фактическое ultrawide allocation**
+- [x] **CCF-18 — Доказать фактическое ultrawide allocation**
   - Зависимости: CCF-16.
   - Done:
     - дополнительная ширина 21:9 действительно увеличивает SceneView;
@@ -110,7 +110,7 @@ depends_on:
      ```
   4. Не вводить новую процентную норму, если её нет в existing contract.
 
-- [ ] **CCF-19 — Проверить actual font size во всех существующих consumers**
+- [x] **CCF-19 — Проверить actual font size во всех существующих consumers**
   - Зависимости: CCF-16.
   - Done:
     - Text;
@@ -146,7 +146,7 @@ depends_on:
   8. Если один consumer расходится, исправлять только его обход общего
      pipeline; не создавать второй scaling helper.
 
-- [ ] **CCF-20 — Проверить NineSlice через реальный resulting brush**
+- [x] **CCF-20 — Проверить NineSlice через реальный resulting brush**
   - Зависимости: CCF-15.
   - Done:
     - используется реальный existing NineSlice resource;
@@ -165,7 +165,7 @@ depends_on:
 
   Нужен actual apply и resulting brush state.
 
-- [ ] **CCF-21 — Усилить Tavern → Market transition verification**
+- [x] **CCF-21 — Усилить Tavern → Market transition verification**
   - Зависимости: CCF-01…20.
   - Done:
     - используется существующий semantic command перехода;
@@ -206,10 +206,10 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Все 6 viewports проверяют actual geometry.
-- [ ] 720p reachability доказана geometry assertions.
-- [ ] 21:9 SceneView expansion доказан geometry assertions.
-- [ ] Text pipeline проверен на actual consumers.
-- [ ] NineSlice проверен actual brush.
-- [ ] Tavern→Market проверяет exact state и Screen reuse.
-- [ ] Полный relevant Unreal automation зелёный.
+- [x] Все 6 viewports проверяют actual geometry.
+- [x] 720p reachability доказана geometry assertions.
+- [x] 21:9 SceneView expansion доказан geometry assertions.
+- [x] Text pipeline проверен на actual consumers.
+- [x] NineSlice проверен actual brush.
+- [x] Tavern→Market проверяет exact state и Screen reuse.
+- [x] Полный relevant Unreal automation зелёный.

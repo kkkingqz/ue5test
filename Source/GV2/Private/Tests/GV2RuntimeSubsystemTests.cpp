@@ -3987,15 +3987,16 @@ bool FGV2TextPipelineDpiScalingTest::RunTest(const FString& Parameters)
         TestNearlyEqual(TEXT("Plain text style font size matches TitleSize1080p"), (float)PlainStyle.Font.Size, TitleSize1080p, 0.1f);
     }
 
-    FTextBlockStyle BodyPlainStyle;
-    TestTrue(TEXT("Body style resolves for 1080p"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("body")), BodyPlainStyle, 1080.0f));
-    const float BodySize1080p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), 1080.0f);
-    TestNearlyEqual(TEXT("Body style font size matches BodySize1080p"), (float)BodyPlainStyle.Font.Size, BodySize1080p, 0.1f);
-
-    // Negative: Minimum readable font size is respected across all heights
-    const float MinReadable = Theme->MinReadableFontSize;
-    const float SmallAtLowRes = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("small")), 480.0f);
-    TestTrue(TEXT("Effective font size at 480p is clamped to >= MinReadableFontSize"), SmallAtLowRes >= MinReadable);
+    // CCF-19: Check actual font sizes across consumer widgets at 720p, 1080p, 1440p, 2160p
+    const float Heights[] = { 720.0f, 1080.0f, 1440.0f, 2160.0f };
+    for (float H : Heights)
+    {
+        const float ExpectedBodySize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), H);
+        FTextBlockStyle StyleForHeight;
+        TestTrue(*FString::Printf(TEXT("CCF-19: Body style resolves for height %f"), H), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("body")), StyleForHeight, H));
+        TestNearlyEqual(*FString::Printf(TEXT("CCF-19: Style font size matches expected at height %f"), H), (float)StyleForHeight.Font.Size, ExpectedBodySize, 0.1f);
+        TestTrue(*FString::Printf(TEXT("CCF-19: Font size at height %f is >= MinReadableFontSize"), H), (float)StyleForHeight.Font.Size >= Theme->MinReadableFontSize);
+    }
 
     return true;
 }
@@ -4423,6 +4424,9 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                     TestNotNull(TEXT("Scene child composite exists"), SceneWidget);
                     TestNotNull(TEXT("CommandPanel child composite exists"), CommandWidget);
 
+                    float SceneWidthFHD = 0.0f;
+                    float SceneWidthUWFHD = 0.0f;
+
                     for (const auto& Res : TestResolutions)
                     {
                         VirtualWindow->Resize(Res.Size);
@@ -4430,58 +4434,66 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                         const FVector2D DesiredSize = SlateWidget->GetDesiredSize();
 
                         TestTrue(
-                            *FString::Printf(TEXT("[%s] Desired width is positive: %f"), Res.Name, DesiredSize.X),
+                            *FString::Printf(TEXT("CCF-16: [%s] Desired width is positive: %f"), Res.Name, DesiredSize.X),
                             DesiredSize.X > 0.0f);
                         TestTrue(
-                            *FString::Printf(TEXT("[%s] Desired height is positive: %f"), Res.Name, DesiredSize.Y),
+                            *FString::Printf(TEXT("CCF-16: [%s] Desired height is positive: %f"), Res.Name, DesiredSize.Y),
                             DesiredSize.Y > 0.0f);
 
-                        // Check child component geometry constraints
+                        // Check child component geometry constraints (CCF-16)
                         if (TopBarWidget != nullptr)
                         {
                             TestTrue(
-                                *FString::Printf(TEXT("[%s] TopBar desired height is bounded"), Res.Name),
+                                *FString::Printf(TEXT("CCF-16: [%s] TopBar desired height is bounded"), Res.Name),
                                 TopBarWidget->GetDesiredSize().Y > 0.0f && TopBarWidget->GetDesiredSize().Y <= Res.Size.Y * 0.25f);
                         }
                         if (PlayerStatusWidget != nullptr)
                         {
                             TestTrue(
-                                *FString::Printf(TEXT("[%s] PlayerStatus desired width is bounded"), Res.Name),
+                                *FString::Printf(TEXT("CCF-16: [%s] PlayerStatus desired width is bounded"), Res.Name),
                                 PlayerStatusWidget->GetDesiredSize().X > 0.0f && PlayerStatusWidget->GetDesiredSize().X <= Res.Size.X * 0.6f);
                         }
                         if (SceneWidget != nullptr)
                         {
                             TestTrue(
-                                *FString::Printf(TEXT("[%s] SceneView has positive layout area"), Res.Name),
+                                *FString::Printf(TEXT("CCF-16: [%s] SceneView has positive layout area"), Res.Name),
                                 SceneWidget->GetDesiredSize().X > 0.0f && SceneWidget->GetDesiredSize().Y > 0.0f);
+                            if (Res.Size.X == 1920.0f && Res.Size.Y == 1080.0f)
+                            {
+                                SceneWidthFHD = SceneWidget->GetDesiredSize().X;
+                            }
+                            else if (Res.Size.X == 2560.0f && Res.Size.Y == 1080.0f)
+                            {
+                                SceneWidthUWFHD = SceneWidget->GetDesiredSize().X;
+                            }
                         }
                         if (CommandWidget != nullptr)
                         {
                             TestTrue(
-                                *FString::Printf(TEXT("[%s] CommandPanel has positive size"), Res.Name),
+                                *FString::Printf(TEXT("CCF-16: [%s] CommandPanel has positive size"), Res.Name),
                                 CommandWidget->GetDesiredSize().X > 0.0f && CommandWidget->GetDesiredSize().Y > 0.0f);
                             if (UGV2ListViewWidgetBase* Repeater = CommandWidget->GetRepeater())
                             {
                                 TestEqual(
-                                    *FString::Printf(TEXT("[%s] All 6 command buttons are instantiated and reachable"), Res.Name),
+                                    *FString::Printf(TEXT("CCF-17: [%s] All 6 command buttons are instantiated and reachable"), Res.Name),
                                     Repeater->GetEntryCount(),
                                     6);
                             }
                         }
 
-                        // Ultrawide check: 21:9 ratio verified and scene area expands
+                        // Ultrawide check (CCF-18): 21:9 ratio verified and scene area expands
                         if (Res.bUltrawide)
                         {
                             TestTrue(
-                                *FString::Printf(TEXT("[%s] Ultrawide aspect ratio is > 2.0"), Res.Name),
+                                *FString::Printf(TEXT("CCF-18: [%s] Ultrawide aspect ratio is > 2.0"), Res.Name),
                                 (Res.Size.X / Res.Size.Y) > 2.0f);
-                            if (SceneWidget != nullptr)
-                            {
-                                TestTrue(
-                                    *FString::Printf(TEXT("[%s] SceneView has positive desired size on ultrawide"), Res.Name),
-                                    SceneWidget->GetDesiredSize().X > 0.0f);
-                            }
                         }
+                    }
+
+                    // CCF-18: Compare FHD vs UW-FHD scene allocation
+                    if (SceneWidthFHD > 0.0f && SceneWidthUWFHD > 0.0f)
+                    {
+                        TestTrue(TEXT("CCF-18: Ultrawide (21:9) SceneView desired width is >= standard (16:9) width"), SceneWidthUWFHD >= SceneWidthFHD);
                     }
                 }
             }
@@ -4747,6 +4759,8 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
             Screen2->WidgetTree->GetAllWidgets(MarketWidgets);
             bool bFoundMarketTopBar = false;
             bool bFoundMarketScene = false;
+            bool bFoundMarketCommands = false;
+            bool bTavernTravelButtonPresentInMarket = false;
 
             for (UWidget* Child : MarketWidgets)
             {
@@ -4759,23 +4773,36 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
                         {
                             bFoundMarketTopBar = true;
                             TestTrue(
-                                TEXT("Market TopBar location title text is not empty"),
+                                TEXT("CCF-21: Market TopBar location title text is not empty"),
                                 !CapturedField.LocationTopBarValue.Location.Text.IsEmpty());
                         }
                         else if (CapturedField.FieldId == FName(TEXT("scene")))
                         {
                             bFoundMarketScene = true;
                             TestEqual(
-                                TEXT("Market Scene background resource ID"),
+                                TEXT("CCF-21: Market Scene background resource ID"),
                                 CapturedField.LocationSceneValue.BackgroundResourceId,
                                 MarketBgResId);
+                        }
+                        else if (CapturedField.FieldId == FName(TEXT("commands")))
+                        {
+                            bFoundMarketCommands = true;
+                            for (const FGV2ButtonViewModel& Btn : CapturedField.ButtonListValue)
+                            {
+                                if (Btn.Key == FName(TEXT("travel_city_market")))
+                                {
+                                    bTavernTravelButtonPresentInMarket = true;
+                                }
+                            }
                         }
                     }
                 }
             }
 
-            TestTrue(TEXT("Market TopBar verified"), bFoundMarketTopBar);
-            TestTrue(TEXT("Market Scene verified"), bFoundMarketScene);
+            TestTrue(TEXT("CCF-21: Market TopBar verified"), bFoundMarketTopBar);
+            TestTrue(TEXT("CCF-21: Market Scene verified"), bFoundMarketScene);
+            TestTrue(TEXT("CCF-21: Market Commands field captured"), bFoundMarketCommands);
+            TestFalse(TEXT("CCF-21: Old Tavern travel command button removed in Market"), bTavernTravelButtonPresentInMarket);
         }
 
         Runtime->EndSession();

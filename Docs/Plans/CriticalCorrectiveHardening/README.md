@@ -169,7 +169,7 @@ git status --short
 - [x] M3 — [Graphics Contract](GraphicsContract.md): `ScalePolicy` остаётся
   единственным runtime behavior source, assets и brush state соответствуют
   contract. CCF-13…15.
-- [ ] M4 — [Verification](Verification.md): реальные geometry, consumer font,
+- [x] M4 — [Verification](Verification.md): реальные geometry, consumer font,
   NineSlice и Tavern→Market tests. CCF-16…21.
 - [ ] M5 — [Closure](Closure.md): синхронизация plan/status docs и полный
   project gate. CCF-22…24.
