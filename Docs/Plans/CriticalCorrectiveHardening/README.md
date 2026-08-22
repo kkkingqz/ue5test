@@ -166,7 +166,7 @@ git status --short
 - [x] M2 — [Location Composite Correctness](LocationCompositeCorrectness.md):
   pure preflight, отсутствие `[0]` fallback paths, atomic composite apply,
   корректные reset/placeholders. CCF-06…12.
-- [ ] M3 — [Graphics Contract](GraphicsContract.md): `ScalePolicy` остаётся
+- [x] M3 — [Graphics Contract](GraphicsContract.md): `ScalePolicy` остаётся
   единственным runtime behavior source, assets и brush state соответствуют
   contract. CCF-13…15.
 - [ ] M4 — [Verification](Verification.md): реальные geometry, consumer font,

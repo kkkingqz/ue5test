@@ -7,25 +7,6 @@
 void UGV2ImageWidgetBase::PostLoad()
 {
     Super::PostLoad();
-    if (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && !InitialResourceId.IsEmpty())
-    {
-        if (const UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog())
-        {
-            FGV2ResolvedImageResource Res;
-            FString ResolveError;
-            if (Catalog->Resolve(InitialResourceId, Res, ResolveError))
-            {
-                if (Res.RenderMode == EGV2ImageRenderMode::Tile)
-                {
-                    ScalePolicy = EGV2PrimitiveScalePolicy::Tile;
-                }
-                else if (Res.RenderMode == EGV2ImageRenderMode::NineSlice)
-                {
-                    ScalePolicy = EGV2PrimitiveScalePolicy::NineSlice;
-                }
-            }
-        }
-    }
 }
 
 void UGV2ImageWidgetBase::NativePreConstruct()

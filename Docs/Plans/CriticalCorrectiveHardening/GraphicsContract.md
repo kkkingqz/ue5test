@@ -20,7 +20,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **CCF-13 — Добавить regression test: `RenderMode` не меняет `ScalePolicy`**
+- [x] **CCF-13 — Добавить regression test: `RenderMode` не меняет `ScalePolicy`**
   - Файлы:
     - `Source/GV2/Private/UI/GV2ImageWidgetBase.cpp`;
     - `Source/GV2/Public/UI/GV2ImageWidgetBase.h`;
@@ -61,7 +61,7 @@ depends_on:
      brush unchanged
      ```
 
-- [ ] **CCF-14 — Удалить `RenderMode → ScalePolicy` inference и поправить existing assets**
+- [x] **CCF-14 — Удалить `RenderMode → ScalePolicy` inference и поправить existing assets**
   - Зависимости: CCF-13.
   - Done:
     - `PostLoad` не выводит policy из resource metadata;
@@ -99,7 +99,7 @@ depends_on:
   10. Если asset теперь incompatible — исправить asset property, а не
       возвращать inference.
 
-- [ ] **CCF-15 — Закрыть graphics regression matrix на resulting brush**
+- [x] **CCF-15 — Закрыть graphics regression matrix на resulting brush**
   - Зависимости: CCF-13, CCF-14.
   - Done:
     - PreserveAspect;
@@ -158,9 +158,9 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] `ScalePolicy` — единственный behavior source.
-- [ ] `RenderMode` используется только для compatibility validation.
-- [ ] Existing assets имеют explicit policy.
-- [ ] NineSlice проверен реальным brush.
-- [ ] Failed apply не портит previous brush.
-- [ ] LocationScreen image tests зелёные.
+- [x] `ScalePolicy` — единственный behavior source.
+- [x] `RenderMode` используется только для compatibility validation.
+- [x] Existing assets имеют explicit policy.
+- [x] NineSlice проверен реальным brush.
+- [x] Failed apply не портит previous brush.
+- [x] LocationScreen image tests зелёные.

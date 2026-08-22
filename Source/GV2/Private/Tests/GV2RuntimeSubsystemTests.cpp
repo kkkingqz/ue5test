@@ -4041,18 +4041,64 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
 
         if (ImageWidget != nullptr)
         {
-            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
-
-            // Apply valid PreserveAspect resource
             FString Error;
-            const bool bAppliedValid = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
-            TestTrue(TEXT("Valid PreserveAspect resource applies"), bAppliedValid);
-            TestEqual(TEXT("AppliedResourceId is missing_portrait"), ImageWidget->GetAppliedResourceId(), FString(TEXT("textsystem:resource.ui.missing_portrait")));
 
-            // Attempt to apply incompatible Tile resource
-            const bool bAppliedIncompatible = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
-            TestFalse(TEXT("Incompatible Tile resource is rejected under PreserveAspect"), bAppliedIncompatible);
-            TestEqual(TEXT("AppliedResourceId remains missing_portrait after rejected apply"), ImageWidget->GetAppliedResourceId(), FString(TEXT("textsystem:resource.ui.missing_portrait")));
+            // CCF-13 / CCF-14: PostLoad does NOT infer ScalePolicy from InitialResourceId (RenderMode does not mutate ScalePolicy)
+            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+            // Simulate PostLoad
+            ImageWidget->ConditionalPostLoad();
+            TestEqual(TEXT("CCF-13: ScalePolicy remains PreserveAspect after PostLoad"), ImageWidget->GetScalePolicy(), EGV2PrimitiveScalePolicy::PreserveAspect);
+
+            // CCF-15: 1. PreserveAspect Resulting Brush
+            const bool bAppliedAspect = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
+            TestTrue(TEXT("CCF-15: PreserveAspect applies fixed aspect resource"), bAppliedAspect);
+            TestEqual(TEXT("CCF-15: PreserveAspect brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
+            TestEqual(TEXT("CCF-15: PreserveAspect brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
+
+            // CCF-15: 2. FreeStretch Resulting Brush (DrawAs = Image, Tiling = NoTile)
+            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::FreeStretch);
+            const bool bAppliedStretch = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            TestTrue(TEXT("CCF-15: FreeStretch applies tile resource"), bAppliedStretch);
+            TestEqual(TEXT("CCF-15: FreeStretch brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
+            TestEqual(TEXT("CCF-15: FreeStretch brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
+
+            // CCF-15: 3. Tile Resulting Brush (DrawAs = Image, Tiling = Both)
+            ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::Tile);
+            const bool bAppliedTile = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            TestTrue(TEXT("CCF-15: Tile applies tile resource"), bAppliedTile);
+            TestEqual(TEXT("CCF-15: Tile brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
+            TestEqual(TEXT("CCF-15: Tile brush Tiling is Both"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::Both);
+
+            // CCF-15: 4. NineSlice Resulting Brush (DrawAs = Box, Margin parsed)
+            UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+            if (Catalog != nullptr)
+            {
+                UTexture2D* NineSliceTex = UTexture2D::CreateTransient(64, 64);
+                FGV2ImageResourceDefinition NineSliceDef;
+                NineSliceDef.ResourceId = TEXT("core:resource.surface.test_panel");
+                NineSliceDef.RenderMode = EGV2ImageRenderMode::NineSlice;
+                NineSliceDef.Texture = NineSliceTex;
+                NineSliceDef.NineSliceBorderPixels = FMargin(8.0f);
+                Catalog->GetEntries().Add(NineSliceDef);
+
+                ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::NineSlice);
+                const bool bAppliedNineSlice = ImageWidget->ApplyImageResource(TEXT("core:resource.surface.test_panel"), Error);
+                TestTrue(TEXT("CCF-15: NineSlice applies nine-slice resource"), bAppliedNineSlice);
+                TestEqual(TEXT("CCF-15: NineSlice brush DrawAs is Box"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Box);
+                TestEqual(TEXT("CCF-15: NineSlice brush Margin Left is 8"), ImageWidget->GetImageBrush().Margin.Left, 8.0f);
+
+                // CCF-15: 5. Failure atomicity: Incompatible resource leaves previous brush 100% intact
+                const FSlateBrush BaselineBrush = ImageWidget->GetImageBrush();
+                const FString BaselineId = ImageWidget->GetAppliedResourceId();
+
+                const bool bIncompatibleApply = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
+                TestFalse(TEXT("CCF-15: Incompatible FixedAspect resource rejected under NineSlice policy"), bIncompatibleApply);
+                TestEqual(TEXT("CCF-15: AppliedResourceId unchanged after failure"), ImageWidget->GetAppliedResourceId(), BaselineId);
+                TestEqual(TEXT("CCF-15: Brush ResourceObject unchanged after failure"), ImageWidget->GetImageBrush().GetResourceObject(), BaselineBrush.GetResourceObject());
+                TestEqual(TEXT("CCF-15: Brush DrawAs unchanged after failure"), ImageWidget->GetImageBrush().DrawAs.GetValue(), BaselineBrush.DrawAs.GetValue());
+                TestEqual(TEXT("CCF-15: Brush Tiling unchanged after failure"), ImageWidget->GetImageBrush().Tiling.GetValue(), BaselineBrush.Tiling.GetValue());
+                TestEqual(TEXT("CCF-15: Brush Margin unchanged after failure"), ImageWidget->GetImageBrush().Margin.Left, BaselineBrush.Margin.Left);
+            }
         }
 
         GameInstance->Shutdown();

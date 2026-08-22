@@ -59,17 +59,12 @@ bool FGV2ImagePresentation::ResolveAndApply(
         return false;
     }
     FSlateBrush ResolvedBrush = Candidate.Brush;
-    if (Candidate.RenderMode == EGV2ImageRenderMode::Tile && ScalePolicy != EGV2PrimitiveScalePolicy::FreeStretch)
+    if (ScalePolicy == EGV2PrimitiveScalePolicy::Tile)
     {
         ResolvedBrush.Tiling = ESlateBrushTileType::Both;
         ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
     }
-    else if (ScalePolicy == EGV2PrimitiveScalePolicy::Tile)
-    {
-        ResolvedBrush.Tiling = ESlateBrushTileType::Both;
-        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
-    }
-    else if (ScalePolicy == EGV2PrimitiveScalePolicy::NineSlice || Candidate.RenderMode == EGV2ImageRenderMode::NineSlice)
+    else if (ScalePolicy == EGV2PrimitiveScalePolicy::NineSlice)
     {
         ResolvedBrush.DrawAs = ESlateBrushDrawType::Box;
     }
