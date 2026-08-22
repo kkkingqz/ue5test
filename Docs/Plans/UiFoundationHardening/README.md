@@ -163,20 +163,20 @@ GLS-16 — blocked by UIH-16
 
 ## Итоговый Definition of Done
 
-- [ ] `UGV2ListViewWidgetBase` реально выполняет keyed reconciliation.
-- [ ] CommandPanel не владеет собственным `ButtonsByKey` reconciliation path.
-- [ ] Item/effect/character/meter collections используют Core Repeater.
-- [ ] Reorder с тем же key переиспользует существующий widget.
-- [ ] DPI curve реально влияет на plain и rich text rendering.
-- [ ] Один semantic text style имеет одинаковый effective size во всех consumers.
-- [ ] `ScalePolicy` является единственным источником graphics behavior.
-- [ ] Render mode ресурса только разрешает или запрещает выбранную policy.
-- [ ] Location composites имеют единый field validation и reset contract.
-- [ ] Empty/missing optional resources следуют принятой placeholder policy.
-- [ ] Ни один массив presentation entries не обрезается молча до первого элемента.
-- [ ] Реальный `WBP_LocationScreen` проходит шесть целевых viewport sizes.
-- [ ] На 1280×720 все обязательные команды достижимы.
-- [ ] На 21:9 дополнительное пространство получает SceneView.
-- [ ] Tavern → Market переиспользует экземпляр LocationScreen.
-- [ ] GLS-14…16 закрыты новым evidence.
-- [ ] Полные CTest, headless, script checks, docs validation и Unreal automation зелёные.
+- [x] `UGV2ListViewWidgetBase` реально выполняет keyed reconciliation.
+- [x] CommandPanel не владеет собственным `ButtonsByKey` reconciliation path.
+- [x] Item/effect/character/meter collections используют Core Repeater.
+- [x] Reorder с тем же key переиспользует существующий widget.
+- [x] DPI curve реально влияет на plain и rich text rendering.
+- [x] Один semantic text style имеет одинаковый effective size во всех consumers.
+- [x] `ScalePolicy` является единственным источником graphics behavior.
+- [x] Render mode ресурса только разрешает или запрещает выбранную policy.
+- [x] Location composites имеют единый field validation и reset contract.
+- [x] Empty/missing optional resources следуют принятой placeholder policy.
+- [x] Ни один массив presentation entries не обрезается молча до первого элемента.
+- [x] Реальный `WBP_LocationScreen` проходит шесть целевых viewport sizes.
+- [x] На 1280×720 все обязательные команды достижимы.
+- [x] На 21:9 дополнительное пространство получает SceneView.
+- [x] Tavern → Market переиспользует экземпляр LocationScreen.
+- [x] GLS-14…16 закрыты новым evidence.
+- [x] Полные CTest, headless, script checks, docs validation и Unreal automation зелёные.

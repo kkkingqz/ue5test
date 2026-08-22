@@ -171,7 +171,7 @@ git status --short
   contract. CCF-13…15.
 - [x] M4 — [Verification](Verification.md): реальные geometry, consumer font,
   NineSlice и Tavern→Market tests. CCF-16…21.
-- [ ] M5 — [Closure](Closure.md): синхронизация plan/status docs и полный
+- [x] M5 — [Closure](Closure.md): синхронизация plan/status docs и полный
   project gate. CCF-22…24.
 
 ## Критический путь

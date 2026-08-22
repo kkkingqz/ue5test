@@ -23,7 +23,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **CCF-22 — Синхронизировать `UiFoundationHardening` и `LocationScreen`**
+- [x] **CCF-22 — Синхронизировать `UiFoundationHardening` и `LocationScreen`**
   - Зависимости: CCF-01…21.
   - Done:
     - task/milestone checkboxes соответствуют реально пройденному Evidence;
@@ -56,7 +56,7 @@ depends_on:
   - отмечать Repeater atomicity по одному `EntryCount`;
   - переписывать архивный `UiFoundation` history.
 
-- [ ] **CCF-23 — Выполнить targeted source audit**
+- [x] **CCF-23 — Выполнить targeted source audit**
   - Зависимости: CCF-22.
   - Done:
     - отсутствуют известные запрещённые compatibility patterns;
@@ -85,7 +85,7 @@ depends_on:
   3. если test/history/comment — допустимо;
   4. если production fallback — milestone не закрывать.
 
-- [ ] **CCF-24 — Полный project gate и финальный отчёт**
+- [x] **CCF-24 — Полный project gate и финальный отчёт**
   - Зависимости: CCF-01…23.
   - Done:
     - portable tests;
@@ -174,13 +174,13 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Plan/status docs соответствуют текущему evidence.
-- [ ] Запрещённые source patterns отсутствуют.
-- [ ] Full portable gate зелёный.
-- [ ] Clean `GV2Editor` build зелёный.
-- [ ] Relevant Unreal automation зелёный.
-- [ ] Manual smoke зелёный.
-- [ ] Рабочее дерево содержит только intentional corrective changes.
+- [x] Plan/status docs соответствуют текущему evidence.
+- [x] Запрещённые source patterns отсутствуют.
+- [x] Full portable gate зелёный.
+- [x] Clean `GV2Editor` build зелёный.
+- [x] Relevant Unreal automation зелёный.
+- [x] Manual smoke зелёный.
+- [x] Рабочее дерево содержит только intentional corrective changes.
 
 ## Условие завершения всего плана
 
