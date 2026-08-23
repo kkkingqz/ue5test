@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.3
-updated: 2026-08-20
+version: 2.4
+updated: 2026-08-23
 ---
 
 # Architecture Decision Records
@@ -49,6 +49,8 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0035](0035-ui-foundation-and-composition.md) | accepted | UI Foundation and Composition: идентичность элементов, каноничность экрана, вложенные Screen Instances, отзывчивая раскладка, трёхуровневое владение |
 | [0036](0036-pre-1-0-compatibility-policy.md) | accepted | Project version в descriptor `core`; до 1.0 нет гарантии совместимости, но breaking changes явны |
 | [0037](0037-content-authoring-layer.md) | accepted | Content Authoring Layer and Atomic Storage Operations: библиотечный backend, атомарная запись набора полей, оптимистичная блокировка по штампу файла |
+| [0038](0038-screen-field-value-flat-struct.md) | rejected | Screen Field Value Stays a Flat Struct: `FGV2ScreenFieldValue` остаётся плоской структурой; пересмотр — при 14-м payload |
+| [0039](0039-presentation-source-singleton.md) | rejected | Presentation Source Stays a Singleton: композиция источников не вводится; пересмотр — при втором реальном потребителе |
 
 ## Template
 

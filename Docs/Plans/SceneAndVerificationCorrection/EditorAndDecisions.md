@@ -26,7 +26,7 @@ depends_on:
   - Done: дерево браузера и валидация создания дефиниций переведены на канонический парсер `GV2ContentCore::FStableId::Parse`; некорректные идентификаторы отвергаются парсером и не попадают в дерево; в `FGV2AuthoringReferenceIndex` и `FGV2EditorAdapter` добавлен счётчик вызовов `BuildIndex` (`GetIndexBuildCount()`); добавлены тесты `TestIndexBuildCountAndPickerIsolation` (в `content_editor_conformance`) и `FGV2DefinitionBrowserTreeTest` (в `GV2.Editor.ContentEditor.DefinitionBrowserTree`), проверяющие, что серия правок полей, переключений и открытий пикеров не вызывает перестроение индекса (`BuildCount == 1`).
   - Evidence: `Source/GV2ContentEditor/Private/Widgets/SGV2DefinitionBrowser.cpp`, `Source/GV2ContentEditor/Private/GV2EditorAdapter.cpp`, `Source/GV2ContentEditor/Private/Testing/EditorAdapterConformance.cpp`, `Source/GV2/Private/Tests/GV2ContentEditorTests.cpp`.
 
-- [ ] **SVC-11 — Два решения: форма значения поля и композиция источников**
+- [x] **SVC-11 — Два решения: форма значения поля и композиция источников**
   - Зависимости: нет.
   - **Форма значения поля.** `FGV2ScreenFieldValue` хранит 13 полезных нагрузок одновременно, используется всегда одна. Внешнее ревью рекомендовало ADR при достижении 8–10 типов; порог пройден без решения. Несколько нагрузок содержат `TArray`, поэтому рост не линеен.
   - **Композиция источников презентации.** `presentation_source.lua` допускает ровно один источник. Оговорка «до ADR по UI document reconciliation» исчерпана: реконсиляция со слоями реализована, и пакет не может добавить оверлей, не заменив источник целиком.
@@ -43,5 +43,5 @@ depends_on:
 
 - [x] В редакторе одна реализация грамматики Stable ID.
 - [x] Регресс производительности индекса ловится тестом.
-- [ ] Оба решения записаны, условия пересмотра наблюдаемы.
+- [x] Оба решения записаны, условия пересмотра наблюдаемы.
 - [ ] Проверка планов закрыта, архив приведён в порядок.
