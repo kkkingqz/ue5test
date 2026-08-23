@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 5.6
-updated: 2026-08-20
+version: 5.7
+updated: 2026-08-23
 depends_on:
   - ../README.md
 ---
@@ -25,11 +25,7 @@ depends_on:
 
 ## Активные планы
 
-- [SceneAndVerificationCorrection](SceneAndVerificationCorrection/README.md) — выполняется: исправления через границы слоёв и построение недостающих средств измерения: персонаж сцены, матрица разрешений, вкладки, аварийные экраны.
-- [CriticalCorrectiveHardening](CriticalCorrectiveHardening/README.md) — завершён, готов к архивации: исправление атомарности репитеров, композитов и единого источника ScalePolicy.
-- [LocationScreen](LocationScreen/README.md) — завершён, готов к архивации: первый игровой экран `textsystem` из четырёх композитов, наполняемый определением локации и текущим состоянием; интеграционная проверка базового набора UI.
-- [UiFoundationHardening](UiFoundationHardening/README.md) — завершён, готов к архивации: устранение расхождений между Core UI contract и фактической реализацией (Core Repeater, DPI text path, single graphics scale).
-- [ContentEditorHardening](ContentEditorHardening/README.md) — завершён, готов к архивации: усиление Content Editor и authoring UX, Stable-ID tree navigation, schema-driven presence/override model.
+Активных планов нет.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 

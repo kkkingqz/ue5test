@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.3
-updated: 2026-08-20
+version: 2.4
+updated: 2026-08-23
 depends_on:
   - ../README.md
 ---
@@ -20,6 +20,8 @@ depends_on:
 | [ContentCliModularization](ContentCliModularization.md) | 2026-08-15 | Разбиение `gv2-content` на модули команд и поддержки вместо монолитного `main.cpp` |
 | [ContentEditorPrerequisites](ContentEditorPrerequisites.md) | 2026-08-18 | Три блокирующих предусловия редактора: строгая классификация схемных изменений, `SetFieldValue`/`RemoveDefinitionEntry` с сохранением комментариев, `.ui.json5` вне `content_hash` с гейтом на устаревшие ключи |
 | [ContentEditor](ContentEditor.md) | 2026-08-20 | Общий atomic authoring path для CLI/Editor, schema-driven Slate frontend, CRUD, typed references и conformance в CTest/Unreal |
+| [ContentEditorHardening](ContentEditorHardening.md) | 2026-08-23 | Definition Browser на `STreeView` с канонической Stable-ID иерархией; presence model (Absent/ImplicitDefault/Explicit/RequiredMissing); структурные Add/Remove/Override/Reset; typed references с rename impact; dirty/stale safety без expensive refresh на keystroke |
+| [CriticalCorrectiveHardening](CriticalCorrectiveHardening.md) | 2026-08-23 | Атомарность Repeater/composite apply без partial state; `CanApply*` полностью non-mutating; legacy `[0]` fallback paths удалены; `ScalePolicy` — единственный источник graphics behavior; verification измеряет фактическую arranged geometry, font size и resulting brush |
 | [CoreBoundaryMigration](CoreBoundaryMigration.md) | 2026-08-17 | Приведение ядра к [ADR-0026](../../ADR/0026-core-and-gameplay-ownership.md): демо в пакет `sample`, `register_type` для обёртки актора, схемы `item`/`location` в `rh`, `actor_v1` до одного поля, гейт `core_boundary_gate_contract` |
 | [DesignerAuthoringLayer](DesignerAuthoringLayer.md) | 2026-08-18 | Слой авторинга: признак записи в окне мутации, изоляция сырого состояния, дескриптор команд с отложенной регистрацией, `Storage`/`WritePolicy`, sparse runtime-состояние, `emit`/`on`/`show_screen`, перевод геймплея `rh` |
 | [DocumentationRework](DocumentationRework.md) | 2026-08-20 | Authority и совместимость сделаны явными, Lua-контракты разделены, создан `Authoring/`, инструкции очищены, а архив планов свёрнут в проверяемые summaries |
@@ -28,12 +30,14 @@ depends_on:
 | [GameplayEventsAndWorld](GameplayEventsAndWorld.md) | 2026-08-15 | Ordered command validators, конверт и шина событий, подписка по `event_id`, отложенные команды, доменный объект мира и travel-слайс целиком |
 | [GameplayServices](GameplayServices.md) | 2026-08-19 | Авторский синтаксис `services.<name> = { … }` для stateless-процессов, координация передачи предмета и начисления золота торговцу в `rh` |
 | [HeadlessParityAndReplay](HeadlessParityAndReplay.md) | 2026-08-14 | 21 общий conformance entry point вместо host-локальных дублей, run manifest/digest, replay и golden-прогоны |
+| [LocationScreen](LocationScreen.md) | 2026-08-23 | Первый настоящий игровой экран `textsystem`: разделение шаблона и определения экрана, устойчивая идентичность маршрута, четыре композита (TopBar/PlayerStatus/Scene/Commands), матрица из шести разрешений |
 | [LifecycleSpecsMigration](LifecycleSpecsMigration.md) | 2026-08-15 | Миграция последнего крупного унаследованного набора: 5326 строк C++ заменены декларативными спеками `Tests/Lua/lifecycle/` |
 | [LocalizationPipeline](LocalizationPipeline.md) | 2026-08-15 | Разделение identity и содержимого текста, PO-каталоги внутри package root, резолвинг `TextSpec` в Presentation, fallback и отчёт покрытия |
 | [PackageSupport](PackageSupport.md) | 2026-08-16 | Обязательный манифест пакета, набор корней с явным порядком и lock-файлом, Lua внутри пакета, замещение модулей ядра с доступом к базе через `require_base()`, `ScriptSetHash` в run manifest и состав пакетов в сейве |
 | [PortableContentCore](PortableContentCore.md) | 2026-08-14 | Portable `GV2ContentCore`, JSON5 + schema validation, immutable repository snapshot, `gv2-content` CLI, интеграция UE/headless и `game.repository` в Lua |
 | [RHActorsSimplification](RHActorsSimplification.md) | 2026-08-19 | декларативные контракты полей сущностей (`field.*`), разделение структурных инвариантов и геймплейных предусловий, обобщённое создание экземпляров (`instances.create`), чистое доменное описание `rh/scripts/gameplay/actors.lua` без низкоуровневых утечек runtime |
 | [RhGamePackage](RhGamePackage.md) | 2026-08-16 | Игровой пакет `rh`: 11 конкретных сущностей со сменой namespace, переводы и ресурсы вместе с ними, демо-экран без знания об игре, гейт `core_decoupling_gate_contract` |
+| [SceneAndVerificationCorrection](SceneAndVerificationCorrection.md) | 2026-08-23 | Персонаж сцены через границу Lua → C++ → ассет; матрица разрешений измеряет выделенную геометрию; handle неактивной вкладки отклоняется; аварийные экраны — реальная поверхность отказа вместо ложного утверждения; откат композита покрыт тестом; канонический Stable ID в редакторе; два ADR-решения; сверка DoD `CriticalCorrectiveHardening` и архивация четырёх завершённых планов |
 | [SaveAndLoad](SaveAndLoad.md) | 2026-08-16 | Обратимый канонический кодек, slot-storage примитив, конверт контейнера, загрузка на холодном старте с резолвом редиректов и версии секций с миграциями |
 | [SimplifiedAuthoringSurface](SimplifiedAuthoringSurface.md) | 2026-08-18 | Собственное окружение authoring-скриптов, автообнаружение модулей с генерируемым манифестом, `require_*`/`spend_*`, источник презентации; 791 строка Lua в `rh` сведена к 352 при том же геймплее |
 | [TestArchitectureAndLuaSpecs](TestArchitectureAndLuaSpecs.md) | 2026-08-15 | Lua spec runner в `Tests/Lua/`, замороженный тестовый корпус, единый источник pinned-значений, миграция world и command validators в спеки |
@@ -41,6 +45,7 @@ depends_on:
 | [TextSystemLayer](TextSystemLayer.md) | 2026-08-19 | Три слоя вместо двух: набор пакетов собирается из данных, локации и переходы принадлежат `textsystem`, стоимость перехода — игре; `Scripts/gameplay/` в ядре удалён |
 | [ToolingAndWidgetHygiene](ToolingAndWidgetHygiene.md) | 2026-08-23 | Гейты для индекса планов, псевдолокали, отклонения контейнера `set` и структуры `main.cpp`; реляционные инварианты констант раскладки; заголовок и состояние раскрытия раскрывающегося списка исправлены; `sample` хранит состояние канонически; единый физический размер шрифта между виджетами проверяется |
 | [UiFoundation](UiFoundation.md) | 2026-08-20 | Базовый набор виджетов с едиными конвейерами, отзывчивая раскладка от 4K до 720p, многослойный документ с реконсиляцией и вкладками, наблюдаемая принадлежность ассетов слою |
+| [UiFoundationHardening](UiFoundationHardening.md) | 2026-08-23 | Core Repeater с keyed reconciliation вместо контейнера-заглушки; реальный DPI-aware text path; единый graphics scaling contract; corrective composite semantics; матрица разрешений строит реальный widget tree |
 
 ## Как архивировать следующий план
 
