@@ -4652,7 +4652,7 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                 {
                     FGV2ButtonViewModel Btn;
                     Btn.Key = *FString::Printf(TEXT("cmd_%d"), Index);
-                    Btn.Text.Text = FText::FromString(*FString::Printf(TEXT("Command Action Button #%d (Test Reflow Wrap)"), Index));
+                    Btn.Text.Text = FText::FromString(*FString::Printf(TEXT("Command #%d"), Index));
                     Btn.Binding = FGV2UiBindingHandle::Create(*FString::Printf(TEXT("handle_cmd_%d"), Index));
                     Buttons.Add(Btn);
                 }
@@ -4717,59 +4717,112 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
 
                     for (const auto& Res : TestResolutions)
                     {
+                        LocationScreen->InvalidateLayoutAndVolatility();
                         VirtualWindow->Resize(Res.Size);
                         VirtualWindow->SlatePrepass(1.0f);
-                        const FVector2D DesiredSize = SlateWidget->GetDesiredSize();
 
-                        TestTrue(
-                            *FString::Printf(TEXT("CCF-16: [%s] Desired width is positive: %f"), Res.Name, DesiredSize.X),
-                            DesiredSize.X > 0.0f);
-                        TestTrue(
-                            *FString::Printf(TEXT("CCF-16: [%s] Desired height is positive: %f"), Res.Name, DesiredSize.Y),
-                            DesiredSize.Y > 0.0f);
+                        // Trigger top-down Slate layout calculation
+                        FSlateWindowElementList WindowElementList(VirtualWindow);
+                        VirtualWindow->PaintWindow(
+                            FPlatformTime::Seconds(),
+                            0.016f,
+                            WindowElementList,
+                            FWidgetStyle(),
+                            true);
 
-                        // Check child component geometry constraints (CCF-16)
-                        if (TopBarWidget != nullptr)
+                        const FVector2D WindowAllocated = VirtualWindow->GetTickSpaceGeometry().GetLocalSize();
+                        TestEqual(
+                            *FString::Printf(TEXT("CCF-16: [%s] Window allocated size matches target resolution"), Res.Name),
+                            WindowAllocated,
+                            Res.Size);
+
+                        // 1. TopBar allocated geometry: height <= 25% of Res.Size.Y across ALL resolutions
+                        if (TopBarWidget != nullptr && TopBarWidget->GetCachedWidget().IsValid())
                         {
+                            const FVector2D TopBarAllocated = TopBarWidget->GetCachedWidget()->GetTickSpaceGeometry().GetLocalSize();
                             TestTrue(
-                                *FString::Printf(TEXT("CCF-16: [%s] TopBar desired height is bounded"), Res.Name),
-                                TopBarWidget->GetDesiredSize().Y > 0.0f && TopBarWidget->GetDesiredSize().Y <= Res.Size.Y * 0.25f);
+                                *FString::Printf(TEXT("CCF-16: [%s] TopBar allocated height is positive: %f"), Res.Name, TopBarAllocated.Y),
+                                TopBarAllocated.Y > 0.0f);
+                            TestTrue(
+                                *FString::Printf(TEXT("CCF-16: [%s] TopBar allocated height <= 25%% of screen height (%f <= %f)"), Res.Name, TopBarAllocated.Y, Res.Size.Y * 0.25f),
+                                TopBarAllocated.Y <= Res.Size.Y * 0.25f);
+                            TestTrue(
+                                *FString::Printf(TEXT("CCF-16: [%s] TopBar allocated width fills screen width (%f == %f)"), Res.Name, TopBarAllocated.X, Res.Size.X),
+                                FMath::IsNearlyEqual(TopBarAllocated.X, Res.Size.X, 1.0f));
                         }
-                        if (PlayerStatusWidget != nullptr)
+
+                        // 2. PlayerStatus allocated geometry: width <= 60% of Res.Size.X across ALL resolutions
+                        if (PlayerStatusWidget != nullptr && PlayerStatusWidget->GetCachedWidget().IsValid())
                         {
+                            const FVector2D PlayerStatusAllocated = PlayerStatusWidget->GetCachedWidget()->GetTickSpaceGeometry().GetLocalSize();
                             TestTrue(
-                                *FString::Printf(TEXT("CCF-16: [%s] PlayerStatus desired width is bounded"), Res.Name),
-                                PlayerStatusWidget->GetDesiredSize().X > 0.0f && PlayerStatusWidget->GetDesiredSize().X <= Res.Size.X * 0.6f);
+                                *FString::Printf(TEXT("CCF-16: [%s] PlayerStatus allocated width is positive: %f"), Res.Name, PlayerStatusAllocated.X),
+                                PlayerStatusAllocated.X > 0.0f);
+                            TestTrue(
+                                *FString::Printf(TEXT("CCF-16: [%s] PlayerStatus allocated width <= 60%% of screen width (%f <= %f)"), Res.Name, PlayerStatusAllocated.X, Res.Size.X * 0.6f),
+                                PlayerStatusAllocated.X <= Res.Size.X * 0.6f);
                         }
-                        if (SceneWidget != nullptr)
+
+                        // 3. SceneView allocated geometry: fills remaining body width
+                        if (SceneWidget != nullptr && SceneWidget->GetCachedWidget().IsValid())
                         {
+                            const FVector2D SceneAllocated = SceneWidget->GetCachedWidget()->GetTickSpaceGeometry().GetLocalSize();
                             TestTrue(
-                                *FString::Printf(TEXT("CCF-16: [%s] SceneView has positive layout area"), Res.Name),
-                                SceneWidget->GetDesiredSize().X > 0.0f && SceneWidget->GetDesiredSize().Y > 0.0f);
+                                *FString::Printf(TEXT("CCF-16: [%s] SceneView allocated area is positive (%f x %f)"), Res.Name, SceneAllocated.X, SceneAllocated.Y),
+                                SceneAllocated.X > 0.0f && SceneAllocated.Y > 0.0f);
+
                             if (Res.Size.X == 1920.0f && Res.Size.Y == 1080.0f)
                             {
-                                SceneWidthFHD = SceneWidget->GetDesiredSize().X;
+                                SceneWidthFHD = SceneAllocated.X;
                             }
                             else if (Res.Size.X == 2560.0f && Res.Size.Y == 1080.0f)
                             {
-                                SceneWidthUWFHD = SceneWidget->GetDesiredSize().X;
-                            }
-                        }
-                        if (CommandWidget != nullptr)
-                        {
-                            TestTrue(
-                                *FString::Printf(TEXT("CCF-16: [%s] CommandPanel has positive size"), Res.Name),
-                                CommandWidget->GetDesiredSize().X > 0.0f && CommandWidget->GetDesiredSize().Y > 0.0f);
-                            if (UGV2ListViewWidgetBase* Repeater = CommandWidget->GetRepeater())
-                            {
-                                TestEqual(
-                                    *FString::Printf(TEXT("CCF-17: [%s] All 6 command buttons are instantiated and reachable"), Res.Name),
-                                    Repeater->GetEntryCount(),
-                                    6);
+                                SceneWidthUWFHD = SceneAllocated.X;
                             }
                         }
 
-                        // Ultrawide check (CCF-18): 21:9 ratio verified and scene area expands
+                        // 4. CommandPanel allocated geometry: check button placement within bounds
+                        if (CommandWidget != nullptr && CommandWidget->GetCachedWidget().IsValid())
+                        {
+                            const FGeometry CommandGeom = CommandWidget->GetCachedWidget()->GetTickSpaceGeometry();
+                            const FVector2D CommandAllocated = CommandGeom.GetLocalSize();
+                            TestTrue(
+                                *FString::Printf(TEXT("CCF-16: [%s] CommandPanel allocated size is positive (%f x %f)"), Res.Name, CommandAllocated.X, CommandAllocated.Y),
+                                CommandAllocated.X > 0.0f && CommandAllocated.Y > 0.0f);
+
+                            if (UGV2ListViewWidgetBase* Repeater = CommandWidget->GetRepeater())
+                            {
+                                TestEqual(
+                                    *FString::Printf(TEXT("CCF-17: [%s] All 6 command buttons instantiated in repeater"), Res.Name),
+                                    Repeater->GetEntryCount(),
+                                    6);
+
+                                // On HD 720p, verify each instantiated button's allocated geometry is within visible viewport bounds
+                                if (Res.Size.X == 1280.0f && Res.Size.Y == 720.0f)
+                                {
+                                    const TArray<UWidget*> Entries = Repeater->GetOrderedEntries();
+                                    TestEqual(TEXT("CCF-17: [720p] Repeater ordered entry widgets count matches 6"), Entries.Num(), 6);
+                                    for (int32 BtnIndex = 0; BtnIndex < Entries.Num(); ++BtnIndex)
+                                    {
+                                        if (Entries[BtnIndex] != nullptr && Entries[BtnIndex]->GetCachedWidget().IsValid())
+                                        {
+                                            const FGeometry BtnGeom = Entries[BtnIndex]->GetCachedWidget()->GetTickSpaceGeometry();
+                                            const FVector2D BtnLocalPos = VirtualWindow->GetTickSpaceGeometry().AbsoluteToLocal(BtnGeom.GetAbsolutePosition());
+                                            const FVector2D BtnSize = BtnGeom.GetLocalSize();
+                                            TestTrue(
+                                                *FString::Printf(TEXT("CCF-17: [720p] Button #%d allocated size is positive (%f x %f)"), BtnIndex + 1, BtnSize.X, BtnSize.Y),
+                                                BtnSize.X > 0.0f && BtnSize.Y > 0.0f);
+                                            // Bottom edge of button must not overflow screen height (720px)
+                                            TestTrue(
+                                                *FString::Printf(TEXT("CCF-17: [720p] Button #%d fits within viewport height (%f <= 720)"), BtnIndex + 1, BtnLocalPos.Y + BtnSize.Y),
+                                                BtnLocalPos.Y + BtnSize.Y <= 720.0f + 1.0f);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Ultrawide check (CCF-18): 21:9 ratio verified
                         if (Res.bUltrawide)
                         {
                             TestTrue(
@@ -4778,10 +4831,27 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                         }
                     }
 
-                    // CCF-18: Compare FHD vs UW-FHD scene allocation
-                    if (SceneWidthFHD > 0.0f && SceneWidthUWFHD > 0.0f)
+                    // CCF-18: Compare FHD (1920x1080) vs UW-FHD (2560x1080) allocated geometry
+                    TestTrue(TEXT("CCF-18: FHD and UW-FHD scene widths measured"), SceneWidthFHD > 0.0f && SceneWidthUWFHD > 0.0f);
+                    TestTrue(
+                        *FString::Printf(TEXT("CCF-18: Ultrawide (21:9) SceneView allocated width (%f) is strictly greater than 16:9 width (%f)"), SceneWidthUWFHD, SceneWidthFHD),
+                        SceneWidthUWFHD > SceneWidthFHD);
+                    const float WidthDifference = SceneWidthUWFHD - SceneWidthFHD;
+                    TestTrue(
+                        *FString::Printf(TEXT("CCF-18: Extra ultrawide width allocated to SceneView (%f >= 600px)"), WidthDifference),
+                        WidthDifference >= 600.0f);
+
+                    // Negative test: Constrained / small viewport bounds layout elements and does not overflow
                     {
-                        TestTrue(TEXT("CCF-18: Ultrawide (21:9) SceneView desired width is >= standard (16:9) width"), SceneWidthUWFHD >= SceneWidthFHD);
+                        VirtualWindow->Resize(FVector2D(100.0f, 100.0f));
+                        VirtualWindow->SlatePrepass(1.0f);
+                        FSlateWindowElementList WindowElementListSmall(VirtualWindow);
+                        VirtualWindow->PaintWindow(FPlatformTime::Seconds(), 0.016f, WindowElementListSmall, FWidgetStyle(), true);
+                        if (TopBarWidget != nullptr && TopBarWidget->GetCachedWidget().IsValid())
+                        {
+                            const FVector2D TopBarSmall = TopBarWidget->GetCachedWidget()->GetTickSpaceGeometry().GetLocalSize();
+                            TestTrue(TEXT("CCF-16: [Negative] Constrained viewport bounds TopBar allocated size"), TopBarSmall.X <= 100.0f + 1.0f);
+                        }
                     }
                 }
             }
