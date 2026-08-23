@@ -15,6 +15,7 @@
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
+#include "UI/GV2TextPipeline.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
@@ -291,9 +292,17 @@ void UGV2RuntimeSubsystem::StartSession()
                 UGV2RecoveryScreenWidget::StaticClass());
             if (RecoveryScreen != nullptr)
             {
-                if (RecoveryScreen->InitializeRecoveryScreen(
-                        TEXT("Bootstrap Failed"),
-                        TEXT("Session initialization rejected by host lifecycle")))
+                FGV2TextViewModel ResolvedTitle;
+                FGV2TextViewModel ResolvedDesc;
+                FString Error;
+                const FString TitleText = UGV2TextPipeline::Resolve(TEXT("core:text.screen.recovery.title"), {}, FName("title"), ResolvedTitle, Error)
+                    ? ResolvedTitle.Text.ToString()
+                    : TEXT("Recovery");
+                const FString MessageText = UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.description"), {}, FName("default"), ResolvedDesc, Error)
+                    ? ResolvedDesc.Text.ToString()
+                    : TEXT("Session initialization rejected by host lifecycle");
+
+                if (RecoveryScreen->InitializeRecoveryScreen(TitleText, MessageText))
                 {
                     ReplaceActiveScreen(RecoveryScreen);
                 }

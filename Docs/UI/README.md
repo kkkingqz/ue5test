@@ -70,4 +70,4 @@ UI является перестраиваемой presentation projection. Lua 
 
 Правило проверяется реестром экранов (`UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace`, `Validate`): экран нижнего слоя не может ссылаться на ассет из верхнего слоя.
 
-Рантайм разрешает активную тему (`UGV2UiThemeSettings::GetConfiguredTheme()`, конфигурируется `Config/DefaultGame.ini`), а при её отсутствии откатывается к минимальной теме ядра (`UGV2UiTheme::GetCoreMinimalTheme()`) — она собирается программно в C++, не является отдельным ассетом, и гарантирует отрисовку аварийных экранов (`core:screen.error`, `core:screen.loading`, `core:screen.recovery`).
+Рантайм разрешает активную тему (`UGV2UiThemeSettings::GetConfiguredTheme()`, конфигурируется `Config/DefaultGame.ini`), а при её отсутствии откатывается к минимальной теме ядра (`UGV2UiTheme::GetCoreMinimalTheme()`) — она собирается программно в C++, не является отдельным ассетом, и гарантирует базовую типографику и аварийные строки каталога (`core:text.screen.recovery.title`, `core:text.screen.error.*`) для работы нативного экрана восстановления `UGV2RecoveryScreenWidget` при отказе сессии.

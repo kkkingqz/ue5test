@@ -36,10 +36,10 @@ depends_on:
   - Done: Semantic Input принимает handle только активной вкладки и отклоняет остальные (включая случай несохранённой/пустой активной вкладки) как `StaleBindingHandle`; переключение вкладки через `UGV2TabContainerWidgetBase` синхронизирует состояние активной вкладки с рантаймом/координатором и меняет множество интерактивных handle, не меняя ревизию документа; правило и его причина зафиксированы в [Semantic Input](../../UI/SemanticInput.md); отрицательные и интеграционные случаи покрыты тестами.
   - Evidence: `Docs/UI/SemanticInput.md`, `Source/GV2/Private/UI/`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
-- [ ] **SVC-08 — Аварийные экраны: реализовать либо снять утверждение**
+- [x] **SVC-08 — Аварийные экраны: реализовать либо снять утверждение**
   - `core:screen.error`, `core:screen.loading` и `core:screen.recovery` не существуют нигде. Существует минимальная тема ядра со **строками** `core:text.screen.error.title` и подобными, и зелёный тест проверяет присутствие этих строк в каталоге — то есть более слабое свойство, чем отрисовка экранов.
-  - Done: принято и записано одно из двух — экраны заведены, зарегистрированы и отрисовываются в конфигурации без `textsystem`, либо утверждение снято из contract, а тест перестаёт выглядеть проверкой отрисовки; в первом случае проверка запускает отрисовку, во втором строки темы либо получают потребителя, либо удаляются.
-  - Evidence: `Docs/UI/README.md`, `Source/GV2/Private/UI/GV2UiTheme.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
+  - Done: ложное утверждение о существовании экранов `core:screen.error`, `.loading`, `.recovery` снято из документации (`Docs/UI/README.md`); зафиксировано, что аварийной поверхностью отказа сессии является UE-native виджет `UGV2RecoveryScreenWidget`, который программно инициализируется при сбое bootstrap; аварийные строки темы `core:text.screen.recovery.title` и `core:text.screen.error.description` получили реального потребителя в C++ рантайме (`UGV2RuntimeSubsystem::StartSessionDirect`) через `UGV2TextPipeline::Resolve`; тест `GV2.Runtime.UI.ThemeOwnershipAndTextLengthContract` обновлен и проверяет как разрешение строк темы, так и инициализацию `UGV2RecoveryScreenWidget` с разрешенными строками.
+  - Evidence: `Docs/UI/README.md`, `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
 - [ ] **SVC-09 — Тест отката композита**
   - `ApplyScreenFields` захватывает предыдущее значение каждого элемента и при отказе восстанавливает его — этим и обеспечивается требование «failed composite apply сохраняет предыдущие model и visuals». Откат тестом не покрыт: единственный тест отката касается браша изображения. Путь отката может отказать сам и лишь логируется.
@@ -52,5 +52,5 @@ depends_on:
 - [x] На 720p проверяется размещение команд, а не их количество.
 - [x] Вакуумных тестов в наборе не осталось.
 - [x] Handle неактивной вкладки отклоняется.
-- [ ] Судьба аварийных экранов решена и записана.
+- [x] Судьба аварийных экранов решена и записана.
 - [ ] Откат композита покрыт тестом.

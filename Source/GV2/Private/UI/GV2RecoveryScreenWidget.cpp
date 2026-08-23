@@ -16,6 +16,10 @@ bool UGV2RecoveryScreenWidget::InitializeRecoveryScreen(
 
     if (WidgetTree == nullptr)
     {
+        WidgetTree = NewObject<UWidgetTree>(this, TEXT("WidgetTree"));
+    }
+    if (WidgetTree == nullptr)
+    {
         return false;
     }
 

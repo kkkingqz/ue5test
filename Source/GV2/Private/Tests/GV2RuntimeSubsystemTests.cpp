@@ -21,6 +21,7 @@
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
@@ -3189,7 +3190,7 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
     }
 
     // =========================================================================
-    // UIF-29: Core Minimal Theme & Emergency Screen Resolution
+    // UIF-29: Core Minimal Theme & Emergency Fallback Strings
     // =========================================================================
     {
         UGV2UiTheme* MinimalTheme = UGV2UiTheme::GetCoreMinimalTheme();
@@ -3203,7 +3204,7 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
             TestTrue(TEXT("Minimal theme contains default text color"), MinimalTheme->TextColorTokens.Contains(TEXT("default")));
             TestTrue(TEXT("Minimal theme contains error text color"), MinimalTheme->TextColorTokens.Contains(TEXT("error")));
 
-            // Check emergency screen titles in catalog
+            // Check emergency fallback strings in catalog
             TestTrue(TEXT("Emergency error title present"), MinimalTheme->TextCatalog.Contains(TEXT("core:text.screen.error.title")));
             TestTrue(TEXT("Emergency error description present"), MinimalTheme->TextCatalog.Contains(TEXT("core:text.screen.error.description")));
             TestTrue(TEXT("Emergency loading title present"), MinimalTheme->TextCatalog.Contains(TEXT("core:text.screen.loading.title")));
@@ -3211,11 +3212,31 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
 
             // Resolve text through pipeline with minimal theme
             FGV2TextViewModel ResolvedTitle;
+            FGV2TextViewModel ResolvedDesc;
             FString Error;
             TestTrue(
-                TEXT("Resolve emergency error title via MinimalTheme"),
-                UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.title"), {}, FName("default"), ResolvedTitle, Error));
-            TestEqual(TEXT("Error title text matches"), ResolvedTitle.Text.ToString(), TEXT("Error"));
+                TEXT("Resolve emergency recovery title via MinimalTheme"),
+                UGV2TextPipeline::Resolve(TEXT("core:text.screen.recovery.title"), {}, FName("title"), ResolvedTitle, Error));
+            TestEqual(TEXT("Recovery title text matches"), ResolvedTitle.Text.ToString(), TEXT("Recovery"));
+
+            TestTrue(
+                TEXT("Resolve emergency error description via MinimalTheme"),
+                UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.description"), {}, FName("default"), ResolvedDesc, Error));
+            TestEqual(TEXT("Error description text matches"), ResolvedDesc.Text.ToString(), TEXT("An unexpected error has occurred."));
+
+            // Verify UE-native recovery screen widget initialization using resolved fallback strings
+            UGV2RecoveryScreenWidget* RecoveryScreen = NewObject<UGV2RecoveryScreenWidget>(
+                GetTransientPackage(),
+                UGV2RecoveryScreenWidget::StaticClass());
+            TestNotNull(TEXT("Recovery screen widget instantiated"), RecoveryScreen);
+            if (RecoveryScreen != nullptr)
+            {
+                TestTrue(
+                    TEXT("Initialize recovery screen with resolved emergency strings"),
+                    RecoveryScreen->InitializeRecoveryScreen(ResolvedTitle.Text.ToString(), ResolvedDesc.Text.ToString()));
+                TestEqual(TEXT("Recovery screen title matches"), RecoveryScreen->GetTitle(), TEXT("Recovery"));
+                TestEqual(TEXT("Recovery screen message matches"), RecoveryScreen->GetMessage(), TEXT("An unexpected error has occurred."));
+            }
         }
     }
 
