@@ -438,25 +438,66 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TestTrue(TEXT("Rejected text key leaves definitions empty"), TextDefs.IsEmpty());
     }
 
-    // 5. Button list invalid grammar key
+    // 5. Button list key grammar conformance: [a-z0-9_.-@:]+ (BAI-08)
+    // 5a. Positive key grammar: domain ID with ':', instance ID with '@', hyphens, dots
     {
-        GV2RuntimeCore::FScreenRequest InvalidKeyReq;
-        InvalidKeyReq.ScreenId = "core:screen.test";
+        GV2RuntimeCore::FScreenRequest ValidGrammarReq;
+        ValidGrammarReq.ScreenId = "core:screen.test";
         GV2RuntimeCore::FScreenField BtnField;
         BtnField.FieldId = "buttons";
         BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
-        const std::string KeyInvalid = "BTN #1!";
+        const std::string KeyDomain = "core:item.weapon.iron_sword";
+        const std::string KeyActor = "actor@42";
+        const std::string KeyHyphenDot = "btn-action.v1_ok";
         GV2RuntimeCore::FValue::FObject ValueObj;
         ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
-            MakeButtonItem(&KeyInvalid, "core:command.screen.action_a")
+            MakeButtonItem(&KeyDomain, "core:command.screen.action_a"),
+            MakeButtonItem(&KeyActor, "core:command.screen.action_b"),
+            MakeButtonItem(&KeyHyphenDot, "core:command.screen.action_c")
         });
         BtnField.Value = GV2RuntimeCore::FValue(MoveTemp(ValueObj));
-        InvalidKeyReq.Fields.push_back(MoveTemp(BtnField));
-        TArray<FGV2UiBindingDefinition> InvalidDefs;
-        TestFalse(
-            TEXT("Button list with invalid grammar key is rejected (UiElementKeyInvalid)"),
-            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(InvalidKeyReq, InvalidDefs));
-        TestTrue(TEXT("Rejected invalid key leaves definitions empty"), InvalidDefs.IsEmpty());
+        ValidGrammarReq.Fields.push_back(MoveTemp(BtnField));
+        TArray<FGV2UiBindingDefinition> ValidDefs;
+        TestTrue(
+            TEXT("BAI-08: Repeated element keys with ':', '@', '-', '.' grammar are accepted"),
+            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(ValidGrammarReq, ValidDefs));
+        TestEqual(TEXT("Prepares three binding definitions for valid keys"), ValidDefs.Num(), 3);
+    }
+
+    // 5b. Negative key grammar: uppercase, spaces, invalid symbols, text prefix, and excessive length
+    {
+        const TArray<std::string> InvalidGrammarKeys = {
+            "BTN #1!",
+            "Upper_Case_Key",
+            "key with spaces",
+            "key/with/slash",
+            "key?question",
+            "text:plain.key",
+            "core:text.button.ok",
+            "",
+            std::string(193, 'a')
+        };
+
+        for (const std::string& BadKey : InvalidGrammarKeys)
+        {
+            GV2RuntimeCore::FScreenRequest InvalidKeyReq;
+            InvalidKeyReq.ScreenId = "core:screen.test";
+            GV2RuntimeCore::FScreenField BtnField;
+            BtnField.FieldId = "buttons";
+            BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+            GV2RuntimeCore::FValue::FObject ValueObj;
+            ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+                MakeButtonItem(&BadKey, "core:command.screen.action_a")
+            });
+            BtnField.Value = GV2RuntimeCore::FValue(MoveTemp(ValueObj));
+            InvalidKeyReq.Fields.push_back(MoveTemp(BtnField));
+            TArray<FGV2UiBindingDefinition> InvalidDefs;
+            TestFalse(
+                *FString::Printf(TEXT("BAI-08: Invalid grammar key '%s' is rejected (UiElementKeyInvalid)"),
+                    UTF8_TO_TCHAR(BadKey.c_str())),
+                FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(InvalidKeyReq, InvalidDefs));
+            TestTrue(TEXT("Rejected invalid key leaves definitions empty"), InvalidDefs.IsEmpty());
+        }
     }
 
     FString PortableHeader;

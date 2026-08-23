@@ -21,7 +21,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **BAI-08 — Одна грамматика ключа повторяемого элемента**
+- [x] **BAI-08 — Одна грамматика ключа повторяемого элемента**
   - [UI Document](../../UI/UIDocumentAndReconciliation.md) требует `[a-z0-9_.-]+`, но тот же раздел приводит примеры `rh:item.weapon.iron_sword` и `actor@42`, которые этой грамматике не удовлетворяют. `IsValidRepeatedElementKey` принимает дополнительно `@` и `:`. Расходятся все три: правило, примеры и код.
   - Done: выбрана одна грамматика, покрывающая фактические источники ключа; она записана в контракте, реализована в C++, применяется валидацией на стороне Lua и проверяется conformance-тестом на положительном и отрицательном примере; примеры в контракте грамматике удовлетворяют.
   - Evidence: `Docs/UI/UIDocumentAndReconciliation.md`, `Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.

@@ -283,9 +283,18 @@ return {
             local btn_args = rh.button(rh.text("action.buy"), rh.action("shop.buy", sword))
             assert(btn_args.key == "shop_buy_weapon_iron_sword", "Key should incorporate arg: " .. tostring(btn_args.key))
 
-            -- 3. Explicit key precedence
+            -- 3. Explicit key precedence with allowed grammar characters: [a-z0-9_.-@:]+
             local btn_custom = rh.button(rh.text("action.buy"), rh.action("shop.buy", sword), "my_custom_key")
             assert(btn_custom.key == "my_custom_key", "Explicit key must take precedence")
+
+            local btn_domain_id = rh.button(rh.text("action.buy"), rh.action("shop.buy", sword), "rh:item.weapon.iron_sword")
+            assert(btn_domain_id.key == "rh:item.weapon.iron_sword", "Domain Stable ID key with ':' and '.' must be accepted")
+
+            local btn_actor_inst = rh.button(rh.text("action.buy"), rh.action("shop.buy", sword), "actor@42")
+            assert(btn_actor_inst.key == "actor@42", "Instance ID key with '@' must be accepted")
+
+            local btn_hyphen_dot = rh.button(rh.text("action.buy"), rh.action("shop.buy", sword), "btn-ok.1")
+            assert(btn_hyphen_dot.key == "btn-ok.1", "Key with '-' and '.' must be accepted")
 
             -- 4. Rejection of TextSpec table as key
             local ok_t1, err_t1 = pcall(function()
@@ -299,11 +308,21 @@ return {
             end)
             assert(not ok_t2 and string.find(tostring(err_t2), "TextDisallowedAsKey"), "text Stable ID as key must be rejected: " .. tostring(err_t2))
 
+            local ok_t3, err_t3 = pcall(function()
+                rh.button(rh.text("action.buy"), rh.action("shop.buy"), "text:action.buy")
+            end)
+            assert(not ok_t3 and string.find(tostring(err_t3), "TextDisallowedAsKey"), "text: prefix as key must be rejected: " .. tostring(err_t3))
+
             -- 6. Rejection of invalid key grammar
             local ok_bad_key, err_bad_key = pcall(function()
                 rh.button(rh.text("action.buy"), rh.action("shop.buy"), "Invalid Key!")
             end)
-            assert(not ok_bad_key and string.find(tostring(err_bad_key), "InvalidButtonKey"), "Invalid key grammar must be rejected: " .. tostring(err_bad_key))
+            assert(not ok_bad_key and string.find(tostring(err_bad_key), "InvalidButtonKey"), "Invalid key grammar (spaces/!) must be rejected: " .. tostring(err_bad_key))
+
+            local ok_upper_key, err_upper_key = pcall(function()
+                rh.button(rh.text("action.buy"), rh.action("shop.buy"), "Upper_Case_Key")
+            end)
+            assert(not ok_upper_key and string.find(tostring(err_upper_key), "InvalidButtonKey"), "Uppercase key grammar must be rejected: " .. tostring(err_upper_key))
 
             -- 7. show_screen rejects duplicate button keys
             local ok_dup, err_dup = pcall(function()

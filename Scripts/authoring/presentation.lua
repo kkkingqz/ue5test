@@ -194,7 +194,7 @@ function M.create_button_helper(package_id)
             if type(button_key) ~= "string" then
                 error("InvalidButtonKey: button key must be a string", 2)
             end
-            if not button_key:match("^[a-z0-9_.-@:]+$") or #button_key == 0 then
+            if not button_key:match("^[a-z0-9_@.:%-]+$") or #button_key == 0 then
                 error("InvalidButtonKey: button key must be a valid lowercase identifier, got '" .. tostring(button_key) .. "'", 2)
             end
         else
@@ -303,7 +303,7 @@ local function build_screen_instance(package_id, spec, default_layer, default_ke
                 if not btn.key or type(btn.key) ~= "string" or #btn.key == 0 then
                     error("UiElementKeyMissing: button #" .. i .. " is missing key", 3)
                 end
-                if not btn.key:match("^[a-z0-9_.-@:]+$") then
+                if not btn.key:match("^[a-z0-9_@.:%-]+$") then
                     error("UiElementKeyInvalid: button #" .. i .. " key '" .. tostring(btn.key) .. "' is invalid", 3)
                 end
                 if seen_button_keys[btn.key] then
@@ -353,7 +353,7 @@ local function build_screen_instance(package_id, spec, default_layer, default_ke
                 if not btn.key or type(btn.key) ~= "string" or #btn.key == 0 then
                     error("UiElementKeyMissing: button #" .. i .. " is missing key", 3)
                 end
-                if not btn.key:match("^[a-z0-9_.-@:]+$") then
+                if not btn.key:match("^[a-z0-9_@.:%-]+$") then
                     error("UiElementKeyInvalid: button #" .. i .. " key '" .. tostring(btn.key) .. "' is invalid", 3)
                 end
                 if btn.key:match("^[%a_][%w_]*:text%.") or btn.key:match("^text:") then
