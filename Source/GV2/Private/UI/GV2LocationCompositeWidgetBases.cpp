@@ -63,6 +63,15 @@ bool UGV2LocationTopBarWidgetBase::ResetScreenField_Implementation()
 // ============================================================================
 // PlayerStatus
 // ============================================================================
+void UGV2LocationPlayerStatusWidgetBase::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+    if (StaminaMeter)
+    {
+        StaminaMeter->SetVisibility(ESlateVisibility::Collapsed);
+    }
+}
+
 FGV2ScreenFieldDescriptor UGV2LocationPlayerStatusWidgetBase::GetScreenFieldDescriptor_Implementation() const { return D(TEXT("player_status"), TEXT("textsystem:schema.ui_field.location_player_status.v1")); }
 
 bool UGV2LocationPlayerStatusWidgetBase::HasUsableMeterRepeaterHost() const
@@ -504,6 +513,11 @@ bool UGV2LocationSceneWidgetBase::ResetScreenField_Implementation()
 // ============================================================================
 // CommandPanel
 // ============================================================================
+void UGV2LocationCommandPanelWidgetBase::NativePreConstruct()
+{
+    Super::NativePreConstruct();
+}
+
 UGV2ListViewWidgetBase* UGV2LocationCommandPanelWidgetBase::ResolveRepeater()
 {
     if (ButtonRepeater != nullptr) return ButtonRepeater;

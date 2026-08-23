@@ -33,7 +33,7 @@ protected:
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> DayText;
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> LocationText;
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PrimaryResourceText;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWidget> ResourceIcon;
+    UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: ResourceIcon is unused because PrimaryResource contains formatted text.")) TObjectPtr<UWidget> ResourceIcon;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> DayLocationSeparator;
 private: FGV2LocationTopBarViewModel Applied;
 };
@@ -48,19 +48,20 @@ public:
     virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutValue) const override;
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    UGV2ListViewWidgetBase* GetItemRepeater() { return ResolveItemRepeater(); }
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    UGV2ListViewWidgetBase* GetEffectRepeater() { return ResolveEffectRepeater(); }
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    UGV2ListViewWidgetBase* GetMeterRepeater() { return ResolveMeterRepeater(); }
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetItemRepeater() const { return ItemRepeater ? ItemRepeater : InternalItemRepeater; }
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetEffectRepeater() const { return EffectRepeater ? EffectRepeater : InternalEffectRepeater; }
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetMeterRepeater() const { return MeterRepeater ? MeterRepeater : InternalMeterRepeater; }
     bool HasUsableMeterRepeaterHost() const;
     bool HasUsableItemRepeaterHost() const;
     bool HasUsableEffectRepeaterHost() const;
 protected:
+    virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PlayerNameText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2PortraitWidgetBase> Portrait;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ProgressBarWidgetBase> StaminaMeter;
+    UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: Use MeterRepeater / MeterContainer with repeated Meters.")) TObjectPtr<UGV2ProgressBarWidgetBase> StaminaMeter;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> MeterRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> MeterContainer;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> ItemRepeater;
@@ -91,15 +92,15 @@ public:
     virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutValue) const override;
     virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
     virtual bool ResetScreenField_Implementation() override;
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    UGV2ListViewWidgetBase* GetCharacterRepeater() { return ResolveCharacterRepeater(); }
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetCharacterRepeater() const { return CharacterRepeater ? CharacterRepeater : InternalCharacterRepeater; }
     bool HasUsableCharacterRepeaterHost() const;
 protected:
     virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> SceneContextText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Background;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> BackgroundTile;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Character;
+    UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: Use CharacterRepeater / CharacterContainer with repeated Characters.")) TObjectPtr<UGV2ImageWidgetBase> Character;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> CharacterRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;
@@ -121,8 +122,8 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     bool CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels) const;
     bool HasUsableRepeaterHost() const;
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    UGV2ListViewWidgetBase* GetRepeater() { return ResolveRepeater(); }
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    UGV2ListViewWidgetBase* GetRepeater() const { return ButtonRepeater ? ButtonRepeater : InternalRepeater; }
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI") FGV2LocationCommandBindingInvoked OnBindingInvoked;
     virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
     virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;
@@ -130,6 +131,7 @@ public:
     virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutValue) const override;
     virtual bool ResetScreenField_Implementation() override;
 protected:
+    virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> ButtonRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> ButtonContainer;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="GV2|UI") TSubclassOf<UGV2ButtonWidgetBase> ButtonWidgetClass;
@@ -140,3 +142,4 @@ private:
     UPROPERTY(Transient) TArray<FGV2ButtonViewModel> AppliedButtonModels;
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalRepeater;
 };
+
