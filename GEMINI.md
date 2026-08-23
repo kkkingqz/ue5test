@@ -178,5 +178,7 @@ date: YYYY-MM-DD
 ## Unreal Editor API
 
 - Editor-authored assets (`.uasset`), включая Widget Blueprint, Data Asset и CommonUI style assets, Gemini обязан создавать и изменять через настроенный Unreal Editor API (`unreal-mcp`), а не прямой записью бинарных файлов.
-- Если API недоступен, Gemini обязан проверить, запущен ли Unreal Editor и активен ли `ModelContextProtocol`; отсутствие запущенного Editor не является основанием подменять API генерацией `.uasset` сторонними средствами.
-- После изменения asset через Editor API Gemini обязан выполнить compile затронутых Blueprint, сохранить assets и проверить их загрузку/контракт automation-тестом либо эквивалентной Editor validation.
+- Каталог инструментов, клиентской библиотеки и инструкций по работе с MCP находится в `Tools/MCP/` (см. [`Tools/MCP/README.md`](Tools/MCP/README.md)).
+- Gemini категорически запрещено принудительно завершать (`kill`, `killall`, `terminate`) запущенный пользователем процесс Unreal Editor или другие приложения без прямого явного указания пользователя.
+- Если API недоступен, Gemini обязан проверить, запущен ли Unreal Editor и активен ли `ModelContextProtocol`; отсутствие запущенного Editor не является основанием подменять API генерацией `.uasset` сторонними средствами или самовольно перезапускать редактор.
+- После изменения asset через Editor API Gemini обязан выполнить compile затронутых Blueprint, сохранить assets (используя `Tools/MCP/compile_and_save_assets.py --path <path>` или вызовы MCP) и проверить их загрузку/контракт automation-тестом (`Tools/MCP/run_ue_tests.py`).

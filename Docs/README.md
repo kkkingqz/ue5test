@@ -47,7 +47,7 @@ Accepted ADR фиксирует решение и причины, subsystem cont
 
 Для проектирования: релевантный Concept → owner contract → связанные accepted ADR. Для типового изменения: Guide → owner contract → активный Plan, если он есть. При пересечении ownership, Stable ID, command/event, save, repository, Lua/UE boundary, lifecycle, UI или modding проверить соседние contracts. Не загружать `Architecture/` целиком.
 
-Карта допустимых зависимостей — [Dependency Map](Architecture/DependencyMap.md), сборка и CI — [Build and Tooling](Architecture/BuildAndTooling.md).
+Карта допустимых зависимостей — [Dependency Map](Architecture/DependencyMap.md), сборка и CI — [Build and Tooling](Architecture/BuildAndTooling.md), интеграция с Unreal Editor через MCP — `Tools/MCP/`.
 
 ## Ведение
 
