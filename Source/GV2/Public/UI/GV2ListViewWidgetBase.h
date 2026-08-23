@@ -12,8 +12,10 @@ class UPanelWidget;
  * UGV2ListViewWidgetBase (UIF-13, UIH-01, ADR-0035)
  * Generalized list container supporting vertical, horizontal, or wrap layout.
  * Reconciles child widgets by unique non-empty keys using FGV2KeyedCollection.
- * Transactional: fails without mutating the live UI if keys are invalid,
- * widget creation fails, or item apply fails.
+ * Container hierarchy and preflight validation are transactional (no widget creation
+ * or child reordering occurs if validation or creation fails). If an individual item
+ * apply fails, container children remain unchanged while full field/screen-level rollback
+ * is handled by the calling composite screen element (UGV2ScreenWidgetBase).
  */
 UCLASS(Blueprintable)
 class GV2_API UGV2ListViewWidgetBase
@@ -59,9 +61,9 @@ public:
     virtual bool ApplyCentralStyle_Implementation() override;
 
     /**
-     * Transactionally reconciles entries into the container panel.
-     * Validates all keys (non-empty, unique), reuses existing widgets,
-     * applies models, and updates children only if every step succeeds.
+     * Reconciles entries into the container panel using FGV2KeyedCollection.
+     * Preflight validates keys and models, reuses existing widgets by key,
+     * applies models, and commits child hierarchy to the container panel only on full success.
      */
     template <typename WidgetType, typename ModelType>
     bool ReconcileEntries(

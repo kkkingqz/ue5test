@@ -12,6 +12,19 @@ struct FGV2ContainerReuseStats
 };
 #endif
 
+/**
+ * FGV2KeyedCollection
+ * Reconciles collection elements into a UPanelWidget container matching elements by stable FName keys.
+ *
+ * Atomicity and rollback guarantees:
+ * 1. Key validation and CanApplyItem preflight: Fully atomic. Rejects before creating any widgets
+ *    or mutating any existing widget.
+ * 2. Widget creation: If CreateItem fails (returns nullptr), reconciliation aborts before calling ApplyItem.
+ * 3. Container hierarchy: Committed atomically. Child additions/removals only occur after all ApplyItem calls succeed.
+ * 4. Item application: ApplyItem operates on widgets in-place. If an individual ApplyItem fails midway,
+ *    reused widgets that already ran ApplyItem are not reverted at this layer; full screen/field-level
+ *    rollback is provided by the calling composite screen element (UGV2ScreenWidgetBase).
+ */
 class FGV2KeyedCollection
 {
 public:

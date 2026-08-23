@@ -28,7 +28,7 @@ depends_on:
   - Done: непустая коллекция при неразрешённом классе даёт отказ применения во всех четырёх путях; пустая коллекция при неразрешённом классе успех сохраняет (нечего отрисовывать — не ошибка); подстановка голого `NewObject` снята либо обоснована в контракте; проверка вынесена в `CanApply*`, а не продублирована в четырёх местах `Apply*`; тест на каждый из четырёх путей краснеет при возврате пропуска; строка `STATUS-007` удалена.
   - Evidence: `Source/GV2/Private/UI/GV2LocationCompositeWidgetBases.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`, `Docs/Status/ImplementationStatus.md`.
 
-- [ ] **BAI-06 — Транзакционность репитера истинна либо не заявлена**
+- [x] **BAI-06 — Транзакционность репитера истинна либо не заявлена**
   - `FGV2KeyedCollection::Reconcile` после фазы валидации вызывает `ApplyItem` на живых переиспользованных виджетах и выходит по первому отказу. `UGV2ListViewWidgetBase` при этом утверждает: «fails without mutating the live UI if keys are invalid, widget creation fails, **or item apply fails**». Третья ветка ложна.
   - Done: выбран и реализован один из двух исходов — либо `Reconcile` захватывает состояние переиспользуемых виджетов до применения и восстанавливает его при отказе, либо утверждение в doc-комментарии и в [UI Document](../../UI/UIDocumentAndReconciliation.md) сужено до фактического поведения с явным указанием, что вызывающая сторона обязана обеспечить откат сама; выбор обоснован в задаче, а не подразумевается; строка `STATUS-006` удалена.
   - Evidence: `Source/GV2/Public/UI/GV2KeyedCollection.h`, `Source/GV2/Public/UI/GV2ListViewWidgetBase.h`, `Docs/Status/ImplementationStatus.md`.
