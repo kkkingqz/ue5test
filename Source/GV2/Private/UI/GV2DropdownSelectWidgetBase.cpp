@@ -31,7 +31,7 @@ void UGV2DropdownSelectWidgetBase::NativeOnInitialized()
     if (HeaderButton != nullptr)
     {
         HeaderButton->SetAutomaticInteractionSubmission(false);
-        HeaderButton->OnActivated.AddUniqueDynamic(this, &ThisClass::HandleOptionActivated);
+        HeaderButton->OnActivated.AddUniqueDynamic(this, &ThisClass::HandleHeaderActivated);
     }
 }
 
@@ -128,12 +128,19 @@ bool UGV2DropdownSelectWidgetBase::CanApplyDropdownModel(
 
     TSet<FName> Keys;
     int32 SelectedCount = 0;
+    static const FName ReservedHeaderKey = TEXT("dropdown_header");
     for (const FGV2DropdownOptionViewModel& Option : InModel.Options)
     {
         if (Option.Key.IsNone() || Keys.Contains(Option.Key))
         {
             UE_LOG(LogGV2DropdownSelectWidget, Error,
                 TEXT("CanApplyDropdownModel rejected: invalid or duplicate key"));
+            return false;
+        }
+        if (Option.Key == ReservedHeaderKey)
+        {
+            UE_LOG(LogGV2DropdownSelectWidget, Error,
+                TEXT("CanApplyDropdownModel rejected: option uses reserved header key 'dropdown_header'"));
             return false;
         }
         Keys.Add(Option.Key);
@@ -171,13 +178,13 @@ void UGV2DropdownSelectWidgetBase::HandleHeaderClicked()
     SetDropdownOpen(!bIsOpen);
 }
 
+void UGV2DropdownSelectWidgetBase::HandleHeaderActivated(const FName Key)
+{
+    HandleHeaderClicked();
+}
+
 void UGV2DropdownSelectWidgetBase::HandleOptionActivated(const FName Key)
 {
-    if (Key == TEXT("dropdown_header"))
-    {
-        HandleHeaderClicked();
-        return;
-    }
     SubmitSelection(Key);
 }
 

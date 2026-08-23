@@ -407,17 +407,7 @@ character_resource_ids = scene_data.character_resource_id and { … } or { "text
 
 ### Существует сейчас
 
-**EXT-AF-01. Волшебный ключ `dropdown_header` различает клик по заголовку и по опции.**
-
-`UGV2DropdownSelectWidgetBase::HandleOptionActivated` отличает нажатие на заголовок от выбора опции сравнением ключа со строковым литералом:
-
-```
-if (Key == TEXT("dropdown_header")) { HandleHeaderClicked(); return; }
-```
-
-`CanApplyDropdownModel` проверяет непустоту и уникальность ключей опций, но **не запрещает** опции иметь ключ `dropdown_header`. Автор контента, назвавший опцию так, получит не ошибку, а раскрывающийся и закрывающийся список вместо выбора.
-
-Ключ также присваивается заголовку в двух местах (`HeaderModel.Key`, `EmptyHeader.Key`), то есть литерал размножен по трём точкам.
+**EXT-AF-01. Волшебный ключ `dropdown_header` различает клик по заголовку и по опции.** *(Закрыто задачей TWH-06)*: В `UGV2DropdownSelectWidgetBase` клик по заголовку вынесен в выделенный обработчик `HandleHeaderActivated`, а `HandleOptionActivated` больше не сравнивает ключ с литералом. В `CanApplyDropdownModel` добавлена строгая типизированная проверка, отклоняющая опции с зарезервированным ключом `dropdown_header`. Добавлен automation-тест `GV2.Runtime.UIKit.DropdownSelectWidgetContract` с отрицательным сценарием.
 
 **EXT-AF-02. Пакет `sample` держит изменяемое состояние в локальных переменных модуля.**
 

@@ -84,6 +84,9 @@ private:
     void HandleHeaderClicked();
 
     UFUNCTION()
+    void HandleHeaderActivated(FName Key);
+
+    UFUNCTION()
     void HandleOptionActivated(FName Key);
 
     void SetDropdownOpen(bool bOpen);
