@@ -193,12 +193,26 @@ UE apply использует prepared typed `FGV2ScreenFieldValue`; portable bo
 | `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | resolved `FGV2TabContainerViewModel` с `default_tab_key`, упорядоченным списком вкладок `{key, title: TextSpec, screen_id, fields}` |
 | `textsystem:schema.ui_field.location_top_bar.v1` | LocationScreen TopBar | required `day`, `location`, `primary_resource` as `TextSpec` |
 | `textsystem:schema.ui_field.location_player_status.v1` | LocationScreen PlayerStatusPanel | required `name: TextSpec`, optional portrait resource |
-| `textsystem:schema.ui_field.location_scene.v1` | LocationScreen SceneView | optional tile/fixed-aspect background resources and context `TextSpec` |
+| `textsystem:schema.ui_field.location_scene.v1` | LocationScreen SceneView | optional tile/fixed-aspect background resources, context `TextSpec` и коллекция `characters` |
 | `textsystem:schema.ui_field.location_commands.v1` | LocationScreen CommandPanel | keyed `items` with `TextSpec` and opaque semantic bindings |
 
 Каждый registry adapter выполняет две deterministic фазы. `PrepareBindings` валидирует schema-specific value и добавляет binding definitions в порядке обхода поля. После единой подготовки candidate binding set `BuildField` потребляет ровно соответствующие opaque handles и создаёт typed field value. Registry не публикует bindings и не меняет active Screen; атомарная публикация остаётся ответственностью Session Coordinator.
 
 Production Lua document обязан использовать `TextSpec`; localization adapter создаёт `FGV2TextViewModel` до apply. Button model содержит только resolved display text, semantic style token и opaque binding handle, а не Lua callback.
+
+### LocationScene Field Contract (`textsystem:schema.ui_field.location_scene.v1`)
+
+Схема поля сцены экрана локации описывает визуальное окружение и расположенных на сцене персонажей:
+
+- `background_tile_resource_id` (optional string): Stable ID ресурса бесшовной фоновой текстуры/плитки (например, `"core:resource.ui.old_paper_tile_256"`).
+- `background_resource_id` (optional string): Stable ID ресурса основного фонового арта сцены (`PreserveAspect`). При отсутствии ресурса подставляется fallback-заглушка `"textsystem:resource.ui.missing_background"`.
+- `context_text` (optional `TextSpec`): контекстное художественное описание текущей обстановки локации.
+- `characters` (optional array of objects): упорядоченная коллекция персонажей сцены, отрисовываемая через host динамической коллекции (`CharacterRepeater` / `CharacterContainer`) с масштабированием `PreserveAspect` и вертикальной привязкой к нижнему краю (`VAlign_Bottom`).
+  Каждый элемент массива `characters` обязан быть объектом со структурой:
+  - `key` (required non-empty string / `FName`): уникальный в пределах массива идентификатор слота персонажа; пустые строки и дубликаты `key` отклоняются на фазах `PrepareLocationScene` / `BuildLocationScene`;
+  - `resource_id` (optional string): Stable ID ресурса портрета/спрайта персонажа (например, `"rh:resource.character.tavern_keeper"`). Если ресурс не задан, используется системная заглушка `"textsystem:resource.ui.missing_character"`.
+
+Несоответствие контракта поля (включая невалидный тип элементов `characters`, дублирование ключей или передачу плоского массива строк) приводит к типизированному отказу применения поля (`CanApplyScreenField` возвращает `false`), предотвращая повреждение presentation state.
 
 ### Designer Authoring Layer (ADR-0027)
 

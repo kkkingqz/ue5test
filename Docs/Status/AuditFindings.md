@@ -393,9 +393,7 @@ character_resource_ids = scene_data.character_resource_id and { … } or { "text
 
 **LOC-AF-06. Слот персонажа не привязан к нижнему краю.** `OverlaySlot_2` имеет `HAlign_Fill` и `VAlign_Fill`. Утверждение DoD «персонаж вписан и привязан к нижнему краю» выполнено наполовину: вписывание обеспечено политикой `PreserveAspect`, привязка к низу отсутствует.
 
-**LOC-AF-07. Контракт поля сцены не упоминает персонажей.** [Screen Templates](../UI/ScreenTemplates.md) описывает `textsystem:schema.ui_field.location_scene.v1` как «optional tile/fixed-aspect background resources and context `TextSpec`». Персонажи в контракте отсутствуют, поэтому расхождение имён между производителем и потребителем не с чем было сверить.
-
-Это корень группы: у поля есть две реализации формы — в Lua и в C++ — и ни одного нормативного описания, которое обе обязаны соблюдать.
+**LOC-AF-07. Контракт поля сцены не упоминает персонажей.** *(Закрыто задачей SVC-01)*: В [Screen Templates](../UI/ScreenTemplates.md) зафиксирован полный нормативный контракт схемы `textsystem:schema.ui_field.location_scene.v1`, включая структуру коллекции `characters` (`key`, `resource_id`), требование уникальности ключей и правила отказа при несоответствии формы.
 
 ## Внешнее ревью от 2026-08-19
 
