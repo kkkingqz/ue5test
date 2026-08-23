@@ -55,8 +55,8 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Gates](Gates.md): незащищённые правила получают проверки. TWH-01…05.
-- [ ] M2 — [Widgets and Sample](WidgetsAndSample.md): два дефекта списка, состояние образца, тест типографики. TWH-06…09.
+- [x] M1 — [Gates](Gates.md): незащищённые правила получают проверки. TWH-01…05.
+- [x] M2 — [Widgets and Sample](WidgetsAndSample.md): два дефекта списка, состояние образца, тест типографики. TWH-06…09.
 
 ## Общие правила выполнения
 
