@@ -5354,5 +5354,253 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
     return true;
 }
 
+// =========================================================================
+// SVC-09: Composite Rollback Contract (UIF-AF-01, failed apply restores prior model and visuals)
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CompositeRollbackContract,
+    "GV2.Runtime.UI.CompositeRollbackContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
+{
+    const FString GameNamespace = TEXT("r") TEXT("h");
+    const FString HeroPortraitResourceId = GameNamespace + TEXT(":resource.portrait.hero");
+    const FString TavernResourceId = GameNamespace + TEXT(":resource.location.tavern");
+
+    // 1. Screen composite rollback across multiple child elements
+    UGameInstance* GameInstance = NewObject<UGameInstance>();
+    GameInstance->AddToRoot();
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    if (TestWorld != nullptr)
+    {
+        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+        WorldContext.SetCurrentWorld(TestWorld);
+        GameInstance->Init();
+
+        UClass* LocationScreenClass = LoadClass<UGV2ScreenWidgetBase>(
+            nullptr,
+            TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
+        TestNotNull(TEXT("LocationScreenClass loaded for rollback test"), LocationScreenClass);
+        if (LocationScreenClass != nullptr)
+        {
+            UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, LocationScreenClass);
+            TestNotNull(TEXT("Screen instantiated for rollback test"), Screen);
+            if (Screen != nullptr)
+            {
+                // Initial valid State A
+                FGV2LocationTopBarViewModel TopBarModelA;
+                TopBarModelA.Day.Text = FText::FromString(TEXT("Day 1"));
+                TopBarModelA.Location.Text = FText::FromString(TEXT("Tavern"));
+                TopBarModelA.PrimaryResource.Text = FText::FromString(TEXT("Gold: 50"));
+
+                FGV2LocationPlayerStatusViewModel PlayerModelA;
+                PlayerModelA.Name.Text = FText::FromString(TEXT("Hero Initial"));
+                PlayerModelA.PortraitResourceId = HeroPortraitResourceId;
+
+                FGV2LocationSceneViewModel SceneModelA;
+                SceneModelA.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
+                SceneModelA.BackgroundResourceId = TavernResourceId;
+                SceneModelA.ContextText.Text = FText::FromString(TEXT("Tavern atmosphere"));
+
+                TArray<FGV2ButtonViewModel> ButtonsA;
+                FGV2ButtonViewModel BtnA;
+                BtnA.Key = FName(TEXT("btn_drink"));
+                BtnA.Text.Text = FText::FromString(TEXT("Drink Ale"));
+                BtnA.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:101"));
+                ButtonsA.Add(BtnA);
+
+                const TArray<FGV2ScreenFieldValue> StateA = {
+                    FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModelA),
+                    FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModelA),
+                    FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModelA),
+                    FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), ButtonsA)
+                };
+
+                const bool bInitialApplied = Screen->ApplyScreenFields(StateA);
+                TestTrue(TEXT("Initial State A applied successfully"), bInitialApplied);
+
+                // Verify initial State A is reflected in widgets
+                UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("TopBar"))));
+                UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("PlayerStatus"))));
+                UGV2LocationSceneWidgetBase* SceneView = Cast<UGV2LocationSceneWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("Scene"))));
+                UGV2LocationCommandPanelWidgetBase* CommandPanel = Cast<UGV2LocationCommandPanelWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("Commands"))));
+
+                TestNotNull(TEXT("TopBar child widget exists"), TopBar);
+                TestNotNull(TEXT("PlayerStatus child widget exists"), PlayerStatus);
+                TestNotNull(TEXT("SceneView child widget exists"), SceneView);
+                TestNotNull(TEXT("CommandPanel child widget exists"), CommandPanel);
+
+                if (TopBar != nullptr && PlayerStatus != nullptr && SceneView != nullptr && CommandPanel != nullptr)
+                {
+                    FGV2ScreenFieldValue CapturedTopBarA;
+                    IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, CapturedTopBarA);
+                    TestEqual(TEXT("Initial TopBar Day is Day 1"), CapturedTopBarA.LocationTopBarValue.Day.Text.ToString(), TEXT("Day 1"));
+                    TestEqual(TEXT("Initial TopBar Location is Tavern"), CapturedTopBarA.LocationTopBarValue.Location.Text.ToString(), TEXT("Tavern"));
+
+                    FGV2ScreenFieldValue CapturedPlayerA;
+                    IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, CapturedPlayerA);
+                    TestEqual(TEXT("Initial Player Name is Hero Initial"), CapturedPlayerA.LocationPlayerStatusValue.Name.Text.ToString(), TEXT("Hero Initial"));
+
+                    FGV2ScreenFieldValue CapturedSceneA;
+                    IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, CapturedSceneA);
+                    TestEqual(TEXT("Initial Scene Background is Tavern"), CapturedSceneA.LocationSceneValue.BackgroundResourceId, TavernResourceId);
+
+                    // Now prepare Candidate State B where:
+                    // - TopBar (child 0): Day 2, Market, Gold 100 (valid new model)
+                    // - PlayerStatus (child 1): Hero Updated (valid new model)
+                    // - Scene (child 2): BackgroundTileResourceId = invalid nonexistent resource (passes CanApplyScreenField schema, fails ApplyScreenField commit!)
+                    // - Commands (child 3): btn_buy
+                    FGV2LocationTopBarViewModel TopBarModelB;
+                    TopBarModelB.Day.Text = FText::FromString(TEXT("Day 2"));
+                    TopBarModelB.Location.Text = FText::FromString(TEXT("Market"));
+                    TopBarModelB.PrimaryResource.Text = FText::FromString(TEXT("Gold: 100"));
+
+                    FGV2LocationPlayerStatusViewModel PlayerModelB;
+                    PlayerModelB.Name.Text = FText::FromString(TEXT("Hero Updated"));
+                    PlayerModelB.PortraitResourceId = HeroPortraitResourceId;
+
+                    FGV2LocationSceneViewModel SceneModelB;
+                    SceneModelB.BackgroundTileResourceId = TEXT("core:resource.ui.nonexistent_tile_invalid");
+                    SceneModelB.BackgroundResourceId = TavernResourceId;
+                    SceneModelB.ContextText.Text = FText::FromString(TEXT("Market atmosphere"));
+
+                    TArray<FGV2ButtonViewModel> ButtonsB;
+                    FGV2ButtonViewModel BtnB;
+                    BtnB.Key = FName(TEXT("btn_buy"));
+                    BtnB.Text.Text = FText::FromString(TEXT("Buy"));
+                    BtnB.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:102"));
+                    ButtonsB.Add(BtnB);
+
+                    const TArray<FGV2ScreenFieldValue> StateB = {
+                        FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModelB),
+                        FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModelB),
+                        FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModelB),
+                        FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), ButtonsB)
+                    };
+
+                    // Preflight CanApplyScreenFields must pass for the candidate payload
+                    TestTrue(TEXT("Candidate State B passes CanApplyScreenFields preflight"), Screen->CanApplyScreenFields(StateB));
+
+                    AddExpectedErrorPlain(
+                        TEXT("ApplyScreenFields failed during commit"),
+                        EAutomationExpectedErrorFlags::Contains,
+                        1);
+
+                    // ApplyScreenFields MUST fail during commit on the failing Scene child
+                    const bool bApplyFailed = Screen->ApplyScreenFields(StateB);
+                    TestFalse(TEXT("ApplyScreenFields returns false when a child element fails commit"), bApplyFailed);
+
+                    // VERIFY ROLLBACK: All previously updated children must be restored to State A
+                    FGV2ScreenFieldValue RolledBackTopBar;
+                    TestTrue(TEXT("Capture TopBar after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, RolledBackTopBar));
+                    TestEqual(TEXT("TopBar Day rolled back to Day 1"), RolledBackTopBar.LocationTopBarValue.Day.Text.ToString(), TEXT("Day 1"));
+                    TestEqual(TEXT("TopBar Location rolled back to Tavern"), RolledBackTopBar.LocationTopBarValue.Location.Text.ToString(), TEXT("Tavern"));
+                    TestEqual(TEXT("TopBar PrimaryResource rolled back to Gold: 50"), RolledBackTopBar.LocationTopBarValue.PrimaryResource.Text.ToString(), TEXT("Gold: 50"));
+
+                    FGV2ScreenFieldValue RolledBackPlayer;
+                    TestTrue(TEXT("Capture PlayerStatus after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, RolledBackPlayer));
+                    TestEqual(TEXT("Player Name rolled back to Hero Initial"), RolledBackPlayer.LocationPlayerStatusValue.Name.Text.ToString(), TEXT("Hero Initial"));
+
+                    FGV2ScreenFieldValue RolledBackScene;
+                    TestTrue(TEXT("Capture Scene after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, RolledBackScene));
+                    TestEqual(TEXT("Scene Background rolled back to Tavern"), RolledBackScene.LocationSceneValue.BackgroundResourceId, TavernResourceId);
+                    TestEqual(TEXT("Scene Context rolled back to Tavern atmosphere"), RolledBackScene.LocationSceneValue.ContextText.Text.ToString(), TEXT("Tavern atmosphere"));
+
+                    FGV2ScreenFieldValue RolledBackCommands;
+                    TestTrue(TEXT("Capture Commands after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandPanel, RolledBackCommands));
+                    TestEqual(TEXT("Commands list count remains 1"), RolledBackCommands.ButtonListValue.Num(), 1);
+                    if (RolledBackCommands.ButtonListValue.Num() == 1)
+                    {
+                        TestEqual(TEXT("Commands button key remains btn_drink"), RolledBackCommands.ButtonListValue[0].Key, FName(TEXT("btn_drink")));
+                    }
+                }
+            }
+        }
+
+        GameInstance->Shutdown();
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+
+    // 2. Transactional ReconcileEntries failure and rollback in ListView
+    {
+        UVerticalBox* Container = NewObject<UVerticalBox>();
+        UGV2ListViewWidgetBase* ListView = NewObject<UGV2ListViewWidgetBase>();
+        ListView->SetContainerPanel(Container);
+
+        struct FTestItemModel
+        {
+            FName Key;
+            FString Text;
+            bool bShouldFailApply = false;
+        };
+
+        TArray<FTestItemModel> InitialItems = {
+            {FName(TEXT("item_1")), TEXT("First Item"), false},
+            {FName(TEXT("item_2")), TEXT("Second Item"), false}
+        };
+
+        auto CreateTestWidget = []() -> UGV2TextWidgetBase*
+        {
+            return NewObject<UGV2TextWidgetBase>();
+        };
+
+        auto ApplyTestItem = [](UGV2TextWidgetBase& Widget, const FTestItemModel& Model) -> bool
+        {
+            if (Model.bShouldFailApply)
+            {
+                return false;
+            }
+            Widget.ApplyText({FText::FromString(Model.Text)});
+            return true;
+        };
+
+        const bool bInitialReconcile = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
+            InitialItems,
+            [](const FTestItemModel& M) { return M.Key; },
+            CreateTestWidget,
+            ApplyTestItem);
+
+        TestTrue(TEXT("Initial list items reconciled"), bInitialReconcile);
+        TestEqual(TEXT("Container has 2 initial children"), Container->GetChildrenCount(), 2);
+
+        // Preflight rejection: CanApplyItem rejects invalid item before constructing or modifying widgets
+        TArray<FTestItemModel> PreflightInvalidItems = {
+            {FName(TEXT("item_1")), TEXT("Preflight Item 1"), false},
+            {FName(TEXT("item_bad")), TEXT(""), false}
+        };
+
+        const bool bPreflightRejected = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
+            PreflightInvalidItems,
+            [](const FTestItemModel& M) { return M.Key; },
+            CreateTestWidget,
+            ApplyTestItem,
+            [](const FTestItemModel& M) { return !M.Text.IsEmpty(); });
+
+        TestFalse(TEXT("ReconcileEntries rejects items failing CanApplyItem preflight"), bPreflightRejected);
+        TestEqual(TEXT("Container children unchanged after preflight rejection"), Container->GetChildrenCount(), 2);
+
+        // Runtime apply failure: Candidate reconciliation where Item 0 and Item 1 succeed, but Item 2 fails during apply
+        TArray<FTestItemModel> CandidateItems = {
+            {FName(TEXT("item_1")), TEXT("First Item Updated"), false},
+            {FName(TEXT("item_2")), TEXT("Second Item Updated"), false},
+            {FName(TEXT("item_3_fail")), TEXT("Third Item Failing"), true}
+        };
+
+        const bool bFailedReconcile = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
+            CandidateItems,
+            [](const FTestItemModel& M) { return M.Key; },
+            CreateTestWidget,
+            ApplyTestItem);
+
+        TestFalse(TEXT("ReconcileEntries returns false when a child item fails apply"), bFailedReconcile);
+        TestEqual(TEXT("Container retains previous 2 children on failed reconcile"), Container->GetChildrenCount(), 2);
+    }
+
+    return true;
+}
+
 #endif
 

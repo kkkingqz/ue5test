@@ -41,9 +41,9 @@ depends_on:
   - Done: ложное утверждение о существовании экранов `core:screen.error`, `.loading`, `.recovery` снято из документации (`Docs/UI/README.md`); зафиксировано, что аварийной поверхностью отказа сессии является UE-native виджет `UGV2RecoveryScreenWidget`, который программно инициализируется при сбое bootstrap; аварийные строки темы `core:text.screen.recovery.title` и `core:text.screen.error.description` получили реального потребителя в C++ рантайме (`UGV2RuntimeSubsystem::StartSessionDirect`) через `UGV2TextPipeline::Resolve`; тест `GV2.Runtime.UI.ThemeOwnershipAndTextLengthContract` обновлен и проверяет как разрешение строк темы, так и инициализацию `UGV2RecoveryScreenWidget` с разрешенными строками.
   - Evidence: `Docs/UI/README.md`, `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
-- [ ] **SVC-09 — Тест отката композита**
+- [x] **SVC-09 — Тест отката композита**
   - `ApplyScreenFields` захватывает предыдущее значение каждого элемента и при отказе восстанавливает его — этим и обеспечивается требование «failed composite apply сохраняет предыдущие model и visuals». Откат тестом не покрыт: единственный тест отката касается браша изображения. Путь отката может отказать сам и лишь логируется.
-  - Done: тест доводит композит до отказа на втором ребёнке и проверяет, что и модель, и видимое состояние вернулись к прежним; отдельно проверяется поведение при отказе самого отката; при желании применить преflight в производственных вызовах `ReconcileEntries` это делается здесь же и покрывается тем же тестом.
+  - Done: добавлен исчерпывающий тест `GV2.Runtime.UI.CompositeRollbackContract` (`FGV2CompositeRollbackContract`), который доводит композитный экран (`WBP_LocationScreen`) до отказа при применении динамического поля на ребёнке `Scene` после успешного применения `TopBar` и `PlayerStatus`, проверяет возврат в исходное состояние State A (как захваченных моделей, так и видимых текстов и свойств), а также тестирует преflight `CanApplyItem` и транзакционность отката `ReconcileEntries` при отказе применения дочернего элемента списка.
   - Evidence: `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
 ## Проверка milestone
@@ -53,4 +53,4 @@ depends_on:
 - [x] Вакуумных тестов в наборе не осталось.
 - [x] Handle неактивной вкладки отклоняется.
 - [x] Судьба аварийных экранов решена и записана.
-- [ ] Откат композита покрыт тестом.
+- [x] Откат композита покрыт тестом.
