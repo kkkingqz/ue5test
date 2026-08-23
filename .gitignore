@@ -44,6 +44,10 @@ cmake-build-*/
 .agents/
 .codex/
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # OS metadata
 .DS_Store
 Thumbs.db
