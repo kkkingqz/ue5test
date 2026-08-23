@@ -4,11 +4,20 @@ local text = require("core:module.resources.text")
 local M = {
     id = "sample:module.debug.start",
 }
-local checkbox_checked = false
-local selected_class = nil
-local player_name = ""
+
+local function get_sample_state()
+    if not (game and game.state and game.state.sample_debug) then
+        return {}
+    end
+    return game.state.sample_debug
+end
 
 local function create_screen()
+    local s = get_sample_state()
+    local checkbox_checked = s.checkbox_checked or false
+    local selected_class = s.selected_class
+    local player_name = s.player_name or ""
+
     local item_id = "sample:item.synthetic.placeholder"
     if game.repository then
         local items = game.repository.list("item")
@@ -119,40 +128,64 @@ function M.register(_ctx)
     end)
 
     game.commands.handlers.register("sample:command.debug.start", function(_req)
-        checkbox_checked = false
-        selected_class = nil
-        player_name = ""
+        if game and game.state then
+            game.state.sample_debug = {
+                checkbox_checked = false,
+                selected_class = nil,
+                player_name = "",
+            }
+        end
         screens.publish(create_screen())
         return true
     end)
 
     game.commands.handlers.register("sample:command.test.checkbox_changed", function(request)
         assert(type(request.args.is_checked) == "boolean", "checkbox command requires is_checked")
-        checkbox_checked = request.args.is_checked
+        if game and game.state then
+            if not game.state.sample_debug then
+                game.state.sample_debug = {}
+            end
+            game.state.sample_debug.checkbox_checked = request.args.is_checked
+        end
         screens.publish(create_screen())
         return true
     end)
 
     game.commands.handlers.register("sample:command.test.dropdown_selected", function(request)
         assert(type(request.args.selected_key) == "string", "dropdown command requires selected_key")
-        selected_class = request.args.selected_key
+        if game and game.state then
+            if not game.state.sample_debug then
+                game.state.sample_debug = {}
+            end
+            game.state.sample_debug.selected_class = request.args.selected_key
+        end
         screens.publish(create_screen())
         return true
     end)
 
     game.commands.handlers.register("sample:command.test.name_changed", function(request)
         assert(type(request.args.value) == "string", "name command requires value")
-        player_name = request.args.value
+        if game and game.state then
+            if not game.state.sample_debug then
+                game.state.sample_debug = {}
+            end
+            game.state.sample_debug.player_name = request.args.value
+        end
         screens.publish(create_screen())
         return true
     end)
 end
 
 function M.start(_ctx)
-    checkbox_checked = false
-    selected_class = nil
-    player_name = ""
-    screens.publish(create_screen())
+    if game and game.runtime and game.runtime.dispatch_command then
+        game.runtime.dispatch_command({
+            command_id = "sample:command.debug.start",
+            args = {},
+            source = "session_start",
+        })
+    else
+        screens.publish(create_screen())
+    end
 end
 
 return M

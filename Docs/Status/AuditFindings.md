@@ -409,11 +409,7 @@ character_resource_ids = scene_data.character_resource_id and { … } or { "text
 
 **EXT-AF-01. Волшебный ключ `dropdown_header` различает клик по заголовку и по опции.** *(Закрыто задачей TWH-06)*: В `UGV2DropdownSelectWidgetBase` клик по заголовку вынесен в выделенный обработчик `HandleHeaderActivated`, а `HandleOptionActivated` больше не сравнивает ключ с литералом. В `CanApplyDropdownModel` добавлена строгая типизированная проверка, отклоняющая опции с зарезервированным ключом `dropdown_header`. Добавлен automation-тест `GV2.Runtime.UIKit.DropdownSelectWidgetContract` с отрицательным сценарием.
 
-**EXT-AF-02. Пакет `sample` держит изменяемое состояние в локальных переменных модуля.**
-
-`GameData/sample/scripts/debug/start.lua` объявляет `checkbox_checked`, `selected_class`, `player_name` как локальные переменные уровня модуля и меняет их из обработчиков команд. В `game.state` они не попадают, поэтому не сохраняются, не участвуют в хэше состояния и не воспроизводятся при replay.
-
-Это третье место хранения помимо канонического состояния Lua и UI-local состояния UE. Пакет `sample` является образцом для авторов контента, поэтому образец опасен сам по себе.
+**EXT-AF-02. Пакет `sample` держит изменяемое состояние в локальных переменных модуля.** *(Закрыто задачей TWH-08)*: В `GameData/sample/scripts/debug/start.lua` локальные переменные уровня модуля устранены, состояние перенесено в каноническую секцию `game.state.sample_debug` и мутируется через диспетчеризацию команд. Добавлена спека `Tests/Lua/save/sample_state_save_spec.lua`, подтверждающая сохранение, загрузку и участие в `state_hasher`.
 
 **EXT-AF-03. `FGV2ScreenFieldValue` пересёк порог, назначенный самим ревью.**
 
