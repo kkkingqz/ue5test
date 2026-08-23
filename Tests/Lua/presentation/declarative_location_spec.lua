@@ -64,7 +64,7 @@ return {
         assert(req.fields.scene.value.background_resource_id == "rh:resource.location.tavern")
         assert(type(req.fields.scene.value.characters) == "table")
         assert(#req.fields.scene.value.characters == 1)
-        assert(req.fields.scene.value.characters[1].key == "rh:resource.character.tavern_keeper")
+        assert(req.fields.scene.value.characters[1].key == "tavern_keeper")
         assert(req.fields.scene.value.characters[1].resource_id == "rh:resource.character.tavern_keeper")
 
         assert(#req.fields.commands.value.items == 4)

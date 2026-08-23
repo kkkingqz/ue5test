@@ -8,7 +8,17 @@
     kind: "object",
     fields: {
       background_resource_id: { kind: "resource_ref", resource_class: "texture_2d", required: true },
-      character_resource_id: { kind: "resource_ref", resource_class: "texture_2d", required: false },
+      characters: {
+        kind: "array",
+        required: false,
+        items: {
+          kind: "object",
+          fields: {
+            key: { kind: "string", required: true },
+            resource_id: { kind: "resource_ref", resource_class: "texture_2d", required: true },
+          },
+        },
+      },
     },
   },
 }

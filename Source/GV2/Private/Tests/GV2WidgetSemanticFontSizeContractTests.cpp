@@ -22,7 +22,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
 {
-    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    UGV2UiTheme* Theme = const_cast<UGV2UiTheme*>(UGV2UiThemeSettings::GetConfiguredTheme());
     TestNotNull(TEXT("Configured theme is valid"), Theme);
     if (Theme == nullptr)
     {
@@ -147,16 +147,26 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
         && InputFieldWidget && InputFieldWidget->GetEditableTextBox()
         && DropdownWidget && DropdownWidget->GetHeaderButton() && DropdownWidget->GetHeaderButton()->GetLabelText())
     {
+        // No game viewport exists in a test world, so the production path resolves the
+        // theme reference height. Driving that height exercises the DPI-dependent path
+        // of every consumer instead of pinning the check to a single resolution.
+        const float OriginalReferenceHeight = Theme->ReferenceViewportHeight;
+        const float VerifiedHeights[] = { 720.0f, 1080.0f, 1440.0f, 2160.0f };
+
+        for (const float ViewportHeight : VerifiedHeights)
+        {
+        Theme->ReferenceViewportHeight = ViewportHeight;
+        const FString HeightTag = FString::Printf(TEXT("%dp"), FMath::RoundToInt(ViewportHeight));
         for (const FName& Token : SemanticTokens)
         {
-            const float ExpectedSize = Theme->GetEffectiveFontSize(Token, 1080.0f);
-            TestTrue(*FString::Printf(TEXT("[%s] Expected size is positive"), *Token.ToString()), ExpectedSize > 0.0f);
+            const float ExpectedSize = Theme->GetEffectiveFontSize(Token, ViewportHeight);
+            TestTrue(*FString::Printf(TEXT("[%s][%s] Expected size is positive"), *HeightTag, *HeightTag, *Token.ToString()), ExpectedSize > 0.0f);
 
             // 1. Text widget: Apply via production path and read renderer control
             FGV2TextViewModel TextModel;
             TextModel.Text = FText::FromString(TEXT("Sample Text"));
             TextModel.StyleToken = Token;
-            TestTrue(*FString::Printf(TEXT("[%s] ApplyText succeeded"), *Token.ToString()), TextWidget->ApplyText(TextModel));
+            TestTrue(*FString::Printf(TEXT("[%s][%s] ApplyText succeeded"), *HeightTag, *Token.ToString()), TextWidget->ApplyText(TextModel));
             IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TextWidget);
             const float ActualTextSize = TextWidget->GetTextBlock()->GetFont().Size;
             MeasuredTextSizes.Add(Token, ActualTextSize);
@@ -203,20 +213,20 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
             const float ActualDropdownSize = DropdownWidget->GetHeaderButton()->GetLabelText()->GetFont().Size;
 
             // Verify actual renderer font size matches ExpectedSize
-            TestEqual(*FString::Printf(TEXT("[%s] Text renderer font size matches expected"), *Token.ToString()),
+            TestEqual(*FString::Printf(TEXT("[%s][%s] Text renderer font size matches expected"), *HeightTag, *Token.ToString()),
                 ActualTextSize, ExpectedSize);
 
             // Verify font size parity across all 5 widget renderer controls
-            TestEqual(*FString::Printf(TEXT("[%s] RichText renderer size equals Text renderer size"), *Token.ToString()),
+            TestEqual(*FString::Printf(TEXT("[%s][%s] RichText renderer size equals Text renderer size"), *HeightTag, *Token.ToString()),
                 ActualRichTextSize, ActualTextSize);
 
-            TestEqual(*FString::Printf(TEXT("[%s] Button renderer size equals Text renderer size"), *Token.ToString()),
+            TestEqual(*FString::Printf(TEXT("[%s][%s] Button renderer size equals Text renderer size"), *HeightTag, *Token.ToString()),
                 ActualButtonSize, ActualTextSize);
 
-            TestEqual(*FString::Printf(TEXT("[%s] InputField renderer size equals Text renderer size"), *Token.ToString()),
+            TestEqual(*FString::Printf(TEXT("[%s][%s] InputField renderer size equals Text renderer size"), *HeightTag, *Token.ToString()),
                 ActualInputSize, ActualTextSize);
 
-            TestEqual(*FString::Printf(TEXT("[%s] DropdownSelect renderer size equals Text renderer size"), *Token.ToString()),
+            TestEqual(*FString::Printf(TEXT("[%s][%s] DropdownSelect renderer size equals Text renderer size"), *HeightTag, *Token.ToString()),
                 ActualDropdownSize, ActualTextSize);
         }
 
@@ -227,9 +237,13 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
 
         if (TitleSize && BodySize && SmallSize)
         {
-            TestTrue(TEXT("Hierarchy holds on actual widget renderer: Title > Body"), *TitleSize > *BodySize);
-            TestTrue(TEXT("Hierarchy holds on actual widget renderer: Body > Small"), *BodySize > *SmallSize);
+            TestTrue(*FString::Printf(TEXT("[%s] Hierarchy holds on actual widget renderer: Title > Body"), *HeightTag), *TitleSize > *BodySize);
+            TestTrue(*FString::Printf(TEXT("[%s] Hierarchy holds on actual widget renderer: Body > Small"), *HeightTag), *BodySize > *SmallSize);
         }
+        MeasuredTextSizes.Reset();
+        }
+
+        Theme->ReferenceViewportHeight = OriginalReferenceHeight;
     }
 
     TestWorld->DestroyWorld(false);

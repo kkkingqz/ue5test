@@ -32,12 +32,16 @@ local function player_values()
     local actor_extension = extension_with_field(actor_def, "name_text_id")
     local items = {}
     for _, item in pairs((game and game.state and game.state.item_instances) or {}) do
-        if player and item.owner_id == player.instance_id then
+        if player and item.owner_id == player.instance_id and item.instance_id then
             local item_def = game.repository and game.repository.get and game.repository.get(item.definition_id)
-            if item_def and item_def.data and item_def.data.icon_resource_id then table.insert(items, item_def.data.icon_resource_id) end
+            if item_def and item_def.data and item_def.data.icon_resource_id then
+                -- Identity is the item instance, never the icon or the array position:
+                -- acquiring an item must not reassign the widgets of the other items.
+                table.insert(items, { key = item.instance_id, resource_id = item_def.data.icon_resource_id })
+            end
         end
     end
-    table.sort(items)
+    table.sort(items, function(a, b) return a.key < b.key end)
     return player, gold, stamina, actor_extension, items
 end
 
@@ -64,11 +68,8 @@ function M.build_screen_request(location_id)
 
     local screen_data = (screen_def and screen_def.data) or {}
     local scene_data = extension_with_field(screen_def, "background_resource_id")
-    if not scene_data.background_resource_id and not scene_data.character_resource_id and not scene_data.characters then
-        scene_data = extension_with_field(screen_def, "character_resource_id")
-        if not scene_data.character_resource_id and not scene_data.characters then
-            scene_data = extension_with_field(screen_def, "characters")
-        end
+    if not scene_data.background_resource_id and not scene_data.characters then
+        scene_data = extension_with_field(screen_def, "characters")
     end
     local description_text_id = screen_data.description_text_id or loc.title_text_id
 
@@ -104,26 +105,15 @@ function M.build_screen_request(location_id)
         for _, char_entry in ipairs(scene_data.characters) do
             if type(char_entry) == "table" then
                 local res_id = char_entry.resource_id or "textsystem:resource.ui.missing_character"
-                local key = char_entry.key or res_id
+                local key = char_entry.key
                 if key and key ~= "" then
                     table.insert(characters, {
                         key = key,
                         resource_id = res_id,
                     })
                 end
-            elseif type(char_entry) == "string" and char_entry ~= "" then
-                table.insert(characters, {
-                    key = char_entry,
-                    resource_id = char_entry,
-                })
             end
         end
-    elseif scene_data.character_resource_id and scene_data.character_resource_id ~= "" then
-        local res_id = scene_data.character_resource_id
-        table.insert(characters, {
-            key = res_id,
-            resource_id = res_id,
-        })
     end
 
     local player, gold, stamina, actor_extension, item_icons = player_values()
@@ -141,8 +131,8 @@ function M.build_screen_request(location_id)
                 portrait_resource_id = actor_extension.portrait_resource_id or "textsystem:resource.ui.missing_portrait",
                 name = M.text(actor_extension.name_text_id or loc.title_text_id),
                 meters = { { key = "stamina", percent = math.min(1, stamina / 100), label = M.text("textsystem:text.location.stamina", { stamina = stamina }) } },
-                item_icon_resource_ids = item_icons,
-                effect_icon_resource_ids = {},
+                items = item_icons,
+                effects = {},
             } },
             scene = { schema_id = "textsystem:schema.ui_field.location_scene.v1", value = {
                 background_tile_resource_id = "core:resource.ui.old_paper_tile_256",

@@ -53,7 +53,9 @@
       extensions: {
         rh: {
           background_resource_id: "rh:resource.location.tavern",
-          character_resource_id: "rh:resource.character.tavern_keeper",
+          characters: [
+            { key: "tavern_keeper", resource_id: "rh:resource.character.tavern_keeper" },
+          ],
         },
       },
     },

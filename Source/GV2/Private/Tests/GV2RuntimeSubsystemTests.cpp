@@ -3774,8 +3774,8 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         FGV2LocationPlayerStatusViewModel Model1;
         Model1.Name.Text = FText::FromString(TEXT("Player"));
         Model1.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        Model1.ItemIconResourceIds = { TEXT("item_sword"), TEXT("item_shield") };
-        Model1.EffectIconResourceIds = { TEXT("effect_buff") };
+        Model1.Items = { { FName(TEXT("item@1")), TEXT("item_sword") }, { FName(TEXT("item@2")), TEXT("item_shield") } };
+        Model1.Effects = { { FName(TEXT("effect@1")), TEXT("effect_buff") } };
 
         FGV2LocationMeterEntry StaminaMeterEntry;
         StaminaMeterEntry.Key = FName(TEXT("stamina"));
@@ -3793,18 +3793,32 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         if (ItemRep != nullptr)
         {
             TestEqual(TEXT("ItemRepeater count is 2"), ItemRep->GetEntryCount(), 2);
-            UWidget* Slot0Widget = ItemRep->GetEntryWidget(FName(TEXT("item_0")));
-            TestNotNull(TEXT("Slot 0 item widget exists"), Slot0Widget);
+            UWidget* SwordWidget = ItemRep->GetEntryWidget(FName(TEXT("item@1")));
+            UWidget* ShieldWidget = ItemRep->GetEntryWidget(FName(TEXT("item@2")));
+            TestNotNull(TEXT("Sword item widget exists"), SwordWidget);
+            TestNotNull(TEXT("Shield item widget exists"), ShieldWidget);
 
-            // Reorder and add item: { item_shield, item_potion, item_sword }
+            // Acquiring a new item reorders the list: the sword moves from position 0 to
+            // position 2. Identity comes from the item instance, so its widget must survive.
             FGV2LocationPlayerStatusViewModel Model2 = Model1;
-            Model2.ItemIconResourceIds = { TEXT("item_shield"), TEXT("item_potion"), TEXT("item_sword") };
+            Model2.Items = { { FName(TEXT("item@2")), TEXT("item_shield") }, { FName(TEXT("item@3")), TEXT("item_potion") }, { FName(TEXT("item@1")), TEXT("item_sword") } };
             FGV2ScreenFieldValue Field2 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model2);
             TestTrue(TEXT("PlayerStatus Field2 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field2));
 
             TestEqual(TEXT("ItemRepeater count is 3 after update"), ItemRep->GetEntryCount(), 3);
-            TestEqual(TEXT("Slot 0 widget reused (same pointer)"), ItemRep->GetEntryWidget(FName(TEXT("item_0"))), Slot0Widget);
-            TestNotNull(TEXT("Slot 2 widget created"), ItemRep->GetEntryWidget(FName(TEXT("item_2"))));
+            TestEqual(TEXT("Sword widget survives reordering (same pointer, new position)"),
+                ItemRep->GetEntryWidget(FName(TEXT("item@1"))), SwordWidget);
+            TestEqual(TEXT("Shield widget survives reordering (same pointer)"),
+                ItemRep->GetEntryWidget(FName(TEXT("item@2"))), ShieldWidget);
+            TestNotNull(TEXT("Newly acquired potion widget created"), ItemRep->GetEntryWidget(FName(TEXT("item@3"))));
+
+            // Swapping an item's icon must not change its identity.
+            FGV2LocationPlayerStatusViewModel Model3 = Model2;
+            Model3.Items = { { FName(TEXT("item@2")), TEXT("item_shield") }, { FName(TEXT("item@3")), TEXT("item_potion") }, { FName(TEXT("item@1")), TEXT("item_sword_enchanted") } };
+            FGV2ScreenFieldValue Field3 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model3);
+            TestTrue(TEXT("PlayerStatus Field3 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field3));
+            TestEqual(TEXT("Sword widget survives an icon change (same pointer)"),
+                ItemRep->GetEntryWidget(FName(TEXT("item@1"))), SwordWidget);
         }
 
         // CCF-03: Meter Repeater reuse, reorder and negative tests
@@ -3954,7 +3968,7 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
         M1.Key = FName(TEXT("hp"));
         M1.Meter.Percent = 0.5f;
         PreflightModel.Meters = { M1 };
-        PreflightModel.ItemIconResourceIds = { TEXT("item_1") };
+        PreflightModel.Items = { { FName(TEXT("item@1")), TEXT("item_1") } };
 
         FGV2ScreenFieldValue Field = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PreflightModel);
 
@@ -4488,8 +4502,8 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             Meter1.Meter.Percent = 0.75f;
             Model.Meters.Add(Meter1);
 
-            Model.ItemIconResourceIds = { TEXT("item1"), TEXT("item2"), TEXT("item3") };
-            Model.EffectIconResourceIds = { TEXT("effect1"), TEXT("effect2") };
+            Model.Items = { { FName(TEXT("item@1")), TEXT("item1") }, { FName(TEXT("item@2")), TEXT("item2") }, { FName(TEXT("item@3")), TEXT("item3") } };
+            Model.Effects = { { FName(TEXT("effect@1")), TEXT("effect1") }, { FName(TEXT("effect@2")), TEXT("effect2") } };
 
             // Multiple meters rejected without meter repeater
             FGV2LocationPlayerStatusViewModel MultiMeterModel = Model;
@@ -4509,22 +4523,22 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, ValidField);
             FGV2ScreenFieldValue Captured;
             IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, Captured);
-            TestEqual(TEXT("PlayerStatus items count preserved"), Captured.LocationPlayerStatusValue.ItemIconResourceIds.Num(), 3);
-            TestEqual(TEXT("PlayerStatus effects count preserved"), Captured.LocationPlayerStatusValue.EffectIconResourceIds.Num(), 2);
+            TestEqual(TEXT("PlayerStatus items count preserved"), Captured.LocationPlayerStatusValue.Items.Num(), 3);
+            TestEqual(TEXT("PlayerStatus effects count preserved"), Captured.LocationPlayerStatusValue.Effects.Num(), 2);
             TestEqual(TEXT("PlayerStatus meters count preserved"), Captured.LocationPlayerStatusValue.Meters.Num(), 1);
 
             // Optional missing/placeholder resources do not fail screen apply
             FGV2LocationPlayerStatusViewModel MissingResModel = Model;
             MissingResModel.PortraitResourceId = TEXT("nonexistent:resource.portrait");
-            MissingResModel.ItemIconResourceIds = { TEXT("nonexistent:resource.item") };
+            MissingResModel.Items = { { FName(TEXT("item@1")), TEXT("nonexistent:resource.item") } };
             FGV2ScreenFieldValue MissingResField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MissingResModel);
             TestTrue(TEXT("PlayerStatus applies even with optional missing resources via placeholders"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, MissingResField));
 
             // ResetScreenField clears everything
             IGV2DynamicScreenElement::Execute_ResetScreenField(PlayerStatus);
             IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, Captured);
-            TestEqual(TEXT("PlayerStatus items empty after reset"), Captured.LocationPlayerStatusValue.ItemIconResourceIds.Num(), 0);
-            TestEqual(TEXT("PlayerStatus effects empty after reset"), Captured.LocationPlayerStatusValue.EffectIconResourceIds.Num(), 0);
+            TestEqual(TEXT("PlayerStatus items empty after reset"), Captured.LocationPlayerStatusValue.Items.Num(), 0);
+            TestEqual(TEXT("PlayerStatus effects empty after reset"), Captured.LocationPlayerStatusValue.Effects.Num(), 0);
             TestEqual(TEXT("PlayerStatus meters empty after reset"), Captured.LocationPlayerStatusValue.Meters.Num(), 0);
         }
 
@@ -4705,8 +4719,8 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                 Meter1.Key = FName(TEXT("stamina"));
                 Meter1.Meter.Percent = 0.85f;
                 PlayerModel.Meters.Add(Meter1);
-                PlayerModel.ItemIconResourceIds = { TEXT("item_sword"), TEXT("item_shield") };
-                PlayerModel.EffectIconResourceIds = { TEXT("effect_buff") };
+                PlayerModel.Items = { { FName(TEXT("item@1")), TEXT("item_sword") }, { FName(TEXT("item@2")), TEXT("item_shield") } };
+                PlayerModel.Effects = { { FName(TEXT("effect@1")), TEXT("effect_buff") } };
 
                 FGV2LocationSceneViewModel SceneModel;
                 SceneModel.BackgroundResourceId = TEXT("textsystem:resource.ui.missing_background");
@@ -5867,8 +5881,8 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
         StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
         StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{});
-        StatusValue["item_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
-        StatusValue["effect_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
+        StatusValue["items"] = GV2RuntimeCore::FValue(FArray{});
+        StatusValue["effects"] = GV2RuntimeCore::FValue(FArray{});
         StatusValue["unknown_player_stat"] = GV2RuntimeCore::FValue(std::int64_t(42));
 
         Field.Value = GV2RuntimeCore::FValue(StatusValue);
@@ -6007,6 +6021,175 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationMeterAndKeyBoundaryTest,
+    "GV2.Runtime.Presentation.LocationMeterAndKeyBoundary",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationMeterAndKeyBoundaryTest::RunTest(const FString& Parameters)
+{
+    using FObject = GV2RuntimeCore::FValue::FObject;
+    using FArray = GV2RuntimeCore::FValue::FArray;
+
+    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
+
+    auto MakeTextSpec = [](const std::string& TextId) -> FObject
+    {
+        FObject Obj;
+        Obj["text_id"] = GV2RuntimeCore::FValue(TextId);
+        return Obj;
+    };
+
+    // Builds a player_status request with a single meter carrying the given percent value.
+    auto BuildWithMeterPercent = [&](const GV2RuntimeCore::FValue& PercentValue, float& OutPercent) -> bool
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "player_status";
+        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
+
+        FObject MeterObj;
+        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
+        MeterObj["percent"] = PercentValue;
+
+        FObject StatusValue;
+        StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+
+        Field.Value = GV2RuntimeCore::FValue(StatusValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TArray<FGV2UiBindingHandle> Handles;
+        TArray<FGV2ScreenFieldValue> OutFields;
+        if (!Registry.BuildFields(Request, Handles, OutFields) || OutFields.Num() != 1) return false;
+        const FGV2LocationPlayerStatusViewModel& Model = OutFields[0].LocationPlayerStatusValue;
+        if (Model.Meters.Num() != 1) return false;
+        OutPercent = Model.Meters[0].Meter.Percent;
+        return true;
+    };
+
+    // 1. Lua integer subtype must not be silently discarded. `math.min(1, stamina / 100)`
+    //    yields an integer at full stamina, which previously zeroed the meter.
+    {
+        float Percent = -1.0f;
+        const bool bBuilt = BuildWithMeterPercent(GV2RuntimeCore::FValue(static_cast<std::int64_t>(1)), Percent);
+        TestTrue(TEXT("Integer percent is accepted"), bBuilt);
+        TestEqual(TEXT("Integer percent 1 reaches the model as 1.0, not 0.0"), Percent, 1.0f);
+    }
+
+    // 2. Float percent still passes through unchanged.
+    {
+        float Percent = -1.0f;
+        const bool bBuilt = BuildWithMeterPercent(GV2RuntimeCore::FValue(0.25), Percent);
+        TestTrue(TEXT("Float percent is accepted"), bBuilt);
+        TestEqual(TEXT("Float percent preserved"), Percent, 0.25f);
+    }
+
+    // 3. Out-of-range values are clamped at the boundary, so no widget ever sees them.
+    {
+        float Percent = -1.0f;
+        TestTrue(TEXT("Above-range percent is accepted"), BuildWithMeterPercent(GV2RuntimeCore::FValue(2.0), Percent));
+        TestEqual(TEXT("Above-range percent clamped to 1.0 at the boundary"), Percent, 1.0f);
+
+        Percent = -1.0f;
+        TestTrue(TEXT("Below-range percent is accepted"), BuildWithMeterPercent(GV2RuntimeCore::FValue(-0.5), Percent));
+        TestEqual(TEXT("Below-range percent clamped to 0.0 at the boundary"), Percent, 0.0f);
+    }
+
+    // 4. Non-numeric percent is rejected instead of silently defaulting to zero.
+    {
+        float Percent = -1.0f;
+        TestFalse(TEXT("String percent rejected"), BuildWithMeterPercent(GV2RuntimeCore::FValue(std::string("abc")), Percent));
+        TestFalse(TEXT("Boolean percent rejected"), BuildWithMeterPercent(GV2RuntimeCore::FValue(true), Percent));
+    }
+
+    // 5. Repeated element key grammar applies to location collections, not only to
+    //    the generic ones. Meters, characters, items and effects share one rule.
+    {
+        auto BuildWithKey = [&](const char* FieldId, const char* SchemaId, const char* CollectionKey, const std::string& Key) -> bool
+        {
+            GV2RuntimeCore::FScreenRequest Request;
+            Request.ScreenId = "textsystem:screen.location";
+
+            GV2RuntimeCore::FScreenField Field;
+            Field.FieldId = FieldId;
+            Field.SchemaId = SchemaId;
+
+            FObject EntryObj;
+            EntryObj["key"] = GV2RuntimeCore::FValue(Key);
+            EntryObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon"));
+
+            FObject FieldValue;
+            if (FCStringAnsi::Strcmp(FieldId, "player_status") == 0)
+            {
+                FieldValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+            }
+            FieldValue[CollectionKey] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(EntryObj)});
+
+            Field.Value = GV2RuntimeCore::FValue(FieldValue);
+            Request.Fields.push_back(MoveTemp(Field));
+
+            TArray<FGV2UiBindingHandle> Handles;
+            TArray<FGV2ScreenFieldValue> OutFields;
+            return Registry.BuildFields(Request, Handles, OutFields);
+        };
+
+        const char* StatusId = "player_status";
+        const char* StatusSchema = "textsystem:schema.ui_field.location_player_status.v1";
+        const char* SceneId = "scene";
+        const char* SceneSchema = "textsystem:schema.ui_field.location_scene.v1";
+
+        TestTrue(TEXT("Conforming item key accepted"), BuildWithKey(StatusId, StatusSchema, "items", "item@1"));
+        TestFalse(TEXT("Uppercase item key rejected"), BuildWithKey(StatusId, StatusSchema, "items", "Item1"));
+        TestFalse(TEXT("Item key with space and punctuation rejected"), BuildWithKey(StatusId, StatusSchema, "items", "invalid key!"));
+        TestFalse(TEXT("Text-derived item key rejected"), BuildWithKey(StatusId, StatusSchema, "items", "text:item.name"));
+
+        TestTrue(TEXT("Conforming effect key accepted"), BuildWithKey(StatusId, StatusSchema, "effects", "effect@1"));
+        TestFalse(TEXT("Uppercase effect key rejected"), BuildWithKey(StatusId, StatusSchema, "effects", "Effect1"));
+
+        TestTrue(TEXT("Conforming character key accepted"), BuildWithKey(SceneId, SceneSchema, "characters", "tavern_keeper"));
+        TestFalse(TEXT("Uppercase character key rejected"), BuildWithKey(SceneId, SceneSchema, "characters", "TavernKeeper"));
+        TestFalse(TEXT("Text-derived character key rejected"), BuildWithKey(SceneId, SceneSchema, "characters", "text:character.name"));
+    }
+
+    // 6. Meter key grammar, checked through the meters collection shape.
+    {
+        auto BuildWithMeterKey = [&](const std::string& Key) -> bool
+        {
+            GV2RuntimeCore::FScreenRequest Request;
+            Request.ScreenId = "textsystem:screen.location";
+
+            GV2RuntimeCore::FScreenField Field;
+            Field.FieldId = "player_status";
+            Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
+
+            FObject MeterObj;
+            MeterObj["key"] = GV2RuntimeCore::FValue(Key);
+            MeterObj["percent"] = GV2RuntimeCore::FValue(0.5);
+
+            FObject StatusValue;
+            StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+            StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+
+            Field.Value = GV2RuntimeCore::FValue(StatusValue);
+            Request.Fields.push_back(MoveTemp(Field));
+
+            TArray<FGV2UiBindingHandle> Handles;
+            TArray<FGV2ScreenFieldValue> OutFields;
+            return Registry.BuildFields(Request, Handles, OutFields);
+        };
+
+        TestTrue(TEXT("Conforming meter key accepted"), BuildWithMeterKey("stamina"));
+        TestFalse(TEXT("Uppercase meter key rejected"), BuildWithMeterKey("Stamina"));
+        TestFalse(TEXT("Meter key with space rejected"), BuildWithMeterKey("stamina bar"));
+        TestFalse(TEXT("Text-derived meter key rejected"), BuildWithMeterKey("text:meter.stamina"));
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2LocationPlayerStatusItemIconsTest,
     "GV2.Runtime.Presentation.LocationPlayerStatusItemIconsReachComposite",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -6029,14 +6212,22 @@ bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
     StatusValue["name"] = GV2RuntimeCore::FValue(NameSpec);
     StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
 
+    auto MakeIconEntry = [](const std::string& Key) -> GV2RuntimeCore::FValue
+    {
+        FObject Entry;
+        Entry["key"] = GV2RuntimeCore::FValue(Key);
+        Entry["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon"));
+        return GV2RuntimeCore::FValue(Entry);
+    };
+
     FArray ItemIcons;
-    ItemIcons.push_back(GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon")));
-    ItemIcons.push_back(GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon")));
-    StatusValue["item_icon_resource_ids"] = GV2RuntimeCore::FValue(ItemIcons);
+    ItemIcons.push_back(MakeIconEntry("item@1"));
+    ItemIcons.push_back(MakeIconEntry("item@2"));
+    StatusValue["items"] = GV2RuntimeCore::FValue(ItemIcons);
 
     FArray EffectIcons;
-    EffectIcons.push_back(GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon")));
-    StatusValue["effect_icon_resource_ids"] = GV2RuntimeCore::FValue(EffectIcons);
+    EffectIcons.push_back(MakeIconEntry("effect@1"));
+    StatusValue["effects"] = GV2RuntimeCore::FValue(EffectIcons);
 
     FObject MeterObj;
     MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
@@ -6059,8 +6250,8 @@ bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
     if (OutFields.Num() == 1)
     {
         const FGV2LocationPlayerStatusViewModel& Model = OutFields[0].LocationPlayerStatusValue;
-        TestEqual(TEXT("BAI-02: ItemIconResourceIds count is 2"), Model.ItemIconResourceIds.Num(), 2);
-        TestEqual(TEXT("BAI-02: EffectIconResourceIds count is 1"), Model.EffectIconResourceIds.Num(), 1);
+        TestEqual(TEXT("BAI-02: Items count is 2"), Model.Items.Num(), 2);
+        TestEqual(TEXT("BAI-02: Effects count is 1"), Model.Effects.Num(), 1);
         TestEqual(TEXT("BAI-02: Meters count is 1"), Model.Meters.Num(), 1);
 
         UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
@@ -6085,11 +6276,10 @@ bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
                 if (ItemRep != nullptr)
                 {
                     TestEqual(TEXT("BAI-02: ItemRepeater entry count is 2"), ItemRep->GetEntryCount(), 2);
-                    UWidget* Slot0 = ItemRep->GetEntryWidget(FName(TEXT("item_0")));
-                    UWidget* Slot1 = ItemRep->GetEntryWidget(FName(TEXT("item_1")));
-                    TestNotNull(TEXT("BAI-02: Slot 0 widget exists with key item_0"), Slot0);
-                    TestNotNull(TEXT("BAI-02: Slot 1 widget exists with key item_1"), Slot1);
+                    TestNotNull(TEXT("BAI-02: Widget exists under the item instance key item@1"), ItemRep->GetEntryWidget(FName(TEXT("item@1"))));
+                    TestNotNull(TEXT("BAI-02: Widget exists under the item instance key item@2"), ItemRep->GetEntryWidget(FName(TEXT("item@2"))));
                     TestNull(TEXT("BAI-02: Element key is not raw resource_id"), ItemRep->GetEntryWidget(FName(TEXT("core:resource.ui.missing_icon"))));
+                    TestNull(TEXT("BAI-02: Element key is not the array position"), ItemRep->GetEntryWidget(FName(TEXT("item_0"))));
                 }
 
                 UGV2ListViewWidgetBase* EffectRep = Widget->GetEffectRepeater();
@@ -6097,8 +6287,8 @@ bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
                 if (EffectRep != nullptr)
                 {
                     TestEqual(TEXT("BAI-02: EffectRepeater entry count is 1"), EffectRep->GetEntryCount(), 1);
-                    UWidget* Effect0 = EffectRep->GetEntryWidget(FName(TEXT("effect_0")));
-                    TestNotNull(TEXT("BAI-02: Effect 0 widget exists with key effect_0"), Effect0);
+                    TestNotNull(TEXT("BAI-02: Widget exists under the effect instance key effect@1"), EffectRep->GetEntryWidget(FName(TEXT("effect@1"))));
+                    TestNull(TEXT("BAI-02: Effect key is not the array position"), EffectRep->GetEntryWidget(FName(TEXT("effect_0"))));
                 }
             }
 
@@ -6173,7 +6363,7 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
         // 1b. Non-empty items with unresolved icon widget class -> rejected
         FGV2LocationPlayerStatusViewModel ItemModel;
         ItemModel.Name = { FText::FromString(TEXT("Hero")) };
-        ItemModel.ItemIconResourceIds.Add(TEXT("core:resource.ui.missing_icon"));
+        ItemModel.Items.Add({ FName(TEXT("item@1")), TEXT("core:resource.ui.missing_icon") });
         FGV2ScreenFieldValue ItemField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), ItemModel);
 
         TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty items with unresolved IconWidgetClass"),
@@ -6184,7 +6374,7 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
         // 1c. Non-empty effects with unresolved icon widget class -> rejected
         FGV2LocationPlayerStatusViewModel EffectModel;
         EffectModel.Name = { FText::FromString(TEXT("Hero")) };
-        EffectModel.EffectIconResourceIds.Add(TEXT("core:resource.ui.missing_icon"));
+        EffectModel.Effects.Add({ FName(TEXT("effect@1")), TEXT("core:resource.ui.missing_icon") });
         FGV2ScreenFieldValue EffectField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), EffectModel);
 
         TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty effects with unresolved IconWidgetClass"),

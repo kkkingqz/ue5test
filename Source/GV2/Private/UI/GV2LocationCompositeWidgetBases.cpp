@@ -114,13 +114,13 @@ bool UGV2LocationPlayerStatusWidgetBase::CanApplyScreenField_Implementation(cons
     }
 
     // Repeated items require usable repeater host and resolved icon widget class
-    if (Model.ItemIconResourceIds.Num() > 0 && (!HasUsableItemRepeaterHost() || ResolveIconWidgetClass() == nullptr))
+    if (Model.Items.Num() > 0 && (!HasUsableItemRepeaterHost() || ResolveIconWidgetClass() == nullptr))
     {
         return false;
     }
 
     // Repeated effects require usable repeater host and resolved icon widget class
-    if (Model.EffectIconResourceIds.Num() > 0 && (!HasUsableEffectRepeaterHost() || ResolveIconWidgetClass() == nullptr))
+    if (Model.Effects.Num() > 0 && (!HasUsableEffectRepeaterHost() || ResolveIconWidgetClass() == nullptr))
     {
         return false;
     }
@@ -231,30 +231,15 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
     if (UGV2ListViewWidgetBase* ItemRep = ResolveItemRepeater())
     {
         const TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass();
-        if (IconClass == nullptr && Candidate.ItemIconResourceIds.Num() > 0)
+        if (IconClass == nullptr && Candidate.Items.Num() > 0)
         {
             return false;
         }
-        if (IconClass != nullptr || Candidate.ItemIconResourceIds.IsEmpty())
+        if (IconClass != nullptr || Candidate.Items.IsEmpty())
         {
-            struct FItemSlotEntry
-            {
-                FName Key;
-                FString ResourceId;
-            };
-            TArray<FItemSlotEntry> ItemSlots;
-            ItemSlots.Reserve(Candidate.ItemIconResourceIds.Num());
-            for (int32 Index = 0; Index < Candidate.ItemIconResourceIds.Num(); ++Index)
-            {
-                ItemSlots.Add({
-                    FName(*FString::Printf(TEXT("item_%d"), Index)),
-                    Candidate.ItemIconResourceIds[Index]
-                });
-            }
-
-            const bool bItemsOk = ItemRep->ReconcileEntries<UGV2ImageWidgetBase, FItemSlotEntry>(
-                ItemSlots,
-                [](const FItemSlotEntry& Entry) { return Entry.Key; },
+            const bool bItemsOk = ItemRep->ReconcileEntries<UGV2ImageWidgetBase, FGV2LocationIconEntry>(
+                Candidate.Items,
+                [](const FGV2LocationIconEntry& Entry) { return Entry.Key; },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
                     if (IconClass == nullptr) return nullptr;
@@ -262,7 +247,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
                 },
-                [](UGV2ImageWidgetBase& Icon, const FItemSlotEntry& Entry) -> bool
+                [](UGV2ImageWidgetBase& Icon, const FGV2LocationIconEntry& Entry) -> bool
                 {
                     FString Error;
                     return Icon.ApplyOptionalImageResource(Entry.ResourceId, TEXT("textsystem:resource.ui.missing_icon"), Error);
@@ -274,30 +259,15 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
     if (UGV2ListViewWidgetBase* EffectRep = ResolveEffectRepeater())
     {
         const TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass();
-        if (IconClass == nullptr && Candidate.EffectIconResourceIds.Num() > 0)
+        if (IconClass == nullptr && Candidate.Effects.Num() > 0)
         {
             return false;
         }
-        if (IconClass != nullptr || Candidate.EffectIconResourceIds.IsEmpty())
+        if (IconClass != nullptr || Candidate.Effects.IsEmpty())
         {
-            struct FEffectSlotEntry
-            {
-                FName Key;
-                FString ResourceId;
-            };
-            TArray<FEffectSlotEntry> EffectSlots;
-            EffectSlots.Reserve(Candidate.EffectIconResourceIds.Num());
-            for (int32 Index = 0; Index < Candidate.EffectIconResourceIds.Num(); ++Index)
-            {
-                EffectSlots.Add({
-                    FName(*FString::Printf(TEXT("effect_%d"), Index)),
-                    Candidate.EffectIconResourceIds[Index]
-                });
-            }
-
-            const bool bEffectsOk = EffectRep->ReconcileEntries<UGV2ImageWidgetBase, FEffectSlotEntry>(
-                EffectSlots,
-                [](const FEffectSlotEntry& Entry) { return Entry.Key; },
+            const bool bEffectsOk = EffectRep->ReconcileEntries<UGV2ImageWidgetBase, FGV2LocationIconEntry>(
+                Candidate.Effects,
+                [](const FGV2LocationIconEntry& Entry) { return Entry.Key; },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
                     if (IconClass == nullptr) return nullptr;
@@ -305,7 +275,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
                 },
-                [](UGV2ImageWidgetBase& Icon, const FEffectSlotEntry& Entry) -> bool
+                [](UGV2ImageWidgetBase& Icon, const FGV2LocationIconEntry& Entry) -> bool
                 {
                     FString Error;
                     return Icon.ApplyOptionalImageResource(Entry.ResourceId, TEXT("textsystem:resource.ui.missing_icon"), Error);

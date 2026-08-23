@@ -370,6 +370,18 @@ struct GV2_API FGV2LocationTopBarViewModel
 };
 
 USTRUCT(BlueprintType)
+struct GV2_API FGV2LocationIconEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
+    FName Key;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
+    FString ResourceId;
+};
+
+USTRUCT(BlueprintType)
 struct GV2_API FGV2LocationCharacterEntry
 {
     GENERATED_BODY()
@@ -400,8 +412,8 @@ struct GV2_API FGV2LocationPlayerStatusViewModel
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FString PortraitResourceId;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel Name;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationMeterEntry> Meters;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FString> ItemIconResourceIds;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FString> EffectIconResourceIds;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationIconEntry> Items;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationIconEntry> Effects;
 };
 
 USTRUCT(BlueprintType)

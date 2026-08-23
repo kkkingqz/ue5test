@@ -14,8 +14,19 @@ return {
         assert(scene_field.value.background_resource_id == "rh:resource.location.tavern")
         assert(type(scene_field.value.characters) == "table")
         assert(#scene_field.value.characters == 1)
-        assert(scene_field.value.characters[1].key == "rh:resource.character.tavern_keeper")
+        assert(scene_field.value.characters[1].key == "tavern_keeper")
         assert(scene_field.value.characters[1].resource_id == "rh:resource.character.tavern_keeper")
+    end,
+
+    location_scene_character_key_is_not_derived_from_resource = function()
+        -- Identity must survive a sprite swap: if key were the resource id, changing the
+        -- portrait of the same NPC would recreate its widget.
+        local req = location_presenter.build_screen_request("rh:location.city.tavern")
+        assert(req ~= nil)
+        local char = req.fields.scene.value.characters[1]
+        assert(char ~= nil, "tavern must declare a character")
+        assert(char.key ~= char.resource_id, "character key must not be its resource id")
+        assert(not string.find(char.key, ":"), "character key must be a semantic slot id, not a Stable ID")
     end,
 
     location_scene_gate_and_market_have_empty_characters = function()

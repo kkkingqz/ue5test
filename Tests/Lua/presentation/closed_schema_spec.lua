@@ -52,8 +52,8 @@ return {
             name = true,
             portrait_resource_id = true,
             meters = true,
-            item_icon_resource_ids = true,
-            effect_icon_resource_ids = true
+            items = true,
+            effects = true
         }
         ok, bad_k = has_only_keys(status.value, status_keys)
         assert(ok, "player_status has unexpected key: " .. tostring(bad_k))
@@ -63,6 +63,22 @@ return {
         for _, meter in ipairs(status.value.meters) do
             ok, bad_k = has_only_keys(meter, meter_keys)
             assert(ok, "meter element has unexpected key: " .. tostring(bad_k))
+        end
+
+        -- Check item and effect icon elements
+        local icon_keys = { key = true, resource_id = true }
+        for _, collection in ipairs({ status.value.items, status.value.effects }) do
+            for _, icon in ipairs(collection) do
+                ok, bad_k = has_only_keys(icon, icon_keys)
+                assert(ok, "icon element has unexpected key: " .. tostring(bad_k))
+            end
+        end
+
+        -- Item identity comes from the item instance, never from its position or icon.
+        for index, icon in ipairs(status.value.items) do
+            assert(icon.key ~= nil and icon.key ~= "", "item icon must carry a key")
+            assert(icon.key ~= "item_" .. tostring(index - 1), "item key must not be the array position")
+            assert(icon.key ~= icon.resource_id, "item key must not be its resource id")
         end
 
         -- 4. Check commands

@@ -219,6 +219,24 @@ bool ValidateRepeatedElementKey(
     return true;
 }
 
+// Accepts both Lua float and Lua integer subtypes. `math.min(1, x)` yields an
+// integer at full value, so rejecting integers here silently zeroes full meters.
+bool ReadClampedPercent(const GV2RuntimeCore::FValue& Value, float& OutPercent)
+{
+    if (const double* Dbl = std::get_if<double>(&Value.Data))
+    {
+        if (!FMath::IsFinite(*Dbl)) return false;
+        OutPercent = FMath::Clamp(static_cast<float>(*Dbl), 0.0f, 1.0f);
+        return true;
+    }
+    if (const std::int64_t* Int = std::get_if<std::int64_t>(&Value.Data))
+    {
+        OutPercent = FMath::Clamp(static_cast<float>(*Int), 0.0f, 1.0f);
+        return true;
+    }
+    return false;
+}
+
 bool ReadBinding(
     const GV2RuntimeCore::FValue& Value,
     const TArray<FString>& NodePath,
@@ -1231,10 +1249,69 @@ bool BuildLocationTopBar(const GV2RuntimeCore::FScreenField& Field, const FObjec
         && (OutField = FGV2ScreenFieldValue::MakeLocationTopBar(FName(*FieldId(Field)), Model), true);
 }
 
+// Keyed icon collections: identity comes from the owning entity, never from the
+// array position, so reordering or swapping an icon does not reassign widgets.
+bool PrepareLocationIconCollection(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const std::string& CollectionKey)
+{
+    const GV2RuntimeCore::FValue* CollectionVal = FindValue(Value, CollectionKey);
+    if (CollectionVal == nullptr) return true;
+    const FArray* CollectionArray = AsArray(*CollectionVal);
+    if (CollectionArray == nullptr) return false;
+
+    static constexpr std::initializer_list<std::string_view> EntryConsumedKeys = {"key", "resource_id"};
+    const std::string SubContext = CollectionKey + " element";
+    TSet<FName> SeenKeys;
+    for (const GV2RuntimeCore::FValue& EntryVal : *CollectionArray)
+    {
+        const FObject* EntryObj = std::get_if<FObject>(&EntryVal.Data);
+        if (EntryObj == nullptr || !CheckClosedKeys(Field.FieldId, *EntryObj, EntryConsumedKeys, SubContext)) return false;
+        const GV2RuntimeCore::FValue* KeyVal = FindValue(*EntryObj, "key");
+        if (KeyVal == nullptr) return false;
+        if (!ValidateRepeatedElementKey(std::get_if<std::string>(&KeyVal->Data), SeenKeys)) return false;
+        FString ResourceId;
+        if (!ReadOptionalResource(*EntryObj, "resource_id", ResourceId)) return false;
+    }
+    return true;
+}
+
+bool BuildLocationIconCollection(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const std::string& CollectionKey,
+    TArray<FGV2LocationIconEntry>& OutEntries)
+{
+    const GV2RuntimeCore::FValue* CollectionVal = FindValue(Value, CollectionKey);
+    if (CollectionVal == nullptr) return true;
+    const FArray* CollectionArray = AsArray(*CollectionVal);
+    if (CollectionArray == nullptr) return false;
+
+    static constexpr std::initializer_list<std::string_view> EntryConsumedKeys = {"key", "resource_id"};
+    const std::string SubContext = CollectionKey + " element";
+    TSet<FName> SeenKeys;
+    for (const GV2RuntimeCore::FValue& EntryVal : *CollectionArray)
+    {
+        const FObject* EntryObj = std::get_if<FObject>(&EntryVal.Data);
+        if (EntryObj == nullptr || !CheckClosedKeys(Field.FieldId, *EntryObj, EntryConsumedKeys, SubContext)) return false;
+        const GV2RuntimeCore::FValue* KeyVal = FindValue(*EntryObj, "key");
+        if (KeyVal == nullptr) return false;
+        const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
+        if (!ValidateRepeatedElementKey(KeyStr, SeenKeys)) return false;
+
+        FGV2LocationIconEntry Entry;
+        Entry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
+        if (!ReadOptionalResource(*EntryObj, "resource_id", Entry.ResourceId)) return false;
+        OutEntries.Add(MoveTemp(Entry));
+    }
+    return true;
+}
+
 bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScreenField& Field, const FObject& Value, TArray<FGV2UiBindingDefinition>&)
 {
     static constexpr std::initializer_list<std::string_view> ConsumedKeys = {
-        "name", "portrait_resource_id", "meters", "item_icon_resource_ids", "effect_icon_resource_ids"
+        "name", "portrait_resource_id", "meters", "items", "effects"
     };
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
@@ -1250,16 +1327,19 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
         const FArray* MetersArray = AsArray(*MetersVal);
         if (MetersArray == nullptr) return false;
         static constexpr std::initializer_list<std::string_view> MeterConsumedKeys = {"key", "percent", "label"};
-        std::set<std::string> MeterKeys;
+        TSet<FName> MeterKeys;
         for (const GV2RuntimeCore::FValue& EntryVal : *MetersArray)
         {
             const FObject* MeterObj = std::get_if<FObject>(&EntryVal.Data);
             if (MeterObj == nullptr || !CheckClosedKeys(Field.FieldId, *MeterObj, MeterConsumedKeys, "meters element")) return false;
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key");
             if (KeyVal == nullptr) return false;
-            const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
-            if (KeyStr == nullptr || KeyStr->empty() || MeterKeys.find(*KeyStr) != MeterKeys.end()) return false;
-            MeterKeys.insert(*KeyStr);
+            if (!ValidateRepeatedElementKey(std::get_if<std::string>(&KeyVal->Data), MeterKeys)) return false;
+            if (const GV2RuntimeCore::FValue* PercentVal = FindValue(*MeterObj, "percent"))
+            {
+                float Percent = 0.0f;
+                if (!ReadClampedPercent(*PercentVal, Percent)) return false;
+            }
             if (const GV2RuntimeCore::FValue* LabelVal = FindValue(*MeterObj, "label"))
             {
                 GV2RuntimeCore::FTextSpec LabelSpec;
@@ -1267,39 +1347,15 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
             }
         }
     }
-    if (const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "item_icon_resource_ids"))
-    {
-        const FArray* ItemsArray = AsArray(*ItemsVal);
-        if (ItemsArray == nullptr) return false;
-        for (const GV2RuntimeCore::FValue& EntryVal : *ItemsArray)
-        {
-            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
-            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
-            {
-                return false;
-            }
-        }
-    }
-    if (const GV2RuntimeCore::FValue* EffectsVal = FindValue(Value, "effect_icon_resource_ids"))
-    {
-        const FArray* EffectsArray = AsArray(*EffectsVal);
-        if (EffectsArray == nullptr) return false;
-        for (const GV2RuntimeCore::FValue& EntryVal : *EffectsArray)
-        {
-            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
-            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
-            {
-                return false;
-            }
-        }
-    }
+    if (!PrepareLocationIconCollection(Field, Value, "items")) return false;
+    if (!PrepareLocationIconCollection(Field, Value, "effects")) return false;
     return true;
 }
 
 bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
 {
     static constexpr std::initializer_list<std::string_view> ConsumedKeys = {
-        "name", "portrait_resource_id", "meters", "item_icon_resource_ids", "effect_icon_resource_ids"
+        "name", "portrait_resource_id", "meters", "items", "effects"
     };
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
@@ -1323,18 +1379,12 @@ bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const 
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key");
             if (KeyVal == nullptr) return false;
             const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
-            if (KeyStr == nullptr || KeyStr->empty()) return false;
-
+            if (!ValidateRepeatedElementKey(KeyStr, MeterKeys)) return false;
             MeterEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
-            if (MeterEntry.Key.IsNone() || MeterKeys.Contains(MeterEntry.Key)) return false;
-            MeterKeys.Add(MeterEntry.Key);
 
             if (const GV2RuntimeCore::FValue* PercentVal = FindValue(*MeterObj, "percent"))
             {
-                if (const double* P = std::get_if<double>(&PercentVal->Data))
-                {
-                    MeterEntry.Meter.Percent = static_cast<float>(*P);
-                }
+                if (!ReadClampedPercent(*PercentVal, MeterEntry.Meter.Percent)) return false;
             }
             if (const GV2RuntimeCore::FValue* LabelVal = FindValue(*MeterObj, "label"))
             {
@@ -1344,35 +1394,8 @@ bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const 
         }
     }
 
-    if (const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "item_icon_resource_ids"))
-    {
-        const FArray* ItemsArray = AsArray(*ItemsVal);
-        if (ItemsArray == nullptr) return false;
-        for (const GV2RuntimeCore::FValue& EntryVal : *ItemsArray)
-        {
-            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
-            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
-            {
-                return false;
-            }
-            Model.ItemIconResourceIds.Add(UTF8_TO_TCHAR(ResStr->c_str()));
-        }
-    }
-
-    if (const GV2RuntimeCore::FValue* EffectsVal = FindValue(Value, "effect_icon_resource_ids"))
-    {
-        const FArray* EffectsArray = AsArray(*EffectsVal);
-        if (EffectsArray == nullptr) return false;
-        for (const GV2RuntimeCore::FValue& EntryVal : *EffectsArray)
-        {
-            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
-            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
-            {
-                return false;
-            }
-            Model.EffectIconResourceIds.Add(UTF8_TO_TCHAR(ResStr->c_str()));
-        }
-    }
+    if (!BuildLocationIconCollection(Field, Value, "items", Model.Items)) return false;
+    if (!BuildLocationIconCollection(Field, Value, "effects", Model.Effects)) return false;
 
     OutField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(FName(*FieldId(Field)), Model);
     return true;
@@ -1392,16 +1415,14 @@ bool PrepareLocationScene(const std::string&, const GV2RuntimeCore::FScreenField
         const FArray* CharsArray = AsArray(*CharsVal);
         if (CharsArray == nullptr) return false;
         static constexpr std::initializer_list<std::string_view> CharConsumedKeys = {"key", "resource_id"};
-        std::set<std::string> CharKeys;
+        TSet<FName> CharKeys;
         for (const GV2RuntimeCore::FValue& EntryVal : *CharsArray)
         {
             const FObject* CharObj = std::get_if<FObject>(&EntryVal.Data);
             if (CharObj == nullptr || !CheckClosedKeys(Field.FieldId, *CharObj, CharConsumedKeys, "characters element")) return false;
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key");
             if (KeyVal == nullptr) return false;
-            const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
-            if (KeyStr == nullptr || KeyStr->empty() || CharKeys.find(*KeyStr) != CharKeys.end()) return false;
-            CharKeys.insert(*KeyStr);
+            if (!ValidateRepeatedElementKey(std::get_if<std::string>(&KeyVal->Data), CharKeys)) return false;
             if (!ReadOptionalResource(*CharObj, "resource_id", Ignored)) return false;
         }
     }
@@ -1434,11 +1455,8 @@ bool BuildLocationScene(const GV2RuntimeCore::FScreenField& Field, const FObject
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key");
             if (KeyVal == nullptr) return false;
             const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
-            if (KeyStr == nullptr || KeyStr->empty()) return false;
-
+            if (!ValidateRepeatedElementKey(KeyStr, CharacterKeys)) return false;
             CharEntry.Key = FName(UTF8_TO_TCHAR(KeyStr->c_str()));
-            if (CharEntry.Key.IsNone() || CharacterKeys.Contains(CharEntry.Key)) return false;
-            CharacterKeys.Add(CharEntry.Key);
 
             if (!ReadOptionalResource(*CharObj, "resource_id", CharEntry.ResourceId)) return false;
             Model.Characters.Add(CharEntry);
