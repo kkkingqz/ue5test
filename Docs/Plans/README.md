@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 5.5
+version: 5.6
 updated: 2026-08-20
 depends_on:
   - ../README.md
@@ -25,6 +25,8 @@ depends_on:
 
 ## Активные планы
 
+- [SceneAndVerificationCorrection](SceneAndVerificationCorrection/README.md) — Исправления через границы слоёв и построение недостающих средств измерения: персонаж сцены, матрица разрешений, вкладки, аварийные экраны.
+- [ToolingAndWidgetHygiene](ToolingAndWidgetHygiene/README.md) — Незащищённые правила получают гейты; локальные дефекты раскрывающегося списка и пакета-образца.
 - [LocationScreen](LocationScreen/README.md) — Первый игровой экран: шаблон `textsystem` из четырёх композитов, наполняемый определением локации и текущим состоянием; интеграционная проверка базового набора UI.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
