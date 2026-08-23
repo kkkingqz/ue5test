@@ -225,19 +225,34 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
         const TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass();
         if (IconClass != nullptr)
         {
-            const bool bItemsOk = ItemRep->ReconcileEntries<UGV2ImageWidgetBase, FString>(
-                Candidate.ItemIconResourceIds,
-                [](const FString& ResourceId) { return FName(*ResourceId); },
+            struct FItemSlotEntry
+            {
+                FName Key;
+                FString ResourceId;
+            };
+            TArray<FItemSlotEntry> ItemSlots;
+            ItemSlots.Reserve(Candidate.ItemIconResourceIds.Num());
+            for (int32 Index = 0; Index < Candidate.ItemIconResourceIds.Num(); ++Index)
+            {
+                ItemSlots.Add({
+                    FName(*FString::Printf(TEXT("item_%d"), Index)),
+                    Candidate.ItemIconResourceIds[Index]
+                });
+            }
+
+            const bool bItemsOk = ItemRep->ReconcileEntries<UGV2ImageWidgetBase, FItemSlotEntry>(
+                ItemSlots,
+                [](const FItemSlotEntry& Entry) { return Entry.Key; },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
                 },
-                [](UGV2ImageWidgetBase& Icon, const FString& ResourceId) -> bool
+                [](UGV2ImageWidgetBase& Icon, const FItemSlotEntry& Entry) -> bool
                 {
                     FString Error;
-                    return Icon.ApplyOptionalImageResource(ResourceId, TEXT("textsystem:resource.ui.missing_icon"), Error);
+                    return Icon.ApplyOptionalImageResource(Entry.ResourceId, TEXT("textsystem:resource.ui.missing_icon"), Error);
                 });
             if (!bItemsOk) return false;
         }
@@ -248,19 +263,34 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
         const TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass();
         if (IconClass != nullptr)
         {
-            const bool bEffectsOk = EffectRep->ReconcileEntries<UGV2ImageWidgetBase, FString>(
-                Candidate.EffectIconResourceIds,
-                [](const FString& ResourceId) { return FName(*ResourceId); },
+            struct FEffectSlotEntry
+            {
+                FName Key;
+                FString ResourceId;
+            };
+            TArray<FEffectSlotEntry> EffectSlots;
+            EffectSlots.Reserve(Candidate.EffectIconResourceIds.Num());
+            for (int32 Index = 0; Index < Candidate.EffectIconResourceIds.Num(); ++Index)
+            {
+                EffectSlots.Add({
+                    FName(*FString::Printf(TEXT("effect_%d"), Index)),
+                    Candidate.EffectIconResourceIds[Index]
+                });
+            }
+
+            const bool bEffectsOk = EffectRep->ReconcileEntries<UGV2ImageWidgetBase, FEffectSlotEntry>(
+                EffectSlots,
+                [](const FEffectSlotEntry& Entry) { return Entry.Key; },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
                 },
-                [](UGV2ImageWidgetBase& Icon, const FString& ResourceId) -> bool
+                [](UGV2ImageWidgetBase& Icon, const FEffectSlotEntry& Entry) -> bool
                 {
                     FString Error;
-                    return Icon.ApplyOptionalImageResource(ResourceId, TEXT("textsystem:resource.ui.missing_icon"), Error);
+                    return Icon.ApplyOptionalImageResource(Entry.ResourceId, TEXT("textsystem:resource.ui.missing_icon"), Error);
                 });
             if (!bEffectsOk) return false;
         }

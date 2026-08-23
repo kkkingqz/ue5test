@@ -3752,8 +3752,8 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         if (ItemRep != nullptr)
         {
             TestEqual(TEXT("ItemRepeater count is 2"), ItemRep->GetEntryCount(), 2);
-            UWidget* SwordWidget = ItemRep->GetEntryWidget(FName(TEXT("item_sword")));
-            TestNotNull(TEXT("Sword item widget exists"), SwordWidget);
+            UWidget* Slot0Widget = ItemRep->GetEntryWidget(FName(TEXT("item_0")));
+            TestNotNull(TEXT("Slot 0 item widget exists"), Slot0Widget);
 
             // Reorder and add item: { item_shield, item_potion, item_sword }
             FGV2LocationPlayerStatusViewModel Model2 = Model1;
@@ -3762,8 +3762,8 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("PlayerStatus Field2 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field2));
 
             TestEqual(TEXT("ItemRepeater count is 3 after update"), ItemRep->GetEntryCount(), 3);
-            TestEqual(TEXT("Sword item widget reused (same pointer)"), ItemRep->GetEntryWidget(FName(TEXT("item_sword"))), SwordWidget);
-            TestNotNull(TEXT("Potion item widget created"), ItemRep->GetEntryWidget(FName(TEXT("item_potion"))));
+            TestEqual(TEXT("Slot 0 widget reused (same pointer)"), ItemRep->GetEntryWidget(FName(TEXT("item_0"))), Slot0Widget);
+            TestNotNull(TEXT("Slot 2 widget created"), ItemRep->GetEntryWidget(FName(TEXT("item_2"))));
         }
 
         // CCF-03: Meter Repeater reuse, reorder and negative tests
@@ -5663,6 +5663,110 @@ bool FGV2ScreenFieldUnknownKeyObservabilityTest::RunTest(const FString& Paramete
     const bool bBuilt = FGV2ScreenFieldAdapterRegistry::Get().BuildFields(Request, Handles, OutFields);
     TestTrue(TEXT("BuildFields succeeds in BAI-01 while logging unknown key warnings"), bBuilt);
     TestEqual(TEXT("BuildFields produces 2 fields"), OutFields.Num(), 2);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationPlayerStatusItemIconsTest,
+    "GV2.Runtime.Presentation.LocationPlayerStatusItemIconsReachComposite",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
+{
+    using FObject = GV2RuntimeCore::FValue::FObject;
+    using FArray = GV2RuntimeCore::FValue::FArray;
+
+    GV2RuntimeCore::FScreenRequest Request;
+    Request.ScreenId = "textsystem:screen.location";
+
+    GV2RuntimeCore::FScreenField Field;
+    Field.FieldId = "player_status";
+    Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
+
+    FObject StatusValue;
+    FObject NameSpec;
+    NameSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+    StatusValue["name"] = GV2RuntimeCore::FValue(NameSpec);
+    StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
+
+    FArray ItemIcons;
+    ItemIcons.push_back(GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon")));
+    ItemIcons.push_back(GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon")));
+    StatusValue["item_icon_resource_ids"] = GV2RuntimeCore::FValue(ItemIcons);
+
+    FArray EffectIcons;
+    EffectIcons.push_back(GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon")));
+    StatusValue["effect_icon_resource_ids"] = GV2RuntimeCore::FValue(EffectIcons);
+
+    FObject MeterObj;
+    MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
+    MeterObj["percent"] = GV2RuntimeCore::FValue(0.5);
+    FObject MeterLabelSpec;
+    MeterLabelSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+    MeterObj["label"] = GV2RuntimeCore::FValue(MeterLabelSpec);
+    StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+
+    Field.Value = GV2RuntimeCore::FValue(StatusValue);
+    Request.Fields.push_back(MoveTemp(Field));
+
+    TArray<FGV2UiBindingHandle> Handles;
+    TArray<FGV2ScreenFieldValue> OutFields;
+
+    const bool bBuilt = FGV2ScreenFieldAdapterRegistry::Get().BuildFields(Request, Handles, OutFields);
+    TestTrue(TEXT("BAI-02: BuildFields succeeds for player_status with items and effects"), bBuilt);
+    TestEqual(TEXT("BAI-02: Exactly 1 field built"), OutFields.Num(), 1);
+
+    if (OutFields.Num() == 1)
+    {
+        const FGV2LocationPlayerStatusViewModel& Model = OutFields[0].LocationPlayerStatusValue;
+        TestEqual(TEXT("BAI-02: ItemIconResourceIds count is 2"), Model.ItemIconResourceIds.Num(), 2);
+        TestEqual(TEXT("BAI-02: EffectIconResourceIds count is 1"), Model.EffectIconResourceIds.Num(), 1);
+        TestEqual(TEXT("BAI-02: Meters count is 1"), Model.Meters.Num(), 1);
+
+        UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+        TestNotNull(TEXT("TestWorld created"), TestWorld);
+        if (TestWorld != nullptr)
+        {
+            UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(
+                nullptr,
+                TEXT("/Game/TextSystem/UI/Widgets/WBP_LocationPlayerStatus.WBP_LocationPlayerStatus_C"));
+            UGV2LocationPlayerStatusWidgetBase* Widget = PlayerClass
+                ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass)
+                : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+            TestNotNull(TEXT("PlayerStatus widget instantiated"), Widget);
+
+            if (Widget != nullptr)
+            {
+                const bool bApplied = IGV2DynamicScreenElement::Execute_ApplyScreenField(Widget, OutFields[0]);
+                TestTrue(TEXT("BAI-02: ApplyScreenField succeeds with item and effect icons"), bApplied);
+
+                UGV2ListViewWidgetBase* ItemRep = Widget->GetItemRepeater();
+                TestNotNull(TEXT("BAI-02: ItemRepeater is accessible"), ItemRep);
+                if (ItemRep != nullptr)
+                {
+                    TestEqual(TEXT("BAI-02: ItemRepeater entry count is 2"), ItemRep->GetEntryCount(), 2);
+                    UWidget* Slot0 = ItemRep->GetEntryWidget(FName(TEXT("item_0")));
+                    UWidget* Slot1 = ItemRep->GetEntryWidget(FName(TEXT("item_1")));
+                    TestNotNull(TEXT("BAI-02: Slot 0 widget exists with key item_0"), Slot0);
+                    TestNotNull(TEXT("BAI-02: Slot 1 widget exists with key item_1"), Slot1);
+                    TestNull(TEXT("BAI-02: Element key is not raw resource_id"), ItemRep->GetEntryWidget(FName(TEXT("core:resource.ui.missing_icon"))));
+                }
+
+                UGV2ListViewWidgetBase* EffectRep = Widget->GetEffectRepeater();
+                TestNotNull(TEXT("BAI-02: EffectRepeater is accessible"), EffectRep);
+                if (EffectRep != nullptr)
+                {
+                    TestEqual(TEXT("BAI-02: EffectRepeater entry count is 1"), EffectRep->GetEntryCount(), 1);
+                    UWidget* Effect0 = EffectRep->GetEntryWidget(FName(TEXT("effect_0")));
+                    TestNotNull(TEXT("BAI-02: Effect 0 widget exists with key effect_0"), Effect0);
+                }
+            }
+
+            TestWorld->DestroyWorld(false);
+            GEngine->DestroyWorldContext(TestWorld);
+        }
+    }
 
     return true;
 }

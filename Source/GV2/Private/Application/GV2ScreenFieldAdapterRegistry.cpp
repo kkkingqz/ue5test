@@ -1186,6 +1186,37 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
             const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
             if (KeyStr == nullptr || KeyStr->empty() || MeterKeys.find(*KeyStr) != MeterKeys.end()) return false;
             MeterKeys.insert(*KeyStr);
+            if (const GV2RuntimeCore::FValue* LabelVal = FindValue(*MeterObj, "label"))
+            {
+                GV2RuntimeCore::FTextSpec LabelSpec;
+                if (!ReadTextSpec(*LabelVal, LabelSpec)) return false;
+            }
+        }
+    }
+    if (const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "item_icon_resource_ids"))
+    {
+        const FArray* ItemsArray = AsArray(*ItemsVal);
+        if (ItemsArray == nullptr) return false;
+        for (const GV2RuntimeCore::FValue& EntryVal : *ItemsArray)
+        {
+            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
+            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
+            {
+                return false;
+            }
+        }
+    }
+    if (const GV2RuntimeCore::FValue* EffectsVal = FindValue(Value, "effect_icon_resource_ids"))
+    {
+        const FArray* EffectsArray = AsArray(*EffectsVal);
+        if (EffectsArray == nullptr) return false;
+        for (const GV2RuntimeCore::FValue& EntryVal : *EffectsArray)
+        {
+            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
+            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
+            {
+                return false;
+            }
         }
     }
     return true;
@@ -1193,7 +1224,9 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
 
 bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"name", "portrait_resource_id", "meters"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {
+        "name", "portrait_resource_id", "meters", "item_icon_resource_ids", "effect_icon_resource_ids"
+    };
     WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
 
     FGV2LocationPlayerStatusViewModel Model;
@@ -1204,7 +1237,7 @@ bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const 
     {
         const FArray* MetersArray = AsArray(*MetersVal);
         if (MetersArray == nullptr) return false;
-        static constexpr std::initializer_list<std::string_view> MeterConsumedKeys = {"key", "percent"};
+        static constexpr std::initializer_list<std::string_view> MeterConsumedKeys = {"key", "percent", "label"};
         TSet<FName> MeterKeys;
         for (int32 Index = 0; Index < static_cast<int32>(MetersArray->size()); ++Index)
         {
@@ -1230,7 +1263,41 @@ bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const 
                     MeterEntry.Meter.Percent = static_cast<float>(*P);
                 }
             }
+            if (const GV2RuntimeCore::FValue* LabelVal = FindValue(*MeterObj, "label"))
+            {
+                if (!ResolveText(*LabelVal, MeterEntry.Meter.Label)) return false;
+            }
             Model.Meters.Add(MeterEntry);
+        }
+    }
+
+    if (const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "item_icon_resource_ids"))
+    {
+        const FArray* ItemsArray = AsArray(*ItemsVal);
+        if (ItemsArray == nullptr) return false;
+        for (const GV2RuntimeCore::FValue& EntryVal : *ItemsArray)
+        {
+            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
+            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
+            {
+                return false;
+            }
+            Model.ItemIconResourceIds.Add(UTF8_TO_TCHAR(ResStr->c_str()));
+        }
+    }
+
+    if (const GV2RuntimeCore::FValue* EffectsVal = FindValue(Value, "effect_icon_resource_ids"))
+    {
+        const FArray* EffectsArray = AsArray(*EffectsVal);
+        if (EffectsArray == nullptr) return false;
+        for (const GV2RuntimeCore::FValue& EntryVal : *EffectsArray)
+        {
+            const std::string* ResStr = std::get_if<std::string>(&EntryVal.Data);
+            if (ResStr == nullptr || (!ResStr->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*ResStr, "resource")))
+            {
+                return false;
+            }
+            Model.EffectIconResourceIds.Add(UTF8_TO_TCHAR(ResStr->c_str()));
         }
     }
 
