@@ -3059,6 +3059,67 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             // 5. Submit interaction on newly INACTIVE tab (inventory) -> StaleBindingHandle
             const EGV2SubmitUiInteractionResult Result4 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
             TestEqual(TEXT("Inventory handle rejected after tab switch"), Result4, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+
+            // 6. Negative test: When container path has NO active tab configured -> ALL tab handles are rejected as StaleBindingHandle
+            Coordinator.SetActiveTab(TEXT("location_content/main/tabs"), TEXT(""));
+            const EGV2SubmitUiInteractionResult ResultNeg1 = Coordinator.SubmitUiInteraction(InventoryBtnHandle, {});
+            TestEqual(TEXT("Unset active tab rejects inventory handle"), ResultNeg1, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+            const EGV2SubmitUiInteractionResult ResultNeg2 = Coordinator.SubmitUiInteraction(SkillsBtnHandle, {});
+            TestEqual(TEXT("Unset active tab rejects skills handle"), ResultNeg2, EGV2SubmitUiInteractionResult::StaleBindingHandle);
+        }
+
+        // 7. Full widget + FGV2UiInteractionEmitter + UGV2RuntimeSubsystem integration test
+        {
+            UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+            GameInstance->AddToRoot();
+            GameInstance->InitializeStandalone();
+            UWorld* TestWorld = GameInstance->GetWorld();
+
+            UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+            TestNotNull(TEXT("Runtime subsystem exists for tab container test"), Runtime);
+
+            if (Runtime != nullptr && TestWorld != nullptr)
+            {
+                UGV2TabContainerWidgetBase* IntegrationTabWidget = CreateWidget<UGV2TabContainerWidgetBase>(TestWorld, UGV2TabContainerWidgetBase::StaticClass());
+                TestNotNull(TEXT("Integration tab widget created"), IntegrationTabWidget);
+
+                if (IntegrationTabWidget != nullptr)
+                {
+                    IntegrationTabWidget->ConfiguredScreenFieldId = FName(TEXT("tabs"));
+                    IntegrationTabWidget->SetContainerPath(TEXT("location_content/main/tabs"));
+
+                    FGV2TabContainerViewModel TabModel;
+                    TabModel.DefaultTabKey = FName("inventory");
+                    {
+                        FGV2TabItemViewModel& T1 = TabModel.Tabs.AddDefaulted_GetRef();
+                        T1.Key = FName("inventory");
+                        T1.ScreenId = TEXT("core:screen.tab_inventory");
+
+                        FGV2TabItemViewModel& T2 = TabModel.Tabs.AddDefaulted_GetRef();
+                        T2.Key = FName("skills");
+                        T2.ScreenId = TEXT("core:screen.tab_skills");
+                    }
+
+                    TestTrue(TEXT("Apply tab model to integration widget succeeds"), IntegrationTabWidget->ApplyTabContainerModel(TabModel));
+                    TestEqual(TEXT("Runtime subsystem synced initial active tab (inventory)"), Runtime->GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
+
+                    // Switch tab via widget
+                    IntegrationTabWidget->SelectTabByKey(FName("skills"));
+                    TestEqual(TEXT("Runtime subsystem synced switched active tab (skills)"), Runtime->GetActiveTab(TEXT("location_content/main/tabs")), TEXT("skills"));
+
+                    // Switch back to inventory
+                    IntegrationTabWidget->SelectTabByKey(FName("inventory"));
+                    TestEqual(TEXT("Runtime subsystem synced switched active tab (inventory)"), Runtime->GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
+                }
+            }
+
+            GameInstance->Shutdown();
+            if (TestWorld != nullptr)
+            {
+                TestWorld->DestroyWorld(false);
+                GEngine->DestroyWorldContext(TestWorld);
+            }
+            GameInstance->RemoveFromRoot();
         }
     }
 

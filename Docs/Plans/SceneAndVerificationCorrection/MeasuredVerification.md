@@ -31,9 +31,9 @@ depends_on:
   - Done: вакуумный тест `LocationTransitionFlow` удалён как полностью дублирующий и уступающий `GV2.Runtime.UI.LocationScreenTransitionContract`, который выполняет реальный переход из Tavern в Market через сабмит команды `travel_city_market`, проверяет переиспользование инстанса UObject экрана (`Screen1 == Screen2`), проверяет обновление заголовка и фона сцены локации и отсутствие кнопки перехода в таверну на экране рынка.
   - Evidence: `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
-- [ ] **SVC-07 — Handle неактивной вкладки отклоняется**
+- [x] **SVC-07 — Handle неактивной вкладки отклоняется**
   - Binding records создаются для всех вкладок — тест подтверждает две записи для двух вкладок. Путь `FGV2UiInteractionEmitter::Submit` → `SubmitUiInteraction` принимает только handle; `ActiveTabKey` за пределами виджета вкладок не используется. Кнопка скрытой вкладки остаётся вызываемой.
-  - Done: Semantic Input принимает handle только активной вкладки и отклоняет остальные так же, как stale; переключение вкладки меняет множество интерактивных handle, не меняя ревизию документа; правило и его причина записаны в [Semantic Input](../../UI/SemanticInput.md); отрицательный случай покрыт.
+  - Done: Semantic Input принимает handle только активной вкладки и отклоняет остальные (включая случай несохранённой/пустой активной вкладки) как `StaleBindingHandle`; переключение вкладки через `UGV2TabContainerWidgetBase` синхронизирует состояние активной вкладки с рантаймом/координатором и меняет множество интерактивных handle, не меняя ревизию документа; правило и его причина зафиксированы в [Semantic Input](../../UI/SemanticInput.md); отрицательные и интеграционные случаи покрыты тестами.
   - Evidence: `Docs/UI/SemanticInput.md`, `Source/GV2/Private/UI/`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
 - [ ] **SVC-08 — Аварийные экраны: реализовать либо снять утверждение**

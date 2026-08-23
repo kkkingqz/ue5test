@@ -456,7 +456,7 @@ EGV2SubmitUiInteractionResult FGV2SessionCoordinator::SubmitUiInteraction(
             *Binding.NodeKeyPath[1],
             *Binding.NodeKeyPath[2]);
         const FString* ActiveTab = ActiveTabsByContainerPath.Find(ContainerPath);
-        if (ActiveTab != nullptr && *ActiveTab != Binding.NodeKeyPath[3])
+        if (ActiveTab == nullptr || *ActiveTab != Binding.NodeKeyPath[3])
         {
             return EGV2SubmitUiInteractionResult::StaleBindingHandle;
         }
@@ -568,6 +568,10 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
 
         for (FGV2UiBindingDefinition& Def : InstDefs)
         {
+            if (Def.NodeKeyPath.Num() >= 2 && Def.NodeKeyPath[0] == TEXT("route") && Def.NodeKeyPath[1] == TEXT("main"))
+            {
+                Def.NodeKeyPath.RemoveAt(0, 2);
+            }
             Def.NodeKeyPath.Insert(UTF8_TO_TCHAR(Inst.InstanceKey.c_str()), 0);
             Def.NodeKeyPath.Insert(UTF8_TO_TCHAR(Inst.Layer.c_str()), 0);
         }

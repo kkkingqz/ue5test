@@ -67,6 +67,15 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ScreenField")
     FName ConfiguredScreenFieldId;
 
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
+    FString ContainerPath;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Tabs")
+    void SetContainerPath(const FString& InPath) { ContainerPath = InPath; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
+    FString GetContainerPath() const { return ContainerPath; }
+
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
     FGV2TabContainerViewModel Model;

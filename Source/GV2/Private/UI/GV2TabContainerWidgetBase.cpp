@@ -1,6 +1,9 @@
 #include "UI/GV2TabContainerWidgetBase.h"
 
 #include "Components/PanelWidget.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "Runtime/GV2RuntimeSubsystem.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiTheme.h"
@@ -38,6 +41,7 @@ bool UGV2TabContainerWidgetBase::ApplyScreenField_Implementation(const FGV2Scree
     {
         return false;
     }
+    ConfiguredScreenFieldId = FieldValue.FieldId;
     return ApplyTabContainerModel(*FieldValue.TabContainerValue);
 }
 
@@ -191,6 +195,22 @@ bool UGV2TabContainerWidgetBase::ApplyTabContainerModel(const FGV2TabContainerVi
     OnTabSelectionUpdated(ActiveTabKey, ActiveTabIndex);
     OnTabChanged.Broadcast(ActiveTabKey, ActiveTabIndex);
 
+    // Sync active tab state with runtime coordinator
+    const FString ResolvedPath = !ContainerPath.IsEmpty()
+        ? ContainerPath
+        : (!ConfiguredScreenFieldId.IsNone() ? FString::Printf(TEXT("location_content/main/%s"), *ConfiguredScreenFieldId.ToString()) : FString());
+
+    if (!ResolvedPath.IsEmpty() && World != nullptr)
+    {
+        if (const UGameInstance* GI = World->GetGameInstance())
+        {
+            if (UGV2RuntimeSubsystem* Runtime = GI->GetSubsystem<UGV2RuntimeSubsystem>())
+            {
+                Runtime->SetActiveTab(ResolvedPath, ActiveTabKey.ToString());
+            }
+        }
+    }
+
     return true;
 }
 
@@ -232,6 +252,26 @@ bool UGV2TabContainerWidgetBase::SelectTabByKey(FName InTabKey)
     UpdateActiveTabDisplay();
     OnTabSelectionUpdated(ActiveTabKey, ActiveTabIndex);
     OnTabChanged.Broadcast(ActiveTabKey, ActiveTabIndex);
+
+    // Sync active tab state with runtime coordinator
+    const FString ResolvedPath = !ContainerPath.IsEmpty()
+        ? ContainerPath
+        : (!ConfiguredScreenFieldId.IsNone() ? FString::Printf(TEXT("location_content/main/%s"), *ConfiguredScreenFieldId.ToString()) : FString());
+
+    if (!ResolvedPath.IsEmpty())
+    {
+        if (const UWorld* World = GetWorld())
+        {
+            if (const UGameInstance* GI = World->GetGameInstance())
+            {
+                if (UGV2RuntimeSubsystem* Runtime = GI->GetSubsystem<UGV2RuntimeSubsystem>())
+                {
+                    Runtime->SetActiveTab(ResolvedPath, ActiveTabKey.ToString());
+                }
+            }
+        }
+    }
+
     return true;
 }
 
