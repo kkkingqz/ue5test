@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 5.9
+version: 6.0
 updated: 2026-08-23
 depends_on:
   - ../README.md
@@ -25,7 +25,7 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет.
+- [Universal UI Property Pipeline](UniversalUiPropertyPipeline/README.md) — замена schema-specific адаптеров универсальным property pipeline с data-driven схемами и фазами Prepare/Commit. UPP-01…32.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
