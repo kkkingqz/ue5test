@@ -805,6 +805,122 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
         }
     }
 
+    // 5. Location Scene Adapter (textsystem:schema.ui_field.location_scene.v1)
+    {
+        GV2RuntimeCore::FScreenRequest ValidReq;
+        ValidReq.ScreenId = "textsystem:screen.location";
+        GV2RuntimeCore::FScreenField SceneField;
+        SceneField.FieldId = "scene";
+        SceneField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
+        GV2RuntimeCore::FValue::FObject SceneObj;
+        SceneObj["background_tile_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.old_paper_tile_256"));
+        SceneObj["background_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.location.test_bg"));
+        GV2RuntimeCore::FValue::FObject CtxText;
+        CtxText["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.screen.test.description"));
+        SceneObj["context_text"] = GV2RuntimeCore::FValue(CtxText);
+
+        GV2RuntimeCore::FValue::FArray CharsArray;
+        GV2RuntimeCore::FValue::FObject Char1;
+        Char1["key"] = GV2RuntimeCore::FValue(std::string("core:resource.character.keeper"));
+        Char1["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.character.keeper"));
+        CharsArray.push_back(GV2RuntimeCore::FValue(Char1));
+        SceneObj["characters"] = GV2RuntimeCore::FValue(CharsArray);
+
+        SceneField.Value = GV2RuntimeCore::FValue(MoveTemp(SceneObj));
+        ValidReq.Fields.push_back(MoveTemp(SceneField));
+
+        TArray<FGV2UiBindingDefinition> Defs;
+        TestTrue(TEXT("Location scene prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
+        TestEqual(TEXT("Location scene creates 0 binding definitions"), Defs.Num(), 0);
+
+        TArray<FGV2ScreenFieldValue> BuiltFields;
+        TestTrue(TEXT("Location scene build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
+        TestEqual(TEXT("Built 1 location scene field"), BuiltFields.Num(), 1);
+        if (BuiltFields.Num() == 1)
+        {
+            TestEqual(TEXT("FieldId is scene"), BuiltFields[0].FieldId, FName(TEXT("scene")));
+            TestEqual(TEXT("SchemaId is location_scene.v1"), BuiltFields[0].SchemaId, FString(TEXT("textsystem:schema.ui_field.location_scene.v1")));
+            TestEqual(TEXT("Scene characters count is 1"), BuiltFields[0].LocationSceneValue.Characters.Num(), 1);
+            if (BuiltFields[0].LocationSceneValue.Characters.Num() == 1)
+            {
+                TestEqual(TEXT("Character key is keeper"), BuiltFields[0].LocationSceneValue.Characters[0].Key, FName(TEXT("core:resource.character.keeper")));
+                TestEqual(TEXT("Character resource_id is keeper"), BuiltFields[0].LocationSceneValue.Characters[0].ResourceId, FString(TEXT("core:resource.character.keeper")));
+            }
+        }
+
+        // Negative: duplicate character key
+        {
+            GV2RuntimeCore::FScreenRequest DupReq;
+            DupReq.ScreenId = "textsystem:screen.location";
+            GV2RuntimeCore::FScreenField BadField;
+            BadField.FieldId = "scene";
+            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
+            GV2RuntimeCore::FValue::FObject BadObj;
+            GV2RuntimeCore::FValue::FArray BadChars;
+            BadChars.push_back(GV2RuntimeCore::FValue(Char1));
+            BadChars.push_back(GV2RuntimeCore::FValue(Char1));
+            BadObj["characters"] = GV2RuntimeCore::FValue(BadChars);
+            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
+            DupReq.Fields.push_back(MoveTemp(BadField));
+            TArray<FGV2UiBindingDefinition> BadDefs;
+            TestFalse(TEXT("Duplicate character key rejected in Prepare"), Registry.PrepareBindingDefinitions(DupReq, BadDefs));
+        }
+
+        // Negative: missing character key
+        {
+            GV2RuntimeCore::FScreenRequest NoKeyReq;
+            NoKeyReq.ScreenId = "textsystem:screen.location";
+            GV2RuntimeCore::FScreenField BadField;
+            BadField.FieldId = "scene";
+            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
+            GV2RuntimeCore::FValue::FObject BadObj;
+            GV2RuntimeCore::FValue::FArray BadChars;
+            GV2RuntimeCore::FValue::FObject NoKeyChar;
+            NoKeyChar["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.character.keeper"));
+            BadChars.push_back(GV2RuntimeCore::FValue(NoKeyChar));
+            BadObj["characters"] = GV2RuntimeCore::FValue(BadChars);
+            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
+            NoKeyReq.Fields.push_back(MoveTemp(BadField));
+            TArray<FGV2UiBindingDefinition> BadDefs;
+            TestFalse(TEXT("Missing character key rejected in Prepare"), Registry.PrepareBindingDefinitions(NoKeyReq, BadDefs));
+        }
+
+        // Negative: invalid character resource_id format
+        {
+            GV2RuntimeCore::FScreenRequest BadResReq;
+            BadResReq.ScreenId = "textsystem:screen.location";
+            GV2RuntimeCore::FScreenField BadField;
+            BadField.FieldId = "scene";
+            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
+            GV2RuntimeCore::FValue::FObject BadObj;
+            GV2RuntimeCore::FValue::FArray BadChars;
+            GV2RuntimeCore::FValue::FObject BadResChar;
+            BadResChar["key"] = GV2RuntimeCore::FValue(std::string("char1"));
+            BadResChar["resource_id"] = GV2RuntimeCore::FValue(std::string("not_a_valid_stable_id"));
+            BadChars.push_back(GV2RuntimeCore::FValue(BadResChar));
+            BadObj["characters"] = GV2RuntimeCore::FValue(BadChars);
+            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
+            BadResReq.Fields.push_back(MoveTemp(BadField));
+            TArray<FGV2UiBindingDefinition> BadDefs;
+            TestFalse(TEXT("Invalid character resource_id rejected in Prepare"), Registry.PrepareBindingDefinitions(BadResReq, BadDefs));
+        }
+
+        // Negative: characters is not an array
+        {
+            GV2RuntimeCore::FScreenRequest NotArrayReq;
+            NotArrayReq.ScreenId = "textsystem:screen.location";
+            GV2RuntimeCore::FScreenField BadField;
+            BadField.FieldId = "scene";
+            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
+            GV2RuntimeCore::FValue::FObject BadObj;
+            BadObj["characters"] = GV2RuntimeCore::FValue(std::string("not_an_array"));
+            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
+            NotArrayReq.Fields.push_back(MoveTemp(BadField));
+            TArray<FGV2UiBindingDefinition> BadDefs;
+            TestFalse(TEXT("Non-array characters field rejected in Prepare"), Registry.PrepareBindingDefinitions(NotArrayReq, BadDefs));
+        }
+    }
+
     return true;
 }
 
@@ -1798,6 +1914,135 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             TestTrue(
                 TEXT("RH startup presents WBP_LocationScreen"),
                 LocationScreenClass != nullptr && Screen->IsA(LocationScreenClass));
+
+            // 1. Verify startup tavern scene has 1 character from Lua presentation
+            UGV2LocationSceneWidgetBase* SceneWidget = nullptr;
+            UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
+            if (Screen->WidgetTree != nullptr)
+            {
+                Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+                {
+                    if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(Widget))
+                    {
+                        SceneWidget = Scene;
+                    }
+                    else if (UGV2LocationCommandPanelWidgetBase* Cmd = Cast<UGV2LocationCommandPanelWidgetBase>(Widget))
+                    {
+                        CommandWidget = Cmd;
+                    }
+                });
+            }
+
+            TestNotNull(TEXT("LocationScreen contains SceneView component"), SceneWidget);
+            if (SceneWidget != nullptr)
+            {
+                FGV2ScreenFieldValue CapturedScene;
+                TestTrue(TEXT("Capture initial SceneView field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneWidget, CapturedScene));
+                TestEqual(TEXT("Initial tavern scene has 1 character"), CapturedScene.LocationSceneValue.Characters.Num(), 1);
+                if (CapturedScene.LocationSceneValue.Characters.Num() == 1)
+                {
+                    const FString ExpectedKeeperResId = TEXT("r") TEXT("h:resource.character.tavern_keeper");
+                    TestEqual(TEXT("Initial tavern character key matches"), CapturedScene.LocationSceneValue.Characters[0].Key, FName(*ExpectedKeeperResId));
+                    TestEqual(TEXT("Initial tavern character resource matches"), CapturedScene.LocationSceneValue.Characters[0].ResourceId, ExpectedKeeperResId);
+                }
+            }
+
+            // 2. Find travel button to market in CommandPanel and submit interaction
+            TestNotNull(TEXT("LocationScreen contains CommandPanel component"), CommandWidget);
+            if (CommandWidget != nullptr)
+            {
+                FGV2ScreenFieldValue CapturedCommands;
+                TestTrue(TEXT("Capture CommandPanel field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandWidget, CapturedCommands));
+                const FGV2ButtonViewModel* TravelMarketBtn = CapturedCommands.ButtonListValue.FindByPredicate(
+                    [](const FGV2ButtonViewModel& Btn) { return Btn.Key == FName(TEXT("travel_city_market")); });
+                TestNotNull(TEXT("Travel to market button found in tavern CommandPanel"), TravelMarketBtn);
+                if (TravelMarketBtn != nullptr)
+                {
+                    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelMarketBtn->Binding, {});
+                    TestEqual(TEXT("Travel to market interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+                }
+            }
+
+            // 3. Verify Market presentation has 0 characters
+            UGV2ScreenWidgetBase* MarketScreen = Runtime->GetActiveScreenInLayer(
+                UGV2GameShellWidgetBase::LayerLocationContent,
+                FName(TEXT("location")));
+            TestNotNull(TEXT("Market LocationScreen is presented"), MarketScreen);
+            if (MarketScreen != nullptr)
+            {
+                UGV2LocationSceneWidgetBase* MarketScene = nullptr;
+                UGV2LocationCommandPanelWidgetBase* MarketCommandsWidget = nullptr;
+                if (MarketScreen->WidgetTree != nullptr)
+                {
+                    MarketScreen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+                    {
+                        if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(Widget))
+                        {
+                            MarketScene = Scene;
+                        }
+                        else if (UGV2LocationCommandPanelWidgetBase* Cmd = Cast<UGV2LocationCommandPanelWidgetBase>(Widget))
+                        {
+                            MarketCommandsWidget = Cmd;
+                        }
+                    });
+                }
+                TestNotNull(TEXT("Market Screen contains SceneView component"), MarketScene);
+                if (MarketScene != nullptr)
+                {
+                    FGV2ScreenFieldValue MarketCaptured;
+                    TestTrue(TEXT("Capture Market SceneView field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(MarketScene, MarketCaptured));
+                    TestEqual(TEXT("Market scene has 0 characters"), MarketCaptured.LocationSceneValue.Characters.Num(), 0);
+                }
+
+                // 4. Travel back to tavern
+                TestNotNull(TEXT("Market Screen contains CommandPanel component"), MarketCommandsWidget);
+                if (MarketCommandsWidget != nullptr)
+                {
+                    FGV2ScreenFieldValue MarketCmds;
+                    TestTrue(TEXT("Capture Market CommandPanel field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(MarketCommandsWidget, MarketCmds));
+                    const FGV2ButtonViewModel* TravelTavernBtn = MarketCmds.ButtonListValue.FindByPredicate(
+                        [](const FGV2ButtonViewModel& Btn) { return Btn.Key == FName(TEXT("travel_city_tavern")); });
+                    TestNotNull(TEXT("Travel to tavern button found in market CommandPanel"), TravelTavernBtn);
+                    if (TravelTavernBtn != nullptr)
+                    {
+                        const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelTavernBtn->Binding, {});
+                        TestEqual(TEXT("Travel back to tavern interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+                    }
+                }
+            }
+
+            // 5. Verify returned Tavern has 1 character restored
+            UGV2ScreenWidgetBase* TavernScreen2 = Runtime->GetActiveScreenInLayer(
+                UGV2GameShellWidgetBase::LayerLocationContent,
+                FName(TEXT("location")));
+            TestNotNull(TEXT("Returned Tavern LocationScreen is presented"), TavernScreen2);
+            if (TavernScreen2 != nullptr)
+            {
+                UGV2LocationSceneWidgetBase* TavernScene2 = nullptr;
+                if (TavernScreen2->WidgetTree != nullptr)
+                {
+                    TavernScreen2->WidgetTree->ForEachWidget([&](UWidget* Widget)
+                    {
+                        if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(Widget))
+                        {
+                            TavernScene2 = Scene;
+                        }
+                    });
+                }
+                TestNotNull(TEXT("Returned Tavern Screen contains SceneView component"), TavernScene2);
+                if (TavernScene2 != nullptr)
+                {
+                    FGV2ScreenFieldValue TavernCaptured2;
+                    TestTrue(TEXT("Capture Returned Tavern SceneView field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(TavernScene2, TavernCaptured2));
+                    TestEqual(TEXT("Returned tavern scene has 1 character"), TavernCaptured2.LocationSceneValue.Characters.Num(), 1);
+                    if (TavernCaptured2.LocationSceneValue.Characters.Num() == 1)
+                    {
+                        const FString ExpectedKeeperResId = TEXT("r") TEXT("h:resource.character.tavern_keeper");
+                        TestEqual(TEXT("Returned tavern character key matches"), TavernCaptured2.LocationSceneValue.Characters[0].Key, FName(*ExpectedKeeperResId));
+                        TestEqual(TEXT("Returned tavern character resource matches"), TavernCaptured2.LocationSceneValue.Characters[0].ResourceId, ExpectedKeeperResId);
+                    }
+                }
+            }
         }
         Runtime->EndSession();
     }
@@ -4213,7 +4458,7 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("PlayerStatus meters empty after reset"), Captured.LocationPlayerStatusValue.Meters.Num(), 0);
         }
 
-        // 3. SceneView validation & semantics (0/1/N characters)
+        // 3. SceneView validation & semantics (0/1/N characters, rollback, reuse)
         {
             UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
             UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
@@ -4222,29 +4467,68 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("wrong_field"), {});
             TestFalse(TEXT("SceneView rejects mismatched FieldId"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, WrongField));
 
-            // Multiple characters rejected without repeater
-            FGV2LocationSceneViewModel MultiSceneModel;
             FGV2LocationCharacterEntry Char1;
             Char1.Key = FName(TEXT("aria"));
             Char1.ResourceId = TEXT("char_a");
             FGV2LocationCharacterEntry Char2;
             Char2.Key = FName(TEXT("keeper"));
             Char2.ResourceId = TEXT("char_b");
-            MultiSceneModel.Characters = { Char1, Char2 };
 
-            FGV2ScreenFieldValue MultiScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), MultiSceneModel);
-            TestFalse(TEXT("SceneView rejects multiple characters without repeater"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, MultiScene));
-
-            // Single character accepted with single character slot
-            FGV2LocationSceneViewModel SingleSceneModel;
-            SingleSceneModel.Characters = { Char1 };
-            FGV2ScreenFieldValue ValidScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SingleSceneModel);
-            TestTrue(TEXT("SceneView accepts single character field"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, ValidScene));
-
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, ValidScene);
+            // 0 characters (valid)
+            FGV2LocationSceneViewModel ZeroSceneModel;
+            FGV2ScreenFieldValue ZeroScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ZeroSceneModel);
+            TestTrue(TEXT("SceneView accepts 0 characters"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, ZeroScene));
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, ZeroScene);
             FGV2ScreenFieldValue Captured;
             IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-            TestEqual(TEXT("SceneView character count preserved"), Captured.LocationSceneValue.Characters.Num(), 1);
+            TestEqual(TEXT("SceneView has 0 characters after apply"), Captured.LocationSceneValue.Characters.Num(), 0);
+
+            // 1 character (valid)
+            FGV2LocationSceneViewModel SingleSceneModel;
+            SingleSceneModel.Characters = { Char1 };
+            FGV2ScreenFieldValue SingleScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SingleSceneModel);
+            TestTrue(TEXT("SceneView accepts single character field"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, SingleScene));
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SingleScene);
+            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
+            TestEqual(TEXT("SceneView character count preserved for 1 character"), Captured.LocationSceneValue.Characters.Num(), 1);
+
+            // N characters (valid with repeater)
+            FGV2LocationSceneViewModel MultiSceneModel;
+            MultiSceneModel.Characters = { Char1, Char2 };
+            FGV2ScreenFieldValue MultiScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), MultiSceneModel);
+            TestTrue(TEXT("SceneView accepts multiple characters with repeater"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, MultiScene));
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, MultiScene);
+            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
+            TestEqual(TEXT("SceneView character count preserved for N characters"), Captured.LocationSceneValue.Characters.Num(), 2);
+
+            // Re-apply with updated resource id (instance reuse)
+            FGV2LocationCharacterEntry Char1Updated = Char1;
+            Char1Updated.ResourceId = TEXT("char_a_updated");
+            FGV2LocationSceneViewModel ReuseModel;
+            ReuseModel.Characters = { Char1Updated, Char2 };
+            FGV2ScreenFieldValue ReuseScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ReuseModel);
+            TestTrue(TEXT("SceneView accepts character update with key reuse"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, ReuseScene));
+            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
+            TestEqual(TEXT("SceneView preserves 2 characters with updated resource"), Captured.LocationSceneValue.Characters.Num(), 2);
+            if (Captured.LocationSceneValue.Characters.Num() == 2)
+            {
+                TestEqual(TEXT("Updated resource id applied"), Captured.LocationSceneValue.Characters[0].ResourceId, FString(TEXT("char_a_updated")));
+            }
+
+            // Negative: duplicate key rejected
+            FGV2LocationSceneViewModel DupSceneModel;
+            DupSceneModel.Characters = { Char1, Char1 };
+            FGV2ScreenFieldValue DupScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), DupSceneModel);
+            TestFalse(TEXT("SceneView rejects duplicate character key"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, DupScene));
+
+            // Negative: empty / None key rejected
+            FGV2LocationCharacterEntry BadChar;
+            BadChar.Key = NAME_None;
+            BadChar.ResourceId = TEXT("char_bad");
+            FGV2LocationSceneViewModel BadKeyModel;
+            BadKeyModel.Characters = { BadChar };
+            FGV2ScreenFieldValue BadKeyScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), BadKeyModel);
+            TestFalse(TEXT("SceneView rejects None character key"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, BadKeyScene));
 
             // Optional missing character image uses placeholder without failing
             FGV2LocationSceneViewModel MissingCharScene;

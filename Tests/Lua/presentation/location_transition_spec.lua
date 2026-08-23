@@ -58,6 +58,9 @@ return {
             assert(fields_tavern.top_bar.value.location.text_id == "rh:text.location.tavern.title")
             assert(fields_tavern.scene ~= nil)
             assert(fields_tavern.scene.value.context_text.text_id == "rh:text.screen.tavern.description")
+            assert(type(fields_tavern.scene.value.characters) == "table")
+            assert(#fields_tavern.scene.value.characters == 1)
+            assert(fields_tavern.scene.value.characters[1].resource_id == "rh:resource.character.tavern_keeper")
 
             -- Verify Tavern command buttons
             local btn_wait = find_button(fields_tavern.commands, "wait_day")
@@ -87,6 +90,8 @@ return {
             local fields_market = state_market.route.fields
             assert(fields_market.top_bar.value.location.text_id == "rh:text.location.market.title", "top_bar location must be market")
             assert(fields_market.scene.value.context_text.text_id == "rh:text.screen.market.description", "scene description must be market")
+            assert(type(fields_market.scene.value.characters) == "table")
+            assert(#fields_market.scene.value.characters == 0, "market must have 0 characters")
 
             -- Verify Market commands
             local btn_buy_sword = find_button(fields_market.commands, "buy_sword")
@@ -112,6 +117,9 @@ return {
             assert(state_tavern2.route.instance_key == "location")
             assert(state_tavern2.route.fields.top_bar.value.location.text_id == "rh:text.location.tavern.title")
             assert(state_tavern2.route.fields.scene.value.context_text.text_id == "rh:text.screen.tavern.description")
+            assert(type(state_tavern2.route.fields.scene.value.characters) == "table")
+            assert(#state_tavern2.route.fields.scene.value.characters == 1, "returned tavern must have 1 character")
+            assert(state_tavern2.route.fields.scene.value.characters[1].resource_id == "rh:resource.character.tavern_keeper")
         end)
     end,
 }
