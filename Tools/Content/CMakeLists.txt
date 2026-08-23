@@ -236,6 +236,12 @@ if(BUILD_TESTING)
         add_test(NAME gv2_content_authoring_tools_python
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_authoring_tools.py" "$<TARGET_FILE:gv2-content>" "${GV2_PCC_FIXTURE_ROOT}/valid/core"
         )
+        add_test(NAME gv2_content_pseudolocale_contract
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pseudolocale.py" "${PROJECT_SOURCE_DIR}/GameData/rh" --output-dir "${CMAKE_CURRENT_BINARY_DIR}"
+        )
+        add_test(NAME gv2_content_pseudolocale_negative_contract
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pseudolocale.py" --self-test
+        )
     endif()
 
     set_tests_properties(
