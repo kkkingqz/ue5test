@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: draft
-version: 1.3
-updated: 2026-08-20
+version: 1.4
+updated: 2026-08-23
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -49,6 +49,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - C++ generic screen layer не содержит switch/branch по concrete `screen_id`.
 - `field_id` unique внутри Screen Template и имеет lowercase `snake_case`.
 - Каждый configured element объявляет non-empty Stable ID `schema_id` и required/optional policy.
+- Схемы всех Screen Fields и всех их вложенных объектов являются **замкнутыми (closed schemas)**. Любой не объявленный в схеме ключ на любом уровне вложенности (значение поля, элемент коллекции, `TextSpec`, `Binding`) является невалидным и приводит к типизированному отказу построения и применения поля.
 - Lua публикует полный набор полей текущего screen instance, а не mutation operations.
 - Blueprint не интерпретирует `command_id`, не вызывает Lua function и не меняет canonical gameplay-state.
 - Добавление нового Dynamic Screen Element schema требует concrete scenario и обновления этого или owning component contract.
@@ -192,13 +193,39 @@ UE apply использует prepared typed `FGV2ScreenFieldValue`; portable bo
 | `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | resolved `FGV2ModalViewModel` с `title`, `content`, кнопками и backdrop close binding |
 | `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | resolved `FGV2TabContainerViewModel` с `default_tab_key`, упорядоченным списком вкладок `{key, title: TextSpec, screen_id, fields}` |
 | `textsystem:schema.ui_field.location_top_bar.v1` | LocationScreen TopBar | required `day`, `location`, `primary_resource` as `TextSpec` |
-| `textsystem:schema.ui_field.location_player_status.v1` | LocationScreen PlayerStatusPanel | required `name: TextSpec`, optional portrait resource |
+| `textsystem:schema.ui_field.location_player_status.v1` | LocationScreen PlayerStatusPanel | required `name: TextSpec`, optional portrait resource, `meters`, `item_icon_resource_ids`, `effect_icon_resource_ids` |
 | `textsystem:schema.ui_field.location_scene.v1` | LocationScreen SceneView | optional tile/fixed-aspect background resources, context `TextSpec` и коллекция `characters` |
-| `textsystem:schema.ui_field.location_commands.v1` | LocationScreen CommandPanel | keyed `items` with `TextSpec` and opaque semantic bindings |
 
 Каждый registry adapter выполняет две deterministic фазы. `PrepareBindings` валидирует schema-specific value и добавляет binding definitions в порядке обхода поля. После единой подготовки candidate binding set `BuildField` потребляет ровно соответствующие opaque handles и создаёт typed field value. Registry не публикует bindings и не меняет active Screen; атомарная публикация остаётся ответственностью Session Coordinator.
 
 Production Lua document обязан использовать `TextSpec`; localization adapter создаёт `FGV2TextViewModel` до apply. Button model содержит только resolved display text, semantic style token и opaque binding handle, а не Lua callback.
+
+### LocationTopBar Field Contract (`textsystem:schema.ui_field.location_top_bar.v1`)
+
+Схема верхней информационной панели экрана локации отображает статус времени/дня, текущую локацию и основной ресурс игрока:
+
+- `day` (required `TextSpec`): спецификация локализованного текста для отображения текущего дня/времени суток.
+- `location` (required `TextSpec`): спецификация локализованного текста названия текущей локации.
+- `primary_resource` (required `TextSpec`): спецификация локализованного текста для отображения запаса ключевого ресурса/валюты.
+
+Схема является замкнутой: любые лишние ключи в значении поля отклоняются.
+
+### LocationPlayerStatus Field Contract (`textsystem:schema.ui_field.location_player_status.v1`)
+
+Схема статусной панели игрока экрана локации отображает имя, портрет, шкалы состояния, а также слоты предметов и активных эффектов:
+
+- `name` (required `TextSpec`): спецификация локализованного текста имени персонажа игрока.
+- `portrait_resource_id` (optional string): Stable ID ресурса портрета игрока (`core:resource.*` или `<game>:resource.*`). При отсутствии или пустой строке используется fallback-заглушка `"core:resource.ui.missing_portrait"`.
+- `meters` (optional array of objects): упорядоченная коллекция шкал состояния персонажа (HP, выносливость, мана и др.).
+  Каждый элемент массива `meters` обязан быть объектом со структурой:
+  - `key` (required non-empty string / `FName`): уникальный в пределах массива идентификатор шкалы (например, `"hp"`, `"stamina"`); дубликаты и пустые строки отклоняются;
+  - `percent` (optional number `0.0..1.0`): уровень заполнения шкалы (значение clamp-ится в диапазоне `[0.0, 1.0]`);
+  - `label` (optional `TextSpec`): спецификация текста, отображаемого поверх или рядом со шкалой.
+  Элемент `meters` является замкнутым: посторонние ключи отклоняются.
+- `item_icon_resource_ids` (optional array of strings): список Stable ID ресурсов иконок экипированных/имеющихся предметов. Ключи виджетов в динамическом репитере слотов выводятся по стабильным индексам слотов (`item_0`, `item_1`, ...), гарантируя стабильность идентичности виджета при смене иконки и допуская одинаковые иконки в разных слотах.
+- `effect_icon_resource_ids` (optional array of strings): список Stable ID ресурсов иконок активных эффектов/баффов/дебаффов. Ключи виджетов в репитере выводятся по стабильным индексам слотов (`effect_0`, `effect_1`, ...).
+
+Схема поля и элементы `meters` являются замкнутыми: любые лишние ключи на любом уровне вложенности приводят к типизированному отказу построения и применения поля.
 
 ### LocationScene Field Contract (`textsystem:schema.ui_field.location_scene.v1`)
 
@@ -211,8 +238,21 @@ Production Lua document обязан использовать `TextSpec`; locali
   Каждый элемент массива `characters` обязан быть объектом со структурой:
   - `key` (required non-empty string / `FName`): уникальный в пределах массива идентификатор слота персонажа; пустые строки и дубликаты `key` отклоняются на фазах `PrepareLocationScene` / `BuildLocationScene`;
   - `resource_id` (optional string): Stable ID ресурса портрета/спрайта персонажа (например, `"rh:resource.character.tavern_keeper"`). Если ресурс не задан, используется системная заглушка `"textsystem:resource.ui.missing_character"`.
+  Элемент `characters` является замкнутым: посторонние ключи отклоняются.
 
-Несоответствие контракта поля (включая невалидный тип элементов `characters`, дублирование ключей или передачу плоского массива строк) приводит к типизированному отказу применения поля (`CanApplyScreenField` возвращает `false`), предотвращая повреждение presentation state.
+Несоответствие контракта поля (включая невалидный тип элементов `characters`, посторонние ключи, дублирование ключей или передачу плоского массива строк) приводит к типизированному отказу применения поля (`CanApplyScreenField` возвращает `false`), предотвращая повреждение presentation state.
+
+### Location Commands / ButtonList Field Contract (`core:schema.ui_field.button_list.v2`)
+
+Схема панели команд экрана локации использует стандартный контракт `button_list.v2`:
+
+- `items` (required array of objects): упорядоченный список доступных команд/кнопок навигации.
+  Каждый элемент массива `items` обязан быть объектом со структурой:
+  - `key` (required non-empty string / `FName`): уникальный в пределах массива идентификатор кнопки/команды;
+  - `text` (required `TextSpec`): спецификация локализованного текста кнопки;
+  - `binding` (required `Binding` object): объект привязки семантической команды со структурой `{ command_id: string, args?: object }`.
+
+Схема поля и элементы `items` являются замкнутыми: посторонние ключи отклоняются.
 
 ### Designer Authoring Layer (ADR-0027)
 

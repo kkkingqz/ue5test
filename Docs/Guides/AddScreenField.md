@@ -1,7 +1,7 @@
 ---
 title: Add Screen Field
 status: informative
-version: 1.1
+version: 1.2
 updated: 2026-08-23
 depends_on:
   - README.md
@@ -20,11 +20,11 @@ depends_on:
 
 1. Назовите минимум один concrete Screen consumer. Новый schema без consumer-а не добавляется.
 2. Выберите versioned Stable ID `core:schema.ui_field.<name>.vN` и зафиксируйте portable value, required fields, limits, stable keys и failures в `ScreenTemplates.md`/owning component contract.
-3. Добавьте trusted conversion в `FGV2ScreenFieldAdapterRegistry`: `PrepareBindings` только валидирует и собирает ordered binding definitions; `BuildField` потребляет prepared opaque handles и создаёт typed value.
+3. Добавьте trusted conversion в `FGV2ScreenFieldAdapterRegistry`: `PrepareBindings` только валидирует и собирает ordered binding definitions; `BuildField` потребляет prepared opaque handles и создаёт typed value. Обязательно вызовите `CheckClosedKeys` для значения поля и каждого вложенного объекта.
 4. Добавьте/расширьте native `IGV2DynamicScreenElement` adapter. Он применяет только prepared value и умеет rollback/reset; gameplay authority не получает.
 5. Создайте или измените `WBP_*` только через `unreal-mcp`. После изменения compile и save asset, проверьте native parent, `BindWidget`, schema descriptor и загрузку.
 6. Добавьте schema в Screen Template consumer и Lua fixture полного field envelope.
-7. Покройте valid apply, malformed value, unknown/mismatched schema, missing required field, binding failure, rollback и повторное применение. Обновите test, фиксирующий полный набор registry schemas.
+7. Покройте valid apply, malformed value, unknown/mismatched schema, missing required field, binding failure, rollback и повторное применение. **Обязательно добавьте негативные тесты на лишний ключ (closed schema)** на уровне корня значения поля и каждого вложенного объекта (`meters`, `characters`, `items`, `spans`, `TextSpec`, `Binding`). Обновите test, фиксирующий полный набор registry schemas.
 
 ## Сверьте границу в обе стороны
 
