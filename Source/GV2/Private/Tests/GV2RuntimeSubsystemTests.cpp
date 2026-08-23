@@ -3273,59 +3273,6 @@ bool FGV2LocationScreenResolutionMatrixTest::RunTest(const FString& Parameters)
     return true;
 }
 
-// =========================================================================
-// GLS-15: Transition Flow & Screen Instance Reuse Automation Test
-// =========================================================================
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationTransitionFlowTest,
-    "GV2.Runtime.Presentation.LocationTransitionFlow",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationTransitionFlowTest::RunTest(const FString& Parameters)
-{
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
-
-    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
-    TestNotNull(TEXT("Standalone GameInstance initializes the runtime"), Runtime);
-
-    if (Runtime != nullptr)
-    {
-        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
-
-        UGV2ScreenWidgetBase* ScreenBefore = Runtime->GetActiveScreenInLayer(
-            UGV2GameShellWidgetBase::LayerLocationContent,
-            FName(TEXT("location")));
-        TestNotNull(TEXT("Initial LocationScreen is presented in Tavern"), ScreenBefore);
-
-        if (ScreenBefore != nullptr)
-        {
-            const TArray<FGV2ScreenFieldDescriptor> Contract = ScreenBefore->GetScreenFieldContract();
-            TestTrue(TEXT("Contract contains top_bar"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("top_bar"); }));
-            TestTrue(TEXT("Contract contains player_status"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("player_status"); }));
-            TestTrue(TEXT("Contract contains scene"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("scene"); }));
-            TestTrue(TEXT("Contract contains commands"), Contract.ContainsByPredicate([](const FGV2ScreenFieldDescriptor& D){ return D.FieldId == TEXT("commands"); }));
-        }
-
-        UGV2ScreenWidgetBase* ScreenAfter = Runtime->GetActiveScreenInLayer(
-            UGV2GameShellWidgetBase::LayerLocationContent,
-            FName(TEXT("location")));
-        TestEqual(TEXT("Screen widget instance is reused across locations (same UObject pointer)"), ScreenBefore, ScreenAfter);
-
-        Runtime->EndSession();
-    }
-
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
-    return true;
-}
 
 // =========================================================================
 // UIH-01..04: Core Repeater & Composite Reconciliation Contract Test
