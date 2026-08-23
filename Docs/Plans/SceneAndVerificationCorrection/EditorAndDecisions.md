@@ -34,7 +34,7 @@ depends_on:
   - Evidence: `Docs/ADR/`, `Docs/ADR/README.md`.
 
 - [ ] **SVC-12 — Закрытие проверки**
-  - Зависимости: SVC-01…11 и завершение [ToolingAndWidgetHygiene](../ToolingAndWidgetHygiene/README.md).
+  - Зависимости: SVC-01…11 и завершение [ToolingAndWidgetHygiene](../Archive/ToolingAndWidgetHygiene.md) (архивирован).
   - Единственная зависимость между двумя планами. Часть незакрытых пунктов DoD `CriticalCorrectiveHardening` устраняется здесь, часть — соседним планом, поэтому подтвердить его можно только после обоих.
   - Done: итоговый DoD `CriticalCorrectiveHardening` подтверждён по пунктам либо его неверные строки исправлены по факту, как это было сделано для `RHActorsSimplification`; утверждение «экран практически проверяет базовый набор» либо выражено проверкой, либо снято; завершённые планы перенесены в архив по действующей процедуре; закрытые findings сняты из [AuditFindings](../../Status/AuditFindings.md), оставшиеся снабжены причиной, по которой остаются.
   - Evidence: `Docs/Plans/Archive/`, `Docs/Status/AuditFindings.md`.

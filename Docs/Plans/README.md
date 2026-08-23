@@ -26,7 +26,6 @@ depends_on:
 ## Активные планы
 
 - [SceneAndVerificationCorrection](SceneAndVerificationCorrection/README.md) — выполняется: исправления через границы слоёв и построение недостающих средств измерения: персонаж сцены, матрица разрешений, вкладки, аварийные экраны.
-- [ToolingAndWidgetHygiene](ToolingAndWidgetHygiene/README.md) — выполняется: незащищённые правила получают гейты; локальные дефекты раскрывающегося списка и пакета-образца.
 - [CriticalCorrectiveHardening](CriticalCorrectiveHardening/README.md) — завершён, готов к архивации: исправление атомарности репитеров, композитов и единого источника ScalePolicy.
 - [LocationScreen](LocationScreen/README.md) — завершён, готов к архивации: первый игровой экран `textsystem` из четырёх композитов, наполняемый определением локации и текущим состоянием; интеграционная проверка базового набора UI.
 - [UiFoundationHardening](UiFoundationHardening/README.md) — завершён, готов к архивации: устранение расхождений между Core UI contract и фактической реализацией (Core Repeater, DPI text path, single graphics scale).

@@ -7,7 +7,7 @@ depends_on:
   - ../../Status/AuditFindings.md
   - ../../UI/ScreenTemplates.md
   - ../../UI/UIDocumentAndReconciliation.md
-  - ../ToolingAndWidgetHygiene/README.md
+  - ../Archive/ToolingAndWidgetHygiene.md
 decisions:
   - ../../ADR/0017-centralized-ui-presentation-paths.md
   - ../../ADR/0035-ui-foundation-and-composition.md
@@ -23,7 +23,7 @@ decisions:
 
 Устранить findings, затрагивающие **несколько слоёв сразу** или требующие построения средства измерения там, где его нет.
 
-Это отделено от [второго плана](../ToolingAndWidgetHygiene/README.md) не по важности, а по характеру работы: здесь почти каждая задача пересекает границу Lua → C++ → ассет либо требует понимания раскладки Slate.
+Это отделено от [второго плана](../Archive/ToolingAndWidgetHygiene.md) не по важности, а по характеру работы: здесь почти каждая задача пересекает границу Lua → C++ → ассет либо требует понимания раскладки Slate.
 
 ## Состояние на входе
 
@@ -52,8 +52,8 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Scene Character](SceneCharacter.md): персонаж доходит от контента до экрана. SVC-01…04.
-- [ ] M2 — [Measured Verification](MeasuredVerification.md): проверки измеряют заявленное. SVC-05…09.
+- [x] M1 — [Scene Character](SceneCharacter.md): персонаж доходит от контента до экрана. SVC-01…04.
+- [x] M2 — [Measured Verification](MeasuredVerification.md): проверки измеряют заявленное. SVC-05…09.
 - [ ] M3 — [Editor and Decisions](EditorAndDecisions.md): канонический разбор ID, инструментовка, два решения, закрытие. SVC-10…12.
 
 ## Критический путь
@@ -68,7 +68,7 @@ M2, M3 независимы от M1 и друг от друга
 
 1. Порядок задач M1 не меняется: контракт, ассет, граница, тест.
 2. Ассеты меняются только через `unreal-mcp`, с последующими compile, save и прогоном automation.
-3. Ни одна задача не редактирует файлы, закреплённые за [ToolingAndWidgetHygiene](../ToolingAndWidgetHygiene/README.md): `Tools/`, корневой `CMakeLists.txt`, `GV2DropdownSelectWidgetBase.*`, `GameData/sample/`, новые файлы тестов типографики.
+3. Ни одна задача не редактирует файлы, закреплённые за [ToolingAndWidgetHygiene](../Archive/ToolingAndWidgetHygiene.md): `Tools/`, корневой `CMakeLists.txt`, `GV2DropdownSelectWidgetBase.*`, `GameData/sample/`, новые файлы тестов типографики.
 4. Правки в `GV2RuntimeSubsystemTests.cpp` принадлежат только этому плану.
 5. Каждое исправленное утверждение получает проверку на **отрицательный** случай.
 6. Закрытый finding снимается из [AuditFindings](../../Status/AuditFindings.md) тем же change set.
