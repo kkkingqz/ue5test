@@ -4335,7 +4335,7 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
                 const bool bAppliedNineSlice = ImageWidget->ApplyImageResource(TEXT("core:resource.surface.test_panel"), Error);
                 TestTrue(TEXT("CCF-15: NineSlice applies nine-slice resource"), bAppliedNineSlice);
                 TestEqual(TEXT("CCF-15: NineSlice brush DrawAs is Box"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Box);
-                TestEqual(TEXT("CCF-15: NineSlice brush Margin Left is 8"), ImageWidget->GetImageBrush().Margin.Left, 8.0f);
+                TestEqual(TEXT("CCF-15: NineSlice brush Margin Left is normalized 0.125"), ImageWidget->GetImageBrush().Margin.Left, 0.125f);
 
                 // CCF-15: 5. Failure atomicity: Incompatible resource leaves previous brush 100% intact
                 const FSlateBrush BaselineBrush = ImageWidget->GetImageBrush();

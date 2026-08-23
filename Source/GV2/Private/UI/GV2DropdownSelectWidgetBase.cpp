@@ -116,7 +116,7 @@ bool UGV2DropdownSelectWidgetBase::CanApplyDropdownModel(
         || PopupBorder == nullptr || PopupSizeBox == nullptr
         || ResolvedOptionClass == nullptr)
     {
-        UE_LOG(LogGV2DropdownSelectWidget, Error,
+        UE_LOG(LogGV2DropdownSelectWidget, Warning,
             TEXT("CanApplyDropdownModel rejected: missing bound widgets or OptionWidgetClass"));
         return false;
     }
@@ -135,13 +135,13 @@ bool UGV2DropdownSelectWidgetBase::CanApplyDropdownModel(
     {
         if (Option.Key.IsNone() || Keys.Contains(Option.Key))
         {
-            UE_LOG(LogGV2DropdownSelectWidget, Error,
+            UE_LOG(LogGV2DropdownSelectWidget, Warning,
                 TEXT("CanApplyDropdownModel rejected: invalid or duplicate key"));
             return false;
         }
         if (Option.Key == ReservedHeaderKey)
         {
-            UE_LOG(LogGV2DropdownSelectWidget, Error,
+            UE_LOG(LogGV2DropdownSelectWidget, Warning,
                 TEXT("CanApplyDropdownModel rejected: option uses reserved header key 'dropdown_header'"));
             return false;
         }
