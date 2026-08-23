@@ -170,9 +170,15 @@ TSubclassOf<UGV2ButtonWidgetBase> UGV2DropdownSelectWidgetBase::ResolveOptionWid
     }
     const UGV2DropdownSelectWidgetBase* ClassDefault =
         GetClass()->GetDefaultObject<UGV2DropdownSelectWidgetBase>();
-    return ClassDefault != nullptr && ClassDefault != this
-        ? ClassDefault->OptionWidgetClass
-        : nullptr;
+    if (ClassDefault != nullptr && ClassDefault != this && ClassDefault->OptionWidgetClass != nullptr)
+    {
+        return ClassDefault->OptionWidgetClass;
+    }
+    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
+    {
+        return Found;
+    }
+    return LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
 }
 
 void UGV2DropdownSelectWidgetBase::HandleHeaderClicked()

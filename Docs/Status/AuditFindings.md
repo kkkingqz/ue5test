@@ -387,11 +387,9 @@ character_resource_ids = scene_data.character_resource_id and { … } or { "text
 - `UiFoundationHardening`: «Item/effect/character/meter collections используют Core Repeater» — для персонажей путь никогда не достигается;
 - `CriticalCorrectiveHardening`: «Scene character collection имеет только Repeater rendering path» — истинно, но бессодержательно.
 
-**LOC-AF-05. Хост репитера персонажей не привязан в ассете.** В `WBP_SceneView` свойства `CharacterRepeater` и `CharacterContainer` объявлены как `BindWidgetOptional` и **не связаны ни с одним виджетом** — оба возвращают `None`. В дереве присутствует только одиночный `Character`, который производственный код лишь сворачивает.
+**LOC-AF-05. Хост репитера персонажей не привязан в ассете.** *(Закрыто задачей SVC-02)*: В `WBP_SceneView` привязан `WrapBox CharacterContainer` (`bIsVariable = true`), обеспечивающий хостинг коллекции персонажей через `InternalCharacterRepeater`. Устаревший одиночный `Character` удалён.
 
-Следствие: даже после исправления LOC-AF-04 персонаж не появится — `HasUsableCharacterRepeaterHost()` вернёт false, и `CanApplyScreenField` отклонит модель сцены с персонажами, из-за чего перестанет применяться **весь экран**.
-
-**LOC-AF-06. Слот персонажа не привязан к нижнему краю.** `OverlaySlot_2` имеет `HAlign_Fill` и `VAlign_Fill`. Утверждение DoD «персонаж вписан и привязан к нижнему краю» выполнено наполовину: вписывание обеспечено политикой `PreserveAspect`, привязка к низу отсутствует.
+**LOC-AF-06. Слот персонажа не привязан к нижнему краю.** *(Закрыто задачей SVC-02)*: Слот `CharacterContainer` в `Overlay_0` настроен на `VerticalAlignment: VAlign_Bottom` и `HorizontalAlignment: HAlign_Fill`, обеспечивая привязку к нижнему краю сцены при масштабировании `PreserveAspect`.
 
 **LOC-AF-07. Контракт поля сцены не упоминает персонажей.** *(Закрыто задачей SVC-01)*: В [Screen Templates](../UI/ScreenTemplates.md) зафиксирован полный нормативный контракт схемы `textsystem:schema.ui_field.location_scene.v1`, включая структуру коллекции `characters` (`key`, `resource_id`), требование уникальности ключей и правила отказа при несоответствии формы.
 
