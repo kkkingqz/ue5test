@@ -13,7 +13,7 @@ date: 2026-08-23
 
 `presentation_source.lua` хранит единственную `registered_source` функцию: `register_source(fn)` отклоняет повторную регистрацию (`PresentationSourceDuplicateRegistration`). После каждого успешно закоммиченного командой изменения рантайм вызывает `game.presentation.resolve()`, который вызывает эту единственную функцию и публикует построенный ею route.
 
-Предыдущее ревью оставляло это как есть с оговоркой «до ADR по UI document reconciliation». Реконсиляция со слоями с тех пор реализована: `FGV2LayeredUiReconciler`, `UGV2GameShellWidgetBase`, шесть слоёв (`background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`), маршрут с независимыми оверлеями и модалками в одном документе. Условие пересмотра из старого решения формально наступило ([EXT-AF-05](../Status/AuditFindings.md)).
+Предыдущее ревью оставляло это как есть с оговоркой «до ADR по UI document reconciliation». Реконсиляция со слоями с тех пор реализована: `FGV2LayeredUiReconciler`, `UGV2GameShellWidgetBase`, шесть слоёв (`background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`), маршрут с независимыми оверлеями и модалками в одном документе. Условие пересмотра из старого решения формально наступило ([EXT-AF-05](../Status/Archive/PlanAudit2026-08.md)).
 
 ## Decision
 

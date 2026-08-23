@@ -11,7 +11,7 @@ date: 2026-08-23
 
 ## Context
 
-`FGV2ScreenFieldValue` хранит по одному `UPROPERTY` полю на каждый вид значения поля экрана (`InteractiveRichTextValue`, `ButtonListValue`, `CheckboxValue`, ..., `TabContainerValue`) и использует всегда ровно одно. На момент внешнего ревью их было пять с рекомендацией «пока приемлемо, но запланировать ADR при 8–10 типах». Сегодня их 13 ([EXT-AF-03](../Status/AuditFindings.md)); порог пройден без решения.
+`FGV2ScreenFieldValue` хранит по одному `UPROPERTY` полю на каждый вид значения поля экрана (`InteractiveRichTextValue`, `ButtonListValue`, `CheckboxValue`, ..., `TabContainerValue`) и использует всегда ровно одно. На момент внешнего ревью их было пять с рекомендацией «пока приемлемо, но запланировать ADR при 8–10 типах». Сегодня их 13 ([EXT-AF-03](../Status/Archive/PlanAudit2026-08.md)); порог пройден без решения.
 
 Каждый новый тип виджета/composite поля добавляет ещё один payload. Несколько payload'ов содержат `TArray`/вложенные структуры, поэтому размер экземпляра растёт не линейно по числу полей.
 
