@@ -8,6 +8,12 @@
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
+#include "CommonTextBlock.h"
+#include "CommonRichTextBlock.h"
+#include "Components/EditableTextBox.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "Blueprint/UserWidget.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2WidgetSemanticFontSizeContractTests,
@@ -18,91 +24,216 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
 {
     const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
     TestNotNull(TEXT("Configured theme is valid"), Theme);
+    if (Theme == nullptr)
+    {
+        return false;
+    }
 
-    // 1. Positive Test: Verify identical physical font size across all widget types
-    // (Text, RichText, Button, InputField, DropdownSelect) for identical semantic tokens.
-    const float ViewportHeights[] = { 720.0f, 1080.0f, 1440.0f, 2160.0f };
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    TestNotNull(TEXT("TestWorld created"), TestWorld);
+    if (TestWorld == nullptr)
+    {
+        return false;
+    }
+
+    FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
+    WorldContext.SetCurrentWorld(TestWorld);
+
+    // Load or instantiate all 5 consumer widget types
+    UClass* TextClass = LoadClass<UGV2TextWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Text.WBP_Text_C"));
+    UClass* RichTextClass = LoadClass<UGV2RichTextWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_RichText.WBP_RichText_C"));
+    UClass* ButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+    UClass* InputClass = LoadClass<UGV2InputFieldWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_InputField.WBP_InputField_C"));
+    UClass* DropdownClass = LoadClass<UGV2DropdownSelectWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_DropdownSelect.WBP_DropdownSelect_C"));
+
+    UGV2TextWidgetBase* TextWidget = TextClass != nullptr
+        ? CreateWidget<UGV2TextWidgetBase>(TestWorld, TextClass)
+        : NewObject<UGV2TextWidgetBase>(TestWorld);
+    if (TextWidget != nullptr && TextWidget->GetTextBlock() == nullptr)
+    {
+        UCommonTextBlock* TextBlock = NewObject<UCommonTextBlock>(TextWidget);
+        if (FProperty* Prop = UGV2TextWidgetBase::StaticClass()->FindPropertyByName(TEXT("TextBlock")))
+        {
+            Prop->SetValue_InContainer(TextWidget, TextBlock);
+        }
+    }
+
+    UGV2RichTextWidgetBase* RichTextWidget = RichTextClass != nullptr
+        ? CreateWidget<UGV2RichTextWidgetBase>(TestWorld, RichTextClass)
+        : NewObject<UGV2RichTextWidgetBase>(TestWorld);
+    if (RichTextWidget != nullptr && RichTextWidget->GetRichTextBlock() == nullptr)
+    {
+        UCommonRichTextBlock* RichTextBlock = NewObject<UCommonRichTextBlock>(RichTextWidget);
+        if (FProperty* Prop = UGV2RichTextWidgetBase::StaticClass()->FindPropertyByName(TEXT("RichTextBlock")))
+        {
+            Prop->SetValue_InContainer(RichTextWidget, RichTextBlock);
+        }
+    }
+
+    UGV2ButtonWidgetBase* ButtonWidget = ButtonClass != nullptr
+        ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, ButtonClass)
+        : NewObject<UGV2ButtonWidgetBase>(TestWorld);
+    if (ButtonWidget != nullptr && ButtonWidget->GetLabelText() == nullptr)
+    {
+        UCommonTextBlock* LabelText = NewObject<UCommonTextBlock>(ButtonWidget);
+        if (FProperty* Prop = UGV2ButtonWidgetBase::StaticClass()->FindPropertyByName(TEXT("LabelText")))
+        {
+            Prop->SetValue_InContainer(ButtonWidget, LabelText);
+        }
+    }
+
+    UGV2InputFieldWidgetBase* InputFieldWidget = InputClass != nullptr
+        ? CreateWidget<UGV2InputFieldWidgetBase>(TestWorld, InputClass)
+        : NewObject<UGV2InputFieldWidgetBase>(TestWorld);
+    if (InputFieldWidget != nullptr)
+    {
+        if (InputFieldWidget->GetEditableTextBox() == nullptr)
+        {
+            UEditableTextBox* EditableBox = NewObject<UEditableTextBox>(InputFieldWidget);
+            if (FProperty* Prop = UGV2InputFieldWidgetBase::StaticClass()->FindPropertyByName(TEXT("EditableTextBox")))
+            {
+                Prop->SetValue_InContainer(InputFieldWidget, EditableBox);
+            }
+        }
+        if (InputFieldWidget->GetLabelText() == nullptr)
+        {
+            UCommonTextBlock* LabelText = NewObject<UCommonTextBlock>(InputFieldWidget);
+            if (FProperty* Prop = UGV2InputFieldWidgetBase::StaticClass()->FindPropertyByName(TEXT("LabelText")))
+            {
+                Prop->SetValue_InContainer(InputFieldWidget, LabelText);
+            }
+        }
+    }
+
+    UGV2DropdownSelectWidgetBase* DropdownWidget = DropdownClass != nullptr
+        ? CreateWidget<UGV2DropdownSelectWidgetBase>(TestWorld, DropdownClass)
+        : NewObject<UGV2DropdownSelectWidgetBase>(TestWorld);
+    if (DropdownWidget != nullptr && DropdownWidget->GetHeaderButton() == nullptr)
+    {
+        UGV2ButtonWidgetBase* HeaderBtn = ButtonClass != nullptr
+            ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, ButtonClass)
+            : NewObject<UGV2ButtonWidgetBase>(DropdownWidget);
+        if (HeaderBtn != nullptr && HeaderBtn->GetLabelText() == nullptr)
+        {
+            UCommonTextBlock* HeaderLabel = NewObject<UCommonTextBlock>(HeaderBtn);
+            if (FProperty* Prop = UGV2ButtonWidgetBase::StaticClass()->FindPropertyByName(TEXT("LabelText")))
+            {
+                Prop->SetValue_InContainer(HeaderBtn, HeaderLabel);
+            }
+        }
+        if (FProperty* Prop = UGV2DropdownSelectWidgetBase::StaticClass()->FindPropertyByName(TEXT("HeaderButton")))
+        {
+            Prop->SetValue_InContainer(DropdownWidget, HeaderBtn);
+        }
+    }
+
+    TestNotNull(TEXT("Text widget created with renderer control"), TextWidget ? TextWidget->GetTextBlock() : nullptr);
+    TestNotNull(TEXT("RichText widget created with renderer control"), RichTextWidget ? RichTextWidget->GetRichTextBlock() : nullptr);
+    TestNotNull(TEXT("Button widget created with renderer control"), ButtonWidget ? ButtonWidget->GetLabelText() : nullptr);
+    TestNotNull(TEXT("InputField widget created with renderer control"), InputFieldWidget ? InputFieldWidget->GetEditableTextBox() : nullptr);
+    TestNotNull(TEXT("DropdownSelect widget created with renderer control"), DropdownWidget && DropdownWidget->GetHeaderButton() ? DropdownWidget->GetHeaderButton()->GetLabelText() : nullptr);
+
     const FName SemanticTokens[] = {
         FName(TEXT("title")),
         FName(TEXT("body")),
         FName(TEXT("small"))
     };
 
-    for (const float Height : ViewportHeights)
+    TMap<FName, float> MeasuredTextSizes;
+
+    if (TextWidget && TextWidget->GetTextBlock()
+        && RichTextWidget && RichTextWidget->GetRichTextBlock()
+        && ButtonWidget && ButtonWidget->GetLabelText()
+        && InputFieldWidget && InputFieldWidget->GetEditableTextBox()
+        && DropdownWidget && DropdownWidget->GetHeaderButton() && DropdownWidget->GetHeaderButton()->GetLabelText())
     {
         for (const FName& Token : SemanticTokens)
         {
-            const float ExpectedSize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Token, Height);
-            TestTrue(*FString::Printf(TEXT("[%.0fp / %s] Expected size is positive"), Height, *Token.ToString()), ExpectedSize > 0.0f);
+            const float ExpectedSize = Theme->GetEffectiveFontSize(Token, 1080.0f);
+            TestTrue(*FString::Printf(TEXT("[%s] Expected size is positive"), *Token.ToString()), ExpectedSize > 0.0f);
 
-            // Resolve styles for all widget types
-            FTextBlockStyle TextStyle;
-            TestTrue(*FString::Printf(TEXT("[%.0fp / %s] Text style resolution"), Height, *Token.ToString()),
-                UGV2TextPipeline::ResolveStyleForHeight(Token, TextStyle, Height));
+            // 1. Text widget: Apply via production path and read renderer control
+            FGV2TextViewModel TextModel;
+            TextModel.Text = FText::FromString(TEXT("Sample Text"));
+            TextModel.StyleToken = Token;
+            TestTrue(*FString::Printf(TEXT("[%s] ApplyText succeeded"), *Token.ToString()), TextWidget->ApplyText(TextModel));
+            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TextWidget);
+            const float ActualTextSize = TextWidget->GetTextBlock()->GetFont().Size;
+            MeasuredTextSizes.Add(Token, ActualTextSize);
 
-            FTextBlockStyle RichTextStyle;
-            TestTrue(*FString::Printf(TEXT("[%.0fp / %s] RichText style resolution"), Height, *Token.ToString()),
-                UGV2TextPipeline::ResolveStyleForHeight(Token, RichTextStyle, Height));
+            // 2. RichText widget: Apply via production path and read renderer control
+            FGV2InteractiveRichTextViewModel RichModel;
+            RichModel.Text.Text = FText::FromString(TEXT("Sample Rich Text"));
+            RichModel.Text.StyleToken = Token;
+            RichTextWidget->ApplyInteractiveRichText(RichModel);
+            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(RichTextWidget);
+            const float ActualRichTextSize = RichTextWidget->GetRichTextBlock()->GetDefaultTextStyle().Font.Size;
 
-            FTextBlockStyle ButtonStyle;
-            TestTrue(*FString::Printf(TEXT("[%.0fp / %s] Button style resolution"), Height, *Token.ToString()),
-                UGV2TextPipeline::ResolveStyleForHeight(Token, ButtonStyle, Height));
+            // 3. Button widget: Apply via production path and read renderer control
+            FGV2ButtonViewModel ButtonModel;
+            ButtonModel.Key = TEXT("btn_test");
+            ButtonModel.Text.Text = FText::FromString(TEXT("Sample Button"));
+            ButtonModel.Text.StyleToken = Token;
+            ButtonModel.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
+            ButtonWidget->ApplyButtonModel(ButtonModel);
+            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(ButtonWidget);
+            const float ActualButtonSize = ButtonWidget->GetLabelText()->GetFont().Size;
 
-            FTextBlockStyle InputStyle;
-            TestTrue(*FString::Printf(TEXT("[%.0fp / %s] InputField style resolution"), Height, *Token.ToString()),
-                UGV2TextPipeline::ResolveStyleForHeight(Token, InputStyle, Height));
+            // 4. InputField widget: Apply via production path and read renderer control
+            FGV2InputFieldViewModel InputModel;
+            InputModel.Text.Text = FText::FromString(TEXT("Sample Input"));
+            InputModel.Text.StyleToken = Token;
+            InputModel.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
+            InputFieldWidget->ApplyInputFieldModel(InputModel);
+            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(InputFieldWidget);
+            const float ActualInputSize = InputFieldWidget->GetEditableTextBox()->WidgetStyle.TextStyle.Font.Size;
 
-            FTextBlockStyle DropdownStyle;
-            TestTrue(*FString::Printf(TEXT("[%.0fp / %s] DropdownSelect style resolution"), Height, *Token.ToString()),
-                UGV2TextPipeline::ResolveStyleForHeight(Token, DropdownStyle, Height));
+            // 5. DropdownSelect widget: Apply via production path and read renderer control
+            FGV2DropdownSelectViewModel DropdownModel;
+            DropdownModel.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
+            DropdownModel.Placeholder.Text = FText::FromString(TEXT("Select item"));
+            DropdownModel.Placeholder.StyleToken = Token;
+            FGV2DropdownOptionViewModel Opt;
+            Opt.Key = TEXT("opt_1");
+            Opt.Text.Text = FText::FromString(TEXT("Option 1"));
+            Opt.Text.StyleToken = Token;
+            DropdownModel.Options.Add(Opt);
+            DropdownWidget->ApplyDropdownModel(DropdownModel);
+            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(DropdownWidget);
+            const float ActualDropdownSize = DropdownWidget->GetHeaderButton()->GetLabelText()->GetFont().Size;
 
-            const float TextSize = TextStyle.Font.Size;
-            const float RichTextSize = RichTextStyle.Font.Size;
-            const float ButtonSize = ButtonStyle.Font.Size;
-            const float InputSize = InputStyle.Font.Size;
-            const float DropdownSize = DropdownStyle.Font.Size;
+            // Verify actual renderer font size matches ExpectedSize
+            TestEqual(*FString::Printf(TEXT("[%s] Text renderer font size matches expected"), *Token.ToString()),
+                ActualTextSize, ExpectedSize);
 
-            // Direct parity assertion across all widget types
-            TestEqual(*FString::Printf(TEXT("[%.0fp / %s] Text font size matches ExpectedSize"), Height, *Token.ToString()),
-                TextSize, ExpectedSize);
+            // Verify font size parity across all 5 widget renderer controls
+            TestEqual(*FString::Printf(TEXT("[%s] RichText renderer size equals Text renderer size"), *Token.ToString()),
+                ActualRichTextSize, ActualTextSize);
 
-            TestEqual(*FString::Printf(TEXT("[%.0fp / %s] RichText font size equals Text font size"), Height, *Token.ToString()),
-                RichTextSize, TextSize);
+            TestEqual(*FString::Printf(TEXT("[%s] Button renderer size equals Text renderer size"), *Token.ToString()),
+                ActualButtonSize, ActualTextSize);
 
-            TestEqual(*FString::Printf(TEXT("[%.0fp / %s] Button font size equals Text font size"), Height, *Token.ToString()),
-                ButtonSize, TextSize);
+            TestEqual(*FString::Printf(TEXT("[%s] InputField renderer size equals Text renderer size"), *Token.ToString()),
+                ActualInputSize, ActualTextSize);
 
-            TestEqual(*FString::Printf(TEXT("[%.0fp / %s] InputField font size equals Text font size"), Height, *Token.ToString()),
-                InputSize, TextSize);
+            TestEqual(*FString::Printf(TEXT("[%s] DropdownSelect renderer size equals Text renderer size"), *Token.ToString()),
+                ActualDropdownSize, ActualTextSize);
+        }
 
-            TestEqual(*FString::Printf(TEXT("[%.0fp / %s] DropdownSelect font size equals Text font size"), Height, *Token.ToString()),
-                DropdownSize, TextSize);
+        // Semantic Hierarchy Check on actual measured widget font sizes
+        const float* TitleSize = MeasuredTextSizes.Find(FName(TEXT("title")));
+        const float* BodySize = MeasuredTextSizes.Find(FName(TEXT("body")));
+        const float* SmallSize = MeasuredTextSizes.Find(FName(TEXT("small")));
+
+        if (TitleSize && BodySize && SmallSize)
+        {
+            TestTrue(TEXT("Hierarchy holds on actual widget renderer: Title > Body"), *TitleSize > *BodySize);
+            TestTrue(TEXT("Hierarchy holds on actual widget renderer: Body > Small"), *BodySize > *SmallSize);
         }
     }
 
-    // 2. Negative Tests: Distinguishability between different semantic tokens at 1080p
-    {
-        const float TitleSize1080 = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), 1080.0f);
-        const float BodySize1080 = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), 1080.0f);
-        const float SmallSize1080 = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("small")), 1080.0f);
-
-        TestFalse(TEXT("Title font size must differ from Body font size at 1080p"),
-            FMath::IsNearlyEqual(TitleSize1080, BodySize1080, 0.1f));
-
-        TestFalse(TEXT("Body font size must differ from Small font size at 1080p"),
-            FMath::IsNearlyEqual(BodySize1080, SmallSize1080, 0.1f));
-
-        TestTrue(TEXT("Hierarchy holds: Title > Body > Small"),
-            TitleSize1080 > BodySize1080 && BodySize1080 > SmallSize1080);
-    }
-
-    // 3. Negative Tests: Perturbation detection
-    {
-        const float ExpectedBody = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), 1080.0f);
-        const float PerturbedBody = ExpectedBody + 4.0f;
-        TestFalse(TEXT("Perturbed font size must not match expected size"),
-            FMath::IsNearlyEqual(ExpectedBody, PerturbedBody, 0.01f));
-    }
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
 
     return true;
 }

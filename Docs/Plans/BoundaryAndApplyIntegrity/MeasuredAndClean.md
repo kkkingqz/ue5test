@@ -26,7 +26,7 @@ depends_on:
   - Done: выбрана одна грамматика, покрывающая фактические источники ключа; она записана в контракте, реализована в C++, применяется валидацией на стороне Lua и проверяется conformance-тестом на положительном и отрицательном примере; примеры в контракте грамматике удовлетворяют.
   - Evidence: `Docs/UI/UIDocumentAndReconciliation.md`, `Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`.
 
-- [ ] **BAI-09 — Типографский conformance читает фактический размер**
+- [x] **BAI-09 — Типографский conformance читает фактический размер**
   - `GV2WidgetSemanticFontSizeContractTests.cpp` подключает пять классов-потребителей, но не создаёт **ни одного** виджета: во всём файле ноль вызовов `CreateWidget` и `NewObject`. Для каждого «потребителя» вызывается `UGV2TextPipeline::ResolveStyleForHeight` и сравнивается результат с ним же. Регрессия в любом `ApplyCentralStyle` этот тест не сломает.
   - Done: тест создаёт виджеты каждого из пяти типов, применяет к ним стиль production-путём и читает размер шрифта из фактического renderer-контрола; проверка краснеет при внесении регрессии в один `ApplyCentralStyle`; сравнение helper-а с самим собой снято, а не дополнено.
   - Evidence: `Source/GV2/Private/Tests/GV2WidgetSemanticFontSizeContractTests.cpp`.
