@@ -62,6 +62,48 @@ const bool* FindBoolean(const FObject& Object, const std::string_view Name)
     return Value != nullptr ? std::get_if<bool>(&Value->Data) : nullptr;
 }
 
+void WarnUnknownKeys(
+    const std::string& FieldId,
+    const FObject& Value,
+    const std::initializer_list<std::string_view>& ConsumedKeys,
+    const std::string& SubContext = {})
+{
+    for (const auto& [Key, Val] : Value)
+    {
+        bool bKnown = false;
+        for (const std::string_view ConsumedKey : ConsumedKeys)
+        {
+            if (Key == ConsumedKey)
+            {
+                bKnown = true;
+                break;
+            }
+        }
+        if (!bKnown)
+        {
+            if (SubContext.empty())
+            {
+                UE_LOG(
+                    LogTemp,
+                    Warning,
+                    TEXT("ScreenField [%s]: unknown key '%s' in field value"),
+                    UTF8_TO_TCHAR(FieldId.c_str()),
+                    UTF8_TO_TCHAR(Key.c_str()));
+            }
+            else
+            {
+                UE_LOG(
+                    LogTemp,
+                    Warning,
+                    TEXT("ScreenField [%s]: unknown key '%s' in %s"),
+                    UTF8_TO_TCHAR(FieldId.c_str()),
+                    UTF8_TO_TCHAR(Key.c_str()),
+                    UTF8_TO_TCHAR(SubContext.c_str()));
+            }
+        }
+    }
+}
+
 bool ToControlValue(
     const std::string& Name,
     const GV2RuntimeCore::FValue& Value,
@@ -280,14 +322,21 @@ bool BuildButtonList(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
-    const FArray* Items = AsArray(*FindValue(Value, "items"));
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
+    const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "items");
+    const FArray* Items = ItemsVal != nullptr ? AsArray(*ItemsVal) : nullptr;
+    if (Items == nullptr) return false;
     TArray<FGV2ButtonViewModel> Buttons;
     Buttons.Reserve(static_cast<int32>(Items->size()));
+    static constexpr std::initializer_list<std::string_view> ItemConsumedKeys = {"key", "text", "binding"};
     for (const GV2RuntimeCore::FValue& ItemValue : *Items)
     {
         if (!Handles.IsValidIndex(HandleIndex)) return false;
         const FObject* Item = AsObject(ItemValue);
         if (Item == nullptr) return false;
+        WarnUnknownKeys(Field.FieldId, *Item, ItemConsumedKeys, "items element");
         const std::string* Key = FindString(*Item, "key");
         if (Key == nullptr) return false;
         const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
@@ -342,22 +391,33 @@ bool BuildRichText(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "spans"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     const GV2RuntimeCore::FValue* Text = FindValue(Value, "text");
-    const FArray* Spans = AsArray(*FindValue(Value, "spans"));
+    const GV2RuntimeCore::FValue* SpansVal = FindValue(Value, "spans");
+    const FArray* Spans = SpansVal != nullptr ? AsArray(*SpansVal) : nullptr;
+    if (Spans == nullptr) return false;
     FGV2InteractiveRichTextViewModel Model;
     if (Text == nullptr || !ResolveText(*Text, Model.Text)) return false;
+    static constexpr std::initializer_list<std::string_view> SpanConsumedKeys = {"key", "span_id", "hover", "binding"};
+    static constexpr std::initializer_list<std::string_view> HoverConsumedKeys = {"title", "description", "image_resource_id"};
     for (const GV2RuntimeCore::FValue& SpanValue : *Spans)
     {
-        const FObject& Span = *AsObject(SpanValue);
-        const std::string& Key = *FindString(Span, "key");
-        const std::string* SpanId = FindString(Span, "span_id");
+        const FObject* Span = AsObject(SpanValue);
+        if (Span == nullptr) return false;
+        WarnUnknownKeys(Field.FieldId, *Span, SpanConsumedKeys, "spans element");
+        const std::string* Key = FindString(*Span, "key");
+        if (Key == nullptr) return false;
+        const std::string* SpanId = FindString(*Span, "span_id");
         FGV2RichTextSpanViewModel& SpanModel = Model.Spans.AddDefaulted_GetRef();
-        SpanModel.Key = FName(UTF8_TO_TCHAR(Key.c_str()));
-        SpanModel.SpanId = FName(UTF8_TO_TCHAR((SpanId != nullptr ? *SpanId : Key).c_str()));
-        if (const GV2RuntimeCore::FValue* HoverValue = FindValue(Span, "hover"))
+        SpanModel.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
+        SpanModel.SpanId = FName(UTF8_TO_TCHAR((SpanId != nullptr ? *SpanId : *Key).c_str()));
+        if (const GV2RuntimeCore::FValue* HoverValue = FindValue(*Span, "hover"))
         {
             const FObject* Hover = AsObject(*HoverValue);
             if (Hover == nullptr) return false;
+            WarnUnknownKeys(Field.FieldId, *Hover, HoverConsumedKeys, "hover element");
             if (const GV2RuntimeCore::FValue* Title = FindValue(*Hover, "title"))
             {
                 if (!ResolveText(*Title, SpanModel.Hover.Title)) return false;
@@ -372,7 +432,7 @@ bool BuildRichText(
                 SpanModel.Hover.ImageResourceId = UTF8_TO_TCHAR(Image->c_str());
             }
         }
-        if (FindValue(Span, "binding") != nullptr)
+        if (FindValue(*Span, "binding") != nullptr)
         {
             if (!Handles.IsValidIndex(HandleIndex)) return false;
             SpanModel.Binding = Handles[HandleIndex++];
@@ -412,6 +472,9 @@ bool BuildCheckbox(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "is_checked", "binding"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     if (!Handles.IsValidIndex(HandleIndex)) return false;
     const GV2RuntimeCore::FValue* Text = FindValue(Value, "text");
     const bool* IsChecked = FindBoolean(Value, "is_checked");
@@ -461,6 +524,9 @@ bool BuildInputField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "placeholder_text", "value", "is_read_only", "max_length", "binding"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     if (!Handles.IsValidIndex(HandleIndex)) return false;
     FGV2InputFieldViewModel Model;
     Model.Key = FName(*FieldId(Field));
@@ -542,6 +608,9 @@ bool BuildDropdown(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items", "placeholder", "selected_key", "binding"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     if (!Handles.IsValidIndex(HandleIndex)) return false;
     FGV2DropdownSelectViewModel Model;
     if (const GV2RuntimeCore::FValue* Placeholder = FindValue(Value, "placeholder"))
@@ -552,11 +621,15 @@ bool BuildDropdown(
     const std::string* SelectedKey = SelectedValue != nullptr
         ? std::get_if<std::string>(&SelectedValue->Data)
         : nullptr;
-    const FArray& Items = *AsArray(*FindValue(Value, "items"));
-    for (const GV2RuntimeCore::FValue& ItemValue : Items)
+    const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "items");
+    const FArray* Items = ItemsVal != nullptr ? AsArray(*ItemsVal) : nullptr;
+    if (Items == nullptr) return false;
+    static constexpr std::initializer_list<std::string_view> OptionConsumedKeys = {"key", "text"};
+    for (const GV2RuntimeCore::FValue& ItemValue : *Items)
     {
         const FObject* Item = AsObject(ItemValue);
         if (Item == nullptr) return false;
+        WarnUnknownKeys(Field.FieldId, *Item, OptionConsumedKeys, "items element");
         const std::string* Key = FindString(*Item, "key");
         if (Key == nullptr) return false;
         const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
@@ -592,6 +665,9 @@ bool BuildImageField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "scaling_policy", "custom_width", "custom_height"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     const std::string* ResourceId = FindString(Value, "resource_id");
     if (ResourceId == nullptr) return false;
     FGV2ImageFieldViewModel Model;
@@ -638,6 +714,9 @@ bool BuildProgressBarField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"percent", "label", "style"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     const GV2RuntimeCore::FValue* PercentVal = FindValue(Value, "percent");
     if (PercentVal == nullptr) return false;
     float Percent = 0.0f;
@@ -693,6 +772,9 @@ bool BuildPortraitField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "frame_resource_id", "style"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     const std::string* ResourceId = FindString(Value, "resource_id");
     if (ResourceId == nullptr) return false;
     FGV2PortraitViewModel Model;
@@ -768,6 +850,9 @@ bool BuildModalField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"title", "content", "buttons", "backdrop_close_action"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     const GV2RuntimeCore::FValue* TitleVal = FindValue(Value, "title");
     const GV2RuntimeCore::FValue* ContentVal = FindValue(Value, "content");
     if (TitleVal == nullptr || ContentVal == nullptr) return false;
@@ -779,12 +864,14 @@ bool BuildModalField(
         const FArray* Buttons = AsArray(*ButtonsVal);
         if (Buttons != nullptr)
         {
+            static constexpr std::initializer_list<std::string_view> ButtonConsumedKeys = {"key", "text", "binding"};
             Model.Buttons.Reserve(static_cast<int32>(Buttons->size()));
             for (const GV2RuntimeCore::FValue& BtnVal : *Buttons)
             {
                 if (!Handles.IsValidIndex(HandleIndex)) return false;
                 const FObject* BtnObj = AsObject(BtnVal);
                 if (BtnObj == nullptr) return false;
+                WarnUnknownKeys(Field.FieldId, *BtnObj, ButtonConsumedKeys, "buttons element");
                 const std::string* Key = FindString(*BtnObj, "key");
                 const GV2RuntimeCore::FValue* Text = FindValue(*BtnObj, "text");
                 if (Key == nullptr || Text == nullptr) return false;
@@ -938,6 +1025,9 @@ bool BuildTabContainerField(
     int32& InOutHandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"tabs", "default_tab_key"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     const FArray* TabsArray = nullptr;
     if (const GV2RuntimeCore::FValue* TabsVal = FindValue(Value, "tabs"))
     {
@@ -956,6 +1046,8 @@ bool BuildTabContainerField(
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
 
+    static constexpr std::initializer_list<std::string_view> TabConsumedKeys = {"key", "title", "screen_id", "fields"};
+    static constexpr std::initializer_list<std::string_view> ChildFieldConsumedKeys = {"schema_id", "value"};
     for (const GV2RuntimeCore::FValue& TabVal : *TabsArray)
     {
         const FObject* TabObj = AsObject(TabVal);
@@ -963,6 +1055,7 @@ bool BuildTabContainerField(
         {
             return false;
         }
+        WarnUnknownKeys(Field.FieldId, *TabObj, TabConsumedKeys, "tabs element");
 
         const std::string* Key = FindString(*TabObj, "key");
         if (Key == nullptr)
@@ -997,6 +1090,7 @@ bool BuildTabContainerField(
                 {
                     return false;
                 }
+                WarnUnknownKeys(Field.FieldId, *ChildFieldObj, ChildFieldConsumedKeys, "tab child field");
                 const std::string* ChildSchemaId = FindString(*ChildFieldObj, "schema_id");
                 const GV2RuntimeCore::FValue* ChildValue = FindValue(*ChildFieldObj, "value");
                 if (ChildSchemaId == nullptr || ChildValue == nullptr)
@@ -1059,6 +1153,9 @@ bool PrepareLocationTopBar(const std::string&, const GV2RuntimeCore::FScreenFiel
 
 bool BuildLocationTopBar(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"day", "location", "primary_resource"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     FGV2LocationTopBarViewModel Model;
     return ResolveText(*FindValue(Value, "day"), Model.Day)
         && ResolveText(*FindValue(Value, "location"), Model.Location)
@@ -1096,6 +1193,9 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
 
 bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"name", "portrait_resource_id", "meters"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     FGV2LocationPlayerStatusViewModel Model;
     if (!ReadOptionalResource(Value, "portrait_resource_id", Model.PortraitResourceId)
         || !ResolveText(*FindValue(Value, "name"), Model.Name)) return false;
@@ -1104,12 +1204,14 @@ bool BuildLocationPlayerStatus(const GV2RuntimeCore::FScreenField& Field, const 
     {
         const FArray* MetersArray = AsArray(*MetersVal);
         if (MetersArray == nullptr) return false;
+        static constexpr std::initializer_list<std::string_view> MeterConsumedKeys = {"key", "percent"};
         TSet<FName> MeterKeys;
         for (int32 Index = 0; Index < static_cast<int32>(MetersArray->size()); ++Index)
         {
             const GV2RuntimeCore::FValue& EntryVal = (*MetersArray)[Index];
             const FObject* MeterObj = std::get_if<FObject>(&EntryVal.Data);
             if (MeterObj == nullptr) return false;
+            WarnUnknownKeys(Field.FieldId, *MeterObj, MeterConsumedKeys, "meters element");
 
             FGV2LocationMeterEntry MeterEntry;
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key");
@@ -1164,6 +1266,9 @@ bool PrepareLocationScene(const std::string&, const GV2RuntimeCore::FScreenField
 
 bool BuildLocationScene(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>&, int32&, FGV2ScreenFieldValue& OutField)
 {
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"background_tile_resource_id", "background_resource_id", "context_text", "characters"};
+    WarnUnknownKeys(Field.FieldId, Value, ConsumedKeys);
+
     FGV2LocationSceneViewModel Model;
     if (!ReadOptionalResource(Value, "background_tile_resource_id", Model.BackgroundTileResourceId)
         || !ReadOptionalResource(Value, "background_resource_id", Model.BackgroundResourceId)) return false;
@@ -1173,12 +1278,14 @@ bool BuildLocationScene(const GV2RuntimeCore::FScreenField& Field, const FObject
     {
         const FArray* CharsArray = AsArray(*CharsVal);
         if (CharsArray == nullptr) return false;
+        static constexpr std::initializer_list<std::string_view> CharConsumedKeys = {"key", "resource_id"};
         TSet<FName> CharacterKeys;
         for (int32 Index = 0; Index < static_cast<int32>(CharsArray->size()); ++Index)
         {
             const GV2RuntimeCore::FValue& EntryVal = (*CharsArray)[Index];
             const FObject* CharObj = std::get_if<FObject>(&EntryVal.Data);
             if (CharObj == nullptr) return false;
+            WarnUnknownKeys(Field.FieldId, *CharObj, CharConsumedKeys, "characters element");
 
             FGV2LocationCharacterEntry CharEntry;
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key");

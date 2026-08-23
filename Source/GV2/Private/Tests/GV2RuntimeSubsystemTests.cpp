@@ -5602,5 +5602,71 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ScreenFieldUnknownKeyObservabilityTest,
+    "GV2.Runtime.Presentation.ScreenFieldUnknownKeyObservability",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ScreenFieldUnknownKeyObservabilityTest::RunTest(const FString& Parameters)
+{
+    using FObject = GV2RuntimeCore::FValue::FObject;
+    using FArray = GV2RuntimeCore::FValue::FArray;
+
+    GV2RuntimeCore::FScreenRequest Request;
+    Request.ScreenId = "textsystem:screen.location";
+
+    // 1. LocationPlayerStatus with extra unknown keys (like item_icon_resource_ids / effect_icon_resource_ids / label)
+    {
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "player_status";
+        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
+
+        FObject StatusValue;
+        FObject NameSpec;
+        NameSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        StatusValue["name"] = GV2RuntimeCore::FValue(NameSpec);
+        StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
+        StatusValue["item_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
+        StatusValue["effect_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
+
+        FObject MeterObj;
+        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
+        MeterObj["percent"] = GV2RuntimeCore::FValue(0.75);
+        MeterObj["label"] = GV2RuntimeCore::FValue(std::string("stamina_label"));
+        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+
+        Field.Value = GV2RuntimeCore::FValue(StatusValue);
+        Request.Fields.push_back(MoveTemp(Field));
+    }
+
+    // 2. LocationTopBar with extra unknown key
+    {
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "top_bar";
+        Field.SchemaId = "textsystem:schema.ui_field.location_top_bar.v1";
+
+        FObject TopBarValue;
+        FObject TextSpec;
+        TextSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        TopBarValue["day"] = GV2RuntimeCore::FValue(TextSpec);
+        TopBarValue["location"] = GV2RuntimeCore::FValue(TextSpec);
+        TopBarValue["primary_resource"] = GV2RuntimeCore::FValue(TextSpec);
+        TopBarValue["unknown_currency"] = GV2RuntimeCore::FValue(std::string("gems"));
+
+        Field.Value = GV2RuntimeCore::FValue(TopBarValue);
+        Request.Fields.push_back(MoveTemp(Field));
+    }
+
+    TArray<FGV2UiBindingHandle> Handles;
+    TArray<FGV2ScreenFieldValue> OutFields;
+
+    const bool bBuilt = FGV2ScreenFieldAdapterRegistry::Get().BuildFields(Request, Handles, OutFields);
+    TestTrue(TEXT("BuildFields succeeds in BAI-01 while logging unknown key warnings"), bBuilt);
+    TestEqual(TEXT("BuildFields produces 2 fields"), OutFields.Num(), 2);
+
+    return true;
+}
+
 #endif
+
 
