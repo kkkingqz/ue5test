@@ -4722,7 +4722,7 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                 {
                     FGV2ButtonViewModel Btn;
                     Btn.Key = *FString::Printf(TEXT("cmd_%d"), Index);
-                    Btn.Text.Text = FText::FromString(*FString::Printf(TEXT("Command #%d"), Index));
+                    Btn.Text.Text = FText::FromString(*FString::Printf(TEXT("[LOCALE_TEST] Speak with Master Alchemist about Mysterious Elixir (#%d)"), Index));
                     Btn.Binding = FGV2UiBindingHandle::Create(*FString::Printf(TEXT("handle_cmd_%d"), Index));
                     Buttons.Add(Btn);
                 }
@@ -4867,7 +4867,7 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                     Repeater->GetEntryCount(),
                                     6);
 
-                                // On HD 720p, verify each instantiated button's allocated geometry is within visible viewport bounds
+                                // On HD 720p, verify each instantiated button's allocated geometry is strictly bounded in 2D (BAI-10)
                                 if (Res.Size.X == 1280.0f && Res.Size.Y == 720.0f)
                                 {
                                     const TArray<UWidget*> Entries = Repeater->GetOrderedEntries();
@@ -4879,13 +4879,53 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                             const FGeometry BtnGeom = Entries[BtnIndex]->GetCachedWidget()->GetTickSpaceGeometry();
                                             const FVector2D BtnLocalPos = VirtualWindow->GetTickSpaceGeometry().AbsoluteToLocal(BtnGeom.GetAbsolutePosition());
                                             const FVector2D BtnSize = BtnGeom.GetLocalSize();
+                                            const FVector2D BtnInCommandPanel = CommandGeom.AbsoluteToLocal(BtnGeom.GetAbsolutePosition());
+
                                             TestTrue(
                                                 *FString::Printf(TEXT("CCF-17: [720p] Button #%d allocated size is positive (%f x %f)"), BtnIndex + 1, BtnSize.X, BtnSize.Y),
                                                 BtnSize.X > 0.0f && BtnSize.Y > 0.0f);
-                                            // Bottom edge of button must not overflow screen height (720px)
+
+                                            // 1. Viewport 2-axis bounding box: Left, Top, Right, Bottom
                                             TestTrue(
-                                                *FString::Printf(TEXT("CCF-17: [720p] Button #%d fits within viewport height (%f <= 720)"), BtnIndex + 1, BtnLocalPos.Y + BtnSize.Y),
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d left edge within viewport (%f >= 0)"), BtnIndex + 1, BtnLocalPos.X),
+                                                BtnLocalPos.X >= -1.0f);
+                                            TestTrue(
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d top edge within viewport (%f >= 0)"), BtnIndex + 1, BtnLocalPos.Y),
+                                                BtnLocalPos.Y >= -1.0f);
+                                            TestTrue(
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d right edge fits viewport width (%f <= 1280)"), BtnIndex + 1, BtnLocalPos.X + BtnSize.X),
+                                                BtnLocalPos.X + BtnSize.X <= 1280.0f + 1.0f);
+                                            TestTrue(
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d bottom edge fits viewport height (%f <= 720)"), BtnIndex + 1, BtnLocalPos.Y + BtnSize.Y),
                                                 BtnLocalPos.Y + BtnSize.Y <= 720.0f + 1.0f);
+
+                                            // 2. CommandPanel 2-axis containment
+                                            TestTrue(
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d inside CommandPanel left (%f >= 0)"), BtnIndex + 1, BtnInCommandPanel.X),
+                                                BtnInCommandPanel.X >= -1.0f);
+                                            TestTrue(
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d inside CommandPanel top (%f >= 0)"), BtnIndex + 1, BtnInCommandPanel.Y),
+                                                BtnInCommandPanel.Y >= -1.0f);
+                                            TestTrue(
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d fits CommandPanel width (%f <= %f)"), BtnIndex + 1, BtnInCommandPanel.X + BtnSize.X, CommandAllocated.X),
+                                                BtnInCommandPanel.X + BtnSize.X <= CommandAllocated.X + 1.0f);
+                                            TestTrue(
+                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d fits CommandPanel height (%f <= %f)"), BtnIndex + 1, BtnInCommandPanel.Y + BtnSize.Y, CommandAllocated.Y),
+                                                BtnInCommandPanel.Y + BtnSize.Y <= CommandAllocated.Y + 1.0f);
+
+                                            // 3. Negative containment check: simulated oversized button detection
+                                            auto TestFitsInBounds = [](const FVector2D& Pos, const FVector2D& Size, const FVector2D& Bounds) -> bool
+                                            {
+                                                return Pos.X >= -1.0f && Pos.Y >= -1.0f
+                                                    && (Pos.X + Size.X) <= (Bounds.X + 1.0f)
+                                                    && (Pos.Y + Size.Y) <= (Bounds.Y + 1.0f);
+                                            };
+                                            TestFalse(
+                                                TEXT("BAI-10: [Negative] Artificial horizontal overflow beyond panel width is rejected"),
+                                                TestFitsInBounds(BtnInCommandPanel, FVector2D(CommandAllocated.X + 50.0f, BtnSize.Y), CommandAllocated));
+                                            TestFalse(
+                                                TEXT("BAI-10: [Negative] Artificial vertical overflow beyond viewport height is rejected"),
+                                                TestFitsInBounds(BtnLocalPos, FVector2D(BtnSize.X, 800.0f), FVector2D(1280.0f, 720.0f)));
                                         }
                                     }
                                 }
