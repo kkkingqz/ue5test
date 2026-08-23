@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 5.7
+version: 5.8
 updated: 2026-08-23
 depends_on:
   - ../README.md
@@ -25,7 +25,7 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет.
+- [Boundary and Apply Integrity](BoundaryAndApplyIntegrity/README.md) — замыкание схемы Screen Field, честное применение, измеримые проверки. BAI-01…11.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
