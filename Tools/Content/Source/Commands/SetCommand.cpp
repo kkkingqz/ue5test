@@ -131,6 +131,20 @@ int RunSet(const std::vector<std::string>& Positional, EOutputFormat Format)
         return static_cast<int>(EExitCode::ToolFailure);
     }
 
+    if (!std::filesystem::exists(Root / "package.json5", Ec))
+    {
+        if (Format == EOutputFormat::Json)
+        {
+            std::cout << "{\"status\":\"error\",\"code\":\"container_not_a_package\",\"message\":\"target is a container directory, not a single package root: "
+                      << Root.string() << "\"}\n";
+        }
+        else
+        {
+            std::cerr << "gv2-content: set failed: target is a container directory, not a single package root: " << Root.string() << "\n";
+        }
+        return static_cast<int>(EExitCode::ToolFailure);
+    }
+
     const FPackageSetDiscovery PackageSet = DiscoverPackageSet({ Root });
     if (PackageSet.bToolFailure)
     {

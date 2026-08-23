@@ -217,6 +217,13 @@ if(BUILD_TESTING)
         ARGS set "${GV2_PCC_FIXTURE_ROOT}/valid/core" core:item.weapon.iron_sword nonexistent_field 10 --format=json
     )
     gv2_add_cli_contract_test(
+        NAME gv2_content_set_rejects_container
+        TARGET gv2-content
+        EXPECTED_EXIT_CODE 2
+        EXPECTED_OUTPUT_REGEX "\"code\":\"container_not_a_package\""
+        ARGS set "${PROJECT_SOURCE_DIR}/GameData" core:text.screen.main.title text "New title" --format=json
+    )
+    gv2_add_cli_contract_test(
         NAME gv2_content_delete_rejects_nonexistent_id
         TARGET gv2-content
         EXPECTED_EXIT_CODE 2

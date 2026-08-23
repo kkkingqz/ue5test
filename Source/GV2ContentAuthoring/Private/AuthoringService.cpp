@@ -198,6 +198,13 @@ FDiscoveredPackageSet DiscoverSet(const std::filesystem::path& TargetRoot)
         return Set;
     }
 
+    if (!std::filesystem::exists(Root / "package.json5", Ec))
+    {
+        Set.ErrorCode = "container_not_a_package";
+        Set.ErrorMessage = "target is a container directory, not a single package root: " + Root.string();
+        return Set;
+    }
+
     std::vector<std::filesystem::path> Roots = { Root };
 
     // Resolve dependencies for single root
