@@ -34,7 +34,7 @@ depends_on:
   - Done: обе коллекции читаются адаптером и доходят до композита; ключ элемента выводится по общему правилу ключей повторяемых элементов, а не совпадает с `resource_id` (иначе смена иконки предмета меняет идентичность слота); список нарушений из BAI-01 пуст для всех четырёх полей экрана локации; иконка предмета, полученного игроком, видна на экране.
   - Evidence: `Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp`, `GameData/textsystem/scripts/presentation/location_presenter.lua`.
 
-- [ ] **BAI-03 — Неизвестный ключ становится отказом**
+- [x] **BAI-03 — Неизвестный ключ становится отказом**
   - Зависимости: BAI-02.
   - Done: предупреждение из BAI-01 переведено в типизированный отказ построения поля; отказ покрыт тестом на **каждом** уровне вложенности, где значение является объектом, — и на самом значении поля, и на элементе коллекции (`characters`, `meters`, `items`); тест строит значение с лишним ключом со стороны Lua, а не собирает view model в C++; строка `STATUS-005` удалена.
   - Evidence: `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`, `Tests/Lua/presentation/`, `Docs/Status/ImplementationStatus.md`.

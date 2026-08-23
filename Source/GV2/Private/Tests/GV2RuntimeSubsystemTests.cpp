@@ -5603,66 +5603,217 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2ScreenFieldUnknownKeyObservabilityTest,
-    "GV2.Runtime.Presentation.ScreenFieldUnknownKeyObservability",
+    FGV2ScreenFieldClosedSchemaRejectionTest,
+    "GV2.Runtime.Presentation.ScreenFieldClosedSchemaRejection",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2ScreenFieldUnknownKeyObservabilityTest::RunTest(const FString& Parameters)
+bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters)
 {
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
-    GV2RuntimeCore::FScreenRequest Request;
-    Request.ScreenId = "textsystem:screen.location";
+    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
+    TArray<FGV2UiBindingHandle> Handles;
+    TArray<FGV2ScreenFieldValue> OutFields;
 
-    // 1. LocationPlayerStatus with extra unknown keys (like item_icon_resource_ids / effect_icon_resource_ids / label)
+    auto MakeTextSpec = [](const std::string& TextId) -> FObject
     {
-        GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "player_status";
-        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
+        FObject Obj;
+        Obj["text_id"] = GV2RuntimeCore::FValue(TextId);
+        return Obj;
+    };
 
-        FObject StatusValue;
-        FObject NameSpec;
-        NameSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
-        StatusValue["name"] = GV2RuntimeCore::FValue(NameSpec);
-        StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
-        StatusValue["item_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
-        StatusValue["effect_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
-
-        FObject MeterObj;
-        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
-        MeterObj["percent"] = GV2RuntimeCore::FValue(0.75);
-        MeterObj["label"] = GV2RuntimeCore::FValue(std::string("stamina_label"));
-        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
-
-        Field.Value = GV2RuntimeCore::FValue(StatusValue);
-        Request.Fields.push_back(MoveTemp(Field));
-    }
-
-    // 2. LocationTopBar with extra unknown key
+    // 1. Rejection at field value level: top_bar with unknown key
     {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
         GV2RuntimeCore::FScreenField Field;
         Field.FieldId = "top_bar";
         Field.SchemaId = "textsystem:schema.ui_field.location_top_bar.v1";
 
         FObject TopBarValue;
-        FObject TextSpec;
-        TextSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
-        TopBarValue["day"] = GV2RuntimeCore::FValue(TextSpec);
-        TopBarValue["location"] = GV2RuntimeCore::FValue(TextSpec);
-        TopBarValue["primary_resource"] = GV2RuntimeCore::FValue(TextSpec);
-        TopBarValue["unknown_currency"] = GV2RuntimeCore::FValue(std::string("gems"));
+        TopBarValue["day"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        TopBarValue["location"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        TopBarValue["primary_resource"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        TopBarValue["unknown_top_bar_key"] = GV2RuntimeCore::FValue(std::string("gems"));
 
         Field.Value = GV2RuntimeCore::FValue(TopBarValue);
         Request.Fields.push_back(MoveTemp(Field));
+
+        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on top_bar"), Registry.BuildFields(Request, Handles, OutFields));
     }
 
-    TArray<FGV2UiBindingHandle> Handles;
-    TArray<FGV2ScreenFieldValue> OutFields;
+    // 2. Rejection at field value level: scene with unknown key
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
 
-    const bool bBuilt = FGV2ScreenFieldAdapterRegistry::Get().BuildFields(Request, Handles, OutFields);
-    TestTrue(TEXT("BuildFields succeeds in BAI-01 while logging unknown key warnings"), bBuilt);
-    TestEqual(TEXT("BuildFields produces 2 fields"), OutFields.Num(), 2);
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "scene";
+        Field.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
+
+        FObject SceneValue;
+        SceneValue["background_tile_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
+        SceneValue["background_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
+        SceneValue["characters"] = GV2RuntimeCore::FValue(FArray{});
+        SceneValue["context_text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        SceneValue["unknown_lighting"] = GV2RuntimeCore::FValue(std::string("sunny"));
+
+        Field.Value = GV2RuntimeCore::FValue(SceneValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on scene"), Registry.BuildFields(Request, Handles, OutFields));
+    }
+
+    // 3. Rejection at field value level: player_status with unknown key
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "player_status";
+        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
+
+        FObject StatusValue;
+        StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
+        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{});
+        StatusValue["item_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
+        StatusValue["effect_icon_resource_ids"] = GV2RuntimeCore::FValue(FArray{});
+        StatusValue["unknown_player_stat"] = GV2RuntimeCore::FValue(std::int64_t(42));
+
+        Field.Value = GV2RuntimeCore::FValue(StatusValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on player_status"), Registry.BuildFields(Request, Handles, OutFields));
+    }
+
+    // 4. Rejection at collection element level: characters element in scene
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "scene";
+        Field.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
+
+        FObject SceneValue;
+        SceneValue["background_tile_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
+        SceneValue["background_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
+        SceneValue["context_text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+
+        FObject CharObj;
+        CharObj["key"] = GV2RuntimeCore::FValue(std::string("keeper"));
+        CharObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
+        CharObj["extra_character_prop"] = GV2RuntimeCore::FValue(std::string("merchant_dialog"));
+        SceneValue["characters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(CharObj)});
+
+        Field.Value = GV2RuntimeCore::FValue(SceneValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on character"), Registry.BuildFields(Request, Handles, OutFields));
+    }
+
+    // 5. Rejection at collection element level: meters element in player_status
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "player_status";
+        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
+
+        FObject StatusValue;
+        StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
+
+        FObject MeterObj;
+        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
+        MeterObj["percent"] = GV2RuntimeCore::FValue(0.75);
+        MeterObj["extra_color"] = GV2RuntimeCore::FValue(std::string("blue"));
+        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+
+        Field.Value = GV2RuntimeCore::FValue(StatusValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on meter"), Registry.BuildFields(Request, Handles, OutFields));
+    }
+
+    // 6. Rejection at collection element level: items element in button_list / commands
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "commands";
+        Field.SchemaId = "core:schema.ui_field.button_list.v2";
+
+        FObject BtnObj;
+        BtnObj["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
+        BtnObj["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        FObject BindingObj;
+        BindingObj["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
+        BtnObj["binding"] = GV2RuntimeCore::FValue(BindingObj);
+        BtnObj["extra_sound"] = GV2RuntimeCore::FValue(std::string("click.wav"));
+
+        FObject CmdValue;
+        CmdValue["items"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(BtnObj)});
+
+        Field.Value = GV2RuntimeCore::FValue(CmdValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle{1, 1} };
+        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), Registry.BuildFields(Request, DummyHandles, OutFields));
+    }
+
+    // 7. Rejection at nested TextSpec level
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "top_bar";
+        Field.SchemaId = "textsystem:schema.ui_field.location_top_bar.v1";
+
+        FObject BadTextSpec = MakeTextSpec("core:text.common.ok");
+        BadTextSpec["unknown_formatting"] = GV2RuntimeCore::FValue(std::string("bold"));
+
+        FObject TopBarValue;
+        TopBarValue["day"] = GV2RuntimeCore::FValue(BadTextSpec);
+        TopBarValue["location"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        TopBarValue["primary_resource"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+
+        Field.Value = GV2RuntimeCore::FValue(TopBarValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TestFalse(TEXT("BAI-03: Nested TextSpec level unknown key rejected"), Registry.BuildFields(Request, Handles, OutFields));
+    }
+
+    // 8. Rejection at nested Binding level
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "checkbox";
+        Field.SchemaId = "core:schema.ui_field.checkbox.v1";
+
+        FObject CheckboxValue;
+        CheckboxValue["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        CheckboxValue["is_checked"] = GV2RuntimeCore::FValue(true);
+
+        FObject BadBinding;
+        BadBinding["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
+        BadBinding["unknown_meta"] = GV2RuntimeCore::FValue(std::string("extra"));
+        CheckboxValue["binding"] = GV2RuntimeCore::FValue(BadBinding);
+
+        Field.Value = GV2RuntimeCore::FValue(CheckboxValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle{1, 1} };
+        TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), Registry.BuildFields(Request, DummyHandles, OutFields));
+    }
 
     return true;
 }
