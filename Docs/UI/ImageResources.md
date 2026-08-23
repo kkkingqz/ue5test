@@ -18,7 +18,7 @@ decisions:
 > **Не владеет:** тем, где изображение используется, и раскладкой экрана.
 > **Инварианты:** [INV-007](../Architecture/Invariants.md)
 > **Реализация:** `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, `GV2ImagePresentation.cpp`, `GV2LayoutConstants.h`, `Resources/`.
-> **Проверки:** `GV2.Runtime.Presentation.ImageCatalog*`, `GV2.Runtime.UIKit.ScalingModelAndConstants`.
+> **Проверки:** `GV2.Runtime.Presentation.ImageCatalog*`, `GV2.Runtime.UIKit.ScalingModelAndConstants`, `GV2.Runtime.UIKit.LayoutConstantsRelationalInvariants`.
 
 ## Purpose and scope
 
