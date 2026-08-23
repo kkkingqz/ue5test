@@ -85,7 +85,10 @@ public:
         const std::vector<FGV2ReferenceItem>& PendingOutgoing);
     void ClearPendingDefinitionReferences(const std::string& DefinitionId);
 
+    std::size_t GetBuildIndexCount() const { return BuildIndexCount; }
+
 private:
+    std::size_t BuildIndexCount = 0;
     std::vector<FGV2ReferenceItem> AllReferences;
     std::unordered_map<std::string, std::vector<FGV2ReferenceItem>> OutgoingMap;
     std::unordered_map<std::string, std::vector<FGV2ReferenceItem>> IncomingMap;

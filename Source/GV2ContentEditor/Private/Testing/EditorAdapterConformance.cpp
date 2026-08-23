@@ -5,6 +5,7 @@
 #include "GV2ContentEditor/GV2EditorAdapter.h"
 #include "GV2ContentEditor/EditorAdapterTypes.h"
 #include "GV2ContentCore/Diagnostic.h"
+#include "GV2ContentCore/StableId.h"
 #include "GV2ContentCore/Value.h"
 
 #include <chrono>
@@ -598,24 +599,44 @@ bool TestProviderAwareAdapterSelection()
 
 bool TestStableIdTreeHierarchyAndFiltering()
 {
-    // Test parsing Stable IDs into Namespace -> Kind -> PathSegments
-    std::vector<std::string> TestIds = {
+    // Test parsing Stable IDs into Namespace -> Kind -> PathSegments via canonical parser
+    std::vector<std::string> ValidTestIds = {
         "core:item.sword",
         "core:item.armor.plate",
         "textsystem:screen.location",
         "textsystem:resource.ui.missing_portrait"
     };
 
+    std::vector<std::string> InvalidTestIds = {
+        "core:item",
+        "invalid_no_colon",
+        "core:item..bad",
+        "Core:item.sword",
+        ":item.sword",
+        "core:.sword",
+        "core:item.",
+        ""
+    };
+
     std::map<std::string, std::map<std::string, std::vector<std::string>>> Hierarchy;
-    for (const auto& FullId : TestIds)
+    for (const auto& FullId : ValidTestIds)
     {
-        auto ColonPos = FullId.find(':');
-        std::string Ns = FullId.substr(0, ColonPos);
-        std::string Rem = FullId.substr(ColonPos + 1);
-        auto DotPos = Rem.find('.');
-        std::string Kind = Rem.substr(0, DotPos);
-        std::string Path = Rem.substr(DotPos + 1);
-        Hierarchy[Ns][Kind].push_back(Path);
+        GV2ContentCore::FStableIdView IdView;
+        if (!GV2ContentCore::FStableId::Parse(FullId, IdView))
+        {
+            return false;
+        }
+        Hierarchy[std::string(IdView.Namespace)][std::string(IdView.Kind)].push_back(std::string(IdView.Path));
+    }
+
+    // Invalid IDs must be rejected by canonical parser and not placed into hierarchy
+    for (const auto& BadId : InvalidTestIds)
+    {
+        GV2ContentCore::FStableIdView IdView;
+        if (GV2ContentCore::FStableId::Parse(BadId, IdView))
+        {
+            return false;
+        }
     }
 
     if (Hierarchy.size() != 2) return false; // "core", "textsystem"
@@ -1881,6 +1902,96 @@ bool TestRealisticMultiPackageScaleFixture()
     return true;
 }
 
+bool TestIndexBuildCountAndPickerIsolation()
+{
+    std::filesystem::path TempDir = CreateTempDir("gv2_index_isolation");
+    std::string InitialItems =
+        "{\n"
+        "  schema_version: 1,\n"
+        "  type: 'item',\n"
+        "  definitions: [\n"
+        "    {\n"
+        "      id: 'core:item.sword',\n"
+        "      data: {\n"
+        "        name: 'Iron Sword',\n"
+        "        weight: 2.5,\n"
+        "        value: 10\n"
+        "      }\n"
+        "    },\n"
+        "    {\n"
+        "      id: 'core:item.shield',\n"
+        "      data: {\n"
+        "        name: 'Wooden Shield',\n"
+        "        weight: 4.0,\n"
+        "        value: 15\n"
+        "      }\n"
+        "    }\n"
+        "  ]\n"
+        "}\n";
+
+    SetupTestGameData(TempDir, InitialItems);
+
+    FGV2EditorAdapter Adapter;
+    std::vector<FGV2EditorDiagnostic> Diags;
+    if (!Adapter.Initialize(TempDir, Diags))
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 1. Initialized adapter must have built the index exactly once
+    if (Adapter.GetIndexBuildCount() != 1)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 2. Load definition
+    auto Loaded = Adapter.LoadDefinition("core:item.sword", Diags);
+    if (!Loaded.has_value() || Adapter.GetIndexBuildCount() != 1)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 3. Series of field edits (text, number, optional properties)
+    for (int i = 0; i < 20; ++i)
+    {
+        Adapter.SetCurrentFieldValue("/data/name", GV2ContentCore::FValue("Sword " + std::to_string(i)));
+        Adapter.SetCurrentFieldValue("/data/weight", GV2ContentCore::FValue(2.0 + 0.1 * i));
+    }
+
+    // Index build count must remain 1 after field editing (no full rebuild triggered by typing)
+    if (Adapter.GetIndexBuildCount() != 1)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    // 4. Repeated picker queries (reference targets, resource targets, definition listings)
+    for (int i = 0; i < 20; ++i)
+    {
+        auto Targets = Adapter.GetCompatibleReferenceTargets("item");
+        auto ResTargets = Adapter.GetCompatibleResourceTargets("texture");
+        auto DefList = Adapter.ListDefinitions("item");
+        auto Types = Adapter.GetAvailableDefinitionTypes();
+        (void)Targets;
+        (void)ResTargets;
+        (void)DefList;
+        (void)Types;
+    }
+
+    // Index build count must still remain 1 after opening pickers (pickers do not re-read GameData)
+    if (Adapter.GetIndexBuildCount() != 1)
+    {
+        std::filesystem::remove_all(TempDir);
+        return false;
+    }
+
+    std::filesystem::remove_all(TempDir);
+    return true;
+}
+
 std::string RunEditorAdapterConformance()
 {
     if (!TestAdapterInitializationAndIndexing())
@@ -1890,6 +2001,10 @@ std::string RunEditorAdapterConformance()
     if (!TestAdapterLoadAndDirtyState())
     {
         return "TestAdapterLoadAndDirtyState failed";
+    }
+    if (!TestIndexBuildCountAndPickerIsolation())
+    {
+        return "TestIndexBuildCountAndPickerIsolation failed";
     }
     if (!TestAdapterAtomicSave())
     {

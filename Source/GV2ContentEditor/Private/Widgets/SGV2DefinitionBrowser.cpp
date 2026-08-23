@@ -1,4 +1,5 @@
 #include "GV2ContentEditor/Widgets/SGV2DefinitionBrowser.h"
+#include "GV2ContentCore/StableId.h"
 
 #if defined(__UNREAL__) || defined(UE_GAME) || defined(UE_EDITOR) || defined(WITH_ENGINE)
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -180,20 +181,23 @@ void SGV2DefinitionBrowser::BuildTree()
 
     for (const auto& Loc : EffectiveDefs)
     {
-        const FString FullId = UTF8_TO_TCHAR(Loc.DefinitionId.c_str());
-        FString NsPart, Remainder;
-        if (!FullId.Split(TEXT(":"), &NsPart, &Remainder))
+        GV2ContentCore::FStableIdView IdView;
+        GV2ContentCore::EStableIdError ParseError = GV2ContentCore::EStableIdError::None;
+        if (!GV2ContentCore::FStableId::Parse(Loc.DefinitionId, IdView, &ParseError))
         {
-            NsPart = TEXT("core");
-            Remainder = FullId;
+            UE_LOG(
+                LogTemp,
+                Warning,
+                TEXT("SGV2DefinitionBrowser: Definition ID '%s' rejected by canonical Stable ID parser (error=%d), skipped from hierarchy"),
+                *FString(UTF8_TO_TCHAR(Loc.DefinitionId.c_str())),
+                static_cast<int32>(ParseError));
+            continue;
         }
 
-        FString KindPart, PathPart;
-        if (!Remainder.Split(TEXT("."), &KindPart, &PathPart))
-        {
-            KindPart = UTF8_TO_TCHAR(Loc.DefinitionType.c_str());
-            PathPart = Remainder;
-        }
+        const FString FullId = UTF8_TO_TCHAR(Loc.DefinitionId.c_str());
+        const FString NsPart = FString(static_cast<int32>(IdView.Namespace.length()), UTF8_TO_TCHAR(std::string(IdView.Namespace).c_str()));
+        const FString KindPart = FString(static_cast<int32>(IdView.Kind.length()), UTF8_TO_TCHAR(std::string(IdView.Kind).c_str()));
+        const FString PathPart = FString(static_cast<int32>(IdView.Path.length()), UTF8_TO_TCHAR(std::string(IdView.Path).c_str()));
 
         // 1. Namespace root node
         TSharedPtr<FGV2DefinitionTreeNode> NsNode;
@@ -689,17 +693,18 @@ FReply SGV2DefinitionBrowser::HandleCreate()
     if (!OptId.IsSet() || OptId.GetValue().IsEmpty()) return FReply::Handled();
 
     FString NewId = OptId.GetValue();
-    FString NsPart, RemPart;
-    if (!NewId.Split(TEXT(":"), &NsPart, &RemPart))
+    GV2ContentCore::FStableIdView IdView;
+    GV2ContentCore::EStableIdError ParseError = GV2ContentCore::EStableIdError::None;
+    if (!GV2ContentCore::FStableId::Parse(TCHAR_TO_UTF8(*NewId), IdView, &ParseError))
     {
-        NsPart = DefaultNs;
-        RemPart = NewId;
+        FMessageDialog::Open(
+            EAppMsgType::Ok,
+            FText::FromString(FString::Printf(TEXT("Invalid Stable ID '%s'. ID must conform to strict grammar <namespace>:<kind>.<path>."), *NewId)));
+        return FReply::Handled();
     }
-    FString KindPart, PathPart;
-    if (!RemPart.Split(TEXT("."), &KindPart, &PathPart))
-    {
-        KindPart = DefaultKind;
-    }
+
+    const FString NsPart = UTF8_TO_TCHAR(std::string(IdView.Namespace).c_str());
+    const FString KindPart = UTF8_TO_TCHAR(std::string(IdView.Kind).c_str());
 
     auto Result = Adapter->CreateDefinition(
         TCHAR_TO_UTF8(*NsPart),

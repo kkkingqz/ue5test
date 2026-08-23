@@ -20,11 +20,11 @@ depends_on:
 
 ## Задачи
 
-- [ ] **SVC-10 — Дерево браузера через канонический парсер и инструментовка**
+- [x] **SVC-10 — Дерево браузера через канонический парсер и инструментовка**
   - `SGV2DefinitionBrowser.cpp` разбирает идентификатор вручную — `Split(":")`, `Split(".")`, `ParseIntoArray(".")`, — тогда как `GV2ContentCore::FStableId` доступен и используется в `GV2EditorAdapter.cpp` при переименовании. [Stable ID Specification](../../Architecture/StableIDSpecification.md) называет `FStableId` единственной C++-реализацией грамматики. Вероятная причина обхода — тип: парсер принимает `std::string_view`, виджет работает с `FString`.
   - Отдельно: два утверждения о производительности — «pickers не перечитывают весь GameData» и «text editing не вызывает full rebuild» — сегодня истинны структурно (`BuildIndex` вызывается один раз, в `Initialize`), но не защищены ничем.
-  - Done: дерево строится каноническим парсером; идентификатор, который парсер отвергает, не раскладывается по узлам молча; добавлен счётчик построений индекса, и тест утверждает, что серия правок поля и открытий пикера его не увеличивает; при регрессе — вызов `BuildIndex` из пути правки — тест падает.
-  - Evidence: `Source/GV2ContentEditor/Private/Widgets/SGV2DefinitionBrowser.cpp`, `Source/GV2ContentEditor/Private/GV2EditorAdapter.cpp`, `Source/GV2ContentEditor/Private/Testing/`.
+  - Done: дерево браузера и валидация создания дефиниций переведены на канонический парсер `GV2ContentCore::FStableId::Parse`; некорректные идентификаторы отвергаются парсером и не попадают в дерево; в `FGV2AuthoringReferenceIndex` и `FGV2EditorAdapter` добавлен счётчик вызовов `BuildIndex` (`GetIndexBuildCount()`); добавлены тесты `TestIndexBuildCountAndPickerIsolation` (в `content_editor_conformance`) и `FGV2DefinitionBrowserTreeTest` (в `GV2.Editor.ContentEditor.DefinitionBrowserTree`), проверяющие, что серия правок полей, переключений и открытий пикеров не вызывает перестроение индекса (`BuildCount == 1`).
+  - Evidence: `Source/GV2ContentEditor/Private/Widgets/SGV2DefinitionBrowser.cpp`, `Source/GV2ContentEditor/Private/GV2EditorAdapter.cpp`, `Source/GV2ContentEditor/Private/Testing/EditorAdapterConformance.cpp`, `Source/GV2/Private/Tests/GV2ContentEditorTests.cpp`.
 
 - [ ] **SVC-11 — Два решения: форма значения поля и композиция источников**
   - Зависимости: нет.
@@ -41,7 +41,7 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] В редакторе одна реализация грамматики Stable ID.
-- [ ] Регресс производительности индекса ловится тестом.
+- [x] В редакторе одна реализация грамматики Stable ID.
+- [x] Регресс производительности индекса ловится тестом.
 - [ ] Оба решения записаны, условия пересмотра наблюдаемы.
 - [ ] Проверка планов закрыта, архив приведён в порядок.

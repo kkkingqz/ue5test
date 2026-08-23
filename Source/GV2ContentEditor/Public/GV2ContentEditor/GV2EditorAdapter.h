@@ -89,6 +89,12 @@ public:
     /** Gets the authoring index (CEH-01). */
     const GV2ContentAuthoring::FAuthoringIndex& GetAuthoringIndex() const { return AuthoringIndex; }
 
+    /** Gets the authoring reference index (CEH-13, CEH-14). */
+    const FGV2AuthoringReferenceIndex& GetAuthoringReferenceIndex() const { return AuthoringReferenceIndex; }
+
+    /** Gets the number of times the authoring reference index has been built. */
+    std::size_t GetIndexBuildCount() const { return AuthoringReferenceIndex.GetBuildIndexCount(); }
+
     /**
      * Sets an edited field value for the current definition at the given JSON pointer.
      * Marks the field as dirty if it differs from the canonical baseline.

@@ -229,6 +229,7 @@ void FGV2AuthoringReferenceIndex::BuildIndex(
     const std::vector<GV2ContentCore::FPackageDescriptor>& Packages,
     const std::vector<FGV2DefinitionSummary>& AllDefinitions)
 {
+    ++BuildIndexCount;
     Clear();
 
     // Populate definitions by kind / type in CompatibleTargetsMap

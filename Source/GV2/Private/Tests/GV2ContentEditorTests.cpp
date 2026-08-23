@@ -20,6 +20,8 @@ bool FGV2ContentEditorTest::RunTest(const FString& Parameters)
     return Error.empty();
 }
 
+#include "GV2ContentCore/StableId.h"
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2DefinitionBrowserTreeTest,
     "GV2.Editor.ContentEditor.DefinitionBrowserTree",
@@ -27,12 +29,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2DefinitionBrowserTreeTest::RunTest(const FString& Parameters)
 {
+    // Verify canonical parser rejects invalid Stable IDs
+    {
+        GV2ContentCore::FStableIdView DummyView;
+        TestFalse(TEXT("FStableId::Parse rejects missing path"), GV2ContentCore::FStableId::Parse("core:item", DummyView));
+        TestFalse(TEXT("FStableId::Parse rejects missing namespace"), GV2ContentCore::FStableId::Parse("item.sword", DummyView));
+        TestFalse(TEXT("FStableId::Parse rejects empty segment"), GV2ContentCore::FStableId::Parse("core:item..sword", DummyView));
+        TestFalse(TEXT("FStableId::Parse rejects uppercase"), GV2ContentCore::FStableId::Parse("Core:item.sword", DummyView));
+    }
+
     auto Adapter = MakeShared<GV2ContentEditor::FGV2EditorAdapter>();
     FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
 
     std::vector<GV2ContentEditor::FGV2EditorDiagnostic> InitDiags;
     bool bInit = Adapter->Initialize(TCHAR_TO_UTF8(*GameDataDir), InitDiags);
     TestTrue(TEXT("Adapter initialized successfully"), bInit);
+
+    // Initialized adapter must have built index exactly once
+    TestEqual(TEXT("Index built once during Initialize"), static_cast<int32>(Adapter->GetIndexBuildCount()), 1);
 
     TSharedRef<GV2ContentEditor::SGV2DefinitionBrowser> Browser =
         SNew(GV2ContentEditor::SGV2DefinitionBrowser, Adapter);
@@ -98,6 +112,13 @@ bool FGV2DefinitionBrowserTreeTest::RunTest(const FString& Parameters)
             CheckDirty(CheckDirty, Root);
         }
         TestTrue(TEXT("Dirty marker found on tree node or ancestor"), bFoundDirtyNode);
+
+        // Verify pickers and field editing do not trigger index rebuild
+        auto Targets = Adapter->GetCompatibleReferenceTargets("item");
+        auto ResTargets = Adapter->GetCompatibleResourceTargets("texture");
+        (void)Targets;
+        (void)ResTargets;
+        TestEqual(TEXT("Index build count remains 1 after field editing and picker queries"), static_cast<int32>(Adapter->GetIndexBuildCount()), 1);
 
         Adapter->DiscardCurrentChanges();
         Browser->RefreshList();
