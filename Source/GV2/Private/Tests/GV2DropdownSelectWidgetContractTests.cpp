@@ -16,7 +16,7 @@ bool FGV2DropdownSelectWidgetContractTests::RunTest(const FString& Parameters)
     TestNotNull(TEXT("Dropdown widget created"), Dropdown);
 
     FGV2DropdownSelectViewModel ValidModel;
-    ValidModel.Binding.CommandId = TEXT("core:command.test");
+    ValidModel.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
     ValidModel.Placeholder.Text = FText::FromString(TEXT("Select item..."));
     ValidModel.Placeholder.StyleToken = TEXT("text_regular");
 

@@ -4080,7 +4080,11 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
                 NineSliceDef.RenderMode = EGV2ImageRenderMode::NineSlice;
                 NineSliceDef.Texture = NineSliceTex;
                 NineSliceDef.NineSliceBorderPixels = FMargin(8.0f);
-                Catalog->GetEntries().Add(NineSliceDef);
+                FGV2ResolvedImageResource ResolvedNineSlice;
+                FString ResolveDefError;
+                const bool bResolvedNineSlice = UGV2ImageResourceCatalog::ResolveDefinition(NineSliceDef, ResolvedNineSlice, ResolveDefError);
+                TestTrue(TEXT("CCF-15: nine-slice test definition resolves"), bResolvedNineSlice);
+                Catalog->ResolvedById.Add(NineSliceDef.ResourceId, MoveTemp(ResolvedNineSlice));
 
                 ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::NineSlice);
                 const bool bAppliedNineSlice = ImageWidget->ApplyImageResource(TEXT("core:resource.surface.test_panel"), Error);

@@ -3,6 +3,8 @@
 #include "GV2RuntimeCore/GV2StableId.h"
 #include "UI/GV2TextPipeline.h"
 
+#include <set>
+
 namespace
 {
 using FObject = GV2RuntimeCore::FValue::FObject;
@@ -1077,7 +1079,7 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
     {
         const FArray* MetersArray = AsArray(*MetersVal);
         if (MetersArray == nullptr) return false;
-        TSet<std::string> MeterKeys;
+        std::set<std::string> MeterKeys;
         for (const GV2RuntimeCore::FValue& EntryVal : *MetersArray)
         {
             const FObject* MeterObj = std::get_if<FObject>(&EntryVal.Data);
@@ -1085,8 +1087,8 @@ bool PrepareLocationPlayerStatus(const std::string&, const GV2RuntimeCore::FScre
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*MeterObj, "key");
             if (KeyVal == nullptr) return false;
             const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
-            if (KeyStr == nullptr || KeyStr->empty() || MeterKeys.Contains(*KeyStr)) return false;
-            MeterKeys.Add(*KeyStr);
+            if (KeyStr == nullptr || KeyStr->empty() || MeterKeys.find(*KeyStr) != MeterKeys.end()) return false;
+            MeterKeys.insert(*KeyStr);
         }
     }
     return true;
@@ -1144,7 +1146,7 @@ bool PrepareLocationScene(const std::string&, const GV2RuntimeCore::FScreenField
     {
         const FArray* CharsArray = AsArray(*CharsVal);
         if (CharsArray == nullptr) return false;
-        TSet<std::string> CharKeys;
+        std::set<std::string> CharKeys;
         for (const GV2RuntimeCore::FValue& EntryVal : *CharsArray)
         {
             const FObject* CharObj = std::get_if<FObject>(&EntryVal.Data);
@@ -1152,8 +1154,8 @@ bool PrepareLocationScene(const std::string&, const GV2RuntimeCore::FScreenField
             const GV2RuntimeCore::FValue* KeyVal = FindValue(*CharObj, "key");
             if (KeyVal == nullptr) return false;
             const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
-            if (KeyStr == nullptr || KeyStr->empty() || CharKeys.Contains(*KeyStr)) return false;
-            CharKeys.Add(*KeyStr);
+            if (KeyStr == nullptr || KeyStr->empty() || CharKeys.find(*KeyStr) != CharKeys.end()) return false;
+            CharKeys.insert(*KeyStr);
         }
     }
     return true;

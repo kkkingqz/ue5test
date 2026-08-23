@@ -19,6 +19,7 @@
 #include <fstream>
 #include <iterator>
 #include <set>
+#include <sstream>
 #include <system_error>
 
 namespace GV2ContentEditor

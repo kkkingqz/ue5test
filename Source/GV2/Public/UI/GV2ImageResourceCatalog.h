@@ -109,6 +109,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
     friend class FGV2ImageResourceLookupScaling;
+    friend class FGV2GraphicsScalingPolicyTest;
 #endif
 
     UPROPERTY(Transient)
