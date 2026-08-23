@@ -249,6 +249,12 @@ if(BUILD_TESTING)
         add_test(NAME gv2_content_pseudolocale_negative_contract
             COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/generate_pseudolocale.py" --self-test
         )
+        add_test(NAME content_cli_router_gate_contract
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/validate_main_router.py"
+        )
+        add_test(NAME content_cli_router_gate_negative_contract
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/validate_main_router.py" --self-test
+        )
     endif()
 
     set_tests_properties(

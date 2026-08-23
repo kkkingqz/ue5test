@@ -26,7 +26,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `ctest_expected_failure_contract`, `ctest_process_contract_self_test`, `ctest_headless_json_contract_self_test`, `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `gv2_content_*`.
+> **Проверки:** `ctest_expected_failure_contract`, `ctest_process_contract_self_test`, `ctest_headless_json_contract_self_test`, `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `content_cli_router_gate_contract`, `content_cli_router_gate_negative_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -128,6 +128,17 @@ gv2-content coverage <package-or-container-root> [--locale=LOCALE] [--format=tex
 - `coverage` — сопоставление всех активных `text_id` определений типа `text` с ключами каталогов локализации `<package-root>/localization/<locale>.po` ([ADR-0022](../ADR/0022-external-translation-catalog.md)). Классифицирует ключи по четырём категориям: `translated` (непустой перевод), `empty` (пустая строка `msgstr ""`), `missing` (отсутствует в PO) и `extra` (устаревший ключ в PO без определения в репозитории). Является исключительно информационным отчётом (informational step), всегда возвращает exit code 0 и не влияет на валидность контента.
 
 `--provenance` поддерживается только `inspect`; `--locale` — только `coverage`. Поддерживаются форматы вывода `--format=text` (по умолчанию) и `--format=json`. CLI не публикует repository и не запускает gameplay session. Absolute filesystem paths не попадают в его output.
+
+### Структурный инвариант CLI-роутера (`Tools/Content/Source/main.cpp`)
+
+`Tools/Content/Source/main.cpp` выполняет строго роль CLI-роутера и верхнеуровневого разбора опций командной строки (`--format`, `--watch`, `--poll-interval`, `--max-iterations`, `--locale`, `--provenance`). Файл не содержит:
+- реализаций бизнес-логики команд (все команды вынесены в `Tools/Content/Source/Commands/`);
+- прямых вызовов построения репозитория (`BuildRepository`, `BuildFromPackageRoots`);
+- разбора JSON5-документов или схем (`ParseJson5Document`, `ParseDefinitionFileEnvelope`);
+- вызовов мутаций `AuthoringService` (`CreateDefinition`, `SetField`, `DeleteDefinition`, `RenameDefinition`, `DuplicateDefinition`);
+- прямого файлового ввода-вывода или мутации файловой системы (`ofstream`, `create_directories`, `remove`, `rename`).
+
+Инвариант проверяется статическим гейтом `Tools/Content/validate_main_router.py` (CTest `content_cli_router_gate_contract` и негативный `content_cli_router_gate_negative_contract`).
 
 ### Интеграция с редакторами и Live Loop
 
