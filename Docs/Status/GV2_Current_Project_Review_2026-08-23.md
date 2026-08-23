@@ -10,7 +10,7 @@ depends_on:
 # GV2 — повторное ревью актуального состояния
 
 > **Показывает:** внешнее ревью состояния репозитория на commit `93bc1e1a11890189188c4b554174f3d39f3795a7` от 2026-08-23, как оно было получено.
-> **Не является нормативным:** проверенные находки перенесены в [Implementation Status](ImplementationStatus.md) и [Boundary and Apply Integrity](../Plans/BoundaryAndApplyIntegrity/README.md); при расхождении источником считаются они.
+> **Не является нормативным:** проверенные находки перенесены в [Implementation Status](ImplementationStatus.md) и [BoundaryAndApplyIntegrity](../Plans/Archive/BoundaryAndApplyIntegrity.md); при расхождении источником считаются они.
 
 ## 1. Резюме
 
