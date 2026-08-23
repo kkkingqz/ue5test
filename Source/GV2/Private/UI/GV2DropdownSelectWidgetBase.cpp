@@ -95,10 +95,12 @@ bool UGV2DropdownSelectWidgetBase::ApplyDropdownModel(
         }
     }
 
+    const bool bModelUnchanged = (InModel == AppliedModel);
+
     AppliedModel = InModel;
     UpdateHeaderLabel();
 
-    if (bIsOpen)
+    if (!bModelUnchanged && bIsOpen)
     {
         SetDropdownOpen(false);
     }

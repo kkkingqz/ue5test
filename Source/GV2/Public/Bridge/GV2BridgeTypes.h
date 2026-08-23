@@ -134,6 +134,18 @@ struct GV2_API FGV2TextViewModel
     // Prepared renderer markup. Produced only by UGV2TextPipeline.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
     FString NormalizedMarkup;
+
+    bool operator==(const FGV2TextViewModel& Other) const
+    {
+        return StyleToken == Other.StyleToken
+            && NormalizedMarkup == Other.NormalizedMarkup
+            && Text.EqualTo(Other.Text);
+    }
+
+    bool operator!=(const FGV2TextViewModel& Other) const
+    {
+        return !(*this == Other);
+    }
 };
 
 USTRUCT(BlueprintType)
@@ -203,6 +215,18 @@ struct GV2_API FGV2DropdownOptionViewModel
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
 	bool bSelected = false;
+
+	bool operator==(const FGV2DropdownOptionViewModel& Other) const
+	{
+		return Key == Other.Key
+			&& bSelected == Other.bSelected
+			&& Text == Other.Text;
+	}
+
+	bool operator!=(const FGV2DropdownOptionViewModel& Other) const
+	{
+		return !(*this == Other);
+	}
 };
 
 USTRUCT(BlueprintType)
@@ -218,6 +242,18 @@ struct GV2_API FGV2DropdownSelectViewModel
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
 	FGV2UiBindingHandle Binding;
+
+	bool operator==(const FGV2DropdownSelectViewModel& Other) const
+	{
+		return Binding == Other.Binding
+			&& Placeholder == Other.Placeholder
+			&& Options == Other.Options;
+	}
+
+	bool operator!=(const FGV2DropdownSelectViewModel& Other) const
+	{
+		return !(*this == Other);
+	}
 };
 
 USTRUCT(BlueprintType)

@@ -69,6 +69,24 @@ bool FGV2DropdownSelectWidgetContractTests::RunTest(const FString& Parameters)
         TestFalse(TEXT("CanApplyDropdownModel must reject multiple selected options"), bCanApplyMulti);
     }
 
+    // 5. Model Equality Tests (TWH-07)
+    {
+        FGV2DropdownSelectViewModel ModelCopy = ValidModel;
+        TestTrue(TEXT("Identical dropdown models must compare equal"), ModelCopy == ValidModel);
+
+        FGV2DropdownSelectViewModel ChangedSelectionModel = ValidModel;
+        ChangedSelectionModel.Options[0].bSelected = true;
+        TestFalse(TEXT("Model with changed selection must not compare equal"), ChangedSelectionModel == ValidModel);
+
+        FGV2DropdownSelectViewModel ChangedOptionsModel = ValidModel;
+        FGV2DropdownOptionViewModel ExtraOpt;
+        ExtraOpt.Key = TEXT("option_c");
+        ExtraOpt.Text.Text = FText::FromString(TEXT("Option C"));
+        ExtraOpt.Text.StyleToken = TEXT("text_regular");
+        ChangedOptionsModel.Options.Add(ExtraOpt);
+        TestFalse(TEXT("Model with extra option must not compare equal"), ChangedOptionsModel == ValidModel);
+    }
+
     return true;
 }
 
