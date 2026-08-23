@@ -257,24 +257,24 @@ rg -n "IMPLEMENT_.*AUTOMATION_TEST|GV2\.Runtime" Source
 - [x] Empty/duplicate/missing repeated key отклоняется до mutation.
 - [x] Character identity не выводится из resource ID.
 - [x] Meter identity не выводится из array index.
-- [ ] `CanApply*` не создаёт UObject и не меняет widget tree/state.
-- [ ] Scene character collection имеет только Repeater rendering path.
-- [ ] Player meters имеют только Repeater rendering path.
-- [ ] В production code отсутствуют `Characters[0]` и `Meters[0]` fallback paths.
-- [ ] Failed composite apply сохраняет предыдущие model и visuals.
-- [ ] Captured `Applied` меняется только после успешного visual commit.
-- [ ] `ResetScreenField()` очищает captured и visible state.
-- [ ] Existing placeholder semantics подтверждены regression tests.
-- [ ] `ScalePolicy` нигде не выводится из resource `RenderMode`.
-- [ ] Existing assets явно содержат требуемый `ScalePolicy`.
-- [ ] Failed image apply сохраняет предыдущий valid brush state.
-- [ ] Реальный `WBP_LocationScreen` проверен на шести viewport sizes.
-- [ ] 1280×720 проверяется по actual command geometry.
-- [ ] 21:9 проверяется по actual SceneView allocation.
-- [ ] Text/RichText/Button/Input/Dropdown проверены по фактическому font size.
-- [ ] NineSlice проверен через resulting brush.
-- [ ] Tavern→Market проверяет exact target presentation и Screen reuse.
-- [ ] Активные plan/status docs соответствуют фактическому evidence.
-- [ ] Portable gate зелёный.
-- [ ] `GV2Editor` build зелёный.
-- [ ] Полный релевантный Unreal automation suite зелёный.
+- [x] `CanApply*` не создаёт UObject и не меняет widget tree/state. (CCF-06)
+- [x] Scene character collection имеет только Repeater rendering path. (CCF-07, усилено SVC-01…03)
+- [x] Player meters имеют только Repeater rendering path. (CCF-08)
+- [x] В production code отсутствуют `Characters[0]` и `Meters[0]` fallback paths. (CCF-07/08; `StaminaMeter` остаётся как обесточенный `ResetScreenField`-only property — данные в него никогда не пишутся, альтернативным путём рендера не является)
+- [x] Failed composite apply сохраняет предыдущие model и visuals. (CCF-09/10, тест `GV2.Runtime.UI.CompositeRollbackContract` добавлен SVC-09)
+- [x] Captured `Applied` меняется только после успешного visual commit. (CCF-10)
+- [x] `ResetScreenField()` очищает captured и visible state. (CCF-11)
+- [x] Existing placeholder semantics подтверждены regression tests. (CCF-12)
+- [x] `ScalePolicy` нигде не выводится из resource `RenderMode`. (CCF-13/14)
+- [x] Existing assets явно содержат требуемый `ScalePolicy`. (CCF-14)
+- [x] Failed image apply сохраняет предыдущий valid brush state. (CCF-15)
+- [x] Реальный `WBP_LocationScreen` проверен на шести viewport sizes. (CCF-16, усилено SVC-05 — `ArrangeChildren`/`PaintWindow` вместо `GetDesiredSize()`)
+- [x] 1280×720 проверяется по actual command geometry. (CCF-17, усилено SVC-05)
+- [x] 21:9 проверяется по actual SceneView allocation. (CCF-18, усилено SVC-05)
+- [x] Text/RichText/Button/Input/Dropdown проверены по фактическому font size. (CCF-19, тест `GV2.Runtime.UIKit.WidgetSemanticFontSizeContract` добавлен TWH-09)
+- [x] NineSlice проверен через resulting brush. (CCF-20)
+- [x] Tavern→Market проверяет exact target presentation и Screen reuse. (CCF-21, вакуумный дубликат `LocationTransitionFlow` снят SVC-06)
+- [x] Активные plan/status docs соответствуют фактическому evidence. (CCF-22, довершено SVC-12)
+- [x] Portable gate зелёный. (66/66 CTest на HEAD SVC-12)
+- [x] `GV2Editor` build зелёный. (чистая пересборка на HEAD SVC-12)
+- [x] Полный релевантный Unreal automation suite зелёный. (81/81 `GV2.*` automation на HEAD SVC-12)
