@@ -69,6 +69,8 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> EffectIcons;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> IconWidgetClass;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ProgressBarWidgetBase> MeterWidgetClass;
+    virtual TSubclassOf<UGV2ImageWidgetBase> ResolveIconWidgetClass() const;
+    virtual TSubclassOf<UGV2ProgressBarWidgetBase> ResolveMeterWidgetClass() const;
 private:
     FGV2LocationPlayerStatusViewModel Applied;
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalItemRepeater;
@@ -77,8 +79,6 @@ private:
     UGV2ListViewWidgetBase* ResolveItemRepeater();
     UGV2ListViewWidgetBase* ResolveEffectRepeater();
     UGV2ListViewWidgetBase* ResolveMeterRepeater();
-    TSubclassOf<UGV2ImageWidgetBase> ResolveIconWidgetClass() const;
-    TSubclassOf<UGV2ProgressBarWidgetBase> ResolveMeterWidgetClass() const;
 };
 
 UCLASS(Blueprintable)
@@ -103,11 +103,11 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> CharacterRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;
+    virtual TSubclassOf<UGV2ImageWidgetBase> ResolveCharacterWidgetClass() const;
 private:
     FGV2LocationSceneViewModel Applied;
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalCharacterRepeater;
     UGV2ListViewWidgetBase* ResolveCharacterRepeater();
-    TSubclassOf<UGV2ImageWidgetBase> ResolveCharacterWidgetClass() const;
 };
 
 /** LocationScreen's command field is a ButtonList with a textsystem schema. */
@@ -133,9 +133,9 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> ButtonRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> ButtonContainer;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="GV2|UI") TSubclassOf<UGV2ButtonWidgetBase> ButtonWidgetClass;
+    virtual TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
 private:
     UFUNCTION() void HandleButtonBindingInvoked(FGV2UiBindingHandle BindingHandle, EGV2SubmitUiInteractionResult Result);
-    TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
     UGV2ListViewWidgetBase* ResolveRepeater();
     UPROPERTY(Transient) TArray<FGV2ButtonViewModel> AppliedButtonModels;
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalRepeater;

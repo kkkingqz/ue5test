@@ -5922,6 +5922,178 @@ bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationCompositeUnresolvedClassRejectionTest,
+    "GV2.Runtime.Presentation.LocationCompositeUnresolvedClassRejection",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& Parameters)
+{
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    TestNotNull(TEXT("TestWorld created"), TestWorld);
+    if (TestWorld == nullptr) return false;
+
+    // 1. PlayerStatusWidget without widget classes
+    {
+        UGV2LocationPlayerStatusWidgetBase* PlayerStatusWidget = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+        TestNotNull(TEXT("PlayerStatus widget instantiated"), PlayerStatusWidget);
+
+        // Bind repeater host containers so the only failure reason is unresolved class
+        UVerticalBox* MeterBox = NewObject<UVerticalBox>(PlayerStatusWidget);
+        UWrapBox* ItemBox = NewObject<UWrapBox>(PlayerStatusWidget);
+        UWrapBox* EffectBox = NewObject<UWrapBox>(PlayerStatusWidget);
+
+        // Use reflection or member assignment via transient repeaters or container pointers
+        // Note: HasUsable*RepeaterHost checks MeterRepeater/MeterContainer, ItemRepeater/ItemIcons, EffectRepeater/EffectIcons
+        // We can create and set internal repeaters or simulate via properties if accessible or through repeaters
+        UGV2ListViewWidgetBase* MeterRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatusWidget);
+        MeterRep->SetContainerPanel(MeterBox);
+        UGV2ListViewWidgetBase* ItemRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatusWidget);
+        ItemRep->SetContainerPanel(ItemBox);
+        UGV2ListViewWidgetBase* EffectRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatusWidget);
+        EffectRep->SetContainerPanel(EffectBox);
+
+        // Set protected properties via reflection / FindField if protected, or via GetMeterRepeater
+        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("MeterRepeater")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatusWidget) = MeterRep;
+        }
+        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("ItemRepeater")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatusWidget) = ItemRep;
+        }
+        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("EffectRepeater")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatusWidget) = EffectRep;
+        }
+
+        TestTrue(TEXT("PlayerStatus has usable meter repeater host"), PlayerStatusWidget->HasUsableMeterRepeaterHost());
+        TestTrue(TEXT("PlayerStatus has usable item repeater host"), PlayerStatusWidget->HasUsableItemRepeaterHost());
+        TestTrue(TEXT("PlayerStatus has usable effect repeater host"), PlayerStatusWidget->HasUsableEffectRepeaterHost());
+
+        // 1a. Non-empty meters with unresolved meter widget class -> rejected
+        FGV2LocationPlayerStatusViewModel MeterModel;
+        MeterModel.Name = { FText::FromString(TEXT("Hero")) };
+        MeterModel.Meters.Add({ FName(TEXT("hp")), { 0.8f, { FText::FromString(TEXT("80/100")) } } });
+        FGV2ScreenFieldValue MeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MeterModel);
+
+        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty meters with unresolved MeterWidgetClass"),
+            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, MeterField));
+        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty meters with unresolved MeterWidgetClass"),
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, MeterField));
+
+        // 1b. Non-empty items with unresolved icon widget class -> rejected
+        FGV2LocationPlayerStatusViewModel ItemModel;
+        ItemModel.Name = { FText::FromString(TEXT("Hero")) };
+        ItemModel.ItemIconResourceIds.Add(TEXT("core:resource.ui.missing_icon"));
+        FGV2ScreenFieldValue ItemField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), ItemModel);
+
+        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty items with unresolved IconWidgetClass"),
+            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, ItemField));
+        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty items with unresolved IconWidgetClass"),
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, ItemField));
+
+        // 1c. Non-empty effects with unresolved icon widget class -> rejected
+        FGV2LocationPlayerStatusViewModel EffectModel;
+        EffectModel.Name = { FText::FromString(TEXT("Hero")) };
+        EffectModel.EffectIconResourceIds.Add(TEXT("core:resource.ui.missing_icon"));
+        FGV2ScreenFieldValue EffectField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), EffectModel);
+
+        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty effects with unresolved IconWidgetClass"),
+            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, EffectField));
+        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty effects with unresolved IconWidgetClass"),
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, EffectField));
+
+        // 1d. Empty collections with unresolved classes -> succeeds
+        FGV2LocationPlayerStatusViewModel EmptyModel;
+        EmptyModel.Name = { FText::FromString(TEXT("Hero")) };
+        FGV2ScreenFieldValue EmptyField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), EmptyModel);
+
+        TestTrue(TEXT("BAI-05: CanApplyScreenField succeeds on empty collections with unresolved classes"),
+            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, EmptyField));
+        TestTrue(TEXT("BAI-05: ApplyScreenField succeeds on empty collections with unresolved classes"),
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, EmptyField));
+    }
+
+    // 2. SceneWidget without character widget class
+    {
+        UGV2LocationSceneWidgetBase* SceneWidget = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        TestNotNull(TEXT("Scene widget instantiated"), SceneWidget);
+
+        UVerticalBox* CharBox = NewObject<UVerticalBox>(SceneWidget);
+        UGV2ListViewWidgetBase* CharRep = NewObject<UGV2ListViewWidgetBase>(SceneWidget);
+        CharRep->SetContainerPanel(CharBox);
+
+        if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterRepeater")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(SceneWidget) = CharRep;
+        }
+
+        TestTrue(TEXT("SceneWidget has usable character repeater host"), SceneWidget->HasUsableCharacterRepeaterHost());
+
+        // 2a. Non-empty characters with unresolved character class -> rejected
+        FGV2LocationSceneViewModel CharModel;
+        CharModel.Characters.Add({ FName(TEXT("keeper")), TEXT("core:resource.ui.missing_portrait") });
+        FGV2ScreenFieldValue CharField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), CharModel);
+
+        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty characters with unresolved CharacterWidgetClass"),
+            IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneWidget, CharField));
+        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty characters with unresolved CharacterWidgetClass"),
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneWidget, CharField));
+
+        // 2b. Empty characters with unresolved character class -> succeeds
+        FGV2LocationSceneViewModel EmptyCharModel;
+        FGV2ScreenFieldValue EmptyCharField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), EmptyCharModel);
+
+        TestTrue(TEXT("BAI-05: CanApplyScreenField succeeds on empty characters with unresolved CharacterWidgetClass"),
+            IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneWidget, EmptyCharField));
+        TestTrue(TEXT("BAI-05: ApplyScreenField succeeds on empty characters with unresolved CharacterWidgetClass"),
+            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneWidget, EmptyCharField));
+    }
+
+    // 3. CommandPanel without button widget class
+    {
+        UGV2LocationCommandPanelWidgetBase* CommandPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+        TestNotNull(TEXT("CommandPanel instantiated"), CommandPanel);
+
+        UWrapBox* ButtonBox = NewObject<UWrapBox>(CommandPanel);
+        UGV2ListViewWidgetBase* BtnRep = NewObject<UGV2ListViewWidgetBase>(CommandPanel);
+        BtnRep->SetContainerPanel(ButtonBox);
+
+        if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonRepeater")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(CommandPanel) = BtnRep;
+        }
+
+        TestTrue(TEXT("CommandPanel has usable repeater host"), CommandPanel->HasUsableRepeaterHost());
+
+        // 3a. Non-empty buttons with unresolved button class -> rejected
+        TArray<FGV2ButtonViewModel> ButtonModels;
+        FGV2ButtonViewModel Btn;
+        Btn.Key = FName(TEXT("btn_ok"));
+        Btn.Text = { FText::FromString(TEXT("OK")) };
+        Btn.Binding = FGV2UiBindingHandle{ 1, 1 };
+        ButtonModels.Add(Btn);
+
+        TestFalse(TEXT("BAI-05: CanApplyButtonModels rejects non-empty buttons with unresolved ButtonWidgetClass"),
+            CommandPanel->CanApplyButtonModels(ButtonModels));
+        TestFalse(TEXT("BAI-05: ApplyButtonModels rejects non-empty buttons with unresolved ButtonWidgetClass"),
+            CommandPanel->ApplyButtonModels(ButtonModels));
+
+        // 3b. Empty buttons with unresolved button class -> succeeds
+        TArray<FGV2ButtonViewModel> EmptyButtonModels;
+        TestTrue(TEXT("BAI-05: CanApplyButtonModels succeeds on empty buttons with unresolved ButtonWidgetClass"),
+            CommandPanel->CanApplyButtonModels(EmptyButtonModels));
+        TestTrue(TEXT("BAI-05: ApplyButtonModels succeeds on empty buttons with unresolved ButtonWidgetClass"),
+            CommandPanel->ApplyButtonModels(EmptyButtonModels));
+    }
+
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
+
+    return true;
+}
+
 #endif
 
 

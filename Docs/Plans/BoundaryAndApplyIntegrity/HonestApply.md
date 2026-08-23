@@ -23,7 +23,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **BAI-05 — Неразрешённый класс виджета даёт отказ**
+- [x] **BAI-05 — Неразрешённый класс виджета даёт отказ**
   - `UGV2ButtonListWidgetBase::CanApplyButtonModels` и `UGV2DropdownSelectWidgetBase::CanApplyDropdownModel` на неразрешённый класс возвращают `false` с логом. Четыре пути в `GV2LocationCompositeWidgetBases.cpp` (`:203` метры, `:226` предметы, `:249` эффекты, `:417` персонажи) на том же условии пропускают блок и доходят до `Applied = Candidate; return true`. Отдельно `:525` подставляет `NewObject<UGV2ButtonWidgetBase>(this)` — голый объект вместо сконфигурированного класса.
   - Done: непустая коллекция при неразрешённом классе даёт отказ применения во всех четырёх путях; пустая коллекция при неразрешённом классе успех сохраняет (нечего отрисовывать — не ошибка); подстановка голого `NewObject` снята либо обоснована в контракте; проверка вынесена в `CanApply*`, а не продублирована в четырёх местах `Apply*`; тест на каждый из четырёх путей краснеет при возврате пропуска; строка `STATUS-007` удалена.
   - Evidence: `Source/GV2/Private/UI/GV2LocationCompositeWidgetBases.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`, `Docs/Status/ImplementationStatus.md`.

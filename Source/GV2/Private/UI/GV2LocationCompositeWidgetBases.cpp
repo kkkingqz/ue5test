@@ -98,20 +98,20 @@ bool UGV2LocationPlayerStatusWidgetBase::CanApplyScreenField_Implementation(cons
         MeterKeys.Add(Meter.Key);
     }
 
-    // Repeated meters require usable repeater host
-    if (Model.Meters.Num() > 0 && !HasUsableMeterRepeaterHost())
+    // Repeated meters require usable repeater host and resolved meter widget class
+    if (Model.Meters.Num() > 0 && (!HasUsableMeterRepeaterHost() || ResolveMeterWidgetClass() == nullptr))
     {
         return false;
     }
 
-    // Repeated items require usable repeater host
-    if (Model.ItemIconResourceIds.Num() > 0 && !HasUsableItemRepeaterHost())
+    // Repeated items require usable repeater host and resolved icon widget class
+    if (Model.ItemIconResourceIds.Num() > 0 && (!HasUsableItemRepeaterHost() || ResolveIconWidgetClass() == nullptr))
     {
         return false;
     }
 
-    // Repeated effects require usable repeater host
-    if (Model.EffectIconResourceIds.Num() > 0 && !HasUsableEffectRepeaterHost())
+    // Repeated effects require usable repeater host and resolved icon widget class
+    if (Model.EffectIconResourceIds.Num() > 0 && (!HasUsableEffectRepeaterHost() || ResolveIconWidgetClass() == nullptr))
     {
         return false;
     }
@@ -160,21 +160,15 @@ UGV2ListViewWidgetBase* UGV2LocationPlayerStatusWidgetBase::ResolveMeterRepeater
 TSubclassOf<UGV2ImageWidgetBase> UGV2LocationPlayerStatusWidgetBase::ResolveIconWidgetClass() const
 {
     if (IconWidgetClass != nullptr) return IconWidgetClass;
-    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C")))
-    {
-        return Found;
-    }
-    return LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"));
+    const UGV2LocationPlayerStatusWidgetBase* CDO = GetClass()->GetDefaultObject<UGV2LocationPlayerStatusWidgetBase>();
+    return (CDO != nullptr && CDO != this) ? CDO->IconWidgetClass : nullptr;
 }
 
 TSubclassOf<UGV2ProgressBarWidgetBase> UGV2LocationPlayerStatusWidgetBase::ResolveMeterWidgetClass() const
 {
     if (MeterWidgetClass != nullptr) return MeterWidgetClass;
-    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C")))
-    {
-        return Found;
-    }
-    return LoadClass<UGV2ProgressBarWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"));
+    const UGV2LocationPlayerStatusWidgetBase* CDO = GetClass()->GetDefaultObject<UGV2LocationPlayerStatusWidgetBase>();
+    return (CDO != nullptr && CDO != this) ? CDO->MeterWidgetClass : nullptr;
 }
 
 bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V)
@@ -200,13 +194,18 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
     if (UGV2ListViewWidgetBase* MeterRep = ResolveMeterRepeater())
     {
         const TSubclassOf<UGV2ProgressBarWidgetBase> Class = ResolveMeterWidgetClass();
-        if (Class != nullptr)
+        if (Class == nullptr && Candidate.Meters.Num() > 0)
+        {
+            return false;
+        }
+        if (Class != nullptr || Candidate.Meters.IsEmpty())
         {
             const bool bMetersOk = MeterRep->ReconcileEntries<UGV2ProgressBarWidgetBase, FGV2LocationMeterEntry>(
                 Candidate.Meters,
                 [](const FGV2LocationMeterEntry& Entry) { return Entry.Key; },
                 [this, Class]() -> UGV2ProgressBarWidgetBase*
                 {
+                    if (Class == nullptr) return nullptr;
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ProgressBarWidgetBase>(GetOwningPlayer(), Class)
                         : (GetWorld() ? CreateWidget<UGV2ProgressBarWidgetBase>(GetWorld(), Class) : NewObject<UGV2ProgressBarWidgetBase>(GetTransientPackage(), Class));
@@ -223,7 +222,11 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
     if (UGV2ListViewWidgetBase* ItemRep = ResolveItemRepeater())
     {
         const TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass();
-        if (IconClass != nullptr)
+        if (IconClass == nullptr && Candidate.ItemIconResourceIds.Num() > 0)
+        {
+            return false;
+        }
+        if (IconClass != nullptr || Candidate.ItemIconResourceIds.IsEmpty())
         {
             struct FItemSlotEntry
             {
@@ -245,6 +248,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                 [](const FItemSlotEntry& Entry) { return Entry.Key; },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
+                    if (IconClass == nullptr) return nullptr;
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
@@ -261,7 +265,11 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
     if (UGV2ListViewWidgetBase* EffectRep = ResolveEffectRepeater())
     {
         const TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass();
-        if (IconClass != nullptr)
+        if (IconClass == nullptr && Candidate.EffectIconResourceIds.Num() > 0)
+        {
+            return false;
+        }
+        if (IconClass != nullptr || Candidate.EffectIconResourceIds.IsEmpty())
         {
             struct FEffectSlotEntry
             {
@@ -283,6 +291,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                 [](const FEffectSlotEntry& Entry) { return Entry.Key; },
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
+                    if (IconClass == nullptr) return nullptr;
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
@@ -356,8 +365,8 @@ bool UGV2LocationSceneWidgetBase::CanApplyScreenField_Implementation(const FGV2S
         CharacterKeys.Add(Entry.Key);
     }
 
-    // Repeated characters require usable character repeater host
-    if (Model.Characters.Num() > 0 && !HasUsableCharacterRepeaterHost())
+    // Repeated characters require usable character repeater host and resolved character widget class
+    if (Model.Characters.Num() > 0 && (!HasUsableCharacterRepeaterHost() || ResolveCharacterWidgetClass() == nullptr))
     {
         return false;
     }
@@ -382,11 +391,8 @@ UGV2ListViewWidgetBase* UGV2LocationSceneWidgetBase::ResolveCharacterRepeater()
 TSubclassOf<UGV2ImageWidgetBase> UGV2LocationSceneWidgetBase::ResolveCharacterWidgetClass() const
 {
     if (CharacterWidgetClass != nullptr) return CharacterWidgetClass;
-    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C")))
-    {
-        return Found;
-    }
-    return LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"));
+    const UGV2LocationSceneWidgetBase* CDO = GetClass()->GetDefaultObject<UGV2LocationSceneWidgetBase>();
+    return (CDO != nullptr && CDO != this) ? CDO->CharacterWidgetClass : nullptr;
 }
 
 void UGV2LocationSceneWidgetBase::NativePreConstruct()
@@ -444,13 +450,18 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
     if (UGV2ListViewWidgetBase* CharRep = ResolveCharacterRepeater())
     {
         const TSubclassOf<UGV2ImageWidgetBase> CharClass = ResolveCharacterWidgetClass();
-        if (CharClass != nullptr)
+        if (CharClass == nullptr && Candidate.Characters.Num() > 0)
+        {
+            return false;
+        }
+        if (CharClass != nullptr || Candidate.Characters.IsEmpty())
         {
             const bool bCharsOk = CharRep->ReconcileEntries<UGV2ImageWidgetBase, FGV2LocationCharacterEntry>(
                 Candidate.Characters,
                 [](const FGV2LocationCharacterEntry& Entry) { return Entry.Key; },
                 [this, CharClass]() -> UGV2ImageWidgetBase*
                 {
+                    if (CharClass == nullptr) return nullptr;
                     return GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), CharClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), CharClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), CharClass));
@@ -508,11 +519,8 @@ UGV2ListViewWidgetBase* UGV2LocationCommandPanelWidgetBase::ResolveRepeater()
 TSubclassOf<UGV2ButtonWidgetBase> UGV2LocationCommandPanelWidgetBase::ResolveButtonWidgetClass() const
 {
     if (ButtonWidgetClass != nullptr) return ButtonWidgetClass;
-    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
-    {
-        return Found;
-    }
-    return LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+    const UGV2LocationCommandPanelWidgetBase* CDO = GetClass()->GetDefaultObject<UGV2LocationCommandPanelWidgetBase>();
+    return (CDO != nullptr && CDO != this) ? CDO->ButtonWidgetClass : nullptr;
 }
 
 bool UGV2LocationCommandPanelWidgetBase::HasUsableRepeaterHost() const
@@ -522,7 +530,7 @@ bool UGV2LocationCommandPanelWidgetBase::HasUsableRepeaterHost() const
 
 bool UGV2LocationCommandPanelWidgetBase::CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& Models) const
 {
-    if (Models.Num() > 0 && !HasUsableRepeaterHost())
+    if (Models.Num() > 0 && (!HasUsableRepeaterHost() || ResolveButtonWidgetClass() == nullptr))
     {
         return false;
     }
@@ -546,6 +554,10 @@ bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2Butt
         return Models.Num() == 0;
     }
     const TSubclassOf<UGV2ButtonWidgetBase> Class = ResolveButtonWidgetClass();
+    if (Class == nullptr && Models.Num() > 0)
+    {
+        return false;
+    }
 
     const bool bSuccess = Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(
         Models,
@@ -554,7 +566,7 @@ bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2Butt
         {
             if (Class == nullptr)
             {
-                return NewObject<UGV2ButtonWidgetBase>(this);
+                return nullptr;
             }
             return GetOwningPlayer()
                 ? CreateWidget<UGV2ButtonWidgetBase>(GetOwningPlayer(), Class)
