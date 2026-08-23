@@ -183,8 +183,7 @@ return {
             assert(screen_market ~= nil and screen_market.screen_id == "textsystem:screen.location")
             assert(screen_market.fields.top_bar.value.location.text_id == "rh:text.location.market.title")
             assert(screen_market.fields.scene.value.background_resource_id == "rh:resource.location.market")
-            assert(#screen_market.fields.scene.value.character_resource_ids == 1
-                and screen_market.fields.scene.value.character_resource_ids[1] == "textsystem:resource.ui.missing_character")
+            assert(#screen_market.fields.scene.value.characters == 0)
             assert(find_button(screen_market.fields.commands, "buy_sword") ~= nil)
 
             -- Dispatch travel to tavern
@@ -206,7 +205,8 @@ return {
                 "top bar must receive the destination location")
             assert(screen_tavern.fields.scene.value.background_resource_id == "rh:resource.location.tavern",
                 "scene must receive the destination background")
-            assert(screen_tavern.fields.scene.value.character_resource_ids[1] == "rh:resource.character.tavern_keeper",
+            assert(#screen_tavern.fields.scene.value.characters == 1
+                and screen_tavern.fields.scene.value.characters[1].resource_id == "rh:resource.character.tavern_keeper",
                 "scene must receive the tavern character")
             assert(find_button(screen_tavern.fields.commands, "wait_day") ~= nil,
                 "destination commands must replace the market command set")

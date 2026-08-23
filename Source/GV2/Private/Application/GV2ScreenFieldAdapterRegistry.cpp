@@ -1156,6 +1156,7 @@ bool PrepareLocationScene(const std::string&, const GV2RuntimeCore::FScreenField
             const std::string* KeyStr = std::get_if<std::string>(&KeyVal->Data);
             if (KeyStr == nullptr || KeyStr->empty() || CharKeys.find(*KeyStr) != CharKeys.end()) return false;
             CharKeys.insert(*KeyStr);
+            if (!ReadOptionalResource(*CharObj, "resource_id", Ignored)) return false;
         }
     }
     return true;

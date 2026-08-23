@@ -64,6 +64,12 @@ function M.build_screen_request(location_id)
 
     local screen_data = (screen_def and screen_def.data) or {}
     local scene_data = extension_with_field(screen_def, "background_resource_id")
+    if not scene_data.background_resource_id and not scene_data.character_resource_id and not scene_data.characters then
+        scene_data = extension_with_field(screen_def, "character_resource_id")
+        if not scene_data.character_resource_id and not scene_data.characters then
+            scene_data = extension_with_field(screen_def, "characters")
+        end
+    end
     local description_text_id = screen_data.description_text_id or loc.title_text_id
 
     local buttons = {}
@@ -93,6 +99,33 @@ function M.build_screen_request(location_id)
         end
     end
 
+    local characters = {}
+    if type(scene_data.characters) == "table" then
+        for _, char_entry in ipairs(scene_data.characters) do
+            if type(char_entry) == "table" then
+                local res_id = char_entry.resource_id or "textsystem:resource.ui.missing_character"
+                local key = char_entry.key or res_id
+                if key and key ~= "" then
+                    table.insert(characters, {
+                        key = key,
+                        resource_id = res_id,
+                    })
+                end
+            elseif type(char_entry) == "string" and char_entry ~= "" then
+                table.insert(characters, {
+                    key = char_entry,
+                    resource_id = char_entry,
+                })
+            end
+        end
+    elseif scene_data.character_resource_id and scene_data.character_resource_id ~= "" then
+        local res_id = scene_data.character_resource_id
+        table.insert(characters, {
+            key = res_id,
+            resource_id = res_id,
+        })
+    end
+
     local player, gold, stamina, actor_extension, item_icons = player_values()
     local day = (game and game.state and game.state.meta and game.state.meta.day) or 1
     return M.show_screen({
@@ -114,7 +147,7 @@ function M.build_screen_request(location_id)
             scene = { schema_id = "textsystem:schema.ui_field.location_scene.v1", value = {
                 background_tile_resource_id = "core:resource.ui.old_paper_tile_256",
                 background_resource_id = scene_data.background_resource_id or "textsystem:resource.ui.missing_background",
-                character_resource_ids = scene_data.character_resource_id and { scene_data.character_resource_id } or { "textsystem:resource.ui.missing_character" },
+                characters = characters,
                 context_text = M.text(description_text_id),
             } },
             commands = { schema_id = "textsystem:schema.ui_field.location_commands.v1", value = { items = buttons } },

@@ -365,27 +365,7 @@ PathPart.ParseIntoArray(Segments, TEXT("."), true)
 
 ### Новое: персонаж сцены теряется на границе Lua → C++
 
-**LOC-AF-04. Заявленный контентом персонаж не отображается никогда, и это не видно ни одному тесту.**
-
-Презентер `textsystem` отправляет в поле сцены ключ `character_resource_ids` — массив строк:
-
-```
-character_resource_ids = scene_data.character_resource_id and { … } or { "textsystem:resource.ui.missing_character" }
-```
-
-Адаптер C++ `BuildLocationScene` читает ключ `characters` — массив объектов с полями `key` и `resource_id`.
-
-Имена и формы не совпадают. `FindValue(Value, "characters")` возвращает null, блок разбора пропускается, `Model.Characters` остаётся пустым, а `BuildLocationScene` возвращает успех. Объявленный в `rh:screen.location.tavern` персонаж `rh:resource.character.tavern_keeper` не оказывает никакого действия.
-
-Строка `character_resource_ids` не встречается в `Source/` ни разу.
-
-Почему это не ловится: все автоматизационные тесты собирают `FGV2LocationSceneViewModel` **непосредственно в C++** (`SceneModel.Characters.Add(...)`) и не проходят через декодирование поля из Lua. Граница, на которой теряются данные, не пересекается ни одним тестом.
-
-Затронутые утверждения DoD:
-
-- `LocationScreen`: «Персонаж вписан и привязан к нижнему краю» — персонаж не отображается вовсе;
-- `UiFoundationHardening`: «Item/effect/character/meter collections используют Core Repeater» — для персонажей путь никогда не достигается;
-- `CriticalCorrectiveHardening`: «Scene character collection имеет только Repeater rendering path» — истинно, но бессодержательно.
+**LOC-AF-04. Заявленный контентом персонаж не отображается никогда, и это не видно ни одному тесту.** *(Закрыто задачей SVC-03)*: В `GameData/textsystem/scripts/presentation/location_presenter.lua` построение поля сцены переведено на форму контракта `characters` с детерминированным выводом `key` и `resource_id`. В `Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp` адаптеры `PrepareLocationScene` и `BuildLocationScene` валидируют и декодируют коллекцию персонажей. Тесты в Lua (`declarative_location_spec.lua`, `dynamic_menu.lua`) подтверждают прохождение данных персонажей.
 
 **LOC-AF-05. Хост репитера персонажей не привязан в ассете.** *(Закрыто задачей SVC-02)*: В `WBP_SceneView` привязан `WrapBox CharacterContainer` (`bIsVariable = true`), обеспечивающий хостинг коллекции персонажей через `InternalCharacterRepeater`. Устаревший одиночный `Character` удалён.
 
