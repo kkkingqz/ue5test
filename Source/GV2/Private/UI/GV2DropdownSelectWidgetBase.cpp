@@ -73,7 +73,7 @@ bool UGV2DropdownSelectWidgetBase::ApplyDropdownModel(
         },
         [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
         {
-            Button.ApplyButtonModel(Model);
+            if (!Button.ApplyButtonModel(Model)) return false;
             Button.SetAutomaticInteractionSubmission(false);
             Button.OnActivated.AddUniqueDynamic(this, &ThisClass::HandleOptionActivated);
             return true;
@@ -255,7 +255,10 @@ void UGV2DropdownSelectWidgetBase::UpdateHeaderLabel()
     HeaderModel.Key = TEXT("dropdown_header");
     HeaderModel.Text = DisplayText;
     HeaderModel.Binding = AppliedModel.Binding;
-    HeaderButton->ApplyButtonModel(HeaderModel);
+    if (!HeaderButton->ApplyButtonModel(HeaderModel))
+    {
+        UE_LOG(LogGV2DropdownSelectWidget, Error, TEXT("Dropdown header text could not be applied"));
+    }
     HeaderButton->SetAutomaticInteractionSubmission(false);
 }
 
@@ -309,7 +312,7 @@ bool UGV2DropdownSelectWidgetBase::ResetScreenField_Implementation()
     {
         FGV2ButtonViewModel EmptyHeader;
         EmptyHeader.Key = TEXT("dropdown_header");
-        HeaderButton->ApplyButtonModel(EmptyHeader);
+        HeaderButton->ApplyButtonModel(EmptyHeader);  // reset path: empty text cannot fail styling
         HeaderButton->SetAutomaticInteractionSubmission(false);
     }
     SetDropdownOpen(false);

@@ -20,6 +20,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void ApplyProgress(float Percent);
 
+    /** Applies percent and label together. Label goes through UGV2TextPipeline, so a
+     *  missing or invalid style token fails instead of silently rendering unstyled text. */
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    bool ApplyProgressBarModel(const FGV2ProgressBarViewModel& Model);
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     float GetProgress() const;
 

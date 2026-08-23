@@ -1,4 +1,5 @@
 #include "UI/GV2ModalWidgetBase.h"
+#include "UI/GV2TextPipeline.h"
 
 #include "CommonTextBlock.h"
 #include "Components/Button.h"
@@ -37,19 +38,20 @@ bool UGV2ModalWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldV
     {
         return false;
     }
-    CurrentModel = Value.ModalValue;
-    if (TitleText != nullptr)
+    const FGV2ModalViewModel& Candidate = Value.ModalValue;
+    if (TitleText != nullptr && !UGV2TextPipeline::Apply(TitleText, Candidate.Title))
     {
-        TitleText->SetText(CurrentModel.Title.Text);
+        return false;
     }
-    if (ContentText != nullptr)
+    if (ContentText != nullptr && !UGV2TextPipeline::Apply(ContentText, Candidate.Content))
     {
-        ContentText->SetText(CurrentModel.Content.Text);
+        return false;
     }
-    if (ButtonList != nullptr)
+    if (ButtonList != nullptr && !ButtonList->ApplyButtonModels(Candidate.Buttons))
     {
-        ButtonList->ApplyButtonModels(CurrentModel.Buttons);
+        return false;
     }
+    CurrentModel = Candidate;
     return true;
 }
 

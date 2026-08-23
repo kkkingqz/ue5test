@@ -553,7 +553,7 @@ bool PrepareInputField(
     const FObject& Value,
     TArray<FGV2UiBindingDefinition>& OutDefinitions)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "placeholder_text", "value", "is_read_only", "max_length", "binding"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "placeholder_text", "value", "binding"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     if (const GV2RuntimeCore::FValue* Text = FindValue(Value, "text"))
@@ -587,7 +587,7 @@ bool BuildInputField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "placeholder_text", "value", "is_read_only", "max_length", "binding"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "placeholder_text", "value", "binding"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     if (!Handles.IsValidIndex(HandleIndex)) return false;
@@ -716,7 +716,7 @@ bool PrepareImage(
     const FObject& Value,
     TArray<FGV2UiBindingDefinition>& OutDefinitions)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "scaling_policy", "custom_width", "custom_height"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     const std::string* ResourceId = FindString(Value, "resource_id");
@@ -735,7 +735,7 @@ bool BuildImageField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "scaling_policy", "custom_width", "custom_height"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     const std::string* ResourceId = FindString(Value, "resource_id");
@@ -752,7 +752,7 @@ bool PrepareProgressBar(
     const FObject& Value,
     TArray<FGV2UiBindingDefinition>& OutDefinitions)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"percent", "label", "style"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"percent", "label"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     const GV2RuntimeCore::FValue* PercentVal = FindValue(Value, "percent");
@@ -787,7 +787,7 @@ bool BuildProgressBarField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"percent", "label", "style"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"percent", "label"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     const GV2RuntimeCore::FValue* PercentVal = FindValue(Value, "percent");
@@ -822,7 +822,7 @@ bool PreparePortrait(
     const FObject& Value,
     TArray<FGV2UiBindingDefinition>& OutDefinitions)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "frame_resource_id", "style"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "frame_resource_id"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     const std::string* ResourceId = FindString(Value, "resource_id");
@@ -848,7 +848,7 @@ bool BuildPortraitField(
     int32& HandleIndex,
     FGV2ScreenFieldValue& OutField)
 {
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "frame_resource_id", "style"};
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "frame_resource_id"};
     if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
     const std::string* ResourceId = FindString(Value, "resource_id");

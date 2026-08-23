@@ -15,6 +15,17 @@ bool UGV2PortraitWidgetBase::ApplyPortrait(
     const FString& FrameResourceId,
     FString& OutError)
 {
+    if (!ResourceId.IsEmpty() && PortraitImage == nullptr)
+    {
+        OutError = TEXT("Portrait resource supplied but PortraitImage renderer is not bound");
+        return false;
+    }
+    if (!FrameResourceId.IsEmpty() && FrameImage == nullptr)
+    {
+        OutError = TEXT("Portrait frame resource supplied but FrameImage renderer is not bound");
+        return false;
+    }
+
     if (PortraitImage != nullptr && !ResourceId.IsEmpty())
     {
         FGV2ResolvedImageResource Res;

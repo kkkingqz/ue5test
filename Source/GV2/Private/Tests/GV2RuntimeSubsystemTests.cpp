@@ -6472,6 +6472,137 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiFailurePropagationTest,
+    "GV2.Runtime.UI.FailurePropagationAndTextPipelineRouting",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
+{
+    using FObject = GV2RuntimeCore::FValue::FObject;
+    using FArray = GV2RuntimeCore::FValue::FArray;
+
+    // A text model the central pipeline must reject: authoring markup may never reach
+    // a plain renderer. Used throughout as the failure injector.
+    FGV2TextViewModel PoisonText;
+    PoisonText.Text = FText::FromString(TEXT("Poison"));
+    PoisonText.NormalizedMarkup = TEXT("<gv2:action id=\"x\">y</>");
+
+    FGV2TextViewModel GoodText;
+    GoodText.Text = FText::FromString(TEXT("Fine"));
+
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    TestNotNull(TEXT("Test world created"), TestWorld);
+    if (TestWorld == nullptr) return false;
+
+    // 1. REV3-01 / REV3-02: a meter label reaches the ProgressBar and goes through the
+    //    text pipeline, so an unrenderable label fails instead of being dropped.
+    {
+        UClass* BarClass = LoadClass<UGV2ProgressBarWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"));
+        UGV2ProgressBarWidgetBase* Bar = BarClass
+            ? CreateWidget<UGV2ProgressBarWidgetBase>(TestWorld, BarClass)
+            : NewObject<UGV2ProgressBarWidgetBase>(TestWorld);
+        TestNotNull(TEXT("ProgressBar instantiated"), Bar);
+        if (Bar != nullptr)
+        {
+            FGV2ProgressBarViewModel Model;
+            Model.Percent = 0.5f;
+            Model.Label = GoodText;
+            TestTrue(TEXT("REV3-01: ApplyProgressBarModel accepts a renderable label"), Bar->ApplyProgressBarModel(Model));
+
+            FGV2ScreenFieldValue Captured;
+            IGV2DynamicScreenElement::Execute_CaptureScreenField(Bar, Captured);
+            TestEqual(TEXT("REV3-01: Label reaches the widget instead of being dropped"),
+                Captured.ProgressBarValue.Label.Text.ToString(), TEXT("Fine"));
+
+            Model.Label = PoisonText;
+            TestFalse(TEXT("REV3-02: Label that the text pipeline rejects fails the apply"),
+                Bar->ApplyProgressBarModel(Model));
+        }
+    }
+
+    // 2. REV3-05: a button whose text cannot be rendered fails, and the failure is not
+    //    swallowed by the owning collection.
+    {
+        UClass* ListClass = LoadClass<UGV2ButtonListWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_ButtonList.WBP_ButtonList_C"));
+        if (ListClass != nullptr)
+        {
+            UGV2ButtonListWidgetBase* List = CreateWidget<UGV2ButtonListWidgetBase>(TestWorld, ListClass);
+            TestNotNull(TEXT("ButtonList instantiated"), List);
+            if (List != nullptr)
+            {
+                FGV2ButtonViewModel Poison;
+                Poison.Key = TEXT("btn_poison");
+                Poison.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
+                Poison.Text = PoisonText;
+                TestFalse(TEXT("REV3-05: ButtonList reports failure when a child button cannot render its text"),
+                    List->ApplyButtonModels({ Poison }));
+            }
+        }
+    }
+
+    // 3. REV3-10: a portrait resource with no bound renderer is a failure, not a success.
+    {
+        UGV2PortraitWidgetBase* Portrait = NewObject<UGV2PortraitWidgetBase>(TestWorld);
+        TestNotNull(TEXT("Portrait instantiated"), Portrait);
+        if (Portrait != nullptr)
+        {
+            FString Error;
+            TestFalse(TEXT("REV3-10: Portrait with unbound renderer rejects a supplied resource"),
+                Portrait->ApplyPortrait(TEXT("core:resource.ui.missing_portrait"), FString(), Error));
+            TestTrue(TEXT("REV3-10: Rejection names the unbound renderer"), Error.Contains(TEXT("PortraitImage")));
+
+            FString EmptyError;
+            TestTrue(TEXT("REV3-10: Portrait with no resource and no renderer still succeeds"),
+                Portrait->ApplyPortrait(FString(), FString(), EmptyError));
+        }
+    }
+
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
+
+    // 4. REV3-03: properties that no consumer reads are rejected, not accepted and dropped.
+    {
+        const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
+
+        auto BuildWithExtraKey = [&Registry](const char* SchemaId, const FObject& BaseValue, const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
+        {
+            GV2RuntimeCore::FScreenRequest Request;
+            Request.ScreenId = "textsystem:screen.location";
+
+            GV2RuntimeCore::FScreenField Field;
+            Field.FieldId = "probe";
+            Field.SchemaId = SchemaId;
+
+            FObject Value = BaseValue;
+            Value[ExtraKey] = MoveTemp(ExtraValue);
+            Field.Value = GV2RuntimeCore::FValue(Value);
+            Request.Fields.push_back(MoveTemp(Field));
+
+            TArray<FGV2UiBindingHandle> Handles;
+            TArray<FGV2ScreenFieldValue> OutFields;
+            return Registry.BuildFields(Request, Handles, OutFields);
+        };
+
+        FObject ImageValue;
+        ImageValue["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon"));
+        TestFalse(TEXT("REV3-03: image rejects scaling_policy"),
+            BuildWithExtraKey("core:schema.ui_field.image.v1", ImageValue, "scaling_policy", GV2RuntimeCore::FValue(std::string("tile"))));
+        TestFalse(TEXT("REV3-03: image rejects custom_width"),
+            BuildWithExtraKey("core:schema.ui_field.image.v1", ImageValue, "custom_width", GV2RuntimeCore::FValue(static_cast<std::int64_t>(64))));
+
+        FObject ProgressValue;
+        ProgressValue["percent"] = GV2RuntimeCore::FValue(0.5);
+        TestFalse(TEXT("REV3-03: progress_bar rejects style"),
+            BuildWithExtraKey("core:schema.ui_field.progress_bar.v1", ProgressValue, "style", GV2RuntimeCore::FValue(std::string("danger"))));
+
+        FObject PortraitValue;
+        PortraitValue["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
+        TestFalse(TEXT("REV3-03: portrait rejects style"),
+            BuildWithExtraKey("core:schema.ui_field.portrait.v1", PortraitValue, "style", GV2RuntimeCore::FValue(std::string("round"))));
+    }
+
+    return true;
+}
+
 #endif
-
-

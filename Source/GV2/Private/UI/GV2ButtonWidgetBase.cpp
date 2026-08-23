@@ -11,14 +11,15 @@ void UGV2ButtonWidgetBase::NativePreConstruct()
     ApplyCentralStyle_Implementation();
 }
 
-void UGV2ButtonWidgetBase::ApplyButtonModel(const FGV2ButtonViewModel& InButtonModel)
+bool UGV2ButtonWidgetBase::ApplyButtonModel(const FGV2ButtonViewModel& InButtonModel)
 {
-    ButtonModel = InButtonModel;
-    if (LabelText != nullptr)
+    if (LabelText != nullptr && !UGV2TextPipeline::Apply(LabelText, InButtonModel.Text))
     {
-        UGV2TextPipeline::Apply(LabelText, ButtonModel.Text);
+        return false;
     }
+    ButtonModel = InButtonModel;
     SetIsEnabled(ButtonModel.Binding.IsValid());
+    return true;
 }
 
 FGV2ButtonViewModel UGV2ButtonWidgetBase::GetButtonModel() const

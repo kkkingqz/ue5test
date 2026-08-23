@@ -221,8 +221,7 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                 },
                 [](UGV2ProgressBarWidgetBase& MeterWidget, const FGV2LocationMeterEntry& Entry) -> bool
                 {
-                    MeterWidget.ApplyProgress(Entry.Meter.Percent);
-                    return true;
+                    return MeterWidget.ApplyProgressBarModel(Entry.Meter);
                 });
             if (!bMetersOk) return false;
         }
@@ -558,7 +557,7 @@ bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2Butt
         },
         [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
         {
-            Button.ApplyButtonModel(Model);
+            if (!Button.ApplyButtonModel(Model)) return false;
             Button.OnBindingInvoked.AddUniqueDynamic(this, &ThisClass::HandleButtonBindingInvoked);
             return true;
         });

@@ -25,7 +25,7 @@ class GV2_API UGV2ButtonWidgetBase
 
 public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void ApplyButtonModel(const FGV2ButtonViewModel& InButtonModel);
+    bool ApplyButtonModel(const FGV2ButtonViewModel& InButtonModel);
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FGV2ButtonViewModel GetButtonModel() const;

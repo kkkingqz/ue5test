@@ -129,14 +129,14 @@ public:
             }
         }
 
-        FText Fallback = Span->Hover.Title.Text;
-        if (!Span->Hover.Description.Text.IsEmpty())
-        {
-            Fallback = FText::FromString(Fallback.IsEmpty()
-                ? Span->Hover.Description.Text.ToString()
-                : Fallback.ToString() + TEXT("\n") + Span->Hover.Description.Text.ToString());
-        }
-        SlateToolTip->SetContentWidget(SNew(STextBlock).Text(Fallback));
+        // No raw unstyled fallback: rendering hover content outside the popover pipeline
+        // silently bypasses central styling and hides a missing renderer configuration.
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("RichText hover popover renderer unavailable (class=%s); hover content is not shown"),
+            PopoverClass != nullptr ? *PopoverClass->GetPathName() : TEXT("null"));
+        SlateToolTip->SetContentWidget(SNullWidget::NullWidget);
     }
     virtual void OnClosed() override
     {

@@ -1,4 +1,5 @@
 #include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2TextPipeline.h"
 
 #include "CommonTextBlock.h"
 #include "Components/ProgressBar.h"
@@ -65,12 +66,17 @@ bool UGV2ProgressBarWidgetBase::ApplyScreenField_Implementation(const FGV2Screen
     {
         return false;
     }
-    ApplyProgress(Value.ProgressBarValue.Percent);
-    CurrentLabel = Value.ProgressBarValue.Label;
-    if (LabelText != nullptr)
+    return ApplyProgressBarModel(Value.ProgressBarValue);
+}
+
+bool UGV2ProgressBarWidgetBase::ApplyProgressBarModel(const FGV2ProgressBarViewModel& Model)
+{
+    if (LabelText != nullptr && !UGV2TextPipeline::Apply(LabelText, Model.Label))
     {
-        LabelText->SetText(CurrentLabel.Text);
+        return false;
     }
+    ApplyProgress(Model.Percent);
+    CurrentLabel = Model.Label;
     return true;
 }
 

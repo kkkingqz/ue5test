@@ -41,7 +41,7 @@ bool UGV2ButtonListWidgetBase::ApplyButtonModels(const TArray<FGV2ButtonViewMode
         },
         [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
         {
-            Button.ApplyButtonModel(Model);
+            if (!Button.ApplyButtonModel(Model)) return false;
             Button.OnBindingInvoked.AddUniqueDynamic(this, &ThisClass::HandleButtonBindingInvoked);
             return true;
         },

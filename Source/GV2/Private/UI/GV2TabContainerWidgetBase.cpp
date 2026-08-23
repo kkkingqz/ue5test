@@ -151,21 +151,19 @@ bool UGV2TabContainerWidgetBase::ApplyTabContainerModel(const FGV2TabContainerVi
         // If widget already exists, apply fields
         if (ChildWidget != nullptr)
         {
-            ChildWidget->ApplyScreenFields(Tab.Fields);
+            if (!ChildWidget->ApplyScreenFields(Tab.Fields)) return false;
         }
         else if (World != nullptr)
         {
             // For headless / simulation tests or dynamic templates, instantiate generic ScreenWidget if no specific class
             ChildWidget = CreateWidget<UGV2ScreenWidgetBase>(World, UGV2ScreenWidgetBase::StaticClass());
-            if (ChildWidget != nullptr)
+            if (ChildWidget == nullptr) return false;
+            if (!ChildWidget->ApplyScreenFields(Tab.Fields)) return false;
+            if (TabContentPanel != nullptr)
             {
-                ChildWidget->ApplyScreenFields(Tab.Fields);
-                if (TabContentPanel != nullptr)
-                {
-                    TabContentPanel->AddChild(ChildWidget);
-                }
-                TabScreenWidgets.Add(Tab.Key, ChildWidget);
+                TabContentPanel->AddChild(ChildWidget);
             }
+            TabScreenWidgets.Add(Tab.Key, ChildWidget);
         }
     }
 
