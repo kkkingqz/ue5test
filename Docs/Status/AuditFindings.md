@@ -39,9 +39,17 @@ depends_on:
 | 2 | `LocationScreen` | выполнена |
 | 3 | `UiFoundationHardening` + `CriticalCorrectiveHardening` | выполнена |
 | 4 | `ContentCliModularization` + `ContentEditorPrerequisites` | выполнена |
-| 5 | `ContentEditorHardening` | — |
+| 5 | `ContentEditorHardening` | выполнена |
 
 Основание проверяется раньше потребителя: дефект в основании обесценивает выводы о том, что на нём построено.
+
+**Проверка завершена.** Разобрано 79 утверждений Definition of Done семи планов: подтверждено 56, не проверяется 15, неверно 8.
+
+Итог по трекам различается качественно. В content-треке — `ContentCliModularization`, `ContentEditorPrerequisites`, `ContentEditorHardening` — из 38 утверждений неверно одно, и оно локально. В UI-треке — `UiFoundation`, `LocationScreen`, `UiFoundationHardening`, `CriticalCorrectiveHardening` — из 41 утверждения неверно семь, и три из них представляют собой зелёный тест, проверяющий не то, что заявлено.
+
+Разница объясняется наличием наблюдаемого предмета. Утверждения content-трека проверяются прогоном инструмента: файл на диске, код возврата, хэш, вывод команды. Утверждения UI-трека о раскладке, переиспользовании виджетов и достижимости элементов требуют инструментовки, и там, где её не построили, проверки сместились к тому, что измерить легко: к константам, к числу записей, к желаемому размеру вместо выделенной геометрии.
+
+Отсюда общая рекомендация к плану устранения: приоритет не по числу дефектов, а по наличию средства измерения. Пока нет способа померить фактическую раскладку, утверждения о ней будут воспроизводить ту же ошибку.
 
 ## Замечания вне разбора планов
 
@@ -285,4 +293,77 @@ DoD: «Раздел 40 предложения о редакторе отмече
 ### Оценка трека
 
 В отличие от UI-трека, здесь нет ни одного случая, когда зелёный тест проверяет более слабое свойство, чем заявлено. Четыре ключевых утверждения CEP проверены прямым прогоном инструмента на копии фикстуры и подтвердились в точности. Оба замечания CCM — о числовой границе и об одном непереехавшем сценарии — относятся к гигиене, а не к расхождению заявленного и фактического поведения.
+
+## ContentEditorHardening
+
+Проверено 27 утверждений итогового DoD. Подтверждено 22, не проверяется 4, неверно 1.
+
+### Верификационная установка
+
+План имеет самую сильную проверяемость из всех проверенных. `gv2_content_editor` собран как **переносимая CMake-библиотека**, а не только как модуль Unreal, и её conformance-набор подключён к CTest кейсом `content_editor_conformance`.
+
+| Файл | Строк |
+|---|---|
+| `EditorAdapterConformance.cpp` | 1988 |
+| `FourKindsConformance.cpp` | 615 |
+| `ReadSurfaceConformance.cpp` | 515 |
+| `WriteSurfaceConformance.cpp` | 411 |
+
+Прогон в сессии проверки: `content_editor_conformance=all status=ok suites=4`.
+
+Это означает, что логика редактора проверяется без запуска Unreal — в отличие от UI-трека, где значительная часть утверждений требует редактора и потому осталась непроверенной.
+
+Отдельно закрыт вопрос из сессии 4: библиотека авторинга существует и используется обоими frontend-ами. `Tools/Content/CMakeLists.txt` линкует `gv2_content_authoring`, `GV2ContentEditor.Build.cs` объявляет её зависимостью. Одна реализация, два потребителя — как и было записано в предложении.
+
+### Подтверждено
+
+Двадцать два утверждения подтверждены conformance-набором или прямым чтением реализации. Наиболее содержательные:
+
+| Утверждение | Чем подтверждено |
+|---|---|
+| Browser использует `STreeView` | `SGV2DefinitionBrowser.cpp:158` |
+| Form отличает Absent / ImplicitDefault / Explicit / RequiredMissing | `EPropertyPresence` с четырьмя состояниями; в conformance есть утверждение на каждое |
+| Arrays поддерживают Add / Remove / Reorder | `MoveCurrentArrayElement` реализован и вызывается в conformance |
+| Explicit optional можно Remove/Reset без записи на диск | Правки применяются к `CandidateDefinitionValue` в памяти; запись только на Save |
+| Rename показывает impact и не переписывает посторонние строки | 23 упоминания в conformance; `FStableId::Parse` используется для разбора обоих идентификаторов |
+| External file modification видна до Save | 17 упоминаний stale-состояния в conformance |
+| Multi-file authoring имеет crash-safe recovery contract | 12 упоминаний recovery/journal в conformance |
+| Init diagnostics не теряются в адаптере | 50 упоминаний диагностики в conformance |
+
+Отдельно стоит отметить модель кандидата: `SetCurrentFieldValue` меняет `CandidateDefinitionValue`, а не живое состояние, и коммит происходит на Save. Это ровно та модель «подготовить и зафиксировать», отсутствие которой отмечено в UI-композитах как CCF-AF-01 и CCF-AF-02.
+
+### Неверно
+
+**CEH-AF-01. Дерево браузера строится не каноническим парсером Stable ID.**
+
+DoD: «Tree строится через canonical Stable ID parser».
+
+`SGV2DefinitionBrowser.cpp` разбирает идентификатор вручную:
+
+```
+FullId.Split(TEXT(":"), &NsPart, &Remainder)
+Remainder.Split(TEXT("."), &KindPart, &PathPart)
+PathPart.ParseIntoArray(Segments, TEXT("."), true)
+```
+
+`GV2ContentCore::FStableId` при этом доступен: модуль редактора линкует `gv2_content_core`, и в `GV2EditorAdapter.cpp` канонический парсер действительно используется — при переименовании и при разборе идентификатора определения. Не используется он именно там, где DoD утверждает обратное: при построении дерева.
+
+Это вторая реализация грамматики Stable ID. [Stable ID Specification](../Architecture/StableIDSpecification.md) называет `FStableId` единственной C++-реализацией global grammar; `GV2RuntimeCore::FStableId` существует только как alias и «не содержит второй grammar».
+
+Вероятная причина — тип: канонический парсер принимает `std::string_view`, а виджет работает с `FString`. Следствие: идентификатор, который канонический парсер отверг бы, браузер молча разложит по узлам дерева, а изменение грамматики браузер не отследит.
+
+### Не проверяется
+
+**CEH-AF-02. Поведение поиска и восстановления раскрытия проверяется только в редакторе.** Утверждения «search сохраняет matching leaves и ancestors, ancestors auto-expand» и «после очистки search пользовательское expansion state восстанавливается» относятся к `STreeView` и покрыты автоматизационным тестом `GV2.Editor.ContentEditor.DefinitionBrowserTree`, который требует запущенного Unreal. В переносимый conformance модель дерева не вынесена: `FGV2DefinitionTreeNode` объявлен через `TSharedPtr` и `TArray`.
+
+**CEH-AF-03. Два утверждения о производительности не имеют инструментовки.**
+
+- «Resource/reference pickers не перечитывают весь GameData на каждый open/change». Структурно верно: `ListDefinitions` читает уже построенный `AuthoringIndex`, а `BuildIndex` вызывается ровно один раз — в `Initialize`.
+- «Text editing не вызывает full reference/index rebuild на каждый символ». Структурно верно: `SetCurrentFieldValue` работает с кандидатом в памяти и индекс не трогает.
+
+Оба утверждения истинны сегодня и не защищены ничем: ни счётчика, ни утверждения о числе перестроений. Добавление вызова `BuildIndex` в путь правки поля не уронит ни один тест.
+
+### Не проверено в этой сессии
+
+Строка DoD «Portable, CLI parity, Slate interaction, override/provider, stale/dirty и performance tests зелёные» подтверждена частично: переносимый conformance и CLI-паритет зелёные в CTest, Slate interaction требует редактора и не запускался.
 
