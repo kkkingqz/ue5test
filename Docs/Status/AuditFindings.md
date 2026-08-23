@@ -1,7 +1,7 @@
 ---
 title: Plan Audit Findings
 status: informative
-version: 1.1
+version: 2.0
 updated: 2026-08-23
 depends_on:
   - ../README.md
@@ -43,7 +43,7 @@ depends_on:
 
 Основание проверяется раньше потребителя: дефект в основании обесценивает выводы о том, что на нём построено.
 
-**Проверка завершена.** Разобрано 79 утверждений Definition of Done семи планов: подтверждено 56, не проверяется 15, неверно 8.
+**Проверка завершена, все findings разрешены.** Разобрано 79 утверждений Definition of Done семи планов: подтверждено 56, не проверяется 15, неверно 8. Из 31 finding устранено 27, два перенесены в [Confirmed Contract Gaps](ImplementationStatus.md) как `STATUS-003` и `STATUS-004`, два отклонены с записанным условием повторного открытия.
 
 Итог по трекам различается качественно. В content-треке — `ContentCliModularization`, `ContentEditorPrerequisites`, `ContentEditorHardening` — из 38 утверждений неверно одно, и оно локально. В UI-треке — `UiFoundation`, `LocationScreen`, `UiFoundationHardening`, `CriticalCorrectiveHardening` — из 41 утверждения неверно семь, и три из них представляют собой зелёный тест, проверяющий не то, что заявлено.
 
@@ -78,7 +78,7 @@ depends_on:
 
 **UIF-AF-01. Гейт двух разрешений тавтологичен.** *(Закрыто задачей TWH-05)*: В `FGV2LayoutConstants` и новый тестовый файл `Source/GV2/Private/Tests/GV2LayoutConstantsContractTests.cpp` добавлена строгая проверка реляционных инвариантов (`GV2.Runtime.UIKit.LayoutConstantsRelationalInvariants`): соотношение растра к единицам раскладки, вывод опорной пропорции 16:9, соответствие минимального вьюпорта 720p и отрицательные тесты на детектирование рассогласования любой отдельной константы.
 
-**UIF-AF-02. Отсутствие равномерного масштабирования кадра — необеспеченное отрицательное утверждение.** Сегодня верно, но ни один аудит источников не запрещает вернуть масштабирование целого кадра. *(Остаётся: ни `SceneAndVerificationCorrection`, ни `ToolingAndWidgetHygiene` не адресуют эту находку ни одной задачей — она не входила в их границы. Нужен отдельный regression-гейт, запрещающий равномерное масштабирование кадра как класс изменения; задача не заведена.)*
+**UIF-AF-02. Отсутствие равномерного масштабирования кадра — необеспеченное отрицательное утверждение.** Сегодня верно, но ни один аудит источников не запрещает вернуть масштабирование целого кадра. *(Отклонено)*: расхождения contract и реализации нет — раскладка распределяет фактический viewport, равномерного масштабирования кадра в коде не осталось. Не хватает гейта на отрицательное утверждение, а незащищённое соблюдаемое правило в [Confirmed Contract Gaps](ImplementationStatus.md) по определению того документа не помещается. **Условие повторного открытия:** появление в `Source/` первого вызова, масштабирующего оболочку или окно целиком, — тогда правило заводится вместе с гейтом. Прежняя формулировка: нужен отдельный regression-гейт, запрещающий равномерное масштабирование кадра как класс изменения; задача не заведена.)*
 
 **UIF-AF-03. Псевдолокаль написана и не подключена.** *(Закрыто задачей TWH-02)*: `Tools/Content/generate_pseudolocale.py` снабжён валидацией токенов формата и набором `--self-test` (включая отрицательные случаи с испорченными токенами), подключён в CTest (`gv2_content_pseudolocale_contract`, `gv2_content_pseudolocale_negative_contract`) и генерирует псевдолокаль в изолированную директорию сборки без изменения исходного дерева и без влияния на `repository_content_hash`.
 
@@ -94,7 +94,7 @@ DoD: «Каждый визуальный примитив объявляет п�
 
 Несовместимость отклоняется — `IsScalePolicyCompatible`, отказ до мутации виджета, покрыт матрицей.
 
-Отсутствие объявления отклонить нельзя: в `EGV2PrimitiveScalePolicy` нет значения «не задано», поле объявлено как `ScalePolicy = EGV2PrimitiveScalePolicy::PreserveAspect`. Забывший объявить политику молча получает `PreserveAspect`. *(Остаётся: ни одна задача `SceneAndVerificationCorrection`/`ToolingAndWidgetHygiene` не вводит sentinel-значение «не задано» для `EGV2PrimitiveScalePolicy` — вне их границ. Требует ADR, если добавление такого значения меняет default behavior существующих ассетов.)*
+Отсутствие объявления отклонить нельзя: в `EGV2PrimitiveScalePolicy` нет значения «не задано», поле объявлено как `ScalePolicy = EGV2PrimitiveScalePolicy::PreserveAspect`. Забывший объявить политику молча получает `PreserveAspect`. *(Перенесено в [Confirmed Contract Gaps](ImplementationStatus.md) строкой `STATUS-003`)*: расхождение подтверждено и остаётся открытым; введение sentinel-значения меняет default behavior существующих ассетов и требует ADR.
 
 **UIF-AF-06. Handle неактивной вкладки не отклоняется.** *(Закрыто задачей SVC-07)*: Semantic Input теперь принимает handle только активной вкладки и отклоняет остальные (включая несохранённую/пустую активную вкладку) как `StaleBindingHandle`. Переключение вкладки через `UGV2TabContainerWidgetBase` синхронизирует активную вкладку с рантаймом/координатором и меняет множество интерактивных handle без изменения ревизии документа. Правило зафиксировано в [Semantic Input](../UI/SemanticInput.md), покрыто отрицательными и интеграционными тестами.
 
@@ -208,7 +208,7 @@ if (PrimaryResourceText && !PrimaryResourceText->ApplyText(...)) return false;
 
 **CCF-AF-04. Единство физического размера токена между виджетами не проверяется.** *(Закрыто задачей TWH-09, тот же тест, что и UIF-AF-07/CCF-19)*: `GV2.Runtime.UIKit.WidgetSemanticFontSizeContract` разрешает семантические токены для `Text`, `RichText`, `Button`, `InputField`, `DropdownSelect` и сравнивает фактический размер шрифта, детектируя расхождение любого из них.
 
-**CCF-AF-05. Единый contract валидации и сброса композитов выполнен наполовину.** `ResetScreenField` действительно очищает и `Applied`, и видимое состояние во всех трёх композитах. Валидация же не единая: `CanApplyScreenField` проверяет идентификатор поля и схему, но не опрашивает детей, из-за чего и возможны CCF-AF-01 и CCF-AF-02. *(Остаётся частично: фактический риск партиального visual state закрыт SVC-09 через захват/откат внутри `ApplyScreenFields` — `ApplyScreenFields` никогда не оставляет partial state, независимо от того, опрашивает ли `CanApplyScreenField` детей. Но публичный pure-preflight API `CanApplyScreenFields` по-прежнему не может предсказать отказ глубокого ребёнка композита заранее, не выполняя реальный `Apply` — ни одна задача `SceneAndVerificationCorrection`/`ToolingAndWidgetHygiene` не адресует именно предиктивную часть контракта, только его safety-часть.)*
+**CCF-AF-05. Единый contract валидации и сброса композитов выполнен наполовину.** `ResetScreenField` действительно очищает и `Applied`, и видимое состояние во всех трёх композитах. Валидация же не единая: `CanApplyScreenField` проверяет идентификатор поля и схему, но не опрашивает детей, из-за чего и возможны CCF-AF-01 и CCF-AF-02. *(Предиктивная часть перенесена в [Confirmed Contract Gaps](ImplementationStatus.md) строкой `STATUS-004`. Фактический риск партиального visual state закрыт SVC-09 через захват/откат внутри `ApplyScreenFields` — `ApplyScreenFields` никогда не оставляет partial state, независимо от того, опрашивает ли `CanApplyScreenField` детей. Но публичный pure-preflight API `CanApplyScreenFields` по-прежнему не может предсказать отказ глубокого ребёнка композита заранее, не выполняя реальный `Apply` — ни одна задача `SceneAndVerificationCorrection`/`ToolingAndWidgetHygiene` не адресует именно предиктивную часть контракта, только его safety-часть.)*
 
 ### Проверено задачей SVC-12
 
@@ -321,7 +321,7 @@ PathPart.ParseIntoArray(Segments, TEXT("."), true)
 
 ### Не проверяется
 
-**CEH-AF-02. Поведение поиска и восстановления раскрытия проверяется только в редакторе.** Утверждения «search сохраняет matching leaves и ancestors, ancestors auto-expand» и «после очистки search пользовательское expansion state восстанавливается» относятся к `STreeView` и покрыты автоматизационным тестом `GV2.Editor.ContentEditor.DefinitionBrowserTree`, который требует запущенного Unreal. В переносимый conformance модель дерева не вынесена: `FGV2DefinitionTreeNode` объявлен через `TSharedPtr` и `TArray`. *(Остаётся: тест зелёный (см. «Проверка в редакторе» ниже) и подтверждает поведение, но перенос модели дерева в переносимый conformance вне UE не входил в границы ни одной задачи SVC-10 — она адресовала грамматику Stable ID и счётчик индекса, а не переносимость самого дерева.)*
+**CEH-AF-02. Поведение поиска и восстановления раскрытия проверяется только в редакторе.** Утверждения «search сохраняет matching leaves и ancestors, ancestors auto-expand» и «после очистки search пользовательское expansion state восстанавливается» относятся к `STreeView` и покрыты автоматизационным тестом `GV2.Editor.ContentEditor.DefinitionBrowserTree`, который требует запущенного Unreal. В переносимый conformance модель дерева не вынесена: `FGV2DefinitionTreeNode` объявлен через `TSharedPtr` и `TArray`. *(Отклонено)*: поведение проверено и подтверждено — `GV2.Editor.ContentEditor.DefinitionBrowserTree` зелёный в прогоне automation. Не выполнено требование переносимости самой проверки, а это ограничение верификации, а не расхождение contract и реализации. **Условие повторного открытия:** появление второго потребителя модели дерева либо необходимость проверять поиск в CI без редактора.
 
 **CEH-AF-03. Два утверждения о производительности не имеют инструментовки.** *(Закрыто задачей SVC-10)*: добавлен счётчик `FGV2AuthoringReferenceIndex::BuildIndexCount`/`GetIndexBuildCount()`, инкрементируемый в `BuildIndex`. Тесты `TestIndexBuildCountAndPickerIsolation` (портативный, `content_editor_conformance`) и `GV2.Editor.ContentEditor.DefinitionBrowserTree` (UE automation) подтверждают, что серия правок полей, переключений и открытий пикеров не вызывает перестроение индекса (`BuildCount == 1`).
 
