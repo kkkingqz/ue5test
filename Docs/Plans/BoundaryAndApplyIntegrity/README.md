@@ -58,7 +58,7 @@ decisions:
 ## Milestones
 
 - [x] M1 — [Closed Schema](ClosedSchema.md): неизвестный ключ перестаёт быть невидимым. BAI-01…04.
-- [ ] M2 — [Honest Apply](HonestApply.md): успех означает применение. BAI-05…07.
+- [x] M2 — [Honest Apply](HonestApply.md): успех означает применение. BAI-05…07.
 - [ ] M3 — [Measured and Clean](MeasuredAndClean.md): проверки измеряют заявленное, мёртвая поверхность снята. BAI-08…11.
 
 ## Критический путь

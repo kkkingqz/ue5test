@@ -5566,9 +5566,22 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
         TestTrue(TEXT("Initial list items reconciled"), bInitialReconcile);
         TestEqual(TEXT("Container has 2 initial children"), Container->GetChildrenCount(), 2);
 
-        // Preflight rejection: CanApplyItem rejects invalid item before constructing or modifying widgets
+        UGV2TextWidgetBase* Item1Widget = ListView->GetEntry<UGV2TextWidgetBase>(FName(TEXT("item_1")));
+        UGV2TextWidgetBase* Item2Widget = ListView->GetEntry<UGV2TextWidgetBase>(FName(TEXT("item_2")));
+        TestNotNull(TEXT("Item 1 widget exists"), Item1Widget);
+        TestNotNull(TEXT("Item 2 widget exists"), Item2Widget);
+        if (Item1Widget != nullptr)
+        {
+            TestEqual(TEXT("Initial item 1 text is 'First Item'"), Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+        }
+        if (Item2Widget != nullptr)
+        {
+            TestEqual(TEXT("Initial item 2 text is 'Second Item'"), Item2Widget->GetDesiredViewModel().Text.ToString(), TEXT("Second Item"));
+        }
+
+        // 2a. Preflight rejection on CanApplyItem: rejects before constructing or mutating widgets
         TArray<FTestItemModel> PreflightInvalidItems = {
-            {FName(TEXT("item_1")), TEXT("Preflight Item 1"), false},
+            {FName(TEXT("item_1")), TEXT("Preflight Mutated 1"), false},
             {FName(TEXT("item_bad")), TEXT(""), false}
         };
 
@@ -5579,10 +5592,85 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
             ApplyTestItem,
             [](const FTestItemModel& M) { return !M.Text.IsEmpty(); });
 
-        TestFalse(TEXT("ReconcileEntries rejects items failing CanApplyItem preflight"), bPreflightRejected);
-        TestEqual(TEXT("Container children unchanged after preflight rejection"), Container->GetChildrenCount(), 2);
+        TestFalse(TEXT("BAI-07: ReconcileEntries rejects items failing CanApplyItem preflight"), bPreflightRejected);
+        TestEqual(TEXT("Container children count unchanged after preflight rejection"), Container->GetChildrenCount(), 2);
+        if (Item1Widget != nullptr)
+        {
+            TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after CanApplyItem preflight rejection"),
+                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+        }
+        if (Item2Widget != nullptr)
+        {
+            TestEqual(TEXT("BAI-07: Item 2 widget state unmutated after CanApplyItem preflight rejection"),
+                Item2Widget->GetDesiredViewModel().Text.ToString(), TEXT("Second Item"));
+        }
 
-        // Runtime apply failure: Candidate reconciliation where Item 0 and Item 1 succeed, but Item 2 fails during apply
+        // 2b. Preflight rejection on duplicate key: rejects before mutating any widget
+        TArray<FTestItemModel> DuplicateKeyItems = {
+            {FName(TEXT("item_1")), TEXT("Duplicate Mutated 1"), false},
+            {FName(TEXT("item_1")), TEXT("Duplicate Mutated 2"), false}
+        };
+
+        const bool bDuplicateRejected = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
+            DuplicateKeyItems,
+            [](const FTestItemModel& M) { return M.Key; },
+            CreateTestWidget,
+            ApplyTestItem);
+
+        TestFalse(TEXT("BAI-07: ReconcileEntries rejects duplicate keys in preflight"), bDuplicateRejected);
+        TestEqual(TEXT("Container children count unchanged after duplicate key rejection"), Container->GetChildrenCount(), 2);
+        if (Item1Widget != nullptr)
+        {
+            TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after duplicate key rejection"),
+                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+        }
+
+        // 2c. Preflight rejection on empty key: rejects before mutating any widget
+        TArray<FTestItemModel> EmptyKeyItems = {
+            {FName(TEXT("item_1")), TEXT("Empty Key Mutated 1"), false},
+            {NAME_None, TEXT("Empty Key Mutated 2"), false}
+        };
+
+        const bool bEmptyKeyRejected = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
+            EmptyKeyItems,
+            [](const FTestItemModel& M) { return M.Key; },
+            CreateTestWidget,
+            ApplyTestItem);
+
+        TestFalse(TEXT("BAI-07: ReconcileEntries rejects empty key in preflight"), bEmptyKeyRejected);
+        TestEqual(TEXT("Container children count unchanged after empty key rejection"), Container->GetChildrenCount(), 2);
+        if (Item1Widget != nullptr)
+        {
+            TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after empty key rejection"),
+                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+        }
+
+        // 2d. Widget creation failure: rejects before mutating any existing widget
+        TArray<FTestItemModel> CreateFailItems = {
+            {FName(TEXT("item_1")), TEXT("Create Fail Mutated 1"), false},
+            {FName(TEXT("item_new_fail")), TEXT("New Item Failing Creation"), false}
+        };
+
+        auto NullCreateWidget = []() -> UGV2TextWidgetBase*
+        {
+            return nullptr;
+        };
+
+        const bool bCreateFailed = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
+            CreateFailItems,
+            [](const FTestItemModel& M) { return M.Key; },
+            NullCreateWidget,
+            ApplyTestItem);
+
+        TestFalse(TEXT("BAI-07: ReconcileEntries rejects when widget creation returns null"), bCreateFailed);
+        TestEqual(TEXT("Container children count unchanged after widget creation failure"), Container->GetChildrenCount(), 2);
+        if (Item1Widget != nullptr)
+        {
+            TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after widget creation failure"),
+                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+        }
+
+        // 2e. Runtime item apply failure: Container hierarchy is not committed; calling reconciler restores state
         TArray<FTestItemModel> CandidateItems = {
             {FName(TEXT("item_1")), TEXT("First Item Updated"), false},
             {FName(TEXT("item_2")), TEXT("Second Item Updated"), false},
@@ -5595,8 +5683,27 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
             CreateTestWidget,
             ApplyTestItem);
 
-        TestFalse(TEXT("ReconcileEntries returns false when a child item fails apply"), bFailedReconcile);
+        TestFalse(TEXT("BAI-07: ReconcileEntries returns false when a child item fails apply"), bFailedReconcile);
         TestEqual(TEXT("Container retains previous 2 children on failed reconcile"), Container->GetChildrenCount(), 2);
+
+        // Calling composite screen element restores previous state on reconcile failure
+        const bool bRestored = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
+            InitialItems,
+            [](const FTestItemModel& M) { return M.Key; },
+            CreateTestWidget,
+            ApplyTestItem);
+
+        TestTrue(TEXT("BAI-07: Screen-level rollback restores previous models"), bRestored);
+        if (Item1Widget != nullptr)
+        {
+            TestEqual(TEXT("BAI-07: Item 1 widget state restored to 'First Item'"),
+                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+        }
+        if (Item2Widget != nullptr)
+        {
+            TestEqual(TEXT("BAI-07: Item 2 widget state restored to 'Second Item'"),
+                Item2Widget->GetDesiredViewModel().Text.ToString(), TEXT("Second Item"));
+        }
     }
 
     return true;
