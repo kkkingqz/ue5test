@@ -27,6 +27,7 @@
 #include "GV2ContentCore/Testing/ScalarValidationConformance.h"
 #include "GV2ContentCore/Testing/SchemaRegistryConformance.h"
 #include "GV2ContentCore/Testing/SpecialFieldValidationConformance.h"
+#include "GV2ContentCore/Testing/UiSchemaConformance.h"
 #include "GV2ContentCore/Testing/ValueModelConformance.h"
 #include "GV2ContentCore/Value.h"
 #include "GV2ContentAuthoring/Testing/AuthoringLibraryConformance.h"
@@ -871,6 +872,11 @@ int Run(
     if (const std::string Error = GV2ContentCore::Testing::RunExtensionSchemaConformance(); !Error.empty())
     {
         std::cerr << "pcc_extension_schema_self_test_failed: " << Error << "\n";
+        return 1;
+    }
+    if (const std::string Error = GV2ContentCore::Testing::RunUiSchemaConformance(); !Error.empty())
+    {
+        std::cerr << "pcc_ui_schema_self_test_failed: " << Error << "\n";
         return 1;
     }
     if (const std::string Error = GV2ContentCore::Testing::RunPoParserConformance(); !Error.empty())

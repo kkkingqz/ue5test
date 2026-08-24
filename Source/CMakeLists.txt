@@ -73,6 +73,8 @@ add_library(gv2_content_core STATIC
     "${GV2_CONTENT_CORE_DIR}/Private/ScalarValidationConformance.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/SpecialFieldValidationConformance.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/StableId.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/UiSchema.cpp"
+    "${GV2_CONTENT_CORE_DIR}/Private/UiSchemaConformance.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/Value.cpp"
     "${GV2_CONTENT_CORE_DIR}/Private/ValueModelConformance.cpp"
 )
