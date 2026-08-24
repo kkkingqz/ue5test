@@ -5667,11 +5667,11 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Item 2 widget exists"), Item2Widget);
         if (Item1Widget != nullptr)
         {
-            TestEqual(TEXT("Initial item 1 text is 'First Item'"), Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+            TestEqual(TEXT("Initial item 1 text is 'First Item'"), Item1Widget->GetTextContent().ToString(), TEXT("First Item"));
         }
         if (Item2Widget != nullptr)
         {
-            TestEqual(TEXT("Initial item 2 text is 'Second Item'"), Item2Widget->GetDesiredViewModel().Text.ToString(), TEXT("Second Item"));
+            TestEqual(TEXT("Initial item 2 text is 'Second Item'"), Item2Widget->GetTextContent().ToString(), TEXT("Second Item"));
         }
 
         // 2a. Preflight rejection on CanApplyItem: rejects before constructing or mutating widgets
@@ -5692,12 +5692,12 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
         if (Item1Widget != nullptr)
         {
             TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after CanApplyItem preflight rejection"),
-                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+                Item1Widget->GetTextContent().ToString(), TEXT("First Item"));
         }
         if (Item2Widget != nullptr)
         {
             TestEqual(TEXT("BAI-07: Item 2 widget state unmutated after CanApplyItem preflight rejection"),
-                Item2Widget->GetDesiredViewModel().Text.ToString(), TEXT("Second Item"));
+                Item2Widget->GetTextContent().ToString(), TEXT("Second Item"));
         }
 
         // 2b. Preflight rejection on duplicate key: rejects before mutating any widget
@@ -5717,7 +5717,7 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
         if (Item1Widget != nullptr)
         {
             TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after duplicate key rejection"),
-                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+                Item1Widget->GetTextContent().ToString(), TEXT("First Item"));
         }
 
         // 2c. Preflight rejection on empty key: rejects before mutating any widget
@@ -5737,7 +5737,7 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
         if (Item1Widget != nullptr)
         {
             TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after empty key rejection"),
-                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+                Item1Widget->GetTextContent().ToString(), TEXT("First Item"));
         }
 
         // 2d. Widget creation failure: rejects before mutating any existing widget
@@ -5762,7 +5762,7 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
         if (Item1Widget != nullptr)
         {
             TestEqual(TEXT("BAI-07: Item 1 widget state unmutated after widget creation failure"),
-                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+                Item1Widget->GetTextContent().ToString(), TEXT("First Item"));
         }
 
         // 2e. Runtime item apply failure: Container hierarchy is not committed; calling reconciler restores state
@@ -5792,12 +5792,12 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
         if (Item1Widget != nullptr)
         {
             TestEqual(TEXT("BAI-07: Item 1 widget state restored to 'First Item'"),
-                Item1Widget->GetDesiredViewModel().Text.ToString(), TEXT("First Item"));
+                Item1Widget->GetTextContent().ToString(), TEXT("First Item"));
         }
         if (Item2Widget != nullptr)
         {
             TestEqual(TEXT("BAI-07: Item 2 widget state restored to 'Second Item'"),
-                Item2Widget->GetDesiredViewModel().Text.ToString(), TEXT("Second Item"));
+                Item2Widget->GetTextContent().ToString(), TEXT("Second Item"));
         }
     }
 
@@ -5965,7 +5965,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Field.Value = GV2RuntimeCore::FValue(CmdValue);
         Request.Fields.push_back(MoveTemp(Field));
 
-        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle{1, 1} };
+        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle::Create(TEXT("dummy@1:1")) };
         TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), Registry.BuildFields(Request, DummyHandles, OutFields));
     }
 
@@ -6013,7 +6013,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Field.Value = GV2RuntimeCore::FValue(CheckboxValue);
         Request.Fields.push_back(MoveTemp(Field));
 
-        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle{1, 1} };
+        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle::Create(TEXT("dummy@1:1")) };
         TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), Registry.BuildFields(Request, DummyHandles, OutFields));
     }
 
@@ -6450,7 +6450,7 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
         FGV2ButtonViewModel Btn;
         Btn.Key = FName(TEXT("btn_ok"));
         Btn.Text = { FText::FromString(TEXT("OK")) };
-        Btn.Binding = FGV2UiBindingHandle{ 1, 1 };
+        Btn.Binding = FGV2UiBindingHandle::Create(TEXT("dummy@1:1"));
         ButtonModels.Add(Btn);
 
         TestFalse(TEXT("BAI-05: CanApplyButtonModels rejects non-empty buttons with unresolved ButtonWidgetClass"),

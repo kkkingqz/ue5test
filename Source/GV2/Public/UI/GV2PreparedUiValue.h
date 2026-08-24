@@ -48,68 +48,15 @@ struct GV2_API FGV2PreparedUiStableId
     }
 };
 
-class FGV2PreparedUiValue;
-
-/**
- * Immutable ordered property collection.
- * Property iteration order is strictly canonical (lexicographical by property name)
- * and independent of parser key insertion order.
- */
-class GV2_API FGV2PreparedUiObject final
-{
-public:
-    FGV2PreparedUiObject() = default;
-
-    static TSharedRef<const FGV2PreparedUiObject> Create(TArray<TPair<FString, FGV2PreparedUiValue>> InFields);
-    static TSharedRef<const FGV2PreparedUiObject> Create(const TMap<FString, FGV2PreparedUiValue>& InFields);
-
-    const FGV2PreparedUiValue* FindField(const FString& InName) const;
-    int32 Num() const { return Fields.Num(); }
-    bool IsEmpty() const { return Fields.IsEmpty(); }
-    const TArray<TPair<FString, FGV2PreparedUiValue>>& GetFields() const { return Fields; }
-
-    const TPair<FString, FGV2PreparedUiValue>* begin() const { return Fields.GetData(); }
-    const TPair<FString, FGV2PreparedUiValue>* end() const { return Fields.GetData() + Fields.Num(); }
-
-    bool operator==(const FGV2PreparedUiObject& Other) const;
-    bool operator!=(const FGV2PreparedUiObject& Other) const { return !(*this == Other); }
-
-    FString ToDebugString(const FString& PropertyPath = TEXT("")) const;
-
-private:
-    explicit FGV2PreparedUiObject(TArray<TPair<FString, FGV2PreparedUiValue>> InFields);
-
-    TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
-};
-
-/**
- * Immutable ordered values array.
- */
-class GV2_API FGV2PreparedUiArray final
-{
-public:
-    FGV2PreparedUiArray() = default;
-
-    static TSharedRef<const FGV2PreparedUiArray> Create(TArray<FGV2PreparedUiValue> InElements);
-
-    int32 Num() const { return Elements.Num(); }
-    bool IsEmpty() const { return Elements.IsEmpty(); }
-    const FGV2PreparedUiValue& operator[](int32 Index) const { return Elements[Index]; }
-    const TArray<FGV2PreparedUiValue>& GetElements() const { return Elements; }
-
-    const FGV2PreparedUiValue* begin() const { return Elements.GetData(); }
-    const FGV2PreparedUiValue* end() const { return Elements.GetData() + Elements.Num(); }
-
-    bool operator==(const FGV2PreparedUiArray& Other) const;
-    bool operator!=(const FGV2PreparedUiArray& Other) const { return !(*this == Other); }
-
-    FString ToDebugString(const FString& PropertyPath = TEXT("")) const;
-
-private:
-    explicit FGV2PreparedUiArray(TArray<FGV2PreparedUiValue> InElements);
-
-    TArray<FGV2PreparedUiValue> Elements;
-};
+// FGV2PreparedUiObject holds FGV2PreparedUiValue by value (TArray<TPair<...>>),
+// and FGV2PreparedUiValue holds FGV2PreparedUiObject/FGV2PreparedUiArray only through
+// TSharedRef (pointer-like, complete type not required). Breaking the cycle this way
+// means FGV2PreparedUiValue must be defined first; the two container classes are
+// defined below it once it is a complete type. AsObject()/AsArray(), the only members
+// that dereference the shared containers, are declared here and defined in the .cpp
+// after both container classes are complete.
+class FGV2PreparedUiObject;
+class FGV2PreparedUiArray;
 
 /**
  * Immutable prepared UI value node based on TVariant.
@@ -170,9 +117,12 @@ public:
     const FGV2TextViewModel& AsText() const { check(IsText()); return Storage.Get<FGV2TextViewModel>(); }
     const FGV2PreparedUiStableId& AsStableId() const { check(IsStableId()); return Storage.Get<FGV2PreparedUiStableId>(); }
     const FGV2UiBindingHandle& AsBinding() const { check(IsBinding()); return Storage.Get<FGV2UiBindingHandle>(); }
-    const FGV2PreparedUiObject& AsObject() const { check(IsObject()); return *Storage.Get<TSharedRef<const FGV2PreparedUiObject>>(); }
+    // Defined out-of-line below FGV2PreparedUiObject/FGV2PreparedUiArray: dereferencing
+    // the shared container requires it to be a complete type at the point of use.
+    const FGV2PreparedUiObject& AsObject() const;
+    const FGV2PreparedUiArray& AsArray() const;
+
     TSharedRef<const FGV2PreparedUiObject> AsObjectRef() const { check(IsObject()); return Storage.Get<TSharedRef<const FGV2PreparedUiObject>>(); }
-    const FGV2PreparedUiArray& AsArray() const { check(IsArray()); return *Storage.Get<TSharedRef<const FGV2PreparedUiArray>>(); }
     TSharedRef<const FGV2PreparedUiArray> AsRefArray() const { check(IsArray()); return Storage.Get<TSharedRef<const FGV2PreparedUiArray>>(); }
 
     bool operator==(const FGV2PreparedUiValue& Other) const;
@@ -193,4 +143,65 @@ private:
     explicit FGV2PreparedUiValue(TSharedRef<const FGV2PreparedUiArray> InVal) : Storage(TInPlaceType<TSharedRef<const FGV2PreparedUiArray>>(), MoveTemp(InVal)) {}
 
     FVariantType Storage;
+};
+
+/**
+ * Immutable ordered property collection.
+ * Property iteration order is strictly canonical (lexicographical by property name)
+ * and independent of parser key insertion order.
+ */
+class GV2_API FGV2PreparedUiObject final
+{
+public:
+    FGV2PreparedUiObject() = default;
+
+    static TSharedRef<const FGV2PreparedUiObject> Create(TArray<TPair<FString, FGV2PreparedUiValue>> InFields);
+    static TSharedRef<const FGV2PreparedUiObject> Create(const TMap<FString, FGV2PreparedUiValue>& InFields);
+
+    const FGV2PreparedUiValue* FindField(const FString& InName) const;
+    int32 Num() const { return Fields.Num(); }
+    bool IsEmpty() const { return Fields.IsEmpty(); }
+    const TArray<TPair<FString, FGV2PreparedUiValue>>& GetFields() const { return Fields; }
+
+    const TPair<FString, FGV2PreparedUiValue>* begin() const { return Fields.GetData(); }
+    const TPair<FString, FGV2PreparedUiValue>* end() const { return Fields.GetData() + Fields.Num(); }
+
+    bool operator==(const FGV2PreparedUiObject& Other) const;
+    bool operator!=(const FGV2PreparedUiObject& Other) const { return !(*this == Other); }
+
+    FString ToDebugString(const FString& PropertyPath = TEXT("")) const;
+
+private:
+    explicit FGV2PreparedUiObject(TArray<TPair<FString, FGV2PreparedUiValue>> InFields);
+
+    TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+};
+
+/**
+ * Immutable ordered values array.
+ */
+class GV2_API FGV2PreparedUiArray final
+{
+public:
+    FGV2PreparedUiArray() = default;
+
+    static TSharedRef<const FGV2PreparedUiArray> Create(TArray<FGV2PreparedUiValue> InElements);
+
+    int32 Num() const { return Elements.Num(); }
+    bool IsEmpty() const { return Elements.IsEmpty(); }
+    const FGV2PreparedUiValue& operator[](int32 Index) const { return Elements[Index]; }
+    const TArray<FGV2PreparedUiValue>& GetElements() const { return Elements; }
+
+    const FGV2PreparedUiValue* begin() const { return Elements.GetData(); }
+    const FGV2PreparedUiValue* end() const { return Elements.GetData() + Elements.Num(); }
+
+    bool operator==(const FGV2PreparedUiArray& Other) const;
+    bool operator!=(const FGV2PreparedUiArray& Other) const { return !(*this == Other); }
+
+    FString ToDebugString(const FString& PropertyPath = TEXT("")) const;
+
+private:
+    explicit FGV2PreparedUiArray(TArray<FGV2PreparedUiValue> InElements);
+
+    TArray<FGV2PreparedUiValue> Elements;
 };

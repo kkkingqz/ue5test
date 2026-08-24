@@ -11,30 +11,44 @@ static bool IsModNamespace(const FString& InSchemaId)
     return Ns != TEXT("core") && Ns != TEXT("textsystem") && Ns != TEXT("rh");
 }
 
-static EGV2PreparedUiValueKind MapFieldKindToPreparedKind(GV2ContentCore::EUiFieldKind InKind)
+// GV2ContentCore's compiled UI schema has one Scalar kind wrapping a nested
+// EScalarFieldKind (bool/integer/number/string), not four separate top-level
+// kinds, so the sub-kind must be read off Spec.Scalar to map correctly.
+static EGV2PreparedUiValueKind MapFieldSpecToPreparedKind(const GV2ContentCore::FCompiledUiFieldSpec& Spec)
 {
-    switch (InKind)
+    using namespace GV2ContentCore;
+    switch (Spec.Kind)
     {
-    case GV2ContentCore::EUiFieldKind::Bool:
-        return EGV2PreparedUiValueKind::Boolean;
-    case GV2ContentCore::EUiFieldKind::Integer:
-        return EGV2PreparedUiValueKind::Integer;
-    case GV2ContentCore::EUiFieldKind::Number:
-        return EGV2PreparedUiValueKind::Number;
-    case GV2ContentCore::EUiFieldKind::String:
-        return EGV2PreparedUiValueKind::String;
-    case GV2ContentCore::EUiFieldKind::Key:
+    case EUiFieldKind::Scalar:
+        if (!Spec.Scalar.has_value())
+        {
+            return EGV2PreparedUiValueKind::Null;
+        }
+        switch (Spec.Scalar->Kind)
+        {
+        case EScalarFieldKind::Boolean:
+            return EGV2PreparedUiValueKind::Boolean;
+        case EScalarFieldKind::Integer:
+            return EGV2PreparedUiValueKind::Integer;
+        case EScalarFieldKind::Number:
+            return EGV2PreparedUiValueKind::Number;
+        case EScalarFieldKind::String:
+            return EGV2PreparedUiValueKind::String;
+        default:
+            return EGV2PreparedUiValueKind::Null;
+        }
+    case EUiFieldKind::Key:
         return EGV2PreparedUiValueKind::Key;
-    case GV2ContentCore::EUiFieldKind::Text:
+    case EUiFieldKind::Text:
         return EGV2PreparedUiValueKind::Text;
-    case GV2ContentCore::EUiFieldKind::Ref:
+    case EUiFieldKind::Ref:
         return EGV2PreparedUiValueKind::StableId;
-    case GV2ContentCore::EUiFieldKind::Binding:
+    case EUiFieldKind::Binding:
         return EGV2PreparedUiValueKind::Binding;
-    case GV2ContentCore::EUiFieldKind::Object:
-    case GV2ContentCore::EUiFieldKind::ScreenFields:
+    case EUiFieldKind::Object:
+    case EUiFieldKind::ScreenFields:
         return EGV2PreparedUiValueKind::Object;
-    case GV2ContentCore::EUiFieldKind::Array:
+    case EUiFieldKind::Array:
         return EGV2PreparedUiValueKind::Array;
     default:
         return EGV2PreparedUiValueKind::Null;
@@ -212,9 +226,9 @@ bool CheckUiSchemaCapabilityCompatibility(
 
     if (Schema.Kind == GV2ContentCore::EUiFieldKind::Object || Schema.Kind == GV2ContentCore::EUiFieldKind::ScreenFields)
     {
-        for (const auto& FieldEntry : Schema.ObjectFields)
+        for (const auto& FieldEntry : Schema.Fields)
         {
-            const FString FieldName = UTF8_TO_TCHAR(FieldEntry.first.c_str());
+            const FString FieldName = UTF8_TO_TCHAR(FieldEntry.Name.c_str());
             const FString ChildPath = PropertyPathPrefix.IsEmpty()
                 ? FieldName
                 : FString::Printf(TEXT("%s.%s"), *PropertyPathPrefix, *FieldName);
@@ -234,14 +248,14 @@ bool CheckUiSchemaCapabilityCompatibility(
                 continue;
             }
 
-            const auto& FieldSpec = FieldEntry.second;
+            const GV2ContentCore::FCompiledUiFieldSpecPtr& FieldSpec = FieldEntry.Spec;
             if (!FieldSpec)
             {
                 continue;
             }
 
             // Kind compatibility check
-            const EGV2PreparedUiValueKind ExpectedKind = MapFieldKindToPreparedKind(FieldSpec->Kind);
+            const EGV2PreparedUiValueKind ExpectedKind = MapFieldSpecToPreparedKind(*FieldSpec);
             if (Cap->SupportedKind != ExpectedKind)
             {
                 FGV2UiSchemaCompatibilityDiagnostic Diag;
@@ -258,9 +272,9 @@ bool CheckUiSchemaCapabilityCompatibility(
             // Target kind check for Ref / StableId
             if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Ref)
             {
-                if (!Cap->TargetKind.IsEmpty() && !FieldSpec->TargetKind.empty())
+                if (!Cap->TargetKind.IsEmpty() && !FieldSpec->RefTargetKind.empty())
                 {
-                    const FString SchemaTargetKind = UTF8_TO_TCHAR(FieldSpec->TargetKind.c_str());
+                    const FString SchemaTargetKind = UTF8_TO_TCHAR(FieldSpec->RefTargetKind.c_str());
                     if (SchemaTargetKind != Cap->TargetKind)
                     {
                         FGV2UiSchemaCompatibilityDiagnostic Diag;
@@ -279,9 +293,10 @@ bool CheckUiSchemaCapabilityCompatibility(
             }
 
             // Numeric range checks (subset rule: schema range must fit within capability range)
-            if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Integer)
+            if (ExpectedKind == EGV2PreparedUiValueKind::Integer && FieldSpec->Scalar.has_value())
             {
-                if (Cap->IntMin.IsSet() && (!FieldSpec->IntMin.has_value() || *FieldSpec->IntMin < *Cap->IntMin))
+                const GV2ContentCore::FScalarFieldSpec& Scalar = *FieldSpec->Scalar;
+                if (Cap->IntMin.IsSet() && (!Scalar.MinimumInteger.has_value() || *Scalar.MinimumInteger < *Cap->IntMin))
                 {
                     FGV2UiSchemaCompatibilityDiagnostic Diag;
                     Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
@@ -292,7 +307,7 @@ bool CheckUiSchemaCapabilityCompatibility(
                     OutDiagnostics.Add(MoveTemp(Diag));
                     bSuccess = false;
                 }
-                if (Cap->IntMax.IsSet() && (!FieldSpec->IntMax.has_value() || *FieldSpec->IntMax > *Cap->IntMax))
+                if (Cap->IntMax.IsSet() && (!Scalar.MaximumInteger.has_value() || *Scalar.MaximumInteger > *Cap->IntMax))
                 {
                     FGV2UiSchemaCompatibilityDiagnostic Diag;
                     Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
@@ -304,9 +319,10 @@ bool CheckUiSchemaCapabilityCompatibility(
                     bSuccess = false;
                 }
             }
-            else if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Number)
+            else if (ExpectedKind == EGV2PreparedUiValueKind::Number && FieldSpec->Scalar.has_value())
             {
-                if (Cap->NumberMin.IsSet() && (!FieldSpec->NumberMin.has_value() || *FieldSpec->NumberMin < *Cap->NumberMin))
+                const GV2ContentCore::FScalarFieldSpec& Scalar = *FieldSpec->Scalar;
+                if (Cap->NumberMin.IsSet() && (!Scalar.MinimumNumber.has_value() || *Scalar.MinimumNumber < *Cap->NumberMin))
                 {
                     FGV2UiSchemaCompatibilityDiagnostic Diag;
                     Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
@@ -317,7 +333,7 @@ bool CheckUiSchemaCapabilityCompatibility(
                     OutDiagnostics.Add(MoveTemp(Diag));
                     bSuccess = false;
                 }
-                if (Cap->NumberMax.IsSet() && (!FieldSpec->NumberMax.has_value() || *FieldSpec->NumberMax > *Cap->NumberMax))
+                if (Cap->NumberMax.IsSet() && (!Scalar.MaximumNumber.has_value() || *Scalar.MaximumNumber > *Cap->NumberMax))
                 {
                     FGV2UiSchemaCompatibilityDiagnostic Diag;
                     Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
@@ -342,7 +358,7 @@ bool CheckUiSchemaCapabilityCompatibility(
             // Keyed Collection check
             if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Array && Cap->bRequiresKeyedIdentity)
             {
-                if (FieldSpec->KeyedBy.empty())
+                if (!FieldSpec->KeyedBy.has_value())
                 {
                     FGV2UiSchemaCompatibilityDiagnostic Diag;
                     Diag.Code = TEXT("core:diagnostic.ui_capability.collection_identity_mismatch");

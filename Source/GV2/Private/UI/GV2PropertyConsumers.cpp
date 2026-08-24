@@ -4,7 +4,7 @@
 #include "Components/ProgressBar.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImagePresentation.h"
-#include "UI/GV2UiInteractionEmitter.h"
+#include "UI/GV2UiBindingTarget.h"
 
 // --- FGV2TextPropertyConsumer ---
 
@@ -120,7 +120,7 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
     }
 
     FGV2ResolvedImageResource Resolved;
-    return FGV2ImagePresentation::ResolveAndApply(ImageWidget, PreparedResourceId, EGV2PrimitiveScalePolicy::Fill, {}, Resolved, OutError);
+    return FGV2ImagePresentation::ResolveAndApply(ImageWidget, PreparedResourceId, EGV2PrimitiveScalePolicy::PreserveAspect, {}, Resolved, OutError);
 }
 
 void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
@@ -404,18 +404,18 @@ bool FGV2BindingPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
         return false;
     }
 
-    if (IGV2UiInteractionEmitter* Emitter = Cast<IGV2UiInteractionEmitter>(TargetWidget))
+    if (IGV2UiBindingTarget* BindingTarget = Cast<IGV2UiBindingTarget>(TargetWidget))
     {
-        Emitter->SetBindingHandle(PreparedBinding);
+        BindingTarget->SetBindingHandle(PreparedBinding);
     }
     return true;
 }
 
 void FGV2BindingPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (IGV2UiInteractionEmitter* Emitter = Cast<IGV2UiInteractionEmitter>(TargetWidget))
+    if (IGV2UiBindingTarget* BindingTarget = Cast<IGV2UiBindingTarget>(TargetWidget))
     {
-        Emitter->SetBindingHandle(FGV2UiBindingHandle());
+        BindingTarget->SetBindingHandle(FGV2UiBindingHandle());
     }
 }
 

@@ -33,9 +33,9 @@ bool PrepareUiHostProperties(
         bool bSchemaOwns = false;
         if (Schema.Kind == GV2ContentCore::EUiFieldKind::Object || Schema.Kind == GV2ContentCore::EUiFieldKind::ScreenFields)
         {
-            for (const auto& FieldEntry : Schema.ObjectFields)
+            for (const auto& FieldEntry : Schema.Fields)
             {
-                if (UTF8_TO_TCHAR(FieldEntry.first.c_str()) == PropName)
+                if (UTF8_TO_TCHAR(FieldEntry.Name.c_str()) == PropName)
                 {
                     bSchemaOwns = true;
                     break;

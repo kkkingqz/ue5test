@@ -115,6 +115,18 @@ FString FGV2PreparedUiArray::ToDebugString(const FString& PropertyPath) const
 
 // --- FGV2PreparedUiValue ---
 
+const FGV2PreparedUiObject& FGV2PreparedUiValue::AsObject() const
+{
+    check(IsObject());
+    return *Storage.Get<TSharedRef<const FGV2PreparedUiObject>>();
+}
+
+const FGV2PreparedUiArray& FGV2PreparedUiValue::AsArray() const
+{
+    check(IsArray());
+    return *Storage.Get<TSharedRef<const FGV2PreparedUiArray>>();
+}
+
 EGV2PreparedUiValueKind FGV2PreparedUiValue::GetKind() const
 {
     if (IsNull()) return EGV2PreparedUiValueKind::Null;

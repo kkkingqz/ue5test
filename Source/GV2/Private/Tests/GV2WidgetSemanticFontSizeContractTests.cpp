@@ -160,7 +160,7 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
         for (const FName& Token : SemanticTokens)
         {
             const float ExpectedSize = Theme->GetEffectiveFontSize(Token, ViewportHeight);
-            TestTrue(*FString::Printf(TEXT("[%s][%s] Expected size is positive"), *HeightTag, *HeightTag, *Token.ToString()), ExpectedSize > 0.0f);
+            TestTrue(*FString::Printf(TEXT("[%s][%s] Expected size is positive"), *HeightTag, *Token.ToString()), ExpectedSize > 0.0f);
 
             // 1. Text widget: Apply via production path and read renderer control
             FGV2TextViewModel TextModel;

@@ -5,6 +5,26 @@
 #include "GV2ContentCore/UiSchema.h"
 #include "Misc/AutomationTest.h"
 
+namespace
+{
+using namespace GV2ContentCore;
+
+FCompiledUiFieldSpecPtr MakeScalarSpec(
+    const EScalarFieldKind Kind,
+    const TOptional<double> MinNumber = {},
+    const TOptional<double> MaxNumber = {})
+{
+    auto Spec = std::make_shared<FCompiledUiFieldSpec>();
+    Spec->Kind = EUiFieldKind::Scalar;
+    FScalarFieldSpec Scalar;
+    Scalar.Kind = Kind;
+    if (MinNumber.IsSet()) { Scalar.MinimumNumber = MinNumber.GetValue(); }
+    if (MaxNumber.IsSet()) { Scalar.MaximumNumber = MaxNumber.GetValue(); }
+    Spec->Scalar = MoveTemp(Scalar);
+    return Spec;
+}
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiPropertyHostTest,
     "GV2.UI.PropertyHostAndCapabilities",
@@ -32,8 +52,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
     {
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
-        Schema.ObjectFields.emplace_back("text", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text));
-        Schema.ObjectFields.emplace_back("binding", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Binding));
+        Schema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+        Schema.Fields.push_back({ "binding", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Binding) });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -47,8 +67,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
     {
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
-        Schema.ObjectFields.emplace_back("text", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text));
-        Schema.ObjectFields.emplace_back("unknown_prop", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::String));
+        Schema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+        Schema.Fields.push_back({ "unknown_prop", false, MakeScalarSpec(EScalarFieldKind::String) });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -69,7 +89,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
     {
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
-        Schema.ObjectFields.emplace_back("text", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::String));
+        Schema.Fields.push_back({ "text", false, MakeScalarSpec(EScalarFieldKind::String) });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -89,8 +109,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
         auto RefSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Ref);
-        RefSpec->TargetKind = "item";
-        Schema.ObjectFields.emplace_back("icon", RefSpec);
+        RefSpec->RefTargetKind = "item";
+        Schema.Fields.push_back({ "icon", false, RefSpec });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -111,10 +131,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
         {
             FCompiledUiFieldSpec Schema;
             Schema.Kind = EUiFieldKind::Object;
-            auto NumSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Number);
-            NumSpec->NumberMin = -1.0;
-            NumSpec->NumberMax = 1.0;
-            Schema.ObjectFields.emplace_back("percent", NumSpec);
+            auto NumSpec = MakeScalarSpec(EScalarFieldKind::Number, -1.0, 1.0);
+            Schema.Fields.push_back({ "percent", false, NumSpec });
 
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
             const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -129,10 +147,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
         {
             FCompiledUiFieldSpec Schema;
             Schema.Kind = EUiFieldKind::Object;
-            auto NumSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Number);
-            NumSpec->NumberMin = 0.0;
-            NumSpec->NumberMax = 0.5;
-            Schema.ObjectFields.emplace_back("percent", NumSpec);
+            auto NumSpec = MakeScalarSpec(EScalarFieldKind::Number, 0.0, 0.5);
+            Schema.Fields.push_back({ "percent", false, NumSpec });
 
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
             const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -146,7 +162,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
     {
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
-        Schema.ObjectFields.emplace_back("bad_prop", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::String));
+        Schema.Fields.push_back({ "bad_prop", false, MakeScalarSpec(EScalarFieldKind::String) });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -175,8 +191,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             FCompiledUiFieldSpec Schema;
             Schema.Kind = EUiFieldKind::Object;
             auto ArrSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Array);
-            ArrSpec->ArrayItems = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text);
-            Schema.ObjectFields.emplace_back("options", ArrSpec);
+            ArrSpec->Items = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text);
+            Schema.Fields.push_back({ "options", false, ArrSpec });
 
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
             const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -193,8 +209,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             Schema.Kind = EUiFieldKind::Object;
             auto ArrSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Array);
             ArrSpec->KeyedBy = "key";
-            ArrSpec->ArrayItems = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text);
-            Schema.ObjectFields.emplace_back("options", ArrSpec);
+            ArrSpec->Items = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text);
+            Schema.Fields.push_back({ "options", false, ArrSpec });
 
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
             const bool bCompatible = CheckUiSchemaCapabilityCompatibility(

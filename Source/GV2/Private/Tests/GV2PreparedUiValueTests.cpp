@@ -97,8 +97,8 @@ bool FGV2PreparedUiValueTest::RunTest(const FString& Parameters)
 
         const TSharedRef<const FGV2PreparedUiArray> Arr = FGV2PreparedUiArray::Create(MoveTemp(Items));
         TestEqual(TEXT("Array count"), Arr->Num(), 2);
-        TestEqual(TEXT("Array item 0"), (*Arr)[0].AsInteger(), 100);
-        TestEqual(TEXT("Array item 1"), (*Arr)[1].AsInteger(), 200);
+        TestEqual(TEXT("Array item 0"), (*Arr)[0].AsInteger(), int64(100));
+        TestEqual(TEXT("Array item 1"), (*Arr)[1].AsInteger(), int64(200));
 
         const FGV2PreparedUiValue ArrVal = FGV2PreparedUiValue::MakeArray(Arr);
         TestTrue(TEXT("Array value kind"), ArrVal.IsArray());

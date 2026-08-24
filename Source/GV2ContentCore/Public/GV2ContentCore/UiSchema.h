@@ -7,6 +7,7 @@
 #include "GV2ContentCore/Value.h"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>

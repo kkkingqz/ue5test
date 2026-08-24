@@ -6,6 +6,59 @@
 #include "UI/GV2PropertyConsumers.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "Misc/AutomationTest.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/VerticalBox.h"
+#include "Components/ProgressBar.h"
+#include "Components/Button.h"
+#include "CommonTextBlock.h"
+#include "UI/GV2PanelWidgetBase.h"
+#include "Engine/GameInstance.h"
+
+namespace
+{
+using namespace GV2ContentCore;
+
+FCompiledUiFieldSpecPtr MakeScalarSpec(
+    const EScalarFieldKind Kind,
+    const TOptional<double> MinNumber = {},
+    const TOptional<double> MaxNumber = {})
+{
+    auto Spec = std::make_shared<FCompiledUiFieldSpec>();
+    Spec->Kind = EUiFieldKind::Scalar;
+    FScalarFieldSpec Scalar;
+    Scalar.Kind = Kind;
+    if (MinNumber.IsSet()) { Scalar.MinimumNumber = MinNumber.GetValue(); }
+    if (MaxNumber.IsSet()) { Scalar.MaximumNumber = MaxNumber.GetValue(); }
+    Spec->Scalar = MoveTemp(Scalar);
+    return Spec;
+}
+
+// Prepare validates target presence/type on real renderer controls (proposal §13), so
+// a nullptr host cannot exercise a successful Prepare -- this builds a minimal
+// UUserWidget (a concrete, non-abstract subclass; UUserWidget itself is Abstract)
+// whose WidgetTree carries named children matching the test capability tree
+// (Label: text, Bar: percent, Root: enabled).
+UUserWidget* MakeTestHostWidget()
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
+    Host->WidgetTree = NewObject<UWidgetTree>(Host);
+    UVerticalBox* Root = Host->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+    Host->WidgetTree->RootWidget = Root;
+
+    UCommonTextBlock* Label = Host->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("Label"));
+    Root->AddChildToVerticalBox(Label);
+    UProgressBar* Bar = Host->WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("Bar"));
+    Root->AddChildToVerticalBox(Bar);
+
+    return Host;
+}
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiPrepareCommitTest,
@@ -25,10 +78,12 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
 
     // 1. Prepare Purity Check: Prepare does NOT modify live state
     {
+        UUserWidget* Host = MakeTestHostWidget();
+
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
-        Schema.ObjectFields.emplace_back("text", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text));
-        Schema.ObjectFields.emplace_back("percent", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Number));
+        Schema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+        Schema.Fields.push_back({ "percent", false, MakeScalarSpec(EScalarFieldKind::Number, 0.0, 1.0) });
 
         FGV2TextViewModel TextModel;
         TextModel.Text = FText::FromString(TEXT("PreparedTitle"));
@@ -42,27 +97,42 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const FGV2PreparedUiObject EmptyPrev;
 
+        // Capture physical state before Prepare to prove Prepare does not mutate live state.
+        const FText TextBeforePrepare = Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")))->GetText();
+        const float PercentBeforePrepare = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")))->GetPercent();
+
         // Run Prepare on valid input
         const bool bPrepared = PrepareUiHostProperties(
-            nullptr, Caps, *Candidate, Schema, TEXT("core:schema.ui_field.test.v1"),
+            Host, Caps, *Candidate, Schema, TEXT("core:schema.ui_field.test.v1"),
             TEXT("screen.test"), EmptyPrev, Plan, Diagnostics);
 
         TestTrue(TEXT("Prepare succeeds on valid input"), bPrepared);
-        TestTrue(TEXT("Plan contains 3 mutations (2 present, 1 reset for enabled)"), Plan.Num() == 3);
+        // 'enabled' has a capability but no schema field and no prior committed value on this
+        // fresh instance, so it is neither applied nor reset (full-field reset only fires for a
+        // property the instance previously owned -- see scenario 3 below).
+        TestTrue(TEXT("Plan contains 2 mutations (text, percent both present)"), Plan.Num() == 2);
+        TestEqual(TEXT("Prepare purity: text unchanged on valid input"),
+            Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")))->GetText().ToString(), TextBeforePrepare.ToString());
+        TestEqual(TEXT("Prepare purity: percent unchanged on valid input"),
+            Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")))->GetPercent(), PercentBeforePrepare);
 
         // Run Prepare on invalid input (e.g. unknown schema property)
         FCompiledUiFieldSpec BadSchema;
         BadSchema.Kind = EUiFieldKind::Object;
-        BadSchema.ObjectFields.emplace_back("bad_prop", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::String));
+        BadSchema.Fields.push_back({ "bad_prop", false, MakeScalarSpec(EScalarFieldKind::String) });
 
         FGV2UiHostMutationPlan BadPlan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> BadDiagnostics;
         const bool bBadPrepared = PrepareUiHostProperties(
-            nullptr, Caps, *Candidate, BadSchema, TEXT("core:schema.ui_field.test.v1"),
+            Host, Caps, *Candidate, BadSchema, TEXT("core:schema.ui_field.test.v1"),
             TEXT("screen.test"), EmptyPrev, BadPlan, BadDiagnostics);
 
         TestTrue(TEXT("Prepare fails on invalid schema"), !bBadPrepared);
         TestTrue(TEXT("BadPlan is empty"), BadPlan.IsEmpty());
+        TestEqual(TEXT("Prepare purity: text unchanged on invalid input"),
+            Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")))->GetText().ToString(), TextBeforePrepare.ToString());
+        TestEqual(TEXT("Prepare purity: percent unchanged on invalid input"),
+            Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")))->GetPercent(), PercentBeforePrepare);
     }
 
     // 2. Commit Failure Injection: verifies failure reporting with property_path
@@ -113,7 +183,7 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         // New schema only has { text }
         FCompiledUiFieldSpec NewSchema;
         NewSchema.Kind = EUiFieldKind::Object;
-        NewSchema.ObjectFields.emplace_back("text", std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text));
+        NewSchema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
 
         FGV2TextViewModel NewText;
         NewText.Text = FText::FromString(TEXT("NewText"));
@@ -121,10 +191,11 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         NewFields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(NewText));
         const TSharedRef<const FGV2PreparedUiObject> NewCandidate = FGV2PreparedUiObject::Create(MoveTemp(NewFields));
 
+        UUserWidget* Host2 = MakeTestHostWidget();
         FGV2UiHostMutationPlan Plan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bPrepared = PrepareUiHostProperties(
-            nullptr, Caps, *NewCandidate, NewSchema, TEXT("core:schema.ui_field.new.v1"),
+            Host2, Caps, *NewCandidate, NewSchema, TEXT("core:schema.ui_field.new.v1"),
             TEXT("screen.item"), *PrevCommitted, Plan, Diagnostics);
 
         TestTrue(TEXT("Prepare succeeds for reused instance"), bPrepared);
