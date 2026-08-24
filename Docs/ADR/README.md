@@ -1,7 +1,7 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.4
+version: 2.5
 updated: 2026-08-23
 ---
 
@@ -51,6 +51,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0037](0037-content-authoring-layer.md) | accepted | Content Authoring Layer and Atomic Storage Operations: библиотечный backend, атомарная запись набора полей, оптимистичная блокировка по штампу файла |
 | [0038](0038-screen-field-value-flat-struct.md) | rejected | Screen Field Value Stays a Flat Struct: `FGV2ScreenFieldValue` остаётся плоской структурой; пересмотр — при 14-м payload |
 | [0039](0039-presentation-source-singleton.md) | rejected | Presentation Source Stays a Singleton: композиция источников не вводится; пересмотр — при втором реальном потребителе |
+| [0040](0040-universal-ui-property-pipeline.md) | accepted | Universal UI Property Pipeline: подготовленное дерево значений вместо schema-specific DTO, Prepare/Commit, `SchemaContract ⊆ WidgetCapabilities` с наблюдаемостью capability, namespace ownership, mod-only отказ, без обратной совместимости |
 
 ## Template
 
