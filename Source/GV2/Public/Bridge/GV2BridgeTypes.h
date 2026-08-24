@@ -164,45 +164,6 @@ struct GV2_API FGV2ButtonViewModel
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2CheckboxViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-    FName Key;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-    FGV2TextViewModel Text;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-    bool bIsChecked = false;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-    FGV2UiBindingHandle Binding;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2InputFieldViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-    FName Key;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-    FGV2TextViewModel Text;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-    FGV2TextViewModel PlaceholderText;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-    FString TextValue;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-    FGV2UiBindingHandle Binding;
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2DropdownOptionViewModel
 {
 	GENERATED_BODY()
@@ -316,18 +277,6 @@ struct GV2_API FGV2ProgressBarViewModel
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ProgressBar")
     FGV2TextViewModel Label;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2PortraitViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Portrait")
-    FString ResourceId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Portrait")
-    FString FrameResourceId;
 };
 
 USTRUCT(BlueprintType)
@@ -457,19 +406,7 @@ struct GV2_API FGV2ScreenFieldValue
     TArray<FGV2ButtonViewModel> ButtonListValue;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2CheckboxViewModel CheckboxValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2InputFieldViewModel InputFieldValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FGV2DropdownSelectViewModel DropdownSelectValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2ProgressBarViewModel ProgressBarValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2PortraitViewModel PortraitValue;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FGV2ModalViewModel ModalValue;
@@ -507,28 +444,6 @@ struct GV2_API FGV2ScreenFieldValue
         return Value;
     }
 
-    static FGV2ScreenFieldValue MakeCheckbox(
-        const FName InFieldId,
-        const FGV2CheckboxViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.checkbox.v1");
-        Value.CheckboxValue = InValue;
-        return Value;
-    }
-
-    static FGV2ScreenFieldValue MakeInputField(
-        const FName InFieldId,
-        const FGV2InputFieldViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.input_field.v1");
-        Value.InputFieldValue = InValue;
-        return Value;
-    }
-
     static FGV2ScreenFieldValue MakeDropdownSelect(
         const FName InFieldId,
         const FGV2DropdownSelectViewModel& InValue)
@@ -537,28 +452,6 @@ struct GV2_API FGV2ScreenFieldValue
         Value.FieldId = InFieldId;
         Value.SchemaId = TEXT("core:schema.ui_field.dropdown_select.v1");
         Value.DropdownSelectValue = InValue;
-        return Value;
-    }
-
-    static FGV2ScreenFieldValue MakeProgressBar(
-        const FName InFieldId,
-        const FGV2ProgressBarViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.progress_bar.v1");
-        Value.ProgressBarValue = InValue;
-        return Value;
-    }
-
-    static FGV2ScreenFieldValue MakePortrait(
-        const FName InFieldId,
-        const FGV2PortraitViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.portrait.v1");
-        Value.PortraitValue = InValue;
         return Value;
     }
 

@@ -67,29 +67,6 @@ local function create_screen()
                 },
             },
         },
-        checkbox = {
-            schema_id = "core:schema.ui_field.checkbox.v1",
-            value = {
-                text = text.spec("core:text.screen.test.checkbox", nil, "default"),
-                is_checked = checkbox_checked,
-                binding = {
-                    command_id = "sample:command.test.checkbox_changed",
-                    args = {},
-                },
-            },
-        },
-        player_name = {
-            schema_id = "core:schema.ui_field.input_field.v1",
-            value = {
-                text = text.spec("core:text.screen.test.name_label", nil, "default"),
-                placeholder_text = text.spec("core:text.screen.test.name_placeholder", nil, "default"),
-                value = player_name ~= "" and player_name or item_id,
-                binding = {
-                    command_id = "sample:command.test.name_changed",
-                    args = {},
-                },
-            },
-        },
         class_select = {
             schema_id = "core:schema.ui_field.dropdown_select.v1",
             value = {

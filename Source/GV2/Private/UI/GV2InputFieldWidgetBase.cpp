@@ -4,7 +4,6 @@
 #include "Components/EditableTextBox.h"
 #include "UI/GV2UiTheme.h"
 #include "UI/GV2TextPipeline.h"
-#include "UI/GV2UiInteractionEmitter.h"
 
 void UGV2InputFieldWidgetBase::NativePreConstruct()
 {
@@ -31,92 +30,97 @@ void UGV2InputFieldWidgetBase::NativeDestruct()
     Super::NativeDestruct();
 }
 
-bool UGV2InputFieldWidgetBase::ApplyInputFieldModel(const FGV2InputFieldViewModel& InputFieldModel)
+void UGV2InputFieldWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    if (!CanApplyInputFieldModel(InputFieldModel))
+    if (LabelText != nullptr)
     {
-        return false;
+        OutBuilder.AddText(TEXT("text"), FName(TEXT("LabelText")));
     }
-
-    if (LabelText)
-    {
-        if (InputFieldModel.Text.Text.IsEmpty())
-        {
-            LabelText->SetText(FText::GetEmpty());
-        }
-        else if (!UGV2TextPipeline::Apply(LabelText, InputFieldModel.Text))
-        {
-            return false;
-        }
-    }
-
-    EditableTextBox->SetHintText(InputFieldModel.PlaceholderText.Text);
-
-    AppliedInputFieldModel = InputFieldModel;
-    EditableTextBox->SetText(FText::FromString(InputFieldModel.TextValue));
-    SetIsEnabled(InputFieldModel.Binding.IsValid());
-    return true;
+    OutBuilder.AddText(TEXT("placeholder_text"), FName(TEXT("EditableTextBox")));
+    OutBuilder.AddString(TEXT("value"), FName(TEXT("EditableTextBox")));
+    OutBuilder.AddBoolean(TEXT("is_read_only"), FName(TEXT("EditableTextBox")));
+    OutBuilder.AddInteger(TEXT("max_length"), FName(TEXT("EditableTextBox")), 0, 10000);
+    OutBuilder.AddBinding(TEXT("binding"), NAME_None);
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
-bool UGV2InputFieldWidgetBase::CanApplyInputFieldModel(const FGV2InputFieldViewModel& InputFieldModel) const
+void UGV2InputFieldWidgetBase::SetBindingHandle(const FGV2UiBindingHandle& InHandle)
 {
-    return EditableTextBox != nullptr
-        && InputFieldModel.Binding.IsValid()
-        && (LabelText != nullptr || InputFieldModel.Text.Text.IsEmpty())
-        && (InputFieldModel.Text.Text.IsEmpty() || UGV2TextPipeline::ResolveStyleClass(InputFieldModel.Text.StyleToken) != nullptr)
-        && !InputFieldModel.Text.NormalizedMarkup.Contains(TEXT("<gv2"))
-        && !InputFieldModel.PlaceholderText.NormalizedMarkup.Contains(TEXT("<gv2"));
+    BindingHandle = InHandle;
+    SetIsEnabled(BindingHandle.IsValid());
 }
 
-FGV2ScreenFieldDescriptor UGV2InputFieldWidgetBase::GetScreenFieldDescriptor_Implementation() const
+FGV2UiBindingHandle UGV2InputFieldWidgetBase::GetBindingHandle() const
 {
-    FGV2ScreenFieldDescriptor Descriptor;
-    Descriptor.FieldId = ScreenFieldId;
-    Descriptor.SchemaId = TEXT("core:schema.ui_field.input_field.v1");
-    Descriptor.bRequired = bScreenFieldRequired;
-    return Descriptor;
+    return BindingHandle;
 }
 
-bool UGV2InputFieldWidgetBase::CanApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue) const
+void UGV2InputFieldWidgetBase::SetIsReadOnly(bool bInIsReadOnly)
 {
-    return FieldValue.FieldId == ScreenFieldId
-        && FieldValue.SchemaId == TEXT("core:schema.ui_field.input_field.v1")
-        && CanApplyInputFieldModel(FieldValue.InputFieldValue);
-}
-
-bool UGV2InputFieldWidgetBase::ApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue)
-{
-    return CanApplyScreenField_Implementation(FieldValue)
-        && ApplyInputFieldModel(FieldValue.InputFieldValue);
-}
-
-bool UGV2InputFieldWidgetBase::CaptureScreenField_Implementation(
-    FGV2ScreenFieldValue& OutFieldValue) const
-{
-    if (EditableTextBox == nullptr || ScreenFieldId.IsNone())
-    {
-        return false;
-    }
-    OutFieldValue = FGV2ScreenFieldValue::MakeInputField(ScreenFieldId, AppliedInputFieldModel);
-    return true;
-}
-
-bool UGV2InputFieldWidgetBase::ResetScreenField_Implementation()
-{
-    AppliedInputFieldModel = FGV2InputFieldViewModel();
     if (EditableTextBox)
     {
-        EditableTextBox->SetText(FText::GetEmpty());
-        EditableTextBox->SetHintText(FText::GetEmpty());
+        EditableTextBox->SetIsReadOnly(bInIsReadOnly);
     }
-    if (LabelText)
+}
+
+bool UGV2InputFieldWidgetBase::GetIsReadOnly() const
+{
+    return EditableTextBox ? EditableTextBox->GetIsReadOnly() : false;
+}
+
+void UGV2InputFieldWidgetBase::SetMaxLength(int64 InMaxLength)
+{
+    MaxLength = InMaxLength;
+    if (MaxLength > 0 && EditableTextBox)
     {
-        LabelText->SetText(FText::GetEmpty());
+        const FString Current = EditableTextBox->GetText().ToString();
+        if (Current.Len() > MaxLength)
+        {
+            EditableTextBox->SetText(FText::FromString(Current.Left(static_cast<int32>(MaxLength))));
+        }
     }
-    SetIsEnabled(false);
+}
+
+void UGV2InputFieldWidgetBase::SetValue(const FString& InValue)
+{
+    if (EditableTextBox)
+    {
+        FString Truncated = InValue;
+        if (MaxLength > 0 && Truncated.Len() > MaxLength)
+        {
+            Truncated = Truncated.Left(static_cast<int32>(MaxLength));
+        }
+        EditableTextBox->SetText(FText::FromString(Truncated));
+    }
+}
+
+FString UGV2InputFieldWidgetBase::GetValue() const
+{
+    return EditableTextBox ? EditableTextBox->GetText().ToString() : FString();
+}
+
+bool UGV2InputFieldWidgetBase::ApplyText(const FGV2TextViewModel& InText)
+{
+    if (InText.NormalizedMarkup.Contains(TEXT("<gv2")))
+    {
+        return false;
+    }
+    AppliedLabelText = InText;
+    if (LabelText != nullptr)
+    {
+        return UGV2TextPipeline::Apply(LabelText, InText);
+    }
     return true;
+}
+
+bool UGV2InputFieldWidgetBase::ApplyPlaceholderText(const FGV2TextViewModel& InPlaceholder)
+{
+    if (!EditableTextBox)
+    {
+        return false;
+    }
+    AppliedPlaceholderText = InPlaceholder;
+    return UGV2TextPipeline::ApplyHint(EditableTextBox, InPlaceholder);
 }
 
 bool UGV2InputFieldWidgetBase::ApplyCentralStyle_Implementation()
@@ -129,18 +133,26 @@ bool UGV2InputFieldWidgetBase::ApplyCentralStyle_Implementation()
     }
 
     EditableTextBox->WidgetStyle = Theme->InputFieldStyle;
-    const float ScaledFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(FName(TEXT("body")), this);
+    const float ScaledFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(
+        AppliedLabelText.StyleToken.IsNone() ? FName(TEXT("body")) : AppliedLabelText.StyleToken,
+        this);
     EditableTextBox->WidgetStyle.TextStyle.Font.Size = ScaledFontSize;
 
     if (LabelText != nullptr && Theme->InputFieldLabelStyle != nullptr)
     {
-        const TSubclassOf<UCommonTextStyle> LabelStyle = AppliedInputFieldModel.Text.StyleToken.IsNone()
+        const TSubclassOf<UCommonTextStyle> LabelStyle = AppliedLabelText.StyleToken.IsNone()
             ? Theme->InputFieldLabelStyle
-            : UGV2TextPipeline::ResolveStyleClass(AppliedInputFieldModel.Text.StyleToken);
+            : UGV2TextPipeline::ResolveStyleClass(AppliedLabelText.StyleToken);
 
         if (LabelStyle != nullptr)
         {
             LabelText->SetStyle(LabelStyle);
+            FSlateFontInfo FontInfo = LabelText->GetFont();
+            if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
+            {
+                FontInfo.Size = ScaledFontSize;
+                LabelText->SetFont(FontInfo);
+            }
         }
     }
 
@@ -149,12 +161,21 @@ bool UGV2InputFieldWidgetBase::ApplyCentralStyle_Implementation()
 
 void UGV2InputFieldWidgetBase::HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)
 {
-    SubmitTextValue(Text.ToString());
+    FString CommittedString = Text.ToString();
+    if (MaxLength > 0 && CommittedString.Len() > MaxLength)
+    {
+        CommittedString = CommittedString.Left(static_cast<int32>(MaxLength));
+        if (EditableTextBox)
+        {
+            EditableTextBox->SetText(FText::FromString(CommittedString));
+        }
+    }
+    SubmitTextValue(CommittedString);
 }
 
 EGV2SubmitUiInteractionResult UGV2InputFieldWidgetBase::SubmitTextValue(const FString& NewTextValue)
 {
-    if (!AppliedInputFieldModel.Binding.IsValid())
+    if (!BindingHandle.IsValid())
     {
         return EGV2SubmitUiInteractionResult::InvalidBindingHandle;
     }
@@ -165,8 +186,8 @@ EGV2SubmitUiInteractionResult UGV2InputFieldWidgetBase::SubmitTextValue(const FS
     ControlValue.StringValue = NewTextValue;
 
     const EGV2SubmitUiInteractionResult Result =
-        FGV2UiInteractionEmitter::Submit(this, AppliedInputFieldModel.Binding, {ControlValue});
+        FGV2UiInteractionEmitter::Submit(this, BindingHandle, {ControlValue});
 
-    OnBindingInvoked.Broadcast(AppliedInputFieldModel.Binding, NewTextValue, Result);
+    OnBindingInvoked.Broadcast(BindingHandle, NewTextValue, Result);
     return Result;
 }

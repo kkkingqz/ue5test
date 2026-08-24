@@ -1,12 +1,22 @@
 #include "UI/GV2PropertyConsumers.h"
 #include "CommonTextBlock.h"
+#include "CommonRichTextBlock.h"
 #include "Components/Image.h"
 #include "Components/ProgressBar.h"
+#include "Components/CheckBox.h"
+#include "Components/EditableTextBox.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImagePresentation.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2CheckboxWidgetBase.h"
+#include "UI/GV2InputFieldWidgetBase.h"
+#include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2PortraitWidgetBase.h"
+#include "UI/GV2TextWidgetBase.h"
+#include "UI/GV2RichTextWidgetBase.h"
+#include "UI/GV2RichTextPopoverWidgetBase.h"
 
 // --- FGV2TextPropertyConsumer ---
 
@@ -21,16 +31,25 @@ bool FGV2TextPropertyConsumer::Prepare(
     UWidget* TargetWidget,
     FString& OutError)
 {
-    if (!TargetWidget)
+    UWidget* ResolvedWidget = TargetWidget;
+    if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = TW->GetTextBlock();
+    }
+    else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = RTW->GetRichTextBlock();
+    }
+
+    if (!ResolvedWidget)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.missing_target: Target widget is null for text capability");
         return false;
     }
 
-    UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(TargetWidget);
-    if (!TextBlock)
+    if (!Cast<UCommonTextBlock>(ResolvedWidget) && !Cast<UCommonRichTextBlock>(ResolvedWidget) && !Cast<UEditableTextBox>(ResolvedWidget))
     {
-        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UCommonTextBlock");
+        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a supported text renderer");
         return false;
     }
 
@@ -41,32 +60,75 @@ bool FGV2TextPropertyConsumer::Prepare(
     }
 
     PreparedText = Value.AsText();
+    if (Cast<UEditableTextBox>(ResolvedWidget) || Cast<UCommonTextBlock>(ResolvedWidget))
+    {
+        if (PreparedText.NormalizedMarkup.Contains(TEXT("<gv2")))
+        {
+            OutError = TEXT("core:diagnostic.ui_consumer.unsupported_text_markup: Plain text renderer does not support formatted markup");
+            return false;
+        }
+    }
     return true;
 }
 
 bool FGV2TextPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
-    if (!TargetWidget)
+    UWidget* ResolvedWidget = TargetWidget;
+    if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = TW->GetTextBlock();
+    }
+    else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = RTW->GetRichTextBlock();
+    }
+
+    if (!ResolvedWidget)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.missing_target: Target widget is null during Commit");
         return false;
     }
 
-    UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(TargetWidget);
-    if (!TextBlock)
+    if (UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(ResolvedWidget))
     {
-        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UCommonTextBlock");
-        return false;
+        return UGV2TextPipeline::Apply(TextBlock, PreparedText);
+    }
+    if (UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(ResolvedWidget))
+    {
+        return UGV2TextPipeline::ApplyRichText(RichTextBlock, PreparedText);
+    }
+    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(ResolvedWidget))
+    {
+        return UGV2TextPipeline::ApplyHint(EditableBox, PreparedText);
     }
 
-    return UGV2TextPipeline::Apply(TextBlock, PreparedText);
+    OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a supported text renderer");
+    return false;
 }
 
 void FGV2TextPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(TargetWidget))
+    UWidget* ResolvedWidget = TargetWidget;
+    if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = TW->GetTextBlock();
+    }
+    else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = RTW->GetRichTextBlock();
+    }
+
+    if (UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(ResolvedWidget))
     {
         UGV2TextPipeline::Apply(TextBlock, FGV2TextViewModel());
+    }
+    else if (UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(ResolvedWidget))
+    {
+        UGV2TextPipeline::ApplyRichText(RichTextBlock, FGV2TextViewModel());
+    }
+    else if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(ResolvedWidget))
+    {
+        UGV2TextPipeline::ApplyHint(EditableBox, FGV2TextViewModel());
     }
 }
 
@@ -219,6 +281,7 @@ bool FGV2BooleanPropertyConsumer::Prepare(
     }
 
     bPreparedValue = Value.AsBoolean();
+    PropertyName = Capability.PropertyName;
     return true;
 }
 
@@ -230,13 +293,60 @@ bool FGV2BooleanPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
         return false;
     }
 
+    if (UCheckBox* CheckBox = Cast<UCheckBox>(TargetWidget))
+    {
+        if (PropertyName == TEXT("is_read_only"))
+        {
+            CheckBox->SetIsEnabled(!bPreparedValue);
+        }
+        else
+        {
+            CheckBox->SetIsChecked(bPreparedValue);
+        }
+        return true;
+    }
+    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    {
+        if (PropertyName == TEXT("is_read_only"))
+        {
+            EditableBox->SetIsReadOnly(bPreparedValue);
+        }
+        else
+        {
+            EditableBox->SetIsEnabled(bPreparedValue);
+        }
+        return true;
+    }
+
     TargetWidget->SetIsEnabled(bPreparedValue);
     return true;
 }
 
 void FGV2BooleanPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (TargetWidget)
+    if (UCheckBox* CheckBox = Cast<UCheckBox>(TargetWidget))
+    {
+        if (PropertyName == TEXT("is_read_only"))
+        {
+            CheckBox->SetIsEnabled(true);
+        }
+        else
+        {
+            CheckBox->SetIsChecked(false);
+        }
+    }
+    else if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    {
+        if (PropertyName == TEXT("is_read_only"))
+        {
+            EditableBox->SetIsReadOnly(false);
+        }
+        else
+        {
+            EditableBox->SetIsEnabled(true);
+        }
+    }
+    else if (TargetWidget)
     {
         TargetWidget->SetIsEnabled(true);
     }
@@ -268,6 +378,7 @@ bool FGV2IntegerPropertyConsumer::Prepare(
     }
 
     PreparedValue = Value.AsInteger();
+    PropertyName = Capability.PropertyName;
     return true;
 }
 
@@ -279,11 +390,34 @@ bool FGV2IntegerPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
         return false;
     }
 
+    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    {
+        if (UGV2InputFieldWidgetBase* InputField = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
+        {
+            InputField->SetMaxLength(PreparedValue);
+        }
+        if (PreparedValue > 0)
+        {
+            const FString Current = EditableBox->GetText().ToString();
+            if (Current.Len() > PreparedValue)
+            {
+                EditableBox->SetText(FText::FromString(Current.Left(static_cast<int32>(PreparedValue))));
+            }
+        }
+    }
+
     return true;
 }
 
 void FGV2IntegerPropertyConsumer::Reset(UWidget* TargetWidget)
 {
+    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    {
+        if (UGV2InputFieldWidgetBase* InputField = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
+        {
+            InputField->SetMaxLength(0);
+        }
+    }
     PreparedValue = 0;
 }
 
@@ -376,11 +510,29 @@ bool FGV2StringPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError
         return false;
     }
 
+    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    {
+        FString FinalText = PreparedValue;
+        if (const UGV2InputFieldWidgetBase* Host = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
+        {
+            const int64 MaxLength = Host->GetMaxLength();
+            if (MaxLength > 0 && FinalText.Len() > MaxLength)
+            {
+                FinalText = FinalText.Left(static_cast<int32>(MaxLength));
+            }
+        }
+        EditableBox->SetText(FText::FromString(FinalText));
+    }
+
     return true;
 }
 
 void FGV2StringPropertyConsumer::Reset(UWidget* TargetWidget)
 {
+    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    {
+        EditableBox->SetText(FText::GetEmpty());
+    }
     PreparedValue.Empty();
 }
 
@@ -425,6 +577,30 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
     {
         Button->SetKey(FName(*PreparedValue));
     }
+    else if (UGV2CheckboxWidgetBase* Checkbox = Cast<UGV2CheckboxWidgetBase>(TargetWidget))
+    {
+        Checkbox->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2InputFieldWidgetBase* InputField = Cast<UGV2InputFieldWidgetBase>(TargetWidget))
+    {
+        InputField->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2ProgressBarWidgetBase* ProgressBar = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    {
+        ProgressBar->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2PortraitWidgetBase* Portrait = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    {
+        Portrait->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(TargetWidget))
+    {
+        RichText->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2RichTextPopoverWidgetBase* Popover = Cast<UGV2RichTextPopoverWidgetBase>(TargetWidget))
+    {
+        Popover->SetKey(FName(*PreparedValue));
+    }
     return true;
 }
 
@@ -433,6 +609,30 @@ void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
     if (UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
     {
         Button->SetKey(NAME_None);
+    }
+    else if (UGV2CheckboxWidgetBase* Checkbox = Cast<UGV2CheckboxWidgetBase>(TargetWidget))
+    {
+        Checkbox->SetKey(NAME_None);
+    }
+    else if (UGV2InputFieldWidgetBase* InputField = Cast<UGV2InputFieldWidgetBase>(TargetWidget))
+    {
+        InputField->SetKey(NAME_None);
+    }
+    else if (UGV2ProgressBarWidgetBase* ProgressBar = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    {
+        ProgressBar->SetKey(NAME_None);
+    }
+    else if (UGV2PortraitWidgetBase* Portrait = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    {
+        Portrait->SetKey(NAME_None);
+    }
+    else if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(TargetWidget))
+    {
+        RichText->SetKey(NAME_None);
+    }
+    else if (UGV2RichTextPopoverWidgetBase* Popover = Cast<UGV2RichTextPopoverWidgetBase>(TargetWidget))
+    {
+        Popover->SetKey(NAME_None);
     }
     PreparedValue.Empty();
 }

@@ -14,6 +14,15 @@
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2IconWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2CheckboxWidgetBase.h"
+#include "UI/GV2InputFieldWidgetBase.h"
+#include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2PortraitWidgetBase.h"
+#include "UI/GV2RichTextWidgetBase.h"
+#include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "CommonRichTextBlock.h"
+#include "Components/CheckBox.h"
+#include "Components/EditableTextBox.h"
 #include "Engine/GameInstance.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -245,6 +254,169 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const bool bUnboundObservable = RunUiCapabilityObservabilityHarness(UnboundButton, ButtonCaps, UnboundFailures);
         TestFalse(TEXT("Unbound UGV2ButtonWidgetBase fails observability"), bUnboundObservable);
         TestEqual(TEXT("1 failure for unbound UGV2ButtonWidgetBase (missing LabelText target)"), UnboundFailures.Num(), 1);
+    }
+
+    // 6. UPP-16: UGV2CheckboxWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2CheckboxWidgetBase* CheckboxWidget = CreateWidget<UGV2CheckboxWidgetBase>(TestWorld, UGV2CheckboxWidgetBase::StaticClass());
+        CheckboxWidget->WidgetTree = NewObject<UWidgetTree>(CheckboxWidget);
+        UVerticalBox* Root = CheckboxWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+        CheckboxWidget->WidgetTree->RootWidget = Root;
+        UCheckBox* Checkbox = CheckboxWidget->WidgetTree->ConstructWidget<UCheckBox>(UCheckBox::StaticClass(), TEXT("Checkbox"));
+        Root->AddChildToVerticalBox(Checkbox);
+        UCommonTextBlock* LabelText = CheckboxWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("LabelText"));
+        Root->AddChildToVerticalBox(LabelText);
+
+        FGV2UiCapabilityBuilder Builder;
+        CheckboxWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree CheckboxCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> CheckboxFailures;
+        const bool bCheckboxObservable = RunUiCapabilityObservabilityHarness(CheckboxWidget, CheckboxCaps, CheckboxFailures);
+        TestTrue(TEXT("UGV2CheckboxWidgetBase capabilities are observable"), bCheckboxObservable);
+        TestEqual(TEXT("No failures for UGV2CheckboxWidgetBase"), CheckboxFailures.Num(), 0);
+    }
+
+    // 7. UPP-16: UGV2InputFieldWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2InputFieldWidgetBase* InputFieldWidget = CreateWidget<UGV2InputFieldWidgetBase>(TestWorld, UGV2InputFieldWidgetBase::StaticClass());
+        InputFieldWidget->WidgetTree = NewObject<UWidgetTree>(InputFieldWidget);
+        UVerticalBox* Root = InputFieldWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+        InputFieldWidget->WidgetTree->RootWidget = Root;
+        UEditableTextBox* EditableTextBox = InputFieldWidget->WidgetTree->ConstructWidget<UEditableTextBox>(UEditableTextBox::StaticClass(), TEXT("EditableTextBox"));
+        Root->AddChildToVerticalBox(EditableTextBox);
+        UCommonTextBlock* LabelText = InputFieldWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("LabelText"));
+        Root->AddChildToVerticalBox(LabelText);
+
+        FGV2UiCapabilityBuilder Builder;
+        InputFieldWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree InputCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> InputFailures;
+        const bool bInputObservable = RunUiCapabilityObservabilityHarness(InputFieldWidget, InputCaps, InputFailures);
+        TestTrue(TEXT("UGV2InputFieldWidgetBase capabilities are observable"), bInputObservable);
+        TestEqual(TEXT("No failures for UGV2InputFieldWidgetBase"), InputFailures.Num(), 0);
+    }
+
+    // 8. UPP-17: UGV2ProgressBarWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2ProgressBarWidgetBase* ProgressBarWidget = CreateWidget<UGV2ProgressBarWidgetBase>(TestWorld, UGV2ProgressBarWidgetBase::StaticClass());
+        ProgressBarWidget->WidgetTree = NewObject<UWidgetTree>(ProgressBarWidget);
+        UVerticalBox* Root = ProgressBarWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+        ProgressBarWidget->WidgetTree->RootWidget = Root;
+        UProgressBar* ProgressBar = ProgressBarWidget->WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("ProgressBar"));
+        Root->AddChildToVerticalBox(ProgressBar);
+        UCommonTextBlock* LabelText = ProgressBarWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("LabelText"));
+        Root->AddChildToVerticalBox(LabelText);
+
+        FGV2UiCapabilityBuilder Builder;
+        ProgressBarWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree ProgressCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> ProgressFailures;
+        const bool bProgressObservable = RunUiCapabilityObservabilityHarness(ProgressBarWidget, ProgressCaps, ProgressFailures);
+        TestTrue(TEXT("UGV2ProgressBarWidgetBase capabilities are observable"), bProgressObservable);
+        TestEqual(TEXT("No failures for UGV2ProgressBarWidgetBase"), ProgressFailures.Num(), 0);
+    }
+
+    // 9. UPP-17: UGV2PortraitWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2PortraitWidgetBase* PortraitWidget = CreateWidget<UGV2PortraitWidgetBase>(TestWorld, UGV2PortraitWidgetBase::StaticClass());
+        PortraitWidget->WidgetTree = NewObject<UWidgetTree>(PortraitWidget);
+        UVerticalBox* Root = PortraitWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+        PortraitWidget->WidgetTree->RootWidget = Root;
+        UImage* PortraitImage = PortraitWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("PortraitImage"));
+        Root->AddChildToVerticalBox(PortraitImage);
+        UImage* FrameImage = PortraitWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("FrameImage"));
+        Root->AddChildToVerticalBox(FrameImage);
+
+        FGV2UiCapabilityBuilder Builder;
+        PortraitWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree PortraitCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> PortraitFailures;
+        const bool bPortraitObservable = RunUiCapabilityObservabilityHarness(PortraitWidget, PortraitCaps, PortraitFailures);
+        TestTrue(TEXT("UGV2PortraitWidgetBase capabilities are observable"), bPortraitObservable);
+        TestEqual(TEXT("No failures for UGV2PortraitWidgetBase"), PortraitFailures.Num(), 0);
+    }
+
+    // 10. UPP-18: UGV2RichTextWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2RichTextWidgetBase* RichTextWidget = CreateWidget<UGV2RichTextWidgetBase>(TestWorld, UGV2RichTextWidgetBase::StaticClass());
+        RichTextWidget->WidgetTree = NewObject<UWidgetTree>(RichTextWidget);
+        UVerticalBox* Root = RichTextWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+        RichTextWidget->WidgetTree->RootWidget = Root;
+        UCommonRichTextBlock* RichTextBlock = RichTextWidget->WidgetTree->ConstructWidget<UCommonRichTextBlock>(UCommonRichTextBlock::StaticClass(), TEXT("RichTextBlock"));
+        Root->AddChildToVerticalBox(RichTextBlock);
+
+        FGV2UiCapabilityBuilder Builder;
+        RichTextWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree RichTextCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> RichTextFailures;
+        const bool bRichTextObservable = RunUiCapabilityObservabilityHarness(RichTextWidget, RichTextCaps, RichTextFailures);
+        TestTrue(TEXT("UGV2RichTextWidgetBase capabilities are observable"), bRichTextObservable);
+        TestEqual(TEXT("No failures for UGV2RichTextWidgetBase"), RichTextFailures.Num(), 0);
+    }
+
+    // 11. UPP-18: UGV2RichTextPopoverWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2RichTextPopoverWidgetBase* PopoverWidget = CreateWidget<UGV2RichTextPopoverWidgetBase>(TestWorld, UGV2RichTextPopoverWidgetBase::StaticClass());
+        PopoverWidget->WidgetTree = NewObject<UWidgetTree>(PopoverWidget);
+        UVerticalBox* Root = PopoverWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+        PopoverWidget->WidgetTree->RootWidget = Root;
+        UCommonTextBlock* TitleText = PopoverWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TitleText"));
+        Root->AddChildToVerticalBox(TitleText);
+        UGV2RichTextWidgetBase* DescriptionText = PopoverWidget->WidgetTree->ConstructWidget<UGV2RichTextWidgetBase>(UGV2RichTextWidgetBase::StaticClass(), TEXT("DescriptionText"));
+        DescriptionText->WidgetTree = NewObject<UWidgetTree>(DescriptionText);
+        UCommonRichTextBlock* InnerRichText = DescriptionText->WidgetTree->ConstructWidget<UCommonRichTextBlock>(UCommonRichTextBlock::StaticClass(), TEXT("RichTextBlock"));
+        DescriptionText->WidgetTree->RootWidget = InnerRichText;
+        Root->AddChildToVerticalBox(DescriptionText);
+        UImage* Icon = PopoverWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Icon"));
+        Root->AddChildToVerticalBox(Icon);
+
+        FGV2UiCapabilityBuilder Builder;
+        PopoverWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree PopoverCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> PopoverFailures;
+        const bool bPopoverObservable = RunUiCapabilityObservabilityHarness(PopoverWidget, PopoverCaps, PopoverFailures);
+        for (const FGV2UiObservabilityFailure& Failure : PopoverFailures)
+        {
+            UE_LOG(LogTemp, Error, TEXT("PopoverObservabilityFailure: property '%s': %s"), *Failure.PropertyName, *Failure.Reason);
+        }
+        TestTrue(TEXT("UGV2RichTextPopoverWidgetBase capabilities are observable"), bPopoverObservable);
+        TestEqual(TEXT("No failures for UGV2RichTextPopoverWidgetBase"), PopoverFailures.Num(), 0);
     }
 
     return true;

@@ -13,7 +13,11 @@ void UGV2TextWidgetBase::NativePreConstruct()
 
 bool UGV2TextWidgetBase::ApplyText(const FGV2TextViewModel& Content)
 {
-    if (!UGV2TextPipeline::Apply(TextBlock, Content))
+    if (Content.NormalizedMarkup.Contains(TEXT("<gv2")))
+    {
+        return false;
+    }
+    if (TextBlock != nullptr && !UGV2TextPipeline::Apply(TextBlock, Content))
     {
         return false;
     }
@@ -23,7 +27,12 @@ bool UGV2TextWidgetBase::ApplyText(const FGV2TextViewModel& Content)
 
 FText UGV2TextWidgetBase::GetTextContent() const
 {
-    return TextBlock != nullptr ? TextBlock->GetText() : FText::GetEmpty();
+    return TextBlock != nullptr ? TextBlock->GetText() : CurrentContent.Text;
+}
+
+UCommonTextBlock* UGV2TextWidgetBase::GetTextBlock() const
+{
+    return TextBlock != nullptr ? TextBlock.Get() : Cast<UCommonTextBlock>(GetWidgetFromName(TEXT("TextBlock")));
 }
 
 bool UGV2TextWidgetBase::ApplyCentralStyle_Implementation()

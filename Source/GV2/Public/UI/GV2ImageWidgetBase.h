@@ -69,9 +69,6 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
     EGV2PrimitiveScalePolicy ScalePolicy = EGV2PrimitiveScalePolicy::Unset;
 
-    UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use ScalePolicy instead."))
-    EGV2ImageRenderMode AcceptedRenderMode_DEPRECATED = EGV2ImageRenderMode::FixedAspect;
-
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract", meta = (ClampMin = "0.01", EditCondition = "ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect", EditConditionHides))
     float FixedAspectRatio = 0.0f;
 

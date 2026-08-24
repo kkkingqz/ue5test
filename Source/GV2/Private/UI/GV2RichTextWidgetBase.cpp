@@ -10,6 +10,7 @@
 #include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextSpanDecorator.h"
 #include "UI/GV2TextPipeline.h"
+#include "UI/GV2UiCapability.h"
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2UiTheme.h"
 #include "UObject/StrongObjectPtr.h"
@@ -26,6 +27,7 @@ bool IsCanonicalSpanId(const FName SpanId)
 
 bool ValidateInteractiveContent(const FGV2InteractiveRichTextViewModel& Content)
 {
+    bool bHasHover = false;
     TMap<FName, const FGV2RichTextSpanViewModel*> Spans;
     for (const FGV2RichTextSpanViewModel& Span : Content.Spans)
     {
@@ -34,7 +36,20 @@ bool ValidateInteractiveContent(const FGV2InteractiveRichTextViewModel& Content)
         {
             return false;
         }
+        if (!Span.Hover.IsEmpty())
+        {
+            bHasHover = true;
+        }
         Spans.Add(Span.SpanId, &Span);
+    }
+
+    if (bHasHover)
+    {
+        const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+        if (Theme == nullptr || Theme->RichTextPopoverClass.IsNull() || Theme->RichTextPopoverClass.LoadSynchronous() == nullptr)
+        {
+            return false;
+        }
     }
 
     const FString SourceMarkup = Content.Text.Text.ToString();
@@ -226,6 +241,11 @@ const FGV2RichTextSpanViewModel* UGV2RichTextWidgetBase::FindInteractiveSpan(
         : nullptr;
 }
 
+UCommonRichTextBlock* UGV2RichTextWidgetBase::GetRichTextBlock() const
+{
+    return RichTextBlock != nullptr ? RichTextBlock.Get() : Cast<UCommonRichTextBlock>(GetWidgetFromName(TEXT("RichTextBlock")));
+}
+
 EGV2SubmitUiInteractionResult UGV2RichTextWidgetBase::SubmitSpanInteraction(
     const FName SpanId)
 {
@@ -373,4 +393,10 @@ bool UGV2RichTextWidgetBase::ApplyCentralStyle_Implementation()
         RichTextBlock->SetDefaultTextStyle(DefaultStyle);
     }
     return true;
+}
+
+void UGV2RichTextWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    OutBuilder.AddText(TEXT("text"), FName(TEXT("RichTextBlock")));
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }

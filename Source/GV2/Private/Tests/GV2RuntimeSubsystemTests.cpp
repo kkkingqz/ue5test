@@ -247,8 +247,6 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         const TCHAR* FieldSchemas[] = {
             TEXT("core:schema.ui_field.button_list.v2"),
             TEXT("core:schema.ui_field.rich_text.v3"),
-            TEXT("core:schema.ui_field.checkbox.v1"),
-            TEXT("core:schema.ui_field.input_field.v1"),
             TEXT("core:schema.ui_field.dropdown_select.v1")
         };
         for (const TCHAR* SchemaId : FieldSchemas)
@@ -259,9 +257,9 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         }
     }
     TestEqual(
-        TEXT("Adapter registry contains all 13 baseline and LocationScreen schemas (image migrated off, UPP-13)"),
+        TEXT("Adapter registry contains all 9 baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait migrated off)"),
         FGV2ScreenFieldAdapterRegistry::Get().Num(),
-        13);
+        9);
 
     FString ScreenTemplatesContract;
     if (ReadSource(
@@ -688,85 +686,20 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     }
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TestEqual(TEXT("Registry contains all 13 baseline and LocationScreen schemas (image migrated off, UPP-13)"), Registry.Num(), 13);
+    TestEqual(TEXT("Registry contains all 9 baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait migrated off)"), Registry.Num(), 9);
     TestNotNull(TEXT("Location top bar adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_top_bar.v1"));
     TestNotNull(TEXT("Location player status adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_player_status.v1"));
     TestNotNull(TEXT("Location scene adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_scene.v1"));
     TestNotNull(TEXT("Location commands adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_commands.v1"));
 
-    // 1. Image Adapter removed from legacy registry (UPP-13)
+    // 1. Image, Checkbox, InputField, ProgressBar, Portrait Adapters removed from legacy registry
     TestNull(TEXT("Image adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.image.v1"));
+    TestNull(TEXT("Checkbox adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.checkbox.v1"));
+    TestNull(TEXT("InputField adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.input_field.v1"));
+    TestNull(TEXT("ProgressBar adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.progress_bar.v1"));
+    TestNull(TEXT("Portrait adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.portrait.v1"));
 
-    // 2. ProgressBar Adapter (core:schema.ui_field.progress_bar.v1)
-    {
-        GV2RuntimeCore::FScreenRequest ValidReq;
-        ValidReq.ScreenId = "core:screen.test";
-        GV2RuntimeCore::FScreenField BarField;
-        BarField.FieldId = "hp_bar";
-        BarField.SchemaId = "core:schema.ui_field.progress_bar.v1";
-        GV2RuntimeCore::FValue::FObject BarObj;
-        BarObj["percent"] = GV2RuntimeCore::FValue(0.75);
-        GV2RuntimeCore::FValue::FObject LabelObj;
-        LabelObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.progress.health"));
-        BarObj["label"] = GV2RuntimeCore::FValue(MoveTemp(LabelObj));
-        BarField.Value = GV2RuntimeCore::FValue(MoveTemp(BarObj));
-        ValidReq.Fields.push_back(MoveTemp(BarField));
-
-        TArray<FGV2UiBindingDefinition> Defs;
-        TestTrue(TEXT("ProgressBar schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
-        TestEqual(TEXT("ProgressBar schema creates 0 binding definitions"), Defs.Num(), 0);
-
-        TArray<FGV2ScreenFieldValue> BuiltFields;
-        TestTrue(TEXT("ProgressBar schema build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
-        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
-        if (BuiltFields.Num() == 1)
-        {
-            TestEqual(TEXT("FieldId is hp_bar"), BuiltFields[0].FieldId, FName(TEXT("hp_bar")));
-            TestEqual(TEXT("SchemaId is progress_bar.v1"), BuiltFields[0].SchemaId, FString(TEXT("core:schema.ui_field.progress_bar.v1")));
-            TestEqual(TEXT("Percent is 0.75"), BuiltFields[0].ProgressBarValue.Percent, 0.75f);
-        }
-
-        // Negative: percent out of bounds
-        GV2RuntimeCore::FScreenRequest InvalidReq;
-        InvalidReq.ScreenId = "core:screen.test";
-        GV2RuntimeCore::FScreenField BadField;
-        BadField.FieldId = "hp_bar";
-        BadField.SchemaId = "core:schema.ui_field.progress_bar.v1";
-        GV2RuntimeCore::FValue::FObject BadObj;
-        BadObj["percent"] = GV2RuntimeCore::FValue(1.5);
-        BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
-        InvalidReq.Fields.push_back(MoveTemp(BadField));
-        TArray<FGV2UiBindingDefinition> BadDefs;
-        TestFalse(TEXT("Out of bounds percent is rejected"), Registry.PrepareBindingDefinitions(InvalidReq, BadDefs));
-    }
-
-    // 3. Portrait Adapter (core:schema.ui_field.portrait.v1)
-    {
-        GV2RuntimeCore::FScreenRequest ValidReq;
-        ValidReq.ScreenId = "core:screen.test";
-        GV2RuntimeCore::FScreenField PortraitField;
-        PortraitField.FieldId = "hero_portrait";
-        PortraitField.SchemaId = "core:schema.ui_field.portrait.v1";
-        GV2RuntimeCore::FValue::FObject PortObj;
-        PortObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.image.hero"));
-        PortObj["frame_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.image.frame"));
-        PortraitField.Value = GV2RuntimeCore::FValue(MoveTemp(PortObj));
-        ValidReq.Fields.push_back(MoveTemp(PortraitField));
-
-        TArray<FGV2UiBindingDefinition> Defs;
-        TestTrue(TEXT("Portrait schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
-
-        TArray<FGV2ScreenFieldValue> BuiltFields;
-        TestTrue(TEXT("Portrait schema build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
-        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
-        if (BuiltFields.Num() == 1)
-        {
-            TestEqual(TEXT("Portrait resource_id matches"), BuiltFields[0].PortraitValue.ResourceId, FString(TEXT("core:resource.image.hero")));
-            TestEqual(TEXT("Frame resource_id matches"), BuiltFields[0].PortraitValue.FrameResourceId, FString(TEXT("core:resource.image.frame")));
-        }
-    }
-
-    // 4. Modal Adapter (core:schema.ui_field.modal.v1)
+    // 2. Modal Adapter (core:schema.ui_field.modal.v1)
     {
         GV2RuntimeCore::FScreenRequest ValidReq;
         ValidReq.ScreenId = "core:screen.test";
@@ -989,8 +922,10 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Transient portrait widget created"), Portrait);
         if (Portrait != nullptr)
         {
-            const FGV2ScreenFieldDescriptor Desc = Portrait->GetScreenFieldDescriptor_Implementation();
-            TestEqual(TEXT("Portrait schema is portrait.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.portrait.v1")));
+            FGV2UiCapabilityBuilder Builder;
+            Portrait->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Caps = Builder.Build();
+            TestTrue(TEXT("Portrait declares key capability"), Caps.Properties.Contains(TEXT("key")));
         }
 
         UGV2ModalWidgetBase* Modal = NewObject<UGV2ModalWidgetBase>();
@@ -1005,8 +940,10 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Transient progress bar widget created"), ProgressBar);
         if (ProgressBar != nullptr)
         {
-            const FGV2ScreenFieldDescriptor Desc = ProgressBar->GetScreenFieldDescriptor_Implementation();
-            TestEqual(TEXT("ProgressBar schema is progress_bar.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.progress_bar.v1")));
+            FGV2UiCapabilityBuilder Builder;
+            ProgressBar->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Caps = Builder.Build();
+            TestTrue(TEXT("ProgressBar declares percent capability"), Caps.Properties.Contains(TEXT("percent")));
         }
 
         UGV2ImageWidgetBase* Image = NewObject<UGV2ImageWidgetBase>();
@@ -1017,6 +954,29 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
             Image->DescribeUiCapabilities(Builder);
             const FGV2UiCapabilityTree Caps = Builder.Build();
             TestTrue(TEXT("Image declares resource_id capability"), Caps.Properties.Contains(TEXT("resource_id")));
+        }
+
+        UGV2RichTextWidgetBase* RichText = NewObject<UGV2RichTextWidgetBase>();
+        TestNotNull(TEXT("Transient rich text widget created"), RichText);
+        if (RichText != nullptr)
+        {
+            FGV2UiCapabilityBuilder Builder;
+            RichText->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Caps = Builder.Build();
+            TestTrue(TEXT("RichText declares text capability"), Caps.Properties.Contains(TEXT("text")));
+            TestTrue(TEXT("RichText declares key capability"), Caps.Properties.Contains(TEXT("key")));
+        }
+
+        UGV2RichTextPopoverWidgetBase* Popover = NewObject<UGV2RichTextPopoverWidgetBase>();
+        TestNotNull(TEXT("Transient popover widget created"), Popover);
+        if (Popover != nullptr)
+        {
+            FGV2UiCapabilityBuilder Builder;
+            Popover->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Caps = Builder.Build();
+            TestTrue(TEXT("Popover declares title capability"), Caps.Properties.Contains(TEXT("title")));
+            TestTrue(TEXT("Popover declares description capability"), Caps.Properties.Contains(TEXT("description")));
+            TestTrue(TEXT("Popover declares key capability"), Caps.Properties.Contains(TEXT("key")));
         }
     }
 
@@ -1949,7 +1909,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                 if (CapturedScene.LocationSceneValue.Characters.Num() == 1)
                 {
                     const FString ExpectedKeeperResId = TEXT("r") TEXT("h:resource.character.tavern_keeper");
-                    TestEqual(TEXT("Initial tavern character key matches"), CapturedScene.LocationSceneValue.Characters[0].Key, FName(*ExpectedKeeperResId));
+                    TestEqual(TEXT("Initial tavern character key matches"), CapturedScene.LocationSceneValue.Characters[0].Key, FName(TEXT("tavern_keeper")));
                     TestEqual(TEXT("Initial tavern character resource matches"), CapturedScene.LocationSceneValue.Characters[0].ResourceId, ExpectedKeeperResId);
                 }
             }
@@ -2045,7 +2005,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     if (TavernCaptured2.LocationSceneValue.Characters.Num() == 1)
                     {
                         const FString ExpectedKeeperResId = TEXT("r") TEXT("h:resource.character.tavern_keeper");
-                        TestEqual(TEXT("Returned tavern character key matches"), TavernCaptured2.LocationSceneValue.Characters[0].Key, FName(*ExpectedKeeperResId));
+                        TestEqual(TEXT("Returned tavern character key matches"), TavernCaptured2.LocationSceneValue.Characters[0].Key, FName(TEXT("tavern_keeper")));
                         TestEqual(TEXT("Returned tavern character resource matches"), TavernCaptured2.LocationSceneValue.Characters[0].ResourceId, ExpectedKeeperResId);
                     }
                 }
@@ -2117,39 +2077,27 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                 RegisteredClass);
 
             const TArray<FGV2ScreenFieldDescriptor> Contract = Screen->GetScreenFieldContract();
-            TestEqual(TEXT("Test screen exposes five dynamic fields"), Contract.Num(), 5);
-            if (Contract.Num() == 5)
+            TestEqual(TEXT("Test screen exposes three remaining dynamic fields (checkbox and input_field migrated to property host)"), Contract.Num(), 3);
+            if (Contract.Num() == 3)
             {
                 TestEqual(TEXT("Button list field is canonical"), Contract[0].FieldId, FName(TEXT("buttons")));
-                TestEqual(TEXT("Checkbox field is canonical"), Contract[1].FieldId, FName(TEXT("checkbox")));
-                TestEqual(TEXT("Dropdown field is canonical"), Contract[2].FieldId, FName(TEXT("class_select")));
-                TestEqual(TEXT("Description field is canonical"), Contract[3].FieldId, FName(TEXT("description")));
-                TestEqual(TEXT("Input field is canonical"), Contract[4].FieldId, FName(TEXT("player_name")));
+                TestEqual(TEXT("Dropdown field is canonical"), Contract[1].FieldId, FName(TEXT("class_select")));
+                TestEqual(TEXT("Description field is canonical"), Contract[2].FieldId, FName(TEXT("description")));
                 TestEqual(
                     TEXT("Button list field uses the expected schema"),
                     Contract[0].SchemaId,
                     FString(TEXT("core:schema.ui_field.button_list.v2")));
                 TestEqual(
-                    TEXT("Checkbox field uses the expected schema"),
-                    Contract[1].SchemaId,
-                    FString(TEXT("core:schema.ui_field.checkbox.v1")));
-                TestEqual(
                     TEXT("Dropdown field uses the expected schema"),
-                    Contract[2].SchemaId,
+                    Contract[1].SchemaId,
                     FString(TEXT("core:schema.ui_field.dropdown_select.v1")));
                 TestEqual(
                     TEXT("Description field uses the expected schema"),
-                    Contract[3].SchemaId,
+                    Contract[2].SchemaId,
                     FString(TEXT("core:schema.ui_field.rich_text.v3")));
-                TestEqual(
-                    TEXT("Input field uses the expected schema"),
-                    Contract[4].SchemaId,
-                    FString(TEXT("core:schema.ui_field.input_field.v1")));
                 TestTrue(TEXT("Button list field is required"), Contract[0].bRequired);
-                TestTrue(TEXT("Checkbox field is required"), Contract[1].bRequired);
-                TestTrue(TEXT("Dropdown field is required"), Contract[2].bRequired);
-                TestTrue(TEXT("Description field is required"), Contract[3].bRequired);
-                TestTrue(TEXT("Input field is required"), Contract[4].bRequired);
+                TestTrue(TEXT("Dropdown field is required"), Contract[1].bRequired);
+                TestTrue(TEXT("Description field is required"), Contract[2].bRequired);
             }
 
             FGV2ButtonViewModel ValidationButton;
@@ -2160,14 +2108,6 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
             FGV2InteractiveRichTextViewModel ValidationText;
             ValidationText.Text.Text = FText::FromString(TEXT("Valid"));
             ValidationText.Text.StyleToken = TEXT("default");
-            FGV2CheckboxViewModel ValidationCheckbox;
-            ValidationCheckbox.Key = TEXT("checkbox");
-            ValidationCheckbox.Text.Text = FText::FromString(TEXT("Validation checkbox"));
-            ValidationCheckbox.Text.StyleToken = TEXT("default");
-            ValidationCheckbox.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:998"));
-            FGV2InputFieldViewModel ValidationInput;
-            ValidationInput.Key = TEXT("player_name");
-            ValidationInput.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:997"));
             FGV2DropdownSelectViewModel ValidationDropdown;
             ValidationDropdown.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:996"));
             FGV2DropdownOptionViewModel& ValidationOption = ValidationDropdown.Options.AddDefaulted_GetRef();
@@ -2177,8 +2117,6 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
             const TArray<FGV2ScreenFieldValue> ValidFields = {
                 FGV2ScreenFieldValue::MakeInteractiveRichText(TEXT("description"), ValidationText),
                 FGV2ScreenFieldValue::MakeButtonList(TEXT("buttons"), {ValidationButton}),
-                FGV2ScreenFieldValue::MakeCheckbox(TEXT("checkbox"), ValidationCheckbox),
-                FGV2ScreenFieldValue::MakeInputField(TEXT("player_name"), ValidationInput),
                 FGV2ScreenFieldValue::MakeDropdownSelect(TEXT("class_select"), ValidationDropdown)
             };
             TestTrue(TEXT("Complete field set passes validation"), Screen->CanApplyScreenFields(ValidFields));
@@ -2212,15 +2150,9 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
             TestNotNull(TEXT("Test screen uses the reusable checkbox component"), CheckboxWidget);
             if (CheckboxWidget != nullptr)
             {
-                FGV2ScreenFieldValue AppliedCheckbox;
-                TestTrue(
-                    TEXT("Checkbox exposes its applied desired state through the common field contract"),
-                    IGV2DynamicScreenElement::Execute_CaptureScreenField(
-                        CheckboxWidget,
-                        AppliedCheckbox));
                 TestFalse(
                     TEXT("Lua initializes the checkbox as unchecked"),
-                    AppliedCheckbox.CheckboxValue.bIsChecked);
+                    CheckboxWidget->IsChecked());
             }
             TestNotNull(TEXT("Test screen uses the reusable rich text component"), DescriptionWidget);
             if (DescriptionWidget != nullptr)
@@ -2253,65 +2185,7 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                             TEXT("description"), DanglingText)));
             }
 
-            if (CheckboxWidget != nullptr)
-            {
-                TestEqual(
-                    TEXT("Checkbox submits its schema-bound boolean through the common emitter"),
-                    CheckboxWidget->SubmitCheckboxState(true),
-                    EGV2SubmitUiInteractionResult::Accepted);
-                UGV2ScreenWidgetBase* ReconciledScreen = Cast<UGV2ScreenWidgetBase>(
-                    Runtime->GetActiveScreen());
-                TestNotNull(
-                    TEXT("Checkbox input republishes and reconciles the registered screen"),
-                    ReconciledScreen);
-                UGV2CheckboxWidgetBase* ReconciledCheckbox = ReconciledScreen != nullptr
-                    ? Cast<UGV2CheckboxWidgetBase>(
-                        ReconciledScreen->GetWidgetFromName(TEXT("CheckboxField")))
-                    : nullptr;
-                FGV2ScreenFieldValue ReconciledValue;
-                TestTrue(
-                    TEXT("Reconciled checkbox remains available through the common field contract"),
-                    ReconciledCheckbox != nullptr
-                        && IGV2DynamicScreenElement::Execute_CaptureScreenField(
-                            ReconciledCheckbox,
-                            ReconciledValue));
-                TestTrue(
-                    TEXT("Lua owns and republishes the accepted checkbox state"),
-                    ReconciledValue.CheckboxValue.bIsChecked);
-            }
-
-            UGV2ScreenWidgetBase* CurrentScreen = Cast<UGV2ScreenWidgetBase>(
-                Runtime->GetActiveScreen());
-            UGV2InputFieldWidgetBase* InputFieldWidget = CurrentScreen != nullptr
-                ? Cast<UGV2InputFieldWidgetBase>(
-                    CurrentScreen->GetWidgetFromName(TEXT("PlayerNameField")))
-                : nullptr;
-            TestNotNull(TEXT("Test screen uses the reusable input field component"), InputFieldWidget);
-            if (InputFieldWidget != nullptr)
-            {
-                TestEqual(
-                    TEXT("Input field submits the schema-bound string through the common emitter"),
-                    InputFieldWidget->SubmitTextValue(TEXT("Алекс")),
-                    EGV2SubmitUiInteractionResult::Accepted);
-                CurrentScreen = Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
-                UGV2InputFieldWidgetBase* ReconciledInput = CurrentScreen != nullptr
-                    ? Cast<UGV2InputFieldWidgetBase>(
-                        CurrentScreen->GetWidgetFromName(TEXT("PlayerNameField")))
-                    : nullptr;
-                FGV2ScreenFieldValue ReconciledInputValue;
-                TestTrue(
-                    TEXT("Reconciled input remains available through the common field contract"),
-                    ReconciledInput != nullptr
-                        && IGV2DynamicScreenElement::Execute_CaptureScreenField(
-                            ReconciledInput,
-                            ReconciledInputValue));
-                TestEqual(
-                    TEXT("Lua owns and republishes the accepted input value"),
-                    ReconciledInputValue.InputFieldValue.TextValue,
-                    FString(TEXT("Алекс")));
-            }
-
-            CurrentScreen = Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
+            UGV2ScreenWidgetBase* CurrentScreen = Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
             UGV2DropdownSelectWidgetBase* DropdownWidget = CurrentScreen != nullptr
                 ? Cast<UGV2DropdownSelectWidgetBase>(
                     CurrentScreen->GetWidgetFromName(TEXT("ClassSelectField")))
@@ -2392,32 +2266,33 @@ bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
     if (InputFieldWidget != nullptr)
     {
         TestTrue(
-            TEXT("InputFieldWidget implements IGV2DynamicScreenElement"),
-            InputFieldWidget->GetClass()->ImplementsInterface(UGV2DynamicScreenElement::StaticClass()));
+            TEXT("InputFieldWidget implements IGV2UiPropertyHost"),
+            InputFieldWidget->GetClass()->ImplementsInterface(UGV2UiPropertyHost::StaticClass()));
+        TestTrue(
+            TEXT("InputFieldWidget implements IGV2UiBindingTarget"),
+            InputFieldWidget->GetClass()->ImplementsInterface(UGV2UiBindingTarget::StaticClass()));
         TestTrue(
             TEXT("InputFieldWidget implements IGV2UiStyleConsumer"),
             InputFieldWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()));
 
-        FGV2InputFieldViewModel Model;
-        Model.Key = TEXT("user_name");
-        Model.Text.Text = FText::FromString(TEXT("Player Name"));
-        Model.PlaceholderText.Text = FText::FromString(TEXT("Enter name..."));
-        Model.TextValue = TEXT("King");
-        Model.Binding = FGV2UiBindingHandle::Create(TEXT("core:input.user_name"));
+        InputFieldWidget->SetKey(TEXT("user_name"));
+        InputFieldWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("core:input.user_name")));
+        InputFieldWidget->SetValue(TEXT("King"));
+        InputFieldWidget->SetMaxLength(20);
+        InputFieldWidget->SetIsReadOnly(false);
 
-        TestTrue(
-            TEXT("CanApplyInputFieldModel returns true for valid model"),
-            InputFieldWidget->CanApplyInputFieldModel(Model));
-        TestTrue(
-            TEXT("ApplyInputFieldModel succeeds"),
-            InputFieldWidget->ApplyInputFieldModel(Model));
+        FGV2TextViewModel TextModel;
+        TextModel.Text = FText::FromString(TEXT("Player Name"));
+        InputFieldWidget->ApplyText(TextModel);
 
-        FGV2ScreenFieldValue FieldValue = FGV2ScreenFieldValue::MakeInputField(
-            TEXT("user_name"),
-            Model);
-        TestFalse(
-            TEXT("Reusable input without a configured ScreenFieldId stays outside a screen contract"),
-            IGV2DynamicScreenElement::Execute_CanApplyScreenField(InputFieldWidget, FieldValue));
+        FGV2TextViewModel PlaceholderModel;
+        PlaceholderModel.Text = FText::FromString(TEXT("Enter name..."));
+        InputFieldWidget->ApplyPlaceholderText(PlaceholderModel);
+
+        TestEqual(TEXT("Key matches"), InputFieldWidget->GetKey(), FName(TEXT("user_name")));
+        TestEqual(TEXT("Value matches"), InputFieldWidget->GetValue(), FString(TEXT("King")));
+        TestEqual(TEXT("MaxLength matches"), InputFieldWidget->GetMaxLength(), static_cast<int64>(20));
+        TestFalse(TEXT("IsReadOnly matches"), InputFieldWidget->GetIsReadOnly());
 
         EGV2SubmitUiInteractionResult SubmitResult = InputFieldWidget->SubmitTextValue(TEXT("NewKing"));
         TestEqual(
@@ -4477,9 +4352,13 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             Meter2.Meter.Percent = 0.5f;
             MultiMeterModel.Meters.Add(Meter2);
             FGV2ScreenFieldValue MultiMeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MultiMeterModel);
-            if (PlayerStatus->GetMeterRepeater() == nullptr)
+            if (!PlayerStatus->HasUsableMeterRepeaterHost())
             {
                 TestFalse(TEXT("PlayerStatus rejects multiple meters without repeater"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, MultiMeterField));
+            }
+            else
+            {
+                TestTrue(TEXT("PlayerStatus accepts multiple meters with repeater host"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, MultiMeterField));
             }
 
             FGV2ScreenFieldValue ValidField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model);
@@ -5054,13 +4933,14 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
                 TestEqual(TEXT("Button Binding matches"), ButtonWidget->GetBindingHandle(), BtnBinding);
             }
 
-            FGV2InputFieldViewModel InputModel;
-            InputModel.Text.Text = FText::FromString(TEXT("Input Label"));
-            InputModel.Text.StyleToken = FName(TEXT("body"));
-            InputModel.Binding = FGV2UiBindingHandle::Create(TEXT("input_bind"));
             if (InputWidget)
             {
-                InputWidget->ApplyInputFieldModel(InputModel);
+                FGV2TextViewModel InputText;
+                InputText.Text = FText::FromString(TEXT("Input Label"));
+                InputText.StyleToken = FName(TEXT("body"));
+                InputWidget->SetKey(FName(TEXT("input_key")));
+                InputWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("input_bind")));
+                InputWidget->ApplyText(InputText);
             }
 
             FGV2DropdownSelectViewModel DropdownModel;
@@ -5786,6 +5666,9 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     TArray<FGV2UiBindingHandle> Handles;
     TArray<FGV2ScreenFieldValue> OutFields;
 
+    AddExpectedErrorPlain(TEXT("rejected (closed schema)"), EAutomationExpectedErrorFlags::Contains, 8);
+    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 8);
+
     auto MakeTextSpec = [](const std::string& TextId) -> FObject
     {
         FObject Obj;
@@ -5966,19 +5849,23 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.ScreenId = "textsystem:screen.location";
 
         GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "checkbox";
-        Field.SchemaId = "core:schema.ui_field.checkbox.v1";
+        Field.FieldId = "dropdown";
+        Field.SchemaId = "core:schema.ui_field.dropdown_select.v1";
 
-        FObject CheckboxValue;
-        CheckboxValue["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        CheckboxValue["is_checked"] = GV2RuntimeCore::FValue(true);
+        FObject DropdownValue;
+        DropdownValue["placeholder"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        DropdownValue["selected_key"] = GV2RuntimeCore::FValue(std::string("opt_1"));
+        FObject OptObj;
+        OptObj["key"] = GV2RuntimeCore::FValue(std::string("opt_1"));
+        OptObj["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        DropdownValue["items"] = GV2RuntimeCore::FValue(FArray{ GV2RuntimeCore::FValue(OptObj) });
 
         FObject BadBinding;
         BadBinding["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
         BadBinding["unknown_meta"] = GV2RuntimeCore::FValue(std::string("extra"));
-        CheckboxValue["binding"] = GV2RuntimeCore::FValue(BadBinding);
+        DropdownValue["binding"] = GV2RuntimeCore::FValue(BadBinding);
 
-        Field.Value = GV2RuntimeCore::FValue(CheckboxValue);
+        Field.Value = GV2RuntimeCore::FValue(DropdownValue);
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle::Create(TEXT("dummy@1:1")) };
@@ -5999,6 +5886,7 @@ bool FGV2LocationMeterAndKeyBoundaryTest::RunTest(const FString& Parameters)
     using FArray = GV2RuntimeCore::FValue::FArray;
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
+    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 11);
 
     auto MakeTextSpec = [](const std::string& TextId) -> FObject
     {
@@ -6228,7 +6116,7 @@ bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
         {
             UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(
                 nullptr,
-                TEXT("/Game/TextSystem/UI/Widgets/WBP_LocationPlayerStatus.WBP_LocationPlayerStatus_C"));
+                TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
             UGV2LocationPlayerStatusWidgetBase* Widget = PlayerClass
                 ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass)
                 : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
@@ -6450,6 +6338,8 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
+    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 4);
+
     // A text model the central pipeline must reject: authoring markup may never reach
     // a plain renderer. Used throughout as the failure injector.
     FGV2TextViewModel PoisonText;
@@ -6477,11 +6367,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             Model.Percent = 0.5f;
             Model.Label = GoodText;
             TestTrue(TEXT("REV3-01: ApplyProgressBarModel accepts a renderable label"), Bar->ApplyProgressBarModel(Model));
-
-            FGV2ScreenFieldValue Captured;
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(Bar, Captured);
-            TestEqual(TEXT("REV3-01: Label reaches the widget instead of being dropped"),
-                Captured.ProgressBarValue.Label.Text.ToString(), TEXT("Fine"));
+            TestEqual(TEXT("REV3-01: Progress updated to 0.5"), Bar->GetProgress(), 0.5f);
 
             Model.Label = PoisonText;
             TestFalse(TEXT("REV3-02: Label that the text pipeline rejects fails the apply"),
@@ -6523,6 +6409,34 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             FString EmptyError;
             TestTrue(TEXT("REV3-10: Portrait with no resource and no renderer still succeeds"),
                 Portrait->ApplyPortrait(FString(), FString(), EmptyError));
+        }
+    }
+
+    // 3b. REV3-09: RichText with hover spans fails validation when RichTextPopoverClass is unavailable
+    {
+        UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+        if (Theme != nullptr)
+        {
+            TSoftClassPtr<UGV2RichTextPopoverWidgetBase> SavedPopoverClass = Theme->RichTextPopoverClass;
+            Theme->RichTextPopoverClass = nullptr;
+
+            FGV2InteractiveRichTextViewModel ContentWithHover;
+            ContentWithHover.Text.Text = FText::FromString(TEXT("Hover <gv2:interactive span_id=\"term\">term</> here"));
+            ContentWithHover.Text.NormalizedMarkup = TEXT("Hover <gv2:interactive span_id=\"term\">term</> here");
+
+            FGV2RichTextSpanViewModel Span;
+            Span.SpanId = FName(TEXT("term"));
+            Span.Hover.Title.Text = FText::FromString(TEXT("Definition"));
+            ContentWithHover.Spans.Add(Span);
+
+            UGV2RichTextWidgetBase* RichTextWidget = NewObject<UGV2RichTextWidgetBase>(TestWorld);
+            FGV2ScreenFieldValue FieldValue = FGV2ScreenFieldValue::MakeInteractiveRichText(
+                FName(TEXT("description")), ContentWithHover);
+
+            TestFalse(TEXT("REV3-09: RichText with hover spans rejects application when popover class is unavailable"),
+                RichTextWidget->CanApplyScreenField_Implementation(FieldValue));
+
+            Theme->RichTextPopoverClass = SavedPopoverClass;
         }
     }
 

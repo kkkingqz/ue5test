@@ -1,0 +1,38 @@
+{
+  id: "core:schema.ui_field.input_field.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      text: {
+        kind: "text",
+        required: false,
+      },
+      placeholder_text: {
+        kind: "text",
+        required: false,
+      },
+      value: {
+        kind: "string",
+        required: false,
+      },
+      is_read_only: {
+        kind: "bool",
+        required: false,
+      },
+      max_length: {
+        kind: "integer",
+        required: false,
+      },
+      binding: {
+        kind: "binding",
+        required: false,
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}

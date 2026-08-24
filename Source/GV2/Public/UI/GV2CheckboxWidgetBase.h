@@ -1,9 +1,10 @@
 #pragma once
 
-#include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
-#include "UI/GV2DynamicScreenElement.h"
 #include "UI/GV2UiStyleConsumer.h"
+#include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2UiBindingTarget.h"
+#include "UI/GV2UiInteractionEmitter.h"
 #include "GV2CheckboxWidgetBase.generated.h"
 
 class UCommonTextBlock;
@@ -18,44 +19,58 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
 UCLASS(Blueprintable)
 class GV2_API UGV2CheckboxWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
     , public IGV2UiStyleConsumer
+    , public IGV2UiPropertyHost
+    , public IGV2UiBindingTarget
 {
     GENERATED_BODY()
 
 public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    bool ApplyCheckboxModel(const FGV2CheckboxViewModel& CheckboxModel);
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    bool CanApplyCheckboxModel(const FGV2CheckboxViewModel& CheckboxModel) const;
-
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    EGV2SubmitUiInteractionResult SubmitCheckboxState(bool bIsChecked);
+    EGV2SubmitUiInteractionResult SubmitCheckboxState(bool bInIsChecked);
 
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI")
     FGV2CheckboxBindingInvoked OnBindingInvoked;
 
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) override;
-    virtual bool CaptureScreenField_Implementation(
-        FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ResetScreenField_Implementation() override;
+    UCheckBox* GetCheckBox() const { return Checkbox; }
+    UCommonTextBlock* GetLabelText() const { return LabelText; }
+
+    // IGV2UiPropertyHost interface
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2UiBindingTarget interface
+    virtual void SetBindingHandle(const FGV2UiBindingHandle& InHandle) override;
+    virtual FGV2UiBindingHandle GetBindingHandle() const override;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetKey(FName InKey) { Key = InKey; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    FName GetKey() const { return Key; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetIsChecked(bool bInIsChecked);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    bool IsChecked() const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetIsReadOnly(bool bInIsReadOnly);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    bool IsReadOnly() const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    bool ApplyText(const FGV2TextViewModel& InText);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    FName ScreenFieldId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    bool bScreenFieldRequired = true;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UCheckBox> Checkbox;
@@ -65,8 +80,19 @@ protected:
 
 private:
     UFUNCTION()
-    void HandleCheckStateChanged(bool bIsChecked);
+    void HandleCheckStateChanged(bool bInIsChecked);
 
     UPROPERTY(Transient)
-    FGV2CheckboxViewModel AppliedCheckboxModel;
+    FGV2UiBindingHandle BindingHandle;
+
+    UPROPERTY(Transient)
+    FName Key;
+
+    UPROPERTY(Transient)
+    bool bIsReadOnly = false;
+
+    UPROPERTY(Transient)
+    FGV2TextViewModel AppliedText;
+
+    FGV2UiPropertyHostState PropertyHostState;
 };

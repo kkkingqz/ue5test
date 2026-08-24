@@ -4,7 +4,6 @@
 #include "Components/CheckBox.h"
 #include "UI/GV2UiTheme.h"
 #include "UI/GV2TextPipeline.h"
-#include "UI/GV2UiInteractionEmitter.h"
 
 void UGV2CheckboxWidgetBase::NativePreConstruct()
 {
@@ -17,6 +16,7 @@ void UGV2CheckboxWidgetBase::NativeConstruct()
     Super::NativeConstruct();
     if (Checkbox)
     {
+        Checkbox->OnCheckStateChanged.RemoveDynamic(this, &UGV2CheckboxWidgetBase::HandleCheckStateChanged);
         Checkbox->OnCheckStateChanged.AddDynamic(this, &UGV2CheckboxWidgetBase::HandleCheckStateChanged);
     }
 }
@@ -30,74 +30,64 @@ void UGV2CheckboxWidgetBase::NativeDestruct()
     Super::NativeDestruct();
 }
 
-bool UGV2CheckboxWidgetBase::ApplyCheckboxModel(const FGV2CheckboxViewModel& CheckboxModel)
+void UGV2CheckboxWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    if (!Checkbox || !LabelText)
-    {
-        return false;
-    }
-
-    if (!UGV2TextPipeline::Apply(LabelText, CheckboxModel.Text))
-    {
-        return false;
-    }
-
-    AppliedCheckboxModel = CheckboxModel;
-    Checkbox->SetIsChecked(CheckboxModel.bIsChecked);
-    SetIsEnabled(CheckboxModel.Binding.IsValid());
-    return true;
+    OutBuilder.AddText(TEXT("text"), FName(TEXT("LabelText")));
+    OutBuilder.AddBoolean(TEXT("is_checked"), FName(TEXT("Checkbox")));
+    OutBuilder.AddBoolean(TEXT("is_read_only"), FName(TEXT("Checkbox")));
+    OutBuilder.AddBinding(TEXT("binding"), NAME_None);
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
-bool UGV2CheckboxWidgetBase::CanApplyCheckboxModel(const FGV2CheckboxViewModel& CheckboxModel) const
+void UGV2CheckboxWidgetBase::SetBindingHandle(const FGV2UiBindingHandle& InHandle)
 {
-    return Checkbox != nullptr
-        && LabelText != nullptr
-        && CheckboxModel.Binding.IsValid()
-        && UGV2TextPipeline::ResolveStyleClass(CheckboxModel.Text.StyleToken) != nullptr
-        && !CheckboxModel.Text.NormalizedMarkup.Contains(TEXT("<gv2"));
+    BindingHandle = InHandle;
+    SetIsEnabled(BindingHandle.IsValid());
 }
 
-FGV2ScreenFieldDescriptor UGV2CheckboxWidgetBase::GetScreenFieldDescriptor_Implementation() const
+FGV2UiBindingHandle UGV2CheckboxWidgetBase::GetBindingHandle() const
 {
-    FGV2ScreenFieldDescriptor Descriptor;
-    Descriptor.FieldId = ScreenFieldId;
-    Descriptor.SchemaId = TEXT("core:schema.ui_field.checkbox.v1");
-    Descriptor.bRequired = bScreenFieldRequired;
-    return Descriptor;
+    return BindingHandle;
 }
 
-bool UGV2CheckboxWidgetBase::CanApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue) const
+void UGV2CheckboxWidgetBase::SetIsChecked(bool bInIsChecked)
 {
-    return FieldValue.SchemaId == TEXT("core:schema.ui_field.checkbox.v1")
-        && CanApplyCheckboxModel(FieldValue.CheckboxValue);
-}
-
-bool UGV2CheckboxWidgetBase::ApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue)
-{
-    return ApplyCheckboxModel(FieldValue.CheckboxValue);
-}
-
-bool UGV2CheckboxWidgetBase::CaptureScreenField_Implementation(
-    FGV2ScreenFieldValue& OutFieldValue) const
-{
-    OutFieldValue = FGV2ScreenFieldValue::MakeCheckbox(ScreenFieldId, AppliedCheckboxModel);
-    return true;
-}
-
-bool UGV2CheckboxWidgetBase::ResetScreenField_Implementation()
-{
-    AppliedCheckboxModel = FGV2CheckboxViewModel();
     if (Checkbox)
     {
-        Checkbox->SetIsChecked(false);
+        Checkbox->SetIsChecked(bInIsChecked);
     }
-    if (LabelText)
+}
+
+bool UGV2CheckboxWidgetBase::IsChecked() const
+{
+    return Checkbox ? Checkbox->IsChecked() : false;
+}
+
+void UGV2CheckboxWidgetBase::SetIsReadOnly(bool bInIsReadOnly)
+{
+    bIsReadOnly = bInIsReadOnly;
+    if (Checkbox)
     {
-        LabelText->SetText(FText::GetEmpty());
+        Checkbox->SetIsEnabled(!bIsReadOnly);
     }
-    SetIsEnabled(false);
+}
+
+bool UGV2CheckboxWidgetBase::IsReadOnly() const
+{
+    return bIsReadOnly;
+}
+
+bool UGV2CheckboxWidgetBase::ApplyText(const FGV2TextViewModel& InText)
+{
+    if (InText.NormalizedMarkup.Contains(TEXT("<gv2")))
+    {
+        return false;
+    }
+    AppliedText = InText;
+    if (LabelText != nullptr)
+    {
+        return UGV2TextPipeline::Apply(LabelText, InText);
+    }
     return true;
 }
 
@@ -111,25 +101,25 @@ bool UGV2CheckboxWidgetBase::ApplyCentralStyle_Implementation()
     }
 
     Checkbox->SetWidgetStyle(Theme->CheckboxStyle);
-    
-    const TSubclassOf<UCommonTextStyle> LabelStyle = AppliedCheckboxModel.Text.StyleToken.IsNone()
+
+    const TSubclassOf<UCommonTextStyle> LabelStyle = AppliedText.StyleToken.IsNone()
         ? Theme->CheckboxLabelStyle
-        : UGV2TextPipeline::ResolveStyleClass(AppliedCheckboxModel.Text.StyleToken);
-    
+        : UGV2TextPipeline::ResolveStyleClass(AppliedText.StyleToken);
+
     if (LabelStyle == nullptr) return false;
     LabelText->SetStyle(LabelStyle);
 
     return true;
 }
 
-void UGV2CheckboxWidgetBase::HandleCheckStateChanged(bool bIsChecked)
+void UGV2CheckboxWidgetBase::HandleCheckStateChanged(bool bInIsChecked)
 {
-    SubmitCheckboxState(bIsChecked);
+    SubmitCheckboxState(bInIsChecked);
 }
 
-EGV2SubmitUiInteractionResult UGV2CheckboxWidgetBase::SubmitCheckboxState(bool bIsChecked)
+EGV2SubmitUiInteractionResult UGV2CheckboxWidgetBase::SubmitCheckboxState(bool bInIsChecked)
 {
-    if (!AppliedCheckboxModel.Binding.IsValid())
+    if (!BindingHandle.IsValid())
     {
         return EGV2SubmitUiInteractionResult::InvalidBindingHandle;
     }
@@ -137,11 +127,11 @@ EGV2SubmitUiInteractionResult UGV2CheckboxWidgetBase::SubmitCheckboxState(bool b
     FGV2UiControlValue ControlValue;
     ControlValue.Name = TEXT("is_checked");
     ControlValue.Type = EGV2UiControlValueType::Boolean;
-    ControlValue.BooleanValue = bIsChecked;
+    ControlValue.BooleanValue = bInIsChecked;
 
     const EGV2SubmitUiInteractionResult Result =
-        FGV2UiInteractionEmitter::Submit(this, AppliedCheckboxModel.Binding, {ControlValue});
+        FGV2UiInteractionEmitter::Submit(this, BindingHandle, {ControlValue});
 
-    OnBindingInvoked.Broadcast(AppliedCheckboxModel.Binding, bIsChecked, Result);
+    OnBindingInvoked.Broadcast(BindingHandle, bInIsChecked, Result);
     return Result;
 }

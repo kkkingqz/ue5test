@@ -170,14 +170,32 @@ TSubclassOf<UGV2ImageWidgetBase> UGV2LocationPlayerStatusWidgetBase::ResolveIcon
 {
     if (IconWidgetClass != nullptr) return IconWidgetClass;
     const UGV2LocationPlayerStatusWidgetBase* CDO = GetClass()->GetDefaultObject<UGV2LocationPlayerStatusWidgetBase>();
-    return (CDO != nullptr && CDO != this) ? CDO->IconWidgetClass : nullptr;
+    if (CDO != nullptr && CDO != this && CDO->IconWidgetClass != nullptr) return CDO->IconWidgetClass;
+    if (GetClass() != UGV2LocationPlayerStatusWidgetBase::StaticClass())
+    {
+        if (UClass* DefaultImageClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C")))
+        {
+            return DefaultImageClass;
+        }
+        return UGV2ImageWidgetBase::StaticClass();
+    }
+    return nullptr;
 }
 
 TSubclassOf<UGV2ProgressBarWidgetBase> UGV2LocationPlayerStatusWidgetBase::ResolveMeterWidgetClass() const
 {
     if (MeterWidgetClass != nullptr) return MeterWidgetClass;
     const UGV2LocationPlayerStatusWidgetBase* CDO = GetClass()->GetDefaultObject<UGV2LocationPlayerStatusWidgetBase>();
-    return (CDO != nullptr && CDO != this) ? CDO->MeterWidgetClass : nullptr;
+    if (CDO != nullptr && CDO != this && CDO->MeterWidgetClass != nullptr) return CDO->MeterWidgetClass;
+    if (GetClass() != UGV2LocationPlayerStatusWidgetBase::StaticClass())
+    {
+        if (UClass* DefaultProgressClass = LoadClass<UGV2ProgressBarWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C")))
+        {
+            return DefaultProgressClass;
+        }
+        return UGV2ProgressBarWidgetBase::StaticClass();
+    }
+    return nullptr;
 }
 
 bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V)
@@ -242,9 +260,14 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
                     if (IconClass == nullptr) return nullptr;
-                    return GetOwningPlayer()
+                    UGV2ImageWidgetBase* Widget = GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
+                    if (Widget != nullptr && Widget->GetScalePolicy() != EGV2PrimitiveScalePolicy::PreserveAspect)
+                    {
+                        Widget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+                    }
+                    return Widget;
                 },
                 [](UGV2ImageWidgetBase& Icon, const FGV2LocationIconEntry& Entry) -> bool
                 {
@@ -270,9 +293,14 @@ bool UGV2LocationPlayerStatusWidgetBase::ApplyScreenField_Implementation(const F
                 [this, IconClass]() -> UGV2ImageWidgetBase*
                 {
                     if (IconClass == nullptr) return nullptr;
-                    return GetOwningPlayer()
+                    UGV2ImageWidgetBase* Widget = GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), IconClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), IconClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), IconClass));
+                    if (Widget != nullptr && Widget->GetScalePolicy() != EGV2PrimitiveScalePolicy::PreserveAspect)
+                    {
+                        Widget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+                    }
+                    return Widget;
                 },
                 [](UGV2ImageWidgetBase& Icon, const FGV2LocationIconEntry& Entry) -> bool
                 {
@@ -370,7 +398,16 @@ TSubclassOf<UGV2ImageWidgetBase> UGV2LocationSceneWidgetBase::ResolveCharacterWi
 {
     if (CharacterWidgetClass != nullptr) return CharacterWidgetClass;
     const UGV2LocationSceneWidgetBase* CDO = GetClass()->GetDefaultObject<UGV2LocationSceneWidgetBase>();
-    return (CDO != nullptr && CDO != this) ? CDO->CharacterWidgetClass : nullptr;
+    if (CDO != nullptr && CDO != this && CDO->CharacterWidgetClass != nullptr) return CDO->CharacterWidgetClass;
+    if (GetClass() != UGV2LocationSceneWidgetBase::StaticClass())
+    {
+        if (UClass* DefaultImageClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C")))
+        {
+            return DefaultImageClass;
+        }
+        return UGV2ImageWidgetBase::StaticClass();
+    }
+    return nullptr;
 }
 
 void UGV2LocationSceneWidgetBase::NativePreConstruct()
@@ -440,9 +477,14 @@ bool UGV2LocationSceneWidgetBase::ApplyScreenField_Implementation(const FGV2Scre
                 [this, CharClass]() -> UGV2ImageWidgetBase*
                 {
                     if (CharClass == nullptr) return nullptr;
-                    return GetOwningPlayer()
+                    UGV2ImageWidgetBase* Widget = GetOwningPlayer()
                         ? CreateWidget<UGV2ImageWidgetBase>(GetOwningPlayer(), CharClass)
                         : (GetWorld() ? CreateWidget<UGV2ImageWidgetBase>(GetWorld(), CharClass) : NewObject<UGV2ImageWidgetBase>(GetTransientPackage(), CharClass));
+                    if (Widget != nullptr && Widget->GetScalePolicy() != EGV2PrimitiveScalePolicy::PreserveAspect)
+                    {
+                        Widget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+                    }
+                    return Widget;
                 },
                 [](UGV2ImageWidgetBase& CharWidget, const FGV2LocationCharacterEntry& Entry) -> bool
                 {

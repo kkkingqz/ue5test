@@ -63,7 +63,7 @@ decisions:
 - [x] M1 — [Decisions and Schema Infrastructure](DecisionsAndSchemas.md): решения зафиксированы, UI-схемы компилируются и валидируются переносимо. UPP-01…06.
 - [x] M2 — [Prepared Values and Property Host](PreparedValuesAndHost.md): подготовленное дерево, host, consumers, Prepare/Commit, harness наблюдаемости. UPP-07…11.
 - [x] M3 — [Proving Slice and Gate](ProvingSliceAndGate.md): Text, Image, Button мигрированы, гейт go/no-go пройден. UPP-12…15.
-- [ ] M4 — [Remaining Leaves](RemainingLeaves.md): Checkbox, InputField, ProgressBar, Portrait, RichText. UPP-16…19.
+- [x] M4 — [Remaining Leaves](RemainingLeaves.md): Checkbox, InputField, ProgressBar, Portrait, RichText. UPP-16…19.
 - [ ] M5 — [Collections and Composites](CollectionsAndComposites.md): keyed collection, ButtonList, Dropdown, Modal, TabContainer. UPP-20…23.
 - [ ] M6 — [LocationScreen](LocationScreen.md): четыре композита и приведение контента. UPP-24…26.
 - [ ] M7 — [Screen and Document Transaction](ScreenAndDocument.md): предиктивный preflight, атомарный документ. UPP-27…29.

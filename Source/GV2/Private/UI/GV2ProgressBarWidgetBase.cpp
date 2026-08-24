@@ -11,6 +11,16 @@ void UGV2ProgressBarWidgetBase::NativePreConstruct()
     ApplyCentralStyle_Implementation();
 }
 
+void UGV2ProgressBarWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    OutBuilder.AddNumber(TEXT("percent"), FName(TEXT("ProgressBar")), 0.0, 1.0);
+    if (LabelText != nullptr)
+    {
+        OutBuilder.AddText(TEXT("label"), FName(TEXT("LabelText")));
+    }
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
+}
+
 void UGV2ProgressBarWidgetBase::ApplyProgress(const float Percent)
 {
     if (ProgressBar != nullptr)
@@ -37,56 +47,17 @@ bool UGV2ProgressBarWidgetBase::ApplyCentralStyle_Implementation()
     return true;
 }
 
-FGV2ScreenFieldDescriptor UGV2ProgressBarWidgetBase::GetScreenFieldDescriptor_Implementation() const
+bool UGV2ProgressBarWidgetBase::ApplyProgressBarModel(const FGV2ProgressBarViewModel& Model)
 {
-    FGV2ScreenFieldDescriptor Desc;
-    Desc.FieldId = FieldId;
-    Desc.SchemaId = SchemaId;
-    Desc.bRequired = bIsRequired;
-    return Desc;
-}
-
-bool UGV2ProgressBarWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const
-{
-    return Value.SchemaId == SchemaId && Value.ProgressBarValue.Percent >= 0.0f && Value.ProgressBarValue.Percent <= 1.0f;
-}
-
-bool UGV2ProgressBarWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
-{
-    FGV2ProgressBarViewModel Model;
-    Model.Percent = CurrentPercent;
-    Model.Label = CurrentLabel;
-    OutFieldValue = FGV2ScreenFieldValue::MakeProgressBar(FieldId, Model);
-    return true;
-}
-
-bool UGV2ProgressBarWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)
-{
-    if (!CanApplyScreenField_Implementation(Value))
+    if (Model.Label.NormalizedMarkup.Contains(TEXT("<gv2")))
     {
         return false;
     }
-    return ApplyProgressBarModel(Value.ProgressBarValue);
-}
-
-bool UGV2ProgressBarWidgetBase::ApplyProgressBarModel(const FGV2ProgressBarViewModel& Model)
-{
     if (LabelText != nullptr && !UGV2TextPipeline::Apply(LabelText, Model.Label))
     {
         return false;
     }
     ApplyProgress(Model.Percent);
     CurrentLabel = Model.Label;
-    return true;
-}
-
-bool UGV2ProgressBarWidgetBase::ResetScreenField_Implementation()
-{
-    ApplyProgress(0.0f);
-    CurrentLabel = {};
-    if (LabelText != nullptr)
-    {
-        LabelText->SetText(FText::GetEmpty());
-    }
     return true;
 }

@@ -1,8 +1,9 @@
 #pragma once
 
 #include "CommonUserWidget.h"
-#include "UI/GV2DynamicScreenElement.h"
 #include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2PropertyConsumers.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "GV2PortraitWidgetBase.generated.h"
 
@@ -11,13 +12,12 @@ class UImage;
 /**
  * UGV2PortraitWidgetBase (UIF-14, ADR-0035)
  * Portrait widget displaying a character/actor illustration (fixed_aspect) with an optional frame.
- * Implements IGV2DynamicScreenElement for "core:schema.ui_field.portrait.v1".
  */
 UCLASS(Blueprintable)
 class GV2_API UGV2PortraitWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
     , public IGV2UiStyleConsumer
+    , public IGV2UiPropertyHost
 {
     GENERATED_BODY()
 
@@ -34,12 +34,16 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
     FString GetFrameResourceId() const { return AppliedFrameId; }
 
-    // IGV2DynamicScreenElement
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;
-    virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
-    virtual bool ResetScreenField_Implementation() override;
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Portrait")
+    void SetKey(FName InKey) { Key = InKey; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
+    FName GetKey() const { return Key; }
+
+    // IGV2UiPropertyHost
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
     // IGV2UiStyleConsumer
     virtual bool ApplyCentralStyle_Implementation() override;
@@ -47,20 +51,11 @@ public:
 protected:
     virtual void NativePreConstruct() override;
 
-    UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UImage> PortraitImage;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UImage> FrameImage;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Portrait")
-    FName FieldId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Portrait")
-    FString SchemaId = TEXT("core:schema.ui_field.portrait.v1");
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Portrait")
-    bool bIsRequired = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Portrait")
     float PortraitAspectRatio = 1.0f;
@@ -68,4 +63,6 @@ protected:
 private:
     FString AppliedPortraitId;
     FString AppliedFrameId;
+    FName Key;
+    FGV2UiPropertyHostState PropertyHostState;
 };

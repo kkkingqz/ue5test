@@ -4,11 +4,21 @@
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2CheckboxWidgetBase.h"
+#include "UI/GV2InputFieldWidgetBase.h"
+#include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2PortraitWidgetBase.h"
+#include "UI/GV2TextWidgetBase.h"
+#include "UI/GV2RichTextWidgetBase.h"
+#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
 #include "CommonTextBlock.h"
+#include "CommonRichTextBlock.h"
 #include "Components/Image.h"
 #include "Components/ProgressBar.h"
+#include "Components/CheckBox.h"
+#include "Components/EditableTextBox.h"
 #include "Components/Widget.h"
 #include "GV2ContentCore/UiSchema.h"
 
@@ -213,6 +223,60 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     if (const UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("key=\"%s\""), *Button->GetKey().ToString()));
+    }
+    if (const UCheckBox* CB = Cast<UCheckBox>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("checked=%d"), CB->IsChecked() ? 1 : 0));
+        Parts.Add(FString::Printf(TEXT("interaction_enabled=%d"), CB->GetIsEnabled() ? 1 : 0));
+    }
+    if (const UEditableTextBox* ETB = Cast<UEditableTextBox>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("text=\"%s\""), *ETB->GetText().ToString()));
+        Parts.Add(FString::Printf(TEXT("hint=\"%s\""), *ETB->GetHintText().ToString()));
+        Parts.Add(FString::Printf(TEXT("is_read_only=%d"), ETB->GetIsReadOnly() ? 1 : 0));
+        if (const UGV2InputFieldWidgetBase* Input = ETB->GetTypedOuter<UGV2InputFieldWidgetBase>())
+        {
+            Parts.Add(FString::Printf(TEXT("max_length=%lld"), Input->GetMaxLength()));
+        }
+    }
+    if (const UGV2CheckboxWidgetBase* CBW = Cast<UGV2CheckboxWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *CBW->GetKey().ToString()));
+    }
+    if (const UGV2InputFieldWidgetBase* IFW = Cast<UGV2InputFieldWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *IFW->GetKey().ToString()));
+    }
+    if (const UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("rich_text=\"%s\""), *RichTextBlock->GetText().ToString()));
+    }
+    if (const UGV2ProgressBarWidgetBase* PBW = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PBW->GetKey().ToString()));
+    }
+    if (const UGV2PortraitWidgetBase* PW = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PW->GetKey().ToString()));
+    }
+    if (const UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *RTW->GetKey().ToString()));
+        if (const UCommonRichTextBlock* InnerRich = RTW->GetRichTextBlock())
+        {
+            Parts.Add(FString::Printf(TEXT("rich_text=\"%s\""), *InnerRich->GetText().ToString()));
+        }
+    }
+    if (const UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
+    {
+        if (const UCommonTextBlock* InnerText = TW->GetTextBlock())
+        {
+            Parts.Add(FString::Printf(TEXT("text=\"%s\""), *InnerText->GetText().ToString()));
+        }
+    }
+    if (const UGV2RichTextPopoverWidgetBase* PopoverW = Cast<UGV2RichTextPopoverWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PopoverW->GetKey().ToString()));
     }
     return FString::Join(Parts, TEXT("|"));
 }

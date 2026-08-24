@@ -5,7 +5,7 @@
       package_id: "core",
       version: "0.1.0",
       load_index: 0,
-      fingerprint: "8fe88d79a63e08a81a609dd62398eb79b0e8d7313fb90359fa733a916e35eaee",
+      fingerprint: "cd785281b75577d881fe593e60ed0298c473d3c8e3a189922bd4e0f3bd164f53",
     },
     {
       package_id: "textsystem",

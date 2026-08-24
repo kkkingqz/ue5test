@@ -1,6 +1,8 @@
 #include "UI/GV2TextPipeline.h"
 
+#include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
+#include "Components/EditableTextBox.h"
 #include "UI/GV2UiTheme.h"
 
 namespace
@@ -139,7 +141,9 @@ bool UGV2TextPipeline::Resolve(
     }
     if (StyleToken.IsNone())
     {
-        StyleToken = Theme != nullptr ? Theme->DefaultTextStyleToken : FName("default");
+        StyleToken = (Theme != nullptr && !Theme->DefaultTextStyleToken.IsNone())
+            ? Theme->DefaultTextStyleToken
+            : FName("default");
     }
     if (Theme != nullptr && !Theme->TextStyleTokens.IsEmpty() && !Theme->TextStyleTokens.Contains(StyleToken) && StyleToken != FName("default"))
     {
@@ -215,7 +219,9 @@ float UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(const FName TextSizeTo
     {
         return 14.0f;
     }
-    const FName Token = TextSizeToken.IsNone() ? Theme->DefaultTextStyleToken : TextSizeToken;
+    const FName Token = TextSizeToken.IsNone()
+        ? ((Theme != nullptr && !Theme->DefaultTextStyleToken.IsNone()) ? Theme->DefaultTextStyleToken : FName("default"))
+        : TextSizeToken;
     return Theme->GetEffectiveFontSize(Token, ViewportHeight);
 }
 
@@ -228,7 +234,9 @@ float UGV2TextPipeline::ResolveEffectiveFontSize(const FName TextSizeToken, cons
 bool UGV2TextPipeline::ResolveStyleForHeight(const FName StyleToken, FTextBlockStyle& OutStyle, const float ViewportHeight)
 {
     const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    const FName EffectiveToken = StyleToken.IsNone() ? (Theme != nullptr ? Theme->DefaultTextStyleToken : FName("default")) : StyleToken;
+    const FName EffectiveToken = StyleToken.IsNone()
+        ? ((Theme != nullptr && !Theme->DefaultTextStyleToken.IsNone()) ? Theme->DefaultTextStyleToken : FName("default"))
+        : StyleToken;
     const FGV2TextStyleToken* Token = Theme != nullptr
         ? Theme->TextStyleTokens.Find(EffectiveToken)
         : nullptr;
@@ -279,6 +287,51 @@ bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& 
         FontInfo.Size = ScaledFontSize;
         Widget->SetFont(FontInfo);
     }
+    return true;
+}
+
+bool UGV2TextPipeline::ApplyRichText(
+    UCommonRichTextBlock* Widget,
+    const FGV2TextViewModel& Text,
+    const UWidget* ContextWidget)
+{
+    if (Widget == nullptr)
+    {
+        return false;
+    }
+    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    const TSubclassOf<UCommonTextStyle> Style = Text.StyleToken.IsNone()
+        ? (Theme != nullptr ? Theme->RichTextStyle : nullptr)
+        : ResolveStyleClass(Text.StyleToken);
+    if (Style != nullptr)
+    {
+        Widget->SetStyle(Style);
+    }
+    FTextBlockStyle DefaultStyle;
+    if (ResolveStyle(Text.StyleToken, DefaultStyle, ContextWidget != nullptr ? ContextWidget : Widget))
+    {
+        Widget->SetDefaultTextStyle(DefaultStyle);
+    }
+    FString Markup = Text.NormalizedMarkup;
+    if (Markup.IsEmpty() && !Text.Text.IsEmpty())
+    {
+        FString Error;
+        if (!NormalizeMarkup(Text.Text.ToString(), Markup, Error))
+        {
+            return false;
+        }
+    }
+    Widget->SetText(FText::FromString(Markup));
+    return true;
+}
+
+bool UGV2TextPipeline::ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text)
+{
+    if (Widget == nullptr || Text.NormalizedMarkup.Contains(TEXT("<gv2")))
+    {
+        return false;
+    }
+    Widget->SetHintText(Text.Text);
     return true;
 }
 

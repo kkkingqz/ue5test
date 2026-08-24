@@ -12,19 +12,13 @@ using FArray = GV2RuntimeCore::FValue::FArray;
 
 constexpr std::string_view ButtonListSchema = "core:schema.ui_field.button_list.v2";
 constexpr std::string_view RichTextSchema = "core:schema.ui_field.rich_text.v3";
-constexpr std::string_view CheckboxSchema = "core:schema.ui_field.checkbox.v1";
-constexpr std::string_view InputFieldSchema = "core:schema.ui_field.input_field.v1";
 constexpr std::string_view DropdownSelectSchema = "core:schema.ui_field.dropdown_select.v1";
-constexpr std::string_view ProgressBarSchema = "core:schema.ui_field.progress_bar.v1";
-constexpr std::string_view PortraitSchema = "core:schema.ui_field.portrait.v1";
 constexpr std::string_view ModalSchema = "core:schema.ui_field.modal.v1";
 constexpr std::string_view TabContainerSchema = "core:schema.ui_field.tab_container.v1";
 constexpr std::string_view LocationTopBarSchema = "textsystem:schema.ui_field.location_top_bar.v1";
 constexpr std::string_view LocationPlayerStatusSchema = "textsystem:schema.ui_field.location_player_status.v1";
 constexpr std::string_view LocationSceneSchema = "textsystem:schema.ui_field.location_scene.v1";
 constexpr std::string_view LocationCommandsSchema = "textsystem:schema.ui_field.location_commands.v1";
-constexpr TCHAR CheckboxInputSchema[] = TEXT("core:schema.ui_input.checkbox_changed.v1");
-constexpr TCHAR InputFieldInputSchema[] = TEXT("core:schema.ui_input.text_changed.v1");
 constexpr TCHAR DropdownSelectInputSchema[] = TEXT("core:schema.ui_input.dropdown_selected.v1");
 
 const FObject* AsObject(const GV2RuntimeCore::FValue& Value)
@@ -498,117 +492,6 @@ bool BuildRichText(
     return true;
 }
 
-bool PrepareCheckbox(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "is_checked", "binding"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    GV2RuntimeCore::FTextSpec TextSpec;
-    const GV2RuntimeCore::FValue* Text = FindValue(Value, "text");
-    if (Text == nullptr || !ReadTextSpec(*Text, TextSpec)
-        || FindBoolean(Value, "is_checked") == nullptr)
-    {
-        return false;
-    }
-    return AddSingleBinding(
-        ScreenId,
-        Field,
-        Value,
-        CheckboxInputSchema,
-        TEXT("is_checked"),
-        EGV2UiControlValueType::Boolean,
-        OutDefinitions);
-}
-
-bool BuildCheckbox(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "is_checked", "binding"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    if (!Handles.IsValidIndex(HandleIndex)) return false;
-    const GV2RuntimeCore::FValue* Text = FindValue(Value, "text");
-    const bool* IsChecked = FindBoolean(Value, "is_checked");
-    FGV2CheckboxViewModel Model;
-    Model.Key = FName(*FieldId(Field));
-    if (Text == nullptr || IsChecked == nullptr || !ResolveText(*Text, Model.Text)) return false;
-    Model.bIsChecked = *IsChecked;
-    Model.Binding = Handles[HandleIndex++];
-    OutField = FGV2ScreenFieldValue::MakeCheckbox(Model.Key, Model);
-    return true;
-}
-
-bool PrepareInputField(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "placeholder_text", "value", "binding"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    if (const GV2RuntimeCore::FValue* Text = FindValue(Value, "text"))
-    {
-        GV2RuntimeCore::FTextSpec Spec;
-        if (!ReadTextSpec(*Text, Spec)) return false;
-    }
-    if (const GV2RuntimeCore::FValue* Placeholder = FindValue(Value, "placeholder_text"))
-    {
-        GV2RuntimeCore::FTextSpec Spec;
-        if (!ReadTextSpec(*Placeholder, Spec)) return false;
-    }
-    if (const GV2RuntimeCore::FValue* TextValue = FindValue(Value, "value"))
-    {
-        if (std::get_if<std::string>(&TextValue->Data) == nullptr) return false;
-    }
-    return AddSingleBinding(
-        ScreenId,
-        Field,
-        Value,
-        InputFieldInputSchema,
-        TEXT("value"),
-        EGV2UiControlValueType::String,
-        OutDefinitions);
-}
-
-bool BuildInputField(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "placeholder_text", "value", "binding"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    if (!Handles.IsValidIndex(HandleIndex)) return false;
-    FGV2InputFieldViewModel Model;
-    Model.Key = FName(*FieldId(Field));
-    if (const GV2RuntimeCore::FValue* TextValue = FindValue(Value, "value"))
-    {
-        Model.TextValue = UTF8_TO_TCHAR(std::get<std::string>(TextValue->Data).c_str());
-    }
-    if (const GV2RuntimeCore::FValue* Placeholder = FindValue(Value, "placeholder_text"))
-    {
-        if (!ResolveText(*Placeholder, Model.PlaceholderText)) return false;
-    }
-    if (const GV2RuntimeCore::FValue* Text = FindValue(Value, "text"))
-    {
-        if (!ResolveText(*Text, Model.Text)) return false;
-    }
-    Model.Binding = Handles[HandleIndex++];
-    OutField = FGV2ScreenFieldValue::MakeInputField(Model.Key, Model);
-    return true;
-}
-
 bool ValidateDropdownOptions(const std::string& FieldId, const FObject& Value)
 {
     const GV2RuntimeCore::FValue* SelectedValue = FindValue(Value, "selected_key");
@@ -704,127 +587,14 @@ bool BuildDropdown(
         if (Text == nullptr || !ResolveText(*Text, Option.Text)) return false;
         Option.bSelected = SelectedKey != nullptr && *SelectedKey == *Key;
     }
+    if (const GV2RuntimeCore::FValue* BindingVal = FindValue(Value, "binding"))
+    {
+        const FObject* BindingObj = AsObject(*BindingVal);
+        static constexpr std::initializer_list<std::string_view> BindingConsumedKeys = {"command_id", "args"};
+        if (BindingObj == nullptr || !CheckClosedKeys("Binding", *BindingObj, BindingConsumedKeys)) return false;
+    }
     Model.Binding = Handles[HandleIndex++];
     OutField = FGV2ScreenFieldValue::MakeDropdownSelect(FName(*FieldId(Field)), Model);
-    return true;
-}
-
-
-
-bool PrepareProgressBar(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"percent", "label"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const GV2RuntimeCore::FValue* PercentVal = FindValue(Value, "percent");
-    if (PercentVal == nullptr) return false;
-    double Percent = 0.0;
-    if (const double* Dbl = std::get_if<double>(&PercentVal->Data))
-    {
-        Percent = *Dbl;
-    }
-    else if (const std::int64_t* Int = std::get_if<std::int64_t>(&PercentVal->Data))
-    {
-        Percent = static_cast<double>(*Int);
-    }
-    else
-    {
-        return false;
-    }
-    if (!FMath::IsFinite(Percent) || Percent < 0.0 || Percent > 1.0) return false;
-
-    if (const GV2RuntimeCore::FValue* LabelVal = FindValue(Value, "label"))
-    {
-        GV2RuntimeCore::FTextSpec LabelSpec;
-        if (!ReadTextSpec(*LabelVal, LabelSpec)) return false;
-    }
-    return true;
-}
-
-bool BuildProgressBarField(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"percent", "label"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const GV2RuntimeCore::FValue* PercentVal = FindValue(Value, "percent");
-    if (PercentVal == nullptr) return false;
-    float Percent = 0.0f;
-    if (const double* Dbl = std::get_if<double>(&PercentVal->Data))
-    {
-        Percent = static_cast<float>(*Dbl);
-    }
-    else if (const std::int64_t* Int = std::get_if<std::int64_t>(&PercentVal->Data))
-    {
-        Percent = static_cast<float>(*Int);
-    }
-    else
-    {
-        return false;
-    }
-
-    FGV2ProgressBarViewModel Model;
-    Model.Percent = FMath::Clamp(Percent, 0.0f, 1.0f);
-    if (const GV2RuntimeCore::FValue* LabelVal = FindValue(Value, "label"))
-    {
-        if (!ResolveText(*LabelVal, Model.Label)) return false;
-    }
-    OutField = FGV2ScreenFieldValue::MakeProgressBar(FName(*FieldId(Field)), Model);
-    return true;
-}
-
-bool PreparePortrait(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "frame_resource_id"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const std::string* ResourceId = FindString(Value, "resource_id");
-    if (ResourceId == nullptr || ResourceId->empty()
-        || !GV2RuntimeCore::FStableId::IsOfKind(*ResourceId, "resource"))
-    {
-        return false;
-    }
-    if (const std::string* FrameId = FindString(Value, "frame_resource_id"))
-    {
-        if (!FrameId->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*FrameId, "resource"))
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool BuildPortraitField(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id", "frame_resource_id"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const std::string* ResourceId = FindString(Value, "resource_id");
-    if (ResourceId == nullptr) return false;
-    FGV2PortraitViewModel Model;
-    Model.ResourceId = UTF8_TO_TCHAR(ResourceId->c_str());
-    if (const std::string* FrameId = FindString(Value, "frame_resource_id"))
-    {
-        Model.FrameResourceId = UTF8_TO_TCHAR(FrameId->c_str());
-    }
-    OutField = FGV2ScreenFieldValue::MakePortrait(FName(*FieldId(Field)), Model);
     return true;
 }
 
@@ -1454,11 +1224,7 @@ FGV2ScreenFieldAdapterRegistry::FGV2ScreenFieldAdapterRegistry()
     : Adapters({
         {ButtonListSchema, &PrepareButtonList, &BuildButtonList},
         {RichTextSchema, &PrepareRichText, &BuildRichText},
-        {CheckboxSchema, &PrepareCheckbox, &BuildCheckbox},
-        {InputFieldSchema, &PrepareInputField, &BuildInputField},
         {DropdownSelectSchema, &PrepareDropdown, &BuildDropdown},
-        {ProgressBarSchema, &PrepareProgressBar, &BuildProgressBarField},
-        {PortraitSchema, &PreparePortrait, &BuildPortraitField},
         {ModalSchema, &PrepareModal, &BuildModalField},
         {TabContainerSchema, &PrepareTabContainer, &BuildTabContainerField},
         {LocationTopBarSchema, &PrepareLocationTopBar, &BuildLocationTopBar},

@@ -23,7 +23,7 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FText GetTextContent() const;
 
-    UCommonTextBlock* GetTextBlock() const { return TextBlock; }
+    UCommonTextBlock* GetTextBlock() const;
 
     virtual bool ApplyCentralStyle_Implementation() override;
 

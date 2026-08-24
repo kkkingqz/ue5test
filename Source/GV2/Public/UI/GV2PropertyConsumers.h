@@ -85,6 +85,7 @@ private:
 class GV2_API FGV2BooleanPropertyConsumer : public IGV2PropertyConsumer
 {
 public:
+    FGV2BooleanPropertyConsumer(const FString& InPropertyName = FString()) : PropertyName(InPropertyName) {}
     virtual EGV2PreparedUiValueKind GetSupportedKind() const override { return EGV2PreparedUiValueKind::Boolean; }
     virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
@@ -93,6 +94,7 @@ public:
 
 private:
     bool bPreparedValue = false;
+    FString PropertyName;
 };
 
 /**
@@ -101,6 +103,7 @@ private:
 class GV2_API FGV2IntegerPropertyConsumer : public IGV2PropertyConsumer
 {
 public:
+    FGV2IntegerPropertyConsumer(const FString& InPropertyName = FString()) : PropertyName(InPropertyName) {}
     virtual EGV2PreparedUiValueKind GetSupportedKind() const override { return EGV2PreparedUiValueKind::Integer; }
     virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
@@ -109,6 +112,7 @@ public:
 
 private:
     int64 PreparedValue = 0;
+    FString PropertyName;
 };
 
 /**

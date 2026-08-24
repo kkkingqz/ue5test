@@ -6,7 +6,9 @@
 #include "GV2TextPipeline.generated.h"
 
 class UCommonTextBlock;
+class UCommonRichTextBlock;
 class UCommonTextStyle;
+class UEditableTextBox;
 class UWidget;
 
 UCLASS()
@@ -35,5 +37,7 @@ public:
     static bool ResolveStyleForHeight(FName StyleToken, FTextBlockStyle& OutStyle, float ViewportHeight);
     static TSubclassOf<UCommonTextStyle> ResolveStyleClass(FName StyleToken);
     static bool Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text);
+    static bool ApplyRichText(UCommonRichTextBlock* Widget, const FGV2TextViewModel& Text, const UWidget* ContextWidget = nullptr);
+    static bool ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text);
     static bool NormalizeMarkup(const FString& Source, FString& OutMarkup, FString& OutError);
 };

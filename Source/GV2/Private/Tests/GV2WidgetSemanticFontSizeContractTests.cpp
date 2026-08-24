@@ -177,7 +177,7 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
             RichModel.Text.StyleToken = Token;
             RichTextWidget->ApplyInteractiveRichText(RichModel);
             IGV2UiStyleConsumer::Execute_ApplyCentralStyle(RichTextWidget);
-            const float ActualRichTextSize = RichTextWidget->GetRichTextBlock()->GetDefaultTextStyle().Font.Size;
+            const float ActualRichTextSize = RichTextWidget->GetRichTextBlock()->GetCurrentDefaultTextStyle().Font.Size;
 
             // 3. Button widget: Apply via production path and read renderer control
             FGV2TextViewModel ButtonText;
@@ -190,11 +190,12 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
             const float ActualButtonSize = ButtonWidget->GetLabelText()->GetFont().Size;
 
             // 4. InputField widget: Apply via production path and read renderer control
-            FGV2InputFieldViewModel InputModel;
-            InputModel.Text.Text = FText::FromString(TEXT("Sample Input"));
-            InputModel.Text.StyleToken = Token;
-            InputModel.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
-            InputFieldWidget->ApplyInputFieldModel(InputModel);
+            FGV2TextViewModel InputText;
+            InputText.Text = FText::FromString(TEXT("Sample Input"));
+            InputText.StyleToken = Token;
+            InputFieldWidget->SetKey(TEXT("input_test"));
+            InputFieldWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("core:command.test")));
+            InputFieldWidget->ApplyText(InputText);
             IGV2UiStyleConsumer::Execute_ApplyCentralStyle(InputFieldWidget);
             const float ActualInputSize = InputFieldWidget->GetEditableTextBox()->WidgetStyle.TextStyle.Font.Size;
 

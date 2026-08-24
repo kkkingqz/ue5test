@@ -10,6 +10,19 @@ void UGV2PortraitWidgetBase::NativePreConstruct()
     ApplyCentralStyle_Implementation();
 }
 
+void UGV2PortraitWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    if (PortraitImage != nullptr)
+    {
+        OutBuilder.AddImage(TEXT("resource_id"), FName(TEXT("PortraitImage")), TEXT("resource"));
+    }
+    if (FrameImage != nullptr)
+    {
+        OutBuilder.AddImage(TEXT("frame_resource_id"), FName(TEXT("FrameImage")), TEXT("resource"));
+    }
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
+}
+
 bool UGV2PortraitWidgetBase::ApplyPortrait(
     const FString& ResourceId,
     const FString& FrameResourceId,
@@ -100,54 +113,6 @@ bool UGV2PortraitWidgetBase::ApplyOptionalPortrait(
         AppliedFrameId = FrameResourceId;
     }
 
-    return true;
-}
-
-FGV2ScreenFieldDescriptor UGV2PortraitWidgetBase::GetScreenFieldDescriptor_Implementation() const
-{
-    FGV2ScreenFieldDescriptor Desc;
-    Desc.FieldId = FieldId;
-    Desc.SchemaId = SchemaId;
-    Desc.bRequired = bIsRequired;
-    return Desc;
-}
-
-bool UGV2PortraitWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const
-{
-    return Value.SchemaId == SchemaId && !Value.PortraitValue.ResourceId.IsEmpty();
-}
-
-bool UGV2PortraitWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
-{
-    FGV2PortraitViewModel Model;
-    Model.ResourceId = AppliedPortraitId;
-    Model.FrameResourceId = AppliedFrameId;
-    OutFieldValue = FGV2ScreenFieldValue::MakePortrait(FieldId, Model);
-    return true;
-}
-
-bool UGV2PortraitWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)
-{
-    if (!CanApplyScreenField_Implementation(Value))
-    {
-        return false;
-    }
-    FString Error;
-    return ApplyPortrait(Value.PortraitValue.ResourceId, Value.PortraitValue.FrameResourceId, Error);
-}
-
-bool UGV2PortraitWidgetBase::ResetScreenField_Implementation()
-{
-    AppliedPortraitId.Reset();
-    AppliedFrameId.Reset();
-    if (PortraitImage != nullptr)
-    {
-        PortraitImage->SetBrush(FSlateBrush());
-    }
-    if (FrameImage != nullptr)
-    {
-        FrameImage->SetBrush(FSlateBrush());
-    }
     return true;
 }
 

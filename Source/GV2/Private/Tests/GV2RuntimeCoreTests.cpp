@@ -117,23 +117,6 @@ function M.register(_ctx)
                 schema_id = "core:schema.ui_field.button_list.v2",
                 value = { items = {} },
             },
-            checkbox = {
-                schema_id = "core:schema.ui_field.checkbox.v1",
-                value = {
-                    text = text.spec("testfixture:text.checkbox", nil, "default"),
-                    is_checked = false,
-                    binding = { command_id = "testfixture:command.noop", args = {} },
-                },
-            },
-            player_name = {
-                schema_id = "core:schema.ui_field.input_field.v1",
-                value = {
-                    text = text.spec("testfixture:text.player_name", nil, "default"),
-                    placeholder_text = text.spec("testfixture:text.player_name", nil, "default"),
-                    value = "testfixture:item.placeholder",
-                    binding = { command_id = "testfixture:command.noop", args = {} },
-                },
-            },
             class_select = {
                 schema_id = "core:schema.ui_field.dropdown_select.v1",
                 value = {
@@ -321,24 +304,18 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
         TestEqual(
             TEXT("Lua publishes generic Screen Fields"),
             static_cast<int32>(PendingScreen->Fields.size()),
-            5);
+            3);
         const GV2RuntimeCore::FScreenField* DescriptionField = nullptr;
         const GV2RuntimeCore::FScreenField* ButtonsField = nullptr;
-        const GV2RuntimeCore::FScreenField* CheckboxField = nullptr;
-        const GV2RuntimeCore::FScreenField* InputField = nullptr;
         const GV2RuntimeCore::FScreenField* DropdownField = nullptr;
         for (const GV2RuntimeCore::FScreenField& Field : PendingScreen->Fields)
         {
             if (Field.FieldId == "description") DescriptionField = &Field;
             if (Field.FieldId == "buttons") ButtonsField = &Field;
-            if (Field.FieldId == "checkbox") CheckboxField = &Field;
-            if (Field.FieldId == "player_name") InputField = &Field;
             if (Field.FieldId == "class_select") DropdownField = &Field;
         }
         TestNotNull(TEXT("Generic request contains description field"), DescriptionField);
         TestNotNull(TEXT("Generic request contains buttons field"), ButtonsField);
-        TestNotNull(TEXT("Generic request contains checkbox field"), CheckboxField);
-        TestNotNull(TEXT("Generic request contains input field"), InputField);
         TestNotNull(TEXT("Generic request contains dropdown field"), DropdownField);
         TestEqual(
             TEXT("Description field keeps its schema identity"),
@@ -348,14 +325,6 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
             TEXT("Buttons field keeps its schema identity"),
             FString(UTF8_TO_TCHAR(ButtonsField != nullptr ? ButtonsField->SchemaId.c_str() : "")),
             FString(TEXT("core:schema.ui_field.button_list.v2")));
-        TestEqual(
-            TEXT("Checkbox field keeps its schema identity"),
-            FString(UTF8_TO_TCHAR(CheckboxField != nullptr ? CheckboxField->SchemaId.c_str() : "")),
-            FString(TEXT("core:schema.ui_field.checkbox.v1")));
-        TestEqual(
-            TEXT("Input field keeps its schema identity"),
-            FString(UTF8_TO_TCHAR(InputField != nullptr ? InputField->SchemaId.c_str() : "")),
-            FString(TEXT("core:schema.ui_field.input_field.v1")));
         TestEqual(
             TEXT("Dropdown field keeps its schema identity"),
             FString(UTF8_TO_TCHAR(DropdownField != nullptr ? DropdownField->SchemaId.c_str() : "")),
@@ -391,19 +360,6 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
                         }
                     }
                 }
-            }
-        }
-
-        if (InputField != nullptr && std::holds_alternative<GV2RuntimeCore::FValue::FObject>(InputField->Value.Data))
-        {
-            const auto& InputObj = std::get<GV2RuntimeCore::FValue::FObject>(InputField->Value.Data);
-            auto ValueIt = InputObj.find("value");
-            if (ValueIt != InputObj.end() && std::holds_alternative<std::string>(ValueIt->second.Data))
-            {
-                TestEqual(
-                    TEXT("Input field initial value was populated from repository definition"),
-                    FString(UTF8_TO_TCHAR(std::get<std::string>(ValueIt->second.Data).c_str())),
-                    FString(TEXT("testfixture:item.placeholder")));
             }
         }
     }

@@ -1,9 +1,10 @@
 #pragma once
 
-#include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
-#include "UI/GV2DynamicScreenElement.h"
 #include "UI/GV2UiStyleConsumer.h"
+#include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2UiBindingTarget.h"
+#include "UI/GV2UiInteractionEmitter.h"
 #include "Types/SlateEnums.h"
 #include "GV2InputFieldWidgetBase.generated.h"
 
@@ -19,18 +20,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
 UCLASS(Blueprintable)
 class GV2_API UGV2InputFieldWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
     , public IGV2UiStyleConsumer
+    , public IGV2UiPropertyHost
+    , public IGV2UiBindingTarget
 {
     GENERATED_BODY()
 
 public:
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    bool ApplyInputFieldModel(const FGV2InputFieldViewModel& InputFieldModel);
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    bool CanApplyInputFieldModel(const FGV2InputFieldViewModel& InputFieldModel) const;
-
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     EGV2SubmitUiInteractionResult SubmitTextValue(const FString& NewTextValue);
 
@@ -40,26 +36,51 @@ public:
     UEditableTextBox* GetEditableTextBox() const { return EditableTextBox; }
     UCommonTextBlock* GetLabelText() const { return LabelText; }
 
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) override;
-    virtual bool CaptureScreenField_Implementation(
-        FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ResetScreenField_Implementation() override;
+    // IGV2UiPropertyHost interface
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2UiBindingTarget interface
+    virtual void SetBindingHandle(const FGV2UiBindingHandle& InHandle) override;
+    virtual FGV2UiBindingHandle GetBindingHandle() const override;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetKey(FName InKey) { Key = InKey; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    FName GetKey() const { return Key; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetIsReadOnly(bool bInIsReadOnly);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    bool GetIsReadOnly() const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetMaxLength(int64 InMaxLength);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    int64 GetMaxLength() const { return MaxLength; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetValue(const FString& InValue);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    FString GetValue() const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    bool ApplyText(const FGV2TextViewModel& InText);
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    bool ApplyPlaceholderText(const FGV2TextViewModel& InPlaceholder);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    FName ScreenFieldId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    bool bScreenFieldRequired = true;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UEditableTextBox> EditableTextBox;
@@ -72,5 +93,19 @@ private:
     void HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod);
 
     UPROPERTY(Transient)
-    FGV2InputFieldViewModel AppliedInputFieldModel;
+    FGV2UiBindingHandle BindingHandle;
+
+    UPROPERTY(Transient)
+    FName Key;
+
+    UPROPERTY(Transient)
+    int64 MaxLength = 0;
+
+    UPROPERTY(Transient)
+    FGV2TextViewModel AppliedLabelText;
+
+    UPROPERTY(Transient)
+    FGV2TextViewModel AppliedPlaceholderText;
+
+    FGV2UiPropertyHostState PropertyHostState;
 };

@@ -191,9 +191,9 @@ UE apply использует prepared typed `FGV2ScreenFieldValue`; portable bo
 | `core:schema.ui_field.checkbox.v1` | `WBP_Checkbox` / `UGV2CheckboxWidgetBase` | resolved `FGV2TextViewModel`, desired `is_checked: boolean` и opaque binding handle |
 | `core:schema.ui_field.input_field.v1` | `WBP_InputField` / `UGV2InputFieldWidgetBase` | resolved label/placeholder, desired `value: string` и opaque binding handle |
 | `core:schema.ui_field.dropdown_select.v1` | `WBP_DropdownSelect` / `UGV2DropdownSelectWidgetBase` | resolved placeholder/options, optional selected key и opaque binding handle |
-| `core:schema.ui_field.image.v1` | `WBP_Image` / `UGV2ImageWidgetBase` | resolved `FGV2ImageFieldViewModel` с валидируемым Stable ID ресурса |
-| `core:schema.ui_field.progress_bar.v1` | `WBP_ProgressBar` / `UGV2ProgressBarWidgetBase` | resolved `FGV2ProgressBarViewModel` с `percent: float` (0.0..1.0) и опциональным label |
-| `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | resolved `FGV2PortraitViewModel` с `fixed_aspect` portrait и опциональной рамкой |
+| `core:schema.ui_field.image.v1` | `WBP_Image` / `UGV2ImageWidgetBase` | `IGV2UiPropertyHost`: `resource_id` (`resource`) и optional `key` |
+| `core:schema.ui_field.progress_bar.v1` | `WBP_ProgressBar` / `UGV2ProgressBarWidgetBase` | `IGV2UiPropertyHost`: `percent: number` (0.0..1.0), optional `label: text` и optional `key` |
+| `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | `IGV2UiPropertyHost`: `resource_id: ref(resource)`, optional `frame_resource_id: ref(resource)` и optional `key` |
 | `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | resolved `FGV2ModalViewModel` с `title`, `content`, кнопками и backdrop close binding |
 | `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | resolved `FGV2TabContainerViewModel` с `default_tab_key`, упорядоченным списком вкладок `{key, title: TextSpec, screen_id, fields}` |
 | `textsystem:schema.ui_field.location_top_bar.v1` | LocationScreen TopBar | required `day`, `location`, `primary_resource` as `TextSpec` |

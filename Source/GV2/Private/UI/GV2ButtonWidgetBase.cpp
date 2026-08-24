@@ -15,6 +15,10 @@ void UGV2ButtonWidgetBase::NativePreConstruct()
 bool UGV2ButtonWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 {
     CurrentTextStyleToken = InText.StyleToken;
+    if (InText.NormalizedMarkup.Contains(TEXT("<gv2")))
+    {
+        return false;
+    }
     if (LabelText != nullptr && !UGV2TextPipeline::Apply(LabelText, InText))
     {
         return false;
@@ -62,6 +66,13 @@ bool UGV2ButtonWidgetBase::ApplyCentralStyle_Implementation()
         : UGV2TextPipeline::ResolveStyleClass(CurrentTextStyleToken);
     if (LabelStyle == nullptr) return false;
     LabelText->SetStyle(LabelStyle);
+    const float ScaledFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(CurrentTextStyleToken, this);
+    FSlateFontInfo FontInfo = LabelText->GetFont();
+    if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
+    {
+        FontInfo.Size = ScaledFontSize;
+        LabelText->SetFont(FontInfo);
+    }
     return true;
 }
 

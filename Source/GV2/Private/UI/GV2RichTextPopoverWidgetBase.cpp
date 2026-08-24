@@ -8,6 +8,7 @@
 #include "UI/GV2ImagePresentation.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
+#include "UI/GV2UiCapability.h"
 
 void UGV2RichTextPopoverWidgetBase::NativePreConstruct()
 {
@@ -93,4 +94,15 @@ bool UGV2RichTextPopoverWidgetBase::ApplyImageResource_Implementation(
         {},
         Resolved,
         Error);
+}
+
+void UGV2RichTextPopoverWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    OutBuilder.AddText(TEXT("title"), FName(TEXT("TitleText")));
+    OutBuilder.AddText(TEXT("description"), FName(TEXT("DescriptionText")));
+    if (Icon != nullptr)
+    {
+        OutBuilder.AddImage(TEXT("image"), FName(TEXT("Icon")), TEXT("resource"));
+    }
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }

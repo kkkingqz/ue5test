@@ -1,0 +1,30 @@
+{
+  id: "core:schema.ui_field.checkbox.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      text: {
+        kind: "text",
+        required: true,
+      },
+      is_checked: {
+        kind: "bool",
+        required: true,
+      },
+      is_read_only: {
+        kind: "bool",
+        required: false,
+      },
+      binding: {
+        kind: "binding",
+        required: false,
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}

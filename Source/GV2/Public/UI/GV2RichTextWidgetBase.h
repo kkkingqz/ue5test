@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UI/GV2DynamicScreenElement.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "CommonUserWidget.h"
 #include "GV2RichTextWidgetBase.generated.h"
@@ -20,11 +21,22 @@ UCLASS(Blueprintable)
 class GV2_API UGV2RichTextWidgetBase
     : public UCommonUserWidget
     , public IGV2DynamicScreenElement
+    , public IGV2UiPropertyHost
     , public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
 public:
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Properties")
+    void SetKey(FName InKey) { Key = InKey; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Properties")
+    FName GetKey() const { return Key; }
+
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Rich Text")
     void ApplyInteractiveRichText(const FGV2InteractiveRichTextViewModel& Content);
 
@@ -38,8 +50,7 @@ public:
     TSharedRef<IToolTip> CreateSpanToolTip(FName SpanId);
     FTextBlockStyle ResolveRunTextStyle(FName Style, FName Color, FName Size) const;
     FHyperlinkStyle ResolveInteractiveTextStyle(const FTextBlockStyle& RunStyle) const;
-
-    UCommonRichTextBlock* GetRichTextBlock() const { return RichTextBlock; }
+    UCommonRichTextBlock* GetRichTextBlock() const;
 
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI|Rich Text")
     FGV2RichTextSpanInvoked OnSpanInvoked;
@@ -70,7 +81,11 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UScrollBox> RichTextScrollBox;
 
-private:
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Properties")
+    FName Key;
+
+    FGV2UiPropertyHostState PropertyHostState;
+
     UPROPERTY(Transient)
     FGV2InteractiveRichTextViewModel CurrentContent;
 

@@ -104,6 +104,7 @@ UGV2UiTheme* UGV2UiTheme::GetCoreMinimalTheme(UObject* WorldContextObject)
     Theme->TextCatalog.Add(TEXT("core:text.screen.recovery.description"), FText::FromString(TEXT("Attempting session recovery.")));
     Theme->TextCatalog.Add(TEXT("core:text.button.close"), FText::FromString(TEXT("Close")));
     Theme->TextCatalog.Add(TEXT("core:text.button.retry"), FText::FromString(TEXT("Retry")));
+    Theme->TextCatalog.Add(TEXT("core:text.common.ok"), FText::FromString(TEXT("OK")));
 
     CachedMinimalTheme.Reset(Theme);
     return Theme;
