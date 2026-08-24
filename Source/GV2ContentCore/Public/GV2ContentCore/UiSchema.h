@@ -83,6 +83,53 @@ struct GV2_CONTENT_CORE_API FCompiledUiFieldSpec final
     std::optional<std::size_t> MaximumItems;
 };
 
+struct GV2_CONTENT_CORE_API FResolvedUiSchema final
+{
+    const FValue* RootSpec = nullptr;
+    const FParsedDocument* Document = nullptr;
+    std::string SchemaId;
+    std::string PackageId;
+    std::string RelativeSource;
+};
+
+class GV2_CONTENT_CORE_API IUiSchemaResolver
+{
+public:
+    virtual ~IUiSchemaResolver() = default;
+    virtual std::optional<FResolvedUiSchema> FindUiSchema(std::string_view SchemaId) const = 0;
+};
+
+/**
+ * In-memory resolver for tests and standalone compilation.
+ */
+class GV2_CONTENT_CORE_API FInMemoryUiSchemaResolver final : public IUiSchemaResolver
+{
+public:
+    void RegisterUiSchema(
+        std::string SchemaId,
+        FValue RootSpec,
+        std::string PackageId = "",
+        std::string RelativeSource = "");
+
+    void RegisterUiSchemaDocument(
+        std::string SchemaId,
+        std::shared_ptr<const FParsedDocument> Document,
+        std::string PackageId = "",
+        std::string RelativeSource = "");
+
+    std::optional<FResolvedUiSchema> FindUiSchema(std::string_view SchemaId) const override;
+
+private:
+    struct FEntry
+    {
+        std::optional<FValue> RootSpec;
+        std::shared_ptr<const FParsedDocument> Document;
+        std::string PackageId;
+        std::string RelativeSource;
+    };
+    std::map<std::string, FEntry, std::less<>> Entries;
+};
+
 /**
  * Compiles one `ui_field`/`ui_value` FieldSpec node into an immutable tree.
  * Rejects any kind outside the standard UI vocabulary, rejects `default` on
@@ -90,11 +137,17 @@ struct GV2_CONTENT_CORE_API FCompiledUiFieldSpec final
  * `key: { kind: "string" }` compiles to Scalar/String, structurally distinct
  * from Key, and an array's `keyed_by` is rejected unless it names a sibling
  * field actually compiled as Key.
+ *
+ * Resolves `schema_ref` directives through the provided resolver, inlines the
+ * referenced compiled spec, checks namespace boundaries, and detects direct and
+ * indirect cycles.
  */
 GV2_CONTENT_CORE_API FCompiledUiFieldSpecPtr CompileUiFieldSpec(
     const FValue& FieldSpec,
     const FParsedDocument* SchemaDocument,
     std::string SchemaJsonPointer,
     const FValidationDiagnosticContext& Context,
-    std::vector<FDiagnostic>& OutDiagnostics);
+    std::vector<FDiagnostic>& OutDiagnostics,
+    const IUiSchemaResolver* Resolver = nullptr,
+    std::vector<std::string>* ActiveResolutionChain = nullptr);
 }

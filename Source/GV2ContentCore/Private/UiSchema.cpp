@@ -124,6 +124,118 @@ bool CheckClosedUiSpec(
     }
     return Diagnostics.size() == InitialCount;
 }
+bool IsAllowedSchemaRefNamespace(const std::string_view SourceNamespace, const std::string_view TargetNamespace)
+{
+    if (SourceNamespace.empty() || TargetNamespace.empty())
+    {
+        return true;
+    }
+    if (SourceNamespace == TargetNamespace)
+    {
+        return true;
+    }
+    if (TargetNamespace == "core")
+    {
+        return SourceNamespace != "core";
+    }
+    if (SourceNamespace == "textsystem")
+    {
+        return TargetNamespace == "core";
+    }
+    if (SourceNamespace == "rh")
+    {
+        return TargetNamespace == "core" || TargetNamespace == "textsystem";
+    }
+    if (SourceNamespace == "core")
+    {
+        return false;
+    }
+    if (TargetNamespace == "core" || TargetNamespace == "textsystem" || TargetNamespace == "rh")
+    {
+        return true;
+    }
+    return false;
+}
+}
+
+void FInMemoryUiSchemaResolver::RegisterUiSchema(
+    std::string SchemaId,
+    FValue RootSpec,
+    std::string PackageId,
+    std::string RelativeSource)
+{
+    FEntry Entry;
+    Entry.RootSpec = std::move(RootSpec);
+    Entry.PackageId = std::move(PackageId);
+    Entry.RelativeSource = std::move(RelativeSource);
+    Entries.insert_or_assign(std::move(SchemaId), std::move(Entry));
+}
+
+void FInMemoryUiSchemaResolver::RegisterUiSchemaDocument(
+    std::string SchemaId,
+    std::shared_ptr<const FParsedDocument> Document,
+    std::string PackageId,
+    std::string RelativeSource)
+{
+    FEntry Entry;
+    Entry.Document = std::move(Document);
+    Entry.PackageId = std::move(PackageId);
+    Entry.RelativeSource = std::move(RelativeSource);
+    Entries.insert_or_assign(std::move(SchemaId), std::move(Entry));
+}
+
+std::optional<FResolvedUiSchema> FInMemoryUiSchemaResolver::FindUiSchema(const std::string_view SchemaId) const
+{
+    const auto It = Entries.find(SchemaId);
+    if (It == Entries.end())
+    {
+        return std::nullopt;
+    }
+
+    FResolvedUiSchema Resolved;
+    Resolved.SchemaId = It->first;
+    Resolved.PackageId = It->second.PackageId;
+    Resolved.RelativeSource = It->second.RelativeSource;
+
+    if (It->second.Document != nullptr)
+    {
+        Resolved.Document = It->second.Document.get();
+        const FValue& DocRoot = It->second.Document->GetRootValue();
+        if (DocRoot.IsObject())
+        {
+            if (const FValue* RootField = DocRoot.FindField("root"))
+            {
+                Resolved.RootSpec = RootField;
+            }
+            else
+            {
+                Resolved.RootSpec = &DocRoot;
+            }
+        }
+        else
+        {
+            Resolved.RootSpec = &DocRoot;
+        }
+    }
+    else if (It->second.RootSpec.has_value())
+    {
+        if (It->second.RootSpec->IsObject())
+        {
+            if (const FValue* RootField = It->second.RootSpec->FindField("root"))
+            {
+                Resolved.RootSpec = RootField;
+            }
+            else
+            {
+                Resolved.RootSpec = &*It->second.RootSpec;
+            }
+        }
+        else
+        {
+            Resolved.RootSpec = &*It->second.RootSpec;
+        }
+    }
+    return Resolved;
 }
 
 std::optional<EUiSchemaDomain> ParseUiSchemaDomain(const std::string_view Value)
@@ -148,7 +260,9 @@ FCompiledUiFieldSpecPtr CompileUiFieldSpec(
     const FParsedDocument* SchemaDocument,
     std::string SchemaJsonPointer,
     const FValidationDiagnosticContext& Context,
-    std::vector<FDiagnostic>& OutDiagnostics)
+    std::vector<FDiagnostic>& OutDiagnostics,
+    const IUiSchemaResolver* Resolver,
+    std::vector<std::string>* ActiveResolutionChain)
 {
     const std::size_t InitialCount = OutDiagnostics.size();
     const std::string& Pointer = SchemaJsonPointer;
@@ -320,7 +434,7 @@ FCompiledUiFieldSpecPtr CompileUiFieldSpec(
                     bChildRequired = ChildRequired->AsBoolean();
                 }
                 FCompiledUiFieldSpecPtr ChildSpec = CompileUiFieldSpec(
-                    Child, SchemaDocument, ChildSpecPointer, Context, OutDiagnostics);
+                    Child, SchemaDocument, ChildSpecPointer, Context, OutDiagnostics, Resolver, ActiveResolutionChain);
                 if (ChildSpec != nullptr) Result->Fields.push_back({ Name, bChildRequired, std::move(ChildSpec) });
             }
         }
@@ -336,7 +450,7 @@ FCompiledUiFieldSpecPtr CompileUiFieldSpec(
                 "core:diagnostic.ui_schema.field_spec.missing_constraint", "array requires items",
                 SchemaDocument, ChildPointer(Pointer, "items"), Context));
         }
-        else Result->Items = CompileUiFieldSpec(*Items, SchemaDocument, ChildPointer(Pointer, "items"), Context, OutDiagnostics);
+        else Result->Items = CompileUiFieldSpec(*Items, SchemaDocument, ChildPointer(Pointer, "items"), Context, OutDiagnostics, Resolver, ActiveResolutionChain);
         Result->MinimumItems = ReadSize(FieldSpec, "min_items", SchemaDocument, Pointer, Context, OutDiagnostics);
         Result->MaximumItems = ReadSize(FieldSpec, "max_items", SchemaDocument, Pointer, Context, OutDiagnostics);
         if (const FValue* KeyedBy = FieldSpec.FindField("keyed_by"))
@@ -371,6 +485,134 @@ FCompiledUiFieldSpecPtr CompileUiFieldSpec(
     {
         Result->Kind = EUiFieldKind::ScreenFields;
         CheckClosedUiSpec(FieldSpec, {}, Kind, SchemaDocument, Pointer, Context, OutDiagnostics);
+    }
+    else if (Kind == "schema_ref")
+    {
+        CheckClosedUiSpec(FieldSpec, { "schema_id" }, Kind, SchemaDocument, Pointer, Context, OutDiagnostics);
+        const FValue* TargetSchemaIdValue = FieldSpec.FindField("schema_id");
+        if (TargetSchemaIdValue == nullptr || !TargetSchemaIdValue->IsString())
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.schema_ref.invalid_schema_id",
+                "schema_ref requires a string schema_id",
+                SchemaDocument, ChildPointer(Pointer, "schema_id"), Context));
+            return nullptr;
+        }
+
+        const std::string& TargetSchemaId = TargetSchemaIdValue->AsString();
+        FStableIdView TargetView;
+        if (!FStableId::Parse(TargetSchemaId, TargetView) || TargetView.Kind != "schema")
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.schema_ref.invalid_schema_id",
+                "schema_ref schema_id must be a valid Stable ID of kind 'schema': '" + TargetSchemaId + "'",
+                SchemaDocument, ChildPointer(Pointer, "schema_id"), Context));
+            return nullptr;
+        }
+
+        std::string_view SourceNamespace;
+        if (Context.SchemaId.has_value())
+        {
+            FStableIdView SourceView;
+            if (FStableId::Parse(*Context.SchemaId, SourceView))
+            {
+                SourceNamespace = SourceView.Namespace;
+            }
+        }
+        if (SourceNamespace.empty() && Context.PackageId.has_value())
+        {
+            SourceNamespace = *Context.PackageId;
+        }
+
+        if (!IsAllowedSchemaRefNamespace(SourceNamespace, TargetView.Namespace))
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.schema_ref.forbidden_namespace",
+                "schema_ref in namespace '" + std::string(SourceNamespace) + "' cannot reference schema '" + TargetSchemaId + "' in namespace '" + std::string(TargetView.Namespace) + "'",
+                SchemaDocument, ChildPointer(Pointer, "schema_id"), Context));
+            return nullptr;
+        }
+
+        if (Resolver == nullptr)
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.schema_ref.unresolved_schema",
+                "No UI schema resolver provided to resolve schema_ref target '" + TargetSchemaId + "'",
+                SchemaDocument, ChildPointer(Pointer, "schema_id"), Context));
+            return nullptr;
+        }
+
+        const auto Resolved = Resolver->FindUiSchema(TargetSchemaId);
+        if (!Resolved.has_value() || Resolved->RootSpec == nullptr)
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.schema_ref.unresolved_schema",
+                "Unresolved schema_ref target '" + TargetSchemaId + "'",
+                SchemaDocument, ChildPointer(Pointer, "schema_id"), Context));
+            return nullptr;
+        }
+
+        std::vector<std::string> LocalChain;
+        std::vector<std::string>& Chain = (ActiveResolutionChain != nullptr) ? *ActiveResolutionChain : LocalChain;
+
+        if (Chain.empty() && Context.SchemaId.has_value())
+        {
+            Chain.push_back(*Context.SchemaId);
+        }
+
+        const auto ExistingIt = std::find(Chain.begin(), Chain.end(), TargetSchemaId);
+        if (ExistingIt != Chain.end())
+        {
+            std::string CyclePath;
+            for (auto It = ExistingIt; It != Chain.end(); ++It)
+            {
+                CyclePath += *It + " -> ";
+            }
+            CyclePath += TargetSchemaId;
+
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.schema_ref.cycle_detected",
+                "Cycle detected in schema_ref resolution: " + CyclePath,
+                SchemaDocument, ChildPointer(Pointer, "schema_id"), Context));
+            return nullptr;
+        }
+
+        Chain.push_back(TargetSchemaId);
+
+        FValidationDiagnosticContext TargetContext;
+        TargetContext.SchemaId = TargetSchemaId;
+        if (!Resolved->PackageId.empty()) TargetContext.PackageId = Resolved->PackageId;
+        else if (Context.PackageId.has_value()) TargetContext.PackageId = Context.PackageId;
+        if (!Resolved->RelativeSource.empty()) TargetContext.RelativeSource = Resolved->RelativeSource;
+
+        const std::string TargetPointer = (Resolved->RootSpec != nullptr && Resolved->Document != nullptr && Resolved->RootSpec == Resolved->Document->GetRootValue().FindField("root"))
+            ? "/root"
+            : "";
+
+        FCompiledUiFieldSpecPtr CompiledTarget = CompileUiFieldSpec(
+            *Resolved->RootSpec,
+            Resolved->Document,
+            TargetPointer,
+            TargetContext,
+            OutDiagnostics,
+            Resolver,
+            &Chain);
+
+        Chain.pop_back();
+
+        if (CompiledTarget == nullptr || OutDiagnostics.size() != InitialCount)
+        {
+            return nullptr;
+        }
+
+        if (bNullable && !CompiledTarget->bNullable)
+        {
+            auto NullableCopy = std::make_shared<FCompiledUiFieldSpec>(*CompiledTarget);
+            NullableCopy->bNullable = true;
+            return NullableCopy;
+        }
+
+        return CompiledTarget;
     }
     else
     {

@@ -17,14 +17,19 @@ namespace
 FCompiledUiFieldSpecPtr CompileUiCase(
     const std::string_view Json,
     std::optional<FParsedDocument>& OutDocument,
-    std::vector<FDiagnostic>& OutDiagnostics)
+    std::vector<FDiagnostic>& OutDiagnostics,
+    const IUiSchemaResolver* Resolver = nullptr,
+    std::optional<std::string> SchemaId = std::nullopt,
+    std::optional<std::string> PackageId = std::nullopt)
 {
     OutDiagnostics.clear();
     OutDocument = ParseJson5Document(Json, FParseLimits{}, OutDiagnostics);
     if (!OutDocument.has_value() || !OutDiagnostics.empty()) return nullptr;
-    const FValidationDiagnosticContext Context;
+    FValidationDiagnosticContext Context;
+    if (SchemaId.has_value()) Context.SchemaId = *SchemaId;
+    if (PackageId.has_value()) Context.PackageId = *PackageId;
     OutDiagnostics.clear();
-    return CompileUiFieldSpec(OutDocument->GetRootValue(), &*OutDocument, "", Context, OutDiagnostics);
+    return CompileUiFieldSpec(OutDocument->GetRootValue(), &*OutDocument, "", Context, OutDiagnostics, Resolver);
 }
 }
 
@@ -266,8 +271,7 @@ std::string RunUiSchemaConformance()
         }
     }
 
-    // 12. unknown kind — `schema_ref` and `enum` are explicitly outside the standard UI
-    // kind vocabulary at this stage; both must fail typed, not silently pass through.
+    // 12. unknown kind — `enum` is explicitly outside the standard UI kind vocabulary.
     {
         const auto Spec = CompileUiCase("{kind:'enum'}", Document, Diagnostics);
         if (Spec != nullptr || Diagnostics.empty()
@@ -294,6 +298,190 @@ std::string RunUiSchemaConformance()
             || Diagnostics.front().Code != "core:diagnostic.ui_schema.field_spec.invalid_default")
         {
             return "ui_schema.default_on_non_scalar";
+        }
+    }
+
+    // 15. schema_ref: positive — inlines referenced schema without producing a runtime schema_ref kind.
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        std::optional<FParsedDocument> TargetDoc = ParseJson5Document(
+            "{id:'core:schema.ui_value.button_item.v1', schema_domain:'ui_value', schema_version:1, "
+            "root:{kind:'object', fields:{id:{kind:'key', required:true}, label:{kind:'text', required:true}}}}",
+            FParseLimits{}, Diagnostics);
+        if (!TargetDoc.has_value()) return "ui_schema.schema_ref.target_parse_failed";
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.button_item.v1", std::make_shared<FParsedDocument>(std::move(*TargetDoc)));
+
+        const auto Spec = CompileUiCase(
+            "{kind:'array', keyed_by:'id', items:{kind:'schema_ref', schema_id:'core:schema.ui_value.button_item.v1'}}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.button_list.v1", "core");
+        if (Spec == nullptr || !Diagnostics.empty() || Spec->Kind != EUiFieldKind::Array
+            || Spec->KeyedBy != std::optional<std::string>("id")
+            || Spec->Items == nullptr || Spec->Items->Kind != EUiFieldKind::Object
+            || Spec->Items->Fields.size() != 2
+            || Spec->Items->Fields[0].Name != "id" || Spec->Items->Fields[0].Spec->Kind != EUiFieldKind::Key
+            || Spec->Items->Fields[1].Name != "label" || Spec->Items->Fields[1].Spec->Kind != EUiFieldKind::Text)
+        {
+            return "ui_schema.schema_ref.positive";
+        }
+    }
+
+    // 16. schema_ref: nullable propagation.
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        std::optional<FParsedDocument> TargetDoc = ParseJson5Document(
+            "{id:'core:schema.ui_value.item.v1', root:{kind:'text'}}",
+            FParseLimits{}, Diagnostics);
+        if (!TargetDoc.has_value()) return "ui_schema.schema_ref.target_parse_failed";
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.item.v1", std::make_shared<FParsedDocument>(std::move(*TargetDoc)));
+
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'core:schema.ui_value.item.v1', nullable:true}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.test.v1", "core");
+        if (Spec == nullptr || !Diagnostics.empty() || Spec->Kind != EUiFieldKind::Text || !Spec->bNullable)
+        {
+            return "ui_schema.schema_ref.nullable";
+        }
+    }
+
+    // 17. schema_ref: invalid schema_id.
+    {
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'not-a-valid-stable-id'}",
+            Document, Diagnostics);
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.schema_ref.invalid_schema_id")
+        {
+            return "ui_schema.schema_ref.invalid_schema_id";
+        }
+    }
+
+    // 18. schema_ref: unresolved schema.
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'core:schema.ui_value.nonexistent.v1'}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.test.v1", "core");
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.schema_ref.unresolved_schema")
+        {
+            return "ui_schema.schema_ref.unresolved";
+        }
+    }
+
+    // 19. schema_ref: forbidden namespace boundary (core referencing mod).
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        std::optional<FParsedDocument> TargetDoc = ParseJson5Document(
+            "{id:'weather_mod:schema.ui_value.item.v1', root:{kind:'text'}}",
+            FParseLimits{}, Diagnostics);
+        if (!TargetDoc.has_value()) return "ui_schema.schema_ref.target_parse_failed";
+        Resolver.RegisterUiSchemaDocument("weather_mod:schema.ui_value.item.v1", std::make_shared<FParsedDocument>(std::move(*TargetDoc)));
+
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'weather_mod:schema.ui_value.item.v1'}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.test.v1", "core");
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.schema_ref.forbidden_namespace")
+        {
+            return "ui_schema.schema_ref.forbidden_namespace";
+        }
+    }
+
+    // 20. schema_ref: direct cycle (length 1: A -> A).
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        std::optional<FParsedDocument> SelfCycleDoc = ParseJson5Document(
+            "{id:'core:schema.ui_value.self_cycle.v1', root:{kind:'object', fields:{child:{kind:'schema_ref', schema_id:'core:schema.ui_value.self_cycle.v1'}}}}",
+            FParseLimits{}, Diagnostics);
+        if (!SelfCycleDoc.has_value()) return "ui_schema.schema_ref.target_parse_failed";
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.self_cycle.v1", std::make_shared<FParsedDocument>(std::move(*SelfCycleDoc)));
+
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'core:schema.ui_value.self_cycle.v1'}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.root.v1", "core");
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.schema_ref.cycle_detected"
+            || Diagnostics.front().Message.find("core:schema.ui_value.self_cycle.v1 -> core:schema.ui_value.self_cycle.v1") == std::string::npos)
+        {
+            return "ui_schema.schema_ref.cycle.length_1";
+        }
+    }
+
+    // 21. schema_ref: indirect cycle length 2 (A -> B -> A).
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        std::optional<FParsedDocument> DocA = ParseJson5Document(
+            "{id:'core:schema.ui_value.node_a.v1', root:{kind:'object', fields:{next:{kind:'schema_ref', schema_id:'core:schema.ui_value.node_b.v1'}}}}",
+            FParseLimits{}, Diagnostics);
+        std::optional<FParsedDocument> DocB = ParseJson5Document(
+            "{id:'core:schema.ui_value.node_b.v1', root:{kind:'object', fields:{next:{kind:'schema_ref', schema_id:'core:schema.ui_value.node_a.v1'}}}}",
+            FParseLimits{}, Diagnostics);
+        if (!DocA.has_value() || !DocB.has_value()) return "ui_schema.schema_ref.target_parse_failed";
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.node_a.v1", std::make_shared<FParsedDocument>(std::move(*DocA)));
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.node_b.v1", std::make_shared<FParsedDocument>(std::move(*DocB)));
+
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'core:schema.ui_value.node_a.v1'}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.root.v1", "core");
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.schema_ref.cycle_detected"
+            || Diagnostics.front().Message.find("core:schema.ui_value.node_a.v1 -> core:schema.ui_value.node_b.v1 -> core:schema.ui_value.node_a.v1") == std::string::npos)
+        {
+            return "ui_schema.schema_ref.cycle.length_2";
+        }
+    }
+
+    // 22. schema_ref: indirect cycle length > 2 (length 3: C1 -> C2 -> C3 -> C1).
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        std::optional<FParsedDocument> Doc1 = ParseJson5Document(
+            "{id:'core:schema.ui_value.c1.v1', root:{kind:'object', fields:{next:{kind:'schema_ref', schema_id:'core:schema.ui_value.c2.v1'}}}}",
+            FParseLimits{}, Diagnostics);
+        std::optional<FParsedDocument> Doc2 = ParseJson5Document(
+            "{id:'core:schema.ui_value.c2.v1', root:{kind:'object', fields:{next:{kind:'schema_ref', schema_id:'core:schema.ui_value.c3.v1'}}}}",
+            FParseLimits{}, Diagnostics);
+        std::optional<FParsedDocument> Doc3 = ParseJson5Document(
+            "{id:'core:schema.ui_value.c3.v1', root:{kind:'object', fields:{next:{kind:'schema_ref', schema_id:'core:schema.ui_value.c1.v1'}}}}",
+            FParseLimits{}, Diagnostics);
+        if (!Doc1.has_value() || !Doc2.has_value() || !Doc3.has_value()) return "ui_schema.schema_ref.target_parse_failed";
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.c1.v1", std::make_shared<FParsedDocument>(std::move(*Doc1)));
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.c2.v1", std::make_shared<FParsedDocument>(std::move(*Doc2)));
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.c3.v1", std::make_shared<FParsedDocument>(std::move(*Doc3)));
+
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'core:schema.ui_value.c1.v1'}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.root.v1", "core");
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.schema_ref.cycle_detected"
+            || Diagnostics.front().Message.find("core:schema.ui_value.c1.v1 -> core:schema.ui_value.c2.v1 -> core:schema.ui_value.c3.v1 -> core:schema.ui_value.c1.v1") == std::string::npos)
+        {
+            return "ui_schema.schema_ref.cycle.length_3";
+        }
+    }
+
+    // 23. schema_ref: closed spec rejects foreign fields.
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'core:schema.ui_value.item.v1', min_items:5}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.test.v1", "core");
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.field_spec.unknown_field")
+        {
+            return "ui_schema.schema_ref.unknown_field";
+        }
+    }
+
+    // 24. schema_ref: default rejected.
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        const auto Spec = CompileUiCase(
+            "{kind:'schema_ref', schema_id:'core:schema.ui_value.item.v1', default:42}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.test.v1", "core");
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.field_spec.invalid_default")
+        {
+            return "ui_schema.schema_ref.invalid_default";
         }
     }
 
