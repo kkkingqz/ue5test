@@ -118,6 +118,19 @@ Configured `WBP_GameShell` обязан наследовать native `UGV2GameS
 
 Lua не передаёт children, Widget Blueprint class или физические Widget names. Допустимые поля и их schemas определяются Dynamic Screen Elements конкретного Screen Template. Repeated field items обязаны иметь deterministic `key` согласно разделу [Repeated Element Identity](#repeated-element-identity).
 
+### Декларативные UI-схемы как данные
+
+Схемы полей интерфейса и переиспользуемых структур объявляются декларативными JSON5-файлами в репозитории контента (`GameData/<package>/schemas/`):
+
+- **Домены схем**: `schema_domain: "ui_field"` (схема поля экрана) и `schema_domain: "ui_value"` (переиспользуемая вложенная структура).
+- **Стандартные kinds**:
+  - *Скалярные*: `bool`, `integer`, `number`, `string`;
+  - *Семантические*: `key` (валидируемый ключ коллекции), `text` (`TextSpec`), `ref` (типизированная ссылка Stable ID на ресурс/сущность), `binding` (семантическая привязка команды);
+  - *Структурные*: `object`, `array` (с поддержкой `keyed_by`, `min_items`, `max_items`), `screen_fields`, `schema_ref` (inline-включение именованной схемы без циклических зависимостей).
+- **Замкнутость на всех уровнях (Closed Schemas)**: любой неизвестный ключ на любом уровне вложенности значения поля или схемы отклоняется типизированной ошибкой валидации (`core:diagnostic.ui_schema.value.unknown_field`).
+- **Владение namespace**: пакет объявляет схемы исключительно своего namespace (`core:`, `textsystem:`, `rh:`, `<mod>:`). Попытка объявить схему чужого namespace отклоняется на стадии сборки репозитория.
+- **Политика отказа для мода**: моды собирают схемы исключительно из стандартных kinds в данных без написания C++. Несовместимая или ошибочная схема мода отбраковывает мод, а не приводит к сбою сессии.
+
 ## Repeated Element Identity
 
 Каждый элемент повторяемого поля (кнопки в `button_list`, интерактивные спаны в `rich_text`, опции `dropdown_select` и элементы будущих списков) обязан иметь проверяемую детерминированную идентичность `key`.
@@ -238,7 +251,7 @@ Private `FGV2UiBindingRegistry` реализует prepared binding candidate и
 
 `UGV2GameShellWidgetBase` разрешает слой только в соответствующий authored host. Динамическое создание host вне Widget tree запрещено: это скрывает ошибку Blueprint contract и приводит к логически применённому, но невидимому документу.
 
-`FGV2ScreenFieldAdapterRegistry` поддерживает schemas базового набора; их typed values определены в [Blueprint Screen Template Contract](ScreenTemplates.md#dynamic-screen-element-contract).
+Валидация полей документа выполняется универсальным валидатором `GV2ContentCore` на базе скомпилированных UI-схем репозитория контента; Dynamic Screen Elements связывают валидированные данные с виджетами UMG.
 
 ### Устойчивая идентичность LocationScreen
 

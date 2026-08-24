@@ -30,8 +30,8 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Lua владеет desired screen instance, значениями полей и доступными Command bindings.
 - Concrete Widget Blueprint владеет layout, slots, animation, focus navigation и выбором Dynamic Screen Elements.
 - `UGV2ScreenWidgetBase` владеет generic validation/apply lifecycle.
-- `FGV2ScreenFieldAdapterRegistry` владеет fixed mapping `schema_id → trusted boundary adapter` и преобразованием portable value в typed `FGV2ScreenFieldValue`.
-- Dynamic Screen Element владеет преобразованием одного declared field schema в local Widget state.
+- Репозиторий контента (`GV2ContentCore`) владеет декларативными UI-схемами (`schema_domain: "ui_field"` / `"ui_value"`), их компиляцией, валидацией замкнутости полей и разрешением `schema_ref`.
+- Dynamic Screen Element владеет связыванием валидированных данных схемы с локальным состоянием виджета.
 - Screen Registry является единственным UE presentation mapping `screen_id → trusted Widget Blueprint class`.
 
 ### LocationScreen: template и values definition
@@ -49,12 +49,16 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - C++ generic screen layer не содержит switch/branch по concrete `screen_id`.
 - `field_id` unique внутри Screen Template и имеет lowercase `snake_case`.
 - Каждый configured element объявляет non-empty Stable ID `schema_id` и required/optional policy.
+- UI-схемы объявляются данными (`GameData/<package>/schemas/`) с доменом `schema_domain: "ui_field"` или `schema_domain: "ui_value"`.
+- UI-схемы собираются исключительно из стандартных kinds: скалярных (`bool`, `integer`, `number`, `string`), семантических (`key`, `text`, `ref`, `binding`) и структурных (`object`, `array`, `screen_fields`, `schema_ref`). Попытка ввести нестандартный примитивный kind отклоняется.
 - Схемы всех Screen Fields и всех их вложенных объектов являются **замкнутыми (closed schemas)**. Любой не объявленный в схеме ключ на любом уровне вложенности (значение поля, элемент коллекции, `TextSpec`, `Binding`) является невалидным и приводит к типизированному отказу построения и применения поля.
+- **Владение namespace**: пакет объявляет схемы только своего namespace (`core:`, `textsystem:`, `rh:`, `<mod>:`). Попытка объявить чужой namespace отклоняется на стадии сборки репозитория.
+- **Политика отказа для мода**: несовместимая или некорректная UI-схема мода отбраковывает мод, а не приводит к сбою сессии.
 - Lua публикует полный набор полей текущего screen instance, а не mutation operations.
 - Blueprint не интерпретирует `command_id`, не вызывает Lua function и не меняет canonical gameplay-state.
-- Добавление нового Dynamic Screen Element schema требует concrete scenario и обновления этого или owning component contract.
+- Добавление нового Screen Field не требует C++-адаптера и осуществляется декларативной схемой в данных.
 - Scrollable Dynamic Screen Element обязан получать конечную viewport geometry от layout concrete Screen Template. Template не может оставлять такой элемент с unbounded desired height: overflow policy принадлежит reusable component, а доступная доля экрана — concrete layout.
-- Generic runtime принимает только ordered `field_id + schema_id + value` envelopes и запрещает concrete field names. Schema-specific conversion принадлежит registered field adapter.
+- Generic runtime принимает только ordered `field_id + schema_id + value` envelopes и запрещает concrete field names. Валидация выполняется переносимым универсальным валидатором на основе скомпилированной UI-схемы.
 - Registry строится до первого использования, не хранит session state и запрещает duplicate `schema_id`. Unknown schema отклоняет весь candidate Screen request.
 - Равномерное масштабирование кадра (uniform frame scale) запрещено: раскладка отзывчивая (responsive) и распределяет фактический viewport.
 - Текст масштабируется нелинейной кривой темы и никогда не опускается ниже `MinReadableFontSize` (10 pt).
@@ -314,8 +318,8 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 - Удаление required field, смена смысла `field_id` или несовместимая смена schema являются breaking change.
 - Опубликованный `screen_id` или field schema Stable ID не переиспользуется для другого смысла.
 - Layout/style/animation могут меняться без schema version, если observable field/input contract сохраняется.
-- Новый field schema добавляет один adapter и registry entry, DTO/contract fixtures и tests; Session Coordinator изменять запрещено.
-- LocationScreen fields принадлежат `textsystem`; raw string, raw asset path, physical layout value and invalid resource ID are rejected before apply. Каждый adapter выполняет `PrepareBindings` и `BuildField`; semantic bindings создаёт только commands field.
+- Новый field schema объявляется в данных (`GameData/<package>/schemas/`) с доменом `schema_domain: "ui_field"` / `"ui_value"` и не требует написания C++-адаптера; Session Coordinator изменять запрещено.
+- LocationScreen fields принадлежат `textsystem`; raw string, raw asset path, physical layout value and invalid resource ID are rejected before apply. Semantic bindings создаёт только commands field.
 
 ## Verification
 
@@ -332,5 +336,5 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 - Dropdown option activation пересекает boundary ровно один раз как opaque handle + `selected_key`, после чего Lua публикует новое desired state.
 - Добавление нового Screen Blueprint и registry entry не требует изменения C++.
 - Runtime source не содержит `/Game/UI/Widgets/WBP_Testscreen` и не принимает Blueprint class из Lua/Blueprint façade.
-- Session Coordinator не содержит concrete Screen Field schema IDs; fixed adapter registry содержит десять опубликованных schemas из таблицы этого contract и отклоняет unknown/duplicate registration.
+- Session Coordinator не содержит concrete Screen Field schema IDs; универсальная валидация UI-полей работает поверх скомпилированных `FCompiledUiFieldSpec` из репозитория и отклоняет unknown/duplicate registration и незамкнутые поля.
 - Automation проходит через обычные Session, Semantic Input и Screen request entry points; test-only runtime methods отсутствуют.

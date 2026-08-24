@@ -51,14 +51,14 @@ depends_on:
   - Done: UI-схемы загружаются существующим `GameData/<package>/schemas` pipeline и индексируются по ID; `core:`/`textsystem:`/`rh:` объявляются только своими пакетами, `<mod>:` — модом; попытка объявить чужой namespace отклоняется; мод может собрать схему **исключительно** из стандартных kinds — попытка ввести новый primitive kind отклоняется; тест на схему мода из чистых данных, проходящую компиляцию без единой строки C++.
   - Evidence: `Source/GV2ContentCore/`, `GameData/`, тесты репозитория.
 
-- [ ] **UPP-06 — Контракты объявляют схемы UI данными**
+- [x] **UPP-06 — Контракты объявляют схемы UI данными**
   - Зависимости: UPP-05.
   - Done: [Screen Templates](../../UI/ScreenTemplates.md) и [UI Document](../../UI/UIDocumentAndReconciliation.md) описывают UI-схему как данные: домен, стандартные kinds, замкнутость на всех уровнях, правило владения namespace, политику отказа для мода; [Definition Envelope and Schema Rules](../../Architecture/DefinitionEnvelopeAndSchemaRules.md) описывает `schema_domain` и `schema_ref`; [Add Screen Field](../../Guides/AddScreenField.md) переписан под добавление схемы данными, а не C++-адаптером; ни один контракт не описывает одновременно старую и новую модель как действующие.
   - Evidence: `Docs/UI/`, `Docs/Architecture/`, `Docs/Guides/AddScreenField.md`.
 
 ## Проверка milestone
 
-- [ ] Схема мода компилируется из данных без C++.
-- [ ] Неизвестный kind, цикл `schema_ref` и чужой namespace отклоняются типизированно.
-- [ ] Один набор случаев валидации даёт одинаковый результат в UE и headless.
-- [ ] Ни один виджет ещё не мигрирован — этап не меняет поведение экрана.
+- [x] Схема мода компилируется из данных без C++.
+- [x] Неизвестный kind, цикл `schema_ref` и чужой namespace отклоняются типизированно.
+- [x] Один набор случаев валидации даёт одинаковый результат в UE и headless.
+- [x] Ни один виджет ещё не мигрирован — этап не меняет поведение экрана.

@@ -157,14 +157,55 @@ Schema resource envelope является closed object:
 
 | Поле | Тип | Правило |
 |---|---|---|
-| `id` | schema Stable ID | Required; обязан точно совпасть с descriptor binding |
-| `definition_type` | canonical segment | Required; не выводится из filename/path |
+| `id` | schema Stable ID | Required; обязан точно совпасть с descriptor binding; namespace обязан совпадать с пакетом-автором |
+| `schema_domain` | string token | Optional для definition schemas; required `"ui_field"` / `"ui_value"` для UI-схем |
+| `definition_type` | canonical segment | Required для definition schemas; optional для UI-схем |
 | `schema_version` | positive int64 | Required; часть exact registry key |
 | `root` | object FieldSpec | Required; компилируется последующими validation stages |
 | `semantic_validators` | array of validator Stable IDs | Optional; default `[]`, duplicates запрещены |
 | `extensions` | object | Optional; default `{}`; ownership проверяется extension stage |
 
 `FSchemaRegistry` регистрирует только exact key `(definition_type, schema_version)`. Version fallback запрещён. Descriptor binding содержит все четыре значения: `definition_type`, `schema_version`, `schema_id`, package-relative resource path. Resource identity обязана совпасть с первыми тремя, а прочитанный source — с path. Duplicate exact key, conflicting schema ID, повторное использование одного `schema_id` для другого key и definition source без exact binding являются fatal. Load order не разрешает эти конфликты.
+
+## UI Schemas and schema_domain
+
+Для декларативного описания структуры UI-документов и полей экранов используются UI-схемы с `schema_domain`:
+
+- `schema_domain: "ui_field"` — схема корня поля экрана (`Screen Field`).
+- `schema_domain: "ui_value"` — переиспользуемая вложенная схема (например, элемент кнопки, шкалы, карточки).
+
+### Standard UI Field kinds
+
+UI-схемы компилируются функцией `CompileUiFieldSpec()` и валидируются `ValidateUiFieldValue()` в `GV2ContentCore`. Поддерживаются стандартные Core kinds:
+
+1. **Скалярные**:
+   - `bool`
+   - `integer` (`min`, `max`)
+   - `number` (`min`, `max`)
+   - `string` (`min_length`, `max_length`)
+2. **Семантические**:
+   - `key` — валидируемый ключ коллекции (`[a-z0-9_.@:-]+`, 1..192 символов, запрет вывода из текста). `key` **не приводится** из `string`.
+   - `text` — спецификация локализуемого текста (`TextSpec` с `text_id`, `args`, optional `style`).
+   - `ref` — ссылка на сущность репозитория (`target_kind`).
+   - `binding` — семантическая привязка команды (`command_id`, optional `args`).
+3. **Структурные**:
+   - `object` — закрытый объект (`fields`, `required_fields`).
+   - `array` — список элементов (`items`, `min_items`, `max_items`, `keyed_by`). При наличии `keyed_by` проверяется уникальность ключей элементов.
+   - `screen_fields` — динамическая карта полей экрана (`field_id -> schema_id + value`).
+   - `schema_ref` — inline-включение именованной схемы.
+
+### Schema Inlining (schema_ref)
+
+Kind `schema_ref` позволяет повторно использовать однажды объявленные UI-схемы со `schema_domain: "ui_value"`:
+
+- Инлайнинг происходит на этапе компиляции схемы (`CompileUiFieldSpec`); в runtime kind `schema_ref` отсутствует.
+- **Обнаружение циклов**: циклические ссылки (как прямые `A -> A`, так и транзитивные `A -> B -> C -> A`) немедленно отклоняются с кодом `core:diagnostic.ui_schema.schema_ref.cycle_detected`.
+- **Изоляция namespaces**:
+  - `core:` разрешено ссылаться только на `core:`;
+  - `textsystem:` — на `textsystem:` и `core:`;
+  - `rh:` — на `rh:`, `textsystem:` и `core:`;
+  - `<mod>:` — на `<mod>:`, `rh:`, `textsystem:` и `core:`.
+  Попытка сослаться на схему из недопустимого namespace отклоняется с кодом `core:diagnostic.ui_schema.schema_ref.forbidden_namespace`.
 
 ## Declarative FieldSpec
 
