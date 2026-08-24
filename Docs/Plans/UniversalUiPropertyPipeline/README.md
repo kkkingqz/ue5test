@@ -60,8 +60,8 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Decisions and Schema Infrastructure](DecisionsAndSchemas.md): решения зафиксированы, UI-схемы компилируются и валидируются переносимо. UPP-01…06.
-- [ ] M2 — [Prepared Values and Property Host](PreparedValuesAndHost.md): подготовленное дерево, host, consumers, Prepare/Commit, harness наблюдаемости. UPP-07…11.
+- [x] M1 — [Decisions and Schema Infrastructure](DecisionsAndSchemas.md): решения зафиксированы, UI-схемы компилируются и валидируются переносимо. UPP-01…06.
+- [x] M2 — [Prepared Values and Property Host](PreparedValuesAndHost.md): подготовленное дерево, host, consumers, Prepare/Commit, harness наблюдаемости. UPP-07…11.
 - [ ] M3 — [Proving Slice and Gate](ProvingSliceAndGate.md): Text, Image, Button мигрированы, гейт go/no-go пройден. UPP-12…15.
 - [ ] M4 — [Remaining Leaves](RemainingLeaves.md): Checkbox, InputField, ProgressBar, Portrait, RichText. UPP-16…19.
 - [ ] M5 — [Collections and Composites](CollectionsAndComposites.md): keyed collection, ButtonList, Dropdown, Modal, TabContainer. UPP-20…23.

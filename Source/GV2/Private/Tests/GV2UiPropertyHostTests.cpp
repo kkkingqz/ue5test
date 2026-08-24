@@ -9,7 +9,7 @@ namespace
 {
 using namespace GV2ContentCore;
 
-FCompiledUiFieldSpecPtr MakeScalarSpec(
+FCompiledUiFieldSpecPtr MakePropertyHostScalarSpec(
     const EScalarFieldKind Kind,
     const TOptional<double> MinNumber = {},
     const TOptional<double> MaxNumber = {})
@@ -68,7 +68,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
         Schema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
-        Schema.Fields.push_back({ "unknown_prop", false, MakeScalarSpec(EScalarFieldKind::String) });
+        Schema.Fields.push_back({ "unknown_prop", false, MakePropertyHostScalarSpec(EScalarFieldKind::String) });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -89,7 +89,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
     {
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
-        Schema.Fields.push_back({ "text", false, MakeScalarSpec(EScalarFieldKind::String) });
+        Schema.Fields.push_back({ "text", false, MakePropertyHostScalarSpec(EScalarFieldKind::String) });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
@@ -131,7 +131,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
         {
             FCompiledUiFieldSpec Schema;
             Schema.Kind = EUiFieldKind::Object;
-            auto NumSpec = MakeScalarSpec(EScalarFieldKind::Number, -1.0, 1.0);
+            auto NumSpec = MakePropertyHostScalarSpec(EScalarFieldKind::Number, -1.0, 1.0);
             Schema.Fields.push_back({ "percent", false, NumSpec });
 
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
@@ -147,7 +147,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
         {
             FCompiledUiFieldSpec Schema;
             Schema.Kind = EUiFieldKind::Object;
-            auto NumSpec = MakeScalarSpec(EScalarFieldKind::Number, 0.0, 0.5);
+            auto NumSpec = MakePropertyHostScalarSpec(EScalarFieldKind::Number, 0.0, 0.5);
             Schema.Fields.push_back({ "percent", false, NumSpec });
 
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
@@ -162,7 +162,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
     {
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
-        Schema.Fields.push_back({ "bad_prop", false, MakeScalarSpec(EScalarFieldKind::String) });
+        Schema.Fields.push_back({ "bad_prop", false, MakePropertyHostScalarSpec(EScalarFieldKind::String) });
 
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bCompatible = CheckUiSchemaCapabilityCompatibility(

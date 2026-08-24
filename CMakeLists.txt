@@ -115,4 +115,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_authoring_metadata.py"
             "--self-test"
     )
+    # UPP-11: monotonic decrease gate for the Universal UI Property Pipeline migration --
+    # schema-specific Prepare/Build functions, FGV2ScreenFieldValue payload members, and
+    # schema-specific DTOs in GV2BridgeTypes.h must never grow after M2.
+    add_test(
+        NAME ui_pipeline_legacy_gate_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_ui_pipeline_legacy_gate.py"
+    )
+    add_test(
+        NAME ui_pipeline_legacy_gate_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Content/validate_ui_pipeline_legacy_gate.py"
+            "--self-test"
+    )
 endif()
