@@ -110,7 +110,7 @@ std::string RunSchemaRegistryConformance()
     // 2. Duplicate binding rejected
     Diagnostics.clear();
     auto Duplicate = ParseSchemaResource(
-        *Document, Binding, "test_mod", 1, Binding.GetRelativePath(), Diagnostics);
+        *Document, Binding, "core", 1, Binding.GetRelativePath(), Diagnostics);
     if (!Duplicate.has_value()
         || Registry.Register(std::move(*Duplicate), Diagnostics)
         || Diagnostics.empty()
@@ -179,6 +179,122 @@ std::string RunSchemaRegistryConformance()
         return "schema_registry.duplicate_validator_rejected";
     }
 
+    // --- UPP-05: UI Schema Publication & Namespace Ownership Conformance ---
+
+    // 6. UI Schema parsing and registration in SchemaRegistry
+    {
+        const std::string UiSchemaSource =
+            "{ id: 'core:schema.ui_field.progress_bar.v2', schema_domain: 'ui_field', schema_version: 2, "
+            "root: { kind: 'object', fields: { percent: { kind: 'number', required: true, min: 0.0, max: 1.0 }, "
+            "label: { kind: 'text', required: false } } } }";
+        Diagnostics.clear();
+        auto UiDoc = ParseJson5Document(UiSchemaSource, FParseLimits{}, Diagnostics);
+        if (!UiDoc.has_value() || !Diagnostics.empty()) return "schema_registry.ui_schema.parse_doc";
+
+        const FSchemaBinding UiBinding("progress_bar", 2, "core:schema.ui_field.progress_bar.v2", "schemas/progress_bar_v2.schema.json5");
+        auto UiResource = ParseSchemaResource(*UiDoc, UiBinding, "core", 0, UiBinding.GetRelativePath(), Diagnostics);
+        if (!UiResource.has_value() || !Diagnostics.empty()
+            || !UiResource->IsUiSchema()
+            || UiResource->GetSchemaDomain() != EUiSchemaDomain::UiField
+            || UiResource->GetCompiledUiRootSpec() == nullptr
+            || UiResource->GetCompiledRootSpec() != nullptr)
+        {
+            return "schema_registry.ui_schema.parse_resource";
+        }
+
+        FSchemaRegistry UiRegistry;
+        if (!UiRegistry.Register(std::move(*UiResource), Diagnostics)
+            || UiRegistry.FindById("core:schema.ui_field.progress_bar.v2") == nullptr
+            || !UiRegistry.FindUiSchema("core:schema.ui_field.progress_bar.v2").has_value())
+        {
+            return "schema_registry.ui_schema.register_and_lookup";
+        }
+    }
+
+    // 7. Foreign namespace schema declaration is rejected
+    {
+        const std::string ForeignSchemaSource =
+            "{ id: 'core:schema.ui_field.bad.v1', schema_domain: 'ui_field', schema_version: 1, "
+            "root: { kind: 'object', fields: { val: { kind: 'string' } } } }";
+        Diagnostics.clear();
+        auto ForeignDoc = ParseJson5Document(ForeignSchemaSource, FParseLimits{}, Diagnostics);
+        if (!ForeignDoc.has_value()) return "schema_registry.foreign_namespace.parse_doc";
+
+        const FSchemaBinding ForeignBinding("bad", 1, "core:schema.ui_field.bad.v1", "schemas/bad_v1.schema.json5");
+        // mod_custom declaring a core schema is rejected
+        auto ForeignResource = ParseSchemaResource(*ForeignDoc, ForeignBinding, "mod_custom", 1, ForeignBinding.GetRelativePath(), Diagnostics);
+        if (ForeignResource.has_value() || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.schema.resource.foreign_namespace")
+        {
+            return "schema_registry.foreign_namespace_rejected";
+        }
+    }
+
+    // 8. Mod declaring pure data-driven UI schema without C++ succeeds in repository build
+    {
+        const std::string ModSchemaSource =
+            "{ id: 'weather_mod:schema.ui_field.weather_card.v1', schema_domain: 'ui_field', schema_version: 1, "
+            "root: { kind: 'object', fields: { "
+            "  station_id: { kind: 'key', required: true }, "
+            "  title: { kind: 'text', required: true }, "
+            "  temperature: { kind: 'integer', required: true, min: -100, max: 100 }, "
+            "  icon: { kind: 'ref', target_kind: 'resource', required: false }, "
+            "  on_click: { kind: 'binding', required: false } "
+            "} } }";
+
+        FMemoryContentSourceProvider ModSourceProvider;
+        ModSourceProvider.Sources.emplace("weather_mod/schemas/weather_card_v1.schema.json5", ModSchemaSource);
+
+        const FSchemaBinding ModUiBinding(
+            "weather_card", 1, "weather_mod:schema.ui_field.weather_card.v1", "schemas/weather_card_v1.schema.json5");
+
+        FBuildOptions ModBuildOptions;
+        ModBuildOptions.SourceProvider = &ModSourceProvider;
+        const FBuildResult ModBuildResult = BuildRepository(
+            {
+                FPackageDescriptor("core", "core", 0, {}),
+                FPackageDescriptor("weather_mod", "weather_mod", 1, {}, { ModUiBinding })
+            },
+            ModBuildOptions);
+
+        if (!ModBuildResult.IsSuccess())
+        {
+            return "schema_registry.mod_pure_data_ui_schema_build";
+        }
+    }
+
+    // 9. Mod attempting to introduce a non-standard primitive kind into UI schema is rejected
+    {
+        const std::string InvalidModSchemaSource =
+            "{ id: 'weather_mod:schema.ui_field.invalid.v1', schema_domain: 'ui_field', schema_version: 1, "
+            "root: { kind: 'object', fields: { "
+            "  custom_val: { kind: 'unsupported_primitive_kind', required: true } "
+            "} } }";
+
+        FMemoryContentSourceProvider InvalidModSourceProvider;
+        InvalidModSourceProvider.Sources.emplace("weather_mod/schemas/invalid_v1.schema.json5", InvalidModSchemaSource);
+
+        const FSchemaBinding InvalidModBinding(
+            "invalid", 1, "weather_mod:schema.ui_field.invalid.v1", "schemas/invalid_v1.schema.json5");
+
+        FBuildOptions InvalidModBuildOptions;
+        InvalidModBuildOptions.SourceProvider = &InvalidModSourceProvider;
+        const FBuildResult InvalidModBuildResult = BuildRepository(
+            {
+                FPackageDescriptor("core", "core", 0, {}),
+                FPackageDescriptor("weather_mod", "weather_mod", 1, {}, { InvalidModBinding })
+            },
+            InvalidModBuildOptions);
+
+        if (InvalidModBuildResult.IsSuccess()
+            || InvalidModBuildResult.GetDiagnostics().empty()
+            || InvalidModBuildResult.GetDiagnostics().front().Code != "core:diagnostic.ui_schema.field_spec.invalid_kind")
+        {
+            return "schema_registry.mod_nonstandard_kind_rejected";
+        }
+    }
+
     return "";
 }
 } // namespace GV2ContentCore::Testing
+

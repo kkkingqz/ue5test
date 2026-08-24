@@ -76,8 +76,10 @@ bool FSchemaKey::operator<(const FSchemaKey& Other) const
 FSchemaResource::FSchemaResource(
     FSchemaKey InKey,
     std::string InSchemaId,
+    std::optional<EUiSchemaDomain> InSchemaDomain,
     FValue InRootSpec,
     FCompiledFieldSpecPtr InCompiledRootSpec,
+    FCompiledUiFieldSpecPtr InCompiledUiRootSpec,
     std::vector<std::string> InSemanticValidators,
     FValue InExtensions,
     std::string InPackageId,
@@ -86,8 +88,10 @@ FSchemaResource::FSchemaResource(
     const FSourceSpan InSourceSpan)
     : Key(std::move(InKey))
     , SchemaId(std::move(InSchemaId))
+    , SchemaDomain(InSchemaDomain)
     , RootSpec(std::move(InRootSpec))
     , CompiledRootSpec(std::move(InCompiledRootSpec))
+    , CompiledUiRootSpec(std::move(InCompiledUiRootSpec))
     , SemanticValidators(std::move(InSemanticValidators))
     , Extensions(std::move(InExtensions))
     , PackageId(std::move(InPackageId))
@@ -112,6 +116,19 @@ const FSchemaResource* FSchemaRegistry::FindById(const std::string_view SchemaId
         if (Resource.GetSchemaId() == SchemaId) return &Resource;
     }
     return nullptr;
+}
+
+std::optional<FResolvedUiSchema> FSchemaRegistry::FindUiSchema(const std::string_view SchemaId) const
+{
+    const FSchemaResource* Found = FindById(SchemaId);
+    if (Found == nullptr) return std::nullopt;
+    FResolvedUiSchema Resolved;
+    Resolved.SchemaId = Found->GetSchemaId();
+    Resolved.PackageId = Found->GetPackageId();
+    Resolved.RelativeSource = Found->GetRelativeSource();
+    Resolved.RootSpec = &Found->GetRootSpec();
+    Resolved.Document = nullptr;
+    return Resolved;
 }
 
 bool FSchemaRegistry::Register(
@@ -163,7 +180,8 @@ std::optional<FSchemaResource> ParseSchemaResource(
     std::string PackageId,
     const std::uint32_t PackageLoadIndex,
     std::string RelativeSource,
-    std::vector<FDiagnostic>& OutDiagnostics)
+    std::vector<FDiagnostic>& OutDiagnostics,
+    const IUiSchemaResolver* UiResolver)
 {
     const FValue& Root = Document.GetRootValue();
     const std::size_t InitialDiagnosticCount = OutDiagnostics.size();
@@ -179,7 +197,7 @@ std::optional<FSchemaResource> ParseSchemaResource(
     }
 
     static const std::set<std::string_view> AllowedFields{
-        "id", "definition_type", "schema_version", "root", "semantic_validators", "extensions"
+        "id", "definition_type", "schema_domain", "schema_version", "root", "semantic_validators", "extensions"
     };
     for (const auto& [FieldName, FieldValue] : Root.AsObject())
     {
@@ -194,6 +212,7 @@ std::optional<FSchemaResource> ParseSchemaResource(
 
     const FValue* Id = Root.FindField("id");
     const FValue* DefinitionType = Root.FindField("definition_type");
+    const FValue* SchemaDomainVal = Root.FindField("schema_domain");
     const FValue* SchemaVersion = Root.FindField("schema_version");
     const FValue* RootSpec = Root.FindField("root");
     const FValue* SemanticValidators = Root.FindField("semantic_validators");
@@ -206,15 +225,60 @@ std::optional<FSchemaResource> ParseSchemaResource(
             "Schema resource requires a canonical schema Stable ID",
             Document, "/id", PackageId, PackageLoadIndex, RelativeSource));
     }
-    if (DefinitionType == nullptr
-        || !DefinitionType->IsString()
-        || !FStableId::IsValidSegment(DefinitionType->IsString() ? DefinitionType->AsString() : ""))
+    else
+    {
+        FStableIdView IdView;
+        if (FStableId::Parse(Id->AsString(), IdView) && IdView.Namespace != PackageId)
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.schema.resource.foreign_namespace",
+                "Schema ID '" + Id->AsString() + "' namespace does not match declaring package '" + PackageId + "'",
+                Document, "/id", PackageId, PackageLoadIndex, RelativeSource));
+        }
+    }
+
+    std::optional<EUiSchemaDomain> SchemaDomain;
+    if (SchemaDomainVal != nullptr)
+    {
+        if (!SchemaDomainVal->IsString())
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.schema.resource.invalid_domain",
+                "schema_domain must be a string",
+                Document, "/schema_domain", PackageId, PackageLoadIndex, RelativeSource));
+        }
+        else
+        {
+            SchemaDomain = ParseUiSchemaDomain(SchemaDomainVal->AsString());
+            if (!SchemaDomain.has_value())
+            {
+                OutDiagnostics.push_back(MakeDiagnostic(
+                    "core:diagnostic.schema.resource.invalid_domain",
+                    "unknown schema_domain '" + SchemaDomainVal->AsString() + "'",
+                    Document, "/schema_domain", PackageId, PackageLoadIndex, RelativeSource));
+            }
+        }
+    }
+
+    if (DefinitionType != nullptr)
+    {
+        if (!DefinitionType->IsString()
+            || !FStableId::IsValidSegment(DefinitionType->IsString() ? DefinitionType->AsString() : ""))
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.schema.resource.invalid_definition_type",
+                "Schema resource requires a canonical definition_type",
+                Document, "/definition_type", PackageId, PackageLoadIndex, RelativeSource));
+        }
+    }
+    else if (!SchemaDomain.has_value())
     {
         OutDiagnostics.push_back(MakeDiagnostic(
             "core:diagnostic.schema.resource.invalid_definition_type",
-            "Schema resource requires a canonical definition_type",
+            "Definition schema resource requires a canonical definition_type",
             Document, "/definition_type", PackageId, PackageLoadIndex, RelativeSource));
     }
+
     if (SchemaVersion == nullptr || !SchemaVersion->IsInteger() || SchemaVersion->AsInteger() <= 0)
     {
         OutDiagnostics.push_back(MakeDiagnostic(
@@ -298,11 +362,28 @@ std::optional<FSchemaResource> ParseSchemaResource(
     Context.RelativeSource = RelativeSource;
     Context.SchemaId = Binding.GetSchemaId();
     Context.SchemaVersion = Binding.GetSchemaVersion();
-    FCompiledFieldSpecPtr CompiledRootSpec = CompileFieldSpec(
-        *RootSpec, &Document, "/root", Context, OutDiagnostics);
-    if (CompiledRootSpec == nullptr) return std::nullopt;
 
-    const bool bBindingMatches = Binding.GetDefinitionType() == DefinitionType->AsString()
+    FCompiledFieldSpecPtr CompiledRootSpec = nullptr;
+    FCompiledUiFieldSpecPtr CompiledUiRootSpec = nullptr;
+
+    if (SchemaDomain.has_value())
+    {
+        CompiledUiRootSpec = CompileUiFieldSpec(
+            *RootSpec, &Document, "/root", Context, OutDiagnostics, UiResolver);
+        if (CompiledUiRootSpec == nullptr) return std::nullopt;
+    }
+    else
+    {
+        CompiledRootSpec = CompileFieldSpec(
+            *RootSpec, &Document, "/root", Context, OutDiagnostics);
+        if (CompiledRootSpec == nullptr) return std::nullopt;
+    }
+
+    const std::string EffectiveDefType = DefinitionType != nullptr
+        ? DefinitionType->AsString()
+        : Binding.GetDefinitionType();
+
+    const bool bBindingMatches = Binding.GetDefinitionType() == EffectiveDefType
         && Binding.GetSchemaVersion() == SchemaVersion->AsInteger()
         && Binding.GetSchemaId() == Id->AsString()
         && Binding.GetRelativePath() == RelativeSource;
@@ -320,10 +401,12 @@ std::optional<FSchemaResource> ParseSchemaResource(
 
     const FParsedLocation* RootLocation = Document.FindLocation("");
     return FSchemaResource(
-        FSchemaKey{ DefinitionType->AsString(), SchemaVersion->AsInteger() },
+        FSchemaKey{ EffectiveDefType, SchemaVersion->AsInteger() },
         Id->AsString(),
+        SchemaDomain,
         *RootSpec,
         std::move(CompiledRootSpec),
+        std::move(CompiledUiRootSpec),
         std::move(Validators),
         Extensions == nullptr ? FValue::MakeObject() : *Extensions,
         std::move(PackageId),

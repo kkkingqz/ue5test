@@ -396,7 +396,8 @@ FBuildResult BuildRepository(
                 Package->GetPackageId(),
                 Package->GetLoadIndex(),
                 Binding->GetRelativePath(),
-                Diagnostics);
+                Diagnostics,
+                &SchemaRegistry);
             if (Resource.has_value())
             {
                 SchemaRegistry.Register(std::move(*Resource), Diagnostics);

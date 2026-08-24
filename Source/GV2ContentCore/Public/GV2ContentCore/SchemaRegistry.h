@@ -5,6 +5,7 @@
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/PackageDescriptor.h"
 #include "GV2ContentCore/FieldValidation.h"
+#include "GV2ContentCore/UiSchema.h"
 #include "GV2ContentCore/Value.h"
 
 #include <cstdint>
@@ -31,8 +32,11 @@ class GV2_CONTENT_CORE_API FSchemaResource final
 public:
     const FSchemaKey& GetKey() const { return Key; }
     const std::string& GetSchemaId() const { return SchemaId; }
+    bool IsUiSchema() const { return SchemaDomain.has_value(); }
+    std::optional<EUiSchemaDomain> GetSchemaDomain() const { return SchemaDomain; }
     const FValue& GetRootSpec() const { return RootSpec; }
     const FCompiledFieldSpecPtr& GetCompiledRootSpec() const { return CompiledRootSpec; }
+    const FCompiledUiFieldSpecPtr& GetCompiledUiRootSpec() const { return CompiledUiRootSpec; }
     const std::vector<std::string>& GetSemanticValidators() const { return SemanticValidators; }
     const FValue& GetExtensions() const { return Extensions; }
     const std::string& GetPackageId() const { return PackageId; }
@@ -44,8 +48,10 @@ private:
     FSchemaResource(
         FSchemaKey InKey,
         std::string InSchemaId,
+        std::optional<EUiSchemaDomain> InSchemaDomain,
         FValue InRootSpec,
         FCompiledFieldSpecPtr InCompiledRootSpec,
+        FCompiledUiFieldSpecPtr InCompiledUiRootSpec,
         std::vector<std::string> InSemanticValidators,
         FValue InExtensions,
         std::string InPackageId,
@@ -59,12 +65,15 @@ private:
         std::string,
         std::uint32_t,
         std::string,
-        std::vector<FDiagnostic>&);
+        std::vector<FDiagnostic>&,
+        const IUiSchemaResolver*);
 
     FSchemaKey Key;
     std::string SchemaId;
+    std::optional<EUiSchemaDomain> SchemaDomain;
     FValue RootSpec;
     FCompiledFieldSpecPtr CompiledRootSpec;
+    FCompiledUiFieldSpecPtr CompiledUiRootSpec;
     std::vector<std::string> SemanticValidators;
     FValue Extensions;
     std::string PackageId;
@@ -74,7 +83,7 @@ private:
 };
 
 /** Build-time registry; consumers use const exact lookup and never fall back by version. */
-class GV2_CONTENT_CORE_API FSchemaRegistry final
+class GV2_CONTENT_CORE_API FSchemaRegistry final : public IUiSchemaResolver
 {
 public:
     const FSchemaResource* Find(std::string_view DefinitionType, std::int64_t SchemaVersion) const;
@@ -82,6 +91,8 @@ public:
     std::size_t Num() const { return Resources.size(); }
 
     bool Register(FSchemaResource Resource, std::vector<FDiagnostic>& OutDiagnostics);
+
+    std::optional<FResolvedUiSchema> FindUiSchema(std::string_view SchemaId) const override;
 
 private:
     std::map<FSchemaKey, FSchemaResource> Resources;
@@ -94,5 +105,6 @@ GV2_CONTENT_CORE_API std::optional<FSchemaResource> ParseSchemaResource(
     std::string PackageId,
     std::uint32_t PackageLoadIndex,
     std::string RelativeSource,
-    std::vector<FDiagnostic>& OutDiagnostics);
+    std::vector<FDiagnostic>& OutDiagnostics,
+    const IUiSchemaResolver* UiResolver = nullptr);
 }
