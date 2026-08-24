@@ -23,7 +23,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **UPP-07 — Подготовленное дерево значений**
+- [x] **UPP-07 — Подготовленное дерево значений**
   - Портативный `FValue` внутри UE недостаточен: после подготовки появляются локализованный `FText`, разрешённая типографика, opaque binding handles и проверенные Stable ID.
   - Done: `FGV2PreparedUiValue`/`FGV2PreparedUiObject`/`FGV2PreparedUiArray` реализованы как приватное native-представление на `TVariant`, не `BlueprintType`; kinds — `Null`, `Boolean`, `Integer`, `Number`, `String`, `Key`, `Text`, `StableId`, `Binding`, `Object`, `Array`; `Key` и `String` — **разные** kinds, взаимное приведение отсутствует; подготовленный кандидат неизменяем после создания; порядок обхода свойств канонический и не зависит от порядка ключей парсера — тест на двух объектах с одинаковым набором ключей в разном порядке даёт одинаковый обход; есть `ToDebugString` с полным `property_path`.
   - Evidence: `Source/GV2/Public/UI/` или `Source/GV2/Private/UI/`, тесты дерева.
