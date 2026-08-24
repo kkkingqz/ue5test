@@ -7,8 +7,13 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/VerticalBox.h"
 #include "Components/ProgressBar.h"
+#include "Components/Image.h"
 #include "CommonTextBlock.h"
 #include "UI/GV2PanelWidgetBase.h"
+#include "UI/GV2TextWidgetBase.h"
+#include "UI/GV2ImageWidgetBase.h"
+#include "UI/GV2IconWidgetBase.h"
+#include "UI/GV2ButtonWidgetBase.h"
 #include "Engine/GameInstance.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -136,7 +141,114 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("Both unimplemented capabilities are reported, not skipped"), Failures.Num(), 2);
     }
 
+    // 3. UPP-12: UGV2TextWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2TextWidgetBase* TextWidget = CreateWidget<UGV2TextWidgetBase>(TestWorld, UGV2TextWidgetBase::StaticClass());
+        TextWidget->WidgetTree = NewObject<UWidgetTree>(TextWidget);
+        UCommonTextBlock* TextBlock = TextWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TextBlock"));
+        TextWidget->WidgetTree->RootWidget = TextBlock;
+
+        FGV2UiCapabilityBuilder Builder;
+        TextWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree TextCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> TextFailures;
+        const bool bTextObservable = RunUiCapabilityObservabilityHarness(TextWidget, TextCaps, TextFailures);
+        TestTrue(TEXT("UGV2TextWidgetBase capabilities are observable"), bTextObservable);
+        TestEqual(TEXT("No failures for UGV2TextWidgetBase"), TextFailures.Num(), 0);
+
+        // Detached / unbound TextBlock fails observability
+        UGV2TextWidgetBase* UnboundTextWidget = CreateWidget<UGV2TextWidgetBase>(TestWorld, UGV2TextWidgetBase::StaticClass());
+        UnboundTextWidget->WidgetTree = NewObject<UWidgetTree>(UnboundTextWidget);
+        TArray<FGV2UiObservabilityFailure> UnboundFailures;
+        const bool bUnboundObservable = RunUiCapabilityObservabilityHarness(UnboundTextWidget, TextCaps, UnboundFailures);
+        TestFalse(TEXT("Unbound UGV2TextWidgetBase fails observability"), bUnboundObservable);
+        TestEqual(TEXT("1 failure for unbound UGV2TextWidgetBase"), UnboundFailures.Num(), 1);
+    }
+
+    // 4. UPP-13: UGV2ImageWidgetBase and UGV2IconWidgetBase implement IGV2UiPropertyHost and are observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2ImageWidgetBase* ImageWidget = CreateWidget<UGV2ImageWidgetBase>(TestWorld, UGV2ImageWidgetBase::StaticClass());
+        ImageWidget->WidgetTree = NewObject<UWidgetTree>(ImageWidget);
+        UImage* InnerImage = ImageWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Image"));
+        ImageWidget->WidgetTree->RootWidget = InnerImage;
+        ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+
+        FGV2UiCapabilityBuilder Builder;
+        ImageWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree ImageCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> ImageFailures;
+        const bool bImageObservable = RunUiCapabilityObservabilityHarness(ImageWidget, ImageCaps, ImageFailures);
+        TestTrue(TEXT("UGV2ImageWidgetBase capabilities are observable"), bImageObservable);
+        TestEqual(TEXT("No failures for UGV2ImageWidgetBase with PreserveAspect"), ImageFailures.Num(), 0);
+
+        // Image with Unset scale policy fails observability
+        UGV2ImageWidgetBase* UnsetImageWidget = CreateWidget<UGV2ImageWidgetBase>(TestWorld, UGV2ImageWidgetBase::StaticClass());
+        UnsetImageWidget->WidgetTree = NewObject<UWidgetTree>(UnsetImageWidget);
+        UImage* InnerUnsetImage = UnsetImageWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Image"));
+        UnsetImageWidget->WidgetTree->RootWidget = InnerUnsetImage;
+        // Default scale policy is Unset
+
+        TArray<FGV2UiObservabilityFailure> UnsetFailures;
+        const bool bUnsetObservable = RunUiCapabilityObservabilityHarness(UnsetImageWidget, ImageCaps, UnsetFailures);
+        TestFalse(TEXT("UGV2ImageWidgetBase with Unset scale policy fails observability"), bUnsetObservable);
+        TestEqual(TEXT("1 failure for UGV2ImageWidgetBase with Unset policy"), UnsetFailures.Num(), 1);
+
+        // UGV2IconWidgetBase has PreserveAspect by default and is observable
+        UGV2IconWidgetBase* IconWidget = CreateWidget<UGV2IconWidgetBase>(TestWorld, UGV2IconWidgetBase::StaticClass());
+        IconWidget->WidgetTree = NewObject<UWidgetTree>(IconWidget);
+        UImage* InnerIcon = IconWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Image"));
+        IconWidget->WidgetTree->RootWidget = InnerIcon;
+
+        TArray<FGV2UiObservabilityFailure> IconFailures;
+        const bool bIconObservable = RunUiCapabilityObservabilityHarness(IconWidget, ImageCaps, IconFailures);
+        TestTrue(TEXT("UGV2IconWidgetBase capabilities are observable"), bIconObservable);
+        TestEqual(TEXT("No failures for UGV2IconWidgetBase"), IconFailures.Num(), 0);
+    }
+
+    // 5. UPP-14: UGV2ButtonWidgetBase implements IGV2UiPropertyHost and is observable
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        UGV2ButtonWidgetBase* ButtonWidget = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
+        ButtonWidget->WidgetTree = NewObject<UWidgetTree>(ButtonWidget);
+        UCommonTextBlock* LabelText = ButtonWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("LabelText"));
+        ButtonWidget->WidgetTree->RootWidget = LabelText;
+
+        FGV2UiCapabilityBuilder Builder;
+        ButtonWidget->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree ButtonCaps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> ButtonFailures;
+        const bool bButtonObservable = RunUiCapabilityObservabilityHarness(ButtonWidget, ButtonCaps, ButtonFailures);
+        TestTrue(TEXT("UGV2ButtonWidgetBase capabilities are observable"), bButtonObservable);
+        TestEqual(TEXT("No failures for UGV2ButtonWidgetBase"), ButtonFailures.Num(), 0);
+
+        // Detached/unbound LabelText fails observability for the 'text' capability
+        UGV2ButtonWidgetBase* UnboundButton = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
+        UnboundButton->WidgetTree = NewObject<UWidgetTree>(UnboundButton);
+        TArray<FGV2UiObservabilityFailure> UnboundFailures;
+        const bool bUnboundObservable = RunUiCapabilityObservabilityHarness(UnboundButton, ButtonCaps, UnboundFailures);
+        TestFalse(TEXT("Unbound UGV2ButtonWidgetBase fails observability"), bUnboundObservable);
+        TestEqual(TEXT("1 failure for unbound UGV2ButtonWidgetBase (missing LabelText target)"), UnboundFailures.Num(), 1);
+    }
+
     return true;
 }
 
 #endif
+

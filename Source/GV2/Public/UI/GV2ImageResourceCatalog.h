@@ -18,6 +18,7 @@ enum class EGV2ImageRenderMode : uint8
 UENUM(BlueprintType)
 enum class EGV2PrimitiveScalePolicy : uint8
 {
+    Unset = 0,
     FreeStretch,
     Tile,
     NineSlice,
@@ -28,6 +29,8 @@ inline bool IsScalePolicyCompatible(EGV2PrimitiveScalePolicy Policy, EGV2ImageRe
 {
     switch (Policy)
     {
+    case EGV2PrimitiveScalePolicy::Unset:
+        return false;
     case EGV2PrimitiveScalePolicy::FreeStretch:
         return RenderMode == EGV2ImageRenderMode::Tile;
     case EGV2PrimitiveScalePolicy::Tile:

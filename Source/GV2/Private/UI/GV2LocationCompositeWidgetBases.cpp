@@ -557,7 +557,9 @@ bool UGV2LocationCommandPanelWidgetBase::ApplyButtonModels(const TArray<FGV2Butt
         },
         [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
         {
-            if (!Button.ApplyButtonModel(Model)) return false;
+            Button.SetKey(Model.Key);
+            Button.SetBindingHandle(Model.Binding);
+            if (!Button.ApplyText(Model.Text)) return false;
             Button.OnBindingInvoked.AddUniqueDynamic(this, &ThisClass::HandleButtonBindingInvoked);
             return true;
         });

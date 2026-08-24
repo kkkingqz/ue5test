@@ -3,6 +3,7 @@
 #include "CommonTextBlock.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiTheme.h"
+#include "UI/GV2UiCapability.h"
 
 void UGV2TextWidgetBase::NativePreConstruct()
 {
@@ -28,4 +29,9 @@ FText UGV2TextWidgetBase::GetTextContent() const
 bool UGV2TextWidgetBase::ApplyCentralStyle_Implementation()
 {
     return TextBlock != nullptr && UGV2TextPipeline::Apply(TextBlock, CurrentContent);
+}
+
+void UGV2TextWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    OutBuilder.AddText(TEXT("text"), FName(TEXT("TextBlock")));
 }

@@ -35,9 +35,9 @@ BRIDGE_TYPES_PATH = REPO_ROOT / "Source" / "GV2" / "Public" / "Bridge" / "GV2Bri
 # migration change set proves it actually deleted its legacy adapter/DTO/union branch,
 # per the plan's rule 2 ("удаляет свой PrepareXxx/BuildXxx/DTO/ветку union").
 BASELINES = {
-    "prepare_build_functions": 30,
-    "screen_field_value_payload_members": 13,
-    "schema_specific_dtos": 20,
+    "prepare_build_functions": 28,
+    "screen_field_value_payload_members": 12,
+    "schema_specific_dtos": 19,
 }
 
 PREPARE_BUILD_PATTERN = re.compile(r"^bool (Prepare|Build)[A-Z][A-Za-z0-9_]*\(", re.MULTILINE)

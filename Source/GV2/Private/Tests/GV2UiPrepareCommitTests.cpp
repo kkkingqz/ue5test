@@ -222,6 +222,47 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("2 reset mutations for disowned properties"), ResetCount, 2);
     }
 
+    // 4. Child Prepare failure propagates to parent Prepare failure. This is a distinct
+    // code path from schema/capability incompatibility (scenario 1's BadSchema case fails
+    // at CheckUiSchemaCapabilityCompatibility, before any consumer ever runs): here the
+    // schema is fully compatible with the capability tree, but the target bound to 'text'
+    // is a UProgressBar instead of a UCommonTextBlock, so FGV2TextPropertyConsumer::Prepare
+    // itself rejects it. UPP-15 gate condition 2 requires this path to be provably load-
+    // bearing, not just present -- verified by rollback: silencing the child failure check
+    // in PrepareUiHostProperties (GV2UiMutationPlan.cpp) leaves this scenario green.
+    {
+        UUserWidget* Host = MakeTestHostWidget();
+        const FGV2UiCapabilityTree MisboundCaps = FGV2UiCapabilityBuilder()
+            .AddText(TEXT("text"), FName(TEXT("Bar"))) // wrong target type on purpose
+            .Build();
+
+        FCompiledUiFieldSpec Schema;
+        Schema.Kind = EUiFieldKind::Object;
+        Schema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+
+        FGV2TextViewModel TextModel;
+        TextModel.Text = FText::FromString(TEXT("ChildFailure"));
+        TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+        Fields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));
+        const TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(MoveTemp(Fields));
+        const FGV2PreparedUiObject EmptyPrev;
+
+        const float PercentBeforePrepare = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")))->GetPercent();
+
+        FGV2UiHostMutationPlan Plan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+        const bool bPrepared = PrepareUiHostProperties(
+            Host, MisboundCaps, *Candidate, Schema, TEXT("core:schema.ui_field.child_failure.v1"),
+            TEXT("screen.child_failure"), EmptyPrev, Plan, Diagnostics);
+
+        TestFalse(TEXT("Parent Prepare fails when child consumer Prepare fails"), bPrepared);
+        TestTrue(TEXT("Plan is empty: partial mutations are not staged past the failure"), Plan.IsEmpty());
+        TestTrue(TEXT("Diagnostics name the child Prepare failure, not swallowed"),
+            Diagnostics.Num() > 0 && Diagnostics[0].Code == TEXT("core:diagnostic.ui_mutation.prepare_failed"));
+        TestEqual(TEXT("Prepare purity holds even for a failed child: Bar percent unchanged"),
+            Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")))->GetPercent(), PercentBeforePrepare);
+    }
+
     return true;
 }
 

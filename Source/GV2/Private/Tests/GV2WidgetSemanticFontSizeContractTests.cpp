@@ -180,12 +180,12 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
             const float ActualRichTextSize = RichTextWidget->GetRichTextBlock()->GetDefaultTextStyle().Font.Size;
 
             // 3. Button widget: Apply via production path and read renderer control
-            FGV2ButtonViewModel ButtonModel;
-            ButtonModel.Key = TEXT("btn_test");
-            ButtonModel.Text.Text = FText::FromString(TEXT("Sample Button"));
-            ButtonModel.Text.StyleToken = Token;
-            ButtonModel.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
-            ButtonWidget->ApplyButtonModel(ButtonModel);
+            FGV2TextViewModel ButtonText;
+            ButtonText.Text = FText::FromString(TEXT("Sample Button"));
+            ButtonText.StyleToken = Token;
+            ButtonWidget->SetKey(TEXT("btn_test"));
+            ButtonWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("core:command.test")));
+            ButtonWidget->ApplyText(ButtonText);
             IGV2UiStyleConsumer::Execute_ApplyCentralStyle(ButtonWidget);
             const float ActualButtonSize = ButtonWidget->GetLabelText()->GetFont().Size;
 

@@ -3,6 +3,7 @@
 #include "Components/Image.h"
 #include "UI/GV2ImagePresentation.h"
 #include "UI/GV2UiTheme.h"
+#include "UI/GV2UiCapability.h"
 
 void UGV2ImageWidgetBase::PostLoad()
 {
@@ -84,45 +85,7 @@ bool UGV2ImageWidgetBase::ApplyCentralStyle_Implementation()
     return true;
 }
 
-FGV2ScreenFieldDescriptor UGV2ImageWidgetBase::GetScreenFieldDescriptor_Implementation() const
+void UGV2ImageWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    FGV2ScreenFieldDescriptor Desc;
-    Desc.FieldId = FieldId;
-    Desc.SchemaId = SchemaId;
-    Desc.bRequired = bIsRequired;
-    return Desc;
-}
-
-bool UGV2ImageWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const
-{
-    return Value.SchemaId == SchemaId && !Value.ImageValue.ResourceId.IsEmpty();
-}
-
-bool UGV2ImageWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
-{
-    FGV2ImageFieldViewModel Model;
-    Model.ResourceId = AppliedResourceId;
-    OutFieldValue = FGV2ScreenFieldValue::MakeImage(FieldId, Model);
-    return true;
-}
-
-bool UGV2ImageWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)
-{
-    if (!CanApplyScreenField_Implementation(Value))
-    {
-        return false;
-    }
-    FString Error;
-    return ApplyImageResource(Value.ImageValue.ResourceId, Error);
-}
-
-bool UGV2ImageWidgetBase::ResetScreenField_Implementation()
-{
-    AppliedResourceId.Reset();
-    ResolvedAspectRatio = 0.0f;
-    if (Image != nullptr)
-    {
-        Image->SetBrush(FSlateBrush());
-    }
-    return true;
+    OutBuilder.AddImage(TEXT("resource_id"), FName(TEXT("Image")), TEXT("resource"));
 }

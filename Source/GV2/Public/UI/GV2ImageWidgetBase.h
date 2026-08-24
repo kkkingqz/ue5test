@@ -2,9 +2,9 @@
 
 #include "CommonUserWidget.h"
 #include "Styling/SlateBrush.h"
-#include "UI/GV2DynamicScreenElement.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2UiStyleConsumer.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "GV2ImageWidgetBase.generated.h"
 
 class UImage;
@@ -12,8 +12,8 @@ class UImage;
 UCLASS(Blueprintable)
 class GV2_API UGV2ImageWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
     , public IGV2UiStyleConsumer
+    , public IGV2UiPropertyHost
 {
     GENERATED_BODY()
 
@@ -35,6 +35,12 @@ public:
     float GetResolvedAspectRatio() const;
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    float GetFixedAspectRatio() const
+    {
+        return FixedAspectRatio;
+    }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
     EGV2PrimitiveScalePolicy GetScalePolicy() const
     {
         return ScalePolicy;
@@ -46,14 +52,12 @@ public:
         ScalePolicy = InScalePolicy;
     }
 
-    // IGV2DynamicScreenElement
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;
-    virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
-    virtual bool ResetScreenField_Implementation() override;
-
     virtual bool ApplyCentralStyle_Implementation() override;
+
+    // IGV2UiPropertyHost
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
 protected:
     virtual void PostLoad() override;
@@ -63,16 +67,7 @@ protected:
     TObjectPtr<UImage> Image;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
-    FName FieldId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
-    FString SchemaId = TEXT("core:schema.ui_field.image.v1");
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
-    bool bIsRequired = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Image Contract")
-    EGV2PrimitiveScalePolicy ScalePolicy = EGV2PrimitiveScalePolicy::PreserveAspect;
+    EGV2PrimitiveScalePolicy ScalePolicy = EGV2PrimitiveScalePolicy::Unset;
 
     UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use ScalePolicy instead."))
     EGV2ImageRenderMode AcceptedRenderMode_DEPRECATED = EGV2ImageRenderMode::FixedAspect;
@@ -86,4 +81,5 @@ protected:
 private:
     FString AppliedResourceId;
     float ResolvedAspectRatio = 0.0f;
+    FGV2UiPropertyHostState PropertyHostState;
 };

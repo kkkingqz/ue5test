@@ -58,6 +58,8 @@ private:
     FGV2TextViewModel PreparedText;
 };
 
+#include "UI/GV2ImageResourceCatalog.h"
+
 /**
  * Image resource consumer: applies StableId(resource) strictly via FGV2ImagePresentation.
  * Direct SetBrush / SetBrushFromTexture calls on target widgets are prohibited.
@@ -73,6 +75,8 @@ public:
 
 private:
     FString PreparedResourceId;
+    EGV2PrimitiveScalePolicy PreparedScalePolicy = EGV2PrimitiveScalePolicy::Unset;
+    TOptional<float> PreparedFixedAspectRatio;
 };
 
 /**

@@ -3,6 +3,7 @@
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2UiBindingTarget.h"
+#include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
 #include "CommonTextBlock.h"
@@ -65,10 +66,13 @@ TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair
             FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("probe@1:2"))));
 
     case EGV2PreparedUiValueKind::StableId:
-        // Resolving a resource StableId requires a live content repository; the harness
-        // cannot synthesize a resolvable pair without one. Per Decision 4, this is a
-        // reported failure, not a skipped check -- a widget that migrates an image
-        // capability must supply its own resolvable probe pair when it adopts this harness.
+        if (Cap.TargetKind == TEXT("resource"))
+        {
+            return TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>(
+                FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")),
+                FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+        }
+        return TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>>();
     default:
         return TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>>();
     }
@@ -122,6 +126,12 @@ FCompiledUiFieldSpecPtr MakeMatchingFieldSpec(const FGV2UiPropertyCapability& Ca
         return std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text);
     case EGV2PreparedUiValueKind::Binding:
         return std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Binding);
+    case EGV2PreparedUiValueKind::StableId:
+    {
+        auto Spec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Ref);
+        Spec->RefTargetKind = Cap.TargetKind.IsEmpty() ? "resource" : TCHAR_TO_UTF8(*Cap.TargetKind);
+        return Spec;
+    }
     default:
         return nullptr;
     }
@@ -162,7 +172,13 @@ bool PrepareAndCommitSingleProperty(
         return false;
     }
 
-    UWidget* Target = HostWidget != nullptr ? HostWidget->GetWidgetFromName(Cap.TargetName) : nullptr;
+    UWidget* Target = nullptr;
+    if (HostWidget != nullptr)
+    {
+        Target = (Cap.TargetName != NAME_None)
+            ? HostWidget->GetWidgetFromName(Cap.TargetName)
+            : Cast<UWidget>(HostWidget);
+    }
     OutState = CaptureUiTargetState(Target);
     return true;
 }
@@ -193,6 +209,10 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     if (const IGV2UiBindingTarget* BindingTarget = Cast<IGV2UiBindingTarget>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("binding=\"%s\""), *BindingTarget->GetBindingHandle().ToString()));
+    }
+    if (const UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *Button->GetKey().ToString()));
     }
     return FString::Join(Parts, TEXT("|"));
 }

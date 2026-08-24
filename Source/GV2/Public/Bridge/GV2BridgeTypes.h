@@ -307,15 +307,6 @@ struct GV2_API FGV2InteractiveRichTextViewModel
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2ImageFieldViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Image")
-    FString ResourceId;
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2ProgressBarViewModel
 {
     GENERATED_BODY()
@@ -475,9 +466,6 @@ struct GV2_API FGV2ScreenFieldValue
     FGV2DropdownSelectViewModel DropdownSelectValue;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2ImageFieldViewModel ImageValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FGV2ProgressBarViewModel ProgressBarValue;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
@@ -549,17 +537,6 @@ struct GV2_API FGV2ScreenFieldValue
         Value.FieldId = InFieldId;
         Value.SchemaId = TEXT("core:schema.ui_field.dropdown_select.v1");
         Value.DropdownSelectValue = InValue;
-        return Value;
-    }
-
-    static FGV2ScreenFieldValue MakeImage(
-        const FName InFieldId,
-        const FGV2ImageFieldViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.image.v1");
-        Value.ImageValue = InValue;
         return Value;
     }
 

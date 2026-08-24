@@ -4,7 +4,9 @@
 #include "Components/ProgressBar.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImagePresentation.h"
+#include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
+#include "UI/GV2ButtonWidgetBase.h"
 
 // --- FGV2TextPropertyConsumer ---
 
@@ -100,7 +102,66 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
         return false;
     }
 
+    EGV2PrimitiveScalePolicy Policy = EGV2PrimitiveScalePolicy::Unset;
+    TOptional<float> FixedAspect;
+    if (UGV2ImageWidgetBase* ImageHost = Cast<UGV2ImageWidgetBase>(TargetWidget))
+    {
+        Policy = ImageHost->GetScalePolicy();
+        if (ImageHost->GetFixedAspectRatio() > 0.0f)
+        {
+            FixedAspect = ImageHost->GetFixedAspectRatio();
+        }
+    }
+    else if (UGV2ImageWidgetBase* OuterHost = TargetWidget->GetTypedOuter<UGV2ImageWidgetBase>())
+    {
+        Policy = OuterHost->GetScalePolicy();
+        if (OuterHost->GetFixedAspectRatio() > 0.0f)
+        {
+            FixedAspect = OuterHost->GetFixedAspectRatio();
+        }
+    }
+    else
+    {
+        Policy = EGV2PrimitiveScalePolicy::PreserveAspect;
+    }
+
+    if (Policy == EGV2PrimitiveScalePolicy::Unset)
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.unset_scale_policy: Primitive scale policy is Unset");
+        return false;
+    }
+
     PreparedResourceId = Value.AsStableId().Id;
+    PreparedScalePolicy = Policy;
+    PreparedFixedAspectRatio = FixedAspect;
+
+    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    if (Catalog == nullptr)
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.missing_catalog: Configured Image Resource Catalog is unavailable");
+        return false;
+    }
+
+    FGV2ResolvedImageResource Candidate;
+    if (!Catalog->Resolve(PreparedResourceId, Candidate, OutError))
+    {
+        return false;
+    }
+
+    if (!IsScalePolicyCompatible(PreparedScalePolicy, Candidate.RenderMode))
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.incompatible_scale_policy: Image resource render mode is incompatible with primitive scaling policy");
+        return false;
+    }
+
+    if (PreparedScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && PreparedFixedAspectRatio.IsSet()
+        && (!FMath::IsFinite(PreparedFixedAspectRatio.GetValue()) || PreparedFixedAspectRatio.GetValue() <= 0.0f
+            || !FMath::IsNearlyEqual(Candidate.FixedAspectRatio, PreparedFixedAspectRatio.GetValue(), 0.001f)))
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.aspect_ratio_mismatch: fixed_aspect resource ratio does not match the target block ratio");
+        return false;
+    }
+
     return true;
 }
 
@@ -120,7 +181,8 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
     }
 
     FGV2ResolvedImageResource Resolved;
-    return FGV2ImagePresentation::ResolveAndApply(ImageWidget, PreparedResourceId, EGV2PrimitiveScalePolicy::PreserveAspect, {}, Resolved, OutError);
+    return FGV2ImagePresentation::ResolveAndApply(
+        ImageWidget, PreparedResourceId, PreparedScalePolicy, PreparedFixedAspectRatio, Resolved, OutError);
 }
 
 void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
@@ -359,11 +421,19 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
         return false;
     }
 
+    if (UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
+    {
+        Button->SetKey(FName(*PreparedValue));
+    }
     return true;
 }
 
 void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
 {
+    if (UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
+    {
+        Button->SetKey(NAME_None);
+    }
     PreparedValue.Empty();
 }
 
@@ -383,6 +453,12 @@ bool FGV2BindingPropertyConsumer::Prepare(
     if (!TargetWidget)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.missing_target: Target widget is null for binding capability");
+        return false;
+    }
+
+    if (!Cast<IGV2UiBindingTarget>(TargetWidget))
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget does not implement IGV2UiBindingTarget");
         return false;
     }
 

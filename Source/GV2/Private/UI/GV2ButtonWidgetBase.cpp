@@ -4,6 +4,7 @@
 #include "UI/GV2UiTheme.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiInteractionEmitter.h"
+#include "UI/GV2UiCapability.h"
 
 void UGV2ButtonWidgetBase::NativePreConstruct()
 {
@@ -11,20 +12,35 @@ void UGV2ButtonWidgetBase::NativePreConstruct()
     ApplyCentralStyle_Implementation();
 }
 
-bool UGV2ButtonWidgetBase::ApplyButtonModel(const FGV2ButtonViewModel& InButtonModel)
+bool UGV2ButtonWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 {
-    if (LabelText != nullptr && !UGV2TextPipeline::Apply(LabelText, InButtonModel.Text))
+    CurrentTextStyleToken = InText.StyleToken;
+    if (LabelText != nullptr && !UGV2TextPipeline::Apply(LabelText, InText))
     {
         return false;
     }
-    ButtonModel = InButtonModel;
-    SetIsEnabled(ButtonModel.Binding.IsValid());
     return true;
 }
 
-FGV2ButtonViewModel UGV2ButtonWidgetBase::GetButtonModel() const
+void UGV2ButtonWidgetBase::SetKey(FName InKey)
 {
-    return ButtonModel;
+    Key = InKey;
+}
+
+FName UGV2ButtonWidgetBase::GetKey() const
+{
+    return Key;
+}
+
+void UGV2ButtonWidgetBase::SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle)
+{
+    BindingHandle = InBindingHandle;
+    SetIsEnabled(BindingHandle.IsValid());
+}
+
+FGV2UiBindingHandle UGV2ButtonWidgetBase::GetBindingHandle() const
+{
+    return BindingHandle;
 }
 
 void UGV2ButtonWidgetBase::SetAutomaticInteractionSubmission(const bool bEnabled)
@@ -41,9 +57,9 @@ bool UGV2ButtonWidgetBase::ApplyCentralStyle_Implementation()
         return false;
     }
     SetStyle(Theme->ButtonStyle);
-    const TSubclassOf<UCommonTextStyle> LabelStyle = ButtonModel.Text.StyleToken.IsNone()
+    const TSubclassOf<UCommonTextStyle> LabelStyle = CurrentTextStyleToken.IsNone()
         ? Theme->ButtonLabelStyle
-        : UGV2TextPipeline::ResolveStyleClass(ButtonModel.Text.StyleToken);
+        : UGV2TextPipeline::ResolveStyleClass(CurrentTextStyleToken);
     if (LabelStyle == nullptr) return false;
     LabelText->SetStyle(LabelStyle);
     return true;
@@ -53,14 +69,21 @@ void UGV2ButtonWidgetBase::NativeOnClicked()
 {
     Super::NativeOnClicked();
 
-    OnActivated.Broadcast(ButtonModel.Key);
+    OnActivated.Broadcast(Key);
     if (!bAutomaticInteractionSubmission)
     {
         return;
     }
 
     const EGV2SubmitUiInteractionResult Result =
-        FGV2UiInteractionEmitter::Submit(this, ButtonModel.Binding, {});
+        FGV2UiInteractionEmitter::Submit(this, BindingHandle, {});
 
-    OnBindingInvoked.Broadcast(ButtonModel.Binding, Result);
+    OnBindingInvoked.Broadcast(BindingHandle, Result);
+}
+
+void UGV2ButtonWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    OutBuilder.AddText(TEXT("text"), FName(TEXT("LabelText")));
+    OutBuilder.AddBinding(TEXT("binding"), NAME_None);
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }

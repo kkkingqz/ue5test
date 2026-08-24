@@ -259,9 +259,9 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         }
     }
     TestEqual(
-        TEXT("Adapter registry contains all 14 baseline and LocationScreen schemas"),
+        TEXT("Adapter registry contains all 13 baseline and LocationScreen schemas (image migrated off, UPP-13)"),
         FGV2ScreenFieldAdapterRegistry::Get().Num(),
-        14);
+        13);
 
     FString ScreenTemplatesContract;
     if (ReadSource(
@@ -688,51 +688,14 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     }
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TestEqual(TEXT("Registry contains all 14 baseline and LocationScreen schemas"), Registry.Num(), 14);
+    TestEqual(TEXT("Registry contains all 13 baseline and LocationScreen schemas (image migrated off, UPP-13)"), Registry.Num(), 13);
     TestNotNull(TEXT("Location top bar adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_top_bar.v1"));
     TestNotNull(TEXT("Location player status adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_player_status.v1"));
     TestNotNull(TEXT("Location scene adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_scene.v1"));
     TestNotNull(TEXT("Location commands adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_commands.v1"));
 
-    // 1. Image Adapter (core:schema.ui_field.image.v1)
-    {
-        GV2RuntimeCore::FScreenRequest ValidReq;
-        ValidReq.ScreenId = "core:screen.test";
-        GV2RuntimeCore::FScreenField ImgField;
-        ImgField.FieldId = "illustration";
-        ImgField.SchemaId = "core:schema.ui_field.image.v1";
-        GV2RuntimeCore::FValue::FObject ImgObj;
-        ImgObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.image.test"));
-        ImgField.Value = GV2RuntimeCore::FValue(MoveTemp(ImgObj));
-        ValidReq.Fields.push_back(MoveTemp(ImgField));
-
-        TArray<FGV2UiBindingDefinition> Defs;
-        TestTrue(TEXT("Image schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
-        TestEqual(TEXT("Image schema creates 0 binding definitions"), Defs.Num(), 0);
-
-        TArray<FGV2ScreenFieldValue> BuiltFields;
-        TestTrue(TEXT("Image schema build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
-        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
-        if (BuiltFields.Num() == 1)
-        {
-            TestEqual(TEXT("FieldId is illustration"), BuiltFields[0].FieldId, FName(TEXT("illustration")));
-            TestEqual(TEXT("SchemaId is image.v1"), BuiltFields[0].SchemaId, FString(TEXT("core:schema.ui_field.image.v1")));
-            TestEqual(TEXT("ResourceId is core:resource.image.test"), BuiltFields[0].ImageValue.ResourceId, FString(TEXT("core:resource.image.test")));
-        }
-
-        // Negative: missing / invalid resource_id
-        GV2RuntimeCore::FScreenRequest InvalidReq;
-        InvalidReq.ScreenId = "core:screen.test";
-        GV2RuntimeCore::FScreenField BadField;
-        BadField.FieldId = "illustration";
-        BadField.SchemaId = "core:schema.ui_field.image.v1";
-        GV2RuntimeCore::FValue::FObject BadObj;
-        BadObj["resource_id"] = GV2RuntimeCore::FValue(std::string("invalid_format_id"));
-        BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
-        InvalidReq.Fields.push_back(MoveTemp(BadField));
-        TArray<FGV2UiBindingDefinition> BadDefs;
-        TestFalse(TEXT("Invalid resource_id is rejected"), Registry.PrepareBindingDefinitions(InvalidReq, BadDefs));
-    }
+    // 1. Image Adapter removed from legacy registry (UPP-13)
+    TestNull(TEXT("Image adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.image.v1"));
 
     // 2. ProgressBar Adapter (core:schema.ui_field.progress_bar.v1)
     {
@@ -1050,8 +1013,10 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Transient image widget created"), Image);
         if (Image != nullptr)
         {
-            const FGV2ScreenFieldDescriptor Desc = Image->GetScreenFieldDescriptor_Implementation();
-            TestEqual(TEXT("Image schema is image.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.image.v1")));
+            FGV2UiCapabilityBuilder Builder;
+            Image->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Caps = Builder.Build();
+            TestTrue(TEXT("Image declares resource_id capability"), Caps.Properties.Contains(TEXT("resource_id")));
         }
     }
 
@@ -5075,15 +5040,18 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
                 RichTextWidget->ApplyInteractiveRichText(RichModel);
             }
 
-            FGV2ButtonViewModel BtnModel;
-            BtnModel.Key = FName(TEXT("ok"));
-            BtnModel.Text.Text = FText::FromString(TEXT("Button"));
-            BtnModel.Text.StyleToken = FName(TEXT("body"));
-            BtnModel.Binding = FGV2UiBindingHandle::Create(TEXT("btn_ok"));
+            FGV2TextViewModel BtnText;
+            BtnText.Text = FText::FromString(TEXT("Button"));
+            BtnText.StyleToken = FName(TEXT("body"));
+            const FName BtnKey = FName(TEXT("ok"));
+            const FGV2UiBindingHandle BtnBinding = FGV2UiBindingHandle::Create(TEXT("btn_ok"));
             if (ButtonWidget)
             {
-                ButtonWidget->ApplyButtonModel(BtnModel);
-                TestEqual(TEXT("Button Key matches"), ButtonWidget->GetButtonModel().Key, BtnModel.Key);
+                ButtonWidget->SetKey(BtnKey);
+                ButtonWidget->SetBindingHandle(BtnBinding);
+                ButtonWidget->ApplyText(BtnText);
+                TestEqual(TEXT("Button Key matches"), ButtonWidget->GetKey(), BtnKey);
+                TestEqual(TEXT("Button Binding matches"), ButtonWidget->GetBindingHandle(), BtnBinding);
             }
 
             FGV2InputFieldViewModel InputModel;

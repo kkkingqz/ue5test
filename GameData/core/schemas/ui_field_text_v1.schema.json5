@@ -1,0 +1,14 @@
+{
+  id: "core:schema.ui_field.text.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      text: {
+        kind: "text",
+        required: true,
+      },
+    },
+  },
+}

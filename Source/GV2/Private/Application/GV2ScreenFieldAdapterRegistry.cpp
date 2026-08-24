@@ -15,7 +15,6 @@ constexpr std::string_view RichTextSchema = "core:schema.ui_field.rich_text.v3";
 constexpr std::string_view CheckboxSchema = "core:schema.ui_field.checkbox.v1";
 constexpr std::string_view InputFieldSchema = "core:schema.ui_field.input_field.v1";
 constexpr std::string_view DropdownSelectSchema = "core:schema.ui_field.dropdown_select.v1";
-constexpr std::string_view ImageSchema = "core:schema.ui_field.image.v1";
 constexpr std::string_view ProgressBarSchema = "core:schema.ui_field.progress_bar.v1";
 constexpr std::string_view PortraitSchema = "core:schema.ui_field.portrait.v1";
 constexpr std::string_view ModalSchema = "core:schema.ui_field.modal.v1";
@@ -710,41 +709,7 @@ bool BuildDropdown(
     return true;
 }
 
-bool PrepareImage(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
-    const std::string* ResourceId = FindString(Value, "resource_id");
-    if (ResourceId == nullptr || ResourceId->empty()
-        || !GV2RuntimeCore::FStableId::IsOfKind(*ResourceId, "resource"))
-    {
-        return false;
-    }
-    return true;
-}
-
-bool BuildImageField(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"resource_id"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const std::string* ResourceId = FindString(Value, "resource_id");
-    if (ResourceId == nullptr) return false;
-    FGV2ImageFieldViewModel Model;
-    Model.ResourceId = UTF8_TO_TCHAR(ResourceId->c_str());
-    OutField = FGV2ScreenFieldValue::MakeImage(FName(*FieldId(Field)), Model);
-    return true;
-}
 
 bool PrepareProgressBar(
     const std::string& ScreenId,
@@ -1492,7 +1457,6 @@ FGV2ScreenFieldAdapterRegistry::FGV2ScreenFieldAdapterRegistry()
         {CheckboxSchema, &PrepareCheckbox, &BuildCheckbox},
         {InputFieldSchema, &PrepareInputField, &BuildInputField},
         {DropdownSelectSchema, &PrepareDropdown, &BuildDropdown},
-        {ImageSchema, &PrepareImage, &BuildImageField},
         {ProgressBarSchema, &PrepareProgressBar, &BuildProgressBarField},
         {PortraitSchema, &PreparePortrait, &BuildPortraitField},
         {ModalSchema, &PrepareModal, &BuildModalField},

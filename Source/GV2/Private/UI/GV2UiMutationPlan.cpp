@@ -44,9 +44,11 @@ bool PrepareUiHostProperties(
         }
 
         UWidget* TargetWidget = nullptr;
-        if (HostWidget && Cap.TargetName != NAME_None)
+        if (HostWidget)
         {
-            TargetWidget = HostWidget->GetWidgetFromName(Cap.TargetName);
+            TargetWidget = (Cap.TargetName != NAME_None)
+                ? HostWidget->GetWidgetFromName(Cap.TargetName)
+                : Cast<UWidget>(HostWidget);
         }
 
         if (bSchemaOwns)

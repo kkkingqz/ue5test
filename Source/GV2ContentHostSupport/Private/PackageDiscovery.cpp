@@ -352,20 +352,52 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
 
         const FValue* IdField = Parsed->IsObject() ? Parsed->FindField("id") : nullptr;
         const FValue* TypeField = Parsed->IsObject() ? Parsed->FindField("definition_type") : nullptr;
+        const FValue* SchemaDomainField = Parsed->IsObject() ? Parsed->FindField("schema_domain") : nullptr;
         const FValue* SchemaVersionField = Parsed->IsObject() ? Parsed->FindField("schema_version") : nullptr;
+        const bool bHasType = TypeField && TypeField->IsString();
+        const bool bHasDomain = SchemaDomainField && SchemaDomainField->IsString();
         if (!IdField || !IdField->IsString()
-            || !TypeField || !TypeField->IsString()
+            || (!bHasType && !bHasDomain)
             || !SchemaVersionField || !SchemaVersionField->IsInteger())
         {
             FDiagnostic Diagnostic;
             Diagnostic.Code = "core:diagnostic.package.discovery.schema_missing_fields";
             Diagnostic.Severity = EDiagnosticSeverity::Error;
             Diagnostic.Message =
-                "schema resource must declare a string 'id', string 'definition_type' and integer 'schema_version'";
+                "schema resource must declare a string 'id', string 'definition_type' or 'schema_domain' and integer 'schema_version'";
             Diagnostic.PackageId = ResolvedPackageId;
             Diagnostic.RelativeSource = RelativePath;
             LocalDiagnostics.push_back(std::move(Diagnostic));
             continue;
+        }
+
+        std::string BoundType;
+        if (bHasType)
+        {
+            BoundType = TypeField->AsString();
+        }
+        else
+        {
+            using namespace GV2ContentCore;
+            FStableIdView IdView;
+            if (FStableId::Parse(IdField->AsString(), IdView))
+            {
+                std::string SchemaIdPath(IdView.Path);
+                const auto LastDot = SchemaIdPath.rfind('.');
+                if (LastDot != std::string::npos && LastDot + 2 < SchemaIdPath.size() && SchemaIdPath[LastDot + 1] == 'v')
+                {
+                    SchemaIdPath = SchemaIdPath.substr(0, LastDot);
+                }
+                for (char& C : SchemaIdPath)
+                {
+                    if (C == '.') C = '_';
+                }
+                BoundType = SchemaIdPath;
+            }
+            else
+            {
+                BoundType = SchemaDomainField->AsString();
+            }
         }
 
         const FValue* ExtensionSiteField = Parsed->IsObject() ? Parsed->FindField("extension_site") : nullptr;
@@ -376,7 +408,7 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
                 ? ExtensionNamespaceField->AsString()
                 : ResolvedPackageId;
             ExtensionSchemaBindings.emplace_back(
-                TypeField->AsString(),
+                BoundType,
                 SchemaVersionField->AsInteger(),
                 ExtensionSiteField->AsString(),
                 ExtensionNamespace,
@@ -386,7 +418,7 @@ std::optional<GV2ContentCore::FPackageDescriptor> DiscoverPackageFromDirectory(
         else
         {
             SchemaBindings.emplace_back(
-                TypeField->AsString(), SchemaVersionField->AsInteger(), IdField->AsString(), RelativePath);
+                BoundType, SchemaVersionField->AsInteger(), IdField->AsString(), RelativePath);
         }
     }
 
