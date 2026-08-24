@@ -625,4 +625,414 @@ FCompiledUiFieldSpecPtr CompileUiFieldSpec(
 
     return OutDiagnostics.size() == InitialCount ? Result : nullptr;
 }
+
+namespace
+{
+bool IsValidUiKey(const std::string_view Key)
+{
+    if (Key.empty() || Key.length() > 192)
+    {
+        return false;
+    }
+    for (const char C : Key)
+    {
+        if (!((C >= 'a' && C <= 'z') || (C >= '0' && C <= '9') || C == '_' || C == '-' || C == '.' || C == '@' || C == ':'))
+        {
+            return false;
+        }
+    }
+    if (Key.rfind("text:", 0) == 0 || FStableId::IsOfKind(Key, "text"))
+    {
+        return false;
+    }
+    return true;
+}
+
+bool ValidateTextSpec(
+    const FValue& Value,
+    const FParsedDocument* Document,
+    const std::string& Pointer,
+    const FValidationDiagnosticContext& Context,
+    std::vector<FDiagnostic>& Diagnostics)
+{
+    if (!Value.IsObject())
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.invalid_text_spec",
+            "TextSpec must be an object",
+            Document, Pointer, Context));
+        return false;
+    }
+
+    static const std::set<std::string_view> AllowedKeys = { "text_id", "style", "args" };
+    for (const auto& [Key, Child] : Value.AsObject())
+    {
+        (void)Child;
+        if (!AllowedKeys.contains(Key))
+        {
+            Diagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.unknown_field",
+                "Unknown field in TextSpec: " + Key,
+                Document, ChildPointer(Pointer, Key), Context));
+            return false;
+        }
+    }
+
+    const FValue* TextId = Value.FindField("text_id");
+    if (TextId == nullptr || !TextId->IsString() || !FStableId::IsOfKind(TextId->AsString(), "text"))
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.invalid_text_spec",
+            "TextSpec requires text_id as a valid Stable ID of kind 'text'",
+            Document, ChildPointer(Pointer, "text_id"), Context));
+        return false;
+    }
+
+    if (const FValue* Style = Value.FindField("style"); Style != nullptr && !Style->IsString())
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.invalid_text_spec",
+            "TextSpec style must be a string",
+            Document, ChildPointer(Pointer, "style"), Context));
+        return false;
+    }
+
+    if (const FValue* Args = Value.FindField("args"); Args != nullptr && !Args->IsObject())
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.invalid_text_spec",
+            "TextSpec args must be an object",
+            Document, ChildPointer(Pointer, "args"), Context));
+        return false;
+    }
+
+    return true;
+}
+
+bool ValidateBindingSpec(
+    const FValue& Value,
+    const std::optional<std::string>& InputSchemaId,
+    const FParsedDocument* Document,
+    const std::string& Pointer,
+    const FValidationDiagnosticContext& Context,
+    std::vector<FDiagnostic>& Diagnostics)
+{
+    (void)InputSchemaId;
+    if (!Value.IsObject())
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.invalid_binding_spec",
+            "BindingSpec must be an object",
+            Document, Pointer, Context));
+        return false;
+    }
+
+    static const std::set<std::string_view> AllowedKeys = { "command_id", "args" };
+    for (const auto& [Key, Child] : Value.AsObject())
+    {
+        (void)Child;
+        if (!AllowedKeys.contains(Key))
+        {
+            Diagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.unknown_field",
+                "Unknown field in BindingSpec: " + Key,
+                Document, ChildPointer(Pointer, Key), Context));
+            return false;
+        }
+    }
+
+    const FValue* CommandId = Value.FindField("command_id");
+    if (CommandId == nullptr || !CommandId->IsString() || !FStableId::IsOfKind(CommandId->AsString(), "command"))
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.invalid_binding_spec",
+            "BindingSpec requires command_id as a valid Stable ID of kind 'command'",
+            Document, ChildPointer(Pointer, "command_id"), Context));
+        return false;
+    }
+
+    if (const FValue* Args = Value.FindField("args"); Args != nullptr && !Args->IsObject())
+    {
+        Diagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.invalid_binding_spec",
+            "BindingSpec args must be an object",
+            Document, ChildPointer(Pointer, "args"), Context));
+        return false;
+    }
+
+    return true;
+}
+} // anonymous namespace
+
+bool ValidateUiFieldValue(
+    const FValue& Value,
+    const FCompiledUiFieldSpec& FieldSpec,
+    FValue& OutMaterializedValue,
+    const FParsedDocument* ValueDocument,
+    std::string ValueJsonPointer,
+    const FValidationDiagnosticContext& Context,
+    std::vector<FDiagnostic>& OutDiagnostics)
+{
+    const std::size_t InitialCount = OutDiagnostics.size();
+    const std::string& Pointer = ValueJsonPointer;
+
+    if (Value.IsNull())
+    {
+        if (FieldSpec.bNullable)
+        {
+            OutMaterializedValue = FValue::MakeNull();
+            return true;
+        }
+        OutDiagnostics.push_back(MakeDiagnostic(
+            "core:diagnostic.ui_schema.value.null_not_allowed",
+            "Null value is not allowed for non-nullable UI field",
+            ValueDocument, Pointer, Context));
+        return false;
+    }
+
+    switch (FieldSpec.Kind)
+    {
+    case EUiFieldKind::Scalar:
+    {
+        if (!FieldSpec.Scalar.has_value())
+        {
+            return false;
+        }
+        if (ValidateScalarValue(
+            Value, *FieldSpec.Scalar, ValueDocument, Pointer, Context, OutDiagnostics))
+        {
+            OutMaterializedValue = Value;
+            return true;
+        }
+        return false;
+    }
+    case EUiFieldKind::Key:
+    {
+        if (!Value.IsString())
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_type",
+                "Key field must be a string",
+                ValueDocument, Pointer, Context));
+            return false;
+        }
+        const std::string& KeyStr = Value.AsString();
+        if (!IsValidUiKey(KeyStr))
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_key",
+                "Key '" + KeyStr + "' violates key grammar [a-z0-9_.@:-]+ (1..192) or is a text ID",
+                ValueDocument, Pointer, Context));
+            return false;
+        }
+        OutMaterializedValue = Value;
+        return true;
+    }
+    case EUiFieldKind::Text:
+    {
+        if (!ValidateTextSpec(Value, ValueDocument, Pointer, Context, OutDiagnostics))
+        {
+            return false;
+        }
+        OutMaterializedValue = Value;
+        return true;
+    }
+    case EUiFieldKind::Ref:
+    {
+        if (!Value.IsString())
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_type",
+                "Ref field must be a Stable ID string",
+                ValueDocument, Pointer, Context));
+            return false;
+        }
+        const std::string& RefStr = Value.AsString();
+        if (!FStableId::IsOfKind(RefStr, FieldSpec.RefTargetKind))
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_stable_id",
+                "Ref '" + RefStr + "' is not a valid Stable ID of expected target kind '" + FieldSpec.RefTargetKind + "'",
+                ValueDocument, Pointer, Context));
+            return false;
+        }
+        OutMaterializedValue = Value;
+        return true;
+    }
+    case EUiFieldKind::Binding:
+    {
+        if (!ValidateBindingSpec(Value, FieldSpec.BindingInputSchemaId, ValueDocument, Pointer, Context, OutDiagnostics))
+        {
+            return false;
+        }
+        OutMaterializedValue = Value;
+        return true;
+    }
+    case EUiFieldKind::Object:
+    {
+        if (!Value.IsObject())
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_type",
+                "Object field must be an object",
+                ValueDocument, Pointer, Context));
+            return false;
+        }
+
+        const auto& InputMap = Value.AsObject();
+
+        // 1. Closed object check: no unknown keys allowed!
+        for (const auto& [Key, ChildVal] : InputMap)
+        {
+            (void)ChildVal;
+            const auto It = std::find_if(
+                FieldSpec.Fields.begin(), FieldSpec.Fields.end(),
+                [&Key](const FCompiledUiObjectField& F) { return F.Name == Key; });
+            if (It == FieldSpec.Fields.end())
+            {
+                OutDiagnostics.push_back(MakeDiagnostic(
+                    "core:diagnostic.ui_schema.value.unknown_field",
+                    "Unknown field in UI object: " + Key,
+                    ValueDocument, ChildPointer(Pointer, Key), Context));
+            }
+        }
+
+        FValue::FObject MaterializedFields;
+
+        // 2. Validate all declared fields and handle defaults/missing
+        for (const auto& Field : FieldSpec.Fields)
+        {
+            const FValue* FieldVal = Value.FindField(Field.Name);
+            if (FieldVal == nullptr)
+            {
+                if (Field.bRequired)
+                {
+                    OutDiagnostics.push_back(MakeDiagnostic(
+                        "core:diagnostic.ui_schema.value.missing_field",
+                        "Missing required field: " + Field.Name,
+                        ValueDocument, Pointer, Context));
+                }
+                else if (Field.Spec->DefaultValue.has_value())
+                {
+                    MaterializedFields.push_back(std::make_pair(Field.Name, *Field.Spec->DefaultValue));
+                }
+            }
+            else
+            {
+                FValue ChildMaterialized;
+                if (ValidateUiFieldValue(
+                    *FieldVal, *Field.Spec, ChildMaterialized,
+                    ValueDocument, ChildPointer(Pointer, Field.Name), Context, OutDiagnostics))
+                {
+                    MaterializedFields.push_back(std::make_pair(Field.Name, std::move(ChildMaterialized)));
+                }
+            }
+        }
+
+        if (OutDiagnostics.size() == InitialCount)
+        {
+            OutMaterializedValue = FValue::MakeObject(std::move(MaterializedFields));
+            return true;
+        }
+        return false;
+    }
+    case EUiFieldKind::Array:
+    {
+        if (!Value.IsArray())
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_type",
+                "Array field must be an array",
+                ValueDocument, Pointer, Context));
+            return false;
+        }
+
+        const auto& InputArray = Value.AsArray();
+        if (FieldSpec.MinimumItems.has_value() && InputArray.size() < *FieldSpec.MinimumItems)
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_item_count",
+                "Array has fewer items (" + std::to_string(InputArray.size()) + ") than minimum " + std::to_string(*FieldSpec.MinimumItems),
+                ValueDocument, Pointer, Context));
+        }
+        if (FieldSpec.MaximumItems.has_value() && InputArray.size() > *FieldSpec.MaximumItems)
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_item_count",
+                "Array has more items (" + std::to_string(InputArray.size()) + ") than maximum " + std::to_string(*FieldSpec.MaximumItems),
+                ValueDocument, Pointer, Context));
+        }
+
+        std::set<std::string> SeenKeys;
+        std::vector<FValue> MaterializedItems;
+        MaterializedItems.reserve(InputArray.size());
+
+        for (std::size_t Index = 0; Index < InputArray.size(); ++Index)
+        {
+            const std::string ItemPointer = ChildPointer(Pointer, std::to_string(Index));
+            const FValue& ItemVal = InputArray[Index];
+
+            // If keyed_by is set, check duplicate key
+            if (FieldSpec.KeyedBy.has_value() && ItemVal.IsObject())
+            {
+                if (const FValue* KeyVal = ItemVal.FindField(*FieldSpec.KeyedBy))
+                {
+                    if (KeyVal->IsString())
+                    {
+                        const std::string& KeyStr = KeyVal->AsString();
+                        if (SeenKeys.contains(KeyStr))
+                        {
+                            OutDiagnostics.push_back(MakeDiagnostic(
+                                "core:diagnostic.ui_schema.value.duplicate_key",
+                                "Duplicate key '" + KeyStr + "' in keyed collection",
+                                ValueDocument, ChildPointer(ItemPointer, *FieldSpec.KeyedBy), Context));
+                        }
+                        else
+                        {
+                            SeenKeys.insert(KeyStr);
+                        }
+                    }
+                }
+            }
+
+            if (FieldSpec.Items != nullptr)
+            {
+                FValue ItemMaterialized;
+                if (ValidateUiFieldValue(
+                    ItemVal, *FieldSpec.Items, ItemMaterialized,
+                    ValueDocument, ItemPointer, Context, OutDiagnostics))
+                {
+                    MaterializedItems.push_back(std::move(ItemMaterialized));
+                }
+            }
+            else
+            {
+                MaterializedItems.push_back(ItemVal);
+            }
+        }
+
+        if (OutDiagnostics.size() == InitialCount)
+        {
+            OutMaterializedValue = FValue::MakeArray(std::move(MaterializedItems));
+            return true;
+        }
+        return false;
+    }
+    case EUiFieldKind::ScreenFields:
+    {
+        if (!Value.IsArray() && !Value.IsObject())
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_type",
+                "ScreenFields must be an array or object of nested screen field specifications",
+                ValueDocument, Pointer, Context));
+            return false;
+        }
+        OutMaterializedValue = Value;
+        return true;
+    }
+    }
+
+    return OutDiagnostics.size() == InitialCount;
+}
 }

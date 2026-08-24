@@ -31,12 +31,31 @@ FCompiledUiFieldSpecPtr CompileUiCase(
     OutDiagnostics.clear();
     return CompileUiFieldSpec(OutDocument->GetRootValue(), &*OutDocument, "", Context, OutDiagnostics, Resolver);
 }
+
+bool ValidateUiValueCase(
+    const FCompiledUiFieldSpec& FieldSpec,
+    const std::string_view ValueJson,
+    FValue& OutMaterialized,
+    std::optional<FParsedDocument>& OutValueDoc,
+    std::vector<FDiagnostic>& OutDiagnostics,
+    std::optional<std::string> SchemaId = std::nullopt)
+{
+    OutDiagnostics.clear();
+    OutValueDoc = ParseJson5Document(ValueJson, FParseLimits{}, OutDiagnostics);
+    if (!OutValueDoc.has_value() || !OutDiagnostics.empty()) return false;
+    FValidationDiagnosticContext Context;
+    if (SchemaId.has_value()) Context.SchemaId = *SchemaId;
+    OutDiagnostics.clear();
+    return ValidateUiFieldValue(OutValueDoc->GetRootValue(), FieldSpec, OutMaterialized, &*OutValueDoc, "", Context, OutDiagnostics);
+}
 }
 
 std::string RunUiSchemaConformance()
 {
     std::optional<FParsedDocument> Document;
+    std::optional<FParsedDocument> ValueDoc;
     std::vector<FDiagnostic> Diagnostics;
+    FValue Materialized;
 
     // 0. schema_domain: round-trips valid values, rejects an unknown one.
     if (ParseUiSchemaDomain("ui_field") != std::optional(EUiSchemaDomain::UiField)
@@ -482,6 +501,325 @@ std::string RunUiSchemaConformance()
             || Diagnostics.front().Code != "core:diagnostic.ui_schema.field_spec.invalid_default")
         {
             return "ui_schema.schema_ref.invalid_default";
+        }
+    }
+
+    // --- UPP-04: Portable UI Value Validation Conformance ---
+
+    // 25. value.scalar: positive and negative range/type.
+    {
+        const auto Spec = CompileUiCase("{kind:'integer', min:1, max:100}", Document, Diagnostics);
+        if (Spec == nullptr) return "ui_value.scalar.spec_failed";
+
+        // Positive
+        if (!ValidateUiValueCase(*Spec, "42", Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty() || Materialized.AsInteger() != 42)
+        {
+            return "ui_value.scalar.integer.positive";
+        }
+
+        // Negative: out of range
+        if (ValidateUiValueCase(*Spec, "200", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.schema.value.constraint_failed")
+        {
+            return "ui_value.scalar.integer.range_negative";
+        }
+
+        // Negative: type mismatch
+        if (ValidateUiValueCase(*Spec, "'not_an_int'", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.schema.value.type_mismatch")
+        {
+            return "ui_value.scalar.integer.type_negative";
+        }
+    }
+
+    // 26. value.nullability: positive and negative.
+    {
+        const auto NonNullSpec = CompileUiCase("{kind:'integer'}", Document, Diagnostics);
+        const auto NullableSpec = CompileUiCase("{kind:'integer', nullable:true}", Document, Diagnostics);
+        if (NonNullSpec == nullptr || NullableSpec == nullptr) return "ui_value.nullability.spec_failed";
+
+        // Positive nullable
+        if (!ValidateUiValueCase(*NullableSpec, "null", Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty() || !Materialized.IsNull())
+        {
+            return "ui_value.nullability.positive";
+        }
+
+        // Negative non-nullable
+        if (ValidateUiValueCase(*NonNullSpec, "null", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.null_not_allowed")
+        {
+            return "ui_value.nullability.negative";
+        }
+    }
+
+    // 27. value.key: positive grammar and negative (invalid chars, text-derived id, non-string).
+    {
+        const auto Spec = CompileUiCase("{kind:'key'}", Document, Diagnostics);
+        if (Spec == nullptr) return "ui_value.key.spec_failed";
+
+        // Positive key grammar
+        if (!ValidateUiValueCase(*Spec, "'tab_main.btn-1@alpha:sub'", Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty() || Materialized.AsString() != "tab_main.btn-1@alpha:sub")
+        {
+            return "ui_value.key.positive";
+        }
+
+        // Negative: non-string
+        if (ValidateUiValueCase(*Spec, "123", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_type")
+        {
+            return "ui_value.key.invalid_type";
+        }
+
+        // Negative: invalid characters (uppercase, spaces)
+        if (ValidateUiValueCase(*Spec, "'Invalid Key!'", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_key")
+        {
+            return "ui_value.key.invalid_grammar";
+        }
+
+        // Negative: derived from text Stable ID
+        if (ValidateUiValueCase(*Spec, "'core:text.button.ok'", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_key")
+        {
+            return "ui_value.key.text_derived_rejected";
+        }
+    }
+
+    // 28. value.ref: positive and negative target kind / invalid Stable ID.
+    {
+        const auto Spec = CompileUiCase("{kind:'ref', target_kind:'resource'}", Document, Diagnostics);
+        if (Spec == nullptr) return "ui_value.ref.spec_failed";
+
+        // Positive
+        if (!ValidateUiValueCase(*Spec, "'core:resource.icon.sword'", Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty() || Materialized.AsString() != "core:resource.icon.sword")
+        {
+            return "ui_value.ref.positive";
+        }
+
+        // Negative: wrong kind (command instead of resource)
+        if (ValidateUiValueCase(*Spec, "'core:command.button.click'", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_stable_id")
+        {
+            return "ui_value.ref.wrong_kind";
+        }
+
+        // Negative: malformed stable ID
+        if (ValidateUiValueCase(*Spec, "'not_a_stable_id'", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_stable_id")
+        {
+            return "ui_value.ref.invalid_id";
+        }
+    }
+
+    // 29. value.text (TextSpec): positive and negative (missing text_id, raw string, unknown field).
+    {
+        const auto Spec = CompileUiCase("{kind:'text'}", Document, Diagnostics);
+        if (Spec == nullptr) return "ui_value.text.spec_failed";
+
+        // Positive TextSpec
+        if (!ValidateUiValueCase(*Spec, "{text_id:'core:text.button.ok', style:'primary', args:{count:5}}", Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty() || !Materialized.IsObject())
+        {
+            return "ui_value.text.positive";
+        }
+
+        // Negative: raw string where TextSpec expected
+        if (ValidateUiValueCase(*Spec, "'Raw String'", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_text_spec")
+        {
+            return "ui_value.text.raw_string_rejected";
+        }
+
+        // Negative: missing text_id
+        if (ValidateUiValueCase(*Spec, "{style:'primary'}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_text_spec")
+        {
+            return "ui_value.text.missing_text_id";
+        }
+
+        // Negative: text_id with non-text kind
+        if (ValidateUiValueCase(*Spec, "{text_id:'core:command.ok'}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_text_spec")
+        {
+            return "ui_value.text.invalid_text_id_kind";
+        }
+
+        // Negative: unknown field in TextSpec (closed schema)
+        if (ValidateUiValueCase(*Spec, "{text_id:'core:text.button.ok', unknown_prop:'bad'}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.unknown_field")
+        {
+            return "ui_value.text.unknown_field";
+        }
+    }
+
+    // 30. value.binding (BindingSpec): positive and negative (missing command_id, unknown field).
+    {
+        const auto Spec = CompileUiCase("{kind:'binding', input_schema_id:'core:schema.click'}", Document, Diagnostics);
+        if (Spec == nullptr) return "ui_value.binding.spec_failed";
+
+        // Positive BindingSpec
+        if (!ValidateUiValueCase(*Spec, "{command_id:'core:command.location.proceed', args:{target:'gate'}}", Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty() || !Materialized.IsObject())
+        {
+            return "ui_value.binding.positive";
+        }
+
+        // Negative: missing command_id
+        if (ValidateUiValueCase(*Spec, "{args:{}}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_binding_spec")
+        {
+            return "ui_value.binding.missing_command_id";
+        }
+
+        // Negative: command_id with wrong kind
+        if (ValidateUiValueCase(*Spec, "{command_id:'core:text.button.ok'}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_binding_spec")
+        {
+            return "ui_value.binding.invalid_command_id_kind";
+        }
+
+        // Negative: unknown field in BindingSpec (closed schema)
+        if (ValidateUiValueCase(*Spec, "{command_id:'core:command.location.proceed', callback:'func'}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.unknown_field")
+        {
+            return "ui_value.binding.unknown_field";
+        }
+    }
+
+    // 31. value.object: positive (with default application), missing required field, unknown field.
+    {
+        const auto Spec = CompileUiCase(
+            "{kind:'object', fields:{"
+            "  id:{kind:'key', required:true},"
+            "  count:{kind:'integer', min:0, default:10},"
+            "  title:{kind:'text', required:true}"
+            "}}", Document, Diagnostics);
+        if (Spec == nullptr) return "ui_value.object.spec_failed";
+
+        // Positive with default materialized for absent optional 'count'
+        if (!ValidateUiValueCase(*Spec, "{id:'btn_main', title:{text_id:'core:text.btn.ok'}}", Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty()
+            || !Materialized.IsObject()
+            || Materialized.FindField("count") == nullptr
+            || Materialized.FindField("count")->AsInteger() != 10)
+        {
+            return "ui_value.object.positive_with_default";
+        }
+
+        // Negative: missing required field 'id'
+        if (ValidateUiValueCase(*Spec, "{title:{text_id:'core:text.btn.ok'}}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.missing_field")
+        {
+            return "ui_value.object.missing_required";
+        }
+
+        // Negative: unknown field in object (closed schema)
+        if (ValidateUiValueCase(*Spec, "{id:'btn_main', title:{text_id:'core:text.btn.ok'}, extra_field:123}", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.unknown_field")
+        {
+            return "ui_value.object.unknown_field";
+        }
+    }
+
+    // 32. value.array and keyed collection: positive, duplicate key rejection, min/max item limits, nested unknown field.
+    {
+        const auto Spec = CompileUiCase(
+            "{kind:'array', min_items:1, max_items:3, keyed_by:'key', items:{"
+            "  kind:'object', fields:{"
+            "    key:{kind:'key', required:true},"
+            "    label:{kind:'text', required:true}"
+            "  }"
+            "}}", Document, Diagnostics);
+        if (Spec == nullptr) return "ui_value.array.spec_failed";
+
+        // Positive keyed collection
+        if (!ValidateUiValueCase(*Spec,
+            "[{key:'tab_1', label:{text_id:'core:text.tab1'}}, {key:'tab_2', label:{text_id:'core:text.tab2'}}]",
+            Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty()
+            || !Materialized.IsArray()
+            || Materialized.AsArray().size() != 2)
+        {
+            return "ui_value.array.positive";
+        }
+
+        // Negative: duplicate key in collection
+        if (ValidateUiValueCase(*Spec,
+            "[{key:'tab_dup', label:{text_id:'core:text.tab1'}}, {key:'tab_dup', label:{text_id:'core:text.tab2'}}]",
+            Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.duplicate_key")
+        {
+            return "ui_value.array.duplicate_key";
+        }
+
+        // Negative: too few items (0 < min_items:1)
+        if (ValidateUiValueCase(*Spec, "[]", Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_item_count")
+        {
+            return "ui_value.array.min_items";
+        }
+
+        // Negative: too many items (4 > max_items:3)
+        if (ValidateUiValueCase(*Spec,
+            "[{key:'k1', label:{text_id:'core:text.t'}}, {key:'k2', label:{text_id:'core:text.t'}}, "
+            " {key:'k3', label:{text_id:'core:text.t'}}, {key:'k4', label:{text_id:'core:text.t'}}]",
+            Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.invalid_item_count")
+        {
+            return "ui_value.array.max_items";
+        }
+
+        // Negative: nested unknown field inside array item
+        if (ValidateUiValueCase(*Spec,
+            "[{key:'tab_1', label:{text_id:'core:text.tab1'}, extra_item_field:true}]",
+            Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.unknown_field")
+        {
+            return "ui_value.array.nested_unknown_field";
+        }
+    }
+
+    // 33. value.schema_ref: nested schema validation with inlining and rejection of nested unknown field.
+    {
+        FInMemoryUiSchemaResolver Resolver;
+        std::optional<FParsedDocument> TargetDoc = ParseJson5Document(
+            "{id:'core:schema.ui_value.action_button.v1', schema_domain:'ui_value', schema_version:1, "
+            "root:{kind:'object', fields:{"
+            "  key:{kind:'key', required:true},"
+            "  title:{kind:'text', required:true},"
+            "  action:{kind:'binding', required:true}"
+            "}}}",
+            FParseLimits{}, Diagnostics);
+        if (!TargetDoc.has_value()) return "ui_value.schema_ref.target_parse_failed";
+        Resolver.RegisterUiSchemaDocument("core:schema.ui_value.action_button.v1", std::make_shared<FParsedDocument>(std::move(*TargetDoc)));
+
+        const auto Spec = CompileUiCase(
+            "{kind:'array', keyed_by:'key', items:{kind:'schema_ref', schema_id:'core:schema.ui_value.action_button.v1'}}",
+            Document, Diagnostics, &Resolver, "core:schema.ui_field.button_list.v1", "core");
+        if (Spec == nullptr) return "ui_value.schema_ref.compile_failed";
+
+        // Positive
+        if (!ValidateUiValueCase(*Spec,
+            "[{key:'btn_action', title:{text_id:'core:text.btn.act'}, action:{command_id:'core:command.btn.execute'}}]",
+            Materialized, ValueDoc, Diagnostics)
+            || !Diagnostics.empty()
+            || !Materialized.IsArray()
+            || Materialized.AsArray().size() != 1)
+        {
+            return "ui_value.schema_ref.positive";
+        }
+
+        // Negative: unknown field inside referenced schema item
+        if (ValidateUiValueCase(*Spec,
+            "[{key:'btn_action', title:{text_id:'core:text.btn.act'}, action:{command_id:'core:command.btn.execute'}, unknown_ref_field:123}]",
+            Materialized, ValueDoc, Diagnostics)
+            || Diagnostics.empty() || Diagnostics.front().Code != "core:diagnostic.ui_schema.value.unknown_field")
+        {
+            return "ui_value.schema_ref.nested_unknown_field";
         }
     }
 

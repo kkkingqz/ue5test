@@ -150,4 +150,18 @@ GV2_CONTENT_CORE_API FCompiledUiFieldSpecPtr CompileUiFieldSpec(
     std::vector<FDiagnostic>& OutDiagnostics,
     const IUiSchemaResolver* Resolver = nullptr,
     std::vector<std::string>* ActiveResolutionChain = nullptr);
+
+/**
+ * Validates and materializes one portable UI value tree against a compiled UI field spec.
+ * Returns true if valid, or false with diagnostics.
+ * OutMaterializedValue is populated on success with defaults applied for absent optional fields.
+ */
+GV2_CONTENT_CORE_API bool ValidateUiFieldValue(
+    const FValue& Value,
+    const FCompiledUiFieldSpec& FieldSpec,
+    FValue& OutMaterializedValue,
+    const FParsedDocument* ValueDocument,
+    std::string ValueJsonPointer,
+    const FValidationDiagnosticContext& Context,
+    std::vector<FDiagnostic>& OutDiagnostics);
 }
