@@ -213,75 +213,6 @@ struct GV2_API FGV2ProgressBarViewModel
     FGV2TextViewModel Label;
 };
 
-// TextSystem owns these composite values.  They deliberately carry only
-// resolved text, resource IDs and opaque semantic bindings; layout remains in
-// the LocationScreen Widget Blueprint.
-USTRUCT(BlueprintType)
-struct GV2_API FGV2LocationTopBarViewModel
-{
-    GENERATED_BODY()
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel Day;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel Location;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel PrimaryResource;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2LocationIconEntry
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
-    FName Key;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
-    FString ResourceId;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2LocationCharacterEntry
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
-    FName Key;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
-    FString ResourceId;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2LocationMeterEntry
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
-    FName Key;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location")
-    FGV2ProgressBarViewModel Meter;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2LocationPlayerStatusViewModel
-{
-    GENERATED_BODY()
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FString PortraitResourceId;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel Name;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationMeterEntry> Meters;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationIconEntry> Items;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationIconEntry> Effects;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2LocationSceneViewModel
-{
-    GENERATED_BODY()
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FString BackgroundTileResourceId;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FString BackgroundResourceId;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") TArray<FGV2LocationCharacterEntry> Characters;
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Location") FGV2TextViewModel ContextText;
-};
-
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenFieldDescriptor
 {
@@ -312,27 +243,6 @@ struct GV2_API FGV2ScreenFieldValue
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FString SchemaId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    TArray<FGV2ButtonViewModel> LocationCommandsValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2LocationTopBarViewModel LocationTopBarValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2LocationPlayerStatusViewModel LocationPlayerStatusValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2LocationSceneViewModel LocationSceneValue;
-
-    static FGV2ScreenFieldValue MakeLocationTopBar(const FName Id, const FGV2LocationTopBarViewModel& Model)
-    { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_top_bar.v1"); Value.LocationTopBarValue = Model; return Value; }
-    static FGV2ScreenFieldValue MakeLocationPlayerStatus(const FName Id, const FGV2LocationPlayerStatusViewModel& Model)
-    { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_player_status.v1"); Value.LocationPlayerStatusValue = Model; return Value; }
-    static FGV2ScreenFieldValue MakeLocationScene(const FName Id, const FGV2LocationSceneViewModel& Model)
-    { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_scene.v1"); Value.LocationSceneValue = Model; return Value; }
-    static FGV2ScreenFieldValue MakeLocationCommands(const FName Id, const TArray<FGV2ButtonViewModel>& Model)
-    { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_commands.v1"); Value.LocationCommandsValue = Model; return Value; }
 };
 
 USTRUCT(BlueprintType)

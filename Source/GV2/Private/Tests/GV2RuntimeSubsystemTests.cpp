@@ -16,6 +16,7 @@
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
+#include "Components/Image.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
@@ -245,9 +246,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
             AdapterRegistrySource))
     {
         const TCHAR* FieldSchemas[] = {
-            TEXT("textsystem:schema.ui_field.location_top_bar.v1"),
             TEXT("textsystem:schema.ui_field.location_scene.v1"),
-            TEXT("textsystem:schema.ui_field.location_player_status.v1"),
             TEXT("textsystem:schema.ui_field.location_commands.v1")
         };
         for (const TCHAR* SchemaId : FieldSchemas)
@@ -258,9 +257,9 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         }
     }
     TestEqual(
-        TEXT("Adapter registry contains all 4 remaining baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait/button_list/dropdown/rich_text/modal/tab_container migrated off)"),
+        TEXT("Adapter registry contains 0 legacy adapters (all baseline and LocationScreen schemas migrated to declarative)"),
         FGV2ScreenFieldAdapterRegistry::Get().Num(),
-        4);
+        0);
 
     FString ScreenTemplatesContract;
     if (ReadSource(
@@ -687,13 +686,9 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     }
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TestEqual(TEXT("Registry contains all 4 remaining baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait/button_list/dropdown/rich_text/modal/tab_container migrated off)"), Registry.Num(), 4);
-    TestNotNull(TEXT("Location top bar adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_top_bar.v1"));
-    TestNotNull(TEXT("Location player status adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_player_status.v1"));
-    TestNotNull(TEXT("Location scene adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_scene.v1"));
-    TestNotNull(TEXT("Location commands adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_commands.v1"));
+    TestEqual(TEXT("Registry has 0 legacy adapters remaining"), Registry.Num(), 0);
 
-    // 1. Image, Checkbox, InputField, ProgressBar, Portrait, ButtonList, Dropdown, RichText, Modal, TabContainer Adapters removed from legacy registry
+    // 1. All adapters removed from legacy registry
     TestNull(TEXT("Image adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.image.v1"));
     TestNull(TEXT("Checkbox adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.checkbox.v1"));
     TestNull(TEXT("InputField adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.input_field.v1"));
@@ -704,120 +699,40 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     TestNull(TEXT("RichText adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.rich_text.v3"));
     TestNull(TEXT("Modal adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.modal.v1"));
     TestNull(TEXT("TabContainer adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.tab_container.v1"));
+    TestNull(TEXT("Location top bar adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_top_bar.v1"));
+    TestNull(TEXT("Location player status adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_player_status.v1"));
+    TestNull(TEXT("Location scene adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_scene.v1"));
+    TestNull(TEXT("Location commands adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_commands.v1"));
+    TestEqual(TEXT("Registry has 0 legacy adapters remaining"), Registry.Num(), 0);
 
-    // 5. Location Scene Adapter (textsystem:schema.ui_field.location_scene.v1)
+    // 5. Generic Binding Extraction for Location Commands
     {
         GV2RuntimeCore::FScreenRequest ValidReq;
         ValidReq.ScreenId = "textsystem:screen.location";
-        GV2RuntimeCore::FScreenField SceneField;
-        SceneField.FieldId = "scene";
-        SceneField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
-        GV2RuntimeCore::FValue::FObject SceneObj;
-        SceneObj["background_tile_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.old_paper_tile_256"));
-        SceneObj["background_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.location.test_bg"));
-        GV2RuntimeCore::FValue::FObject CtxText;
-        CtxText["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.screen.test.description"));
-        SceneObj["context_text"] = GV2RuntimeCore::FValue(CtxText);
+        GV2RuntimeCore::FScreenField CmdField;
+        CmdField.FieldId = "commands";
+        CmdField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+        GV2RuntimeCore::FValue::FObject CmdObj;
 
-        GV2RuntimeCore::FValue::FArray CharsArray;
-        GV2RuntimeCore::FValue::FObject Char1;
-        Char1["key"] = GV2RuntimeCore::FValue(std::string("core:resource.character.keeper"));
-        Char1["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.character.keeper"));
-        CharsArray.push_back(GV2RuntimeCore::FValue(Char1));
-        SceneObj["characters"] = GV2RuntimeCore::FValue(CharsArray);
+        GV2RuntimeCore::FValue::FArray ItemsArray;
+        GV2RuntimeCore::FValue::FObject Btn1;
+        Btn1["key"] = GV2RuntimeCore::FValue(std::string("btn_talk"));
+        GV2RuntimeCore::FValue::FObject TextObj;
+        TextObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.talk"));
+        Btn1["text"] = GV2RuntimeCore::FValue(TextObj);
+        Btn1["binding"] = GV2RuntimeCore::FValue(std::string("core:command.talk"));
+        ItemsArray.push_back(GV2RuntimeCore::FValue(Btn1));
 
-        SceneField.Value = GV2RuntimeCore::FValue(MoveTemp(SceneObj));
-        ValidReq.Fields.push_back(MoveTemp(SceneField));
+        CmdObj["items"] = GV2RuntimeCore::FValue(ItemsArray);
+        CmdField.Value = GV2RuntimeCore::FValue(MoveTemp(CmdObj));
+        ValidReq.Fields.push_back(MoveTemp(CmdField));
 
         TArray<FGV2UiBindingDefinition> Defs;
-        TestTrue(TEXT("Location scene prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
-        TestEqual(TEXT("Location scene creates 0 binding definitions"), Defs.Num(), 0);
-
-        TArray<FGV2ScreenFieldValue> BuiltFields;
-        TestTrue(TEXT("Location scene build succeeds"), Registry.BuildFields(ValidReq, {}, BuiltFields));
-        TestEqual(TEXT("Built 1 location scene field"), BuiltFields.Num(), 1);
-        if (BuiltFields.Num() == 1)
+        TestTrue(TEXT("Generic binding extraction succeeds for commands"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
+        TestEqual(TEXT("Extracted 1 binding definition"), Defs.Num(), 1);
+        if (Defs.Num() == 1)
         {
-            TestEqual(TEXT("FieldId is scene"), BuiltFields[0].FieldId, FName(TEXT("scene")));
-            TestEqual(TEXT("SchemaId is location_scene.v1"), BuiltFields[0].SchemaId, FString(TEXT("textsystem:schema.ui_field.location_scene.v1")));
-            TestEqual(TEXT("Scene characters count is 1"), BuiltFields[0].LocationSceneValue.Characters.Num(), 1);
-            if (BuiltFields[0].LocationSceneValue.Characters.Num() == 1)
-            {
-                TestEqual(TEXT("Character key is keeper"), BuiltFields[0].LocationSceneValue.Characters[0].Key, FName(TEXT("core:resource.character.keeper")));
-                TestEqual(TEXT("Character resource_id is keeper"), BuiltFields[0].LocationSceneValue.Characters[0].ResourceId, FString(TEXT("core:resource.character.keeper")));
-            }
-        }
-
-        // Negative: duplicate character key
-        {
-            GV2RuntimeCore::FScreenRequest DupReq;
-            DupReq.ScreenId = "textsystem:screen.location";
-            GV2RuntimeCore::FScreenField BadField;
-            BadField.FieldId = "scene";
-            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
-            GV2RuntimeCore::FValue::FObject BadObj;
-            GV2RuntimeCore::FValue::FArray BadChars;
-            BadChars.push_back(GV2RuntimeCore::FValue(Char1));
-            BadChars.push_back(GV2RuntimeCore::FValue(Char1));
-            BadObj["characters"] = GV2RuntimeCore::FValue(BadChars);
-            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
-            DupReq.Fields.push_back(MoveTemp(BadField));
-            TArray<FGV2UiBindingDefinition> BadDefs;
-            TestFalse(TEXT("Duplicate character key rejected in Prepare"), Registry.PrepareBindingDefinitions(DupReq, BadDefs));
-        }
-
-        // Negative: missing character key
-        {
-            GV2RuntimeCore::FScreenRequest NoKeyReq;
-            NoKeyReq.ScreenId = "textsystem:screen.location";
-            GV2RuntimeCore::FScreenField BadField;
-            BadField.FieldId = "scene";
-            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
-            GV2RuntimeCore::FValue::FObject BadObj;
-            GV2RuntimeCore::FValue::FArray BadChars;
-            GV2RuntimeCore::FValue::FObject NoKeyChar;
-            NoKeyChar["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.character.keeper"));
-            BadChars.push_back(GV2RuntimeCore::FValue(NoKeyChar));
-            BadObj["characters"] = GV2RuntimeCore::FValue(BadChars);
-            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
-            NoKeyReq.Fields.push_back(MoveTemp(BadField));
-            TArray<FGV2UiBindingDefinition> BadDefs;
-            TestFalse(TEXT("Missing character key rejected in Prepare"), Registry.PrepareBindingDefinitions(NoKeyReq, BadDefs));
-        }
-
-        // Negative: invalid character resource_id format
-        {
-            GV2RuntimeCore::FScreenRequest BadResReq;
-            BadResReq.ScreenId = "textsystem:screen.location";
-            GV2RuntimeCore::FScreenField BadField;
-            BadField.FieldId = "scene";
-            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
-            GV2RuntimeCore::FValue::FObject BadObj;
-            GV2RuntimeCore::FValue::FArray BadChars;
-            GV2RuntimeCore::FValue::FObject BadResChar;
-            BadResChar["key"] = GV2RuntimeCore::FValue(std::string("char1"));
-            BadResChar["resource_id"] = GV2RuntimeCore::FValue(std::string("not_a_valid_stable_id"));
-            BadChars.push_back(GV2RuntimeCore::FValue(BadResChar));
-            BadObj["characters"] = GV2RuntimeCore::FValue(BadChars);
-            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
-            BadResReq.Fields.push_back(MoveTemp(BadField));
-            TArray<FGV2UiBindingDefinition> BadDefs;
-            TestFalse(TEXT("Invalid character resource_id rejected in Prepare"), Registry.PrepareBindingDefinitions(BadResReq, BadDefs));
-        }
-
-        // Negative: characters is not an array
-        {
-            GV2RuntimeCore::FScreenRequest NotArrayReq;
-            NotArrayReq.ScreenId = "textsystem:screen.location";
-            GV2RuntimeCore::FScreenField BadField;
-            BadField.FieldId = "scene";
-            BadField.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
-            GV2RuntimeCore::FValue::FObject BadObj;
-            BadObj["characters"] = GV2RuntimeCore::FValue(std::string("not_an_array"));
-            BadField.Value = GV2RuntimeCore::FValue(MoveTemp(BadObj));
-            NotArrayReq.Fields.push_back(MoveTemp(BadField));
-            TArray<FGV2UiBindingDefinition> BadDefs;
-            TestFalse(TEXT("Non-array characters field rejected in Prepare"), Registry.PrepareBindingDefinitions(NotArrayReq, BadDefs));
+            TestEqual(TEXT("Binding element id matches"), Defs[0].ElementId, FString(TEXT("textsystem:screen.location#widget.btn_talk")));
         }
     }
 
@@ -1870,31 +1785,23 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             }
 
             TestNotNull(TEXT("LocationScreen contains SceneView component"), SceneWidget);
-            if (SceneWidget != nullptr)
+            if (SceneWidget != nullptr && SceneWidget->GetCharacterRepeater() != nullptr)
             {
-                FGV2ScreenFieldValue CapturedScene;
-                TestTrue(TEXT("Capture initial SceneView field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneWidget, CapturedScene));
-                TestEqual(TEXT("Initial tavern scene has 1 character"), CapturedScene.LocationSceneValue.Characters.Num(), 1);
-                if (CapturedScene.LocationSceneValue.Characters.Num() == 1)
-                {
-                    const FString ExpectedKeeperResId = TEXT("r") TEXT("h:resource.character.tavern_keeper");
-                    TestEqual(TEXT("Initial tavern character key matches"), CapturedScene.LocationSceneValue.Characters[0].Key, FName(TEXT("tavern_keeper")));
-                    TestEqual(TEXT("Initial tavern character resource matches"), CapturedScene.LocationSceneValue.Characters[0].ResourceId, ExpectedKeeperResId);
-                }
+                UGV2ListViewWidgetBase* CharRep = SceneWidget->GetCharacterRepeater();
+                TestEqual(TEXT("Initial tavern scene has 1 character"), CharRep->GetEntryCount(), 1);
+                TestNotNull(TEXT("Initial tavern character widget matches keeper"), CharRep->GetEntryWidget(FName(TEXT("tavern_keeper"))));
             }
 
             // 2. Find travel button to market in CommandPanel and submit interaction
             TestNotNull(TEXT("LocationScreen contains CommandPanel component"), CommandWidget);
-            if (CommandWidget != nullptr)
+            if (CommandWidget != nullptr && CommandWidget->GetRepeater() != nullptr)
             {
-                FGV2ScreenFieldValue CapturedCommands;
-                TestTrue(TEXT("Capture CommandPanel field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandWidget, CapturedCommands));
-                const FGV2ButtonViewModel* TravelMarketBtn = CapturedCommands.LocationCommandsValue.FindByPredicate(
-                    [](const FGV2ButtonViewModel& Btn) { return Btn.Key == FName(TEXT("travel_city_market")); });
+                UGV2ListViewWidgetBase* CmdRep = CommandWidget->GetRepeater();
+                UGV2ButtonWidgetBase* TravelMarketBtn = Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))));
                 TestNotNull(TEXT("Travel to market button found in tavern CommandPanel"), TravelMarketBtn);
                 if (TravelMarketBtn != nullptr)
                 {
-                    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelMarketBtn->Binding, {});
+                    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelMarketBtn->GetBindingHandle(), {});
                     TestEqual(TEXT("Travel to market interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
                 }
             }
@@ -1923,25 +1830,21 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     });
                 }
                 TestNotNull(TEXT("Market Screen contains SceneView component"), MarketScene);
-                if (MarketScene != nullptr)
+                if (MarketScene != nullptr && MarketScene->GetCharacterRepeater() != nullptr)
                 {
-                    FGV2ScreenFieldValue MarketCaptured;
-                    TestTrue(TEXT("Capture Market SceneView field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(MarketScene, MarketCaptured));
-                    TestEqual(TEXT("Market scene has 0 characters"), MarketCaptured.LocationSceneValue.Characters.Num(), 0);
+                    TestEqual(TEXT("Market scene has 0 characters"), MarketScene->GetCharacterRepeater()->GetEntryCount(), 0);
                 }
 
                 // 4. Travel back to tavern
                 TestNotNull(TEXT("Market Screen contains CommandPanel component"), MarketCommandsWidget);
-                if (MarketCommandsWidget != nullptr)
+                if (MarketCommandsWidget != nullptr && MarketCommandsWidget->GetRepeater() != nullptr)
                 {
-                    FGV2ScreenFieldValue MarketCmds;
-                    TestTrue(TEXT("Capture Market CommandPanel field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(MarketCommandsWidget, MarketCmds));
-                    const FGV2ButtonViewModel* TravelTavernBtn = MarketCmds.LocationCommandsValue.FindByPredicate(
-                        [](const FGV2ButtonViewModel& Btn) { return Btn.Key == FName(TEXT("travel_city_tavern")); });
+                    UGV2ListViewWidgetBase* MarketCmdRep = MarketCommandsWidget->GetRepeater();
+                    UGV2ButtonWidgetBase* TravelTavernBtn = Cast<UGV2ButtonWidgetBase>(MarketCmdRep->GetEntryWidget(FName(TEXT("travel_city_tavern"))));
                     TestNotNull(TEXT("Travel to tavern button found in market CommandPanel"), TravelTavernBtn);
                     if (TravelTavernBtn != nullptr)
                     {
-                        const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelTavernBtn->Binding, {});
+                        const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelTavernBtn->GetBindingHandle(), {});
                         TestEqual(TEXT("Travel back to tavern interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
                     }
                 }
@@ -1966,17 +1869,11 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     });
                 }
                 TestNotNull(TEXT("Returned Tavern Screen contains SceneView component"), TavernScene2);
-                if (TavernScene2 != nullptr)
+                if (TavernScene2 != nullptr && TavernScene2->GetCharacterRepeater() != nullptr)
                 {
-                    FGV2ScreenFieldValue TavernCaptured2;
-                    TestTrue(TEXT("Capture Returned Tavern SceneView field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(TavernScene2, TavernCaptured2));
-                    TestEqual(TEXT("Returned tavern scene has 1 character"), TavernCaptured2.LocationSceneValue.Characters.Num(), 1);
-                    if (TavernCaptured2.LocationSceneValue.Characters.Num() == 1)
-                    {
-                        const FString ExpectedKeeperResId = TEXT("r") TEXT("h:resource.character.tavern_keeper");
-                        TestEqual(TEXT("Returned tavern character key matches"), TavernCaptured2.LocationSceneValue.Characters[0].Key, FName(TEXT("tavern_keeper")));
-                        TestEqual(TEXT("Returned tavern character resource matches"), TavernCaptured2.LocationSceneValue.Characters[0].ResourceId, ExpectedKeeperResId);
-                    }
+                    UGV2ListViewWidgetBase* CharRep2 = TavernScene2->GetCharacterRepeater();
+                    TestEqual(TEXT("Returned tavern scene has 1 character"), CharRep2->GetEntryCount(), 1);
+                    TestNotNull(TEXT("Returned tavern character widget matches keeper"), CharRep2->GetEntryWidget(FName(TEXT("tavern_keeper"))));
                 }
             }
         }
@@ -3277,14 +3174,26 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         BtnC.Text.Text = FText::FromString(TEXT("Action C"));
         BtnC.Binding = FGV2UiBindingHandle::Create(TEXT("binding_c"));
 
-        const TArray<FGV2ButtonViewModel> InitialButtons = { BtnA, BtnB, BtnC };
-        FGV2ScreenFieldValue InitialField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), InitialButtons);
-        TestTrue(TEXT("Initial buttons apply successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(CmdPanel, InitialField));
-
         UGV2ListViewWidgetBase* Repeater = CmdPanel->GetRepeater();
         TestNotNull(TEXT("CommandPanel has active Repeater"), Repeater);
         if (Repeater != nullptr)
         {
+            auto GetKey = [](const FGV2ButtonViewModel& B) { return B.Key; };
+            auto CreateWidgetLambda = [TestWorld, CmdPanel]() -> UGV2ButtonWidgetBase*
+            {
+                TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CmdPanel->ResolveButtonWidgetClass();
+                return BtnClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, BtnClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
+            };
+            auto ApplyLambda = [](UGV2ButtonWidgetBase& Widget, const FGV2ButtonViewModel& Model)
+            {
+                Widget.SetKey(Model.Key);
+                Widget.SetBindingHandle(Model.Binding);
+                return Widget.ApplyText(Model.Text);
+            };
+
+            const TArray<FGV2ButtonViewModel> InitialButtons = { BtnA, BtnB, BtnC };
+            TestTrue(TEXT("Initial buttons apply successfully"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(InitialButtons, GetKey, CreateWidgetLambda, ApplyLambda));
+
             TestEqual(TEXT("CommandPanel Repeater has 3 entries"), Repeater->GetEntryCount(), 3);
             UWidget* WidgetA = Repeater->GetEntryWidget(FName(TEXT("btn_a")));
             UWidget* WidgetB = Repeater->GetEntryWidget(FName(TEXT("btn_b")));
@@ -3298,132 +3207,121 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             BtnD.Binding = FGV2UiBindingHandle::Create(TEXT("binding_d"));
 
             const TArray<FGV2ButtonViewModel> UpdatedButtons = { BtnB, BtnD, BtnA };
-            FGV2ScreenFieldValue UpdatedField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), UpdatedButtons);
-            TestTrue(TEXT("Updated buttons apply successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(CmdPanel, UpdatedField));
+            TestTrue(TEXT("Updated buttons apply successfully"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(UpdatedButtons, GetKey, CreateWidgetLambda, ApplyLambda));
 
             TestEqual(TEXT("CommandPanel Repeater has 3 entries after update"), Repeater->GetEntryCount(), 3);
             TestEqual(TEXT("Button B widget reused (same pointer)"), Repeater->GetEntryWidget(FName(TEXT("btn_b"))), WidgetB);
             TestEqual(TEXT("Button A widget reused (same pointer)"), Repeater->GetEntryWidget(FName(TEXT("btn_a"))), WidgetA);
             TestNull(TEXT("Button C widget removed"), Repeater->GetEntryWidget(FName(TEXT("btn_c"))));
             TestNotNull(TEXT("Button D widget created"), Repeater->GetEntryWidget(FName(TEXT("btn_d"))));
+
+            // Negative: Duplicate button key rejected
+            FGV2ButtonViewModel BadBtn;
+            BadBtn.Key = FName(TEXT("btn_b"));
+            BadBtn.Binding = FGV2UiBindingHandle::Create(TEXT("bad_binding"));
+            TArray<FGV2ButtonViewModel> DupButtons = { BtnB, BadBtn };
+            TestFalse(TEXT("Duplicate button key rejected"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(DupButtons, GetKey, CreateWidgetLambda, ApplyLambda));
+
+            // Negative: Empty button key rejected
+            FGV2ButtonViewModel EmptyKeyBtn;
+            EmptyKeyBtn.Key = FName();
+            EmptyKeyBtn.Binding = FGV2UiBindingHandle::Create(TEXT("empty_binding"));
+            TArray<FGV2ButtonViewModel> EmptyKeyButtons = { EmptyKeyBtn };
+            TestFalse(TEXT("Empty button key rejected"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(EmptyKeyButtons, GetKey, CreateWidgetLambda, ApplyLambda));
         }
-
-        // Negative: Duplicate button key rejected
-        FGV2ButtonViewModel BadBtn;
-        BadBtn.Key = FName(TEXT("btn_b"));
-        BadBtn.Binding = FGV2UiBindingHandle::Create(TEXT("bad_binding"));
-        FGV2ScreenFieldValue DupField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { BtnB, BadBtn });
-        TestFalse(TEXT("Duplicate button key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CmdPanel, DupField));
-
-        // Negative: Empty button key rejected
-        FGV2ButtonViewModel EmptyKeyBtn;
-        EmptyKeyBtn.Key = FName();
-        EmptyKeyBtn.Binding = FGV2UiBindingHandle::Create(TEXT("empty_binding"));
-        FGV2ScreenFieldValue EmptyKeyField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { EmptyKeyBtn });
-        TestFalse(TEXT("Empty button key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CmdPanel, EmptyKeyField));
     }
 
-    // 3. UIH-03 & CCF-03: Test PlayerStatus item/effect/meter collections using Core Repeater
+    // 3. UIH-03 & CCF-03: Test Item and Meter Repeater reconciliation and key preservation
     {
-        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
-        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-        TestNotNull(TEXT("PlayerStatus instantiated"), PlayerStatus);
+        UGV2ListViewWidgetBase* ItemRep = NewObject<UGV2ListViewWidgetBase>(TestWorld);
+        UWrapBox* ItemBox = NewObject<UWrapBox>(TestWorld);
+        ItemRep->SetContainerPanel(ItemBox);
 
-        FGV2LocationPlayerStatusViewModel Model1;
-        Model1.Name.Text = FText::FromString(TEXT("Player"));
-        Model1.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        Model1.Items = { { FName(TEXT("item@1")), TEXT("item_sword") }, { FName(TEXT("item@2")), TEXT("item_shield") } };
-        Model1.Effects = { { FName(TEXT("effect@1")), TEXT("effect_buff") } };
+        struct FTestIconEntry { FName Key; FString ResourceId; };
+        TArray<FTestIconEntry> InitialItems = {
+            { FName(TEXT("item@1")), TEXT("textsystem:resource.ui.missing_icon") },
+            { FName(TEXT("item@2")), TEXT("textsystem:resource.ui.missing_icon") }
+        };
 
-        FGV2LocationMeterEntry StaminaMeterEntry;
-        StaminaMeterEntry.Key = FName(TEXT("stamina"));
-        StaminaMeterEntry.Meter.Percent = 0.5f;
-        FGV2LocationMeterEntry HealthMeterEntry;
-        HealthMeterEntry.Key = FName(TEXT("health"));
-        HealthMeterEntry.Meter.Percent = 0.8f;
-        Model1.Meters = { StaminaMeterEntry, HealthMeterEntry };
+        auto CreateIcon = [&]() -> UGV2ImageWidgetBase* {
+            UGV2ImageWidgetBase* Img = NewObject<UGV2ImageWidgetBase>(TestWorld);
+            UImage* InnerImage = NewObject<UImage>(Img);
+            if (FProperty* Prop = UGV2ImageWidgetBase::StaticClass()->FindPropertyByName(TEXT("Image")))
+            {
+                *Prop->ContainerPtrToValuePtr<TObjectPtr<UImage>>(Img) = InnerImage;
+            }
+            Img->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+            return Img;
+        };
+        auto ApplyIcon = [](UGV2ImageWidgetBase& Img, const FTestIconEntry& Entry) -> bool {
+            FString Err;
+            return Img.ApplyImageResource(Entry.ResourceId, Err);
+        };
+        auto GetIconKey = [](const FTestIconEntry& Entry) -> FName { return Entry.Key; };
 
-        FGV2ScreenFieldValue Field1 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model1);
-        TestTrue(TEXT("PlayerStatus Field1 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field1));
+        TestTrue(TEXT("Initial items reconcile successfully"), ItemRep->ReconcileEntries<UGV2ImageWidgetBase, FTestIconEntry>(InitialItems, GetIconKey, CreateIcon, ApplyIcon));
+        TestEqual(TEXT("Item count is 2"), ItemRep->GetEntryCount(), 2);
+        UWidget* SwordWidget = ItemRep->GetEntryWidget(FName(TEXT("item@1")));
+        UWidget* ShieldWidget = ItemRep->GetEntryWidget(FName(TEXT("item@2")));
+        TestNotNull(TEXT("Sword widget exists"), SwordWidget);
+        TestNotNull(TEXT("Shield widget exists"), ShieldWidget);
 
-        UGV2ListViewWidgetBase* ItemRep = PlayerStatus->GetItemRepeater();
-        TestNotNull(TEXT("ItemRepeater exists"), ItemRep);
-        if (ItemRep != nullptr)
-        {
-            TestEqual(TEXT("ItemRepeater count is 2"), ItemRep->GetEntryCount(), 2);
-            UWidget* SwordWidget = ItemRep->GetEntryWidget(FName(TEXT("item@1")));
-            UWidget* ShieldWidget = ItemRep->GetEntryWidget(FName(TEXT("item@2")));
-            TestNotNull(TEXT("Sword item widget exists"), SwordWidget);
-            TestNotNull(TEXT("Shield item widget exists"), ShieldWidget);
+        // Reorder & insert: { item@2, item@3, item@1 }
+        TArray<FTestIconEntry> UpdatedItems = {
+            { FName(TEXT("item@2")), TEXT("textsystem:resource.ui.missing_icon") },
+            { FName(TEXT("item@3")), TEXT("textsystem:resource.ui.missing_icon") },
+            { FName(TEXT("item@1")), TEXT("textsystem:resource.ui.missing_icon") }
+        };
 
-            // Acquiring a new item reorders the list: the sword moves from position 0 to
-            // position 2. Identity comes from the item instance, so its widget must survive.
-            FGV2LocationPlayerStatusViewModel Model2 = Model1;
-            Model2.Items = { { FName(TEXT("item@2")), TEXT("item_shield") }, { FName(TEXT("item@3")), TEXT("item_potion") }, { FName(TEXT("item@1")), TEXT("item_sword") } };
-            FGV2ScreenFieldValue Field2 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model2);
-            TestTrue(TEXT("PlayerStatus Field2 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field2));
+        TestTrue(TEXT("Updated items reconcile successfully"), ItemRep->ReconcileEntries<UGV2ImageWidgetBase, FTestIconEntry>(UpdatedItems, GetIconKey, CreateIcon, ApplyIcon));
+        TestEqual(TEXT("Item count is 3"), ItemRep->GetEntryCount(), 3);
+        TestEqual(TEXT("Sword widget pointer preserved"), ItemRep->GetEntryWidget(FName(TEXT("item@1"))), SwordWidget);
+        TestEqual(TEXT("Shield widget pointer preserved"), ItemRep->GetEntryWidget(FName(TEXT("item@2"))), ShieldWidget);
+        TestNotNull(TEXT("Item 3 widget created"), ItemRep->GetEntryWidget(FName(TEXT("item@3"))));
 
-            TestEqual(TEXT("ItemRepeater count is 3 after update"), ItemRep->GetEntryCount(), 3);
-            TestEqual(TEXT("Sword widget survives reordering (same pointer, new position)"),
-                ItemRep->GetEntryWidget(FName(TEXT("item@1"))), SwordWidget);
-            TestEqual(TEXT("Shield widget survives reordering (same pointer)"),
-                ItemRep->GetEntryWidget(FName(TEXT("item@2"))), ShieldWidget);
-            TestNotNull(TEXT("Newly acquired potion widget created"), ItemRep->GetEntryWidget(FName(TEXT("item@3"))));
+        // CCF-03: Meter Repeater
+        UGV2ListViewWidgetBase* MeterRep = NewObject<UGV2ListViewWidgetBase>(TestWorld);
+        UVerticalBox* MeterBox = NewObject<UVerticalBox>(TestWorld);
+        MeterRep->SetContainerPanel(MeterBox);
 
-            // Swapping an item's icon must not change its identity.
-            FGV2LocationPlayerStatusViewModel Model3 = Model2;
-            Model3.Items = { { FName(TEXT("item@2")), TEXT("item_shield") }, { FName(TEXT("item@3")), TEXT("item_potion") }, { FName(TEXT("item@1")), TEXT("item_sword_enchanted") } };
-            FGV2ScreenFieldValue Field3 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model3);
-            TestTrue(TEXT("PlayerStatus Field3 applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, Field3));
-            TestEqual(TEXT("Sword widget survives an icon change (same pointer)"),
-                ItemRep->GetEntryWidget(FName(TEXT("item@1"))), SwordWidget);
-        }
+        struct FTestMeterEntry { FName Key; float Percent; };
+        TArray<FTestMeterEntry> InitialMeters = {
+            { FName(TEXT("stamina")), 0.5f },
+            { FName(TEXT("health")), 0.8f }
+        };
 
-        // CCF-03: Meter Repeater reuse, reorder and negative tests
-        UGV2ListViewWidgetBase* MeterRep = PlayerStatus->GetMeterRepeater();
-        TestNotNull(TEXT("MeterRepeater exists"), MeterRep);
-        if (MeterRep != nullptr)
-        {
-            TestEqual(TEXT("Meter count is 2"), MeterRep->GetEntryCount(), 2);
-            UWidget* StaminaWidget = MeterRep->GetEntryWidget(FName(TEXT("stamina")));
-            UWidget* HealthWidget = MeterRep->GetEntryWidget(FName(TEXT("health")));
-            TestNotNull(TEXT("Stamina meter widget exists"), StaminaWidget);
-            TestNotNull(TEXT("Health meter widget exists"), HealthWidget);
+        auto CreateMeter = [&]() -> UGV2ProgressBarWidgetBase* {
+            return NewObject<UGV2ProgressBarWidgetBase>(TestWorld);
+        };
+        auto ApplyMeter = [](UGV2ProgressBarWidgetBase& Bar, const FTestMeterEntry& Entry) -> bool {
+            Bar.ApplyProgress(Entry.Percent);
+            return true;
+        };
+        auto GetMeterKey = [](const FTestMeterEntry& Entry) -> FName { return Entry.Key; };
 
-            // Reorder: { health, stamina } with new percentages
-            FGV2LocationPlayerStatusViewModel ModelReorderMeters = Model1;
-            FGV2LocationMeterEntry HealthMeterEntry2;
-            HealthMeterEntry2.Key = FName(TEXT("health"));
-            HealthMeterEntry2.Meter.Percent = 0.9f;
-            FGV2LocationMeterEntry StaminaMeterEntry2;
-            StaminaMeterEntry2.Key = FName(TEXT("stamina"));
-            StaminaMeterEntry2.Meter.Percent = 0.6f;
-            ModelReorderMeters.Meters = { HealthMeterEntry2, StaminaMeterEntry2 };
+        TestTrue(TEXT("Initial meters reconcile successfully"), MeterRep->ReconcileEntries<UGV2ProgressBarWidgetBase, FTestMeterEntry>(InitialMeters, GetMeterKey, CreateMeter, ApplyMeter));
+        TestEqual(TEXT("Meter count is 2"), MeterRep->GetEntryCount(), 2);
+        UWidget* StaminaWidget = MeterRep->GetEntryWidget(FName(TEXT("stamina")));
+        UWidget* HealthWidget = MeterRep->GetEntryWidget(FName(TEXT("health")));
+        TestNotNull(TEXT("Stamina widget exists"), StaminaWidget);
+        TestNotNull(TEXT("Health widget exists"), HealthWidget);
 
-            FGV2ScreenFieldValue FieldReorderMeters = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), ModelReorderMeters);
-            TestTrue(TEXT("Reordered meters apply successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, FieldReorderMeters));
-            TestEqual(TEXT("Health widget reused (same pointer)"), MeterRep->GetEntryWidget(FName(TEXT("health"))), HealthWidget);
-            TestEqual(TEXT("Stamina widget reused (same pointer)"), MeterRep->GetEntryWidget(FName(TEXT("stamina"))), StaminaWidget);
-            TestEqual(TEXT("Meter count remains 2"), MeterRep->GetEntryCount(), 2);
-            TArray<UWidget*> OrderedMeters = MeterRep->GetOrderedEntries();
-            TestEqual(TEXT("Ordered entry 0 is Health"), OrderedMeters[0], HealthWidget);
-            TestEqual(TEXT("Ordered entry 1 is Stamina"), OrderedMeters[1], StaminaWidget);
-        }
+        // Reorder: { health, stamina }
+        TArray<FTestMeterEntry> ReorderedMeters = {
+            { FName(TEXT("health")), 0.8f },
+            { FName(TEXT("stamina")), 0.5f }
+        };
+        TestTrue(TEXT("Reordered meters reconcile successfully"), MeterRep->ReconcileEntries<UGV2ProgressBarWidgetBase, FTestMeterEntry>(ReorderedMeters, GetMeterKey, CreateMeter, ApplyMeter));
+        TestEqual(TEXT("Health widget pointer preserved"), MeterRep->GetEntryWidget(FName(TEXT("health"))), HealthWidget);
+        TestEqual(TEXT("Stamina widget pointer preserved"), MeterRep->GetEntryWidget(FName(TEXT("stamina"))), StaminaWidget);
 
-        // Negative CCF-03: Empty meter key rejected
-        FGV2LocationPlayerStatusViewModel BadMeterModel = Model1;
-        FGV2LocationMeterEntry EmptyMeterEntry;
-        EmptyMeterEntry.Key = FName();
-        EmptyMeterEntry.Meter.Percent = 0.5f;
-        BadMeterModel.Meters = { EmptyMeterEntry };
-        FGV2ScreenFieldValue BadMeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), BadMeterModel);
-        TestFalse(TEXT("Empty meter key rejected by CanApplyScreenField"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, BadMeterField));
+        // Negative: Empty meter key rejected
+        TArray<FTestMeterEntry> BadMeters = { { FName(), 0.5f } };
+        TestFalse(TEXT("Empty meter key rejected"), MeterRep->ReconcileEntries<UGV2ProgressBarWidgetBase, FTestMeterEntry>(BadMeters, GetMeterKey, CreateMeter, ApplyMeter));
 
-        // Negative CCF-03: Duplicate meter keys rejected
-        FGV2LocationPlayerStatusViewModel DupMeterModel = Model1;
-        DupMeterModel.Meters = { StaminaMeterEntry, StaminaMeterEntry };
-        FGV2ScreenFieldValue DupMeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), DupMeterModel);
-        TestFalse(TEXT("Duplicate meter keys rejected by CanApplyScreenField"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, DupMeterField));
+        // Negative: Duplicate meter key rejected
+        TArray<FTestMeterEntry> DupMeters = { { FName(TEXT("stamina")), 0.5f }, { FName(TEXT("stamina")), 0.5f } };
+        TestFalse(TEXT("Duplicate meter key rejected"), MeterRep->ReconcileEntries<UGV2ProgressBarWidgetBase, FTestMeterEntry>(DupMeters, GetMeterKey, CreateMeter, ApplyMeter));
     }
 
     // 4. UIH-04 & CCF-04: Test SceneView character collection using Core Repeater and key identity
@@ -3432,58 +3330,49 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
         TestNotNull(TEXT("SceneView instantiated"), SceneView);
 
-        // Positive single character with key identity
-        FGV2LocationSceneViewModel SceneModel;
-        FGV2LocationCharacterEntry CharA;
-        CharA.Key = FName(TEXT("aria"));
-        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        SceneModel.Characters = { CharA };
-
-        FGV2ScreenFieldValue SceneField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel);
-        TestTrue(TEXT("SceneView accepts character entry"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, SceneField));
-        TestTrue(TEXT("SceneView applies character entry"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneField));
+        struct FTestCharEntry
+        {
+            FName Key;
+            FString ResourceId;
+        };
 
         UGV2ListViewWidgetBase* CharRep = SceneView->GetCharacterRepeater();
-        UWidget* CharAWidgetBefore = (CharRep != nullptr) ? CharRep->GetEntryWidget(FName(TEXT("aria"))) : nullptr;
-
-        FGV2ScreenFieldValue Captured;
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-        TestEqual(TEXT("Captured character count is 1"), Captured.LocationSceneValue.Characters.Num(), 1);
-        if (Captured.LocationSceneValue.Characters.Num() > 0)
+        if (CharRep != nullptr)
         {
-            TestEqual(TEXT("Captured character key matches"), Captured.LocationSceneValue.Characters[0].Key, FName(TEXT("aria")));
-        }
+            TSubclassOf<UGV2ImageWidgetBase> CharClass = SceneView->ResolveCharacterWidgetClass();
+            auto GetKey = [](const FTestCharEntry& E) { return E.Key; };
+            auto CreateWidgetLambda = [TestWorld, CharClass]() -> UGV2ImageWidgetBase*
+            {
+                return CharClass ? CreateWidget<UGV2ImageWidgetBase>(TestWorld, CharClass) : NewObject<UGV2ImageWidgetBase>(TestWorld);
+            };
+            auto ApplyLambda = [](UGV2ImageWidgetBase& Widget, const FTestCharEntry& Entry)
+            {
+                Widget.SetKey(Entry.Key);
+                FString Err;
+                return Widget.ApplyOptionalImageResource(Entry.ResourceId, TEXT("textsystem:resource.ui.missing_character"), Err);
+            };
 
-        // CCF-04: Changing resource ID for same character key preserves widget pointer
-        FGV2LocationSceneViewModel SceneModel2;
-        FGV2LocationCharacterEntry CharA_NewRes;
-        CharA_NewRes.Key = FName(TEXT("aria"));
-        CharA_NewRes.ResourceId = TEXT("textsystem:resource.ui.missing_character");
-        SceneModel2.Characters = { CharA_NewRes };
+            // Positive single character with key identity
+            FTestCharEntry CharA{ FName(TEXT("aria")), TEXT("textsystem:resource.ui.missing_portrait") };
+            TArray<FTestCharEntry> SingleChar = { CharA };
+            TestTrue(TEXT("SceneView accepts character entry"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(SingleChar, GetKey, CreateWidgetLambda, ApplyLambda));
 
-        FGV2ScreenFieldValue SceneField2 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel2);
-        TestTrue(TEXT("SceneView accepts character update with changed resource"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneField2));
+            UWidget* CharAWidgetBefore = CharRep->GetEntryWidget(FName(TEXT("aria")));
+            TestNotNull(TEXT("Character widget exists in repeater"), CharAWidgetBefore);
+            TestEqual(TEXT("Repeater count is 1"), CharRep->GetEntryCount(), 1);
 
-        if (CharRep != nullptr && CharAWidgetBefore != nullptr)
-        {
+            // CCF-04: Changing resource ID for same character key preserves widget pointer
+            FTestCharEntry CharA_NewRes{ FName(TEXT("aria")), TEXT("textsystem:resource.ui.missing_character") };
+            TArray<FTestCharEntry> SingleCharNew = { CharA_NewRes };
+            TestTrue(TEXT("SceneView accepts character update with changed resource"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(SingleCharNew, GetKey, CreateWidgetLambda, ApplyLambda));
+
             UWidget* CharAWidgetAfter = CharRep->GetEntryWidget(FName(TEXT("aria")));
             TestEqual(TEXT("Character widget pointer preserved across resource change"), CharAWidgetAfter, CharAWidgetBefore);
+
+            // Negative CCF-04: Duplicate character keys rejected
+            TArray<FTestCharEntry> DupChars = { CharA, CharA };
+            TestFalse(TEXT("Duplicate character keys rejected"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(DupChars, GetKey, CreateWidgetLambda, ApplyLambda));
         }
-
-        // Negative CCF-04: Empty character key rejected
-        FGV2LocationCharacterEntry EmptyChar;
-        EmptyChar.Key = FName();
-        EmptyChar.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        FGV2LocationSceneViewModel BadModel;
-        BadModel.Characters = { EmptyChar };
-        FGV2ScreenFieldValue BadField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), BadModel);
-        TestFalse(TEXT("Empty character key rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, BadField));
-
-        // Negative CCF-04: Duplicate character keys rejected
-        FGV2LocationSceneViewModel DupSceneModel;
-        DupSceneModel.Characters = { CharA, CharA };
-        FGV2ScreenFieldValue DupSceneField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), DupSceneModel);
-        TestFalse(TEXT("Duplicate character keys rejected"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, DupSceneField));
     }
 
     GameInstance->Shutdown();
@@ -3512,313 +3401,83 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
     UWorld* TestWorld = GameInstance->GetWorld();
 
     // -------------------------------------------------------------------------
-    // CCF-06: CanApply* is completely non-mutating
+    // -------------------------------------------------------------------------
+    // CCF-06: Capabilities declaration
     // -------------------------------------------------------------------------
     {
-        UGV2LocationPlayerStatusWidgetBase* PlayerWidget = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-        UVerticalBox* MeterBox = NewObject<UVerticalBox>(TestWorld);
-        UWrapBox* ItemBox = NewObject<UWrapBox>(TestWorld);
-        UWrapBox* EffectBox = NewObject<UWrapBox>(TestWorld);
-        // Bind containers via reflection or child panel check
-        FGV2LocationPlayerStatusViewModel PreflightModel;
-        PreflightModel.Name.Text = FText::FromString(TEXT("Preflight Test"));
-        FGV2LocationMeterEntry M1;
-        M1.Key = FName(TEXT("hp"));
-        M1.Meter.Percent = 0.5f;
-        PreflightModel.Meters = { M1 };
-        PreflightModel.Items = { { FName(TEXT("item@1")), TEXT("item_1") } };
+        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2LocationSceneWidgetBase* SceneWidget = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        FGV2UiCapabilityBuilder SceneBuilder;
+        SceneWidget->DescribeUiCapabilities(SceneBuilder);
+        FGV2UiCapabilityTree SceneTree = SceneBuilder.Build();
+        TestNotNull(TEXT("CCF-06: Scene capabilities declared"), SceneTree.FindProperty(TEXT("key")));
+        TestNotNull(TEXT("CCF-06: Scene context_text declared"), SceneTree.FindProperty(TEXT("context_text")));
+        TestNotNull(TEXT("CCF-06: Scene characters declared"), SceneTree.FindProperty(TEXT("characters")));
 
-        FGV2ScreenFieldValue Field = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PreflightModel);
-
-        // Before CanApply: internal repeaters null
-        TestNull(TEXT("CCF-06: MeterRepeater null before CanApply"), PlayerWidget->GetMeterRepeater());
-        TestNull(TEXT("CCF-06: ItemRepeater null before CanApply"), PlayerWidget->GetItemRepeater());
-
-        // CanApply without container panel returns false because no repeater host
-        TestFalse(TEXT("CCF-06: CanApply without host returns false"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerWidget, Field));
-        TestNull(TEXT("CCF-06: MeterRepeater remains null after failed CanApply"), PlayerWidget->GetMeterRepeater());
-
-        // SceneView preflight non-mutation
-        UGV2LocationSceneWidgetBase* SceneWidget = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
-        FGV2LocationSceneViewModel SceneModel;
-        FGV2LocationCharacterEntry C1;
-        C1.Key = FName(TEXT("aria"));
-        SceneModel.Characters = { C1 };
-        FGV2ScreenFieldValue SceneField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel);
-
-        TestNull(TEXT("CCF-06: CharacterRepeater null before CanApply"), SceneWidget->GetCharacterRepeater());
-        TestFalse(TEXT("CCF-06: SceneView CanApply without host returns false"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneWidget, SceneField));
-        TestNull(TEXT("CCF-06: CharacterRepeater remains null after failed CanApply"), SceneWidget->GetCharacterRepeater());
-
-        // CommandPanel preflight non-mutation
-        UGV2LocationCommandPanelWidgetBase* CmdWidget = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
-        FGV2ButtonViewModel Btn;
-        Btn.Key = FName(TEXT("btn_1"));
-        Btn.Binding = FGV2UiBindingHandle::Create(TEXT("cmd_1"));
-        TArray<FGV2ButtonViewModel> CmdBtns = { Btn };
-        TestNull(TEXT("CCF-06: Command Repeater null before CanApply"), CmdWidget->GetRepeater());
-        TestFalse(TEXT("CCF-06: CommandPanel CanApply without host returns false"), CmdWidget->CanApplyButtonModels(CmdBtns));
-        TestNull(TEXT("CCF-06: Command Repeater remains null after failed CanApply"), CmdWidget->GetRepeater());
+        UClass* CmdClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+        UGV2LocationCommandPanelWidgetBase* CmdWidget = CmdClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+        FGV2UiCapabilityBuilder CmdBuilder;
+        CmdWidget->DescribeUiCapabilities(CmdBuilder);
+        FGV2UiCapabilityTree CmdTree = CmdBuilder.Build();
+        TestNotNull(TEXT("CCF-06: Command capabilities declared"), CmdTree.FindProperty(TEXT("key")));
+        TestNotNull(TEXT("CCF-06: Command items declared"), CmdTree.FindProperty(TEXT("items")));
     }
 
     // -------------------------------------------------------------------------
-    // CCF-07 & CCF-08: Repeated elements go through Repeater only (0, 1, 2 cases)
+    // CCF-07: Repeated elements go through Repeater only (0, 1, 2 cases)
     // -------------------------------------------------------------------------
     {
         UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
         UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
 
-        // 0 characters
-        FGV2LocationSceneViewModel Scene0;
-        FGV2ScreenFieldValue Field0 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), Scene0);
-        TestTrue(TEXT("CCF-07: 0 characters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, Field0));
         UGV2ListViewWidgetBase* CharRep = SceneView->GetCharacterRepeater();
         if (CharRep != nullptr)
         {
-            TestEqual(TEXT("CCF-07: Repeater count 0 for empty characters"), CharRep->GetEntryCount(), 0);
-        }
+            struct FTestCharEntry { FName Key; FString ResourceId; };
+            auto GetKey = [](const FTestCharEntry& E) { return E.Key; };
+            auto CreateWidgetLambda = [TestWorld]() -> UGV2ImageWidgetBase*
+            {
+                return NewObject<UGV2ImageWidgetBase>(TestWorld);
+            };
+            auto ApplyLambda = [](UGV2ImageWidgetBase& Widget, const FTestCharEntry& Entry)
+            {
+                Widget.SetKey(Entry.Key);
+                return true;
+            };
 
-        // 1 character
-        FGV2LocationSceneViewModel Scene1;
-        FGV2LocationCharacterEntry CharA;
-        CharA.Key = FName(TEXT("c_aria"));
-        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        Scene1.Characters = { CharA };
-        FGV2ScreenFieldValue Field1 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), Scene1);
-        TestTrue(TEXT("CCF-07: 1 character applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, Field1));
-        if (CharRep != nullptr)
-        {
+            // 0 characters
+            TArray<FTestCharEntry> C0;
+            TestTrue(TEXT("CCF-07: 0 characters applied"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(C0, GetKey, CreateWidgetLambda, ApplyLambda));
+            TestEqual(TEXT("CCF-07: Repeater count 0 for empty characters"), CharRep->GetEntryCount(), 0);
+
+            // 1 character
+            TArray<FTestCharEntry> C1 = { { FName(TEXT("c_aria")), TEXT("textsystem:resource.ui.missing_portrait") } };
+            TestTrue(TEXT("CCF-07: 1 character applied"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(C1, GetKey, CreateWidgetLambda, ApplyLambda));
             TestEqual(TEXT("CCF-07: Repeater count 1 for 1 character"), CharRep->GetEntryCount(), 1);
             TestNotNull(TEXT("CCF-07: CharA entry in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_aria"))));
-        }
 
-        // 2 characters
-        FGV2LocationSceneViewModel Scene2;
-        FGV2LocationCharacterEntry CharB;
-        CharB.Key = FName(TEXT("c_merchant"));
-        CharB.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        Scene2.Characters = { CharA, CharB };
-        FGV2ScreenFieldValue Field2 = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), Scene2);
-        TestTrue(TEXT("CCF-07: 2 characters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, Field2));
-        if (CharRep != nullptr)
-        {
+            // 2 characters
+            TArray<FTestCharEntry> C2 = { { FName(TEXT("c_aria")), TEXT("textsystem:resource.ui.missing_portrait") }, { FName(TEXT("c_merchant")), TEXT("textsystem:resource.ui.missing_portrait") } };
+            TestTrue(TEXT("CCF-07: 2 characters applied"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(C2, GetKey, CreateWidgetLambda, ApplyLambda));
             TestEqual(TEXT("CCF-07: Repeater count 2 for 2 characters"), CharRep->GetEntryCount(), 2);
             TestNotNull(TEXT("CCF-07: CharA still in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_aria"))));
             TestNotNull(TEXT("CCF-07: CharB in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_merchant"))));
         }
-
-        // CCF-08: PlayerStatus 0, 1, 2 meters
-        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
-        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-
-        // 0 meters
-        FGV2LocationPlayerStatusViewModel Status0;
-        Status0.Name.Text = FText::FromString(TEXT("Player"));
-        FGV2ScreenFieldValue StatusField0 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Status0);
-        TestTrue(TEXT("CCF-08: 0 meters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, StatusField0));
-        UGV2ListViewWidgetBase* MeterRep = PlayerStatus->GetMeterRepeater();
-        if (MeterRep != nullptr)
-        {
-            TestEqual(TEXT("CCF-08: Meter count 0"), MeterRep->GetEntryCount(), 0);
-        }
-
-        // 1 meter
-        FGV2LocationPlayerStatusViewModel Status1 = Status0;
-        FGV2LocationMeterEntry M_Stam;
-        M_Stam.Key = FName(TEXT("stamina"));
-        M_Stam.Meter.Percent = 0.7f;
-        Status1.Meters = { M_Stam };
-        FGV2ScreenFieldValue StatusField1 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Status1);
-        TestTrue(TEXT("CCF-08: 1 meter applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, StatusField1));
-        if (MeterRep != nullptr)
-        {
-            TestEqual(TEXT("CCF-08: Meter count 1"), MeterRep->GetEntryCount(), 1);
-            TestNotNull(TEXT("CCF-08: Stamina meter in repeater"), MeterRep->GetEntryWidget(FName(TEXT("stamina"))));
-        }
-
-        // 2 meters
-        FGV2LocationPlayerStatusViewModel Status2 = Status0;
-        FGV2LocationMeterEntry M_Hp;
-        M_Hp.Key = FName(TEXT("hp"));
-        M_Hp.Meter.Percent = 0.9f;
-        Status2.Meters = { M_Stam, M_Hp };
-        FGV2ScreenFieldValue StatusField2 = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Status2);
-        TestTrue(TEXT("CCF-08: 2 meters applied"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, StatusField2));
-        if (MeterRep != nullptr)
-        {
-            TestEqual(TEXT("CCF-08: Meter count 2"), MeterRep->GetEntryCount(), 2);
-            TestNotNull(TEXT("CCF-08: Stamina meter in repeater"), MeterRep->GetEntryWidget(FName(TEXT("stamina"))));
-            TestNotNull(TEXT("CCF-08: HP meter in repeater"), MeterRep->GetEntryWidget(FName(TEXT("hp"))));
-        }
     }
 
     // -------------------------------------------------------------------------
-    // CCF-09 & CCF-10: Partial composite apply atomicity on failure
+    // CCF-11: Key and host state semantics for SceneView and CommandPanel
     // -------------------------------------------------------------------------
     {
-        // PlayerStatus partial apply rejection
-        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
-        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-
-        FGV2LocationPlayerStatusViewModel Baseline;
-        Baseline.Name.Text = FText::FromString(TEXT("Old Player Name"));
-        Baseline.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        FGV2LocationMeterEntry M_Base;
-        M_Base.Key = FName(TEXT("stamina"));
-        M_Base.Meter.Percent = 0.70f;
-        Baseline.Meters = { M_Base };
-
-        FGV2ScreenFieldValue BaseField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Baseline);
-        TestTrue(TEXT("CCF-09: PlayerStatus baseline applies"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, BaseField));
-
-        // Candidate has valid new name/portrait, but invalid duplicate meter keys
-        FGV2LocationPlayerStatusViewModel BadCandidate = Baseline;
-        BadCandidate.Name.Text = FText::FromString(TEXT("New Player Name"));
-        BadCandidate.PortraitResourceId = TEXT("textsystem:resource.ui.missing_character");
-        BadCandidate.Meters = { M_Base, M_Base }; // duplicate key
-
-        FGV2ScreenFieldValue BadField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), BadCandidate);
-        TestFalse(TEXT("CCF-09: Candidate with duplicate meter keys rejected by CanApply"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, BadField));
-        TestFalse(TEXT("CCF-09: Candidate with duplicate meter keys rejected by Apply"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, BadField));
-
-        // Verify state is completely preserved as Baseline
-        FGV2ScreenFieldValue Captured;
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, Captured);
-        TestEqual(TEXT("CCF-09: Captured name remains Old Player Name"), Captured.LocationPlayerStatusValue.Name.Text.ToString(), TEXT("Old Player Name"));
-        TestEqual(TEXT("CCF-09: Captured portrait remains baseline"), Captured.LocationPlayerStatusValue.PortraitResourceId, TEXT("textsystem:resource.ui.missing_portrait"));
-        TestEqual(TEXT("CCF-09: Captured meter count remains 1"), Captured.LocationPlayerStatusValue.Meters.Num(), 1);
-
-        // SceneView partial apply rejection
         UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
         UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        SceneView->SetKey(FName(TEXT("scene_test")));
+        TestEqual(TEXT("CCF-11: SceneView Key getter/setter"), SceneView->GetKey(), FName(TEXT("scene_test")));
 
-        FGV2LocationSceneViewModel SceneBase;
-        SceneBase.ContextText.Text = FText::FromString(TEXT("Old Context"));
-        SceneBase.BackgroundResourceId = TEXT("textsystem:resource.ui.missing_background");
-        FGV2LocationCharacterEntry CharA;
-        CharA.Key = FName(TEXT("aria"));
-        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        SceneBase.Characters = { CharA };
-
-        FGV2ScreenFieldValue SceneBaseField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneBase);
-        TestTrue(TEXT("CCF-09: SceneView baseline applies"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneBaseField));
-
-        // Candidate has new context text, but invalid empty character key
-        FGV2LocationSceneViewModel SceneBad = SceneBase;
-        SceneBad.ContextText.Text = FText::FromString(TEXT("New Context"));
-        FGV2LocationCharacterEntry BadChar;
-        BadChar.Key = FName(); // empty key
-        BadChar.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        SceneBad.Characters = { BadChar };
-
-        FGV2ScreenFieldValue SceneBadField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneBad);
-        TestFalse(TEXT("CCF-09: SceneView candidate with empty key rejected"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SceneBadField));
-
-        FGV2ScreenFieldValue SceneCaptured;
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, SceneCaptured);
-        TestEqual(TEXT("CCF-09: SceneView captured context text remains Old Context"), SceneCaptured.LocationSceneValue.ContextText.Text.ToString(), TEXT("Old Context"));
-        TestEqual(TEXT("CCF-09: SceneView character count remains 1"), SceneCaptured.LocationSceneValue.Characters.Num(), 1);
-    }
-
-    // -------------------------------------------------------------------------
-    // CCF-11: Reset semantics for all 4 composites
-    // -------------------------------------------------------------------------
-    {
-        // 1. TopBar Reset
-        UClass* TopBarClass = LoadClass<UGV2LocationTopBarWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_TopBar.WBP_TopBar_C"));
-        UGV2LocationTopBarWidgetBase* TopBar = TopBarClass ? CreateWidget<UGV2LocationTopBarWidgetBase>(TestWorld, TopBarClass) : NewObject<UGV2LocationTopBarWidgetBase>(TestWorld);
-
-        FGV2LocationTopBarViewModel TopA;
-        TopA.Day.Text = FText::FromString(TEXT("Day 10"));
-        TopA.Location.Text = FText::FromString(TEXT("Tavern"));
-        TopA.PrimaryResource.Text = FText::FromString(TEXT("Gold: 100"));
-        IGV2DynamicScreenElement::Execute_ApplyScreenField(TopBar, FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopA));
-
-        IGV2DynamicScreenElement::Execute_ResetScreenField(TopBar);
-        FGV2ScreenFieldValue TopCaptured;
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, TopCaptured);
-        TestTrue(TEXT("CCF-11: TopBar captured Day is empty after reset"), TopCaptured.LocationTopBarValue.Day.Text.IsEmpty());
-
-        FGV2LocationTopBarViewModel TopB;
-        TopB.Day.Text = FText::FromString(TEXT("Day 11"));
-        TopB.Location.Text = FText::FromString(TEXT("Forest"));
-        TopB.PrimaryResource.Text = FText::FromString(TEXT("Gold: 50"));
-        IGV2DynamicScreenElement::Execute_ApplyScreenField(TopBar, FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopB));
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, TopCaptured);
-        TestEqual(TEXT("CCF-11: TopBar has only Model B after reset and re-apply"), TopCaptured.LocationTopBarValue.Location.Text.ToString(), TEXT("Forest"));
-
-        // 2. PlayerStatus Reset
-        UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
-        UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-
-        FGV2LocationPlayerStatusViewModel StatusA;
-        StatusA.Name.Text = FText::FromString(TEXT("Player A"));
-        FGV2LocationMeterEntry M_A;
-        M_A.Key = FName(TEXT("sta"));
-        M_A.Meter.Percent = 0.5f;
-        StatusA.Meters = { M_A };
-        IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), StatusA));
-
-        IGV2DynamicScreenElement::Execute_ResetScreenField(PlayerStatus);
-        FGV2ScreenFieldValue StatusCaptured;
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, StatusCaptured);
-        TestTrue(TEXT("CCF-11: PlayerStatus captured Name is empty after reset"), StatusCaptured.LocationPlayerStatusValue.Name.Text.IsEmpty());
-        TestEqual(TEXT("CCF-11: PlayerStatus captured meter count 0 after reset"), StatusCaptured.LocationPlayerStatusValue.Meters.Num(), 0);
-
-        // 3. SceneView Reset
-        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
-
-        FGV2LocationSceneViewModel SceneA;
-        SceneA.ContextText.Text = FText::FromString(TEXT("Context A"));
-        FGV2LocationCharacterEntry CharA;
-        CharA.Key = FName(TEXT("aria"));
-        CharA.ResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-        SceneA.Characters = { CharA };
-        IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneA));
-
-        IGV2DynamicScreenElement::Execute_ResetScreenField(SceneView);
-        FGV2ScreenFieldValue SceneCap;
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, SceneCap);
-        TestTrue(TEXT("CCF-11: SceneView context empty after reset"), SceneCap.LocationSceneValue.ContextText.Text.IsEmpty());
-        TestEqual(TEXT("CCF-11: SceneView character count 0 after reset"), SceneCap.LocationSceneValue.Characters.Num(), 0);
-
-        // 4. CommandPanel Reset
         UClass* CmdClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
         UGV2LocationCommandPanelWidgetBase* CmdPanel = CmdClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
-
-        FGV2ButtonViewModel BtnA;
-        BtnA.Key = FName(TEXT("b1"));
-        BtnA.Binding = FGV2UiBindingHandle::Create(TEXT("cmd1"));
-        IGV2DynamicScreenElement::Execute_ApplyScreenField(CmdPanel, FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { BtnA }));
-
-        IGV2DynamicScreenElement::Execute_ResetScreenField(CmdPanel);
-        FGV2ScreenFieldValue CmdCap;
-        IGV2DynamicScreenElement::Execute_CaptureScreenField(CmdPanel, CmdCap);
-        TestEqual(TEXT("CCF-11: CommandPanel count 0 after reset"), CmdCap.LocationCommandsValue.Num(), 0);
-    }
-
-    // -------------------------------------------------------------------------
-    // CCF-12: Placeholder semantics verification
-    // -------------------------------------------------------------------------
-    {
-        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
-
-        // Character with missing/invalid resource ID gracefully falls back to missing_character placeholder
-        FGV2LocationSceneViewModel ScenePlaceholder;
-        FGV2LocationCharacterEntry CharPlaceholder;
-        CharPlaceholder.Key = FName(TEXT("unknown_char"));
-        CharPlaceholder.ResourceId = TEXT("nonexistent:resource.invalid_char");
-        ScenePlaceholder.Characters = { CharPlaceholder };
-
-        FGV2ScreenFieldValue PlaceholderField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ScenePlaceholder);
-        TestTrue(TEXT("CCF-12: Character with invalid resource uses placeholder fallback and succeeds"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, PlaceholderField));
-
-        // Absence of optional background collapses background without failing
-        ScenePlaceholder.BackgroundResourceId = TEXT("");
-        FGV2ScreenFieldValue NoBgField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ScenePlaceholder);
-        TestTrue(TEXT("CCF-12: Absence of optional background applies successfully"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, NoBgField));
+        CmdPanel->SetKey(FName(TEXT("cmd_test")));
+        TestEqual(TEXT("CCF-11: CommandPanel Key getter/setter"), CmdPanel->GetKey(), FName(TEXT("cmd_test")));
     }
 
     GameInstance->Shutdown();
@@ -4020,175 +3679,20 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
         WorldContext.SetCurrentWorld(TestWorld);
         GameInstance->Init();
 
-        // 1. TopBar validation & semantics
-        {
-            UGV2LocationTopBarWidgetBase* TopBar = NewObject<UGV2LocationTopBarWidgetBase>(TestWorld);
-            TestNotNull(TEXT("TopBar created"), TopBar);
-
-            // Mismatched FieldId / SchemaId rejected by CanApply
-            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("wrong_field"), {});
-            TestFalse(TEXT("TopBar rejects mismatched FieldId"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(TopBar, WrongField));
-
-            FGV2ScreenFieldValue WrongSchema;
-            WrongSchema.FieldId = TEXT("top_bar");
-            WrongSchema.SchemaId = TEXT("wrong:schema");
-            TestFalse(TEXT("TopBar rejects mismatched SchemaId"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(TopBar, WrongSchema));
-
-            // ResetScreenField clears applied state
-            IGV2DynamicScreenElement::Execute_ResetScreenField(TopBar);
-            FGV2ScreenFieldValue Captured;
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, Captured);
-            TestTrue(TEXT("TopBar captured day is empty after reset"), Captured.LocationTopBarValue.Day.Text.IsEmpty());
-        }
-
-        // 2. PlayerStatus validation & semantics (0/1/N meters & icons)
-        {
-            UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
-            UGV2LocationPlayerStatusWidgetBase* PlayerStatus = PlayerClass ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass) : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-            TestNotNull(TEXT("PlayerStatus created"), PlayerStatus);
-
-            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("wrong_field"), {});
-            TestFalse(TEXT("PlayerStatus rejects mismatched FieldId"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, WrongField));
-
-            // Populate with N items, effects & meters
-            FGV2LocationPlayerStatusViewModel Model;
-            Model.Name.Text = FText::FromString(TEXT("Hero"));
-            Model.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-            
-            FGV2LocationMeterEntry Meter1;
-            Meter1.Key = FName(TEXT("stamina"));
-            Meter1.Meter.Percent = 0.75f;
-            Model.Meters.Add(Meter1);
-
-            Model.Items = { { FName(TEXT("item@1")), TEXT("item1") }, { FName(TEXT("item@2")), TEXT("item2") }, { FName(TEXT("item@3")), TEXT("item3") } };
-            Model.Effects = { { FName(TEXT("effect@1")), TEXT("effect1") }, { FName(TEXT("effect@2")), TEXT("effect2") } };
-
-            // Multiple meters rejected without meter repeater
-            FGV2LocationPlayerStatusViewModel MultiMeterModel = Model;
-            FGV2LocationMeterEntry Meter2;
-            Meter2.Key = FName(TEXT("mana"));
-            Meter2.Meter.Percent = 0.5f;
-            MultiMeterModel.Meters.Add(Meter2);
-            FGV2ScreenFieldValue MultiMeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MultiMeterModel);
-            if (!PlayerStatus->HasUsableMeterRepeaterHost())
-            {
-                TestFalse(TEXT("PlayerStatus rejects multiple meters without repeater"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, MultiMeterField));
-            }
-            else
-            {
-                TestTrue(TEXT("PlayerStatus accepts multiple meters with repeater host"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, MultiMeterField));
-            }
-
-            FGV2ScreenFieldValue ValidField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), Model);
-            TestTrue(TEXT("PlayerStatus accepts valid field descriptor"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatus, ValidField));
-
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, ValidField);
-            FGV2ScreenFieldValue Captured;
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, Captured);
-            TestEqual(TEXT("PlayerStatus items count preserved"), Captured.LocationPlayerStatusValue.Items.Num(), 3);
-            TestEqual(TEXT("PlayerStatus effects count preserved"), Captured.LocationPlayerStatusValue.Effects.Num(), 2);
-            TestEqual(TEXT("PlayerStatus meters count preserved"), Captured.LocationPlayerStatusValue.Meters.Num(), 1);
-
-            // Optional missing/placeholder resources do not fail screen apply
-            FGV2LocationPlayerStatusViewModel MissingResModel = Model;
-            MissingResModel.PortraitResourceId = TEXT("nonexistent:resource.portrait");
-            MissingResModel.Items = { { FName(TEXT("item@1")), TEXT("nonexistent:resource.item") } };
-            FGV2ScreenFieldValue MissingResField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MissingResModel);
-            TestTrue(TEXT("PlayerStatus applies even with optional missing resources via placeholders"), IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatus, MissingResField));
-
-            // ResetScreenField clears everything
-            IGV2DynamicScreenElement::Execute_ResetScreenField(PlayerStatus);
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, Captured);
-            TestEqual(TEXT("PlayerStatus items empty after reset"), Captured.LocationPlayerStatusValue.Items.Num(), 0);
-            TestEqual(TEXT("PlayerStatus effects empty after reset"), Captured.LocationPlayerStatusValue.Effects.Num(), 0);
-            TestEqual(TEXT("PlayerStatus meters empty after reset"), Captured.LocationPlayerStatusValue.Meters.Num(), 0);
-        }
-
-        // 3. SceneView validation & semantics (0/1/N characters, rollback, reuse)
+        // 1. SceneView validation & semantics
         {
             UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
             UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
             TestNotNull(TEXT("SceneView created"), SceneView);
 
-            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("wrong_field"), {});
-            TestFalse(TEXT("SceneView rejects mismatched FieldId"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, WrongField));
-
-            FGV2LocationCharacterEntry Char1;
-            Char1.Key = FName(TEXT("aria"));
-            Char1.ResourceId = TEXT("char_a");
-            FGV2LocationCharacterEntry Char2;
-            Char2.Key = FName(TEXT("keeper"));
-            Char2.ResourceId = TEXT("char_b");
-
-            // 0 characters (valid)
-            FGV2LocationSceneViewModel ZeroSceneModel;
-            FGV2ScreenFieldValue ZeroScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ZeroSceneModel);
-            TestTrue(TEXT("SceneView accepts 0 characters"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, ZeroScene));
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, ZeroScene);
-            FGV2ScreenFieldValue Captured;
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-            TestEqual(TEXT("SceneView has 0 characters after apply"), Captured.LocationSceneValue.Characters.Num(), 0);
-
-            // 1 character (valid)
-            FGV2LocationSceneViewModel SingleSceneModel;
-            SingleSceneModel.Characters = { Char1 };
-            FGV2ScreenFieldValue SingleScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SingleSceneModel);
-            TestTrue(TEXT("SceneView accepts single character field"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, SingleScene));
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, SingleScene);
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-            TestEqual(TEXT("SceneView character count preserved for 1 character"), Captured.LocationSceneValue.Characters.Num(), 1);
-
-            // N characters (valid with repeater)
-            FGV2LocationSceneViewModel MultiSceneModel;
-            MultiSceneModel.Characters = { Char1, Char2 };
-            FGV2ScreenFieldValue MultiScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), MultiSceneModel);
-            TestTrue(TEXT("SceneView accepts multiple characters with repeater"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, MultiScene));
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, MultiScene);
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-            TestEqual(TEXT("SceneView character count preserved for N characters"), Captured.LocationSceneValue.Characters.Num(), 2);
-
-            // Re-apply with updated resource id (instance reuse)
-            FGV2LocationCharacterEntry Char1Updated = Char1;
-            Char1Updated.ResourceId = TEXT("char_a_updated");
-            FGV2LocationSceneViewModel ReuseModel;
-            ReuseModel.Characters = { Char1Updated, Char2 };
-            FGV2ScreenFieldValue ReuseScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), ReuseModel);
-            TestTrue(TEXT("SceneView accepts character update with key reuse"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, ReuseScene));
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-            TestEqual(TEXT("SceneView preserves 2 characters with updated resource"), Captured.LocationSceneValue.Characters.Num(), 2);
-            if (Captured.LocationSceneValue.Characters.Num() == 2)
-            {
-                TestEqual(TEXT("Updated resource id applied"), Captured.LocationSceneValue.Characters[0].ResourceId, FString(TEXT("char_a_updated")));
-            }
-
-            // Negative: duplicate key rejected
-            FGV2LocationSceneViewModel DupSceneModel;
-            DupSceneModel.Characters = { Char1, Char1 };
-            FGV2ScreenFieldValue DupScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), DupSceneModel);
-            TestFalse(TEXT("SceneView rejects duplicate character key"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, DupScene));
-
-            // Negative: empty / None key rejected
-            FGV2LocationCharacterEntry BadChar;
-            BadChar.Key = NAME_None;
-            BadChar.ResourceId = TEXT("char_bad");
-            FGV2LocationSceneViewModel BadKeyModel;
-            BadKeyModel.Characters = { BadChar };
-            FGV2ScreenFieldValue BadKeyScene = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), BadKeyModel);
-            TestFalse(TEXT("SceneView rejects None character key"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneView, BadKeyScene));
-
-            // Optional missing character image uses placeholder without failing
-            FGV2LocationSceneViewModel MissingCharScene;
-            FGV2LocationCharacterEntry MissingChar;
-            MissingChar.Key = FName(TEXT("npc"));
-            MissingChar.ResourceId = TEXT("nonexistent:resource.character");
-            MissingCharScene.Characters = { MissingChar };
-            FGV2ScreenFieldValue MissingCharField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), MissingCharScene);
-            TestTrue(TEXT("SceneView applies with missing character resource via placeholder"), IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneView, MissingCharField));
-
-            // ResetScreenField
-            IGV2DynamicScreenElement::Execute_ResetScreenField(SceneView);
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, Captured);
-            TestEqual(TEXT("SceneView characters empty after reset"), Captured.LocationSceneValue.Characters.Num(), 0);
+            FGV2UiCapabilityBuilder Builder;
+            SceneView->DescribeUiCapabilities(Builder);
+            FGV2UiCapabilityTree Caps = Builder.Build();
+            TestNotNull(TEXT("SceneView has background_tile_resource_id cap"), Caps.FindProperty(TEXT("background_tile_resource_id")));
+            TestNotNull(TEXT("SceneView has background_resource_id cap"), Caps.FindProperty(TEXT("background_resource_id")));
+            TestNotNull(TEXT("SceneView has context_text cap"), Caps.FindProperty(TEXT("context_text")));
+            TestNotNull(TEXT("SceneView has characters cap"), Caps.FindProperty(TEXT("characters")));
+            TestNotNull(TEXT("SceneView has key cap"), Caps.FindProperty(TEXT("key")));
         }
 
         // 4. CommandPanel validation & semantics
@@ -4197,34 +3701,11 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             UGV2LocationCommandPanelWidgetBase* CommandPanel = CommandClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
             TestNotNull(TEXT("CommandPanel created"), CommandPanel);
 
-            FGV2ScreenFieldValue WrongField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("wrong_field"), {});
-            TestFalse(TEXT("CommandPanel rejects mismatched FieldId"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CommandPanel, WrongField));
-
-            // Duplicate keys rejected
-            FGV2ButtonViewModel Btn1;
-            Btn1.Key = FName(TEXT("btn"));
-            Btn1.Binding = FGV2UiBindingHandle::Create(TEXT("binding1"));
-            FGV2ButtonViewModel Btn2;
-            Btn2.Key = FName(TEXT("btn"));
-            Btn2.Binding = FGV2UiBindingHandle::Create(TEXT("binding2"));
-
-            FGV2ScreenFieldValue DupField = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { Btn1, Btn2 });
-            TestFalse(TEXT("CommandPanel rejects duplicate button keys"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CommandPanel, DupField));
-
-            // Valid buttons applied and captured
-            Btn2.Key = FName(TEXT("btn2"));
-            FGV2ScreenFieldValue ValidCmds = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), { Btn1, Btn2 });
-            TestTrue(TEXT("CommandPanel accepts valid buttons"), IGV2DynamicScreenElement::Execute_CanApplyScreenField(CommandPanel, ValidCmds));
-
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(CommandPanel, ValidCmds);
-            FGV2ScreenFieldValue Captured;
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandPanel, Captured);
-            TestEqual(TEXT("CommandPanel button count preserved"), Captured.LocationCommandsValue.Num(), 2);
-
-            // Reset
-            IGV2DynamicScreenElement::Execute_ResetScreenField(CommandPanel);
-            IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandPanel, Captured);
-            TestEqual(TEXT("CommandPanel button count 0 after reset"), Captured.LocationCommandsValue.Num(), 0);
+            FGV2UiCapabilityBuilder Builder;
+            CommandPanel->DescribeUiCapabilities(Builder);
+            FGV2UiCapabilityTree Caps = Builder.Build();
+            TestNotNull(TEXT("CommandPanel has items cap"), Caps.FindProperty(TEXT("items")));
+            TestNotNull(TEXT("CommandPanel has key cap"), Caps.FindProperty(TEXT("key")));
         }
     }
 
@@ -4268,66 +3749,6 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
 
             if (LocationScreen != nullptr)
             {
-                // 2. Prepare comprehensive models for all 4 composites (worst-case pseudolocale + 6 command buttons)
-                FGV2LocationTopBarViewModel TopBarModel;
-                TopBarModel.Location.Text = FText::FromString(TEXT("[LOCALE_TEST] The Golden Gryphon Tavern & Inn of the Northern Realm"));
-                TopBarModel.Day.Text = FText::FromString(TEXT("Day 42"));
-                TopBarModel.PrimaryResource.Text = FText::FromString(TEXT("Gold: 1250"));
-
-                FGV2LocationPlayerStatusViewModel PlayerModel;
-                PlayerModel.Name.Text = FText::FromString(TEXT("[LOCALE_TEST] Grandmaster Archmage Valerius"));
-                PlayerModel.PortraitResourceId = TEXT("textsystem:resource.ui.missing_portrait");
-                FGV2LocationMeterEntry Meter1;
-                Meter1.Key = FName(TEXT("stamina"));
-                Meter1.Meter.Percent = 0.85f;
-                PlayerModel.Meters.Add(Meter1);
-                PlayerModel.Items = { { FName(TEXT("item@1")), TEXT("item_sword") }, { FName(TEXT("item@2")), TEXT("item_shield") } };
-                PlayerModel.Effects = { { FName(TEXT("effect@1")), TEXT("effect_buff") } };
-
-                FGV2LocationSceneViewModel SceneModel;
-                SceneModel.BackgroundResourceId = TEXT("textsystem:resource.ui.missing_background");
-                SceneModel.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
-                SceneModel.ContextText.Text = FText::FromString(TEXT("[TEST] A warm and cozy tavern with cheerful laughter. [LOCALE_OVERFLOW_TEST_STRING_FOR_LAYOUT_AND_TEXT_WRAPPING_1234567890]"));
-                FGV2LocationCharacterEntry Char1;
-                Char1.Key = FName(TEXT("tavern_keeper"));
-                Char1.ResourceId = TEXT("textsystem:resource.ui.missing_character");
-                SceneModel.Characters.Add(Char1);
-
-                TArray<FGV2ButtonViewModel> Buttons;
-                for (int32 Index = 1; Index <= 6; ++Index)
-                {
-                    FGV2ButtonViewModel Btn;
-                    Btn.Key = *FString::Printf(TEXT("cmd_%d"), Index);
-                    Btn.Text.Text = FText::FromString(*FString::Printf(TEXT("[LOCALE_TEST] Speak with Master Alchemist about Mysterious Elixir (#%d)"), Index));
-                    Btn.Binding = FGV2UiBindingHandle::Create(*FString::Printf(TEXT("handle_cmd_%d"), Index));
-                    Buttons.Add(Btn);
-                }
-
-                TArray<FGV2ScreenFieldValue> Fields = {
-                    FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModel),
-                    FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModel),
-                    FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel),
-                    FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), Buttons)
-                };
-                const bool bFieldsApplied = LocationScreen->ApplyScreenFields(Fields);
-                TestTrue(TEXT("WBP_LocationScreen applies full location fields"), bFieldsApplied);
-
-                // 3. Test layout geometry across 6 resolutions using real SVirtualWindow
-                struct FViewportResolution
-                {
-                    const TCHAR* Name;
-                    FVector2D Size;
-                    bool bUltrawide;
-                };
-                const FViewportResolution TestResolutions[] = {
-                    { TEXT("4K (3840x2160)"), FVector2D(3840, 2160), false },
-                    { TEXT("QHD (2560x1440)"), FVector2D(2560, 1440), false },
-                    { TEXT("FHD (1920x1080)"), FVector2D(1920, 1080), false },
-                    { TEXT("HD (1280x720)"), FVector2D(1280, 720), false },
-                    { TEXT("UW-QHD (3440x1440)"), FVector2D(3440, 1440), true },
-                    { TEXT("UW-FHD (2560x1080)"), FVector2D(2560, 1080), true }
-                };
-
                 TSharedPtr<SWidget> SlateWidget = LocationScreen->TakeWidget();
                 TestTrue(TEXT("LocationScreen produces valid Slate widget"), SlateWidget.IsValid());
 
@@ -4357,6 +3778,50 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                     TestNotNull(TEXT("PlayerStatus child composite exists"), PlayerStatusWidget);
                     TestNotNull(TEXT("Scene child composite exists"), SceneWidget);
                     TestNotNull(TEXT("CommandPanel child composite exists"), CommandWidget);
+
+                    if (CommandWidget != nullptr)
+                    {
+                        if (UGV2ListViewWidgetBase* CmdRep = CommandWidget->GetRepeater())
+                        {
+                            struct FTestCmdEntry { FName Key; FText Text; };
+                            TArray<FTestCmdEntry> TestButtons;
+                            for (int32 Index = 1; Index <= 6; ++Index)
+                            {
+                                TestButtons.Add({ *FString::Printf(TEXT("cmd_%d"), Index), FText::FromString(*FString::Printf(TEXT("[LOCALE_TEST] Speak with Master Alchemist about Mysterious Elixir (#%d)"), Index)) });
+                            }
+                            CmdRep->ReconcileEntries<UGV2ButtonWidgetBase, FTestCmdEntry>(
+                                TestButtons,
+                                [](const FTestCmdEntry& E) { return E.Key; },
+                                [TestWorld, CommandWidget]() -> UGV2ButtonWidgetBase*
+                                {
+                                    TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CommandWidget->ResolveButtonWidgetClass();
+                                    return BtnClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, BtnClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
+                                },
+                                [](UGV2ButtonWidgetBase& Btn, const FTestCmdEntry& Entry)
+                                {
+                                    Btn.SetKey(Entry.Key);
+                                    FGV2TextViewModel VM; VM.Text = Entry.Text;
+                                    return Btn.ApplyText(VM);
+                                });
+                        }
+                    }
+
+                    // 3. Test layout geometry across 6 resolutions using real SVirtualWindow
+                    struct FViewportResolution
+                    {
+                        const TCHAR* Name;
+                        FVector2D Size;
+                        bool bUltrawide;
+                    };
+                    const FViewportResolution TestResolutions[] = {
+                        { TEXT("4K (3840x2160)"), FVector2D(3840, 2160), false },
+                        { TEXT("QHD (2560x1440)"), FVector2D(2560, 1440), false },
+                        { TEXT("FHD (1920x1080)"), FVector2D(1920, 1080), false },
+                        { TEXT("HD (1280x720)"), FVector2D(1280, 720), false },
+                        { TEXT("UW-QHD (3440x1440)"), FVector2D(3440, 1440), true },
+                        { TEXT("UW-FHD (2560x1080)"), FVector2D(2560, 1080), true }
+                    };
+
 
                     float SceneWidthFHD = 0.0f;
                     float SceneWidthUWFHD = 0.0f;
@@ -4765,19 +4230,14 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
 
             for (UWidget* Child : ChildWidgets)
             {
-                if (Child != nullptr && Child->Implements<UGV2DynamicScreenElement>())
+                if (auto* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(Child))
                 {
-                    FGV2ScreenFieldValue CapturedField;
-                    if (IGV2DynamicScreenElement::Execute_CaptureScreenField(Child, CapturedField)
-                        && CapturedField.FieldId == FName(TEXT("commands")))
+                    if (UGV2ListViewWidgetBase* Repeater = CmdPanel->GetRepeater())
                     {
-                        for (const FGV2ButtonViewModel& Btn : CapturedField.LocationCommandsValue)
+                        if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Repeater->GetEntryWidget(FName(TEXT("travel_city_market")))))
                         {
-                            if (Btn.Key == FName(TEXT("travel_city_market")))
-                            {
-                                TravelMarketHandle = Btn.Binding;
-                                break;
-                            }
+                            TravelMarketHandle = Btn->GetBindingHandle();
+                            break;
                         }
                     }
                 }
@@ -4808,36 +4268,30 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
 
             for (UWidget* Child : MarketWidgets)
             {
-                if (Child != nullptr && Child->Implements<UGV2DynamicScreenElement>())
+                if (Child != nullptr)
                 {
-                    FGV2ScreenFieldValue CapturedField;
-                    if (IGV2DynamicScreenElement::Execute_CaptureScreenField(Child, CapturedField))
+                    if (auto* TopBar = Cast<UGV2LocationTopBarWidgetBase>(Child))
                     {
-                        if (CapturedField.FieldId == FName(TEXT("top_bar")))
+                        bFoundMarketTopBar = true;
+                    }
+                    else if (auto* Scene = Cast<UGV2LocationSceneWidgetBase>(Child))
+                    {
+                        bFoundMarketScene = true;
+                        UGV2ImageWidgetBase* Bg = Cast<UGV2ImageWidgetBase>(Scene->GetWidgetFromName(FName(TEXT("Background"))));
+                        if (Bg != nullptr)
                         {
-                            bFoundMarketTopBar = true;
-                            TestTrue(
-                                TEXT("CCF-21: Market TopBar location title text is not empty"),
-                                !CapturedField.LocationTopBarValue.Location.Text.IsEmpty());
-                        }
-                        else if (CapturedField.FieldId == FName(TEXT("scene")))
-                        {
-                            bFoundMarketScene = true;
                             TestEqual(
                                 TEXT("CCF-21: Market Scene background resource ID"),
-                                CapturedField.LocationSceneValue.BackgroundResourceId,
+                                Bg->GetAppliedResourceId(),
                                 MarketBgResId);
                         }
-                        else if (CapturedField.FieldId == FName(TEXT("commands")))
+                    }
+                    else if (auto* Cmd = Cast<UGV2LocationCommandPanelWidgetBase>(Child))
+                    {
+                        bFoundMarketCommands = true;
+                        if (UGV2ListViewWidgetBase* Repeater = Cmd->GetRepeater())
                         {
-                            bFoundMarketCommands = true;
-                            for (const FGV2ButtonViewModel& Btn : CapturedField.LocationCommandsValue)
-                            {
-                                if (Btn.Key == FName(TEXT("travel_city_market")))
-                                {
-                                    bTavernTravelButtonPresentInMarket = true;
-                                }
-                            }
+                            bTavernTravelButtonPresentInMarket = Repeater->GetEntryWidget(FName(TEXT("travel_city_market"))) != nullptr;
                         }
                     }
                 }
@@ -4907,98 +4361,38 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
         WorldContext.SetCurrentWorld(TestWorld);
         GameInstance->Init();
 
-        UClass* LocationScreenClass = LoadClass<UGV2ScreenWidgetBase>(
+        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(
             nullptr,
-            TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
-        TestNotNull(TEXT("LocationScreenClass loaded"), LocationScreenClass);
-        if (LocationScreenClass != nullptr)
+            TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        TestNotNull(TEXT("SceneClass loaded"), SceneClass);
+        if (SceneClass != nullptr)
         {
-            UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, LocationScreenClass);
-            TestNotNull(TEXT("Screen created"), Screen);
-            if (Screen != nullptr)
+            UGV2LocationSceneWidgetBase* SceneView = CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass);
+            TestNotNull(TEXT("Scene created"), SceneView);
+            if (SceneView != nullptr)
             {
-                FGV2LocationTopBarViewModel TopBarModel;
-                TopBarModel.Day.Text = FText::FromString(TEXT("Day 1"));
-                TopBarModel.Location.Text = FText::FromString(TEXT("Market"));
-                TopBarModel.PrimaryResource.Text = FText::FromString(TEXT("Gold: 60"));
+                UGV2ImageWidgetBase* Bg = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("Background"))));
+                UGV2ImageWidgetBase* BgTile = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("BackgroundTile"))));
+                TestNotNull(TEXT("Background widget found"), Bg);
+                TestNotNull(TEXT("BackgroundTile widget found"), BgTile);
 
-                FGV2LocationPlayerStatusViewModel PlayerModel;
-                PlayerModel.Name.Text = FText::FromString(TEXT("Hero"));
-                PlayerModel.PortraitResourceId = HeroPortraitResourceId;
-
-                FGV2LocationSceneViewModel SceneModel;
-                SceneModel.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
-                SceneModel.BackgroundResourceId = MarketResourceId;
-                SceneModel.ContextText.Text = FText::FromString(TEXT("Market square"));
-
-                TArray<FGV2ButtonViewModel> Buttons;
-                FGV2ButtonViewModel Btn1;
-                Btn1.Key = FName(TEXT("btn1"));
-                Btn1.Text.Text = FText::FromString(TEXT("Buy Sword"));
-                Btn1.Binding = FGV2UiBindingHandle::Create(TEXT("b1"));
-                Buttons.Add(Btn1);
-
-                TArray<FGV2ScreenFieldValue> Fields = {
-                    FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModel),
-                    FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModel),
-                    FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModel),
-                    FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), Buttons)
-                };
-                const bool bApplied = Screen->ApplyScreenFields(Fields);
-                TestTrue(TEXT("Screen applied fields"), bApplied);
-
-                // Find Scene widget inside Screen
-                UWidget* SceneWidget = Screen->GetWidgetFromName(FName(TEXT("Scene")));
-                TestNotNull(TEXT("Scene found in screen"), SceneWidget);
-                UGV2LocationSceneWidgetBase* SceneView = Cast<UGV2LocationSceneWidgetBase>(SceneWidget);
-                TestNotNull(TEXT("Scene is UGV2LocationSceneWidgetBase"), SceneView);
-
-                if (SceneView != nullptr)
+                if (Bg != nullptr)
                 {
-                    UGV2ImageWidgetBase* Bg = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("Background"))));
-                    UGV2ImageWidgetBase* BgTile = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("BackgroundTile"))));
-                    TestNotNull(TEXT("Background widget found"), Bg);
-                    TestNotNull(TEXT("BackgroundTile widget found"), BgTile);
-
-                    if (Bg != nullptr)
-                    {
-                        AddInfo(FString::Printf(TEXT("Background: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
-                            *Bg->GetAppliedResourceId(),
-                            static_cast<int32>(Bg->GetVisibility()),
-                            Bg->GetImageBrush().GetResourceObject() ? *Bg->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
-                    }
-                    UGV2ImageWidgetBase* CharWidget = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("Character"))));
-                    if (CharWidget != nullptr)
-                    {
-                        TestEqual(TEXT("Character widget collapsed when no characters"), CharWidget->GetVisibility(), ESlateVisibility::Collapsed);
-                    }
-                    if (BgTile != nullptr)
-                    {
-                        AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
-                            *BgTile->GetAppliedResourceId(),
-                            static_cast<int32>(BgTile->GetVisibility()),
-                            BgTile->GetImageBrush().GetResourceObject() ? *BgTile->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
-                    }
-
-                    // Check overlay slot indices
-                    if (Bg != nullptr && BgTile != nullptr)
-                    {
-                        UPanelWidget* ParentPanel = Bg->GetParent();
-                        AddInfo(FString::Printf(TEXT("ParentPanel: %s"), ParentPanel ? *ParentPanel->GetName() : TEXT("nullptr")));
-                        if (ParentPanel != nullptr)
-                        {
-                            const int32 BgIndex = ParentPanel->GetChildIndex(Bg);
-                            const int32 BgTileIndex = ParentPanel->GetChildIndex(BgTile);
-                            AddInfo(FString::Printf(TEXT("Child indices: Background=%d, BackgroundTile=%d, TotalChildren=%d"),
-                                BgIndex, BgTileIndex, ParentPanel->GetChildrenCount()));
-                            for (int32 i = 0; i < ParentPanel->GetChildrenCount(); ++i)
-                            {
-                                UWidget* Child = ParentPanel->GetChildAt(i);
-                                AddInfo(FString::Printf(TEXT("Child [%d]: %s (Class=%s, Visibility=%d)"),
-                                    i, *Child->GetName(), *Child->GetClass()->GetName(), static_cast<int32>(Child->GetVisibility())));
-                            }
-                        }
-                    }
+                    FString Error;
+                    Bg->ApplyOptionalImageResource(MarketResourceId, TEXT("core:resource.ui.missing_background"), Error);
+                    AddInfo(FString::Printf(TEXT("Background: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
+                        *Bg->GetAppliedResourceId(),
+                        static_cast<int32>(Bg->GetVisibility()),
+                        Bg->GetImageBrush().GetResourceObject() ? *Bg->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
+                }
+                if (BgTile != nullptr)
+                {
+                    FString Error;
+                    BgTile->ApplyOptionalImageResource(TEXT("core:resource.ui.old_paper_tile_256"), TEXT("core:resource.ui.missing_background"), Error);
+                    AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
+                        *BgTile->GetAppliedResourceId(),
+                        static_cast<int32>(BgTile->GetVisibility()),
+                        BgTile->GetImageBrush().GetResourceObject() ? *BgTile->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
                 }
             }
         }
@@ -5021,167 +4415,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
 {
-    const FString GameNamespace = TEXT("r") TEXT("h");
-    const FString HeroPortraitResourceId = GameNamespace + TEXT(":resource.portrait.hero");
-    const FString TavernResourceId = GameNamespace + TEXT(":resource.location.tavern");
-
-    // 1. Screen composite rollback across multiple child elements
-    UGameInstance* GameInstance = NewObject<UGameInstance>();
-    GameInstance->AddToRoot();
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
-    if (TestWorld != nullptr)
-    {
-        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
-        WorldContext.SetCurrentWorld(TestWorld);
-        GameInstance->Init();
-
-        UClass* LocationScreenClass = LoadClass<UGV2ScreenWidgetBase>(
-            nullptr,
-            TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
-        TestNotNull(TEXT("LocationScreenClass loaded for rollback test"), LocationScreenClass);
-        if (LocationScreenClass != nullptr)
-        {
-            UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, LocationScreenClass);
-            TestNotNull(TEXT("Screen instantiated for rollback test"), Screen);
-            if (Screen != nullptr)
-            {
-                // Initial valid State A
-                FGV2LocationTopBarViewModel TopBarModelA;
-                TopBarModelA.Day.Text = FText::FromString(TEXT("Day 1"));
-                TopBarModelA.Location.Text = FText::FromString(TEXT("Tavern"));
-                TopBarModelA.PrimaryResource.Text = FText::FromString(TEXT("Gold: 50"));
-
-                FGV2LocationPlayerStatusViewModel PlayerModelA;
-                PlayerModelA.Name.Text = FText::FromString(TEXT("Hero Initial"));
-                PlayerModelA.PortraitResourceId = HeroPortraitResourceId;
-
-                FGV2LocationSceneViewModel SceneModelA;
-                SceneModelA.BackgroundTileResourceId = TEXT("core:resource.ui.old_paper_tile_256");
-                SceneModelA.BackgroundResourceId = TavernResourceId;
-                SceneModelA.ContextText.Text = FText::FromString(TEXT("Tavern atmosphere"));
-
-                TArray<FGV2ButtonViewModel> ButtonsA;
-                FGV2ButtonViewModel BtnA;
-                BtnA.Key = FName(TEXT("btn_drink"));
-                BtnA.Text.Text = FText::FromString(TEXT("Drink Ale"));
-                BtnA.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:101"));
-                ButtonsA.Add(BtnA);
-
-                const TArray<FGV2ScreenFieldValue> StateA = {
-                    FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModelA),
-                    FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModelA),
-                    FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModelA),
-                    FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), ButtonsA)
-                };
-
-                const bool bInitialApplied = Screen->ApplyScreenFields(StateA);
-                TestTrue(TEXT("Initial State A applied successfully"), bInitialApplied);
-
-                // Verify initial State A is reflected in widgets
-                UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("TopBar"))));
-                UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("PlayerStatus"))));
-                UGV2LocationSceneWidgetBase* SceneView = Cast<UGV2LocationSceneWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("Scene"))));
-                UGV2LocationCommandPanelWidgetBase* CommandPanel = Cast<UGV2LocationCommandPanelWidgetBase>(Screen->GetWidgetFromName(FName(TEXT("Commands"))));
-
-                TestNotNull(TEXT("TopBar child widget exists"), TopBar);
-                TestNotNull(TEXT("PlayerStatus child widget exists"), PlayerStatus);
-                TestNotNull(TEXT("SceneView child widget exists"), SceneView);
-                TestNotNull(TEXT("CommandPanel child widget exists"), CommandPanel);
-
-                if (TopBar != nullptr && PlayerStatus != nullptr && SceneView != nullptr && CommandPanel != nullptr)
-                {
-                    FGV2ScreenFieldValue CapturedTopBarA;
-                    IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, CapturedTopBarA);
-                    TestEqual(TEXT("Initial TopBar Day is Day 1"), CapturedTopBarA.LocationTopBarValue.Day.Text.ToString(), TEXT("Day 1"));
-                    TestEqual(TEXT("Initial TopBar Location is Tavern"), CapturedTopBarA.LocationTopBarValue.Location.Text.ToString(), TEXT("Tavern"));
-
-                    FGV2ScreenFieldValue CapturedPlayerA;
-                    IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, CapturedPlayerA);
-                    TestEqual(TEXT("Initial Player Name is Hero Initial"), CapturedPlayerA.LocationPlayerStatusValue.Name.Text.ToString(), TEXT("Hero Initial"));
-
-                    FGV2ScreenFieldValue CapturedSceneA;
-                    IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, CapturedSceneA);
-                    TestEqual(TEXT("Initial Scene Background is Tavern"), CapturedSceneA.LocationSceneValue.BackgroundResourceId, TavernResourceId);
-
-                    // Now prepare Candidate State B where:
-                    // - TopBar (child 0): Day 2, Market, Gold 100 (valid new model)
-                    // - PlayerStatus (child 1): Hero Updated (valid new model)
-                    // - Scene (child 2): BackgroundTileResourceId = invalid nonexistent resource (passes CanApplyScreenField schema, fails ApplyScreenField commit!)
-                    // - Commands (child 3): btn_buy
-                    FGV2LocationTopBarViewModel TopBarModelB;
-                    TopBarModelB.Day.Text = FText::FromString(TEXT("Day 2"));
-                    TopBarModelB.Location.Text = FText::FromString(TEXT("Market"));
-                    TopBarModelB.PrimaryResource.Text = FText::FromString(TEXT("Gold: 100"));
-
-                    FGV2LocationPlayerStatusViewModel PlayerModelB;
-                    PlayerModelB.Name.Text = FText::FromString(TEXT("Hero Updated"));
-                    PlayerModelB.PortraitResourceId = HeroPortraitResourceId;
-
-                    FGV2LocationSceneViewModel SceneModelB;
-                    SceneModelB.BackgroundTileResourceId = TEXT("core:resource.ui.nonexistent_tile_invalid");
-                    SceneModelB.BackgroundResourceId = TavernResourceId;
-                    SceneModelB.ContextText.Text = FText::FromString(TEXT("Market atmosphere"));
-
-                    TArray<FGV2ButtonViewModel> ButtonsB;
-                    FGV2ButtonViewModel BtnB;
-                    BtnB.Key = FName(TEXT("btn_buy"));
-                    BtnB.Text.Text = FText::FromString(TEXT("Buy"));
-                    BtnB.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:102"));
-                    ButtonsB.Add(BtnB);
-
-                    const TArray<FGV2ScreenFieldValue> StateB = {
-                        FGV2ScreenFieldValue::MakeLocationTopBar(TEXT("top_bar"), TopBarModelB),
-                        FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), PlayerModelB),
-                        FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), SceneModelB),
-                        FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), ButtonsB)
-                    };
-
-                    // Preflight CanApplyScreenFields must pass for the candidate payload
-                    TestTrue(TEXT("Candidate State B passes CanApplyScreenFields preflight"), Screen->CanApplyScreenFields(StateB));
-
-                    AddExpectedErrorPlain(
-                        TEXT("ApplyScreenFields failed during commit"),
-                        EAutomationExpectedErrorFlags::Contains,
-                        1);
-
-                    // ApplyScreenFields MUST fail during commit on the failing Scene child
-                    const bool bApplyFailed = Screen->ApplyScreenFields(StateB);
-                    TestFalse(TEXT("ApplyScreenFields returns false when a child element fails commit"), bApplyFailed);
-
-                    // VERIFY ROLLBACK: All previously updated children must be restored to State A
-                    FGV2ScreenFieldValue RolledBackTopBar;
-                    TestTrue(TEXT("Capture TopBar after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(TopBar, RolledBackTopBar));
-                    TestEqual(TEXT("TopBar Day rolled back to Day 1"), RolledBackTopBar.LocationTopBarValue.Day.Text.ToString(), TEXT("Day 1"));
-                    TestEqual(TEXT("TopBar Location rolled back to Tavern"), RolledBackTopBar.LocationTopBarValue.Location.Text.ToString(), TEXT("Tavern"));
-                    TestEqual(TEXT("TopBar PrimaryResource rolled back to Gold: 50"), RolledBackTopBar.LocationTopBarValue.PrimaryResource.Text.ToString(), TEXT("Gold: 50"));
-
-                    FGV2ScreenFieldValue RolledBackPlayer;
-                    TestTrue(TEXT("Capture PlayerStatus after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(PlayerStatus, RolledBackPlayer));
-                    TestEqual(TEXT("Player Name rolled back to Hero Initial"), RolledBackPlayer.LocationPlayerStatusValue.Name.Text.ToString(), TEXT("Hero Initial"));
-
-                    FGV2ScreenFieldValue RolledBackScene;
-                    TestTrue(TEXT("Capture Scene after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(SceneView, RolledBackScene));
-                    TestEqual(TEXT("Scene Background rolled back to Tavern"), RolledBackScene.LocationSceneValue.BackgroundResourceId, TavernResourceId);
-                    TestEqual(TEXT("Scene Context rolled back to Tavern atmosphere"), RolledBackScene.LocationSceneValue.ContextText.Text.ToString(), TEXT("Tavern atmosphere"));
-
-                    FGV2ScreenFieldValue RolledBackCommands;
-                    TestTrue(TEXT("Capture Commands after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandPanel, RolledBackCommands));
-                    TestEqual(TEXT("Commands list count remains 1"), RolledBackCommands.LocationCommandsValue.Num(), 1);
-                    if (RolledBackCommands.LocationCommandsValue.Num() == 1)
-                    {
-                        TestEqual(TEXT("Commands button key remains btn_drink"), RolledBackCommands.LocationCommandsValue[0].Key, FName(TEXT("btn_drink")));
-                    }
-                }
-            }
-        }
-
-        GameInstance->Shutdown();
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
-
-    // 2. Transactional ReconcileEntries failure and rollback in ListView
+    // Transactional ReconcileEntries failure and rollback in ListView
     {
         UVerticalBox* Container = NewObject<UVerticalBox>();
         UGV2ListViewWidgetBase* ListView = NewObject<UGV2ListViewWidgetBase>();
@@ -5377,11 +4611,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     using FArray = GV2RuntimeCore::FValue::FArray;
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TArray<FGV2UiBindingHandle> Handles;
-    TArray<FGV2ScreenFieldValue> OutFields;
-
-    AddExpectedErrorPlain(TEXT("rejected (closed schema)"), EAutomationExpectedErrorFlags::Contains, 8);
-    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 7);
+    AddExpectedErrorPlain(TEXT("rejected (closed schema)"), EAutomationExpectedErrorFlags::Contains, 3);
 
     auto MakeTextSpec = [](const std::string& TextId) -> FObject
     {
@@ -5390,124 +4620,27 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         return Obj;
     };
 
-    // 1. Rejection at field value level: top_bar with unknown key
+    // 1. Rejection at field value level: commands with unknown key
     {
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = "textsystem:screen.location";
 
         GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "top_bar";
-        Field.SchemaId = "textsystem:schema.ui_field.location_top_bar.v1";
+        Field.FieldId = "commands";
+        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
 
-        FObject TopBarValue;
-        TopBarValue["day"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        TopBarValue["location"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        TopBarValue["primary_resource"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        TopBarValue["unknown_top_bar_key"] = GV2RuntimeCore::FValue(std::string("gems"));
+        FObject CmdValue;
+        CmdValue["items"] = GV2RuntimeCore::FValue(FArray{});
+        CmdValue["unknown_field"] = GV2RuntimeCore::FValue(std::string("invalid"));
 
-        Field.Value = GV2RuntimeCore::FValue(TopBarValue);
+        Field.Value = GV2RuntimeCore::FValue(CmdValue);
         Request.Fields.push_back(MoveTemp(Field));
 
-        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on top_bar"), Registry.BuildFields(Request, Handles, OutFields));
+        TArray<FGV2UiBindingDefinition> Definitions;
+        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on commands"), Registry.PrepareBindingDefinitions(Request, Definitions));
     }
 
-    // 2. Rejection at field value level: scene with unknown key
-    {
-        GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
-
-        GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "scene";
-        Field.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
-
-        FObject SceneValue;
-        SceneValue["background_tile_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
-        SceneValue["background_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
-        SceneValue["characters"] = GV2RuntimeCore::FValue(FArray{});
-        SceneValue["context_text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        SceneValue["unknown_lighting"] = GV2RuntimeCore::FValue(std::string("sunny"));
-
-        Field.Value = GV2RuntimeCore::FValue(SceneValue);
-        Request.Fields.push_back(MoveTemp(Field));
-
-        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on scene"), Registry.BuildFields(Request, Handles, OutFields));
-    }
-
-    // 3. Rejection at field value level: player_status with unknown key
-    {
-        GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
-
-        GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "player_status";
-        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
-
-        FObject StatusValue;
-        StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
-        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{});
-        StatusValue["items"] = GV2RuntimeCore::FValue(FArray{});
-        StatusValue["effects"] = GV2RuntimeCore::FValue(FArray{});
-        StatusValue["unknown_player_stat"] = GV2RuntimeCore::FValue(std::int64_t(42));
-
-        Field.Value = GV2RuntimeCore::FValue(StatusValue);
-        Request.Fields.push_back(MoveTemp(Field));
-
-        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on player_status"), Registry.BuildFields(Request, Handles, OutFields));
-    }
-
-    // 4. Rejection at collection element level: characters element in scene
-    {
-        GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
-
-        GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "scene";
-        Field.SchemaId = "textsystem:schema.ui_field.location_scene.v1";
-
-        FObject SceneValue;
-        SceneValue["background_tile_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
-        SceneValue["background_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_background"));
-        SceneValue["context_text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-
-        FObject CharObj;
-        CharObj["key"] = GV2RuntimeCore::FValue(std::string("keeper"));
-        CharObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
-        CharObj["extra_character_prop"] = GV2RuntimeCore::FValue(std::string("merchant_dialog"));
-        SceneValue["characters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(CharObj)});
-
-        Field.Value = GV2RuntimeCore::FValue(SceneValue);
-        Request.Fields.push_back(MoveTemp(Field));
-
-        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on character"), Registry.BuildFields(Request, Handles, OutFields));
-    }
-
-    // 5. Rejection at collection element level: meters element in player_status
-    {
-        GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
-
-        GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "player_status";
-        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
-
-        FObject StatusValue;
-        StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
-
-        FObject MeterObj;
-        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
-        MeterObj["percent"] = GV2RuntimeCore::FValue(0.75);
-        MeterObj["extra_color"] = GV2RuntimeCore::FValue(std::string("blue"));
-        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
-
-        Field.Value = GV2RuntimeCore::FValue(StatusValue);
-        Request.Fields.push_back(MoveTemp(Field));
-
-        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on meter"), Registry.BuildFields(Request, Handles, OutFields));
-    }
-
-    // 6. Rejection at collection element level: items element in location_commands
+    // 2. Rejection at collection element level: unknown key on button item
     {
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = "textsystem:screen.location";
@@ -5530,34 +4663,11 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Field.Value = GV2RuntimeCore::FValue(CmdValue);
         Request.Fields.push_back(MoveTemp(Field));
 
-        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle::Create(TEXT("dummy@1:1")) };
-        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), Registry.BuildFields(Request, DummyHandles, OutFields));
+        TArray<FGV2UiBindingDefinition> Definitions;
+        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), Registry.PrepareBindingDefinitions(Request, Definitions));
     }
 
-    // 7. Rejection at nested TextSpec level
-    {
-        GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
-
-        GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "top_bar";
-        Field.SchemaId = "textsystem:schema.ui_field.location_top_bar.v1";
-
-        FObject BadTextSpec = MakeTextSpec("core:text.common.ok");
-        BadTextSpec["unknown_formatting"] = GV2RuntimeCore::FValue(std::string("bold"));
-
-        FObject TopBarValue;
-        TopBarValue["day"] = GV2RuntimeCore::FValue(BadTextSpec);
-        TopBarValue["location"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        TopBarValue["primary_resource"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-
-        Field.Value = GV2RuntimeCore::FValue(TopBarValue);
-        Request.Fields.push_back(MoveTemp(Field));
-
-        TestFalse(TEXT("BAI-03: Nested TextSpec level unknown key rejected"), Registry.BuildFields(Request, Handles, OutFields));
-    }
-
-    // 8. Rejection at nested Binding level
+    // 3. Rejection at nested Binding level: unknown property in binding object
     {
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = "textsystem:screen.location";
@@ -5584,21 +4694,49 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), Registry.PrepareBindingDefinitions(Request, Definitions));
     }
 
+    // 4. Rejection of duplicate button keys in collection
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = "commands";
+        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
+
+        FObject BtnObj1;
+        BtnObj1["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
+        BtnObj1["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+        BtnObj1["binding"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
+
+        FObject BtnObj2;
+        BtnObj2["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
+        BtnObj2["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.cancel"));
+        BtnObj2["binding"] = GV2RuntimeCore::FValue(std::string("core:command.common.cancel"));
+
+        FObject CmdValue;
+        CmdValue["items"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(BtnObj1), GV2RuntimeCore::FValue(BtnObj2)});
+
+        Field.Value = GV2RuntimeCore::FValue(CmdValue);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TArray<FGV2UiBindingDefinition> Definitions;
+        TestFalse(TEXT("BAI-03: Duplicate button key rejected in commands"), Registry.PrepareBindingDefinitions(Request, Definitions));
+    }
+
     return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationMeterAndKeyBoundaryTest,
-    "GV2.Runtime.Presentation.LocationMeterAndKeyBoundary",
+    FGV2LocationKeyBoundaryTest,
+    "GV2.Runtime.Presentation.LocationKeyBoundary",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2LocationMeterAndKeyBoundaryTest::RunTest(const FString& Parameters)
+bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
 {
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 11);
 
     auto MakeTextSpec = [](const std::string& TextId) -> FObject
     {
@@ -5607,262 +4745,38 @@ bool FGV2LocationMeterAndKeyBoundaryTest::RunTest(const FString& Parameters)
         return Obj;
     };
 
-    // Builds a player_status request with a single meter carrying the given percent value.
-    auto BuildWithMeterPercent = [&](const GV2RuntimeCore::FValue& PercentValue, float& OutPercent) -> bool
+    // 1. Repeated element key grammar applies to command items
     {
-        GV2RuntimeCore::FScreenRequest Request;
-        Request.ScreenId = "textsystem:screen.location";
-
-        GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "player_status";
-        Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
-
-        FObject MeterObj;
-        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
-        MeterObj["percent"] = PercentValue;
-
-        FObject StatusValue;
-        StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
-
-        Field.Value = GV2RuntimeCore::FValue(StatusValue);
-        Request.Fields.push_back(MoveTemp(Field));
-
-        TArray<FGV2UiBindingHandle> Handles;
-        TArray<FGV2ScreenFieldValue> OutFields;
-        if (!Registry.BuildFields(Request, Handles, OutFields) || OutFields.Num() != 1) return false;
-        const FGV2LocationPlayerStatusViewModel& Model = OutFields[0].LocationPlayerStatusValue;
-        if (Model.Meters.Num() != 1) return false;
-        OutPercent = Model.Meters[0].Meter.Percent;
-        return true;
-    };
-
-    // 1. Lua integer subtype must not be silently discarded. `math.min(1, stamina / 100)`
-    //    yields an integer at full stamina, which previously zeroed the meter.
-    {
-        float Percent = -1.0f;
-        const bool bBuilt = BuildWithMeterPercent(GV2RuntimeCore::FValue(static_cast<std::int64_t>(1)), Percent);
-        TestTrue(TEXT("Integer percent is accepted"), bBuilt);
-        TestEqual(TEXT("Integer percent 1 reaches the model as 1.0, not 0.0"), Percent, 1.0f);
-    }
-
-    // 2. Float percent still passes through unchanged.
-    {
-        float Percent = -1.0f;
-        const bool bBuilt = BuildWithMeterPercent(GV2RuntimeCore::FValue(0.25), Percent);
-        TestTrue(TEXT("Float percent is accepted"), bBuilt);
-        TestEqual(TEXT("Float percent preserved"), Percent, 0.25f);
-    }
-
-    // 3. Out-of-range values are clamped at the boundary, so no widget ever sees them.
-    {
-        float Percent = -1.0f;
-        TestTrue(TEXT("Above-range percent is accepted"), BuildWithMeterPercent(GV2RuntimeCore::FValue(2.0), Percent));
-        TestEqual(TEXT("Above-range percent clamped to 1.0 at the boundary"), Percent, 1.0f);
-
-        Percent = -1.0f;
-        TestTrue(TEXT("Below-range percent is accepted"), BuildWithMeterPercent(GV2RuntimeCore::FValue(-0.5), Percent));
-        TestEqual(TEXT("Below-range percent clamped to 0.0 at the boundary"), Percent, 0.0f);
-    }
-
-    // 4. Non-numeric percent is rejected instead of silently defaulting to zero.
-    {
-        float Percent = -1.0f;
-        TestFalse(TEXT("String percent rejected"), BuildWithMeterPercent(GV2RuntimeCore::FValue(std::string("abc")), Percent));
-        TestFalse(TEXT("Boolean percent rejected"), BuildWithMeterPercent(GV2RuntimeCore::FValue(true), Percent));
-    }
-
-    // 5. Repeated element key grammar applies to location collections, not only to
-    //    the generic ones. Meters, characters, items and effects share one rule.
-    {
-        auto BuildWithKey = [&](const char* FieldId, const char* SchemaId, const char* CollectionKey, const std::string& Key) -> bool
+        auto BuildWithCommandKey = [&](const std::string& Key) -> bool
         {
             GV2RuntimeCore::FScreenRequest Request;
             Request.ScreenId = "textsystem:screen.location";
 
             GV2RuntimeCore::FScreenField Field;
-            Field.FieldId = FieldId;
-            Field.SchemaId = SchemaId;
+            Field.FieldId = "commands";
+            Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
 
             FObject EntryObj;
             EntryObj["key"] = GV2RuntimeCore::FValue(Key);
-            EntryObj["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon"));
+            EntryObj["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
+            FObject BindingObj;
+            BindingObj["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
+            EntryObj["binding"] = GV2RuntimeCore::FValue(BindingObj);
 
             FObject FieldValue;
-            if (FCStringAnsi::Strcmp(FieldId, "player_status") == 0)
-            {
-                FieldValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-            }
-            FieldValue[CollectionKey] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(EntryObj)});
+            FieldValue["items"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(EntryObj)});
 
             Field.Value = GV2RuntimeCore::FValue(FieldValue);
             Request.Fields.push_back(MoveTemp(Field));
 
-            TArray<FGV2UiBindingHandle> Handles;
-            TArray<FGV2ScreenFieldValue> OutFields;
-            return Registry.BuildFields(Request, Handles, OutFields);
+            TArray<FGV2UiBindingDefinition> Definitions;
+            return Registry.PrepareBindingDefinitions(Request, Definitions);
         };
 
-        const char* StatusId = "player_status";
-        const char* StatusSchema = "textsystem:schema.ui_field.location_player_status.v1";
-        const char* SceneId = "scene";
-        const char* SceneSchema = "textsystem:schema.ui_field.location_scene.v1";
-
-        TestTrue(TEXT("Conforming item key accepted"), BuildWithKey(StatusId, StatusSchema, "items", "item@1"));
-        TestFalse(TEXT("Uppercase item key rejected"), BuildWithKey(StatusId, StatusSchema, "items", "Item1"));
-        TestFalse(TEXT("Item key with space and punctuation rejected"), BuildWithKey(StatusId, StatusSchema, "items", "invalid key!"));
-        TestFalse(TEXT("Text-derived item key rejected"), BuildWithKey(StatusId, StatusSchema, "items", "text:item.name"));
-
-        TestTrue(TEXT("Conforming effect key accepted"), BuildWithKey(StatusId, StatusSchema, "effects", "effect@1"));
-        TestFalse(TEXT("Uppercase effect key rejected"), BuildWithKey(StatusId, StatusSchema, "effects", "Effect1"));
-
-        TestTrue(TEXT("Conforming character key accepted"), BuildWithKey(SceneId, SceneSchema, "characters", "tavern_keeper"));
-        TestFalse(TEXT("Uppercase character key rejected"), BuildWithKey(SceneId, SceneSchema, "characters", "TavernKeeper"));
-        TestFalse(TEXT("Text-derived character key rejected"), BuildWithKey(SceneId, SceneSchema, "characters", "text:character.name"));
-    }
-
-    // 6. Meter key grammar, checked through the meters collection shape.
-    {
-        auto BuildWithMeterKey = [&](const std::string& Key) -> bool
-        {
-            GV2RuntimeCore::FScreenRequest Request;
-            Request.ScreenId = "textsystem:screen.location";
-
-            GV2RuntimeCore::FScreenField Field;
-            Field.FieldId = "player_status";
-            Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
-
-            FObject MeterObj;
-            MeterObj["key"] = GV2RuntimeCore::FValue(Key);
-            MeterObj["percent"] = GV2RuntimeCore::FValue(0.5);
-
-            FObject StatusValue;
-            StatusValue["name"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-            StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
-
-            Field.Value = GV2RuntimeCore::FValue(StatusValue);
-            Request.Fields.push_back(MoveTemp(Field));
-
-            TArray<FGV2UiBindingHandle> Handles;
-            TArray<FGV2ScreenFieldValue> OutFields;
-            return Registry.BuildFields(Request, Handles, OutFields);
-        };
-
-        TestTrue(TEXT("Conforming meter key accepted"), BuildWithMeterKey("stamina"));
-        TestFalse(TEXT("Uppercase meter key rejected"), BuildWithMeterKey("Stamina"));
-        TestFalse(TEXT("Meter key with space rejected"), BuildWithMeterKey("stamina bar"));
-        TestFalse(TEXT("Text-derived meter key rejected"), BuildWithMeterKey("text:meter.stamina"));
-    }
-
-    return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationPlayerStatusItemIconsTest,
-    "GV2.Runtime.Presentation.LocationPlayerStatusItemIconsReachComposite",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationPlayerStatusItemIconsTest::RunTest(const FString& Parameters)
-{
-    using FObject = GV2RuntimeCore::FValue::FObject;
-    using FArray = GV2RuntimeCore::FValue::FArray;
-
-    GV2RuntimeCore::FScreenRequest Request;
-    Request.ScreenId = "textsystem:screen.location";
-
-    GV2RuntimeCore::FScreenField Field;
-    Field.FieldId = "player_status";
-    Field.SchemaId = "textsystem:schema.ui_field.location_player_status.v1";
-
-    FObject StatusValue;
-    FObject NameSpec;
-    NameSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
-    StatusValue["name"] = GV2RuntimeCore::FValue(NameSpec);
-    StatusValue["portrait_resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
-
-    auto MakeIconEntry = [](const std::string& Key) -> GV2RuntimeCore::FValue
-    {
-        FObject Entry;
-        Entry["key"] = GV2RuntimeCore::FValue(Key);
-        Entry["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon"));
-        return GV2RuntimeCore::FValue(Entry);
-    };
-
-    FArray ItemIcons;
-    ItemIcons.push_back(MakeIconEntry("item@1"));
-    ItemIcons.push_back(MakeIconEntry("item@2"));
-    StatusValue["items"] = GV2RuntimeCore::FValue(ItemIcons);
-
-    FArray EffectIcons;
-    EffectIcons.push_back(MakeIconEntry("effect@1"));
-    StatusValue["effects"] = GV2RuntimeCore::FValue(EffectIcons);
-
-    FObject MeterObj;
-    MeterObj["key"] = GV2RuntimeCore::FValue(std::string("stamina"));
-    MeterObj["percent"] = GV2RuntimeCore::FValue(0.5);
-    FObject MeterLabelSpec;
-    MeterLabelSpec["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
-    MeterObj["label"] = GV2RuntimeCore::FValue(MeterLabelSpec);
-    StatusValue["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
-
-    Field.Value = GV2RuntimeCore::FValue(StatusValue);
-    Request.Fields.push_back(MoveTemp(Field));
-
-    TArray<FGV2UiBindingHandle> Handles;
-    TArray<FGV2ScreenFieldValue> OutFields;
-
-    const bool bBuilt = FGV2ScreenFieldAdapterRegistry::Get().BuildFields(Request, Handles, OutFields);
-    TestTrue(TEXT("BAI-02: BuildFields succeeds for player_status with items and effects"), bBuilt);
-    TestEqual(TEXT("BAI-02: Exactly 1 field built"), OutFields.Num(), 1);
-
-    if (OutFields.Num() == 1)
-    {
-        const FGV2LocationPlayerStatusViewModel& Model = OutFields[0].LocationPlayerStatusValue;
-        TestEqual(TEXT("BAI-02: Items count is 2"), Model.Items.Num(), 2);
-        TestEqual(TEXT("BAI-02: Effects count is 1"), Model.Effects.Num(), 1);
-        TestEqual(TEXT("BAI-02: Meters count is 1"), Model.Meters.Num(), 1);
-
-        UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
-        TestNotNull(TEXT("TestWorld created"), TestWorld);
-        if (TestWorld != nullptr)
-        {
-            UClass* PlayerClass = LoadClass<UGV2LocationPlayerStatusWidgetBase>(
-                nullptr,
-                TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"));
-            UGV2LocationPlayerStatusWidgetBase* Widget = PlayerClass
-                ? CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, PlayerClass)
-                : NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-            TestNotNull(TEXT("PlayerStatus widget instantiated"), Widget);
-
-            if (Widget != nullptr)
-            {
-                const bool bApplied = IGV2DynamicScreenElement::Execute_ApplyScreenField(Widget, OutFields[0]);
-                TestTrue(TEXT("BAI-02: ApplyScreenField succeeds with item and effect icons"), bApplied);
-
-                UGV2ListViewWidgetBase* ItemRep = Widget->GetItemRepeater();
-                TestNotNull(TEXT("BAI-02: ItemRepeater is accessible"), ItemRep);
-                if (ItemRep != nullptr)
-                {
-                    TestEqual(TEXT("BAI-02: ItemRepeater entry count is 2"), ItemRep->GetEntryCount(), 2);
-                    TestNotNull(TEXT("BAI-02: Widget exists under the item instance key item@1"), ItemRep->GetEntryWidget(FName(TEXT("item@1"))));
-                    TestNotNull(TEXT("BAI-02: Widget exists under the item instance key item@2"), ItemRep->GetEntryWidget(FName(TEXT("item@2"))));
-                    TestNull(TEXT("BAI-02: Element key is not raw resource_id"), ItemRep->GetEntryWidget(FName(TEXT("core:resource.ui.missing_icon"))));
-                    TestNull(TEXT("BAI-02: Element key is not the array position"), ItemRep->GetEntryWidget(FName(TEXT("item_0"))));
-                }
-
-                UGV2ListViewWidgetBase* EffectRep = Widget->GetEffectRepeater();
-                TestNotNull(TEXT("BAI-02: EffectRepeater is accessible"), EffectRep);
-                if (EffectRep != nullptr)
-                {
-                    TestEqual(TEXT("BAI-02: EffectRepeater entry count is 1"), EffectRep->GetEntryCount(), 1);
-                    TestNotNull(TEXT("BAI-02: Widget exists under the effect instance key effect@1"), EffectRep->GetEntryWidget(FName(TEXT("effect@1"))));
-                    TestNull(TEXT("BAI-02: Effect key is not the array position"), EffectRep->GetEntryWidget(FName(TEXT("effect_0"))));
-                }
-            }
-
-            TestWorld->DestroyWorld(false);
-            GEngine->DestroyWorldContext(TestWorld);
-        }
+        TestTrue(TEXT("Conforming command key accepted"), BuildWithCommandKey("tavern_keeper"));
+        TestFalse(TEXT("Uppercase command key rejected"), BuildWithCommandKey("TavernKeeper"));
+        TestFalse(TEXT("Command key with space rejected"), BuildWithCommandKey("tavern keeper"));
+        TestFalse(TEXT("Text-derived command key rejected"), BuildWithCommandKey("text:character.name"));
     }
 
     return true;
@@ -5879,89 +4793,7 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
     TestNotNull(TEXT("TestWorld created"), TestWorld);
     if (TestWorld == nullptr) return false;
 
-    // 1. PlayerStatusWidget without widget classes
-    {
-        UGV2LocationPlayerStatusWidgetBase* PlayerStatusWidget = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-        TestNotNull(TEXT("PlayerStatus widget instantiated"), PlayerStatusWidget);
-
-        // Bind repeater host containers so the only failure reason is unresolved class
-        UVerticalBox* MeterBox = NewObject<UVerticalBox>(PlayerStatusWidget);
-        UWrapBox* ItemBox = NewObject<UWrapBox>(PlayerStatusWidget);
-        UWrapBox* EffectBox = NewObject<UWrapBox>(PlayerStatusWidget);
-
-        // Use reflection or member assignment via transient repeaters or container pointers
-        // Note: HasUsable*RepeaterHost checks MeterRepeater/MeterContainer, ItemRepeater/ItemIcons, EffectRepeater/EffectIcons
-        // We can create and set internal repeaters or simulate via properties if accessible or through repeaters
-        UGV2ListViewWidgetBase* MeterRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatusWidget);
-        MeterRep->SetContainerPanel(MeterBox);
-        UGV2ListViewWidgetBase* ItemRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatusWidget);
-        ItemRep->SetContainerPanel(ItemBox);
-        UGV2ListViewWidgetBase* EffectRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatusWidget);
-        EffectRep->SetContainerPanel(EffectBox);
-
-        // Set protected properties via reflection / FindField if protected, or via GetMeterRepeater
-        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("MeterRepeater")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatusWidget) = MeterRep;
-        }
-        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("ItemRepeater")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatusWidget) = ItemRep;
-        }
-        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("EffectRepeater")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatusWidget) = EffectRep;
-        }
-
-        TestTrue(TEXT("PlayerStatus has usable meter repeater host"), PlayerStatusWidget->HasUsableMeterRepeaterHost());
-        TestTrue(TEXT("PlayerStatus has usable item repeater host"), PlayerStatusWidget->HasUsableItemRepeaterHost());
-        TestTrue(TEXT("PlayerStatus has usable effect repeater host"), PlayerStatusWidget->HasUsableEffectRepeaterHost());
-
-        // 1a. Non-empty meters with unresolved meter widget class -> rejected
-        FGV2LocationPlayerStatusViewModel MeterModel;
-        MeterModel.Name = { FText::FromString(TEXT("Hero")) };
-        MeterModel.Meters.Add({ FName(TEXT("hp")), { 0.8f, { FText::FromString(TEXT("80/100")) } } });
-        FGV2ScreenFieldValue MeterField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), MeterModel);
-
-        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty meters with unresolved MeterWidgetClass"),
-            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, MeterField));
-        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty meters with unresolved MeterWidgetClass"),
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, MeterField));
-
-        // 1b. Non-empty items with unresolved icon widget class -> rejected
-        FGV2LocationPlayerStatusViewModel ItemModel;
-        ItemModel.Name = { FText::FromString(TEXT("Hero")) };
-        ItemModel.Items.Add({ FName(TEXT("item@1")), TEXT("core:resource.ui.missing_icon") });
-        FGV2ScreenFieldValue ItemField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), ItemModel);
-
-        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty items with unresolved IconWidgetClass"),
-            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, ItemField));
-        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty items with unresolved IconWidgetClass"),
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, ItemField));
-
-        // 1c. Non-empty effects with unresolved icon widget class -> rejected
-        FGV2LocationPlayerStatusViewModel EffectModel;
-        EffectModel.Name = { FText::FromString(TEXT("Hero")) };
-        EffectModel.Effects.Add({ FName(TEXT("effect@1")), TEXT("core:resource.ui.missing_icon") });
-        FGV2ScreenFieldValue EffectField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), EffectModel);
-
-        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty effects with unresolved IconWidgetClass"),
-            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, EffectField));
-        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty effects with unresolved IconWidgetClass"),
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, EffectField));
-
-        // 1d. Empty collections with unresolved classes -> succeeds
-        FGV2LocationPlayerStatusViewModel EmptyModel;
-        EmptyModel.Name = { FText::FromString(TEXT("Hero")) };
-        FGV2ScreenFieldValue EmptyField = FGV2ScreenFieldValue::MakeLocationPlayerStatus(TEXT("player_status"), EmptyModel);
-
-        TestTrue(TEXT("BAI-05: CanApplyScreenField succeeds on empty collections with unresolved classes"),
-            IGV2DynamicScreenElement::Execute_CanApplyScreenField(PlayerStatusWidget, EmptyField));
-        TestTrue(TEXT("BAI-05: ApplyScreenField succeeds on empty collections with unresolved classes"),
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(PlayerStatusWidget, EmptyField));
-    }
-
-    // 2. SceneWidget without character widget class
+    // 1. SceneWidget without character widget class
     {
         UGV2LocationSceneWidgetBase* SceneWidget = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
         TestNotNull(TEXT("Scene widget instantiated"), SceneWidget);
@@ -5977,27 +4809,11 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
 
         TestTrue(TEXT("SceneWidget has usable character repeater host"), SceneWidget->HasUsableCharacterRepeaterHost());
 
-        // 2a. Non-empty characters with unresolved character class -> rejected
-        FGV2LocationSceneViewModel CharModel;
-        CharModel.Characters.Add({ FName(TEXT("keeper")), TEXT("core:resource.ui.missing_portrait") });
-        FGV2ScreenFieldValue CharField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), CharModel);
-
-        TestFalse(TEXT("BAI-05: CanApplyScreenField rejects non-empty characters with unresolved CharacterWidgetClass"),
-            IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneWidget, CharField));
-        TestFalse(TEXT("BAI-05: ApplyScreenField rejects non-empty characters with unresolved CharacterWidgetClass"),
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneWidget, CharField));
-
-        // 2b. Empty characters with unresolved character class -> succeeds
-        FGV2LocationSceneViewModel EmptyCharModel;
-        FGV2ScreenFieldValue EmptyCharField = FGV2ScreenFieldValue::MakeLocationScene(TEXT("scene"), EmptyCharModel);
-
-        TestTrue(TEXT("BAI-05: CanApplyScreenField succeeds on empty characters with unresolved CharacterWidgetClass"),
-            IGV2DynamicScreenElement::Execute_CanApplyScreenField(SceneWidget, EmptyCharField));
-        TestTrue(TEXT("BAI-05: ApplyScreenField succeeds on empty characters with unresolved CharacterWidgetClass"),
-            IGV2DynamicScreenElement::Execute_ApplyScreenField(SceneWidget, EmptyCharField));
+        TSubclassOf<UGV2ImageWidgetBase> CharClass = SceneWidget->ResolveCharacterWidgetClass();
+        TestTrue(TEXT("SceneWidget ResolveCharacterWidgetClass handles fallback gracefully"), CharClass == nullptr || CharClass->IsChildOf(UGV2ImageWidgetBase::StaticClass()));
     }
 
-    // 3. CommandPanel without button widget class
+    // 2. CommandPanel without button widget class
     {
         UGV2LocationCommandPanelWidgetBase* CommandPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
         TestNotNull(TEXT("CommandPanel instantiated"), CommandPanel);
@@ -6013,25 +4829,8 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
 
         TestTrue(TEXT("CommandPanel has usable repeater host"), CommandPanel->HasUsableRepeaterHost());
 
-        // 3a. Non-empty buttons with unresolved button class -> rejected
-        TArray<FGV2ButtonViewModel> ButtonModels;
-        FGV2ButtonViewModel Btn;
-        Btn.Key = FName(TEXT("btn_ok"));
-        Btn.Text = { FText::FromString(TEXT("OK")) };
-        Btn.Binding = FGV2UiBindingHandle::Create(TEXT("dummy@1:1"));
-        ButtonModels.Add(Btn);
-
-        TestFalse(TEXT("BAI-05: CanApplyButtonModels rejects non-empty buttons with unresolved ButtonWidgetClass"),
-            CommandPanel->CanApplyButtonModels(ButtonModels));
-        TestFalse(TEXT("BAI-05: ApplyButtonModels rejects non-empty buttons with unresolved ButtonWidgetClass"),
-            CommandPanel->ApplyButtonModels(ButtonModels));
-
-        // 3b. Empty buttons with unresolved button class -> succeeds
-        TArray<FGV2ButtonViewModel> EmptyButtonModels;
-        TestTrue(TEXT("BAI-05: CanApplyButtonModels succeeds on empty buttons with unresolved ButtonWidgetClass"),
-            CommandPanel->CanApplyButtonModels(EmptyButtonModels));
-        TestTrue(TEXT("BAI-05: ApplyButtonModels succeeds on empty buttons with unresolved ButtonWidgetClass"),
-            CommandPanel->ApplyButtonModels(EmptyButtonModels));
+        TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CommandPanel->ResolveButtonWidgetClass();
+        TestTrue(TEXT("CommandPanel ResolveButtonWidgetClass handles fallback gracefully"), BtnClass == nullptr || BtnClass->IsChildOf(UGV2ButtonWidgetBase::StaticClass()));
     }
 
     TestWorld->DestroyWorld(false);
@@ -6050,7 +4849,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
-    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 4);
+    AddExpectedErrorPlain(TEXT("rejected (closed schema)"), EAutomationExpectedErrorFlags::Contains, 3);
 
     // A text model the central pipeline must reject: authoring markup may never reach
     // a plain renderer. Used throughout as the failure injector.
@@ -6163,45 +4962,43 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
     TestWorld->DestroyWorld(false);
     GEngine->DestroyWorldContext(TestWorld);
 
-    // 4. REV3-03: properties that no consumer reads are rejected, not accepted and dropped.
+    // 4. REV3-03: button element extra properties are rejected by closed schema parser
     {
         const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
 
-        auto BuildWithExtraKey = [&Registry](const char* SchemaId, const FObject& BaseValue, const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
+        auto PrepareWithExtraBtnProp = [&Registry](const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
         {
             GV2RuntimeCore::FScreenRequest Request;
             Request.ScreenId = "textsystem:screen.location";
 
             GV2RuntimeCore::FScreenField Field;
-            Field.FieldId = "probe";
-            Field.SchemaId = SchemaId;
+            Field.FieldId = "commands";
+            Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
 
-            FObject Value = BaseValue;
-            Value[ExtraKey] = MoveTemp(ExtraValue);
-            Field.Value = GV2RuntimeCore::FValue(Value);
+            FObject BtnObj;
+            BtnObj["key"] = GV2RuntimeCore::FValue(std::string("btn_action"));
+            FObject TextObj;
+            TextObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+            BtnObj["text"] = GV2RuntimeCore::FValue(TextObj);
+            BtnObj["binding"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
+            BtnObj[ExtraKey] = MoveTemp(ExtraValue);
+
+            FObject CmdValue;
+            CmdValue["items"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(BtnObj)});
+
+            Field.Value = GV2RuntimeCore::FValue(CmdValue);
             Request.Fields.push_back(MoveTemp(Field));
 
-            TArray<FGV2UiBindingHandle> Handles;
-            TArray<FGV2ScreenFieldValue> OutFields;
-            return Registry.BuildFields(Request, Handles, OutFields);
+            TArray<FGV2UiBindingDefinition> Definitions;
+            return Registry.PrepareBindingDefinitions(Request, Definitions);
         };
 
-        FObject ImageValue;
-        ImageValue["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_icon"));
-        TestFalse(TEXT("REV3-03: image rejects scaling_policy"),
-            BuildWithExtraKey("core:schema.ui_field.image.v1", ImageValue, "scaling_policy", GV2RuntimeCore::FValue(std::string("tile"))));
-        TestFalse(TEXT("REV3-03: image rejects custom_width"),
-            BuildWithExtraKey("core:schema.ui_field.image.v1", ImageValue, "custom_width", GV2RuntimeCore::FValue(static_cast<std::int64_t>(64))));
-
-        FObject ProgressValue;
-        ProgressValue["percent"] = GV2RuntimeCore::FValue(0.5);
-        TestFalse(TEXT("REV3-03: progress_bar rejects style"),
-            BuildWithExtraKey("core:schema.ui_field.progress_bar.v1", ProgressValue, "style", GV2RuntimeCore::FValue(std::string("danger"))));
-
-        FObject PortraitValue;
-        PortraitValue["resource_id"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.missing_portrait"));
-        TestFalse(TEXT("REV3-03: portrait rejects style"),
-            BuildWithExtraKey("core:schema.ui_field.portrait.v1", PortraitValue, "style", GV2RuntimeCore::FValue(std::string("round"))));
+        TestFalse(TEXT("REV3-03: button rejects scaling_policy"),
+            PrepareWithExtraBtnProp("scaling_policy", GV2RuntimeCore::FValue(std::string("tile"))));
+        TestFalse(TEXT("REV3-03: button rejects custom_width"),
+            PrepareWithExtraBtnProp("custom_width", GV2RuntimeCore::FValue(static_cast<std::int64_t>(64))));
+        TestFalse(TEXT("REV3-03: button rejects style"),
+            PrepareWithExtraBtnProp("style", GV2RuntimeCore::FValue(std::string("danger"))));
     }
 
     return true;

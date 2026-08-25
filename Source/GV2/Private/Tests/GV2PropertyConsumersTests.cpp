@@ -12,11 +12,13 @@
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2PortraitWidgetBase.h"
+#include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
@@ -29,6 +31,7 @@
 #include "Components/EditableTextBox.h"
 #include "Components/ProgressBar.h"
 #include "Components/VerticalBox.h"
+#include "Components/WrapBox.h"
 #include "Components/ScrollBox.h"
 #include "Components/Border.h"
 #include "Engine/GameInstance.h"
@@ -960,6 +963,648 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TArray<FGV2PreparedUiValue> UnregScreenTabs;
             UnregScreenTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UnregScreenTab)));
             TestFalse(TEXT("Tab with unregistered screen_id rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnregScreenTabs)), *TabsCap, TabContainer, PrepErr));
+        }
+
+        // 13. UPP-24: UGV2LocationTopBarWidgetBase and UGV2LocationPlayerStatusWidgetBase as IGV2UiPropertyHost
+        {
+            auto MakeScalarSpec = [](const GV2ContentCore::EScalarFieldKind Kind) -> GV2ContentCore::FCompiledUiFieldSpecPtr
+            {
+                auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                Spec->Kind = GV2ContentCore::EUiFieldKind::Scalar;
+                Spec->Scalar = GV2ContentCore::FScalarFieldSpec{ Kind, {}, {} };
+                return Spec;
+            };
+
+            auto MakeKeySpec = []() -> GV2ContentCore::FCompiledUiFieldSpecPtr
+            {
+                auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                Spec->Kind = GV2ContentCore::EUiFieldKind::Key;
+                return Spec;
+            };
+
+            auto MakeRefSpec = [](const std::string& TargetKind) -> GV2ContentCore::FCompiledUiFieldSpecPtr
+            {
+                auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                Spec->Kind = GV2ContentCore::EUiFieldKind::Ref;
+                Spec->RefTargetKind = TargetKind;
+                return Spec;
+            };
+
+            // Helper to prepare and commit properties on a host widget
+            auto ApplyHostProps = [&](
+                UUserWidget* Host,
+                const TArray<TPair<FString, FGV2PreparedUiValue>>& Props,
+                const GV2ContentCore::FCompiledUiFieldSpec& Schema,
+                const FString& SchemaId,
+                FString& OutError) -> bool
+            {
+                if (Host == nullptr) return false;
+                IGV2UiPropertyHost* PropHost = Cast<IGV2UiPropertyHost>(Host);
+                if (!PropHost) return false;
+
+                FGV2UiCapabilityBuilder Builder;
+                PropHost->DescribeUiCapabilities(Builder);
+                const FGV2UiCapabilityTree Caps = Builder.Build();
+
+                TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(CopyTemp(Props));
+                FGV2UiHostMutationPlan Plan;
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+                
+                const bool bPrepared = PrepareUiHostProperties(
+                    Host, Caps, *Candidate, Schema, SchemaId,
+                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics);
+
+                if (!bPrepared)
+                {
+                    OutError = Diagnostics.Num() > 0 ? Diagnostics[0].Message : TEXT("Prepare failed");
+                    UE_LOG(LogTemp, Warning, TEXT("ApplyHostProps prepare failed on %s: %s"), *Host->GetName(), *OutError);
+                    return false;
+                }
+
+                FString FailedPath;
+                const bool bCommitted = CommitUiHostProperties(Host, Plan, FailedPath, OutError);
+                if (!bCommitted)
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("ApplyHostProps commit failed on %s at %s: %s"), *Host->GetName(), *FailedPath, *OutError);
+                }
+                else
+                {
+                    PropHost->GetPropertyHostState().SetLastCommittedProperties(*Candidate);
+                }
+                return bCommitted;
+            };
+
+            auto ResetHostProps = [&](
+                UUserWidget* Host,
+                const GV2ContentCore::FCompiledUiFieldSpec& Schema,
+                const FString& SchemaId)
+            {
+                if (Host == nullptr) return;
+                IGV2UiPropertyHost* PropHost = Cast<IGV2UiPropertyHost>(Host);
+                if (!PropHost) return;
+
+                FGV2UiCapabilityBuilder Builder;
+                PropHost->DescribeUiCapabilities(Builder);
+                const FGV2UiCapabilityTree Caps = Builder.Build();
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> EmptyProps;
+                TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(MoveTemp(EmptyProps));
+                FGV2UiHostMutationPlan Plan;
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+
+                PrepareUiHostProperties(
+                    Host, Caps, *Candidate, Schema, SchemaId,
+                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics);
+
+                FString FailedPath, Error;
+                CommitUiHostProperties(Host, Plan, FailedPath, Error);
+                PropHost->GetPropertyHostState().SetLastCommittedProperties(FGV2PreparedUiObject());
+            };
+
+            // 13a. TopBar Property Host Reconciliation
+            {
+                UGV2LocationTopBarWidgetBase* TopBar = CreateWidget<UGV2LocationTopBarWidgetBase>(TestWorld, UGV2LocationTopBarWidgetBase::StaticClass());
+                TestNotNull(TEXT("TopBar instantiated"), TopBar);
+
+                UGV2TextWidgetBase* DayBlock = NewObject<UGV2TextWidgetBase>(TopBar);
+                UGV2TextWidgetBase* LocBlock = NewObject<UGV2TextWidgetBase>(TopBar);
+                UGV2TextWidgetBase* ResBlock = NewObject<UGV2TextWidgetBase>(TopBar);
+
+                if (FProperty* Prop = UGV2LocationTopBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("DayText")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(TopBar) = DayBlock;
+                }
+                if (FProperty* Prop = UGV2LocationTopBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("LocationText")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(TopBar) = LocBlock;
+                }
+                if (FProperty* Prop = UGV2LocationTopBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("PrimaryResourceText")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(TopBar) = ResBlock;
+                }
+
+                FGV2UiCapabilityBuilder TopBuilder;
+                TopBar->DescribeUiCapabilities(TopBuilder);
+                FGV2UiCapabilityTree TopTree = TopBuilder.Build();
+                TestNotNull(TEXT("TopBar capability 'day' exists"), TopTree.FindProperty(TEXT("day")));
+                TestNotNull(TEXT("TopBar capability 'location' exists"), TopTree.FindProperty(TEXT("location")));
+                TestNotNull(TEXT("TopBar capability 'primary_resource' exists"), TopTree.FindProperty(TEXT("primary_resource")));
+                TestNotNull(TEXT("TopBar capability 'key' exists"), TopTree.FindProperty(TEXT("key")));
+
+                GV2ContentCore::FCompiledUiFieldSpec TopBarSchema;
+                TopBarSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
+                TopBarSchema.Fields.push_back({ "day", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                TopBarSchema.Fields.push_back({ "location", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                TopBarSchema.Fields.push_back({ "primary_resource", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                TopBarSchema.Fields.push_back({ "key", false, MakeKeySpec() });
+
+                FGV2TextViewModel DayVM; DayVM.Text = FText::FromString(TEXT("Day 42"));
+                FGV2TextViewModel LocVM; LocVM.Text = FText::FromString(TEXT("Tavern"));
+                FGV2TextViewModel ResVM; ResVM.Text = FText::FromString(TEXT("Gold: 1000"));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> TopBarValues;
+                TopBarValues.Emplace(TEXT("day"), FGV2PreparedUiValue::MakeText(DayVM));
+                TopBarValues.Emplace(TEXT("location"), FGV2PreparedUiValue::MakeText(LocVM));
+                TopBarValues.Emplace(TEXT("primary_resource"), FGV2PreparedUiValue::MakeText(ResVM));
+                TopBarValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("top_bar_inst")));
+
+                FString ApplyErr;
+                TestTrue(TEXT("TopBar ApplyHostProps succeeds"), ApplyHostProps(TopBar, TopBarValues, TopBarSchema, TEXT("textsystem:schema.ui_field.location_top_bar.v1"), ApplyErr));
+
+                TestEqual(TEXT("TopBar Day text committed"), DayBlock->GetTextContent().ToString(), TEXT("Day 42"));
+                TestEqual(TEXT("TopBar Location text committed"), LocBlock->GetTextContent().ToString(), TEXT("Tavern"));
+                TestEqual(TEXT("TopBar PrimaryResource text committed"), ResBlock->GetTextContent().ToString(), TEXT("Gold: 1000"));
+                TestEqual(TEXT("TopBar Key committed"), TopBar->GetKey(), FName(TEXT("top_bar_inst")));
+
+                // Reset
+                ResetHostProps(TopBar, TopBarSchema, TEXT("textsystem:schema.ui_field.location_top_bar.v1"));
+                TestTrue(TEXT("TopBar Day text cleared on reset"), DayBlock->GetTextContent().IsEmpty());
+                TestTrue(TEXT("TopBar Location text cleared on reset"), LocBlock->GetTextContent().IsEmpty());
+                TestTrue(TEXT("TopBar PrimaryResource text cleared on reset"), ResBlock->GetTextContent().IsEmpty());
+                TestEqual(TEXT("TopBar Key cleared on reset"), TopBar->GetKey(), NAME_None);
+
+                // Negative: wrong kind for text
+                TArray<TPair<FString, FGV2PreparedUiValue>> BadTopBarValues;
+                BadTopBarValues.Emplace(TEXT("day"), FGV2PreparedUiValue::MakeNumber(123.0));
+                TestFalse(TEXT("TopBar Prepare rejects number for text"), ApplyHostProps(TopBar, BadTopBarValues, TopBarSchema, TEXT("textsystem:schema.ui_field.location_top_bar.v1"), ApplyErr));
+            }
+
+            // 13b. PlayerStatus Property Host Reconciliation
+            {
+                UGV2LocationPlayerStatusWidgetBase* PlayerStatus = CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, UGV2LocationPlayerStatusWidgetBase::StaticClass());
+                TestNotNull(TEXT("PlayerStatus instantiated"), PlayerStatus);
+
+                UGV2TextWidgetBase* NameBlock = NewObject<UGV2TextWidgetBase>(PlayerStatus);
+                UGV2PortraitWidgetBase* PortraitWidget = NewObject<UGV2PortraitWidgetBase>(PlayerStatus);
+                UImage* InnerPortrait = NewObject<UImage>(PortraitWidget);
+                if (FProperty* Prop = UGV2PortraitWidgetBase::StaticClass()->FindPropertyByName(TEXT("PortraitImage")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UImage>>(PortraitWidget) = InnerPortrait;
+                }
+                UGV2ListViewWidgetBase* MeterRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatus);
+                UVerticalBox* MeterBox = NewObject<UVerticalBox>(PlayerStatus);
+                MeterRep->SetContainerPanel(MeterBox);
+
+                UGV2ListViewWidgetBase* ItemRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatus);
+                UVerticalBox* ItemBox = NewObject<UVerticalBox>(PlayerStatus);
+                ItemRep->SetContainerPanel(ItemBox);
+
+                UGV2ListViewWidgetBase* EffectRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatus);
+                UVerticalBox* EffectBox = NewObject<UVerticalBox>(PlayerStatus);
+                EffectRep->SetContainerPanel(EffectBox);
+
+                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("PlayerNameText")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(PlayerStatus) = NameBlock;
+                }
+                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("Portrait")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2PortraitWidgetBase>>(PlayerStatus) = PortraitWidget;
+                }
+                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("MeterRepeater")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatus) = MeterRep;
+                }
+                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("ItemRepeater")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatus) = ItemRep;
+                }
+                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("EffectRepeater")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatus) = EffectRep;
+                }
+
+                FGV2UiCapabilityBuilder StatusBuilder;
+                PlayerStatus->DescribeUiCapabilities(StatusBuilder);
+                FGV2UiCapabilityTree StatusTree = StatusBuilder.Build();
+                TestNotNull(TEXT("PlayerStatus capability 'name' exists"), StatusTree.FindProperty(TEXT("name")));
+                TestNotNull(TEXT("PlayerStatus capability 'portrait_resource_id' exists"), StatusTree.FindProperty(TEXT("portrait_resource_id")));
+                TestNotNull(TEXT("PlayerStatus capability 'meters' exists"), StatusTree.FindProperty(TEXT("meters")));
+                TestNotNull(TEXT("PlayerStatus capability 'items' exists"), StatusTree.FindProperty(TEXT("items")));
+                TestNotNull(TEXT("PlayerStatus capability 'effects' exists"), StatusTree.FindProperty(TEXT("effects")));
+                TestNotNull(TEXT("PlayerStatus capability 'key' exists"), StatusTree.FindProperty(TEXT("key")));
+
+                // Schema for PlayerStatus
+                GV2ContentCore::FCompiledUiFieldSpec PlayerStatusSchema;
+                PlayerStatusSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
+                PlayerStatusSchema.Fields.push_back({ "name", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                PlayerStatusSchema.Fields.push_back({ "portrait_resource_id", false, MakeRefSpec("resource") });
+
+                auto MeterEntrySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                MeterEntrySpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                MeterEntrySpec->Fields.push_back({ "key", true, MakeKeySpec() });
+                MeterEntrySpec->Fields.push_back({ "percent", true, MakeScalarSpec(GV2ContentCore::EScalarFieldKind::Number) });
+                MeterEntrySpec->Fields.push_back({ "label", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+
+                auto MetersArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                MetersArraySpec->Kind = GV2ContentCore::EUiFieldKind::Array;
+                MetersArraySpec->Items = MeterEntrySpec;
+                MetersArraySpec->KeyedBy = "key";
+                PlayerStatusSchema.Fields.push_back({ "meters", false, MetersArraySpec });
+
+                auto ItemEntrySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                ItemEntrySpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                ItemEntrySpec->Fields.push_back({ "key", true, MakeKeySpec() });
+                ItemEntrySpec->Fields.push_back({ "resource_id", true, MakeRefSpec("resource") });
+
+                auto ItemsArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                ItemsArraySpec->Kind = GV2ContentCore::EUiFieldKind::Array;
+                ItemsArraySpec->Items = ItemEntrySpec;
+                ItemsArraySpec->KeyedBy = "key";
+                PlayerStatusSchema.Fields.push_back({ "items", false, ItemsArraySpec });
+                PlayerStatusSchema.Fields.push_back({ "effects", false, ItemsArraySpec });
+                PlayerStatusSchema.Fields.push_back({ "key", false, MakeKeySpec() });
+
+                // Prepare initial valid values
+                FGV2TextViewModel NameVM; NameVM.Text = FText::FromString(TEXT("Hero"));
+                FGV2TextViewModel HpLabel; HpLabel.Text = FText::FromString(TEXT("80/100"));
+                FGV2TextViewModel StamLabel; StamLabel.Text = FText::FromString(TEXT("50/100"));
+
+                // Meters
+                TArray<TPair<FString, FGV2PreparedUiValue>> MeterHpMap;
+                MeterHpMap.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("hp")));
+                MeterHpMap.Emplace(TEXT("percent"), FGV2PreparedUiValue::MakeNumber(0.8));
+                MeterHpMap.Emplace(TEXT("label"), FGV2PreparedUiValue::MakeText(HpLabel));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> MeterStamMap;
+                MeterStamMap.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("stamina")));
+                MeterStamMap.Emplace(TEXT("percent"), FGV2PreparedUiValue::MakeNumber(0.5));
+                MeterStamMap.Emplace(TEXT("label"), FGV2PreparedUiValue::MakeText(StamLabel));
+
+                TArray<FGV2PreparedUiValue> MeterElements;
+                MeterElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(MeterHpMap))));
+                MeterElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(MeterStamMap))));
+
+                // Items
+                TArray<TPair<FString, FGV2PreparedUiValue>> Item1Map;
+                Item1Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item@1")));
+                Item1Map.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Item2Map;
+                Item2Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item@2")));
+                Item2Map.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")));
+
+                TArray<FGV2PreparedUiValue> ItemElements;
+                ItemElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Item1Map))));
+                ItemElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Item2Map))));
+
+                // Effects
+                TArray<TPair<FString, FGV2PreparedUiValue>> Effect1Map;
+                Effect1Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("effect@1")));
+                Effect1Map.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")));
+
+                TArray<FGV2PreparedUiValue> EffectElements;
+                EffectElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Effect1Map))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> StatusValues;
+                StatusValues.Emplace(TEXT("name"), FGV2PreparedUiValue::MakeText(NameVM));
+                StatusValues.Emplace(TEXT("portrait_resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+                StatusValues.Emplace(TEXT("meters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(MeterElements))));
+                StatusValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ItemElements))));
+                StatusValues.Emplace(TEXT("effects"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(EffectElements))));
+                StatusValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("player_status_inst")));
+
+                FString StatusErr;
+                TestTrue(TEXT("PlayerStatus ApplyHostProps succeeds"), ApplyHostProps(PlayerStatus, StatusValues, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"), StatusErr));
+
+                TestEqual(TEXT("PlayerStatus Name committed"), NameBlock->GetTextContent().ToString(), TEXT("Hero"));
+                TestEqual(TEXT("PlayerStatus Key committed"), PlayerStatus->GetKey(), FName(TEXT("player_status_inst")));
+                TestEqual(TEXT("MeterRepeater count is 2"), MeterRep->GetEntryCount(), 2);
+                TestEqual(TEXT("ItemRepeater count is 2"), ItemRep->GetEntryCount(), 2);
+                TestEqual(TEXT("EffectRepeater count is 1"), EffectRep->GetEntryCount(), 1);
+
+                UWidget* Item1Widget = ItemRep->GetEntryWidget(FName(TEXT("item@1")));
+                UWidget* Item2Widget = ItemRep->GetEntryWidget(FName(TEXT("item@2")));
+                TestNotNull(TEXT("Item 1 widget exists"), Item1Widget);
+                TestNotNull(TEXT("Item 2 widget exists"), Item2Widget);
+
+                // Reorder items: item@2, item@3, item@1
+                TArray<TPair<FString, FGV2PreparedUiValue>> Item3Map;
+                Item3Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item@3")));
+                Item3Map.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Item1MapCopy;
+                Item1MapCopy.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item@1")));
+                Item1MapCopy.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Item2MapCopy;
+                Item2MapCopy.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item@2")));
+                Item2MapCopy.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")));
+
+                TArray<FGV2PreparedUiValue> ReorderedItems;
+                ReorderedItems.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Item2MapCopy))));
+                ReorderedItems.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Item3Map))));
+                ReorderedItems.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Item1MapCopy))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> ReorderValues;
+                ReorderValues.Emplace(TEXT("name"), FGV2PreparedUiValue::MakeText(NameVM));
+                ReorderValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ReorderedItems))));
+
+                TestTrue(TEXT("PlayerStatus Reorder Apply succeeds"), ApplyHostProps(PlayerStatus, ReorderValues, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"), StatusErr));
+                TestEqual(TEXT("ItemRepeater count is 3 after reorder"), ItemRep->GetEntryCount(), 3);
+                TestEqual(TEXT("Item 1 widget reused across reorder"), ItemRep->GetEntryWidget(FName(TEXT("item@1"))), Item1Widget);
+                TestEqual(TEXT("Item 2 widget reused across reorder"), ItemRep->GetEntryWidget(FName(TEXT("item@2"))), Item2Widget);
+
+                // Rollback verification on invalid candidate
+                TArray<TPair<FString, FGV2PreparedUiValue>> BadItemMap;
+                BadItemMap.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item@bad")));
+                BadItemMap.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeNumber(999.0)); // invalid kind
+
+                TArray<FGV2PreparedUiValue> FailingItems;
+                FailingItems.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(BadItemMap))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> FailingValues;
+                FailingValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(FailingItems))));
+
+                TestFalse(TEXT("PlayerStatus Prepare fails on invalid item resource_id kind"), ApplyHostProps(PlayerStatus, FailingValues, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"), StatusErr));
+                TestEqual(TEXT("ItemRepeater count remains 3 after failed prepare (rollback)"), ItemRep->GetEntryCount(), 3);
+                TestEqual(TEXT("Item 1 widget preserved without mutation"), ItemRep->GetEntryWidget(FName(TEXT("item@1"))), Item1Widget);
+
+                // Reset
+                ResetHostProps(PlayerStatus, PlayerStatusSchema, TEXT("textsystem:schema.ui_field.location_player_status.v1"));
+                TestTrue(TEXT("PlayerStatus Name cleared on reset"), NameBlock->GetTextContent().IsEmpty());
+                TestEqual(TEXT("PlayerStatus MeterRepeater cleared on reset"), MeterRep->GetEntryCount(), 0);
+                TestEqual(TEXT("PlayerStatus ItemRepeater cleared on reset"), ItemRep->GetEntryCount(), 0);
+                TestEqual(TEXT("PlayerStatus EffectRepeater cleared on reset"), EffectRep->GetEntryCount(), 0);
+            }
+
+            // 13c. LocationScene Property Host Reconciliation
+            {
+                UGV2LocationSceneWidgetBase* SceneWidget = CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, UGV2LocationSceneWidgetBase::StaticClass());
+                TestNotNull(TEXT("SceneWidget instantiated"), SceneWidget);
+
+                UGV2ImageWidgetBase* BgTile = NewObject<UGV2ImageWidgetBase>(SceneWidget);
+                BgTile->SetScalePolicy(EGV2PrimitiveScalePolicy::Tile);
+                UImage* InnerBgTileImage = NewObject<UImage>(BgTile);
+                if (FProperty* Prop = UGV2ImageWidgetBase::StaticClass()->FindPropertyByName(TEXT("Image")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UImage>>(BgTile) = InnerBgTileImage;
+                }
+
+                UGV2ImageWidgetBase* Bg = NewObject<UGV2ImageWidgetBase>(SceneWidget);
+                Bg->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
+                UImage* InnerBgImage = NewObject<UImage>(Bg);
+                if (FProperty* Prop = UGV2ImageWidgetBase::StaticClass()->FindPropertyByName(TEXT("Image")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UImage>>(Bg) = InnerBgImage;
+                }
+
+                UGV2TextWidgetBase* ContextText = NewObject<UGV2TextWidgetBase>(SceneWidget);
+                UGV2ListViewWidgetBase* CharRep = NewObject<UGV2ListViewWidgetBase>(SceneWidget);
+                UVerticalBox* CharBox = NewObject<UVerticalBox>(SceneWidget);
+                CharRep->SetContainerPanel(CharBox);
+
+                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("BackgroundTile")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ImageWidgetBase>>(SceneWidget) = BgTile;
+                }
+                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("Background")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ImageWidgetBase>>(SceneWidget) = Bg;
+                }
+                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("SceneContextText")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(SceneWidget) = ContextText;
+                }
+                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterRepeater")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(SceneWidget) = CharRep;
+                }
+
+                FGV2UiCapabilityBuilder SceneBuilder;
+                SceneWidget->DescribeUiCapabilities(SceneBuilder);
+                FGV2UiCapabilityTree SceneTree = SceneBuilder.Build();
+                TestNotNull(TEXT("Scene capability 'background_tile_resource_id' exists"), SceneTree.FindProperty(TEXT("background_tile_resource_id")));
+                TestNotNull(TEXT("Scene capability 'background_resource_id' exists"), SceneTree.FindProperty(TEXT("background_resource_id")));
+                TestNotNull(TEXT("Scene capability 'context_text' exists"), SceneTree.FindProperty(TEXT("context_text")));
+                TestNotNull(TEXT("Scene capability 'characters' exists"), SceneTree.FindProperty(TEXT("characters")));
+                TestNotNull(TEXT("Scene capability 'key' exists"), SceneTree.FindProperty(TEXT("key")));
+
+                // Schema for LocationScene
+                GV2ContentCore::FCompiledUiFieldSpec SceneSchema;
+                SceneSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
+                SceneSchema.Fields.push_back({ "background_tile_resource_id", false, MakeRefSpec("resource") });
+                SceneSchema.Fields.push_back({ "background_resource_id", false, MakeRefSpec("resource") });
+                SceneSchema.Fields.push_back({ "context_text", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+
+                auto CharEntrySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                CharEntrySpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                CharEntrySpec->Fields.push_back({ "key", true, MakeKeySpec() });
+                CharEntrySpec->Fields.push_back({ "resource_id", true, MakeRefSpec("resource") });
+
+                auto CharsArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                CharsArraySpec->Kind = GV2ContentCore::EUiFieldKind::Array;
+                CharsArraySpec->Items = CharEntrySpec;
+                CharsArraySpec->KeyedBy = "key";
+                SceneSchema.Fields.push_back({ "characters", false, CharsArraySpec });
+                SceneSchema.Fields.push_back({ "key", false, MakeKeySpec() });
+
+                // Values
+                FGV2TextViewModel ContextVM;
+                ContextVM.Text = FText::FromString(TEXT("Market Square"));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Char1Map;
+                Char1Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("c1")));
+                Char1Map.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Char2Map;
+                Char2Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("c2")));
+                Char2Map.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+
+                TArray<FGV2PreparedUiValue> CharElements;
+                CharElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Char1Map))));
+                CharElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Char2Map))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> SceneValues;
+                SceneValues.Emplace(TEXT("background_tile_resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:resource.ui.old_paper_tile_256"), TEXT("resource")));
+                SceneValues.Emplace(TEXT("background_resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+                SceneValues.Emplace(TEXT("context_text"), FGV2PreparedUiValue::MakeText(ContextVM));
+                SceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(CharElements))));
+                SceneValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("scene_inst")));
+
+                FString SceneErr;
+                TestTrue(TEXT("Scene ApplyHostProps succeeds"), ApplyHostProps(SceneWidget, SceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"), SceneErr));
+                TestEqual(TEXT("Scene Context text committed"), ContextText->GetTextContent().ToString(), TEXT("Market Square"));
+                TestEqual(TEXT("Scene Key committed"), SceneWidget->GetKey(), FName(TEXT("scene_inst")));
+                TestEqual(TEXT("Scene Character count is 2"), CharRep->GetEntryCount(), 2);
+
+                UWidget* C1Widget = CharRep->GetEntryWidget(FName(TEXT("c1")));
+                UWidget* C2Widget = CharRep->GetEntryWidget(FName(TEXT("c2")));
+                TestNotNull(TEXT("C1 widget exists"), C1Widget);
+                TestNotNull(TEXT("C2 widget exists"), C2Widget);
+
+                // Reorder characters
+                TArray<TPair<FString, FGV2PreparedUiValue>> Char3Map;
+                Char3Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("c3")));
+                Char3Map.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Char1MapCopy;
+                Char1MapCopy.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("c1")));
+                Char1MapCopy.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Char2MapCopy;
+                Char2MapCopy.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("c2")));
+                Char2MapCopy.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+
+                TArray<FGV2PreparedUiValue> ReorderedChars;
+                ReorderedChars.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Char2MapCopy))));
+                ReorderedChars.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Char3Map))));
+                ReorderedChars.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Char1MapCopy))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> ReorderSceneValues;
+                ReorderSceneValues.Emplace(TEXT("context_text"), FGV2PreparedUiValue::MakeText(ContextVM));
+                ReorderSceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ReorderedChars))));
+
+                TestTrue(TEXT("Scene Reorder Apply succeeds"), ApplyHostProps(SceneWidget, ReorderSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"), SceneErr));
+                TestEqual(TEXT("Scene Character count is 3 after reorder"), CharRep->GetEntryCount(), 3);
+                TestEqual(TEXT("C1 widget preserved across reorder"), CharRep->GetEntryWidget(FName(TEXT("c1"))), C1Widget);
+                TestEqual(TEXT("C2 widget preserved across reorder"), CharRep->GetEntryWidget(FName(TEXT("c2"))), C2Widget);
+
+                // Rollback on failure
+                TArray<TPair<FString, FGV2PreparedUiValue>> BadCharMap;
+                BadCharMap.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("bad_c")));
+                BadCharMap.Emplace(TEXT("resource_id"), FGV2PreparedUiValue::MakeNumber(42.0));
+
+                TArray<FGV2PreparedUiValue> FailingChars;
+                FailingChars.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(BadCharMap))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> FailingSceneValues;
+                FailingSceneValues.Emplace(TEXT("characters"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(FailingChars))));
+
+                TestFalse(TEXT("Scene Prepare fails on invalid char resource_id"), ApplyHostProps(SceneWidget, FailingSceneValues, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"), SceneErr));
+                TestEqual(TEXT("Scene Character count remains 3 after failed prepare"), CharRep->GetEntryCount(), 3);
+
+                // Reset
+                ResetHostProps(SceneWidget, SceneSchema, TEXT("textsystem:schema.ui_field.location_scene.v1"));
+                TestTrue(TEXT("Scene Context text cleared on reset"), ContextText->GetTextContent().IsEmpty());
+                TestEqual(TEXT("Scene Characters cleared on reset"), CharRep->GetEntryCount(), 0);
+                TestEqual(TEXT("Scene Key cleared on reset"), SceneWidget->GetKey(), NAME_None);
+            }
+
+            // 13d. LocationCommandPanel Property Host Reconciliation
+            {
+                UGV2LocationCommandPanelWidgetBase* CmdPanel = CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, UGV2LocationCommandPanelWidgetBase::StaticClass());
+                TestNotNull(TEXT("CmdPanel instantiated"), CmdPanel);
+
+                UGV2ListViewWidgetBase* BtnRep = NewObject<UGV2ListViewWidgetBase>(CmdPanel);
+                UWrapBox* WrapBox = NewObject<UWrapBox>(CmdPanel);
+                BtnRep->SetContainerPanel(WrapBox);
+
+                if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonRepeater")))
+                {
+                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(CmdPanel) = BtnRep;
+                }
+
+                FGV2UiCapabilityBuilder CmdBuilder;
+                CmdPanel->DescribeUiCapabilities(CmdBuilder);
+                FGV2UiCapabilityTree CmdTree = CmdBuilder.Build();
+                TestNotNull(TEXT("CmdPanel capability 'items' exists"), CmdTree.FindProperty(TEXT("items")));
+                TestNotNull(TEXT("CmdPanel capability 'key' exists"), CmdTree.FindProperty(TEXT("key")));
+
+                // Schema for LocationCommands
+                GV2ContentCore::FCompiledUiFieldSpec CmdSchema;
+                CmdSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
+
+                auto BtnEntrySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                BtnEntrySpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                BtnEntrySpec->Fields.push_back({ "key", true, MakeKeySpec() });
+                BtnEntrySpec->Fields.push_back({ "text", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                BtnEntrySpec->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+
+                auto BtnsArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                BtnsArraySpec->Kind = GV2ContentCore::EUiFieldKind::Array;
+                BtnsArraySpec->Items = BtnEntrySpec;
+                BtnsArraySpec->KeyedBy = "key";
+                CmdSchema.Fields.push_back({ "items", true, BtnsArraySpec });
+                CmdSchema.Fields.push_back({ "key", false, MakeKeySpec() });
+
+                // Values
+                FGV2TextViewModel TalkVM; TalkVM.Text = FText::FromString(TEXT("Talk"));
+                FGV2TextViewModel LeaveVM; LeaveVM.Text = FText::FromString(TEXT("Leave"));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Btn1Map;
+                Btn1Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("b1")));
+                Btn1Map.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TalkVM));
+                Btn1Map.Emplace(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd@1:1"))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Btn2Map;
+                Btn2Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("b2")));
+                Btn2Map.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(LeaveVM));
+                Btn2Map.Emplace(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd@1:2"))));
+
+                TArray<FGV2PreparedUiValue> BtnElements;
+                BtnElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Btn1Map))));
+                BtnElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Btn2Map))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> CmdValues;
+                CmdValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(BtnElements))));
+                CmdValues.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("cmd_panel_inst")));
+
+                FString CmdErr;
+                TestTrue(TEXT("CmdPanel ApplyHostProps succeeds"), ApplyHostProps(CmdPanel, CmdValues, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"), CmdErr));
+                TestEqual(TEXT("CmdPanel Key committed"), CmdPanel->GetKey(), FName(TEXT("cmd_panel_inst")));
+                TestEqual(TEXT("CmdPanel Button count is 2"), BtnRep->GetEntryCount(), 2);
+
+                UGV2ButtonWidgetBase* B1Widget = Cast<UGV2ButtonWidgetBase>(BtnRep->GetEntryWidget(FName(TEXT("b1"))));
+                UGV2ButtonWidgetBase* B2Widget = Cast<UGV2ButtonWidgetBase>(BtnRep->GetEntryWidget(FName(TEXT("b2"))));
+                TestNotNull(TEXT("B1 widget exists"), B1Widget);
+                TestNotNull(TEXT("B2 widget exists"), B2Widget);
+                if (B1Widget != nullptr)
+                {
+                    TestEqual(TEXT("B1 text committed"), B1Widget->GetTextViewModel().Text.ToString(), TEXT("Talk"));
+                    TestTrue(TEXT("B1 binding handle valid"), B1Widget->GetBindingHandle().IsValid());
+                }
+
+                // Reorder buttons
+                FGV2TextViewModel AttackVM; AttackVM.Text = FText::FromString(TEXT("Attack"));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Btn3Map;
+                Btn3Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("b3")));
+                Btn3Map.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(AttackVM));
+                Btn3Map.Emplace(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd@1:3"))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Btn1MapCopy;
+                Btn1MapCopy.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("b1")));
+                Btn1MapCopy.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TalkVM));
+                Btn1MapCopy.Emplace(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd@1:1"))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> Btn2MapCopy;
+                Btn2MapCopy.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("b2")));
+                Btn2MapCopy.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(LeaveVM));
+                Btn2MapCopy.Emplace(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd@1:2"))));
+
+                TArray<FGV2PreparedUiValue> ReorderedBtns;
+                ReorderedBtns.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Btn2MapCopy))));
+                ReorderedBtns.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Btn3Map))));
+                ReorderedBtns.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Btn1MapCopy))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> ReorderCmdValues;
+                ReorderCmdValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(ReorderedBtns))));
+
+                TestTrue(TEXT("CmdPanel Reorder Apply succeeds"), ApplyHostProps(CmdPanel, ReorderCmdValues, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"), CmdErr));
+                TestEqual(TEXT("CmdPanel Button count is 3 after reorder"), BtnRep->GetEntryCount(), 3);
+                TestTrue(TEXT("B1 widget preserved across reorder"), BtnRep->GetEntryWidget(FName(TEXT("b1"))) == B1Widget);
+                TestTrue(TEXT("B2 widget preserved across reorder"), BtnRep->GetEntryWidget(FName(TEXT("b2"))) == B2Widget);
+
+                // Rollback on failure
+                TArray<TPair<FString, FGV2PreparedUiValue>> BadBtnMap;
+                BadBtnMap.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("bad_btn")));
+                BadBtnMap.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeNumber(123.0));
+
+                TArray<FGV2PreparedUiValue> FailingBtns;
+                FailingBtns.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(BadBtnMap))));
+
+                TArray<TPair<FString, FGV2PreparedUiValue>> FailingCmdValues;
+                FailingCmdValues.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(FailingBtns))));
+
+                TestFalse(TEXT("CmdPanel Prepare fails on invalid text kind"), ApplyHostProps(CmdPanel, FailingCmdValues, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"), CmdErr));
+                TestEqual(TEXT("CmdPanel Button count remains 3 after failed prepare"), BtnRep->GetEntryCount(), 3);
+
+                // Reset
+                ResetHostProps(CmdPanel, CmdSchema, TEXT("textsystem:schema.ui_field.location_commands.v1"));
+                TestEqual(TEXT("CmdPanel Buttons cleared on reset"), BtnRep->GetEntryCount(), 0);
+                TestEqual(TEXT("CmdPanel Key cleared on reset"), CmdPanel->GetKey(), NAME_None);
+            }
         }
     }
 

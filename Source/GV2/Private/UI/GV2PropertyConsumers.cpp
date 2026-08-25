@@ -22,6 +22,7 @@
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
@@ -49,11 +50,11 @@ bool FGV2TextPropertyConsumer::Prepare(
     UWidget* ResolvedWidget = TargetWidget;
     if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
     {
-        ResolvedWidget = TW->GetTextBlock();
+        ResolvedWidget = TW->GetTextBlock() ? Cast<UWidget>(TW->GetTextBlock()) : Cast<UWidget>(TW);
     }
     else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
     {
-        ResolvedWidget = RTW->GetRichTextBlock();
+        ResolvedWidget = RTW->GetRichTextBlock() ? Cast<UWidget>(RTW->GetRichTextBlock()) : Cast<UWidget>(RTW);
     }
     else if (UGV2ButtonWidgetBase* BW = Cast<UGV2ButtonWidgetBase>(TargetWidget))
     {
@@ -72,7 +73,8 @@ bool FGV2TextPropertyConsumer::Prepare(
 
     if (!Cast<UCommonTextBlock>(ResolvedWidget) && !Cast<UCommonRichTextBlock>(ResolvedWidget)
         && !Cast<UEditableTextBox>(ResolvedWidget) && !Cast<UGV2ButtonWidgetBase>(ResolvedWidget)
-        && !Cast<UGV2DropdownSelectWidgetBase>(ResolvedWidget))
+        && !Cast<UGV2DropdownSelectWidgetBase>(ResolvedWidget) && !Cast<UGV2TextWidgetBase>(ResolvedWidget)
+        && !Cast<UGV2RichTextWidgetBase>(ResolvedWidget))
     {
         OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a supported text renderer");
         return false;
@@ -86,7 +88,8 @@ bool FGV2TextPropertyConsumer::Prepare(
 
     PreparedText = Value.AsText();
     if (Cast<UEditableTextBox>(ResolvedWidget) || Cast<UCommonTextBlock>(ResolvedWidget)
-        || Cast<UGV2ButtonWidgetBase>(ResolvedWidget) || Cast<UGV2DropdownSelectWidgetBase>(ResolvedWidget))
+        || Cast<UGV2ButtonWidgetBase>(ResolvedWidget) || Cast<UGV2DropdownSelectWidgetBase>(ResolvedWidget)
+        || Cast<UGV2TextWidgetBase>(ResolvedWidget))
     {
         if (PreparedText.NormalizedMarkup.Contains(TEXT("<gv2")))
         {
@@ -102,11 +105,11 @@ bool FGV2TextPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
     UWidget* ResolvedWidget = TargetWidget;
     if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
     {
-        ResolvedWidget = TW->GetTextBlock();
+        ResolvedWidget = TW->GetTextBlock() ? Cast<UWidget>(TW->GetTextBlock()) : Cast<UWidget>(TW);
     }
     else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
     {
-        ResolvedWidget = RTW->GetRichTextBlock();
+        ResolvedWidget = RTW->GetRichTextBlock() ? Cast<UWidget>(RTW->GetRichTextBlock()) : Cast<UWidget>(RTW);
     }
     else if (UGV2ButtonWidgetBase* BW = Cast<UGV2ButtonWidgetBase>(TargetWidget))
     {
@@ -123,6 +126,10 @@ bool FGV2TextPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
         return false;
     }
 
+    if (UGV2TextWidgetBase* TextWidget = Cast<UGV2TextWidgetBase>(ResolvedWidget))
+    {
+        return TextWidget->ApplyText(PreparedText);
+    }
     if (UGV2ButtonWidgetBase* ButtonWidget = Cast<UGV2ButtonWidgetBase>(ResolvedWidget))
     {
         return ButtonWidget->ApplyText(PreparedText);
@@ -140,6 +147,10 @@ bool FGV2TextPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
         if (UGV2ButtonWidgetBase* ParentButton = TextBlock->GetTypedOuter<UGV2ButtonWidgetBase>())
         {
             ParentButton->ApplyText(PreparedText);
+        }
+        else if (UGV2TextWidgetBase* ParentTW = TextBlock->GetTypedOuter<UGV2TextWidgetBase>())
+        {
+            ParentTW->ApplyText(PreparedText);
         }
         return UGV2TextPipeline::Apply(TextBlock, PreparedText);
     }
@@ -165,7 +176,7 @@ void FGV2TextPropertyConsumer::Reset(UWidget* TargetWidget)
     UWidget* ResolvedWidget = TargetWidget;
     if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
     {
-        ResolvedWidget = TW->GetTextBlock();
+        ResolvedWidget = TW->GetTextBlock() ? Cast<UWidget>(TW->GetTextBlock()) : Cast<UWidget>(TW);
     }
     else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
     {
@@ -180,7 +191,11 @@ void FGV2TextPropertyConsumer::Reset(UWidget* TargetWidget)
         ResolvedWidget = DW;
     }
 
-    if (UGV2ButtonWidgetBase* ButtonWidget = Cast<UGV2ButtonWidgetBase>(ResolvedWidget))
+    if (UGV2TextWidgetBase* TextWidget = Cast<UGV2TextWidgetBase>(ResolvedWidget))
+    {
+        TextWidget->ApplyText({});
+    }
+    else if (UGV2ButtonWidgetBase* ButtonWidget = Cast<UGV2ButtonWidgetBase>(ResolvedWidget))
     {
         ButtonWidget->ApplyText({});
     }
@@ -197,6 +212,10 @@ void FGV2TextPropertyConsumer::Reset(UWidget* TargetWidget)
         if (UGV2ButtonWidgetBase* ParentButton = TextBlock->GetTypedOuter<UGV2ButtonWidgetBase>())
         {
             ParentButton->ApplyText({});
+        }
+        else if (UGV2TextWidgetBase* ParentTW = TextBlock->GetTypedOuter<UGV2TextWidgetBase>())
+        {
+            ParentTW->ApplyText({});
         }
         UGV2TextPipeline::Apply(TextBlock, FGV2TextViewModel());
     }
@@ -236,7 +255,19 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
     UImage* ImageWidget = Cast<UImage>(TargetWidget);
     if (!ImageWidget)
     {
-        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage");
+        if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
+        {
+            ImageWidget = ImageBase->GetImageWidget();
+        }
+        else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+        {
+            ImageWidget = PortraitWidget->GetPortraitImage();
+        }
+    }
+
+    if (!ImageWidget && !Cast<UGV2ImageWidgetBase>(TargetWidget) && !Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");
         return false;
     }
 
@@ -262,6 +293,14 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
         if (OuterHost->GetFixedAspectRatio() > 0.0f)
         {
             FixedAspect = OuterHost->GetFixedAspectRatio();
+        }
+    }
+    else if (UGV2PortraitWidgetBase* PortraitHost = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    {
+        Policy = EGV2PrimitiveScalePolicy::PreserveAspect;
+        if (PortraitHost->GetPortraitAspectRatio() > 0.0f)
+        {
+            FixedAspect = PortraitHost->GetPortraitAspectRatio();
         }
     }
     else
@@ -320,7 +359,30 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
     UImage* ImageWidget = Cast<UImage>(TargetWidget);
     if (!ImageWidget)
     {
-        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage");
+        if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
+        {
+            ImageWidget = ImageBase->GetImageWidget();
+        }
+        else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+        {
+            PortraitWidget->SetVisibility(ESlateVisibility::Visible);
+            ImageWidget = PortraitWidget->GetPortraitImage();
+        }
+    }
+
+    if (!ImageWidget)
+    {
+        if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+        {
+            PortraitWidget->SetVisibility(ESlateVisibility::Visible);
+            return true;
+        }
+        if (Cast<UGV2ImageWidgetBase>(TargetWidget))
+        {
+            return true;
+        }
+
+        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");
         return false;
     }
 
@@ -334,6 +396,21 @@ void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
     if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
     {
         ImageWidget->SetBrush(FSlateBrush());
+    }
+    else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    {
+        PortraitWidget->SetVisibility(ESlateVisibility::Collapsed);
+        if (UImage* Img = PortraitWidget->GetPortraitImage())
+        {
+            Img->SetBrush(FSlateBrush());
+        }
+    }
+    else if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
+    {
+        if (UImage* Img = ImageBase->GetImageWidget())
+        {
+            Img->SetBrush(FSlateBrush());
+        }
     }
 }
 
@@ -559,6 +636,10 @@ bool FGV2NumberPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError
     {
         PB->SetPercent(static_cast<float>(PreparedValue));
     }
+    else if (UGV2ProgressBarWidgetBase* ProgressHost = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    {
+        ProgressHost->ApplyProgress(static_cast<float>(PreparedValue));
+    }
     return true;
 }
 
@@ -567,6 +648,10 @@ void FGV2NumberPropertyConsumer::Reset(UWidget* TargetWidget)
     if (UProgressBar* PB = Cast<UProgressBar>(TargetWidget))
     {
         PB->SetPercent(0.0f);
+    }
+    else if (UGV2ProgressBarWidgetBase* ProgressHost = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    {
+        ProgressHost->ApplyProgress(0.0f);
     }
 }
 
@@ -706,6 +791,26 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
     {
         TabContainer->ApplyDefaultTabKey(FName(*PreparedValue));
     }
+    else if (UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(TargetWidget))
+    {
+        TopBar->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(TargetWidget))
+    {
+        PlayerStatus->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2LocationSceneWidgetBase* SceneWidget = Cast<UGV2LocationSceneWidgetBase>(TargetWidget))
+    {
+        SceneWidget->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(TargetWidget))
+    {
+        CmdPanel->SetKey(FName(*PreparedValue));
+    }
+    else if (UGV2ImageWidgetBase* ImageWidget = Cast<UGV2ImageWidgetBase>(TargetWidget))
+    {
+        ImageWidget->SetKey(FName(*PreparedValue));
+    }
     return true;
 }
 
@@ -746,6 +851,26 @@ void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
     else if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
     {
         TabContainer->ApplyDefaultTabKey(NAME_None);
+    }
+    else if (UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(TargetWidget))
+    {
+        TopBar->SetKey(NAME_None);
+    }
+    else if (UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(TargetWidget))
+    {
+        PlayerStatus->SetKey(NAME_None);
+    }
+    else if (UGV2LocationSceneWidgetBase* SceneWidget = Cast<UGV2LocationSceneWidgetBase>(TargetWidget))
+    {
+        SceneWidget->SetKey(NAME_None);
+    }
+    else if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(TargetWidget))
+    {
+        CmdPanel->SetKey(NAME_None);
+    }
+    else if (UGV2ImageWidgetBase* ImageWidget = Cast<UGV2ImageWidgetBase>(TargetWidget))
+    {
+        ImageWidget->SetKey(NAME_None);
     }
     PreparedValue.Empty();
 }

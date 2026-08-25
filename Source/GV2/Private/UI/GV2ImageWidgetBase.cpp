@@ -88,4 +88,5 @@ bool UGV2ImageWidgetBase::ApplyCentralStyle_Implementation()
 void UGV2ImageWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
     OutBuilder.AddImage(TEXT("resource_id"), FName(TEXT("Image")), TEXT("resource"));
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }

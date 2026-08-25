@@ -35,9 +35,9 @@ BRIDGE_TYPES_PATH = REPO_ROOT / "Source" / "GV2" / "Public" / "Bridge" / "GV2Bri
 # migration change set proves it actually deleted its legacy adapter/DTO/union branch,
 # per the plan's rule 2 ("удаляет свой PrepareXxx/BuildXxx/DTO/ветку union").
 BASELINES = {
-    "prepare_build_functions": 10,
-    "screen_field_value_payload_members": 4,
-    "schema_specific_dtos": 10,
+    "prepare_build_functions": 0,
+    "screen_field_value_payload_members": 0,
+    "schema_specific_dtos": 4,
 }
 
 PREPARE_BUILD_PATTERN = re.compile(r"^bool (Prepare|Build)[A-Z][A-Za-z0-9_]*\(", re.MULTILINE)
@@ -72,9 +72,11 @@ def count_prepare_build_functions(source: str) -> int:
 
 def count_screen_field_value_payload_members(source: str) -> int:
     struct_start = source.index("struct GV2_API FGV2ScreenFieldValue")
-    # The field block ends where the first static factory method begins.
-    static_start = source.index("static FGV2ScreenFieldValue Make", struct_start)
-    body = source[struct_start:static_start]
+    if "static FGV2ScreenFieldValue Make" in source[struct_start:]:
+        end_idx = source.index("static FGV2ScreenFieldValue Make", struct_start)
+    else:
+        end_idx = source.index("};", struct_start)
+    body = source[struct_start:end_idx]
     uproperty_count = len(UPROPERTY_PATTERN.findall(body))
     unreflected_count = sum(1 for name in SCREEN_FIELD_VALUE_UNREFLECTED_PAYLOAD_MEMBERS if name in body)
     return uproperty_count - SCREEN_FIELD_VALUE_IDENTITY_FIELDS + unreflected_count
@@ -168,11 +170,10 @@ def run_self_test() -> bool:
 
         fake_bridge = fake_root / "GV2BridgeTypes.h"
         bridge_source = BRIDGE_TYPES_PATH.read_text(encoding="utf-8")
-        marker = "static FGV2ScreenFieldValue MakeLocationTopBar("
+        marker = "    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = \"GV2|UI|Screen\")\n    FString SchemaId;"
         injected = bridge_source.replace(
             marker,
-            "UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = \"GV2|UI|Screen\")\n"
-            "    FGV2ImageFieldViewModel NewWidgetValue;\n\n    " + marker,
+            marker + "\n\n    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = \"GV2|UI|Screen\")\n    FGV2ButtonViewModel NewWidgetValue;",
             1,
         )
         if injected == bridge_source:

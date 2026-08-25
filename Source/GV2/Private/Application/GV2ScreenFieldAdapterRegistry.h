@@ -44,6 +44,7 @@ private:
 
 public:
     const FAdapter* Find(std::string_view SchemaId) const;
+    bool IsKnownSchema(std::string_view SchemaId) const;
 
 private:
     FGV2ScreenFieldAdapterRegistry();

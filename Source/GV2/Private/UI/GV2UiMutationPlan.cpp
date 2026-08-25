@@ -1,6 +1,8 @@
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2LocationCompositeWidgetBases.h"
+#include "UI/GV2ListViewWidgetBase.h"
 
 bool PrepareUiHostProperties(
     UUserWidget* HostWidget,
@@ -47,9 +49,54 @@ bool PrepareUiHostProperties(
         UWidget* TargetWidget = nullptr;
         if (HostWidget)
         {
-            TargetWidget = (Cap.TargetName != NAME_None)
-                ? HostWidget->GetWidgetFromName(Cap.TargetName)
-                : Cast<UWidget>(HostWidget);
+            if (Cap.TargetName != NAME_None)
+            {
+                TargetWidget = HostWidget->GetWidgetFromName(Cap.TargetName);
+                if (TargetWidget == nullptr)
+                {
+                    if (FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(HostWidget->GetClass(), Cap.TargetName))
+                    {
+                        TargetWidget = Cast<UWidget>(Prop->GetObjectPropertyValue_InContainer(HostWidget));
+                    }
+                }
+                if (TargetWidget == nullptr)
+                {
+                    if (UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(HostWidget))
+                    {
+                        if (Cap.TargetName == TEXT("MeterRepeater") || Cap.TargetName == TEXT("MeterContainer"))
+                        {
+                            TargetWidget = PlayerStatus->GetMeterRepeater();
+                        }
+                        else if (Cap.TargetName == TEXT("ItemRepeater") || Cap.TargetName == TEXT("ItemIcons"))
+                        {
+                            TargetWidget = PlayerStatus->GetItemRepeater();
+                        }
+                        else if (Cap.TargetName == TEXT("EffectRepeater") || Cap.TargetName == TEXT("EffectIcons"))
+                        {
+                            TargetWidget = PlayerStatus->GetEffectRepeater();
+                        }
+                    }
+                    else if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(HostWidget))
+                    {
+                        if (Cap.TargetName == TEXT("CharacterRepeater") || Cap.TargetName == TEXT("CharacterContainer"))
+                        {
+                            TargetWidget = Scene->GetCharacterRepeater();
+                        }
+                    }
+                    else if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(HostWidget))
+                    {
+                        if (Cap.TargetName == TEXT("ButtonRepeater") || Cap.TargetName == TEXT("ButtonContainer"))
+                        {
+                            TargetWidget = CmdPanel->GetRepeater();
+                        }
+                    }
+                }
+            }
+            else
+            {
+                TargetWidget = Cast<UWidget>(HostWidget);
+            }
+
             if (TargetWidget == nullptr && Cast<IGV2UiPropertyHost>(HostWidget))
             {
                 TargetWidget = Cast<UWidget>(HostWidget);

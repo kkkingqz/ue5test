@@ -1,5 +1,14 @@
 -- BAI-03: Closed Schema Lua Spec
 -- Tests that location presentation builders emit strictly conforming closed schema tables with no extra keys.
+--
+-- UPP-26 note: the allowed-key sets below are hand-copied from the
+-- ui_field_location_*.v1 schemas, not read from them -- Lua has no way to
+-- see a compiled or raw schema today (RepositoryBuilder discards its
+-- FSchemaRegistry after building, and the Lua sandbox exposes no schema
+-- lookup). GV2ContentCore::ValidateUiFieldValue already does real
+-- schema-driven validation; wiring it (or the raw schema) up to Lua specs
+-- is a deliberately deferred gap, tracked in LocationScreen.md's UPP-26
+-- audit note, not a general substitute for this test.
 
 local location_presenter = require("textsystem:module.presentation.location_presenter")
 

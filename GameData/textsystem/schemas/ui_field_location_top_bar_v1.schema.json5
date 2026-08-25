@@ -1,0 +1,26 @@
+{
+  id: "textsystem:schema.ui_field.location_top_bar.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      day: {
+        kind: "text",
+        required: true,
+      },
+      location: {
+        kind: "text",
+        required: true,
+      },
+      primary_resource: {
+        kind: "text",
+        required: true,
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}

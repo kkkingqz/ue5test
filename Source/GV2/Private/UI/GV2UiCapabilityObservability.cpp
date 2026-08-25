@@ -11,6 +11,8 @@
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2ImageWidgetBase.h"
+#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
 #include "CommonTextBlock.h"
@@ -277,6 +279,26 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     if (const UGV2RichTextPopoverWidgetBase* PopoverW = Cast<UGV2RichTextPopoverWidgetBase>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PopoverW->GetKey().ToString()));
+    }
+    if (const UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *ImageBase->GetKey().ToString()));
+    }
+    if (const UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *TopBar->GetKey().ToString()));
+    }
+    if (const UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PlayerStatus->GetKey().ToString()));
+    }
+    if (const UGV2LocationSceneWidgetBase* SceneWidget = Cast<UGV2LocationSceneWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *SceneWidget->GetKey().ToString()));
+    }
+    if (const UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *CmdPanel->GetKey().ToString()));
     }
     return FString::Join(Parts, TEXT("|"));
 }

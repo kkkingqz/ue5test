@@ -34,6 +34,12 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
     FString GetFrameResourceId() const { return AppliedFrameId; }
 
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
+    UImage* GetPortraitImage() const { return PortraitImage; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
+    float GetPortraitAspectRatio() const { return PortraitAspectRatio; }
+
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Portrait")
     void SetKey(FName InKey) { Key = InKey; }
 

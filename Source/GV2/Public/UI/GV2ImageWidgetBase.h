@@ -26,6 +26,9 @@ public:
     bool ApplyOptionalImageResource(const FString& ResourceId, const FString& PlaceholderResourceId, FString& OutError);
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    UImage* GetImageWidget() const { return Image; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FSlateBrush GetImageBrush() const;
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
@@ -51,6 +54,12 @@ public:
     {
         ScalePolicy = InScalePolicy;
     }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Image")
+    void SetKey(FName InKey) { Key = InKey; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Image")
+    FName GetKey() const { return Key; }
 
     virtual bool ApplyCentralStyle_Implementation() override;
 
@@ -78,5 +87,6 @@ protected:
 private:
     FString AppliedResourceId;
     float ResolvedAspectRatio = 0.0f;
+    FName Key;
     FGV2UiPropertyHostState PropertyHostState;
 };

@@ -1,0 +1,36 @@
+{
+  id: "textsystem:schema.ui_field.location_commands.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      items: {
+        kind: "array",
+        required: true,
+        keyed_by: "key",
+        items: {
+          kind: "object",
+          fields: {
+            key: {
+              kind: "key",
+              required: true,
+            },
+            text: {
+              kind: "text",
+              required: true,
+            },
+            binding: {
+              kind: "binding",
+              required: false,
+            },
+          },
+        },
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}
