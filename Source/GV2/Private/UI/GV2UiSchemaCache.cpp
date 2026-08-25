@@ -1,0 +1,123 @@
+#include "UI/GV2UiSchemaCache.h"
+
+#include "GV2ContentCore/Json5Parser.h"
+#include "GV2ContentCore/ParseLimits.h"
+
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <sstream>
+
+FGV2UiSchemaCache::FGV2UiSchemaCache(TArray<FString> InPackageRoots)
+    : PackageRoots(MoveTemp(InPackageRoots))
+{
+}
+
+void FGV2UiSchemaCache::EnsureDiscovered() const
+{
+    if (bDiscovered)
+    {
+        return;
+    }
+    bDiscovered = true;
+
+    for (const FString& Root : PackageRoots)
+    {
+        const std::filesystem::path RootPath(TCHAR_TO_UTF8(*Root));
+        std::error_code Ec;
+        if (!std::filesystem::is_directory(RootPath, Ec) || Ec)
+        {
+            continue;
+        }
+
+        for (const auto& Entry : std::filesystem::recursive_directory_iterator(
+                 RootPath, std::filesystem::directory_options::skip_permission_denied, Ec))
+        {
+            if (!Entry.is_regular_file() || Entry.path().extension() != ".json5")
+            {
+                continue;
+            }
+            static const std::string Suffix = ".schema.json5";
+            const std::string FileName = Entry.path().filename().string();
+            if (FileName.size() < Suffix.size()
+                || FileName.compare(FileName.size() - Suffix.size(), Suffix.size(), Suffix) != 0)
+            {
+                continue;
+            }
+
+            std::ifstream File(Entry.path(), std::ios::binary);
+            if (!File)
+            {
+                continue;
+            }
+            std::ostringstream Buffer;
+            Buffer << File.rdbuf();
+            const std::string Source = Buffer.str();
+
+            const std::string RelativeSource = std::filesystem::relative(Entry.path(), RootPath, Ec).generic_string();
+            std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+            std::optional<GV2ContentCore::FParsedDocument> Parsed = GV2ContentCore::ParseJson5Document(
+                Source, GV2ContentCore::FParseLimits{}, Diagnostics);
+            if (!Parsed.has_value() || !Diagnostics.empty())
+            {
+                // A malformed schema file is a content authoring error surfaced elsewhere
+                // (validate_docs.py / gv2-headless --check-scripts content build); this cache
+                // simply does not register it, so schema_id lookups against it report
+                // "unknown schema" rather than silently using a broken tree.
+                continue;
+            }
+
+            const GV2ContentCore::FValue& SchemaRoot = Parsed->GetRootValue();
+            if (!SchemaRoot.IsObject())
+            {
+                continue;
+            }
+            const GV2ContentCore::FValue* IdField = SchemaRoot.FindField("id");
+            if (IdField == nullptr || !IdField->IsString())
+            {
+                continue;
+            }
+
+            auto Document = std::make_shared<const GV2ContentCore::FParsedDocument>(MoveTemp(*Parsed));
+            Resolver.RegisterUiSchemaDocument(IdField->AsString(), Document, TCHAR_TO_UTF8(*Root), RelativeSource);
+        }
+    }
+}
+
+GV2ContentCore::FCompiledUiFieldSpecPtr FGV2UiSchemaCache::GetCompiledSchema(
+    const std::string& SchemaId,
+    FString& OutError) const
+{
+    EnsureDiscovered();
+
+    if (const auto CacheIt = CompiledCache.find(SchemaId); CacheIt != CompiledCache.end())
+    {
+        return CacheIt->second;
+    }
+
+    const std::optional<GV2ContentCore::FResolvedUiSchema> Resolved = Resolver.FindUiSchema(SchemaId);
+    if (!Resolved.has_value() || Resolved->RootSpec == nullptr)
+    {
+        OutError = FString::Printf(TEXT("unknown schema_id '%s' (no *.schema.json5 declares this id)"), UTF8_TO_TCHAR(SchemaId.c_str()));
+        return nullptr;
+    }
+
+    GV2ContentCore::FValidationDiagnosticContext Context;
+    Context.SchemaId = SchemaId;
+    Context.PackageId = Resolved->PackageId;
+    Context.RelativeSource = Resolved->RelativeSource;
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    GV2ContentCore::FCompiledUiFieldSpecPtr Compiled = GV2ContentCore::CompileUiFieldSpec(
+        *Resolved->RootSpec, Resolved->Document, "root", Context, Diagnostics, &Resolver);
+    if (Compiled == nullptr || !Diagnostics.empty())
+    {
+        OutError = FString::Printf(
+            TEXT("schema '%s' failed to compile (%d diagnostic(s))"),
+            UTF8_TO_TCHAR(SchemaId.c_str()),
+            static_cast<int32>(Diagnostics.size()));
+        return nullptr;
+    }
+
+    CompiledCache.emplace(SchemaId, Compiled);
+    return Compiled;
+}

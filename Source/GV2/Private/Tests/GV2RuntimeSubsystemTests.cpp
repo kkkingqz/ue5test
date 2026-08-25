@@ -41,6 +41,9 @@
 #include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2LocationCompositeWidgetBases.h"
+#include "UI/GV2PreparedUiValue.h"
+#include "UI/GV2ScreenFieldHost.h"
+#include "GV2ContentCore/UiSchema.h"
 #include "Components/VerticalBox.h"
 #include "Components/HorizontalBox.h"
 #include "Components/WrapBox.h"
@@ -245,14 +248,18 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
             TEXT("Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp"),
             AdapterRegistrySource))
     {
+        // UPP-27: the registry is now fully schema-driven (FGV2UiSchemaCache
+        // resolves any schema_id by scanning *.schema.json5 content), so it no
+        // longer hardcodes even the LocationScreen schema ids the way per-field
+        // adapters used to.
         const TCHAR* FieldSchemas[] = {
             TEXT("textsystem:schema.ui_field.location_scene.v1"),
             TEXT("textsystem:schema.ui_field.location_commands.v1")
         };
         for (const TCHAR* SchemaId : FieldSchemas)
         {
-            TestTrue(
-                *FString::Printf(TEXT("Adapter registry owns %s"), SchemaId),
+            TestFalse(
+                *FString::Printf(TEXT("Adapter registry does not hardcode %s"), SchemaId),
                 AdapterRegistrySource.Contains(SchemaId));
         }
     }
@@ -686,23 +693,9 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     }
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TestEqual(TEXT("Registry has 0 legacy adapters remaining"), Registry.Num(), 0);
-
-    // 1. All adapters removed from legacy registry
-    TestNull(TEXT("Image adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.image.v1"));
-    TestNull(TEXT("Checkbox adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.checkbox.v1"));
-    TestNull(TEXT("InputField adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.input_field.v1"));
-    TestNull(TEXT("ProgressBar adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.progress_bar.v1"));
-    TestNull(TEXT("Portrait adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.portrait.v1"));
-    TestNull(TEXT("ButtonList adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.button_list.v2"));
-    TestNull(TEXT("DropdownSelect adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.dropdown_select.v1"));
-    TestNull(TEXT("RichText adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.rich_text.v3"));
-    TestNull(TEXT("Modal adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.modal.v1"));
-    TestNull(TEXT("TabContainer adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.tab_container.v1"));
-    TestNull(TEXT("Location top bar adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_top_bar.v1"));
-    TestNull(TEXT("Location player status adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_player_status.v1"));
-    TestNull(TEXT("Location scene adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_scene.v1"));
-    TestNull(TEXT("Location commands adapter is not in legacy registry"), Registry.Find("textsystem:schema.ui_field.location_commands.v1"));
+    // UPP-16..27: the per-schema FAdapter mechanism itself was deleted, not just
+    // emptied -- Num() is a permanent 0, and every schema_id (baseline widgets and
+    // LocationScreen alike) now resolves through the schema-driven path.
     TestEqual(TEXT("Registry has 0 legacy adapters remaining"), Registry.Num(), 0);
 
     // 5. Generic Binding Extraction for Location Commands
@@ -1942,8 +1935,8 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                 Screen->GetClass(),
                 RegisteredClass);
 
-            const TArray<FGV2ScreenFieldDescriptor> Contract = Screen->GetScreenFieldContract();
-            TestEqual(TEXT("Test screen exposes 0 remaining legacy dynamic fields (all migrated to property hosts)"), Contract.Num(), 0);
+            const TArray<FName> ScreenFieldIds = Screen->GetScreenFieldIds();
+            TestEqual(TEXT("Test screen exposes 0 IGV2ScreenFieldHost fields (proving-ground leaves are static, not field-driven)"), ScreenFieldIds.Num(), 0);
 
             UGV2RichTextWidgetBase* DescriptionWidget = Cast<UGV2RichTextWidgetBase>(
                 Screen->GetWidgetFromName(TEXT("DescriptionText")));
@@ -4312,6 +4305,139 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
         TestWorld->DestroyWorld(false);
         GEngine->DestroyWorldContext(TestWorld);
     }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+// =========================================================================
+// UPP-27/STATUS-004: public preflight predicts a deep child's failure
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ScreenPreflightPredictsDeepChildFailureTest,
+    "GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Parameters)
+{
+    using namespace GV2ContentCore;
+
+    // Before Prepare/Commit, CanApplyScreenField only checked field_id/schema_id and
+    // never opened a keyed collection, so "schema passes, a deep child fails at
+    // commit" could not be predicted by the public preflight -- it only surfaced once
+    // ApplyScreenFields actually tried to commit (STATUS-004). This reproduces exactly
+    // that shape: a top-level "commands" object that is schema-valid, whose items
+    // array has a duplicate key -- detectable only by recursing into the collection,
+    // not by any shallow field_id/schema_id check -- and proves CanApplyScreenFields
+    // and ApplyScreenFields both reject it up front, leaving the screen exactly as it
+    // was before the failed attempt (no partial mutation to roll back).
+
+    AddExpectedErrorPlain(TEXT("ApplyScreenFields rejected"), EAutomationExpectedErrorFlags::Contains, 1);
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    TestNotNull(TEXT("Screen instantiated"), Screen);
+    if (Screen == nullptr) return false;
+
+    Screen->WidgetTree = NewObject<UWidgetTree>(Screen);
+    UVerticalBox* Root = Screen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+    Screen->WidgetTree->RootWidget = Root;
+
+    UGV2LocationCommandPanelWidgetBase* CommandPanel = Screen->WidgetTree->ConstructWidget<UGV2LocationCommandPanelWidgetBase>(
+        UGV2LocationCommandPanelWidgetBase::StaticClass(), TEXT("CommandPanel"));
+    Root->AddChildToVerticalBox(CommandPanel);
+    if (FProperty* ButtonClassProp = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
+    {
+        *ButtonClassProp->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(CommandPanel) = UGV2ButtonWidgetBase::StaticClass();
+    }
+
+    UWrapBox* ButtonBox = Screen->WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("ButtonBox"));
+    if (FProperty* ContainerProp = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonContainer")))
+    {
+        *ContainerProp->ContainerPtrToValuePtr<TObjectPtr<UWrapBox>>(CommandPanel) = ButtonBox;
+    }
+    if (FProperty* FieldIdProp = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ScreenFieldId")))
+    {
+        *FieldIdProp->ContainerPtrToValuePtr<FName>(CommandPanel) = FName(TEXT("commands"));
+    }
+    TestEqual(TEXT("CommandPanel answers to screen field 'commands'"), Screen->GetScreenFieldIds(), TArray<FName>{FName(TEXT("commands"))});
+
+    auto MakeCommandsSchema = []() -> std::shared_ptr<FCompiledUiFieldSpec>
+    {
+        auto ItemSpec = std::make_shared<FCompiledUiFieldSpec>();
+        ItemSpec->Kind = EUiFieldKind::Object;
+        ItemSpec->Fields.push_back({"key", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key)});
+        ItemSpec->Fields.push_back({"text", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text)});
+        ItemSpec->Fields.push_back({"binding", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Binding)});
+
+        auto ItemsArraySpec = std::make_shared<FCompiledUiFieldSpec>();
+        ItemsArraySpec->Kind = EUiFieldKind::Array;
+        ItemsArraySpec->KeyedBy = std::string("key");
+        ItemsArraySpec->Items = ItemSpec;
+
+        auto Schema = std::make_shared<FCompiledUiFieldSpec>();
+        Schema->Kind = EUiFieldKind::Object;
+        Schema->Fields.push_back({"items", true, ItemsArraySpec});
+        Schema->Fields.push_back({"key", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key)});
+        return Schema;
+    };
+
+    auto MakeItem = [](const TCHAR* Key, const TCHAR* DisplayText) -> FGV2PreparedUiValue
+    {
+        FGV2TextViewModel TextModel;
+        TextModel.Text = FText::FromString(DisplayText);
+        TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+        Fields.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(Key));
+        Fields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));
+        Fields.Emplace(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("action@1:1"))));
+        return FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(Fields)));
+    };
+
+    auto MakeCommandsValue = [](TArray<FGV2PreparedUiValue> Items) -> TSharedRef<const FGV2PreparedUiObject>
+    {
+        TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+        Fields.Emplace(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(Items))));
+        return FGV2PreparedUiObject::Create(MoveTemp(Fields));
+    };
+
+    const std::shared_ptr<FCompiledUiFieldSpec> Schema = MakeCommandsSchema();
+
+    // 1. A valid apply first, so the screen has real, observable prior state.
+    FGV2ScreenFieldValue ValidField;
+    ValidField.FieldId = FName(TEXT("commands"));
+    ValidField.SchemaId = TEXT("textsystem:schema.ui_field.location_commands.v1");
+    ValidField.CompiledSchema = Schema;
+    ValidField.PreparedValue = MakeCommandsValue({MakeItem(TEXT("btn_ok"), TEXT("OK"))});
+
+    TestTrue(TEXT("Valid commands field applies"), Screen->ApplyScreenFields({ValidField}));
+    TestEqual(TEXT("Button created for the valid apply"), ButtonBox->GetChildrenCount(), 1);
+    UGV2ButtonWidgetBase* OriginalButton = Cast<UGV2ButtonWidgetBase>(ButtonBox->GetChildAt(0));
+    TestNotNull(TEXT("Original button resolved"), OriginalButton);
+
+    // 2. A deep-child failure: schema-valid top level, duplicate key inside items.
+    FGV2ScreenFieldValue InvalidField;
+    InvalidField.FieldId = FName(TEXT("commands"));
+    InvalidField.SchemaId = TEXT("textsystem:schema.ui_field.location_commands.v1");
+    InvalidField.CompiledSchema = Schema;
+    InvalidField.PreparedValue = MakeCommandsValue({
+        MakeItem(TEXT("dup_key"), TEXT("First")),
+        MakeItem(TEXT("dup_key"), TEXT("Second")),
+    });
+
+    TestFalse(TEXT("Public preflight predicts the deep duplicate-key failure"), Screen->CanApplyScreenFields({InvalidField}));
+    TestFalse(TEXT("ApplyScreenFields also rejects it (Prepare fails before any Commit)"), Screen->ApplyScreenFields({InvalidField}));
+
+    // 3. No partial mutation: the screen is exactly as the valid apply left it.
+    TestEqual(TEXT("Button count is unchanged after the rejected apply"), ButtonBox->GetChildrenCount(), 1);
+    TestEqual(TEXT("The original button instance is untouched"), Cast<UGV2ButtonWidgetBase>(ButtonBox->GetChildAt(0)), OriginalButton);
+    if (OriginalButton != nullptr)
+    {
+        TestEqual(TEXT("Original button key is unchanged"), OriginalButton->GetKey(), FName(TEXT("btn_ok")));
+    }
+
     GameInstance->RemoveFromRoot();
     return true;
 }

@@ -34,9 +34,16 @@ BRIDGE_TYPES_PATH = REPO_ROOT / "Source" / "GV2" / "Public" / "Bridge" / "GV2Bri
 # Upper bounds captured at UPP-11 (2026-08-24). Lowering one of these is how a widget
 # migration change set proves it actually deleted its legacy adapter/DTO/union branch,
 # per the plan's rule 2 ("удаляет свой PrepareXxx/BuildXxx/DTO/ветку union").
+#
+# screen_field_value_payload_members raised 0 -> 2 at UPP-27 (2026-08-25): PreparedValue
+# and CompiledSchema are the materialized-candidate carrier UGV2ScreenWidgetBase's
+# Prepare/Commit consumes -- unlike the schema-specific union members this gate exists to
+# shrink, both fields are the *same* generic type for every schema_id (TSharedPtr<const
+# FGV2PreparedUiObject>, GV2ContentCore::FCompiledUiFieldSpecPtr), so growth here is the
+# generic pipeline's own load-bearing state, not a reappearing legacy transport.
 BASELINES = {
     "prepare_build_functions": 0,
-    "screen_field_value_payload_members": 0,
+    "screen_field_value_payload_members": 2,
     "schema_specific_dtos": 4,
 }
 
@@ -44,7 +51,7 @@ PREPARE_BUILD_PATTERN = re.compile(r"^bool (Prepare|Build)[A-Z][A-Za-z0-9_]*\(",
 
 # FGV2ScreenFieldValue's identity fields (not payload).
 SCREEN_FIELD_VALUE_IDENTITY_FIELDS = 2  # FieldId, SchemaId
-SCREEN_FIELD_VALUE_UNREFLECTED_PAYLOAD_MEMBERS: list[str] = []
+SCREEN_FIELD_VALUE_UNREFLECTED_PAYLOAD_MEMBERS: list[str] = ["PreparedValue", "CompiledSchema"]
 
 STRUCT_PATTERN = re.compile(r"^struct GV2_API ([A-Za-z0-9_]+)", re.MULTILINE)
 UPROPERTY_PATTERN = re.compile(r"UPROPERTY\(")
@@ -57,7 +64,6 @@ INFRA_STRUCT_ALLOWLIST = {
     "FGV2UiBindingHandle",
     "FGV2UiControlValue",
     "FGV2TextViewModel",
-    "FGV2ScreenFieldDescriptor",
     "FGV2ScreenFieldValue",
     "FGV2ScreenViewModel",
     "FGV2ScreenInstanceViewModel",

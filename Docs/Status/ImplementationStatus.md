@@ -1,8 +1,8 @@
 ---
 title: Confirmed Contract Gaps
 status: informative
-version: 2.2
-updated: 2026-08-23
+version: 2.3
+updated: 2026-08-25
 depends_on:
   - ../README.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -29,7 +29,6 @@ depends_on:
 |---|---|---|---|---|
 | `STATUS-001` | `partial` | [Bootstrap and Session Lifecycle § Session states](../Architecture/BootstrapAndSessionLifecycle.md#session-states), [§ Replacement sequences](../Architecture/BootstrapAndSessionLifecycle.md#replacement-sequences) | Реализован cold start `NewGame`/`LoadSave`, но coordinator не проводит session через `Registering`, `BuildingState`, `RestoringInstances`, `Starting`, `PreparingPresentation`; отсутствуют active-session preflight, cancellation и Menu↔Game/load-another-save/content-reload replacement flow. | `FGV2SessionCoordinator::StartSession` в `Source/GV2/Private/Application/GV2SessionCoordinator.cpp` выставляет `Creating`, затем сразу `Ready`; `FRuntimeSession::StartFromSave` покрыт `GV2ColdStartLoadConformance`, но production entry point replacement operation отсутствует. |
 | `STATUS-002` | `missing` | [Presentation Snapshot and Effects § Effect](../UI/PresentationSnapshotAndEffects.md#effect), [§ ordering](../UI/PresentationSnapshotAndEffects.md#snapshoteffect-ordering) | UI document/reconciliation реализованы, но public one-shot effect DTO/queue/apply path, stale target handling и effect non-persistence tests отсутствуют. | В `Scripts/`, `Source/` и `Tests/` нет production `publish_effect`/effect queue consumer; `Scripts/authoring/presentation.lua` публикует только desired UI document. |
-| `STATUS-004` | `partial` | [Screen Templates § Apply lifecycle](../UI/ScreenTemplates.md) | Safety-часть контракта выполнена: `ApplyScreenFields` захватывает предыдущее значение каждого элемента и при отказе восстанавливает его, поэтому partial visual state наружу не выходит. Предиктивная часть не выполнена: публичный pure-preflight `CanApplyScreenFields` не может предсказать отказ глубокого ребёнка композита, так как `CanApplyScreenField` проверяет идентификатор поля и схему и детей не опрашивает. | `Source/GV2/Private/UI/GV2ScreenWidgetBase.cpp`, `Source/GV2/Private/UI/GV2LocationCompositeWidgetBases.cpp`; поведение отката покрыто `GV2.Runtime.UI.CompositeRollbackContract`, предсказуемость отказа — ничем. |
 
 ## Правило изменения
 

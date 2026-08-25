@@ -2,9 +2,16 @@
 
 #include "Bridge/GV2BridgeRuntimeTypes.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
+#include "UI/GV2UiSchemaCache.h"
 
 #include <string_view>
 
+// UPP-27: every Screen Field is now applied through the schema-driven pipeline
+// below -- there is no per-schema adapter left (Num() == 0 permanently; see
+// GV2.Runtime.Presentation.CentralPresentationPathSourceAudit). PrepareBindingDefinitions
+// and BuildFields both walk the field's *compiled* schema (FGV2UiSchemaCache) against
+// its raw Lua value, so a field is known iff a *.schema.json5 file declares that
+// schema_id -- not because this class hardcodes it.
 class FGV2ScreenFieldAdapterRegistry
 {
 public:
@@ -14,40 +21,24 @@ public:
         const GV2RuntimeCore::FScreenRequest& Request,
         TArray<FGV2UiBindingDefinition>& OutDefinitions) const;
 
+    // Materializes every field's raw Lua value into a FGV2PreparedUiObject candidate
+    // (plus its compiled schema) using the resolved Handles from a prior
+    // PrepareBindingDefinitions() + FGV2UiBindingRegistry::PrepareBindings() pass --
+    // Handles must be in the same order PrepareBindingDefinitions produced them in,
+    // since both passes walk the same schema/value tree in the same deterministic order.
     bool BuildFields(
         const GV2RuntimeCore::FScreenRequest& Request,
         const TArray<FGV2UiBindingHandle>& Handles,
         TArray<FGV2ScreenFieldValue>& OutFields) const;
 
-    int32 Num() const;
+    bool IsKnownSchema(const std::string& SchemaId) const;
 
-private:
-    using FObject = GV2RuntimeCore::FValue::FObject;
-    using FPrepareBindings = bool (*)(
-        const std::string& ScreenId,
-        const GV2RuntimeCore::FScreenField& Field,
-        const FObject& Value,
-        TArray<FGV2UiBindingDefinition>& OutDefinitions);
-    using FBuildField = bool (*)(
-        const GV2RuntimeCore::FScreenField& Field,
-        const FObject& Value,
-        const TArray<FGV2UiBindingHandle>& Handles,
-        int32& InOutHandleIndex,
-        FGV2ScreenFieldValue& OutField);
-
-    struct FAdapter
-    {
-        std::string_view SchemaId;
-        FPrepareBindings PrepareBindings = nullptr;
-        FBuildField BuildField = nullptr;
-    };
-
-public:
-    const FAdapter* Find(std::string_view SchemaId) const;
-    bool IsKnownSchema(std::string_view SchemaId) const;
+    // Retained only so the still-meaningful "0 legacy adapters" regression
+    // (GV2.Runtime.Presentation.CentralPresentationPathSourceAudit) keeps compiling.
+    int32 Num() const { return 0; }
 
 private:
     FGV2ScreenFieldAdapterRegistry();
 
-    TArray<FAdapter> Adapters;
+    FGV2UiSchemaCache SchemaCache;
 };

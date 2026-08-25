@@ -356,39 +356,29 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
         return false;
     }
 
-    UImage* ImageWidget = Cast<UImage>(TargetWidget);
-    if (!ImageWidget)
+    // Routes through the host's own Apply method rather than reaching past it to its
+    // inner UImage: GV2ImageWidgetBase/GV2PortraitWidgetBase track what they last applied
+    // (AppliedResourceId/ResolvedAspectRatio, GetPortraitResourceId/GetFrameResourceId) as
+    // part of their own bookkeeping, and bypassing it here left that bookkeeping frozen at
+    // whatever NativePreConstruct set (or unset) even though the brush itself did update.
+    if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
     {
-        if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
-        {
-            ImageWidget = ImageBase->GetImageWidget();
-        }
-        else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
-        {
-            PortraitWidget->SetVisibility(ESlateVisibility::Visible);
-            ImageWidget = PortraitWidget->GetPortraitImage();
-        }
+        return ImageBase->ApplyImageResource(PreparedResourceId, OutError);
+    }
+    if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    {
+        PortraitWidget->SetVisibility(ESlateVisibility::Visible);
+        return PortraitWidget->ApplyPortrait(PreparedResourceId, FString(), OutError);
+    }
+    if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
+    {
+        FGV2ResolvedImageResource Resolved;
+        return FGV2ImagePresentation::ResolveAndApply(
+            ImageWidget, PreparedResourceId, PreparedScalePolicy, PreparedFixedAspectRatio, Resolved, OutError);
     }
 
-    if (!ImageWidget)
-    {
-        if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
-        {
-            PortraitWidget->SetVisibility(ESlateVisibility::Visible);
-            return true;
-        }
-        if (Cast<UGV2ImageWidgetBase>(TargetWidget))
-        {
-            return true;
-        }
-
-        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");
-        return false;
-    }
-
-    FGV2ResolvedImageResource Resolved;
-    return FGV2ImagePresentation::ResolveAndApply(
-        ImageWidget, PreparedResourceId, PreparedScalePolicy, PreparedFixedAspectRatio, Resolved, OutError);
+    OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");
+    return false;
 }
 
 void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)

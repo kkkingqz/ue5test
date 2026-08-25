@@ -9,8 +9,6 @@
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
 
-namespace { FGV2ScreenFieldDescriptor D(const TCHAR* Id, const TCHAR* Schema) { FGV2ScreenFieldDescriptor R; R.FieldId=FName(Id); R.SchemaId=Schema; R.bRequired=true; return R; } }
-
 // ============================================================================
 // TopBar
 // ============================================================================

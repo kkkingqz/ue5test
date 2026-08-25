@@ -2,44 +2,38 @@
 
 #include "Bridge/GV2StableIdUE.h"
 #include "Blueprint/WidgetTree.h"
+#include "Blueprint/UserWidget.h"
 #include "Components/Widget.h"
-#include "UI/GV2DynamicScreenElement.h"
+#include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2UiMutationPlan.h"
+#include "UI/GV2UiPropertyHost.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2ScreenWidget, Log, All);
 
 namespace
 {
-struct FGV2ScreenElementRecord
-{
-    TObjectPtr<UWidget> Widget;
-    FGV2ScreenFieldDescriptor Descriptor;
-};
-
-struct FGV2ScreenApplyRecord
-{
-    TObjectPtr<UWidget> Widget;
-    FGV2ScreenFieldValue PreviousValue;
-    FGV2ScreenFieldValue CandidateValue;
-    bool bReset = false;
-};
-
 bool IsCanonicalFieldId(const FName FieldId)
 {
     const FString Value = FieldId.ToString();
     return GV2StableIdUE::IsValidSegment(Value);
 }
 
-bool IsCanonicalSchemaId(const FString& Value)
+struct FGV2ScreenHostRecord
 {
-    return GV2StableIdUE::IsOfKind(Value, "schema");
-}
+    TObjectPtr<UUserWidget> HostWidget;
+    FName FieldId;
+};
 
-bool CollectElements(
+// UPP-27 replacement for the retired IGV2DynamicScreenElement tree scan: finds
+// every widget implementing IGV2ScreenFieldHost, keyed by its configured (non-
+// NAME_None) GetScreenFieldId(). A host with NAME_None is unconfigured and is
+// silently skipped, exactly like the old descriptor's !IsConfigured() case.
+bool CollectScreenFieldHosts(
     const UGV2ScreenWidgetBase& Screen,
-    TArray<FGV2ScreenElementRecord>& OutElements,
+    TArray<FGV2ScreenHostRecord>& OutHosts,
     FString& OutError)
 {
-    OutElements.Reset();
+    OutHosts.Reset();
     if (Screen.WidgetTree == nullptr)
     {
         OutError = TEXT("screen has no WidgetTree");
@@ -47,162 +41,153 @@ bool CollectElements(
     }
 
     TSet<FName> SeenFieldIds;
-    Screen.WidgetTree->ForEachWidget([&OutElements, &SeenFieldIds, &OutError](UWidget* Widget)
+    Screen.WidgetTree->ForEachWidget([&OutHosts, &SeenFieldIds, &OutError](UWidget* Widget)
     {
-        if (!OutError.IsEmpty()
-            || Widget == nullptr
-            || !Widget->GetClass()->ImplementsInterface(UGV2DynamicScreenElement::StaticClass()))
+        if (!OutError.IsEmpty() || Widget == nullptr)
         {
+            return;
+        }
+        IGV2ScreenFieldHost* Host = Cast<IGV2ScreenFieldHost>(Widget);
+        if (Host == nullptr)
+        {
+            return;
+        }
+        const FName FieldId = Host->GetScreenFieldId();
+        if (FieldId.IsNone())
+        {
+            return;
+        }
+        if (!IsCanonicalFieldId(FieldId))
+        {
+            OutError = FString::Printf(
+                TEXT("screen field host '%s' has non-canonical field_id '%s'"),
+                *Widget->GetName(),
+                *FieldId.ToString());
+            return;
+        }
+        if (SeenFieldIds.Contains(FieldId))
+        {
+            OutError = FString::Printf(TEXT("duplicate screen field host '%s'"), *FieldId.ToString());
+            return;
+        }
+        UUserWidget* HostAsUserWidget = Cast<UUserWidget>(Widget);
+        if (HostAsUserWidget == nullptr)
+        {
+            OutError = FString::Printf(TEXT("screen field host '%s' is not a UUserWidget"), *FieldId.ToString());
             return;
         }
 
-        const FGV2ScreenFieldDescriptor Descriptor =
-            IGV2DynamicScreenElement::Execute_GetScreenFieldDescriptor(Widget);
-        if (!Descriptor.IsConfigured())
-        {
-            return;
-        }
-        if (!IsCanonicalFieldId(Descriptor.FieldId))
-        {
-            OutError = FString::Printf(
-                TEXT("dynamic element '%s' has non-canonical field_id '%s'"),
-                *Widget->GetName(),
-                *Descriptor.FieldId.ToString());
-            return;
-        }
-        if (!IsCanonicalSchemaId(Descriptor.SchemaId))
-        {
-            OutError = FString::Printf(
-                TEXT("dynamic element '%s' has invalid schema_id '%s'"),
-                *Widget->GetName(),
-                *Descriptor.SchemaId);
-            return;
-        }
-        if (SeenFieldIds.Contains(Descriptor.FieldId))
-        {
-            OutError = FString::Printf(
-                TEXT("duplicate dynamic screen field '%s'"),
-                *Descriptor.FieldId.ToString());
-            return;
-        }
-
-        SeenFieldIds.Add(Descriptor.FieldId);
-        OutElements.Add({Widget, Descriptor});
+        SeenFieldIds.Add(FieldId);
+        OutHosts.Add({HostAsUserWidget, FieldId});
     });
 
-    OutElements.Sort([](const FGV2ScreenElementRecord& Left, const FGV2ScreenElementRecord& Right)
+    OutHosts.Sort([](const FGV2ScreenHostRecord& Left, const FGV2ScreenHostRecord& Right)
     {
-        return Left.Descriptor.FieldId.LexicalLess(Right.Descriptor.FieldId);
+        return Left.FieldId.LexicalLess(Right.FieldId);
     });
     return OutError.IsEmpty();
 }
 
-bool BuildApplyPlan(
+struct FGV2ScreenFieldPlan
+{
+    TObjectPtr<UUserWidget> HostWidget;
+    FGV2UiHostMutationPlan MutationPlan;
+    TSharedPtr<const FGV2PreparedUiObject> CommittedValue;
+};
+
+// The whole of UPP-27: prepares every configured screen field host's mutation
+// plan up front. A field host with a value that fails PrepareUiHostProperties
+// -- including a deep child inside a keyed collection, since that consumer's
+// own Prepare recurses fully before returning -- fails *here*, before any
+// widget anywhere on the screen has been touched. There is nothing left to
+// compensate for by the time Commit runs, so there is no captured "previous
+// value" to roll back to.
+bool PrepareScreenFieldPlans(
     const UGV2ScreenWidgetBase& Screen,
     const TArray<FGV2ScreenFieldValue>& ScreenFields,
-    TArray<FGV2ScreenApplyRecord>& OutPlan,
-    FString& OutError,
-    const bool bCapturePreviousValues)
+    TArray<FGV2ScreenFieldPlan>& OutPlans,
+    FString& OutError)
 {
-    TArray<FGV2ScreenElementRecord> Elements;
-    if (!CollectElements(Screen, Elements, OutError))
+    TArray<FGV2ScreenHostRecord> Hosts;
+    if (!CollectScreenFieldHosts(Screen, Hosts, OutError))
     {
         return false;
     }
 
     TMap<FName, const FGV2ScreenFieldValue*> ValuesById;
-    for (const FGV2ScreenFieldValue& FieldValue : ScreenFields)
+    for (const FGV2ScreenFieldValue& Value : ScreenFields)
     {
-        if (!IsCanonicalFieldId(FieldValue.FieldId))
+        if (!IsCanonicalFieldId(Value.FieldId))
         {
-            OutError = FString::Printf(
-                TEXT("payload has non-canonical field_id '%s'"),
-                *FieldValue.FieldId.ToString());
+            OutError = FString::Printf(TEXT("payload has non-canonical field_id '%s'"), *Value.FieldId.ToString());
             return false;
         }
-        if (ValuesById.Contains(FieldValue.FieldId))
+        if (ValuesById.Contains(Value.FieldId))
         {
-            OutError = FString::Printf(
-                TEXT("payload contains duplicate field '%s'"),
-                *FieldValue.FieldId.ToString());
+            OutError = FString::Printf(TEXT("payload contains duplicate field '%s'"), *Value.FieldId.ToString());
             return false;
         }
-        if (!IsCanonicalSchemaId(FieldValue.SchemaId))
-        {
-            OutError = FString::Printf(
-                TEXT("field '%s' has invalid schema_id '%s'"),
-                *FieldValue.FieldId.ToString(),
-                *FieldValue.SchemaId);
-            return false;
-        }
-        ValuesById.Add(FieldValue.FieldId, &FieldValue);
+        ValuesById.Add(Value.FieldId, &Value);
     }
 
     TSet<FName> ConsumedFieldIds;
-    OutPlan.Reset();
-    OutPlan.Reserve(Elements.Num());
-    for (const FGV2ScreenElementRecord& Element : Elements)
+    OutPlans.Reset();
+    OutPlans.Reserve(Hosts.Num());
+    for (const FGV2ScreenHostRecord& Host : Hosts)
     {
-        const FGV2ScreenFieldValue* const* Candidate = ValuesById.Find(Element.Descriptor.FieldId);
-        if (Candidate == nullptr)
+        const FGV2ScreenFieldValue* const* Found = ValuesById.Find(Host.FieldId);
+        if (Found == nullptr)
         {
-            if (Element.Descriptor.bRequired)
-            {
-                OutError = FString::Printf(
-                    TEXT("required field '%s' is absent"),
-                    *Element.Descriptor.FieldId.ToString());
-                return false;
-            }
-        }
-        else
-        {
-            if ((*Candidate)->SchemaId != Element.Descriptor.SchemaId)
-            {
-                OutError = FString::Printf(
-                    TEXT("field '%s' expects schema '%s' but received '%s'"),
-                    *Element.Descriptor.FieldId.ToString(),
-                    *Element.Descriptor.SchemaId,
-                    *(*Candidate)->SchemaId);
-                return false;
-            }
-            if (!IGV2DynamicScreenElement::Execute_CanApplyScreenField(
-                    Element.Widget,
-                    **Candidate))
-            {
-                OutError = FString::Printf(
-                    TEXT("dynamic element rejected field '%s' during validation"),
-                    *Element.Descriptor.FieldId.ToString());
-                return false;
-            }
-            ConsumedFieldIds.Add(Element.Descriptor.FieldId);
-        }
-
-        FGV2ScreenApplyRecord& Record = OutPlan.AddDefaulted_GetRef();
-        Record.Widget = Element.Widget;
-        Record.bReset = Candidate == nullptr;
-        if (Candidate != nullptr)
-        {
-            Record.CandidateValue = **Candidate;
-        }
-        if (bCapturePreviousValues
-            && !IGV2DynamicScreenElement::Execute_CaptureScreenField(
-                Element.Widget,
-                Record.PreviousValue))
-        {
-            OutError = FString::Printf(
-                TEXT("could not capture current value of field '%s'"),
-                *Element.Descriptor.FieldId.ToString());
+            OutError = FString::Printf(TEXT("screen field host '%s' has no value in the payload"), *Host.FieldId.ToString());
             return false;
         }
+        const FGV2ScreenFieldValue& Value = **Found;
+        if (!Value.PreparedValue.IsValid() || !Value.CompiledSchema)
+        {
+            OutError = FString::Printf(TEXT("screen field '%s' has no materialized value (BuildFields did not run)"), *Host.FieldId.ToString());
+            return false;
+        }
+
+        IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(Host.HostWidget.Get());
+        if (PropertyHost == nullptr)
+        {
+            OutError = FString::Printf(TEXT("screen field host '%s' does not implement IGV2UiPropertyHost"), *Host.FieldId.ToString());
+            return false;
+        }
+
+        FGV2UiCapabilityBuilder Builder;
+        PropertyHost->DescribeUiCapabilities(Builder);
+
+        FGV2UiHostMutationPlan MutationPlan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+        const bool bPrepared = PrepareUiHostProperties(
+            Host.HostWidget,
+            Builder.Build(),
+            *Value.PreparedValue,
+            *Value.CompiledSchema,
+            Value.SchemaId,
+            FString(),
+            PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+            MutationPlan,
+            Diagnostics);
+        if (!bPrepared)
+        {
+            OutError = FString::Printf(
+                TEXT("screen field '%s' failed to prepare: %s"),
+                *Host.FieldId.ToString(),
+                Diagnostics.Num() > 0 ? *Diagnostics[0].ToString() : TEXT("unknown error"));
+            return false;
+        }
+
+        ConsumedFieldIds.Add(Host.FieldId);
+        OutPlans.Add({Host.HostWidget, MoveTemp(MutationPlan), Value.PreparedValue});
     }
 
     for (const TPair<FName, const FGV2ScreenFieldValue*>& Pair : ValuesById)
     {
         if (!ConsumedFieldIds.Contains(Pair.Key))
         {
-            OutError = FString::Printf(
-                TEXT("payload contains unknown field '%s'"),
-                *Pair.Key.ToString());
+            OutError = FString::Printf(TEXT("payload contains unknown field '%s'"), *Pair.Key.ToString());
             return false;
         }
     }
@@ -212,73 +197,65 @@ bool BuildApplyPlan(
 
 bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields)
 {
-    TArray<FGV2ScreenApplyRecord> ApplyPlan;
+    TArray<FGV2ScreenFieldPlan> Plans;
     FString Error;
-    if (!BuildApplyPlan(*this, ScreenFields, ApplyPlan, Error, true))
+    if (!PrepareScreenFieldPlans(*this, ScreenFields, Plans, Error))
     {
         UE_LOG(LogGV2ScreenWidget, Error, TEXT("ApplyScreenFields rejected: %s"), *Error);
         return false;
     }
 
-    int32 AppliedCount = 0;
-    for (FGV2ScreenApplyRecord& Record : ApplyPlan)
+    for (FGV2ScreenFieldPlan& Plan : Plans)
     {
-        const bool bApplied = Record.bReset
-            ? IGV2DynamicScreenElement::Execute_ResetScreenField(Record.Widget)
-            : IGV2DynamicScreenElement::Execute_ApplyScreenField(
-                Record.Widget,
-                Record.CandidateValue);
-        if (!bApplied)
+        FString FailedPath, CommitError;
+        if (!CommitUiHostProperties(Plan.HostWidget, Plan.MutationPlan, FailedPath, CommitError))
         {
-            // The element that returned false may have changed local state before reporting
-            // the failure, so restore it together with every previously committed element.
-            for (int32 RollbackIndex = AppliedCount; RollbackIndex >= 0; --RollbackIndex)
-            {
-                FGV2ScreenApplyRecord& AppliedRecord = ApplyPlan[RollbackIndex];
-                if (!IGV2DynamicScreenElement::Execute_ApplyScreenField(
-                        AppliedRecord.Widget,
-                        AppliedRecord.PreviousValue))
-                {
-                    UE_LOG(
-                        LogGV2ScreenWidget,
-                        Error,
-                        TEXT("Rollback failed for dynamic field '%s'"),
-                        *AppliedRecord.PreviousValue.FieldId.ToString());
-                }
-            }
-            UE_LOG(LogGV2ScreenWidget, Error, TEXT("ApplyScreenFields failed during commit"));
+            // Every plan above already prepared cleanly; CommitUiHostProperties is
+            // documented infallible against a plan it prepared itself. Reaching this
+            // is therefore either injected test failure or a genuine engine-level
+            // fault, not a predictable content error -- there is nothing to roll back
+            // to (no compensating capture exists any more), so this is logged as the
+            // implementation-limit case it is, not silently absorbed.
+            UE_LOG(
+                LogGV2ScreenWidget,
+                Error,
+                TEXT("ApplyScreenFields commit failed on '%s': %s"),
+                *FailedPath,
+                *CommitError);
             return false;
         }
-        ++AppliedCount;
+        if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(Plan.HostWidget.Get()))
+        {
+            PropertyHost->GetPropertyHostState().SetLastCommittedProperties(*Plan.CommittedValue);
+        }
     }
 
     OnScreenFieldsApplied();
     return true;
 }
 
-bool UGV2ScreenWidgetBase::CanApplyScreenFields(
-    const TArray<FGV2ScreenFieldValue>& ScreenFields) const
+bool UGV2ScreenWidgetBase::CanApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields) const
 {
-    TArray<FGV2ScreenApplyRecord> ApplyPlan;
+    TArray<FGV2ScreenFieldPlan> Plans;
     FString Error;
-    return BuildApplyPlan(*this, ScreenFields, ApplyPlan, Error, false);
+    return PrepareScreenFieldPlans(*this, ScreenFields, Plans, Error);
 }
 
-TArray<FGV2ScreenFieldDescriptor> UGV2ScreenWidgetBase::GetScreenFieldContract() const
+TArray<FName> UGV2ScreenWidgetBase::GetScreenFieldIds() const
 {
-    TArray<FGV2ScreenElementRecord> Elements;
+    TArray<FGV2ScreenHostRecord> Hosts;
     FString Error;
-    if (!CollectElements(*this, Elements, Error))
+    if (!CollectScreenFieldHosts(*this, Hosts, Error))
     {
-        UE_LOG(LogGV2ScreenWidget, Warning, TEXT("GetScreenFieldContract failed: %s"), *Error);
+        UE_LOG(LogGV2ScreenWidget, Warning, TEXT("GetScreenFieldIds failed: %s"), *Error);
         return {};
     }
 
-    TArray<FGV2ScreenFieldDescriptor> Result;
-    Result.Reserve(Elements.Num());
-    for (const FGV2ScreenElementRecord& Element : Elements)
+    TArray<FName> Result;
+    Result.Reserve(Hosts.Num());
+    for (const FGV2ScreenHostRecord& Host : Hosts)
     {
-        Result.Add(Element.Descriptor);
+        Result.Add(Host.FieldId);
     }
     return Result;
 }

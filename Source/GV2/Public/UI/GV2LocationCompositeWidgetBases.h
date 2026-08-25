@@ -1,8 +1,8 @@
 #pragma once
 
 #include "CommonUserWidget.h"
-#include "UI/GV2DynamicScreenElement.h"
 #include "UI/GV2ListViewWidgetBase.h"
+#include "UI/GV2ScreenFieldHost.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "GV2LocationCompositeWidgetBases.generated.h"
 
@@ -20,7 +20,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
     EGV2SubmitUiInteractionResult, Result);
 
 UCLASS(Blueprintable)
-class GV2_API UGV2LocationTopBarWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost
+class GV2_API UGV2LocationTopBarWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
 {
     GENERATED_BODY()
 public:
@@ -28,6 +28,9 @@ public:
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2ScreenFieldHost
+    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -43,6 +46,11 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: ResourceIcon is unused because PrimaryResource contains formatted text.")) TObjectPtr<UWidget> ResourceIcon;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> DayLocationSeparator;
 
+    // UPP-27: which Screen Field (e.g. "top_bar") this instance answers to, set
+    // per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
+    FName ScreenFieldId;
+
 private:
     FGV2UiPropertyHostState PropertyHostState;
 
@@ -51,7 +59,7 @@ private:
 };
 
 UCLASS(Blueprintable)
-class GV2_API UGV2LocationPlayerStatusWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost
+class GV2_API UGV2LocationPlayerStatusWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
 {
     GENERATED_BODY()
 public:
@@ -59,6 +67,9 @@ public:
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2ScreenFieldHost
+    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -95,6 +106,11 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> IconWidgetClass;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ProgressBarWidgetBase> MeterWidgetClass;
 
+    // UPP-27: which Screen Field (e.g. "player_status") this instance answers to,
+    // set per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
+    FName ScreenFieldId;
+
 private:
     FGV2UiPropertyHostState PropertyHostState;
 
@@ -107,7 +123,7 @@ private:
 };
 
 UCLASS(Blueprintable)
-class GV2_API UGV2LocationSceneWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost
+class GV2_API UGV2LocationSceneWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
 {
     GENERATED_BODY()
 public:
@@ -115,6 +131,9 @@ public:
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2ScreenFieldHost
+    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -138,6 +157,11 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;
 
+    // UPP-27: which Screen Field (e.g. "scene") this instance answers to, set
+    // per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
+    FName ScreenFieldId;
+
 private:
     FGV2UiPropertyHostState PropertyHostState;
 
@@ -149,7 +173,7 @@ private:
 
 /** LocationScreen's command field is a ButtonList with a textsystem schema. */
 UCLASS(Blueprintable)
-class GV2_API UGV2LocationCommandPanelWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost
+class GV2_API UGV2LocationCommandPanelWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
 {
     GENERATED_BODY()
 public:
@@ -157,6 +181,9 @@ public:
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2ScreenFieldHost
+    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -177,6 +204,11 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> ButtonRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> ButtonContainer;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="GV2|UI") TSubclassOf<UGV2ButtonWidgetBase> ButtonWidgetClass;
+
+    // UPP-27: which Screen Field (e.g. "commands") this instance answers to, set
+    // per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
+    FName ScreenFieldId;
 
 private:
     FGV2UiPropertyHostState PropertyHostState;

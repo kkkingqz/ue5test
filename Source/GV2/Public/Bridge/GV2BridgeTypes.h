@@ -1,6 +1,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+
+#include <memory>
+
+namespace GV2ContentCore { struct FCompiledUiFieldSpec; }
+class FGV2PreparedUiObject;
+
 #include "GV2BridgeTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -214,26 +220,6 @@ struct GV2_API FGV2ProgressBarViewModel
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2ScreenFieldDescriptor
-{
-    GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
-    FName FieldId;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
-    FString SchemaId;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
-    bool bRequired = true;
-
-    bool IsConfigured() const
-    {
-        return !FieldId.IsNone();
-    }
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenFieldValue
 {
     GENERATED_BODY()
@@ -243,6 +229,14 @@ struct GV2_API FGV2ScreenFieldValue
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FString SchemaId;
+
+    // UPP-27: materialized candidate value and its compiled schema, built once by
+    // FGV2ScreenFieldAdapterRegistry::BuildFields from the raw Lua value and consumed by
+    // UGV2ScreenWidgetBase's Prepare/Commit. Not UPROPERTY -- neither type is
+    // UHT-reflectable, and this payload is transient view-model data, never
+    // saved/replicated/Blueprint-authored the way FieldId/SchemaId above are.
+    TSharedPtr<const FGV2PreparedUiObject> PreparedValue;
+    std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> CompiledSchema;
 };
 
 USTRUCT(BlueprintType)
