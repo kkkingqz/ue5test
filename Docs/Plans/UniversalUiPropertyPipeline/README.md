@@ -65,7 +65,7 @@ decisions:
 - [x] M3 — [Proving Slice and Gate](ProvingSliceAndGate.md): Text, Image, Button мигрированы, гейт go/no-go пройден. UPP-12…15.
 - [x] M4 — [Remaining Leaves](RemainingLeaves.md): Checkbox, InputField, ProgressBar, Portrait, RichText. UPP-16…19.
 - [x] M5 — [Collections and Composites](CollectionsAndComposites.md): keyed collection, ButtonList, Dropdown, Modal, TabContainer. UPP-20…23.
-- [ ] M6 — [LocationScreen](LocationScreen.md): четыре композита и приведение контента. UPP-24…26.
+- [x] M6 — [LocationScreen](LocationScreen.md): четыре композита и приведение контента. UPP-24…26.
 - [ ] M7 — [Screen and Document Transaction](ScreenAndDocument.md): предиктивный preflight, атомарный документ. UPP-27…29.
 - [ ] M8 — [Teardown and Closure](TeardownAndClosure.md): каркас снят, контракты приведены, закрытия проверены. UPP-30…32.
 
