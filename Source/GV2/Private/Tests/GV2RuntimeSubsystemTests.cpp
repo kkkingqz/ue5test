@@ -2267,6 +2267,128 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")),
             RouteWidget3);
 
+        // Step G: UPP-28 Multi-layer failure injection across layers
+        // Set up active state with 3 layers: Route in location_content, Overlay in overlay_stack, Modal in modal_stack
+        FGV2UiDocumentViewModel MultiDoc1;
+        MultiDoc1.UiInstanceId = TEXT("ui@1:1");
+        MultiDoc1.Revision = 7;
+        MultiDoc1.bHasRoute = true;
+        MultiDoc1.Route.Layer = TEXT("location_content");
+        MultiDoc1.Route.InstanceKey = TEXT("main");
+        MultiDoc1.Route.ScreenId = TEXT("core:screen.main");
+
+        FGV2ScreenInstanceViewModel OverlayInst1;
+        OverlayInst1.Layer = TEXT("overlay_stack");
+        OverlayInst1.InstanceKey = TEXT("hud");
+        OverlayInst1.ScreenId = TEXT("core:screen.alt");
+        MultiDoc1.Overlays.Add(OverlayInst1);
+
+        FGV2ScreenInstanceViewModel ModalInst1;
+        ModalInst1.Layer = TEXT("modal_stack");
+        ModalInst1.InstanceKey = TEXT("dialog1");
+        ModalInst1.ScreenId = TEXT("core:screen.modal_confirm");
+        MultiDoc1.Modals.Add(ModalInst1);
+
+        const bool bMulti1Success = Reconciler.Reconcile(Shell, MultiDoc1, MockFactory, ReconcileError);
+        TestTrue(*FString::Printf(TEXT("Reconcile MultiDoc1 succeeds [Error: %s]"), *ReconcileError), bMulti1Success);
+        UGV2ScreenWidgetBase* RouteWidgetMulti = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
+        UGV2ScreenWidgetBase* OverlayWidgetMulti = Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("hud"));
+        UGV2ScreenWidgetBase* ModalWidgetMulti = Reconciler.GetActiveScreen(TEXT("modal_stack"), TEXT("dialog1"));
+        TestNotNull(TEXT("RouteWidgetMulti active"), RouteWidgetMulti);
+        TestNotNull(TEXT("OverlayWidgetMulti active"), OverlayWidgetMulti);
+        TestNotNull(TEXT("ModalWidgetMulti active"), ModalWidgetMulti);
+
+        if (Shell != nullptr)
+        {
+            TestTrue(TEXT("location_content contains RouteWidgetMulti"), Shell->GetScreensInLayer(TEXT("location_content")).Contains(RouteWidgetMulti));
+            TestTrue(TEXT("overlay_stack contains OverlayWidgetMulti"), Shell->GetScreensInLayer(TEXT("overlay_stack")).Contains(OverlayWidgetMulti));
+            TestTrue(TEXT("modal_stack contains ModalWidgetMulti"), Shell->GetScreensInLayer(TEXT("modal_stack")).Contains(ModalWidgetMulti));
+            TestTrue(TEXT("Modal stack is interactive"), Shell->IsLayerInteractive(TEXT("modal_stack")));
+            TestFalse(TEXT("Location content is blocked by modal"), Shell->IsLayerInteractive(TEXT("location_content")));
+            TestFalse(TEXT("Overlay stack is blocked by modal"), Shell->IsLayerInteractive(TEXT("overlay_stack")));
+        }
+
+        // Now prepare MultiDoc2: Replaces route, adds new overlay, but injects failing field in modal
+        FGV2UiDocumentViewModel MultiDoc2;
+        MultiDoc2.UiInstanceId = TEXT("ui@1:1");
+        MultiDoc2.Revision = 8;
+        MultiDoc2.bHasRoute = true;
+        MultiDoc2.Route.Layer = TEXT("location_content");
+        MultiDoc2.Route.InstanceKey = TEXT("main");
+        MultiDoc2.Route.ScreenId = TEXT("core:screen.alt"); // Replaces route
+
+        FGV2ScreenInstanceViewModel OverlayInst2;
+        OverlayInst2.Layer = TEXT("overlay_stack");
+        OverlayInst2.InstanceKey = TEXT("minimap");
+        OverlayInst2.ScreenId = TEXT("core:screen.main"); // New overlay
+        MultiDoc2.Overlays.Add(OverlayInst2);
+
+        FGV2ScreenInstanceViewModel FailingModalInst;
+        FailingModalInst.Layer = TEXT("modal_stack");
+        FailingModalInst.InstanceKey = TEXT("dialog1");
+        FailingModalInst.ScreenId = TEXT("core:screen.modal_confirm");
+        FGV2ScreenFieldValue BadField;
+        BadField.FieldId = TEXT("invalid_non_canonical_field_name_with_UPPERCASE"); // fails IsCanonicalFieldId in PrepareScreenFields
+        FailingModalInst.Fields.Add(BadField);
+        MultiDoc2.Modals.Add(FailingModalInst);
+
+        const bool bMulti2Success = Reconciler.Reconcile(Shell, MultiDoc2, MockFactory, ReconcileError);
+        TestFalse(TEXT("Reconcile MultiDoc2 fails due to failing modal field"), bMulti2Success);
+        TestFalse(TEXT("ReconcileError is populated"), ReconcileError.IsEmpty());
+
+        // Verify ALL layers remain completely untouched in both Reconciler and Shell!
+        TestEqual(
+            TEXT("Route widget in location_content untouched"),
+            Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")),
+            RouteWidgetMulti);
+        TestEqual(
+            TEXT("Overlay widget in overlay_stack untouched"),
+            Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("hud")),
+            OverlayWidgetMulti);
+        TestEqual(
+            TEXT("Modal widget in modal_stack untouched"),
+            Reconciler.GetActiveScreen(TEXT("modal_stack"), TEXT("dialog1")),
+            ModalWidgetMulti);
+        TestNull(
+            TEXT("Minimap overlay was never added to active set"),
+            Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("minimap")));
+
+        if (Shell != nullptr)
+        {
+            TestTrue(TEXT("Old Route widget was not detached from Shell"), Shell->GetScreensInLayer(TEXT("location_content")).Contains(RouteWidgetMulti));
+            TestTrue(TEXT("Old Overlay widget was not detached from Shell"), Shell->GetScreensInLayer(TEXT("overlay_stack")).Contains(OverlayWidgetMulti));
+            TestTrue(TEXT("Old Modal widget was not detached from Shell"), Shell->GetScreensInLayer(TEXT("modal_stack")).Contains(ModalWidgetMulti));
+            TestFalse(TEXT("Location content layer is still blocked"), Shell->IsLayerInteractive(TEXT("location_content")));
+            TestFalse(TEXT("Overlay stack layer is still blocked"), Shell->IsLayerInteractive(TEXT("overlay_stack")));
+            TestTrue(TEXT("Modal stack layer is still interactive"), Shell->IsLayerInteractive(TEXT("modal_stack")));
+        }
+
+        // Step H: Clean recovery - Remove modals and reuse Route widget instance
+        FGV2UiDocumentViewModel MultiDoc3;
+        MultiDoc3.UiInstanceId = TEXT("ui@1:1");
+        MultiDoc3.Revision = 9;
+        MultiDoc3.bHasRoute = true;
+        MultiDoc3.Route.Layer = TEXT("location_content");
+        MultiDoc3.Route.InstanceKey = TEXT("main");
+        MultiDoc3.Route.ScreenId = TEXT("core:screen.main"); // Reuses RouteWidgetMulti
+
+        const bool bMulti3Success = Reconciler.Reconcile(Shell, MultiDoc3, MockFactory, ReconcileError);
+        TestTrue(*FString::Printf(TEXT("Reconcile MultiDoc3 succeeds [Error: %s]"), *ReconcileError), bMulti3Success);
+        UGV2ScreenWidgetBase* RouteWidgetReused = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
+        TestEqual(TEXT("Route widget instance was reused preserving UI-local state"), RouteWidgetReused, RouteWidgetMulti);
+        TestNull(TEXT("Overlay widget was detached"), Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("hud")));
+        TestNull(TEXT("Modal widget was detached"), Reconciler.GetActiveScreen(TEXT("modal_stack"), TEXT("dialog1")));
+
+        if (Shell != nullptr)
+        {
+            TestTrue(TEXT("Location content layer is unblocked after modal closure"), Shell->IsLayerInteractive(TEXT("location_content")));
+            TestTrue(TEXT("Overlay stack layer is unblocked"), Shell->IsLayerInteractive(TEXT("overlay_stack")));
+            TestTrue(TEXT("Background layer is unblocked"), Shell->IsLayerInteractive(TEXT("background")));
+            TestTrue(TEXT("Core interface layer is unblocked"), Shell->IsLayerInteractive(TEXT("core_interface")));
+            TestEqual(TEXT("Overlay host is empty"), Shell->GetScreensInLayer(TEXT("overlay_stack")).Num(), 0);
+            TestEqual(TEXT("Modal host is empty"), Shell->GetScreensInLayer(TEXT("modal_stack")).Num(), 0);
+        }
+
         if (Shell != nullptr)
         {
             Shell->RemoveFromRoot();

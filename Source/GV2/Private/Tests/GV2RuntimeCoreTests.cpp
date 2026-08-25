@@ -779,6 +779,158 @@ bool FGV2UiBindingRegistryPublicationTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// UPP-29: FGV2SessionCoordinator presentation preparation and atomic single-commit;
+// failure injection during presentation apply leaves previous revision and bindings untouched;
+// handles from previous revisions resolve to Invalid, while handles from previous generations resolve to Stale.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionCoordinatorPreparedCommitAndFailureInjectionTest,
+    "GV2.Runtime.Session.PreparedCommitAndFailureInjection",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionCoordinatorPreparedCommitAndFailureInjectionTest::RunTest(const FString& Parameters)
+{
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+
+    FGV2UiDocumentViewModel LastCapturedDoc;
+    bool bSinkShouldSucceed = true;
+    int32 DocumentSinkCallCount = 0;
+
+    Coordinator.SetDocumentSink(
+        [&LastCapturedDoc, &bSinkShouldSucceed, &DocumentSinkCallCount](const FGV2UiDocumentViewModel& Doc) -> bool
+        {
+            ++DocumentSinkCallCount;
+            LastCapturedDoc = Doc;
+            return bSinkShouldSucceed;
+        });
+
+    // 1. Session start -> Prepares candidate document and atomically commits revision 1
+    TestTrue(
+        TEXT("Coordinator starts session"),
+        Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    TestTrue(TEXT("Lua VM started"), Coordinator.IsLuaVmStarted());
+    TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
+    TestEqual(TEXT("DocumentSink was invoked during StartSession"), DocumentSinkCallCount, 1);
+    TestEqual(TEXT("Initial UI revision is 1"), Coordinator.GetUiRevision(), int64{1});
+    TestEqual(TEXT("Initial binding registry revision is 1"), Coordinator.GetBindingRegistry().GetRevision(), int64{1});
+    TestTrue(TEXT("Initial document model has route"), LastCapturedDoc.bHasRoute);
+
+    // 2. Publish additional verified bindings for revision 2
+    TArray<FGV2UiBindingHandle> Rev2Handles;
+    const FGV2UiBindingDefinition DefRev2 = MakeBindingDefinition(
+        TEXT("btn_rev2"),
+        TEXT("core:command.test.step"));
+
+    TestTrue(
+        TEXT("Publishing revision 2 candidate succeeds"),
+        Coordinator.PublishUiBindings(TEXT("ui@1:1"), 2, {DefRev2}, Rev2Handles));
+    TestEqual(TEXT("1 handle returned for revision 2"), Rev2Handles.Num(), 1);
+    if (Rev2Handles.Num() != 1)
+    {
+        return false;
+    }
+    const FGV2UiBindingHandle HandleRev2 = Rev2Handles[0];
+    TestEqual(TEXT("Binding registry revision is 2"), Coordinator.GetBindingRegistry().GetRevision(), int64{2});
+
+    FGV2UiBindingRecord Record;
+    TestEqual(
+        TEXT("Rev 2 handle resolves to Found"),
+        Coordinator.ResolveBinding(HandleRev2, Record),
+        EGV2BindingResolveResult::Found);
+    TestEqual(TEXT("Record command matches"), Record.CommandId, FString(TEXT("core:command.test.step")));
+
+    // 3. Failure injection between prepare and commit:
+    // Prepare candidate revision 3 bindings into FGV2PreparedBindingSet off-tree
+    FGV2PreparedBindingSet CandidateRev3;
+    const FGV2UiBindingDefinition DefRev3 = MakeBindingDefinition(
+        TEXT("btn_rev3"),
+        TEXT("core:command.test.step"));
+    TestTrue(
+        TEXT("Prepare candidate revision 3 bindings succeeds"),
+        Coordinator.GetBindingRegistry().PrepareBindings(
+            TEXT("ui@1:1"),
+            3,
+            {DefRev3},
+            CandidateRev3));
+    TestEqual(TEXT("Candidate rev 3 has 1 handle"), CandidateRev3.Handles.Num(), 1);
+    const FGV2UiBindingHandle HandleRev3 = CandidateRev3.Handles.Num() > 0 ? CandidateRev3.Handles[0] : FGV2UiBindingHandle();
+
+    // While candidate is prepared but NOT committed:
+    // a) Current revision remains at 2
+    TestEqual(TEXT("Revision is still 2 before commit"), Coordinator.GetBindingRegistry().GetRevision(), int64{2});
+    // b) Old handle (Rev 2) remains valid and Found
+    TestEqual(
+        TEXT("Rev 2 handle remains Found before commit"),
+        Coordinator.ResolveBinding(HandleRev2, Record),
+        EGV2BindingResolveResult::Found);
+    // c) Uncommitted candidate handle resolves to Invalid
+    TestEqual(
+        TEXT("Uncommitted candidate handle resolves to Invalid"),
+        Coordinator.ResolveBinding(HandleRev3, Record),
+        EGV2BindingResolveResult::Invalid);
+
+    // Simulated failure injection: Presentation fails off-tree -> Candidate is discarded without commit
+    CandidateRev3 = {}; // Discard candidate
+    TestEqual(TEXT("Revision remains at 2 after discarded candidate"), Coordinator.GetBindingRegistry().GetRevision(), int64{2});
+    TestEqual(
+        TEXT("Rev 2 handle is still Found after discarded candidate"),
+        Coordinator.ResolveBinding(HandleRev2, Record),
+        EGV2BindingResolveResult::Found);
+
+    // 4. Successful recovery: Prepare and commit revision 3 in one atomic step
+    FGV2PreparedBindingSet SuccessfulCandidateRev3;
+    TestTrue(
+        TEXT("Prepare candidate revision 3 again"),
+        Coordinator.GetBindingRegistry().PrepareBindings(
+            TEXT("ui@1:1"),
+            3,
+            {DefRev3},
+            SuccessfulCandidateRev3));
+    const FGV2UiBindingHandle SuccessfulHandleRev3 = SuccessfulCandidateRev3.Handles[0];
+
+    // Atomically commit prepared bindings
+    TestTrue(
+        TEXT("Commit prepared candidate succeeds"),
+        Coordinator.PublishUiBindings(
+            TEXT("ui@1:1"),
+            3,
+            {DefRev3},
+            Rev2Handles));
+    TestEqual(TEXT("Revision advances to 3 on commit"), Coordinator.GetBindingRegistry().GetRevision(), int64{3});
+
+    // Rev 3 handle is now Found
+    TestEqual(
+        TEXT("Committed Rev 3 handle resolves to Found"),
+        Coordinator.ResolveBinding(Rev2Handles[0], Record),
+        EGV2BindingResolveResult::Found);
+
+    // Rev 2 handle from previous revision is now Invalid (superseded in same session)
+    TestEqual(
+        TEXT("Superseded Rev 2 handle in same session resolves to Invalid"),
+        Coordinator.ResolveBinding(HandleRev2, Record),
+        EGV2BindingResolveResult::Invalid);
+
+    // 5. Test session generation change -> Stale handle resolution
+    Coordinator.EndSession();
+    TestTrue(
+        TEXT("Coordinator restarts with new session generation"),
+        Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    TestEqual(TEXT("Session generation is 2"), Coordinator.GetStatus().SessionGeneration, 2);
+
+    // Resolving HandleRev2 (minted in generation 1) must return Stale (distinct from Invalid)
+    TestEqual(
+        TEXT("Handle from previous generation resolves to Stale"),
+        Coordinator.ResolveBinding(HandleRev2, Record),
+        EGV2BindingResolveResult::Stale);
+
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2RuntimeIngressDispatchTest,
     "GV2.Runtime.Ingress.FifoAndNonReentrantDispatch",

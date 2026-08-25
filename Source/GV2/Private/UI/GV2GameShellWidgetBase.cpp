@@ -48,6 +48,11 @@ UPanelWidget* UGV2GameShellWidgetBase::FindHostForLayer(FName Layer) const
     return Host;
 }
 
+bool UGV2GameShellWidgetBase::HasHostForLayer(FName Layer) const
+{
+    return FindHostForLayer(Layer) != nullptr;
+}
+
 bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* ScreenWidget)
 {
     if (ScreenWidget == nullptr || !IsValidLayerName(Layer))

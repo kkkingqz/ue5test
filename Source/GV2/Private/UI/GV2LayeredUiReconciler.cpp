@@ -1,14 +1,18 @@
 #include "UI/GV2LayeredUiReconciler.h"
 
+#include "Components/Widget.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ScreenWidgetBase.h"
 
-bool FGV2LayeredUiReconciler::Reconcile(
+bool FGV2LayeredUiReconciler::PrepareReconcile(
     UGV2GameShellWidgetBase* Shell,
     const FGV2UiDocumentViewModel& Document,
     FScreenFactory ScreenFactory,
-    FString& OutError)
+    FPreparedReconciliationPlan& OutPlan,
+    FString& OutError) const
 {
+    OutPlan = {};
+    OutError.Reset();
     const TArray<FGV2ScreenInstanceViewModel> IncomingInstances = Document.GetAllScreenInstances();
 
     // 1. Validation phase
@@ -24,72 +28,134 @@ bool FGV2LayeredUiReconciler::Reconcile(
         const FScreenSlotKey Key{Instance.Layer, Instance.InstanceKey};
         if (IncomingKeys.Contains(Key))
         {
-            OutError = FString::Printf(TEXT("Duplicate instance key '%s' in layer '%s'"), *Instance.InstanceKey.ToString(), *Instance.Layer.ToString());
+            OutError = FString::Printf(
+                TEXT("Duplicate instance key '%s' in layer '%s'"),
+                *Instance.InstanceKey.ToString(),
+                *Instance.Layer.ToString());
             return false;
         }
         IncomingKeys.Add(Key);
     }
 
-    // 2. Application phase
-    TMap<FScreenSlotKey, FActiveScreenEntry> NewActiveScreens;
+    // 2. Preparation phase: prepare mutation plan for each screen instance off-tree
+    OutPlan.ScreensToUpdateOrAttach.Reserve(IncomingInstances.Num());
 
     for (const FGV2ScreenInstanceViewModel& Instance : IncomingInstances)
     {
         const FScreenSlotKey Key{Instance.Layer, Instance.InstanceKey};
-        FActiveScreenEntry* Existing = ActiveScreens.Find(Key);
+        const FActiveScreenEntry* Existing = ActiveScreens.Find(Key);
 
-        UGV2ScreenWidgetBase* TargetWidget = nullptr;
+        FPreparedScreenInstance PreparedInst;
+        PreparedInst.Layer = Instance.Layer;
+        PreparedInst.InstanceKey = Instance.InstanceKey;
+        PreparedInst.ScreenId = Instance.ScreenId;
+
         if (Existing != nullptr && Existing->ScreenId == Instance.ScreenId && Existing->Widget != nullptr)
         {
             // Reuse existing widget instance (preserving UI-local state)
-            TargetWidget = Existing->Widget;
+            PreparedInst.bIsReuse = true;
+            PreparedInst.TargetWidget = Existing->Widget;
         }
         else
         {
-            if (Existing != nullptr && Existing->Widget != nullptr && Shell != nullptr)
+            // Instantiate new screen widget
+            PreparedInst.bIsReuse = false;
+            PreparedInst.TargetWidget = ScreenFactory(Instance.ScreenId);
+            if (PreparedInst.TargetWidget == nullptr)
             {
-                Shell->DetachScreen(Existing->Widget);
-            }
-            TargetWidget = ScreenFactory(Instance.ScreenId);
-            if (TargetWidget == nullptr)
-            {
-                OutError = FString::Printf(TEXT("Failed to instantiate screen widget for screen_id '%s'"), *Instance.ScreenId);
+                OutError = FString::Printf(
+                    TEXT("Failed to instantiate screen widget for screen_id '%s'"),
+                    *Instance.ScreenId);
                 return false;
             }
-            if (Shell != nullptr)
+            if (Existing != nullptr && Existing->Widget != nullptr)
             {
-                Shell->AttachScreenToLayer(Instance.Layer, TargetWidget);
+                PreparedInst.ReplacedOldWidget = Existing->Widget;
             }
         }
 
-        if (!TargetWidget->ApplyScreenFields(Instance.Fields))
+        // Prepare screen fields (predicts any deep child failure across all field hosts)
+        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError))
         {
-            OutError = FString::Printf(TEXT("Failed to apply fields to screen '%s'"), *Instance.ScreenId);
+            if (OutError.IsEmpty())
+            {
+                OutError = FString::Printf(TEXT("Failed to prepare fields for screen '%s'"), *Instance.ScreenId);
+            }
             return false;
         }
 
-        NewActiveScreens.Add(Key, {Instance.ScreenId, TargetWidget});
+        OutPlan.NewActiveScreens.Add(Key, {Instance.ScreenId, PreparedInst.TargetWidget});
+        if (Instance.Layer == UGV2GameShellWidgetBase::LayerModalStack)
+        {
+            OutPlan.Modals.Add(PreparedInst.TargetWidget);
+        }
+
+        OutPlan.ScreensToUpdateOrAttach.Add(MoveTemp(PreparedInst));
     }
 
-    // Detach screens that are no longer present
-    for (auto& Pair : ActiveScreens)
+    // 3. Identify screens to detach (active screens not in incoming document)
+    for (const auto& Pair : ActiveScreens)
     {
         if (!IncomingKeys.Contains(Pair.Key))
         {
-            if (Shell != nullptr && Pair.Value.Widget != nullptr)
+            if (Pair.Value.Widget != nullptr)
             {
-                Shell->DetachScreen(Pair.Value.Widget);
+                OutPlan.ScreensToDetach.Add(Pair.Value.Widget);
             }
         }
     }
 
-    ActiveScreens = MoveTemp(NewActiveScreens);
+    OutPlan.bHasModals = Document.Modals.Num() > 0;
+    return true;
+}
 
-    // 3. Layer Rules & Modal Interactivity (UIF-20)
+bool FGV2LayeredUiReconciler::CommitReconcile(
+    UGV2GameShellWidgetBase* Shell,
+    const FPreparedReconciliationPlan& Plan)
+{
+    // 1. Detach old screens that were replaced by a new widget instance
+    for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
+    {
+        if (!Inst.bIsReuse && Inst.ReplacedOldWidget != nullptr && Shell != nullptr)
+        {
+            Shell->DetachScreen(Inst.ReplacedOldWidget.Get());
+        }
+    }
+
+    // 2. Attach new screens to their layers in Shell
+    for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
+    {
+        if (!Inst.bIsReuse && Shell != nullptr)
+        {
+            Shell->AttachScreenToLayer(Inst.Layer, Inst.TargetWidget.Get());
+        }
+    }
+
+    // 3. Commit mutation plans to all screen widgets
+    for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
+    {
+        if (Inst.TargetWidget != nullptr)
+        {
+            Inst.TargetWidget->CommitScreenFields(Inst.MutationPlan);
+        }
+    }
+
+    // 4. Detach removed screens that are no longer present in document
+    for (const TObjectPtr<UGV2ScreenWidgetBase>& RemovedWidget : Plan.ScreensToDetach)
+    {
+        if (RemovedWidget != nullptr && Shell != nullptr)
+        {
+            Shell->DetachScreen(RemovedWidget.Get());
+        }
+    }
+
+    // 5. Commit active screens map
+    ActiveScreens = Plan.NewActiveScreens;
+
+    // 6. Layer Rules & Modal Interactivity (UIF-20)
     if (Shell != nullptr)
     {
-        const bool bHasModals = Document.Modals.Num() > 0;
-        if (bHasModals)
+        if (Plan.bHasModals)
         {
             Shell->SetLayerInteractive(UGV2GameShellWidgetBase::LayerBackground, false);
             Shell->SetLayerInteractive(UGV2GameShellWidgetBase::LayerLocationContent, false);
@@ -99,17 +165,12 @@ bool FGV2LayeredUiReconciler::Reconcile(
             Shell->SetLayerInteractive(UGV2GameShellWidgetBase::LayerModalStack, true);
 
             // Only top modal in modal stack is interactive
-            for (int32 i = 0; i < Document.Modals.Num(); ++i)
+            for (int32 i = 0; i < Plan.Modals.Num(); ++i)
             {
-                const FGV2ScreenInstanceViewModel& ModalInst = Document.Modals[i];
-                const FScreenSlotKey Key{ModalInst.Layer, ModalInst.InstanceKey};
-                if (const FActiveScreenEntry* Entry = ActiveScreens.Find(Key))
+                const bool bIsTopModal = (i == Plan.Modals.Num() - 1);
+                if (Plan.Modals[i] != nullptr)
                 {
-                    const bool bIsTopModal = (i == Document.Modals.Num() - 1);
-                    if (Entry->Widget != nullptr)
-                    {
-                        Entry->Widget->SetIsEnabled(bIsTopModal);
-                    }
+                    Plan.Modals[i]->SetIsEnabled(bIsTopModal);
                 }
             }
         }
@@ -123,6 +184,20 @@ bool FGV2LayeredUiReconciler::Reconcile(
     }
 
     return true;
+}
+
+bool FGV2LayeredUiReconciler::Reconcile(
+    UGV2GameShellWidgetBase* Shell,
+    const FGV2UiDocumentViewModel& Document,
+    FScreenFactory ScreenFactory,
+    FString& OutError)
+{
+    FPreparedReconciliationPlan Plan;
+    if (!PrepareReconcile(Shell, Document, ScreenFactory, Plan, OutError))
+    {
+        return false;
+    }
+    return CommitReconcile(Shell, Plan);
 }
 
 UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetActiveScreen(FName Layer, FName InstanceKey) const

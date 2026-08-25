@@ -66,7 +66,7 @@ decisions:
 - [x] M4 — [Remaining Leaves](RemainingLeaves.md): Checkbox, InputField, ProgressBar, Portrait, RichText. UPP-16…19.
 - [x] M5 — [Collections and Composites](CollectionsAndComposites.md): keyed collection, ButtonList, Dropdown, Modal, TabContainer. UPP-20…23.
 - [x] M6 — [LocationScreen](LocationScreen.md): четыре композита и приведение контента. UPP-24…26.
-- [ ] M7 — [Screen and Document Transaction](ScreenAndDocument.md): предиктивный preflight, атомарный документ. UPP-27…29.
+- [x] M7 — [Screen and Document Transaction](ScreenAndDocument.md): предиктивный preflight, атомарный документ. UPP-27…29.
 - [ ] M8 — [Teardown and Closure](TeardownAndClosure.md): каркас снят, контракты приведены, закрытия проверены. UPP-30…32.
 
 ## Критический путь
@@ -104,7 +104,7 @@ M4, M5, M6 внутри себя допускают перестановку з�
 - [ ] Гейт go/no-go пройден на срезе из трёх элементов. (UPP-15)
 - [ ] «Политика масштабирования не объявлена» выразимо и отклоняется; `STATUS-003` удалён. (UPP-13)
 - [x] Предиктивный preflight предсказывает отказ глубокого ребёнка; `STATUS-004` удалён. (UPP-27)
-- [ ] Замена экрана атомарна: старый не отсоединяется до полностью подготовленного нового. (UPP-28)
+- [x] Замена экрана атомарна: старый не отсоединяется до полностью подготовленного нового. (UPP-28)
 - [ ] Мод объявляет UI-схему из стандартных kinds без нового C++; несовместимая схема мода отклоняет мод, а не сессию. (UPP-05, UPP-08)
 - [ ] `FGV2ScreenFieldAdapterRegistry`, union payload и schema-specific DTO удалены; гейт убывания доведён до нуля и превращён в постоянный запрет. (UPP-30)
 - [ ] Каждое заявленное закрытие проверено правилом красного теста, а не ссылкой на задачу. (UPP-32)

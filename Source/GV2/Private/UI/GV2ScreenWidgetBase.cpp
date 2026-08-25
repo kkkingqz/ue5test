@@ -88,14 +88,7 @@ bool CollectScreenFieldHosts(
     return OutError.IsEmpty();
 }
 
-struct FGV2ScreenFieldPlan
-{
-    TObjectPtr<UUserWidget> HostWidget;
-    FGV2UiHostMutationPlan MutationPlan;
-    TSharedPtr<const FGV2PreparedUiObject> CommittedValue;
-};
-
-// The whole of UPP-27: prepares every configured screen field host's mutation
+// The whole of UPP-27 / UPP-28: prepares every configured screen field host's mutation
 // plan up front. A field host with a value that fails PrepareUiHostProperties
 // -- including a deep child inside a keyed collection, since that consumer's
 // own Prepare recurses fully before returning -- fails *here*, before any
@@ -195,20 +188,20 @@ bool PrepareScreenFieldPlans(
 }
 }
 
-bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields)
+bool UGV2ScreenWidgetBase::PrepareScreenFields(
+    const TArray<FGV2ScreenFieldValue>& ScreenFields,
+    FGV2ScreenMutationPlan& OutPlan,
+    FString& OutError) const
 {
-    TArray<FGV2ScreenFieldPlan> Plans;
-    FString Error;
-    if (!PrepareScreenFieldPlans(*this, ScreenFields, Plans, Error))
-    {
-        UE_LOG(LogGV2ScreenWidget, Error, TEXT("ApplyScreenFields rejected: %s"), *Error);
-        return false;
-    }
+    return PrepareScreenFieldPlans(*this, ScreenFields, OutPlan.FieldPlans, OutError);
+}
 
-    for (FGV2ScreenFieldPlan& Plan : Plans)
+bool UGV2ScreenWidgetBase::CommitScreenFields(const FGV2ScreenMutationPlan& Plan)
+{
+    for (const FGV2ScreenFieldPlan& FieldPlan : Plan.FieldPlans)
     {
         FString FailedPath, CommitError;
-        if (!CommitUiHostProperties(Plan.HostWidget, Plan.MutationPlan, FailedPath, CommitError))
+        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError))
         {
             // Every plan above already prepared cleanly; CommitUiHostProperties is
             // documented infallible against a plan it prepared itself. Reaching this
@@ -224,9 +217,9 @@ bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>&
                 *CommitError);
             return false;
         }
-        if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(Plan.HostWidget.Get()))
+        if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(FieldPlan.HostWidget.Get()))
         {
-            PropertyHost->GetPropertyHostState().SetLastCommittedProperties(*Plan.CommittedValue);
+            PropertyHost->GetPropertyHostState().SetLastCommittedProperties(*FieldPlan.CommittedValue);
         }
     }
 
@@ -234,11 +227,23 @@ bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>&
     return true;
 }
 
+bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields)
+{
+    FGV2ScreenMutationPlan Plan;
+    FString Error;
+    if (!PrepareScreenFields(ScreenFields, Plan, Error))
+    {
+        UE_LOG(LogGV2ScreenWidget, Error, TEXT("ApplyScreenFields rejected: %s"), *Error);
+        return false;
+    }
+    return CommitScreenFields(Plan);
+}
+
 bool UGV2ScreenWidgetBase::CanApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields) const
 {
-    TArray<FGV2ScreenFieldPlan> Plans;
+    FGV2ScreenMutationPlan Plan;
     FString Error;
-    return PrepareScreenFieldPlans(*this, ScreenFields, Plans, Error);
+    return PrepareScreenFields(ScreenFields, Plan, Error);
 }
 
 TArray<FName> UGV2ScreenWidgetBase::GetScreenFieldIds() const

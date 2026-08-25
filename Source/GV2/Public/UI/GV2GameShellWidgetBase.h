@@ -53,6 +53,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|GameShell")
     void ClearAllLayers();
 
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|GameShell")
+    bool HasHostForLayer(FName Layer) const;
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:

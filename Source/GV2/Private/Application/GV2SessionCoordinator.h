@@ -53,6 +53,15 @@ public:
     void SetActiveTab(const FString& ContainerPath, const FString& TabKey);
     FString GetActiveTab(const FString& ContainerPath) const;
 
+    int64 GetUiRevision() const { return UiRevision; }
+    const FGV2UiBindingRegistry& GetBindingRegistry() const { return BindingRegistry; }
+    EGV2BindingResolveResult ResolveBinding(
+        const FGV2UiBindingHandle& Handle,
+        FGV2UiBindingRecord& OutRecord) const
+    {
+        return BindingRegistry.Resolve(Handle, OutRecord);
+    }
+
     bool IsExecutingRuntime() const;
     bool IsLuaVmStarted() const;
     int32 GetQueuedIngressCount() const;

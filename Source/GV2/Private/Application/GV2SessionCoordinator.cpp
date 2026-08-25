@@ -372,7 +372,13 @@ bool FGV2SessionCoordinator::PublishUiBindings(
         return false;
     }
 
-    return BindingRegistry.PublishBindings(UiInstanceId, Revision, Definitions, OutHandles);
+    if (!BindingRegistry.PublishBindings(UiInstanceId, Revision, Definitions, OutHandles))
+    {
+        return false;
+    }
+
+    UiRevision = FMath::Max(UiRevision, Revision);
+    return true;
 }
 
 bool FGV2SessionCoordinator::PublishScreenBindings(
@@ -381,13 +387,7 @@ bool FGV2SessionCoordinator::PublishScreenBindings(
 {
     const FString UiInstanceId = FString::Printf(TEXT("ui@%d:1"), Status.SessionGeneration);
     const int64 CandidateRevision = UiRevision + 1;
-    if (!PublishUiBindings(UiInstanceId, CandidateRevision, Definitions, OutHandles))
-    {
-        return false;
-    }
-
-    UiRevision = CandidateRevision;
-    return true;
+    return PublishUiBindings(UiInstanceId, CandidateRevision, Definitions, OutHandles);
 }
 
 bool FGV2SessionCoordinator::PrepareScreenRequest(
@@ -625,7 +625,9 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
     // reject every document (wrong generation), so mint the canonical id the
     // same way the other binding call sites do instead of trusting Lua's.
     const FString UiInstanceId = FString::Printf(TEXT("ui@%d:1"), Status.SessionGeneration);
-    const int64 CandidateRevision = OutModel.Revision > 0 ? OutModel.Revision : (UiRevision + 1);
+    const int64 CandidateRevision = OutModel.Revision > UiRevision ? OutModel.Revision : (UiRevision + 1);
+    OutModel.UiInstanceId = UiInstanceId;
+    OutModel.Revision = CandidateRevision;
 
     if (!BindingRegistry.PrepareBindings(UiInstanceId, CandidateRevision, AllDefinitions, OutBindings)
         || OutBindings.Handles.Num() != AllDefinitions.Num())
