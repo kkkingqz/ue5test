@@ -26,7 +26,7 @@ depends_on:
 - [x] **UPP-01 — ADR: универсальный UI property pipeline**
   - Решения proposal не зафиксированы нормативно, поэтому реализация может разойтись с ними, не нарушив ни одного контракта.
   - Done: ADR фиксирует и обосновывает — подготовленное дерево значений вместо schema-specific DTO; разделение Prepare/Commit и запрет fallible-работы в Commit; наблюдаемое поведение отказа Commit (экран не публикуется, предыдущая ревизия цела, диагностика с `property_path`), не зависящее от `STATUS-002`; инвариант `SchemaContract ⊆ WidgetCapabilities` **вместе** с требованием наблюдаемости capability; запрет alias между именем свойства схемы и именем capability; владение schema ID по namespace; политику отказа для схем мода (мод отклоняется, сессия продолжается) в отличие от Core/TextSystem (сессия не становится `Ready`); отсутствие обратной совместимости как принятое условие миграции. Номер ADR резервируется созданием файла, а не заранее.
-  - Evidence: [ADR-0040](../../ADR/0040-universal-ui-property-pipeline.md), [ADR index](../../ADR/README.md). Каждый пункт Done — отдельный `Decision`-параграф ADR-0040 (1–8); замена ADR-0038 зафиксирована в `Context` ADR-0040 и остаётся формально `rejected` до фактического удаления union задачей UPP-30, как и предписывает README плана.
+  - Evidence: [ADR-0040](../../ADR/0040-universal-ui-property-pipeline.md), [ADR index](../../ADR/README.md). Каждый пункт Done — отдельный `Decision`-параграф ADR-0040 (1–8); замена ADR-0038 зафиксирована в `Context` ADR-0040 и стала формально `superseded` фактическим удалением union задачей UPP-30 (2026-08-25), как и предписывает README плана.
 
 - [x] **UPP-02 — `schema_domain` и стандартные UI-kinds в компиляторе схем**
   - Зависимости: UPP-01.

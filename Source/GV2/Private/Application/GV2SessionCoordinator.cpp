@@ -1,5 +1,5 @@
 #include "Application/GV2SessionCoordinator.h"
-#include "Application/GV2ScreenFieldAdapterRegistry.h"
+#include "Application/GV2ScreenFieldMaterializer.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 
 #include "HAL/FileManager.h"
@@ -390,38 +390,6 @@ bool FGV2SessionCoordinator::PublishScreenBindings(
     return PublishUiBindings(UiInstanceId, CandidateRevision, Definitions, OutHandles);
 }
 
-bool FGV2SessionCoordinator::PrepareScreenRequest(
-    const GV2RuntimeCore::FScreenRequest& Request,
-    FGV2ScreenViewModel& OutModel,
-    FGV2PreparedBindingSet& OutBindings)
-{
-    OutModel = {};
-    OutBindings = {};
-
-    const FGV2ScreenFieldAdapterRegistry& FieldAdapters =
-        FGV2ScreenFieldAdapterRegistry::Get();
-    TArray<FGV2UiBindingDefinition> Definitions;
-    if (!FieldAdapters.PrepareBindingDefinitions(Request, Definitions))
-    {
-        return false;
-    }
-
-    const FString UiInstanceId = FString::Printf(TEXT("ui@%d:1"), Status.SessionGeneration);
-    const int64 CandidateRevision = UiRevision + 1;
-    if (!BindingRegistry.PrepareBindings(
-            UiInstanceId,
-            CandidateRevision,
-            Definitions,
-            OutBindings)
-        || OutBindings.Handles.Num() != Definitions.Num())
-    {
-        return false;
-    }
-
-    OutModel.ScreenId = UTF8_TO_TCHAR(Request.ScreenId.c_str());
-    return FieldAdapters.BuildFields(Request, OutBindings.Handles, OutModel.Fields);
-}
-
 EGV2SubmitUiInteractionResult FGV2SessionCoordinator::SubmitUiInteraction(
     const FGV2UiBindingHandle& BindingHandle,
     const TArray<FGV2UiControlValue>& InputValues)
@@ -550,7 +518,6 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
     OutModel.UiInstanceId = UTF8_TO_TCHAR(Document.UiInstanceId.c_str());
     OutModel.Revision = Document.Revision;
 
-    const FGV2ScreenFieldAdapterRegistry& FieldAdapters = FGV2ScreenFieldAdapterRegistry::Get();
     TArray<FGV2UiBindingDefinition> AllDefinitions;
 
     auto PrepareInstanceDefs = [&](const GV2RuntimeCore::FScreenInstance& Inst, int32& OutDefStartIndex, int32& OutDefCount) -> bool
@@ -560,7 +527,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         Request.Fields = Inst.Fields;
 
         TArray<FGV2UiBindingDefinition> InstDefs;
-        if (!FieldAdapters.PrepareBindingDefinitions(Request, InstDefs))
+        if (!GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, InstDefs))
         {
             UE_LOG(LogTemp, Error, TEXT("GV2 initial document has unsupported fields for screen '%s'"), UTF8_TO_TCHAR(Inst.ScreenId.c_str()));
             return false;
@@ -618,7 +585,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
     }
 
     // The binding registry requires an "ui@<SessionGeneration>:..." instance
-    // id (see PublishScreenBindings/PrepareScreenRequest below), but Lua's
+    // id (see PublishScreenBindings above), but Lua's
     // presentation layer always publishes a fixed "ui@default" placeholder
     // (screen_requests.lua) since it has no way to know the session
     // generation. Trusting that placeholder here made PrepareBindings()
@@ -652,7 +619,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = Inst.ScreenId;
         Request.Fields = Inst.Fields;
-        if (!FieldAdapters.BuildFields(Request, InstHandles, OutInstModel.Fields))
+        if (!GV2ScreenFieldMaterializer::BuildFields(Request, InstHandles, OutInstModel.Fields))
         {
             UE_LOG(LogTemp, Error, TEXT("GV2 initial document fields could not be built for screen '%s'"), *OutInstModel.ScreenId);
             return false;

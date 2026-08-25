@@ -1,5 +1,4 @@
 #include "UI/GV2ProgressBarWidgetBase.h"
-#include "UI/GV2TextPipeline.h"
 
 #include "CommonTextBlock.h"
 #include "Components/ProgressBar.h"
@@ -47,17 +46,3 @@ bool UGV2ProgressBarWidgetBase::ApplyCentralStyle_Implementation()
     return true;
 }
 
-bool UGV2ProgressBarWidgetBase::ApplyProgressBarModel(const FGV2ProgressBarViewModel& Model)
-{
-    if (Model.Label.NormalizedMarkup.Contains(TEXT("<gv2")))
-    {
-        return false;
-    }
-    if (LabelText != nullptr && !UGV2TextPipeline::Apply(LabelText, Model.Label))
-    {
-        return false;
-    }
-    ApplyProgress(Model.Percent);
-    CurrentLabel = Model.Label;
-    return true;
-}

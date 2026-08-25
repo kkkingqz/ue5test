@@ -1,8 +1,9 @@
-#include "Application/GV2ScreenFieldAdapterRegistry.h"
+#include "Application/GV2ScreenFieldMaterializer.h"
 
 #include "GV2RuntimeCore/GV2StableId.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2TextPipeline.h"
+#include "UI/GV2UiSchemaCache.h"
 
 #include <algorithm>
 #include <set>
@@ -584,32 +585,35 @@ TArray<FString> DiscoverDefaultSchemaPackageRoots()
 }
 }
 
-const FGV2ScreenFieldAdapterRegistry& FGV2ScreenFieldAdapterRegistry::Get()
+namespace
 {
-    static const FGV2ScreenFieldAdapterRegistry Registry;
-    return Registry;
+// Lazily discovered/compiled once, reused across every call in the process --
+// exactly the caching FGV2ScreenFieldAdapterRegistry::Get()'s static singleton
+// used to provide, just without a class wrapping it.
+FGV2UiSchemaCache& GetSchemaCache()
+{
+    static FGV2UiSchemaCache Cache(DiscoverDefaultSchemaPackageRoots());
+    return Cache;
+}
 }
 
-FGV2ScreenFieldAdapterRegistry::FGV2ScreenFieldAdapterRegistry()
-    : SchemaCache(DiscoverDefaultSchemaPackageRoots())
+namespace GV2ScreenFieldMaterializer
 {
-}
-
-bool FGV2ScreenFieldAdapterRegistry::IsKnownSchema(const std::string& SchemaId) const
+bool IsKnownSchema(const std::string& SchemaId)
 {
     FString Error;
-    return SchemaCache.GetCompiledSchema(SchemaId, Error) != nullptr;
+    return GetSchemaCache().GetCompiledSchema(SchemaId, Error) != nullptr;
 }
 
-bool FGV2ScreenFieldAdapterRegistry::PrepareBindingDefinitions(
+bool PrepareBindingDefinitions(
     const GV2RuntimeCore::FScreenRequest& Request,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions) const
+    TArray<FGV2UiBindingDefinition>& OutDefinitions)
 {
     OutDefinitions.Reset();
     for (const GV2RuntimeCore::FScreenField& Field : Request.Fields)
     {
         FString SchemaError;
-        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = SchemaCache.GetCompiledSchema(Field.SchemaId, SchemaError);
+        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = GetSchemaCache().GetCompiledSchema(Field.SchemaId, SchemaError);
         if (!Schema)
         {
             OutDefinitions.Reset();
@@ -617,7 +621,7 @@ bool FGV2ScreenFieldAdapterRegistry::PrepareBindingDefinitions(
         }
 
         FWalkContext Ctx;
-        Ctx.SchemaCache = &SchemaCache;
+        Ctx.SchemaCache = &GetSchemaCache();
         Ctx.ScreenId = Request.ScreenId;
         Ctx.CollectDefinitions = &OutDefinitions;
 
@@ -639,10 +643,10 @@ bool FGV2ScreenFieldAdapterRegistry::PrepareBindingDefinitions(
     return true;
 }
 
-bool FGV2ScreenFieldAdapterRegistry::BuildFields(
+bool BuildFields(
     const GV2RuntimeCore::FScreenRequest& Request,
     const TArray<FGV2UiBindingHandle>& Handles,
-    TArray<FGV2ScreenFieldValue>& OutFields) const
+    TArray<FGV2ScreenFieldValue>& OutFields)
 {
     OutFields.Reset();
     OutFields.Reserve(static_cast<int32>(Request.Fields.size()));
@@ -651,7 +655,7 @@ bool FGV2ScreenFieldAdapterRegistry::BuildFields(
     for (const GV2RuntimeCore::FScreenField& Field : Request.Fields)
     {
         FString SchemaError;
-        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = SchemaCache.GetCompiledSchema(Field.SchemaId, SchemaError);
+        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = GetSchemaCache().GetCompiledSchema(Field.SchemaId, SchemaError);
         if (!Schema)
         {
             OutFields.Reset();
@@ -659,7 +663,7 @@ bool FGV2ScreenFieldAdapterRegistry::BuildFields(
         }
 
         FWalkContext Ctx;
-        Ctx.SchemaCache = &SchemaCache;
+        Ctx.SchemaCache = &GetSchemaCache();
         Ctx.ScreenId = Request.ScreenId;
         Ctx.Handles = &Handles;
         Ctx.HandleCursor = &HandleCursor;
@@ -695,4 +699,5 @@ bool FGV2ScreenFieldAdapterRegistry::BuildFields(
         return false;
     }
     return true;
+}
 }

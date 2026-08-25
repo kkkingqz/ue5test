@@ -4,7 +4,7 @@
 Counts three legacy-surface metrics that the migration (UPP-12..30) must only ever
 shrink, never grow, once a widget starts migrating to the universal pipeline:
 
-  1. Schema-specific Prepare/Build functions in GV2ScreenFieldAdapterRegistry.cpp.
+  1. Schema-specific Prepare/Build functions in GV2ScreenFieldMaterializer.cpp.
   2. Payload members of FGV2ScreenFieldValue (the union every legacy screen field
      value is boxed into).
   3. Schema-specific DTO structs in GV2BridgeTypes.h (excludes the small set of
@@ -28,7 +28,7 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-ADAPTER_REGISTRY_PATH = REPO_ROOT / "Source" / "GV2" / "Private" / "Application" / "GV2ScreenFieldAdapterRegistry.cpp"
+ADAPTER_REGISTRY_PATH = REPO_ROOT / "Source" / "GV2" / "Private" / "Application" / "GV2ScreenFieldMaterializer.cpp"
 BRIDGE_TYPES_PATH = REPO_ROOT / "Source" / "GV2" / "Public" / "Bridge" / "GV2BridgeTypes.h"
 
 # Upper bounds captured at UPP-11 (2026-08-24). Lowering one of these is how a widget
@@ -41,13 +41,27 @@ BRIDGE_TYPES_PATH = REPO_ROOT / "Source" / "GV2" / "Public" / "Bridge" / "GV2Bri
 # shrink, both fields are the *same* generic type for every schema_id (TSharedPtr<const
 # FGV2PreparedUiObject>, GV2ContentCore::FCompiledUiFieldSpecPtr), so growth here is the
 # generic pipeline's own load-bearing state, not a reappearing legacy transport.
+# schema_specific_dtos dropped 4 -> 0 at UPP-30 (2026-08-25): FGV2ButtonViewModel and
+# FGV2ProgressBarViewModel were deleted along with the legacy ApplyButtonModels/
+# ApplyProgressBarModel methods that were their only callers (REV3-01/02/05's tests now
+# exercise the same widgets through PrepareUiHostProperties/CommitUiHostProperties
+# directly); FGV2RichTextHoverViewModel/FGV2RichTextSpanViewModel moved to
+# INFRA_STRUCT_ALLOWLIST below since they were never legacy-transport DTOs in the first
+# place. This is now a permanent zero -- UPP-30's Done requires all three counters here
+# to reach zero and become a standing prohibition, not just a lower number.
 BASELINES = {
     "prepare_build_functions": 0,
     "screen_field_value_payload_members": 2,
-    "schema_specific_dtos": 4,
+    "schema_specific_dtos": 0,
 }
 
-PREPARE_BUILD_PATTERN = re.compile(r"^bool (Prepare|Build)[A-Z][A-Za-z0-9_]*\(", re.MULTILINE)
+PREPARE_BUILD_PATTERN = re.compile(r"^bool ((?:Prepare|Build)[A-Z][A-Za-z0-9_]*)\(", re.MULTILINE)
+
+# GV2ScreenFieldMaterializer.cpp's two permanent, schema-agnostic entry points
+# (UPP-30): unlike a schema-specific PrepareLocationTopBar/BuildButtonList (one per
+# widget type -- the debt this gate tracks), these walk whatever compiled schema a
+# caller passes them, so their count never grows with the number of widget types.
+PREPARE_BUILD_ALLOWLIST = {"PrepareBindingDefinitions", "BuildFields"}
 
 # FGV2ScreenFieldValue's identity fields (not payload).
 SCREEN_FIELD_VALUE_IDENTITY_FIELDS = 2  # FieldId, SchemaId
@@ -60,10 +74,20 @@ UPROPERTY_PATTERN = re.compile(r"UPROPERTY\(")
 # so they are excluded from the count this gate tracks. Adding a new schema-specific
 # ViewModel struct is not exempt by editing this set -- only genuinely generic,
 # domain-agnostic infrastructure belongs here.
+#
+# FGV2RichTextHoverViewModel/FGV2RichTextSpanViewModel joined at UPP-30 (2026-08-25):
+# unlike FGV2ButtonViewModel/FGV2ProgressBarViewModel (deleted at UPP-30 along with the
+# legacy ApplyButtonModels/ApplyProgressBarModel methods that were their only callers),
+# these two are the *active* production pipeline's own internal representation --
+# FGV2RichTextSpansPropertyConsumer::PreparedSpans (GV2PropertyConsumers.h) is what
+# PrepareUiHostProperties/CommitUiHostProperties actually build and commit for RichText's
+# "spans" capability, not a payload left over from the retired transport.
 INFRA_STRUCT_ALLOWLIST = {
     "FGV2UiBindingHandle",
     "FGV2UiControlValue",
     "FGV2TextViewModel",
+    "FGV2RichTextHoverViewModel",
+    "FGV2RichTextSpanViewModel",
     "FGV2ScreenFieldValue",
     "FGV2ScreenViewModel",
     "FGV2ScreenInstanceViewModel",
@@ -73,7 +97,7 @@ INFRA_STRUCT_ALLOWLIST = {
 
 
 def count_prepare_build_functions(source: str) -> int:
-    return len(PREPARE_BUILD_PATTERN.findall(source))
+    return len([name for name in PREPARE_BUILD_PATTERN.findall(source) if name not in PREPARE_BUILD_ALLOWLIST])
 
 
 def count_screen_field_value_payload_members(source: str) -> int:
@@ -137,7 +161,7 @@ def run_self_test() -> bool:
     # 2. Negative test: an extra Prepare/Build function pushes the count over baseline.
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_root = Path(tmpdir)
-        fake_adapter = fake_root / "GV2ScreenFieldAdapterRegistry.cpp"
+        fake_adapter = fake_root / "GV2ScreenFieldMaterializer.cpp"
         adapter_source = ADAPTER_REGISTRY_PATH.read_text(encoding="utf-8")
         fake_adapter.write_text(
             adapter_source + "\nbool PrepareNewWidget(int x) { return true; }\n", encoding="utf-8"
@@ -154,7 +178,7 @@ def run_self_test() -> bool:
     # 3. Negative test: a new schema-specific DTO struct pushes the count over baseline.
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_root = Path(tmpdir)
-        fake_adapter = fake_root / "GV2ScreenFieldAdapterRegistry.cpp"
+        fake_adapter = fake_root / "GV2ScreenFieldMaterializer.cpp"
         fake_adapter.write_text(ADAPTER_REGISTRY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
         fake_bridge = fake_root / "GV2BridgeTypes.h"
@@ -171,7 +195,7 @@ def run_self_test() -> bool:
     # 4. Negative test: a new payload UPROPERTY on FGV2ScreenFieldValue pushes the count over baseline.
     with tempfile.TemporaryDirectory() as tmpdir:
         fake_root = Path(tmpdir)
-        fake_adapter = fake_root / "GV2ScreenFieldAdapterRegistry.cpp"
+        fake_adapter = fake_root / "GV2ScreenFieldMaterializer.cpp"
         fake_adapter.write_text(ADAPTER_REGISTRY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
         fake_bridge = fake_root / "GV2BridgeTypes.h"

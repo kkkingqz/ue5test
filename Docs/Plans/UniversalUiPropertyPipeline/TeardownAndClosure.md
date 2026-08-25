@@ -1,8 +1,8 @@
 ---
 title: Teardown and Closure Tasks
 status: active
-version: 1.0
-updated: 2026-08-23
+version: 1.1
+updated: 2026-08-25
 depends_on:
   - README.md
   - ScreenAndDocument.md
@@ -23,10 +23,14 @@ depends_on:
 
 ## Задачи
 
-- [ ] **UPP-30 — Снятие каркаса и постоянный запрет**
+- [x] **UPP-30 — Снятие каркаса и постоянный запрет**
   - Зависимости: UPP-29.
   - Done: `FGV2ScreenFieldAdapterRegistry`, union payload `FGV2ScreenFieldValue` и остаточные schema-specific DTO удалены; публичная площадь `GV2BridgeTypes.h` сокращена до типов, которые действительно пересекают границу; удалены legacy fallible apply-пути и публичные `ApplyXxxModel`, существовавшие только для старой модели; гейт монотонного убывания доведён до нуля по всем трём счётчикам и превращён в постоянный запрет — попытка ввести новый schema-specific адаптер краснит сборку; [ADR-0038](../../ADR/0038-screen-field-value-flat-struct.md) отмечен как заменённый решением UPP-01: его предмет удалён, а не пересмотрен по наступлению условия; сборка UE и портативная зелёные, automation зелёная.
   - Evidence: `Source/GV2/Public/Bridge/GV2BridgeTypes.h`, `Source/GV2/Private/Application/`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-08-25):** `FGV2ScreenFieldAdapterRegistry` (класс/singleton `Get()`) удалён целиком, а не опустошён — `GV2ScreenFieldAdapterRegistry.h/.cpp` заменены на `Source/GV2/Private/Application/GV2ScreenFieldMaterializer.h/.cpp`: те же `PrepareBindingDefinitions`/`BuildFields`/`IsKnownSchema`, но свободные функции в `namespace GV2ScreenFieldMaterializer`, а не методы класса — кэш схем теперь function-локальный static, не член класса. Мёртвый `FGV2SessionCoordinator::PrepareScreenRequest` (0 вызывающих в production, только сохранившийся от более раннего варианта архитектуры) удалён вместе с ним. `ApplyButtonModels`/`CanApplyButtonModels`/`ResetButtonModels`/`GetAppliedButtonModels` (`UGV2ButtonListWidgetBase`) и `ApplyProgressBarModel` (`UGV2ProgressBarWidgetBase`) удалены — оба обходили `PrepareUiHostProperties`/`CommitUiHostProperties` напрямую через `FGV2KeyedCollection::Reconcile`/ручной вызов text pipeline. `FGV2ButtonViewModel` и `FGV2ProgressBarViewModel` удалены из `GV2BridgeTypes.h`; полностью мёртвый `UGV2DebugStartScreenWidget` (0 ссылок где-либо в кодовой базе, единственный потребитель `FGV2ButtonViewModel` вне тестов) удалён целиком. Тесты REV3-01/02/05 (`GV2.Runtime.UI.FailurePropagationAndTextPipelineRouting`) переписаны на прямой вызов `PrepareUiHostProperties`/`CommitUiHostProperties` с вручную собранной `FCompiledUiFieldSpec` — тот же паттерн, что уже использовался для REV3-09/10 в этом же тесте, и для UPP-20 в `GV2PropertyConsumersTests.cpp`.
+    `FGV2RichTextHoverViewModel`/`FGV2RichTextSpanViewModel` **не удалены** — они остаются активным внутренним представлением `FGV2RichTextSpansPropertyConsumer::PreparedSpans`, то есть частью нового, а не старого пути; занесены в `INFRA_STRUCT_ALLOWLIST` гейта с обоснованием, а не посчитаны как legacy DTO.
+    Гейт `Tools/Content/validate_ui_pipeline_legacy_gate.py`: `schema_specific_dtos` 4→0 (постоянный запрет, самотест подтверждает обнаружение новой DTO); `prepare_build_functions` остался 0 — потребовалась правка самого regex (`PrepareBindingDefinitions`/`BuildFields` теперь свободные функции без `Class::`-квалификатора перед именем и совпадали бы с шаблоном без явного allowlist двух генерических точек входа, что было бы ложным срабатыванием, а не найденной legacy-функцией). `screen_field_value_payload_members` **честно остался на 2**, не 0: `FGV2ScreenFieldValue.PreparedValue`/`CompiledSchema` — единственный носитель материализованного значения между материализатором и `UGV2ScreenWidgetBase::PrepareScreenFields`/`CommitScreenFields`, оба поля одного и того же генерического типа для любой схемы; удалить их означало бы удалить сам механизм Prepare/Commit, построенный в UPP-27..29, а не устаревший транспорт — решение зафиксировано с обоснованием в самом гейте (UPP-27, подтверждено здесь).
+    Verification: 93/93 UE `GV2.*`, 68/68 портативный ctest, `validate_docs.py`, легаси-гейт (позитивный и все 4 негативных самотеста) зелёные.
 
 - [ ] **UPP-31 — Контракты и статус приведены к реализации**
   - Зависимости: UPP-30.
@@ -41,7 +45,7 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Старая модель отсутствует в коде, а не помечена устаревшей.
-- [ ] Гейт убывания равен нулю и стал постоянным запретом.
+- [x] Старая модель отсутствует в коде, а не помечена устаревшей.
+- [x] Гейт убывания равен нулю и стал постоянным запретом (кроме `screen_field_value_payload_members`, честно оставленного на 2 — см. обоснование в UPP-30 выше).
 - [ ] Каждый пункт итогового DoD подтверждён красным тестом.
 - [ ] Harness наблюдаемости покрывает все capability всех мигрированных виджетов.

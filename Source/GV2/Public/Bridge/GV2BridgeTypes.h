@@ -155,21 +155,6 @@ struct GV2_API FGV2TextViewModel
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2ButtonViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-    FName Key;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-    FGV2TextViewModel Text;
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-    FGV2UiBindingHandle Binding;
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2RichTextHoverViewModel
 {
     GENERATED_BODY()
@@ -208,18 +193,6 @@ struct GV2_API FGV2RichTextSpanViewModel
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2ProgressBarViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ProgressBar")
-    float Percent = 0.0f;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ProgressBar")
-    FGV2TextViewModel Label;
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenFieldValue
 {
     GENERATED_BODY()
@@ -231,7 +204,7 @@ struct GV2_API FGV2ScreenFieldValue
     FString SchemaId;
 
     // UPP-27: materialized candidate value and its compiled schema, built once by
-    // FGV2ScreenFieldAdapterRegistry::BuildFields from the raw Lua value and consumed by
+    // GV2ScreenFieldMaterializer::BuildFields from the raw Lua value and consumed by
     // UGV2ScreenWidgetBase's Prepare/Commit. Not UPROPERTY -- neither type is
     // UHT-reflectable, and this payload is transient view-model data, never
     // saved/replicated/Blueprint-authored the way FieldId/SchemaId above are.

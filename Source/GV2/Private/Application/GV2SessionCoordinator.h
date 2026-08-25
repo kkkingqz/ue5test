@@ -79,10 +79,6 @@ private:
     static bool ValidateInputValues(
         const FGV2UiBindingRecord& Binding,
         const TArray<FGV2UiControlValue>& InputValues);
-    bool PrepareScreenRequest(
-        const GV2RuntimeCore::FScreenRequest& Request,
-        FGV2ScreenViewModel& OutModel,
-        FGV2PreparedBindingSet& OutBindings);
     bool PrepareDocumentRequest(
         const GV2RuntimeCore::FUiDocument& Document,
         FGV2UiDocumentViewModel& OutModel,

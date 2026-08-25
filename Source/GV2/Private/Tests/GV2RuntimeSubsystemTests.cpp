@@ -5,7 +5,7 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformTime.h"
 #include "Widgets/SVirtualWindow.h"
-#include "Application/GV2ScreenFieldAdapterRegistry.h"
+#include "Application/GV2ScreenFieldMaterializer.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
@@ -43,9 +43,11 @@
 #include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2UiMutationPlan.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "Components/VerticalBox.h"
 #include "Components/HorizontalBox.h"
+#include "Components/ProgressBar.h"
 #include "Components/WrapBox.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -190,8 +192,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TEXT("Source/GV2/Private/UI/GV2CheckboxWidgetBase.cpp"),
         TEXT("Source/GV2/Private/UI/GV2InputFieldWidgetBase.cpp"),
         TEXT("Source/GV2/Private/UI/GV2DropdownSelectWidgetBase.cpp"),
-        TEXT("Source/GV2/Private/UI/GV2RichTextWidgetBase.cpp"),
-        TEXT("Source/GV2/Private/UI/GV2DebugStartScreenWidget.cpp")
+        TEXT("Source/GV2/Private/UI/GV2RichTextWidgetBase.cpp")
     };
     for (const TCHAR* RelativePath : InputComponents)
     {
@@ -236,22 +237,23 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
             CoordinatorSource))
     {
         TestTrue(
-            TEXT("Coordinator delegates Screen Field conversion to the adapter registry"),
-            CoordinatorSource.Contains(TEXT("FGV2ScreenFieldAdapterRegistry::Get()")));
+            TEXT("Coordinator delegates Screen Field conversion to the materializer"),
+            CoordinatorSource.Contains(TEXT("GV2ScreenFieldMaterializer::PrepareBindingDefinitions")));
         TestFalse(
             TEXT("Coordinator contains no concrete Screen Field schema IDs"),
             CoordinatorSource.Contains(TEXT("core:schema.ui_field.")));
     }
 
-    FString AdapterRegistrySource;
+    FString MaterializerSource;
     if (ReadSource(
-            TEXT("Source/GV2/Private/Application/GV2ScreenFieldAdapterRegistry.cpp"),
-            AdapterRegistrySource))
+            TEXT("Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp"),
+            MaterializerSource))
     {
-        // UPP-27: the registry is now fully schema-driven (FGV2UiSchemaCache
-        // resolves any schema_id by scanning *.schema.json5 content), so it no
-        // longer hardcodes even the LocationScreen schema ids the way per-field
-        // adapters used to.
+        // UPP-27/UPP-30: the materializer is fully schema-driven (FGV2UiSchemaCache
+        // resolves any schema_id by scanning *.schema.json5 content) and is free
+        // functions, not a per-schema adapter class/registry -- it no longer
+        // hardcodes even the LocationScreen schema ids the way per-field adapters
+        // used to, and FGV2ScreenFieldAdapterRegistry itself no longer exists.
         const TCHAR* FieldSchemas[] = {
             TEXT("textsystem:schema.ui_field.location_scene.v1"),
             TEXT("textsystem:schema.ui_field.location_commands.v1")
@@ -259,14 +261,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         for (const TCHAR* SchemaId : FieldSchemas)
         {
             TestFalse(
-                *FString::Printf(TEXT("Adapter registry does not hardcode %s"), SchemaId),
-                AdapterRegistrySource.Contains(SchemaId));
+                *FString::Printf(TEXT("Materializer does not hardcode %s"), SchemaId),
+                MaterializerSource.Contains(SchemaId));
         }
     }
-    TestEqual(
-        TEXT("Adapter registry contains 0 legacy adapters (all baseline and LocationScreen schemas migrated to declarative)"),
-        FGV2ScreenFieldAdapterRegistry::Get().Num(),
-        0);
 
     FString ScreenTemplatesContract;
     if (ReadSource(
@@ -333,7 +331,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     TArray<FGV2UiBindingDefinition> UnknownDefinitions;
     TestFalse(
         TEXT("Adapter registry rejects an unknown Screen Field schema"),
-        FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(
+        GV2ScreenFieldMaterializer::PrepareBindingDefinitions(
             UnknownSchemaRequest,
             UnknownDefinitions));
     TestTrue(
@@ -376,7 +374,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> ValidDefs;
         TestTrue(
             TEXT("Valid button list with distinct keys is accepted"),
-            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(ValidReq, ValidDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(ValidReq, ValidDefs));
         TestEqual(TEXT("Prepares two binding definitions"), ValidDefs.Num(), 2);
     }
 
@@ -396,7 +394,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> MissingDefs;
         TestFalse(
             TEXT("Button list with missing key is rejected (UiElementKeyMissing)"),
-            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(MissingKeyReq, MissingDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(MissingKeyReq, MissingDefs));
         TestTrue(TEXT("Rejected candidate leaves definitions empty"), MissingDefs.IsEmpty());
     }
 
@@ -418,7 +416,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> DupDefs;
         TestFalse(
             TEXT("Button list with duplicate key is rejected (UiElementKeyDuplicate)"),
-            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(DupKeyReq, DupDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(DupKeyReq, DupDefs));
         TestTrue(TEXT("Rejected duplicate key leaves definitions empty"), DupDefs.IsEmpty());
     }
 
@@ -439,7 +437,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> TextDefs;
         TestFalse(
             TEXT("Button list with text-derived key is rejected (UiElementKeyTextDerived)"),
-            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(TextKeyReq, TextDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(TextKeyReq, TextDefs));
         TestTrue(TEXT("Rejected text key leaves definitions empty"), TextDefs.IsEmpty());
     }
 
@@ -465,7 +463,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> ValidDefs;
         TestTrue(
             TEXT("BAI-08: Repeated element keys with ':', '@', '-', '.' grammar are accepted"),
-            FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(ValidGrammarReq, ValidDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(ValidGrammarReq, ValidDefs));
         TestEqual(TEXT("Prepares three binding definitions for valid keys"), ValidDefs.Num(), 3);
     }
 
@@ -500,7 +498,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
             TestFalse(
                 *FString::Printf(TEXT("BAI-08: Invalid grammar key '%s' is rejected (UiElementKeyInvalid)"),
                     UTF8_TO_TCHAR(BadKey.c_str())),
-                FGV2ScreenFieldAdapterRegistry::Get().PrepareBindingDefinitions(InvalidKeyReq, InvalidDefs));
+                GV2ScreenFieldMaterializer::PrepareBindingDefinitions(InvalidKeyReq, InvalidDefs));
             TestTrue(TEXT("Rejected invalid key leaves definitions empty"), InvalidDefs.IsEmpty());
         }
     }
@@ -692,11 +690,10 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.button.ok"), FText::FromString(TEXT("OK")));
     }
 
-    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    // UPP-16..27: the per-schema FAdapter mechanism itself was deleted, not just
-    // emptied -- Num() is a permanent 0, and every schema_id (baseline widgets and
-    // LocationScreen alike) now resolves through the schema-driven path.
-    TestEqual(TEXT("Registry has 0 legacy adapters remaining"), Registry.Num(), 0);
+    // UPP-16..30: the per-schema FAdapter mechanism, and then the registry/singleton
+    // class wrapping it, were both deleted outright, not just emptied -- every
+    // schema_id (baseline widgets and LocationScreen alike) now resolves through
+    // the schema-driven GV2ScreenFieldMaterializer free functions.
 
     // 5. Generic Binding Extraction for Location Commands
     {
@@ -721,7 +718,7 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
         ValidReq.Fields.push_back(MoveTemp(CmdField));
 
         TArray<FGV2UiBindingDefinition> Defs;
-        TestTrue(TEXT("Generic binding extraction succeeds for commands"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
+        TestTrue(TEXT("Generic binding extraction succeeds for commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(ValidReq, Defs));
         TestEqual(TEXT("Extracted 1 binding definition"), Defs.Num(), 1);
         if (Defs.Num() == 1)
         {
@@ -3270,21 +3267,32 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
 
     // 2. UIH-02: Test CommandPanel using Core Repeater
     {
+        // Exercises UGV2ListViewWidgetBase::ReconcileEntries directly (the generic
+        // low-level primitive the KeyedCollection consumer builds on), independent of
+        // any widget-specific model type -- a plain local Key/Text/Binding fixture is
+        // all this needs, matching UPP-30's retirement of FGV2ButtonViewModel.
+        struct FTestButtonModel
+        {
+            FName Key;
+            FGV2TextViewModel Text;
+            FGV2UiBindingHandle Binding;
+        };
+
         UClass* CommandClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
         UGV2LocationCommandPanelWidgetBase* CmdPanel = CommandClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
         TestNotNull(TEXT("CmdPanel instantiated"), CmdPanel);
 
-        FGV2ButtonViewModel BtnA;
+        FTestButtonModel BtnA;
         BtnA.Key = FName(TEXT("btn_a"));
         BtnA.Text.Text = FText::FromString(TEXT("Action A"));
         BtnA.Binding = FGV2UiBindingHandle::Create(TEXT("binding_a"));
 
-        FGV2ButtonViewModel BtnB;
+        FTestButtonModel BtnB;
         BtnB.Key = FName(TEXT("btn_b"));
         BtnB.Text.Text = FText::FromString(TEXT("Action B"));
         BtnB.Binding = FGV2UiBindingHandle::Create(TEXT("binding_b"));
 
-        FGV2ButtonViewModel BtnC;
+        FTestButtonModel BtnC;
         BtnC.Key = FName(TEXT("btn_c"));
         BtnC.Text.Text = FText::FromString(TEXT("Action C"));
         BtnC.Binding = FGV2UiBindingHandle::Create(TEXT("binding_c"));
@@ -3293,21 +3301,21 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         TestNotNull(TEXT("CommandPanel has active Repeater"), Repeater);
         if (Repeater != nullptr)
         {
-            auto GetKey = [](const FGV2ButtonViewModel& B) { return B.Key; };
+            auto GetKey = [](const FTestButtonModel& B) { return B.Key; };
             auto CreateWidgetLambda = [TestWorld, CmdPanel]() -> UGV2ButtonWidgetBase*
             {
                 TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CmdPanel->ResolveButtonWidgetClass();
                 return BtnClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, BtnClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
             };
-            auto ApplyLambda = [](UGV2ButtonWidgetBase& Widget, const FGV2ButtonViewModel& Model)
+            auto ApplyLambda = [](UGV2ButtonWidgetBase& Widget, const FTestButtonModel& Model)
             {
                 Widget.SetKey(Model.Key);
                 Widget.SetBindingHandle(Model.Binding);
                 return Widget.ApplyText(Model.Text);
             };
 
-            const TArray<FGV2ButtonViewModel> InitialButtons = { BtnA, BtnB, BtnC };
-            TestTrue(TEXT("Initial buttons apply successfully"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(InitialButtons, GetKey, CreateWidgetLambda, ApplyLambda));
+            const TArray<FTestButtonModel> InitialButtons = { BtnA, BtnB, BtnC };
+            TestTrue(TEXT("Initial buttons apply successfully"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FTestButtonModel>(InitialButtons, GetKey, CreateWidgetLambda, ApplyLambda));
 
             TestEqual(TEXT("CommandPanel Repeater has 3 entries"), Repeater->GetEntryCount(), 3);
             UWidget* WidgetA = Repeater->GetEntryWidget(FName(TEXT("btn_a")));
@@ -3316,13 +3324,13 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             TestNotNull(TEXT("Button B widget exists"), WidgetB);
 
             // Reorder & update: { BtnB, BtnD, BtnA } -> BtnB & BtnA must be reused
-            FGV2ButtonViewModel BtnD;
+            FTestButtonModel BtnD;
             BtnD.Key = FName(TEXT("btn_d"));
             BtnD.Text.Text = FText::FromString(TEXT("Action D"));
             BtnD.Binding = FGV2UiBindingHandle::Create(TEXT("binding_d"));
 
-            const TArray<FGV2ButtonViewModel> UpdatedButtons = { BtnB, BtnD, BtnA };
-            TestTrue(TEXT("Updated buttons apply successfully"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(UpdatedButtons, GetKey, CreateWidgetLambda, ApplyLambda));
+            const TArray<FTestButtonModel> UpdatedButtons = { BtnB, BtnD, BtnA };
+            TestTrue(TEXT("Updated buttons apply successfully"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FTestButtonModel>(UpdatedButtons, GetKey, CreateWidgetLambda, ApplyLambda));
 
             TestEqual(TEXT("CommandPanel Repeater has 3 entries after update"), Repeater->GetEntryCount(), 3);
             TestEqual(TEXT("Button B widget reused (same pointer)"), Repeater->GetEntryWidget(FName(TEXT("btn_b"))), WidgetB);
@@ -3331,18 +3339,18 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             TestNotNull(TEXT("Button D widget created"), Repeater->GetEntryWidget(FName(TEXT("btn_d"))));
 
             // Negative: Duplicate button key rejected
-            FGV2ButtonViewModel BadBtn;
+            FTestButtonModel BadBtn;
             BadBtn.Key = FName(TEXT("btn_b"));
             BadBtn.Binding = FGV2UiBindingHandle::Create(TEXT("bad_binding"));
-            TArray<FGV2ButtonViewModel> DupButtons = { BtnB, BadBtn };
-            TestFalse(TEXT("Duplicate button key rejected"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(DupButtons, GetKey, CreateWidgetLambda, ApplyLambda));
+            TArray<FTestButtonModel> DupButtons = { BtnB, BadBtn };
+            TestFalse(TEXT("Duplicate button key rejected"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FTestButtonModel>(DupButtons, GetKey, CreateWidgetLambda, ApplyLambda));
 
             // Negative: Empty button key rejected
-            FGV2ButtonViewModel EmptyKeyBtn;
+            FTestButtonModel EmptyKeyBtn;
             EmptyKeyBtn.Key = FName();
             EmptyKeyBtn.Binding = FGV2UiBindingHandle::Create(TEXT("empty_binding"));
-            TArray<FGV2ButtonViewModel> EmptyKeyButtons = { EmptyKeyBtn };
-            TestFalse(TEXT("Empty button key rejected"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(EmptyKeyButtons, GetKey, CreateWidgetLambda, ApplyLambda));
+            TArray<FTestButtonModel> EmptyKeyButtons = { EmptyKeyBtn };
+            TestFalse(TEXT("Empty button key rejected"), Repeater->ReconcileEntries<UGV2ButtonWidgetBase, FTestButtonModel>(EmptyKeyButtons, GetKey, CreateWidgetLambda, ApplyLambda));
         }
     }
 
@@ -4858,7 +4866,6 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
-    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
     AddExpectedErrorPlain(TEXT("rejected (closed schema)"), EAutomationExpectedErrorFlags::Contains, 3);
 
     auto MakeTextSpec = [](const std::string& TextId) -> FObject
@@ -4885,7 +4892,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on commands"), Registry.PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
     }
 
     // 2. Rejection at collection element level: unknown key on button item
@@ -4912,7 +4919,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), Registry.PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
     }
 
     // 3. Rejection at nested Binding level: unknown property in binding object
@@ -4939,7 +4946,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), Registry.PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
     }
 
     // 4. Rejection of duplicate button keys in collection
@@ -4968,7 +4975,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Duplicate button key rejected in commands"), Registry.PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Duplicate button key rejected in commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
     }
 
     return true;
@@ -4983,8 +4990,6 @@ bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
 {
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
-
-    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
 
     auto MakeTextSpec = [](const std::string& TextId) -> FObject
     {
@@ -5018,7 +5023,7 @@ bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
             Request.Fields.push_back(MoveTemp(Field));
 
             TArray<FGV2UiBindingDefinition> Definitions;
-            return Registry.PrepareBindingDefinitions(Request, Definitions);
+            return GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions);
         };
 
         TestTrue(TEXT("Conforming command key accepted"), BuildWithCommandKey("tavern_keeper"));
@@ -5112,44 +5117,143 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
     TestNotNull(TEXT("Test world created"), TestWorld);
     if (TestWorld == nullptr) return false;
 
-    // 1. REV3-01 / REV3-02: a meter label reaches the ProgressBar and goes through the
-    //    text pipeline, so an unrenderable label fails instead of being dropped.
+    // 1. REV3-01 / REV3-02: a meter label reaches the ProgressBar's LabelText through
+    //    PrepareUiHostProperties/the central text consumer, so an unrenderable label
+    //    fails Prepare instead of being dropped or applied unstyled. Routed through the
+    //    same host-level Prepare/Commit every real screen field now uses -- UPP-30
+    //    retired the widget-specific ApplyProgressBarModel/FGV2ProgressBarViewModel this
+    //    used to call directly.
     {
-        UClass* BarClass = LoadClass<UGV2ProgressBarWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"));
-        UGV2ProgressBarWidgetBase* Bar = BarClass
-            ? CreateWidget<UGV2ProgressBarWidgetBase>(TestWorld, BarClass)
-            : NewObject<UGV2ProgressBarWidgetBase>(TestWorld);
+        using namespace GV2ContentCore;
+
+        // Built with a manual WidgetTree (matching GV2UiPrepareCommitTests.cpp's
+        // MakeTestHostWidget pattern) rather than loading WBP_ProgressBar: Prepare's
+        // target resolution (GetWidgetFromName) and DescribeUiCapabilities' own
+        // LabelText/ProgressBar != nullptr checks both need real bound children, and
+        // this keeps the test deterministic regardless of asset availability.
+        UGV2ProgressBarWidgetBase* Bar = NewObject<UGV2ProgressBarWidgetBase>(TestWorld);
         TestNotNull(TEXT("ProgressBar instantiated"), Bar);
         if (Bar != nullptr)
         {
-            FGV2ProgressBarViewModel Model;
-            Model.Percent = 0.5f;
-            Model.Label = GoodText;
-            TestTrue(TEXT("REV3-01: ApplyProgressBarModel accepts a renderable label"), Bar->ApplyProgressBarModel(Model));
+            Bar->WidgetTree = NewObject<UWidgetTree>(Bar);
+            UVerticalBox* Root = Bar->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+            Bar->WidgetTree->RootWidget = Root;
+            UProgressBar* ProgressBarWidget = Bar->WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("ProgressBar"));
+            Root->AddChildToVerticalBox(ProgressBarWidget);
+            UCommonTextBlock* LabelWidget = Bar->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("LabelText"));
+            Root->AddChildToVerticalBox(LabelWidget);
+            if (FProperty* Prop = UGV2ProgressBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("ProgressBar")))
+            {
+                *Prop->ContainerPtrToValuePtr<TObjectPtr<UProgressBar>>(Bar) = ProgressBarWidget;
+            }
+            if (FProperty* Prop = UGV2ProgressBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("LabelText")))
+            {
+                *Prop->ContainerPtrToValuePtr<TObjectPtr<UCommonTextBlock>>(Bar) = LabelWidget;
+            }
+
+            auto PercentSpec = std::make_shared<FCompiledUiFieldSpec>();
+            PercentSpec->Kind = EUiFieldKind::Scalar;
+            FScalarFieldSpec PercentScalar;
+            PercentScalar.Kind = EScalarFieldKind::Number;
+            PercentScalar.MinimumNumber = 0.0;
+            PercentScalar.MaximumNumber = 1.0;
+            PercentSpec->Scalar = PercentScalar;
+
+            FCompiledUiFieldSpec Schema;
+            Schema.Kind = EUiFieldKind::Object;
+            Schema.Fields.push_back({"percent", false, PercentSpec});
+            Schema.Fields.push_back({"label", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text)});
+
+            FGV2UiCapabilityBuilder Builder;
+            Bar->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Caps = Builder.Build();
+            const FGV2PreparedUiObject EmptyPrev;
+
+            TMap<FString, FGV2PreparedUiValue> GoodFields;
+            GoodFields.Add(TEXT("percent"), FGV2PreparedUiValue::MakeNumber(0.5));
+            GoodFields.Add(TEXT("label"), FGV2PreparedUiValue::MakeText(GoodText));
+            const TSharedRef<const FGV2PreparedUiObject> GoodCandidate = FGV2PreparedUiObject::Create(GoodFields);
+
+            FGV2UiHostMutationPlan GoodPlan;
+            TArray<FGV2UiSchemaCompatibilityDiagnostic> GoodDiagnostics;
+            TestTrue(TEXT("REV3-01: a renderable label prepares"),
+                PrepareUiHostProperties(Bar, Caps, *GoodCandidate, Schema, TEXT("test:schema.progress_bar"), TEXT(""), EmptyPrev, GoodPlan, GoodDiagnostics));
+            FString FailedPath, CommitError;
+            TestTrue(TEXT("REV3-01: prepared plan commits"), CommitUiHostProperties(Bar, GoodPlan, FailedPath, CommitError));
             TestEqual(TEXT("REV3-01: Progress updated to 0.5"), Bar->GetProgress(), 0.5f);
 
-            Model.Label = PoisonText;
-            TestFalse(TEXT("REV3-02: Label that the text pipeline rejects fails the apply"),
-                Bar->ApplyProgressBarModel(Model));
+            TMap<FString, FGV2PreparedUiValue> PoisonFields;
+            PoisonFields.Add(TEXT("percent"), FGV2PreparedUiValue::MakeNumber(0.5));
+            PoisonFields.Add(TEXT("label"), FGV2PreparedUiValue::MakeText(PoisonText));
+            const TSharedRef<const FGV2PreparedUiObject> PoisonCandidate = FGV2PreparedUiObject::Create(PoisonFields);
+
+            FGV2UiHostMutationPlan PoisonPlan;
+            TArray<FGV2UiSchemaCompatibilityDiagnostic> PoisonDiagnostics;
+            TestFalse(TEXT("REV3-02: Label that the text pipeline rejects fails Prepare"),
+                PrepareUiHostProperties(Bar, Caps, *PoisonCandidate, Schema, TEXT("test:schema.progress_bar"), TEXT(""), EmptyPrev, PoisonPlan, PoisonDiagnostics));
         }
     }
 
     // 2. REV3-05: a button whose text cannot be rendered fails, and the failure is not
-    //    swallowed by the owning collection.
+    //    swallowed by the owning collection. Routed through PrepareUiHostProperties
+    //    directly -- UPP-30 retired ApplyButtonModels/FGV2ButtonViewModel this used to
+    //    call.
     {
-        UClass* ListClass = LoadClass<UGV2ButtonListWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_ButtonList.WBP_ButtonList_C"));
-        if (ListClass != nullptr)
+        using namespace GV2ContentCore;
+
+        // Manual WidgetTree, matching the ProgressBar block above -- deterministic
+        // regardless of WBP_ButtonList's availability in this test environment.
+        UGV2ButtonListWidgetBase* List = NewObject<UGV2ButtonListWidgetBase>(TestWorld);
+        TestNotNull(TEXT("ButtonList instantiated"), List);
+        if (List != nullptr)
         {
-            UGV2ButtonListWidgetBase* List = CreateWidget<UGV2ButtonListWidgetBase>(TestWorld, ListClass);
-            TestNotNull(TEXT("ButtonList instantiated"), List);
-            if (List != nullptr)
+            List->WidgetTree = NewObject<UWidgetTree>(List);
+            UVerticalBox* ButtonContainerWidget = List->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ButtonContainer"));
+            List->WidgetTree->RootWidget = ButtonContainerWidget;
+            if (FProperty* Prop = UGV2ButtonListWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonContainer")))
             {
-                FGV2ButtonViewModel Poison;
-                Poison.Key = TEXT("btn_poison");
-                Poison.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
-                Poison.Text = PoisonText;
+                *Prop->ContainerPtrToValuePtr<TObjectPtr<UVerticalBox>>(List) = ButtonContainerWidget;
+            }
+            if (FProperty* Prop = UGV2ButtonListWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
+            {
+                *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(List) = UGV2ButtonWidgetBase::StaticClass();
+            }
+
+            {
+                auto ItemSpec = std::make_shared<FCompiledUiFieldSpec>();
+                ItemSpec->Kind = EUiFieldKind::Object;
+                ItemSpec->Fields.push_back({"key", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key)});
+                ItemSpec->Fields.push_back({"text", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text)});
+                ItemSpec->Fields.push_back({"binding", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Binding)});
+
+                auto ItemsArraySpec = std::make_shared<FCompiledUiFieldSpec>();
+                ItemsArraySpec->Kind = EUiFieldKind::Array;
+                ItemsArraySpec->KeyedBy = std::string("key");
+                ItemsArraySpec->Items = ItemSpec;
+
+                FCompiledUiFieldSpec Schema;
+                Schema.Kind = EUiFieldKind::Object;
+                Schema.Fields.push_back({"items", true, ItemsArraySpec});
+
+                FGV2UiCapabilityBuilder Builder;
+                List->DescribeUiCapabilities(Builder);
+                const FGV2PreparedUiObject EmptyPrev;
+
+                TMap<FString, FGV2PreparedUiValue> PoisonItemMap;
+                PoisonItemMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("btn_poison")));
+                PoisonItemMap.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(PoisonText));
+                PoisonItemMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("core:command.test"))));
+                TArray<FGV2PreparedUiValue> Elements;
+                Elements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(PoisonItemMap)));
+
+                TMap<FString, FGV2PreparedUiValue> RootFields;
+                RootFields.Add(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(Elements)));
+                const TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(RootFields);
+
+                FGV2UiHostMutationPlan Plan;
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
                 TestFalse(TEXT("REV3-05: ButtonList reports failure when a child button cannot render its text"),
-                    List->ApplyButtonModels({ Poison }));
+                    PrepareUiHostProperties(List, Builder.Build(), *Candidate, Schema, TEXT("test:schema.button_list"), TEXT(""), EmptyPrev, Plan, Diagnostics));
             }
         }
     }
@@ -5212,9 +5316,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 
     // 4. REV3-03: button element extra properties are rejected by closed schema parser
     {
-        const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-
-        auto PrepareWithExtraBtnProp = [&Registry](const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
+        auto PrepareWithExtraBtnProp = [](const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
         {
             GV2RuntimeCore::FScreenRequest Request;
             Request.ScreenId = "textsystem:screen.location";
@@ -5238,7 +5340,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             Request.Fields.push_back(MoveTemp(Field));
 
             TArray<FGV2UiBindingDefinition> Definitions;
-            return Registry.PrepareBindingDefinitions(Request, Definitions);
+            return GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions);
         };
 
         TestFalse(TEXT("REV3-03: button rejects scaling_policy"),
