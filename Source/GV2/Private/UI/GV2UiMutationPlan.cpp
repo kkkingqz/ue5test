@@ -1,5 +1,6 @@
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
+#include "UI/GV2UiPropertyHost.h"
 
 bool PrepareUiHostProperties(
     UUserWidget* HostWidget,
@@ -49,6 +50,10 @@ bool PrepareUiHostProperties(
             TargetWidget = (Cap.TargetName != NAME_None)
                 ? HostWidget->GetWidgetFromName(Cap.TargetName)
                 : Cast<UWidget>(HostWidget);
+            if (TargetWidget == nullptr && Cast<IGV2UiPropertyHost>(HostWidget))
+            {
+                TargetWidget = Cast<UWidget>(HostWidget);
+            }
         }
 
         if (bSchemaOwns)

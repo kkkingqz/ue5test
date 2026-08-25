@@ -172,10 +172,10 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
             MeasuredTextSizes.Add(Token, ActualTextSize);
 
             // 2. RichText widget: Apply via production path and read renderer control
-            FGV2InteractiveRichTextViewModel RichModel;
-            RichModel.Text.Text = FText::FromString(TEXT("Sample Rich Text"));
-            RichModel.Text.StyleToken = Token;
-            RichTextWidget->ApplyInteractiveRichText(RichModel);
+            FGV2TextViewModel RichModel;
+            RichModel.Text = FText::FromString(TEXT("Sample Rich Text"));
+            RichModel.StyleToken = Token;
+            RichTextWidget->ApplyText(RichModel);
             IGV2UiStyleConsumer::Execute_ApplyCentralStyle(RichTextWidget);
             const float ActualRichTextSize = RichTextWidget->GetRichTextBlock()->GetCurrentDefaultTextStyle().Font.Size;
 
@@ -200,16 +200,10 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
             const float ActualInputSize = InputFieldWidget->GetEditableTextBox()->WidgetStyle.TextStyle.Font.Size;
 
             // 5. DropdownSelect widget: Apply via production path and read renderer control
-            FGV2DropdownSelectViewModel DropdownModel;
-            DropdownModel.Binding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
-            DropdownModel.Placeholder.Text = FText::FromString(TEXT("Select item"));
-            DropdownModel.Placeholder.StyleToken = Token;
-            FGV2DropdownOptionViewModel Opt;
-            Opt.Key = TEXT("opt_1");
-            Opt.Text.Text = FText::FromString(TEXT("Option 1"));
-            Opt.Text.StyleToken = Token;
-            DropdownModel.Options.Add(Opt);
-            DropdownWidget->ApplyDropdownModel(DropdownModel);
+            FGV2TextViewModel DropdownPlaceholder;
+            DropdownPlaceholder.Text = FText::FromString(TEXT("Select item"));
+            DropdownPlaceholder.StyleToken = Token;
+            DropdownWidget->ApplyPlaceholderText(DropdownPlaceholder);
             IGV2UiStyleConsumer::Execute_ApplyCentralStyle(DropdownWidget);
             const float ActualDropdownSize = DropdownWidget->GetHeaderButton()->GetLabelText()->GetFont().Size;
 

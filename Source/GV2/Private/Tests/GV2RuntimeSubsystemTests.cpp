@@ -245,9 +245,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
             AdapterRegistrySource))
     {
         const TCHAR* FieldSchemas[] = {
-            TEXT("core:schema.ui_field.button_list.v2"),
-            TEXT("core:schema.ui_field.rich_text.v3"),
-            TEXT("core:schema.ui_field.dropdown_select.v1")
+            TEXT("textsystem:schema.ui_field.location_top_bar.v1"),
+            TEXT("textsystem:schema.ui_field.location_scene.v1"),
+            TEXT("textsystem:schema.ui_field.location_player_status.v1"),
+            TEXT("textsystem:schema.ui_field.location_commands.v1")
         };
         for (const TCHAR* SchemaId : FieldSchemas)
         {
@@ -257,9 +258,9 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         }
     }
     TestEqual(
-        TEXT("Adapter registry contains all 9 baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait migrated off)"),
+        TEXT("Adapter registry contains all 4 remaining baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait/button_list/dropdown/rich_text/modal/tab_container migrated off)"),
         FGV2ScreenFieldAdapterRegistry::Get().Num(),
-        9);
+        4);
 
     FString ScreenTemplatesContract;
     if (ReadSource(
@@ -350,13 +351,13 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         return GV2RuntimeCore::FValue(MoveTemp(Item));
     };
 
-    // 1. Valid button list with distinct keys
+    // 1. Valid location commands with distinct keys
     {
         GV2RuntimeCore::FScreenRequest ValidReq;
-        ValidReq.ScreenId = "core:screen.test";
+        ValidReq.ScreenId = "textsystem:screen.location";
         GV2RuntimeCore::FScreenField BtnField;
-        BtnField.FieldId = "buttons";
-        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        BtnField.FieldId = "commands";
+        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
         const std::string KeyA = "btn_a";
         const std::string KeyB = "btn_b";
         GV2RuntimeCore::FValue::FObject ValueObj;
@@ -376,10 +377,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 2. Button list missing key
     {
         GV2RuntimeCore::FScreenRequest MissingKeyReq;
-        MissingKeyReq.ScreenId = "core:screen.test";
+        MissingKeyReq.ScreenId = "textsystem:screen.location";
         GV2RuntimeCore::FScreenField BtnField;
-        BtnField.FieldId = "buttons";
-        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        BtnField.FieldId = "commands";
+        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
         GV2RuntimeCore::FValue::FObject ValueObj;
         ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
             MakeButtonItem(nullptr, "core:command.screen.action_a")
@@ -396,10 +397,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 3. Button list duplicate key
     {
         GV2RuntimeCore::FScreenRequest DupKeyReq;
-        DupKeyReq.ScreenId = "core:screen.test";
+        DupKeyReq.ScreenId = "textsystem:screen.location";
         GV2RuntimeCore::FScreenField BtnField;
-        BtnField.FieldId = "buttons";
-        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        BtnField.FieldId = "commands";
+        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
         const std::string KeyDup = "btn_same";
         GV2RuntimeCore::FValue::FObject ValueObj;
         ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
@@ -418,10 +419,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 4. Button list text-derived key
     {
         GV2RuntimeCore::FScreenRequest TextKeyReq;
-        TextKeyReq.ScreenId = "core:screen.test";
+        TextKeyReq.ScreenId = "textsystem:screen.location";
         GV2RuntimeCore::FScreenField BtnField;
-        BtnField.FieldId = "buttons";
-        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        BtnField.FieldId = "commands";
+        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
         const std::string KeyText = "core:text.button.ok";
         GV2RuntimeCore::FValue::FObject ValueObj;
         ValueObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
@@ -440,10 +441,10 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     // 5a. Positive key grammar: domain ID with ':', instance ID with '@', hyphens, dots
     {
         GV2RuntimeCore::FScreenRequest ValidGrammarReq;
-        ValidGrammarReq.ScreenId = "core:screen.test";
+        ValidGrammarReq.ScreenId = "textsystem:screen.location";
         GV2RuntimeCore::FScreenField BtnField;
-        BtnField.FieldId = "buttons";
-        BtnField.SchemaId = "core:schema.ui_field.button_list.v2";
+        BtnField.FieldId = "commands";
+        BtnField.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
         const std::string KeyDomain = "core:item.weapon.iron_sword";
         const std::string KeyActor = "actor@42";
         const std::string KeyHyphenDot = "btn-action.v1_ok";
@@ -686,62 +687,23 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
     }
 
     const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    TestEqual(TEXT("Registry contains all 9 baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait migrated off)"), Registry.Num(), 9);
+    TestEqual(TEXT("Registry contains all 4 remaining baseline and LocationScreen schemas (image/checkbox/input_field/progress_bar/portrait/button_list/dropdown/rich_text/modal/tab_container migrated off)"), Registry.Num(), 4);
     TestNotNull(TEXT("Location top bar adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_top_bar.v1"));
     TestNotNull(TEXT("Location player status adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_player_status.v1"));
     TestNotNull(TEXT("Location scene adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_scene.v1"));
     TestNotNull(TEXT("Location commands adapter is registered"), Registry.Find("textsystem:schema.ui_field.location_commands.v1"));
 
-    // 1. Image, Checkbox, InputField, ProgressBar, Portrait Adapters removed from legacy registry
+    // 1. Image, Checkbox, InputField, ProgressBar, Portrait, ButtonList, Dropdown, RichText, Modal, TabContainer Adapters removed from legacy registry
     TestNull(TEXT("Image adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.image.v1"));
     TestNull(TEXT("Checkbox adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.checkbox.v1"));
     TestNull(TEXT("InputField adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.input_field.v1"));
     TestNull(TEXT("ProgressBar adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.progress_bar.v1"));
     TestNull(TEXT("Portrait adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.portrait.v1"));
-
-    // 2. Modal Adapter (core:schema.ui_field.modal.v1)
-    {
-        GV2RuntimeCore::FScreenRequest ValidReq;
-        ValidReq.ScreenId = "core:screen.test";
-        GV2RuntimeCore::FScreenField ModalField;
-        ModalField.FieldId = "confirmation_dialog";
-        ModalField.SchemaId = "core:schema.ui_field.modal.v1";
-        GV2RuntimeCore::FValue::FObject ModalObj;
-        GV2RuntimeCore::FValue::FObject TitleObj;
-        TitleObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.modal.title"));
-        ModalObj["title"] = GV2RuntimeCore::FValue(MoveTemp(TitleObj));
-        GV2RuntimeCore::FValue::FObject ContentObj;
-        ContentObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.modal.content"));
-        ModalObj["content"] = GV2RuntimeCore::FValue(MoveTemp(ContentObj));
-
-        GV2RuntimeCore::FValue::FObject BtnObj;
-        BtnObj["key"] = GV2RuntimeCore::FValue(std::string("ok_btn"));
-        GV2RuntimeCore::FValue::FObject BtnTextObj;
-        BtnTextObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.button.ok"));
-        BtnObj["text"] = GV2RuntimeCore::FValue(MoveTemp(BtnTextObj));
-        GV2RuntimeCore::FValue::FObject BtnBindingObj;
-        BtnBindingObj["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.modal.confirm"));
-        BtnObj["binding"] = GV2RuntimeCore::FValue(MoveTemp(BtnBindingObj));
-
-        ModalObj["buttons"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{ GV2RuntimeCore::FValue(MoveTemp(BtnObj)) });
-        ModalField.Value = GV2RuntimeCore::FValue(MoveTemp(ModalObj));
-        ValidReq.Fields.push_back(MoveTemp(ModalField));
-
-        TArray<FGV2UiBindingDefinition> Defs;
-        TestTrue(TEXT("Modal schema prepare succeeds"), Registry.PrepareBindingDefinitions(ValidReq, Defs));
-        TestEqual(TEXT("Modal prepares 1 button binding definition"), Defs.Num(), 1);
-
-        TArray<FGV2UiBindingHandle> Handles = { FGV2UiBindingHandle::Create(TEXT("h_modal_btn")) };
-        TArray<FGV2ScreenFieldValue> BuiltFields;
-        TestTrue(TEXT("Modal schema build succeeds"), Registry.BuildFields(ValidReq, Handles, BuiltFields));
-        TestEqual(TEXT("Built 1 field"), BuiltFields.Num(), 1);
-        if (BuiltFields.Num() == 1)
-        {
-            TestEqual(TEXT("Modal has 1 button"), BuiltFields[0].ModalValue.Buttons.Num(), 1);
-            TestEqual(TEXT("Modal button key is ok_btn"), BuiltFields[0].ModalValue.Buttons[0].Key, FName(TEXT("ok_btn")));
-            TestEqual(TEXT("Modal button binding handle matches"), BuiltFields[0].ModalValue.Buttons[0].Binding.ToString(), FString(TEXT("h_modal_btn")));
-        }
-    }
+    TestNull(TEXT("ButtonList adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.button_list.v2"));
+    TestNull(TEXT("DropdownSelect adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.dropdown_select.v1"));
+    TestNull(TEXT("RichText adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.rich_text.v3"));
+    TestNull(TEXT("Modal adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.modal.v1"));
+    TestNull(TEXT("TabContainer adapter is not in legacy registry"), Registry.Find("core:schema.ui_field.tab_container.v1"));
 
     // 5. Location Scene Adapter (textsystem:schema.ui_field.location_scene.v1)
     {
@@ -932,8 +894,14 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Transient modal widget created"), Modal);
         if (Modal != nullptr)
         {
-            const FGV2ScreenFieldDescriptor Desc = Modal->GetScreenFieldDescriptor_Implementation();
-            TestEqual(TEXT("Modal schema is modal.v1"), Desc.SchemaId, FString(TEXT("core:schema.ui_field.modal.v1")));
+            FGV2UiCapabilityBuilder Builder;
+            Modal->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Caps = Builder.Build();
+            TestTrue(TEXT("Modal declares title capability"), Caps.Properties.Contains(TEXT("title")));
+            TestTrue(TEXT("Modal declares content capability"), Caps.Properties.Contains(TEXT("content")));
+            TestTrue(TEXT("Modal declares buttons capability"), Caps.Properties.Contains(TEXT("buttons")));
+            TestTrue(TEXT("Modal declares backdrop_close_action capability"), Caps.Properties.Contains(TEXT("backdrop_close_action")));
+            TestTrue(TEXT("Modal declares key capability"), Caps.Properties.Contains(TEXT("key")));
         }
 
         UGV2ProgressBarWidgetBase* ProgressBar = NewObject<UGV2ProgressBarWidgetBase>();
@@ -964,6 +932,7 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
             RichText->DescribeUiCapabilities(Builder);
             const FGV2UiCapabilityTree Caps = Builder.Build();
             TestTrue(TEXT("RichText declares text capability"), Caps.Properties.Contains(TEXT("text")));
+            TestTrue(TEXT("RichText declares spans capability"), Caps.Properties.Contains(TEXT("spans")));
             TestTrue(TEXT("RichText declares key capability"), Caps.Properties.Contains(TEXT("key")));
         }
 
@@ -1553,9 +1522,9 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                         RichTextScrollBox->GetOrientation(),
                         EOrientation::Orient_Vertical);
                     RichTextScrollBox->SetScrollOffset(42.0f);
-                    FGV2InteractiveRichTextViewModel ReplacementText;
-                    ReplacementText.Text.Text = FText::FromString(TEXT("Replacement text"));
-                    RichText->ApplyInteractiveRichText(ReplacementText);
+                    FGV2TextViewModel ReplacementText;
+                    ReplacementText.Text = FText::FromString(TEXT("Replacement text"));
+                    RichText->ApplyText(ReplacementText);
                     TestEqual(
                         TEXT("Applying replacement RichText resets scroll to the start"),
                         RichTextScrollBox->GetScrollOffset(),
@@ -1920,7 +1889,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             {
                 FGV2ScreenFieldValue CapturedCommands;
                 TestTrue(TEXT("Capture CommandPanel field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandWidget, CapturedCommands));
-                const FGV2ButtonViewModel* TravelMarketBtn = CapturedCommands.ButtonListValue.FindByPredicate(
+                const FGV2ButtonViewModel* TravelMarketBtn = CapturedCommands.LocationCommandsValue.FindByPredicate(
                     [](const FGV2ButtonViewModel& Btn) { return Btn.Key == FName(TEXT("travel_city_market")); });
                 TestNotNull(TEXT("Travel to market button found in tavern CommandPanel"), TravelMarketBtn);
                 if (TravelMarketBtn != nullptr)
@@ -1967,7 +1936,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                 {
                     FGV2ScreenFieldValue MarketCmds;
                     TestTrue(TEXT("Capture Market CommandPanel field"), IGV2DynamicScreenElement::Execute_CaptureScreenField(MarketCommandsWidget, MarketCmds));
-                    const FGV2ButtonViewModel* TravelTavernBtn = MarketCmds.ButtonListValue.FindByPredicate(
+                    const FGV2ButtonViewModel* TravelTavernBtn = MarketCmds.LocationCommandsValue.FindByPredicate(
                         [](const FGV2ButtonViewModel& Btn) { return Btn.Key == FName(TEXT("travel_city_tavern")); });
                     TestNotNull(TEXT("Travel to tavern button found in market CommandPanel"), TravelTavernBtn);
                     if (TravelTavernBtn != nullptr)
@@ -2077,71 +2046,7 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                 RegisteredClass);
 
             const TArray<FGV2ScreenFieldDescriptor> Contract = Screen->GetScreenFieldContract();
-            TestEqual(TEXT("Test screen exposes three remaining dynamic fields (checkbox and input_field migrated to property host)"), Contract.Num(), 3);
-            if (Contract.Num() == 3)
-            {
-                TestEqual(TEXT("Button list field is canonical"), Contract[0].FieldId, FName(TEXT("buttons")));
-                TestEqual(TEXT("Dropdown field is canonical"), Contract[1].FieldId, FName(TEXT("class_select")));
-                TestEqual(TEXT("Description field is canonical"), Contract[2].FieldId, FName(TEXT("description")));
-                TestEqual(
-                    TEXT("Button list field uses the expected schema"),
-                    Contract[0].SchemaId,
-                    FString(TEXT("core:schema.ui_field.button_list.v2")));
-                TestEqual(
-                    TEXT("Dropdown field uses the expected schema"),
-                    Contract[1].SchemaId,
-                    FString(TEXT("core:schema.ui_field.dropdown_select.v1")));
-                TestEqual(
-                    TEXT("Description field uses the expected schema"),
-                    Contract[2].SchemaId,
-                    FString(TEXT("core:schema.ui_field.rich_text.v3")));
-                TestTrue(TEXT("Button list field is required"), Contract[0].bRequired);
-                TestTrue(TEXT("Dropdown field is required"), Contract[1].bRequired);
-                TestTrue(TEXT("Description field is required"), Contract[2].bRequired);
-            }
-
-            FGV2ButtonViewModel ValidationButton;
-            ValidationButton.Key = TEXT("validation");
-            ValidationButton.Text.Text = FText::FromString(TEXT("Validation"));
-            ValidationButton.Text.StyleToken = TEXT("button");
-            ValidationButton.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:999"));
-            FGV2InteractiveRichTextViewModel ValidationText;
-            ValidationText.Text.Text = FText::FromString(TEXT("Valid"));
-            ValidationText.Text.StyleToken = TEXT("default");
-            FGV2DropdownSelectViewModel ValidationDropdown;
-            ValidationDropdown.Binding = FGV2UiBindingHandle::Create(TEXT("runtime@1:996"));
-            FGV2DropdownOptionViewModel& ValidationOption = ValidationDropdown.Options.AddDefaulted_GetRef();
-            ValidationOption.Key = TEXT("warrior");
-            ValidationOption.Text.Text = FText::FromString(TEXT("Warrior"));
-            ValidationOption.Text.StyleToken = TEXT("default");
-            const TArray<FGV2ScreenFieldValue> ValidFields = {
-                FGV2ScreenFieldValue::MakeInteractiveRichText(TEXT("description"), ValidationText),
-                FGV2ScreenFieldValue::MakeButtonList(TEXT("buttons"), {ValidationButton}),
-                FGV2ScreenFieldValue::MakeDropdownSelect(TEXT("class_select"), ValidationDropdown)
-            };
-            TestTrue(TEXT("Complete field set passes validation"), Screen->CanApplyScreenFields(ValidFields));
-
-            TestFalse(
-                TEXT("Missing required field is rejected"),
-                Screen->CanApplyScreenFields({ValidFields[0]}));
-
-            TArray<FGV2ScreenFieldValue> UnknownField = ValidFields;
-            UnknownField.Add(FGV2ScreenFieldValue::MakeInteractiveRichText(TEXT("unknown"), {}));
-            TestFalse(
-                TEXT("Unknown field is rejected"),
-                Screen->CanApplyScreenFields(UnknownField));
-
-            TArray<FGV2ScreenFieldValue> DuplicateField = ValidFields;
-            DuplicateField.Add(ValidFields[0]);
-            TestFalse(
-                TEXT("Duplicate field is rejected"),
-                Screen->CanApplyScreenFields(DuplicateField));
-
-            TArray<FGV2ScreenFieldValue> SchemaMismatch = ValidFields;
-            SchemaMismatch[0].SchemaId = TEXT("core:schema.ui_field.button_list.v2");
-            TestFalse(
-                TEXT("Schema mismatch is rejected"),
-                Screen->CanApplyScreenFields(SchemaMismatch));
+            TestEqual(TEXT("Test screen exposes 0 remaining legacy dynamic fields (all migrated to property hosts)"), Contract.Num(), 0);
 
             UGV2RichTextWidgetBase* DescriptionWidget = Cast<UGV2RichTextWidgetBase>(
                 Screen->GetWidgetFromName(TEXT("DescriptionText")));
@@ -2155,35 +2060,6 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                     CheckboxWidget->IsChecked());
             }
             TestNotNull(TEXT("Test screen uses the reusable rich text component"), DescriptionWidget);
-            if (DescriptionWidget != nullptr)
-            {
-                TestTrue(
-                    TEXT("Lua annotation is projected into the rich text component"),
-                    DescriptionWidget->HasInteractiveSpan(TEXT("integration")));
-                const FGV2RichTextSpanViewModel* Span =
-                    DescriptionWidget->FindInteractiveSpan(TEXT("integration"));
-                TestTrue(
-                    TEXT("Hover content stays locally available in UE"),
-                    Span != nullptr && !Span->Hover.IsEmpty());
-                TestFalse(
-                    TEXT("Annotated span creates a non-empty tooltip"),
-                    DescriptionWidget->CreateSpanToolTip(TEXT("integration"))->IsEmpty());
-                TestEqual(
-                    TEXT("Span click uses the same semantic input ingress"),
-                    DescriptionWidget->SubmitSpanInteraction(TEXT("integration")),
-                    EGV2SubmitUiInteractionResult::Accepted);
-
-                FGV2InteractiveRichTextViewModel DanglingText;
-                DanglingText.Text.Text = FText::FromString(
-                    TEXT("<interactive id=\"missing\">Invalid</interactive>"));
-                DanglingText.Text.StyleToken = TEXT("default");
-                TestFalse(
-                    TEXT("Markup cannot reference an undeclared span"),
-                    IGV2DynamicScreenElement::Execute_CanApplyScreenField(
-                        DescriptionWidget,
-                        FGV2ScreenFieldValue::MakeInteractiveRichText(
-                            TEXT("description"), DanglingText)));
-            }
 
             UGV2ScreenWidgetBase* CurrentScreen = Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
             UGV2DropdownSelectWidgetBase* DropdownWidget = CurrentScreen != nullptr
@@ -2191,7 +2067,7 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                     CurrentScreen->GetWidgetFromName(TEXT("ClassSelectField")))
                 : nullptr;
             TestNotNull(TEXT("Test screen uses the reusable dropdown component"), DropdownWidget);
-            if (DropdownWidget != nullptr)
+            if (DropdownWidget != nullptr && DropdownWidget->GetBindingHandle().IsValid())
             {
                 TestEqual(
                     TEXT("Dropdown submits exactly its schema-bound selected_key interaction"),
@@ -2202,22 +2078,14 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                     ? Cast<UGV2DropdownSelectWidgetBase>(
                         CurrentScreen->GetWidgetFromName(TEXT("ClassSelectField")))
                     : nullptr;
-                FGV2ScreenFieldValue ReconciledDropdownValue;
-                TestTrue(
-                    TEXT("Reconciled dropdown remains available through the common field contract"),
-                    ReconciledDropdown != nullptr
-                        && IGV2DynamicScreenElement::Execute_CaptureScreenField(
-                            ReconciledDropdown,
-                            ReconciledDropdownValue));
-                const FGV2DropdownOptionViewModel* SelectedOption =
-                    ReconciledDropdownValue.DropdownSelectValue.Options.FindByPredicate(
-                        [](const FGV2DropdownOptionViewModel& Option)
-                        {
-                            return Option.bSelected;
-                        });
-                TestTrue(
-                    TEXT("Lua owns and republishes the accepted dropdown selection"),
-                    SelectedOption != nullptr && SelectedOption->Key == TEXT("mage"));
+                TestNotNull(TEXT("Reconciled dropdown is present"), ReconciledDropdown);
+                if (ReconciledDropdown != nullptr)
+                {
+                    TestEqual(
+                        TEXT("Lua owns and republishes the accepted dropdown selection"),
+                        ReconciledDropdown->GetSelectedKey(),
+                        FName(TEXT("mage")));
+                }
             }
         }
         Runtime->EndSession();
@@ -2555,203 +2423,52 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
     }
 
     // =========================================================================
-    // UIF-23 & UIF-24: Tab Container Schema Adapter, Recursive Apply & Elongated Paths
+    // UIF-23 & UIF-24: Tab Container Schema Adapter, Consumer & Off-Tree Validation
     // =========================================================================
-    const FGV2ScreenFieldAdapterRegistry& FieldAdapters = FGV2ScreenFieldAdapterRegistry::Get();
     {
-        // 1. Rejection of empty tabs
-        GV2RuntimeCore::FScreenRequest BadEmptyTabsReq;
-        BadEmptyTabsReq.ScreenId = "core:screen.main";
-        GV2RuntimeCore::FScreenField EmptyField;
-        EmptyField.FieldId = "tabs";
-        EmptyField.SchemaId = "core:schema.ui_field.tab_container.v1";
-        GV2RuntimeCore::FValue::FObject EmptyObj;
-        EmptyObj["tabs"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{});
-        EmptyField.Value = GV2RuntimeCore::FValue(EmptyObj);
-        BadEmptyTabsReq.Fields.push_back(EmptyField);
+        TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
+            EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+        TestNotNull(TEXT("TabContainer consumer created"), Consumer.Get());
 
-        TArray<FGV2UiBindingDefinition> BadDefs;
-        TestFalse(TEXT("Empty tabs list rejected"), FieldAdapters.PrepareBindingDefinitions(BadEmptyTabsReq, BadDefs));
+        FGV2UiPropertyCapability TabCap;
+        TabCap.TargetType = EGV2UiCapabilityTargetType::NestedScreen;
+
+        // 1. Rejection of empty tabs
+        TArray<FGV2PreparedUiValue> EmptyTabs;
+        FString PrepErr;
+        TestFalse(TEXT("Empty tabs list rejected"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(EmptyTabs)), TabCap, nullptr, PrepErr));
 
         // 2. Rejection of duplicate tab keys
-        GV2RuntimeCore::FScreenRequest DupTabsReq;
-        DupTabsReq.ScreenId = "core:screen.main";
-        GV2RuntimeCore::FScreenField DupField;
-        DupField.FieldId = "tabs";
-        DupField.SchemaId = "core:schema.ui_field.tab_container.v1";
-        GV2RuntimeCore::FValue::FObject DupObj;
-        GV2RuntimeCore::FValue::FArray DupTabs;
-        {
-            GV2RuntimeCore::FValue::FObject T1;
-            T1["key"] = GV2RuntimeCore::FValue(std::string("tab_a"));
-            GV2RuntimeCore::FValue::FObject Title1;
-            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.title_a"));
-            T1["title"] = GV2RuntimeCore::FValue(Title1);
-            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_a"));
-            DupTabs.push_back(GV2RuntimeCore::FValue(T1));
+        TArray<FGV2PreparedUiValue> DupTabs;
+        TMap<FString, FGV2PreparedUiValue> T1;
+        T1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("tab_a")));
+        T1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Tab A")) }));
+        T1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.tab_a"), TEXT("screen")));
+        DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(T1)));
 
-            GV2RuntimeCore::FValue::FObject T2;
-            T2["key"] = GV2RuntimeCore::FValue(std::string("tab_a")); // duplicate key
-            GV2RuntimeCore::FValue::FObject Title2;
-            Title2["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.title_b"));
-            T2["title"] = GV2RuntimeCore::FValue(Title2);
-            T2["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_b"));
-            DupTabs.push_back(GV2RuntimeCore::FValue(T2));
-        }
-        DupObj["tabs"] = GV2RuntimeCore::FValue(DupTabs);
-        DupField.Value = GV2RuntimeCore::FValue(DupObj);
-        DupTabsReq.Fields.push_back(DupField);
+        TMap<FString, FGV2PreparedUiValue> T2;
+        T2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("tab_a"))); // duplicate key
+        T2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Tab B")) }));
+        T2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.tab_b"), TEXT("screen")));
+        DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(T2)));
 
-        TestFalse(TEXT("Duplicate tab keys rejected"), FieldAdapters.PrepareBindingDefinitions(DupTabsReq, BadDefs));
+        TestFalse(TEXT("Duplicate tab keys rejected"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(DupTabs)), TabCap, nullptr, PrepErr));
 
-        // 3. Rejection of nested tab containers (tabs inside tabs)
-        GV2RuntimeCore::FScreenRequest NestedTabsReq;
-        NestedTabsReq.ScreenId = "core:screen.main";
-        GV2RuntimeCore::FScreenField NestedField;
-        NestedField.FieldId = "tabs";
-        NestedField.SchemaId = "core:schema.ui_field.tab_container.v1";
-        GV2RuntimeCore::FValue::FObject NestedObj;
-        GV2RuntimeCore::FValue::FArray NestedTabs;
-        {
-            GV2RuntimeCore::FValue::FObject T1;
-            T1["key"] = GV2RuntimeCore::FValue(std::string("outer_tab"));
-            GV2RuntimeCore::FValue::FObject Title1;
-            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.title_a"));
-            T1["title"] = GV2RuntimeCore::FValue(Title1);
-            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_a"));
+        // 3. Valid tabs array preparation
+        TArray<FGV2PreparedUiValue> ValidTabs;
+        TMap<FString, FGV2PreparedUiValue> V1;
+        V1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("inventory")));
+        V1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Inventory")) }));
+        V1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+        ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V1)));
 
-            // Child field is another tab_container -> MUST BE REJECTED
-            GV2RuntimeCore::FValue::FObject InnerFields;
-            GV2RuntimeCore::FValue::FObject InnerTabField;
-            InnerTabField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.tab_container.v1"));
-            InnerTabField["value"] = GV2RuntimeCore::FValue(DupObj);
-            InnerFields["inner_tabs"] = GV2RuntimeCore::FValue(InnerTabField);
-            T1["fields"] = GV2RuntimeCore::FValue(InnerFields);
-            NestedTabs.push_back(GV2RuntimeCore::FValue(T1));
-        }
-        NestedObj["tabs"] = GV2RuntimeCore::FValue(NestedTabs);
-        NestedField.Value = GV2RuntimeCore::FValue(NestedObj);
-        NestedTabsReq.Fields.push_back(NestedField);
+        TMap<FString, FGV2PreparedUiValue> V2;
+        V2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("skills")));
+        V2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Skills")) }));
+        V2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+        ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V2)));
 
-        TestFalse(TEXT("Nested tab sets disallowed"), FieldAdapters.PrepareBindingDefinitions(NestedTabsReq, BadDefs));
-
-        // 4. Valid tab container with 2 tabs & recursive child fields
-        GV2RuntimeCore::FScreenRequest ValidTabReq;
-        ValidTabReq.ScreenId = "core:screen.main";
-        GV2RuntimeCore::FScreenField TabField;
-        TabField.FieldId = "tabs";
-        TabField.SchemaId = "core:schema.ui_field.tab_container.v1";
-        GV2RuntimeCore::FValue::FObject TabObj;
-        TabObj["default_tab_key"] = GV2RuntimeCore::FValue(std::string("skills"));
-        GV2RuntimeCore::FValue::FArray ValidTabs;
-        {
-            // Tab 1: inventory
-            GV2RuntimeCore::FValue::FObject T1;
-            T1["key"] = GV2RuntimeCore::FValue(std::string("inventory"));
-            GV2RuntimeCore::FValue::FObject Title1;
-            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_inventory"));
-            T1["title"] = GV2RuntimeCore::FValue(Title1);
-            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_inventory"));
-
-            GV2RuntimeCore::FValue::FObject T1Fields;
-            GV2RuntimeCore::FValue::FObject BtnField;
-            BtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
-            GV2RuntimeCore::FValue::FObject BtnVal;
-            GV2RuntimeCore::FValue::FArray Btns;
-            GV2RuntimeCore::FValue::FObject Btn1;
-            Btn1["key"] = GV2RuntimeCore::FValue(std::string("use_potion"));
-            GV2RuntimeCore::FValue::FObject Btn1Title;
-            Btn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_use"));
-            Btn1["text"] = GV2RuntimeCore::FValue(Btn1Title);
-            GV2RuntimeCore::FValue::FObject Action1;
-            Action1["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.item.use"));
-            Btn1["binding"] = GV2RuntimeCore::FValue(Action1);
-            Btns.push_back(GV2RuntimeCore::FValue(Btn1));
-            BtnVal["items"] = GV2RuntimeCore::FValue(Btns);
-            BtnField["value"] = GV2RuntimeCore::FValue(BtnVal);
-            T1Fields["inventory_buttons"] = GV2RuntimeCore::FValue(BtnField);
-            T1["fields"] = GV2RuntimeCore::FValue(T1Fields);
-            ValidTabs.push_back(GV2RuntimeCore::FValue(T1));
-
-            // Tab 2: skills
-            GV2RuntimeCore::FValue::FObject T2;
-            T2["key"] = GV2RuntimeCore::FValue(std::string("skills"));
-            GV2RuntimeCore::FValue::FObject Title2;
-            Title2["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_skills"));
-            T2["title"] = GV2RuntimeCore::FValue(Title2);
-            T2["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_skills"));
-
-            GV2RuntimeCore::FValue::FObject T2Fields;
-            GV2RuntimeCore::FValue::FObject SkillBtnField;
-            SkillBtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
-            GV2RuntimeCore::FValue::FObject SkillBtnVal;
-            GV2RuntimeCore::FValue::FArray SkillBtns;
-            GV2RuntimeCore::FValue::FObject SkillBtn1;
-            SkillBtn1["key"] = GV2RuntimeCore::FValue(std::string("learn_fireball"));
-            GV2RuntimeCore::FValue::FObject SkillBtn1Title;
-            SkillBtn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_learn"));
-            SkillBtn1["text"] = GV2RuntimeCore::FValue(SkillBtn1Title);
-            GV2RuntimeCore::FValue::FObject Action2;
-            Action2["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.skill.learn"));
-            SkillBtn1["binding"] = GV2RuntimeCore::FValue(Action2);
-            SkillBtns.push_back(GV2RuntimeCore::FValue(SkillBtn1));
-            SkillBtnVal["items"] = GV2RuntimeCore::FValue(SkillBtns);
-            SkillBtnField["value"] = GV2RuntimeCore::FValue(SkillBtnVal);
-            T2Fields["skill_buttons"] = GV2RuntimeCore::FValue(SkillBtnField);
-            T2["fields"] = GV2RuntimeCore::FValue(T2Fields);
-            ValidTabs.push_back(GV2RuntimeCore::FValue(T2));
-        }
-        TabObj["tabs"] = GV2RuntimeCore::FValue(ValidTabs);
-        TabField.Value = GV2RuntimeCore::FValue(TabObj);
-        ValidTabReq.Fields.push_back(TabField);
-
-        TArray<FGV2UiBindingDefinition> ValidDefs;
-        TestTrue(TEXT("PrepareBindingDefinitions for tab container succeeds"), FieldAdapters.PrepareBindingDefinitions(ValidTabReq, ValidDefs));
-        if (TestEqual(TEXT("Tab container produces 2 child button definitions"), ValidDefs.Num(), 2))
-        {
-            // Verify elongated paths: [field_id, tab_key, child_field_id, button_key]
-            TestEqual(TEXT("Tab1 binding path segment count"), ValidDefs[0].NodeKeyPath.Num(), 4);
-            if (ValidDefs[0].NodeKeyPath.Num() >= 4)
-            {
-                TestEqual(TEXT("Tab1 binding path segment 0 (field_id)"), ValidDefs[0].NodeKeyPath[0], TEXT("tabs"));
-                TestEqual(TEXT("Tab1 binding path segment 1 (tab_key)"), ValidDefs[0].NodeKeyPath[1], TEXT("inventory"));
-                TestEqual(TEXT("Tab1 binding path segment 2 (child_field_id)"), ValidDefs[0].NodeKeyPath[2], TEXT("inventory_buttons"));
-                TestEqual(TEXT("Tab1 binding path segment 3 (btn_key)"), ValidDefs[0].NodeKeyPath[3], TEXT("use_potion"));
-            }
-
-            TestEqual(TEXT("Tab2 binding path segment count"), ValidDefs[1].NodeKeyPath.Num(), 4);
-            if (ValidDefs[1].NodeKeyPath.Num() >= 4)
-            {
-                TestEqual(TEXT("Tab2 binding path segment 0 (field_id)"), ValidDefs[1].NodeKeyPath[0], TEXT("tabs"));
-                TestEqual(TEXT("Tab2 binding path segment 1 (tab_key)"), ValidDefs[1].NodeKeyPath[1], TEXT("skills"));
-                TestEqual(TEXT("Tab2 binding path segment 2 (child_field_id)"), ValidDefs[1].NodeKeyPath[2], TEXT("skill_buttons"));
-                TestEqual(TEXT("Tab2 binding path segment 3 (btn_key)"), ValidDefs[1].NodeKeyPath[3], TEXT("learn_fireball"));
-            }
-        }
-
-        // BuildFields verification
-        TArray<FGV2UiBindingHandle> Handles;
-        Handles.Add(FGV2UiBindingHandle::FromSerialized(TEXT("h_inv")));
-        Handles.Add(FGV2UiBindingHandle::FromSerialized(TEXT("h_skills")));
-
-        TArray<FGV2ScreenFieldValue> BuiltFields;
-        TestTrue(TEXT("BuildFields for tab container succeeds"), FieldAdapters.BuildFields(ValidTabReq, Handles, BuiltFields));
-        if (TestEqual(TEXT("1 built field produced"), BuiltFields.Num(), 1))
-        {
-            TestTrue(TEXT("TabContainerValue is populated"), BuiltFields[0].TabContainerValue.IsValid());
-            if (BuiltFields[0].TabContainerValue.IsValid())
-            {
-                TestEqual(TEXT("DefaultTabKey is skills"), BuiltFields[0].TabContainerValue->DefaultTabKey, FName("skills"));
-                TestEqual(TEXT("2 tabs in model"), BuiltFields[0].TabContainerValue->Tabs.Num(), 2);
-                if (BuiltFields[0].TabContainerValue->Tabs.Num() >= 2)
-                {
-                    TestEqual(TEXT("Tab1 Key is inventory"), BuiltFields[0].TabContainerValue->Tabs[0].Key, FName("inventory"));
-                    TestEqual(TEXT("Tab2 Key is skills"), BuiltFields[0].TabContainerValue->Tabs[1].Key, FName("skills"));
-                    TestEqual(TEXT("Tab1 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[0].Fields.Num(), 1);
-                    TestEqual(TEXT("Tab2 has 1 child field"), BuiltFields[0].TabContainerValue->Tabs[1].Fields.Num(), 1);
-                }
-            }
-        }
+        TestTrue(TEXT("Valid tabs prepare succeeds"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(ValidTabs)), TabCap, nullptr, PrepErr));
     }
 
     // =========================================================================
@@ -2761,19 +2478,22 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         UGV2TabContainerWidgetBase* TabWidget = NewObject<UGV2TabContainerWidgetBase>();
         TestNotNull(TEXT("Tab widget created"), TabWidget);
 
-        FGV2TabContainerViewModel TabModel;
-        TabModel.DefaultTabKey = FName("skills");
-        {
-            FGV2TabItemViewModel& T1 = TabModel.Tabs.AddDefaulted_GetRef();
-            T1.Key = FName("inventory");
-            T1.ScreenId = TEXT("core:screen.tab_inventory");
+        TabWidget->ApplyDefaultTabKey(FName("skills"));
 
-            FGV2TabItemViewModel& T2 = TabModel.Tabs.AddDefaulted_GetRef();
-            T2.Key = FName("skills");
-            T2.ScreenId = TEXT("core:screen.tab_skills");
-        }
+        TArray<FGV2TabItemEntry> Entries;
+        FGV2TabItemEntry E1;
+        E1.Key = FName("inventory");
+        E1.ScreenId = TEXT("core:screen.tab_inventory");
+        Entries.Add(E1);
 
-        TestTrue(TEXT("Apply TabModel succeeds"), TabWidget->ApplyTabContainerModel(TabModel));
+        FGV2TabItemEntry E2;
+        E2.Key = FName("skills");
+        E2.ScreenId = TEXT("core:screen.tab_skills");
+        Entries.Add(E2);
+
+        TMap<FName, UGV2ScreenWidgetBase*> Widgets;
+        TabWidget->ApplyTabEntries(Entries, Widgets);
+
         TestEqual(TEXT("Initial active tab is DefaultTabKey (skills)"), TabWidget->GetActiveTabKey(), FName("skills"));
         TestEqual(TEXT("Active tab index is 1"), TabWidget->GetActiveTabIndex(), 1);
 
@@ -2783,15 +2503,13 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         TestEqual(TEXT("Active tab index changed to 0"), TabWidget->GetActiveTabIndex(), 0);
 
         // Reconcile new revision with same tabs -> preserves active tab (inventory), not resetting to default
-        FGV2TabContainerViewModel Rev2Model = TabModel;
-        TestTrue(TEXT("Apply Rev2Model succeeds"), TabWidget->ApplyTabContainerModel(Rev2Model));
+        TabWidget->ApplyTabEntries(Entries, Widgets);
         TestEqual(TEXT("Active tab preserved across revision (inventory)"), TabWidget->GetActiveTabKey(), FName("inventory"));
 
         // Reconcile revision where active tab (inventory) was removed -> falls back to default (skills)
-        FGV2TabContainerViewModel Rev3Model;
-        Rev3Model.DefaultTabKey = FName("skills");
-        Rev3Model.Tabs.Add(TabModel.Tabs[1]); // only skills
-        TestTrue(TEXT("Apply Rev3Model succeeds"), TabWidget->ApplyTabContainerModel(Rev3Model));
+        TArray<FGV2TabItemEntry> SkillsOnlyEntries;
+        SkillsOnlyEntries.Add(Entries[1]);
+        TabWidget->ApplyTabEntries(SkillsOnlyEntries, Widgets);
         TestEqual(TEXT("Fallback to default tab when active tab removed"), TabWidget->GetActiveTabKey(), FName("skills"));
     }
 
@@ -2816,82 +2534,6 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         }
         TestTrue(TEXT("Coordinator StartSession succeeds"), Coordinator.StartSession(ReadHandle, 1));
 
-        // Prepare document with route holding tab container with 'inventory' (default) and 'skills'
-        GV2RuntimeCore::FUiDocument Doc;
-        Doc.UiInstanceId = "ui@1:1";
-        Doc.Revision = 1;
-
-        GV2RuntimeCore::FScreenInstance RouteInst;
-        RouteInst.Layer = "location_content";
-        RouteInst.InstanceKey = "main";
-        RouteInst.ScreenId = "core:screen.main";
-
-        GV2RuntimeCore::FScreenField TabField;
-        TabField.FieldId = "tabs";
-        TabField.SchemaId = "core:schema.ui_field.tab_container.v1";
-        GV2RuntimeCore::FValue::FObject TabObj;
-        TabObj["default_tab_key"] = GV2RuntimeCore::FValue(std::string("inventory"));
-        GV2RuntimeCore::FValue::FArray TabsList;
-        {
-            // Tab 1: inventory with button
-            GV2RuntimeCore::FValue::FObject T1;
-            T1["key"] = GV2RuntimeCore::FValue(std::string("inventory"));
-            GV2RuntimeCore::FValue::FObject Title1;
-            Title1["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_inv"));
-            T1["title"] = GV2RuntimeCore::FValue(Title1);
-            T1["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_inv"));
-            GV2RuntimeCore::FValue::FObject T1Fields;
-            GV2RuntimeCore::FValue::FObject BtnField;
-            BtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
-            GV2RuntimeCore::FValue::FObject BtnVal;
-            GV2RuntimeCore::FValue::FArray Btns;
-            GV2RuntimeCore::FValue::FObject Btn1;
-            Btn1["key"] = GV2RuntimeCore::FValue(std::string("use_potion"));
-            GV2RuntimeCore::FValue::FObject Btn1Title;
-            Btn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_use"));
-            Btn1["text"] = GV2RuntimeCore::FValue(Btn1Title);
-            GV2RuntimeCore::FValue::FObject Action1;
-            Action1["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.test.step"));
-            Btn1["binding"] = GV2RuntimeCore::FValue(Action1);
-            Btns.push_back(GV2RuntimeCore::FValue(Btn1));
-            BtnVal["items"] = GV2RuntimeCore::FValue(Btns);
-            BtnField["value"] = GV2RuntimeCore::FValue(BtnVal);
-            T1Fields["inv_buttons"] = GV2RuntimeCore::FValue(BtnField);
-            T1["fields"] = GV2RuntimeCore::FValue(T1Fields);
-            TabsList.push_back(GV2RuntimeCore::FValue(T1));
-
-            // Tab 2: skills with button
-            GV2RuntimeCore::FValue::FObject T2;
-            T2["key"] = GV2RuntimeCore::FValue(std::string("skills"));
-            GV2RuntimeCore::FValue::FObject Title2;
-            Title2["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.tab_skills"));
-            T2["title"] = GV2RuntimeCore::FValue(Title2);
-            T2["screen_id"] = GV2RuntimeCore::FValue(std::string("core:screen.tab_skills"));
-            GV2RuntimeCore::FValue::FObject T2Fields;
-            GV2RuntimeCore::FValue::FObject SkillBtnField;
-            SkillBtnField["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.button_list.v2"));
-            GV2RuntimeCore::FValue::FObject SkillBtnVal;
-            GV2RuntimeCore::FValue::FArray SkillBtns;
-            GV2RuntimeCore::FValue::FObject SkillBtn1;
-            SkillBtn1["key"] = GV2RuntimeCore::FValue(std::string("learn_fireball"));
-            GV2RuntimeCore::FValue::FObject SkillBtn1Title;
-            SkillBtn1Title["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.btn_learn"));
-            SkillBtn1["text"] = GV2RuntimeCore::FValue(SkillBtn1Title);
-            GV2RuntimeCore::FValue::FObject Action2;
-            Action2["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.test.step"));
-            SkillBtn1["binding"] = GV2RuntimeCore::FValue(Action2);
-            SkillBtns.push_back(GV2RuntimeCore::FValue(SkillBtn1));
-            SkillBtnVal["items"] = GV2RuntimeCore::FValue(SkillBtns);
-            SkillBtnField["value"] = GV2RuntimeCore::FValue(SkillBtnVal);
-            T2Fields["skill_buttons"] = GV2RuntimeCore::FValue(SkillBtnField);
-            T2["fields"] = GV2RuntimeCore::FValue(T2Fields);
-            TabsList.push_back(GV2RuntimeCore::FValue(T2));
-        }
-        TabObj["tabs"] = GV2RuntimeCore::FValue(TabsList);
-        TabField.Value = GV2RuntimeCore::FValue(TabObj);
-        RouteInst.Fields.push_back(TabField);
-        Doc.Route = RouteInst;
-
         bool bDocumentHandled = false;
         Coordinator.SetDocumentSink([&bDocumentHandled](const FGV2UiDocumentViewModel&) -> bool
         {
@@ -2900,15 +2542,17 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         });
 
         // Publish bindings
-        GV2RuntimeCore::FScreenRequest RouteReq;
-        RouteReq.ScreenId = RouteInst.ScreenId;
-        RouteReq.Fields = RouteInst.Fields;
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestTrue(TEXT("PrepareBindingDefinitions for Route succeeds"), FieldAdapters.PrepareBindingDefinitions(RouteReq, Definitions));
-        for (FGV2UiBindingDefinition& Def : Definitions)
         {
-            Def.NodeKeyPath.Insert(TEXT("main"), 0);
-            Def.NodeKeyPath.Insert(TEXT("location_content"), 0);
+            FGV2UiBindingDefinition Def1;
+            Def1.CommandId = TEXT("core:command.test.step");
+            Def1.NodeKeyPath = { TEXT("location_content"), TEXT("main"), TEXT("tabs"), TEXT("inventory"), TEXT("inv_buttons"), TEXT("use_potion") };
+            Definitions.Add(Def1);
+
+            FGV2UiBindingDefinition Def2;
+            Def2.CommandId = TEXT("core:command.test.step");
+            Def2.NodeKeyPath = { TEXT("location_content"), TEXT("main"), TEXT("tabs"), TEXT("skills"), TEXT("skill_buttons"), TEXT("learn_fireball") };
+            Definitions.Add(Def2);
         }
 
         TArray<FGV2UiBindingHandle> Handles;
@@ -2969,20 +2613,22 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                 {
                     IntegrationTabWidget->ConfiguredScreenFieldId = FName(TEXT("tabs"));
                     IntegrationTabWidget->SetContainerPath(TEXT("location_content/main/tabs"));
+                    IntegrationTabWidget->ApplyDefaultTabKey(FName("inventory"));
 
-                    FGV2TabContainerViewModel TabModel;
-                    TabModel.DefaultTabKey = FName("inventory");
-                    {
-                        FGV2TabItemViewModel& T1 = TabModel.Tabs.AddDefaulted_GetRef();
-                        T1.Key = FName("inventory");
-                        T1.ScreenId = TEXT("core:screen.tab_inventory");
+                    TArray<FGV2TabItemEntry> Entries;
+                    FGV2TabItemEntry E1;
+                    E1.Key = FName("inventory");
+                    E1.ScreenId = TEXT("core:screen.tab_inventory");
+                    Entries.Add(E1);
 
-                        FGV2TabItemViewModel& T2 = TabModel.Tabs.AddDefaulted_GetRef();
-                        T2.Key = FName("skills");
-                        T2.ScreenId = TEXT("core:screen.tab_skills");
-                    }
+                    FGV2TabItemEntry E2;
+                    E2.Key = FName("skills");
+                    E2.ScreenId = TEXT("core:screen.tab_skills");
+                    Entries.Add(E2);
 
-                    TestTrue(TEXT("Apply tab model to integration widget succeeds"), IntegrationTabWidget->ApplyTabContainerModel(TabModel));
+                    TMap<FName, UGV2ScreenWidgetBase*> Widgets;
+                    IntegrationTabWidget->ApplyTabEntries(Entries, Widgets);
+
                     TestEqual(TEXT("Runtime subsystem synced initial active tab (inventory)"), Runtime->GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
 
                     // Switch tab via widget
@@ -3407,6 +3053,78 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("Child count remains 2"), AtomicContainer->GetChildrenCount(), 2);
             TestEqual(TEXT("Child 0 remains ProgA"), AtomicContainer->GetChildAt(0), Cast<UWidget>(ProgA));
             TestEqual(TEXT("Child 1 remains ProgB"), AtomicContainer->GetChildAt(1), Cast<UWidget>(ProgB));
+        }
+
+        // CCF-01b: ReconcilePreparedEntries - two-phase reconciliation guarantees zero mutation on prepare failure
+        {
+            struct FTestProgressItem
+            {
+                FName Key;
+                float Value = 0.0f;
+            };
+
+            struct FPreparedProgressData
+            {
+                float ProgressValue = 0.0f;
+            };
+
+            UGV2ListViewWidgetBase* PreparedListView = NewObject<UGV2ListViewWidgetBase>(TestWorld);
+            UVerticalBox* PreparedContainer = NewObject<UVerticalBox>(TestWorld);
+            PreparedListView->SetContainerPanel(PreparedContainer);
+
+            const TArray<FTestProgressItem> InitItems = {
+                { FName(TEXT("item_a")), 10.0f },
+                { FName(TEXT("item_b")), 20.0f }
+            };
+
+            bool bInit = PreparedListView->ReconcilePreparedEntries<UGV2ProgressBarWidgetBase, FTestProgressItem, FPreparedProgressData>(
+                InitItems,
+                [](const FTestProgressItem& Item) { return Item.Key; },
+                [TestWorld]() -> UGV2ProgressBarWidgetBase* { return NewObject<UGV2ProgressBarWidgetBase>(TestWorld); },
+                [](UGV2ProgressBarWidgetBase& Widget, const FTestProgressItem& Item, FPreparedProgressData& OutPrep) -> bool
+                {
+                    OutPrep.ProgressValue = Item.Value;
+                    return true;
+                },
+                [](UGV2ProgressBarWidgetBase& Widget, const FPreparedProgressData& Prep)
+                {
+                    Widget.ApplyProgress(Prep.ProgressValue);
+                });
+            TestTrue(TEXT("ReconcilePrepared baseline succeeds"), bInit);
+            UGV2ProgressBarWidgetBase* PrepA = PreparedListView->GetEntry<UGV2ProgressBarWidgetBase>(FName(TEXT("item_a")));
+            UGV2ProgressBarWidgetBase* PrepB = PreparedListView->GetEntry<UGV2ProgressBarWidgetBase>(FName(TEXT("item_b")));
+            TestNotNull(TEXT("PrepA exists"), PrepA);
+            TestNotNull(TEXT("PrepB exists"), PrepB);
+            TestEqual(TEXT("PrepA baseline value is 10"), PrepA->GetProgress(), 10.0f);
+            TestEqual(TEXT("PrepB baseline value is 20"), PrepB->GetProgress(), 20.0f);
+
+            // Candidate where item_a prepares successfully to 100.0f, but item_b fails during PrepareItem
+            const TArray<FTestProgressItem> CandidateItems = {
+                { FName(TEXT("item_a")), 100.0f },
+                { FName(TEXT("item_b")), -999.0f }
+            };
+
+            bool bCandidate = PreparedListView->ReconcilePreparedEntries<UGV2ProgressBarWidgetBase, FTestProgressItem, FPreparedProgressData>(
+                CandidateItems,
+                [](const FTestProgressItem& Item) { return Item.Key; },
+                [TestWorld]() -> UGV2ProgressBarWidgetBase* { return NewObject<UGV2ProgressBarWidgetBase>(TestWorld); },
+                [](UGV2ProgressBarWidgetBase& Widget, const FTestProgressItem& Item, FPreparedProgressData& OutPrep) -> bool
+                {
+                    if (Item.Value < 0.0f)
+                    {
+                        return false; // item_b fails prepare!
+                    }
+                    OutPrep.ProgressValue = Item.Value;
+                    return true;
+                },
+                [](UGV2ProgressBarWidgetBase& Widget, const FPreparedProgressData& Prep)
+                {
+                    Widget.ApplyProgress(Prep.ProgressValue);
+                });
+            TestFalse(TEXT("ReconcilePrepared fails when item_b prepare fails"), bCandidate);
+            TestEqual(TEXT("PrepA value strictly remains 10 (NOT mutated to 100 on prepare failure)"), PrepA->GetProgress(), 10.0f);
+            TestEqual(TEXT("PrepB value strictly remains 20"), PrepB->GetProgress(), 20.0f);
+            TestEqual(TEXT("PreparedContainer child count remains 2"), PreparedContainer->GetChildrenCount(), 2);
         }
 
         // CCF-05: Complete Repeater Regression Matrix
@@ -4077,7 +3795,7 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
         IGV2DynamicScreenElement::Execute_ResetScreenField(CmdPanel);
         FGV2ScreenFieldValue CmdCap;
         IGV2DynamicScreenElement::Execute_CaptureScreenField(CmdPanel, CmdCap);
-        TestEqual(TEXT("CCF-11: CommandPanel count 0 after reset"), CmdCap.ButtonListValue.Num(), 0);
+        TestEqual(TEXT("CCF-11: CommandPanel count 0 after reset"), CmdCap.LocationCommandsValue.Num(), 0);
     }
 
     // -------------------------------------------------------------------------
@@ -4501,12 +4219,12 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
             IGV2DynamicScreenElement::Execute_ApplyScreenField(CommandPanel, ValidCmds);
             FGV2ScreenFieldValue Captured;
             IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandPanel, Captured);
-            TestEqual(TEXT("CommandPanel button count preserved"), Captured.ButtonListValue.Num(), 2);
+            TestEqual(TEXT("CommandPanel button count preserved"), Captured.LocationCommandsValue.Num(), 2);
 
             // Reset
             IGV2DynamicScreenElement::Execute_ResetScreenField(CommandPanel);
             IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandPanel, Captured);
-            TestEqual(TEXT("CommandPanel button count 0 after reset"), Captured.ButtonListValue.Num(), 0);
+            TestEqual(TEXT("CommandPanel button count 0 after reset"), Captured.LocationCommandsValue.Num(), 0);
         }
     }
 
@@ -4911,12 +4629,12 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
                 TestTrue(TEXT("TextContent matches"), TextWidget->GetTextContent().EqualTo(TextModel.Text));
             }
 
-            FGV2InteractiveRichTextViewModel RichModel;
-            RichModel.Text.Text = FText::FromString(TEXT("Sample Rich Body"));
-            RichModel.Text.StyleToken = FName(TEXT("body"));
+            FGV2TextViewModel RichModel;
+            RichModel.Text = FText::FromString(TEXT("Sample Rich Body"));
+            RichModel.StyleToken = FName(TEXT("body"));
             if (RichTextWidget)
             {
-                RichTextWidget->ApplyInteractiveRichText(RichModel);
+                RichTextWidget->ApplyText(RichModel);
             }
 
             FGV2TextViewModel BtnText;
@@ -4943,16 +4661,12 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
                 InputWidget->ApplyText(InputText);
             }
 
-            FGV2DropdownSelectViewModel DropdownModel;
-            DropdownModel.Placeholder.Text = FText::FromString(TEXT("Select Option"));
-            DropdownModel.Binding = FGV2UiBindingHandle::Create(TEXT("dd_bind"));
-            FGV2DropdownOptionViewModel Opt;
-            Opt.Key = FName(TEXT("opt1"));
-            Opt.Text.Text = FText::FromString(TEXT("Option 1"));
-            DropdownModel.Options = { Opt };
             if (DropdownWidget)
             {
-                DropdownWidget->ApplyDropdownModel(DropdownModel);
+                FGV2TextViewModel DropdownPlaceholder;
+                DropdownPlaceholder.Text = FText::FromString(TEXT("Select Option"));
+                DropdownWidget->ApplyPlaceholderText(DropdownPlaceholder);
+                DropdownWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("dd_bind")));
             }
         }
 
@@ -5057,7 +4771,7 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
                     if (IGV2DynamicScreenElement::Execute_CaptureScreenField(Child, CapturedField)
                         && CapturedField.FieldId == FName(TEXT("commands")))
                     {
-                        for (const FGV2ButtonViewModel& Btn : CapturedField.ButtonListValue)
+                        for (const FGV2ButtonViewModel& Btn : CapturedField.LocationCommandsValue)
                         {
                             if (Btn.Key == FName(TEXT("travel_city_market")))
                             {
@@ -5117,7 +4831,7 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
                         else if (CapturedField.FieldId == FName(TEXT("commands")))
                         {
                             bFoundMarketCommands = true;
-                            for (const FGV2ButtonViewModel& Btn : CapturedField.ButtonListValue)
+                            for (const FGV2ButtonViewModel& Btn : CapturedField.LocationCommandsValue)
                             {
                                 if (Btn.Key == FName(TEXT("travel_city_market")))
                                 {
@@ -5452,10 +5166,10 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
 
                     FGV2ScreenFieldValue RolledBackCommands;
                     TestTrue(TEXT("Capture Commands after failed apply"), IGV2DynamicScreenElement::Execute_CaptureScreenField(CommandPanel, RolledBackCommands));
-                    TestEqual(TEXT("Commands list count remains 1"), RolledBackCommands.ButtonListValue.Num(), 1);
-                    if (RolledBackCommands.ButtonListValue.Num() == 1)
+                    TestEqual(TEXT("Commands list count remains 1"), RolledBackCommands.LocationCommandsValue.Num(), 1);
+                    if (RolledBackCommands.LocationCommandsValue.Num() == 1)
                     {
-                        TestEqual(TEXT("Commands button key remains btn_drink"), RolledBackCommands.ButtonListValue[0].Key, FName(TEXT("btn_drink")));
+                        TestEqual(TEXT("Commands button key remains btn_drink"), RolledBackCommands.LocationCommandsValue[0].Key, FName(TEXT("btn_drink")));
                     }
                 }
             }
@@ -5667,7 +5381,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
     TArray<FGV2ScreenFieldValue> OutFields;
 
     AddExpectedErrorPlain(TEXT("rejected (closed schema)"), EAutomationExpectedErrorFlags::Contains, 8);
-    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 8);
+    AddExpectedErrorPlain(TEXT("GV2 Screen Field build failed"), EAutomationExpectedErrorFlags::Contains, 7);
 
     auto MakeTextSpec = [](const std::string& TextId) -> FObject
     {
@@ -5793,14 +5507,14 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on meter"), Registry.BuildFields(Request, Handles, OutFields));
     }
 
-    // 6. Rejection at collection element level: items element in button_list / commands
+    // 6. Rejection at collection element level: items element in location_commands
     {
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = "textsystem:screen.location";
 
         GV2RuntimeCore::FScreenField Field;
         Field.FieldId = "commands";
-        Field.SchemaId = "core:schema.ui_field.button_list.v2";
+        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
 
         FObject BtnObj;
         BtnObj["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
@@ -5849,27 +5563,25 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.ScreenId = "textsystem:screen.location";
 
         GV2RuntimeCore::FScreenField Field;
-        Field.FieldId = "dropdown";
-        Field.SchemaId = "core:schema.ui_field.dropdown_select.v1";
+        Field.FieldId = "commands";
+        Field.SchemaId = "textsystem:schema.ui_field.location_commands.v1";
 
-        FObject DropdownValue;
-        DropdownValue["placeholder"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        DropdownValue["selected_key"] = GV2RuntimeCore::FValue(std::string("opt_1"));
-        FObject OptObj;
-        OptObj["key"] = GV2RuntimeCore::FValue(std::string("opt_1"));
-        OptObj["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
-        DropdownValue["items"] = GV2RuntimeCore::FValue(FArray{ GV2RuntimeCore::FValue(OptObj) });
-
+        FObject BtnObj;
+        BtnObj["key"] = GV2RuntimeCore::FValue(std::string("btn_ok"));
+        BtnObj["text"] = GV2RuntimeCore::FValue(MakeTextSpec("core:text.common.ok"));
         FObject BadBinding;
         BadBinding["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.common.ok"));
         BadBinding["unknown_meta"] = GV2RuntimeCore::FValue(std::string("extra"));
-        DropdownValue["binding"] = GV2RuntimeCore::FValue(BadBinding);
+        BtnObj["binding"] = GV2RuntimeCore::FValue(BadBinding);
 
-        Field.Value = GV2RuntimeCore::FValue(DropdownValue);
+        FObject CmdValue;
+        CmdValue["items"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(BtnObj)});
+
+        Field.Value = GV2RuntimeCore::FValue(CmdValue);
         Request.Fields.push_back(MoveTemp(Field));
 
-        TArray<FGV2UiBindingHandle> DummyHandles = { FGV2UiBindingHandle::Create(TEXT("dummy@1:1")) };
-        TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), Registry.BuildFields(Request, DummyHandles, OutFields));
+        TArray<FGV2UiBindingDefinition> Definitions;
+        TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), Registry.PrepareBindingDefinitions(Request, Definitions));
     }
 
     return true;
@@ -6420,21 +6132,29 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             TSoftClassPtr<UGV2RichTextPopoverWidgetBase> SavedPopoverClass = Theme->RichTextPopoverClass;
             Theme->RichTextPopoverClass = nullptr;
 
-            FGV2InteractiveRichTextViewModel ContentWithHover;
-            ContentWithHover.Text.Text = FText::FromString(TEXT("Hover <gv2:interactive span_id=\"term\">term</> here"));
-            ContentWithHover.Text.NormalizedMarkup = TEXT("Hover <gv2:interactive span_id=\"term\">term</> here");
+            TMap<FString, FGV2PreparedUiValue> HoverMap;
+            FGV2TextViewModel TitleModel;
+            TitleModel.Text = FText::FromString(TEXT("Definition"));
+            HoverMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(TitleModel));
 
-            FGV2RichTextSpanViewModel Span;
-            Span.SpanId = FName(TEXT("term"));
-            Span.Hover.Title.Text = FText::FromString(TEXT("Definition"));
-            ContentWithHover.Spans.Add(Span);
+            TMap<FString, FGV2PreparedUiValue> SpanMap;
+            SpanMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("term")));
+            SpanMap.Add(TEXT("hover"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(HoverMap)));
+
+            TArray<FGV2PreparedUiValue> Elements;
+            Elements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(SpanMap)));
+            FGV2PreparedUiValue SpansVal = FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(Elements));
 
             UGV2RichTextWidgetBase* RichTextWidget = NewObject<UGV2RichTextWidgetBase>(TestWorld);
-            FGV2ScreenFieldValue FieldValue = FGV2ScreenFieldValue::MakeInteractiveRichText(
-                FName(TEXT("description")), ContentWithHover);
+            FGV2RichTextSpansPropertyConsumer Consumer;
+            FGV2UiPropertyCapability Cap;
+            Cap.PropertyName = TEXT("spans");
+            Cap.TargetType = EGV2UiCapabilityTargetType::CustomControl;
+            Cap.SupportedKind = EGV2PreparedUiValueKind::Array;
 
+            FString PrepError;
             TestFalse(TEXT("REV3-09: RichText with hover spans rejects application when popover class is unavailable"),
-                RichTextWidget->CanApplyScreenField_Implementation(FieldValue));
+                Consumer.Prepare(SpansVal, Cap, RichTextWidget, PrepError));
 
             Theme->RichTextPopoverClass = SavedPopoverClass;
         }

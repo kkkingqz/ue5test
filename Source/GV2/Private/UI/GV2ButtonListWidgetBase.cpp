@@ -1,10 +1,13 @@
 #include "UI/GV2ButtonListWidgetBase.h"
 
 #include "Blueprint/UserWidget.h"
+#include "CommonTextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2KeyedCollection.h"
+#include "UI/GV2TextPipeline.h"
+#include "UI/GV2UiCapability.h"
 #include "UI/GV2UiTheme.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2ButtonListWidget, Log, All);
@@ -15,28 +18,64 @@ void UGV2ButtonListWidgetBase::NativePreConstruct()
     ApplyCentralStyle_Implementation();
 }
 
-bool UGV2ButtonListWidgetBase::ApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels)
+void UGV2ButtonListWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    if (!CanApplyButtonModels(ButtonModels))
+    FGV2UiPropertyCapability ButtonCap;
+    ButtonCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+    ButtonCap.EntryWidgetClass = ResolveButtonWidgetClass();
+    OutBuilder.AddKeyedCollection(
+        TEXT("items"),
+        FName(TEXT("ButtonContainer")),
+        ButtonCap,
+        TEXT("key"),
+        ResolveButtonWidgetClass());
+}
+
+bool UGV2ButtonListWidgetBase::CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& InModels) const
+{
+    const TSubclassOf<UGV2ButtonWidgetBase> ResolvedClass = ResolveButtonWidgetClass();
+    if (ButtonContainer == nullptr || ResolvedClass == nullptr)
     {
         return false;
     }
+    TSet<FName> SeenKeys;
+    for (const FGV2ButtonViewModel& Model : InModels)
+    {
+        if (Model.Key.IsNone() || SeenKeys.Contains(Model.Key) || !Model.Binding.IsValid())
+        {
+            return false;
+        }
+        SeenKeys.Add(Model.Key);
+        if (Model.Text.NormalizedMarkup.Contains(TEXT("<gv2"))
+            || UGV2TextPipeline::ResolveStyleClass(Model.Text.StyleToken).Get() == nullptr)
+        {
+            return false;
+        }
+    }
+    return true;
+}
 
-    const TSubclassOf<UGV2ButtonWidgetBase> ResolvedButtonWidgetClass = ResolveButtonWidgetClass();
-    TArray<UGV2ButtonWidgetBase*> OrderedButtons;
+bool UGV2ButtonListWidgetBase::ApplyButtonModels(const TArray<FGV2ButtonViewModel>& InModels)
+{
+    if (!CanApplyButtonModels(InModels))
+    {
+        return false;
+    }
+    const TSubclassOf<UGV2ButtonWidgetBase> ResolvedClass = ResolveButtonWidgetClass();
+    TArray<UGV2ButtonWidgetBase*> OrderedWidgets;
     if (!FGV2KeyedCollection::Reconcile<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(
         ButtonContainer,
-        ButtonModels,
+        InModels,
         ButtonsByKey,
         [](const FGV2ButtonViewModel& Model) { return Model.Key; },
-        [this, ResolvedButtonWidgetClass]() -> UGV2ButtonWidgetBase*
+        [this, ResolvedClass]() -> UGV2ButtonWidgetBase*
         {
             if (GetOwningPlayer() != nullptr)
             {
-                return CreateWidget<UGV2ButtonWidgetBase>(GetOwningPlayer(), ResolvedButtonWidgetClass);
+                return CreateWidget<UGV2ButtonWidgetBase>(GetOwningPlayer(), ResolvedClass);
             }
             return GetWorld() != nullptr
-                ? CreateWidget<UGV2ButtonWidgetBase>(GetWorld(), ResolvedButtonWidgetClass)
+                ? CreateWidget<UGV2ButtonWidgetBase>(GetWorld(), ResolvedClass)
                 : nullptr;
         },
         [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
@@ -44,53 +83,58 @@ bool UGV2ButtonListWidgetBase::ApplyButtonModels(const TArray<FGV2ButtonViewMode
             Button.SetKey(Model.Key);
             Button.SetBindingHandle(Model.Binding);
             if (!Button.ApplyText(Model.Text)) return false;
-            Button.OnBindingInvoked.AddUniqueDynamic(this, &ThisClass::HandleButtonBindingInvoked);
+            Button.OnBindingInvoked.AddUniqueDynamic(
+                this, &ThisClass::HandleButtonBindingInvoked);
             return true;
         },
-        OrderedButtons))
+        OrderedWidgets))
     {
         return false;
     }
-    for (int32 Index = 0; Index < OrderedButtons.Num(); ++Index)
+
+    if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
     {
-        UVerticalBoxSlot* Slot = Cast<UVerticalBoxSlot>(ButtonContainer->GetSlots()[Index]);
-        if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+        for (int32 Index = 0; Index < OrderedWidgets.Num(); ++Index)
         {
-            if (Slot != nullptr) Slot->SetPadding(Theme->ButtonListItemPadding);
+            if (UVerticalBoxSlot* Slot = Cast<UVerticalBoxSlot>(ButtonContainer->GetSlots()[Index]))
+            {
+                Slot->SetPadding(Theme->ButtonListItemPadding);
+            }
         }
     }
-    AppliedButtonModels = ButtonModels;
 
+    AppliedModels = InModels;
     return true;
 }
 
-bool UGV2ButtonListWidgetBase::CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels) const
+void UGV2ButtonListWidgetBase::ResetButtonModels()
 {
-    const TSubclassOf<UGV2ButtonWidgetBase> ResolvedButtonWidgetClass = ResolveButtonWidgetClass();
-    if (ButtonContainer == nullptr || ResolvedButtonWidgetClass == nullptr)
+    AppliedModels.Reset();
+    ButtonsByKey.Reset();
+    if (ButtonContainer != nullptr)
     {
-        UE_LOG(
-            LogGV2ButtonListWidget,
-            Error,
-            TEXT("CanApplyButtonModels rejected: ButtonContainer=%s ButtonWidgetClass=%s"),
-            ButtonContainer != nullptr ? TEXT("bound") : TEXT("null"),
-            ResolvedButtonWidgetClass != nullptr ? *ResolvedButtonWidgetClass->GetPathName() : TEXT("null"));
-        return false;
+        ButtonContainer->ClearChildren();
+    }
+}
+
+UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName Key) const
+{
+    if (ButtonContainer == nullptr || Key.IsNone())
+    {
+        return nullptr;
     }
 
-    TSet<FName> Keys;
-    for (const FGV2ButtonViewModel& ButtonModel : ButtonModels)
+    for (UWidget* Child : ButtonContainer->GetAllChildren())
     {
-        if (ButtonModel.Key.IsNone() || Keys.Contains(ButtonModel.Key)
-            || !ButtonModel.Binding.IsValid())
+        if (UGV2ButtonWidgetBase* Btn = Cast<UGV2ButtonWidgetBase>(Child))
         {
-            UE_LOG(LogGV2ButtonListWidget, Error, TEXT("CanApplyButtonModels rejected an invalid key or binding"));
-            return false;
+            if (Btn->GetKey() == Key)
+            {
+                return Btn;
+            }
         }
-        Keys.Add(ButtonModel.Key);
     }
-
-    return true;
+    return nullptr;
 }
 
 TSubclassOf<UGV2ButtonWidgetBase> UGV2ButtonListWidgetBase::ResolveButtonWidgetClass() const
@@ -101,9 +145,22 @@ TSubclassOf<UGV2ButtonWidgetBase> UGV2ButtonListWidgetBase::ResolveButtonWidgetC
     }
 
     const UGV2ButtonListWidgetBase* ClassDefault = GetClass()->GetDefaultObject<UGV2ButtonListWidgetBase>();
-    return ClassDefault != nullptr && ClassDefault != this
-        ? ClassDefault->ButtonWidgetClass
-        : nullptr;
+    if (ClassDefault != nullptr && ClassDefault != this && ClassDefault->ButtonWidgetClass != nullptr)
+    {
+        return ClassDefault->ButtonWidgetClass;
+    }
+
+    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
+    {
+        return Found;
+    }
+
+    if (UClass* Loaded = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
+    {
+        return Loaded;
+    }
+
+    return UGV2ButtonWidgetBase::StaticClass();
 }
 
 void UGV2ButtonListWidgetBase::HandleButtonBindingInvoked(
@@ -111,48 +168,6 @@ void UGV2ButtonListWidgetBase::HandleButtonBindingInvoked(
     const EGV2SubmitUiInteractionResult Result)
 {
     OnBindingInvoked.Broadcast(BindingHandle, Result);
-}
-
-FGV2ScreenFieldDescriptor UGV2ButtonListWidgetBase::GetScreenFieldDescriptor_Implementation() const
-{
-    FGV2ScreenFieldDescriptor Descriptor;
-    Descriptor.FieldId = ScreenFieldId;
-    Descriptor.SchemaId = TEXT("core:schema.ui_field.button_list.v2");
-    Descriptor.bRequired = bScreenFieldRequired;
-    return Descriptor;
-}
-
-bool UGV2ButtonListWidgetBase::CanApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue) const
-{
-    return FieldValue.FieldId == ScreenFieldId
-        && FieldValue.SchemaId == TEXT("core:schema.ui_field.button_list.v2")
-        && CanApplyButtonModels(FieldValue.ButtonListValue);
-}
-
-bool UGV2ButtonListWidgetBase::ApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue)
-{
-    return CanApplyScreenField_Implementation(FieldValue)
-        && ApplyButtonModels(FieldValue.ButtonListValue);
-}
-
-bool UGV2ButtonListWidgetBase::CaptureScreenField_Implementation(
-    FGV2ScreenFieldValue& OutFieldValue) const
-{
-    if (ButtonContainer == nullptr || ScreenFieldId.IsNone())
-    {
-        return false;
-    }
-    OutFieldValue = FGV2ScreenFieldValue::MakeButtonList(
-        ScreenFieldId,
-        AppliedButtonModels);
-    return true;
-}
-
-bool UGV2ButtonListWidgetBase::ResetScreenField_Implementation()
-{
-    return ApplyButtonModels({});
 }
 
 bool UGV2ButtonListWidgetBase::ApplyCentralStyle_Implementation()
@@ -172,3 +187,4 @@ bool UGV2ButtonListWidgetBase::ApplyCentralStyle_Implementation()
     }
     return true;
 }
+

@@ -4,23 +4,23 @@
 #include "Components/PanelWidget.h"
 #include "UI/GV2KeyedCollection.h"
 #include "UI/GV2UiStyleConsumer.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "GV2ListViewWidgetBase.generated.h"
 
 class UPanelWidget;
 
 /**
- * UGV2ListViewWidgetBase (UIF-13, UIH-01, ADR-0035)
+ * UGV2ListViewWidgetBase (UIF-13, UIH-01, ADR-0035, ADR-0040)
  * Generalized list container supporting vertical, horizontal, or wrap layout.
  * Reconciles child widgets by unique non-empty keys using FGV2KeyedCollection.
- * Container hierarchy and preflight validation are transactional (no widget creation
- * or child reordering occurs if validation or creation fails). If an individual item
- * apply fails, container children remain unchanged while full field/screen-level rollback
- * is handled by the calling composite screen element (UGV2ScreenWidgetBase).
+ * Container hierarchy and item mutations are fully atomic via two-phase Prepare/Commit:
+ * if any item fails during prepare, no widget is mutated and container children remain unchanged.
  */
 UCLASS(Blueprintable)
 class GV2_API UGV2ListViewWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer
+    , public IGV2UiPropertyHost
 {
     GENERATED_BODY()
 
@@ -43,6 +43,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|ListView")
     UWidget* GetEntryWidget(FName Key) const { return ActiveWidgetsByKey.FindRef(Key); }
 
+    const TMap<FName, TObjectPtr<UWidget>>& GetActiveWidgetsMap() const { return ActiveWidgetsByKey; }
+    void SetActiveWidgetsMap(const TMap<FName, TObjectPtr<UWidget>>& InMap) { ActiveWidgetsByKey = InMap; }
+
     template <typename WidgetType = UWidget>
     WidgetType* GetEntry(FName Key) const
     {
@@ -59,6 +62,63 @@ public:
     void ClearEntries();
 
     virtual bool ApplyCentralStyle_Implementation() override;
+
+    // IGV2UiPropertyHost
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    /**
+     * Reconciles entries into the container panel in two phases (Prepare / Commit) using FGV2KeyedCollection.
+     * All items are prepared off-tree without mutating widgets. If ANY PrepareItem fails,
+     * reconciliation returns false and NO widget is mutated.
+     */
+    template <typename WidgetType, typename ModelType, typename PreparedType>
+    bool ReconcilePreparedEntries(
+        TConstArrayView<ModelType> Models,
+        TFunctionRef<FName(const ModelType&)> GetKey,
+        TFunctionRef<WidgetType*()> CreateItem,
+        TFunctionRef<bool(WidgetType&, const ModelType&, PreparedType&)> PrepareItem,
+        TFunctionRef<void(WidgetType&, const PreparedType&)> CommitItem,
+        TFunction<bool(const ModelType&)> CanApplyItem = nullptr)
+    {
+        if (ContainerPanel == nullptr)
+        {
+            return false;
+        }
+
+        TMap<FName, TObjectPtr<WidgetType>> TypedActiveByKey;
+        for (const auto& Pair : ActiveWidgetsByKey)
+        {
+            if (WidgetType* TypedWidget = Cast<WidgetType>(Pair.Value))
+            {
+                TypedActiveByKey.Add(Pair.Key, TypedWidget);
+            }
+        }
+
+        TArray<WidgetType*> OutWidgets;
+        const bool bSuccess = FGV2KeyedCollection::ReconcilePrepared<WidgetType, ModelType, PreparedType>(
+            ContainerPanel,
+            Models,
+            TypedActiveByKey,
+            GetKey,
+            CreateItem,
+            PrepareItem,
+            CommitItem,
+            OutWidgets,
+            CanApplyItem);
+
+        if (bSuccess)
+        {
+            ActiveWidgetsByKey.Reset();
+            for (const auto& Pair : TypedActiveByKey)
+            {
+                ActiveWidgetsByKey.Add(Pair.Key, Pair.Value);
+            }
+            return true;
+        }
+        return false;
+    }
 
     /**
      * Reconciles entries into the container panel using FGV2KeyedCollection.
@@ -124,4 +184,6 @@ protected:
 
     UPROPERTY(Transient)
     TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
+
+    FGV2UiPropertyHostState PropertyHostState;
 };

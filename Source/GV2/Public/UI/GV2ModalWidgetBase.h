@@ -1,7 +1,8 @@
 #pragma once
 
 #include "CommonUserWidget.h"
-#include "UI/GV2DynamicScreenElement.h"
+#include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "GV2ModalWidgetBase.generated.h"
 
@@ -10,32 +11,73 @@ class UButton;
 class UGV2ButtonListWidgetBase;
 
 /**
- * UGV2ModalWidgetBase (UIF-15, ADR-0035)
+ * UGV2ModalWidgetBase (UIF-15, ADR-0035, UPP-22)
  * Modal dialogue widget with title, message content, action buttons, and backdrop dimming.
  * Belongs to the modal_stack presentation layer and blocks lower layers from interaction.
- * Implements IGV2DynamicScreenElement for "core:schema.ui_field.modal.v1".
+ * Implements IGV2UiPropertyHost for "core:schema.ui_field.modal.v1".
  */
 UCLASS(Blueprintable)
 class GV2_API UGV2ModalWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
+    , public IGV2UiPropertyHost
+    , public IGV2UiBindingTarget
     , public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
 public:
-    // IGV2DynamicScreenElement
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const override;
-    virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) override;
-    virtual bool ResetScreenField_Implementation() override;
+    // IGV2UiPropertyHost
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2UiBindingTarget
+    virtual void SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle) override;
+    virtual FGV2UiBindingHandle GetBindingHandle() const override;
 
     // IGV2UiStyleConsumer
     virtual bool ApplyCentralStyle_Implementation() override;
 
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Modal")
+    bool ApplyTitle(const FGV2TextViewModel& InTitle);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Modal")
+    const FGV2TextViewModel& GetTitle() const { return CurrentTitle; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Modal")
+    bool ApplyContent(const FGV2TextViewModel& InContent);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Modal")
+    const FGV2TextViewModel& GetContent() const { return CurrentContent; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Modal")
+    UGV2ButtonListWidgetBase* GetButtonList() const { return ButtonList; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Modal")
+    UCommonTextBlock* GetTitleText() const { return TitleText; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Modal")
+    UCommonTextBlock* GetContentText() const { return ContentText; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Modal")
+    UButton* GetBackdropButton() const { return BackdropButton; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Modal")
+    EGV2SubmitUiInteractionResult SubmitBackdropClose();
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Properties")
+    void SetKey(FName InKey) { Key = InKey; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Properties")
+    FName GetKey() const { return Key; }
+
 protected:
     virtual void NativePreConstruct() override;
+    virtual void NativeConstruct() override;
+    virtual void NativeDestruct() override;
+
+    UFUNCTION()
+    void HandleBackdropButtonClicked();
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UCommonTextBlock> TitleText;
@@ -49,15 +91,17 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UButton> BackdropButton;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Modal")
-    FName FieldId = TEXT("modal");
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Properties")
+    FName Key;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Modal")
-    FString SchemaId = TEXT("core:schema.ui_field.modal.v1");
+    FGV2UiPropertyHostState PropertyHostState;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Modal")
-    bool bIsRequired = false;
+    UPROPERTY(Transient)
+    FGV2TextViewModel CurrentTitle;
 
-private:
-    FGV2ModalViewModel CurrentModel;
+    UPROPERTY(Transient)
+    FGV2TextViewModel CurrentContent;
+
+    UPROPERTY(Transient)
+    FGV2UiBindingHandle BackdropCloseBinding;
 };

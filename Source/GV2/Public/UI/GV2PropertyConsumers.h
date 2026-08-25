@@ -5,6 +5,7 @@
 #include "UI/GV2UiCapability.h"
 
 class UWidget;
+class FGV2UiHostMutationPlan;
 
 /**
  * Base interface for all reusable property consumers.
@@ -178,6 +179,92 @@ public:
 
 private:
     FGV2UiBindingHandle PreparedBinding;
+};
+
+/**
+ * Keyed collection consumer: reconciles an array of objects into a collection container
+ * (e.g. UGV2ListViewWidgetBase or UPanelWidget), matching elements by stable FName keys.
+ * Fully atomic: prepares ALL child items and their mutation plans before Commit.
+ * If any item fails Prepare, no widget is mutated or committed.
+ */
+class GV2_API FGV2KeyedCollectionPropertyConsumer : public IGV2PropertyConsumer
+{
+public:
+    virtual EGV2PreparedUiValueKind GetSupportedKind() const override { return EGV2PreparedUiValueKind::Array; }
+    virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
+    virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
+    virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
+    virtual void Reset(UWidget* TargetWidget) override;
+
+    const TMap<FName, TObjectPtr<UWidget>>& GetActiveWidgetsByKey() const { return ActiveWidgetsByKey; }
+
+private:
+    struct FPreparedCollectionItem
+    {
+        FName Key;
+        TObjectPtr<UWidget> Widget;
+        TSharedPtr<FGV2UiHostMutationPlan> Plan;
+        bool bIsHost = false;
+    };
+
+    FString KeyPropertyName = TEXT("key");
+    TArray<FPreparedCollectionItem> PreparedItems;
+    TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
+    TMap<FName, TObjectPtr<UWidget>> CandidateWidgetsByKey;
+};
+
+/**
+ * RichText spans consumer: parses and preflights interactive spans array for UGV2RichTextWidgetBase.
+ * Validates canonical span keys, hover payloads, themes, and ensures all referenced runs match.
+ */
+class GV2_API FGV2RichTextSpansPropertyConsumer : public IGV2PropertyConsumer
+{
+public:
+    virtual EGV2PreparedUiValueKind GetSupportedKind() const override { return EGV2PreparedUiValueKind::Array; }
+    virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
+    virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
+    virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
+    virtual void Reset(UWidget* TargetWidget) override;
+
+    const TArray<FGV2RichTextSpanViewModel>& GetPreparedSpans() const { return PreparedSpans; }
+
+private:
+    TArray<FGV2RichTextSpanViewModel> PreparedSpans;
+};
+
+class UGV2ScreenWidgetBase;
+
+/**
+ * TabContainer tabs consumer: parses and preflights tabs array for UGV2TabContainerWidgetBase.
+ * Resolves each tab's screen_id via Screen Registry during Prepare off-tree.
+ * Creates/reconciles child screen widgets off-tree and validates child fields.
+ * If any child fails, rejects entire tab container off-tree.
+ */
+class GV2_API FGV2TabContainerTabsPropertyConsumer : public IGV2PropertyConsumer
+{
+public:
+    struct FPreparedTabItem
+    {
+        FName Key;
+        FGV2TextViewModel Title;
+        FString ScreenId;
+        TSubclassOf<UGV2ScreenWidgetBase> ScreenWidgetClass;
+        TObjectPtr<UGV2ScreenWidgetBase> ScreenWidget;
+        TSharedPtr<FGV2UiHostMutationPlan> ChildMutationPlan;
+        bool bHasChildPlan = false;
+    };
+
+    virtual EGV2PreparedUiValueKind GetSupportedKind() const override { return EGV2PreparedUiValueKind::Array; }
+    virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
+    virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
+    virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
+    virtual void Reset(UWidget* TargetWidget) override;
+
+    const TArray<FPreparedTabItem>& GetPreparedTabs() const { return PreparedTabs; }
+
+private:
+    TArray<FPreparedTabItem> PreparedTabs;
+    TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> CandidateWidgetsByKey;
 };
 
 /**

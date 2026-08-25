@@ -1,4 +1,5 @@
 #include "UI/GV2UiCapability.h"
+#include "Blueprint/UserWidget.h"
 
 static bool IsModNamespace(const FString& InSchemaId)
 {
@@ -69,7 +70,8 @@ bool FGV2UiPropertyCapability::operator==(const FGV2UiPropertyCapability& Other)
         && NumberMin == Other.NumberMin
         && NumberMax == Other.NumberMax
         && bRequiresKeyedIdentity == Other.bRequiresKeyedIdentity
-        && KeyPropertyName == Other.KeyPropertyName;
+        && KeyPropertyName == Other.KeyPropertyName
+        && EntryWidgetClass == Other.EntryWidgetClass;
 }
 
 // --- FGV2UiCapabilityBuilder ---
@@ -167,7 +169,10 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddBinding(const FString& Name
     return *this;
 }
 
-FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddObject(const FString& Name, const FName& TargetName, FGV2UiCapabilityTree InChildTree)
+FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddObject(
+    const FString& Name,
+    const FName& TargetName,
+    FGV2UiCapabilityTree InChildTree)
 {
     FGV2UiPropertyCapability Cap;
     Cap.PropertyName = Name;
@@ -183,7 +188,8 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddKeyedCollection(
     const FString& Name,
     const FName& TargetName,
     FGV2UiPropertyCapability ItemCapability,
-    const FString& KeyField)
+    const FString& KeyField,
+    TSubclassOf<UUserWidget> EntryWidgetClass)
 {
     FGV2UiPropertyCapability Cap;
     Cap.PropertyName = Name;
@@ -192,7 +198,24 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddKeyedCollection(
     Cap.TargetName = TargetName;
     Cap.bRequiresKeyedIdentity = true;
     Cap.KeyPropertyName = KeyField;
+    Cap.EntryWidgetClass = EntryWidgetClass;
     Cap.ItemCapability = MakeShared<FGV2UiPropertyCapability>(MoveTemp(ItemCapability));
+    Tree.Properties.Add(Name, MoveTemp(Cap));
+    return *this;
+}
+
+FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddNestedScreenCollection(
+    const FString& Name,
+    const FName& TargetName,
+    const FString& KeyField)
+{
+    FGV2UiPropertyCapability Cap;
+    Cap.PropertyName = Name;
+    Cap.SupportedKind = EGV2PreparedUiValueKind::Array;
+    Cap.TargetType = EGV2UiCapabilityTargetType::NestedScreen;
+    Cap.TargetName = TargetName;
+    Cap.bRequiresKeyedIdentity = true;
+    Cap.KeyPropertyName = KeyField;
     Tree.Properties.Add(Name, MoveTemp(Cap));
     return *this;
 }

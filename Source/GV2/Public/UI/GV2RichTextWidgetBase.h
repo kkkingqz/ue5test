@@ -1,6 +1,6 @@
 #pragma once
 
-#include "UI/GV2DynamicScreenElement.h"
+#include "Bridge/GV2BridgeTypes.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "CommonUserWidget.h"
@@ -20,7 +20,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(
 UCLASS(Blueprintable)
 class GV2_API UGV2RichTextWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
     , public IGV2UiPropertyHost
     , public IGV2UiStyleConsumer
 {
@@ -38,7 +37,22 @@ public:
     FName GetKey() const { return Key; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Rich Text")
-    void ApplyInteractiveRichText(const FGV2InteractiveRichTextViewModel& Content);
+    bool ApplyText(const FGV2TextViewModel& InText);
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Rich Text")
+    bool ApplyTextViewModel(const FGV2TextViewModel& InText) { return ApplyText(InText); }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Rich Text")
+    const FGV2TextViewModel& GetTextViewModel() const { return CurrentText; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Rich Text")
+    bool ApplySpans(const TArray<FGV2RichTextSpanViewModel>& InSpans);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Rich Text")
+    const TArray<FGV2RichTextSpanViewModel>& GetSpans() const { return CurrentSpans; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Rich Text")
+    void ApplyInteractiveRichText(const FGV2TextViewModel& InText, const TArray<FGV2RichTextSpanViewModel>& InSpans);
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Rich Text")
     bool HasInteractiveSpan(FName SpanId) const;
@@ -55,25 +69,11 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI|Rich Text")
     FGV2RichTextSpanInvoked OnSpanInvoked;
 
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) override;
-    virtual bool CaptureScreenField_Implementation(
-        FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ResetScreenField_Implementation() override;
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeDestruct() override;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    FName ScreenFieldId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    bool bScreenFieldRequired = true;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UCommonRichTextBlock> RichTextBlock;
@@ -87,7 +87,10 @@ protected:
     FGV2UiPropertyHostState PropertyHostState;
 
     UPROPERTY(Transient)
-    FGV2InteractiveRichTextViewModel CurrentContent;
+    FGV2TextViewModel CurrentText;
+
+    UPROPERTY(Transient)
+    TArray<FGV2RichTextSpanViewModel> CurrentSpans;
 
     TMap<FName, int32> SpanIndexById;
 };

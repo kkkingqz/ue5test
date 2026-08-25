@@ -617,8 +617,8 @@ void UGV2LocationCommandPanelWidgetBase::HandleButtonBindingInvoked(FGV2UiBindin
 }
 
 FGV2ScreenFieldDescriptor UGV2LocationCommandPanelWidgetBase::GetScreenFieldDescriptor_Implementation() const { return D(TEXT("commands"), TEXT("textsystem:schema.ui_field.location_commands.v1")); }
-bool UGV2LocationCommandPanelWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) const { return V.FieldId == TEXT("commands") && V.SchemaId == TEXT("textsystem:schema.ui_field.location_commands.v1") && CanApplyButtonModels(V.ButtonListValue); }
-bool UGV2LocationCommandPanelWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) { return CanApplyScreenField_Implementation(V) && ApplyButtonModels(V.ButtonListValue); }
+bool UGV2LocationCommandPanelWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) const { return V.FieldId == TEXT("commands") && V.SchemaId == TEXT("textsystem:schema.ui_field.location_commands.v1") && CanApplyButtonModels(V.LocationCommandsValue); }
+bool UGV2LocationCommandPanelWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& V) { return CanApplyScreenField_Implementation(V) && ApplyButtonModels(V.LocationCommandsValue); }
 bool UGV2LocationCommandPanelWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& O) const { O = FGV2ScreenFieldValue::MakeLocationCommands(TEXT("commands"), AppliedButtonModels); return true; }
 bool UGV2LocationCommandPanelWidgetBase::ResetScreenField_Implementation()
 {

@@ -64,7 +64,7 @@ decisions:
 - [x] M2 — [Prepared Values and Property Host](PreparedValuesAndHost.md): подготовленное дерево, host, consumers, Prepare/Commit, harness наблюдаемости. UPP-07…11.
 - [x] M3 — [Proving Slice and Gate](ProvingSliceAndGate.md): Text, Image, Button мигрированы, гейт go/no-go пройден. UPP-12…15.
 - [x] M4 — [Remaining Leaves](RemainingLeaves.md): Checkbox, InputField, ProgressBar, Portrait, RichText. UPP-16…19.
-- [ ] M5 — [Collections and Composites](CollectionsAndComposites.md): keyed collection, ButtonList, Dropdown, Modal, TabContainer. UPP-20…23.
+- [x] M5 — [Collections and Composites](CollectionsAndComposites.md): keyed collection, ButtonList, Dropdown, Modal, TabContainer. UPP-20…23.
 - [ ] M6 — [LocationScreen](LocationScreen.md): четыре композита и приведение контента. UPP-24…26.
 - [ ] M7 — [Screen and Document Transaction](ScreenAndDocument.md): предиктивный preflight, атомарный документ. UPP-27…29.
 - [ ] M8 — [Teardown and Closure](TeardownAndClosure.md): каркас снят, контракты приведены, закрытия проверены. UPP-30…32.
@@ -100,7 +100,7 @@ M4, M5, M6 внутри себя допускают перестановку з�
 - [ ] Схема, требующая свойства, которого виджет не умеет, отклоняется до `Ready`. (UPP-08, UPP-14)
 - [ ] Prepare не меняет живое состояние ни при валидном, ни при невалидном входе. (UPP-10)
 - [ ] Отказ Commit не публикует экран, сохраняет предыдущую ревизию и даёт диагностику с путём до свойства. (UPP-10)
-- [ ] Отказ ребёнка структурно не может дать успех родителя. (UPP-20…23)
+- [x] Отказ ребёнка структурно не может дать успех родителя. (UPP-20…23)
 - [ ] Гейт go/no-go пройден на срезе из трёх элементов. (UPP-15)
 - [ ] «Политика масштабирования не объявлена» выразимо и отклоняется; `STATUS-003` удалён. (UPP-13)
 - [ ] Предиктивный preflight предсказывает отказ глубокого ребёнка; `STATUS-004` удалён. (UPP-27)

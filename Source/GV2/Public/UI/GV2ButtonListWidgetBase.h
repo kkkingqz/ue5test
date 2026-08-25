@@ -2,7 +2,7 @@
 
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
-#include "UI/GV2DynamicScreenElement.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "GV2ButtonListWidgetBase.generated.h"
 
@@ -17,39 +17,42 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 UCLASS(Blueprintable)
 class GV2_API UGV2ButtonListWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
+    , public IGV2UiPropertyHost
     , public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
 public:
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    bool ApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels);
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    bool CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& ButtonModels) const;
-
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI")
     FGV2ButtonListBindingInvoked OnBindingInvoked;
 
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) override;
-    virtual bool CaptureScreenField_Implementation(
-        FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ResetScreenField_Implementation() override;
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    bool ApplyButtonModels(const TArray<FGV2ButtonViewModel>& InModels);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    bool CanApplyButtonModels(const TArray<FGV2ButtonViewModel>& InModels) const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void ResetButtonModels();
+
+    const TArray<FGV2ButtonViewModel>& GetAppliedButtonModels() const { return AppliedModels; }
+
+    UVerticalBox* GetButtonContainer() const { return ButtonContainer; }
+    void SetButtonContainer(UVerticalBox* InContainer) { ButtonContainer = InContainer; }
+
+    UGV2ButtonWidgetBase* GetButton(FName Key) const;
+
+    TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
+
     virtual bool ApplyCentralStyle_Implementation() override;
+
+    // IGV2UiPropertyHost
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
 protected:
     virtual void NativePreConstruct() override;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    FName ScreenFieldId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    bool bScreenFieldRequired = true;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UVerticalBox> ButtonContainer;
@@ -58,16 +61,16 @@ protected:
     TSubclassOf<UGV2ButtonWidgetBase> ButtonWidgetClass;
 
 private:
-    TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
-
     UFUNCTION()
     void HandleButtonBindingInvoked(
         FGV2UiBindingHandle BindingHandle,
         EGV2SubmitUiInteractionResult Result);
 
     UPROPERTY(Transient)
-    TArray<FGV2ButtonViewModel> AppliedButtonModels;
+    TArray<FGV2ButtonViewModel> AppliedModels;
 
     UPROPERTY(Transient)
     TMap<FName, TObjectPtr<UGV2ButtonWidgetBase>> ButtonsByKey;
+
+    FGV2UiPropertyHostState PropertyHostState;
 };

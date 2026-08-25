@@ -35,18 +35,16 @@ BRIDGE_TYPES_PATH = REPO_ROOT / "Source" / "GV2" / "Public" / "Bridge" / "GV2Bri
 # migration change set proves it actually deleted its legacy adapter/DTO/union branch,
 # per the plan's rule 2 ("удаляет свой PrepareXxx/BuildXxx/DTO/ветку union").
 BASELINES = {
-    "prepare_build_functions": 20,
-    "screen_field_value_payload_members": 8,
-    "schema_specific_dtos": 16,
+    "prepare_build_functions": 10,
+    "screen_field_value_payload_members": 4,
+    "schema_specific_dtos": 10,
 }
 
 PREPARE_BUILD_PATTERN = re.compile(r"^bool (Prepare|Build)[A-Z][A-Za-z0-9_]*\(", re.MULTILINE)
 
-# FGV2ScreenFieldValue's identity fields (not payload) and its one member that is not
-# a UPROPERTY (TSharedPtr<FGV2TabContainerViewModel> cannot be reflected: the type is
-# only forward-declared at the point of the struct's definition).
+# FGV2ScreenFieldValue's identity fields (not payload).
 SCREEN_FIELD_VALUE_IDENTITY_FIELDS = 2  # FieldId, SchemaId
-SCREEN_FIELD_VALUE_UNREFLECTED_PAYLOAD_MEMBERS = ["TabContainerValue"]
+SCREEN_FIELD_VALUE_UNREFLECTED_PAYLOAD_MEMBERS: list[str] = []
 
 STRUCT_PATTERN = re.compile(r"^struct GV2_API ([A-Za-z0-9_]+)", re.MULTILINE)
 UPROPERTY_PATTERN = re.compile(r"UPROPERTY\(")
@@ -170,7 +168,7 @@ def run_self_test() -> bool:
 
         fake_bridge = fake_root / "GV2BridgeTypes.h"
         bridge_source = BRIDGE_TYPES_PATH.read_text(encoding="utf-8")
-        marker = "static FGV2ScreenFieldValue MakeButtonList("
+        marker = "static FGV2ScreenFieldValue MakeLocationTopBar("
         injected = bridge_source.replace(
             marker,
             "UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = \"GV2|UI|Screen\")\n"

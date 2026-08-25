@@ -1,6 +1,7 @@
 #include "UI/GV2ListViewWidgetBase.h"
 
 #include "UI/GV2UiTheme.h"
+#include "UI/GV2UiCapability.h"
 
 void UGV2ListViewWidgetBase::NativePreConstruct()
 {
@@ -60,4 +61,11 @@ bool UGV2ListViewWidgetBase::ApplyCentralStyle_Implementation()
         return false;
     }
     return true;
+}
+
+void UGV2ListViewWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    FGV2UiPropertyCapability ItemCap;
+    ItemCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+    OutBuilder.AddKeyedCollection(TEXT("items"), FName(TEXT("ContainerPanel")), ItemCap, TEXT("key"));
 }

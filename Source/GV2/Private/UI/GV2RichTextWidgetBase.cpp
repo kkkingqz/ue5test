@@ -25,13 +25,13 @@ bool IsCanonicalSpanId(const FName SpanId)
     return GV2StableIdUE::IsValidSegment(Value);
 }
 
-bool ValidateInteractiveContent(const FGV2InteractiveRichTextViewModel& Content)
+bool ValidateInteractiveContent(const FGV2TextViewModel& Text, const TArray<FGV2RichTextSpanViewModel>& Spans)
 {
     bool bHasHover = false;
-    TMap<FName, const FGV2RichTextSpanViewModel*> Spans;
-    for (const FGV2RichTextSpanViewModel& Span : Content.Spans)
+    TMap<FName, const FGV2RichTextSpanViewModel*> SpansMap;
+    for (const FGV2RichTextSpanViewModel& Span : Spans)
     {
-        if (!IsCanonicalSpanId(Span.SpanId) || Spans.Contains(Span.SpanId)
+        if (!IsCanonicalSpanId(Span.SpanId) || SpansMap.Contains(Span.SpanId)
             || (Span.Hover.IsEmpty() && !Span.Binding.IsValid()))
         {
             return false;
@@ -40,7 +40,7 @@ bool ValidateInteractiveContent(const FGV2InteractiveRichTextViewModel& Content)
         {
             bHasHover = true;
         }
-        Spans.Add(Span.SpanId, &Span);
+        SpansMap.Add(Span.SpanId, &Span);
     }
 
     if (bHasHover)
@@ -52,7 +52,12 @@ bool ValidateInteractiveContent(const FGV2InteractiveRichTextViewModel& Content)
         }
     }
 
-    const FString SourceMarkup = Content.Text.Text.ToString();
+    const FString SourceMarkup = Text.Text.ToString();
+    if (SourceMarkup.IsEmpty())
+    {
+        return Spans.IsEmpty();
+    }
+
     FString Markup;
     FString MarkupError;
     if (!UGV2TextPipeline::NormalizeMarkup(SourceMarkup, Markup, MarkupError))
@@ -79,7 +84,7 @@ bool ValidateInteractiveContent(const FGV2InteractiveRichTextViewModel& Content)
             const FName SpanId(*Processed.Mid(
                 IdRange->BeginIndex,
                 IdRange->EndIndex - IdRange->BeginIndex));
-            if (!Spans.Contains(SpanId))
+            if (!SpansMap.Contains(SpanId))
             {
                 return false;
             }
@@ -144,8 +149,6 @@ public:
             }
         }
 
-        // No raw unstyled fallback: rendering hover content outside the popover pipeline
-        // silently bypasses central styling and hides a missing renderer configuration.
         UE_LOG(
             LogTemp,
             Error,
@@ -186,45 +189,62 @@ void UGV2RichTextWidgetBase::NativePreConstruct()
 void UGV2RichTextWidgetBase::NativeDestruct()
 {
     SpanIndexById.Reset();
-    CurrentContent = {};
+    CurrentText = {};
+    CurrentSpans.Reset();
     Super::NativeDestruct();
 }
 
-void UGV2RichTextWidgetBase::ApplyInteractiveRichText(
-    const FGV2InteractiveRichTextViewModel& Content)
+bool UGV2RichTextWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 {
-    check(ValidateInteractiveContent(Content));
-    CurrentContent = Content;
+    CurrentText = InText;
     if (RichTextBlock == nullptr)
     {
-        return;
+        return false;
     }
     if (const TSubclassOf<UCommonTextStyle> Style =
-            UGV2TextPipeline::ResolveStyleClass(CurrentContent.Text.StyleToken))
+            UGV2TextPipeline::ResolveStyleClass(CurrentText.StyleToken))
     {
         RichTextBlock->SetStyle(Style);
     }
     FTextBlockStyle DefaultStyle;
-    if (UGV2TextPipeline::ResolveStyle(CurrentContent.Text.StyleToken, DefaultStyle, this))
+    if (UGV2TextPipeline::ResolveStyle(CurrentText.StyleToken, DefaultStyle, this))
     {
         RichTextBlock->SetDefaultTextStyle(DefaultStyle);
     }
-    SpanIndexById.Reset();
-    for (int32 Index = 0; Index < CurrentContent.Spans.Num(); ++Index)
-    {
-        SpanIndexById.Add(CurrentContent.Spans[Index].SpanId, Index);
-    }
-    FString Markup = CurrentContent.Text.NormalizedMarkup;
-    if (Markup.IsEmpty() && !CurrentContent.Text.Text.IsEmpty())
+    FString Markup = CurrentText.NormalizedMarkup;
+    if (Markup.IsEmpty() && !CurrentText.Text.IsEmpty())
     {
         FString Error;
-        check(UGV2TextPipeline::NormalizeMarkup(CurrentContent.Text.Text.ToString(), Markup, Error));
+        if (!UGV2TextPipeline::NormalizeMarkup(CurrentText.Text.ToString(), Markup, Error))
+        {
+            return false;
+        }
     }
     RichTextBlock->SetText(FText::FromString(Markup));
     if (RichTextScrollBox != nullptr)
     {
         RichTextScrollBox->ScrollToStart();
     }
+    return true;
+}
+
+bool UGV2RichTextWidgetBase::ApplySpans(const TArray<FGV2RichTextSpanViewModel>& InSpans)
+{
+    CurrentSpans = InSpans;
+    SpanIndexById.Reset();
+    for (int32 Index = 0; Index < CurrentSpans.Num(); ++Index)
+    {
+        SpanIndexById.Add(CurrentSpans[Index].SpanId, Index);
+    }
+    return true;
+}
+
+void UGV2RichTextWidgetBase::ApplyInteractiveRichText(
+    const FGV2TextViewModel& InText,
+    const TArray<FGV2RichTextSpanViewModel>& InSpans)
+{
+    ApplyText(InText);
+    ApplySpans(InSpans);
 }
 
 bool UGV2RichTextWidgetBase::HasInteractiveSpan(const FName SpanId) const
@@ -236,8 +256,8 @@ const FGV2RichTextSpanViewModel* UGV2RichTextWidgetBase::FindInteractiveSpan(
     const FName SpanId) const
 {
     const int32* Index = SpanIndexById.Find(SpanId);
-    return Index != nullptr && CurrentContent.Spans.IsValidIndex(*Index)
-        ? &CurrentContent.Spans[*Index]
+    return Index != nullptr && CurrentSpans.IsValidIndex(*Index)
+        ? &CurrentSpans[*Index]
         : nullptr;
 }
 
@@ -276,7 +296,7 @@ FTextBlockStyle UGV2RichTextWidgetBase::ResolveRunTextStyle(
 {
     FTextBlockStyle Result;
     const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    const FName EffectiveStyle = Style.IsNone() ? CurrentContent.Text.StyleToken : Style;
+    const FName EffectiveStyle = Style.IsNone() ? CurrentText.StyleToken : Style;
     if (EffectiveStyle == TEXT("default") || EffectiveStyle.IsNone())
     {
         if (Theme != nullptr && Theme->RichTextStyle != nullptr)
@@ -323,58 +343,6 @@ FHyperlinkStyle UGV2RichTextWidgetBase::ResolveInteractiveTextStyle(
     return Result;
 }
 
-FGV2ScreenFieldDescriptor UGV2RichTextWidgetBase::GetScreenFieldDescriptor_Implementation() const
-{
-    FGV2ScreenFieldDescriptor Descriptor;
-    Descriptor.FieldId = ScreenFieldId;
-    Descriptor.SchemaId = TEXT("core:schema.ui_field.rich_text.v3");
-    Descriptor.bRequired = bScreenFieldRequired;
-    return Descriptor;
-}
-
-bool UGV2RichTextWidgetBase::CanApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue) const
-{
-    return RichTextBlock != nullptr
-        && FieldValue.FieldId == ScreenFieldId
-        && FieldValue.SchemaId == TEXT("core:schema.ui_field.rich_text.v3")
-        && ValidateInteractiveContent(FieldValue.InteractiveRichTextValue);
-}
-
-bool UGV2RichTextWidgetBase::ApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue)
-{
-    if (!CanApplyScreenField_Implementation(FieldValue))
-    {
-        return false;
-    }
-    ApplyInteractiveRichText(FieldValue.InteractiveRichTextValue);
-    return true;
-}
-
-bool UGV2RichTextWidgetBase::CaptureScreenField_Implementation(
-    FGV2ScreenFieldValue& OutFieldValue) const
-{
-    if (RichTextBlock == nullptr || ScreenFieldId.IsNone())
-    {
-        return false;
-    }
-    OutFieldValue = FGV2ScreenFieldValue::MakeInteractiveRichText(
-        ScreenFieldId,
-        CurrentContent);
-    return true;
-}
-
-bool UGV2RichTextWidgetBase::ResetScreenField_Implementation()
-{
-    if (RichTextBlock == nullptr)
-    {
-        return false;
-    }
-    ApplyInteractiveRichText({});
-    return true;
-}
-
 bool UGV2RichTextWidgetBase::ApplyCentralStyle_Implementation()
 {
     UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
@@ -382,13 +350,13 @@ bool UGV2RichTextWidgetBase::ApplyCentralStyle_Implementation()
     {
         return false;
     }
-    const TSubclassOf<UCommonTextStyle> Style = CurrentContent.Text.StyleToken.IsNone()
+    const TSubclassOf<UCommonTextStyle> Style = CurrentText.StyleToken.IsNone()
         ? Theme->RichTextStyle
-        : UGV2TextPipeline::ResolveStyleClass(CurrentContent.Text.StyleToken);
+        : UGV2TextPipeline::ResolveStyleClass(CurrentText.StyleToken);
     if (Style == nullptr) return false;
     RichTextBlock->SetStyle(Style);
     FTextBlockStyle DefaultStyle;
-    if (UGV2TextPipeline::ResolveStyle(CurrentContent.Text.StyleToken, DefaultStyle, this))
+    if (UGV2TextPipeline::ResolveStyle(CurrentText.StyleToken, DefaultStyle, this))
     {
         RichTextBlock->SetDefaultTextStyle(DefaultStyle);
     }
@@ -398,5 +366,6 @@ bool UGV2RichTextWidgetBase::ApplyCentralStyle_Implementation()
 void UGV2RichTextWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
     OutBuilder.AddText(TEXT("text"), FName(TEXT("RichTextBlock")));
+    OutBuilder.AddCustom(TEXT("spans"), EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CustomControl, NAME_None);
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }

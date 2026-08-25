@@ -4,6 +4,9 @@
 #include "CommonTextBlock.h"
 #include "Components/Button.h"
 #include "UI/GV2ButtonListWidgetBase.h"
+#include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2UiCapability.h"
+#include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2UiTheme.h"
 
 void UGV2ModalWidgetBase::NativePreConstruct()
@@ -12,65 +15,87 @@ void UGV2ModalWidgetBase::NativePreConstruct()
     ApplyCentralStyle_Implementation();
 }
 
-FGV2ScreenFieldDescriptor UGV2ModalWidgetBase::GetScreenFieldDescriptor_Implementation() const
+void UGV2ModalWidgetBase::NativeConstruct()
 {
-    FGV2ScreenFieldDescriptor Desc;
-    Desc.FieldId = FieldId;
-    Desc.SchemaId = SchemaId;
-    Desc.bRequired = bIsRequired;
-    return Desc;
+    Super::NativeConstruct();
+    if (BackdropButton != nullptr)
+    {
+        BackdropButton->OnClicked.AddDynamic(this, &UGV2ModalWidgetBase::HandleBackdropButtonClicked);
+    }
 }
 
-bool UGV2ModalWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value) const
+void UGV2ModalWidgetBase::NativeDestruct()
 {
-    return Value.SchemaId == SchemaId;
+    if (BackdropButton != nullptr)
+    {
+        BackdropButton->OnClicked.RemoveDynamic(this, &UGV2ModalWidgetBase::HandleBackdropButtonClicked);
+    }
+    Super::NativeDestruct();
 }
 
-bool UGV2ModalWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
+void UGV2ModalWidgetBase::HandleBackdropButtonClicked()
 {
-    OutFieldValue = FGV2ScreenFieldValue::MakeModal(FieldId, CurrentModel);
-    return true;
+    SubmitBackdropClose();
 }
 
-bool UGV2ModalWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& Value)
+void UGV2ModalWidgetBase::SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle)
 {
-    if (!CanApplyScreenField_Implementation(Value))
+    BackdropCloseBinding = InBindingHandle;
+    if (BackdropButton != nullptr)
     {
-        return false;
+        BackdropButton->SetIsEnabled(BackdropCloseBinding.IsValid());
     }
-    const FGV2ModalViewModel& Candidate = Value.ModalValue;
-    if (TitleText != nullptr && !UGV2TextPipeline::Apply(TitleText, Candidate.Title))
-    {
-        return false;
-    }
-    if (ContentText != nullptr && !UGV2TextPipeline::Apply(ContentText, Candidate.Content))
-    {
-        return false;
-    }
-    if (ButtonList != nullptr && !ButtonList->ApplyButtonModels(Candidate.Buttons))
-    {
-        return false;
-    }
-    CurrentModel = Candidate;
-    return true;
 }
 
-bool UGV2ModalWidgetBase::ResetScreenField_Implementation()
+FGV2UiBindingHandle UGV2ModalWidgetBase::GetBindingHandle() const
 {
-    CurrentModel = {};
+    return BackdropCloseBinding;
+}
+
+bool UGV2ModalWidgetBase::ApplyTitle(const FGV2TextViewModel& InTitle)
+{
+    CurrentTitle = InTitle;
     if (TitleText != nullptr)
     {
-        TitleText->SetText(FText::GetEmpty());
-    }
-    if (ContentText != nullptr)
-    {
-        ContentText->SetText(FText::GetEmpty());
-    }
-    if (ButtonList != nullptr)
-    {
-        IGV2DynamicScreenElement::Execute_ResetScreenField(ButtonList);
+        return UGV2TextPipeline::Apply(TitleText, CurrentTitle);
     }
     return true;
+}
+
+bool UGV2ModalWidgetBase::ApplyContent(const FGV2TextViewModel& InContent)
+{
+    CurrentContent = InContent;
+    if (ContentText != nullptr)
+    {
+        return UGV2TextPipeline::Apply(ContentText, CurrentContent);
+    }
+    return true;
+}
+
+EGV2SubmitUiInteractionResult UGV2ModalWidgetBase::SubmitBackdropClose()
+{
+    if (BackdropCloseBinding.IsValid())
+    {
+        return FGV2UiInteractionEmitter::Submit(this, BackdropCloseBinding, {});
+    }
+    return EGV2SubmitUiInteractionResult::InvalidBindingHandle;
+}
+
+void UGV2ModalWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    OutBuilder.AddText(TEXT("title"), FName(TEXT("TitleText")));
+    OutBuilder.AddText(TEXT("content"), FName(TEXT("ContentText")));
+    FGV2UiPropertyCapability ButtonCap;
+    ButtonCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+    ButtonCap.EntryWidgetClass = UGV2ButtonWidgetBase::StaticClass();
+    OutBuilder.AddKeyedCollection(
+        TEXT("buttons"),
+        FName(TEXT("ButtonList")),
+        ButtonCap,
+        TEXT("key"),
+        UGV2ButtonWidgetBase::StaticClass());
+    OutBuilder.AddBinding(TEXT("backdrop_close_action"), NAME_None);
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
 bool UGV2ModalWidgetBase::ApplyCentralStyle_Implementation()
@@ -79,6 +104,14 @@ bool UGV2ModalWidgetBase::ApplyCentralStyle_Implementation()
     if (Theme == nullptr)
     {
         return false;
+    }
+    if (TitleText != nullptr)
+    {
+        UGV2TextPipeline::Apply(TitleText, CurrentTitle);
+    }
+    if (ContentText != nullptr)
+    {
+        UGV2TextPipeline::Apply(ContentText, CurrentContent);
     }
     return true;
 }

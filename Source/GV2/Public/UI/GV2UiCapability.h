@@ -50,6 +50,7 @@ struct GV2_API FGV2UiPropertyCapability
     // Collection policy
     bool bRequiresKeyedIdentity = false;
     FString KeyPropertyName = TEXT("key");
+    TSubclassOf<UUserWidget> EntryWidgetClass = nullptr;
 
     // Nested structures
     TSharedPtr<FGV2UiCapabilityTree> ChildTree;
@@ -97,7 +98,8 @@ public:
     FGV2UiCapabilityBuilder& AddKey(const FString& Name, const FName& TargetName);
     FGV2UiCapabilityBuilder& AddBinding(const FString& Name, const FName& TargetName);
     FGV2UiCapabilityBuilder& AddObject(const FString& Name, const FName& TargetName, FGV2UiCapabilityTree InChildTree);
-    FGV2UiCapabilityBuilder& AddKeyedCollection(const FString& Name, const FName& TargetName, FGV2UiPropertyCapability ItemCapability, const FString& KeyField = TEXT("key"));
+    FGV2UiCapabilityBuilder& AddKeyedCollection(const FString& Name, const FName& TargetName, FGV2UiPropertyCapability ItemCapability, const FString& KeyField = TEXT("key"), TSubclassOf<UUserWidget> EntryWidgetClass = nullptr);
+    FGV2UiCapabilityBuilder& AddNestedScreenCollection(const FString& Name, const FName& TargetName, const FString& KeyField = TEXT("key"));
     FGV2UiCapabilityBuilder& AddCustom(const FString& Name, EGV2PreparedUiValueKind Kind, EGV2UiCapabilityTargetType TargetType, const FName& TargetName);
 
     FGV2UiCapabilityTree Build() const { return Tree; }

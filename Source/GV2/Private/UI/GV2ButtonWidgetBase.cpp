@@ -15,6 +15,7 @@ void UGV2ButtonWidgetBase::NativePreConstruct()
 bool UGV2ButtonWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 {
     CurrentTextStyleToken = InText.StyleToken;
+    CurrentTextViewModel = InText;
     if (InText.NormalizedMarkup.Contains(TEXT("<gv2")))
     {
         return false;

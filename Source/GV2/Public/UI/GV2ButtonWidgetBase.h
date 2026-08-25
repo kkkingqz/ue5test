@@ -47,6 +47,7 @@ public:
     FGV2ButtonBindingInvoked OnBindingInvoked;
 
     UCommonTextBlock* GetLabelText() const { return LabelText; }
+    const FGV2TextViewModel& GetTextViewModel() const { return CurrentTextViewModel; }
 
     virtual bool ApplyCentralStyle_Implementation() override;
 
@@ -72,6 +73,9 @@ private:
 
     UPROPERTY(Transient)
     FName Key;
+
+    UPROPERTY(Transient)
+    FGV2TextViewModel CurrentTextViewModel;
 
     UPROPERTY(Transient)
     FName CurrentTextStyleToken;

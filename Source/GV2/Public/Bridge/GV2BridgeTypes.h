@@ -164,60 +164,6 @@ struct GV2_API FGV2ButtonViewModel
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2DropdownOptionViewModel
-{
-	GENERATED_BODY()
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-	FName Key;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-	FGV2TextViewModel Text;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-	bool bSelected = false;
-
-	bool operator==(const FGV2DropdownOptionViewModel& Other) const
-	{
-		return Key == Other.Key
-			&& bSelected == Other.bSelected
-			&& Text == Other.Text;
-	}
-
-	bool operator!=(const FGV2DropdownOptionViewModel& Other) const
-	{
-		return !(*this == Other);
-	}
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2DropdownSelectViewModel
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-	FGV2TextViewModel Placeholder;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI")
-	TArray<FGV2DropdownOptionViewModel> Options;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI")
-	FGV2UiBindingHandle Binding;
-
-	bool operator==(const FGV2DropdownSelectViewModel& Other) const
-	{
-		return Binding == Other.Binding
-			&& Placeholder == Other.Placeholder
-			&& Options == Other.Options;
-	}
-
-	bool operator!=(const FGV2DropdownSelectViewModel& Other) const
-	{
-		return !(*this == Other);
-	}
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2RichTextHoverViewModel
 {
     GENERATED_BODY()
@@ -256,18 +202,6 @@ struct GV2_API FGV2RichTextSpanViewModel
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2InteractiveRichTextViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text", meta = (MultiLine = "true"))
-    FGV2TextViewModel Text;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
-    TArray<FGV2RichTextSpanViewModel> Spans;
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2ProgressBarViewModel
 {
     GENERATED_BODY()
@@ -277,24 +211,6 @@ struct GV2_API FGV2ProgressBarViewModel
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ProgressBar")
     FGV2TextViewModel Label;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2ModalViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
-    FGV2TextViewModel Title;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
-    FGV2TextViewModel Content;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
-    TArray<FGV2ButtonViewModel> Buttons;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Modal")
-    FGV2UiBindingHandle BackdropCloseBinding;
 };
 
 // TextSystem owns these composite values.  They deliberately carry only
@@ -386,8 +302,6 @@ struct GV2_API FGV2ScreenFieldDescriptor
     }
 };
 
-struct FGV2TabContainerViewModel;
-
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenFieldValue
 {
@@ -400,16 +314,7 @@ struct GV2_API FGV2ScreenFieldValue
     FString SchemaId;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2InteractiveRichTextViewModel InteractiveRichTextValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    TArray<FGV2ButtonViewModel> ButtonListValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2DropdownSelectViewModel DropdownSelectValue;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    FGV2ModalViewModel ModalValue;
+    TArray<FGV2ButtonViewModel> LocationCommandsValue;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FGV2LocationTopBarViewModel LocationTopBarValue;
@@ -420,52 +325,6 @@ struct GV2_API FGV2ScreenFieldValue
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
     FGV2LocationSceneViewModel LocationSceneValue;
 
-    TSharedPtr<FGV2TabContainerViewModel> TabContainerValue;
-
-    static FGV2ScreenFieldValue MakeButtonList(
-        const FName InFieldId,
-        const TArray<FGV2ButtonViewModel>& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.button_list.v2");
-        Value.ButtonListValue = InValue;
-        return Value;
-    }
-
-    static FGV2ScreenFieldValue MakeInteractiveRichText(
-        const FName InFieldId,
-        const FGV2InteractiveRichTextViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.rich_text.v3");
-        Value.InteractiveRichTextValue = InValue;
-        return Value;
-    }
-
-    static FGV2ScreenFieldValue MakeDropdownSelect(
-        const FName InFieldId,
-        const FGV2DropdownSelectViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.dropdown_select.v1");
-        Value.DropdownSelectValue = InValue;
-        return Value;
-    }
-
-    static FGV2ScreenFieldValue MakeModal(
-        const FName InFieldId,
-        const FGV2ModalViewModel& InValue)
-    {
-        FGV2ScreenFieldValue Value;
-        Value.FieldId = InFieldId;
-        Value.SchemaId = TEXT("core:schema.ui_field.modal.v1");
-        Value.ModalValue = InValue;
-        return Value;
-    }
-
     static FGV2ScreenFieldValue MakeLocationTopBar(const FName Id, const FGV2LocationTopBarViewModel& Model)
     { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_top_bar.v1"); Value.LocationTopBarValue = Model; return Value; }
     static FGV2ScreenFieldValue MakeLocationPlayerStatus(const FName Id, const FGV2LocationPlayerStatusViewModel& Model)
@@ -473,53 +332,8 @@ struct GV2_API FGV2ScreenFieldValue
     static FGV2ScreenFieldValue MakeLocationScene(const FName Id, const FGV2LocationSceneViewModel& Model)
     { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_scene.v1"); Value.LocationSceneValue = Model; return Value; }
     static FGV2ScreenFieldValue MakeLocationCommands(const FName Id, const TArray<FGV2ButtonViewModel>& Model)
-    { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_commands.v1"); Value.ButtonListValue = Model; return Value; }
-
-    static FGV2ScreenFieldValue MakeTabContainer(
-        const FName InFieldId,
-        const FGV2TabContainerViewModel& InValue);
+    { FGV2ScreenFieldValue Value; Value.FieldId = Id; Value.SchemaId = TEXT("textsystem:schema.ui_field.location_commands.v1"); Value.LocationCommandsValue = Model; return Value; }
 };
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2TabItemViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
-    FName Key;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
-    FGV2TextViewModel Title;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
-    FString ScreenId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
-    TArray<FGV2ScreenFieldValue> Fields;
-};
-
-USTRUCT(BlueprintType)
-struct GV2_API FGV2TabContainerViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
-    FName DefaultTabKey;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Tabs")
-    TArray<FGV2TabItemViewModel> Tabs;
-};
-
-inline FGV2ScreenFieldValue FGV2ScreenFieldValue::MakeTabContainer(
-    const FName InFieldId,
-    const FGV2TabContainerViewModel& InValue)
-{
-    FGV2ScreenFieldValue Value;
-    Value.FieldId = InFieldId;
-    Value.SchemaId = TEXT("core:schema.ui_field.tab_container.v1");
-    Value.TabContainerValue = MakeShared<FGV2TabContainerViewModel>(InValue);
-    return Value;
-}
 
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenViewModel

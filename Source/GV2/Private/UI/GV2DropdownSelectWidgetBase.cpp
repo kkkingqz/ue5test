@@ -7,7 +7,7 @@
 #include "Components/ScrollBoxSlot.h"
 #include "Components/SizeBox.h"
 #include "UI/GV2ButtonWidgetBase.h"
-#include "UI/GV2KeyedCollection.h"
+#include "UI/GV2UiCapability.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2UiTheme.h"
@@ -35,133 +35,105 @@ void UGV2DropdownSelectWidgetBase::NativeOnInitialized()
     }
 }
 
-bool UGV2DropdownSelectWidgetBase::ApplyDropdownModel(
-    const FGV2DropdownSelectViewModel& InModel)
+void UGV2DropdownSelectWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    if (!CanApplyDropdownModel(InModel))
+    OutBuilder.AddText(TEXT("placeholder"), FName(TEXT("HeaderButton")));
+    OutBuilder.AddKey(TEXT("selected_key"), NAME_None);
+    FGV2UiPropertyCapability OptionCap;
+    OptionCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+    OptionCap.EntryWidgetClass = ResolveOptionWidgetClass();
+    OutBuilder.AddKeyedCollection(
+        TEXT("items"),
+        FName(TEXT("OptionsScrollBox")),
+        OptionCap,
+        TEXT("key"),
+        ResolveOptionWidgetClass());
+    OutBuilder.AddBinding(TEXT("binding"), NAME_None);
+    OutBuilder.AddBoolean(TEXT("is_open"), NAME_None);
+}
+
+void UGV2DropdownSelectWidgetBase::SetDropdownOpen(const bool bOpen)
+{
+    bIsOpen = bOpen;
+    if (PopupBorder != nullptr)
     {
-        return false;
+        PopupBorder->SetVisibility(
+            bIsOpen ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
     }
+}
 
-    const TSubclassOf<UGV2ButtonWidgetBase> ResolvedOptionClass = ResolveOptionWidgetClass();
-
-    TArray<FGV2ButtonViewModel> ButtonModels;
-    ButtonModels.Reserve(InModel.Options.Num());
-    for (const FGV2DropdownOptionViewModel& Option : InModel.Options)
-    {
-        FGV2ButtonViewModel& BM = ButtonModels.AddDefaulted_GetRef();
-        BM.Key = Option.Key;
-        BM.Text = Option.Text;
-        BM.Binding = InModel.Binding;
-    }
-
-    TArray<UGV2ButtonWidgetBase*> OrderedWidgets;
-    if (!FGV2KeyedCollection::Reconcile<UGV2ButtonWidgetBase, FGV2ButtonViewModel>(
-        OptionsScrollBox,
-        ButtonModels,
-        OptionsByKey,
-        [](const FGV2ButtonViewModel& Model) { return Model.Key; },
-        [this, ResolvedOptionClass]() -> UGV2ButtonWidgetBase*
-        {
-            if (GetOwningPlayer() != nullptr)
-            {
-                return CreateWidget<UGV2ButtonWidgetBase>(GetOwningPlayer(), ResolvedOptionClass);
-            }
-            return GetWorld() != nullptr
-                ? CreateWidget<UGV2ButtonWidgetBase>(GetWorld(), ResolvedOptionClass)
-                : nullptr;
-        },
-        [this](UGV2ButtonWidgetBase& Button, const FGV2ButtonViewModel& Model) -> bool
-        {
-            Button.SetKey(Model.Key);
-            Button.SetBindingHandle(Model.Binding);
-            if (!Button.ApplyText(Model.Text)) return false;
-            Button.SetAutomaticInteractionSubmission(false);
-            Button.OnActivated.AddUniqueDynamic(this, &ThisClass::HandleOptionActivated);
-            return true;
-        },
-        OrderedWidgets))
-    {
-        return false;
-    }
-
-    // Apply option item padding from theme.
-    if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
-    {
-        for (int32 Index = 0; Index < OrderedWidgets.Num(); ++Index)
-        {
-            if (UScrollBoxSlot* Slot = Cast<UScrollBoxSlot>(OptionsScrollBox->GetSlots()[Index]))
-            {
-                Slot->SetPadding(Theme->DropdownOptionItemPadding);
-            }
-        }
-    }
-
-    const bool bModelUnchanged = (InModel == AppliedModel);
-
-    AppliedModel = InModel;
+void UGV2DropdownSelectWidgetBase::SetSelectedKey(const FName InKey)
+{
+    SelectedKey = InKey;
     UpdateHeaderLabel();
+}
 
-    if (!bModelUnchanged && bIsOpen)
-    {
-        SetDropdownOpen(false);
-    }
-
+bool UGV2DropdownSelectWidgetBase::ApplyPlaceholderText(const FGV2TextViewModel& InText)
+{
+    CurrentPlaceholder = InText;
+    UpdateHeaderLabel();
     return true;
 }
 
-bool UGV2DropdownSelectWidgetBase::CanApplyDropdownModel(
-    const FGV2DropdownSelectViewModel& InModel) const
+void UGV2DropdownSelectWidgetBase::SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle)
 {
-    const TSubclassOf<UGV2ButtonWidgetBase> ResolvedOptionClass = ResolveOptionWidgetClass();
-    if (OptionsScrollBox == nullptr || HeaderButton == nullptr
-        || PopupBorder == nullptr || PopupSizeBox == nullptr
-        || ResolvedOptionClass == nullptr)
+    CurrentBinding = InBindingHandle;
+    if (HeaderButton != nullptr)
     {
-        UE_LOG(LogGV2DropdownSelectWidget, Warning,
-            TEXT("CanApplyDropdownModel rejected: missing bound widgets or OptionWidgetClass"));
-        return false;
+        HeaderButton->SetBindingHandle(InBindingHandle);
     }
-
-    if (!InModel.Binding.IsValid()
-        || InModel.Placeholder.NormalizedMarkup.Contains(TEXT("<gv2"))
-        || UGV2TextPipeline::ResolveStyleClass(InModel.Placeholder.StyleToken) == nullptr)
-    {
-        return false;
-    }
-
-    TSet<FName> Keys;
-    int32 SelectedCount = 0;
-    static const FName ReservedHeaderKey = TEXT("dropdown_header");
-    for (const FGV2DropdownOptionViewModel& Option : InModel.Options)
-    {
-        if (Option.Key.IsNone() || Keys.Contains(Option.Key))
-        {
-            UE_LOG(LogGV2DropdownSelectWidget, Warning,
-                TEXT("CanApplyDropdownModel rejected: invalid or duplicate key"));
-            return false;
-        }
-        if (Option.Key == ReservedHeaderKey)
-        {
-            UE_LOG(LogGV2DropdownSelectWidget, Warning,
-                TEXT("CanApplyDropdownModel rejected: option uses reserved header key 'dropdown_header'"));
-            return false;
-        }
-        Keys.Add(Option.Key);
-        SelectedCount += Option.bSelected ? 1 : 0;
-        if (Option.Text.NormalizedMarkup.Contains(TEXT("<gv2"))
-            || UGV2TextPipeline::ResolveStyleClass(Option.Text.StyleToken) == nullptr)
-        {
-            return false;
-        }
-    }
-
-    return SelectedCount <= 1;
 }
 
-bool UGV2DropdownSelectWidgetBase::IsDropdownOpen() const
+void UGV2DropdownSelectWidgetBase::SetInteractionEnabled(const bool bEnabled)
 {
-    return bIsOpen;
+    SetIsEnabled(bEnabled);
+    if (HeaderButton != nullptr)
+    {
+        HeaderButton->SetIsInteractionEnabled(bEnabled);
+    }
+}
+
+void UGV2DropdownSelectWidgetBase::UpdateHeaderLabel()
+{
+    if (HeaderButton == nullptr) return;
+
+    const FGV2TextViewModel* DisplayText = nullptr;
+    if (!SelectedKey.IsNone() && OptionsScrollBox != nullptr)
+    {
+        for (UWidget* Child : OptionsScrollBox->GetAllChildren())
+        {
+            if (UGV2ButtonWidgetBase* OptionBtn = Cast<UGV2ButtonWidgetBase>(Child))
+            {
+                OptionBtn->SetAutomaticInteractionSubmission(false);
+                OptionBtn->OnActivated.AddUniqueDynamic(this, &ThisClass::HandleOptionActivated);
+                if (OptionBtn->GetKey() == SelectedKey)
+                {
+                    DisplayText = &OptionBtn->GetTextViewModel();
+                }
+            }
+        }
+    }
+    else if (OptionsScrollBox != nullptr)
+    {
+        for (UWidget* Child : OptionsScrollBox->GetAllChildren())
+        {
+            if (UGV2ButtonWidgetBase* OptionBtn = Cast<UGV2ButtonWidgetBase>(Child))
+            {
+                OptionBtn->SetAutomaticInteractionSubmission(false);
+                OptionBtn->OnActivated.AddUniqueDynamic(this, &ThisClass::HandleOptionActivated);
+            }
+        }
+    }
+
+    if (DisplayText == nullptr)
+    {
+        DisplayText = &CurrentPlaceholder;
+    }
+
+    HeaderButton->SetKey(TEXT("dropdown_header"));
+    HeaderButton->SetBindingHandle(CurrentBinding);
+    HeaderButton->ApplyText(*DisplayText);
+    HeaderButton->SetAutomaticInteractionSubmission(false);
 }
 
 TSubclassOf<UGV2ButtonWidgetBase> UGV2DropdownSelectWidgetBase::ResolveOptionWidgetClass() const
@@ -180,7 +152,11 @@ TSubclassOf<UGV2ButtonWidgetBase> UGV2DropdownSelectWidgetBase::ResolveOptionWid
     {
         return Found;
     }
-    return LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+    if (UClass* Loaded = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
+    {
+        return Loaded;
+    }
+    return UGV2ButtonWidgetBase::StaticClass();
 }
 
 void UGV2DropdownSelectWidgetBase::HandleHeaderClicked()
@@ -199,129 +175,28 @@ void UGV2DropdownSelectWidgetBase::HandleOptionActivated(const FName Key)
 }
 
 EGV2SubmitUiInteractionResult UGV2DropdownSelectWidgetBase::SubmitSelection(
-    const FName SelectedKey)
+    const FName InSelectedKey)
 {
-    if (!AppliedModel.Binding.IsValid() || SelectedKey.IsNone()
-        || !OptionsByKey.Contains(SelectedKey))
+    if (!CurrentBinding.IsValid() || InSelectedKey.IsNone())
     {
         return EGV2SubmitUiInteractionResult::InvalidInputValues;
     }
     FGV2UiControlValue SelectedKeyValue;
     SelectedKeyValue.Name = TEXT("selected_key");
     SelectedKeyValue.Type = EGV2UiControlValueType::String;
-    SelectedKeyValue.StringValue = SelectedKey.ToString();
+    SelectedKeyValue.StringValue = InSelectedKey.ToString();
 
     const EGV2SubmitUiInteractionResult SubmitResult =
         FGV2UiInteractionEmitter::Submit(
-            this, AppliedModel.Binding, {SelectedKeyValue});
+            this, CurrentBinding, {SelectedKeyValue});
 
-    OnSelectionInvoked.Broadcast(AppliedModel.Binding, SubmitResult);
+    OnSelectionInvoked.Broadcast(CurrentBinding, SubmitResult);
     if (SubmitResult == EGV2SubmitUiInteractionResult::Accepted)
     {
         SetDropdownOpen(false);
     }
     return SubmitResult;
 }
-
-void UGV2DropdownSelectWidgetBase::SetDropdownOpen(const bool bOpen)
-{
-    bIsOpen = bOpen;
-    if (PopupBorder != nullptr)
-    {
-        PopupBorder->SetVisibility(
-            bIsOpen ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
-    }
-}
-
-void UGV2DropdownSelectWidgetBase::UpdateHeaderLabel()
-{
-    if (HeaderButton == nullptr) return;
-
-    // Find the currently selected option.
-    const FGV2DropdownOptionViewModel* SelectedOption = nullptr;
-    for (const FGV2DropdownOptionViewModel& Option : AppliedModel.Options)
-    {
-        if (Option.bSelected)
-        {
-            SelectedOption = &Option;
-            break;
-        }
-    }
-
-    // Show selected option label, or placeholder if nothing selected.
-    const FGV2TextViewModel& DisplayText = SelectedOption != nullptr
-        ? SelectedOption->Text
-        : AppliedModel.Placeholder;
-
-    HeaderButton->SetKey(TEXT("dropdown_header"));
-    HeaderButton->SetBindingHandle(AppliedModel.Binding);
-    if (!HeaderButton->ApplyText(DisplayText))
-    {
-        UE_LOG(LogGV2DropdownSelectWidget, Error, TEXT("Dropdown header text could not be applied"));
-    }
-    HeaderButton->SetAutomaticInteractionSubmission(false);
-}
-
-// --- IGV2DynamicScreenElement ---
-
-FGV2ScreenFieldDescriptor UGV2DropdownSelectWidgetBase::GetScreenFieldDescriptor_Implementation() const
-{
-    FGV2ScreenFieldDescriptor Descriptor;
-    Descriptor.FieldId = ScreenFieldId;
-    Descriptor.SchemaId = TEXT("core:schema.ui_field.dropdown_select.v1");
-    Descriptor.bRequired = bScreenFieldRequired;
-    return Descriptor;
-}
-
-bool UGV2DropdownSelectWidgetBase::CanApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue) const
-{
-    return FieldValue.FieldId == ScreenFieldId
-        && FieldValue.SchemaId == TEXT("core:schema.ui_field.dropdown_select.v1")
-        && CanApplyDropdownModel(FieldValue.DropdownSelectValue);
-}
-
-bool UGV2DropdownSelectWidgetBase::ApplyScreenField_Implementation(
-    const FGV2ScreenFieldValue& FieldValue)
-{
-    return CanApplyScreenField_Implementation(FieldValue)
-        && ApplyDropdownModel(FieldValue.DropdownSelectValue);
-}
-
-bool UGV2DropdownSelectWidgetBase::CaptureScreenField_Implementation(
-    FGV2ScreenFieldValue& OutFieldValue) const
-{
-    if (OptionsScrollBox == nullptr || ScreenFieldId.IsNone())
-    {
-        return false;
-    }
-    OutFieldValue = FGV2ScreenFieldValue::MakeDropdownSelect(
-        ScreenFieldId, AppliedModel);
-    return true;
-}
-
-bool UGV2DropdownSelectWidgetBase::ResetScreenField_Implementation()
-{
-    AppliedModel = FGV2DropdownSelectViewModel();
-    OptionsByKey.Reset();
-    if (OptionsScrollBox != nullptr)
-    {
-        OptionsScrollBox->ClearChildren();
-    }
-    if (HeaderButton != nullptr)
-    {
-        HeaderButton->SetKey(TEXT("dropdown_header"));
-        HeaderButton->SetBindingHandle(FGV2UiBindingHandle());
-        HeaderButton->ApplyText(FGV2TextViewModel());  // reset path: empty text cannot fail styling
-        HeaderButton->SetAutomaticInteractionSubmission(false);
-    }
-    SetDropdownOpen(false);
-    SetIsEnabled(false);
-    return OptionsScrollBox != nullptr && HeaderButton != nullptr
-        && PopupBorder != nullptr && PopupSizeBox != nullptr;
-}
-
-// --- IGV2UiStyleConsumer ---
 
 bool UGV2DropdownSelectWidgetBase::ApplyCentralStyle_Implementation()
 {
@@ -350,3 +225,4 @@ bool UGV2DropdownSelectWidgetBase::ApplyCentralStyle_Implementation()
 
     return true;
 }
+

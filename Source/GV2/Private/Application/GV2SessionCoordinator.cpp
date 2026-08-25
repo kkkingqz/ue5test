@@ -656,35 +656,6 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
             return false;
         }
 
-        // Initialize / validate active tab state for tab container fields (UIF-25)
-        for (const FGV2ScreenFieldValue& FieldVal : OutInstModel.Fields)
-        {
-            if (FieldVal.TabContainerValue.IsValid())
-            {
-                const FString ContainerPath = FString::Printf(
-                    TEXT("%s/%s/%s"),
-                    *OutInstModel.Layer.ToString(),
-                    *OutInstModel.InstanceKey.ToString(),
-                    *FieldVal.FieldId.ToString());
-
-                const FGV2TabContainerViewModel& TabModel = *FieldVal.TabContainerValue;
-                const FString* ExistingActive = ActiveTabsByContainerPath.Find(ContainerPath);
-                const bool bExistingStillValid = ExistingActive != nullptr && TabModel.Tabs.ContainsByPredicate([ExistingActive](const FGV2TabItemViewModel& Tab)
-                {
-                    return Tab.Key.ToString() == *ExistingActive;
-                });
-
-                if (!bExistingStillValid)
-                {
-                    FName InitialKey = !TabModel.DefaultTabKey.IsNone() ? TabModel.DefaultTabKey : (TabModel.Tabs.Num() > 0 ? TabModel.Tabs[0].Key : NAME_None);
-                    if (!InitialKey.IsNone())
-                    {
-                        ActiveTabsByContainerPath.Add(ContainerPath, InitialKey.ToString());
-                    }
-                }
-            }
-        }
-
         return true;
     };
 

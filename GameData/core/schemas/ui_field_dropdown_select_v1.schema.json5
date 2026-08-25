@@ -1,0 +1,48 @@
+{
+  id: "core:schema.ui_field.dropdown_select.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      placeholder: {
+        kind: "text",
+        required: false,
+      },
+      selected_key: {
+        kind: "key",
+        required: false,
+      },
+      binding: {
+        kind: "binding",
+        required: true,
+      },
+      is_open: {
+        kind: "bool",
+        required: false,
+      },
+      items: {
+        kind: "array",
+        required: true,
+        keyed_by: "key",
+        items: {
+          kind: "object",
+          fields: {
+            key: {
+              kind: "key",
+              required: true,
+            },
+            text: {
+              kind: "text",
+              required: true,
+            },
+            binding: {
+              kind: "binding",
+              required: false,
+            },
+          },
+        },
+      },
+    },
+  },
+}

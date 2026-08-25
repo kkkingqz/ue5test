@@ -238,6 +238,30 @@ std::optional<FResolvedUiSchema> FInMemoryUiSchemaResolver::FindUiSchema(const s
     return Resolved;
 }
 
+bool SpecContainsInteractiveKind(const FCompiledUiFieldSpecPtr& Spec)
+{
+    if (!Spec) return false;
+    if (Spec->Kind == EUiFieldKind::Binding || Spec->Kind == EUiFieldKind::ScreenFields)
+    {
+        return true;
+    }
+    if (Spec->Kind == EUiFieldKind::Object)
+    {
+        for (const auto& Field : Spec->Fields)
+        {
+            if (SpecContainsInteractiveKind(Field.Spec))
+            {
+                return true;
+            }
+        }
+    }
+    if (Spec->Kind == EUiFieldKind::Array)
+    {
+        return SpecContainsInteractiveKind(Spec->Items);
+    }
+    return false;
+}
+
 std::optional<EUiSchemaDomain> ParseUiSchemaDomain(const std::string_view Value)
 {
     if (Value == "ui_field") return EUiSchemaDomain::UiField;
@@ -479,6 +503,13 @@ FCompiledUiFieldSpecPtr CompileUiFieldSpec(
                 }
                 else Result->KeyedBy = KeyField;
             }
+        }
+        if (!Result->KeyedBy.has_value() && SpecContainsInteractiveKind(Result->Items))
+        {
+            OutDiagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.field_spec.missing_keyed_by",
+                "array containing interactive elements (binding/screen_fields) must specify 'keyed_by' naming a kind 'key' field",
+                SchemaDocument, Pointer, Context));
         }
     }
     else if (Kind == "screen_fields")

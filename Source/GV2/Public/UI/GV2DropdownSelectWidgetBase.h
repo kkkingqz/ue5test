@@ -2,7 +2,8 @@
 
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
-#include "UI/GV2DynamicScreenElement.h"
+#include "UI/GV2UiBindingTarget.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "GV2DropdownSelectWidgetBase.generated.h"
 
@@ -19,48 +20,60 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
 UCLASS(Blueprintable)
 class GV2_API UGV2DropdownSelectWidgetBase
     : public UCommonUserWidget
-    , public IGV2DynamicScreenElement
+    , public IGV2UiPropertyHost
+    , public IGV2UiBindingTarget
     , public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
 public:
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    bool ApplyDropdownModel(const FGV2DropdownSelectViewModel& InModel);
-
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    bool CanApplyDropdownModel(const FGV2DropdownSelectViewModel& InModel) const;
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    bool IsDropdownOpen() const;
+    bool IsDropdownOpen() const { return bIsOpen; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    EGV2SubmitUiInteractionResult SubmitSelection(FName SelectedKey);
+    void SetDropdownOpen(bool bOpen);
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetSelectedKey(FName InKey);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    FName GetSelectedKey() const { return SelectedKey; }
+
+    bool ApplyPlaceholderText(const FGV2TextViewModel& InText);
+    const FGV2TextViewModel& GetPlaceholderText() const { return CurrentPlaceholder; }
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    EGV2SubmitUiInteractionResult SubmitSelection(FName InSelectedKey);
 
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI")
     FGV2DropdownSelectionInvoked OnSelectionInvoked;
 
     UGV2ButtonWidgetBase* GetHeaderButton() const { return HeaderButton; }
+    UScrollBox* GetOptionsScrollBox() const { return OptionsScrollBox; }
 
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(
-        const FGV2ScreenFieldValue& FieldValue) override;
-    virtual bool CaptureScreenField_Implementation(
-        FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ResetScreenField_Implementation() override;
+    void SetHeaderButton(UGV2ButtonWidgetBase* InBtn) { HeaderButton = InBtn; }
+    void SetOptionsScrollBox(UScrollBox* InBox) { OptionsScrollBox = InBox; }
+    void SetPopupBorder(UBorder* InBorder) { PopupBorder = InBorder; }
+    void SetPopupSizeBox(USizeBox* InSizeBox) { PopupSizeBox = InSizeBox; }
+
+    TSubclassOf<UGV2ButtonWidgetBase> ResolveOptionWidgetClass() const;
+    void UpdateHeaderLabel();
+
     virtual bool ApplyCentralStyle_Implementation() override;
+
+    // IGV2UiPropertyHost
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+    // IGV2UiBindingTarget
+    virtual void SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle) override;
+    virtual FGV2UiBindingHandle GetBindingHandle() const override { return CurrentBinding; }
+    void SetInteractionEnabled(bool bEnabled);
 
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeOnInitialized() override;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    FName ScreenFieldId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Field")
-    bool bScreenFieldRequired = true;
 
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GV2|UI")
     TSubclassOf<UGV2ButtonWidgetBase> OptionWidgetClass;
@@ -78,8 +91,6 @@ protected:
     TObjectPtr<UScrollBox> OptionsScrollBox;
 
 private:
-    TSubclassOf<UGV2ButtonWidgetBase> ResolveOptionWidgetClass() const;
-
     UFUNCTION()
     void HandleHeaderClicked();
 
@@ -89,14 +100,16 @@ private:
     UFUNCTION()
     void HandleOptionActivated(FName Key);
 
-    void SetDropdownOpen(bool bOpen);
-    void UpdateHeaderLabel();
+    UPROPERTY(Transient)
+    FGV2TextViewModel CurrentPlaceholder;
 
     UPROPERTY(Transient)
-    FGV2DropdownSelectViewModel AppliedModel;
+    FName SelectedKey;
 
     UPROPERTY(Transient)
-    TMap<FName, TObjectPtr<UGV2ButtonWidgetBase>> OptionsByKey;
+    FGV2UiBindingHandle CurrentBinding;
+
+    FGV2UiPropertyHostState PropertyHostState;
 
     bool bIsOpen = false;
 };

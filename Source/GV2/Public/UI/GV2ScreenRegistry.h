@@ -62,4 +62,14 @@ public:
 
     UPROPERTY(Config, EditAnywhere, Category = "GV2|UI|Screen Registry")
     TSoftClassPtr<UGV2GameShellWidgetBase> GameShellClass;
+
+    static const UGV2ScreenRegistry* GetConfiguredRegistry()
+    {
+        const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
+        if (Settings != nullptr && !Settings->RegistryAsset.IsNull())
+        {
+            return Settings->RegistryAsset.LoadSynchronous();
+        }
+        return nullptr;
+    }
 };

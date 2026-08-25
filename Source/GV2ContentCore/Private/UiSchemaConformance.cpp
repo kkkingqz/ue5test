@@ -270,6 +270,39 @@ std::string RunUiSchemaConformance()
             return "ui_schema.array.negative";
         }
     }
+    // array: interactive array positive — array with binding and keyed_by compiles cleanly.
+    {
+        const auto Spec = CompileUiCase(
+            "{kind:'array', items:{kind:'object', fields:{id:{kind:'key'}, action:{kind:'binding'}}}, keyed_by:'id'}",
+            Document, Diagnostics);
+        if (Spec == nullptr || !Diagnostics.empty() || Spec->Kind != EUiFieldKind::Array
+            || Spec->KeyedBy != std::optional<std::string>("id"))
+        {
+            return "ui_schema.array.interactive_keyed.positive";
+        }
+    }
+    // array: interactive array negative — array containing binding without keyed_by is rejected.
+    {
+        const auto Spec = CompileUiCase(
+            "{kind:'array', items:{kind:'object', fields:{action:{kind:'binding'}}}}",
+            Document, Diagnostics);
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.field_spec.missing_keyed_by")
+        {
+            return "ui_schema.array.interactive_unkeyed.negative";
+        }
+    }
+    // array: nested interactive array negative — array with nested binding without keyed_by is rejected.
+    {
+        const auto Spec = CompileUiCase(
+            "{kind:'array', items:{kind:'object', fields:{sub:{kind:'object', fields:{action:{kind:'binding'}}}}}}",
+            Document, Diagnostics);
+        if (Spec != nullptr || Diagnostics.empty()
+            || Diagnostics.front().Code != "core:diagnostic.ui_schema.field_spec.missing_keyed_by")
+        {
+            return "ui_schema.array.interactive_nested_unkeyed.negative";
+        }
+    }
 
     // 11. screen_fields: positive — a trivial closed leaf marker at this compile stage.
     {

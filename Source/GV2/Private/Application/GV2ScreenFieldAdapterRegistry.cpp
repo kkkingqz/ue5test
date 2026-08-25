@@ -10,16 +10,10 @@ namespace
 using FObject = GV2RuntimeCore::FValue::FObject;
 using FArray = GV2RuntimeCore::FValue::FArray;
 
-constexpr std::string_view ButtonListSchema = "core:schema.ui_field.button_list.v2";
-constexpr std::string_view RichTextSchema = "core:schema.ui_field.rich_text.v3";
-constexpr std::string_view DropdownSelectSchema = "core:schema.ui_field.dropdown_select.v1";
-constexpr std::string_view ModalSchema = "core:schema.ui_field.modal.v1";
-constexpr std::string_view TabContainerSchema = "core:schema.ui_field.tab_container.v1";
 constexpr std::string_view LocationTopBarSchema = "textsystem:schema.ui_field.location_top_bar.v1";
 constexpr std::string_view LocationPlayerStatusSchema = "textsystem:schema.ui_field.location_player_status.v1";
 constexpr std::string_view LocationSceneSchema = "textsystem:schema.ui_field.location_scene.v1";
 constexpr std::string_view LocationCommandsSchema = "textsystem:schema.ui_field.location_commands.v1";
-constexpr TCHAR DropdownSelectInputSchema[] = TEXT("core:schema.ui_input.dropdown_selected.v1");
 
 const FObject* AsObject(const GV2RuntimeCore::FValue& Value)
 {
@@ -302,650 +296,9 @@ bool AddSingleBinding(
     return true;
 }
 
-bool PrepareButtonList(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
-    const GV2RuntimeCore::FValue* ItemsValue = FindValue(Value, "items");
-    const FArray* Items = ItemsValue != nullptr ? AsArray(*ItemsValue) : nullptr;
-    if (Items == nullptr) return false;
-    static constexpr std::initializer_list<std::string_view> ItemConsumedKeys = {"key", "text", "binding"};
-    TSet<FName> SeenKeys;
-    for (const GV2RuntimeCore::FValue& ItemValue : *Items)
-    {
-        const FObject* Item = AsObject(ItemValue);
-        if (Item == nullptr || !CheckClosedKeys(Field.FieldId, *Item, ItemConsumedKeys, "items element")) return false;
-        const std::string* Key = FindString(*Item, "key");
-        const GV2RuntimeCore::FValue* Binding = FindValue(*Item, "binding");
-        if (!ValidateRepeatedElementKey(Key, SeenKeys) || Binding == nullptr) return false;
-        FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
-        if (!ReadBinding(
-                *Binding,
-                {TEXT("route"), TEXT("main"), FieldId(Field), UTF8_TO_TCHAR(Key->c_str())},
-                FString::Printf(
-                    TEXT("%s#widget.%s"),
-                    UTF8_TO_TCHAR(ScreenId.c_str()),
-                    UTF8_TO_TCHAR(Key->c_str())),
-                Definition))
-        {
-            return false;
-        }
-    }
-    return true;
-}
 
-bool BuildButtonList(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
 
-    const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "items");
-    const FArray* Items = ItemsVal != nullptr ? AsArray(*ItemsVal) : nullptr;
-    if (Items == nullptr) return false;
-    TArray<FGV2ButtonViewModel> Buttons;
-    Buttons.Reserve(static_cast<int32>(Items->size()));
-    static constexpr std::initializer_list<std::string_view> ItemConsumedKeys = {"key", "text", "binding"};
-    for (const GV2RuntimeCore::FValue& ItemValue : *Items)
-    {
-        if (!Handles.IsValidIndex(HandleIndex)) return false;
-        const FObject* Item = AsObject(ItemValue);
-        if (Item == nullptr || !CheckClosedKeys(Field.FieldId, *Item, ItemConsumedKeys, "items element")) return false;
-        const std::string* Key = FindString(*Item, "key");
-        if (Key == nullptr) return false;
-        const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
-        FGV2ButtonViewModel& Button = Buttons.AddDefaulted_GetRef();
-        Button.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
-        if (Text == nullptr || !ResolveText(*Text, Button.Text)) return false;
-        Button.Binding = Handles[HandleIndex++];
-    }
-    OutField = FGV2ScreenFieldValue::MakeButtonList(FName(*FieldId(Field)), Buttons);
-    return true;
-}
-
-bool PrepareRichText(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "spans"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const GV2RuntimeCore::FValue* Text = FindValue(Value, "text");
-    GV2RuntimeCore::FTextSpec TextSpec;
-    if (Text == nullptr || !ReadTextSpec(*Text, TextSpec)) return false;
-
-    const GV2RuntimeCore::FValue* SpansValue = FindValue(Value, "spans");
-    const FArray* Spans = SpansValue != nullptr ? AsArray(*SpansValue) : nullptr;
-    if (Spans == nullptr) return false;
-    static constexpr std::initializer_list<std::string_view> SpanConsumedKeys = {"key", "span_id", "hover", "binding"};
-    static constexpr std::initializer_list<std::string_view> HoverConsumedKeys = {"title", "description", "image_resource_id"};
-    TSet<FName> SeenKeys;
-    for (const GV2RuntimeCore::FValue& SpanValue : *Spans)
-    {
-        const FObject* Span = AsObject(SpanValue);
-        if (Span == nullptr || !CheckClosedKeys(Field.FieldId, *Span, SpanConsumedKeys, "spans element")) return false;
-        const std::string* Key = FindString(*Span, "key");
-        const GV2RuntimeCore::FValue* Binding = FindValue(*Span, "binding");
-        if (!ValidateRepeatedElementKey(Key, SeenKeys)) return false;
-        if (const GV2RuntimeCore::FValue* HoverValue = FindValue(*Span, "hover"))
-        {
-            const FObject* Hover = AsObject(*HoverValue);
-            if (Hover == nullptr || !CheckClosedKeys(Field.FieldId, *Hover, HoverConsumedKeys, "hover element")) return false;
-            if (const GV2RuntimeCore::FValue* Title = FindValue(*Hover, "title"))
-            {
-                GV2RuntimeCore::FTextSpec TitleSpec;
-                if (!ReadTextSpec(*Title, TitleSpec)) return false;
-            }
-            if (const GV2RuntimeCore::FValue* Description = FindValue(*Hover, "description"))
-            {
-                GV2RuntimeCore::FTextSpec DescSpec;
-                if (!ReadTextSpec(*Description, DescSpec)) return false;
-            }
-            if (const std::string* Image = FindString(*Hover, "image_resource_id"))
-            {
-                if (!Image->empty() && !GV2RuntimeCore::FStableId::IsOfKind(*Image, "resource")) return false;
-            }
-        }
-        if (Binding != nullptr)
-        {
-            FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
-            if (!ReadBinding(
-                    *Binding,
-                    {TEXT("route"), TEXT("main"), FieldId(Field), UTF8_TO_TCHAR(Key->c_str())},
-                    FString::Printf(
-                        TEXT("%s#span.%s"),
-                        UTF8_TO_TCHAR(ScreenId.c_str()),
-                        UTF8_TO_TCHAR(Key->c_str())),
-                    Definition))
-            {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-bool BuildRichText(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"text", "spans"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const GV2RuntimeCore::FValue* Text = FindValue(Value, "text");
-    const GV2RuntimeCore::FValue* SpansVal = FindValue(Value, "spans");
-    const FArray* Spans = SpansVal != nullptr ? AsArray(*SpansVal) : nullptr;
-    if (Spans == nullptr) return false;
-    FGV2InteractiveRichTextViewModel Model;
-    if (Text == nullptr || !ResolveText(*Text, Model.Text)) return false;
-    static constexpr std::initializer_list<std::string_view> SpanConsumedKeys = {"key", "span_id", "hover", "binding"};
-    static constexpr std::initializer_list<std::string_view> HoverConsumedKeys = {"title", "description", "image_resource_id"};
-    for (const GV2RuntimeCore::FValue& SpanValue : *Spans)
-    {
-        const FObject* Span = AsObject(SpanValue);
-        if (Span == nullptr || !CheckClosedKeys(Field.FieldId, *Span, SpanConsumedKeys, "spans element")) return false;
-        const std::string* Key = FindString(*Span, "key");
-        if (Key == nullptr) return false;
-        const std::string* SpanId = FindString(*Span, "span_id");
-        FGV2RichTextSpanViewModel& SpanModel = Model.Spans.AddDefaulted_GetRef();
-        SpanModel.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
-        SpanModel.SpanId = FName(UTF8_TO_TCHAR((SpanId != nullptr ? *SpanId : *Key).c_str()));
-        if (const GV2RuntimeCore::FValue* HoverValue = FindValue(*Span, "hover"))
-        {
-            const FObject* Hover = AsObject(*HoverValue);
-            if (Hover == nullptr || !CheckClosedKeys(Field.FieldId, *Hover, HoverConsumedKeys, "hover element")) return false;
-            if (const GV2RuntimeCore::FValue* Title = FindValue(*Hover, "title"))
-            {
-                if (!ResolveText(*Title, SpanModel.Hover.Title)) return false;
-            }
-            if (const GV2RuntimeCore::FValue* Description = FindValue(*Hover, "description"))
-            {
-                if (!ResolveText(*Description, SpanModel.Hover.Description)) return false;
-            }
-            if (const std::string* Image = FindString(*Hover, "image_resource_id"))
-            {
-                if (!GV2RuntimeCore::FStableId::IsOfKind(*Image, "resource")) return false;
-                SpanModel.Hover.ImageResourceId = UTF8_TO_TCHAR(Image->c_str());
-            }
-        }
-        if (FindValue(*Span, "binding") != nullptr)
-        {
-            if (!Handles.IsValidIndex(HandleIndex)) return false;
-            SpanModel.Binding = Handles[HandleIndex++];
-        }
-    }
-    OutField = FGV2ScreenFieldValue::MakeInteractiveRichText(FName(*FieldId(Field)), Model);
-    return true;
-}
-
-bool ValidateDropdownOptions(const std::string& FieldId, const FObject& Value)
-{
-    const GV2RuntimeCore::FValue* SelectedValue = FindValue(Value, "selected_key");
-    const std::string* SelectedKey = SelectedValue != nullptr
-        ? std::get_if<std::string>(&SelectedValue->Data)
-        : nullptr;
-    if (SelectedValue != nullptr
-        && (SelectedKey == nullptr || !IsValidRepeatedElementKey(*SelectedKey)))
-    {
-        return false;
-    }
-    const GV2RuntimeCore::FValue* ItemsValue = FindValue(Value, "items");
-    const FArray* Items = ItemsValue != nullptr ? AsArray(*ItemsValue) : nullptr;
-    if (Items == nullptr) return false;
-    static constexpr std::initializer_list<std::string_view> OptionConsumedKeys = {"key", "text"};
-    TSet<FName> Keys;
-    bool SelectedFound = SelectedKey == nullptr;
-    for (const GV2RuntimeCore::FValue& ItemValue : *Items)
-    {
-        const FObject* Item = AsObject(ItemValue);
-        if (Item == nullptr || !CheckClosedKeys(FieldId, *Item, OptionConsumedKeys, "items element")) return false;
-        const std::string* Key = FindString(*Item, "key");
-        const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
-        GV2RuntimeCore::FTextSpec TextSpec;
-        if (!ValidateRepeatedElementKey(Key, Keys) || Text == nullptr
-            || !ReadTextSpec(*Text, TextSpec))
-        {
-            return false;
-        }
-        SelectedFound = SelectedFound || (SelectedKey != nullptr && *SelectedKey == *Key);
-    }
-    return SelectedFound;
-}
-
-bool PrepareDropdown(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items", "placeholder", "selected_key", "binding"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    if (const GV2RuntimeCore::FValue* Placeholder = FindValue(Value, "placeholder"))
-    {
-        GV2RuntimeCore::FTextSpec Spec;
-        if (!ReadTextSpec(*Placeholder, Spec)) return false;
-    }
-    if (!ValidateDropdownOptions(Field.FieldId, Value)) return false;
-    return AddSingleBinding(
-        ScreenId,
-        Field,
-        Value,
-        DropdownSelectInputSchema,
-        TEXT("selected_key"),
-        EGV2UiControlValueType::String,
-        OutDefinitions);
-}
-
-bool BuildDropdown(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items", "placeholder", "selected_key", "binding"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    if (!Handles.IsValidIndex(HandleIndex)) return false;
-    FGV2DropdownSelectViewModel Model;
-    if (const GV2RuntimeCore::FValue* Placeholder = FindValue(Value, "placeholder"))
-    {
-        if (!ResolveText(*Placeholder, Model.Placeholder)) return false;
-    }
-    const GV2RuntimeCore::FValue* SelectedValue = FindValue(Value, "selected_key");
-    const std::string* SelectedKey = SelectedValue != nullptr
-        ? std::get_if<std::string>(&SelectedValue->Data)
-        : nullptr;
-    const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "items");
-    const FArray* Items = ItemsVal != nullptr ? AsArray(*ItemsVal) : nullptr;
-    if (Items == nullptr) return false;
-    static constexpr std::initializer_list<std::string_view> OptionConsumedKeys = {"key", "text"};
-    for (const GV2RuntimeCore::FValue& ItemValue : *Items)
-    {
-        const FObject* Item = AsObject(ItemValue);
-        if (Item == nullptr || !CheckClosedKeys(Field.FieldId, *Item, OptionConsumedKeys, "items element")) return false;
-        const std::string* Key = FindString(*Item, "key");
-        if (Key == nullptr) return false;
-        const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
-        FGV2DropdownOptionViewModel& Option = Model.Options.AddDefaulted_GetRef();
-        Option.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
-        if (Text == nullptr || !ResolveText(*Text, Option.Text)) return false;
-        Option.bSelected = SelectedKey != nullptr && *SelectedKey == *Key;
-    }
-    if (const GV2RuntimeCore::FValue* BindingVal = FindValue(Value, "binding"))
-    {
-        const FObject* BindingObj = AsObject(*BindingVal);
-        static constexpr std::initializer_list<std::string_view> BindingConsumedKeys = {"command_id", "args"};
-        if (BindingObj == nullptr || !CheckClosedKeys("Binding", *BindingObj, BindingConsumedKeys)) return false;
-    }
-    Model.Binding = Handles[HandleIndex++];
-    OutField = FGV2ScreenFieldValue::MakeDropdownSelect(FName(*FieldId(Field)), Model);
-    return true;
-}
-
-bool PrepareModal(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"title", "content", "buttons", "backdrop_close_action"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const GV2RuntimeCore::FValue* TitleVal = FindValue(Value, "title");
-    const GV2RuntimeCore::FValue* ContentVal = FindValue(Value, "content");
-    if (TitleVal == nullptr || ContentVal == nullptr) return false;
-    GV2RuntimeCore::FTextSpec TitleSpec, ContentSpec;
-    if (!ReadTextSpec(*TitleVal, TitleSpec) || !ReadTextSpec(*ContentVal, ContentSpec)) return false;
-
-    if (const GV2RuntimeCore::FValue* ButtonsVal = FindValue(Value, "buttons"))
-    {
-        const FArray* Buttons = AsArray(*ButtonsVal);
-        if (Buttons == nullptr) return false;
-        static constexpr std::initializer_list<std::string_view> ButtonConsumedKeys = {"key", "text", "binding"};
-        TSet<FName> SeenKeys;
-        for (const GV2RuntimeCore::FValue& BtnVal : *Buttons)
-        {
-            const FObject* BtnObj = AsObject(BtnVal);
-            if (BtnObj == nullptr || !CheckClosedKeys(Field.FieldId, *BtnObj, ButtonConsumedKeys, "buttons element")) return false;
-            const std::string* Key = FindString(*BtnObj, "key");
-            const GV2RuntimeCore::FValue* Binding = FindValue(*BtnObj, "binding");
-            if (!ValidateRepeatedElementKey(Key, SeenKeys) || Binding == nullptr) return false;
-            FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
-            if (!ReadBinding(
-                    *Binding,
-                    {TEXT("route"), TEXT("main"), FieldId(Field), UTF8_TO_TCHAR(Key->c_str())},
-                    FString::Printf(
-                        TEXT("%s#widget.%s"),
-                        UTF8_TO_TCHAR(ScreenId.c_str()),
-                        UTF8_TO_TCHAR(Key->c_str())),
-                    Definition))
-            {
-                return false;
-            }
-        }
-    }
-
-    if (const GV2RuntimeCore::FValue* BackdropBinding = FindValue(Value, "backdrop_close_action"))
-    {
-        FGV2UiBindingDefinition& Definition = OutDefinitions.AddDefaulted_GetRef();
-        if (!ReadBinding(
-                *BackdropBinding,
-                {TEXT("route"), TEXT("main"), FieldId(Field), TEXT("backdrop")},
-                FString::Printf(
-                    TEXT("%s#widget.backdrop"),
-                    UTF8_TO_TCHAR(ScreenId.c_str())),
-                Definition))
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-bool BuildModalField(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& HandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"title", "content", "buttons", "backdrop_close_action"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const GV2RuntimeCore::FValue* TitleVal = FindValue(Value, "title");
-    const GV2RuntimeCore::FValue* ContentVal = FindValue(Value, "content");
-    if (TitleVal == nullptr || ContentVal == nullptr) return false;
-    FGV2ModalViewModel Model;
-    if (!ResolveText(*TitleVal, Model.Title) || !ResolveText(*ContentVal, Model.Content)) return false;
-
-    if (const GV2RuntimeCore::FValue* ButtonsVal = FindValue(Value, "buttons"))
-    {
-        const FArray* Buttons = AsArray(*ButtonsVal);
-        if (Buttons != nullptr)
-        {
-            static constexpr std::initializer_list<std::string_view> ButtonConsumedKeys = {"key", "text", "binding"};
-            Model.Buttons.Reserve(static_cast<int32>(Buttons->size()));
-            for (const GV2RuntimeCore::FValue& BtnVal : *Buttons)
-            {
-                if (!Handles.IsValidIndex(HandleIndex)) return false;
-                const FObject* BtnObj = AsObject(BtnVal);
-                if (BtnObj == nullptr || !CheckClosedKeys(Field.FieldId, *BtnObj, ButtonConsumedKeys, "buttons element")) return false;
-                const std::string* Key = FindString(*BtnObj, "key");
-                const GV2RuntimeCore::FValue* Text = FindValue(*BtnObj, "text");
-                if (Key == nullptr || Text == nullptr) return false;
-                FGV2ButtonViewModel& Btn = Model.Buttons.AddDefaulted_GetRef();
-                Btn.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
-                if (!ResolveText(*Text, Btn.Text)) return false;
-                Btn.Binding = Handles[HandleIndex++];
-            }
-        }
-    }
-
-    if (FindValue(Value, "backdrop_close_action") != nullptr)
-    {
-        if (!Handles.IsValidIndex(HandleIndex)) return false;
-        Model.BackdropCloseBinding = Handles[HandleIndex++];
-    }
-
-    OutField = FGV2ScreenFieldValue::MakeModal(FName(*FieldId(Field)), Model);
-    return true;
-}
-
-bool PrepareTabContainer(
-    const std::string& ScreenId,
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    TArray<FGV2UiBindingDefinition>& OutDefinitions)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"tabs", "default_tab_key"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const FArray* TabsArray = nullptr;
-    if (const GV2RuntimeCore::FValue* TabsVal = FindValue(Value, "tabs"))
-    {
-        TabsArray = AsArray(*TabsVal);
-    }
-    if (TabsArray == nullptr || TabsArray->empty())
-    {
-        return false;
-    }
-
-    if (const std::string* DefaultKey = FindString(Value, "default_tab_key"))
-    {
-        if (!IsValidRepeatedElementKey(*DefaultKey))
-        {
-            return false;
-        }
-    }
-
-    TSet<FString> TabKeys;
-    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-    static constexpr std::initializer_list<std::string_view> TabConsumedKeys = {"key", "title", "screen_id", "fields"};
-    static constexpr std::initializer_list<std::string_view> ChildFieldConsumedKeys = {"schema_id", "value"};
-
-    for (const GV2RuntimeCore::FValue& TabVal : *TabsArray)
-    {
-        const FObject* TabObj = AsObject(TabVal);
-        if (TabObj == nullptr || !CheckClosedKeys(Field.FieldId, *TabObj, TabConsumedKeys, "tabs element"))
-        {
-            return false;
-        }
-
-        const std::string* Key = FindString(*TabObj, "key");
-        if (Key == nullptr || !IsValidRepeatedElementKey(*Key))
-        {
-            return false;
-        }
-
-        const FString TabKeyStr = UTF8_TO_TCHAR(Key->c_str());
-        if (TabKeys.Contains(TabKeyStr))
-        {
-            return false; // Duplicate tab key
-        }
-        TabKeys.Add(TabKeyStr);
-
-        const GV2RuntimeCore::FValue* TitleVal = FindValue(*TabObj, "title");
-        GV2RuntimeCore::FTextSpec TitleSpec;
-        if (TitleVal == nullptr || !ReadTextSpec(*TitleVal, TitleSpec))
-        {
-            return false; // Raw strings or invalid TextSpec rejected
-        }
-
-        const std::string* TabScreenId = FindString(*TabObj, "screen_id");
-        if (TabScreenId == nullptr || !GV2RuntimeCore::FStableId::IsOfKind(*TabScreenId, "screen"))
-        {
-            return false;
-        }
-
-        const GV2RuntimeCore::FValue* FieldsVal = FindValue(*TabObj, "fields");
-        const FObject* FieldsObj = FieldsVal != nullptr ? AsObject(*FieldsVal) : nullptr;
-        if (FieldsObj != nullptr)
-        {
-            for (const auto& [ChildFieldId, ChildFieldVal] : *FieldsObj)
-            {
-                const FObject* ChildFieldObj = AsObject(ChildFieldVal);
-                if (ChildFieldObj == nullptr || !CheckClosedKeys(Field.FieldId, *ChildFieldObj, ChildFieldConsumedKeys, "tab child field"))
-                {
-                    return false;
-                }
-                const std::string* ChildSchemaId = FindString(*ChildFieldObj, "schema_id");
-                const GV2RuntimeCore::FValue* ChildValue = FindValue(*ChildFieldObj, "value");
-                if (ChildSchemaId == nullptr || ChildValue == nullptr)
-                {
-                    return false;
-                }
-
-                // Check UIF-22: Tabs inside tabs disallowed
-                if (*ChildSchemaId == TabContainerSchema)
-                {
-                    return false;
-                }
-
-                const FObject* ChildValObj = AsObject(*ChildValue);
-                if (ChildValObj == nullptr)
-                {
-                    return false;
-                }
-
-                GV2RuntimeCore::FScreenField ChildField;
-                ChildField.FieldId = ChildFieldId;
-                ChildField.SchemaId = *ChildSchemaId;
-                ChildField.Value = *ChildValue;
-
-                const auto* ChildAdapter = Registry.Find(*ChildSchemaId);
-                if (ChildAdapter == nullptr)
-                {
-                    return false;
-                }
-
-                TArray<FGV2UiBindingDefinition> ChildDefs;
-                if (!ChildAdapter->PrepareBindings(*TabScreenId, ChildField, *ChildValObj, ChildDefs))
-                {
-                    return false;
-                }
-
-                for (FGV2UiBindingDefinition& Def : ChildDefs)
-                {
-                    if (Def.NodeKeyPath.Num() >= 2 && Def.NodeKeyPath[0] == TEXT("route") && Def.NodeKeyPath[1] == TEXT("main"))
-                    {
-                        Def.NodeKeyPath.RemoveAt(0, 2);
-                    }
-                    Def.NodeKeyPath.Insert(TabKeyStr, 0);
-                    Def.NodeKeyPath.Insert(FieldId(Field), 0);
-                    OutDefinitions.Add(MoveTemp(Def));
-                }
-            }
-        }
-    }
-
-    return true;
-}
-
-bool BuildTabContainerField(
-    const GV2RuntimeCore::FScreenField& Field,
-    const FObject& Value,
-    const TArray<FGV2UiBindingHandle>& Handles,
-    int32& InOutHandleIndex,
-    FGV2ScreenFieldValue& OutField)
-{
-    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"tabs", "default_tab_key"};
-    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
-
-    const FArray* TabsArray = nullptr;
-    if (const GV2RuntimeCore::FValue* TabsVal = FindValue(Value, "tabs"))
-    {
-        TabsArray = AsArray(*TabsVal);
-    }
-    if (TabsArray == nullptr || TabsArray->empty())
-    {
-        return false;
-    }
-
-    FGV2TabContainerViewModel Model;
-    if (const std::string* DefaultKey = FindString(Value, "default_tab_key"))
-    {
-        Model.DefaultTabKey = FName(UTF8_TO_TCHAR(DefaultKey->c_str()));
-    }
-
-    const FGV2ScreenFieldAdapterRegistry& Registry = FGV2ScreenFieldAdapterRegistry::Get();
-
-    static constexpr std::initializer_list<std::string_view> TabConsumedKeys = {"key", "title", "screen_id", "fields"};
-    static constexpr std::initializer_list<std::string_view> ChildFieldConsumedKeys = {"schema_id", "value"};
-    for (const GV2RuntimeCore::FValue& TabVal : *TabsArray)
-    {
-        const FObject* TabObj = AsObject(TabVal);
-        if (TabObj == nullptr || !CheckClosedKeys(Field.FieldId, *TabObj, TabConsumedKeys, "tabs element"))
-        {
-            return false;
-        }
-
-        const std::string* Key = FindString(*TabObj, "key");
-        if (Key == nullptr)
-        {
-            return false;
-        }
-
-        FGV2TabItemViewModel& TabItem = Model.Tabs.AddDefaulted_GetRef();
-        TabItem.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
-
-        const GV2RuntimeCore::FValue* TitleVal = FindValue(*TabObj, "title");
-        if (TitleVal == nullptr || !ResolveText(*TitleVal, TabItem.Title))
-        {
-            return false;
-        }
-
-        const std::string* TabScreenId = FindString(*TabObj, "screen_id");
-        if (TabScreenId == nullptr)
-        {
-            return false;
-        }
-        TabItem.ScreenId = UTF8_TO_TCHAR(TabScreenId->c_str());
-
-        const GV2RuntimeCore::FValue* FieldsVal = FindValue(*TabObj, "fields");
-        const FObject* FieldsObj = FieldsVal != nullptr ? AsObject(*FieldsVal) : nullptr;
-        if (FieldsObj != nullptr)
-        {
-            for (const auto& [ChildFieldId, ChildFieldVal] : *FieldsObj)
-            {
-                const FObject* ChildFieldObj = AsObject(ChildFieldVal);
-                if (ChildFieldObj == nullptr || !CheckClosedKeys(Field.FieldId, *ChildFieldObj, ChildFieldConsumedKeys, "tab child field"))
-                {
-                    return false;
-                }
-                const std::string* ChildSchemaId = FindString(*ChildFieldObj, "schema_id");
-                const GV2RuntimeCore::FValue* ChildValue = FindValue(*ChildFieldObj, "value");
-                if (ChildSchemaId == nullptr || ChildValue == nullptr)
-                {
-                    return false;
-                }
-
-                const FObject* ChildValObj = AsObject(*ChildValue);
-                if (ChildValObj == nullptr)
-                {
-                    return false;
-                }
-
-                GV2RuntimeCore::FScreenField ChildField;
-                ChildField.FieldId = ChildFieldId;
-                ChildField.SchemaId = *ChildSchemaId;
-                ChildField.Value = *ChildValue;
-
-                const auto* ChildAdapter = Registry.Find(*ChildSchemaId);
-                if (ChildAdapter == nullptr)
-                {
-                    return false;
-                }
-
-                FGV2ScreenFieldValue BuiltChildField;
-                if (!ChildAdapter->BuildField(ChildField, *ChildValObj, Handles, InOutHandleIndex, BuiltChildField))
-                {
-                    return false;
-                }
-                TabItem.Fields.Add(MoveTemp(BuiltChildField));
-            }
-        }
-    }
-
-    OutField = FGV2ScreenFieldValue::MakeTabContainer(FName(*FieldId(Field)), Model);
-    return true;
-}
 
 bool ReadOptionalResource(const FObject& Value, const std::string_view Name, FString& OutValue)
 {
@@ -1202,14 +555,73 @@ bool BuildLocationScene(const GV2RuntimeCore::FScreenField& Field, const FObject
     return true;
 }
 
-bool PrepareLocationCommands(const std::string& ScreenId, const GV2RuntimeCore::FScreenField& Field, const FObject& Value, TArray<FGV2UiBindingDefinition>& Definitions)
-{ return PrepareButtonList(ScreenId, Field, Value, Definitions); }
-
-bool BuildLocationCommands(const GV2RuntimeCore::FScreenField& Field, const FObject& Value, const TArray<FGV2UiBindingHandle>& Handles, int32& HandleIndex, FGV2ScreenFieldValue& OutField)
+bool PrepareLocationCommands(
+    const std::string& ScreenId,
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    TArray<FGV2UiBindingDefinition>& Definitions)
 {
-    FGV2ScreenFieldValue ButtonList;
-    if (!BuildButtonList(Field, Value, Handles, HandleIndex, ButtonList)) return false;
-    OutField = FGV2ScreenFieldValue::MakeLocationCommands(FName(*FieldId(Field)), ButtonList.ButtonListValue);
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items"};
+    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
+
+    const GV2RuntimeCore::FValue* ItemsValue = FindValue(Value, "items");
+    const FArray* Items = ItemsValue != nullptr ? AsArray(*ItemsValue) : nullptr;
+    if (Items == nullptr) return false;
+    static constexpr std::initializer_list<std::string_view> ItemConsumedKeys = {"key", "text", "binding"};
+    TSet<FName> SeenKeys;
+    for (const GV2RuntimeCore::FValue& ItemValue : *Items)
+    {
+        const FObject* Item = AsObject(ItemValue);
+        if (Item == nullptr || !CheckClosedKeys(Field.FieldId, *Item, ItemConsumedKeys, "items element")) return false;
+        const std::string* Key = FindString(*Item, "key");
+        const GV2RuntimeCore::FValue* Binding = FindValue(*Item, "binding");
+        if (!ValidateRepeatedElementKey(Key, SeenKeys) || Binding == nullptr) return false;
+        FGV2UiBindingDefinition& Definition = Definitions.AddDefaulted_GetRef();
+        if (!ReadBinding(
+                *Binding,
+                {TEXT("route"), TEXT("main"), FieldId(Field), UTF8_TO_TCHAR(Key->c_str())},
+                FString::Printf(
+                    TEXT("%s#widget.%s"),
+                    UTF8_TO_TCHAR(ScreenId.c_str()),
+                    UTF8_TO_TCHAR(Key->c_str())),
+                Definition))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool BuildLocationCommands(
+    const GV2RuntimeCore::FScreenField& Field,
+    const FObject& Value,
+    const TArray<FGV2UiBindingHandle>& Handles,
+    int32& HandleIndex,
+    FGV2ScreenFieldValue& OutField)
+{
+    static constexpr std::initializer_list<std::string_view> ConsumedKeys = {"items"};
+    if (!CheckClosedKeys(Field.FieldId, Value, ConsumedKeys)) return false;
+
+    const GV2RuntimeCore::FValue* ItemsVal = FindValue(Value, "items");
+    const FArray* Items = ItemsVal != nullptr ? AsArray(*ItemsVal) : nullptr;
+    if (Items == nullptr) return false;
+    TArray<FGV2ButtonViewModel> Buttons;
+    Buttons.Reserve(static_cast<int32>(Items->size()));
+    static constexpr std::initializer_list<std::string_view> ItemConsumedKeys = {"key", "text", "binding"};
+    for (const GV2RuntimeCore::FValue& ItemValue : *Items)
+    {
+        if (!Handles.IsValidIndex(HandleIndex)) return false;
+        const FObject* Item = AsObject(ItemValue);
+        if (Item == nullptr || !CheckClosedKeys(Field.FieldId, *Item, ItemConsumedKeys, "items element")) return false;
+        const std::string* Key = FindString(*Item, "key");
+        if (Key == nullptr) return false;
+        const GV2RuntimeCore::FValue* Text = FindValue(*Item, "text");
+        FGV2ButtonViewModel& Button = Buttons.AddDefaulted_GetRef();
+        Button.Key = FName(UTF8_TO_TCHAR(Key->c_str()));
+        if (Text == nullptr || !ResolveText(*Text, Button.Text)) return false;
+        Button.Binding = Handles[HandleIndex++];
+    }
+    OutField = FGV2ScreenFieldValue::MakeLocationCommands(FName(*FieldId(Field)), Buttons);
     return true;
 }
 }
@@ -1222,11 +634,6 @@ const FGV2ScreenFieldAdapterRegistry& FGV2ScreenFieldAdapterRegistry::Get()
 
 FGV2ScreenFieldAdapterRegistry::FGV2ScreenFieldAdapterRegistry()
     : Adapters({
-        {ButtonListSchema, &PrepareButtonList, &BuildButtonList},
-        {RichTextSchema, &PrepareRichText, &BuildRichText},
-        {DropdownSelectSchema, &PrepareDropdown, &BuildDropdown},
-        {ModalSchema, &PrepareModal, &BuildModalField},
-        {TabContainerSchema, &PrepareTabContainer, &BuildTabContainerField},
         {LocationTopBarSchema, &PrepareLocationTopBar, &BuildLocationTopBar},
         {LocationPlayerStatusSchema, &PrepareLocationPlayerStatus, &BuildLocationPlayerStatus},
         {LocationSceneSchema, &PrepareLocationScene, &BuildLocationScene},

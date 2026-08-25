@@ -8,53 +8,16 @@
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiTheme.h"
 
-namespace
-{
-constexpr TCHAR TabContainerDeclaredSchemaId[] = TEXT("core:schema.ui_field.tab_container.v1");
-}
-
 UGV2TabContainerWidgetBase::UGV2TabContainerWidgetBase(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
 {
 }
 
-FGV2ScreenFieldDescriptor UGV2TabContainerWidgetBase::GetScreenFieldDescriptor_Implementation() const
+void UGV2TabContainerWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    FGV2ScreenFieldDescriptor Desc;
-    Desc.FieldId = ConfiguredScreenFieldId;
-    Desc.SchemaId = TabContainerDeclaredSchemaId;
-    return Desc;
-}
-
-bool UGV2TabContainerWidgetBase::CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& FieldValue) const
-{
-    if (FieldValue.SchemaId != TabContainerDeclaredSchemaId || !FieldValue.TabContainerValue.IsValid())
-    {
-        return false;
-    }
-    return CanApplyTabContainerModel(*FieldValue.TabContainerValue);
-}
-
-bool UGV2TabContainerWidgetBase::ApplyScreenField_Implementation(const FGV2ScreenFieldValue& FieldValue)
-{
-    if (!CanApplyScreenField_Implementation(FieldValue))
-    {
-        return false;
-    }
-    ConfiguredScreenFieldId = FieldValue.FieldId;
-    return ApplyTabContainerModel(*FieldValue.TabContainerValue);
-}
-
-bool UGV2TabContainerWidgetBase::CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const
-{
-    OutFieldValue = FGV2ScreenFieldValue::MakeTabContainer(ConfiguredScreenFieldId, Model);
-    return true;
-}
-
-bool UGV2TabContainerWidgetBase::ResetScreenField_Implementation()
-{
-    ResetTabContainerModel();
-    return true;
+    OutBuilder.AddKey(TEXT("default_tab_key"), NAME_None);
+    OutBuilder.AddNestedScreenCollection(TEXT("tabs"), FName(TEXT("TabContentPanel")), TEXT("key"));
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
 bool UGV2TabContainerWidgetBase::ApplyCentralStyle_Implementation()
@@ -75,44 +38,39 @@ bool UGV2TabContainerWidgetBase::ApplyCentralStyle_Implementation()
     return true;
 }
 
-bool UGV2TabContainerWidgetBase::CanApplyTabContainerModel(const FGV2TabContainerViewModel& InModel) const
+void UGV2TabContainerWidgetBase::ApplyDefaultTabKey(FName InKey)
 {
-    if (InModel.Tabs.IsEmpty())
-    {
-        return false;
-    }
-
-    TSet<FName> SeenKeys;
-    for (const FGV2TabItemViewModel& Tab : InModel.Tabs)
-    {
-        if (Tab.Key.IsNone() || SeenKeys.Contains(Tab.Key))
-        {
-            return false;
-        }
-        SeenKeys.Add(Tab.Key);
-
-        if (Tab.ScreenId.IsEmpty())
-        {
-            return false;
-        }
-    }
-
-    return true;
+    DefaultTabKey = InKey;
 }
 
-bool UGV2TabContainerWidgetBase::ApplyTabContainerModel(const FGV2TabContainerViewModel& InModel)
+void UGV2TabContainerWidgetBase::ApplyTabEntries(
+    const TArray<FGV2TabItemEntry>& InEntries,
+    const TMap<FName, UGV2ScreenWidgetBase*>& InWidgets)
 {
-    if (!CanApplyTabContainerModel(InModel))
+    TabEntries = InEntries;
+    TabScreenWidgets.Empty();
+    for (const auto& Pair : InWidgets)
     {
-        return false;
+        TabScreenWidgets.Add(Pair.Key, Pair.Value);
     }
 
-    Model = InModel;
+    // Attach widgets to panel
+    if (TabContentPanel != nullptr)
+    {
+        TabContentPanel->ClearChildren();
+        for (const FGV2TabItemEntry& Entry : TabEntries)
+        {
+            if (TObjectPtr<UGV2ScreenWidgetBase> Child = TabScreenWidgets.FindRef(Entry.Key))
+            {
+                TabContentPanel->AddChild(Child);
+            }
+        }
+    }
 
     // Determine active tab key
-    const bool bPrevKeyValid = !ActiveTabKey.IsNone() && Model.Tabs.ContainsByPredicate([this](const FGV2TabItemViewModel& Tab)
+    const bool bPrevKeyValid = !ActiveTabKey.IsNone() && TabEntries.ContainsByPredicate([this](const FGV2TabItemEntry& Entry)
     {
-        return Tab.Key == ActiveTabKey;
+        return Entry.Key == ActiveTabKey;
     });
 
     FName NewActiveKey = NAME_None;
@@ -120,73 +78,23 @@ bool UGV2TabContainerWidgetBase::ApplyTabContainerModel(const FGV2TabContainerVi
     {
         NewActiveKey = ActiveTabKey;
     }
-    else if (!Model.DefaultTabKey.IsNone() && Model.Tabs.ContainsByPredicate([this](const FGV2TabItemViewModel& Tab)
+    else if (!DefaultTabKey.IsNone() && TabEntries.ContainsByPredicate([this](const FGV2TabItemEntry& Entry)
     {
-        return Tab.Key == Model.DefaultTabKey;
+        return Entry.Key == DefaultTabKey;
     }))
     {
-        NewActiveKey = Model.DefaultTabKey;
+        NewActiveKey = DefaultTabKey;
     }
-    else
+    else if (TabEntries.Num() > 0)
     {
-        NewActiveKey = Model.Tabs[0].Key;
+        NewActiveKey = TabEntries[0].Key;
     }
 
     ActiveTabKey = NewActiveKey;
-    ActiveTabIndex = Model.Tabs.IndexOfByPredicate([this](const FGV2TabItemViewModel& Tab)
+    ActiveTabIndex = TabEntries.IndexOfByPredicate([this](const FGV2TabItemEntry& Entry)
     {
-        return Tab.Key == ActiveTabKey;
+        return Entry.Key == ActiveTabKey;
     });
-
-    // Reconcile child screen widgets for tabs
-    UWorld* World = GetWorld();
-    TSet<FName> ActiveKeys;
-
-    for (const FGV2TabItemViewModel& Tab : Model.Tabs)
-    {
-        ActiveKeys.Add(Tab.Key);
-        TObjectPtr<UGV2ScreenWidgetBase>* ExistingWidgetPtr = TabScreenWidgets.Find(Tab.Key);
-        UGV2ScreenWidgetBase* ChildWidget = ExistingWidgetPtr != nullptr ? ExistingWidgetPtr->Get() : nullptr;
-
-        // If widget already exists, apply fields
-        if (ChildWidget != nullptr)
-        {
-            if (!ChildWidget->ApplyScreenFields(Tab.Fields)) return false;
-        }
-        else if (World != nullptr)
-        {
-            // For headless / simulation tests or dynamic templates, instantiate generic ScreenWidget if no specific class
-            ChildWidget = CreateWidget<UGV2ScreenWidgetBase>(World, UGV2ScreenWidgetBase::StaticClass());
-            if (ChildWidget == nullptr) return false;
-            if (!ChildWidget->ApplyScreenFields(Tab.Fields)) return false;
-            if (TabContentPanel != nullptr)
-            {
-                TabContentPanel->AddChild(ChildWidget);
-            }
-            TabScreenWidgets.Add(Tab.Key, ChildWidget);
-        }
-    }
-
-    // Clean up detached tabs
-    TArray<FName> StaleKeys;
-    for (const auto& Pair : TabScreenWidgets)
-    {
-        if (!ActiveKeys.Contains(Pair.Key))
-        {
-            StaleKeys.Add(Pair.Key);
-        }
-    }
-    for (const FName StaleKey : StaleKeys)
-    {
-        if (TObjectPtr<UGV2ScreenWidgetBase>* StaleWidget = TabScreenWidgets.Find(StaleKey))
-        {
-            if (*StaleWidget != nullptr)
-            {
-                (*StaleWidget)->RemoveFromParent();
-            }
-            TabScreenWidgets.Remove(StaleKey);
-        }
-    }
 
     UpdateActiveTabDisplay();
     OnTabModelApplied();
@@ -198,22 +106,27 @@ bool UGV2TabContainerWidgetBase::ApplyTabContainerModel(const FGV2TabContainerVi
         ? ContainerPath
         : (!ConfiguredScreenFieldId.IsNone() ? FString::Printf(TEXT("location_content/main/%s"), *ConfiguredScreenFieldId.ToString()) : FString());
 
-    if (!ResolvedPath.IsEmpty() && World != nullptr)
+    if (!ResolvedPath.IsEmpty())
     {
-        if (const UGameInstance* GI = World->GetGameInstance())
+        if (const UWorld* World = GetWorld())
         {
-            if (UGV2RuntimeSubsystem* Runtime = GI->GetSubsystem<UGV2RuntimeSubsystem>())
+            if (const UGameInstance* GI = World->GetGameInstance())
             {
-                Runtime->SetActiveTab(ResolvedPath, ActiveTabKey.ToString());
+                if (UGV2RuntimeSubsystem* Runtime = GI->GetSubsystem<UGV2RuntimeSubsystem>())
+                {
+                    Runtime->SetActiveTab(ResolvedPath, ActiveTabKey.ToString());
+                }
             }
         }
     }
-
-    return true;
 }
 
 void UGV2TabContainerWidgetBase::ResetTabContainerModel()
 {
+    if (TabContentPanel != nullptr)
+    {
+        TabContentPanel->ClearChildren();
+    }
     for (const auto& Pair : TabScreenWidgets)
     {
         if (Pair.Value != nullptr)
@@ -222,7 +135,8 @@ void UGV2TabContainerWidgetBase::ResetTabContainerModel()
         }
     }
     TabScreenWidgets.Empty();
-    Model = {};
+    TabEntries.Empty();
+    DefaultTabKey = NAME_None;
     ActiveTabKey = NAME_None;
     ActiveTabIndex = INDEX_NONE;
 }
@@ -234,9 +148,9 @@ bool UGV2TabContainerWidgetBase::SelectTabByKey(FName InTabKey)
         return true;
     }
 
-    const int32 FoundIndex = Model.Tabs.IndexOfByPredicate([InTabKey](const FGV2TabItemViewModel& Tab)
+    const int32 FoundIndex = TabEntries.IndexOfByPredicate([InTabKey](const FGV2TabItemEntry& Entry)
     {
-        return Tab.Key == InTabKey;
+        return Entry.Key == InTabKey;
     });
 
     if (FoundIndex == INDEX_NONE)
@@ -275,11 +189,11 @@ bool UGV2TabContainerWidgetBase::SelectTabByKey(FName InTabKey)
 
 bool UGV2TabContainerWidgetBase::SelectTabByIndex(int32 InIndex)
 {
-    if (!Model.Tabs.IsValidIndex(InIndex))
+    if (!TabEntries.IsValidIndex(InIndex))
     {
         return false;
     }
-    return SelectTabByKey(Model.Tabs[InIndex].Key);
+    return SelectTabByKey(TabEntries[InIndex].Key);
 }
 
 UGV2ScreenWidgetBase* UGV2TabContainerWidgetBase::GetActiveScreenWidget() const

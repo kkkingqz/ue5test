@@ -33,9 +33,7 @@ bool UGV2RichTextPopoverWidgetBase::InitializePopover(
     TitleText->SetVisibility(Model.Title.Text.IsEmpty()
         ? ESlateVisibility::Collapsed
         : ESlateVisibility::SelfHitTestInvisible);
-    FGV2InteractiveRichTextViewModel DescriptionContent;
-    DescriptionContent.Text = Model.Description;
-    DescriptionText->ApplyInteractiveRichText(DescriptionContent);
+    DescriptionText->ApplyText(Model.Description);
     DescriptionText->SetVisibility(Model.Description.Text.IsEmpty()
         ? ESlateVisibility::Collapsed
         : ESlateVisibility::SelfHitTestInvisible);

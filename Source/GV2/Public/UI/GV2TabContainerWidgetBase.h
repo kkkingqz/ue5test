@@ -3,39 +3,59 @@
 #include "CoreMinimal.h"
 #include "CommonUserWidget.h"
 #include "Bridge/GV2BridgeTypes.h"
-#include "UI/GV2DynamicScreenElement.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "GV2TabContainerWidgetBase.generated.h"
 
 class UGV2ScreenWidgetBase;
-class UGV2ScreenRegistry;
 class UPanelWidget;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FGV2OnTabChanged, FName, NewTabKey, int32, NewTabIndex);
 
+USTRUCT(BlueprintType)
+struct GV2_API FGV2TabItemEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
+    FName Key;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
+    FGV2TextViewModel Title;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
+    FString ScreenId;
+};
+
 UCLASS(BlueprintType, Blueprintable)
-class GV2_API UGV2TabContainerWidgetBase : public UCommonUserWidget, public IGV2DynamicScreenElement, public IGV2UiStyleConsumer
+class GV2_API UGV2TabContainerWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
 public:
     UGV2TabContainerWidgetBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-    // IGV2DynamicScreenElement
-    virtual FGV2ScreenFieldDescriptor GetScreenFieldDescriptor_Implementation() const override;
-    virtual bool CanApplyScreenField_Implementation(const FGV2ScreenFieldValue& FieldValue) const override;
-    virtual bool ApplyScreenField_Implementation(const FGV2ScreenFieldValue& FieldValue) override;
-    virtual bool CaptureScreenField_Implementation(FGV2ScreenFieldValue& OutFieldValue) const override;
-    virtual bool ResetScreenField_Implementation() override;
+    // IGV2UiPropertyHost
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
     // IGV2UiStyleConsumer
     virtual bool ApplyCentralStyle_Implementation() override;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Tabs")
-    bool CanApplyTabContainerModel(const FGV2TabContainerViewModel& InModel) const;
+    void ApplyDefaultTabKey(FName InKey);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
+    FName GetDefaultTabKey() const { return DefaultTabKey; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Tabs")
-    bool ApplyTabContainerModel(const FGV2TabContainerViewModel& InModel);
+    void ApplyTabEntries(
+        const TArray<FGV2TabItemEntry>& InEntries,
+        const TMap<FName, UGV2ScreenWidgetBase*>& InWidgets);
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
+    const TArray<FGV2TabItemEntry>& GetTabEntries() const { return TabEntries; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Tabs")
     void ResetTabContainerModel();
@@ -51,9 +71,6 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
     int32 GetActiveTabIndex() const { return ActiveTabIndex; }
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
-    const FGV2TabContainerViewModel& GetTabContainerModel() const { return Model; }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
     UGV2ScreenWidgetBase* GetActiveScreenWidget() const;
@@ -76,9 +93,14 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
     FString GetContainerPath() const { return ContainerPath; }
 
+    UPanelWidget* GetTabContentPanel() const { return TabContentPanel; }
+
 protected:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
-    FGV2TabContainerViewModel Model;
+    FName DefaultTabKey;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
+    TArray<FGV2TabItemEntry> TabEntries;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Tabs")
     FName ActiveTabKey;
@@ -91,6 +113,8 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UPanelWidget> TabContentPanel;
+
+    FGV2UiPropertyHostState PropertyHostState;
 
     UFUNCTION(BlueprintImplementableEvent, Category = "GV2|UI|Tabs")
     void OnTabSelectionUpdated(FName NewTabKey, int32 NewTabIndex);

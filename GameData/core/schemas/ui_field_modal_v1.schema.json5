@@ -1,0 +1,44 @@
+{
+  id: "core:schema.ui_field.modal.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      title: {
+        kind: "text",
+        required: true,
+      },
+      content: {
+        kind: "text",
+        required: true,
+      },
+      buttons: {
+        kind: "array",
+        required: false,
+        keyed_by: "key",
+        items: {
+          kind: "object",
+          fields: {
+            key: {
+              kind: "key",
+              required: true,
+            },
+            text: {
+              kind: "text",
+              required: true,
+            },
+            binding: {
+              kind: "binding",
+              required: false,
+            },
+          },
+        },
+      },
+      backdrop_close_action: {
+        kind: "binding",
+        required: false,
+      },
+    },
+  },
+}

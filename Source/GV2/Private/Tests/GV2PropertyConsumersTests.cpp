@@ -6,20 +6,31 @@
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2IconWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2ButtonListWidgetBase.h"
+#include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2CheckboxWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2ModalWidgetBase.h"
+#include "UI/GV2ListViewWidgetBase.h"
+#include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2ScreenRegistry.h"
+#include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Image.h"
+#include "Components/Button.h"
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Components/ProgressBar.h"
+#include "Components/VerticalBox.h"
+#include "Components/ScrollBox.h"
+#include "Components/Border.h"
 #include "Engine/GameInstance.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -493,6 +504,462 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("Popover Key Prepare succeeds"), KeyConsumer.Prepare(FGV2PreparedUiValue::MakeKey(TEXT("info_popover")), KeyCap, PopoverWidget, PrepErr));
             TestTrue(TEXT("Popover Key Commit succeeds"), KeyConsumer.Commit(PopoverWidget, CommitErr));
             TestEqual(TEXT("Popover key matches info_popover"), PopoverWidget->GetKey(), FName(TEXT("info_popover")));
+        }
+
+        // 8. UPP-20: FGV2KeyedCollectionPropertyConsumer & Value-Level Transactionality
+        {
+            UGV2ListViewWidgetBase* ListView = CreateWidget<UGV2ListViewWidgetBase>(TestWorld, UGV2ListViewWidgetBase::StaticClass());
+            UVerticalBox* ContainerBox = NewObject<UVerticalBox>(ListView);
+            ListView->SetContainerPanel(ContainerBox);
+
+            FGV2UiPropertyCapability ItemCap;
+            ItemCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+            ItemCap.EntryWidgetClass = UGV2ButtonWidgetBase::StaticClass();
+
+            FGV2UiCapabilityBuilder Builder;
+            Builder.AddKeyedCollection(TEXT("items"), FName(TEXT("ContainerPanel")), ItemCap, TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+            const FGV2UiCapabilityTree Tree = Builder.Build();
+            const FGV2UiPropertyCapability* CollCap = Tree.FindProperty(TEXT("items"));
+            TestNotNull(TEXT("Collection capability found"), CollCap);
+
+            TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+            TestNotNull(TEXT("Factory created FGV2KeyedCollectionPropertyConsumer"), Consumer.Get());
+
+            const FGV2UiBindingHandle TestHandleA = FGV2UiBindingHandle::Create(TEXT("action_a@1:1"));
+            const FGV2UiBindingHandle TestHandleB = FGV2UiBindingHandle::Create(TEXT("action_b@1:1"));
+
+            // 8a. Successful baseline reconciliation with initial values (item_a = handleA, item_b = handleB)
+            TMap<FString, FGV2PreparedUiValue> ItemAInitMap;
+            ItemAInitMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_a")));
+            ItemAInitMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleA));
+
+            TMap<FString, FGV2PreparedUiValue> ItemBInitMap;
+            ItemBInitMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_b")));
+            ItemBInitMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleB));
+
+            TArray<FGV2PreparedUiValue> BaselineElements;
+            BaselineElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemAInitMap)));
+            BaselineElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemBInitMap)));
+
+            FString PrepErr, CommitErr;
+            bool bPrepSuccess = Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineElements)), *CollCap, ListView, PrepErr);
+            TestTrue(TEXT("Collection baseline Prepare succeeds"), bPrepSuccess);
+            bool bCommitSuccess = Consumer->Commit(ListView, CommitErr);
+            TestTrue(TEXT("Collection baseline Commit succeeds"), bCommitSuccess);
+
+            UGV2ButtonWidgetBase* BtnA = ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_a")));
+            UGV2ButtonWidgetBase* BtnB = ListView->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("item_b")));
+            TestNotNull(TEXT("BtnA created and tracked"), BtnA);
+            TestNotNull(TEXT("BtnB created and tracked"), BtnB);
+            TestEqual(TEXT("BtnA initial key matches item_a"), BtnA->GetKey(), FName(TEXT("item_a")));
+            TestEqual(TEXT("BtnB initial key matches item_b"), BtnB->GetKey(), FName(TEXT("item_b")));
+            TestEqual(TEXT("BtnA initial binding matches TestHandleA"), BtnA->GetBindingHandle(), TestHandleA);
+            TestEqual(TEXT("BtnB initial binding matches TestHandleB"), BtnB->GetBindingHandle(), TestHandleB);
+            TestTrue(TEXT("BtnA is enabled"), BtnA->GetIsEnabled());
+            TestTrue(TEXT("BtnB is enabled"), BtnB->GetIsEnabled());
+            TestEqual(TEXT("Container children count is 2"), ContainerBox->GetChildrenCount(), 2);
+
+            // 8b. Transactionality / Value-level rollback verification:
+            // Item A has valid candidate value (TestHandleA_New), Item B has invalid type for binding (number instead of binding)
+            const FGV2UiBindingHandle TestHandleA_New = FGV2UiBindingHandle::Create(TEXT("action_a_new@1:1"));
+            TMap<FString, FGV2PreparedUiValue> ItemACandidateMap;
+            ItemACandidateMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_a")));
+            ItemACandidateMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleA_New));
+
+            TMap<FString, FGV2PreparedUiValue> ItemBCandidateMap;
+            ItemBCandidateMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_b")));
+            ItemBCandidateMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeNumber(999.0)); // invalid type for binding!
+
+            TArray<FGV2PreparedUiValue> FailingElements;
+            FailingElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemACandidateMap)));
+            FailingElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemBCandidateMap)));
+
+            bool bFailingPrep = Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FailingElements)), *CollCap, ListView, PrepErr);
+            TestFalse(TEXT("Collection Prepare fails when item B has invalid property"), bFailingPrep);
+
+            // CRITICAL TEST: BtnA was reused, but its binding handle and key MUST NOT be mutated to TestHandleA_New!
+            TestEqual(TEXT("BtnA binding remains strictly TestHandleA (NO in-place mutation on failure)"), BtnA->GetBindingHandle(), TestHandleA);
+            TestEqual(TEXT("BtnB binding remains strictly TestHandleB"), BtnB->GetBindingHandle(), TestHandleB);
+            TestEqual(TEXT("BtnA key remains item_a"), BtnA->GetKey(), FName(TEXT("item_a")));
+            TestEqual(TEXT("BtnB key remains item_b"), BtnB->GetKey(), FName(TEXT("item_b")));
+            TestEqual(TEXT("Container child 0 remains BtnA"), ContainerBox->GetChildAt(0), Cast<UWidget>(BtnA));
+            TestEqual(TEXT("Container child 1 remains BtnB"), ContainerBox->GetChildAt(1), Cast<UWidget>(BtnB));
+
+            // 8c. Negative tests: missing key, empty key, duplicate key
+            TMap<FString, FGV2PreparedUiValue> MissingKeyMap;
+            MissingKeyMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleA));
+            TArray<FGV2PreparedUiValue> MissingKeyElements;
+            MissingKeyElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MissingKeyMap)));
+            TestFalse(TEXT("Missing key fails Prepare"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MissingKeyElements)), *CollCap, ListView, PrepErr));
+
+            TMap<FString, FGV2PreparedUiValue> EmptyKeyMap;
+            EmptyKeyMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("")));
+            TArray<FGV2PreparedUiValue> EmptyKeyElements;
+            EmptyKeyElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(EmptyKeyMap)));
+            TestFalse(TEXT("Empty key fails Prepare"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(EmptyKeyElements)), *CollCap, ListView, PrepErr));
+
+            TMap<FString, FGV2PreparedUiValue> DupA1Map;
+            DupA1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("dup_key")));
+            TMap<FString, FGV2PreparedUiValue> DupA2Map;
+            DupA2Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("dup_key")));
+            TArray<FGV2PreparedUiValue> DupKeyElements;
+            DupKeyElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(DupA1Map)));
+            DupKeyElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(DupA2Map)));
+            TestFalse(TEXT("Duplicate key fails Prepare"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(DupKeyElements)), *CollCap, ListView, PrepErr));
+        }
+
+        // 9. UPP-21: UGV2ButtonListWidgetBase and UGV2DropdownSelectWidgetBase Property Host Reconciliation
+        {
+            // 9a. ButtonList Property Host
+            UGV2ButtonListWidgetBase* ButtonList = CreateWidget<UGV2ButtonListWidgetBase>(TestWorld, UGV2ButtonListWidgetBase::StaticClass());
+            UVerticalBox* BtnBox = NewObject<UVerticalBox>(ButtonList);
+            ButtonList->SetButtonContainer(BtnBox);
+
+            FGV2UiCapabilityBuilder BtnBuilder;
+            ButtonList->DescribeUiCapabilities(BtnBuilder);
+            const FGV2UiCapabilityTree BtnTree = BtnBuilder.Build();
+            const FGV2UiPropertyCapability* BtnItemsCap = BtnTree.FindProperty(TEXT("items"));
+            TestNotNull(TEXT("ButtonList items capability found"), BtnItemsCap);
+
+            if (BtnItemsCap != nullptr)
+            {
+                TSharedPtr<IGV2PropertyConsumer> BtnCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                    EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+
+                FGV2TextViewModel Btn1Text;
+                Btn1Text.Text = FText::FromString(TEXT("Button 1"));
+                Btn1Text.StyleToken = TEXT("default");
+
+                FGV2TextViewModel Btn2Text;
+                Btn2Text.Text = FText::FromString(TEXT("Button 2"));
+                Btn2Text.StyleToken = TEXT("default");
+
+                TMap<FString, FGV2PreparedUiValue> Item1Map;
+                Item1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("btn_1")));
+                Item1Map.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(Btn1Text));
+                Item1Map.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd_1@1:1"))));
+
+                TMap<FString, FGV2PreparedUiValue> Item2Map;
+                Item2Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("btn_2")));
+                Item2Map.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(Btn2Text));
+                Item2Map.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd_2@1:1"))));
+
+                TArray<FGV2PreparedUiValue> BtnElements;
+                BtnElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Item1Map)));
+                BtnElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Item2Map)));
+
+                FString PrepErr, CommitErr;
+                bool bBtnPrep = BtnCollConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BtnElements)),
+                    *BtnItemsCap,
+                    BtnBox,
+                    PrepErr);
+                TestTrue(TEXT("ButtonList Prepare succeeds"), bBtnPrep);
+
+                bool bBtnCommit = BtnCollConsumer->Commit(BtnBox, CommitErr);
+                TestTrue(TEXT("ButtonList Commit succeeds"), bBtnCommit);
+                TestEqual(TEXT("ButtonList container has 2 children"), BtnBox->GetChildrenCount(), 2);
+
+                UGV2ButtonWidgetBase* ChildBtn1 = Cast<UGV2ButtonWidgetBase>(BtnBox->GetChildAt(0));
+                UGV2ButtonWidgetBase* ChildBtn2 = Cast<UGV2ButtonWidgetBase>(BtnBox->GetChildAt(1));
+                TestNotNull(TEXT("ChildBtn1 created"), ChildBtn1);
+                TestNotNull(TEXT("ChildBtn2 created"), ChildBtn2);
+                if (ChildBtn1 && ChildBtn2)
+                {
+                    TestEqual(TEXT("ChildBtn1 key is btn_1"), ChildBtn1->GetKey(), FName(TEXT("btn_1")));
+                    TestEqual(TEXT("ChildBtn2 key is btn_2"), ChildBtn2->GetKey(), FName(TEXT("btn_2")));
+                }
+            }
+
+            // 9b. DropdownSelect Property Host
+            UGV2DropdownSelectWidgetBase* Dropdown = CreateWidget<UGV2DropdownSelectWidgetBase>(TestWorld, UGV2DropdownSelectWidgetBase::StaticClass());
+            UGV2ButtonWidgetBase* HeaderBtn = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
+            UScrollBox* OptBox = NewObject<UScrollBox>(Dropdown);
+            UBorder* PopBorder = NewObject<UBorder>(Dropdown);
+            Dropdown->SetHeaderButton(HeaderBtn);
+            Dropdown->SetOptionsScrollBox(OptBox);
+            Dropdown->SetPopupBorder(PopBorder);
+
+            FGV2UiCapabilityBuilder DdBuilder;
+            Dropdown->DescribeUiCapabilities(DdBuilder);
+            const FGV2UiCapabilityTree DdTree = DdBuilder.Build();
+            const FGV2UiPropertyCapability* DdItemsCap = DdTree.FindProperty(TEXT("items"));
+            TestNotNull(TEXT("Dropdown items capability found"), DdItemsCap);
+
+            FGV2TextViewModel DropdownPlaceholder;
+            DropdownPlaceholder.Text = FText::FromString(TEXT("Select..."));
+            DropdownPlaceholder.StyleToken = TEXT("default");
+            Dropdown->ApplyPlaceholderText(DropdownPlaceholder);
+
+            if (DdItemsCap != nullptr)
+            {
+                TSharedPtr<IGV2PropertyConsumer> DdCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                    EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+
+                FGV2TextViewModel Opt1Text;
+                Opt1Text.Text = FText::FromString(TEXT("Option 1"));
+                Opt1Text.StyleToken = TEXT("default");
+
+                FGV2TextViewModel Opt2Text;
+                Opt2Text.Text = FText::FromString(TEXT("Option 2"));
+                Opt2Text.StyleToken = TEXT("default");
+
+                TMap<FString, FGV2PreparedUiValue> Opt1Map;
+                Opt1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("opt_1")));
+                Opt1Map.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(Opt1Text));
+
+                TMap<FString, FGV2PreparedUiValue> Opt2Map;
+                Opt2Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("opt_2")));
+                Opt2Map.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(Opt2Text));
+
+                TArray<FGV2PreparedUiValue> DdElements;
+                DdElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Opt1Map)));
+                DdElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Opt2Map)));
+
+                FString PrepErr, CommitErr;
+                bool bDdPrep = DdCollConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(DdElements)),
+                    *DdItemsCap,
+                    OptBox,
+                    PrepErr);
+                TestTrue(TEXT("Dropdown items Prepare succeeds"), bDdPrep);
+
+                bool bDdCommit = DdCollConsumer->Commit(OptBox, CommitErr);
+                TestTrue(TEXT("Dropdown items Commit succeeds"), bDdCommit);
+
+                Dropdown->SetSelectedKey(FName(TEXT("opt_1")));
+                TestEqual(TEXT("Dropdown selected key is opt_1"), Dropdown->GetSelectedKey(), FName(TEXT("opt_1")));
+                TestEqual(TEXT("HeaderButton displays Option 1 text"), HeaderBtn->GetTextViewModel().Text.ToString(), TEXT("Option 1"));
+
+                Dropdown->SetSelectedKey(FName(TEXT("opt_2")));
+                TestEqual(TEXT("HeaderButton updates to Option 2 text"), HeaderBtn->GetTextViewModel().Text.ToString(), TEXT("Option 2"));
+            }
+        }
+
+        // 10. UPP-22: FGV2RichTextSpansPropertyConsumer and UGV2RichTextWidgetBase Property Host
+        {
+            UGV2RichTextWidgetBase* RichTextWidget = CreateWidget<UGV2RichTextWidgetBase>(TestWorld, UGV2RichTextWidgetBase::StaticClass());
+
+            FGV2UiCapabilityBuilder RichBuilder;
+            RichTextWidget->DescribeUiCapabilities(RichBuilder);
+            const FGV2UiCapabilityTree RichTree = RichBuilder.Build();
+            const FGV2UiPropertyCapability* SpansCap = RichTree.FindProperty(TEXT("spans"));
+            TestNotNull(TEXT("RichText spans capability found"), SpansCap);
+            TestNotNull(TEXT("RichText text capability found"), RichTree.FindProperty(TEXT("text")));
+
+            if (SpansCap != nullptr)
+            {
+                TSharedPtr<IGV2PropertyConsumer> SpansConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                    EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CustomControl);
+                TestNotNull(TEXT("Factory creates FGV2RichTextSpansPropertyConsumer for CustomControl Array"), SpansConsumer.Get());
+
+                // 10a. Valid spans prepare & commit
+                TMap<FString, FGV2PreparedUiValue> Span1Map;
+                Span1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_span")));
+                Span1Map.Add(TEXT("span_id"), FGV2PreparedUiValue::MakeKey(TEXT("item_span")));
+                Span1Map.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd_inspect@1:1"))));
+
+                TMap<FString, FGV2PreparedUiValue> HoverMap;
+                FGV2TextViewModel HoverTitle;
+                HoverTitle.Text = FText::FromString(TEXT("Hover Title"));
+                HoverMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(HoverTitle));
+                Span1Map.Add(TEXT("hover"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(HoverMap)));
+
+                TArray<FGV2PreparedUiValue> SpanElements;
+                SpanElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Span1Map)));
+
+                FString PrepErr, CommitErr;
+                bool bPrepOk = SpansConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(SpanElements)),
+                    *SpansCap,
+                    RichTextWidget,
+                    PrepErr);
+                TestTrue(TEXT("RichText spans Prepare succeeds"), bPrepOk);
+
+                bool bCommitOk = SpansConsumer->Commit(RichTextWidget, CommitErr);
+                TestTrue(TEXT("RichText spans Commit succeeds"), bCommitOk);
+                TestTrue(TEXT("RichText has interactive span item_span"), RichTextWidget->HasInteractiveSpan(TEXT("item_span")));
+                const FGV2RichTextSpanViewModel* FoundSpan = RichTextWidget->FindInteractiveSpan(TEXT("item_span"));
+                TestNotNull(TEXT("Found interactive span"), FoundSpan);
+                if (FoundSpan)
+                {
+                    TestEqual(TEXT("Span binding handle matches"), FoundSpan->Binding.ToString(), FString(TEXT("cmd_inspect@1:1")));
+                    TestEqual(TEXT("Span hover title matches"), FoundSpan->Hover.Title.Text.ToString(), TEXT("Hover Title"));
+                }
+
+                // 10b. Negative tests
+                // Missing key
+                TMap<FString, FGV2PreparedUiValue> MissingKeySpan;
+                MissingKeySpan.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd@1:1"))));
+                TArray<FGV2PreparedUiValue> MissingKeyList;
+                MissingKeyList.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MissingKeySpan)));
+                TestFalse(TEXT("Missing span key rejected"), SpansConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MissingKeyList)), *SpansCap, RichTextWidget, PrepErr));
+
+                // Duplicate key
+                TMap<FString, FGV2PreparedUiValue> DupKeySpan1;
+                DupKeySpan1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("dup_span")));
+                DupKeySpan1.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd1@1:1"))));
+                TMap<FString, FGV2PreparedUiValue> DupKeySpan2;
+                DupKeySpan2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("dup_span")));
+                DupKeySpan2.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd2@1:1"))));
+                TArray<FGV2PreparedUiValue> DupKeyList;
+                DupKeyList.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(DupKeySpan1)));
+                DupKeyList.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(DupKeySpan2)));
+                TestFalse(TEXT("Duplicate span key rejected"), SpansConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(DupKeyList)), *SpansCap, RichTextWidget, PrepErr));
+
+                // Span with neither hover nor binding
+                TMap<FString, FGV2PreparedUiValue> EmptySpan;
+                EmptySpan.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("empty_span")));
+                TArray<FGV2PreparedUiValue> EmptySpanList;
+                EmptySpanList.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(EmptySpan)));
+                TestFalse(TEXT("Empty span (no hover or binding) rejected"), SpansConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(EmptySpanList)), *SpansCap, RichTextWidget, PrepErr));
+            }
+        }
+
+        // 11. UPP-22: UGV2ModalWidgetBase Property Host Reconciliation
+        {
+            UGV2ModalWidgetBase* ModalWidget = CreateWidget<UGV2ModalWidgetBase>(TestWorld, UGV2ModalWidgetBase::StaticClass());
+
+            FGV2UiCapabilityBuilder ModalBuilder;
+            ModalWidget->DescribeUiCapabilities(ModalBuilder);
+            const FGV2UiCapabilityTree ModalTree = ModalBuilder.Build();
+
+            TestNotNull(TEXT("Modal title capability found"), ModalTree.FindProperty(TEXT("title")));
+            TestNotNull(TEXT("Modal content capability found"), ModalTree.FindProperty(TEXT("content")));
+            TestNotNull(TEXT("Modal buttons capability found"), ModalTree.FindProperty(TEXT("buttons")));
+            TestNotNull(TEXT("Modal backdrop_close_action capability found"), ModalTree.FindProperty(TEXT("backdrop_close_action")));
+            TestNotNull(TEXT("Modal key capability found"), ModalTree.FindProperty(TEXT("key")));
+
+            const FGV2UiPropertyCapability* ButtonsCap = ModalTree.FindProperty(TEXT("buttons"));
+            if (ButtonsCap != nullptr)
+            {
+                TestEqual(TEXT("Modal buttons is KeyedCollection"), ButtonsCap->TargetType, EGV2UiCapabilityTargetType::CollectionHost);
+                TestEqual(TEXT("Modal buttons value kind is Array"), ButtonsCap->SupportedKind, EGV2PreparedUiValueKind::Array);
+                TestEqual(TEXT("Modal buttons entry class is ButtonWidgetBase"), ButtonsCap->EntryWidgetClass.Get(), (UClass*)UGV2ButtonWidgetBase::StaticClass());
+            }
+
+            // Test backdrop close binding handle
+            const FGV2UiBindingHandle BackdropHandle = FGV2UiBindingHandle::Create(TEXT("close_modal@1:1"));
+            ModalWidget->SetBindingHandle(BackdropHandle);
+            TestEqual(TEXT("Modal binding handle is set"), ModalWidget->GetBindingHandle(), BackdropHandle);
+            TestEqual(TEXT("SubmitBackdropClose with valid binding returns RuntimeNotReady in unit test"), ModalWidget->SubmitBackdropClose(), EGV2SubmitUiInteractionResult::RuntimeNotReady);
+
+            ModalWidget->SetBindingHandle(FGV2UiBindingHandle());
+            TestEqual(TEXT("SubmitBackdropClose with invalid binding returns InvalidBindingHandle"), ModalWidget->SubmitBackdropClose(), EGV2SubmitUiInteractionResult::InvalidBindingHandle);
+
+            // Test Title and Content Apply
+            FGV2TextViewModel TitleModel;
+            TitleModel.Text = FText::FromString(TEXT("Confirm Action"));
+            TitleModel.StyleToken = TEXT("title");
+            TestTrue(TEXT("ApplyTitle succeeds"), ModalWidget->ApplyTitle(TitleModel));
+            TestEqual(TEXT("GetTitle matches"), ModalWidget->GetTitle().Text.ToString(), TEXT("Confirm Action"));
+
+            FGV2TextViewModel ContentModel;
+            ContentModel.Text = FText::FromString(TEXT("Are you sure?"));
+            ContentModel.StyleToken = TEXT("body");
+            TestTrue(TEXT("ApplyContent succeeds"), ModalWidget->ApplyContent(ContentModel));
+            TestEqual(TEXT("GetContent matches"), ModalWidget->GetContent().Text.ToString(), TEXT("Are you sure?"));
+        }
+
+        // 12. UPP-23: UGV2TabContainerWidgetBase & FGV2TabContainerTabsPropertyConsumer
+        {
+            UGV2TabContainerWidgetBase* TabContainer = CreateWidget<UGV2TabContainerWidgetBase>(TestWorld, UGV2TabContainerWidgetBase::StaticClass());
+
+            FGV2UiCapabilityBuilder Builder;
+            TabContainer->DescribeUiCapabilities(Builder);
+            const FGV2UiCapabilityTree Tree = Builder.Build();
+
+            TestNotNull(TEXT("default_tab_key capability found"), Tree.FindProperty(TEXT("default_tab_key")));
+            TestNotNull(TEXT("tabs capability found"), Tree.FindProperty(TEXT("tabs")));
+            TestNotNull(TEXT("key capability found"), Tree.FindProperty(TEXT("key")));
+
+            const FGV2UiPropertyCapability* TabsCap = Tree.FindProperty(TEXT("tabs"));
+            if (TabsCap != nullptr)
+            {
+                TestEqual(TEXT("Tabs target type is NestedScreen"), TabsCap->TargetType, EGV2UiCapabilityTargetType::NestedScreen);
+                TestEqual(TEXT("Tabs supported kind is Array"), TabsCap->SupportedKind, EGV2PreparedUiValueKind::Array);
+            }
+
+            TSharedPtr<IGV2PropertyConsumer> TabsConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+            TestNotNull(TEXT("Factory created FGV2TabContainerTabsPropertyConsumer"), TabsConsumer.Get());
+
+            // 12a. Successful reconciliation
+            TArray<FGV2PreparedUiValue> ValidTabs;
+            TMap<FString, FGV2PreparedUiValue> Tab1Map;
+            Tab1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("inventory")));
+            FGV2TextViewModel T1Title;
+            T1Title.Text = FText::FromString(TEXT("Inventory"));
+            Tab1Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T1Title));
+            Tab1Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab1Map)));
+
+            TMap<FString, FGV2PreparedUiValue> Tab2Map;
+            Tab2Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("skills")));
+            FGV2TextViewModel T2Title;
+            T2Title.Text = FText::FromString(TEXT("Skills"));
+            Tab2Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T2Title));
+            Tab2Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab2Map)));
+
+            FString PrepErr, CommitErr;
+            FGV2PreparedUiValue ValidTabsValue = FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(ValidTabs));
+
+            TabContainer->ApplyDefaultTabKey(FName(TEXT("skills")));
+            TestTrue(TEXT("Tabs Prepare succeeds"), TabsConsumer->Prepare(ValidTabsValue, *TabsCap, TabContainer, PrepErr));
+            TestTrue(TEXT("Tabs Commit succeeds"), TabsConsumer->Commit(TabContainer, CommitErr));
+
+            TestEqual(TEXT("Active tab is skills"), TabContainer->GetActiveTabKey(), FName(TEXT("skills")));
+            TestEqual(TEXT("Active tab index is 1"), TabContainer->GetActiveTabIndex(), 1);
+            TestEqual(TEXT("TabEntries count is 2"), TabContainer->GetTabEntries().Num(), 2);
+
+            // Tab switching
+            TestTrue(TEXT("SelectTabByKey inventory succeeds"), TabContainer->SelectTabByKey(FName(TEXT("inventory"))));
+            TestEqual(TEXT("Active tab changed to inventory"), TabContainer->GetActiveTabKey(), FName(TEXT("inventory")));
+            TestEqual(TEXT("Active tab index is 0"), TabContainer->GetActiveTabIndex(), 0);
+
+            // Reset
+            TabsConsumer->Reset(TabContainer);
+            TestEqual(TEXT("Reset clears active tab"), TabContainer->GetActiveTabKey(), NAME_None);
+            TestEqual(TEXT("Reset clears tab entries"), TabContainer->GetTabEntries().Num(), 0);
+
+            // 12b. Negative validations
+            // Empty tabs
+            TArray<FGV2PreparedUiValue> EmptyTabs;
+            TestFalse(TEXT("Empty tabs rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(EmptyTabs)), *TabsCap, TabContainer, PrepErr));
+
+            // Duplicate keys
+            TArray<FGV2PreparedUiValue> DupTabs;
+            DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab1Map)));
+            DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab1Map)));
+            TestFalse(TEXT("Duplicate tab keys rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(DupTabs)), *TabsCap, TabContainer, PrepErr));
+
+            // Missing title
+            TMap<FString, FGV2PreparedUiValue> NoTitleTab;
+            NoTitleTab.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("no_title")));
+            NoTitleTab.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            TArray<FGV2PreparedUiValue> NoTitleTabs;
+            NoTitleTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(NoTitleTab)));
+            TestFalse(TEXT("Tab missing title rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NoTitleTabs)), *TabsCap, TabContainer, PrepErr));
+
+            // Invalid screen_id kind
+            TMap<FString, FGV2PreparedUiValue> BadScreenTab;
+            BadScreenTab.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("bad_screen")));
+            BadScreenTab.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T1Title));
+            BadScreenTab.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:item.sword"), TEXT("item")));
+            TArray<FGV2PreparedUiValue> BadScreenTabs;
+            BadScreenTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BadScreenTab)));
+            TestFalse(TEXT("Tab with non-screen screen_id rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BadScreenTabs)), *TabsCap, TabContainer, PrepErr));
+
+            // Unregistered screen_id
+            TMap<FString, FGV2PreparedUiValue> UnregScreenTab;
+            UnregScreenTab.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("unregistered")));
+            UnregScreenTab.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T1Title));
+            UnregScreenTab.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.nonexistent_screen"), TEXT("screen")));
+            TArray<FGV2PreparedUiValue> UnregScreenTabs;
+            UnregScreenTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UnregScreenTab)));
+            TestFalse(TEXT("Tab with unregistered screen_id rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnregScreenTabs)), *TabsCap, TabContainer, PrepErr));
         }
     }
 
