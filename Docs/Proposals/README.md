@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.5
-updated: 2026-08-20
+version: 4.6
+updated: 2026-08-27
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -63,5 +63,7 @@ Proposal не изменяет нормативную архитектуру с�
 `MutationWindowTransactionalityProposal` выделено из авторского слоя: контракты полей срабатывают в середине обработчика, а откат состояния при этом отсутствует.
 
 `ImageResourcePackagedDeploymentProposal` может выполняться независимо от основных Content/UI-треков. `ImageResourceDeferredLoadingProposal` начинается только после прохождения его measurement gate и обязательного обновления contracts/ADR.
+
+`UniversalDataDrivenUIPropertyPipelineProposal` реализовано планом [UniversalUiPropertyPipeline](../Plans/Archive/UniversalUiPropertyPipeline.md) и перенесено в [Archive](Archive/README.md). Оставшиеся UI-предложения планируются поверх него: schema-specific адаптеров и DTO больше не существует, свойство доходит до виджета через объявленную и наблюдаемую capability, а применение разделено на Prepare и Commit.
 
 UI-трек может выполняться независимо от Content-трека после стабилизации текущего Screen Template vertical slice. LSP, declarative trigger/effect DSL и подключение optional serialization library не входят в ближайший этап.

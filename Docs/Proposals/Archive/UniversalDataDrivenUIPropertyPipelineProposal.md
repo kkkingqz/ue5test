@@ -1,25 +1,26 @@
 ---
 title: Universal Data-Driven UI Property Pipeline Proposal
-status: draft
-proposal_state: accepted_for_planning
-version: 1.1
-updated: 2026-08-23
+status: archived
+proposal_state: implemented
+version: 1.2
+updated: 2026-08-27
 depends_on:
-  - ../UI/ScreenTemplates.md
-  - ../UI/UIDocumentAndReconciliation.md
-  - ../UI/WidgetRegistry.md
-  - ../Architecture/DefinitionEnvelopeAndSchemaRules.md
-  - ../Status/ImplementationStatus.md
+  - ../../UI/ScreenTemplates.md
+  - ../../UI/UIDocumentAndReconciliation.md
+  - ../../UI/WidgetRegistry.md
+  - ../../Architecture/DefinitionEnvelopeAndSchemaRules.md
+  - ../../Status/ImplementationStatus.md
 decisions:
-  - ../ADR/0035-ui-foundation-and-composition.md
-  - ../ADR/0017-centralized-ui-presentation-paths.md
+  - ../../ADR/0040-universal-ui-property-pipeline.md
+  - ../../ADR/0035-ui-foundation-and-composition.md
+  - ../../ADR/0017-centralized-ui-presentation-paths.md
 ---
 
 # Universal Data-Driven UI Property Pipeline
 
 > **Предлагает:** заменить schema-specific цепочку DTO и адаптеров Screen Field одним универсальным property-pipeline с data-driven UI schemas и раздельными фазами Prepare/Commit.
 > **Мотив:** повторяющийся класс дефектов «свойство принято границей и молча не применено», воспроизведённый в четырёх раундах проверки подряд.
-> **Состояние:** принято к планированию с обязательным гейтом go/no-go после фазы 3 (раздел 26).
+> **Состояние:** реализовано планом [UniversalUiPropertyPipeline](../../Plans/Archive/UniversalUiPropertyPipeline.md) (UPP-01…32); решение зафиксировано [ADR-0040](../../ADR/0040-universal-ui-property-pipeline.md). Документ сохраняется как rationale и implementation record, нормативным источником не является.
 
 ## 1. Статус и краткое решение
 
