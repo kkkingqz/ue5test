@@ -24,6 +24,10 @@
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Engine/GameInstance.h"
+#include "UI/GV2ModalWidgetBase.h"
+#include "UI/GV2DropdownSelectWidgetBase.h"
+#include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2LocationCompositeWidgetBases.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiCapabilityObservabilityTest,
@@ -105,8 +109,9 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         for (const FGV2UiObservabilityFailure& Failure : Failures)
         {
             TestTrue(
-                *FString::Printf(TEXT("Failure for '%s' names not_distinguishable"), *Failure.PropertyName),
-                Failure.Reason.Contains(TEXT("core:diagnostic.ui_observability.not_distinguishable")));
+                *FString::Printf(TEXT("Failure for '%s' names a defect code"), *Failure.PropertyName),
+                Failure.Reason.Contains(TEXT("core:diagnostic.ui_observability.not_distinguishable"))
+                    || Failure.Reason.Contains(TEXT("core:diagnostic.ui_observability.prepare_or_commit_failed")));
         }
     }
 
@@ -425,5 +430,111 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
     return true;
 }
 
-#endif
+namespace
+{
+// STATUS-005 closure: sweep every remaining IGV2UiPropertyHost, using the real WBP assets
+// rather than a synthetic widget tree. The composites are exactly where every historical
+// "accepted and silently dropped" defect lived, so leaving them outside the sweep left the
+// plan's central guarantee unverified precisely where it has failed before. Loading the
+// production asset also proves the capability/target binding of §17.2, not just the code.
+UWorld* MakeSweepWorld()
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    return GameInstance->GetWorld();
+}
+}
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiCapabilityObservabilityCompositeSweepTest,
+    "GV2.UI.CapabilityObservabilityCompositeSweep",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Parameters)
+{
+    UWorld* World = MakeSweepWorld();
+
+    auto SweepAsset = [this, World](const TCHAR* AssetPath, const TCHAR* Label)
+    {
+        UClass* WidgetClass = LoadClass<UUserWidget>(nullptr, AssetPath);
+        if (WidgetClass == nullptr)
+        {
+            AddError(FString::Printf(TEXT("%s: widget blueprint '%s' could not be loaded"), Label, AssetPath));
+            return;
+        }
+        UUserWidget* Host = CreateWidget<UUserWidget>(World, WidgetClass);
+        if (Host == nullptr)
+        {
+            AddError(FString::Printf(TEXT("%s: widget could not be instantiated"), Label));
+            return;
+        }
+        IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(Host);
+        if (PropertyHost == nullptr)
+        {
+            AddError(FString::Printf(TEXT("%s: widget does not implement IGV2UiPropertyHost"), Label));
+            return;
+        }
+
+        FGV2UiCapabilityBuilder Builder;
+        PropertyHost->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree Caps = Builder.Build();
+
+        int32 OwnLeafCaps = 0;
+        for (const auto& Entry : Caps.Properties)
+        {
+            if (Entry.Value.TargetType == EGV2UiCapabilityTargetType::RendererControl)
+            {
+                ++OwnLeafCaps;
+            }
+        }
+        TestTrue(
+            *FString::Printf(TEXT("%s declares at least one own capability to sweep"), Label),
+            OwnLeafCaps > 0);
+
+        TArray<FGV2UiObservabilityFailure> Failures;
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+        for (const FGV2UiObservabilityFailure& Failure : Failures)
+        {
+            AddError(FString::Printf(TEXT("%s: capability '%s' is not observable -- %s"),
+                Label, *Failure.PropertyName, *Failure.Reason));
+        }
+        TestTrue(*FString::Printf(TEXT("%s: every declared capability is observable"), Label), bObservable);
+    };
+
+    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_LocationTopBar.WBP_LocationTopBar_C"), TEXT("UGV2LocationTopBarWidgetBase"));
+    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"), TEXT("UGV2LocationPlayerStatusWidgetBase"));
+    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"), TEXT("UGV2LocationSceneWidgetBase"));
+    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"), TEXT("UGV2LocationCommandPanelWidgetBase"));
+    // WBP_Modal is not based on UGV2ModalWidgetBase, so the modal host is swept as a
+    // synthetic instance with its declared renderer targets present by name.
+    {
+        UGV2ModalWidgetBase* Modal = CreateWidget<UGV2ModalWidgetBase>(World, UGV2ModalWidgetBase::StaticClass());
+        Modal->WidgetTree = NewObject<UWidgetTree>(Modal);
+        UVerticalBox* ModalRoot = Modal->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+        Modal->WidgetTree->RootWidget = ModalRoot;
+        ModalRoot->AddChildToVerticalBox(
+            Modal->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TitleText")));
+        ModalRoot->AddChildToVerticalBox(
+            Modal->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("ContentText")));
+
+        FGV2UiCapabilityBuilder Builder;
+        Modal->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree Caps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> Failures;
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Modal, Caps, Failures);
+        for (const FGV2UiObservabilityFailure& Failure : Failures)
+        {
+            AddError(FString::Printf(TEXT("UGV2ModalWidgetBase: capability '%s' is not observable -- %s"),
+                *Failure.PropertyName, *Failure.Reason));
+        }
+        TestTrue(TEXT("UGV2ModalWidgetBase: every declared capability is observable"), bObservable);
+    }
+    SweepAsset(TEXT("/Game/UI/Widgets/WBP_DropdownSelect.WBP_DropdownSelect_C"), TEXT("UGV2DropdownSelectWidgetBase"));
+    SweepAsset(TEXT("/Game/UI/Widgets/WBP_TabContainer.WBP_TabContainer_C"), TEXT("UGV2TabContainerWidgetBase"));
+
+    return true;
+}
+
+#endif

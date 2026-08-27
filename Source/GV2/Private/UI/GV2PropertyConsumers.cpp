@@ -802,6 +802,20 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
     {
         ImageWidget->SetKey(FName(*PreparedValue));
     }
+    else if (UGV2ModalWidgetBase* Modal = Cast<UGV2ModalWidgetBase>(TargetWidget))
+    {
+        Modal->SetKey(FName(*PreparedValue));
+    }
+    else
+    {
+        // A host that declares a `key` capability but has no branch here would otherwise
+        // report a successful commit while storing nothing -- the exact shape this pipeline
+        // exists to make impossible. Unhandled target type is a defect, not a no-op.
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_consumer.unhandled_target: key capability declared for '%s' has no commit branch"),
+            *TargetWidget->GetClass()->GetName());
+        return false;
+    }
     return true;
 }
 
@@ -862,6 +876,10 @@ void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
     else if (UGV2ImageWidgetBase* ImageWidget = Cast<UGV2ImageWidgetBase>(TargetWidget))
     {
         ImageWidget->SetKey(NAME_None);
+    }
+    else if (UGV2ModalWidgetBase* Modal = Cast<UGV2ModalWidgetBase>(TargetWidget))
+    {
+        Modal->SetKey(NAME_None);
     }
     PreparedValue.Empty();
 }

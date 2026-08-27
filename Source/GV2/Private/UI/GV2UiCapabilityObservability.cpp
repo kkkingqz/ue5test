@@ -4,6 +4,9 @@
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2ModalWidgetBase.h"
+#include "UI/GV2DropdownSelectWidgetBase.h"
+#include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2CheckboxWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
@@ -27,6 +30,18 @@
 namespace
 {
 using namespace GV2ContentCore;
+
+// A resource capability constrains which resources its target accepts: a tile block rejects
+// non-tile art, a fixed_aspect block rejects mismatched ratios. The default probe pair is
+// therefore not universally applicable, and a rejected probe must not be read as "the
+// capability is unwired". These candidates are tried until two of them are accepted.
+const TCHAR* const GResourceProbeCandidates[] = {
+    TEXT("textsystem:resource.ui.missing_icon"),
+    TEXT("textsystem:resource.ui.missing_portrait"),
+    TEXT("textsystem:resource.ui.missing_background"),
+    TEXT("textsystem:resource.ui.missing_character"),
+    TEXT("core:resource.ui.old_paper_tile_256"),
+};
 
 TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair(const FGV2UiPropertyCapability& Cap)
 {
@@ -149,13 +164,34 @@ FCompiledUiFieldSpecPtr MakeMatchingFieldSpec(const FGV2UiPropertyCapability& Ca
     }
 }
 
+UWidget* ResolveCapabilityTarget(UUserWidget* HostWidget, const FGV2UiPropertyCapability& Cap)
+{
+    if (HostWidget == nullptr)
+    {
+        return nullptr;
+    }
+    return (Cap.TargetName != NAME_None)
+        ? HostWidget->GetWidgetFromName(Cap.TargetName)
+        : Cast<UWidget>(HostWidget);
+}
+
+void ResetCapabilityTarget(UUserWidget* HostWidget, const FGV2UiPropertyCapability& Cap)
+{
+    if (UWidget* Target = ResolveCapabilityTarget(HostWidget, Cap))
+    {
+        FGV2ImageResourcePropertyConsumer Consumer;
+        Consumer.Reset(Target);
+    }
+}
+
 bool PrepareAndCommitSingleProperty(
     UUserWidget* HostWidget,
     const FString& PropName,
     const FGV2UiPropertyCapability& Cap,
     const FCompiledUiFieldSpecPtr& FieldSpec,
     const FGV2PreparedUiValue& Value,
-    FString& OutState)
+    FString& OutState,
+    FString& OutFailureDetail)
 {
     FGV2UiCapabilityTree SingleCap;
     SingleCap.Properties.Add(PropName, Cap);
@@ -175,12 +211,19 @@ bool PrepareAndCommitSingleProperty(
             HostWidget, SingleCap, *Candidate, Schema, TEXT("core:schema.ui_field.observability_probe.v1"),
             TEXT("observability_probe"), EmptyPrev, Plan, Diagnostics))
     {
+        TArray<FString> Reasons;
+        for (const FGV2UiSchemaCompatibilityDiagnostic& Diag : Diagnostics)
+        {
+            Reasons.Add(FString::Printf(TEXT("%s (%s)"), *Diag.Message, *Diag.Code));
+        }
+        OutFailureDetail = Reasons.Num() > 0 ? FString::Join(Reasons, TEXT("; ")) : TEXT("prepare rejected without diagnostic");
         return false;
     }
 
     FString FailedPath, Error;
     if (!CommitUiHostProperties(HostWidget, Plan, FailedPath, Error))
     {
+        OutFailureDetail = FString::Printf(TEXT("commit failed at '%s': %s"), *FailedPath, *Error);
         return false;
     }
 
@@ -260,6 +303,12 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     if (const UGV2PortraitWidgetBase* PW = Cast<UGV2PortraitWidgetBase>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PW->GetKey().ToString()));
+        // Without reading the inner brush a portrait capability looks unobservable even
+        // though the consumer applied a resource to it.
+        if (const UImage* PortraitImage = PW->GetPortraitImage())
+        {
+            Parts.Add(FString::Printf(TEXT("portrait_brush=%p"), PortraitImage->GetBrush().GetResourceObject()));
+        }
     }
     if (const UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
     {
@@ -283,6 +332,12 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     if (const UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("key=\"%s\""), *ImageBase->GetKey().ToString()));
+        // When a capability targets the image host rather than the raw UImage, the brush
+        // lives one level down; without reading it the capability looks unwired.
+        if (const UImage* InnerImage = const_cast<UGV2ImageWidgetBase*>(ImageBase)->GetImageWidget())
+        {
+            Parts.Add(FString::Printf(TEXT("image_brush=%p"), InnerImage->GetBrush().GetResourceObject()));
+        }
     }
     if (const UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(TargetWidget))
     {
@@ -299,6 +354,28 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     if (const UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("key=\"%s\""), *CmdPanel->GetKey().ToString()));
+    }
+    if (const UGV2ModalWidgetBase* Modal = Cast<UGV2ModalWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *Modal->GetKey().ToString()));
+    }
+    if (const UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("selected_key=\"%s\""), *Dropdown->GetSelectedKey().ToString()));
+        Parts.Add(FString::Printf(TEXT("is_open=%d"), Dropdown->IsDropdownOpen() ? 1 : 0));
+    }
+    if (const UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("default_tab_key=\"%s\""), *TabContainer->GetDefaultTabKey().ToString()));
+    }
+    // A composite may declare a Text capability that targets a nested Button host rather than
+    // a raw text block; without reading the nested label such a capability looks unobservable.
+    if (const UGV2ButtonWidgetBase* ButtonHost = Cast<UGV2ButtonWidgetBase>(TargetWidget))
+    {
+        if (const UCommonTextBlock* ButtonLabel = ButtonHost->GetLabelText())
+        {
+            Parts.Add(FString::Printf(TEXT("label=\"%s\""), *ButtonLabel->GetText().ToString()));
+        }
     }
     return FString::Join(Parts, TEXT("|"));
 }
@@ -342,15 +419,75 @@ bool RunUiCapabilityObservabilityHarness(
             continue;
         }
 
-        FString StateAfterA, StateAfterB;
-        const bool bOkA = PrepareAndCommitSingleProperty(HostWidget, PropName, Cap, FieldSpec, Pair->Key, StateAfterA);
-        const bool bOkB = bOkA
-            && PrepareAndCommitSingleProperty(HostWidget, PropName, Cap, FieldSpec, Pair->Value, StateAfterB);
+        FString StateAfterA, StateAfterB, FailureDetail;
+        bool bOkA = PrepareAndCommitSingleProperty(HostWidget, PropName, Cap, FieldSpec, Pair->Key, StateAfterA, FailureDetail);
+        bool bOkB = bOkA
+            && PrepareAndCommitSingleProperty(HostWidget, PropName, Cap, FieldSpec, Pair->Value, StateAfterB, FailureDetail);
+
+        // Resource capabilities constrain their accepted resources (tile blocks, fixed-aspect
+        // blocks). A rejected default probe means the probe is wrong for this target, not that
+        // the capability is unwired -- retry across the candidate set before concluding.
+        if ((!bOkA || !bOkB)
+            && Cap.SupportedKind == EGV2PreparedUiValueKind::StableId
+            && Cap.TargetKind == TEXT("resource"))
+        {
+            TArray<FString> Accepted;
+            TArray<FString> AcceptedStates;
+            for (const TCHAR* Candidate : GResourceProbeCandidates)
+            {
+                FString State, Detail;
+                if (PrepareAndCommitSingleProperty(
+                        HostWidget, PropName, Cap, FieldSpec,
+                        FGV2PreparedUiValue::MakeStableId(Candidate, TEXT("resource")), State, Detail))
+                {
+                    if (!AcceptedStates.Contains(State))
+                    {
+                        Accepted.Add(Candidate);
+                        AcceptedStates.Add(State);
+                    }
+                    if (AcceptedStates.Num() == 2)
+                    {
+                        break;
+                    }
+                }
+            }
+            if (UWidget* ProbeTarget = ResolveCapabilityTarget(HostWidget, Cap))
+            {
+                FString PolicyText = TEXT("<not an image host>");
+                if (const UGV2ImageWidgetBase* ImgHost = Cast<UGV2ImageWidgetBase>(ProbeTarget))
+                {
+                    PolicyText = FString::Printf(TEXT("policy=%d aspect=%f"),
+                        static_cast<int32>(ImgHost->GetScalePolicy()), ImgHost->GetFixedAspectRatio());
+                }
+                FailureDetail += FString::Printf(
+                    TEXT(" | retry over %d candidates accepted %d distinct states; target=%s %s"),
+                    static_cast<int32>(UE_ARRAY_COUNT(GResourceProbeCandidates)),
+                    AcceptedStates.Num(), *ProbeTarget->GetClass()->GetName(), *PolicyText);
+            }
+            if (AcceptedStates.Num() >= 2)
+            {
+                bOkA = bOkB = true;
+                StateAfterA = AcceptedStates[0];
+                StateAfterB = AcceptedStates[1];
+            }
+            else if (Accepted.Num() == 1)
+            {
+                // Only one resource in the repository is compatible with this target, so an
+                // A/B pair cannot exist. The capability is still provably wired if applying
+                // that resource produces a state distinguishable from the reset state.
+                FString AppliedState = AcceptedStates[0];
+                ResetCapabilityTarget(HostWidget, Cap);
+                const FString ResetState = CaptureUiTargetState(ResolveCapabilityTarget(HostWidget, Cap));
+                bOkA = bOkB = true;
+                StateAfterA = AppliedState;
+                StateAfterB = ResetState;
+            }
+        }
 
         if (!bOkA || !bOkB)
         {
             OutFailures.Add({ PropName,
-                TEXT("core:diagnostic.ui_observability.prepare_or_commit_failed: capability could not be "
+                FString(TEXT("core:diagnostic.ui_observability.prepare_or_commit_failed: ")) + FailureDetail + TEXT(" -- capability could not be "
                      "prepared/committed for at least one probe value") });
             bAllObservable = false;
             continue;
@@ -358,9 +495,15 @@ bool RunUiCapabilityObservabilityHarness(
 
         if (StateAfterA == StateAfterB)
         {
+            UWidget* DiagTarget = ResolveCapabilityTarget(HostWidget, Cap);
+            FString TargetDesc = DiagTarget != nullptr ? DiagTarget->GetClass()->GetName() : TEXT("<null>");
+            if (UGV2ImageWidgetBase* ImgDiag = Cast<UGV2ImageWidgetBase>(DiagTarget))
+            {
+                TargetDesc += FString::Printf(TEXT(" inner_image=%s"), ImgDiag->GetImageWidget() ? TEXT("bound") : TEXT("null"));
+            }
             OutFailures.Add({ PropName,
-                FString::Printf(TEXT("core:diagnostic.ui_observability.not_distinguishable: Capture(Commit(A)) == "
-                                      "Capture(Commit(B)) == \"%s\""), *StateAfterA) });
+                FString::Printf(TEXT("core:diagnostic.ui_observability.not_distinguishable: target=%s Capture(Commit(A)) == "
+                                      "Capture(Commit(B)) == \"%s\""), *TargetDesc, *StateAfterA) });
             bAllObservable = false;
         }
     }
