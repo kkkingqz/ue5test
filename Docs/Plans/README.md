@@ -26,7 +26,7 @@ depends_on:
 ## Активные планы
 
 - [Pipeline Closure Correction](PipelineClosureCorrection/README.md) — закрытие находок ревью от 2026-08-27: молчаливая потеря в коллекциях, проглоченные отказы, второй валидатор, охват инструмента. PCC-01…12.
-- [Data-Driven UI Composition](DataDrivenUiComposition/README.md) — блок из существующих элементов без C++: адресуемые базовые элементы, объявляемый из Designer композит, `screen_fields` end-to-end. DUC-01…11. **Выполняется после M1 и M2 предыдущего плана.**
+- [Data-Driven UI Composition](DataDrivenUiComposition/README.md) — блок из существующих элементов без C++: адресуемые базовые элементы, объявляемый из Designer композит, `screen_fields` end-to-end. DUC-01…11. Связан с предыдущим планом отдельными рёбрами задач, не порядком целиком; при двух исполнителях этап M1 ведётся параллельно.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 

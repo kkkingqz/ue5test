@@ -26,7 +26,7 @@ depends_on:
 ## Задачи
 
 - [ ] **DUC-09 — `screen_fields` через обычный envelope**
-  - Зависимости: DUC-08.
+  - Зависимости: DUC-08, `PCC-04` плана доведения.
   - Done: `EUiFieldKind::ScreenFields` реализован в материализаторе; вложенный экран получает поля тем же envelope `field_id` / `schema_id` / `value`, что и экран верхнего уровня, — отдельного протокола для вкладок не остаётся; синтез дочерней схемы из capability дочернего экрана удалён; вкладка с вложенными полями материализуется, вкладка без них продолжает работать; отрицательный случай: неизвестное поле вложенного экрана отклоняется, а не игнорируется.
   - Evidence: `Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp`, `Source/GV2/Private/UI/GV2PropertyConsumers.cpp`.
 

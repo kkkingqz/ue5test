@@ -48,11 +48,40 @@ decisions:
 
 ## Границы
 
-Не входят: `UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7` — они принадлежат плану [PipelineClosureCorrection](../PipelineClosureCorrection/README.md), который выполняется **до** этого. `UPP-R5` (принадлежность схем closure репозитория) — отдельная задача; она станет обязательной, когда блоки начнут поставляться модами, но для блоков проекта не требуется.
+Не входят: `UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7` — они принадлежат плану [PipelineClosureCorrection](../PipelineClosureCorrection/README.md). `UPP-R5` (принадлежность схем closure репозитория) — отдельная задача; она станет обязательной, когда блоки начнут поставляться модами, но для блоков проекта не требуется.
 
-## Зависимость от предыдущего плана
+## Связь с планом доведения
 
-Этот план **не начинается** до закрытия M1 и M2 плана [PipelineClosureCorrection](../PipelineClosureCorrection/README.md). Причина конкретная: композиция добавляет новый тип хоста и новый источник объявления. Пока валидаторов два, новый путь выберет один из них и закрепит расхождение; пока схема элемента коллекции выводится из capability потребителя, объявляемый композит воспроизведёт ту же фигуру третий раз.
+План [PipelineClosureCorrection](../PipelineClosureCorrection/README.md) не является предшественником целиком. Связаны конкретные задачи, и весь этап M1 этого плана от него не зависит вовсе.
+
+| Ребро | Тип | Причина |
+|---|---|---|
+| `DUC-05` → `PCC-05` | жёсткое | Набор видов, разрешённых в объявлении, определяется решением о полноте видов, включая судьбу `AddObject` |
+| `DUC-09` → `PCC-04` | жёсткое по порядку | Иначе `ScreenFields` реализуется внутри `WalkFieldValue`, который заменяется единым валидатором |
+| `DUC-07` → `PCC-02`, `PCC-03` | содержательное | Композит с коллекцией внутри наследует путь `UPP-R1` напрямую; и правильный образец «сравнение независимых источников» должен существовать до того, как его копируют |
+| `DUC-04` ↔ `PCC-10` | только слияние | Один и тот же файл harness |
+| `DUC-01`, `DUC-02`, `DUC-03` | нет | Затрагивают заголовки виджетов, общее состояние хоста и свойства ассетов |
+
+При одном исполнителе проще выполнить план доведения целиком, а затем этот. При двух — `DUC-01…04` ведутся параллельно с самого начала, поскольку M1 плана доведения представляет собой строго упорядоченную цепочку и является узким местом по построению.
+
+## Разделение файлов при параллельной работе
+
+Оба плана тяжело правят один набор файлов, поэтому при параллельном ведении владение фиксируется явно.
+
+| Файл | Владелец |
+|---|---|
+| `GV2PropertyConsumers.cpp` — consumer коллекции, валидация, виды | PipelineClosureCorrection |
+| `GV2PropertyConsumers.cpp` — consumer ключа | DataDrivenUiComposition (`DUC-03`) |
+| `GV2ScreenFieldMaterializer.cpp` | PipelineClosureCorrection до `PCC-04`, затем DataDrivenUiComposition |
+| `GV2LayeredUiReconciler.cpp`, `GV2UiMutationPlan.cpp` | PipelineClosureCorrection |
+| `GV2UiCapability.cpp` — рекурсия проверки совместимости | PipelineClosureCorrection (`PCC-02`) |
+| `GV2UiCapability.h/.cpp` — построитель и объявляемый список | DataDrivenUiComposition |
+| `GV2UiCapabilityObservabilityTests.cpp` | PipelineClosureCorrection до `PCC-10`, затем DataDrivenUiComposition (`DUC-04`) |
+| Заголовки базовых виджетов, `GV2UiPropertyHost.h` | DataDrivenUiComposition |
+| `GV2LocationCompositeWidgetBases.*` | PipelineClosureCorrection до `PCC-09`, затем DataDrivenUiComposition (`DUC-08`) |
+| Ассеты `Content/` | DataDrivenUiComposition |
+
+Разделение внутри `GV2PropertyConsumers.cpp` работает потому, что consumer ключа — обособленная функция, а `DUC-03` её целиком заменяет одной веткой.
 
 ## Milestones
 
@@ -63,10 +92,16 @@ decisions:
 ## Критический путь
 
 ```text
-PipelineClosureCorrection M1, M2
-        │
-        ▼
-DUC-01 ──► DUC-02 ──► DUC-03 ──► DUC-04 ──► DUC-05 ──► … ──► DUC-11
+DUC-01 ──► DUC-02 ──► DUC-03 ──► DUC-04        (зависимостей от другого плана нет)
+                                     │
+                     PCC-05 ─────────┤
+                                     ▼
+                                  DUC-05 ──► DUC-06 ──► DUC-07 ──► DUC-08
+                                                            ▲          │
+                            PCC-02, PCC-03 ─────────────────┘          ▼
+                                                                    DUC-09 ──► DUC-10 ──► DUC-11
+                                                                       ▲
+                                                       PCC-04 ─────────┘
 ```
 
 ## Общие правила выполнения
