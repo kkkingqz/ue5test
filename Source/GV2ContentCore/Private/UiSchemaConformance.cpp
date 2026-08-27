@@ -856,6 +856,46 @@ std::string RunUiSchemaConformance()
         }
     }
 
+    // 34. UPP-05: a mod declares a full ui_field schema from standard kinds alone, under its own
+    // namespace, and it compiles portably with zero diagnostics and zero C++ — the compiler does not
+    // special-case "core" vs "mod" for ordinary (non schema_ref) compilation; only schema_ref crossing
+    // (case 19 above) is namespace-gated. Mirrors a real WeatherMod-style UI card: a title, a boolean
+    // toggle and an integer counter, entirely from data.
+    {
+        const auto Spec = CompileUiCase(
+            "{kind:'object', fields:{"
+            "  title:{kind:'text', required:true},"
+            "  is_alert:{kind:'bool', required:true},"
+            "  severity:{kind:'integer', min:0, max:5}"
+            "}}",
+            Document, Diagnostics, nullptr, "weather_mod:schema.ui_field.weather_card.v1", "weather_mod");
+        if (Spec == nullptr || !Diagnostics.empty())
+        {
+            return "ui_schema.mod_schema.standard_kinds_compile_failed";
+        }
+
+        // Positive: a value satisfying the mod schema validates cleanly.
+        if (!ValidateUiValueCase(*Spec,
+            "{title:{text_id:'weather_mod:text.card.storm'}, is_alert:true, severity:4}",
+            Materialized, ValueDoc, Diagnostics, std::string("weather_mod:schema.ui_field.weather_card.v1"))
+            || !Diagnostics.empty())
+        {
+            return "ui_schema.mod_schema.positive_value";
+        }
+
+        // Negative: mod cannot smuggle in a field of a kind the schema domain compiler doesn't know —
+        // the closed kind enum is what actually enforces "no new primitive kind", not a namespace check.
+        std::vector<FDiagnostic> UnknownKindDiagnostics;
+        std::optional<FParsedDocument> UnknownKindDoc;
+        const auto BadSpec = CompileUiCase(
+            "{kind:'object', fields:{custom:{kind:'weather_mod_custom_kind'}}}",
+            UnknownKindDoc, UnknownKindDiagnostics, nullptr, "weather_mod:schema.ui_field.bad.v1", "weather_mod");
+        if (BadSpec != nullptr || UnknownKindDiagnostics.empty())
+        {
+            return "ui_schema.mod_schema.custom_kind_rejected";
+        }
+    }
+
     return "";
 }
 } // namespace GV2ContentCore::Testing

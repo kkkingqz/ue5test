@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
-status: draft
-version: 1.4
-updated: 2026-08-23
+status: normative
+version: 1.5
+updated: 2026-08-27
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -11,6 +11,7 @@ decisions:
   - ../ADR/0013-unified-text-pipeline.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0035-ui-foundation-and-composition.md
+  - ../ADR/0040-universal-ui-property-pipeline.md
 ---
 
 # Blueprint Screen Template Contract
@@ -18,20 +19,21 @@ decisions:
 > **Владеет:** базовым Screen Blueprint, реестром экранов, устройством Screen Fields и правилами их применения.
 > **Не владеет:** тем, какой экран показать — это решает Lua; и содержимым полей.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
-> **Реализация:** `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `GV2ScreenWidgetBase.cpp`, `Content/UI/`.
-> **Проверки:** `GV2.Runtime.Presentation.*`.
+> **Реализация:** `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `GV2ScreenWidgetBase.cpp`, `GV2ScreenFieldMaterializer.cpp`, `Content/UI/`.
+> **Проверки:** `GV2.Runtime.Presentation.*`, `GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure`.
 
 ## Purpose and scope
 
-Screen Template задаёт UE-authored layout конкретного Screen и schema динамических данных, которые Lua может менять без знания UMG structure. Контракт охватывает base class, Dynamic Screen Elements, Screen Fields и Screen Registry; он не передаёт gameplay ownership в Blueprint.
+Screen Template задаёт UE-authored layout конкретного Screen и schema динамических данных, которые Lua может менять без знания UMG structure. Контракт охватывает base class, Screen Field Hosts, Screen Fields и Screen Registry; он не передаёт gameplay ownership в Blueprint.
 
 ## Ownership and source of truth
 
 - Lua владеет desired screen instance, значениями полей и доступными Command bindings.
-- Concrete Widget Blueprint владеет layout, slots, animation, focus navigation и выбором Dynamic Screen Elements.
-- `UGV2ScreenWidgetBase` владеет generic validation/apply lifecycle.
+- Concrete Widget Blueprint владеет layout, slots, animation, focus navigation и размещением Screen Field Hosts.
+- `UGV2ScreenWidgetBase` владеет двухфазным generic validation/apply lifecycle (Prepare/Commit) и preflight-проверкой полей экрана.
 - Репозиторий контента (`GV2ContentCore`) владеет декларативными UI-схемами (`schema_domain: "ui_field"` / `"ui_value"`), их компиляцией, валидацией замкнутости полей и разрешением `schema_ref`.
-- Dynamic Screen Element владеет связыванием валидированных данных схемы с локальным состоянием виджета.
+- Screen Field Host (`IGV2ScreenFieldHost`) идентифицирует виджет в дереве экрана как приёмник конкретного `field_id`.
+- Property Host (`IGV2UiPropertyHost`) объявляет capabilities виджета и применяет подготовленные свойства через универсальные property consumers.
 - Screen Registry является единственным UE presentation mapping `screen_id → trusted Widget Blueprint class`.
 
 ### LocationScreen: template и values definition
@@ -56,8 +58,8 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - **Политика отказа для мода**: несовместимая или некорректная UI-схема мода отбраковывает мод, а не приводит к сбою сессии.
 - Lua публикует полный набор полей текущего screen instance, а не mutation operations.
 - Blueprint не интерпретирует `command_id`, не вызывает Lua function и не меняет canonical gameplay-state.
-- Добавление нового Screen Field не требует C++-адаптера и осуществляется декларативной схемой в данных.
-- Scrollable Dynamic Screen Element обязан получать конечную viewport geometry от layout concrete Screen Template. Template не может оставлять такой элемент с unbounded desired height: overflow policy принадлежит reusable component, а доступная доля экрана — concrete layout.
+- Добавление нового Screen Field не требует C++-адаптера и осуществляется декларативной схемой в данных; схемы компилируются и материализуются переносимо (`GV2ContentCore`), создание C++ класса-адаптера запрещено.
+- Scrollable screen element обязан получать конечную viewport geometry от layout concrete Screen Template. Template не может оставлять такой элемент с unbounded desired height: overflow policy принадлежит reusable component, а доступная доля экрана — concrete layout.
 - Generic runtime принимает только ordered `field_id + schema_id + value` envelopes и запрещает concrete field names. Валидация выполняется переносимым универсальным валидатором на основе скомпилированной UI-схемы.
 - Registry строится до первого использования, не хранит session state и запрещает duplicate `schema_id`. Unknown schema отклоняет весь candidate Screen request.
 - Равномерное масштабирование кадра (uniform frame scale) запрещено: раскладка отзывчивая (responsive) и распределяет фактический viewport.
@@ -152,19 +154,30 @@ UCommonActivatableWidget
 
 Concrete screens не обязаны иметь собственный native subclass. Общие lifecycle hooks и field apply находятся в `UGV2ScreenWidgetBase`; визуально специфичное поведение остаётся Blueprint-local и не меняет field semantics.
 
-## Dynamic Screen Element contract
+## Screen Field Host and Property Host contract
 
-Каждый поддерживаемый элемент реализует `IGV2DynamicScreenElement`:
+Каждый виджет экрана, являющийся приёмником поля верхнего уровня, реализует `IGV2ScreenFieldHost` и `IGV2UiPropertyHost`:
 
 ```text
-GetScreenFieldDescriptor() -> { field_id, schema_id, is_required }
-CanApplyScreenField(value) -> bool
-CaptureScreenField() -> value
-ApplyScreenField(value) -> bool
-ResetScreenField() -> bool
+IGV2ScreenFieldHost:
+  GetScreenFieldId() -> FName
+
+IGV2UiPropertyHost:
+  DescribeUiCapabilities(FGV2UiCapabilityBuilder& Builder)
+  PrepareUiHostProperties(Value, OutPlan, OutError) -> bool
+  CommitUiHostProperties(Plan) -> bool
 ```
 
-Unset `field_id` означает, что Widget используется как обычный nested presentation element и не участвует в screen contract.
+`GetScreenFieldId()` возвращает имя поля экрана (`field_id`), настроенное для данного виджета (например, `description`, `buttons`, `top_bar`, `scene`). Возврат `NAME_None` означает, что виджет не сконфигурирован как приёмник поля экрана и исключается из экранного контракта.
+
+`UGV2ScreenWidgetBase` управляет двухфазным жизненным циклом применения полей:
+
+```text
+PrepareScreenFields(ScreenFields, OutPlan, OutError) -> bool
+CommitScreenFields(Plan) -> bool
+CanApplyScreenFields(ScreenFields) -> bool (preflight: Prepare и отбрасывание плана)
+ApplyScreenFields(ScreenFields) -> bool (one-shot Prepare + Commit)
+```
 
 Value-only Screen Field имеет форму:
 
@@ -182,27 +195,32 @@ Value-only Screen Field имеет форму:
 }
 ```
 
-UE apply использует prepared typed `FGV2ScreenFieldValue`; portable boundary передаёт generic envelope, а schema adapter преобразует его до этого типа. Поддерживаются:
+Материализатор `GV2ScreenFieldMaterializer` выполняет универсальное schema-driven преобразование:
+1. `PrepareBindingDefinitions` выполняет детерминированный обход скомпилированной UI-схемы поля (`GV2ContentCore::FCompiledUiFieldSpec`) и значений из Lua, собирая определения биндингов `FGV2UiBindingDefinition`.
+2. После подготовки candidate binding set в `FGV2UiBindingRegistry` функция `BuildFields` потребляет выданные `FGV2UiBindingHandle` и материализует candidate values в типизированные структуры `FGV2ScreenFieldValue`.
 
-| `schema_id` | Element adapter | Значение |
+Каждый `FGV2ScreenFieldValue` содержит `FieldId` (`FName`), `SchemaId` (`FString`), материализованное значение `PreparedValue` (`TSharedPtr<const FGV2PreparedUiObject>`) и скомпилированную схему `CompiledSchema` (`std::shared_ptr<const FCompiledUiFieldSpec>`). C++ schema-specific классы-адаптеры отсутствуют.
+
+Поддерживаемые стандартные схемы UI-полей:
+
+| `schema_id` | Native Widget Class | Property Host Capabilities |
 |---|---|---|
-| `core:schema.ui_field.rich_text.v3` | `WBP_RichText` / `UGV2RichTextWidgetBase` | resolved `FGV2TextViewModel` + semantic spans с UE-local hover payload и optional opaque click binding |
-| `core:schema.ui_field.button_list.v2` | `WBP_ButtonList` / `UGV2ButtonListWidgetBase` | ordered items с resolved `FGV2TextViewModel` и opaque binding handle |
-| `core:schema.ui_field.checkbox.v1` | `WBP_Checkbox` / `UGV2CheckboxWidgetBase` | resolved `FGV2TextViewModel`, desired `is_checked: boolean` и opaque binding handle |
-| `core:schema.ui_field.input_field.v1` | `WBP_InputField` / `UGV2InputFieldWidgetBase` | resolved label/placeholder, desired `value: string` и opaque binding handle |
-| `core:schema.ui_field.dropdown_select.v1` | `WBP_DropdownSelect` / `UGV2DropdownSelectWidgetBase` | resolved placeholder/options, optional selected key и opaque binding handle |
-| `core:schema.ui_field.image.v1` | `WBP_Image` / `UGV2ImageWidgetBase` | `IGV2UiPropertyHost`: `resource_id` (`resource`) и optional `key` |
-| `core:schema.ui_field.progress_bar.v1` | `WBP_ProgressBar` / `UGV2ProgressBarWidgetBase` | `IGV2UiPropertyHost`: `percent: number` (0.0..1.0), optional `label: text` и optional `key` |
-| `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | `IGV2UiPropertyHost`: `resource_id: ref(resource)`, optional `frame_resource_id: ref(resource)` и optional `key` |
-| `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | resolved `FGV2ModalViewModel` с `title`, `content`, кнопками и backdrop close binding |
-| `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | resolved `FGV2TabContainerViewModel` с `default_tab_key`, упорядоченным списком вкладок `{key, title: TextSpec, screen_id, fields}` |
-| `textsystem:schema.ui_field.location_top_bar.v1` | LocationScreen TopBar | required `day`, `location`, `primary_resource` as `TextSpec` |
-| `textsystem:schema.ui_field.location_player_status.v1` | LocationScreen PlayerStatusPanel | required `name: TextSpec`, optional portrait resource, `meters`, `items`, `effects` |
-| `textsystem:schema.ui_field.location_scene.v1` | LocationScreen SceneView | optional tile/fixed-aspect background resources, context `TextSpec` и коллекция `characters` |
+| `core:schema.ui_field.rich_text.v3` | `WBP_RichText` / `UGV2RichTextWidgetBase` | `text` (Text), `spans` (RichTextSpans) |
+| `core:schema.ui_field.button_list.v2` | `WBP_ButtonList` / `UGV2ButtonListWidgetBase` | `items` (CollectionHost для кнопок) |
+| `core:schema.ui_field.checkbox.v1` | `WBP_Checkbox` / `UGV2CheckboxWidgetBase` | `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding) |
+| `core:schema.ui_field.input_field.v1` | `WBP_InputField` / `UGV2InputFieldWidgetBase` | `key` (Key), `label` (Text), `placeholder` (Text), `value` (Scalar), `binding` (Binding) |
+| `core:schema.ui_field.dropdown_select.v1` | `WBP_DropdownSelect` / `UGV2DropdownSelectWidgetBase` | `placeholder` (Text), `selected_key` (Key), `options` (CollectionHost), `binding` (Binding) |
+| `core:schema.ui_field.image.v1` | `WBP_Image` / `UGV2ImageWidgetBase` | `resource_id` (Ref), `key` (Key) |
+| `core:schema.ui_field.progress_bar.v1` | `WBP_ProgressBar` / `UGV2ProgressBarWidgetBase` | `percent` (Scalar), `label` (Text), `key` (Key) |
+| `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | `resource_id` (Ref), `frame_resource_id` (Ref), `key` (Key) |
+| `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | `title` (Text), `content` (Text), `buttons` (CollectionHost), `backdrop_close_action` (Binding) |
+| `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | `default_tab_key` (Key), `tabs` (CollectionHost) |
+| `textsystem:schema.ui_field.location_top_bar.v1` | `UGV2LocationTopBarWidgetBase` | `day` (Text), `location` (Text), `primary_resource` (Text) |
+| `textsystem:schema.ui_field.location_player_status.v1` | `UGV2LocationPlayerStatusWidgetBase` | `name` (Text), `portrait_resource_id` (Ref), `meters` (CollectionHost), `items` (CollectionHost), `effects` (CollectionHost) |
+| `textsystem:schema.ui_field.location_scene.v1` | `UGV2LocationSceneWidgetBase` | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) |
+| `core:schema.ui_field.button_list.v2` (commands) | `UGV2LocationCommandPanelWidgetBase` | `items` (CollectionHost) |
 
-Каждый registry adapter выполняет две deterministic фазы. `PrepareBindings` валидирует schema-specific value и добавляет binding definitions в порядке обхода поля. После единой подготовки candidate binding set `BuildField` потребляет ровно соответствующие opaque handles и создаёт typed field value. Registry не публикует bindings и не меняет active Screen; атомарная публикация остаётся ответственностью Session Coordinator.
-
-Production Lua document обязан использовать `TextSpec`; localization adapter создаёт `FGV2TextViewModel` до apply. Button model содержит только resolved display text, semantic style token и opaque binding handle, а не Lua callback.
+Production Lua document использует `TextSpec`; `UGV2TextPipeline` выполняет централизованное разрешение локализации, экранирование аргументов и форматирование разметки. Button binding содержит только семантический `command_id` и opaque `FGV2UiBindingHandle`, а не Lua callback.
 
 ### LocationTopBar Field Contract (`textsystem:schema.ui_field.location_top_bar.v1`)
 
@@ -248,7 +266,7 @@ Production Lua document обязан использовать `TextSpec`; locali
   - `resource_id` (optional string): Stable ID ресурса портрета/спрайта персонажа (например, `"rh:resource.character.tavern_keeper"`). Если ресурс не задан, используется системная заглушка `"textsystem:resource.ui.missing_character"`.
   Элемент `characters` является замкнутым: посторонние ключи отклоняются.
 
-Несоответствие контракта поля (включая невалидный тип элементов `characters`, посторонние ключи, дублирование ключей или передачу плоского массива строк) приводит к типизированному отказу применения поля (`CanApplyScreenField` возвращает `false`), предотвращая повреждение presentation state.
+Несоответствие контракта поля (включая невалидный тип элементов `characters`, посторонние ключи, дублирование ключей или передачу плоского массива строк) приводит к типизированному отказу применения поля (`CanApplyScreenFields`/`PrepareScreenFields` возвращает `false`), предотвращая повреждение presentation state.
 
 ### Location Commands / ButtonList Field Contract (`core:schema.ui_field.button_list.v2`)
 
@@ -276,18 +294,18 @@ Production Lua document обязан использовать `TextSpec`; locali
 
 ## Apply lifecycle
 
-`ApplyScreenFields` выполняется атомарно на логическом presentation level:
+`ApplyScreenFields` выполняется атомарно через раздельные фазы Prepare и Commit:
 
-1. Registry adapters валидируют portable fields и готовят ordered binding definitions.
-2. Session Coordinator создаёт единый candidate binding set; registry adapters строят typed fields, потребляя подготовленные handles.
-3. Обойти Widget tree и собрать configured Dynamic Screen Elements.
-4. Отклонить invalid/duplicate `field_id`, unknown payload field, missing required field и `schema_id` mismatch.
-5. Вызвать `CanApplyScreenField` для каждого candidate и захватить старые значения.
-6. Применить все present fields; absent optional field сбросить через `ResetScreenField`.
-7. При commit failure восстановить уже изменённые элементы и не публиковать screen interactive.
-8. Только после полного success вызвать `OnScreenFieldsApplied` и commit binding revision.
+1. `GV2ScreenFieldMaterializer::PrepareBindingDefinitions` валидирует поля документа против скомпилированных UI-схем и формирует упорядоченный candidate definitions set.
+2. `FGV2SessionCoordinator` готовит кандидатный набор биндингов в `FGV2UiBindingRegistry`.
+3. `GV2ScreenFieldMaterializer::BuildFields` потребляет выданные opaque handles и строит материализованные `FGV2ScreenFieldValue` с `PreparedValue` (`FGV2PreparedUiObject`) и `CompiledSchema` для каждого поля.
+4. `UGV2ScreenWidgetBase::PrepareScreenFields` обходит дерево виджетов экрана, собирает сконфигурированные `IGV2ScreenFieldHost`, сопоставляет `GetScreenFieldId()` со списком полей документа (проверяя биекцию: каждое объявленное поле обязано иметь host, каждый сконфигурированный host обязан получить значение) и готовит мутационный план (`PrepareUiHostProperties`) off-tree для каждого поля без мутации живых виджетов UMG.
+5. Предиктивная проверка `CanApplyScreenFields` выполняет фазу Prepare и отбрасывает план, гарантируя обнаружение ошибок глубоких детей и коллекций до вызова мутаций.
+6. При ошибке подготовки хотя бы одного поля план мутаций отбрасывается, и виджеты остаются в прежнем состоянии (компенсирующий откат устранён, так как мутация не начиналась).
+7. `UGV2ScreenWidgetBase::CommitScreenFields` исполняет подготовленный план мутаций (`CommitUiHostProperties`).
+8. Только после полного успеха вызывается `OnScreenFieldsApplied` и коммитятся подготовленные биндинги ревизии.
 
-`GetScreenFieldContract` возвращает descriptors в deterministic order по `field_id` и используется validation/tests, но не заменяет build-time schema declaration.
+`GetScreenFieldIds` возвращает сконфигурированные `field_id` экрана и используется validation/tests.
 
 ## Current vertical slice
 
@@ -303,13 +321,13 @@ Production Lua document обязан использовать `TextSpec`; locali
 
 `DescriptionText` находится в `DescriptionSurface`, чей `VerticalBoxSlot` использует `Fill`; `PlayerNameField`, `ClassSelectField`, `CheckboxField` и `ButtonList` используют `Automatic`. Поэтому controls занимают требуемую высоту, описание получает оставшуюся высоту экрана, а overflow обрабатывается внутренним `RichTextScrollBox` компонента.
 
-Lua command handler публикует Screen request с `screen_id = "core:screen.test"` и generic fields. Schema adapters готовят RichText, ButtonList, Checkbox, InputField и DropdownSelect values и candidate bindings. Checkbox binding объявляет required `is_checked: boolean`, input binding — required `value: string`, dropdown binding — required `selected_key: string`. Runtime разрешает class только через `DA_ScreenRegistry`; C++ не предоставляет screen builder/factory с параметрами, не имеет test-specific apply API и не знает concrete field names.
+Lua command handler публикует Screen request с `screen_id = "core:screen.test"` и generic fields. `GV2ScreenFieldMaterializer` генерически материализует значения полей и биндинги по скомпилированным схемам. Checkbox binding объявляет required `is_checked: boolean`, input binding — required `value: string`, dropdown binding — required `selected_key: string`. Runtime разрешает class только через `DA_ScreenRegistry`; C++ не предоставляет screen builder/factory с параметрами, не имеет test-specific apply API и не знает concrete field names.
 
 ## Failure and recovery
 
 - Invalid field contract запрещает interactive apply и создаёт structured diagnostic с screen/field/schema context.
+- План мутаций готовится off-tree до мутации виджетов; отказ подготовки не трогает ни одного виджета, поэтому компенсирующий откат устранён физически.
 - Failed candidate не изменяет current published screen/bindings.
-- Rollback failure является presentation fault; input остаётся закрытым до полного rebuild из последнего desired document.
 - Unknown `screen_id` или invalid registry class открывает system error surface; Lua gameplay-state не меняется.
 
 ## Compatibility and evolution
@@ -330,6 +348,7 @@ Lua command handler публикует Screen request с `screen_id = "core:scre
 - Contract `WBP_Testscreen` содержит deterministic `buttons`, `checkbox`, `class_select`, `description`, `player_name`; все поля required и имеют ожидаемые schemas.
 - `DescriptionSurface` ограничивает `WBP_RichText` оставшейся высотой экрана; длинный текст переносится и прокручивается внутри блока.
 - Unknown, duplicate, missing required и schema mismatch payloads отклоняются до mutation.
+- Предиктивный preflight `CanApplyScreenFields` предсказывает ошибки глубоких детей до мутаций (`ScreenPreflightPredictsDeepChildFailure`).
 - Button click пересекает boundary только как opaque handle и проходит Semantic Input/Command Dispatcher.
 - Checkbox change пересекает boundary как opaque handle + `is_checked`, после чего Lua публикует новое desired state.
 - Input commit пересекает boundary как opaque handle + `value`, после чего Lua публикует новое desired state.

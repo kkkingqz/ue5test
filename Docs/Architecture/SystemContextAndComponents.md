@@ -1,8 +1,8 @@
 ---
 title: System Context and Components
 status: normative
-version: 2.6
-updated: 2026-08-15
+version: 2.7
+updated: 2026-08-27
 depends_on:
   - Overview.md
   - GlossaryAndNaming.md
@@ -14,6 +14,7 @@ decisions:
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0018-portable-content-core-module.md
   - ../ADR/0019-content-host-support-module.md
+  - ../ADR/0040-universal-ui-property-pipeline.md
 ---
 
 # System Context and Components
@@ -115,10 +116,10 @@ Scripts/
 
 - `UGV2RuntimeSubsystem : UGameInstanceSubsystem` — единственный Blueprint-facing façade runtime/session уровня.
 - `FGV2SessionCoordinator` владеет UE active session composition: generation, pinned repository handle, portable runtime session, ingress queue, UI binding registry, operations и latest accepted Presentation Snapshot.
-- `FGV2ScreenFieldAdapterRegistry` является stateless Presentation/Bridge mapping `schema_id → trusted adapter`; adapters валидируют portable field values, готовят binding definitions и строят typed presentation values, но не публикуют Screen или bindings.
+- `GV2ScreenFieldMaterializer` выполняет универсальную материализацию schema-driven Screen Fields на основе скомпилированных UI-схем (`FCompiledUiFieldSpec`); извлекает binding definitions и строит typed `FGV2ScreenFieldValue` без использования per-schema C++ классов-адаптеров.
 - `GV2RuntimeCore::FRuntimeSession` является STL-only public façade; Lua headers и `lua_State*` остаются в его private implementation.
 - `FGV2UiDocumentReconciler`, Screen Registry, Widget Registry и Semantic Input Adapter принадлежат Presentation/Bridge, но не LuaRuntime.
-- `UGV2ScreenWidgetBase` и Dynamic Screen Element adapters являются generic presentation layer и не знают concrete `screen_id`.
+- `UGV2ScreenWidgetBase` и виджеты-приёмники полей (`IGV2ScreenFieldHost`, `IGV2UiPropertyHost`) являются generic presentation layer и не знают concrete `screen_id`.
 - Blueprint Screen Templates отвечают за composition и local visual state; reusable components получают default style из configured `UGV2UiTheme`. `UGV2ImageResourceCatalog` разрешает image `resource_id` в trusted texture и один из трёх canonical render modes. Ни templates, ни theme/catalog не выбирают Lua entry point и не хранят gameplay authority.
 
 Runtime-core vertical slice включает portable runtime session/Lua VM и manifest loader, UE-private `FGV2SessionCoordinator`, `FGV2UiBindingRegistry` и `FGV2RuntimeIngressQueue`. Coordinator владеет UE session generation, одной portable Lua session, atomic binding publication и bounded non-reentrant FIFO. Host interaction sink вызывается только после successful Lua dispatcher path.

@@ -1,8 +1,8 @@
 ---
 title: Glossary and Naming
 status: normative
-version: 1.11
-updated: 2026-08-20
+version: 1.12
+updated: 2026-08-27
 depends_on:
   - StableIDSpecification.md
 ---
@@ -86,7 +86,8 @@ depends_on:
 | Screen Template | UE-authored Widget Blueprint layout конкретного Screen, унаследованный от общего base |
 | Screen Registry | UE presentation mapping `screen_id` в trusted Screen Template class и layer policy |
 | Screen Field | Schema-identified value-only dynamic input одного Screen Template |
-| Dynamic Screen Element | Reusable Widget adapter, объявляющий и применяющий один Screen Field |
+| Screen Field Host | Виджет (`IGV2ScreenFieldHost`), принимающий конкретный Screen Field и применяющий его свойства через `IGV2UiPropertyHost` |
+| Property Host | Виджет (`IGV2UiPropertyHost`), объявляющий свои capability и принимающий свойства через раздельные фазы Prepare/Commit |
 | Leaf Adapter | Единственный approved владелец mutation конкретного runtime content primitive |
 | Composite Widget | Widget, который составляет UI из adapters и не вводит собственный presentation path |
 | Route | Основной навигационный узел с lifecycle identity |

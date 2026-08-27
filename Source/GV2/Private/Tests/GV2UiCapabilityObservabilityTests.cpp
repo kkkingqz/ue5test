@@ -283,6 +283,9 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
     }
 
     // 7. UPP-16: UGV2InputFieldWidgetBase implements IGV2UiPropertyHost and is observable
+    // REV3-08 closure: label/placeholder_text are Text-kind capabilities (TextPropertyConsumer),
+    // is_read_only/max_length are primitive capabilities — all four are swept by the generic
+    // observability harness below, proving none of them is a raw setter bypassing Prepare/Commit.
     {
         UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
         GameInstance->AddToRoot();

@@ -2265,6 +2265,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             RouteWidget3);
 
         // Step G: UPP-28 Multi-layer failure injection across layers
+        // REV3-07 closure: FGV2LayeredUiReconciler.Reconcile is document-level atomic — MultiDoc2 below
+        // injects a failing field in one layer (modal_stack) and Step G's assertions confirm ALL layers
+        // (route, overlay, modal) are left completely untouched, not just the layer that failed.
         // Set up active state with 3 layers: Route in location_content, Overlay in overlay_stack, Modal in modal_stack
         FGV2UiDocumentViewModel MultiDoc1;
         MultiDoc1.UiInstanceId = TEXT("ui@1:1");

@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.6
-updated: 2026-08-20
+version: 1.7
+updated: 2026-08-27
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0013-unified-text-pipeline.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0035-ui-foundation-and-composition.md
+  - ../ADR/0040-universal-ui-property-pipeline.md
 ---
 
 # UI Document and Reconciliation
@@ -19,8 +20,8 @@ decisions:
 > **Владеет:** моделью желаемого UI-документа, маршрутами, слоями и правилами полной реконсиляции.
 > **Не владеет:** физическим деревом виджетов и локальным визуальным состоянием.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
-> **Реализация:** реализована многослойная реконсиляция через `FGV2LayeredUiReconciler` и `UGV2GameShellWidgetBase` (слои `background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`); см. [Implementation Status](../Status/ImplementationStatus.md).
-> **Проверки:** `GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`.
+> **Реализация:** двухфазная многослойная реконсиляция через `FGV2LayeredUiReconciler` (`PrepareReconcile`/`CommitReconcile`) и `UGV2GameShellWidgetBase` (слои `background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`); см. [Implementation Status](../Status/ImplementationStatus.md).
+> **Проверки:** `GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Session.PreparedCommitAndFailureInjection`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`.
 
 UI-document — полная декларативная desired model Screen instances для одной revision. Lua строит его из canonical state и pinned repository; Presentation разрешает `screen_id` через Screen Registry и reconciles document с UMG instances.
 
@@ -116,7 +117,7 @@ Configured `WBP_GameShell` обязан наследовать native `UGV2GameS
 | `fields` | Полная map `field_id → { schema_id, value }` для этой revision |
 | `element_id` | Optional authored provenance внутри field item, если нужен diagnostics/result placement |
 
-Lua не передаёт children, Widget Blueprint class или физические Widget names. Допустимые поля и их schemas определяются Dynamic Screen Elements конкретного Screen Template. Repeated field items обязаны иметь deterministic `key` согласно разделу [Repeated Element Identity](#repeated-element-identity).
+Lua не передаёт children, Widget Blueprint class или физические Widget names. Допустимые поля и их schemas определяются элементами Screen Template, реализующими `IGV2ScreenFieldHost` и `IGV2UiPropertyHost`. Repeated field items обязаны иметь deterministic `key` согласно разделу [Repeated Element Identity](#repeated-element-identity).
 
 ### Декларативные UI-схемы как данные
 
@@ -196,16 +197,26 @@ Publication является atomic: registry сначала валидируе�
 
 ## Reconciliation
 
-1. Validate envelope, revision, Screen Registry entries, Screen Field schemas и command bindings.
-2. Построить candidate binding records, но не публиковать их.
-3. Match Screen Instances по layer + `instance_key`.
-4. Same identity + same `screen_id` может переиспользовать existing Screen Widget и применить полный field set.
-5. Changed `screen_id` заменяет Screen Widget class через registry.
-6. Removed/replaced instances и field items логически отключаются до exit animation.
-7. Commit prepared binding candidate и atomically publish document/input-ready revision только после successful apply всех Screen Fields.
-8. Запустить optional enter/exit animations после logical commit.
+Реконсиляция документа выполняется атомарно через две фазы (`FGV2LayeredUiReconciler`):
 
-Exit animation не продлевает logical input lifetime removed Screen Instance или field item. Failed candidate не оставляет частично обновлённый interactive screen; Presentation восстанавливает previous values либо полностью rebuilds previous document.
+1. **Фаза Prepare (`PrepareReconcile`)**:
+   - Валидировать envelope, revision, Screen Registry entries и command bindings.
+   - Сформировать candidate binding definitions через `GV2ScreenFieldMaterializer::PrepareBindingDefinitions`.
+   - Подготовить кандидатный набор биндингов в `FGV2UiBindingRegistry::PrepareBindings`.
+   - Материализовать поля через `GV2ScreenFieldMaterializer::BuildFields` (`FGV2ScreenFieldValue` с `PreparedValue` и `CompiledSchema`).
+   - Сопоставить Screen Instances по `layer + instance_key`.
+   - Для каждого экрана подготовить полный мутационный план (`UGV2ScreenWidgetBase::PrepareScreenFields`) off-tree.
+   - Если подготовка хотя бы одного экрана в любом слое не удалась (включая несовпадение схемы, дублирующийся ключ глубокого ребёнка или незамкнутое поле), вся фаза Prepare отвергается: ни один старый экран не отсоединяется, ни один новый не присоединяется, и активный набор экранов остаётся неизменным.
+2. **Фаза Commit (`CommitReconcile`)**:
+   - Отсоединить удалённые и заменяемые экраны.
+   - Присоединить новые экраны к соответствующим hosts `UGV2GameShellWidgetBase`.
+   - Применить подготовленные мутационные планы экранов (`UGV2ScreenWidgetBase::CommitScreenFields`).
+   - Применить маскирование интерактивности модальных слоёв (`ApplyInputMasking`).
+   - Атомарно закоммитить подготовленные биндинги ревизии в `FGV2UiBindingRegistry`.
+   - Вызвать `OnScreenFieldsApplied` для применённых экранов.
+   - Запустить optional enter/exit animations.
+
+Exit animation не продлевает logical input lifetime removed Screen Instance или field item. В случае отказа на стадии Prepare физическое дерево виджетов и активные биндинги вообще не затрагиваются; компенсирующий откат устранён физически. Failed candidate не оставляет частично обновлённый interactive screen.
 
 ## Full update policy
 
@@ -251,7 +262,7 @@ Private `FGV2UiBindingRegistry` реализует prepared binding candidate и
 
 `UGV2GameShellWidgetBase` разрешает слой только в соответствующий authored host. Динамическое создание host вне Widget tree запрещено: это скрывает ошибку Blueprint contract и приводит к логически применённому, но невидимому документу.
 
-Валидация полей документа выполняется универсальным валидатором `GV2ContentCore` на базе скомпилированных UI-схем репозитория контента; Dynamic Screen Elements связывают валидированные данные с виджетами UMG.
+Валидация и материализация полей документа выполняются универсальным материализатором `GV2ScreenFieldMaterializer` на базе скомпилированных UI-схем репозитория контента (`GV2ContentCore`); виджеты реализуют `IGV2ScreenFieldHost` и `IGV2UiPropertyHost` для связывания валидированных данных с UMG через раздельные фазы Prepare/Commit.
 
 ### Устойчивая идентичность LocationScreen
 

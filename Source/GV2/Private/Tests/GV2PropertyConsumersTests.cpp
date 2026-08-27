@@ -31,10 +31,12 @@
 #include "Components/EditableTextBox.h"
 #include "Components/ProgressBar.h"
 #include "Components/VerticalBox.h"
+#include "Components/VerticalBoxSlot.h"
 #include "Components/WrapBox.h"
 #include "Components/ScrollBox.h"
 #include "Components/Border.h"
 #include "Engine/GameInstance.h"
+#include "UI/GV2UiTheme.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -675,6 +677,69 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 }
             }
 
+            // 9a-bis. UPP-30: KeyedCollection Commit must restyle the ButtonList wrapper itself
+            // (mirrors production resolution, e.g. UGV2ModalWidgetBase's "buttons" capability,
+            // where TargetWidget resolves to the UGV2ButtonListWidgetBase instance, not its
+            // inner VerticalBox), so newly created slots pick up Theme->ButtonListItemPadding.
+            {
+                UGV2ButtonListWidgetBase* StyledButtonList = CreateWidget<UGV2ButtonListWidgetBase>(TestWorld, UGV2ButtonListWidgetBase::StaticClass());
+                UVerticalBox* StyledBtnBox = NewObject<UVerticalBox>(StyledButtonList);
+                StyledButtonList->SetButtonContainer(StyledBtnBox);
+
+                FGV2UiCapabilityBuilder StyledBtnBuilder;
+                StyledButtonList->DescribeUiCapabilities(StyledBtnBuilder);
+                const FGV2UiCapabilityTree StyledBtnTree = StyledBtnBuilder.Build();
+                const FGV2UiPropertyCapability* StyledItemsCap = StyledBtnTree.FindProperty(TEXT("items"));
+                TestNotNull(TEXT("Styled ButtonList items capability found"), StyledItemsCap);
+
+                if (StyledItemsCap != nullptr)
+                {
+                    TSharedPtr<IGV2PropertyConsumer> StyledCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                        EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+
+                    FGV2TextViewModel StyledBtnText;
+                    StyledBtnText.Text = FText::FromString(TEXT("Styled Button"));
+                    StyledBtnText.StyleToken = TEXT("default");
+
+                    TMap<FString, FGV2PreparedUiValue> StyledItemMap;
+                    StyledItemMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("styled_btn")));
+                    StyledItemMap.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(StyledBtnText));
+                    StyledItemMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd_styled@1:1"))));
+
+                    TArray<FGV2PreparedUiValue> StyledElements;
+                    StyledElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(StyledItemMap)));
+
+                    FString StyledPrepErr, StyledCommitErr;
+                    const bool bStyledPrep = StyledCollConsumer->Prepare(
+                        FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(StyledElements)),
+                        *StyledItemsCap,
+                        StyledButtonList,
+                        StyledPrepErr);
+                    TestTrue(TEXT("Styled ButtonList Prepare succeeds"), bStyledPrep);
+
+                    const bool bStyledCommit = StyledCollConsumer->Commit(StyledButtonList, StyledCommitErr);
+                    TestTrue(TEXT("Styled ButtonList Commit succeeds"), bStyledCommit);
+                    TestEqual(TEXT("Styled ButtonList container has 1 child"), StyledBtnBox->GetChildrenCount(), 1);
+
+                    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+                    TestNotNull(TEXT("Theme resolved for padding assertion"), Theme);
+
+                    if (Theme != nullptr && StyledBtnBox->GetChildrenCount() == 1)
+                    {
+                        UVerticalBoxSlot* NewSlot = Cast<UVerticalBoxSlot>(StyledBtnBox->GetSlots()[0]);
+                        TestNotNull(TEXT("New button slot is a UVerticalBoxSlot"), NewSlot);
+                        if (NewSlot != nullptr)
+                        {
+                            const FMargin ActualPadding = NewSlot->GetPadding();
+                            TestEqual(TEXT("New button slot padding.Left matches theme"), ActualPadding.Left, Theme->ButtonListItemPadding.Left);
+                            TestEqual(TEXT("New button slot padding.Top matches theme"), ActualPadding.Top, Theme->ButtonListItemPadding.Top);
+                            TestEqual(TEXT("New button slot padding.Right matches theme"), ActualPadding.Right, Theme->ButtonListItemPadding.Right);
+                            TestEqual(TEXT("New button slot padding.Bottom matches theme"), ActualPadding.Bottom, Theme->ButtonListItemPadding.Bottom);
+                        }
+                    }
+                }
+            }
+
             // 9b. DropdownSelect Property Host
             UGV2DropdownSelectWidgetBase* Dropdown = CreateWidget<UGV2DropdownSelectWidgetBase>(TestWorld, UGV2DropdownSelectWidgetBase::StaticClass());
             UGV2ButtonWidgetBase* HeaderBtn = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
@@ -821,6 +886,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         }
 
         // 11. UPP-22: UGV2ModalWidgetBase Property Host Reconciliation
+        // REV3-04 closure: every declared Modal capability (title/content/buttons/backdrop_close_action)
+        // has a real consumer wired through DescribeUiCapabilities — none is silently dropped/partial.
         {
             UGV2ModalWidgetBase* ModalWidget = CreateWidget<UGV2ModalWidgetBase>(TestWorld, UGV2ModalWidgetBase::StaticClass());
 
@@ -866,6 +933,9 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         }
 
         // 12. UPP-23: UGV2TabContainerWidgetBase & FGV2TabContainerTabsPropertyConsumer
+        // REV3-06 closure: tabs go through FGV2TabContainerTabsPropertyConsumer (not a raw ScreenId
+        // assignment) — screen_id kind/registration is validated per tab (12b below), and this is the
+        // same nested-screen consumer path the Screen Registry resolves through, not an ad hoc bypass.
         {
             UGV2TabContainerWidgetBase* TabContainer = CreateWidget<UGV2TabContainerWidgetBase>(TestWorld, UGV2TabContainerWidgetBase::StaticClass());
 

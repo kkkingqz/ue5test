@@ -27,6 +27,7 @@
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiTheme.h"
 #include "Bridge/GV2StableIdUE.h"
 #include "Framework/Text/RichTextMarkupProcessing.h"
@@ -1202,6 +1203,13 @@ bool FGV2KeyedCollectionPropertyConsumer::Commit(UWidget* TargetWidget, FString&
         {
             Panel->AddChild(Item.Widget);
         }
+    }
+
+    // Newly added slots have no styling of their own; let the container reapply its
+    // central style (e.g. per-item slot padding) now that the collection has settled.
+    if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
+    {
+        IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
     }
 
     ActiveWidgetsByKey = MoveTemp(CandidateWidgetsByKey);
