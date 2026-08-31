@@ -2490,6 +2490,144 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("fault_slot")), FaultScreen);
         }
 
+        // Step J: PCC-07 -- multi-layer Commit-phase failure injection. UPP-28's own DoD
+        // ("failed Prepare leaves the active set and bindings untouched") only covered the
+        // Prepare phase; before PCC-07's reorder in CommitReconcile (commit every screen
+        // BEFORE touching Shell attach/detach or ActiveScreens), an injected Commit failure
+        // on one screen of a multi-layer document could leave *other*, unrelated layers'
+        // screens already replaced in the Shell tree while ActiveScreens rolled back whole
+        // -- a real state/bookkeeping divergence, not just a wrong count. This proves that
+        // after a Commit failure on layer A, layer B's PREVIOUS widget instance is still
+        // both the reconciler's ActiveScreens entry AND still attached in the Shell tree,
+        // not merely present in some count.
+        {
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+
+            UGV2ScreenWidgetBase* TopBarScreenV1 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            TopBarScreenV1->WidgetTree = NewObject<UWidgetTree>(TopBarScreenV1);
+            UGV2LocationTopBarWidgetBase* TopBarV1 = TopBarScreenV1->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
+                UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBar"));
+            TopBarScreenV1->WidgetTree->RootWidget = TopBarV1;
+            UGV2TextWidgetBase* TopBarV1DayText = TopBarScreenV1->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            TestNotNull(TEXT("PCC-07: layer A v1 DayText child constructs"), TopBarV1DayText);
+            if (FNameProperty* Prop = FindFProperty<FNameProperty>(TopBarV1->GetClass(), TEXT("ScreenFieldId")))
+            {
+                Prop->SetPropertyValue_InContainer(TopBarV1, FName(TEXT("top_bar")));
+            }
+            if (FObjectProperty* Prop = FindFProperty<FObjectProperty>(TopBarV1->GetClass(), TEXT("DayText")))
+            {
+                Prop->SetObjectPropertyValue_InContainer(TopBarV1, TopBarV1DayText);
+            }
+
+            UGV2ScreenWidgetBase* TopBarScreenV2 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            TopBarScreenV2->WidgetTree = NewObject<UWidgetTree>(TopBarScreenV2);
+            UGV2LocationTopBarWidgetBase* TopBarV2 = TopBarScreenV2->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
+                UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBar"));
+            TopBarScreenV2->WidgetTree->RootWidget = TopBarV2;
+            UGV2TextWidgetBase* TopBarV2DayText = TopBarScreenV2->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            TestNotNull(TEXT("PCC-07: layer A v2 DayText child constructs"), TopBarV2DayText);
+            if (FNameProperty* Prop = FindFProperty<FNameProperty>(TopBarV2->GetClass(), TEXT("ScreenFieldId")))
+            {
+                Prop->SetPropertyValue_InContainer(TopBarV2, FName(TEXT("top_bar")));
+            }
+            if (FObjectProperty* Prop = FindFProperty<FObjectProperty>(TopBarV2->GetClass(), TEXT("DayText")))
+            {
+                Prop->SetObjectPropertyValue_InContainer(TopBarV2, TopBarV2DayText);
+            }
+
+            UGV2ScreenWidgetBase* PlainScreenV1 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            UGV2ScreenWidgetBase* PlainScreenV2 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+
+            auto MakeTopBarFieldValue = [](const FString& DayText) -> FGV2ScreenFieldValue
+            {
+                auto ItemSchema = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Object);
+                ItemSchema->Fields.push_back({ "day", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                FGV2TextViewModel DayModel;
+                DayModel.Text = FText::FromString(DayText);
+                TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+                Fields.Emplace(TEXT("day"), FGV2PreparedUiValue::MakeText(DayModel));
+                FGV2ScreenFieldValue FieldValue;
+                FieldValue.FieldId = TEXT("top_bar");
+                FieldValue.SchemaId = TEXT("test:schema.pcc07_multi_layer_top_bar.v1");
+                FieldValue.PreparedValue = FGV2PreparedUiObject::Create(MoveTemp(Fields));
+                FieldValue.CompiledSchema = ItemSchema;
+                return FieldValue;
+            };
+
+            auto MakeMultiLayerDoc = [&](const FString& ScreenIdSuffix, const FString& DayText) -> FGV2UiDocumentViewModel
+            {
+                FGV2UiDocumentViewModel Doc;
+                Doc.UiInstanceId = TEXT("ui@1:1");
+                Doc.Revision = 30;
+                Doc.bHasRoute = true;
+                Doc.Route.Layer = TEXT("location_content");
+                Doc.Route.InstanceKey = TEXT("pcc07_a");
+                Doc.Route.ScreenId = FString::Printf(TEXT("core:screen.pcc07_a_%s"), *ScreenIdSuffix);
+                Doc.Route.Fields.Add(MakeTopBarFieldValue(DayText));
+
+                FGV2ScreenInstanceViewModel OverlayInst;
+                OverlayInst.Layer = TEXT("overlay_stack");
+                OverlayInst.InstanceKey = TEXT("pcc07_b");
+                OverlayInst.ScreenId = FString::Printf(TEXT("core:screen.pcc07_b_%s"), *ScreenIdSuffix);
+                Doc.Overlays.Add(OverlayInst);
+                return Doc;
+            };
+
+            TMap<FString, UGV2ScreenWidgetBase*> MultiLayerScreensByScreenId;
+            MultiLayerScreensByScreenId.Add(TEXT("core:screen.pcc07_a_v1"), TopBarScreenV1);
+            MultiLayerScreensByScreenId.Add(TEXT("core:screen.pcc07_a_v2"), TopBarScreenV2);
+            MultiLayerScreensByScreenId.Add(TEXT("core:screen.pcc07_b_v1"), PlainScreenV1);
+            MultiLayerScreensByScreenId.Add(TEXT("core:screen.pcc07_b_v2"), PlainScreenV2);
+            auto MultiLayerFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+            {
+                UGV2ScreenWidgetBase** Found = MultiLayerScreensByScreenId.Find(ScreenId);
+                return Found != nullptr ? *Found : nullptr;
+            };
+
+            FString MultiLayerError;
+            const bool bMultiBaseline = Reconciler.Reconcile(Shell, MakeMultiLayerDoc(TEXT("v1"), TEXT("Monday")), MultiLayerFactory, MultiLayerError);
+            TestTrue(*FString::Printf(TEXT("PCC-07: baseline multi-layer reconcile succeeds [Error: %s]"), *MultiLayerError), bMultiBaseline);
+            TestEqual(TEXT("PCC-07: layer A baseline widget is TopBarScreenV1"), Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("pcc07_a")), TopBarScreenV1);
+            TestEqual(TEXT("PCC-07: layer B baseline widget is PlainScreenV1"), Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("pcc07_b")), PlainScreenV1);
+
+            auto MultiLayerFailInjector = [](const FString& ScreenId, const FString& /*PropertyPath*/) -> bool
+            {
+                return ScreenId == TEXT("core:screen.pcc07_a_v2");
+            };
+            const bool bMultiFault = Reconciler.Reconcile(Shell, MakeMultiLayerDoc(TEXT("v2"), TEXT("Tuesday")), MultiLayerFactory, MultiLayerError, MultiLayerFailInjector);
+
+            TestFalse(TEXT("PCC-07: Reconcile fails when layer A's Commit is injected to fail"), bMultiFault);
+            TestTrue(TEXT("PCC-07: error names layer A's screen_id"), MultiLayerError.Contains(TEXT("core:screen.pcc07_a_v2")));
+
+            TestEqual(TEXT("PCC-07: layer A (the failing layer) is still its PREVIOUS widget instance"),
+                Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("pcc07_a")), TopBarScreenV1);
+            TestEqual(TEXT("PCC-07: layer B (an unrelated, otherwise-successful layer) is STILL its previous widget instance, not silently advanced"),
+                Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("pcc07_b")), PlainScreenV1);
+
+            if (Shell != nullptr)
+            {
+                TestTrue(TEXT("PCC-07: Shell still shows layer A's v1 widget attached (state, not count)"),
+                    Shell->GetScreensInLayer(TEXT("location_content")).Contains(TopBarScreenV1));
+                TestFalse(TEXT("PCC-07: Shell never attached layer A's v2 widget"),
+                    Shell->GetScreensInLayer(TEXT("location_content")).Contains(TopBarScreenV2));
+                TestTrue(TEXT("PCC-07: Shell still shows layer B's v1 widget attached, untouched by layer A's failure"),
+                    Shell->GetScreensInLayer(TEXT("overlay_stack")).Contains(PlainScreenV1));
+                TestFalse(TEXT("PCC-07: Shell never attached layer B's v2 widget either -- the whole document aborted, not just layer A"),
+                    Shell->GetScreensInLayer(TEXT("overlay_stack")).Contains(PlainScreenV2));
+            }
+
+            // Clean up this scenario's route/overlay so later shared-Shell assertions in
+            // this test function see the state they expect (no PCC-07-specific residue).
+            FGV2UiDocumentViewModel CleanupDoc;
+            CleanupDoc.UiInstanceId = TEXT("ui@1:1");
+            CleanupDoc.Revision = 31;
+            CleanupDoc.bHasRoute = false;
+            FString CleanupError;
+            TestTrue(*FString::Printf(TEXT("PCC-07: cleanup reconcile succeeds [Error: %s]"), *CleanupError),
+                Reconciler.Reconcile(Shell, CleanupDoc, MultiLayerFactory, CleanupError));
+        }
+
         if (Shell != nullptr)
         {
             TestTrue(TEXT("Location content layer is unblocked after modal closure"), Shell->IsLayerInteractive(TEXT("location_content")));
