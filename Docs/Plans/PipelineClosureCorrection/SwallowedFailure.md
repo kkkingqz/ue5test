@@ -1,7 +1,7 @@
 ---
 title: Swallowed Failure Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-08-31
 depends_on:
   - README.md
@@ -54,10 +54,17 @@ Reset-мутация страдает симметрично: отсутстви
     - Верификация: 95/95 UE Automation, 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
     - **Не входит в эту задачу (честно оставлено открытым):** отказ **Attach** (не Commit) всё ещё может оставить частично присоединённое состояние, если он падает не на первом экране, — `AttachScreenToLayer` возвращает `false` только при null-виджете или непривязанном host-панели слоя в Shell (структурная ошибка конфигурации Blueprint, не content-driven и не инжектируемая тестом per-screen данными способом, которым инжектируется Commit). Ни один существующий тест не воспроизводит отказ `AttachScreenToLayer`. Это уже нарисованный в PCC-06 комментарий над шагом 3 `CommitReconcile`, не новая находка здесь — и это единственный оставшийся путь к частичному состоянию после переупорядочения.
 
-- [ ] **PCC-08 — Reset подчиняется тем же инвариантам, что и apply**
+- [x] **PCC-08 — Reset подчиняется тем же инвариантам, что и apply**
   - Для отсутствующего опционального свойства план получает reset-мутацию, но отсутствие target или consumer её не отклоняет: `Commit` выполняет reset только при валидных обоих и молча продолжает иначе. Это та же фигура «принято и не потреблено», только на пути сброса.
   - Done: reset-мутация добавляется в план только когда consumer существует, target разрешается и сброс поддерживается явно; иначе Prepare отказывает с типизированной диагностикой; альтернативно сброс становится внутренней операцией самого consumer и тогда неразрешимого случая не существует — выбор обоснован в задаче, а не подразумевается; отрицательный тест: обязательный сброс при неразрешимом target отклоняется, а не пропускается.
   - Evidence: `Source/GV2/Private/UI/GV2UiMutationPlan.cpp`, `Source/GV2/Private/UI/GV2PropertyConsumers.cpp`.
+  - **Реализация (2026-08-31):**
+    - Выбор из двух альтернатив Done: **зеркалирование проверок apply-пути** в `PrepareUiHostProperties` (`GV2UiMutationPlan.cpp`), а не превращение сброса во внутреннюю операцию consumer'а. Обоснование: `IGV2PropertyConsumer::Reset` — чистый виртуальный метод (`= 0`), реализован во ВСЕХ консьюмерах без исключения, поэтому "сброс не поддерживается явно" как отдельная категория не существует — единственные реально возможные отказы совпадают один в один с уже проверяемыми на apply-пути (`missing_target`, `unsupported_kind`), и дублировать их внутри каждого consumer'а means умножать логику без причины.
+    - В обеих ветках построения reset-мутации (`PrepareUiHostProperties`: "Absent optional property in candidate" и "Property not in schema: reused instance must reset") добавлены те же две проверки, что уже существовали для apply-ветки: `HostWidget && !TargetWidget` → `core:diagnostic.ui_consumer.missing_target`, `!Consumer` (от `FGV2PropertyConsumerFactory::CreateConsumer`) → `core:diagnostic.ui_consumer.unsupported_kind`. Обе — `return false` из `PrepareUiHostProperties`, а не пропуск построения мутации.
+    - В `CommitUiHostProperties`: `else`-ветка для `Mutation.bIsReset` с невалидными `Consumer`/`TargetWidget` раньше молча ничего не делала. Теперь, поскольку Prepare гарантирует разрешимость каждой reset-мутации в плане, достижение этой ветки на Commit означает подлинную инвалидацию между Prepare и Commit (не предсказуемую content-ошибку) — она логируется и возвращает `false` с кодом `core:diagnostic.ui_mutation.reset_target_invalidated`, тем же способом, что и обычный (не-reset) отказ Commit рядом.
+    - Добавлены тесты 10a/10b в `GV2.UI.PropertyHostAndCapabilities` (`GV2UiPropertyHostTests.cpp`): 10a (негативный) — capability с `TargetName`, не резолвящимся на хосте, и пустой Candidate (свойство отсутствует → путь reset) — `PrepareUiHostProperties` отклоняет с `missing_target`, план остаётся пустым. 10b (позитивный) — та же форма, но с реально резолвящимся target — `Prepare` принимает, план содержит ровно одну reset-мутацию — подтверждает, что фикс не блокирует легитимный сброс.
+    - Красный тест на откате подтверждён: временный откат `GV2UiMutationPlan.cpp` к до-PCC-08 состоянию (через `git stash`) — тест 10a покраснел ровно на трёх новых assertions (`Prepare rejects`, `Diagnostic is missing_target`, `Plan is empty`); откат снят, пересборка — снова зелёный.
+    - Верификация: 95/95 UE Automation, 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
 
 - [ ] **PCC-09 — Объявление capability ничего не меняет**
   - `DescribeUiCapabilities` — `const`-метод, но пять раз обходит константность через `const_cast`, чтобы лениво создать внутренние репитеры (`GV2LocationCompositeWidgetBases.cpp:138,148,158,226,278`). Ленивая аллокация в чистом методе — та же ошибка, что снималась в `BAI-11`.
@@ -68,5 +75,5 @@ Reset-мутация страдает симметрично: отсутстви
 
 - [x] Отбрасывание результата отказоспособной операции краснит сборку (`[[nodiscard]]` на всех `Prepare*`/`Commit*`/`Attach*`/`Detach*` UI-слоя, PCC-06).
 - [x] Отказ фиксации проверен отдельно от отказа подготовки и по состоянию, а не по количеству (PCC-07: `Step J`, реордер `CommitReconcile`).
-- [ ] Неразрешимый reset отклоняется.
+- [x] Неразрешимый reset отклоняется (PCC-08).
 - [ ] Опрос capability не меняет состояния виджета.

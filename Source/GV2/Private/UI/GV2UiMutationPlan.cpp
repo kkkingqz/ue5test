@@ -183,9 +183,36 @@ bool PrepareUiHostProperties(
             }
             else
             {
-                // Absent optional property in candidate -> Reset consumer
+                // Absent optional property in candidate -> Reset consumer.
+                // PCC-08: reset is held to the exact same invariants as apply (mirrors the
+                // missing_target/unsupported_kind checks a few lines above) -- a reset the
+                // widget cannot actually perform must reject Prepare with a typed
+                // diagnostic, not silently add an unresolvable mutation that Commit later
+                // no-ops without a trace.
+                if (HostWidget && !TargetWidget)
+                {
+                    FGV2UiSchemaCompatibilityDiagnostic Diag;
+                    Diag.Code = TEXT("core:diagnostic.ui_consumer.missing_target");
+                    Diag.PropertyPath = ChildPath;
+                    Diag.SchemaId = SchemaId;
+                    Diag.Message = FString::Printf(TEXT("Target widget '%s' not found on host for reset of property '%s'"),
+                        *Cap.TargetName.ToString(), *PropName);
+                    OutDiagnostics.Add(MoveTemp(Diag));
+                    return false;
+                }
+
                 TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     Cap.SupportedKind, Cap.TargetType, Cap.TargetKind);
+                if (!Consumer)
+                {
+                    FGV2UiSchemaCompatibilityDiagnostic Diag;
+                    Diag.Code = TEXT("core:diagnostic.ui_consumer.unsupported_kind");
+                    Diag.PropertyPath = ChildPath;
+                    Diag.SchemaId = SchemaId;
+                    Diag.Message = FString::Printf(TEXT("No consumer available for reset of property '%s'"), *PropName);
+                    OutDiagnostics.Add(MoveTemp(Diag));
+                    return false;
+                }
 
                 FGV2UiPropertyMutation Mutation;
                 Mutation.PropertyName = PropName;
@@ -203,9 +230,32 @@ bool PrepareUiHostProperties(
             // Property not in schema: check if previously owned by this reused instance
             if (LastCommittedProperties.FindField(PropName) != nullptr)
             {
-                // Reused instance must reset property no longer in schema
+                // Reused instance must reset property no longer in schema. Same PCC-08
+                // invariants as the branch above.
+                if (HostWidget && !TargetWidget)
+                {
+                    FGV2UiSchemaCompatibilityDiagnostic Diag;
+                    Diag.Code = TEXT("core:diagnostic.ui_consumer.missing_target");
+                    Diag.PropertyPath = ChildPath;
+                    Diag.SchemaId = SchemaId;
+                    Diag.Message = FString::Printf(TEXT("Target widget '%s' not found on host for reset of property '%s'"),
+                        *Cap.TargetName.ToString(), *PropName);
+                    OutDiagnostics.Add(MoveTemp(Diag));
+                    return false;
+                }
+
                 TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     Cap.SupportedKind, Cap.TargetType, Cap.TargetKind);
+                if (!Consumer)
+                {
+                    FGV2UiSchemaCompatibilityDiagnostic Diag;
+                    Diag.Code = TEXT("core:diagnostic.ui_consumer.unsupported_kind");
+                    Diag.PropertyPath = ChildPath;
+                    Diag.SchemaId = SchemaId;
+                    Diag.Message = FString::Printf(TEXT("No consumer available for reset of property '%s'"), *PropName);
+                    OutDiagnostics.Add(MoveTemp(Diag));
+                    return false;
+                }
 
                 FGV2UiPropertyMutation Mutation;
                 Mutation.PropertyName = PropName;
@@ -246,6 +296,21 @@ bool CommitUiHostProperties(
             if (Mutation.Consumer.IsValid() && Mutation.TargetWidget.IsValid())
             {
                 Mutation.Consumer->Reset(Mutation.TargetWidget.Get());
+            }
+            else
+            {
+                // PCC-08: PrepareUiHostProperties now rejects a reset mutation whose
+                // consumer/target can't be resolved (core:diagnostic.ui_consumer.
+                // missing_target / unsupported_kind), so a plan reaching Commit is only
+                // ever supposed to contain resolvable reset mutations. Reaching this is
+                // therefore a genuine consumer/target invalidation between Prepare and
+                // Commit (e.g. GC'd widget), not a predictable content error -- surfaced,
+                // not silently absorbed, matching the non-reset Commit failure below.
+                OutFailedPropertyPath = Mutation.PropertyPath;
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_mutation.reset_target_invalidated: consumer or target for '%s' became invalid between Prepare and Commit"),
+                    *Mutation.PropertyPath);
+                return false;
             }
         }
         else

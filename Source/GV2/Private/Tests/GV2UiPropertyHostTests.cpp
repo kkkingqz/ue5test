@@ -2,9 +2,13 @@
 
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiCapability.h"
+#include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2PanelWidgetBase.h"
+#include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2UiSchemaCache.h"
+#include "Blueprint/WidgetTree.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
@@ -364,6 +368,85 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
                 {
                     TestEqual(TEXT("PCC-02: Diagnostic property_path is items[].unsupported_extra_action"),
                         MismatchDiags[0].PropertyPath, TEXT("items[].unsupported_extra_action"));
+                }
+            }
+
+            TestWorld->DestroyWorld(false);
+        }
+    }
+
+    // 10. PCC-08: Reset mutations obey the same invariants as apply mutations -- a reset
+    // whose target/consumer cannot be resolved must reject Prepare with a typed
+    // diagnostic, not silently add an unresolvable mutation that Commit later no-ops
+    // without a trace. Before PCC-08, both reset branches in PrepareUiHostProperties
+    // (absent-optional-property, and property-removed-from-a-reused-instance's-schema)
+    // skipped the missing_target/unsupported_kind checks the apply branch already had.
+    {
+        UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+        TestNotNull(TEXT("PCC-08: TestWorld created"), TestWorld);
+        if (TestWorld != nullptr)
+        {
+            // 10a. Negative: optional Text property whose capability TargetName does not
+            // resolve on the host -- absent value in the candidate must REJECT Prepare,
+            // not silently add an unresolvable reset mutation.
+            {
+                UGV2PanelWidgetBase* Host = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
+                TestNotNull(TEXT("PCC-08: unresolvable-target host widget instantiates"), Host);
+
+                const FGV2UiCapabilityTree Caps = FGV2UiCapabilityBuilder()
+                    .AddText(TEXT("subtitle"), FName(TEXT("NonexistentSubtitleWidget")))
+                    .Build();
+
+                FCompiledUiFieldSpec Schema;
+                Schema.Kind = EUiFieldKind::Object;
+                Schema.Fields.push_back({ "subtitle", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+
+                const FGV2PreparedUiObject EmptyCandidate;
+                const FGV2PreparedUiObject EmptyLastCommitted;
+                FGV2UiHostMutationPlan Plan;
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+                const bool bPrepared = PrepareUiHostProperties(
+                    Host, Caps, EmptyCandidate, Schema, TEXT("test:schema.pcc08_unresolvable_reset"),
+                    TEXT(""), EmptyLastCommitted, Plan, Diagnostics);
+
+                TestFalse(TEXT("PCC-08: Prepare rejects a reset whose target cannot be resolved"), bPrepared);
+                TestTrue(TEXT("PCC-08: Diagnostic is missing_target"),
+                    Diagnostics.Num() > 0 && Diagnostics[0].Code == TEXT("core:diagnostic.ui_consumer.missing_target"));
+                TestTrue(TEXT("PCC-08: Plan is empty, not populated with an unresolvable mutation"), Plan.IsEmpty());
+            }
+
+            // 10b. Positive: same shape, but the capability's target genuinely resolves --
+            // the reset mutation is still accepted and added to the plan (the fix must not
+            // over-reject a resolvable reset).
+            {
+                UGV2PanelWidgetBase* Host = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
+                TestNotNull(TEXT("PCC-08: resolvable-target host widget instantiates"), Host);
+                Host->WidgetTree = NewObject<UWidgetTree>(Host);
+                UGV2TextWidgetBase* SubtitleWidget = Host->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("SubtitleWidget"));
+                TestNotNull(TEXT("PCC-08: SubtitleWidget child constructs"), SubtitleWidget);
+                Host->WidgetTree->RootWidget = SubtitleWidget;
+
+                const FGV2UiCapabilityTree Caps = FGV2UiCapabilityBuilder()
+                    .AddText(TEXT("subtitle"), FName(TEXT("SubtitleWidget")))
+                    .Build();
+
+                FCompiledUiFieldSpec Schema;
+                Schema.Kind = EUiFieldKind::Object;
+                Schema.Fields.push_back({ "subtitle", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+
+                const FGV2PreparedUiObject EmptyCandidate;
+                const FGV2PreparedUiObject EmptyLastCommitted;
+                FGV2UiHostMutationPlan Plan;
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+                const bool bPrepared = PrepareUiHostProperties(
+                    Host, Caps, EmptyCandidate, Schema, TEXT("test:schema.pcc08_resolvable_reset"),
+                    TEXT(""), EmptyLastCommitted, Plan, Diagnostics);
+
+                TestTrue(TEXT("PCC-08: Prepare accepts a reset whose target resolves"), bPrepared);
+                TestEqual(TEXT("PCC-08: Plan has exactly one (reset) mutation"), Plan.Num(), 1);
+                if (Plan.Num() == 1)
+                {
+                    TestTrue(TEXT("PCC-08: The mutation is marked as a reset"), Plan.GetMutations()[0].bIsReset);
                 }
             }
 
