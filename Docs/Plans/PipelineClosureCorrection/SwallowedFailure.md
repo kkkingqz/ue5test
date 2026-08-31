@@ -1,7 +1,7 @@
 ---
 title: Swallowed Failure Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-08-31
 depends_on:
   - README.md
@@ -66,14 +66,22 @@ Reset-мутация страдает симметрично: отсутстви
     - Красный тест на откате подтверждён: временный откат `GV2UiMutationPlan.cpp` к до-PCC-08 состоянию (через `git stash`) — тест 10a покраснел ровно на трёх новых assertions (`Prepare rejects`, `Diagnostic is missing_target`, `Plan is empty`); откат снят, пересборка — снова зелёный.
     - Верификация: 95/95 UE Automation, 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
 
-- [ ] **PCC-09 — Объявление capability ничего не меняет**
+- [x] **PCC-09 — Объявление capability ничего не меняет**
   - `DescribeUiCapabilities` — `const`-метод, но пять раз обходит константность через `const_cast`, чтобы лениво создать внутренние репитеры (`GV2LocationCompositeWidgetBases.cpp:138,148,158,226,278`). Ленивая аллокация в чистом методе — та же ошибка, что снималась в `BAI-11`.
   - Done: подключение внутренних коллекций выполняется на этапе инициализации экземпляра, а не при опросе capability; `DescribeUiCapabilities` не содержит `const_cast` и не создаёт объектов; тест сравнивает состояние виджета до и после опроса capability и краснеет при возврате ленивого создания; проверка экземпляра из раздела 17.2 `ADR-0040` подтверждает наличие требуемых хостов коллекций до публикации экрана.
   - Evidence: `Source/GV2/Private/UI/GV2LocationCompositeWidgetBases.cpp`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-08-31):**
+    - Уточнение источника: "раздел 17.2 `ADR-0040`" в тексте Done — раздел `## 17.2. Instance wiring check` архивного `Docs/Proposals/Archive/UniversalDataDrivenUIPropertyPipelineProposal.md`, не самого ADR-0040 (там такого раздела нет). Формулировка раздела прямо предписывает найденный здесь фикс: "После создания WBP instance, но до публикации Screen: ... required collection host существует ... Никакого lazy `NewObject` из pure getter."
+    - Все 5 `const_cast<...>(this)->ResolveXxxRepeater() != nullptr` в `DescribeUiCapabilities` (`UGV2LocationPlayerStatusWidgetBase` ×3 — meters/items/effects, `UGV2LocationSceneWidgetBase` ×1 — characters, `UGV2LocationCommandPanelWidgetBase` ×1 — items) заменены на уже существовавшие, но нигде не использовавшиеся const, без побочных эффектов методы `HasUsableXxxRepeaterHost()` (`XxxRepeater != nullptr || XxxContainer != nullptr` — булево тождественно тому же условию, что возвращал `Resolve...() != nullptr`, без объекта).
+    - Реальное подключение (`NewObject<UGV2ListViewWidgetBase>` + `SetContainerPanel`) перенесено на этап инициализации экземпляра: каждый `ResolveXxxRepeater()` теперь вызывается эагерно (не через `const_cast`, `this` уже неконстантен) внутри `NativePreConstruct()` соответствующего класса — `UGV2LocationPlayerStatusWidgetBase` (все три репитера), `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase`. Сами `Resolve*()` методы не менялись — они и раньше были идемпотентны (создают `InternalXxxRepeater` только если он ещё `nullptr`), поэтому перенос точки первого вызова не меняет наблюдаемое поведение по успешному пути, только время создания.
+    - Новый тест `GV2.Runtime.Presentation.LocationCompositeCapabilityQueryIsPure` (`GV2RuntimeSubsystemTests.cpp`): нативно сконструированный `UGV2LocationPlayerStatusWidgetBase` с `ItemIcons`, привязанным через reflection; `InternalItemRepeater` читается через reflection (protected, нет публичного геттера состояния) — подтверждено `nullptr` до `TakeWidget()` (запускает `NativePreConstruct` тем же путём, что и продакшн), не `nullptr` после — до единственного вызова `DescribeUiCapabilities`. Два последовательных вызова `DescribeUiCapabilities` сравниваются: указатель `InternalItemRepeater` идентичен во всех трёх точках (после construct, после 1-го запроса, после 2-го) — не просто "не null", а тот же самый объект.
+    - Красный тест на откате подтверждён: временный откат `GV2LocationCompositeWidgetBases.cpp` к до-PCC-09 состоянию (через `git stash`) — новый тест покраснел ровно на assertion "InternalItemRepeater exists after construction, before any capability query" (репитер оставался `nullptr` до первого запроса capability, как и было до фикса); откат снят, пересборка — снова зелёный.
+    - Верификация: 96/96 UE Automation (новый top-level тест), 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
+    - **M2 (Swallowed Failure) закрыт целиком** — все четыре задачи (PCC-06…09) выполнены.
 
 ## Проверка milestone
 
 - [x] Отбрасывание результата отказоспособной операции краснит сборку (`[[nodiscard]]` на всех `Prepare*`/`Commit*`/`Attach*`/`Detach*` UI-слоя, PCC-06).
 - [x] Отказ фиксации проверен отдельно от отказа подготовки и по состоянию, а не по количеству (PCC-07: `Step J`, реордер `CommitReconcile`).
 - [x] Неразрешимый reset отклоняется (PCC-08).
-- [ ] Опрос capability не меняет состояния виджета.
+- [x] Опрос capability не меняет состояния виджета (PCC-09).

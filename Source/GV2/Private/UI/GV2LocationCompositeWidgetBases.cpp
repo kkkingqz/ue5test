@@ -48,6 +48,14 @@ void UGV2LocationPlayerStatusWidgetBase::NativePreConstruct()
     {
         StaminaMeter->SetVisibility(ESlateVisibility::Collapsed);
     }
+
+    // PCC-09 (proposal 17.2 "Instance wiring check", BAI-11 precedent): internal
+    // repeaters are wired once here, at instance construction, instead of lazily from
+    // DescribeUiCapabilities -- querying capability must never create objects or mutate
+    // the widget. Discarded return values: called for the wiring side effect only.
+    ResolveMeterRepeater();
+    ResolveItemRepeater();
+    ResolveEffectRepeater();
 }
 
 bool UGV2LocationPlayerStatusWidgetBase::HasUsableMeterRepeaterHost() const
@@ -135,7 +143,7 @@ void UGV2LocationPlayerStatusWidgetBase::DescribeUiCapabilities(FGV2UiCapability
     {
         OutBuilder.AddImage(TEXT("portrait_resource_id"), FName(TEXT("Portrait")), TEXT("resource"));
     }
-    if (const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveMeterRepeater() != nullptr)
+    if (HasUsableMeterRepeaterHost())
     {
         if (TSubclassOf<UGV2ProgressBarWidgetBase> MeterClass = ResolveMeterWidgetClass())
         {
@@ -145,7 +153,7 @@ void UGV2LocationPlayerStatusWidgetBase::DescribeUiCapabilities(FGV2UiCapability
             OutBuilder.AddKeyedCollection(TEXT("meters"), FName(TEXT("MeterRepeater")), MeterCap, TEXT("key"), MeterClass);
         }
     }
-    if (const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveItemRepeater() != nullptr)
+    if (HasUsableItemRepeaterHost())
     {
         if (TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass())
         {
@@ -155,7 +163,7 @@ void UGV2LocationPlayerStatusWidgetBase::DescribeUiCapabilities(FGV2UiCapability
             OutBuilder.AddKeyedCollection(TEXT("items"), FName(TEXT("ItemRepeater")), IconCap, TEXT("key"), IconClass);
         }
     }
-    if (const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveEffectRepeater() != nullptr)
+    if (HasUsableEffectRepeaterHost())
     {
         if (TSubclassOf<UGV2ImageWidgetBase> IconClass = ResolveIconWidgetClass())
         {
@@ -207,6 +215,9 @@ void UGV2LocationSceneWidgetBase::NativePreConstruct()
     {
         Character->SetVisibility(ESlateVisibility::Collapsed);
     }
+
+    // PCC-09: see UGV2LocationPlayerStatusWidgetBase::NativePreConstruct.
+    ResolveCharacterRepeater();
 }
 
 void UGV2LocationSceneWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
@@ -223,7 +234,7 @@ void UGV2LocationSceneWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder
     {
         OutBuilder.AddText(TEXT("context_text"), FName(TEXT("SceneContextText")));
     }
-    if (const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater() != nullptr)
+    if (HasUsableCharacterRepeaterHost())
     {
         if (TSubclassOf<UGV2ImageWidgetBase> CharClass = ResolveCharacterWidgetClass())
         {
@@ -242,6 +253,9 @@ void UGV2LocationSceneWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder
 void UGV2LocationCommandPanelWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
+
+    // PCC-09: see UGV2LocationPlayerStatusWidgetBase::NativePreConstruct.
+    ResolveRepeater();
 }
 
 UGV2ListViewWidgetBase* UGV2LocationCommandPanelWidgetBase::ResolveRepeater()
@@ -275,7 +289,7 @@ bool UGV2LocationCommandPanelWidgetBase::HasUsableRepeaterHost() const
 
 void UGV2LocationCommandPanelWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    if (const_cast<UGV2LocationCommandPanelWidgetBase*>(this)->ResolveRepeater() != nullptr)
+    if (HasUsableRepeaterHost())
     {
         if (TSubclassOf<UGV2ButtonWidgetBase> BtnClass = ResolveButtonWidgetClass())
         {

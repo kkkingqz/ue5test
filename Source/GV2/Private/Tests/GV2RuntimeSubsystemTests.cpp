@@ -5345,6 +5345,83 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2LocationCompositeCapabilityQueryIsPureTest,
+    "GV2.Runtime.Presentation.LocationCompositeCapabilityQueryIsPure",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2LocationCompositeCapabilityQueryIsPureTest::RunTest(const FString& Parameters)
+{
+    // PCC-09: DescribeUiCapabilities() used to reach for its internal repeaters through
+    // const_cast + a lazy-creating Resolve*() (GV2LocationCompositeWidgetBases.cpp:138,
+    // 148, 158, 226, 278 before this fix) -- querying a const-declared capability method
+    // could allocate a UObject and mutate the widget, the same defect class BAI-11 closed
+    // elsewhere. The fix moves the wiring to NativePreConstruct (proposal 17.2 "Instance
+    // wiring check": required collection hosts must exist before Screen publish, not be
+    // lazily created from a pure getter/query). This proves both halves: the internal
+    // repeater exists right after construction (eager, not lazy), and DescribeUiCapabilities
+    // creates nothing new and mutates nothing observable when called repeatedly afterward.
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    TestNotNull(TEXT("TestWorld created"), TestWorld);
+    if (TestWorld == nullptr) return false;
+
+    UGV2LocationPlayerStatusWidgetBase* PlayerStatus = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
+    TestNotNull(TEXT("PCC-09: PlayerStatus instantiated"), PlayerStatus);
+    if (PlayerStatus != nullptr)
+    {
+        UWrapBox* ItemBox = NewObject<UWrapBox>(PlayerStatus);
+        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("ItemIcons")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UWrapBox>>(PlayerStatus) = ItemBox;
+        }
+
+        FObjectProperty* InternalItemRepeaterProp = FindFProperty<FObjectProperty>(
+            UGV2LocationPlayerStatusWidgetBase::StaticClass(), TEXT("InternalItemRepeater"));
+        TestNotNull(TEXT("PCC-09: InternalItemRepeater property found via reflection"), InternalItemRepeaterProp);
+
+        if (InternalItemRepeaterProp != nullptr)
+        {
+            UObject* BeforeConstruct = InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus);
+            TestNull(TEXT("PCC-09: InternalItemRepeater is not yet created before any lifecycle call"), BeforeConstruct);
+        }
+
+        // TakeWidget() drives the same Slate construction path a real screen does,
+        // which is what actually invokes (protected) NativePreConstruct.
+        PlayerStatus->TakeWidget();
+
+        UObject* AfterConstruct = InternalItemRepeaterProp != nullptr
+            ? InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus)
+            : nullptr;
+        TestNotNull(TEXT("PCC-09: InternalItemRepeater exists after construction, before any capability query"), AfterConstruct);
+        TestTrue(TEXT("PCC-09: HasUsableItemRepeaterHost is true right after construction"), PlayerStatus->HasUsableItemRepeaterHost());
+
+        IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(PlayerStatus);
+        TestNotNull(TEXT("PCC-09: PlayerStatus is an IGV2UiPropertyHost"), PropertyHost);
+        if (PropertyHost != nullptr)
+        {
+            FGV2UiCapabilityBuilder BuilderA;
+            PropertyHost->DescribeUiCapabilities(BuilderA);
+            UObject* AfterFirstQuery = InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus);
+
+            FGV2UiCapabilityBuilder BuilderB;
+            PropertyHost->DescribeUiCapabilities(BuilderB);
+            UObject* AfterSecondQuery = InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus);
+
+            TestEqual(TEXT("PCC-09: DescribeUiCapabilities does not replace InternalItemRepeater (1st call)"), AfterFirstQuery, AfterConstruct);
+            TestEqual(TEXT("PCC-09: DescribeUiCapabilities does not replace InternalItemRepeater (2nd call)"), AfterSecondQuery, AfterFirstQuery);
+
+            const FGV2UiCapabilityTree CapsA = BuilderA.Build();
+            const FGV2UiCapabilityTree CapsB = BuilderB.Build();
+            TestNotNull(TEXT("PCC-09: 'items' capability is declared (repeated query is not just a no-op)"), CapsA.FindProperty(TEXT("items")));
+            TestNotNull(TEXT("PCC-09: 'items' capability is declared identically on repeat"), CapsB.FindProperty(TEXT("items")));
+        }
+    }
+
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiFailurePropagationTest,
     "GV2.Runtime.UI.FailurePropagationAndTextPipelineRouting",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

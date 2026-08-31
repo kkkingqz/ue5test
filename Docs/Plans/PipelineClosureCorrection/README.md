@@ -1,7 +1,7 @@
 ---
 title: Pipeline Closure Correction Plan
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-08-31
 depends_on:
   - ../../Status/GV2_Universal_UI_Property_Pipeline_Review_2026-08-27.md
@@ -54,7 +54,7 @@ Harness наблюдаемости доказывает, что объявлен
 ## Milestones
 
 - [x] M1 — [Silent Loss](SilentLoss.md): контракт перестаёт выводиться из реализации, набор видов значения замкнут. PCC-01…05.
-- [ ] M2 — [Swallowed Failure](SwallowedFailure.md): отказ невозможно потерять. PCC-06…09.
+- [x] M2 — [Swallowed Failure](SwallowedFailure.md): отказ невозможно потерять. PCC-06…09.
 - [ ] M3 — [Instrument Reach](InstrumentReach.md): слепые зоны инструмента закрыты, документация приведена. PCC-10…12.
 
 ## Критический путь
@@ -86,7 +86,7 @@ M3 выполняется последним: его гейты фиксирую
 - [x] Результат каждого `Commit*` и `Prepare*` потребляется; отбрасывание краснит сборку. (PCC-06)
 - [x] Отказ commit любого экрана документа оставляет остальные слои и предыдущую ревизию нетронутыми, и это проверено инъекцией отказа. (PCC-07)
 - [x] Reset-мутация имеет те же инварианты, что и apply: отсутствие target или consumer — отказ Prepare, а не пропуск. (PCC-08)
-- [ ] `DescribeUiCapabilities` не создаёт объектов и не меняет состояние хоста. (PCC-09)
+- [x] `DescribeUiCapabilities` не создаёт объектов и не меняет состояние хоста. (PCC-09)
 - [ ] Harness наблюдаемости заходит внутрь элементов коллекций. (PCC-10)
 - [ ] `WidgetRegistry.md` и остальные контракты описывают фактический API. (PCC-11)
 - [ ] Ни одна находка ревью не закрыта ссылкой на задачу без продемонстрированного красного теста. (PCC-12)
