@@ -4,7 +4,7 @@ status: active
 version: 1.7
 updated: 2026-08-31
 depends_on:
-  - ../../Status/GV2_Universal_UI_Property_Pipeline_Review_2026-08-27.md
+  - ../../Status/Archive/UniversalUiPropertyPipelineReview2026-08-27.md
   - ../Archive/UniversalUiPropertyPipeline.md
   - ../../UI/UIDocumentAndReconciliation.md
   - ../../UI/ScreenTemplates.md
@@ -15,7 +15,7 @@ decisions:
 
 # План доведения UI property pipeline
 
-> **Материализует:** находки `UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7` внешнего ревью от [2026-08-27](../../Status/GV2_Universal_UI_Property_Pipeline_Review_2026-08-27.md).
+> **Материализует:** находки `UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7` внешнего ревью от [2026-08-27](../../Status/Archive/UniversalUiPropertyPipelineReview2026-08-27.md).
 > **Задачи:** PCC-01…12.
 > **Результат:** обе фигуры дефектов — «значение принято и выброшено» и «отказ проглочен» — перестают воспроизводиться внутри нового pipeline, а инструмент проверки перестаёт иметь систематические слепые зоны.
 

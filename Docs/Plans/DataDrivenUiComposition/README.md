@@ -5,7 +5,7 @@ version: 1.0
 updated: 2026-08-27
 depends_on:
   - ../PipelineClosureCorrection/README.md
-  - ../../Status/GV2_Universal_UI_Property_Pipeline_Review_2026-08-27.md
+  - ../../Status/Archive/UniversalUiPropertyPipelineReview2026-08-27.md
   - ../../UI/ScreenTemplates.md
   - ../../UI/UIDocumentAndReconciliation.md
   - ../../UI/WidgetRegistry.md

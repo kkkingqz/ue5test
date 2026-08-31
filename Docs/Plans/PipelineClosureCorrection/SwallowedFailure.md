@@ -6,7 +6,7 @@ updated: 2026-08-31
 depends_on:
   - README.md
   - ../../UI/UIDocumentAndReconciliation.md
-  - ../../Status/GV2_Universal_UI_Property_Pipeline_Review_2026-08-27.md
+  - ../../Status/Archive/UniversalUiPropertyPipelineReview2026-08-27.md
 ---
 
 # M2 — Swallowed Failure
