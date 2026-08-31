@@ -1,7 +1,7 @@
 ---
 title: Instrument Reach Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-08-31
 depends_on:
   - README.md
@@ -58,13 +58,28 @@ Harness перебирает объявленные capability существу�
     - Выборочная проверка остальных atomicity-утверждений: "Контейнерная атомарность структуры" (`FGV2KeyedCollection`) подтверждена существованием теста "UPP-20: FGV2KeyedCollectionPropertyConsumer & Value-Level Transactionality"; "Publication является atomic" подтверждено покрытием `PublishBindings` в `GV2RuntimeCoreTests.cpp`. Расхождений не найдено — правки не потребовались.
     - Верификация: `python3 Tools/Documentation/validate_docs.py` (168 файлов, зелёный), все 5 content-гейтов зелёные. Правка docs-only — код/контент не менялись, поэтому UE Automation (97/97) и headless ctest (68/68) не перезапускались: их результат зафиксирован в конце PCC-10 и этой задачей не мог быть затронут.
 
-- [ ] **PCC-12 — Сверка закрытий**
+- [x] **PCC-12 — Сверка закрытий**
   - Зависимости: PCC-10, PCC-11.
   - Done: для каждой находки `UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7` названа проверка и **продемонстрировано**, что она краснеет при откате соответствующего изменения; отдельно подтверждено, что закрыт класс, а не экземпляр: попытка воспроизвести дефект того же вида в другой точке pipeline отклоняется гейтом; расхождения, найденные сверкой, либо устраняются в этом же change set, либо записываются строкой `STATUS-NNN` — «закрыто, но не проверено» исходом не является; ревью переносится в `Docs/Status/Archive/` по процедуре `AGENTS.md`.
   - Evidence: отчёт change set, `Source/GV2/Private/Tests/`, `Docs/Status/Archive/`.
+  - **Реализация (2026-08-31):**
+    - Сведена итоговая таблица находка → задача → тест → откат:
+      | Находка | Задача(и) | Тест | Откат подтверждён |
+      |---|---|---|---|
+      | `UPP-R1` — схема элемента коллекции не проверяется рекурсивно | PCC-01…03 | `GV2.UI.StandardPropertyConsumers` (8d/8e/8f), `GV2.UI.PropertyHostAndCapabilities` (9a/9b/9c) | Да (задокументировано в `SilentLoss.md`, включая независимую сверку 03 от 2026-08-31, нашедшую и устранившую разрыв в самом тесте 8e) |
+      | `UPP-R2` — commit/reconciliation не atomic | PCC-06, PCC-07 | `GV2.UI.LayeredReconciliationContract` (Step I — PCC-06 single-screen commit injection; Step J — PCC-07 multi-layer commit injection) | Да (эта сессия: `git stash` на `GV2LayeredUiReconciler.cpp`, красный на многослойном commit-инъекции, `git stash pop` — зелёный) |
+      | `UPP-R3` — второй validator вместо `ValidateUiFieldValue` | PCC-04 | `GV2.Runtime.Presentation.ScreenFieldUnifiedValidatorPcc04` | Да (тест проверяет физическое отсутствие `WalkFieldValue` в исходном коде — восстановить второй путь без покраснения теста невозможно по построению) |
+      | `UPP-R6` — `DescribeUiCapabilities` мутирует host | PCC-09 (+ PCC-12) | `GV2.Runtime.Presentation.LocationCompositeCapabilityQueryIsPure` | Да — для PlayerStatus подтверждено в PCC-09; для Scene и CommandPanel **найден и закрыт разрыв класс/экземпляр этой же сверкой** (см. ниже) |
+      | `UPP-R7` — reset может silently succeed (+ docs drift) | PCC-08 (reset), PCC-11 (docs) | `GV2.UI.PropertyHostAndCapabilities` (10a/10b) | Да (эта сессия: откат reset-веток `GV2UiMutationPlan.cpp`, красный, восстановление — зелёный); docs — см. `WidgetRegistry.md`/`ScreenTemplates.md`/`UIDocumentAndReconciliation.md`, PCC-11 |
+    - **Найденный и устранённый разрыв «класс vs экземпляр» (`UPP-R6`):** тест `GV2.Runtime.Presentation.LocationCompositeCapabilityQueryIsPure` изначально конструировал и проверял только `UGV2LocationPlayerStatusWidgetBase`, хотя сам фикс PCC-09 тронул 5 мест — 3 в PlayerStatus и по одному в `UGV2LocationSceneWidgetBase`/`UGV2LocationCommandPanelWidgetBase`. Экземпляр (PlayerStatus) был закрыт и проверен; класс дефекта (const-метод capability query, лениво создающий internal repeater через `const_cast`) — нет: Scene и CommandPanel были исправлены в коде, но никогда не доказаны тестом. Тест расширен (`Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`) той же схемой (BindWidgetOptional-контейнер через reflection → `TakeWidget()` → сверка `InternalXxxRepeater` до/после конструирования → двойной вызов `DescribeUiCapabilities` и сверка неизменности указателя и capability-дерева) для обоих оставшихся классов. Откат подтверждён: временное закомментирование эагерных вызовов `ResolveCharacterRepeater()`/`ResolveRepeater()` в `NativePreConstruct` обоих классов — тест красный ровно на assertion "InternalXxxRepeater exists after construction, before any capability query" для каждого из них; восстановление — зелёный (97/97).
+    - Проверено (не изменено): попытка воспроизвести форму `UPP-R2` (discard результата fallible-функции) в произвольном месте невозможна по построению — `[[nodiscard]]` является атрибутом объявления функции, действующим на каждый call site модуля одинаково, а не point-fix; аналогично `UPP-R3` (второй validator) — код физически удалён, восстановить частично нельзя; `UPP-R7` reset-инварианты живут в общих `PrepareUiHostProperties`/`CommitUiHostProperties`, используемых каждым host/schema без исключения.
+    - Отдельно проверен (не тот же класс дефекта, не гейтился): const-геттеры `GetItemRepeater()`/`GetEffectRepeater()`/`GetMeterRepeater()`/`GetCharacterRepeater()`/`GetRepeater()` по-прежнему содержат `const_cast` + ленивый `Resolve*()` как fallback-путь. В отличие от `DescribeUiCapabilities` (для которого чистота — часть контракта `IGV2UiPropertyHost`, проверяемого повторным вызовом), эти геттеры такого контракта никогда не имели и вызываются только после `NativePreConstruct` (проверено по всем текущим call site: `GV2UiMutationPlan.cpp`, тесты) — fallback на практике недостижим. Не является расхождением заявленного contract и реализации (`UPP-R6` описывал именно `DescribeUiCapabilities`) — не заведено как `STATUS-NNN`, но зафиксировано здесь как явное наблюдение, а не тихо пропущено.
+    - `UPP-R4` (`screen_fields` end-to-end) и `UPP-R5` (принадлежность UI-схем closure репозитория) в этот план не входят (см. `README.md` «Границы»): `UPP-R4` активно ведётся в [DataDrivenUiComposition](../DataDrivenUiComposition/README.md) (DUC-09…11, M3 не закрыт); `UPP-R5` осознанно отложена с явным условием повторного открытия («станет обязательной, когда блоки начнут поставляться модами») — записано в обоих планах. Ни одна находка не осталась без владельца.
+    - Перенос ревью в `Docs/Status/Archive/` по двухкоммитной процедуре `AGENTS.md` (`Docs/Status/GV2_Universal_UI_Property_Pipeline_Review_2026-08-27.md` ещё существует в этом коммите — он становится `source_commit`; архивный commit следует отдельно).
+    - Верификация: 97/97 UE Automation, 68/68 Headless ctest, все content/doc-гейты зелёные.
 
 ## Проверка milestone
 
 - [x] Sweep покрывает элементы коллекций и краснеет на подделке объявления внутри них (PCC-10).
 - [x] Ни один контракт не утверждает больше, чем подтверждает тест (PCC-11).
-- [ ] Каждая находка ревью закрыта продемонстрированным красным тестом.
+- [x] Каждая находка ревью закрыта продемонстрированным красным тестом (PCC-12).

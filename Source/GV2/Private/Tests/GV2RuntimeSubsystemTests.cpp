@@ -5416,6 +5416,101 @@ bool FGV2LocationCompositeCapabilityQueryIsPureTest::RunTest(const FString& Para
         }
     }
 
+    // PCC-12: the fix above touched five call sites (PlayerStatus x3, Scene x1,
+    // CommandPanel x1), but only PlayerStatus was ever proven pure by a test --
+    // closing an instance without verifying the whole class it was drawn from is
+    // exactly the gap this reconciliation task exists to catch. Scene and
+    // CommandPanel repeat the identical eager-construct/pure-query shape.
+    UGV2LocationSceneWidgetBase* Scene = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+    TestNotNull(TEXT("PCC-12: Scene instantiated"), Scene);
+    if (Scene != nullptr)
+    {
+        UPanelWidget* CharPanel = NewObject<UWrapBox>(Scene);
+        if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterContainer")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UPanelWidget>>(Scene) = CharPanel;
+        }
+
+        FObjectProperty* InternalCharRepeaterProp = FindFProperty<FObjectProperty>(
+            UGV2LocationSceneWidgetBase::StaticClass(), TEXT("InternalCharacterRepeater"));
+        TestNotNull(TEXT("PCC-12: InternalCharacterRepeater property found via reflection"), InternalCharRepeaterProp);
+
+        if (InternalCharRepeaterProp != nullptr)
+        {
+            TestNull(
+                TEXT("PCC-12: Scene InternalCharacterRepeater is not yet created before any lifecycle call"),
+                InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene));
+        }
+
+        Scene->TakeWidget();
+
+        UObject* SceneAfterConstruct = InternalCharRepeaterProp != nullptr
+            ? InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene)
+            : nullptr;
+        TestNotNull(TEXT("PCC-12: Scene InternalCharacterRepeater exists after construction"), SceneAfterConstruct);
+        TestTrue(TEXT("PCC-12: Scene HasUsableCharacterRepeaterHost is true right after construction"), Scene->HasUsableCharacterRepeaterHost());
+
+        if (IGV2UiPropertyHost* ScenePropertyHost = Cast<IGV2UiPropertyHost>(Scene))
+        {
+            FGV2UiCapabilityBuilder SceneBuilderA;
+            ScenePropertyHost->DescribeUiCapabilities(SceneBuilderA);
+            UObject* SceneAfterFirstQuery = InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene);
+
+            FGV2UiCapabilityBuilder SceneBuilderB;
+            ScenePropertyHost->DescribeUiCapabilities(SceneBuilderB);
+            UObject* SceneAfterSecondQuery = InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene);
+
+            TestEqual(TEXT("PCC-12: Scene DescribeUiCapabilities does not replace InternalCharacterRepeater (1st call)"), SceneAfterFirstQuery, SceneAfterConstruct);
+            TestEqual(TEXT("PCC-12: Scene DescribeUiCapabilities does not replace InternalCharacterRepeater (2nd call)"), SceneAfterSecondQuery, SceneAfterFirstQuery);
+            TestNotNull(TEXT("PCC-12: Scene 'characters' capability is declared"), SceneBuilderA.Build().FindProperty(TEXT("characters")));
+        }
+    }
+
+    UGV2LocationCommandPanelWidgetBase* CmdPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+    TestNotNull(TEXT("PCC-12: CommandPanel instantiated"), CmdPanel);
+    if (CmdPanel != nullptr)
+    {
+        UWrapBox* ButtonBox = NewObject<UWrapBox>(CmdPanel);
+        if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonContainer")))
+        {
+            *Prop->ContainerPtrToValuePtr<TObjectPtr<UWrapBox>>(CmdPanel) = ButtonBox;
+        }
+
+        FObjectProperty* InternalRepeaterProp = FindFProperty<FObjectProperty>(
+            UGV2LocationCommandPanelWidgetBase::StaticClass(), TEXT("InternalRepeater"));
+        TestNotNull(TEXT("PCC-12: CommandPanel InternalRepeater property found via reflection"), InternalRepeaterProp);
+
+        if (InternalRepeaterProp != nullptr)
+        {
+            TestNull(
+                TEXT("PCC-12: CommandPanel InternalRepeater is not yet created before any lifecycle call"),
+                InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel));
+        }
+
+        CmdPanel->TakeWidget();
+
+        UObject* CmdAfterConstruct = InternalRepeaterProp != nullptr
+            ? InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel)
+            : nullptr;
+        TestNotNull(TEXT("PCC-12: CommandPanel InternalRepeater exists after construction"), CmdAfterConstruct);
+        TestTrue(TEXT("PCC-12: CommandPanel HasUsableRepeaterHost is true right after construction"), CmdPanel->HasUsableRepeaterHost());
+
+        if (IGV2UiPropertyHost* CmdPropertyHost = Cast<IGV2UiPropertyHost>(CmdPanel))
+        {
+            FGV2UiCapabilityBuilder CmdBuilderA;
+            CmdPropertyHost->DescribeUiCapabilities(CmdBuilderA);
+            UObject* CmdAfterFirstQuery = InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel);
+
+            FGV2UiCapabilityBuilder CmdBuilderB;
+            CmdPropertyHost->DescribeUiCapabilities(CmdBuilderB);
+            UObject* CmdAfterSecondQuery = InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel);
+
+            TestEqual(TEXT("PCC-12: CommandPanel DescribeUiCapabilities does not replace InternalRepeater (1st call)"), CmdAfterFirstQuery, CmdAfterConstruct);
+            TestEqual(TEXT("PCC-12: CommandPanel DescribeUiCapabilities does not replace InternalRepeater (2nd call)"), CmdAfterSecondQuery, CmdAfterFirstQuery);
+            TestNotNull(TEXT("PCC-12: CommandPanel 'items' capability is declared"), CmdBuilderA.Build().FindProperty(TEXT("items")));
+        }
+    }
+
     TestWorld->DestroyWorld(false);
     GEngine->DestroyWorldContext(TestWorld);
     return true;
