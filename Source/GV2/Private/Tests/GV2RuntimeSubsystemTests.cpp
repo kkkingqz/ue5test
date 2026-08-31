@@ -2151,7 +2151,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                         ProbeWidget->GetParent(),
                         AuthoredHost);
                 }
-                Shell->DetachScreen(ProbeWidget);
+                const bool bDetached = Shell->DetachScreen(ProbeWidget);
+                TestTrue(*FString::Printf(TEXT("Probe widget for layer '%s' detaches cleanly"), *LayerToVerify.ToString()), bDetached);
             }
         }
 
@@ -2379,6 +2380,115 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         TestEqual(TEXT("Route widget instance was reused preserving UI-local state"), RouteWidgetReused, RouteWidgetMulti);
         TestNull(TEXT("Overlay widget was detached"), Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("hud")));
         TestNull(TEXT("Modal widget was detached"), Reconciler.GetActiveScreen(TEXT("modal_stack"), TEXT("dialog1")));
+
+        // Step I: PCC-06 -- Commit-phase failure injection into a single screen. Before
+        // PCC-06, CommitReconcile discarded CommitScreenFields' result and kept iterating
+        // (the exact swallowed-failure shape this task closes); this proves the traversal
+        // now stops on first failure, Reconcile reports it, and the previous revision's
+        // observable widget state is left untouched rather than partially overwritten.
+        {
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+
+            UGV2ScreenWidgetBase* FaultScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            FaultScreen->WidgetTree = NewObject<UWidgetTree>(FaultScreen);
+            UGV2LocationTopBarWidgetBase* TopBar = FaultScreen->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
+                UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBar"));
+            FaultScreen->WidgetTree->RootWidget = TopBar;
+            // DescribeUiCapabilities resolves "day" via GetWidgetFromName("DayText"), a tree
+            // lookup by name -- not by reading TopBar's own BindWidget pointer -- so a named
+            // child is sufficient without also wiring the (protected) BindWidget member.
+            UGV2TextWidgetBase* FaultDayTextWidget = FaultScreen->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            TestNotNull(TEXT("PCC-06: DayText child constructs"), FaultDayTextWidget);
+            if (FNameProperty* ScreenFieldIdProp = FindFProperty<FNameProperty>(TopBar->GetClass(), TEXT("ScreenFieldId")))
+            {
+                ScreenFieldIdProp->SetPropertyValue_InContainer(TopBar, FName(TEXT("top_bar")));
+            }
+            // DescribeUiCapabilities only advertises "day" when its own DayText BindWidget
+            // pointer is non-null (protected -- not settable from outside without reflection).
+            if (FObjectProperty* DayTextProp = FindFProperty<FObjectProperty>(TopBar->GetClass(), TEXT("DayText")))
+            {
+                DayTextProp->SetObjectPropertyValue_InContainer(TopBar, FaultDayTextWidget);
+            }
+
+            auto MakeDayFieldValue = [](const FString& DayText) -> FGV2ScreenFieldValue
+            {
+                auto ItemSchema = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Object);
+                ItemSchema->Fields.push_back({ "day", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+
+                FGV2TextViewModel DayModel;
+                DayModel.Text = FText::FromString(DayText);
+                TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+                Fields.Emplace(TEXT("day"), FGV2PreparedUiValue::MakeText(DayModel));
+
+                FGV2ScreenFieldValue FieldValue;
+                FieldValue.FieldId = TEXT("top_bar");
+                FieldValue.SchemaId = TEXT("test:schema.pcc06_fault_top_bar.v1");
+                FieldValue.PreparedValue = FGV2PreparedUiObject::Create(MoveTemp(Fields));
+                FieldValue.CompiledSchema = ItemSchema;
+                return FieldValue;
+            };
+
+            auto MakeFaultDoc = [&](const FString& DayText) -> FGV2UiDocumentViewModel
+            {
+                FGV2UiDocumentViewModel Doc;
+                Doc.UiInstanceId = TEXT("ui@1:1");
+                Doc.Revision = 20;
+                Doc.bHasRoute = true;
+                Doc.Route.Layer = TEXT("location_content");
+                Doc.Route.InstanceKey = TEXT("fault_slot");
+                Doc.Route.ScreenId = TEXT("core:screen.pcc06_fault_target");
+                Doc.Route.Fields.Add(MakeDayFieldValue(DayText));
+                return Doc;
+            };
+
+            TMap<FString, TSubclassOf<UGV2ScreenWidgetBase>> FaultScreenClasses;
+            FaultScreenClasses.Add(TEXT("core:screen.pcc06_fault_target"), UGV2ScreenWidgetBase::StaticClass());
+            auto FaultFactory = [&](const FString&) -> UGV2ScreenWidgetBase*
+            {
+                return FaultScreen;
+            };
+
+            IGV2UiPropertyHost* TopBarHost = Cast<IGV2UiPropertyHost>(TopBar);
+            TestNotNull(TEXT("PCC-06: TopBar is an IGV2UiPropertyHost"), TopBarHost);
+
+            FString FaultReconcileError;
+            const bool bBaseline = Reconciler.Reconcile(Shell, MakeFaultDoc(TEXT("Monday")), FaultFactory, FaultReconcileError);
+            TestTrue(*FString::Printf(TEXT("PCC-06: baseline reconcile of fault screen succeeds [Error: %s]"), *FaultReconcileError), bBaseline);
+            if (TopBarHost != nullptr)
+            {
+                const FGV2PreparedUiValue* BaselineDay = TopBarHost->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("day"));
+                TestNotNull(TEXT("PCC-06: baseline commit recorded a 'day' property"), BaselineDay);
+                if (BaselineDay != nullptr)
+                {
+                    TestEqual(TEXT("PCC-06: baseline committed day value is Monday"), BaselineDay->AsText().Text.ToString(), TEXT("Monday"));
+                }
+            }
+
+            auto FailInjector = [](const FString& ScreenId, const FString& /*PropertyPath*/) -> bool
+            {
+                return ScreenId == TEXT("core:screen.pcc06_fault_target");
+            };
+            const bool bFaultResult = Reconciler.Reconcile(Shell, MakeFaultDoc(TEXT("Tuesday")), FaultFactory, FaultReconcileError, FailInjector);
+
+            TestFalse(TEXT("PCC-06: Reconcile fails when injected Commit failure occurs"), bFaultResult);
+            TestTrue(TEXT("PCC-06: ReconcileError names the commit-phase diagnostic"),
+                FaultReconcileError.Contains(TEXT("core:diagnostic.ui_reconcile.commit_failed")));
+            TestTrue(TEXT("PCC-06: ReconcileError names the failed screen_id"),
+                FaultReconcileError.Contains(TEXT("core:screen.pcc06_fault_target")));
+            if (TopBarHost != nullptr)
+            {
+                const FGV2PreparedUiValue* DayAfterFault = TopBarHost->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("day"));
+                TestNotNull(TEXT("PCC-06: 'day' property still tracked after failed commit"), DayAfterFault);
+                if (DayAfterFault != nullptr)
+                {
+                    TestEqual(TEXT("PCC-06: committed day value is still Monday, not Tuesday -- injected Commit never ran SetLastCommittedProperties"),
+                        DayAfterFault->AsText().Text.ToString(), TEXT("Monday"));
+                }
+            }
+            TestEqual(TEXT("PCC-06: reused widget instance is still the active screen for the slot"),
+                Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("fault_slot")), FaultScreen);
+        }
 
         if (Shell != nullptr)
         {

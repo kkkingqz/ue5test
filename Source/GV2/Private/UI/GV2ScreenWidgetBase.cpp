@@ -196,12 +196,14 @@ bool UGV2ScreenWidgetBase::PrepareScreenFields(
     return PrepareScreenFieldPlans(*this, ScreenFields, OutPlan.FieldPlans, OutError);
 }
 
-bool UGV2ScreenWidgetBase::CommitScreenFields(const FGV2ScreenMutationPlan& Plan)
+bool UGV2ScreenWidgetBase::CommitScreenFields(
+    const FGV2ScreenMutationPlan& Plan,
+    TFunction<bool(const FString& PropertyPath)> FailureInjector)
 {
     for (const FGV2ScreenFieldPlan& FieldPlan : Plan.FieldPlans)
     {
         FString FailedPath, CommitError;
-        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError))
+        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError, FailureInjector))
         {
             // Every plan above already prepared cleanly; CommitUiHostProperties is
             // documented infallible against a plan it prepared itself. Reaching this

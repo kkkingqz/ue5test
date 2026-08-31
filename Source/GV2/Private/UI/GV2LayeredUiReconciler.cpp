@@ -111,45 +111,85 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
 
 bool FGV2LayeredUiReconciler::CommitReconcile(
     UGV2GameShellWidgetBase* Shell,
-    const FPreparedReconciliationPlan& Plan)
+    const FPreparedReconciliationPlan& Plan,
+    FString& OutError,
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector)
 {
-    // 1. Detach old screens that were replaced by a new widget instance
+    OutError.Reset();
+
+    // 1. Detach old screens that were replaced by a new widget instance. Best-effort
+    // cleanup of a widget already being superseded, not a publish step -- a false here
+    // (e.g. it somehow had no parent already) is logged, not treated as an invariant
+    // violation that must halt the commit of the *new* widget replacing it.
     for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
     {
         if (!Inst.bIsReuse && Inst.ReplacedOldWidget != nullptr && Shell != nullptr)
         {
-            Shell->DetachScreen(Inst.ReplacedOldWidget.Get());
+            if (!Shell->DetachScreen(Inst.ReplacedOldWidget.Get()))
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("CommitReconcile: DetachScreen(replaced) returned false for layer '%s' instance '%s' -- widget had no parent"),
+                    *Inst.Layer.ToString(), *Inst.InstanceKey.ToString());
+            }
         }
     }
 
-    // 2. Attach new screens to their layers in Shell
+    // 2+3. Attach then commit each screen. ADR-0040: an unexpected Commit-phase failure
+    // is an invariant violation, not an ordinary `false` -- the failed screen must not be
+    // published and the previous revision (ActiveScreens, unchanged below) stays active.
+    // PCC-06: stop the traversal on the first failure instead of continuing to the
+    // remaining screens (steps 4/5/6 are skipped entirely on this path).
     for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
     {
         if (!Inst.bIsReuse && Shell != nullptr)
         {
-            Shell->AttachScreenToLayer(Inst.Layer, Inst.TargetWidget.Get());
+            if (!Shell->AttachScreenToLayer(Inst.Layer, Inst.TargetWidget.Get()))
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_reconcile.attach_failed: layer='%s' instance_key='%s' screen_id='%s'"),
+                    *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId);
+                UE_LOG(LogTemp, Error, TEXT("CommitReconcile: %s"), *OutError);
+                return false;
+            }
         }
-    }
 
-    // 3. Commit mutation plans to all screen widgets
-    for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
-    {
         if (Inst.TargetWidget != nullptr)
         {
-            Inst.TargetWidget->CommitScreenFields(Inst.MutationPlan);
+            TFunction<bool(const FString&)> PerScreenInjector = nullptr;
+            if (ScreenCommitFailureInjector)
+            {
+                const FString ScreenId = Inst.ScreenId;
+                PerScreenInjector = [ScreenCommitFailureInjector, ScreenId](const FString& PropertyPath)
+                {
+                    return ScreenCommitFailureInjector(ScreenId, PropertyPath);
+                };
+            }
+            if (!Inst.TargetWidget->CommitScreenFields(Inst.MutationPlan, PerScreenInjector))
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_reconcile.commit_failed: layer='%s' instance_key='%s' screen_id='%s'"),
+                    *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId);
+                UE_LOG(LogTemp, Error, TEXT("CommitReconcile: %s"), *OutError);
+                return false;
+            }
         }
     }
 
-    // 4. Detach removed screens that are no longer present in document
+    // 4. Detach removed screens that are no longer present in document (best-effort
+    // cleanup, same reasoning as step 1).
     for (const TObjectPtr<UGV2ScreenWidgetBase>& RemovedWidget : Plan.ScreensToDetach)
     {
         if (RemovedWidget != nullptr && Shell != nullptr)
         {
-            Shell->DetachScreen(RemovedWidget.Get());
+            if (!Shell->DetachScreen(RemovedWidget.Get()))
+            {
+                UE_LOG(LogTemp, Warning,
+                    TEXT("CommitReconcile: DetachScreen(removed) returned false -- widget had no parent"));
+            }
         }
     }
 
-    // 5. Commit active screens map
+    // 5. Commit active screens map -- only reached once every screen above committed cleanly.
     ActiveScreens = Plan.NewActiveScreens;
 
     // 6. Layer Rules & Modal Interactivity (UIF-20)
@@ -190,14 +230,15 @@ bool FGV2LayeredUiReconciler::Reconcile(
     UGV2GameShellWidgetBase* Shell,
     const FGV2UiDocumentViewModel& Document,
     FScreenFactory ScreenFactory,
-    FString& OutError)
+    FString& OutError,
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector)
 {
     FPreparedReconciliationPlan Plan;
     if (!PrepareReconcile(Shell, Document, ScreenFactory, Plan, OutError))
     {
         return false;
     }
-    return CommitReconcile(Shell, Plan);
+    return CommitReconcile(Shell, Plan, OutError, ScreenCommitFailureInjector);
 }
 
 UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetActiveScreen(FName Layer, FName InstanceKey) const

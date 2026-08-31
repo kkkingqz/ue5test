@@ -36,10 +36,10 @@ public:
     static const TArray<FName>& GetApprovedLayers();
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|GameShell")
-    bool AttachScreenToLayer(FName Layer, UUserWidget* ScreenWidget);
+    [[nodiscard]] bool AttachScreenToLayer(FName Layer, UUserWidget* ScreenWidget);
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|GameShell")
-    bool DetachScreen(UUserWidget* ScreenWidget);
+    [[nodiscard]] bool DetachScreen(UUserWidget* ScreenWidget);
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|GameShell")
     void SetLayerInteractive(FName Layer, bool bInteractive);

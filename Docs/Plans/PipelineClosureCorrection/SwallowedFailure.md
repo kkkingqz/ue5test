@@ -1,8 +1,8 @@
 ---
 title: Swallowed Failure Tasks
 status: active
-version: 1.0
-updated: 2026-08-27
+version: 1.1
+updated: 2026-08-31
 depends_on:
   - README.md
   - ../../UI/UIDocumentAndReconciliation.md
@@ -27,10 +27,19 @@ Reset-мутация страдает симметрично: отсутстви
 
 ## Задачи
 
-- [ ] **PCC-06 — Результат подготовки и фиксации обязан быть потреблён**
+- [x] **PCC-06 — Результат подготовки и фиксации обязан быть потреблён**
   - `GV2LayeredUiReconciler.cpp:139` отбрасывает результат `CommitScreenFields`; результат присоединения экрана к слою рядом — тоже.
   - Done: результат каждого вызова, способного отказать, потребляется на всех путях реконсиляции документа; отказ приводит к поведению, описанному `ADR-0040` для нарушения инварианта Commit, а не к продолжению обхода; поведение подтверждено инъекцией отказа в один экран; отдельно введён гейт, краснящий сборку при отбрасывании результата любой функции `Prepare*`/`Commit*` UI-слоя — он же защищает от рецидива в новых местах.
   - Evidence: `Source/GV2/Private/UI/GV2LayeredUiReconciler.cpp`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-08-31):**
+    - `FGV2LayeredUiReconciler::CommitReconcile` (`GV2LayeredUiReconciler.h/.cpp`) получил параметр `FString& OutError` (ранее отсутствовал — сигнатура не могла сообщить об ошибке фазы Commit вообще) и опциональный `ScreenCommitFailureInjector` (`TFunction<bool(ScreenId, PropertyPath)>`, по умолчанию `nullptr`, зеркалит уже существующий injector `CommitUiHostProperties`; используется только тестами PCC-06/07).
+    - Attach (`AttachScreenToLayer`) и Commit (`CommitScreenFields`) для каждого экрана теперь проверяются; первый отказ формирует диагностику `core:diagnostic.ui_reconcile.attach_failed`/`core:diagnostic.ui_reconcile.commit_failed` с `layer`/`instance_key`/`screen_id` и **немедленно** прерывает обход — шаги 4 (detach удалённых экранов), 5 (`ActiveScreens = Plan.NewActiveScreens`) и 6 (layer interactivity) не выполняются на этом пути, поэтому предыдущая ревизия `ActiveScreens` остаётся активной (ADR-0040: отказавший экран не публикуется).
+    - Detach-вызовы (шаги 1 и 4 — очистка уже заменяемого/удаляемого виджета, не публикация) проверяются отдельно и **не** прерывают обход при `false` — логируются как предупреждение; обоснование зафиксировано в комментарии над каждым вызовом, а не подразумевается: это cleanup уже решённого прошлого состояния, а не commit нового.
+    - Гейт компиляции: `[[nodiscard]]` добавлен на `PrepareScreenFields`/`CommitScreenFields`/`ApplyScreenFields`/`CanApplyScreenFields` (`GV2ScreenWidgetBase.h`), `AttachScreenToLayer`/`DetachScreen` (`GV2GameShellWidgetBase.h`), `PrepareReconcile`/`CommitReconcile`/`Reconcile` (`GV2LayeredUiReconciler.h`). Это, а не рантайм-гейт, — постоянный запрет: отбрасывание результата любой из этих функций красит сборку (`-Werror,-Wunused-result`), а не полагается на ревью глазами. Единственный найденный существующий discard (`Shell->DetachScreen(ProbeWidget)` в `GV2RuntimeSubsystemTests.cpp`, cleanup после probe-теста) исправлен потреблением результата.
+    - Добавлен тест `Step I` в `GV2.UI.LayeredReconciliationContract` (`GV2RuntimeSubsystemTests.cpp`): реальный `UGV2LocationTopBarWidgetBase` (единственный вид виджета, реализующий `IGV2ScreenFieldHost`, кроме трёх других location-композитов) с `ScreenFieldId`/`DayText` выставленными через reflection (protected UPROPERTY, нет публичного сеттера) — baseline reconcile коммитит `day="Monday"`, второй reconcile с `ScreenCommitFailureInjector`, отказывающим коммит именно этого `screen_id`, подтверждает: `Reconcile` возвращает `false`; `ReconcileError` содержит `core:diagnostic.ui_reconcile.commit_failed` и `screen_id`; `IGV2UiPropertyHost::GetPropertyHostState().GetLastCommittedProperties()` для поля `day` **всё ещё "Monday"**, а не "Tuesday" — `SetLastCommittedProperties` вызывается только после успешного `CommitUiHostProperties`, поэтому непройденный инъекцией коммит физически не мог его переписать; виджет слота остаётся тем же экземпляром.
+    - Красный тест на откате подтверждён: временно восстановлено discard-поведение (`CommitScreenFields`'s результат игнорируется, обход продолжается безусловно, за рантайм-флагом `-Pcc06NeverTrue` для обхода `-Werror=unreachable-code`, включённым по умолчанию) — `GV2.UI.LayeredReconciliationContract` красный ровно на трёх новых assertions (`Reconcile fails`, `diagnostic`, `screen_id`); откат снят, пересборка — снова зелёный.
+    - Верификация: 95/95 UE Automation, 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
+    - **Не входит в эту задачу (передано PCC-07):** после отказа Attach атомарность самого дерева Shell не проверена — если Attach/Commit падает НЕ на первом экране многослойного документа, ранее обработанные экраны в этом же вызове уже физически присоединены к Shell, хотя `ActiveScreens` откатывается целиком. `PrepareReconcile` по-прежнему исключает это на практике (готовит все планы до первой мутации), но глубокая проверка состояния (а не количества) остальных слоёв после отказа именно Commit — явный предмет PCC-07, не решается здесь.
 
 - [ ] **PCC-07 — Атомарность документа проверена, а не заявлена**
   - Зависимости: PCC-06.
@@ -50,7 +59,7 @@ Reset-мутация страдает симметрично: отсутстви
 
 ## Проверка milestone
 
-- [ ] Отбрасывание результата отказоспособной операции краснит сборку.
+- [x] Отбрасывание результата отказоспособной операции краснит сборку (`[[nodiscard]]` на всех `Prepare*`/`Commit*`/`Attach*`/`Detach*` UI-слоя, PCC-06).
 - [ ] Отказ фиксации проверен отдельно от отказа подготовки и по состоянию, а не по количеству.
 - [ ] Неразрешимый reset отклоняется.
 - [ ] Опрос capability не меняет состояния виджета.

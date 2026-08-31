@@ -63,24 +63,34 @@ public:
     // UPP-28: Prepares the complete reconciliation plan for every layer and screen
     // before touching any widget or mutating Game Shell. If any screen fails preparation,
     // this returns false, leaving all active screens, widgets, and shell untouched.
-    bool PrepareReconcile(
+    // PCC-06: [[nodiscard]] -- a discarded result here is the exact swallowed-failure
+    // shape this task exists to make impossible.
+    [[nodiscard]] bool PrepareReconcile(
         UGV2GameShellWidgetBase* Shell,
         const FGV2UiDocumentViewModel& Document,
         FScreenFactory ScreenFactory,
         FPreparedReconciliationPlan& OutPlan,
         FString& OutError) const;
 
-    // UPP-28: Commits a cleanly prepared reconciliation plan to the Game Shell and active widgets.
-    bool CommitReconcile(
+    // UPP-28 / PCC-06: Commits a cleanly prepared reconciliation plan to the Game Shell
+    // and active widgets. Attach/Commit are checked per screen; the first failure stops
+    // the traversal (ADR-0040: the failed screen is not published, ActiveScreens keeps
+    // its previous revision) instead of continuing on to the remaining screens.
+    // ScreenCommitFailureInjector mirrors CommitScreenFields' own injector, keyed by
+    // (screen_id, property_path); PCC-06/07 fault-injection tests only, production omits it.
+    [[nodiscard]] bool CommitReconcile(
         UGV2GameShellWidgetBase* Shell,
-        const FPreparedReconciliationPlan& Plan);
+        const FPreparedReconciliationPlan& Plan,
+        FString& OutError,
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr);
 
     // Full atomic reconciliation: Prepare + Commit.
-    bool Reconcile(
+    [[nodiscard]] bool Reconcile(
         UGV2GameShellWidgetBase* Shell,
         const FGV2UiDocumentViewModel& Document,
         FScreenFactory ScreenFactory,
-        FString& OutError);
+        FString& OutError,
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr);
 
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }
