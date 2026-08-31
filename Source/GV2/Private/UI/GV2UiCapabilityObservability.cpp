@@ -4,6 +4,7 @@
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
@@ -365,6 +366,10 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     {
         Parts.Add(FString::Printf(TEXT("key=\"%s\""), *Modal->GetKey().ToString()));
     }
+    if (const UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *ButtonList->GetKey().ToString()));
+    }
     if (const UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("selected_key=\"%s\""), *Dropdown->GetSelectedKey().ToString()));
@@ -398,10 +403,57 @@ bool RunUiCapabilityObservabilityHarness(
     {
         const FString& PropName = Entry.Key;
         const FGV2UiPropertyCapability& Cap = Entry.Value;
+        if (Cap.TargetType == EGV2UiCapabilityTargetType::CollectionHost)
+        {
+            // PCC-10: a collection capability is not itself a RendererControl -- but every
+            // entry it repeats is an IGV2UiPropertyHost with its own capability tree, and
+            // that tree was exactly UPP-R1's blind spot (sweep proved the host's own
+            // capabilities, never looked inside what the collection actually repeats).
+            // Instantiate one fresh entry widget and recurse the identical rule into it.
+            if (Cap.EntryWidgetClass == nullptr)
+            {
+                OutFailures.Add({ PropName,
+                    TEXT("core:diagnostic.ui_observability.no_entry_widget_class: collection capability "
+                         "declares no EntryWidgetClass to instantiate and sweep") });
+                bAllObservable = false;
+                continue;
+            }
+
+            UWorld* World = HostWidget != nullptr ? HostWidget->GetWorld() : nullptr;
+            UUserWidget* EntryWidget = World != nullptr ? CreateWidget<UUserWidget>(World, Cap.EntryWidgetClass) : nullptr;
+            IGV2UiPropertyHost* EntryHost = Cast<IGV2UiPropertyHost>(EntryWidget);
+            if (EntryHost == nullptr)
+            {
+                OutFailures.Add({ PropName,
+                    FString::Printf(TEXT("core:diagnostic.ui_observability.entry_not_property_host: entry widget "
+                         "class '%s' could not be instantiated or does not implement IGV2UiPropertyHost"),
+                        *Cap.EntryWidgetClass->GetName()) });
+                bAllObservable = false;
+                continue;
+            }
+
+            FGV2UiCapabilityBuilder EntryBuilder;
+            EntryHost->DescribeUiCapabilities(EntryBuilder);
+            const FGV2UiCapabilityTree EntryCaps = EntryBuilder.Build();
+
+            TArray<FGV2UiObservabilityFailure> EntryFailures;
+            if (!RunUiCapabilityObservabilityHarness(EntryWidget, EntryCaps, EntryFailures))
+            {
+                for (const FGV2UiObservabilityFailure& EntryFailure : EntryFailures)
+                {
+                    OutFailures.Add({
+                        FString::Printf(TEXT("%s[].%s"), *PropName, *EntryFailure.PropertyName),
+                        EntryFailure.Reason });
+                }
+                bAllObservable = false;
+            }
+            continue;
+        }
+
         if (Cap.TargetType != EGV2UiCapabilityTargetType::RendererControl)
         {
-            // CollectionHost/NestedScreen/composite capabilities are proven by the
-            // composite migration tasks (UPP-20+), which have their own consumers.
+            // NestedScreen/composite capabilities are proven by the composite migration
+            // tasks (UPP-20+), which have their own consumers.
             continue;
         }
 

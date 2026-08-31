@@ -21,9 +21,15 @@ public:
     UVerticalBox* GetButtonContainer() const { return ButtonContainer; }
     void SetButtonContainer(UVerticalBox* InContainer) { ButtonContainer = InContainer; }
 
-    UGV2ButtonWidgetBase* GetButton(FName Key) const;
+    UGV2ButtonWidgetBase* GetButton(FName ButtonKey) const;
 
     TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
+    void SetKey(FName InKey) { Key = InKey; }
+
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    FName GetKey() const { return Key; }
 
     virtual bool ApplyCentralStyle_Implementation() override;
 
@@ -43,4 +49,5 @@ protected:
 
 private:
     FGV2UiPropertyHostState PropertyHostState;
+    FName Key;
 };

@@ -65,7 +65,14 @@ bool UGV2ListViewWidgetBase::ApplyCentralStyle_Implementation()
 
 void UGV2ListViewWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    FGV2UiPropertyCapability ItemCap;
-    ItemCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-    OutBuilder.AddKeyedCollection(TEXT("items"), FName(TEXT("ContainerPanel")), ItemCap, TEXT("key"));
+    // PCC-10: this class is a generic repeater primitive -- every real usage (see the
+    // ResolveXxxRepeater() family in GV2LocationCompositeWidgetBases.cpp) drives its entries
+    // directly through the ReconcileEntries/ReconcilePreparedEntries C++ templates, never
+    // through the schema-driven Prepare/Commit pipeline this capability tree describes. It
+    // has no single fixed entry class to declare honestly (each call site parameterizes its
+    // own widget/model types), so declaring an "items" collection here would be exactly the
+    // "declared but never consumed" shape this plan exists to remove. The owning composite
+    // (e.g. UGV2LocationPlayerStatusWidgetBase) is the one that declares real, verifiable
+    // capabilities for what it repeats.
+    (void)OutBuilder;
 }

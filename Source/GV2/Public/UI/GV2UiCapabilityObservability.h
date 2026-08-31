@@ -37,10 +37,18 @@ GV2_API FString CaptureUiTargetState(const UWidget* TargetWidget);
  * reported as a failure in OutFailures -- never silently skipped. Returns true only if
  * every RendererControl capability in the tree is observable.
  *
+ * PCC-10: a CollectionHost capability instantiates one fresh EntryWidgetClass instance and
+ * recurses this same rule into its own capability tree -- UPP-R1 found this was the sweep's
+ * actual blind spot (the collection host's own capabilities were proven, but nothing ever
+ * looked inside what the collection repeats). A missing EntryWidgetClass, an entry class
+ * that isn't an IGV2UiPropertyHost, or any unobservable capability at the entry level is
+ * reported here with the property path `<collection>[].<entry_property>`, not skipped.
+ *
  * Scope: RendererControl leaf/scalar-ish kinds matching UPP-09's standard consumers
- * (Boolean/Integer/Number/String/Key/Text/StableId/Binding). CollectionHost, NestedScreen
- * and Object/Array composite capabilities are out of this harness's scope -- they are
- * proven by the composite migration tasks (UPP-20+), which have their own consumers.
+ * (Boolean/Integer/Number/String/Key/Text/StableId/Binding), plus CollectionHost via the
+ * recursion above. NestedScreen and Object/Array composite capabilities are still out of
+ * this harness's scope -- they are proven by the composite migration tasks (UPP-20+),
+ * which have their own consumers.
  */
 GV2_API bool RunUiCapabilityObservabilityHarness(
     UUserWidget* HostWidget,

@@ -85,15 +85,28 @@ void UGV2ModalWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBui
 {
     OutBuilder.AddText(TEXT("title"), FName(TEXT("TitleText")));
     OutBuilder.AddText(TEXT("content"), FName(TEXT("ContentText")));
+
+    // PCC-10: hardcoding the bare native UGV2ButtonWidgetBase class here (instead of
+    // resolving a real button asset, the way ButtonList/CommandPanel/PlayerStatus already
+    // do for their own collections) meant a bare, unwired entry with no LabelText bound --
+    // the collection sweep this task adds found its "text" capability's target resolves to
+    // null in production. ButtonList already owns the correct resolver for exactly this
+    // entry class; delegate to it instead of re-declaring the fallback here.
+    TSubclassOf<UGV2ButtonWidgetBase> ResolvedButtonClass = UGV2ButtonWidgetBase::StaticClass();
+    if (ButtonList != nullptr)
+    {
+        ResolvedButtonClass = ButtonList->ResolveButtonWidgetClass();
+    }
+
     FGV2UiPropertyCapability ButtonCap;
     ButtonCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-    ButtonCap.EntryWidgetClass = UGV2ButtonWidgetBase::StaticClass();
+    ButtonCap.EntryWidgetClass = ResolvedButtonClass;
     OutBuilder.AddKeyedCollection(
         TEXT("buttons"),
         FName(TEXT("ButtonList")),
         ButtonCap,
         TEXT("key"),
-        UGV2ButtonWidgetBase::StaticClass());
+        ResolvedButtonClass);
     OutBuilder.AddBinding(TEXT("backdrop_close_action"), NAME_None);
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }

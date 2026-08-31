@@ -38,9 +38,9 @@ void UGV2ButtonListWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& O
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
-UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName Key) const
+UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName ButtonKey) const
 {
-    if (ButtonContainer == nullptr || Key.IsNone())
+    if (ButtonContainer == nullptr || ButtonKey.IsNone())
     {
         return nullptr;
     }
@@ -49,7 +49,7 @@ UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName Key) const
     {
         if (UGV2ButtonWidgetBase* Btn = Cast<UGV2ButtonWidgetBase>(Child))
         {
-            if (Btn->GetKey() == Key)
+            if (Btn->GetKey() == ButtonKey)
             {
                 return Btn;
             }

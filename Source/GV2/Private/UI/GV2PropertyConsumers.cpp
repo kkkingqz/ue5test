@@ -806,6 +806,10 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
     {
         Modal->SetKey(FName(*PreparedValue));
     }
+    else if (UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget))
+    {
+        ButtonList->SetKey(FName(*PreparedValue));
+    }
     else
     {
         // A host that declares a `key` capability but has no branch here would otherwise
@@ -880,6 +884,10 @@ void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
     else if (UGV2ModalWidgetBase* Modal = Cast<UGV2ModalWidgetBase>(TargetWidget))
     {
         Modal->SetKey(NAME_None);
+    }
+    else if (UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget))
+    {
+        ButtonList->SetKey(NAME_None);
     }
     PreparedValue.Empty();
 }

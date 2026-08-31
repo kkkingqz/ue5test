@@ -25,9 +25,13 @@
 #include "Components/EditableTextBox.h"
 #include "Engine/GameInstance.h"
 #include "UI/GV2ModalWidgetBase.h"
+#include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2LocationCompositeWidgetBases.h"
+#include "UI/GV2UiPropertyHost.h"
+#include "Tests/GV2ForgeryTestWidgets.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiCapabilityObservabilityTest,
@@ -455,14 +459,8 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
 {
     UWorld* World = MakeSweepWorld();
 
-    auto SweepAsset = [this, World](const TCHAR* AssetPath, const TCHAR* Label)
+    auto SweepClass = [this, World](UClass* WidgetClass, const TCHAR* Label)
     {
-        UClass* WidgetClass = LoadClass<UUserWidget>(nullptr, AssetPath);
-        if (WidgetClass == nullptr)
-        {
-            AddError(FString::Printf(TEXT("%s: widget blueprint '%s' could not be loaded"), Label, AssetPath));
-            return;
-        }
         UUserWidget* Host = CreateWidget<UUserWidget>(World, WidgetClass);
         if (Host == nullptr)
         {
@@ -480,17 +478,15 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
         PropertyHost->DescribeUiCapabilities(Builder);
         const FGV2UiCapabilityTree Caps = Builder.Build();
 
-        int32 OwnLeafCaps = 0;
-        for (const auto& Entry : Caps.Properties)
+        // A generic repeater primitive swept only because it happens to implement the
+        // interface (e.g. UGV2ListViewWidgetBase) may honestly declare zero capabilities of
+        // any kind -- that is not the same defect as a real composite whose wiring was
+        // simply forgotten. The gate that matters equally for both is below: whatever a host
+        // *does* declare must be genuinely observable, never silently unproven.
+        if (Caps.Properties.Num() == 0)
         {
-            if (Entry.Value.TargetType == EGV2UiCapabilityTargetType::RendererControl)
-            {
-                ++OwnLeafCaps;
-            }
+            AddInfo(FString::Printf(TEXT("%s: declares no capabilities of its own (nothing to sweep)"), Label));
         }
-        TestTrue(
-            *FString::Printf(TEXT("%s declares at least one own capability to sweep"), Label),
-            OwnLeafCaps > 0);
 
         TArray<FGV2UiObservabilityFailure> Failures;
         const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
@@ -502,11 +498,48 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
         TestTrue(*FString::Printf(TEXT("%s: every declared capability is observable"), Label), bObservable);
     };
 
-    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_LocationTopBar.WBP_LocationTopBar_C"), TEXT("UGV2LocationTopBarWidgetBase"));
-    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.WBP_PlayerStatusPanel_C"), TEXT("UGV2LocationPlayerStatusWidgetBase"));
-    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"), TEXT("UGV2LocationSceneWidgetBase"));
-    SweepAsset(TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"), TEXT("UGV2LocationCommandPanelWidgetBase"));
-    // WBP_Modal is not based on UGV2ModalWidgetBase, so the modal host is swept as a
+    // PCC-10: the set of widgets to sweep is derived from reflection -- every WBP_ asset
+    // under the project's UI package roots whose generated class implements
+    // IGV2UiPropertyHost -- instead of a hardcoded path list that silently stops covering a
+    // composite the day someone adds a new one. A future WBP_* implementing the interface is
+    // picked up here with no test edit required; one that stops implementing it drops out
+    // the same way, rather than lingering as a stale, no-longer-true entry.
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    FARFilter UiAssetFilter;
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/UI"));
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/TextSystem/UI"));
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/RH/UI"));
+    UiAssetFilter.bRecursivePaths = true;
+    TArray<FAssetData> UiAssets;
+    AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
+
+    int32 DiscoveredCount = 0;
+    for (const FAssetData& Asset : UiAssets)
+    {
+        const FString AssetName = Asset.AssetName.ToString();
+        if (!AssetName.StartsWith(TEXT("WBP_")))
+        {
+            continue;
+        }
+        const FString GeneratedClassPath =
+            FString::Printf(TEXT("%s.%s_C"), *Asset.PackageName.ToString(), *AssetName);
+        UClass* WidgetClass = LoadClass<UUserWidget>(nullptr, *GeneratedClassPath);
+        if (WidgetClass == nullptr || !WidgetClass->ImplementsInterface(UGV2UiPropertyHost::StaticClass()))
+        {
+            continue;
+        }
+        ++DiscoveredCount;
+        SweepClass(WidgetClass, *AssetName);
+    }
+    TestTrue(
+        TEXT("at least one WBP_* asset implementing IGV2UiPropertyHost was discovered to sweep"),
+        DiscoveredCount > 0);
+
+    // WBP_Modal is not based on UGV2ModalWidgetBase, so discovery above cannot find any
+    // asset implementing the interface through Modal -- it is the one documented exception,
+    // synthesized directly below. If a real Modal-based asset is ever added, the loop above
+    // will discover and sweep it too.
     // synthetic instance with its declared renderer targets present by name.
     {
         UGV2ModalWidgetBase* Modal = CreateWidget<UGV2ModalWidgetBase>(World, UGV2ModalWidgetBase::StaticClass());
@@ -517,6 +550,23 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
             Modal->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TitleText")));
         ModalRoot->AddChildToVerticalBox(
             Modal->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("ContentText")));
+
+        // PCC-10: without a real ButtonList child, Modal's "buttons" collection had no
+        // ResolveButtonWidgetClass() to delegate to and fell back to a bare, unwired
+        // UGV2ButtonWidgetBase -- exactly the gap the collection sweep below now catches.
+        UGV2ButtonListWidgetBase* ModalButtonList = Modal->WidgetTree->ConstructWidget<UGV2ButtonListWidgetBase>(
+            UGV2ButtonListWidgetBase::StaticClass(), TEXT("ButtonList"));
+        UVerticalBox* ModalButtonContainer = Modal->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ModalButtonContainer"));
+        ModalButtonList->SetButtonContainer(ModalButtonContainer);
+        ModalRoot->AddChildToVerticalBox(ModalButtonList);
+        // ButtonList is a protected BindWidgetOptional pointer with no public setter --
+        // GetWidgetFromName("ButtonList") would already resolve it for target-resolution
+        // purposes, but DescribeUiCapabilities' EntryWidgetClass fix reads this member
+        // directly, so it must be bound via reflection here too.
+        if (FObjectProperty* ButtonListProp = FindFProperty<FObjectProperty>(UGV2ModalWidgetBase::StaticClass(), TEXT("ButtonList")))
+        {
+            ButtonListProp->SetObjectPropertyValue_InContainer(Modal, ModalButtonList);
+        }
 
         FGV2UiCapabilityBuilder Builder;
         Modal->DescribeUiCapabilities(Builder);
@@ -531,8 +581,87 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
         }
         TestTrue(TEXT("UGV2ModalWidgetBase: every declared capability is observable"), bObservable);
     }
-    SweepAsset(TEXT("/Game/UI/Widgets/WBP_DropdownSelect.WBP_DropdownSelect_C"), TEXT("UGV2DropdownSelectWidgetBase"));
-    SweepAsset(TEXT("/Game/UI/Widgets/WBP_TabContainer.WBP_TabContainer_C"), TEXT("UGV2TabContainerWidgetBase"));
+    return true;
+}
+
+// PCC-10's Done text requires the harness be shown red on three deliberately forged
+// collection entries, not just on the two real bugs the recursion happened to find in
+// production (Modal's bare button class, PlayerStatus's mis-pointed icon) -- those are
+// already fixed, so nothing exercises the recursion's failure paths without a widget
+// built specifically to be broken in each of these three ways.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiCollectionForgeryTest,
+    "GV2.UI.CapabilityObservabilityCollectionForgery",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiCollectionForgeryTest::RunTest(const FString& Parameters)
+{
+    UWorld* World = MakeSweepWorld();
+
+    auto RunForgeryScenario = [this, World](EGV2ForgeryMode Mode, const TCHAR* ExpectedCode, const TCHAR* Label)
+    {
+        // The recursion instantiates a *fresh* entry instance via CreateWidget, with no seam
+        // for the test to configure that specific instance -- ModeForNextInstance is a
+        // static the widget's DescribeUiCapabilities reads at call time instead.
+        UGV2ForgeryEntryTestWidget::ModeForNextInstance() = Mode;
+
+        UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(World, UGV2PanelWidgetBase::StaticClass());
+        Host->WidgetTree = NewObject<UWidgetTree>(Host);
+        Host->WidgetTree->RootWidget =
+            Host->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+
+        FGV2UiPropertyCapability EntryCap;
+        EntryCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+        EntryCap.EntryWidgetClass = UGV2ForgeryEntryTestWidget::StaticClass();
+
+        FGV2UiCapabilityBuilder Builder;
+        Builder.AddKeyedCollection(
+            TEXT("forgery_entries"),
+            NAME_None,
+            EntryCap,
+            TEXT("key"),
+            UGV2ForgeryEntryTestWidget::StaticClass());
+        const FGV2UiCapabilityTree Caps = Builder.Build();
+
+        TArray<FGV2UiObservabilityFailure> Failures;
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+
+        TestFalse(*FString::Printf(TEXT("%s: harness must reject this forged collection entry"), Label), bObservable);
+
+        bool bFoundExpected = false;
+        for (const FGV2UiObservabilityFailure& Failure : Failures)
+        {
+            if (Failure.PropertyName.StartsWith(TEXT("forgery_entries[].")) && Failure.Reason.Contains(ExpectedCode))
+            {
+                bFoundExpected = true;
+            }
+            AddInfo(FString::Printf(TEXT("%s: saw failure '%s' -- %s"), Label, *Failure.PropertyName, *Failure.Reason));
+        }
+        TestTrue(
+            *FString::Printf(TEXT("%s: harness reports '%s' at the collection entry path, not just at the collection itself"), Label, ExpectedCode),
+            bFoundExpected);
+    };
+
+    // 1. Consumer replaced with a no-op: the entry's SetBindingHandle never stores what it
+    // is given, so Capture(Commit(A)) == Capture(Commit(B)) at the entry's own target.
+    RunForgeryScenario(
+        EGV2ForgeryMode::NoOpConsumer,
+        TEXT("core:diagnostic.ui_observability.not_distinguishable"),
+        TEXT("NoOpConsumer"));
+
+    // 2. Renderer detached: the entry is a bare native widget with no WidgetTree at all, so
+    // its capability's TargetName can never resolve to any child.
+    RunForgeryScenario(
+        EGV2ForgeryMode::DetachedRenderer,
+        TEXT("prepare_or_commit_failed"),
+        TEXT("DetachedRenderer"));
+
+    // 3. Capability declared without implementation: StableId with a non-"resource"
+    // TargetKind has no probe pair the harness can even attempt to synthesize.
+    RunForgeryScenario(
+        EGV2ForgeryMode::UnimplementableKind,
+        TEXT("core:diagnostic.ui_observability.no_distinct_pair"),
+        TEXT("UnimplementableKind"));
 
     return true;
 }
