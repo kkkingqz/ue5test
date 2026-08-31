@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.7
-updated: 2026-08-27
+version: 1.8
+updated: 2026-08-31
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -207,16 +207,17 @@ Publication является atomic: registry сначала валидируе�
    - Сопоставить Screen Instances по `layer + instance_key`.
    - Для каждого экрана подготовить полный мутационный план (`UGV2ScreenWidgetBase::PrepareScreenFields`) off-tree.
    - Если подготовка хотя бы одного экрана в любом слое не удалась (включая несовпадение схемы, дублирующийся ключ глубокого ребёнка или незамкнутое поле), вся фаза Prepare отвергается: ни один старый экран не отсоединяется, ни один новый не присоединяется, и активный набор экранов остаётся неизменным.
-2. **Фаза Commit (`CommitReconcile`)**:
-   - Отсоединить удалённые и заменяемые экраны.
-   - Присоединить новые экраны к соответствующим hosts `UGV2GameShellWidgetBase`.
-   - Применить подготовленные мутационные планы экранов (`UGV2ScreenWidgetBase::CommitScreenFields`).
-   - Применить маскирование интерактивности модальных слоёв (`ApplyInputMasking`).
-   - Атомарно закоммитить подготовленные биндинги ревизии в `FGV2UiBindingRegistry`.
-   - Вызвать `OnScreenFieldsApplied` для применённых экранов.
-   - Запустить optional enter/exit animations.
+2. **Фаза Commit (`CommitReconcile`)** — порядок шагов подряд после PCC-07, потому что именно эта последовательность делает коммит документа атомарным на уровне ВСЕХ экранов, а не только каждого по отдельности:
+   1. Закоммитить мутационные планы **всех** экранов, ничего ещё не отсоединяя и не присоединяя (`UGV2ScreenWidgetBase::CommitScreenFields`; `OnScreenFieldsApplied` вызывается отсюда же, для каждого экрана сразу после его собственного commit). `Commit` мутирует только собственные bound sub-widgets экрана по имени — это не требует, чтобы экран уже был присоединён к родительской панели, поэтому commit до attach/detach безопасен. Отказ commit любого экрана здесь — нарушение инварианта: он не публикуется, а поскольку ничего ниже (detach/attach/`ActiveScreens`/layer interactivity) ещё не выполнялось, все остальные слои, их виджеты, биндинги и предыдущая ревизия `ActiveScreens` остаются буквально нетронутыми, а не просто "эквивалентными по количеству".
+   2. Отсоединить старые экраны, заменённые новым widget instance (best-effort cleanup уже вытесняемого виджета, а не publish-шаг: неудача здесь логируется, а не останавливает commit).
+   3. Присоединить новые (уже полностью закоммиченные) экраны к соответствующим hosts `UGV2GameShellWidgetBase`. Известный остаточный разрыв: неудача присоединения экрана B после успешного присоединения A оставляет A физически в дереве Shell, хотя `ActiveScreens` ниже не обновляется — уже, чем разрыв, который закрывает PCC-07 (частично присоединённый, но полностью закоммиченный экран, а не частично закоммиченный), и ни один тест не воспроизводит отказ `AttachScreenToLayer`.
+   4. Отсоединить удалённые экраны, которых больше нет в документе (best-effort, та же логика, что и шаг 2).
+   5. Закоммитить `ActiveScreens` — достигается только если каждый экран выше успешно закоммичен и присоединён.
+   6. Layer Rules & Modal Interactivity (UIF-20): применить `SetLayerInteractive` по approved layers, либо (если есть модали) заблокировать все нижние слои и оставить интерактивным только верхний модальный.
 
-Exit animation не продлевает logical input lifetime removed Screen Instance или field item. В случае отказа на стадии Prepare физическое дерево виджетов и активные биндинги вообще не затрагиваются; компенсирующий откат устранён физически. Failed candidate не оставляет частично обновлённый interactive screen.
+`FGV2LayeredUiReconciler` не коммитит биндинги ревизии сам: это делает вызывающий `FGV2SessionCoordinator` отдельным вызовом `FGV2UiBindingRegistry::CommitPreparedBindings` после успешного `Reconcile`. Enter/exit animation экрана в текущем коде не реализованы (`STATUS-003`) — ни `FGV2LayeredUiReconciler`, ни вызывающий runtime не содержат animation-гейтинга; detach/attach выполняются синхронно.
+
+В случае отказа на стадии Prepare физическое дерево виджетов и активные биндинги вообще не затрагиваются; компенсирующий откат устранён физически. Failed candidate не оставляет частично обновлённый interactive screen.
 
 ## Full update policy
 
@@ -262,7 +263,7 @@ Private `FGV2UiBindingRegistry` реализует prepared binding candidate и
 
 `UGV2GameShellWidgetBase` разрешает слой только в соответствующий authored host. Динамическое создание host вне Widget tree запрещено: это скрывает ошибку Blueprint contract и приводит к логически применённому, но невидимому документу.
 
-Валидация и материализация полей документа выполняются универсальным материализатором `GV2ScreenFieldMaterializer` на базе скомпилированных UI-схем репозитория контента (`GV2ContentCore`); виджеты реализуют `IGV2ScreenFieldHost` и `IGV2UiPropertyHost` для связывания валидированных данных с UMG через раздельные фазы Prepare/Commit.
+Валидация и материализация полей документа выполняются универсальным материализатором `GV2ScreenFieldMaterializer` на базе скомпилированных UI-схем репозитория контента (`GV2ContentCore`); top-level приёмник поля реализует `IGV2ScreenFieldHost` и `IGV2UiPropertyHost` для связывания валидированных данных с UMG через раздельные фазы Prepare/Commit — в текущем коде это только четыре Location-композита, см. [Widget Registry](WidgetRegistry.md#native-adapters-and-blueprint-bases).
 
 ### Устойчивая идентичность LocationScreen
 

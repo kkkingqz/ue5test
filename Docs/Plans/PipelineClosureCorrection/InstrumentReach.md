@@ -1,7 +1,7 @@
 ---
 title: Instrument Reach Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-08-31
 depends_on:
   - README.md
@@ -44,10 +44,19 @@ Harness перебирает объявленные capability существу�
       - Тест-гейт `SweepClass`: строгая проверка "хотя бы одна capability верхнего уровня" заменена на honest-info для нулевого дерева (генерик-примитив вроде `ListView` легитимно может не объявлять ничего свои), при этом требование "всё объявленное — наблюдаемо" осталось безусловным.
     - Верификация: 97/97 UE Automation (headless, `-nullrhi`), 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
 
-- [ ] **PCC-11 — Контракты описывают фактический API**
+- [x] **PCC-11 — Контракты описывают фактический API**
   - `WidgetRegistry.md` перечисляет native-классы как реализующие `IGV2ScreenFieldHost`, хотя в коде его реализуют только четыре композита локации. Расхождение опасно тем, что читатель контракта планирует работу по несуществующей поверхности.
   - Done: [Widget Registry](../../UI/WidgetRegistry.md), [Screen Templates](../../UI/ScreenTemplates.md) и [UI Document](../../UI/UIDocumentAndReconciliation.md) описывают фактические интерфейсы, фактический набор их реализаций и фактическую семантику reset после PCC-07; ни одно нормативное утверждение об атомарности не сильнее того, что подтверждает тест — проверено выборочно по каждому такому утверждению; расхождения, не устранённые в этом плане, записаны строкой `STATUS-NNN`, а не оставлены в тексте контракта.
   - Evidence: `Docs/UI/`, `Docs/Status/ImplementationStatus.md`.
+  - **Реализация (2026-08-31):**
+    - Подтверждено grep'ом кода: `IGV2ScreenFieldHost` реализуют РОВНО 4 класса — `UGV2LocationTopBarWidgetBase`/`PlayerStatusWidgetBase`/`SceneWidgetBase`/`CommandPanelWidgetBase` (`GV2LocationCompositeWidgetBases.h`). `WidgetRegistry.md` (список native adapters, большая таблица "Screen Field") ложно приписывал этот интерфейс ещё 10 reusable-виджетам (RichText/Image/Checkbox/InputField/DropdownSelect/ButtonList/ProgressBar/Portrait/Modal/TabContainer) — убрано; таблица получила явную колонку `IGV2ScreenFieldHost?` и footnote, объясняющую, что эти 10 — nested property hosts, не top-level screen fields.
+    - Найдено при аудите: `WBP_Testscreen` (`WidgetRegistry.md`/`ScreenTemplates.md`) описывался как экран с 5 обязательными Screen Fields, материализуемыми через `GV2ScreenFieldMaterializer` — но реальный тест `GV2.Runtime.Presentation.LuaCreatesRegisteredScreen` прямо утверждает `ScreenFieldIds.Num() == 0` с комментарием "proving-ground leaves are static, not field-driven"; `GameData/sample/scripts/debug/start.lua` публикует `screens.create("core:screen.test", {})` с пустым `fields`. Обе секции переписаны под факт: leaves управляются напрямую через `SubmitCheckboxState`/`SubmitTextValue`/`SubmitSelection`, не через Screen Field apply.
+    - Найдено: реальный, Screen-Field-driven vertical slice — `textsystem:screen.location`/`WBP_LocationScreen` (`GameData/textsystem/scripts/presentation/location_presenter.lua`), с полями `top_bar`/`player_status`/`scene`/`commands`. "Current vertical slice" в `ScreenTemplates.md` переписан под него; ссылка на устаревший `WBP_Testscreen`-vertical-slice заменена перекрёстной ссылкой на `WidgetRegistry.md`.
+    - Найдено: `ScreenTemplates.md` приписывал панели команд схему `core:schema.ui_field.button_list.v2`, но production-схема (используется `location_presenter.lua`, покрыта `GV2UiPropertyHostTests.cpp`/`GV2PropertyConsumersTests.cpp`/`GV2RuntimeSubsystemTests.cpp`) — отдельная `textsystem:schema.ui_field.location_commands.v1` (namespace `textsystem`, `binding` optional, не required, в отличие от исходного текста). Секция и заголовок переименованы, схема таблицы исправлена.
+    - Найдено ("фактическая семантика после PCC-07"): `UIDocumentAndReconciliation.md`'s "Reconciliation" описывал порядок `CommitReconcile` как detach→attach→commit screen fields→input masking→bindings→OnScreenFieldsApplied→animations — но актуальный код (PCC-07) коммитит ВСЕ экраны ПЕРВЫМ шагом, до detach/attach, что и делает документ атомарным. Секция переписана по фактическому порядку (commit all → detach replaced → attach new → detach removed → ActiveScreens → layer interactivity); отдельно уточнено, что commit биндингов ревизии выполняет вызывающий `FGV2SessionCoordinator` (`CommitPreparedBindings`), а не сам reconciler; `ApplyInputMasking` как отдельная функция не существует в коде (инлайновые `SetLayerInteractive` вызовы).
+    - Enter/exit анимация экрана (заявлена в контракте, но не реализована нигде в коде — ни `FGV2LayeredUiReconciler`, ни `GV2RuntimeSubsystem`) не устраняется в этом change set (реальная фича, не просто формулировка) — записана как `STATUS-003` (`missing`) в `Docs/Status/ImplementationStatus.md`.
+    - Выборочная проверка остальных atomicity-утверждений: "Контейнерная атомарность структуры" (`FGV2KeyedCollection`) подтверждена существованием теста "UPP-20: FGV2KeyedCollectionPropertyConsumer & Value-Level Transactionality"; "Publication является atomic" подтверждено покрытием `PublishBindings` в `GV2RuntimeCoreTests.cpp`. Расхождений не найдено — правки не потребовались.
+    - Верификация: `python3 Tools/Documentation/validate_docs.py` (168 файлов, зелёный), все 5 content-гейтов зелёные. Правка docs-only — код/контент не менялись, поэтому UE Automation (97/97) и headless ctest (68/68) не перезапускались: их результат зафиксирован в конце PCC-10 и этой задачей не мог быть затронут.
 
 - [ ] **PCC-12 — Сверка закрытий**
   - Зависимости: PCC-10, PCC-11.
@@ -57,5 +66,5 @@ Harness перебирает объявленные capability существу�
 ## Проверка milestone
 
 - [x] Sweep покрывает элементы коллекций и краснеет на подделке объявления внутри них (PCC-10).
-- [ ] Ни один контракт не утверждает больше, чем подтверждает тест.
+- [x] Ни один контракт не утверждает больше, чем подтверждает тест (PCC-11).
 - [ ] Каждая находка ревью закрыта продемонстрированным красным тестом.

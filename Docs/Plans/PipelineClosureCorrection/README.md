@@ -1,7 +1,7 @@
 ---
 title: Pipeline Closure Correction Plan
 status: active
-version: 1.5
+version: 1.6
 updated: 2026-08-31
 depends_on:
   - ../../Status/GV2_Universal_UI_Property_Pipeline_Review_2026-08-27.md
@@ -88,5 +88,5 @@ M3 выполняется последним: его гейты фиксирую
 - [x] Reset-мутация имеет те же инварианты, что и apply: отсутствие target или consumer — отказ Prepare, а не пропуск. (PCC-08)
 - [x] `DescribeUiCapabilities` не создаёт объектов и не меняет состояние хоста. (PCC-09)
 - [x] Harness наблюдаемости заходит внутрь элементов коллекций. (PCC-10)
-- [ ] `WidgetRegistry.md` и остальные контракты описывают фактический API. (PCC-11)
+- [x] `WidgetRegistry.md` и остальные контракты описывают фактический API. (PCC-11)
 - [ ] Ни одна находка ревью не закрыта ссылкой на задачу без продемонстрированного красного теста. (PCC-12)

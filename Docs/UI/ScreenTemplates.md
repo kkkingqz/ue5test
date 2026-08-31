@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.5
-updated: 2026-08-27
+version: 1.6
+updated: 2026-08-31
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -203,22 +203,26 @@ Value-only Screen Field имеет форму:
 
 Поддерживаемые стандартные схемы UI-полей:
 
-| `schema_id` | Native Widget Class | Property Host Capabilities |
-|---|---|---|
-| `core:schema.ui_field.rich_text.v3` | `WBP_RichText` / `UGV2RichTextWidgetBase` | `text` (Text), `spans` (RichTextSpans) |
-| `core:schema.ui_field.button_list.v2` | `WBP_ButtonList` / `UGV2ButtonListWidgetBase` | `items` (CollectionHost для кнопок) |
-| `core:schema.ui_field.checkbox.v1` | `WBP_Checkbox` / `UGV2CheckboxWidgetBase` | `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding) |
-| `core:schema.ui_field.input_field.v1` | `WBP_InputField` / `UGV2InputFieldWidgetBase` | `key` (Key), `label` (Text), `placeholder` (Text), `value` (Scalar), `binding` (Binding) |
-| `core:schema.ui_field.dropdown_select.v1` | `WBP_DropdownSelect` / `UGV2DropdownSelectWidgetBase` | `placeholder` (Text), `selected_key` (Key), `options` (CollectionHost), `binding` (Binding) |
-| `core:schema.ui_field.image.v1` | `WBP_Image` / `UGV2ImageWidgetBase` | `resource_id` (Ref), `key` (Key) |
-| `core:schema.ui_field.progress_bar.v1` | `WBP_ProgressBar` / `UGV2ProgressBarWidgetBase` | `percent` (Scalar), `label` (Text), `key` (Key) |
-| `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | `resource_id` (Ref), `frame_resource_id` (Ref), `key` (Key) |
-| `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | `title` (Text), `content` (Text), `buttons` (CollectionHost), `backdrop_close_action` (Binding) |
-| `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | `default_tab_key` (Key), `tabs` (CollectionHost) |
-| `textsystem:schema.ui_field.location_top_bar.v1` | `UGV2LocationTopBarWidgetBase` | `day` (Text), `location` (Text), `primary_resource` (Text) |
-| `textsystem:schema.ui_field.location_player_status.v1` | `UGV2LocationPlayerStatusWidgetBase` | `name` (Text), `portrait_resource_id` (Ref), `meters` (CollectionHost), `items` (CollectionHost), `effects` (CollectionHost) |
-| `textsystem:schema.ui_field.location_scene.v1` | `UGV2LocationSceneWidgetBase` | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) |
-| `core:schema.ui_field.button_list.v2` (commands) | `UGV2LocationCommandPanelWidgetBase` | `items` (CollectionHost) |
+| `schema_id` | Native Widget Class | Property Host Capabilities | `IGV2ScreenFieldHost`? |
+|---|---|---|---|
+| `core:schema.ui_field.rich_text.v3` | `WBP_RichText` / `UGV2RichTextWidgetBase` | `text` (Text), `spans` (RichTextSpans) | Нет — nested property host only |
+| `core:schema.ui_field.button_list.v2` | `WBP_ButtonList` / `UGV2ButtonListWidgetBase` | `items` (CollectionHost для кнопок) | Нет — nested property host only |
+| `core:schema.ui_field.checkbox.v1` | `WBP_Checkbox` / `UGV2CheckboxWidgetBase` | `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding) | Нет — nested property host only |
+| `core:schema.ui_field.input_field.v1` | `WBP_InputField` / `UGV2InputFieldWidgetBase` | `key` (Key), `label` (Text), `placeholder` (Text), `value` (Scalar), `binding` (Binding) | Нет — nested property host only |
+| `core:schema.ui_field.dropdown_select.v1` | `WBP_DropdownSelect` / `UGV2DropdownSelectWidgetBase` | `placeholder` (Text), `selected_key` (Key), `options` (CollectionHost), `binding` (Binding) | Нет — nested property host only |
+| `core:schema.ui_field.image.v1` | `WBP_Image` / `UGV2ImageWidgetBase` | `resource_id` (Ref), `key` (Key) | Нет — nested property host only |
+| `core:schema.ui_field.progress_bar.v1` | `WBP_ProgressBar` / `UGV2ProgressBarWidgetBase` | `percent` (Scalar), `label` (Text), `key` (Key) | Нет — nested property host only |
+| `core:schema.ui_field.portrait.v1` | `WBP_Portrait` / `UGV2PortraitWidgetBase` | `resource_id` (Ref), `frame_resource_id` (Ref), `key` (Key) | Нет — nested property host only |
+| `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | `title` (Text), `content` (Text), `buttons` (CollectionHost), `backdrop_close_action` (Binding) | Нет — nested property host only |
+| `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | `default_tab_key` (Key), `tabs` (CollectionHost) | Нет — nested property host only |
+| `textsystem:schema.ui_field.location_top_bar.v1` | `UGV2LocationTopBarWidgetBase` | `day` (Text), `location` (Text), `primary_resource` (Text) | **Да** |
+| `textsystem:schema.ui_field.location_player_status.v1` | `UGV2LocationPlayerStatusWidgetBase` | `name` (Text), `portrait_resource_id` (Ref), `meters` (CollectionHost), `items` (CollectionHost), `effects` (CollectionHost) | **Да** |
+| `textsystem:schema.ui_field.location_scene.v1` | `UGV2LocationSceneWidgetBase` | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) | **Да** |
+| `textsystem:schema.ui_field.location_commands.v1` | `UGV2LocationCommandPanelWidgetBase` | `items` (CollectionHost) | **Да** |
+
+Первые десять строк — валидируемые, протестированные на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` schema/capability пары; их Native Widget Class реализует `IGV2UiPropertyHost`, но не `IGV2ScreenFieldHost`, поэтому ни одна из них не может быть настроена как самостоятельный top-level Screen Field сейчас — только как nested property (вложенное свойство composite'а, например `CollectionHost` entry) либо материал для будущего host. Только последние четыре строки — реально используемый, production Screen Field pipeline (`textsystem:screen.location`, см. [Current vertical slice](#current-vertical-slice)).
+
+Схема команд экрана локации — `textsystem:schema.ui_field.location_commands.v1` (namespace `textsystem`, не `core:schema.ui_field.button_list.v2`); она независима от generic `button_list.v2` несмотря на схожую форму (`items` CollectionHost) и покрыта отдельными тестами (`GV2UiPropertyHostTests.cpp`, `GV2PropertyConsumersTests.cpp`, `GV2RuntimeSubsystemTests.cpp`).
 
 Production Lua document использует `TextSpec`; `UGV2TextPipeline` выполняет централизованное разрешение локализации, экранирование аргументов и форматирование разметки. Button binding содержит только семантический `command_id` и opaque `FGV2UiBindingHandle`, а не Lua callback.
 
@@ -268,15 +272,16 @@ Production Lua document использует `TextSpec`; `UGV2TextPipeline` вы
 
 Несоответствие контракта поля (включая невалидный тип элементов `characters`, посторонние ключи, дублирование ключей или передачу плоского массива строк) приводит к типизированному отказу применения поля (`CanApplyScreenFields`/`PrepareScreenFields` возвращает `false`), предотвращая повреждение presentation state.
 
-### Location Commands / ButtonList Field Contract (`core:schema.ui_field.button_list.v2`)
+### Location Commands Field Contract (`textsystem:schema.ui_field.location_commands.v1`)
 
-Схема панели команд экрана локации использует стандартный контракт `button_list.v2`:
+Схема панели команд экрана локации — собственная схема namespace `textsystem`, а не generic `core:schema.ui_field.button_list.v2` (форма похожа — `items` CollectionHost, — но это разные, независимо версионируемые Stable ID):
 
 - `items` (required array of objects): упорядоченный список доступных команд/кнопок навигации.
   Каждый элемент массива `items` обязан быть объектом со структурой:
   - `key` (required non-empty string / `FName`): уникальный в пределах массива идентификатор кнопки/команды;
   - `text` (required `TextSpec`): спецификация локализованного текста кнопки;
-  - `binding` (required `Binding` object): объект привязки семантической команды со структурой `{ command_id: string, args?: object }`.
+  - `binding` (optional `Binding` object): объект привязки семантической команды со структурой `{ command_id: string, args?: object }`.
+- `key` (optional non-empty string / `FName`): собственный ключ панели, если панель сама является элементом внешней коллекции.
 
 Схема поля и элементы `items` являются замкнутыми: посторонние ключи отклоняются.
 
@@ -309,19 +314,18 @@ Production Lua document использует `TextSpec`; `UGV2TextPipeline` вы
 
 ## Current vertical slice
 
-`WBP_Testscreen` наследует `WBP_ScreenBase` и объявляет ровно пять required полей:
+`WBP_LocationScreen` (`screen_id = "textsystem:screen.location"`, `instance_key = "location"`) — единственный экран, реально проходящий через `GV2ScreenFieldMaterializer` + `IGV2ScreenFieldHost` discovery. Он объявляет ровно четыре Screen Field, по одному на каждый Location-композит:
 
 | `field_id` | Existing element | Schema |
 |---|---|---|
-| `description` | `DescriptionText: WBP_RichText` | `core:schema.ui_field.rich_text.v3` |
-| `checkbox` | `CheckboxField: WBP_Checkbox` | `core:schema.ui_field.checkbox.v1` |
-| `class_select` | `ClassSelectField: WBP_DropdownSelect` | `core:schema.ui_field.dropdown_select.v1` |
-| `player_name` | `PlayerNameField: WBP_InputField` | `core:schema.ui_field.input_field.v1` |
-| `buttons` | `ButtonList: WBP_ButtonList` | `core:schema.ui_field.button_list.v2` |
+| `top_bar` | `UGV2LocationTopBarWidgetBase` | `textsystem:schema.ui_field.location_top_bar.v1` |
+| `player_status` | `UGV2LocationPlayerStatusWidgetBase` | `textsystem:schema.ui_field.location_player_status.v1` |
+| `scene` | `UGV2LocationSceneWidgetBase` | `textsystem:schema.ui_field.location_scene.v1` |
+| `commands` | `UGV2LocationCommandPanelWidgetBase` | `textsystem:schema.ui_field.location_commands.v1` |
 
-`DescriptionText` находится в `DescriptionSurface`, чей `VerticalBoxSlot` использует `Fill`; `PlayerNameField`, `ClassSelectField`, `CheckboxField` и `ButtonList` используют `Automatic`. Поэтому controls занимают требуемую высоту, описание получает оставшуюся высоту экрана, а overflow обрабатывается внутренним `RichTextScrollBox` компонента.
+Lua presenter (`GameData/textsystem/scripts/presentation/location_presenter.lua`, `M.build_screen_request`) публикует все четыре поля через `game.presentation.register_source` при каждой успешно закоммиченной команде (см. [Источник презентации](#источник-презентации-и-автоматическая-инвалидация-sas-1416-adr-0028)). `GV2ScreenFieldMaterializer` генерически материализует значения полей и биндинги по скомпилированным схемам; Runtime разрешает class только через `DA_ScreenRegistry`. Идентичность route зафиксирована ([UI Document § Устойчивая идентичность LocationScreen](UIDocumentAndReconciliation.md)): `screen_id`/`instance_key` не меняются между локациями, переход обновляет поля существующего widget.
 
-Lua command handler публикует Screen request с `screen_id = "core:screen.test"` и generic fields. `GV2ScreenFieldMaterializer` генерически материализует значения полей и биндинги по скомпилированным схемам. Checkbox binding объявляет required `is_checked: boolean`, input binding — required `value: string`, dropdown binding — required `selected_key: string`. Runtime разрешает class только через `DA_ScreenRegistry`; C++ не предоставляет screen builder/factory с параметрами, не имеет test-specific apply API и не знает concrete field names.
+`WBP_Testscreen` (`core:screen.test`) остаётся отдельной, более старой proving-ground fixture: её пять reusable-компонентов (`DescriptionText`, `CheckboxField`, `ClassSelectField`, `PlayerNameField`, `ButtonList`) — static leaves, не Screen Field hosts (`GetScreenFieldIds()` возвращает 0 элементов); Lua публикует её с пустым `fields = {}` (`GameData/sample/scripts/debug/start.lua`) и управляет каждым компонентом напрямую через его interaction API (`SubmitCheckboxState`, `SubmitTextValue`, `SubmitSelection`). См. [Widget Registry § Current WBP_Testscreen contract](WidgetRegistry.md#current-wbptestscreen-contract).
 
 ## Failure and recovery
 
