@@ -2,6 +2,7 @@
 
 #include "GV2RuntimeCore/GV2RuntimeCoreAPI.h"
 #include "GV2ContentCore/RepositorySnapshot.h"
+#include "GV2ContentCore/Value.h"
 
 #include <cstdint>
 #include <map>
@@ -35,6 +36,49 @@ struct FValue
 
     bool operator==(const FValue&) const = default;
 };
+
+inline GV2ContentCore::FValue RuntimeValueToContentValue(const FValue& InValue)
+{
+    if (std::holds_alternative<std::monostate>(InValue.Data))
+    {
+        return GV2ContentCore::FValue::MakeNull();
+    }
+    if (std::holds_alternative<bool>(InValue.Data))
+    {
+        return GV2ContentCore::FValue(std::get<bool>(InValue.Data));
+    }
+    if (std::holds_alternative<std::int64_t>(InValue.Data))
+    {
+        return GV2ContentCore::FValue(std::get<std::int64_t>(InValue.Data));
+    }
+    if (std::holds_alternative<double>(InValue.Data))
+    {
+        return GV2ContentCore::FValue(std::get<double>(InValue.Data));
+    }
+    if (std::holds_alternative<std::string>(InValue.Data))
+    {
+        return GV2ContentCore::FValue(std::get<std::string>(InValue.Data));
+    }
+    if (std::holds_alternative<FValue::FArray>(InValue.Data))
+    {
+        GV2ContentCore::FValue::FArray Array;
+        for (const auto& Item : std::get<FValue::FArray>(InValue.Data))
+        {
+            Array.push_back(RuntimeValueToContentValue(Item));
+        }
+        return GV2ContentCore::FValue(std::move(Array));
+    }
+    if (std::holds_alternative<FValue::FObject>(InValue.Data))
+    {
+        GV2ContentCore::FValue::FObject Object;
+        for (const auto& [Key, Val] : std::get<FValue::FObject>(InValue.Data))
+        {
+            Object.emplace_back(Key, RuntimeValueToContentValue(Val));
+        }
+        return GV2ContentCore::FValue(std::move(Object));
+    }
+    return GV2ContentCore::FValue::MakeNull();
+}
 
 struct FRuntimeFault
 {

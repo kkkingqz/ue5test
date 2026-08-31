@@ -749,11 +749,24 @@ bool ValidateBindingSpec(
     std::vector<FDiagnostic>& Diagnostics)
 {
     (void)InputSchemaId;
+    if (Value.IsString())
+    {
+        if (!FStableId::IsOfKind(Value.AsString(), "command"))
+        {
+            Diagnostics.push_back(MakeDiagnostic(
+                "core:diagnostic.ui_schema.value.invalid_binding_spec",
+                "BindingSpec string must be a valid Stable ID of kind 'command'",
+                Document, Pointer, Context));
+            return false;
+        }
+        return true;
+    }
+
     if (!Value.IsObject())
     {
         Diagnostics.push_back(MakeDiagnostic(
             "core:diagnostic.ui_schema.value.invalid_binding_spec",
-            "BindingSpec must be an object",
+            "BindingSpec must be an object or command Stable ID string",
             Document, Pointer, Context));
         return false;
     }
@@ -832,7 +845,14 @@ bool ValidateUiFieldValue(
         if (ValidateScalarValue(
             Value, *FieldSpec.Scalar, ValueDocument, Pointer, Context, OutDiagnostics))
         {
-            OutMaterializedValue = Value;
+            if (FieldSpec.Scalar->Kind == EScalarFieldKind::Number && Value.IsInteger())
+            {
+                OutMaterializedValue = FValue::MakeNumber(static_cast<double>(Value.AsInteger()));
+            }
+            else
+            {
+                OutMaterializedValue = Value;
+            }
             return true;
         }
         return false;
@@ -896,7 +916,16 @@ bool ValidateUiFieldValue(
         {
             return false;
         }
-        OutMaterializedValue = Value;
+        if (Value.IsString())
+        {
+            FValue::FObject BindingFields;
+            BindingFields.emplace_back("command_id", Value);
+            OutMaterializedValue = FValue::MakeObject(std::move(BindingFields));
+        }
+        else
+        {
+            OutMaterializedValue = Value;
+        }
         return true;
     }
     case EUiFieldKind::Object:
@@ -969,7 +998,8 @@ bool ValidateUiFieldValue(
     }
     case EUiFieldKind::Array:
     {
-        if (!Value.IsArray())
+        const bool bIsEmptyObject = Value.IsObject() && Value.AsObject().empty();
+        if (!Value.IsArray() && !bIsEmptyObject)
         {
             OutDiagnostics.push_back(MakeDiagnostic(
                 "core:diagnostic.ui_schema.value.invalid_type",
@@ -978,7 +1008,8 @@ bool ValidateUiFieldValue(
             return false;
         }
 
-        const auto& InputArray = Value.AsArray();
+        static const FValue::FArray EmptyArray;
+        const auto& InputArray = bIsEmptyObject ? EmptyArray : Value.AsArray();
         if (FieldSpec.MinimumItems.has_value() && InputArray.size() < *FieldSpec.MinimumItems)
         {
             OutDiagnostics.push_back(MakeDiagnostic(

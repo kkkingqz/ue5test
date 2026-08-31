@@ -182,6 +182,25 @@ private:
 };
 
 /**
+ * Diagnostic record representing a discrepancy between a compiled collection item schema
+ * and an entry widget's declared capabilities (proposal Section 32, UPP-R1 / PCC-01).
+ */
+struct GV2_API FGV2CollectionItemDiscrepancy
+{
+    FString ScreenId;
+    FString FieldId;
+    FString SchemaId;
+    FString PropertyPath;
+    FString WidgetClass;
+    FString Capability;
+    FString Code;
+    FString Message;
+
+    FString ToSection32String() const;
+    FString ToLogString() const;
+};
+
+/**
  * Keyed collection consumer: reconciles an array of objects into a collection container
  * (e.g. UGV2ListViewWidgetBase or UPanelWidget), matching elements by stable FName keys.
  * Fully atomic: prepares ALL child items and their mutation plans before Commit.
@@ -198,6 +217,25 @@ public:
 
     const TMap<FName, TObjectPtr<UWidget>>& GetActiveWidgetsByKey() const { return ActiveWidgetsByKey; }
 
+    void SetCompiledItemSpec(
+        GV2ContentCore::FCompiledUiFieldSpecPtr InItemSpec,
+        const FString& InSchemaId = FString(),
+        const FString& InPropertyPath = FString(),
+        const FString& InScreenId = FString(),
+        const FString& InFieldId = FString())
+    {
+        CompiledItemSpec = InItemSpec;
+        ContextSchemaId = InSchemaId;
+        ContextPropertyPath = InPropertyPath;
+        ContextScreenId = InScreenId;
+        ContextFieldId = InFieldId;
+    }
+
+    const TArray<FGV2CollectionItemDiscrepancy>& GetDiscrepancies() const { return Discrepancies; }
+
+    static const TArray<FGV2CollectionItemDiscrepancy>& GetAllRecordedDiscrepancies();
+    static void ClearAllRecordedDiscrepancies();
+
 private:
     struct FPreparedCollectionItem
     {
@@ -211,6 +249,13 @@ private:
     TArray<FPreparedCollectionItem> PreparedItems;
     TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
     TMap<FName, TObjectPtr<UWidget>> CandidateWidgetsByKey;
+
+    GV2ContentCore::FCompiledUiFieldSpecPtr CompiledItemSpec;
+    FString ContextSchemaId;
+    FString ContextPropertyPath;
+    FString ContextScreenId;
+    FString ContextFieldId;
+    TArray<FGV2CollectionItemDiscrepancy> Discrepancies;
 };
 
 /**
@@ -268,7 +313,23 @@ private:
 };
 
 /**
+ * Classification of EGV2PreparedUiValueKind in the UI Property Pipeline.
+ */
+enum class EGV2PropertyConsumerKindStatus : uint8
+{
+    Supported,
+    Inapplicable
+};
+
+struct GV2_API FGV2InapplicableKindInfo
+{
+    EGV2PreparedUiValueKind Kind;
+    FString Reason;
+};
+
+/**
  * Factory for creating standard property consumers matching capability kinds.
+ * Enforces compile-time and runtime completeness across all EGV2PreparedUiValueKind values.
  */
 class GV2_API FGV2PropertyConsumerFactory
 {
@@ -277,4 +338,19 @@ public:
         EGV2PreparedUiValueKind Kind,
         EGV2UiCapabilityTargetType TargetType,
         const FString& TargetKind = TEXT(""));
+
+    /** Returns status indicating whether this kind is supported by a consumer or explicitly inapplicable. */
+    static EGV2PropertyConsumerKindStatus GetKindHandlingStatus(EGV2PreparedUiValueKind Kind);
+
+    /** Returns true if the kind is explicitly inapplicable, optionally returning the architectural justification. */
+    static bool IsInapplicableKind(EGV2PreparedUiValueKind Kind, FString* OutReason = nullptr);
+
+    /** Returns all explicitly registered inapplicable kinds with reasons. */
+    static TArray<FGV2InapplicableKindInfo> GetInapplicableKinds();
+
+    /**
+     * Gate validating that every value of EGV2PreparedUiValueKind is either
+     * supported with a non-null consumer or recorded with an inapplicable reason.
+     */
+    static bool ValidateAllKindsHandled(TArray<FString>& OutDiagnostics);
 };

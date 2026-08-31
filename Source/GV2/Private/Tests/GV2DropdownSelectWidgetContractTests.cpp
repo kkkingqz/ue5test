@@ -71,6 +71,13 @@ bool FGV2DropdownSelectWidgetContractTests::RunTest(const FString& Parameters)
                 EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
             TestNotNull(TEXT("Collection consumer created"), CollConsumer.Get());
 
+            auto ItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+            ItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+            ItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+            ItemSpec->Fields.push_back({ "text", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+            static_cast<FGV2KeyedCollectionPropertyConsumer*>(CollConsumer.Get())->SetCompiledItemSpec(
+                ItemSpec, TEXT("core:schema.ui_field.dropdown_select.v1"), TEXT("items"));
+
             FGV2TextViewModel Opt1Text;
             Opt1Text.Text = FText::FromString(TEXT("Option A"));
             Opt1Text.StyleToken = TEXT("default");

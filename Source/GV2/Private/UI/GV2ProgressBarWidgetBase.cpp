@@ -3,6 +3,8 @@
 #include "CommonTextBlock.h"
 #include "Components/ProgressBar.h"
 #include "UI/GV2UiTheme.h"
+#include "Blueprint/WidgetTree.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
 
 void UGV2ProgressBarWidgetBase::NativePreConstruct()
 {
@@ -13,7 +15,18 @@ void UGV2ProgressBarWidgetBase::NativePreConstruct()
 void UGV2ProgressBarWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
     OutBuilder.AddNumber(TEXT("percent"), FName(TEXT("ProgressBar")), 0.0, 1.0);
-    if (LabelText != nullptr)
+    bool bHasLabel = (LabelText != nullptr);
+    if (!bHasLabel)
+    {
+        if (const UWidgetBlueprintGeneratedClass* BGClass = Cast<UWidgetBlueprintGeneratedClass>(GetClass()))
+        {
+            if (const UWidgetTree* Tree = BGClass->GetWidgetTreeArchetype())
+            {
+                bHasLabel = (Tree->FindWidget(FName(TEXT("LabelText"))) != nullptr);
+            }
+        }
+    }
+    if (bHasLabel)
     {
         OutBuilder.AddText(TEXT("label"), FName(TEXT("LabelText")));
     }

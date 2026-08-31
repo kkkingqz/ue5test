@@ -104,4 +104,19 @@ return {
             assert(ok, "command item has unexpected key: " .. tostring(bad_k))
         end
     end,
+
+    -- PCC-03: An element property declared in schema but absent from entry widget
+    -- capability contract must not silently pass through; closed-schema checking rejects unexpected keys.
+    element_schema_rejects_unsupported_properties = function()
+        local bad_element = {
+            key = "meter_1",
+            percent = 0.5,
+            label = { text_id = "core:text.ok" },
+            unsupported_extra = "unbacked_value",
+        }
+        local allowed_meter_keys = { key = true, percent = true, label = true }
+        local ok, bad_k = has_only_keys(bad_element, allowed_meter_keys)
+        assert(not ok, "Element with unsupported property must not pass closed-schema check")
+        assert(bad_k == "unsupported_extra", "Unexpected key must match unsupported_extra")
+    end,
 }

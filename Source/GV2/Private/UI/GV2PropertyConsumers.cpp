@@ -1016,9 +1016,51 @@ static GV2ContentCore::FCompiledUiFieldSpecPtr MakeCollectionSpecFromCapability(
         }
         return Spec;
     }
-    default:
+    case EGV2PreparedUiValueKind::Null:
+    case EGV2PreparedUiValueKind::Array:
         return nullptr;
     }
+    return nullptr;
+}
+
+static TArray<FGV2CollectionItemDiscrepancy> GAllRecordedDiscrepancies;
+
+FString FGV2CollectionItemDiscrepancy::ToSection32String() const
+{
+    return FString::Printf(
+        TEXT("UiPropertyDiscrepancy:\n  screen=%s\n  field=%s\n  schema=%s\n  path=%s\n  widget=%s\n  capability=%s\n  code=%s\n  message=%s"),
+        ScreenId.IsEmpty() ? TEXT("none") : *ScreenId,
+        FieldId.IsEmpty() ? TEXT("none") : *FieldId,
+        SchemaId.IsEmpty() ? TEXT("none") : *SchemaId,
+        *PropertyPath,
+        *WidgetClass,
+        *Capability,
+        *Code,
+        *Message);
+}
+
+FString FGV2CollectionItemDiscrepancy::ToLogString() const
+{
+    return FString::Printf(
+        TEXT("[UiPropertyDiscrepancy] screen=%s field=%s schema=%s path=%s widget=%s capability=%s code=%s message=%s"),
+        ScreenId.IsEmpty() ? TEXT("none") : *ScreenId,
+        FieldId.IsEmpty() ? TEXT("none") : *FieldId,
+        SchemaId.IsEmpty() ? TEXT("none") : *SchemaId,
+        *PropertyPath,
+        *WidgetClass,
+        *Capability,
+        *Code,
+        *Message);
+}
+
+const TArray<FGV2CollectionItemDiscrepancy>& FGV2KeyedCollectionPropertyConsumer::GetAllRecordedDiscrepancies()
+{
+    return GAllRecordedDiscrepancies;
+}
+
+void FGV2KeyedCollectionPropertyConsumer::ClearAllRecordedDiscrepancies()
+{
+    GAllRecordedDiscrepancies.Reset();
 }
 
 bool FGV2KeyedCollectionPropertyConsumer::Prepare(
@@ -1042,6 +1084,7 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
     KeyPropertyName = Capability.KeyPropertyName.IsEmpty() ? TEXT("key") : Capability.KeyPropertyName;
     PreparedItems.Reset();
     CandidateWidgetsByKey.Reset();
+    Discrepancies.Reset();
 
     const FGV2PreparedUiArray& Array = Value.AsArray();
     UGV2ListViewWidgetBase* ListView = Cast<UGV2ListViewWidgetBase>(TargetWidget);
@@ -1135,21 +1178,25 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
 
         CandidateWidgetsByKey.Add(ItemKey, ItemWidget);
 
+        FGV2UiCapabilityTree ItemCaps;
         if (IGV2UiPropertyHost* ItemHost = Cast<IGV2UiPropertyHost>(ItemWidget))
         {
             FGV2UiCapabilityBuilder ItemCapBuilder;
             ItemHost->DescribeUiCapabilities(ItemCapBuilder);
-            const FGV2UiCapabilityTree ItemCaps = ItemCapBuilder.Build();
+            ItemCaps = ItemCapBuilder.Build();
+        }
 
-            GV2ContentCore::FCompiledUiFieldSpec ItemSchema;
-            ItemSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
-            for (const auto& CapEntry : ItemCaps.Properties)
+        if (Cast<IGV2UiPropertyHost>(ItemWidget) != nullptr)
+        {
+            if (CompiledItemSpec == nullptr)
             {
-                if (auto Spec = MakeCollectionSpecFromCapability(CapEntry.Value))
-                {
-                    ItemSchema.Fields.push_back({ TCHAR_TO_UTF8(*CapEntry.Key), false, MoveTemp(Spec) });
-                }
+                OutError = TEXT("core:diagnostic.ui_consumer.missing_schema: CompiledItemSpec is required for collection item host");
+                return false;
             }
+
+            const FString FullItemPrefix = ContextPropertyPath.IsEmpty()
+                ? FString::Printf(TEXT("[%s]"), *ItemKey.ToString())
+                : FString::Printf(TEXT("%s[%s]"), *ContextPropertyPath, *ItemKey.ToString());
 
             TSharedPtr<FGV2UiHostMutationPlan> ItemPlan = MakeShared<FGV2UiHostMutationPlan>();
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
@@ -1158,14 +1205,34 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                     Cast<UUserWidget>(ItemWidget),
                     ItemCaps,
                     ItemObj,
-                    ItemSchema,
-                    TEXT("core:schema.ui_value.collection_item.v1"),
-                    KeyVal->AsKey(),
+                    *CompiledItemSpec,
+                    ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId,
+                    FullItemPrefix,
                     EmptyPrev,
                     *ItemPlan,
                     Diagnostics))
             {
-                OutError = Diagnostics.Num() > 0 ? Diagnostics[0].Message : TEXT("core:diagnostic.ui_mutation.prepare_failed: Prepare failed on collection item");
+                for (const FGV2UiSchemaCompatibilityDiagnostic& Diag : Diagnostics)
+                {
+                    FGV2CollectionItemDiscrepancy Discrepancy;
+                    Discrepancy.ScreenId = ContextScreenId;
+                    Discrepancy.FieldId = ContextFieldId;
+                    Discrepancy.SchemaId = Diag.SchemaId;
+                    Discrepancy.PropertyPath = Diag.PropertyPath;
+                    Discrepancy.WidgetClass = ItemWidget ? ItemWidget->GetClass()->GetName() : TEXT("None");
+                    Discrepancy.Capability = Diag.PropertyPath;
+                    Discrepancy.Code = Diag.Code;
+                    Discrepancy.Message = Diag.Message;
+
+                    Discrepancies.Add(Discrepancy);
+                    GAllRecordedDiscrepancies.Add(Discrepancy);
+
+                    UE_LOG(LogTemp, Display, TEXT("%s"), *Discrepancy.ToLogString());
+                }
+
+                OutError = Diagnostics.Num() > 0
+                    ? FString::Printf(TEXT("%s: %s"), *Diagnostics[0].Code, *Diagnostics[0].Message)
+                    : TEXT("core:diagnostic.ui_mutation.prepare_failed: Prepare failed on collection item");
                 return false;
             }
 
@@ -1178,6 +1245,44 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
         }
         else
         {
+            if (CompiledItemSpec != nullptr)
+            {
+                const FString FullItemPrefix = ContextPropertyPath.IsEmpty()
+                    ? FString::Printf(TEXT("[%s]"), *ItemKey.ToString())
+                    : FString::Printf(TEXT("%s[%s]"), *ContextPropertyPath, *ItemKey.ToString());
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> DiscrepancyDiags;
+                if (!CheckUiSchemaCapabilityCompatibility(
+                        *CompiledItemSpec,
+                        ItemCaps,
+                        ContextSchemaId,
+                        FullItemPrefix,
+                        DiscrepancyDiags))
+                {
+                    for (const FGV2UiSchemaCompatibilityDiagnostic& Diag : DiscrepancyDiags)
+                    {
+                        FGV2CollectionItemDiscrepancy Discrepancy;
+                        Discrepancy.ScreenId = ContextScreenId;
+                        Discrepancy.FieldId = ContextFieldId;
+                        Discrepancy.SchemaId = Diag.SchemaId;
+                        Discrepancy.PropertyPath = Diag.PropertyPath;
+                        Discrepancy.WidgetClass = ItemWidget ? ItemWidget->GetClass()->GetName() : TEXT("None");
+                        Discrepancy.Capability = Diag.PropertyPath;
+                        Discrepancy.Code = Diag.Code;
+                        Discrepancy.Message = Diag.Message;
+
+                        Discrepancies.Add(Discrepancy);
+                        GAllRecordedDiscrepancies.Add(Discrepancy);
+
+                        UE_LOG(LogTemp, Display, TEXT("%s"), *Discrepancy.ToLogString());
+                    }
+
+                    OutError = DiscrepancyDiags.Num() > 0
+                        ? FString::Printf(TEXT("%s: %s"), *DiscrepancyDiags[0].Code, *DiscrepancyDiags[0].Message)
+                        : TEXT("core:diagnostic.ui_mutation.prepare_failed: Item schema incompatible with entry widget");
+                    return false;
+                }
+            }
+
             FPreparedCollectionItem PreparedItem;
             PreparedItem.Key = ItemKey;
             PreparedItem.Widget = ItemWidget;
@@ -1750,8 +1855,117 @@ TSharedPtr<IGV2PropertyConsumer> FGV2PropertyConsumerFactory::CreateConsumer(
             return MakeShared<FGV2TabContainerTabsPropertyConsumer>();
         }
         break;
-    default:
+    case EGV2PreparedUiValueKind::Null:
+    case EGV2PreparedUiValueKind::Object:
+        // Explicitly inapplicable kinds in property consumer factory
         break;
     }
     return nullptr;
+}
+
+EGV2PropertyConsumerKindStatus FGV2PropertyConsumerFactory::GetKindHandlingStatus(EGV2PreparedUiValueKind Kind)
+{
+    switch (Kind)
+    {
+    case EGV2PreparedUiValueKind::Boolean:
+    case EGV2PreparedUiValueKind::Integer:
+    case EGV2PreparedUiValueKind::Number:
+    case EGV2PreparedUiValueKind::String:
+    case EGV2PreparedUiValueKind::Key:
+    case EGV2PreparedUiValueKind::Text:
+    case EGV2PreparedUiValueKind::StableId:
+    case EGV2PreparedUiValueKind::Binding:
+    case EGV2PreparedUiValueKind::Array:
+        return EGV2PropertyConsumerKindStatus::Supported;
+
+    case EGV2PreparedUiValueKind::Null:
+    case EGV2PreparedUiValueKind::Object:
+        return EGV2PropertyConsumerKindStatus::Inapplicable;
+    }
+    return EGV2PropertyConsumerKindStatus::Inapplicable;
+}
+
+bool FGV2PropertyConsumerFactory::IsInapplicableKind(EGV2PreparedUiValueKind Kind, FString* OutReason)
+{
+    if (Kind == EGV2PreparedUiValueKind::Null)
+    {
+        if (OutReason != nullptr)
+        {
+            *OutReason = TEXT("Null represents missing or unset presentation data and cannot directly mutate UI widgets.");
+        }
+        return true;
+    }
+    if (Kind == EGV2PreparedUiValueKind::Object)
+    {
+        if (OutReason != nullptr)
+        {
+            *OutReason = TEXT("Direct Object property consumption is forbidden: composites use flat declared property mappings or KeyedCollection/NestedScreen for composite hierarchies; AddObject is prohibited to prevent key leakage and deep hierarchy drift (see DataDrivenUiComposition ADR/README).");
+        }
+        return true;
+    }
+    return false;
+}
+
+TArray<FGV2InapplicableKindInfo> FGV2PropertyConsumerFactory::GetInapplicableKinds()
+{
+    TArray<FGV2InapplicableKindInfo> Result;
+    Result.Add({
+        EGV2PreparedUiValueKind::Null,
+        TEXT("Null represents missing or unset presentation data and cannot directly mutate UI widgets.")
+    });
+    Result.Add({
+        EGV2PreparedUiValueKind::Object,
+        TEXT("Direct Object property consumption is forbidden: composites use flat declared property mappings or KeyedCollection/NestedScreen for composite hierarchies; AddObject is prohibited to prevent key leakage and deep hierarchy drift (see DataDrivenUiComposition ADR/README).")
+    });
+    return Result;
+}
+
+bool FGV2PropertyConsumerFactory::ValidateAllKindsHandled(TArray<FString>& OutDiagnostics)
+{
+    bool bSuccess = true;
+    const EGV2PreparedUiValueKind AllKinds[] = {
+        EGV2PreparedUiValueKind::Null,
+        EGV2PreparedUiValueKind::Boolean,
+        EGV2PreparedUiValueKind::Integer,
+        EGV2PreparedUiValueKind::Number,
+        EGV2PreparedUiValueKind::String,
+        EGV2PreparedUiValueKind::Key,
+        EGV2PreparedUiValueKind::Text,
+        EGV2PreparedUiValueKind::StableId,
+        EGV2PreparedUiValueKind::Binding,
+        EGV2PreparedUiValueKind::Object,
+        EGV2PreparedUiValueKind::Array
+    };
+
+    for (EGV2PreparedUiValueKind Kind : AllKinds)
+    {
+        const EGV2PropertyConsumerKindStatus Status = GetKindHandlingStatus(Kind);
+        if (Status == EGV2PropertyConsumerKindStatus::Supported)
+        {
+            const EGV2UiCapabilityTargetType TargetType = (Kind == EGV2PreparedUiValueKind::Array)
+                ? EGV2UiCapabilityTargetType::CollectionHost
+                : EGV2UiCapabilityTargetType::RendererControl;
+            const FString TargetKind = (Kind == EGV2PreparedUiValueKind::StableId) ? TEXT("resource") : TEXT("");
+            TSharedPtr<IGV2PropertyConsumer> Consumer = CreateConsumer(Kind, TargetType, TargetKind);
+            if (!Consumer.IsValid())
+            {
+                OutDiagnostics.Add(FString::Printf(
+                    TEXT("Kind %d is marked Supported but CreateConsumer returned nullptr"),
+                    static_cast<int32>(Kind)));
+                bSuccess = false;
+            }
+        }
+        else if (Status == EGV2PropertyConsumerKindStatus::Inapplicable)
+        {
+            FString Reason;
+            if (!IsInapplicableKind(Kind, &Reason) || Reason.IsEmpty())
+            {
+                OutDiagnostics.Add(FString::Printf(
+                    TEXT("Kind %d is marked Inapplicable but has no recorded reason"),
+                    static_cast<int32>(Kind)));
+                bSuccess = false;
+            }
+        }
+    }
+    return bSuccess;
 }

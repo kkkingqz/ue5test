@@ -102,7 +102,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 - **`Text`**: разрешённая модель локализованного текста `FGV2TextViewModel` (`FText` + `StyleToken` + `NormalizedMarkup`).
 - **`Ref`**: Stable ID ресурса или сущности (`FString`).
 - **`Binding`**: непрозрачный описатель привязки команды `FGV2UiBindingHandle`.
-- **`Object`**: именованный набор свойств `FGV2PreparedUiObject` (`TMap<FName, FGV2PreparedUiValue>`).
+- **`Object`**: именованный набор свойств `FGV2PreparedUiObject` (`TMap<FName, FGV2PreparedUiValue>`). Используется как контейнер верхнего уровня экрана; прямое потребление свойствами виджетов запрещено (неприменимый вид в фабрике потребителей; композиты используют плоские маппинги свойств либо `CollectionHost`/`NestedScreen`).
 - **`Array`**: упорядоченный массив значений `TArray<FGV2PreparedUiValue>`.
 
 ### Семейство стандартных потребителей (`FGV2PropertyConsumerFactory`)

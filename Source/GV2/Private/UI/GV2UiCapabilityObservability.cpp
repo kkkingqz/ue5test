@@ -100,9 +100,12 @@ TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair
                 FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
         }
         return TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>>();
-    default:
+    case EGV2PreparedUiValueKind::Null:
+    case EGV2PreparedUiValueKind::Object:
+    case EGV2PreparedUiValueKind::Array:
         return TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>>();
     }
+    return TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>>();
 }
 
 FCompiledUiFieldSpecPtr MakeMatchingFieldSpec(const FGV2UiPropertyCapability& Cap)
@@ -159,9 +162,12 @@ FCompiledUiFieldSpecPtr MakeMatchingFieldSpec(const FGV2UiPropertyCapability& Ca
         Spec->RefTargetKind = Cap.TargetKind.IsEmpty() ? "resource" : TCHAR_TO_UTF8(*Cap.TargetKind);
         return Spec;
     }
-    default:
+    case EGV2PreparedUiValueKind::Null:
+    case EGV2PreparedUiValueKind::Object:
+    case EGV2PreparedUiValueKind::Array:
         return nullptr;
     }
+    return nullptr;
 }
 
 UWidget* ResolveCapabilityTarget(UUserWidget* HostWidget, const FGV2UiPropertyCapability& Cap)

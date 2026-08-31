@@ -1,210 +1,118 @@
 #include "Application/GV2ScreenFieldMaterializer.h"
 
+#include "GV2ContentCore/UiSchema.h"
+#include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/GV2StableId.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiSchemaCache.h"
 
 #include <algorithm>
-#include <set>
+#include <string>
+#include <vector>
 
 namespace
 {
-using FObject = GV2RuntimeCore::FValue::FObject;
-using FArray = GV2RuntimeCore::FValue::FArray;
-
-const FObject* AsObject(const GV2RuntimeCore::FValue& Value)
-{
-    return std::get_if<FObject>(&Value.Data);
-}
-
-const FArray* AsArray(const GV2RuntimeCore::FValue& Value)
-{
-    if (const FArray* Array = std::get_if<FArray>(&Value.Data))
-    {
-        return Array;
-    }
-    static const FArray EmptyArray;
-    const FObject* Object = std::get_if<FObject>(&Value.Data);
-    return Object != nullptr && Object->empty() ? &EmptyArray : nullptr;
-}
-
-const GV2RuntimeCore::FValue* FindValue(const FObject& Object, const std::string_view Name)
-{
-    const auto It = Object.find(Name);
-    return It != Object.end() ? &It->second : nullptr;
-}
-
-const std::string* FindString(const FObject& Object, const std::string_view Name)
-{
-    const GV2RuntimeCore::FValue* Value = FindValue(Object, Name);
-    return Value != nullptr ? std::get_if<std::string>(&Value->Data) : nullptr;
-}
-
 bool ToControlValue(
     const std::string& Name,
-    const GV2RuntimeCore::FValue& Value,
+    const GV2ContentCore::FValue& Value,
     FGV2UiControlValue& OutValue)
 {
     OutValue = {};
     OutValue.Name = FName(UTF8_TO_TCHAR(Name.c_str()));
     if (OutValue.Name.IsNone()) return false;
-    if (const bool* Boolean = std::get_if<bool>(&Value.Data))
+    if (Value.IsBoolean())
     {
         OutValue.Type = EGV2UiControlValueType::Boolean;
-        OutValue.BooleanValue = *Boolean;
+        OutValue.BooleanValue = Value.AsBoolean();
         return true;
     }
-    if (const std::int64_t* Integer = std::get_if<std::int64_t>(&Value.Data))
+    if (Value.IsInteger())
     {
         OutValue.Type = EGV2UiControlValueType::Integer;
-        OutValue.IntegerValue = *Integer;
+        OutValue.IntegerValue = Value.AsInteger();
         return true;
     }
-    if (const double* Number = std::get_if<double>(&Value.Data))
+    if (Value.IsNumber())
     {
-        if (!FMath::IsFinite(*Number)) return false;
+        const double Number = Value.AsNumber();
+        if (!FMath::IsFinite(Number)) return false;
         OutValue.Type = EGV2UiControlValueType::Number;
-        OutValue.NumberValue = *Number;
+        OutValue.NumberValue = Number;
         return true;
     }
-    if (const std::string* String = std::get_if<std::string>(&Value.Data))
+    if (Value.IsString())
     {
         OutValue.Type = EGV2UiControlValueType::String;
-        OutValue.StringValue = UTF8_TO_TCHAR(String->c_str());
+        OutValue.StringValue = UTF8_TO_TCHAR(Value.AsString().c_str());
         return true;
     }
     return false;
 }
 
-bool ReadTextSpec(const GV2RuntimeCore::FValue& Value, GV2RuntimeCore::FTextSpec& OutSpec)
+bool ResolveText(const GV2ContentCore::FValue& Value, FGV2TextViewModel& OutText)
 {
-    const FObject* Object = AsObject(Value);
-    if (Object == nullptr) return false;
-    for (const auto& [Key, Val] : *Object)
+    if (!Value.IsObject()) return false;
+    const GV2ContentCore::FValue* TextIdVal = Value.FindField("text_id");
+    if (TextIdVal == nullptr || !TextIdVal->IsString()) return false;
+    const std::string& TextId = TextIdVal->AsString();
+
+    std::string Style;
+    if (const GV2ContentCore::FValue* StyleVal = Value.FindField("style"))
     {
-        if (Key != "text_id" && Key != "style" && Key != "args")
+        if (StyleVal->IsString()) Style = StyleVal->AsString();
+    }
+
+    TArray<FGV2UiControlValue> Args;
+    if (const GV2ContentCore::FValue* ArgsVal = Value.FindField("args"))
+    {
+        if (ArgsVal->IsObject())
         {
-            UE_LOG(LogTemp, Error, TEXT("ScreenField: TextSpec has unknown key '%s' rejected (closed schema)"), UTF8_TO_TCHAR(Key.c_str()));
-            return false;
+            const auto& ArgsObj = ArgsVal->AsObject();
+            Args.Reserve(static_cast<int32>(ArgsObj.size()));
+            for (const auto& [Name, Argument] : ArgsObj)
+            {
+                FGV2UiControlValue& Converted = Args.AddDefaulted_GetRef();
+                if (!ToControlValue(Name, Argument, Converted)) return false;
+            }
         }
     }
-    const std::string* TextId = FindString(*Object, "text_id");
-    if (TextId == nullptr || !GV2RuntimeCore::FStableId::IsOfKind(*TextId, "text")) return false;
-    OutSpec = {};
-    OutSpec.TextId = *TextId;
-    if (const std::string* Style = FindString(*Object, "style")) OutSpec.Style = *Style;
-    if (const GV2RuntimeCore::FValue* Args = FindValue(*Object, "args"))
-    {
-        const FObject* ArgsObject = AsObject(*Args);
-        if (ArgsObject == nullptr) return false;
-        OutSpec.Args = *ArgsObject;
-    }
-    return true;
-}
 
-bool ResolveText(const GV2RuntimeCore::FValue& Value, FGV2TextViewModel& OutText)
-{
-    GV2RuntimeCore::FTextSpec Spec;
-    if (!ReadTextSpec(Value, Spec)) return false;
-    TArray<FGV2UiControlValue> Args;
-    Args.Reserve(static_cast<int32>(Spec.Args.size()));
-    for (const auto& [Name, Argument] : Spec.Args)
-    {
-        FGV2UiControlValue& Converted = Args.AddDefaulted_GetRef();
-        if (!ToControlValue(Name, Argument, Converted)) return false;
-    }
     FString Error;
     return UGV2TextPipeline::Resolve(
-        UTF8_TO_TCHAR(Spec.TextId.c_str()),
+        UTF8_TO_TCHAR(TextId.c_str()),
         Args,
-        FName(UTF8_TO_TCHAR(Spec.Style.c_str())),
+        FName(UTF8_TO_TCHAR(Style.c_str())),
         OutText,
         Error);
 }
 
-bool IsValidKeyValue(const std::string& Key)
-{
-    if (Key.empty() || Key.length() > 192)
-    {
-        return false;
-    }
-    for (char C : Key)
-    {
-        if (!((C >= 'a' && C <= 'z') || (C >= '0' && C <= '9') || C == '_' || C == '-' || C == '.' || C == '@' || C == ':'))
-        {
-            return false;
-        }
-    }
-    if (Key.rfind("text:", 0) == 0 || GV2RuntimeCore::FStableId::IsOfKind(Key, "text"))
-    {
-        return false;
-    }
-    return true;
-}
-
-bool ValidateRepeatedElementKey(
-    const std::string* Key,
-    TSet<FName>& InOutSeenKeys)
-{
-    if (Key == nullptr || !IsValidKeyValue(*Key))
-    {
-        return false;
-    }
-    const FName KeyName(UTF8_TO_TCHAR(Key->c_str()));
-    if (InOutSeenKeys.Contains(KeyName))
-    {
-        return false;
-    }
-    InOutSeenKeys.Add(KeyName);
-    return true;
-}
-
 bool ReadBinding(
-    const GV2RuntimeCore::FValue& Value,
+    const GV2ContentCore::FValue& Value,
     const TArray<FString>& NodePath,
     const FString& ElementId,
     FGV2UiBindingDefinition& OutDefinition)
 {
-    if (const std::string* CommandIdStr = std::get_if<std::string>(&Value.Data))
-    {
-        if (!GV2RuntimeCore::FStableId::IsOfKind(*CommandIdStr, "command")) return false;
-        OutDefinition = {};
-        OutDefinition.NodeKeyPath = NodePath;
-        OutDefinition.ElementId = ElementId;
-        OutDefinition.CommandId = UTF8_TO_TCHAR(CommandIdStr->c_str());
-        return true;
-    }
+    if (!Value.IsObject()) return false;
+    const GV2ContentCore::FValue* CmdIdVal = Value.FindField("command_id");
+    if (CmdIdVal == nullptr || !CmdIdVal->IsString()) return false;
+    const std::string& CommandId = CmdIdVal->AsString();
+    if (!GV2RuntimeCore::FStableId::IsOfKind(CommandId, "command")) return false;
 
-    const FObject* Object = AsObject(Value);
-    if (Object == nullptr) return false;
-    for (const auto& [Key, Val] : *Object)
-    {
-        if (Key != "command_id" && Key != "args")
-        {
-            // BAI-03/REV3-03: matches the Object-kind closed-schema rejection in
-            // WalkFieldValue -- Binding's {command_id, args} shape is fixed by the
-            // Binding kind itself, not schema.Fields-driven, but an unknown key inside
-            // it is exactly the same "property nobody consumes" violation.
-            UE_LOG(LogTemp, Error, TEXT("ScreenField: Binding value has unknown key '%s' rejected (closed schema)"), UTF8_TO_TCHAR(Key.c_str()));
-            return false;
-        }
-    }
-    const std::string* CommandId = FindString(*Object, "command_id");
-    if (CommandId == nullptr
-        || !GV2RuntimeCore::FStableId::IsOfKind(*CommandId, "command")) return false;
     OutDefinition = {};
     OutDefinition.NodeKeyPath = NodePath;
     OutDefinition.ElementId = ElementId;
-    OutDefinition.CommandId = UTF8_TO_TCHAR(CommandId->c_str());
-    if (const GV2RuntimeCore::FValue* Args = FindValue(*Object, "args"))
+    OutDefinition.CommandId = UTF8_TO_TCHAR(CommandId.c_str());
+
+    if (const GV2ContentCore::FValue* ArgsVal = Value.FindField("args"))
     {
-        const FObject* ArgsObject = AsObject(*Args);
-        if (ArgsObject == nullptr) return false;
-        for (const auto& [Name, Argument] : *ArgsObject)
+        if (ArgsVal->IsObject())
         {
-            FGV2UiControlValue& Converted = OutDefinition.BoundArgs.AddDefaulted_GetRef();
-            if (!ToControlValue(Name, Argument, Converted)) return false;
+            for (const auto& [Name, Argument] : ArgsVal->AsObject())
+            {
+                FGV2UiControlValue& Converted = OutDefinition.BoundArgs.AddDefaulted_GetRef();
+                if (!ToControlValue(Name, Argument, Converted)) return false;
+            }
         }
     }
     return true;
@@ -228,343 +136,254 @@ bool ScalarKindToControlValueType(GV2ContentCore::EScalarFieldKind Kind, EGV2UiC
     case GV2ContentCore::EScalarFieldKind::Integer: OutType = EGV2UiControlValueType::Integer; return true;
     case GV2ContentCore::EScalarFieldKind::Number: OutType = EGV2UiControlValueType::Number; return true;
     case GV2ContentCore::EScalarFieldKind::String: OutType = EGV2UiControlValueType::String; return true;
-    default: return false;
+    case GV2ContentCore::EScalarFieldKind::Enum: return false;
     }
+    return false;
 }
 
-// UPP-27: the single schema-driven walk that replaces every former per-schema
-// adapter. It is called twice per field with the exact same (Spec, RawValue)
-// tree, in the exact same deterministic order (schema field-declaration order
-// for objects, array order for arrays):
-//   1. Collect pass (bOutValue == nullptr, Ctx.CollectDefinitions != nullptr):
-//      walks the tree validating it against Spec (closed objects, required
-//      fields, key identity, scalar/text/ref shape) and appends one
-//      FGV2UiBindingDefinition per Binding-kind node it finds.
-//   2. Materialize pass (Ctx.Handles != nullptr, OutValue != nullptr): walks
-//      the *same* tree again, re-validating it (defensive, not just trusting
-//      the first pass), and this time builds the real FGV2PreparedUiValue,
-//      consuming the next handle from Ctx.Handles (produced by
-//      FGV2UiBindingRegistry::PrepareBindings against pass 1's definitions,
-//      in the same order) for every Binding-kind node instead of reading one.
-// A field or array item absent from the raw value but optional in the schema
-// is simply omitted from the materialized Object -- PrepareUiHostProperties
-// already treats "absent from Candidate" as a reset mutation.
-struct FWalkContext
+struct FCollectBindingsContext
 {
     const FGV2UiSchemaCache* SchemaCache = nullptr;
     std::string ScreenId;
-    TArray<FGV2UiBindingDefinition>* CollectDefinitions = nullptr;
-    const TArray<FGV2UiBindingHandle>* Handles = nullptr;
-    int32* HandleCursor = nullptr;
+    TArray<FGV2UiBindingDefinition>* Definitions = nullptr;
 };
 
-bool WalkFieldValue(
-    FWalkContext& Ctx,
+bool CollectBindingDefinitions(
+    FCollectBindingsContext& Ctx,
     const GV2ContentCore::FCompiledUiFieldSpec& Spec,
-    const GV2RuntimeCore::FValue& RawValue,
+    const GV2ContentCore::FValue& MaterializedValue,
     const TArray<FString>& NodePath,
-    const FString& ElementKey,
-    const FString& DiagPath,
-    FGV2PreparedUiValue* OutValue,
-    FString& OutError)
+    const FString& ElementKey)
 {
     using namespace GV2ContentCore;
+    switch (Spec.Kind)
+    {
+    case EUiFieldKind::Binding:
+    {
+        FGV2UiBindingDefinition Definition;
+        if (!ReadBinding(MaterializedValue, NodePath, WidgetElementId(Ctx.ScreenId, ElementKey), Definition))
+        {
+            return false;
+        }
+        if (Spec.BindingInputSchemaId.has_value())
+        {
+            FString SchemaError;
+            GV2ContentCore::FCompiledUiFieldSpecPtr InputSchema =
+                Ctx.SchemaCache->GetCompiledSchema(*Spec.BindingInputSchemaId, SchemaError);
+            if (InputSchema == nullptr || InputSchema->Kind != EUiFieldKind::Object)
+            {
+                return false;
+            }
+            Definition.InputSchemaId = UTF8_TO_TCHAR(Spec.BindingInputSchemaId->c_str());
+            for (const FCompiledUiObjectField& InputField : InputSchema->Fields)
+            {
+                EGV2UiControlValueType InputType;
+                if (!InputField.Spec || InputField.Spec->Kind != EUiFieldKind::Scalar
+                    || !InputField.Spec->Scalar.has_value()
+                    || !ScalarKindToControlValueType(InputField.Spec->Scalar->Kind, InputType))
+                {
+                    return false;
+                }
+                FGV2UiInputFieldDefinition& InputDef = Definition.InputFields.AddDefaulted_GetRef();
+                InputDef.Name = FName(UTF8_TO_TCHAR(InputField.Name.c_str()));
+                InputDef.Type = InputType;
+                InputDef.bRequired = InputField.bRequired;
+            }
+        }
+        Ctx.Definitions->Add(MoveTemp(Definition));
+        return true;
+    }
+    case EUiFieldKind::Object:
+    {
+        if (!MaterializedValue.IsObject()) return false;
+        for (const FCompiledUiObjectField& FieldSpec : Spec.Fields)
+        {
+            const GV2ContentCore::FValue* ChildVal = MaterializedValue.FindField(FieldSpec.Name);
+            if (ChildVal == nullptr) continue;
+            if (!FieldSpec.Spec) return false;
+            if (!CollectBindingDefinitions(
+                    Ctx,
+                    *FieldSpec.Spec,
+                    *ChildVal,
+                    NodePath,
+                    ElementKey))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    case EUiFieldKind::Array:
+    {
+        if (!MaterializedValue.IsArray() || !Spec.Items) return false;
+        int32 Index = 0;
+        for (const GV2ContentCore::FValue& ItemVal : MaterializedValue.AsArray())
+        {
+            FString ItemKeyStr = FString::Printf(TEXT("%d"), Index);
+            if (Spec.KeyedBy.has_value() && ItemVal.IsObject())
+            {
+                if (const GV2ContentCore::FValue* KeyVal = ItemVal.FindField(*Spec.KeyedBy))
+                {
+                    if (KeyVal->IsString())
+                    {
+                        ItemKeyStr = UTF8_TO_TCHAR(KeyVal->AsString().c_str());
+                    }
+                }
+            }
+
+            TArray<FString> ItemNodePath = NodePath;
+            ItemNodePath.Add(ItemKeyStr);
+            const FString ItemElementKey = Spec.KeyedBy.has_value() ? ItemKeyStr : ElementKey;
+
+            if (!CollectBindingDefinitions(
+                    Ctx,
+                    *Spec.Items,
+                    ItemVal,
+                    ItemNodePath,
+                    ItemElementKey))
+            {
+                return false;
+            }
+            ++Index;
+        }
+        return true;
+    }
+    case EUiFieldKind::Scalar:
+    case EUiFieldKind::Key:
+    case EUiFieldKind::Text:
+    case EUiFieldKind::Ref:
+    case EUiFieldKind::ScreenFields:
+        return true;
+    }
+    return true;
+}
+
+} // anonymous namespace
+
+// PCC-03 verification: exposed (not anonymous-namespace-local) so a test can drive
+// the exact same raw-value -> FGV2PreparedUiValue projection BuildFields uses,
+// end to end from a hand-built ValidateUiFieldValue() output, without needing a
+// file-backed schema in GameData/ just to exercise this step.
+namespace GV2ScreenFieldMaterializer
+{
+bool ProjectMaterializedValue(
+    FMaterializeContext& Ctx,
+    const GV2ContentCore::FCompiledUiFieldSpec& Spec,
+    const GV2ContentCore::FValue& MaterializedValue,
+    FGV2PreparedUiValue& OutValue)
+{
+    using namespace GV2ContentCore;
+    if (MaterializedValue.IsNull())
+    {
+        OutValue = FGV2PreparedUiValue::MakeNull();
+        return true;
+    }
 
     switch (Spec.Kind)
     {
     case EUiFieldKind::Scalar:
     {
-        if (!Spec.Scalar.has_value())
-        {
-            OutError = FString::Printf(TEXT("'%s': scalar field has no scalar spec"), *DiagPath);
-            return false;
-        }
+        if (!Spec.Scalar.has_value()) return false;
         switch (Spec.Scalar->Kind)
         {
         case EScalarFieldKind::Boolean:
-            if (const bool* B = std::get_if<bool>(&RawValue.Data))
-            {
-                if (OutValue) *OutValue = FGV2PreparedUiValue::MakeBoolean(*B);
-                return true;
-            }
-            break;
+            OutValue = FGV2PreparedUiValue::MakeBoolean(MaterializedValue.AsBoolean());
+            return true;
         case EScalarFieldKind::Integer:
-            if (const std::int64_t* I = std::get_if<std::int64_t>(&RawValue.Data))
-            {
-                if (OutValue) *OutValue = FGV2PreparedUiValue::MakeInteger(*I);
-                return true;
-            }
-            break;
+            OutValue = FGV2PreparedUiValue::MakeInteger(MaterializedValue.AsInteger());
+            return true;
         case EScalarFieldKind::Number:
-            if (const double* D = std::get_if<double>(&RawValue.Data))
-            {
-                if (OutValue) *OutValue = FGV2PreparedUiValue::MakeNumber(*D);
-                return true;
-            }
-            if (const std::int64_t* I = std::get_if<std::int64_t>(&RawValue.Data))
-            {
-                if (OutValue) *OutValue = FGV2PreparedUiValue::MakeNumber(static_cast<double>(*I));
-                return true;
-            }
-            break;
+            OutValue = FGV2PreparedUiValue::MakeNumber(MaterializedValue.AsNumber());
+            return true;
         case EScalarFieldKind::String:
-            if (const std::string* S = std::get_if<std::string>(&RawValue.Data))
-            {
-                if (OutValue) *OutValue = FGV2PreparedUiValue::MakeString(UTF8_TO_TCHAR(S->c_str()));
-                return true;
-            }
-            break;
-        default:
-            break;
+            OutValue = FGV2PreparedUiValue::MakeString(UTF8_TO_TCHAR(MaterializedValue.AsString().c_str()));
+            return true;
+        case EScalarFieldKind::Enum:
+            return false;
         }
-        OutError = FString::Printf(TEXT("'%s': value does not match its scalar schema kind"), *DiagPath);
         return false;
     }
     case EUiFieldKind::Key:
     {
-        const std::string* S = std::get_if<std::string>(&RawValue.Data);
-        if (S == nullptr || !IsValidKeyValue(*S))
-        {
-            OutError = FString::Printf(TEXT("'%s': invalid key value"), *DiagPath);
-            return false;
-        }
-        if (OutValue) *OutValue = FGV2PreparedUiValue::MakeKey(UTF8_TO_TCHAR(S->c_str()));
+        OutValue = FGV2PreparedUiValue::MakeKey(UTF8_TO_TCHAR(MaterializedValue.AsString().c_str()));
         return true;
     }
     case EUiFieldKind::Text:
     {
-        // Shape-only in the collect pass (binding discovery never needed localized
-        // text, and requiring the text pipeline to resolve during collection would
-        // make PrepareBindingDefinitions depend on catalog/theme setup it has no
-        // business needing); full resolution only when actually materializing.
-        if (OutValue == nullptr)
-        {
-            GV2RuntimeCore::FTextSpec ShapeOnly;
-            if (!ReadTextSpec(RawValue, ShapeOnly))
-            {
-                OutError = FString::Printf(TEXT("'%s': malformed TextSpec"), *DiagPath);
-                return false;
-            }
-            return true;
-        }
         FGV2TextViewModel Resolved;
-        if (!ResolveText(RawValue, Resolved))
+        if (!ResolveText(MaterializedValue, Resolved))
         {
-            OutError = FString::Printf(TEXT("'%s': invalid or unresolvable TextSpec"), *DiagPath);
             return false;
         }
-        *OutValue = FGV2PreparedUiValue::MakeText(MoveTemp(Resolved));
+        OutValue = FGV2PreparedUiValue::MakeText(MoveTemp(Resolved));
         return true;
     }
     case EUiFieldKind::Ref:
     {
-        const std::string* S = std::get_if<std::string>(&RawValue.Data);
-        if (S == nullptr || !GV2RuntimeCore::FStableId::IsOfKind(*S, Spec.RefTargetKind))
-        {
-            OutError = FString::Printf(TEXT("'%s': value is not a Stable ID of target_kind '%s'"), *DiagPath, UTF8_TO_TCHAR(Spec.RefTargetKind.c_str()));
-            return false;
-        }
-        if (OutValue) *OutValue = FGV2PreparedUiValue::MakeStableId(UTF8_TO_TCHAR(S->c_str()), UTF8_TO_TCHAR(Spec.RefTargetKind.c_str()));
+        OutValue = FGV2PreparedUiValue::MakeStableId(
+            UTF8_TO_TCHAR(MaterializedValue.AsString().c_str()),
+            UTF8_TO_TCHAR(Spec.RefTargetKind.c_str()));
         return true;
     }
     case EUiFieldKind::Binding:
     {
-        if (Ctx.CollectDefinitions != nullptr)
-        {
-            FGV2UiBindingDefinition Definition;
-            if (!ReadBinding(RawValue, NodePath, WidgetElementId(Ctx.ScreenId, ElementKey), Definition))
-            {
-                OutError = FString::Printf(TEXT("'%s': invalid Binding value"), *DiagPath);
-                return false;
-            }
-            if (Spec.BindingInputSchemaId.has_value())
-            {
-                FString SchemaError;
-                GV2ContentCore::FCompiledUiFieldSpecPtr InputSchema =
-                    Ctx.SchemaCache->GetCompiledSchema(*Spec.BindingInputSchemaId, SchemaError);
-                if (InputSchema == nullptr || InputSchema->Kind != EUiFieldKind::Object)
-                {
-                    OutError = FString::Printf(
-                        TEXT("'%s': binding_input_schema_id '%s' did not resolve to a compiled Object schema (%s)"),
-                        *DiagPath, UTF8_TO_TCHAR(Spec.BindingInputSchemaId->c_str()), *SchemaError);
-                    return false;
-                }
-                Definition.InputSchemaId = UTF8_TO_TCHAR(Spec.BindingInputSchemaId->c_str());
-                for (const FCompiledUiObjectField& InputField : InputSchema->Fields)
-                {
-                    EGV2UiControlValueType InputType;
-                    if (!InputField.Spec || InputField.Spec->Kind != EUiFieldKind::Scalar
-                        || !InputField.Spec->Scalar.has_value()
-                        || !ScalarKindToControlValueType(InputField.Spec->Scalar->Kind, InputType))
-                    {
-                        OutError = FString::Printf(TEXT("'%s': binding input field '%s' is not a supported scalar kind"), *DiagPath, UTF8_TO_TCHAR(InputField.Name.c_str()));
-                        return false;
-                    }
-                    FGV2UiInputFieldDefinition& InputDef = Definition.InputFields.AddDefaulted_GetRef();
-                    InputDef.Name = FName(UTF8_TO_TCHAR(InputField.Name.c_str()));
-                    InputDef.Type = InputType;
-                    InputDef.bRequired = InputField.bRequired;
-                }
-            }
-            Ctx.CollectDefinitions->Add(MoveTemp(Definition));
-            return true;
-        }
-
         check(Ctx.Handles != nullptr && Ctx.HandleCursor != nullptr);
-        // Defensive re-validation: the materialize pass never trusts that the
-        // collect pass already ran cleanly against this exact value.
-        FGV2UiBindingDefinition Discard;
-        if (!ReadBinding(RawValue, NodePath, WidgetElementId(Ctx.ScreenId, ElementKey), Discard))
-        {
-            OutError = FString::Printf(TEXT("'%s': invalid Binding value"), *DiagPath);
-            return false;
-        }
         if (!Ctx.Handles->IsValidIndex(*Ctx.HandleCursor))
         {
-            OutError = FString::Printf(TEXT("'%s': binding handle set is shorter than the value tree (internal consistency error)"), *DiagPath);
             return false;
         }
-        if (OutValue) *OutValue = FGV2PreparedUiValue::MakeBinding((*Ctx.Handles)[*Ctx.HandleCursor]);
+        OutValue = FGV2PreparedUiValue::MakeBinding((*Ctx.Handles)[*Ctx.HandleCursor]);
         ++(*Ctx.HandleCursor);
         return true;
     }
     case EUiFieldKind::Object:
     {
-        const FObject* Object = AsObject(RawValue);
-        if (Object == nullptr)
-        {
-            OutError = FString::Printf(TEXT("'%s': value is not an object"), *DiagPath);
-            return false;
-        }
-        for (const auto& [Key, Val] : *Object)
-        {
-            const bool bKnown = std::any_of(
-                Spec.Fields.begin(), Spec.Fields.end(),
-                [&Key](const FCompiledUiObjectField& F) { return F.Name == Key; });
-            if (!bKnown)
-            {
-                OutError = FString::Printf(TEXT("'%s': unknown key '%s' rejected (closed schema)"), *DiagPath, UTF8_TO_TCHAR(Key.c_str()));
-                // BAI-03/REV3-03: this is the one rejection reason worth an Error-severity
-                // log on its own -- a property nobody consumes must be loud, not just
-                // returned as a bool. Every other validation failure below (missing
-                // required field, bad key grammar, type mismatch, unresolvable text,
-                // malformed binding) is reported only through OutError/the bool return,
-                // exactly like the pre-UPP-27 helpers this replaces.
-                UE_LOG(LogTemp, Error, TEXT("ScreenField: %s"), *OutError);
-                return false;
-            }
-        }
-
+        if (!MaterializedValue.IsObject()) return false;
         TArray<TPair<FString, FGV2PreparedUiValue>> MaterializedFields;
         for (const FCompiledUiObjectField& FieldSpec : Spec.Fields)
         {
-            const FString ChildName = UTF8_TO_TCHAR(FieldSpec.Name.c_str());
-            const GV2RuntimeCore::FValue* ChildRaw = FindValue(*Object, FieldSpec.Name);
-            if (ChildRaw == nullptr)
+            const GV2ContentCore::FValue* ChildVal = MaterializedValue.FindField(FieldSpec.Name);
+            if (ChildVal == nullptr)
             {
-                if (FieldSpec.bRequired)
-                {
-                    OutError = FString::Printf(TEXT("'%s': required field '%s' is absent"), *DiagPath, *ChildName);
-                    return false;
-                }
                 continue;
             }
-            if (!FieldSpec.Spec)
-            {
-                OutError = FString::Printf(TEXT("'%s.%s': field has no compiled spec"), *DiagPath, *ChildName);
-                return false;
-            }
-            const FString ChildDiagPath = DiagPath.IsEmpty() ? ChildName : FString::Printf(TEXT("%s.%s"), *DiagPath, *ChildName);
-            FGV2PreparedUiValue ChildValue;
-            if (!WalkFieldValue(Ctx, *FieldSpec.Spec, *ChildRaw, NodePath, ElementKey, ChildDiagPath, OutValue ? &ChildValue : nullptr, OutError))
+            if (!FieldSpec.Spec) return false;
+
+            FGV2PreparedUiValue ChildPrepared;
+            if (!ProjectMaterializedValue(Ctx, *FieldSpec.Spec, *ChildVal, ChildPrepared))
             {
                 return false;
             }
-            if (OutValue)
-            {
-                MaterializedFields.Emplace(ChildName, MoveTemp(ChildValue));
-            }
+            MaterializedFields.Emplace(UTF8_TO_TCHAR(FieldSpec.Name.c_str()), MoveTemp(ChildPrepared));
         }
-        if (OutValue) *OutValue = FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(MaterializedFields)));
+        OutValue = FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(MaterializedFields)));
         return true;
     }
     case EUiFieldKind::Array:
     {
-        const FArray* Items = AsArray(RawValue);
-        if (Items == nullptr)
-        {
-            OutError = FString::Printf(TEXT("'%s': value is not an array"), *DiagPath);
-            return false;
-        }
-        if (!Spec.Items)
-        {
-            OutError = FString::Printf(TEXT("'%s': array schema has no item spec"), *DiagPath);
-            return false;
-        }
-        if (Spec.MinimumItems.has_value() && Items->size() < *Spec.MinimumItems)
-        {
-            OutError = FString::Printf(TEXT("'%s': has fewer than the minimum %llu item(s)"), *DiagPath, static_cast<unsigned long long>(*Spec.MinimumItems));
-            return false;
-        }
-        if (Spec.MaximumItems.has_value() && Items->size() > *Spec.MaximumItems)
-        {
-            OutError = FString::Printf(TEXT("'%s': has more than the maximum %llu item(s)"), *DiagPath, static_cast<unsigned long long>(*Spec.MaximumItems));
-            return false;
-        }
-
-        TSet<FName> SeenKeys;
+        if (!MaterializedValue.IsArray() || !Spec.Items) return false;
         TArray<FGV2PreparedUiValue> MaterializedItems;
-        int32 Index = 0;
-        for (const GV2RuntimeCore::FValue& ItemRaw : *Items)
+        for (const GV2ContentCore::FValue& ItemVal : MaterializedValue.AsArray())
         {
-            const FObject* ItemObject = AsObject(ItemRaw);
-            FString ItemKeyStr = FString::Printf(TEXT("%d"), Index);
-            if (Spec.KeyedBy.has_value())
-            {
-                if (ItemObject == nullptr)
-                {
-                    OutError = FString::Printf(TEXT("'%s[%d]': keyed array item is not an object"), *DiagPath, Index);
-                    return false;
-                }
-                const std::string* KeyRaw = FindString(*ItemObject, *Spec.KeyedBy);
-                if (!ValidateRepeatedElementKey(KeyRaw, SeenKeys))
-                {
-                    OutError = FString::Printf(TEXT("'%s[%d]': missing, invalid, or duplicate '%s'"), *DiagPath, Index, UTF8_TO_TCHAR(Spec.KeyedBy->c_str()));
-                    return false;
-                }
-                ItemKeyStr = UTF8_TO_TCHAR(KeyRaw->c_str());
-            }
-
-            TArray<FString> ItemNodePath = NodePath;
-            ItemNodePath.Add(ItemKeyStr);
-            const FString ItemDiagPath = FString::Printf(TEXT("%s.%s"), *DiagPath, *ItemKeyStr);
-            // Matches the pre-UPP-27 element id scheme: an array item's element id is
-            // its own key, not the array's field path -- Spec.KeyedBy already guarantees
-            // uniqueness within this one array, and every schema in production today has
-            // at most one bindable keyed array per field, so this cannot collide.
-            const FString ItemElementKey = Spec.KeyedBy.has_value() ? ItemKeyStr : ElementKey;
-
-            FGV2PreparedUiValue ItemValue;
-            if (!WalkFieldValue(Ctx, *Spec.Items, ItemRaw, ItemNodePath, ItemElementKey, ItemDiagPath, OutValue ? &ItemValue : nullptr, OutError))
+            FGV2PreparedUiValue ItemPrepared;
+            if (!ProjectMaterializedValue(Ctx, *Spec.Items, ItemVal, ItemPrepared))
             {
                 return false;
             }
-            if (OutValue)
-            {
-                MaterializedItems.Add(MoveTemp(ItemValue));
-            }
-            ++Index;
+            MaterializedItems.Add(MoveTemp(ItemPrepared));
         }
-        if (OutValue) *OutValue = FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(MaterializedItems)));
+        OutValue = FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(MaterializedItems)));
         return true;
     }
     case EUiFieldKind::ScreenFields:
-    default:
-        OutError = FString::Printf(TEXT("'%s': field kind is not supported by the screen field materializer"), *DiagPath);
         return false;
     }
+    return false;
 }
+} // namespace GV2ScreenFieldMaterializer
 
+namespace
+{
 TArray<FString> DiscoverDefaultSchemaPackageRoots()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
@@ -575,27 +394,52 @@ TArray<FString> DiscoverDefaultSchemaPackageRoots()
         FPaths::Combine(GameDataDir, TEXT("rh")),
         FPaths::Combine(GameDataDir, TEXT("sample")),
     };
-    // Schema discovery is purely additive lookup-by-id, unlike loading a
-    // package's actual definitions/scripts: scanning both "rh" and "sample"
-    // even though only one is ever an active gameplay package cannot collide
-    // (schema ids are globally namespaced) and keeps this cache free of the
-    // Editor-settings/test-override branching that ResolveRepositoryPackageRoots()
-    // needs for choosing which package's *content* loads.
     return Roots;
 }
-}
+} // anonymous namespace
 
 namespace
 {
-// Lazily discovered/compiled once, reused across every call in the process --
-// exactly the caching FGV2ScreenFieldAdapterRegistry::Get()'s static singleton
-// used to provide, just without a class wrapping it.
 FGV2UiSchemaCache& GetSchemaCache()
 {
     static FGV2UiSchemaCache Cache(DiscoverDefaultSchemaPackageRoots());
     return Cache;
 }
+static void NormalizeArraysInContentValue(
+    const GV2ContentCore::FCompiledUiFieldSpec& Spec,
+    GV2ContentCore::FValue& Value)
+{
+    using namespace GV2ContentCore;
+    if (Spec.Kind == EUiFieldKind::Array)
+    {
+        if (Value.IsObject() && Value.AsObject().empty())
+        {
+            Value = FValue::MakeArray({});
+            return;
+        }
+        if (Value.IsArray() && Spec.Items)
+        {
+            for (FValue& Item : Value.AsArray())
+            {
+                NormalizeArraysInContentValue(*Spec.Items, Item);
+            }
+        }
+    }
+    else if (Spec.Kind == EUiFieldKind::Object && Value.IsObject())
+    {
+        for (const FCompiledUiObjectField& Field : Spec.Fields)
+        {
+            if (Field.Spec)
+            {
+                if (FValue* Child = Value.FindField(Field.Name))
+                {
+                    NormalizeArraysInContentValue(*Field.Spec, *Child);
+                }
+            }
+        }
+    }
 }
+} // anonymous namespace
 
 namespace GV2ScreenFieldMaterializer
 {
@@ -620,22 +464,51 @@ bool PrepareBindingDefinitions(
             return false;
         }
 
-        FWalkContext Ctx;
-        Ctx.SchemaCache = &GetSchemaCache();
-        Ctx.ScreenId = Request.ScreenId;
-        Ctx.CollectDefinitions = &OutDefinitions;
+        GV2ContentCore::FValue ContentValue = GV2RuntimeCore::RuntimeValueToContentValue(Field.Value);
+        NormalizeArraysInContentValue(*Schema, ContentValue);
 
-        FString Error;
-        if (!WalkFieldValue(
-                Ctx,
+        GV2ContentCore::FValue Materialized;
+        std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+        GV2ContentCore::FValidationDiagnosticContext Ctx;
+        Ctx.SchemaId = Field.SchemaId;
+        if (!GV2ContentCore::ValidateUiFieldValue(
+                ContentValue,
                 *Schema,
-                Field.Value,
-                {TEXT("route"), TEXT("main"), FieldIdOf(Field)},
-                FieldIdOf(Field),
-                FieldIdOf(Field),
+                Materialized,
                 nullptr,
-                Error))
+                "",
+                Ctx,
+                Diagnostics))
         {
+            for (const GV2ContentCore::FDiagnostic& Diag : Diagnostics)
+            {
+                if (Diag.Code == "core:diagnostic.ui_schema.value.unknown_field")
+                {
+                    UE_LOG(LogTemp, Error, TEXT("ScreenField: '%s': %s rejected (closed schema)"),
+                        *FieldIdOf(Field), UTF8_TO_TCHAR(Diag.Message.c_str()));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("ScreenField: '%s': %s at '%s' [%s]"),
+                        *FieldIdOf(Field), UTF8_TO_TCHAR(Diag.Message.c_str()), UTF8_TO_TCHAR(Diag.JsonPointer.value_or("").c_str()), UTF8_TO_TCHAR(Diag.Code.c_str()));
+                }
+            }
+            OutDefinitions.Reset();
+            return false;
+        }
+
+        FCollectBindingsContext BindContext;
+        BindContext.SchemaCache = &GetSchemaCache();
+        BindContext.ScreenId = Request.ScreenId;
+        BindContext.Definitions = &OutDefinitions;
+        if (!CollectBindingDefinitions(
+                BindContext,
+                *Schema,
+                Materialized,
+                {TEXT("route"), TEXT("main"), FieldIdOf(Field)},
+                FieldIdOf(Field)))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ScreenField: '%s': CollectBindingDefinitions returned false"), *FieldIdOf(Field));
             OutDefinitions.Reset();
             return false;
         }
@@ -662,24 +535,49 @@ bool BuildFields(
             return false;
         }
 
-        FWalkContext Ctx;
-        Ctx.SchemaCache = &GetSchemaCache();
-        Ctx.ScreenId = Request.ScreenId;
-        Ctx.Handles = &Handles;
-        Ctx.HandleCursor = &HandleCursor;
+        GV2ContentCore::FValue ContentValue = GV2RuntimeCore::RuntimeValueToContentValue(Field.Value);
+        NormalizeArraysInContentValue(*Schema, ContentValue);
 
-        FGV2PreparedUiValue Materialized;
-        FString Error;
-        if (!WalkFieldValue(
-                Ctx,
+        GV2ContentCore::FValue Materialized;
+        std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+        GV2ContentCore::FValidationDiagnosticContext Ctx;
+        Ctx.SchemaId = Field.SchemaId;
+        if (!GV2ContentCore::ValidateUiFieldValue(
+                ContentValue,
                 *Schema,
-                Field.Value,
-                {TEXT("route"), TEXT("main"), FieldIdOf(Field)},
-                FieldIdOf(Field),
-                FieldIdOf(Field),
-                &Materialized,
-                Error)
-            || !Materialized.IsObject())
+                Materialized,
+                nullptr,
+                "",
+                Ctx,
+                Diagnostics))
+        {
+            for (const GV2ContentCore::FDiagnostic& Diag : Diagnostics)
+            {
+                if (Diag.Code == "core:diagnostic.ui_schema.value.unknown_field")
+                {
+                    UE_LOG(LogTemp, Error, TEXT("ScreenField: '%s': %s rejected (closed schema)"),
+                        *FieldIdOf(Field), UTF8_TO_TCHAR(Diag.Message.c_str()));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("ScreenField: '%s': %s at '%s' [%s]"),
+                        *FieldIdOf(Field), UTF8_TO_TCHAR(Diag.Message.c_str()), UTF8_TO_TCHAR(Diag.JsonPointer.value_or("").c_str()), UTF8_TO_TCHAR(Diag.Code.c_str()));
+                }
+            }
+            OutFields.Reset();
+            return false;
+        }
+
+        FMaterializeContext MatContext;
+        MatContext.Handles = &Handles;
+        MatContext.HandleCursor = &HandleCursor;
+        FGV2PreparedUiValue PreparedValue;
+        if (!ProjectMaterializedValue(
+                MatContext,
+                *Schema,
+                Materialized,
+                PreparedValue)
+            || !PreparedValue.IsObject())
         {
             OutFields.Reset();
             return false;
@@ -688,7 +586,7 @@ bool BuildFields(
         FGV2ScreenFieldValue& OutField = OutFields.AddDefaulted_GetRef();
         OutField.FieldId = FName(FieldIdOf(Field));
         OutField.SchemaId = UTF8_TO_TCHAR(Field.SchemaId.c_str());
-        OutField.PreparedValue = Materialized.AsObjectRef();
+        OutField.PreparedValue = PreparedValue.AsObjectRef();
         OutField.CompiledSchema = Schema;
     }
 
@@ -700,4 +598,4 @@ bool BuildFields(
     }
     return true;
 }
-}
+} // namespace GV2ScreenFieldMaterializer

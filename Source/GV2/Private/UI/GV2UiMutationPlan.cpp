@@ -3,6 +3,8 @@
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2ListViewWidgetBase.h"
+#include "UI/GV2PropertyConsumers.h"
+#include "UI/GV2ScreenFieldHost.h"
 
 bool PrepareUiHostProperties(
     UUserWidget* HostWidget,
@@ -34,6 +36,7 @@ bool PrepareUiHostProperties(
 
         // Check if Schema owns this property
         bool bSchemaOwns = false;
+        const GV2ContentCore::FCompiledUiFieldSpecPtr* MatchingFieldSpec = nullptr;
         if (Schema.Kind == GV2ContentCore::EUiFieldKind::Object || Schema.Kind == GV2ContentCore::EUiFieldKind::ScreenFields)
         {
             for (const auto& FieldEntry : Schema.Fields)
@@ -41,6 +44,7 @@ bool PrepareUiHostProperties(
                 if (UTF8_TO_TCHAR(FieldEntry.Name.c_str()) == PropName)
                 {
                     bSchemaOwns = true;
+                    MatchingFieldSpec = &FieldEntry.Spec;
                     break;
                 }
             }
@@ -132,6 +136,27 @@ bool PrepareUiHostProperties(
                     Diag.Message = FString::Printf(TEXT("No consumer available for kind on property '%s'"), *PropName);
                     OutDiagnostics.Add(MoveTemp(Diag));
                     return false;
+                }
+
+                if (FGV2KeyedCollectionPropertyConsumer* CollConsumer = static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get()))
+                {
+                    if (MatchingFieldSpec != nullptr && *MatchingFieldSpec != nullptr && (*MatchingFieldSpec)->Items != nullptr)
+                    {
+                        FString FieldIdStr = PropName;
+                        if (HostWidget != nullptr && HostWidget->GetClass()->ImplementsInterface(UGV2ScreenFieldHost::StaticClass()))
+                        {
+                            if (IGV2ScreenFieldHost* ScreenFieldHost = Cast<IGV2ScreenFieldHost>(HostWidget))
+                            {
+                                FieldIdStr = ScreenFieldHost->GetScreenFieldId().ToString();
+                            }
+                        }
+                        CollConsumer->SetCompiledItemSpec(
+                            (*MatchingFieldSpec)->Items,
+                            SchemaId,
+                            ChildPath,
+                            FString(),
+                            FieldIdStr);
+                    }
                 }
 
                 FString PrepError;

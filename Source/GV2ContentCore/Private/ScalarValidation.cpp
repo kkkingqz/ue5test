@@ -430,7 +430,7 @@ bool ValidateScalarValue(
     {
     case EScalarFieldKind::Boolean: bCorrectType = Value.IsBoolean(); break;
     case EScalarFieldKind::Integer: bCorrectType = Value.IsInteger(); break;
-    case EScalarFieldKind::Number: bCorrectType = Value.IsNumber(); break;
+    case EScalarFieldKind::Number: bCorrectType = Value.IsNumber() || Value.IsInteger(); break;
     case EScalarFieldKind::String: bCorrectType = Value.IsString(); break;
     case EScalarFieldKind::Enum:
         bCorrectType = std::find(FieldSpec.EnumValues.begin(), FieldSpec.EnumValues.end(), Value)
@@ -465,7 +465,7 @@ bool ValidateScalarValue(
     }
     else if (FieldSpec.Kind == EScalarFieldKind::Number)
     {
-        const double Number = Value.AsNumber();
+        const double Number = Value.IsNumber() ? Value.AsNumber() : static_cast<double>(Value.AsInteger());
         const bool bBelowMinimum = FieldSpec.MinimumNumber.has_value()
             && (FieldSpec.bMinimumExclusive ? Number <= *FieldSpec.MinimumNumber : Number < *FieldSpec.MinimumNumber);
         const bool bAboveMaximum = FieldSpec.MaximumNumber.has_value()

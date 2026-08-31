@@ -2,6 +2,7 @@
 
 #include "Bridge/GV2BridgeRuntimeTypes.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
+#include "UI/GV2PreparedUiValue.h"
 
 #include <string_view>
 
@@ -30,4 +31,20 @@ bool BuildFields(
     TArray<FGV2ScreenFieldValue>& OutFields);
 
 bool IsKnownSchema(const std::string& SchemaId);
+
+// Exposed for PCC-03 verification: the same raw-materialized-value -> prepared-value
+// projection BuildFields() uses internally, callable directly against a hand-built
+// schema/value so a test can drive the real production projection end to end
+// without requiring a file-backed schema under GameData/.
+struct FMaterializeContext
+{
+    const TArray<FGV2UiBindingHandle>* Handles = nullptr;
+    int32* HandleCursor = nullptr;
+};
+
+bool ProjectMaterializedValue(
+    FMaterializeContext& Ctx,
+    const GV2ContentCore::FCompiledUiFieldSpec& Spec,
+    const GV2ContentCore::FValue& MaterializedValue,
+    FGV2PreparedUiValue& OutValue);
 }

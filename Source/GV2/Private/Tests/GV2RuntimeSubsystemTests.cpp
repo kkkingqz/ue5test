@@ -1335,7 +1335,8 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 || WidgetClass->IsChildOf(UGV2LocationTopBarWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationPlayerStatusWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationSceneWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2LocationCommandPanelWidgetBase::StaticClass());
+                || WidgetClass->IsChildOf(UGV2LocationCommandPanelWidgetBase::StaticClass())
+                || WidgetClass->IsChildOf(UGV2ProgressBarWidgetBase::StaticClass());
             TestTrue(
                 *FString::Printf(
                     TEXT("Text-bearing WBP must use a Text Pipeline native base: %s"),
@@ -5352,6 +5353,110 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             PrepareWithExtraBtnProp("custom_width", GV2RuntimeCore::FValue(static_cast<std::int64_t>(64))));
         TestFalse(TEXT("REV3-03: button rejects style"),
             PrepareWithExtraBtnProp("style", GV2RuntimeCore::FValue(std::string("danger"))));
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ScreenFieldUnifiedValidatorPcc04Test,
+    "GV2.Runtime.Presentation.ScreenFieldUnifiedValidatorPcc04",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters)
+{
+    auto ReadSource = [this](const TCHAR* RelativePath, FString& OutSource)
+    {
+        const FString FullPath = FPaths::Combine(FPaths::ProjectDir(), RelativePath);
+        const bool bLoaded = FFileHelper::LoadFileToString(OutSource, *FullPath);
+        TestTrue(*FString::Printf(TEXT("Source audit can read %s"), RelativePath), bLoaded);
+        return bLoaded;
+    };
+
+    // 1. Enforce that materializer uses the portable ValidateUiFieldValue and second implementation is removed
+    FString MaterializerSource;
+    if (ReadSource(
+            TEXT("Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp"),
+            MaterializerSource))
+    {
+        TestTrue(
+            TEXT("PCC-04: GV2ScreenFieldMaterializer delegates to GV2ContentCore::ValidateUiFieldValue"),
+            MaterializerSource.Contains(TEXT("GV2ContentCore::ValidateUiFieldValue")));
+        TestFalse(
+            TEXT("PCC-04: Second validator WalkFieldValue is completely deleted"),
+            MaterializerSource.Contains(TEXT("WalkFieldValue")));
+    }
+
+    // 2. Parity check: Test min/max and constraint validation in BuildFields vs ValidateUiFieldValue
+    using FObject = GV2RuntimeCore::FValue::FObject;
+    using FArray = GV2RuntimeCore::FValue::FArray;
+
+    auto RunBuildFields = [](const std::string& SchemaId, const std::string& FieldId, GV2RuntimeCore::FValue Value) -> bool
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = "textsystem:screen.location";
+        GV2RuntimeCore::FScreenField Field;
+        Field.FieldId = FieldId;
+        Field.SchemaId = SchemaId;
+        Field.Value = MoveTemp(Value);
+        Request.Fields.push_back(MoveTemp(Field));
+
+        TArray<FGV2ScreenFieldValue> Fields;
+        return GV2ScreenFieldMaterializer::BuildFields(Request, {}, Fields);
+    };
+
+    // Valid meters percent within [0.0, 1.0] succeeds
+    {
+        FObject StatusObj;
+        FObject NameObj;
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
+        
+        FObject MeterObj;
+        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("hp"));
+        MeterObj["percent"] = GV2RuntimeCore::FValue(0.5);
+        StatusObj["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+        StatusObj["items"] = GV2RuntimeCore::FValue(FArray{});
+        StatusObj["effects"] = GV2RuntimeCore::FValue(FArray{});
+
+        TestTrue(TEXT("PCC-04: Valid percent 0.5 within [0.0, 1.0] passes BuildFields"),
+            RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
+    }
+
+    // Percent below min (e.g. -0.5 < 0.0) rejected by portable validator in BuildFields
+    {
+        FObject StatusObj;
+        FObject NameObj;
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
+        
+        FObject MeterObj;
+        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("hp"));
+        MeterObj["percent"] = GV2RuntimeCore::FValue(-0.5);
+        StatusObj["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+        StatusObj["items"] = GV2RuntimeCore::FValue(FArray{});
+        StatusObj["effects"] = GV2RuntimeCore::FValue(FArray{});
+
+        TestFalse(TEXT("PCC-04: Percent -0.5 below min 0.0 rejected by BuildFields"),
+            RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
+    }
+
+    // Percent above max (e.g. 1.5 > 1.0) rejected by portable validator in BuildFields
+    {
+        FObject StatusObj;
+        FObject NameObj;
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
+        
+        FObject MeterObj;
+        MeterObj["key"] = GV2RuntimeCore::FValue(std::string("hp"));
+        MeterObj["percent"] = GV2RuntimeCore::FValue(1.5);
+        StatusObj["meters"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(MeterObj)});
+        StatusObj["items"] = GV2RuntimeCore::FValue(FArray{});
+        StatusObj["effects"] = GV2RuntimeCore::FValue(FArray{});
+
+        TestFalse(TEXT("PCC-04: Percent 1.5 above max 1.0 rejected by BuildFields"),
+            RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
     }
 
     return true;

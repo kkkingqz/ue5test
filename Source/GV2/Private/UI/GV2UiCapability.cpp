@@ -35,7 +35,7 @@ static EGV2PreparedUiValueKind MapFieldSpecToPreparedKind(const GV2ContentCore::
             return EGV2PreparedUiValueKind::Number;
         case EScalarFieldKind::String:
             return EGV2PreparedUiValueKind::String;
-        default:
+        case EScalarFieldKind::Enum:
             return EGV2PreparedUiValueKind::Null;
         }
     case EUiFieldKind::Key:
@@ -169,21 +169,6 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddBinding(const FString& Name
     return *this;
 }
 
-FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddObject(
-    const FString& Name,
-    const FName& TargetName,
-    FGV2UiCapabilityTree InChildTree)
-{
-    FGV2UiPropertyCapability Cap;
-    Cap.PropertyName = Name;
-    Cap.SupportedKind = EGV2PreparedUiValueKind::Object;
-    Cap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-    Cap.TargetName = TargetName;
-    Cap.ChildTree = MakeShared<FGV2UiCapabilityTree>(MoveTemp(InChildTree));
-    Tree.Properties.Add(Name, MoveTemp(Cap));
-    return *this;
-}
-
 FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddKeyedCollection(
     const FString& Name,
     const FName& TargetName,
@@ -202,6 +187,21 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddKeyedCollection(
     Cap.ItemCapability = MakeShared<FGV2UiPropertyCapability>(MoveTemp(ItemCapability));
     Tree.Properties.Add(Name, MoveTemp(Cap));
     return *this;
+}
+
+FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddKeyedCollection(
+    const FString& Name,
+    const FName& TargetName,
+    FGV2UiCapabilityTree ItemCapabilityTree,
+    const FString& KeyField,
+    TSubclassOf<UUserWidget> EntryWidgetClass)
+{
+    FGV2UiPropertyCapability ItemCap;
+    ItemCap.SupportedKind = EGV2PreparedUiValueKind::Object;
+    ItemCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+    ItemCap.ChildTree = MakeShared<FGV2UiCapabilityTree>(MoveTemp(ItemCapabilityTree));
+    ItemCap.EntryWidgetClass = EntryWidgetClass;
+    return AddKeyedCollection(Name, TargetName, MoveTemp(ItemCap), KeyField, EntryWidgetClass);
 }
 
 FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddNestedScreenCollection(
@@ -226,6 +226,9 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddCustom(
     EGV2UiCapabilityTargetType TargetType,
     const FName& TargetName)
 {
+    checkf(Kind != EGV2PreparedUiValueKind::Object && Kind != EGV2PreparedUiValueKind::Null,
+        TEXT("Cannot declare capability with inapplicable kind (Null or Object)"));
+
     FGV2UiPropertyCapability Cap;
     Cap.PropertyName = Name;
     Cap.SupportedKind = Kind;
@@ -369,15 +372,6 @@ bool CheckUiSchemaCapabilityCompatibility(
                 }
             }
 
-            // Recursive Object check
-            if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Object && Cap->ChildTree.IsValid())
-            {
-                if (!CheckUiSchemaCapabilityCompatibility(*FieldSpec, *Cap->ChildTree, SchemaId, ChildPath, OutDiagnostics))
-                {
-                    bSuccess = false;
-                }
-            }
-
             // Keyed Collection check
             if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Array && Cap->bRequiresKeyedIdentity)
             {
@@ -391,6 +385,63 @@ bool CheckUiSchemaCapabilityCompatibility(
                     Diag.Message = FString::Printf(TEXT("Collection '%s' requires keyed elements, but schema array has no keyed_by"), *FieldName);
                     OutDiagnostics.Add(MoveTemp(Diag));
                     bSuccess = false;
+                }
+            }
+
+            // Collection element recursive check (PCC-02)
+            if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Array && FieldSpec->Items != nullptr)
+            {
+                const FGV2UiCapabilityTree* ItemTree = nullptr;
+                if (Cap->ItemCapability.IsValid() && Cap->ItemCapability->ChildTree.IsValid())
+                {
+                    ItemTree = Cap->ItemCapability->ChildTree.Get();
+                }
+                else if (Cap->ChildTree.IsValid())
+                {
+                    ItemTree = Cap->ChildTree.Get();
+                }
+
+                if (ItemTree != nullptr)
+                {
+                    if (FieldSpec->Items->Kind != GV2ContentCore::EUiFieldKind::Object)
+                    {
+                        FGV2UiSchemaCompatibilityDiagnostic Diag;
+                        Diag.Code = TEXT("core:diagnostic.ui_capability.kind_mismatch");
+                        Diag.PropertyPath = FString::Printf(TEXT("%s[]"), *ChildPath);
+                        Diag.SchemaId = SchemaId;
+                        Diag.bFatal = !bIsMod;
+                        Diag.Message = FString::Printf(
+                            TEXT("Collection '%s' item kind mismatch: schema expects non-object, capability supports Object"),
+                            *FieldName);
+                        OutDiagnostics.Add(MoveTemp(Diag));
+                        bSuccess = false;
+                    }
+                    else
+                    {
+                        const FString ItemPath = FString::Printf(TEXT("%s[]"), *ChildPath);
+                        if (!CheckUiSchemaCapabilityCompatibility(*FieldSpec->Items, *ItemTree, SchemaId, ItemPath, OutDiagnostics))
+                        {
+                            bSuccess = false;
+                        }
+                    }
+                }
+                else if (Cap->ItemCapability.IsValid() && Cap->ItemCapability->SupportedKind != EGV2PreparedUiValueKind::Null && Cap->ItemCapability->SupportedKind != EGV2PreparedUiValueKind::Object)
+                {
+                    const EGV2PreparedUiValueKind ItemKind = Cap->ItemCapability->SupportedKind;
+                    const EGV2PreparedUiValueKind ExpectedItemKind = MapFieldSpecToPreparedKind(*FieldSpec->Items);
+                    if (ItemKind != ExpectedItemKind)
+                    {
+                        FGV2UiSchemaCompatibilityDiagnostic Diag;
+                        Diag.Code = TEXT("core:diagnostic.ui_capability.kind_mismatch");
+                        Diag.PropertyPath = FString::Printf(TEXT("%s[]"), *ChildPath);
+                        Diag.SchemaId = SchemaId;
+                        Diag.bFatal = !bIsMod;
+                        Diag.Message = FString::Printf(
+                            TEXT("Collection '%s' item kind mismatch"),
+                            *FieldName);
+                        OutDiagnostics.Add(MoveTemp(Diag));
+                        bSuccess = false;
+                    }
                 }
             }
         }

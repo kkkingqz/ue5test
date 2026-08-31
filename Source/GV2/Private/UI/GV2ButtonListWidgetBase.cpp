@@ -18,15 +18,24 @@ void UGV2ButtonListWidgetBase::NativePreConstruct()
 
 void UGV2ButtonListWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    FGV2UiPropertyCapability ButtonCap;
-    ButtonCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-    ButtonCap.EntryWidgetClass = ResolveButtonWidgetClass();
+    FGV2UiCapabilityTree ButtonCaps;
+    if (TSubclassOf<UGV2ButtonWidgetBase> BtnClass = ResolveButtonWidgetClass())
+    {
+        if (const IGV2UiPropertyHost* HostCDO = Cast<IGV2UiPropertyHost>(BtnClass->GetDefaultObject()))
+        {
+            FGV2UiCapabilityBuilder BtnBuilder;
+            HostCDO->DescribeUiCapabilities(BtnBuilder);
+            ButtonCaps = BtnBuilder.Build();
+        }
+    }
+
     OutBuilder.AddKeyedCollection(
         TEXT("items"),
         FName(TEXT("ButtonContainer")),
-        ButtonCap,
+        ButtonCaps,
         TEXT("key"),
         ResolveButtonWidgetClass());
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
 UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName Key) const

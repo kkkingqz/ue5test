@@ -2,8 +2,13 @@
 
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiCapability.h"
+#include "UI/GV2ButtonListWidgetBase.h"
+#include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2UiSchemaCache.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/Paths.h"
+#include "Blueprint/UserWidget.h"
 
 namespace
 {
@@ -217,6 +222,152 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
                 Schema, DropdownCaps, TEXT("core:schema.ui_field.dropdown.v1"), TEXT(""), Diagnostics);
 
             TestTrue(TEXT("Keyed array on keyed collection passes"), bCompatible);
+        }
+    }
+
+    // 9. PCC-02: Keyed collection element compatibility participates in Schema ⊆ Capabilities recursively
+    {
+        // 9a. Extra property in collection item schema is rejected with distinguishable code
+        {
+            FGV2UiCapabilityTree ItemCaps = FGV2UiCapabilityBuilder()
+                .AddKey(TEXT("key"), NAME_None)
+                .AddText(TEXT("text"), FName(TEXT("LabelText")))
+                .Build();
+
+            const FGV2UiCapabilityTree ListCaps = FGV2UiCapabilityBuilder()
+                .AddKeyedCollection(TEXT("items"), FName(TEXT("Container")), ItemCaps, TEXT("key"))
+                .Build();
+
+            // Schema element has extra property 'extra_field' (scalar number)
+            FCompiledUiFieldSpec Schema;
+            Schema.Kind = EUiFieldKind::Object;
+            auto ItemSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Object);
+            ItemSpec->Fields.push_back({ "key", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key) });
+            ItemSpec->Fields.push_back({ "text", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+            ItemSpec->Fields.push_back({ "extra_field", false, MakePropertyHostScalarSpec(EScalarFieldKind::Number) });
+
+            auto ArrSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Array);
+            ArrSpec->KeyedBy = "key";
+            ArrSpec->Items = ItemSpec;
+            Schema.Fields.push_back({ "items", false, ArrSpec });
+
+            TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+            const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
+                Schema, ListCaps, TEXT("test:schema.extra_elem_item"), TEXT(""), Diagnostics);
+
+            TestFalse(TEXT("PCC-02: Extra property in collection element schema is rejected before Ready"), bCompatible);
+            TestTrue(TEXT("PCC-02: Has unknown_schema_property diagnostic for element property"),
+                Diagnostics.Num() > 0 && Diagnostics[0].Code == TEXT("core:diagnostic.ui_capability.unknown_schema_property"));
+            if (Diagnostics.Num() > 0)
+            {
+                TestEqual(TEXT("PCC-02: Diagnostic property_path reaches into element"),
+                    Diagnostics[0].PropertyPath, TEXT("items[].extra_field"));
+            }
+        }
+
+        // 9b. More narrow schema for collection item is accepted (Schema ⊆ Capabilities)
+        {
+            // Capability supports: key, text, binding, icon (ref)
+            FGV2UiCapabilityTree RichItemCaps = FGV2UiCapabilityBuilder()
+                .AddKey(TEXT("key"), NAME_None)
+                .AddText(TEXT("text"), FName(TEXT("LabelText")))
+                .AddBinding(TEXT("binding"), NAME_None)
+                .AddImage(TEXT("icon"), FName(TEXT("IconImage")), TEXT("resource"))
+                .Build();
+
+            const FGV2UiCapabilityTree ListCaps = FGV2UiCapabilityBuilder()
+                .AddKeyedCollection(TEXT("items"), FName(TEXT("Container")), RichItemCaps, TEXT("key"))
+                .Build();
+
+            // Schema only provides subset: key, text
+            FCompiledUiFieldSpec NarrowSchema;
+            NarrowSchema.Kind = EUiFieldKind::Object;
+            auto NarrowItemSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Object);
+            NarrowItemSpec->Fields.push_back({ "key", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key) });
+            NarrowItemSpec->Fields.push_back({ "text", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+
+            auto ArrSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Array);
+            ArrSpec->KeyedBy = "key";
+            ArrSpec->Items = NarrowItemSpec;
+            NarrowSchema.Fields.push_back({ "items", false, ArrSpec });
+
+            TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+            const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
+                NarrowSchema, ListCaps, TEXT("test:schema.narrow_elem_item"), TEXT(""), Diagnostics);
+
+            TestTrue(TEXT("PCC-02: More narrow schema for collection item is accepted"), bCompatible);
+            TestEqual(TEXT("PCC-02: Zero diagnostics for subset schema"), Diagnostics.Num(), 0);
+        }
+
+        // 9c. Separate test confirming both sides originate from DIFFERENT sources:
+        // Schema loaded from repository content, Capabilities queried from live widget
+        {
+            UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+            TestNotNull(TEXT("TestWorld created"), TestWorld);
+
+            // Source 1: Schema loaded directly from repository package
+            FGV2UiSchemaCache RepoSchemaCache({ FPaths::ProjectDir() / TEXT("GameData/textsystem") });
+            FString SchemaErr;
+            GV2ContentCore::FCompiledUiFieldSpecPtr RepoSchema = RepoSchemaCache.GetCompiledSchema(
+                "textsystem:schema.ui_field.location_commands.v1",
+                SchemaErr);
+            TestNotNull(TEXT("PCC-02 Source 1: Schema loaded from repository"), RepoSchema.get());
+
+            // Source 2: Capability tree queried directly from widget
+            UGV2ButtonListWidgetBase* ButtonListWidget = CreateWidget<UGV2ButtonListWidgetBase>(
+                TestWorld, UGV2ButtonListWidgetBase::StaticClass());
+            TestNotNull(TEXT("PCC-02 Source 2: Widget created"), ButtonListWidget);
+
+            FGV2UiCapabilityBuilder WidgetBuilder;
+            ButtonListWidget->DescribeUiCapabilities(WidgetBuilder);
+            const FGV2UiCapabilityTree WidgetCaps = WidgetBuilder.Build();
+
+            // S ⊆ C check with different sources: valid repository schema matches widget capabilities
+            if (RepoSchema != nullptr)
+            {
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> MatchDiags;
+                const bool bMatch = CheckUiSchemaCapabilityCompatibility(
+                    *RepoSchema, WidgetCaps, TEXT("textsystem:schema.ui_field.location_commands.v1"), TEXT(""), MatchDiags);
+                for (const auto& D : MatchDiags)
+                {
+                    UE_LOG(LogTemp, Error, TEXT("PCC-02 MatchDiag: code=%s path=%s msg=%s"), *D.Code, *D.PropertyPath, *D.Message);
+                }
+                TestTrue(TEXT("PCC-02: Repo schema matches widget capabilities"), bMatch);
+                TestEqual(TEXT("PCC-02: Zero diagnostics for matching repo schema"), MatchDiags.Num(), 0);
+
+                // Clone repo schema and add an unsupported property to items elements
+                FCompiledUiFieldSpec ModifiedRepoSchema = *RepoSchema;
+                for (auto& Field : ModifiedRepoSchema.Fields)
+                {
+                    if (Field.Name == "items" && Field.Spec != nullptr && Field.Spec->Items != nullptr)
+                    {
+                        auto ClonedItemSpec = std::make_shared<FCompiledUiFieldSpec>(*Field.Spec->Items);
+                        ClonedItemSpec->Fields.push_back({
+                            "unsupported_extra_action",
+                            false,
+                            std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key)
+                        });
+                        auto ClonedArrSpec = std::make_shared<FCompiledUiFieldSpec>(*Field.Spec);
+                        ClonedArrSpec->Items = ClonedItemSpec;
+                        Field.Spec = ClonedArrSpec;
+                        break;
+                    }
+                }
+
+                TArray<FGV2UiSchemaCompatibilityDiagnostic> MismatchDiags;
+                const bool bMismatch = CheckUiSchemaCapabilityCompatibility(
+                    ModifiedRepoSchema, WidgetCaps, TEXT("textsystem:schema.ui_field.location_commands.v1"), TEXT(""), MismatchDiags);
+                TestFalse(TEXT("PCC-02: Repo schema with extra item property rejected"), bMismatch);
+                TestTrue(TEXT("PCC-02: Rejection diagnostic has unknown_schema_property"),
+                    MismatchDiags.Num() > 0 && MismatchDiags[0].Code == TEXT("core:diagnostic.ui_capability.unknown_schema_property"));
+                if (MismatchDiags.Num() > 0)
+                {
+                    TestEqual(TEXT("PCC-02: Diagnostic property_path is items[].unsupported_extra_action"),
+                        MismatchDiags[0].PropertyPath, TEXT("items[].unsupported_extra_action"));
+                }
+            }
+
+            TestWorld->DestroyWorld(false);
         }
     }
 

@@ -8,6 +8,13 @@ public class GV2 : ModuleRules
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bEnableExceptions = true;
 
+        // PCC-05: FGV2PropertyConsumerFactory::GetKindHandlingStatus relies on an
+        // exhaustive switch over EGV2PreparedUiValueKind (no default:) to make an
+        // unclassified new kind a build error. UBT/Clang disable -Wswitch by default
+        // engine-wide, which would silently defeat that gate; re-enable it as an error
+        // for this module so the gate is real.
+        CppCompileWarningSettings.SwitchUnhandledEnumeratorWarningLevel = WarningLevel.Error;
+
         PublicDependencyModuleNames.AddRange(new string[]
         {
             "Core",

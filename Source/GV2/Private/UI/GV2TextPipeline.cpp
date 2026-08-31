@@ -168,7 +168,7 @@ bool UGV2TextPipeline::Resolve(
         case EGV2UiControlValueType::String:
             FormatArgs.Add(Arg.Name.ToString(), FText::FromString(EscapeMarkup(Arg.StringValue)));
             break;
-        default:
+        case EGV2UiControlValueType::Null:
             OutError = TEXT("Text arguments must be scalar non-null values.");
             return false;
         }

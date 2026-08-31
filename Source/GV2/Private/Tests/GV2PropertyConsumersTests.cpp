@@ -22,6 +22,7 @@
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
+#include "Application/GV2ScreenFieldMaterializer.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
 #include "Blueprint/WidgetTree.h"
@@ -66,7 +67,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             Error.Contains(TEXT("core:diagnostic.ui_consumer.missing_target")));
     }
 
-    // 2. Factory creation of consumers for all supported kinds
+    // 2. Factory creation of consumers for all supported kinds and PCC-05 completeness gate
     {
         auto TextCons = FGV2PropertyConsumerFactory::CreateConsumer(
             EGV2PreparedUiValueKind::Text, EGV2UiCapabilityTargetType::RendererControl);
@@ -99,6 +100,57 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         auto BindingCons = FGV2PropertyConsumerFactory::CreateConsumer(
             EGV2PreparedUiValueKind::Binding, EGV2UiCapabilityTargetType::RendererControl);
         TestNotNull(TEXT("Binding consumer created"), BindingCons.Get());
+
+        auto CollCons = FGV2PropertyConsumerFactory::CreateConsumer(
+            EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+        TestNotNull(TEXT("CollectionHost consumer created"), CollCons.Get());
+
+        auto SpansCons = FGV2PropertyConsumerFactory::CreateConsumer(
+            EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CustomControl);
+        TestNotNull(TEXT("CustomControl spans consumer created"), SpansCons.Get());
+
+        auto TabsCons = FGV2PropertyConsumerFactory::CreateConsumer(
+            EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+        TestNotNull(TEXT("NestedScreen tabs consumer created"), TabsCons.Get());
+
+        // PCC-05: Completeness gate over ALL EGV2PreparedUiValueKind enum values
+        TArray<FString> GateDiagnostics;
+        const bool bAllHandled = FGV2PropertyConsumerFactory::ValidateAllKindsHandled(GateDiagnostics);
+        TestTrue(TEXT("PCC-05: All EGV2PreparedUiValueKind values handled by factory gate"), bAllHandled);
+        TestEqual(TEXT("PCC-05: Zero unhandled kind diagnostics"), GateDiagnostics.Num(), 0);
+
+        // PCC-05: Inapplicable kinds registration and architectural justification
+        FString NullReason;
+        TestTrue(TEXT("PCC-05: Null is registered inapplicable"),
+            FGV2PropertyConsumerFactory::IsInapplicableKind(EGV2PreparedUiValueKind::Null, &NullReason));
+        TestFalse(TEXT("PCC-05: Null reason is non-empty"), NullReason.IsEmpty());
+        TestNull(TEXT("PCC-05: CreateConsumer for Null returns nullptr"),
+            FGV2PropertyConsumerFactory::CreateConsumer(EGV2PreparedUiValueKind::Null, EGV2UiCapabilityTargetType::RendererControl).Get());
+
+        FString ObjectReason;
+        TestTrue(TEXT("PCC-05: Object is registered inapplicable"),
+            FGV2PropertyConsumerFactory::IsInapplicableKind(EGV2PreparedUiValueKind::Object, &ObjectReason));
+        TestFalse(TEXT("PCC-05: Object reason is non-empty"), ObjectReason.IsEmpty());
+        TestTrue(TEXT("PCC-05: Object reason cites architectural rule"),
+            ObjectReason.Contains(TEXT("Direct Object property consumption is forbidden")));
+        TestNull(TEXT("PCC-05: CreateConsumer for Object returns nullptr"),
+            FGV2PropertyConsumerFactory::CreateConsumer(EGV2PreparedUiValueKind::Object, EGV2UiCapabilityTargetType::RendererControl).Get());
+
+        const TArray<FGV2InapplicableKindInfo> InapplicableKinds = FGV2PropertyConsumerFactory::GetInapplicableKinds();
+        TestEqual(TEXT("PCC-05: Exactly 2 inapplicable kinds (Null, Object)"), InapplicableKinds.Num(), 2);
+
+        TestEqual(TEXT("PCC-05: Null status is Inapplicable"),
+            FGV2PropertyConsumerFactory::GetKindHandlingStatus(EGV2PreparedUiValueKind::Null),
+            EGV2PropertyConsumerKindStatus::Inapplicable);
+        TestEqual(TEXT("PCC-05: Object status is Inapplicable"),
+            FGV2PropertyConsumerFactory::GetKindHandlingStatus(EGV2PreparedUiValueKind::Object),
+            EGV2PropertyConsumerKindStatus::Inapplicable);
+        TestEqual(TEXT("PCC-05: Text status is Supported"),
+            FGV2PropertyConsumerFactory::GetKindHandlingStatus(EGV2PreparedUiValueKind::Text),
+            EGV2PropertyConsumerKindStatus::Supported);
+        TestEqual(TEXT("PCC-05: Array status is Supported"),
+            FGV2PropertyConsumerFactory::GetKindHandlingStatus(EGV2PreparedUiValueKind::Array),
+            EGV2PropertyConsumerKindStatus::Supported);
     }
 
     // 3. UPP-13: FGV2ImageResourcePropertyConsumer rejects Unset scale policy and verifies compatibility in Prepare
@@ -531,6 +583,15 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
             TestNotNull(TEXT("Factory created FGV2KeyedCollectionPropertyConsumer"), Consumer.Get());
 
+            auto BaselineItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+            BaselineItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+            BaselineItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+            BaselineItemSpec->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+            static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get())->SetCompiledItemSpec(
+                BaselineItemSpec,
+                TEXT("test:schema.button_item"),
+                TEXT("items"));
+
             const FGV2UiBindingHandle TestHandleA = FGV2UiBindingHandle::Create(TEXT("action_a@1:1"));
             const FGV2UiBindingHandle TestHandleB = FGV2UiBindingHandle::Create(TEXT("action_b@1:1"));
 
@@ -612,6 +673,208 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             DupKeyElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(DupA1Map)));
             DupKeyElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(DupA2Map)));
             TestFalse(TEXT("Duplicate key fails Prepare"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(DupKeyElements)), *CollCap, ListView, PrepErr));
+
+            // 8d. PCC-01: Discrepancy between CompiledItemSpec and entry widget capabilities is observed and recorded without failing Prepare
+            {
+                FGV2KeyedCollectionPropertyConsumer* KeyedConsumer = static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get());
+                TestNotNull(TEXT("Consumer is KeyedCollectionConsumer"), KeyedConsumer);
+
+                // Create a compiled spec with an extra property 'foo' (string) not supported by UGV2ButtonWidgetBase
+                auto DiscrepantItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                DiscrepantItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                DiscrepantItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+                DiscrepantItemSpec->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+                DiscrepantItemSpec->Fields.push_back({ "foo", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Scalar) });
+
+                KeyedConsumer->SetCompiledItemSpec(
+                    DiscrepantItemSpec,
+                    TEXT("test:schema.discrepant_list"),
+                    TEXT("items"),
+                    TEXT("test:screen.main"),
+                    TEXT("items_field"));
+
+                FString DiscrepancyPrepErr;
+                const bool bDiscrepancyPrep = KeyedConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineElements)),
+                    *CollCap,
+                    ListView,
+                    DiscrepancyPrepErr);
+
+                // PCC-03: Prepare FAILS when schema has extra property (not silently lost)
+                TestFalse(TEXT("PCC-03: Prepare fails when schema has extra property"), bDiscrepancyPrep);
+
+                // Discrepancy IS recorded with Section 32 structured format
+                const TArray<FGV2CollectionItemDiscrepancy>& Discrepancies = KeyedConsumer->GetDiscrepancies();
+                TestTrue(TEXT("PCC-03: At least 1 discrepancy recorded"), Discrepancies.Num() >= 1);
+                if (Discrepancies.Num() >= 1)
+                {
+                    TestEqual(TEXT("Discrepancy 0 path"), Discrepancies[0].PropertyPath, TEXT("items[item_a].foo"));
+                    TestEqual(TEXT("Discrepancy 0 code"), Discrepancies[0].Code, TEXT("core:diagnostic.ui_capability.unknown_schema_property"));
+                    TestEqual(TEXT("Discrepancy 0 schema"), Discrepancies[0].SchemaId, TEXT("test:schema.discrepant_list"));
+                    TestEqual(TEXT("Discrepancy 0 screen"), Discrepancies[0].ScreenId, TEXT("test:screen.main"));
+                    TestEqual(TEXT("Discrepancy 0 field"), Discrepancies[0].FieldId, TEXT("items_field"));
+                }
+
+                // Matching schema yields zero discrepancies
+                auto MatchingItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                MatchingItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                MatchingItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+                MatchingItemSpec->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+
+                KeyedConsumer->SetCompiledItemSpec(
+                    MatchingItemSpec,
+                    TEXT("test:schema.matching_list"),
+                    TEXT("items"));
+
+                const bool bMatchingPrep = KeyedConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineElements)),
+                    *CollCap,
+                    ListView,
+                    DiscrepancyPrepErr);
+                TestTrue(TEXT("PCC-03: Matching prepare succeeds"), bMatchingPrep);
+                TestEqual(TEXT("PCC-03: Zero discrepancies for matching schema"), KeyedConsumer->GetDiscrepancies().Num(), 0);
+            }
+
+            // 8e. PCC-03: Element property declared in schema and absent from entry-widget capability is rejected, not lost
+            {
+                UGV2ListViewWidgetBase* LuaListView = CreateWidget<UGV2ListViewWidgetBase>(TestWorld, UGV2ListViewWidgetBase::StaticClass());
+                UVerticalBox* LuaContainerBox = NewObject<UVerticalBox>(LuaListView);
+                LuaListView->SetContainerPanel(LuaContainerBox);
+
+                FGV2UiPropertyCapability ButtonCap;
+                ButtonCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+                ButtonCap.EntryWidgetClass = UGV2ButtonWidgetBase::StaticClass();
+
+                FGV2UiCapabilityBuilder LuaBuilder;
+                LuaBuilder.AddKeyedCollection(TEXT("items"), FName(TEXT("ContainerPanel")), ButtonCap, TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+                const FGV2UiCapabilityTree LuaTree = LuaBuilder.Build();
+                const FGV2UiPropertyCapability* LuaCollCap = LuaTree.FindProperty(TEXT("items"));
+                TestNotNull(TEXT("Lua collection capability found"), LuaCollCap);
+
+                TSharedPtr<IGV2PropertyConsumer> LuaConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                    EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+                FGV2KeyedCollectionPropertyConsumer* LuaKeyedConsumer = static_cast<FGV2KeyedCollectionPropertyConsumer*>(LuaConsumer.Get());
+
+                // Schema declares an extra property 'icon_resource' which UGV2ButtonWidgetBase does not support
+                auto SchemaWithExtra = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                SchemaWithExtra->Kind = GV2ContentCore::EUiFieldKind::Object;
+                SchemaWithExtra->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+                SchemaWithExtra->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+                SchemaWithExtra->Fields.push_back({ "icon_resource", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Ref) });
+
+                LuaKeyedConsumer->SetCompiledItemSpec(
+                    SchemaWithExtra,
+                    TEXT("core:schema.ui_field.button_list.v2"),
+                    TEXT("items"),
+                    TEXT("core:screen.test"),
+                    TEXT("commands"));
+
+                // Value constructed representing presenter output carrying icon_resource
+                TMap<FString, FGV2PreparedUiValue> LuaItemMap;
+                LuaItemMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("cmd_explore")));
+                LuaItemMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("core:command.test.explore@1:1"))));
+                LuaItemMap.Add(TEXT("icon_resource"), FGV2PreparedUiValue::MakeStableId(TEXT("core:resource.ui.compass"), TEXT("resource")));
+
+                TArray<FGV2PreparedUiValue> LuaElements;
+                LuaElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(LuaItemMap)));
+
+                FString LuaPrepErr;
+                const bool bLuaPrep = LuaKeyedConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(LuaElements)),
+                    *LuaCollCap,
+                    LuaListView,
+                    LuaPrepErr);
+
+                // PCC-03: Property declared in schema but unsupported by entry widget is REJECTED before Ready
+                TestFalse(TEXT("PCC-03: Prepare fails when element property is absent from entry widget capabilities"), bLuaPrep);
+                TestTrue(TEXT("PCC-03: Error mentions prepare failed or unknown property"), LuaPrepErr.Contains(TEXT("ui_capability.unknown_schema_property")) || LuaPrepErr.Contains(TEXT("prepare_failed")) || LuaPrepErr.Contains(TEXT("not supported")));
+                const TArray<FGV2CollectionItemDiscrepancy>& LuaDiscrepancies = LuaKeyedConsumer->GetDiscrepancies();
+                TestTrue(TEXT("PCC-03: Discrepancy recorded for icon_resource"), LuaDiscrepancies.Num() >= 1);
+                if (LuaDiscrepancies.Num() >= 1)
+                {
+                    TestEqual(TEXT("Discrepancy path is items[cmd_explore].icon_resource"), LuaDiscrepancies[0].PropertyPath, TEXT("items[cmd_explore].icon_resource"));
+                    TestEqual(TEXT("Discrepancy code is unknown_schema_property"), LuaDiscrepancies[0].Code, TEXT("core:diagnostic.ui_capability.unknown_schema_property"));
+                }
+
+                // 8f. PCC-03 end-to-end: same rejection, but starting from a RAW Lua-shaped
+                // GV2RuntimeCore::FValue (not a hand-built FGV2PreparedUiValue like 8e) and
+                // driven through the real production chain ValidateUiFieldValue() ->
+                // GV2ScreenFieldMaterializer::ProjectMaterializedValue() -> consumer Prepare().
+                // 8e alone proves the consumer rejects a mismatched item once it has one;
+                // this proves the mismatch actually survives real materialization intact,
+                // rather than being silently dropped or altered before it ever reaches
+                // the consumer -- the concrete "value crossed the boundary and vanished"
+                // failure mode PCC-03 exists to close.
+                {
+                using FRuntimeObject = GV2RuntimeCore::FValue::FObject;
+
+                FRuntimeObject ItemObj;
+                ItemObj["key"] = GV2RuntimeCore::FValue(std::string("cmd_explore"));
+                FRuntimeObject BindingObj;
+                BindingObj["command_id"] = GV2RuntimeCore::FValue(std::string("core:command.test.explore"));
+                ItemObj["binding"] = GV2RuntimeCore::FValue(BindingObj);
+                ItemObj["icon_resource"] = GV2RuntimeCore::FValue(std::string("core:resource.ui.compass"));
+
+                const GV2ContentCore::FValue ContentItemValue =
+                    GV2RuntimeCore::RuntimeValueToContentValue(GV2RuntimeCore::FValue(ItemObj));
+
+                GV2ContentCore::FValue MaterializedItem;
+                std::vector<GV2ContentCore::FDiagnostic> ValidateDiags;
+                GV2ContentCore::FValidationDiagnosticContext ValidateCtx;
+                ValidateCtx.SchemaId = "test:schema.ui_value.button_list_item_with_icon.v1";
+                // SchemaWithExtra's icon_resource field (shared with 8e) has no RefTargetKind set;
+                // 8e never runs it through ValidateUiFieldValue so that never mattered there, but
+                // this test does, and FStableId::IsOfKind() requires an exact target-kind match.
+                auto SchemaWithExtraValidated = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(*SchemaWithExtra);
+                for (auto& FieldEntry : SchemaWithExtraValidated->Fields)
+                {
+                    if (FieldEntry.Name == "icon_resource")
+                    {
+                        auto RefSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Ref);
+                        RefSpec->RefTargetKind = "resource";
+                        FieldEntry.Spec = RefSpec;
+                    }
+                }
+
+                const bool bValidated = GV2ContentCore::ValidateUiFieldValue(
+                    ContentItemValue, *SchemaWithExtraValidated, MaterializedItem, nullptr, "", ValidateCtx, ValidateDiags);
+                TestTrue(
+                    TEXT("PCC-03: raw Lua-shaped item validates against its own (schema-legitimate) item schema"),
+                    bValidated);
+
+                TArray<FGV2UiBindingHandle> Handles;
+                Handles.Add(FGV2UiBindingHandle::Create(TEXT("core:command.test.explore@1:1")));
+                int32 HandleCursor = 0;
+                GV2ScreenFieldMaterializer::FMaterializeContext MatCtx;
+                MatCtx.Handles = &Handles;
+                MatCtx.HandleCursor = &HandleCursor;
+
+                FGV2PreparedUiValue ProjectedItem;
+                const bool bProjected = bValidated && GV2ScreenFieldMaterializer::ProjectMaterializedValue(
+                    MatCtx, *SchemaWithExtraValidated, MaterializedItem, ProjectedItem);
+                TestTrue(TEXT("PCC-03: real projection (BuildFields' own function) succeeds for the schema-legitimate item"), bProjected);
+
+                TArray<FGV2PreparedUiValue> RealElements;
+                RealElements.Add(ProjectedItem);
+                FString RealPrepErr;
+                const bool bRealPrep = bProjected && LuaKeyedConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(RealElements)),
+                    *LuaCollCap,
+                    LuaListView,
+                    RealPrepErr);
+
+                TestFalse(
+                    TEXT("PCC-03: a value that survived real ValidateUiFieldValue+ProjectMaterializedValue is still rejected by the entry-widget capability check"),
+                    bRealPrep);
+                const TArray<FGV2CollectionItemDiscrepancy>& RealDiscrepancies = LuaKeyedConsumer->GetDiscrepancies();
+                TestTrue(TEXT("PCC-03: discrepancy recorded for the real-pipeline icon_resource value"), RealDiscrepancies.Num() >= 1);
+                if (RealDiscrepancies.Num() >= 1)
+                {
+                    TestEqual(TEXT("PCC-03: real-pipeline discrepancy code is unknown_schema_property"),
+                        RealDiscrepancies[0].Code, TEXT("core:diagnostic.ui_capability.unknown_schema_property"));
+                }
+            }
+        }
         }
 
         // 9. UPP-21: UGV2ButtonListWidgetBase and UGV2DropdownSelectWidgetBase Property Host Reconciliation
@@ -631,6 +894,14 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             {
                 TSharedPtr<IGV2PropertyConsumer> BtnCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+
+                auto BtnItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                BtnItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                BtnItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+                BtnItemSpec->Fields.push_back({ "text", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                BtnItemSpec->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+                static_cast<FGV2KeyedCollectionPropertyConsumer*>(BtnCollConsumer.Get())->SetCompiledItemSpec(
+                    BtnItemSpec, TEXT("core:schema.ui_field.button_list.v2"), TEXT("items"));
 
                 FGV2TextViewModel Btn1Text;
                 Btn1Text.Text = FText::FromString(TEXT("Button 1"));
@@ -696,6 +967,14 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 {
                     TSharedPtr<IGV2PropertyConsumer> StyledCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                         EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+
+                    auto StyledBtnItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                    StyledBtnItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                    StyledBtnItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+                    StyledBtnItemSpec->Fields.push_back({ "text", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                    StyledBtnItemSpec->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+                    static_cast<FGV2KeyedCollectionPropertyConsumer*>(StyledCollConsumer.Get())->SetCompiledItemSpec(
+                        StyledBtnItemSpec, TEXT("core:schema.ui_field.button_list.v2"), TEXT("items"));
 
                     FGV2TextViewModel StyledBtnText;
                     StyledBtnText.Text = FText::FromString(TEXT("Styled Button"));
@@ -764,6 +1043,13 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             {
                 TSharedPtr<IGV2PropertyConsumer> DdCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+
+                auto DdItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                DdItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+                DdItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+                DdItemSpec->Fields.push_back({ "text", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                static_cast<FGV2KeyedCollectionPropertyConsumer*>(DdCollConsumer.Get())->SetCompiledItemSpec(
+                    DdItemSpec, TEXT("core:schema.ui_field.dropdown_select.v1"), TEXT("items"));
 
                 FGV2TextViewModel Opt1Text;
                 Opt1Text.Text = FText::FromString(TEXT("Option 1"));
@@ -1037,11 +1323,17 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
         // 13. UPP-24: UGV2LocationTopBarWidgetBase and UGV2LocationPlayerStatusWidgetBase as IGV2UiPropertyHost
         {
-            auto MakeScalarSpec = [](const GV2ContentCore::EScalarFieldKind Kind) -> GV2ContentCore::FCompiledUiFieldSpecPtr
+            auto MakeScalarSpec = [](const GV2ContentCore::EScalarFieldKind Kind,
+                                     const TOptional<double> Min = {},
+                                     const TOptional<double> Max = {}) -> GV2ContentCore::FCompiledUiFieldSpecPtr
             {
                 auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
                 Spec->Kind = GV2ContentCore::EUiFieldKind::Scalar;
-                Spec->Scalar = GV2ContentCore::FScalarFieldSpec{ Kind, {}, {} };
+                GV2ContentCore::FScalarFieldSpec Scalar;
+                Scalar.Kind = Kind;
+                if (Min.IsSet()) { Scalar.MinimumNumber = Min.GetValue(); }
+                if (Max.IsSet()) { Scalar.MaximumNumber = Max.GetValue(); }
+                Spec->Scalar = MoveTemp(Scalar);
                 return Spec;
             };
 
@@ -1263,7 +1555,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 auto MeterEntrySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
                 MeterEntrySpec->Kind = GV2ContentCore::EUiFieldKind::Object;
                 MeterEntrySpec->Fields.push_back({ "key", true, MakeKeySpec() });
-                MeterEntrySpec->Fields.push_back({ "percent", true, MakeScalarSpec(GV2ContentCore::EScalarFieldKind::Number) });
+                MeterEntrySpec->Fields.push_back({ "percent", true, MakeScalarSpec(GV2ContentCore::EScalarFieldKind::Number, 0.0, 1.0) });
                 MeterEntrySpec->Fields.push_back({ "label", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
 
                 auto MetersArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
