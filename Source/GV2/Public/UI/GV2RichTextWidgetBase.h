@@ -37,10 +37,10 @@ public:
     virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Properties")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Properties")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Rich Text")
     bool ApplyText(const FGV2TextViewModel& InText);
@@ -87,8 +87,6 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UScrollBox> RichTextScrollBox;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Properties")
-    FName Key;
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;

@@ -29,12 +29,12 @@ bool UGV2ButtonWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 
 void UGV2ButtonWidgetBase::SetKey(FName InKey)
 {
-    Key = InKey;
+    GetPropertyHostState().SetKey(InKey);
 }
 
 FName UGV2ButtonWidgetBase::GetKey() const
 {
-    return Key;
+    return GetPropertyHostState().GetKey();
 }
 
 void UGV2ButtonWidgetBase::SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle)
@@ -81,7 +81,7 @@ void UGV2ButtonWidgetBase::NativeOnClicked()
 {
     Super::NativeOnClicked();
 
-    OnActivated.Broadcast(Key);
+    OnActivated.Broadcast(GetKey());
     if (!bAutomaticInteractionSubmission)
     {
         return;

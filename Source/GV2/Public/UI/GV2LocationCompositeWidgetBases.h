@@ -36,10 +36,10 @@ public:
     virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
 protected:
     virtual void NativePreConstruct() override;
@@ -53,8 +53,6 @@ private:
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
-    UPROPERTY(Transient)
-    FName Key;
 };
 
 UCLASS(Blueprintable)
@@ -74,10 +72,10 @@ public:
     virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     UGV2ListViewWidgetBase* GetItemRepeater() const { if (ItemRepeater) return ItemRepeater.Get(); return const_cast<UGV2LocationPlayerStatusWidgetBase*>(this)->ResolveItemRepeater(); }
@@ -112,8 +110,6 @@ private:
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
-    UPROPERTY(Transient)
-    FName Key;
 
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalItemRepeater;
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalEffectRepeater;
@@ -137,10 +133,10 @@ public:
     virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     UGV2ListViewWidgetBase* GetCharacterRepeater() const { if (CharacterRepeater) return CharacterRepeater.Get(); return const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater(); }
@@ -162,8 +158,6 @@ private:
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
-    UPROPERTY(Transient)
-    FName Key;
 
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalCharacterRepeater;
 };
@@ -186,10 +180,10 @@ public:
     virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     bool HasUsableRepeaterHost() const;
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
@@ -209,8 +203,6 @@ private:
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
-    UPROPERTY(Transient)
-    FName Key;
 
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalRepeater;
 };

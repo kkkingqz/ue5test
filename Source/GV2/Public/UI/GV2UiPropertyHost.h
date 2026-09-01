@@ -57,11 +57,21 @@ public:
     FName GetHostIdentity() const { return HostIdentity; }
     void SetHostIdentity(FName InHostIdentity) { HostIdentity = InHostIdentity; }
 
+    FName GetKey() const { return Key; }
+    void SetKey(FName InKey) { Key = InKey; }
+
 private:
     // DUC-01: this host's identity within its enclosing host -- Designer-authored,
     // one meaning, not per-class. See the class comment above.
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (DisplayName = "Host Identity"))
     FName HostIdentity;
+
+    // DUC-03: runtime-assigned local identity key (e.g. a collection item's key),
+    // applied by FGV2KeyPropertyConsumer -- not Designer-authored, unlike HostIdentity
+    // above. One declaration here instead of an identical private FName Key member
+    // repeated on every class that used to hand-roll its own SetKey/GetKey.
+    UPROPERTY(Transient)
+    FName Key;
 
     FGV2UiCapabilityTree CachedCapabilities;
     FGV2PreparedUiObject LastCommittedProperties;
@@ -86,4 +96,14 @@ public:
     /** DUC-01: this host's identity within its enclosing host -- see FGV2UiPropertyHostState. */
     FName GetHostIdentity() const { return GetPropertyHostState().GetHostIdentity(); }
     void SetHostIdentity(FName InHostIdentity) { GetPropertyHostState().SetHostIdentity(InHostIdentity); }
+
+    /**
+     * DUC-03: local identity key (e.g. a collection item's key), shared the same way as
+     * HostIdentity above. FGV2KeyPropertyConsumer::Commit/Reset call this directly through
+     * IGV2UiPropertyHost -- a new host declaring a `key` capability works without any edit
+     * to the consumer, as long as it implements this interface (which any IGV2UiPropertyHost
+     * already does).
+     */
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 };

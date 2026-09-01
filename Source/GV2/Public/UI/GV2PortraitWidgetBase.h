@@ -43,10 +43,10 @@ public:
     float GetPortraitAspectRatio() const { return PortraitAspectRatio; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Portrait")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
@@ -75,7 +75,6 @@ protected:
 private:
     FString AppliedPortraitId;
     FString AppliedFrameId;
-    FName Key;
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;

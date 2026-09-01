@@ -27,10 +27,10 @@ public:
     float GetProgress() const;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|ProgressBar")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|ProgressBar")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
@@ -54,7 +54,6 @@ protected:
 
 private:
     float CurrentPercent = 0.0f;
-    FName Key;
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;

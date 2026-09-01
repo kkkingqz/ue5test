@@ -52,10 +52,10 @@ public:
     virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetIsReadOnly(bool bInIsReadOnly);
@@ -101,8 +101,6 @@ private:
     UPROPERTY(Transient)
     FGV2UiBindingHandle BindingHandle;
 
-    UPROPERTY(Transient)
-    FName Key;
 
     UPROPERTY(Transient)
     int64 MaxLength = 0;

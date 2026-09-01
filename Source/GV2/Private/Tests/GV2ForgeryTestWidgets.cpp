@@ -34,3 +34,8 @@ void UGV2ForgeryEntryTestWidget::DescribeUiCapabilities(FGV2UiCapabilityBuilder&
         break;
     }
 }
+
+void UGV2NewHostAddedOnlyInTestWidget::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
+{
+    OutBuilder.AddKey(TEXT("key"), NAME_None);
+}

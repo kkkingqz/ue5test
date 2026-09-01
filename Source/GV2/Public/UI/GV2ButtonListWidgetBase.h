@@ -26,10 +26,10 @@ public:
     TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     virtual bool ApplyCentralStyle_Implementation() override;
 
@@ -49,5 +49,4 @@ protected:
 
 private:
     FGV2UiPropertyHostState PropertyHostState;
-    FName Key;
 };

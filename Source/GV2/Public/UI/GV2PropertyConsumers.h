@@ -150,6 +150,14 @@ private:
 
 /**
  * Key consumer: applies local identity key without coercion.
+ *
+ * DUC-03: routes by Capability.PropertyName, not by TargetWidget type -- "selected_key"
+ * (UGV2DropdownSelectWidgetBase) and "default_tab_key" (UGV2TabContainerWidgetBase) are
+ * semantically distinct capabilities that happen to also use the Key value kind; every
+ * other property name is the generic `key` identity, applied through IGV2UiPropertyHost's
+ * shared GetKey()/SetKey() (GV2UiPropertyHost.h) with no per-class branch. A new host
+ * declaring `key` therefore needs no edit here at all, as long as it implements
+ * IGV2UiPropertyHost -- which any host capable of declaring a capability already does.
  */
 class GV2_API FGV2KeyPropertyConsumer : public IGV2PropertyConsumer
 {
@@ -160,8 +168,18 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
+    /**
+     * A reset mutation's consumer never goes through Prepare() (GV2UiMutationPlan.cpp
+     * creates it and marks it bIsReset without preparing a value), so the routing name has
+     * to be injected directly by the caller right after FGV2PropertyConsumerFactory::
+     * CreateConsumer -- otherwise Reset() would have no way to tell "selected_key"/
+     * "default_tab_key" apart from the generic `key`.
+     */
+    void SetPropertyNameForRouting(const FString& InPropertyName) { PropertyName = InPropertyName; }
+
 private:
     FString PreparedValue;
+    FString PropertyName;
 };
 
 /**

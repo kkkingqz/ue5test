@@ -48,3 +48,26 @@ public:
 private:
     FGV2UiPropertyHostState PropertyHostState;
 };
+
+/**
+ * DUC-03: proves FGV2KeyPropertyConsumer needs no edit for a new host that declares `key` --
+ * this class is added only here, in a test, and never appears anywhere in
+ * GV2PropertyConsumers.cpp. It implements nothing beyond the bare minimum
+ * IGV2UiPropertyHost requires; GetKey()/SetKey() come from the interface's shared
+ * FGV2UiPropertyHostState, not from any code written for this class specifically.
+ */
+UCLASS()
+class UGV2NewHostAddedOnlyInTestWidget
+    : public UUserWidget
+    , public IGV2UiPropertyHost
+{
+    GENERATED_BODY()
+
+public:
+    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
+    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
+    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
+
+private:
+    FGV2UiPropertyHostState PropertyHostState;
+};

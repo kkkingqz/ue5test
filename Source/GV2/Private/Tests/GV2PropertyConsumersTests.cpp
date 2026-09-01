@@ -22,6 +22,7 @@
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
+#include "Tests/GV2ForgeryTestWidgets.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
@@ -561,6 +562,37 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("Popover Key Prepare succeeds"), KeyConsumer.Prepare(FGV2PreparedUiValue::MakeKey(TEXT("info_popover")), KeyCap, PopoverWidget, PrepErr));
             TestTrue(TEXT("Popover Key Commit succeeds"), KeyConsumer.Commit(PopoverWidget, CommitErr));
             TestEqual(TEXT("Popover key matches info_popover"), PopoverWidget->GetKey(), FName(TEXT("info_popover")));
+        }
+
+        // 7b. DUC-03: FGV2KeyPropertyConsumer needs no edit for a host declared only in this
+        // test -- UGV2NewHostAddedOnlyInTestWidget (GV2ForgeryTestWidgets.h) never appears in
+        // GV2PropertyConsumers.cpp. Apply, then reset, both routed purely through the shared
+        // IGV2UiPropertyHost::GetKey()/SetKey() -- no `Cast<UGV2NewHostAddedOnlyInTestWidget>`
+        // exists anywhere for the consumer to have needed.
+        {
+            UGV2NewHostAddedOnlyInTestWidget* NewHost = NewObject<UGV2NewHostAddedOnlyInTestWidget>(TestWorld);
+            TestNotNull(TEXT("DUC-03: new-host-only-in-test instantiated"), NewHost);
+
+            FGV2KeyPropertyConsumer KeyConsumer;
+            FGV2UiPropertyCapability KeyCap;
+            KeyCap.PropertyName = TEXT("key");
+            KeyCap.SupportedKind = EGV2PreparedUiValueKind::Key;
+            KeyCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+
+            FString PrepErr, CommitErr;
+            TestTrue(TEXT("DUC-03: new host Key Prepare succeeds"), KeyConsumer.Prepare(FGV2PreparedUiValue::MakeKey(TEXT("brand_new")), KeyCap, NewHost, PrepErr));
+            TestTrue(TEXT("DUC-03: new host Key Commit succeeds"), KeyConsumer.Commit(NewHost, CommitErr));
+            TestEqual(TEXT("DUC-03: new host key matches brand_new"), NewHost->GetKey(), FName(TEXT("brand_new")));
+
+            KeyConsumer.Reset(NewHost);
+            TestEqual(TEXT("DUC-03: new host key cleared by Reset"), NewHost->GetKey(), NAME_None);
+
+            // Typed rejection on an unsupported target type is still a defect, not a no-op --
+            // a bare UWidget with no IGV2UiPropertyHost at all.
+            UPanelWidget* PlainWidget = NewObject<UVerticalBox>(TestWorld);
+            FString UnsupportedErr;
+            TestFalse(TEXT("DUC-03: Key Commit rejects a target with no IGV2UiPropertyHost"), KeyConsumer.Commit(PlainWidget, UnsupportedErr));
+            TestTrue(TEXT("DUC-03: rejection names the unhandled_target diagnostic"), UnsupportedErr.Contains(TEXT("unhandled_target")));
         }
 
         // 8. UPP-20: FGV2KeyedCollectionPropertyConsumer & Value-Level Transactionality

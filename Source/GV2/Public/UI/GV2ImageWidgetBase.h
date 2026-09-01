@@ -58,10 +58,10 @@ public:
     }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Image")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Image")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     virtual bool ApplyCentralStyle_Implementation() override;
 
@@ -93,7 +93,6 @@ protected:
 private:
     FString AppliedResourceId;
     float ResolvedAspectRatio = 0.0f;
-    FName Key;
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;

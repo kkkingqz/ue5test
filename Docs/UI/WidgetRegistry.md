@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.2
+version: 3.3
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -111,7 +111,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 
 Каждая объявленная в виджете capability привязывается к соответствующему потребителю:
 - `FGV2ScalarPropertyConsumer` — обновляет скалярные свойства (например, `is_checked`, `value`, `percent`).
-- `FGV2KeyPropertyConsumer` — обновляет идентификаторы (`key`, `selected_key`).
+- `FGV2KeyPropertyConsumer` — маршрутизирует по имени capability (`selected_key` → `DropdownSelect`, `default_tab_key` → `TabContainer`, любое другое имя, например `key`, → общий `IGV2UiPropertyHost::SetKey`/`GetKey`); новый хост, объявивший `key`-capability, работает без правок этого потребителя (DUC-03).
 - `FGV2TextPropertyConsumer` — обновляет отображаемый текст через `UGV2TextPipeline` (`text`, `label`, `placeholder`).
 - `FGV2RefPropertyConsumer` — разрешает и применяет визуальные ресурсы (`resource_id`, `frame_resource_id`) через `UGV2ImageResourceCatalog`.
 - `FGV2BindingPropertyConsumer` — передаёт `FGV2UiBindingHandle` виджетам, реализующим `IGV2UiBindingTarget`.

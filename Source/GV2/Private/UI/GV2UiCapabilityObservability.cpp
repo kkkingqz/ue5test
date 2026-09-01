@@ -256,6 +256,15 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     TArray<FString> Parts;
     Parts.Add(FString::Printf(TEXT("enabled=%d"), TargetWidget->GetIsEnabled() ? 1 : 0));
 
+    // DUC-03: `key` is now one shared IGV2UiPropertyHost::GetKey(), not per-class storage --
+    // one generic readback here instead of the same three-line block repeated for every host
+    // that declares a `key` capability. Not the same thing as `selected_key`/
+    // `default_tab_key` below, which remain their own distinct capabilities.
+    if (const IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(TargetWidget))
+    {
+        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PropertyHost->GetKey().ToString()));
+    }
+
     if (const UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("text=\"%s\""), *TextBlock->GetText().ToString()));
@@ -272,10 +281,6 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     {
         Parts.Add(FString::Printf(TEXT("binding=\"%s\""), *BindingTarget->GetBindingHandle().ToString()));
     }
-    if (const UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *Button->GetKey().ToString()));
-    }
     if (const UCheckBox* CB = Cast<UCheckBox>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("checked=%d"), CB->IsChecked() ? 1 : 0));
@@ -291,25 +296,12 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
             Parts.Add(FString::Printf(TEXT("max_length=%lld"), Input->GetMaxLength()));
         }
     }
-    if (const UGV2CheckboxWidgetBase* CBW = Cast<UGV2CheckboxWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *CBW->GetKey().ToString()));
-    }
-    if (const UGV2InputFieldWidgetBase* IFW = Cast<UGV2InputFieldWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *IFW->GetKey().ToString()));
-    }
     if (const UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("rich_text=\"%s\""), *RichTextBlock->GetText().ToString()));
     }
-    if (const UGV2ProgressBarWidgetBase* PBW = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PBW->GetKey().ToString()));
-    }
     if (const UGV2PortraitWidgetBase* PW = Cast<UGV2PortraitWidgetBase>(TargetWidget))
     {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PW->GetKey().ToString()));
         // Without reading the inner brush a portrait capability looks unobservable even
         // though the consumer applied a resource to it.
         if (const UImage* PortraitImage = PW->GetPortraitImage())
@@ -319,7 +311,6 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     }
     if (const UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
     {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *RTW->GetKey().ToString()));
         if (const UCommonRichTextBlock* InnerRich = RTW->GetRichTextBlock())
         {
             Parts.Add(FString::Printf(TEXT("rich_text=\"%s\""), *InnerRich->GetText().ToString()));
@@ -332,43 +323,14 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
             Parts.Add(FString::Printf(TEXT("text=\"%s\""), *InnerText->GetText().ToString()));
         }
     }
-    if (const UGV2RichTextPopoverWidgetBase* PopoverW = Cast<UGV2RichTextPopoverWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PopoverW->GetKey().ToString()));
-    }
     if (const UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
     {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *ImageBase->GetKey().ToString()));
         // When a capability targets the image host rather than the raw UImage, the brush
         // lives one level down; without reading it the capability looks unwired.
         if (const UImage* InnerImage = const_cast<UGV2ImageWidgetBase*>(ImageBase)->GetImageWidget())
         {
             Parts.Add(FString::Printf(TEXT("image_brush=%p"), InnerImage->GetBrush().GetResourceObject()));
         }
-    }
-    if (const UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *TopBar->GetKey().ToString()));
-    }
-    if (const UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *PlayerStatus->GetKey().ToString()));
-    }
-    if (const UGV2LocationSceneWidgetBase* SceneWidget = Cast<UGV2LocationSceneWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *SceneWidget->GetKey().ToString()));
-    }
-    if (const UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *CmdPanel->GetKey().ToString()));
-    }
-    if (const UGV2ModalWidgetBase* Modal = Cast<UGV2ModalWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *Modal->GetKey().ToString()));
-    }
-    if (const UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget))
-    {
-        Parts.Add(FString::Printf(TEXT("key=\"%s\""), *ButtonList->GetKey().ToString()));
     }
     if (const UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
     {

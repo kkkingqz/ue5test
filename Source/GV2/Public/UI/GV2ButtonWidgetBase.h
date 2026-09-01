@@ -78,9 +78,6 @@ private:
     FGV2UiBindingHandle BindingHandle;
 
     UPROPERTY(Transient)
-    FName Key;
-
-    UPROPERTY(Transient)
     FGV2TextViewModel CurrentTextViewModel;
 
     UPROPERTY(Transient)

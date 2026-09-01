@@ -66,10 +66,10 @@ public:
     EGV2SubmitUiInteractionResult SubmitBackdropClose();
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Properties")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Properties")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
 protected:
     virtual void NativePreConstruct() override;
@@ -91,8 +91,6 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UButton> BackdropButton;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Properties")
-    FName Key;
 
     FGV2UiPropertyHostState PropertyHostState;
 

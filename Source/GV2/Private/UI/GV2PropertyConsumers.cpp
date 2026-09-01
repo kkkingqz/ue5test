@@ -735,6 +735,7 @@ bool FGV2KeyPropertyConsumer::Prepare(
     }
 
     PreparedValue = Value.AsKey();
+    PropertyName = Capability.PropertyName;
     return true;
 }
 
@@ -746,150 +747,63 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
         return false;
     }
 
-    if (UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
+    // DUC-03: "selected_key" and "default_tab_key" are their own capabilities, not the
+    // generic `key` identity, and are routed by name so they can never be shadowed by (or
+    // shadow) a host's real `key` -- see UGV2TabContainerWidgetBase, which declares both
+    // "key" (its own identity) and "default_tab_key" (its own concept) on itself.
+    if (PropertyName == TEXT("selected_key"))
     {
-        Button->SetKey(FName(*PreparedValue));
+        if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
+        {
+            Dropdown->SetSelectedKey(FName(*PreparedValue));
+            return true;
+        }
     }
-    else if (UGV2CheckboxWidgetBase* Checkbox = Cast<UGV2CheckboxWidgetBase>(TargetWidget))
+    else if (PropertyName == TEXT("default_tab_key"))
     {
-        Checkbox->SetKey(FName(*PreparedValue));
+        if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
+        {
+            TabContainer->ApplyDefaultTabKey(FName(*PreparedValue));
+            return true;
+        }
     }
-    else if (UGV2InputFieldWidgetBase* InputField = Cast<UGV2InputFieldWidgetBase>(TargetWidget))
+    else if (IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(TargetWidget))
     {
-        InputField->SetKey(FName(*PreparedValue));
+        Host->SetKey(FName(*PreparedValue));
+        return true;
     }
-    else if (UGV2ProgressBarWidgetBase* ProgressBar = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
-    {
-        ProgressBar->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2PortraitWidgetBase* Portrait = Cast<UGV2PortraitWidgetBase>(TargetWidget))
-    {
-        Portrait->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(TargetWidget))
-    {
-        RichText->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2RichTextPopoverWidgetBase* Popover = Cast<UGV2RichTextPopoverWidgetBase>(TargetWidget))
-    {
-        Popover->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-    {
-        Dropdown->SetSelectedKey(FName(*PreparedValue));
-    }
-    else if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
-    {
-        TabContainer->ApplyDefaultTabKey(FName(*PreparedValue));
-    }
-    else if (UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(TargetWidget))
-    {
-        TopBar->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(TargetWidget))
-    {
-        PlayerStatus->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2LocationSceneWidgetBase* SceneWidget = Cast<UGV2LocationSceneWidgetBase>(TargetWidget))
-    {
-        SceneWidget->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(TargetWidget))
-    {
-        CmdPanel->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2ImageWidgetBase* ImageWidget = Cast<UGV2ImageWidgetBase>(TargetWidget))
-    {
-        ImageWidget->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2ModalWidgetBase* Modal = Cast<UGV2ModalWidgetBase>(TargetWidget))
-    {
-        Modal->SetKey(FName(*PreparedValue));
-    }
-    else if (UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget))
-    {
-        ButtonList->SetKey(FName(*PreparedValue));
-    }
-    else
-    {
-        // A host that declares a `key` capability but has no branch here would otherwise
-        // report a successful commit while storing nothing -- the exact shape this pipeline
-        // exists to make impossible. Unhandled target type is a defect, not a no-op.
-        OutError = FString::Printf(
-            TEXT("core:diagnostic.ui_consumer.unhandled_target: key capability declared for '%s' has no commit branch"),
-            *TargetWidget->GetClass()->GetName());
-        return false;
-    }
-    return true;
+
+    // A host that declares a `key`-kind capability but has no branch here would otherwise
+    // report a successful commit while storing nothing -- the exact shape this pipeline
+    // exists to make impossible. Unhandled target type/property is a defect, not a no-op.
+    OutError = FString::Printf(
+        TEXT("core:diagnostic.ui_consumer.unhandled_target: '%s' capability declared for '%s' has no commit branch"),
+        *PropertyName, *TargetWidget->GetClass()->GetName());
+    return false;
 }
 
 void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(TargetWidget))
+    if (PropertyName == TEXT("selected_key"))
     {
-        Button->SetKey(NAME_None);
+        if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
+        {
+            Dropdown->SetSelectedKey(NAME_None);
+        }
     }
-    else if (UGV2CheckboxWidgetBase* Checkbox = Cast<UGV2CheckboxWidgetBase>(TargetWidget))
+    else if (PropertyName == TEXT("default_tab_key"))
     {
-        Checkbox->SetKey(NAME_None);
+        if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
+        {
+            TabContainer->ApplyDefaultTabKey(NAME_None);
+        }
     }
-    else if (UGV2InputFieldWidgetBase* InputField = Cast<UGV2InputFieldWidgetBase>(TargetWidget))
+    else if (IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(TargetWidget))
     {
-        InputField->SetKey(NAME_None);
-    }
-    else if (UGV2ProgressBarWidgetBase* ProgressBar = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
-    {
-        ProgressBar->SetKey(NAME_None);
-    }
-    else if (UGV2PortraitWidgetBase* Portrait = Cast<UGV2PortraitWidgetBase>(TargetWidget))
-    {
-        Portrait->SetKey(NAME_None);
-    }
-    else if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(TargetWidget))
-    {
-        RichText->SetKey(NAME_None);
-    }
-    else if (UGV2RichTextPopoverWidgetBase* Popover = Cast<UGV2RichTextPopoverWidgetBase>(TargetWidget))
-    {
-        Popover->SetKey(NAME_None);
-    }
-    else if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-    {
-        Dropdown->SetSelectedKey(NAME_None);
-    }
-    else if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
-    {
-        TabContainer->ApplyDefaultTabKey(NAME_None);
-    }
-    else if (UGV2LocationTopBarWidgetBase* TopBar = Cast<UGV2LocationTopBarWidgetBase>(TargetWidget))
-    {
-        TopBar->SetKey(NAME_None);
-    }
-    else if (UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(TargetWidget))
-    {
-        PlayerStatus->SetKey(NAME_None);
-    }
-    else if (UGV2LocationSceneWidgetBase* SceneWidget = Cast<UGV2LocationSceneWidgetBase>(TargetWidget))
-    {
-        SceneWidget->SetKey(NAME_None);
-    }
-    else if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(TargetWidget))
-    {
-        CmdPanel->SetKey(NAME_None);
-    }
-    else if (UGV2ImageWidgetBase* ImageWidget = Cast<UGV2ImageWidgetBase>(TargetWidget))
-    {
-        ImageWidget->SetKey(NAME_None);
-    }
-    else if (UGV2ModalWidgetBase* Modal = Cast<UGV2ModalWidgetBase>(TargetWidget))
-    {
-        Modal->SetKey(NAME_None);
-    }
-    else if (UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget))
-    {
-        ButtonList->SetKey(NAME_None);
+        Host->SetKey(NAME_None);
     }
     PreparedValue.Empty();
+    PropertyName.Empty();
 }
 
 // --- FGV2BindingPropertyConsumer ---

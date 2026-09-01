@@ -1,7 +1,7 @@
 ---
 title: Addressable Elements Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -51,10 +51,20 @@ depends_on:
     - `WidgetRegistry.md`/`ScreenTemplates.md` обновлены: таблица implementations, footnote, секция "Host Identity", секция "Current WBP_Testscreen contract" и один найденный по пути устаревший verification-пункт (`WBP_Testscreen содержит deterministic ... required` — противоречил уже исправленной в PCC-11 секции того же файла).
     - Верификация: 99/99 UE Automation, 68/68 Headless ctest, все content/doc-гейты зелёные.
 
-- [ ] **DUC-03 — `key` перестаёт быть перечислением классов**
+- [x] **DUC-03 — `key` перестаёт быть перечислением классов**
   - `FGV2KeyPropertyConsumer::Commit` перечисляет 15 классов; 13 веток идентичны. Новый хост, объявивший `key`, обязан быть добавлен туда вручную — и до недавнего исправления его отсутствие давало тихий успех, что и произвело дефект `UGV2ModalWidgetBase`.
   - Done: ключ хранится в общем состоянии хоста свойств, consumer сводится к одной ветке; две семантически иные capability — выбранный ключ выпадающего списка и ключ вкладки по умолчанию — разведены по именам и не выдают себя за `key`; новый хост, объявивший `key`, работает **без** правки consumer — проверено тестом на классе, добавленном только в тесте; типизированный отказ на неподдерживаемый тип цели сохраняется как защита.
   - Evidence: `Source/GV2/Private/UI/GV2PropertyConsumers.cpp`, `Source/GV2/Public/UI/GV2UiPropertyHost.h`.
+  - **Реализация (2026-09-01):**
+    - `FGV2UiPropertyHostState` (`GV2UiPropertyHost.h`) получил `UPROPERTY(Transient) FName Key;` + `GetKey()`/`SetKey()` — тем же способом, что `HostIdentity` в DUC-01: единственное объявление на общей поверхности хостов, а не по классам. `IGV2UiPropertyHost` получил неprямые `GetKey()`/`SetKey()`, делегирующие в `GetPropertyHostState()`.
+    - Все 15 классов, ранее хранивших собственный приватный `FName Key;` (13 базовых/композитных виджетов плюс `UGV2ButtonWidgetBase` отдельно), переведены на общее хранилище: приватное поле удалено, `SetKey`/`GetKey` делегируют в `GetPropertyHostState()`. В `GV2ButtonWidgetBase.cpp` заодно исправлена оставшаяся ссылка на удалённое поле (`OnActivated.Broadcast(Key)` → `OnActivated.Broadcast(GetKey())`).
+    - `FGV2KeyPropertyConsumer` (`GV2PropertyConsumers.h/.cpp`) получил `SetPropertyNameForRouting()` и приватное поле `PropertyName`, заполняемое в `Prepare()` из `Capability.PropertyName`. `Commit`/`Reset` переписаны с 15 веток по типу цели на маршрутизацию по имени свойства: `selected_key` → `DropdownSelect`, `default_tab_key` → `TabContainer`, любое другое имя (включая `key`) → общий `IGV2UiPropertyHost::SetKey`/`GetKey`. Для сброса, у которого consumer создаётся через `FGV2PropertyConsumerFactory::CreateConsumer` без прохода через `Prepare()`, `PropertyName` теперь проставляется явно в обеих точках создания в `GV2UiMutationPlan.cpp` через `SetPropertyNameForRouting()`.
+    - **Найденный и устранённый живой дефект**: `UGV2TabContainerWidgetBase` объявляет одновременно `default_tab_key` и собственный `key` как отдельные capability на себя же, но старый consumer маршрутизировал ЛЮБОЙ key-kind коммит на неё в `ApplyDefaultTabKey`, различая цели только по типу виджета, а не по имени свойства — собственная идентичность (`key`) TabContainer тихо подменялась значением вкладки по умолчанию. Новая маршрутизация по имени свойства устраняет это как естественное следствие редизайна; обнаружено тестом `GV2.UI.CapabilityObservabilityCompositeSweep`, упавшим с `capability 'key' is not observable` — до этой задачи `CaptureUiTargetState` вообще не читал `key` у TabContainer.
+    - `CaptureUiTargetState` (`GV2UiCapabilityObservability.cpp`) консолидирован: 11 однострочных per-class блоков `key="..."` (Button, Checkbox, InputField, ProgressBar, TopBar, PlayerStatus, Scene, CommandPanel, Modal, ButtonList, RichTextPopover) заменены одним общим блоком через `Cast<IGV2UiPropertyHost>(TargetWidget)->GetKey()`; у Portrait/RichText/Image из блоков убрана только строка `key=`, остальное содержимое (`portrait_brush=`/`rich_text=`/`image_brush=`) сохранено. Это одновременно закрыло находку выше — TabContainer's `key` стал наблюдаем впервые.
+    - Новый тестовый класс `UGV2NewHostAddedOnlyInTestWidget` (`GV2ForgeryTestWidgets.h/.cpp`) — реализует голый `IGV2UiPropertyHost` и объявляет `key`-capability, не упоминаясь нигде в `GV2PropertyConsumers.cpp`. Тест в `GV2PropertyConsumersTests.cpp` прогоняет `Prepare`/`Commit`/`Reset` прямо на нём и отдельно проверяет типизированный отказ `unhandled_target` на цели без `IGV2UiPropertyHost` (`NewObject<UVerticalBox>`).
+    - Красный тест на откате: удаление общей ветки `IGV2UiPropertyHost` из `Commit()` дало не «чистый» упавший assert, а `SIGSEGV` внутри `GV2PropertyConsumersTests.cpp:653` — коллекционный consumer (`FGV2KeyedCollectionPropertyConsumer`) внутренне реконсилирует `key` каждого элемента через тот же путь, и без общей ветки элемент не регистрируется в ListView по ключу, а тест разыменовывает `nullptr` без предварительной проверки. Каскадный крах через несвязанные секции теста расценён как более сильное свидетельство, чем изолированный failure; ветка восстановлена, подтверждено git diff.
+    - `Docs/UI/WidgetRegistry.md`: описание `FGV2KeyPropertyConsumer` в списке стандартных потребителей обновлено — вместо `(key, selected_key)` теперь описывает маршрутизацию по имени capability, включая `default_tab_key`.
+    - Верификация: 99/99 UE Automation, 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
 
 - [ ] **DUC-04 — Охват sweep следует за адресуемостью**
   - Зависимости: DUC-02, DUC-03.

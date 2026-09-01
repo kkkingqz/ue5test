@@ -26,10 +26,10 @@ public:
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Properties")
-    void SetKey(FName InKey) { Key = InKey; }
+    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Properties")
-    FName GetKey() const { return Key; }
+    FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Rich Text")
     bool InitializePopover(const FGV2RichTextHoverViewModel& InModel);
@@ -64,8 +64,6 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UImage> Icon;
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Properties")
-    FName Key;
 
     FGV2UiPropertyHostState PropertyHostState;
 

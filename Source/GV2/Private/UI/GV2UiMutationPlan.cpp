@@ -214,6 +214,14 @@ bool PrepareUiHostProperties(
                     return false;
                 }
 
+                // DUC-03: a reset mutation's consumer never goes through Prepare(), so the
+                // Key consumer needs PropertyName injected directly to route "selected_key"/
+                // "default_tab_key" apart from the generic `key` on Reset.
+                if (Cap.SupportedKind == EGV2PreparedUiValueKind::Key)
+                {
+                    static_cast<FGV2KeyPropertyConsumer*>(Consumer.Get())->SetPropertyNameForRouting(PropName);
+                }
+
                 FGV2UiPropertyMutation Mutation;
                 Mutation.PropertyName = PropName;
                 Mutation.PropertyPath = ChildPath;
@@ -255,6 +263,11 @@ bool PrepareUiHostProperties(
                     Diag.Message = FString::Printf(TEXT("No consumer available for reset of property '%s'"), *PropName);
                     OutDiagnostics.Add(MoveTemp(Diag));
                     return false;
+                }
+
+                if (Cap.SupportedKind == EGV2PreparedUiValueKind::Key)
+                {
+                    static_cast<FGV2KeyPropertyConsumer*>(Consumer.Get())->SetPropertyNameForRouting(PropName);
                 }
 
                 FGV2UiPropertyMutation Mutation;
