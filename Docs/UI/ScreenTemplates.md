@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.9
+version: 1.10
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -185,6 +185,8 @@ FGV2UiPropertyHostState:
 
 - На уровне экрана это `field_id`: `IGV2ScreenFieldHost::GetScreenFieldId()` делегирует в `GetHostIdentity()`, не хранит собственное отдельное значение. Изначально — только у четырёх Location-композитов; DUC-02 дал ту же адресуемость восьми базовым элементам (`UGV2TextWidgetBase`, `UGV2RichTextWidgetBase`, `UGV2ImageWidgetBase`, `UGV2ButtonWidgetBase`, `UGV2CheckboxWidgetBase`, `UGV2InputFieldWidgetBase`, `UGV2ProgressBarWidgetBase`, `UGV2PortraitWidgetBase`) без единого нового C++-класса — см. [Widget Registry](WidgetRegistry.md#native-adapters-and-blueprint-bases).
 - На уровне composite-свойства (DUC-05+) это имя свойства, под которым родительский композит адресует данного ребёнка в своём плоском списке capability.
+
+`UGV2DeclaredCompositeWidgetBase` реализует оба интерфейса и поэтому использует тот же `HostIdentity` без дополнительного поля: непустое значение делает конкретный Blueprint top-level Screen Field host, а `NAME_None` оставляет его nested composite. Его Designer list содержит независимые тройки `PropertyName` / `ChildWidgetName` / `Kind`; `ChildWidgetName` обязан разрешаться в WidgetTree на preflight. Отсутствие named child возвращает `core:diagnostic.ui_consumer.missing_target` до `Ready` и публикации screen instance. DUC-05 не выводит вид из ребёнка и не заменяет существующие Location-композиты; эта независимая сверка относится к DUC-07.
 
 Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
 

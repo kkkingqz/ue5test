@@ -101,7 +101,14 @@ bool PrepareUiHostProperties(
                 TargetWidget = Cast<UWidget>(HostWidget);
             }
 
-            if (TargetWidget == nullptr && Cast<IGV2UiPropertyHost>(HostWidget))
+            // A capability with NAME_None intentionally targets its owning property host
+            // (for example the shared `key` capability). A named target is a declaration
+            // about the instance WidgetTree; falling back to the host for a typo converts a
+            // missing child into an unrelated target-type mismatch. DUC-05 needs that
+            // declaration drift rejected deterministically during preflight.
+            if (TargetWidget == nullptr
+                && Cap.TargetName == NAME_None
+                && Cast<IGV2UiPropertyHost>(HostWidget))
             {
                 TargetWidget = Cast<UWidget>(HostWidget);
             }

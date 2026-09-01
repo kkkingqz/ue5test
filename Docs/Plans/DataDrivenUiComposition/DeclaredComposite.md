@@ -1,8 +1,8 @@
 ---
 title: Declared Composite Tasks
 status: active
-version: 1.0
-updated: 2026-08-27
+version: 1.1
+updated: 2026-09-01
 depends_on:
   - README.md
   - AddressableElements.md
@@ -23,10 +23,10 @@ depends_on:
 
 ## Задачи
 
-- [ ] **DUC-05 — Generic-композит и объявляемый список capability**
+- [x] **DUC-05 — Generic-композит и объявляемый список capability**
   - Зависимости: DUC-04, `PCC-05` плана доведения.
   - Done: существует generic-класс композита, чьё дерево capability строится из `UPROPERTY(EditAnywhere)` списка троек *(имя свойства, имя дочернего виджета, вид)*; список редактируется в Designer рядом с деревом виджетов; вид поддерживает все значения, у которых есть consumer после `PCC-05`; ссылка на несуществующее имя дочернего виджета отклоняется на проверке экземпляра до публикации экрана, а не молча пропускается; ни один существующий композит на этом шаге ещё не переписан.
-  - Evidence: `Source/GV2/Public/UI/`, `Content/`.
+  - Evidence: `UGV2DeclaredCompositeWidgetBase`, `WBP_DeclaredCompositeFixture`, `GV2.UI.DeclaredComposite`, `GV2.UI.CapabilityObservabilityCompositeSweep`; red→green sweep доказывает, что real WBP fixture обязателен для нового native host.
 
 - [ ] **DUC-06 — Схема объявляемого композита плоская**
   - Зависимости: DUC-05.

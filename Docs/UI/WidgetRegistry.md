@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.4
+version: 3.5
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -30,7 +30,7 @@ Widget Registry описывает reusable UI elements, их trusted C++/UMG ad
 
 - Registry владеет разрешённым adapter/factory mapping для reusable element type.
 - `GV2ScreenFieldMaterializer` выполняет материализацию полей на основе скомпилированных схем репозитория (`GV2ContentCore::FCompiledUiFieldSpec`); C++ schema-specific адаптеры и их статический реестр физически удалены.
-- Виджеты реализуют `IGV2UiPropertyHost` (`DescribeUiCapabilities`), связывая валидированные данные схемы со своим локальным состоянием через универсальные property consumers. Отдельно, только виджеты, служащие top-level приёмником Screen Field, дополнительно реализуют `IGV2ScreenFieldHost` (`GetScreenFieldId`) — в текущем коде это исключительно четыре Location-композита ([Screen Templates § Screen Field Host and Property Host contract](ScreenTemplates.md#screen-field-host-and-property-host-contract)); ни один из reusable UI-kit виджетов ниже его не реализует.
+- Виджеты реализуют `IGV2UiPropertyHost` (`DescribeUiCapabilities`), связывая валидированные данные схемы со своим локальным состоянием через универсальные property consumers. Виджет, служащий top-level приёмником Screen Field, дополнительно реализует `IGV2ScreenFieldHost` (`GetScreenFieldId`): это четыре Location-композита, восемь адресуемых базовых элементов DUC-02 и `UGV2DeclaredCompositeWidgetBase`. Последний становится field host только когда Designer задаёт его `HostIdentity`; остальные reusable UI-kit виджеты остаются nested property hosts ([Screen Templates § Screen Field Host and Property Host contract](ScreenTemplates.md#screen-field-host-and-property-host-contract)).
 - Concrete Screen Blueprint выбирает и размещает Screen Field Hosts в структуре дерева виджетов.
 - Lua выбирает `screen_id`, значения fields и Command bindings, но не `widget_id` физического child Widget.
 
@@ -152,6 +152,14 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 ### Охват capability sweep (DUC-04)
 
 `GV2.UI.CapabilityObservabilityCompositeSweep` обязан получать source set не из списка имён в тесте, а reflection-ом: каждый прямой native implementation boundary `IGV2UiPropertyHost` из `/Script/GV2` требует реальный `WBP_*`-потомок в UI package roots. Отсутствующий Blueprint делает automation красной; тестовые подделки исключаются только явной UCLASS metadata `GV2TestOnly` и проверяются отдельными negative tests.
+
+### Объявляемый generic composite (DUC-05)
+
+`UGV2DeclaredCompositeWidgetBase` — единственный generic base для композита, чьи capability объявляет Designer. Он хранит редактируемый рядом с WidgetTree плоский `DeclaredCapabilities` из троек `PropertyName`, `ChildWidgetName`, `Kind`; дерево capability строится только из этих троек, а не выводится из реализации ребёнка. Сверка с capability ребёнка остаётся самостоятельной задачей DUC-07.
+
+`Kind` соответствует всем прямым consumer-backed маршрутам после PCC-05: `Boolean`, `Integer`, `Number`, `String`, `Key`, `Text`, `ResourceRef`, `Binding`, а для `Array` — `CollectionHost`, `RichTextSpans`, `NestedScreen`. `Null` и прямой `Object` намеренно не имеют значения Designer enum: для них consumer отсутствует или вид неприменим; object/array composition остаётся плоским mapping либо специальным collection/nested route.
+
+`ChildWidgetName` — точная декларация target в instance WidgetTree. Если named child отсутствует, preflight `PrepareUiHostProperties` обязан остановить candidate до публикации с `core:diagnostic.ui_consumer.missing_target`; fallback на сам host допустим только для capability с `TargetName == NAME_None`. `WBP_DeclaredCompositeFixture` фиксирует production-конфигурацию `label → LabelText: WBP_Text` и одновременно является обязательной WBP-fixture capability sweep. DUC-05 не меняет существующие Location-композиты.
 
 Каждый такой boundary обязан предоставлять в Designer тот же `UPROPERTY(EditAnywhere, meta=(ShowOnlyInnerProperties)) FGV2UiPropertyHostState PropertyHostState`, что и остальные хосты. Sweep проверяет тип и Designer metadata этого состояния, применяет два различных значения `HostIdentity` и читает их обратно; для `IGV2ScreenFieldHost` дополнительно проверяет делегирование `GetScreenFieldId()` в это же значение. Это обычная проверяемая способность property host, а не отдельный per-class protocol. `WBP_Modal` наследует `UGV2ModalWidgetBase`, содержит его обязательные renderer targets и проходит тот же production sweep.
 
