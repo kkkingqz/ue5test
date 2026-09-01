@@ -18,6 +18,7 @@
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2DeclaredCompositeWidgetBase.h"
 #include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
@@ -1353,7 +1354,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestFalse(TEXT("Tab with unregistered screen_id rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnregScreenTabs)), *TabsCap, TabContainer, PrepErr));
         }
 
-        // 13. UPP-24: UGV2LocationTopBarWidgetBase and UGV2LocationPlayerStatusWidgetBase as IGV2UiPropertyHost
+        // 13. UPP-24: TopBar (DUC-08: generic declared composite) and UGV2LocationPlayerStatusWidgetBase as IGV2UiPropertyHost
         {
             auto MakeScalarSpec = [](const GV2ContentCore::EScalarFieldKind Kind,
                                      const TOptional<double> Min = {},
@@ -1455,27 +1456,25 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 PropHost->GetPropertyHostState().SetLastCommittedProperties(FGV2PreparedUiObject());
             };
 
-            // 13a. TopBar Property Host Reconciliation
+            // 13a. TopBar (DUC-08: generic declared composite) Property Host Reconciliation
             {
-                UGV2LocationTopBarWidgetBase* TopBar = CreateWidget<UGV2LocationTopBarWidgetBase>(TestWorld, UGV2LocationTopBarWidgetBase::StaticClass());
+                UGV2DeclaredCompositeWidgetBase* TopBar = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, UGV2DeclaredCompositeWidgetBase::StaticClass());
                 TestNotNull(TEXT("TopBar instantiated"), TopBar);
 
-                UGV2TextWidgetBase* DayBlock = NewObject<UGV2TextWidgetBase>(TopBar);
-                UGV2TextWidgetBase* LocBlock = NewObject<UGV2TextWidgetBase>(TopBar);
-                UGV2TextWidgetBase* ResBlock = NewObject<UGV2TextWidgetBase>(TopBar);
+                TopBar->WidgetTree = NewObject<UWidgetTree>(TopBar);
+                UVerticalBox* TopBarRoot = TopBar->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+                TopBar->WidgetTree->RootWidget = TopBarRoot;
+                UGV2TextWidgetBase* DayBlock = TopBar->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+                UGV2TextWidgetBase* LocBlock = TopBar->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("LocationText"));
+                UGV2TextWidgetBase* ResBlock = TopBar->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("PrimaryResourceText"));
+                TopBarRoot->AddChildToVerticalBox(DayBlock);
+                TopBarRoot->AddChildToVerticalBox(LocBlock);
+                TopBarRoot->AddChildToVerticalBox(ResBlock);
 
-                if (FProperty* Prop = UGV2LocationTopBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("DayText")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(TopBar) = DayBlock;
-                }
-                if (FProperty* Prop = UGV2LocationTopBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("LocationText")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(TopBar) = LocBlock;
-                }
-                if (FProperty* Prop = UGV2LocationTopBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("PrimaryResourceText")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(TopBar) = ResBlock;
-                }
+                TopBar->DeclaredCapabilities.Add({ FName(TEXT("day")), FName(TEXT("DayText")), EGV2DeclaredUiCapabilityKind::Text });
+                TopBar->DeclaredCapabilities.Add({ FName(TEXT("location")), FName(TEXT("LocationText")), EGV2DeclaredUiCapabilityKind::Text });
+                TopBar->DeclaredCapabilities.Add({ FName(TEXT("primary_resource")), FName(TEXT("PrimaryResourceText")), EGV2DeclaredUiCapabilityKind::Text });
+                TopBar->DeclaredCapabilities.Add({ FName(TEXT("key")), NAME_None, EGV2DeclaredUiCapabilityKind::Key });
 
                 FGV2UiCapabilityBuilder TopBuilder;
                 TopBar->DescribeUiCapabilities(TopBuilder);

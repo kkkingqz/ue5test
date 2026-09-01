@@ -20,42 +20,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
     EGV2SubmitUiInteractionResult, Result);
 
 UCLASS(Blueprintable)
-class GV2_API UGV2LocationTopBarWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
-{
-    GENERATED_BODY()
-public:
-    // IGV2UiPropertyHost
-    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
-    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
-    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
-
-    // IGV2ScreenFieldHost
-    // DUC-01: field_id is this host's identity within its enclosing screen --
-    // the same shared HostIdentity every IGV2UiPropertyHost carries, not a
-    // separate per-class property. See FGV2UiPropertyHostState.
-    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
-
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return GetPropertyHostState().GetKey(); }
-
-protected:
-    virtual void NativePreConstruct() override;
-    UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> DayText;
-    UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> LocationText;
-    UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PrimaryResourceText;
-    UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: ResourceIcon is unused because PrimaryResource contains formatted text.")) TObjectPtr<UWidget> ResourceIcon;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> DayLocationSeparator;
-
-private:
-    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
-    FGV2UiPropertyHostState PropertyHostState;
-
-};
-
-UCLASS(Blueprintable)
 class GV2_API UGV2LocationPlayerStatusWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
 {
     GENERATED_BODY()

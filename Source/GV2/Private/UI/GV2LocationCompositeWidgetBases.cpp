@@ -10,35 +10,6 @@
 #include "Components/WrapBoxSlot.h"
 
 // ============================================================================
-// TopBar
-// ============================================================================
-void UGV2LocationTopBarWidgetBase::NativePreConstruct()
-{
-    Super::NativePreConstruct();
-    if (ResourceIcon)
-    {
-        ResourceIcon->SetVisibility(ESlateVisibility::Collapsed);
-    }
-}
-
-void UGV2LocationTopBarWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
-{
-    if (DayText != nullptr)
-    {
-        OutBuilder.AddText(TEXT("day"), FName(TEXT("DayText")));
-    }
-    if (LocationText != nullptr)
-    {
-        OutBuilder.AddText(TEXT("location"), FName(TEXT("LocationText")));
-    }
-    if (PrimaryResourceText != nullptr)
-    {
-        OutBuilder.AddText(TEXT("primary_resource"), FName(TEXT("PrimaryResourceText")));
-    }
-    OutBuilder.AddKey(TEXT("key"), NAME_None);
-}
-
-// ============================================================================
 // PlayerStatus
 // ============================================================================
 void UGV2LocationPlayerStatusWidgetBase::NativePreConstruct()

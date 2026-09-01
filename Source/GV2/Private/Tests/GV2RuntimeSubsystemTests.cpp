@@ -40,6 +40,7 @@
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2DeclaredCompositeWidgetBase.h"
 #include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2ScreenFieldHost.h"
@@ -1342,7 +1343,6 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 || WidgetClass->IsChildOf(UGV2RichTextWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2RichTextPopoverWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2LocationTopBarWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationPlayerStatusWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationSceneWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationCommandPanelWidgetBase::StaticClass())
@@ -2417,23 +2417,21 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
             UGV2ScreenWidgetBase* FaultScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
             FaultScreen->WidgetTree = NewObject<UWidgetTree>(FaultScreen);
-            UGV2LocationTopBarWidgetBase* TopBar = FaultScreen->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
-                UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBar"));
+            UGV2DeclaredCompositeWidgetBase* TopBar = FaultScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("TopBar"));
             FaultScreen->WidgetTree->RootWidget = TopBar;
-            // DescribeUiCapabilities resolves "day" via GetWidgetFromName("DayText"), a tree
-            // lookup by name -- not by reading TopBar's own BindWidget pointer -- so a named
-            // child is sufficient without also wiring the (protected) BindWidget member.
-            UGV2TextWidgetBase* FaultDayTextWidget = FaultScreen->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            // DescribeUiCapabilities resolves "day" via GetWidgetFromName("DayText"), a lookup
+            // in TopBar's *own* WidgetTree (DUC-08: TopBar is now the generic declared
+            // composite, so DayText must be nested inside it, not a sibling in the screen's
+            // tree, exactly like a real WBP instance's Designer tree).
+            TopBar->WidgetTree = NewObject<UWidgetTree>(TopBar);
+            UGV2TextWidgetBase* FaultDayTextWidget = TopBar->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            TopBar->WidgetTree->RootWidget = FaultDayTextWidget;
             TestNotNull(TEXT("PCC-06: DayText child constructs"), FaultDayTextWidget);
             // DUC-01: identity is the shared HostIdentity (public via IGV2UiPropertyHost),
             // not a per-class reflected property -- no reflection needed to set it.
             TopBar->SetHostIdentity(FName(TEXT("top_bar")));
-            // DescribeUiCapabilities only advertises "day" when its own DayText BindWidget
-            // pointer is non-null (protected -- not settable from outside without reflection).
-            if (FObjectProperty* DayTextProp = FindFProperty<FObjectProperty>(TopBar->GetClass(), TEXT("DayText")))
-            {
-                DayTextProp->SetObjectPropertyValue_InContainer(TopBar, FaultDayTextWidget);
-            }
+            TopBar->DeclaredCapabilities.Add({ FName(TEXT("day")), FName(TEXT("DayText")), EGV2DeclaredUiCapabilityKind::Text });
 
             auto MakeDayFieldValue = [](const FString& DayText) -> FGV2ScreenFieldValue
             {
@@ -2530,29 +2528,29 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
             UGV2ScreenWidgetBase* TopBarScreenV1 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
             TopBarScreenV1->WidgetTree = NewObject<UWidgetTree>(TopBarScreenV1);
-            UGV2LocationTopBarWidgetBase* TopBarV1 = TopBarScreenV1->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
-                UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBar"));
+            UGV2DeclaredCompositeWidgetBase* TopBarV1 = TopBarScreenV1->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("TopBar"));
             TopBarScreenV1->WidgetTree->RootWidget = TopBarV1;
-            UGV2TextWidgetBase* TopBarV1DayText = TopBarScreenV1->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            // DayText must be nested inside TopBarV1's *own* WidgetTree (DUC-08).
+            TopBarV1->WidgetTree = NewObject<UWidgetTree>(TopBarV1);
+            UGV2TextWidgetBase* TopBarV1DayText = TopBarV1->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            TopBarV1->WidgetTree->RootWidget = TopBarV1DayText;
             TestNotNull(TEXT("PCC-07: layer A v1 DayText child constructs"), TopBarV1DayText);
             TopBarV1->SetHostIdentity(FName(TEXT("top_bar")));
-            if (FObjectProperty* Prop = FindFProperty<FObjectProperty>(TopBarV1->GetClass(), TEXT("DayText")))
-            {
-                Prop->SetObjectPropertyValue_InContainer(TopBarV1, TopBarV1DayText);
-            }
+            TopBarV1->DeclaredCapabilities.Add({ FName(TEXT("day")), FName(TEXT("DayText")), EGV2DeclaredUiCapabilityKind::Text });
 
             UGV2ScreenWidgetBase* TopBarScreenV2 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
             TopBarScreenV2->WidgetTree = NewObject<UWidgetTree>(TopBarScreenV2);
-            UGV2LocationTopBarWidgetBase* TopBarV2 = TopBarScreenV2->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
-                UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBar"));
+            UGV2DeclaredCompositeWidgetBase* TopBarV2 = TopBarScreenV2->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("TopBar"));
             TopBarScreenV2->WidgetTree->RootWidget = TopBarV2;
-            UGV2TextWidgetBase* TopBarV2DayText = TopBarScreenV2->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            // DayText must be nested inside TopBarV2's *own* WidgetTree (DUC-08).
+            TopBarV2->WidgetTree = NewObject<UWidgetTree>(TopBarV2);
+            UGV2TextWidgetBase* TopBarV2DayText = TopBarV2->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            TopBarV2->WidgetTree->RootWidget = TopBarV2DayText;
             TestNotNull(TEXT("PCC-07: layer A v2 DayText child constructs"), TopBarV2DayText);
             TopBarV2->SetHostIdentity(FName(TEXT("top_bar")));
-            if (FObjectProperty* Prop = FindFProperty<FObjectProperty>(TopBarV2->GetClass(), TEXT("DayText")))
-            {
-                Prop->SetObjectPropertyValue_InContainer(TopBarV2, TopBarV2DayText);
-            }
+            TopBarV2->DeclaredCapabilities.Add({ FName(TEXT("day")), FName(TEXT("DayText")), EGV2DeclaredUiCapabilityKind::Text });
 
             UGV2ScreenWidgetBase* PlainScreenV1 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
             UGV2ScreenWidgetBase* PlainScreenV2 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
@@ -4154,14 +4152,17 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                     TArray<UWidget*> ChildWidgets;
                     LocationScreen->WidgetTree->GetAllWidgets(ChildWidgets);
 
-                    UGV2LocationTopBarWidgetBase* TopBarWidget = nullptr;
+                    UGV2DeclaredCompositeWidgetBase* TopBarWidget = nullptr;
                     UGV2LocationPlayerStatusWidgetBase* PlayerStatusWidget = nullptr;
                     UGV2LocationSceneWidgetBase* SceneWidget = nullptr;
                     UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
 
                     for (UWidget* W : ChildWidgets)
                     {
-                        if (auto* TB = Cast<UGV2LocationTopBarWidgetBase>(W)) TopBarWidget = TB;
+                        // DUC-08: TopBar is now the generic declared composite -- matched by
+                        // HostIdentity, not a dedicated C++ class, since several other
+                        // declared composites could also appear in this tree.
+                        if (auto* TB = Cast<UGV2DeclaredCompositeWidgetBase>(W); TB != nullptr && TB->GetHostIdentity() == FName(TEXT("top_bar"))) TopBarWidget = TB;
                         else if (auto* PS = Cast<UGV2LocationPlayerStatusWidgetBase>(W)) PlayerStatusWidget = PS;
                         else if (auto* SC = Cast<UGV2LocationSceneWidgetBase>(W)) SceneWidget = SC;
                         else if (auto* CP = Cast<UGV2LocationCommandPanelWidgetBase>(W)) CommandWidget = CP;
@@ -4663,7 +4664,7 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
             {
                 if (Child != nullptr)
                 {
-                    if (auto* TopBar = Cast<UGV2LocationTopBarWidgetBase>(Child))
+                    if (auto* TopBar = Cast<UGV2DeclaredCompositeWidgetBase>(Child); TopBar != nullptr && TopBar->GetHostIdentity() == FName(TEXT("top_bar")))
                     {
                         bFoundMarketTopBar = true;
                     }
@@ -5574,10 +5575,10 @@ bool FGV2HostIdentityIsSharedTest::RunTest(const FString& Parameters)
     DupScreen->WidgetTree = NewObject<UWidgetTree>(DupScreen);
     UVerticalBox* DupRoot = DupScreen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
     DupScreen->WidgetTree->RootWidget = DupRoot;
-    UGV2LocationTopBarWidgetBase* TopBarA = DupScreen->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
-        UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBarA"));
-    UGV2LocationTopBarWidgetBase* TopBarB = DupScreen->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
-        UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBarB"));
+    UGV2DeclaredCompositeWidgetBase* TopBarA = DupScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+        UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("TopBarA"));
+    UGV2DeclaredCompositeWidgetBase* TopBarB = DupScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+        UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("TopBarB"));
     DupRoot->AddChildToVerticalBox(TopBarA);
     DupRoot->AddChildToVerticalBox(TopBarB);
     TopBarA->SetHostIdentity(FName(TEXT("top_bar")));

@@ -1,7 +1,7 @@
 ---
 title: Declared Composite Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -57,15 +57,27 @@ depends_on:
     - Документация: `Docs/UI/ScreenTemplates.md` получил раздел «Объявление против capability ребёнка (DUC-07)»; `Docs/UI/WidgetRegistry.md` — абзац с кодом диагностики и границей `RendererControl`-only.
     - Верификация: 101/101 UE Automation, 68/68 Headless ctest, все content/doc-гейты зелёные. (Один изолированный прогон дал случайный `NestedInstancesAndTabsContract` fail на `LogModelContextProtocol: Call to unknown method "server/discover"` — MCP-шум без единого `Expected`-assertion; повторный прогон сразу же чистый 101/101, не воспроизводится.)
 
-- [ ] **DUC-08 — Один композит локации переписан на объявление**
+- [x] **DUC-08 — Один композит локации переписан на объявление**
   - Зависимости: DUC-07.
   - Доказательство, что механизм покрывает реальный случай, а не только синтетический.
   - Done: `UGV2LocationTopBarWidgetBase` — простейший из четырёх, три текстовых свойства и идентичность — заменён generic-композитом с объявлением; его C++-класс **удалён**, а не оставлен рядом; экран локации применяется без изменений в поведении; automation и Lua-спеки зелёные; в отчёте задачи записано, что из оставшихся трёх композитов выражается объявлением, а что требует C++ и почему.
   - Evidence: `Source/GV2/Public/UI/GV2LocationCompositeWidgetBases.h`, `Content/TextSystem/UI/Widgets/`, отчёт change set.
+  - **Реализация (2026-09-01):**
+    - `WBP_LocationTopBar` перепривязан (`set_parent`) с `UGV2LocationTopBarWidgetBase` на `UGV2DeclaredCompositeWidgetBase` через unreal-mcp; его Designer-дерево (`DayText`/`LocationText`/`PrimaryResourceText`/`DayLocationSeparator`, все реальные production-виджеты) осталось нетронутым — реордер класса не трогает WidgetTree, он принадлежит ассету, а не C++-классу. `DeclaredCapabilities` заданы и на CDO, и (после того как выяснилось, что placement внутри `WBP_LocationScreen` не подхватывает новое поле CDO автоматически при recompile — см. живой дефект ниже) на самом instance `TopBar` внутри `WBP_LocationScreen`: `day → DayText: Text`, `location → LocationText: Text`, `primary_resource → PrimaryResourceText: Text`, `key → (self): Key`. `ResourceIcon` (deprecated BindWidgetOptional, скрывавшийся в `NativePreConstruct`) в реальном ассете уже отсутствовал как child — удаление C++-класса не изменило видимое поведение.
+    - `UGV2LocationTopBarWidgetBase` полностью удалён из `GV2LocationCompositeWidgetBases.h`/`.cpp` (объявление, `DescribeUiCapabilities`, `NativePreConstruct`). Все нативные тестовые usages (`GV2PropertyConsumersTests.cpp` §13a, `GV2RuntimeSubsystemTests.cpp` — allowlist аудита, PCC-06 fault-injection fixture, PCC-07 multi-layer fixture, viewport matrix test, location-transition test, DUC-01 duplicate-identity test) переведены на `UGV2DeclaredCompositeWidgetBase` с ручным `WidgetTree`/`DeclaredCapabilities` вместо BindWidget-указателей через reflection.
+    - **Найденный и устранённый живой дефект (instance vs CDO)**: после реордера `DeclaredCapabilities`, заданный на CDO `WBP_LocationTopBar`, не подхватился существующим placement'ом `TopBar` внутри уже скомпилированного `WBP_LocationScreen` — даже после explicit recompile обоих ассетов instance показывал `DeclaredCapabilities: []`, тогда как `HostIdentity` (заданный ещё в DUC-01 как instance-override) сохранился корректно. Причина: `DeclaredCapabilities` — новое для этого placement'а EditAnywhere-поле, и, как любое per-instance редактируемое Designer-свойство, ожидает собственной конфигурации на каждом размещении (тот же принцип, что уже зафиксирован в `GV2DeclaredCompositeWidgetBase.h`: "each entry remains visible and editable next to this Blueprint's WidgetTree") — CDO-значение не ретроактивно распространяется на уже существующий placement. Исправлено явной установкой `DeclaredCapabilities` на instance через `ObjectTools.set_properties` + recompile + save.
+    - **Найденный и устранённый второй живой дефект (реестр аудита)**: `UGV2LocationTopBarWidgetBase::StaticClass()` был явно перечислен в allowlist "text-bearing WBP must use a Text Pipeline native base" (`GV2RuntimeSubsystemTests.cpp`) — после удаления класса эта строка стала мёртвой; удалена без замены, поскольку `UGV2DeclaredCompositeWidgetBase` уже в этом allowlist с DUC-06/07.
+    - Red-test на откате подтверждён на реальном контенте: временная очистка `DeclaredCapabilities` на instance `TopBar` внутри `WBP_LocationScreen` (симулирует «забыли сконфигурировать» — ровно та ошибка, которую этот механизм должен делать видимой) дала `GV2.Runtime.Presentation.RhStartOpensLocationScreen` красным с `core:diagnostic.ui_capability.unknown_schema_property: Schema property 'day' is not supported by widget capabilities`; восстановление конфигурации — снова зелёный, подтверждено и headless, и live через `AutomationTestToolset.RunTestsByFilter` в запущенном Editor.
+    - **Что из оставшихся трёх композитов выражается объявлением, а что требует C++ (отчёт задачи):** ни один из `UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase` не сводится к плоскому объявлению целиком — все три (в отличие от TopBar) имеют хотя бы одно `CollectionHost`-свойство (`meters`/`items`/`effects`; `characters`; `items` соответственно) с поведением, которого генерик-механизм пока не покрывает:
+      1. **Repeater-резолюция с фолбэком.** `Resolve*Repeater()` у каждого из трёх ищет `BindWidgetOptional`-репитер, а при его отсутствии — автосоздаёт `UGV2ListViewWidgetBase` вокруг container-панели (`*Container`). `UGV2DeclaredCompositeWidgetBase`'s `CollectionHost`-запись — это фиксированное имя цели без резолюции и фолбэка; расширение потребовало бы либо переноса этой логики в общий механизм (вне границ DUC-05..07), либо явного требования, чтобы Designer всегда указывал на уже существующий repeater.
+      2. **Настраиваемый и переопределяемый класс элемента.** `ResolveIconWidgetClass`/`ResolveMeterWidgetClass`/`ResolveCharacterWidgetClass`/`ResolveButtonWidgetClass` — виртуальные методы с `EditDefaultsOnly TSubclassOf<...>` полями, переопределяемые в Blueprint-потомках. Генерик-объявление не имеет эквивалента «настраиваемый и полиморфный класс записи коллекции».
+      3. **CommandPanel дополнительно** экспонирует `OnBindingInvoked` — `UPROPERTY(BlueprintAssignable)` multicast-делегат для игровой логики; это чистая Blueprint/C++ интеграционная поверхность, не capability-декларация, и в принципе не выражается через `DeclaredCapabilities`.
+      Итог: генерик-механизм закрывает произвольный набор `Text`/`Number`/`Boolean`/`Integer`/`String`/`Key`/`ResourceRef`/`Binding` свойств композита без C++, что и было целью M2 — но `CollectionHost` с настраиваемой repeater-резолюцией и полиморфным классом элемента остаётся C++-территорией, пока такая резолюция не станет отдельной, независимо спроектированной возможностью (не предмет этого плана).
+    - Верификация: 101/101 UE Automation (headless и live), 68/68 Headless ctest, все content/doc-гейты зелёные.
 
 ## Проверка milestone
 
 - [x] Блок из двух существующих элементов собран без C++.
 - [x] Схема блока плоская.
 - [x] Объявление и умения детей — независимые источники сравнения.
-- [ ] Один реальный композит переписан, его класс удалён.
+- [x] Один реальный композит переписан, его класс удалён.

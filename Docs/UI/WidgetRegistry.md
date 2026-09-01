@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.7
+version: 3.8
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -145,7 +145,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 | `UGV2SeparatorWidgetBase` | Только central style | Purely visual | `SeparatorSizeBox: USizeBox`, `SeparatorImage: UImage` |
 | `UGV2LoadingIndicatorWidgetBase` | Только central style | UE-local operation state | `LoadingIndicator: UCircularThrobber` |
 
-¹ Схема, разделяющая форму capability-дерева этого класса — не то же самое, что "виджет сконфигурирован как Screen Field". «Addressable (DUC-02)» — класс реализует `IGV2ScreenFieldHost`, делегируя `GetScreenFieldId()` в общий `HostIdentity` (DUC-01); может быть top-level приёмником Screen Field, если `HostIdentity` настроен на конкретном размещении, — проверено `GV2.Runtime.Presentation.LuaCreatesRegisteredScreen` (виджет `GreetingText` в `WBP_Testscreen`) сквозь реальный Lua/materializer pipeline. † Класс реализует только `IGV2UiPropertyHost`, не `IGV2ScreenFieldHost`: он не может быть top-level приёмником этой схемы через `GetScreenFieldId()` сейчас — это collection/composite-виджет вне границ DUC-02; схема остаётся валидируемым, протестированным на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` контрактом и может применяться как вложенное свойство composite'а (`CollectionHost` entry). Классы, реализующие `IGV2ScreenFieldHost` в текущем коде — четыре Location-композита (`UGV2LocationTopBarWidgetBase`, `UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase`) плюс восемь адресуемых base-элементов, отмеченных «addressable (DUC-02)» выше (см. [Screen Templates](ScreenTemplates.md#screen-field-host-and-property-host-contract)).
+¹ Схема, разделяющая форму capability-дерева этого класса — не то же самое, что "виджет сконфигурирован как Screen Field". «Addressable (DUC-02)» — класс реализует `IGV2ScreenFieldHost`, делегируя `GetScreenFieldId()` в общий `HostIdentity` (DUC-01); может быть top-level приёмником Screen Field, если `HostIdentity` настроен на конкретном размещении, — проверено `GV2.Runtime.Presentation.LuaCreatesRegisteredScreen` (виджет `GreetingText` в `WBP_Testscreen`) сквозь реальный Lua/materializer pipeline. † Класс реализует только `IGV2UiPropertyHost`, не `IGV2ScreenFieldHost`: он не может быть top-level приёмником этой схемы через `GetScreenFieldId()` сейчас — это collection/composite-виджет вне границ DUC-02; схема остаётся валидируемым, протестированным на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` контрактом и может применяться как вложенное свойство composite'а (`CollectionHost` entry). Классы, реализующие `IGV2ScreenFieldHost` в текущем коде — три оставшихся Location-композита (`UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase`), генерический `UGV2DeclaredCompositeWidgetBase` (охватывает `top_bar` через `WBP_LocationTopBar`, DUC-08) плюс восемь адресуемых base-элементов, отмеченных «addressable (DUC-02)» выше (см. [Screen Templates](ScreenTemplates.md#screen-field-host-and-property-host-contract)).
 
 `UGV2ScreenWidgetBase` централизует discovery, двухфазную подготовку и применение Screen Fields. Он не содержит concrete Screen fields или `screen_id` branches. Unset `ScreenFieldId` исключает nested Widget из aggregate contract.
 
