@@ -30,8 +30,11 @@
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2ScreenFieldHost.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "UObject/UObjectIterator.h"
+#include "UObject/UnrealType.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiCapabilityObservabilityTest,
@@ -448,6 +451,84 @@ UWorld* MakeSweepWorld()
     GameInstance->InitializeStandalone();
     return GameInstance->GetWorld();
 }
+
+/**
+ * The sweep's source set is the native implementation boundary, not a hand-maintained
+ * list in this test. A new production UUserWidget that implements IGV2UiPropertyHost is
+ * therefore either represented by a real WBP instance below or makes this automation fail.
+ * Test-only forgeries opt out through UCLASS(meta=(GV2TestOnly)); they deliberately violate
+ * the harness and are covered by their own negative tests.
+ */
+TArray<UClass*> CollectProductionUiPropertyHostImplementations()
+{
+    TArray<UClass*> Result;
+    for (TObjectIterator<UClass> It; It; ++It)
+    {
+        UClass* const WidgetClass = *It;
+        if (WidgetClass == nullptr
+            || !WidgetClass->HasAnyClassFlags(CLASS_Native)
+            || WidgetClass->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists)
+            || WidgetClass->GetOutermost()->GetName() != TEXT("/Script/GV2")
+            || WidgetClass->HasMetaData(TEXT("GV2TestOnly"))
+            || !WidgetClass->IsChildOf(UUserWidget::StaticClass())
+            || !WidgetClass->ImplementsInterface(UGV2UiPropertyHost::StaticClass()))
+        {
+            continue;
+        }
+
+        // A derived native class inherits its parent's capability implementation; the
+        // parent is the implementation boundary which must have a real sweep fixture.
+        UClass* const SuperClass = WidgetClass->GetSuperClass();
+        if (SuperClass != nullptr && SuperClass->ImplementsInterface(UGV2UiPropertyHost::StaticClass()))
+        {
+            continue;
+        }
+        Result.Add(WidgetClass);
+    }
+
+    Result.Sort([](const UClass& A, const UClass& B)
+    {
+        return A.GetPathName() < B.GetPathName();
+    });
+    return Result;
+}
+
+void VerifyHostIdentitySweep(
+    FAutomationTestBase& Test,
+    UUserWidget* Widget,
+    const FString& Label)
+{
+    IGV2UiPropertyHost* const PropertyHost = Cast<IGV2UiPropertyHost>(Widget);
+    if (PropertyHost == nullptr)
+    {
+        Test.AddError(FString::Printf(TEXT("%s: cannot sweep HostIdentity on a non-property host"), *Label));
+        return;
+    }
+
+    const FName OriginalIdentity = PropertyHost->GetHostIdentity();
+    const FName FirstIdentity(TEXT("duc04_identity_a"));
+    const FName SecondIdentity(TEXT("duc04_identity_b"));
+    PropertyHost->SetHostIdentity(FirstIdentity);
+    const FName ObservedFirst = PropertyHost->GetHostIdentity();
+    PropertyHost->SetHostIdentity(SecondIdentity);
+    const FName ObservedSecond = PropertyHost->GetHostIdentity();
+    PropertyHost->SetHostIdentity(OriginalIdentity);
+
+    Test.TestEqual(*FString::Printf(TEXT("%s: HostIdentity commits the first distinct value"), *Label), ObservedFirst, FirstIdentity);
+    Test.TestEqual(*FString::Printf(TEXT("%s: HostIdentity commits the second distinct value"), *Label), ObservedSecond, SecondIdentity);
+    Test.TestNotEqual(*FString::Printf(TEXT("%s: HostIdentity distinguishes two values"), *Label), ObservedFirst, ObservedSecond);
+
+    if (IGV2ScreenFieldHost* const ScreenFieldHost = Cast<IGV2ScreenFieldHost>(Widget))
+    {
+        PropertyHost->SetHostIdentity(FirstIdentity);
+        const FName ScreenFieldId = ScreenFieldHost->GetScreenFieldId();
+        PropertyHost->SetHostIdentity(OriginalIdentity);
+        Test.TestEqual(
+            *FString::Printf(TEXT("%s: screen field identity delegates to HostIdentity"), *Label),
+            ScreenFieldId,
+            FirstIdentity);
+    }
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -458,6 +539,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Parameters)
 {
     UWorld* World = MakeSweepWorld();
+    const TArray<UClass*> ProductionHostImplementations = CollectProductionUiPropertyHostImplementations();
+    TestTrue(TEXT("DUC-04: reflection discovers production IGV2UiPropertyHost implementations"), ProductionHostImplementations.Num() > 0);
 
     auto SweepClass = [this, World](UClass* WidgetClass, const TCHAR* Label)
     {
@@ -473,6 +556,8 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
             AddError(FString::Printf(TEXT("%s: widget does not implement IGV2UiPropertyHost"), Label));
             return;
         }
+
+        VerifyHostIdentitySweep(*this, Host, Label);
 
         FGV2UiCapabilityBuilder Builder;
         PropertyHost->DescribeUiCapabilities(Builder);
@@ -515,6 +600,7 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
     AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
 
     int32 DiscoveredCount = 0;
+    TArray<UClass*> SweptWidgetClasses;
     for (const FAssetData& Asset : UiAssets)
     {
         const FString AssetName = Asset.AssetName.ToString();
@@ -530,17 +616,53 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
             continue;
         }
         ++DiscoveredCount;
+        SweptWidgetClasses.Add(WidgetClass);
         SweepClass(WidgetClass, *AssetName);
     }
     TestTrue(
         TEXT("at least one WBP_* asset implementing IGV2UiPropertyHost was discovered to sweep"),
         DiscoveredCount > 0);
 
-    // WBP_Modal is not based on UGV2ModalWidgetBase, so discovery above cannot find any
-    // asset implementing the interface through Modal -- it is the one documented exception,
-    // synthesized directly below. If a real Modal-based asset is ever added, the loop above
-    // will discover and sweep it too.
-    // synthetic instance with its declared renderer targets present by name.
+    for (UClass* const ImplementationClass : ProductionHostImplementations)
+    {
+        const bool bCoveredByRealWidgetBlueprint = SweptWidgetClasses.ContainsByPredicate(
+            [ImplementationClass](const UClass* SweptClass)
+            {
+                return SweptClass != nullptr && SweptClass->IsChildOf(ImplementationClass);
+            });
+        TestTrue(
+            *FString::Printf(
+                TEXT("DUC-04: %s has a real WBP instance in the capability sweep"),
+                *ImplementationClass->GetName()),
+            bCoveredByRealWidgetBlueprint);
+
+        const FStructProperty* const PropertyHostState = FindFProperty<FStructProperty>(ImplementationClass, TEXT("PropertyHostState"));
+        TestNotNull(
+            *FString::Printf(TEXT("DUC-04: %s stores HostIdentity in shared PropertyHostState"), *ImplementationClass->GetName()),
+            PropertyHostState);
+        if (PropertyHostState != nullptr)
+        {
+            TestEqual(
+                *FString::Printf(TEXT("DUC-04: %s uses FGV2UiPropertyHostState"), *ImplementationClass->GetName()),
+                PropertyHostState->Struct.Get(),
+                FGV2UiPropertyHostState::StaticStruct());
+            TestTrue(
+                *FString::Printf(TEXT("DUC-04: %s exposes HostIdentity in Designer"), *ImplementationClass->GetName()),
+                PropertyHostState->HasAnyPropertyFlags(CPF_Edit)
+                    && PropertyHostState->HasMetaData(TEXT("ShowOnlyInnerProperties")));
+        }
+
+        // This exercises the common state through the direct native implementation too,
+        // including a host currently represented by no distinct top-level screen field.
+        VerifyHostIdentitySweep(
+            *this,
+            ImplementationClass->GetDefaultObject<UUserWidget>(),
+            ImplementationClass->GetName());
+    }
+
+    // This remains an asset-independent fixture for Modal's nested collection route. The
+    // reflection-driven sweep above now covers the real WBP_Modal instance as well; this
+    // block does not contribute to the production class list or act as a coverage exception.
     {
         UGV2ModalWidgetBase* Modal = CreateWidget<UGV2ModalWidgetBase>(World, UGV2ModalWidgetBase::StaticClass());
         Modal->WidgetTree = NewObject<UWidgetTree>(Modal);

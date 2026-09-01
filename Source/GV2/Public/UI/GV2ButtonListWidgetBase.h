@@ -48,5 +48,6 @@ protected:
     TSubclassOf<UGV2ButtonWidgetBase> ButtonWidgetClass;
 
 private:
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 };

@@ -64,7 +64,7 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UImage> Icon;
 
-
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
     UPROPERTY(Transient)

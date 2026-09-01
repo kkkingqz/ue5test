@@ -19,7 +19,7 @@ enum class EGV2ForgeryMode : uint8
     UnimplementableKind
 };
 
-UCLASS()
+UCLASS(meta = (GV2TestOnly))
 class UGV2ForgeryEntryTestWidget
     : public UUserWidget
     , public IGV2UiPropertyHost
@@ -56,7 +56,7 @@ private:
  * IGV2UiPropertyHost requires; GetKey()/SetKey() come from the interface's shared
  * FGV2UiPropertyHostState, not from any code written for this class specifically.
  */
-UCLASS()
+UCLASS(meta = (GV2TestOnly))
 class UGV2NewHostAddedOnlyInTestWidget
     : public UUserWidget
     , public IGV2UiPropertyHost

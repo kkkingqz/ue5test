@@ -1,7 +1,7 @@
 ---
 title: Addressable Elements Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -66,14 +66,20 @@ depends_on:
     - `Docs/UI/WidgetRegistry.md`: описание `FGV2KeyPropertyConsumer` в списке стандартных потребителей обновлено — вместо `(key, selected_key)` теперь описывает маршрутизацию по имени capability, включая `default_tab_key`.
     - Верификация: 99/99 UE Automation, 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
 
-- [ ] **DUC-04 — Охват sweep следует за адресуемостью**
+- [x] **DUC-04 — Охват sweep следует за адресуемостью**
   - Зависимости: DUC-02, DUC-03.
   - Done: список классов, прогоняемых sweep наблюдаемости, выводится из фактического набора реализаций `IGV2UiPropertyHost`, а не перечисляется в тесте вручную; добавление хоста без покрытия sweep краснит сборку; проверка идентичности включена в sweep как обычная capability.
   - Evidence: `Source/GV2/Private/Tests/GV2UiCapabilityObservabilityTests.cpp`.
+  - **Реализация (2026-09-01):**
+    - `GV2.UI.CapabilityObservabilityCompositeSweep` получает direct native implementation boundaries `IGV2UiPropertyHost` reflection-ом из `/Script/GV2`, а затем требует реальный `WBP_*`-потомок для каждого из них. Новый production boundary без asset fixture краснит automation; два test-only forged host исключены только явно через `UCLASS(meta=(GV2TestOnly))`.
+    - Шесть ранее не покрытых общим состоянием boundary (`ButtonList`, `DropdownSelect`, `ListView`, `Modal`, `RichTextPopover`, `TabContainer`) получили тот же Designer-visible `PropertyHostState`. Sweep проверяет его struct type и metadata, round-trip двух разных `HostIdentity`, а для Screen Field host — делегирование `GetScreenFieldId()` в общую identity.
+    - `WBP_Modal` через Unreal Editor API перепривязан к `UGV2ModalWidgetBase`, получил реальные `TitleText`, `ContentText`, `ButtonList` и `BackdropButton`, compiled и saved; благодаря этому он входит в обычный asset sweep, а не в ручное исключение.
+    - Красный прогон до исправления зафиксировал отсутствие `PropertyHostState` у шести boundary и отсутствие real WBP instance у `UGV2ModalWidgetBase`; после восстановления `GV2.UI.CapabilityObservabilityCompositeSweep` зелёный как headless Editor automation, так и через `Tools/MCP/run_ue_tests.py` в запущенном Editor.
+    - Контракты: `Docs/UI/WidgetRegistry.md` фиксирует reflection source set, обязательную fixture и identity checks; `Docs/UI/ScreenTemplates.md` фиксирует связь `HostIdentity` с sweep.
 
 ## Проверка milestone
 
-- [ ] Экран из базовых элементов работает без нового C++-класса.
-- [ ] Свойство идентичности одно и задаётся в Designer.
-- [ ] Новый хост с `key` не требует правки общего файла.
-- [ ] Хост, не попавший в sweep, невозможен.
+- [x] Экран из базовых элементов работает без нового C++-класса.
+- [x] Свойство идентичности одно и задаётся в Designer.
+- [x] Новый хост с `key` не требует правки общего файла.
+- [x] Хост, не попавший в sweep, невозможен.

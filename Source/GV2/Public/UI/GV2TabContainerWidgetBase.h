@@ -114,6 +114,7 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UPanelWidget> TabContentPanel;
 
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
     UFUNCTION(BlueprintImplementableEvent, Category = "GV2|UI|Tabs")

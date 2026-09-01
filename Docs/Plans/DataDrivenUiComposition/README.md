@@ -1,8 +1,8 @@
 ---
 title: Data-Driven UI Composition Plan
 status: active
-version: 1.0
-updated: 2026-08-27
+version: 1.1
+updated: 2026-09-01
 depends_on:
   - ../Archive/PipelineClosureCorrection.md
   - ../../Status/Archive/UniversalUiPropertyPipelineReview2026-08-27.md
@@ -85,7 +85,7 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Addressable Elements](AddressableElements.md): базовый элемент становится полем, `key` перестаёт быть перечислением классов. DUC-01…04.
+- [x] M1 — [Addressable Elements](AddressableElements.md): базовый элемент становится полем, `key` перестаёт быть перечислением классов. DUC-01…04.
 - [ ] M2 — [Declared Composite](DeclaredComposite.md): композит объявляется из Designer без C++. DUC-05…08.
 - [ ] M3 — [Nested Screens](NestedScreens.md): `screen_fields` работает end-to-end, вложенность проверена на глубине. DUC-09…11.
 
@@ -113,8 +113,8 @@ DUC-01 ──► DUC-02 ──► DUC-03 ──► DUC-04        (зависим
 
 ## Итоговый Definition of Design
 
-- [ ] Базовый элемент может быть полем объемлющего хоста; свойство идентичности одно и задаётся в Designer. (DUC-01, DUC-02)
-- [ ] `key` не требует правки общего файла при добавлении нового хоста. (DUC-03)
+- [x] Базовый элемент может быть полем объемлющего хоста; свойство идентичности одно и задаётся в Designer. (DUC-01, DUC-02)
+- [x] `key` не требует правки общего файла при добавлении нового хоста. (DUC-03)
 - [ ] Композит из существующих элементов объявляется Designer-свойством и не требует C++-класса. (DUC-05…07)
 - [ ] Схема такого композита плоская: автор пишет `day`, а не `day.text`. (DUC-06)
 - [ ] `screen_fields` работает через тот же envelope, что и обычное поле экрана. (DUC-09)

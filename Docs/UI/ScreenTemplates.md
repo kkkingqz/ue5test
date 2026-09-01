@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.8
+version: 1.9
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -189,6 +189,8 @@ FGV2UiPropertyHostState:
 Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
 
 Дубликат идентичности среди `IGV2ScreenFieldHost` одного экрана отклоняется до `Ready`: `UGV2ScreenWidgetBase`'s discovery (`CollectScreenFieldHosts`) поддерживает `SeenFieldIds` и возвращает ошибку `duplicate screen field host '<value>'` при повторе — это регрессионно проверено `GV2.Runtime.Presentation.HostIdentityIsSharedNotPerClass` после переноса значения на общую поверхность.
+
+`GV2.UI.CapabilityObservabilityCompositeSweep` обязан проверять эту поверхность для каждого production property-host boundary: два разных `HostIdentity` round-trip через общее состояние, а у Screen Field host `GetScreenFieldId()` возвращает установленное общее значение. Новый direct native host без real `WBP_*` fixture делает sweep красным; полное правило source set и исключения тестовых подделок принадлежат [Widget Registry](WidgetRegistry.md#охват-capability-sweep-duc-04).
 
 `UGV2ScreenWidgetBase` управляет двухфазным жизненным циклом применения полей:
 

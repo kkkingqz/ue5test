@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.3
+version: 3.4
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -22,7 +22,7 @@ decisions:
 > **Не владеет:** раскладкой конкретного экрана и игровыми данными в нём.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
 > **Реализация:** `Source/GV2/Public/UI/`, `Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp`, `Source/GV2/Private/UI/GV2PropertyConsumers.cpp`.
-> **Проверки:** `GV2.Runtime.Presentation.*`, `GV2.UI.StandardPropertyConsumers`, `GV2.UI.CapabilityObservabilityHarness`, `GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure`, инвентарь `/Game/UI` в automation.
+> **Проверки:** `GV2.Runtime.Presentation.*`, `GV2.UI.StandardPropertyConsumers`, `GV2.UI.CapabilityObservabilityHarness`, `GV2.UI.CapabilityObservabilityCompositeSweep`, `GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure`, инвентарь `/Game/UI` в automation.
 
 Widget Registry описывает reusable UI elements, их trusted C++/UMG adapters, capabilities и field schemas. Concrete root screens принадлежат отдельному [Screen Template contract](ScreenTemplates.md) и разрешаются Screen Registry, а не `widget_id` из Lua-authored tree.
 
@@ -148,6 +148,12 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 ¹ Схема, разделяющая форму capability-дерева этого класса — не то же самое, что "виджет сконфигурирован как Screen Field". «Addressable (DUC-02)» — класс реализует `IGV2ScreenFieldHost`, делегируя `GetScreenFieldId()` в общий `HostIdentity` (DUC-01); может быть top-level приёмником Screen Field, если `HostIdentity` настроен на конкретном размещении, — проверено `GV2.Runtime.Presentation.LuaCreatesRegisteredScreen` (виджет `GreetingText` в `WBP_Testscreen`) сквозь реальный Lua/materializer pipeline. † Класс реализует только `IGV2UiPropertyHost`, не `IGV2ScreenFieldHost`: он не может быть top-level приёмником этой схемы через `GetScreenFieldId()` сейчас — это collection/composite-виджет вне границ DUC-02; схема остаётся валидируемым, протестированным на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` контрактом и может применяться как вложенное свойство composite'а (`CollectionHost` entry). Классы, реализующие `IGV2ScreenFieldHost` в текущем коде — четыре Location-композита (`UGV2LocationTopBarWidgetBase`, `UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase`) плюс восемь адресуемых base-элементов, отмеченных «addressable (DUC-02)» выше (см. [Screen Templates](ScreenTemplates.md#screen-field-host-and-property-host-contract)).
 
 `UGV2ScreenWidgetBase` централизует discovery, двухфазную подготовку и применение Screen Fields. Он не содержит concrete Screen fields или `screen_id` branches. Unset `ScreenFieldId` исключает nested Widget из aggregate contract.
+
+### Охват capability sweep (DUC-04)
+
+`GV2.UI.CapabilityObservabilityCompositeSweep` обязан получать source set не из списка имён в тесте, а reflection-ом: каждый прямой native implementation boundary `IGV2UiPropertyHost` из `/Script/GV2` требует реальный `WBP_*`-потомок в UI package roots. Отсутствующий Blueprint делает automation красной; тестовые подделки исключаются только явной UCLASS metadata `GV2TestOnly` и проверяются отдельными negative tests.
+
+Каждый такой boundary обязан предоставлять в Designer тот же `UPROPERTY(EditAnywhere, meta=(ShowOnlyInnerProperties)) FGV2UiPropertyHostState PropertyHostState`, что и остальные хосты. Sweep проверяет тип и Designer metadata этого состояния, применяет два различных значения `HostIdentity` и читает их обратно; для `IGV2ScreenFieldHost` дополнительно проверяет делегирование `GetScreenFieldId()` в это же значение. Это обычная проверяемая способность property host, а не отдельный per-class protocol. `WBP_Modal` наследует `UGV2ModalWidgetBase`, содержит его обязательные renderer targets и проходит тот же production sweep.
 
 Repeated-field items обязаны иметь deterministic `key`. Общий `FGV2KeyedCollection` и `FGV2KeyedCollectionPropertyConsumer` владеют create/reuse/reorder/remove lifecycle. Ошибка подготовки candidate collection сохраняет предыдущих children. Runtime class/path из Lua отсутствует.
 
@@ -285,4 +291,4 @@ Unknown/incompatible element registration или Screen Field schema делае�
 
 ## Tests
 
-Tests покрывают duplicate registration, registry freeze, trusted factory resolution, no raw asset path, element schema validation, required/optional fields, duplicate/unknown field rejection, двухфазный atomic apply (Prepare/Commit), opaque handle propagation и отсутствие gameplay authority. `GV2ScreenFieldMaterializer` тесты фиксируют схематическую материализацию и отсутствие schema-specific C++ адаптеров и DTO; тесты `GV2.UI.StandardPropertyConsumers` и `GV2.UI.CapabilityObservabilityHarness` проверяют потребители свойств и их двухфазный жизненный цикл. UI-kit test загружает active theme, проверяет native parents, mandatory `BindWidget`, `IGV2UiStyleConsumer` и successful style apply. Для `WBP_RichText` он дополнительно проверяет automatic/per-character wrapping и вертикальный `RichTextScrollBox`; для popover — composition через те же text/image leaf adapters и ограниченную theme height; для input/dropdown — submit через общий emitter и Lua-owned desired-state republish. Asset audit обязан перечислять все `WBP_*`, запрещать direct runtime text/content-image primitives в composites, local dynamic collection factories и direct Runtime Subsystem ingress вне общего emitter. Runtime source audit запрещает concrete `screen_id`/`field_id` branches.
+Tests покрывают duplicate registration, registry freeze, trusted factory resolution, no raw asset path, element schema validation, required/optional fields, duplicate/unknown field rejection, двухфазный atomic apply (Prepare/Commit), opaque handle propagation и отсутствие gameplay authority. `GV2ScreenFieldMaterializer` тесты фиксируют схематическую материализацию и отсутствие schema-specific C++ адаптеров и DTO; тесты `GV2.UI.StandardPropertyConsumers` и `GV2.UI.CapabilityObservabilityHarness` проверяют потребители свойств и их двухфазный жизненный цикл. `GV2.UI.CapabilityObservabilityCompositeSweep` reflection-ом сверяет каждый production property-host boundary с реальным `WBP_*` и проверяет общую identity surface. UI-kit test загружает active theme, проверяет native parents, mandatory `BindWidget`, `IGV2UiStyleConsumer` и successful style apply. Для `WBP_RichText` он дополнительно проверяет automatic/per-character wrapping и вертикальный `RichTextScrollBox`; для popover — composition через те же text/image leaf adapters и ограниченную theme height; для input/dropdown — submit через общий emitter и Lua-owned desired-state republish. Asset audit обязан перечислять все `WBP_*`, запрещать direct runtime text/content-image primitives в composites, local dynamic collection factories и direct Runtime Subsystem ingress вне общего emitter. Runtime source audit запрещает concrete `screen_id`/`field_id` branches.

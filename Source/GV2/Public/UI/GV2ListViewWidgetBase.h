@@ -185,5 +185,6 @@ protected:
     UPROPERTY(Transient)
     TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
 
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 };
