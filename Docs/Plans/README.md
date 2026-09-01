@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 6.3
-updated: 2026-08-31
+version: 6.4
+updated: 2026-09-01
 depends_on:
   - ../README.md
 ---
@@ -25,7 +25,7 @@ depends_on:
 
 ## Активные планы
 
-- [Data-Driven UI Composition](DataDrivenUiComposition/README.md) — блок из существующих элементов без C++: адресуемые базовые элементы, объявляемый из Designer композит, `screen_fields` end-to-end. DUC-01…11. Связанный план доведения [выполнен и заархивирован](Archive/PipelineClosureCorrection.md); входящие рёбра `PCC-02`…`PCC-05` закрыты.
+Активных планов нет.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
