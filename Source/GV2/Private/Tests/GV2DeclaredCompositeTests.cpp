@@ -6,7 +6,11 @@
 #include "UI/GV2ScreenFieldHost.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2UiSchemaCache.h"
+#include "Misc/Paths.h"
 #include "UObject/UnrealType.h"
+
+#include <algorithm>
 
 namespace
 {
@@ -191,6 +195,101 @@ bool FGV2DeclaredCompositeTest::RunTest(const FString& Parameters)
         {
             return Diagnostic.Code == TEXT("core:diagnostic.ui_consumer.missing_target");
         }));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DeclaredCompositeFlatSchemaTest,
+    "GV2.UI.DeclaredComposite.FlatSchema",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DeclaredCompositeFlatSchemaTest::RunTest(const FString& Parameters)
+{
+    using namespace GV2ContentCore;
+
+    // Source 1 is the authored content schema. It intentionally names the composite
+    // properties themselves, never the internal capabilities of either child.
+    FGV2UiSchemaCache SchemaCache({ FPaths::ProjectDir() / TEXT("GameData/textsystem") });
+    FString SchemaError;
+    const FCompiledUiFieldSpecPtr Schema = SchemaCache.GetCompiledSchema(
+        "textsystem:schema.ui_field.declared_composite_fixture.v1",
+        SchemaError);
+    TestNotNull(TEXT("DUC-06: fixture's authored flat schema loads from content"), Schema.get());
+    if (Schema == nullptr)
+    {
+        AddError(SchemaError);
+        return false;
+    }
+
+    TestEqual(TEXT("DUC-06: composite schema root is an object"), Schema->Kind, EUiFieldKind::Object);
+    TestEqual(TEXT("DUC-06: declared two-element block has exactly two schema fields"), static_cast<int32>(Schema->Fields.size()), 2);
+
+    const auto FindField = [Schema](const char* Name) -> const FCompiledUiFieldSpecPtr*
+    {
+        const auto It = std::find_if(
+            Schema->Fields.begin(),
+            Schema->Fields.end(),
+            [Name](const FCompiledUiObjectField& Field) { return Field.Name == Name; });
+        return It != Schema->Fields.end() ? &It->Spec : nullptr;
+    };
+
+    const FCompiledUiFieldSpecPtr* const DaySpec = FindField("day");
+    const FCompiledUiFieldSpecPtr* const ValueSpec = FindField("value");
+    TestNotNull(TEXT("DUC-06: author writes day directly"), DaySpec);
+    TestNotNull(TEXT("DUC-06: author writes value directly"), ValueSpec);
+    TestTrue(TEXT("DUC-06: no leaked child field day.text exists"), FindField("day.text") == nullptr);
+    TestTrue(TEXT("DUC-06: no leaked child field value.percent exists"), FindField("value.percent") == nullptr);
+    if (DaySpec == nullptr || ValueSpec == nullptr || *DaySpec == nullptr || *ValueSpec == nullptr)
+    {
+        return false;
+    }
+
+    TestEqual(TEXT("DUC-06: day has TextSpec shape"), (*DaySpec)->Kind, EUiFieldKind::Text);
+    TestEqual(TEXT("DUC-06: value has scalar shape"), (*ValueSpec)->Kind, EUiFieldKind::Scalar);
+    TestTrue(
+        TEXT("DUC-06: value has number shape"),
+        (*ValueSpec)->Scalar.has_value() && (*ValueSpec)->Scalar->Kind == EScalarFieldKind::Number);
+
+    // Source 2 is the Designer-authored declaration on the real WBP. The two
+    // sources meet only at Schema \u2286 Capabilities; DUC-07 will separately compare
+    // this declaration with the children themselves.
+    UClass* const FixtureClass = LoadClass<UUserWidget>(
+        nullptr,
+        TEXT("/Game/TextSystem/UI/Widgets/WBP_DeclaredCompositeFlatFixture.WBP_DeclaredCompositeFlatFixture_C"));
+    TestNotNull(TEXT("DUC-06: declared composite fixture class loads"), FixtureClass);
+    UUserWidget* const Fixture = FixtureClass != nullptr ? FixtureClass->GetDefaultObject<UUserWidget>() : nullptr;
+    IGV2UiPropertyHost* const PropertyHost = Fixture != nullptr ? Cast<IGV2UiPropertyHost>(Fixture) : nullptr;
+    TestNotNull(TEXT("DUC-06: fixture exposes its Designer declaration"), PropertyHost);
+    if (PropertyHost == nullptr)
+    {
+        return false;
+    }
+
+    FGV2UiCapabilityBuilder Builder;
+    PropertyHost->DescribeUiCapabilities(Builder);
+    const FGV2UiCapabilityTree Capabilities = Builder.Build();
+    TestEqual(TEXT("DUC-06: declaration produces exactly two top-level capabilities"), Capabilities.Num(), 2);
+
+    const FGV2UiPropertyCapability* const DayCapability = Capabilities.FindProperty(TEXT("day"));
+    const FGV2UiPropertyCapability* const ValueCapability = Capabilities.FindProperty(TEXT("value"));
+    TestNotNull(TEXT("DUC-06: declaration produces day directly"), DayCapability);
+    TestNotNull(TEXT("DUC-06: declaration produces value directly"), ValueCapability);
+    if (DayCapability == nullptr || ValueCapability == nullptr)
+    {
+        return false;
+    }
+    TestEqual(TEXT("DUC-06: day declaration is Text"), DayCapability->SupportedKind, EGV2PreparedUiValueKind::Text);
+    TestEqual(TEXT("DUC-06: value declaration is Number"), ValueCapability->SupportedKind, EGV2PreparedUiValueKind::Number);
+
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+    const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
+        *Schema,
+        Capabilities,
+        TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1"),
+        TEXT(""),
+        Diagnostics);
+    TestTrue(TEXT("DUC-06: authored flat schema is compatible with declared properties"), bCompatible);
+    TestEqual(TEXT("DUC-06: flat schema compatibility produces no diagnostics"), Diagnostics.Num(), 0);
     return true;
 }
 

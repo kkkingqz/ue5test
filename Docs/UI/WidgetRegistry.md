@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.5
+version: 3.6
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -160,6 +160,8 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 `Kind` соответствует всем прямым consumer-backed маршрутам после PCC-05: `Boolean`, `Integer`, `Number`, `String`, `Key`, `Text`, `ResourceRef`, `Binding`, а для `Array` — `CollectionHost`, `RichTextSpans`, `NestedScreen`. `Null` и прямой `Object` намеренно не имеют значения Designer enum: для них consumer отсутствует или вид неприменим; object/array composition остаётся плоским mapping либо специальным collection/nested route.
 
 `ChildWidgetName` — точная декларация target в instance WidgetTree. Если named child отсутствует, preflight `PrepareUiHostProperties` обязан остановить candidate до публикации с `core:diagnostic.ui_consumer.missing_target`; fallback на сам host допустим только для capability с `TargetName == NAME_None`. `WBP_DeclaredCompositeFixture` фиксирует production-конфигурацию `label → LabelText: WBP_Text` и одновременно является обязательной WBP-fixture capability sweep. DUC-05 не меняет существующие Location-композиты.
+
+DUC-06 фиксирует, что Designer declaration определяет только **плоскую** поверхность schema/capability пары: `PropertyName` становится одним top-level именем в object schema с соответствующим standard kind. В частности, `WBP_DeclaredCompositeFlatFixture` объявляет `day → DayText` (Text) и `value → ValueBar` (Number), а принадлежащая `textsystem` schema содержит непосредственно `day: text` и `value: number`. Schema не раскрывает `WBP_Text.text` либо `WBP_ProgressBar.percent`; реальная compatibility-проверка выполняется между отдельно загруженной repository schema и capability, построенными из Designer declaration. DUC-07 отдельно сравнит объявленный вид с capability самого ребёнка.
 
 Каждый такой boundary обязан предоставлять в Designer тот же `UPROPERTY(EditAnywhere, meta=(ShowOnlyInnerProperties)) FGV2UiPropertyHostState PropertyHostState`, что и остальные хосты. Sweep проверяет тип и Designer metadata этого состояния, применяет два различных значения `HostIdentity` и читает их обратно; для `IGV2ScreenFieldHost` дополнительно проверяет делегирование `GetScreenFieldId()` в это же значение. Это обычная проверяемая способность property host, а не отдельный per-class protocol. `WBP_Modal` наследует `UGV2ModalWidgetBase`, содержит его обязательные renderer targets и проходит тот же production sweep.
 

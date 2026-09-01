@@ -1,7 +1,7 @@
 ---
 title: Declared Composite Tasks
 status: active
-version: 1.1
+version: 1.3
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -28,11 +28,20 @@ depends_on:
   - Done: существует generic-класс композита, чьё дерево capability строится из `UPROPERTY(EditAnywhere)` списка троек *(имя свойства, имя дочернего виджета, вид)*; список редактируется в Designer рядом с деревом виджетов; вид поддерживает все значения, у которых есть consumer после `PCC-05`; ссылка на несуществующее имя дочернего виджета отклоняется на проверке экземпляра до публикации экрана, а не молча пропускается; ни один существующий композит на этом шаге ещё не переписан.
   - Evidence: `UGV2DeclaredCompositeWidgetBase`, `WBP_DeclaredCompositeFixture`, `GV2.UI.DeclaredComposite`, `GV2.UI.CapabilityObservabilityCompositeSweep`; red→green sweep доказывает, что real WBP fixture обязателен для нового native host.
 
-- [ ] **DUC-06 — Схема объявляемого композита плоская**
+- [x] **DUC-06 — Схема объявляемого композита плоская**
   - Зависимости: DUC-05.
   - Автоматическое разворачивание дерева ребёнка дало бы автору `{ label: { text, key }, value: { percent, label, key } }` с протечкой служебных свойств на каждый уровень.
   - Done: объявленное свойство композита отображается в **одно** поле схемы соответствующего вида; автор пишет `day: TextSpec`, а не `day.text`; форма зафиксирована в [Screen Templates](../../UI/ScreenTemplates.md) с примером блока из двух элементов; тест сверяет форму схемы, порождаемой объявлением, с формой, которую ожидает автор контента.
-  - Evidence: `Docs/UI/ScreenTemplates.md`, `Source/GV2/Private/Tests/`.
+  - Evidence: `textsystem:schema.ui_field.declared_composite_fixture.v1`, `WBP_DeclaredCompositeFlatFixture`, `GV2.UI.DeclaredComposite.FlatSchema`; red→green доказывает, что content schema и независимое Designer declaration дают ровно `day: text`, `value: number`.
+  - **Реализация (2026-09-01):**
+    - Механизм уже был плоским по построению: `UGV2DeclaredCompositeWidgetBase::DescribeUiCapabilities` (DUC-05) проецирует каждую тройку `DeclaredCapabilities` в ровно одну top-level capability, без рекурсивного раскрытия ребёнка. DUC-06 доказывает это независимым вторым источником — content schema, а не кодом, который порождает capability tree.
+    - `WBP_DeclaredCompositeFlatFixture` (day → DayText: Text, value → ValueBar: Number) и `textsystem:schema.ui_field.declared_composite_fixture.v1` (`day: text`, `value: number`) добавлены как отдельная fixture, не смешанная с production `WBP_DeclaredCompositeFixture` (label → LabelText) из DUC-05. `GV2.UI.DeclaredComposite.FlatSchema` грузит schema через `FGV2UiSchemaCache` и capability tree через живой Designer-класс независимо друг от друга, проверяет отсутствие протёкших `day.text`/`value.percent`, и сверяет обе стороны через `CheckUiSchemaCapabilityCompatibility`.
+    - **Найденный и устранённый живой дефект (интеграционный, не схемы)**: `CaptureUiTargetState` не читал `UGV2ProgressBarWidgetBase::GetProgress()` — только сырой `UProgressBar::GetPercent()` — поэтому два разных значения, применённые к `value` (ValueBar), давали одинаковый снимок и `GV2.UI.CapabilityObservabilityCompositeSweep` красил `value` как ненаблюдаемую. Добавлен генерик-блок, читающий adapter state напрямую; откат (удаление блока) подтверждён красным на той же ошибке `capability 'value' is not observable`, восстановление — снова зелёный.
+    - **Найдена и устранена рассинхронизация `GameData/mods.lock.json5`**: добавление новой schema под `GameData/textsystem/schemas/` меняет fingerprint пакета `textsystem` (он выводится из полного набора discovered `schema_bindings`/`relative_sources`, а не только из явно перечисленного в `package.json5`), а lock-файл не был перевыпущен — из-за этого `UGV2RuntimeSubsystem::Initialize` не мог собрать `GameDataRepository` (`failed to build the initial GameDataRepository`), что красило практически весь `GV2.*` набор (не только DUC-06-специфичные тесты) в headless Editor automation, хотя portable `ctest` вскрывал точную причину (`core:diagnostic.package.lock.mismatch`). Исправлено пересчётом fingerprint для `textsystem` (значения `core`/`rh` не изменились).
+    - **Найдены и устранены два побочных, не-DUC-06 регресса**, обнажившихся только после починки `mods.lock.json5` (до этого весь `GV2.*` набор красился одной и той же причиной):
+      1. `GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure` строил `CommandPanel`-кнопки из голого `UGV2ButtonWidgetBase::StaticClass()` (без Designer-дерева, значит без ребёнка `LabelText`) — DUC-05's `GV2UiMutationPlan.cpp` сделал отсутствие именованного target'а детерминированным отказом preflight вместо тихого fallback на сам host, поэтому даже "валидный" apply теперь корректно отклонялся. Тест переведён на реальный `WBP_Button` (`LoadClass<UGV2ButtonWidgetBase>(..., "/Game/UI/Widgets/WBP_Button.WBP_Button_C")`), как уже делают соседние тесты в этом же файле.
+      2. `GV2.Runtime.UIKit.CentralThemeAndComponents` ссылался на `core:text.screen.test.*` id литералами, ожидая реальный контент в `DA_UITheme_Default.TextCatalog`; отдельная (ранее вынесенная как follow-up) задача корректно переименовала эти записи каталога в `sample:`-namespace, устраняя настоящий namespace drift, но не обновила тест. Поскольку `Source/GV2` не может ссылаться на `sample:`-id литералом (`core_decoupling_gate_contract`), тест переведён на синтетические `core:`-fixture, регистрируемые прямо в тесте через `Theme->TextCatalog.Add(...)` (тот же паттерн, что уже применялся для `FallbackTextCatalog` чуть ниже) — тест проверяет механику text pipeline (аргументы, style token, экранирование), а не реальный контент. Та же задача добавила два новых production WBP (композитные fixture DUC-05/06) под `/Game/TextSystem/UI`, что сдвинуло аудит `WidgetBlueprintCount` с 28 на 30, и дала `WBP_Modal` реальные `TitleText`/`ContentText` (DUC-04) — оба изменения корректны, но не были отражены в hardcoded audit-инвариантах теста; счётчик обновлён, `UGV2ModalWidgetBase` добавлен в allowlist "text-bearing WBP must use a Text Pipeline native base" рядом с остальными composite-хостами (`UGV2LocationTopBarWidgetBase` и т.д.), которые по той же причине легитимно содержат вложенный текстовый примитив не напрямую, а через собственных text-pipeline детей.
+    - Верификация: 100/100 UE Automation (headless, `-nullrhi`), 68/68 Headless ctest (включая `core_decoupling_gate_contract`), все content/doc-гейты зелёные.
 
 - [ ] **DUC-07 — Объявление проверяется против умений детей**
   - Зависимости: DUC-06, `PCC-02` и `PCC-03` плана доведения.
@@ -48,7 +57,7 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Блок из двух существующих элементов собран без C++.
-- [ ] Схема блока плоская.
+- [x] Блок из двух существующих элементов собран без C++.
+- [x] Схема блока плоская.
 - [ ] Объявление и умения детей — независимые источники сравнения.
 - [ ] Один реальный композит переписан, его класс удалён.

@@ -273,6 +273,14 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
     {
         Parts.Add(FString::Printf(TEXT("percent=%f"), Bar->GetPercent()));
     }
+    if (const UGV2ProgressBarWidgetBase* ProgressHost = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    {
+        // A declared composite can target a reusable WBP_ProgressBar directly.
+        // Its Number consumer updates the adapter's stored progress, so the
+        // observability probe must read that adapter state rather than only a raw
+        // UProgressBar target used by the direct widget capability.
+        Parts.Add(FString::Printf(TEXT("percent=%f"), ProgressHost->GetProgress()));
+    }
     if (const UImage* Image = Cast<UImage>(TargetWidget))
     {
         Parts.Add(FString::Printf(TEXT("brush_resource=%p"), Image->GetBrush().GetResourceObject()));

@@ -1,0 +1,18 @@
+{
+  id: "textsystem:schema.ui_field.declared_composite_fixture.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      day: {
+        kind: "text",
+        required: true,
+      },
+      value: {
+        kind: "number",
+        required: true,
+      },
+    },
+  },
+}

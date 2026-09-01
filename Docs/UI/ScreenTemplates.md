@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.10
+version: 1.11
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -187,6 +187,27 @@ FGV2UiPropertyHostState:
 - На уровне composite-свойства (DUC-05+) это имя свойства, под которым родительский композит адресует данного ребёнка в своём плоском списке capability.
 
 `UGV2DeclaredCompositeWidgetBase` реализует оба интерфейса и поэтому использует тот же `HostIdentity` без дополнительного поля: непустое значение делает конкретный Blueprint top-level Screen Field host, а `NAME_None` оставляет его nested composite. Его Designer list содержит независимые тройки `PropertyName` / `ChildWidgetName` / `Kind`; `ChildWidgetName` обязан разрешаться в WidgetTree на preflight. Отсутствие named child возвращает `core:diagnostic.ui_consumer.missing_target` до `Ready` и публикации screen instance. DUC-05 не выводит вид из ребёнка и не заменяет существующие Location-композиты; эта независимая сверка относится к DUC-07.
+
+### Плоская schema объявляемого composite (DUC-06)
+
+`PropertyName` из Designer declaration соответствует ровно одному прямому полю object schema того же standard kind. Authoring никогда не повторяет внутренние capability ребёнка. Блок с текстом дня и числовым значением оформляется так:
+
+```json5
+{
+  id: "textsystem:schema.ui_field.declared_composite_fixture.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      day: { kind: "text", required: true },
+      value: { kind: "number", required: true },
+    },
+  },
+}
+```
+
+Здесь `day` не раскрывается в `day.text`, а `value` — в `value.percent` или `value.key`: это implementation detail `DayText` и `ValueBar`, не authoring surface composite. Schema по-прежнему принадлежит package content и загружается независимо от Blueprint; `CheckUiSchemaCapabilityCompatibility` сверяет её с capability tree, построенным из троек. DUC-06 фиксирует только эту плоскую форму; проверка соответствия declared `Kind` реальному capability ребёнка принадлежит DUC-07.
 
 Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
 

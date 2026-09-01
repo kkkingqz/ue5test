@@ -903,6 +903,16 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     TestTrue(TEXT("Theme registers the inventory text token"), Theme->TextStyleTokens.Contains(TEXT("inventory")));
     TestTrue(TEXT("Theme registers the blue color token"), Theme->TextColorTokens.Contains(TEXT("blue")));
     TestTrue(TEXT("Theme registers the huge size token"), Theme->TextSizeTokens.Contains(TEXT("huge")));
+
+    // These fixtures exercise the pipeline's own mechanics (args, style token, markup
+    // escaping below), not real game content, so they are registered here as synthetic
+    // core-namespaced entries rather than depending on a catalog id owned by a non-core
+    // game package (Source/GV2 cannot hardcode a dependency on such a namespace).
+    Theme->TextCatalog.Add(TEXT("core:text.screen.test.description"), FText::FromString(TEXT("You are exploring with {player_name}.")));
+    Theme->TextCatalog.Add(TEXT("core:text.screen.test.checkbox"), FText::FromString(TEXT("Enable feature")));
+    Theme->TextCatalog.Add(TEXT("core:text.screen.test.name_label"), FText::FromString(TEXT("Name")));
+    Theme->TextCatalog.Add(TEXT("core:text.screen.test.dropdown_placeholder"), FText::FromString(TEXT("Choose one...")));
+
     TestTrue(
         TEXT("Theme contains the test screen localized fixture"),
         Theme->TextCatalog.Contains(TEXT("core:text.screen.test.description")));
@@ -1336,7 +1346,8 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 || WidgetClass->IsChildOf(UGV2LocationPlayerStatusWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationSceneWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationCommandPanelWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2ProgressBarWidgetBase::StaticClass());
+                || WidgetClass->IsChildOf(UGV2ProgressBarWidgetBase::StaticClass())
+                || WidgetClass->IsChildOf(UGV2ModalWidgetBase::StaticClass());
             TestTrue(
                 *FString::Printf(
                     TEXT("Text-bearing WBP must use a Text Pipeline native base: %s"),
@@ -1344,7 +1355,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 bUsesTextPipelineBase);
         }
     }
-    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 28);
+    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 30);
     TestTrue(
         TEXT("Theme provides a visible separator brush"),
         Theme->SeparatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
@@ -4740,7 +4751,13 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     Root->AddChildToVerticalBox(CommandPanel);
     if (FProperty* ButtonClassProp = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
     {
-        *ButtonClassProp->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(CommandPanel) = UGV2ButtonWidgetBase::StaticClass();
+        // The bare native class has no WidgetTree, so its "text" capability's declared
+        // "LabelText" target can never resolve -- DUC-05 made that a deterministic
+        // preflight rejection rather than a silent self-fallback, so this fixture needs
+        // the real WBP_Button (as production and the other tests in this file do).
+        UClass* const ButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+        *ButtonClassProp->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(CommandPanel) =
+            ButtonClass != nullptr ? ButtonClass : UGV2ButtonWidgetBase::StaticClass();
     }
 
     UWrapBox* ButtonBox = Screen->WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("ButtonBox"));
