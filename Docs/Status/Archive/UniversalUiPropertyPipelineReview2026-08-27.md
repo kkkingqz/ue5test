@@ -13,7 +13,7 @@ updated: 2026-08-31
 
 Внешнее ревью реализации `ADR-0040` на commit `06b3bd220d67d4ff36e3ede102b6223a0573902f` (ветка `main`), полученное сразу после закрытия и архивирования плана [UniversalUiPropertyPipeline](../../Plans/Archive/UniversalUiPropertyPipeline.md). Ревью проверяло не наличие отдельных классов/тестов, а выполнение архитектурных гарантий нового pipeline — и нашло 5 находок уровня P1/P2 на работе, закрытой с полностью зелёной верификацией.
 
-Каждая находка проверялась по текущему коду. Пять из семи находок (`UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7`) закрывались планом [PipelineClosureCorrection](../../Plans/PipelineClosureCorrection/README.md) (PCC-01…12); для каждой была отдельно проверена не только починка конкретного экземпляра дефекта, но и то, что закрыт весь класс — попытка воспроизвести дефект той же формы в другой точке pipeline отклоняется гейтом или физически невозможна. Эта проверка нашла один реальный, ранее не закрытый разрыв (см. `UPP-R6` ниже) и устранила его в том же раунде.
+Каждая находка проверялась по текущему коду. Пять из семи находок (`UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7`) закрывались планом [PipelineClosureCorrection](../../Plans/Archive/PipelineClosureCorrection.md) (PCC-01…12); для каждой была отдельно проверена не только починка конкретного экземпляра дефекта, но и то, что закрыт весь класс — попытка воспроизвести дефект той же формы в другой точке pipeline отклоняется гейтом или физически невозможна. Эта проверка нашла один реальный, ранее не закрытый разрыв (см. `UPP-R6` ниже) и устранила его в том же раунде.
 
 ## Счёт
 
@@ -50,7 +50,7 @@ updated: 2026-08-31
 - [Screen Templates](../../UI/ScreenTemplates.md)
 - [UI Document and Reconciliation](../../UI/UIDocumentAndReconciliation.md)
 - [Confirmed Contract Gaps](../ImplementationStatus.md)
-- [PipelineClosureCorrection](../../Plans/PipelineClosureCorrection/README.md)
+- [PipelineClosureCorrection](../../Plans/Archive/PipelineClosureCorrection.md)
 - [DataDrivenUiComposition](../../Plans/DataDrivenUiComposition/README.md)
 
 ## Полная история

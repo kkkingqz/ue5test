@@ -4,7 +4,7 @@ status: active
 version: 1.0
 updated: 2026-08-27
 depends_on:
-  - ../PipelineClosureCorrection/README.md
+  - ../Archive/PipelineClosureCorrection.md
   - ../../Status/Archive/UniversalUiPropertyPipelineReview2026-08-27.md
   - ../../UI/ScreenTemplates.md
   - ../../UI/UIDocumentAndReconciliation.md
@@ -48,11 +48,11 @@ decisions:
 
 ## Границы
 
-Не входят: `UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7` — они принадлежат плану [PipelineClosureCorrection](../PipelineClosureCorrection/README.md). `UPP-R5` (принадлежность схем closure репозитория) — отдельная задача; она станет обязательной, когда блоки начнут поставляться модами, но для блоков проекта не требуется.
+Не входят: `UPP-R1`, `UPP-R2`, `UPP-R3`, `UPP-R6`, `UPP-R7` — они принадлежат плану [PipelineClosureCorrection](../Archive/PipelineClosureCorrection.md). `UPP-R5` (принадлежность схем closure репозитория) — отдельная задача; она станет обязательной, когда блоки начнут поставляться модами, но для блоков проекта не требуется.
 
 ## Связь с планом доведения
 
-План [PipelineClosureCorrection](../PipelineClosureCorrection/README.md) не является предшественником целиком. Связаны конкретные задачи, и весь этап M1 этого плана от него не зависит вовсе.
+План [PipelineClosureCorrection](../Archive/PipelineClosureCorrection.md) не является предшественником целиком. Связаны конкретные задачи, и весь этап M1 этого плана от него не зависит вовсе.
 
 | Ребро | Тип | Причина |
 |---|---|---|

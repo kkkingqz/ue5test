@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.6
-updated: 2026-08-27
+version: 2.7
+updated: 2026-08-31
 depends_on:
   - ../README.md
 ---
@@ -15,6 +15,7 @@ depends_on:
 |---|---|---|
 | [BoundaryAndApplyIntegrity](BoundaryAndApplyIntegrity.md) | 2026-08-23 | Замкнутые схемы Screen Field на всех уровнях вложенности; иконки предметов и эффектов доходят до композита; неразрешённый класс дочернего виджета даёт отказ вместо мнимого успеха; границы транзакционности репитера описаны по факту; типографский conformance и проверка 720p измеряют заявленное |
 | [UniversalUiPropertyPipeline](UniversalUiPropertyPipeline.md) | 2026-08-27 | Замена schema-specific адаптеров универсальным property pipeline: data-driven UI-схемы, подготовленное дерево значений, наблюдаемые capability, Prepare/Commit вместо fallible Apply, атомарный документ; каркас старой модели удалён |
+| [PipelineClosureCorrection](PipelineClosureCorrection.md) | 2026-08-31 | Доведение UI property pipeline после внешнего ревью: схема элемента коллекции из репозитория, единый валидатор, `[[nodiscard]]` на отказоспособных операциях, чистый опрос capability, harness внутрь коллекций |
 | [CanonicalGameplayState](CanonicalGameplayState.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |
 | [CommandHandlerRegistry](CommandHandlerRegistry.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |
 | [CommandValidators](CommandValidators.md) | 2026-08-19 | Авторский `validate()` для независимых policy поверх чужих команд, единое декодирование аргументов, охранники побочных эффектов и явная заменяемость обработчика |
