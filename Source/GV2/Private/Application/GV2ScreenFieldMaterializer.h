@@ -32,6 +32,13 @@ bool BuildFields(
 
 bool IsKnownSchema(const std::string& SchemaId);
 
+// DUC-09: lets a nested-screen-fields consumer re-resolve one envelope's compiled
+// schema by schema_id after ProjectMaterializedValue already validated it -- a cache
+// hit against the same singleton, needed only to fill FGV2ScreenFieldValue::CompiledSchema.
+std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> GetCompiledSchema(
+    const std::string& SchemaId,
+    FString& OutError);
+
 // Exposed for PCC-03 verification: the same raw-materialized-value -> prepared-value
 // projection BuildFields() uses internally, callable directly against a hand-built
 // schema/value so a test can drive the real production projection end to end

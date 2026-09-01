@@ -1082,11 +1082,16 @@ bool ValidateUiFieldValue(
     }
     case EUiFieldKind::ScreenFields:
     {
-        if (!Value.IsArray() && !Value.IsObject())
+        // DUC-09: a nested screen's fields are an array of the same field_id/
+        // schema_id/value envelope a top-level screen request uses -- deep
+        // per-envelope validation happens later, once each envelope's own
+        // schema_id is resolved (UE-side, GV2ScreenFieldMaterializer), since the
+        // portable compiler has no notion of a Screen Registry to resolve it against.
+        if (!Value.IsArray())
         {
             OutDiagnostics.push_back(MakeDiagnostic(
                 "core:diagnostic.ui_schema.value.invalid_type",
-                "ScreenFields must be an array or object of nested screen field specifications",
+                "ScreenFields must be an array of field_id/schema_id/value envelopes",
                 ValueDocument, Pointer, Context));
             return false;
         }

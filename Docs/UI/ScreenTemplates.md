@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.13
+version: 1.14
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -278,6 +278,24 @@ Value-only Screen Field имеет форму:
 Схема команд экрана локации — `textsystem:schema.ui_field.location_commands.v1` (namespace `textsystem`, не `core:schema.ui_field.button_list.v2`); она независима от generic `button_list.v2` несмотря на схожую форму (`items` CollectionHost) и покрыта отдельными тестами (`GV2UiPropertyHostTests.cpp`, `GV2PropertyConsumersTests.cpp`, `GV2RuntimeSubsystemTests.cpp`).
 
 Production Lua document использует `TextSpec`; `UGV2TextPipeline` выполняет централизованное разрешение локализации, экранирование аргументов и форматирование разметки. Button binding содержит только семантический `command_id` и opaque `FGV2UiBindingHandle`, а не Lua callback.
+
+### Вложенный экран через envelope (DUC-09)
+
+`EUiFieldKind::ScreenFields` (например, `fields` у элемента `tabs` в `core:schema.ui_field.tab_container.v1`) — закрытый leaf-маркер на уровне компиляции схемы: портативный компилятор не знает про Screen Registry и потому не может статически резолвить, каким полям вложенный `screen_id` вообще соответствует. Значение остаётся непрозрачным до момента материализации (UE-side), где сам `screen_id` уже известен из содержимого документа.
+
+Раскрытая форма — массив envelope, идентичных по форме верхнеуровневому `FGV2ScreenFieldValue`:
+
+```json5
+fields: [
+  {
+    field_id: "day",
+    schema_id: "textsystem:schema.ui_field.declared_composite_fixture.v1",
+    value: { day: { text_id: "..." }, value: 5 },
+  },
+]
+```
+
+`ProjectMaterializedValue` резолвит `schema_id` каждого envelope через тот же `GetSchemaCache()`, что и верхнеуровневые поля, и рекурсивно прогоняет `value` через ту же пару `ValidateUiFieldValue` + `ProjectMaterializedValue`, что `BuildFields` использует для обычного поля — отдельного протокола для вложенных экранов не остаётся, а синтез схемы из capability дочернего экрана (риск в духе `UPP-R1`) устранён. `FGV2TabContainerTabsPropertyConsumer` собирает из раскрытых envelope настоящий `TArray<FGV2ScreenFieldValue>` и применяет его через `ChildWidget->PrepareScreenFields(...)`/`CommitScreenFields(...)` — тот же публичный двухфазный API, которым пользуется экран верхнего уровня; неизвестное поле вложенного экрана отклоняется той же биекцией host↔value (`CollectScreenFieldHosts`/`PrepareScreenFieldPlans`), что и для обычного экрана, а не отдельной проверкой.
 
 ### LocationTopBar Field Contract (`textsystem:schema.ui_field.location_top_bar.v1`)
 

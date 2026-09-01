@@ -2749,6 +2749,245 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
     }
 
     // =========================================================================
+    // UIF-27: DUC-09 -- nested screen fields through the standard envelope
+    // =========================================================================
+    {
+        // 27a. Materializer: EUiFieldKind::ScreenFields resolves each envelope's
+        // own schema_id through the real schema cache and materializes its value
+        // through the exact same ValidateUiFieldValue + ProjectMaterializedValue
+        // pair a top-level screen field uses -- no schema synthesized from a
+        // widget's capability, no separate protocol.
+        {
+            if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+            {
+                Theme->TextCatalog.FindOrAdd(TEXT("core:text.duc09_day"), FText::FromString(TEXT("Monday")));
+            }
+
+            using FContentObject = GV2ContentCore::FValue::FObject;
+
+            GV2ContentCore::FCompiledUiFieldSpec OuterSchema;
+            OuterSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
+            OuterSchema.Fields.push_back({ "fields", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::ScreenFields) });
+
+            const FContentObject TextObj{
+                { "text_id", GV2ContentCore::FValue(std::string("core:text.duc09_day")) },
+            };
+            const FContentObject InnerValueObj{
+                { "day", GV2ContentCore::FValue(TextObj) },
+                { "value", GV2ContentCore::FValue(5.0) },
+            };
+            const FContentObject EnvelopeObj{
+                { "field_id", GV2ContentCore::FValue(std::string("day_block")) },
+                { "schema_id", GV2ContentCore::FValue(std::string("textsystem:schema.ui_field.declared_composite_fixture.v1")) },
+                { "value", GV2ContentCore::FValue(InnerValueObj) },
+            };
+            const GV2ContentCore::FValue::FArray EnvelopesArray{ GV2ContentCore::FValue(EnvelopeObj) };
+            const FContentObject OuterObj{
+                { "fields", GV2ContentCore::FValue(EnvelopesArray) },
+            };
+            const GV2ContentCore::FValue OuterContentValue(OuterObj);
+
+            GV2ContentCore::FValue OuterMaterialized;
+            std::vector<GV2ContentCore::FDiagnostic> OuterDiags;
+            GV2ContentCore::FValidationDiagnosticContext OuterCtx;
+            OuterCtx.SchemaId = "test:schema.duc09_screen_fields_probe.v1";
+            const bool bOuterValidated = GV2ContentCore::ValidateUiFieldValue(
+                OuterContentValue, OuterSchema, OuterMaterialized, nullptr, "", OuterCtx, OuterDiags);
+            TestTrue(TEXT("DUC-09: outer object with a screen_fields property validates"), bOuterValidated);
+
+            GV2ScreenFieldMaterializer::FMaterializeContext MatCtx;
+            TArray<FGV2UiBindingHandle> NoHandles;
+            int32 HandleCursor = 0;
+            MatCtx.Handles = &NoHandles;
+            MatCtx.HandleCursor = &HandleCursor;
+
+            FGV2PreparedUiValue ProjectedOuter;
+            const bool bProjected = bOuterValidated && GV2ScreenFieldMaterializer::ProjectMaterializedValue(
+                MatCtx, OuterSchema, OuterMaterialized, ProjectedOuter);
+            TestTrue(TEXT("DUC-09: screen_fields materializes through the real schema cache"), bProjected);
+
+            if (bProjected && ProjectedOuter.IsObject())
+            {
+                const FGV2PreparedUiValue* FieldsProjected = ProjectedOuter.AsObject().FindField(TEXT("fields"));
+                TestNotNull(TEXT("DUC-09: projected value has a 'fields' property"), FieldsProjected);
+                if (FieldsProjected != nullptr && FieldsProjected->IsArray())
+                {
+                    const TArray<FGV2PreparedUiValue>& Envelopes = FieldsProjected->AsArray().GetElements();
+                    TestEqual(TEXT("DUC-09: one nested field envelope produced"), Envelopes.Num(), 1);
+                    if (Envelopes.Num() == 1 && Envelopes[0].IsObject())
+                    {
+                        const FGV2PreparedUiObject& EnvelopeOut = Envelopes[0].AsObject();
+                        const FGV2PreparedUiValue* FieldIdOut = EnvelopeOut.FindField(TEXT("field_id"));
+                        const FGV2PreparedUiValue* SchemaIdOut = EnvelopeOut.FindField(TEXT("schema_id"));
+                        const FGV2PreparedUiValue* ValueOut = EnvelopeOut.FindField(TEXT("value"));
+                        if (TestTrue(TEXT("DUC-09: envelope field_id is a Key"), FieldIdOut != nullptr && FieldIdOut->IsKey()))
+                        {
+                            TestEqual(TEXT("DUC-09: envelope field_id value"), FieldIdOut->AsKey(), FString(TEXT("day_block")));
+                        }
+                        if (TestTrue(TEXT("DUC-09: envelope schema_id is a String"), SchemaIdOut != nullptr && SchemaIdOut->IsString()))
+                        {
+                            TestEqual(TEXT("DUC-09: envelope schema_id value"), SchemaIdOut->AsString(), FString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+                        }
+                        if (TestTrue(TEXT("DUC-09: envelope value is a materialized Object"), ValueOut != nullptr && ValueOut->IsObject()))
+                        {
+                            const FGV2PreparedUiValue* DayOut = ValueOut->AsObject().FindField(TEXT("day"));
+                            const FGV2PreparedUiValue* NumOut = ValueOut->AsObject().FindField(TEXT("value"));
+                            if (TestTrue(TEXT("DUC-09: nested day resolved as real Text, not passed through opaque"), DayOut != nullptr && DayOut->IsText()))
+                            {
+                                TestEqual(TEXT("DUC-09: nested day text resolves through the real text pipeline"), DayOut->AsText().Text.ToString(), TEXT("Monday"));
+                            }
+                            TestTrue(TEXT("DUC-09: nested value materialized as Number"), NumOut != nullptr && NumOut->IsNumber());
+                        }
+                    }
+                }
+            }
+
+            // Negative: an envelope naming an unknown schema_id is rejected, not
+            // silently passed through as opaque content.
+            const FContentObject BadEnvelopeObj{
+                { "field_id", GV2ContentCore::FValue(std::string("day_block")) },
+                { "schema_id", GV2ContentCore::FValue(std::string("textsystem:schema.ui_field.nonexistent_probe.v1")) },
+                { "value", GV2ContentCore::FValue(FContentObject{}) },
+            };
+            const GV2ContentCore::FValue::FArray BadEnvelopesArray{ GV2ContentCore::FValue(BadEnvelopeObj) };
+            const FContentObject BadOuterObj{
+                { "fields", GV2ContentCore::FValue(BadEnvelopesArray) },
+            };
+            const GV2ContentCore::FValue BadOuterContentValue(BadOuterObj);
+
+            GV2ContentCore::FValue BadOuterMaterialized;
+            std::vector<GV2ContentCore::FDiagnostic> BadOuterDiags;
+            GV2ContentCore::FValidationDiagnosticContext BadOuterCtx;
+            BadOuterCtx.SchemaId = "test:schema.duc09_screen_fields_probe.v1";
+            const bool bBadValidated = GV2ContentCore::ValidateUiFieldValue(
+                BadOuterContentValue, OuterSchema, BadOuterMaterialized, nullptr, "", BadOuterCtx, BadOuterDiags);
+            TestTrue(TEXT("DUC-09: shallow validate still passes (schema_id resolution deferred to materialization)"), bBadValidated);
+
+            FGV2PreparedUiValue BadProjected;
+            int32 BadHandleCursor = 0;
+            GV2ScreenFieldMaterializer::FMaterializeContext BadMatCtx;
+            BadMatCtx.Handles = &NoHandles;
+            BadMatCtx.HandleCursor = &BadHandleCursor;
+            const bool bBadProjected = bBadValidated && GV2ScreenFieldMaterializer::ProjectMaterializedValue(
+                BadMatCtx, OuterSchema, BadOuterMaterialized, BadProjected);
+            TestFalse(TEXT("DUC-09: unknown nested schema_id is rejected, not silently passed through"), bBadProjected);
+        }
+
+        // 27b. Consumer: FGV2TabContainerTabsPropertyConsumer turns an already-
+        // materialized envelope array into a real TArray<FGV2ScreenFieldValue>
+        // and applies it through the child screen's own public
+        // PrepareScreenFields / CommitScreenFields -- the same two-phase API a
+        // top-level screen uses, not a hand-rolled mutation plan.
+        {
+            UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+            GameInstance->AddToRoot();
+            GameInstance->InitializeStandalone();
+            UWorld* TestWorld = GameInstance->GetWorld();
+
+            // Child screen: a real UGV2ScreenWidgetBase with a nested declared
+            // composite (DUC-08 shape) exposing exactly the two properties
+            // textsystem:schema.ui_field.declared_composite_fixture.v1 declares.
+            UGV2ScreenWidgetBase* ChildScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            ChildScreen->WidgetTree = NewObject<UWidgetTree>(ChildScreen);
+            UGV2DeclaredCompositeWidgetBase* DayBlock = ChildScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("DayBlock"));
+            ChildScreen->WidgetTree->RootWidget = DayBlock;
+            DayBlock->WidgetTree = NewObject<UWidgetTree>(DayBlock);
+            UVerticalBox* DayBlockRoot = DayBlock->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+            DayBlock->WidgetTree->RootWidget = DayBlockRoot;
+            UGV2TextWidgetBase* DayText = DayBlock->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            UGV2ProgressBarWidgetBase* ValueBar = DayBlock->WidgetTree->ConstructWidget<UGV2ProgressBarWidgetBase>(UGV2ProgressBarWidgetBase::StaticClass(), TEXT("ValueBar"));
+            DayBlockRoot->AddChildToVerticalBox(DayText);
+            DayBlockRoot->AddChildToVerticalBox(ValueBar);
+            DayBlock->SetHostIdentity(FName(TEXT("day_block")));
+            DayBlock->DeclaredCapabilities.Add({ FName(TEXT("day")), FName(TEXT("DayText")), EGV2DeclaredUiCapabilityKind::Text });
+            DayBlock->DeclaredCapabilities.Add({ FName(TEXT("value")), FName(TEXT("ValueBar")), EGV2DeclaredUiCapabilityKind::Number });
+
+            // Seed the tab container's screen-widget map directly (GetScreenWidgetForTab)
+            // so Prepare finds this real child screen off-tree, the same way it would
+            // reuse an already-reconciled tab on a later revision -- no Screen Registry
+            // needed for this off-tree unit test, exactly like UIF-23/24 above.
+            UGV2TabContainerWidgetBase* NestedTabContainer = NewObject<UGV2TabContainerWidgetBase>();
+            TArray<FGV2TabItemEntry> SeedEntries;
+            FGV2TabItemEntry SeedEntry;
+            SeedEntry.Key = FName(TEXT("info"));
+            SeedEntry.ScreenId = TEXT("core:screen.test");
+            SeedEntries.Add(SeedEntry);
+            TMap<FName, UGV2ScreenWidgetBase*> SeedWidgets;
+            SeedWidgets.Add(FName(TEXT("info")), ChildScreen);
+            NestedTabContainer->ApplyTabEntries(SeedEntries, SeedWidgets);
+
+            TSharedPtr<IGV2PropertyConsumer> NestedConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+            TestNotNull(TEXT("DUC-09: tab container consumer created"), NestedConsumer.Get());
+
+            FGV2UiPropertyCapability NestedTabCap;
+            NestedTabCap.TargetType = EGV2UiCapabilityTargetType::NestedScreen;
+
+            FGV2TextViewModel DayVM;
+            DayVM.Text = FText::FromString(TEXT("Tuesday"));
+            TMap<FString, FGV2PreparedUiValue> InnerFields;
+            InnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(DayVM));
+            InnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(7.0));
+
+            TArray<TPair<FString, FGV2PreparedUiValue>> EnvelopeFields;
+            EnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
+            EnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            EnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(InnerFields)));
+            TArray<FGV2PreparedUiValue> FieldsArray;
+            FieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(EnvelopeFields)));
+
+            TMap<FString, FGV2PreparedUiValue> TabMap;
+            TabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("info")));
+            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Info")) }));
+            TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            TabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FieldsArray)));
+
+            TArray<FGV2PreparedUiValue> Tabs;
+            Tabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
+
+            FString NestedPrepErr;
+            const bool bNestedPrepared = NestedConsumer->Prepare(
+                FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(Tabs)), NestedTabCap, NestedTabContainer, NestedPrepErr);
+            TestTrue(*FString::Printf(TEXT("DUC-09: tab with nested fields prepares [Error: %s]"), *NestedPrepErr), bNestedPrepared);
+
+            FString NestedCommitErr;
+            const bool bNestedCommitted = bNestedPrepared && NestedConsumer->Commit(NestedTabContainer, NestedCommitErr);
+            TestTrue(*FString::Printf(TEXT("DUC-09: tab with nested fields commits [Error: %s]"), *NestedCommitErr), bNestedCommitted);
+
+            TestEqual(TEXT("DUC-09: nested field applied to the real DayText widget"), DayText->GetTextContent().ToString(), TEXT("Tuesday"));
+            TestEqual(TEXT("DUC-09: nested field applied to the real ValueBar widget"), ValueBar->GetProgress(), 7.0f);
+
+            // Negative: an *extra* field_id the child screen has no host for is
+            // rejected, not silently ignored (DUC-09's own Done criterion) --
+            // "day_block" is included too so the only failure is the unknown
+            // extra field, not the (separately-enforced) missing-value-for-host case.
+            TArray<TPair<FString, FGV2PreparedUiValue>> UnknownEnvelopeFields;
+            UnknownEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("nonexistent_field")));
+            UnknownEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            UnknownEnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(InnerFields)));
+            TArray<FGV2PreparedUiValue> UnknownFieldsArray;
+            UnknownFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(EnvelopeFields)));
+            UnknownFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UnknownEnvelopeFields)));
+
+            TMap<FString, FGV2PreparedUiValue> UnknownTabMap = TabMap;
+            UnknownTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnknownFieldsArray)));
+            TArray<FGV2PreparedUiValue> UnknownTabs;
+            UnknownTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UnknownTabMap)));
+
+            FString UnknownPrepErr;
+            const bool bUnknownPrepared = NestedConsumer->Prepare(
+                FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnknownTabs)), NestedTabCap, NestedTabContainer, UnknownPrepErr);
+            TestFalse(
+                *FString::Printf(TEXT("DUC-09: unknown nested field_id is rejected, not silently ignored [Error: %s]"), *UnknownPrepErr),
+                bUnknownPrepared);
+            TestTrue(
+                *FString::Printf(TEXT("DUC-09: rejection names the unknown field [Error: %s]"), *UnknownPrepErr),
+                UnknownPrepErr.Contains(TEXT("unknown field")));
+        }
+    }
+
+    // =========================================================================
     // UIF-25: UI-Local Active Tab State & Widget Lifecycle
     // =========================================================================
     {

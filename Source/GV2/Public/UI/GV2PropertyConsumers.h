@@ -6,6 +6,7 @@
 
 class UWidget;
 class FGV2UiHostMutationPlan;
+struct FGV2ScreenMutationPlan;
 
 /**
  * Base interface for all reusable property consumers.
@@ -313,7 +314,10 @@ public:
         FString ScreenId;
         TSubclassOf<UGV2ScreenWidgetBase> ScreenWidgetClass;
         TObjectPtr<UGV2ScreenWidgetBase> ScreenWidget;
-        TSharedPtr<FGV2UiHostMutationPlan> ChildMutationPlan;
+        // DUC-09: prepared through the child screen's own PrepareScreenFields, the
+        // same public two-phase API a top-level screen uses -- not a hand-rolled
+        // mutation plan built against a schema synthesized from its capability.
+        TSharedPtr<FGV2ScreenMutationPlan> ChildScreenPlan;
         bool bHasChildPlan = false;
     };
 

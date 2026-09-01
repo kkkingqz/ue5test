@@ -13,6 +13,28 @@
 
 namespace
 {
+TArray<FString> DiscoverDefaultSchemaPackageRoots()
+{
+    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+
+    TArray<FString> Roots = {
+        FPaths::Combine(GameDataDir, TEXT("core")),
+        FPaths::Combine(GameDataDir, TEXT("textsystem")),
+        FPaths::Combine(GameDataDir, TEXT("rh")),
+        FPaths::Combine(GameDataDir, TEXT("sample")),
+    };
+    return Roots;
+}
+
+FGV2UiSchemaCache& GetSchemaCache()
+{
+    static FGV2UiSchemaCache Cache(DiscoverDefaultSchemaPackageRoots());
+    return Cache;
+}
+} // anonymous namespace
+
+namespace
+{
 bool ToControlValue(
     const std::string& Name,
     const GV2ContentCore::FValue& Value,
@@ -257,8 +279,62 @@ bool CollectBindingDefinitions(
     case EUiFieldKind::Key:
     case EUiFieldKind::Text:
     case EUiFieldKind::Ref:
-    case EUiFieldKind::ScreenFields:
         return true;
+    case EUiFieldKind::ScreenFields:
+    {
+        // DUC-09: a nested screen's fields are an array of the same field_id/
+        // schema_id/value envelopes a top-level screen request uses, so bindings
+        // inside them are collected by resolving each envelope's own schema and
+        // recursing -- the same two envelopes ProjectMaterializedValue resolves
+        // below, kept in the same traversal order so binding handles line up.
+        if (!MaterializedValue.IsArray())
+        {
+            return false;
+        }
+        for (const GV2ContentCore::FValue& EnvelopeVal : MaterializedValue.AsArray())
+        {
+            if (!EnvelopeVal.IsObject())
+            {
+                return false;
+            }
+            const GV2ContentCore::FValue* SchemaIdVal = EnvelopeVal.FindField("schema_id");
+            const GV2ContentCore::FValue* FieldIdVal = EnvelopeVal.FindField("field_id");
+            const GV2ContentCore::FValue* InnerValueVal = EnvelopeVal.FindField("value");
+            if (SchemaIdVal == nullptr || !SchemaIdVal->IsString()
+                || FieldIdVal == nullptr || !FieldIdVal->IsString()
+                || InnerValueVal == nullptr)
+            {
+                return false;
+            }
+
+            FString SchemaError;
+            GV2ContentCore::FCompiledUiFieldSpecPtr InnerSchema =
+                Ctx.SchemaCache->GetCompiledSchema(SchemaIdVal->AsString(), SchemaError);
+            if (InnerSchema == nullptr)
+            {
+                return false;
+            }
+
+            GV2ContentCore::FValue InnerMaterialized;
+            std::vector<GV2ContentCore::FDiagnostic> InnerDiagnostics;
+            GV2ContentCore::FValidationDiagnosticContext InnerCtx;
+            InnerCtx.SchemaId = SchemaIdVal->AsString();
+            if (!GV2ContentCore::ValidateUiFieldValue(
+                    *InnerValueVal, *InnerSchema, InnerMaterialized, nullptr, "", InnerCtx, InnerDiagnostics))
+            {
+                return false;
+            }
+
+            const FString FieldIdStr = UTF8_TO_TCHAR(FieldIdVal->AsString().c_str());
+            TArray<FString> InnerNodePath = NodePath;
+            InnerNodePath.Add(FieldIdStr);
+            if (!CollectBindingDefinitions(Ctx, *InnerSchema, InnerMaterialized, InnerNodePath, FieldIdStr))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
     }
     return true;
 }
@@ -381,7 +457,74 @@ bool ProjectMaterializedValue(
         return true;
     }
     case EUiFieldKind::ScreenFields:
-        return false;
+    {
+        // DUC-09: a nested screen's fields are an array of the same field_id/
+        // schema_id/value envelope a top-level GV2RuntimeCore::FScreenField uses --
+        // no separate protocol. Each envelope's own schema_id is resolved and its
+        // value independently validated + materialized through the exact same
+        // ValidateUiFieldValue + ProjectMaterializedValue pair BuildFields uses for
+        // a top-level field, recursively. The result is a plain Array<Object{
+        // field_id: Key, schema_id: String, value: Object}> -- no new prepared-value
+        // kind needed; the consumer re-resolves each envelope's compiled schema by
+        // schema_id (a cheap cache hit) to build a real TArray<FGV2ScreenFieldValue>
+        // and apply it through UGV2ScreenWidgetBase::PrepareScreenFields/CommitScreenFields,
+        // the same public API a top-level screen uses.
+        if (!MaterializedValue.IsArray())
+        {
+            return false;
+        }
+        TArray<FGV2PreparedUiValue> NestedEnvelopes;
+        for (const GV2ContentCore::FValue& EnvelopeVal : MaterializedValue.AsArray())
+        {
+            if (!EnvelopeVal.IsObject())
+            {
+                return false;
+            }
+            const GV2ContentCore::FValue* FieldIdVal = EnvelopeVal.FindField("field_id");
+            const GV2ContentCore::FValue* SchemaIdVal = EnvelopeVal.FindField("schema_id");
+            const GV2ContentCore::FValue* InnerValueVal = EnvelopeVal.FindField("value");
+            if (FieldIdVal == nullptr || !FieldIdVal->IsString()
+                || SchemaIdVal == nullptr || !SchemaIdVal->IsString()
+                || InnerValueVal == nullptr)
+            {
+                return false;
+            }
+
+            const FString SchemaIdStr = UTF8_TO_TCHAR(SchemaIdVal->AsString().c_str());
+            FString SchemaError;
+            GV2ContentCore::FCompiledUiFieldSpecPtr InnerSchema =
+                GetSchemaCache().GetCompiledSchema(SchemaIdVal->AsString(), SchemaError);
+            if (InnerSchema == nullptr)
+            {
+                return false;
+            }
+
+            GV2ContentCore::FValue InnerMaterialized;
+            std::vector<GV2ContentCore::FDiagnostic> InnerDiagnostics;
+            GV2ContentCore::FValidationDiagnosticContext InnerCtx;
+            InnerCtx.SchemaId = SchemaIdVal->AsString();
+            if (!GV2ContentCore::ValidateUiFieldValue(
+                    *InnerValueVal, *InnerSchema, InnerMaterialized, nullptr, "", InnerCtx, InnerDiagnostics))
+            {
+                return false;
+            }
+
+            FGV2PreparedUiValue InnerPrepared;
+            if (!ProjectMaterializedValue(Ctx, *InnerSchema, InnerMaterialized, InnerPrepared)
+                || !InnerPrepared.IsObject())
+            {
+                return false;
+            }
+
+            TArray<TPair<FString, FGV2PreparedUiValue>> EnvelopeFields;
+            EnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(UTF8_TO_TCHAR(FieldIdVal->AsString().c_str())));
+            EnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(SchemaIdStr));
+            EnvelopeFields.Emplace(TEXT("value"), MoveTemp(InnerPrepared));
+            NestedEnvelopes.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(MoveTemp(EnvelopeFields))));
+        }
+        OutValue = FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(MoveTemp(NestedEnvelopes)));
+        return true;
+    }
     }
     return false;
 }
@@ -389,27 +532,6 @@ bool ProjectMaterializedValue(
 
 namespace
 {
-TArray<FString> DiscoverDefaultSchemaPackageRoots()
-{
-    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
-
-    TArray<FString> Roots = {
-        FPaths::Combine(GameDataDir, TEXT("core")),
-        FPaths::Combine(GameDataDir, TEXT("textsystem")),
-        FPaths::Combine(GameDataDir, TEXT("rh")),
-        FPaths::Combine(GameDataDir, TEXT("sample")),
-    };
-    return Roots;
-}
-} // anonymous namespace
-
-namespace
-{
-FGV2UiSchemaCache& GetSchemaCache()
-{
-    static FGV2UiSchemaCache Cache(DiscoverDefaultSchemaPackageRoots());
-    return Cache;
-}
 static void NormalizeArraysInContentValue(
     const GV2ContentCore::FCompiledUiFieldSpec& Spec,
     GV2ContentCore::FValue& Value)
@@ -452,6 +574,15 @@ bool IsKnownSchema(const std::string& SchemaId)
 {
     FString Error;
     return GetSchemaCache().GetCompiledSchema(SchemaId, Error) != nullptr;
+}
+
+// DUC-09: lets a nested-screen-fields consumer (FGV2TabContainerTabsPropertyConsumer)
+// re-resolve one envelope's compiled schema by schema_id -- a cache hit against the
+// same singleton ProjectMaterializedValue already resolved it through above, needed
+// only to fill FGV2ScreenFieldValue::CompiledSchema for PrepareScreenFields.
+GV2ContentCore::FCompiledUiFieldSpecPtr GetCompiledSchema(const std::string& SchemaId, FString& OutError)
+{
+    return GetSchemaCache().GetCompiledSchema(SchemaId, OutError);
 }
 
 bool PrepareBindingDefinitions(

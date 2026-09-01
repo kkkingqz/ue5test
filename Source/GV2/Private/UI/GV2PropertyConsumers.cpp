@@ -1,4 +1,5 @@
 #include "UI/GV2PropertyConsumers.h"
+#include "Application/GV2ScreenFieldMaterializer.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
 #include "Components/Image.h"
@@ -1604,59 +1605,73 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         PreparedItem.ScreenWidgetClass = TargetWidgetClass;
         PreparedItem.ScreenWidget = ChildWidget;
 
-        // 6. Child fields preparation off-tree
+        // 6. Child fields preparation off-tree. DUC-09: `fields` is an array of the
+        // same field_id/schema_id/value envelope a top-level screen request uses --
+        // no separate protocol. ProjectMaterializedValue's ScreenFields case has
+        // already resolved each envelope's own schema_id and fully validated +
+        // materialized its value; this only rebuilds real FGV2ScreenFieldValue
+        // entries and prepares them through the child screen's own public
+        // PrepareScreenFields -- the exact two-phase API a top-level screen uses,
+        // not a schema synthesized from the child's capability tree.
         const FGV2PreparedUiValue* FieldsVal = TabObj.FindField(TEXT("fields"));
         if (FieldsVal != nullptr && !FieldsVal->IsNull())
         {
-            if (!FieldsVal->IsObject())
+            if (!FieldsVal->IsArray())
             {
-                OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.kind_mismatch: Tab '%s' fields must be an object"), *TabKey.ToString());
+                OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.kind_mismatch: Tab '%s' fields must be an array"), *TabKey.ToString());
+                return false;
+            }
+            if (ChildWidget == nullptr)
+            {
+                OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.missing_target: Tab '%s' has fields but no screen widget instantiated"), *TabKey.ToString());
                 return false;
             }
 
-            if (ChildWidget != nullptr && ChildWidget->GetClass()->ImplementsInterface(UGV2UiPropertyHost::StaticClass()))
+            TArray<FGV2ScreenFieldValue> NestedFields;
+            for (const FGV2PreparedUiValue& EnvelopeVal : FieldsVal->AsArray().GetElements())
             {
-                FGV2UiCapabilityTree ChildCaps;
-                if (IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(ChildWidget))
+                if (!EnvelopeVal.IsObject())
                 {
-                    FGV2UiCapabilityBuilder ChildCapBuilder;
-                    Host->DescribeUiCapabilities(ChildCapBuilder);
-                    ChildCaps = ChildCapBuilder.Build();
-                }
-
-                GV2ContentCore::FCompiledUiFieldSpec ChildSchema;
-                ChildSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
-
-                for (const auto& CapPair : ChildCaps.Properties)
-                {
-                    if (auto Spec = MakeCollectionSpecFromCapability(CapPair.Value))
-                    {
-                        ChildSchema.Fields.push_back({ TCHAR_TO_UTF8(*CapPair.Key), false, MoveTemp(Spec) });
-                    }
-                }
-
-                PreparedItem.ChildMutationPlan = MakeShared<FGV2UiHostMutationPlan>();
-                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
-                const FGV2PreparedUiObject EmptyPrev;
-
-                const bool bPrepared = PrepareUiHostProperties(
-                    ChildWidget,
-                    ChildCaps,
-                    FieldsVal->AsObject(),
-                    ChildSchema,
-                    TEXT("core:schema.screen_fields.v1"),
-                    TabKey.ToString(),
-                    EmptyPrev,
-                    *PreparedItem.ChildMutationPlan,
-                    Diagnostics);
-
-                if (!bPrepared)
-                {
-                    OutError = Diagnostics.Num() > 0 ? Diagnostics[0].Message : FString::Printf(TEXT("core:diagnostic.ui_mutation.prepare_failed: Child fields prepare failed for tab '%s'"), *TabKey.ToString());
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.item_kind_mismatch: Tab '%s' field envelope must be an object"), *TabKey.ToString());
                     return false;
                 }
-                PreparedItem.bHasChildPlan = true;
+                const FGV2PreparedUiObject& EnvelopeObj = EnvelopeVal.AsObject();
+                const FGV2PreparedUiValue* FieldIdVal = EnvelopeObj.FindField(TEXT("field_id"));
+                const FGV2PreparedUiValue* SchemaIdVal = EnvelopeObj.FindField(TEXT("schema_id"));
+                const FGV2PreparedUiValue* InnerValueVal = EnvelopeObj.FindField(TEXT("value"));
+                if (FieldIdVal == nullptr || !FieldIdVal->IsKey()
+                    || SchemaIdVal == nullptr || !SchemaIdVal->IsString()
+                    || InnerValueVal == nullptr || !InnerValueVal->IsObject())
+                {
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.malformed_screen_field_envelope: Tab '%s' has a malformed nested field envelope"), *TabKey.ToString());
+                    return false;
+                }
+
+                const FString SchemaIdStr = SchemaIdVal->AsString();
+                FString SchemaError;
+                const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> NestedSchema =
+                    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(*SchemaIdStr), SchemaError);
+                if (!NestedSchema)
+                {
+                    OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.unknown_schema: Tab '%s' nested field schema '%s' could not be compiled: %s"), *TabKey.ToString(), *SchemaIdStr, *SchemaError);
+                    return false;
+                }
+
+                FGV2ScreenFieldValue& NestedField = NestedFields.AddDefaulted_GetRef();
+                NestedField.FieldId = FName(FieldIdVal->AsKey());
+                NestedField.SchemaId = SchemaIdStr;
+                NestedField.PreparedValue = InnerValueVal->AsObjectRef();
+                NestedField.CompiledSchema = NestedSchema;
             }
+
+            PreparedItem.ChildScreenPlan = MakeShared<FGV2ScreenMutationPlan>();
+            FString ChildPrepareError;
+            if (!ChildWidget->PrepareScreenFields(NestedFields, *PreparedItem.ChildScreenPlan, ChildPrepareError))
+            {
+                OutError = FString::Printf(TEXT("core:diagnostic.ui_mutation.prepare_failed: Tab '%s' nested screen fields failed to prepare: %s"), *TabKey.ToString(), *ChildPrepareError);
+                return false;
+            }
+            PreparedItem.bHasChildPlan = true;
         }
 
         if (ChildWidget != nullptr)
@@ -1678,16 +1693,15 @@ bool FGV2TabContainerTabsPropertyConsumer::Commit(UWidget* TargetWidget, FString
         TabContainer = TargetWidget->GetTypedOuter<UGV2TabContainerWidgetBase>();
     }
 
-    // Commit child mutation plans
+    // Commit child screen field plans, through the same CommitScreenFields a
+    // top-level screen uses (DUC-09).
     for (FPreparedTabItem& Item : PreparedTabs)
     {
-        if (Item.bHasChildPlan && Item.ChildMutationPlan.IsValid() && Item.ScreenWidget != nullptr)
+        if (Item.bHasChildPlan && Item.ChildScreenPlan.IsValid() && Item.ScreenWidget != nullptr)
         {
-            FString FailedPath;
-            FString CommitError;
-            if (!CommitUiHostProperties(Item.ScreenWidget, *Item.ChildMutationPlan, FailedPath, CommitError))
+            if (!Item.ScreenWidget->CommitScreenFields(*Item.ChildScreenPlan))
             {
-                OutError = CommitError;
+                OutError = FString::Printf(TEXT("nested screen fields commit failed for tab '%s'"), *Item.Key.ToString());
                 return false;
             }
         }
