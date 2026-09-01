@@ -1,7 +1,7 @@
 ---
 title: Declared Surface Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -25,10 +25,17 @@ depends_on:
 
 ## Задачи
 
-- [ ] **GBH-01 — Структурная непригодность Shell предсказывается в Prepare**
+- [x] **GBH-01 — Структурная непригодность Shell предсказывается в Prepare**
   - `CommitReconcile` присоединяет экраны последовательно; отказ на втором оставляет первый в дереве, новый `ActiveScreens` не публикуется, и возникает расхождение логического и физического состояния. Остаток известен и записан комментарием в `GV2LayeredUiReconciler.cpp`, но не вынесен ни в статус, ни в проверку.
   - Done: `PrepareReconcile` до построения плана публикации проверяет для каждого incoming layer/screen все предсказуемые structural prerequisites `AttachScreenToLayer` (как минимум authored host, допустимость layer, совместимость target и любые другие ветви, способные штатно вернуть `false`) и отказывает типизированной диагностикой **до первой live mutation**; после успешного Prepare `AttachScreenToLayer` на подготовленном плане считается invariant-level infallible — это подтверждено аудитом всех его `false`-ветвей и negative tests, а не предположением по `HasHostForLayer`; тест строит ситуацию, где первый attach был бы успешен, второй structural attach — неуспешен, и доказывает, что теперь весь документ отклоняется в Prepare и Shell tree не меняется; если остаётся непредсказуемый engine-level failure после начала attach, его recovery явно делегирован `GBH-09/10`; комментарий о допустимом partial Shell tree удалён.
   - Evidence: `Source/GV2/Private/UI/GV2LayeredUiReconciler.cpp`, `Source/GV2/Public/UI/GV2GameShellWidgetBase.h`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-01):**
+    - Аудит `AttachScreenToLayer` (`GV2GameShellWidgetBase.cpp`): ровно три `false`-ветви — `ScreenWidget == nullptr` (уже недостижимо к моменту attach: `ScreenFactory`-провал отклоняется в `PrepareReconcile` до появления инстанса в плане), `!IsValidLayerName(Layer)` (уже проверяется для каждого incoming instance в существующей step 1 validation phase) и `Host == nullptr`, т.е. `!HasHostForLayer(Layer)` — единственная непроверенная ветвь, при этом `HasHostForLayer` уже существовал и не вызывался реконсилятором.
+    - `PrepareReconcile`: в ту же validation-петлю (step 1), рядом с `IsValidLayerName`, добавлена проверка `Shell != nullptr && !Shell->HasHostForLayer(Instance.Layer)` → typed `core:diagnostic.ui_reconcile.missing_layer_host` до какой-либо мутации. Условие на `Shell != nullptr` обязательно: существующие off-tree unit-тесты реконсилируют с `Shell == nullptr`, и `CommitReconcile` сам пропускает attach в этом случае — без guard'а проверка ломала бы все такие тесты.
+    - `CommitReconcile`: комментарий о допустимом partial Shell tree ("PCC-07 residual... no existing test drives AttachScreenToLayer to fail") удалён и заменён записью о том, что после успешного Prepare attach — invariant-level, а остаточный unexpected engine-level `false` (например, отказ `AddChild` внутри `Host`, который Prepare не может dry-run'уть) явно делегирован transactional commit/rollback модели `GBH-09/10`.
+    - Regression test — новый блок в `GV2.UI.LayeredReconciliationContract` (`GV2RuntimeSubsystemTests.cpp`): отдельный partial-host `UGV2GameShellWidgetBase` (только `location_content` получает панель через `FindFProperty`/`SetObjectPropertyValue_InContainer`, тем же reflection-приёмом, что `PrepareUiHostProperties` уже использует для чтения; `BackgroundHost` и т.п. — protected `BindWidgetOptional` без публичного сеттера). Документ: route в `location_content` (host есть, встал бы первым) + overlay в `character_presentation` (host отсутствует, встал бы вторым) — ровно форма "первый успешен, второй нет" из Done. `PrepareReconcile` отклоняется с `missing_layer_host`, называющим `character_presentation`; `ActiveScreens` пуст; дерево Shell не тронуто (`0` детей у `location_content`-хоста); полный `Reconcile()` тоже отклоняется целиком. Позитивный контроль: документ только с `location_content` — проходит и реально присоединяется (`1` ребёнок).
+    - Red→green: guard временно заменён на недоказуемо-`false` условие — упали ровно 3 GBH-01-ассерции missing-host, а сценарий провалился по-старому: `Reconcile()` протёк до `Commit`, реально прикрепил `location_content`-виджет (утечка!), затем упал в `AttachScreenToLayer` с `core:diagnostic.ui_reconcile.attach_failed` на `character_presentation` — и позитивный контроль после этого увидел `2` детей вместо `1` (осиротевший виджет от прошлого протёкшего commit). Восстановление — снова зелено. Это ровно тот дефект, который описывает `REM-03`.
+    - Верификация: 102/102 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`.
 
 - [ ] **GBH-02 — Каждый selectable вид Designer работоспособен целиком**
   - `EGV2DeclaredUiCapabilityKind::CollectionHost` объявляется через `AddCustom`, который не задаёт ни `EntryWidgetClass`, ни ключевое свойство; consumer коллекции без класса элемента создать первый элемент не может. Автор контента видит вариант, который не работает — тот же класс дефектов, что `AddObject` до `PCC-05`, но на Designer surface.
@@ -55,8 +62,8 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Ни одна **предсказуемая** причина отказа attach не доживает до Commit: она отклоняется в `PrepareReconcile` до первой live mutation, и это подтверждено аудитом всех `false`-ветвей `AttachScreenToLayer`.
-- [ ] Остаточный непредсказуемый engine-level отказ attach явно делегирован `GBH-09/10` записью в задаче, а не оставлен комментарием в коде. Утверждение «частично присоединённое дерево невозможно» становится полностью истинным только после M3 и там же проверяется.
+- [x] Ни одна **предсказуемая** причина отказа attach не доживает до Commit: она отклоняется в `PrepareReconcile` до первой live mutation, и это подтверждено аудитом всех `false`-ветвей `AttachScreenToLayer`.
+- [x] Остаточный непредсказуемый engine-level отказ attach явно делегирован `GBH-09/10` записью в задаче, а не оставлен комментарием в коде. Утверждение «частично присоединённое дерево невозможно» становится полностью истинным только после M3 и там же проверяется.
 - [ ] Ни один вид Designer не является одновременно selectable и неработоспособным: часть A скрывает такие виды, и гейт не позволяет добавить новый вид в обход этого правила.
 - [ ] `CollectionHost` на момент закрытия M1 либо скрыт, либо, если его контракт не нужен проекту, удалён окончательно — работоспособным он становится только в `GBH-02B` после `GBH-08`.
 - [ ] Разрыв принадлежности схем либо закрыт, либо записан там, где его читают при планировании, и отражён во всей нормативной цепочке.

@@ -2644,6 +2644,94 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 Reconciler.Reconcile(Shell, CleanupDoc, MultiLayerFactory, CleanupError));
         }
 
+        // GBH-01: a document naming a layer with no authored Shell host is rejected
+        // wholesale in Prepare, before the first live mutation -- not discovered
+        // partway through Commit after an earlier layer already attached. Uses its
+        // own partial-host Shell (the shared `Shell` above authors all six layers),
+        // built via reflection since BackgroundHost/etc are protected BindWidgetOptional
+        // fields with no public setter -- the same FindFProperty pattern
+        // PrepareUiHostProperties already uses to read a target widget by name.
+        {
+            UGV2GameShellWidgetBase* PartialShell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
+            TestNotNull(TEXT("GBH-01: partial-host shell instantiated"), PartialShell);
+            if (PartialShell != nullptr)
+            {
+                PartialShell->AddToRoot();
+
+                UVerticalBox* LocationHostPanel = NewObject<UVerticalBox>(PartialShell);
+                if (FObjectPropertyBase* HostProp = FindFProperty<FObjectPropertyBase>(PartialShell->GetClass(), TEXT("LocationContentHost")))
+                {
+                    HostProp->SetObjectPropertyValue_InContainer(PartialShell, LocationHostPanel);
+                }
+                TestTrue(TEXT("GBH-01: location_content host is authored on the fixture"), PartialShell->HasHostForLayer(TEXT("location_content")));
+                TestFalse(TEXT("GBH-01: character_presentation host is NOT authored on the fixture"), PartialShell->HasHostForLayer(TEXT("character_presentation")));
+
+                FGV2LayeredUiReconciler GbhReconciler;
+                TMap<FString, TSubclassOf<UGV2ScreenWidgetBase>> GbhScreenClasses;
+                GbhScreenClasses.Add(TEXT("core:screen.gbh01_a"), UGV2ScreenWidgetBase::StaticClass());
+                GbhScreenClasses.Add(TEXT("core:screen.gbh01_b"), UGV2ScreenWidgetBase::StaticClass());
+                auto GbhFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+                {
+                    TSubclassOf<UGV2ScreenWidgetBase>* FoundClass = GbhScreenClasses.Find(ScreenId);
+                    return FoundClass != nullptr && *FoundClass != nullptr
+                        ? CreateWidget<UGV2ScreenWidgetBase>(TestWorld, *FoundClass)
+                        : nullptr;
+                };
+
+                // Route (location_content) has a host and would attach first, successfully.
+                // The overlay (character_presentation) has none and would attach second,
+                // and fail -- exactly the "first succeeds, second doesn't" shape GBH-01
+                // must catch in Prepare rather than leave the first physically attached.
+                FGV2UiDocumentViewModel GbhDoc;
+                GbhDoc.UiInstanceId = TEXT("ui@gbh01:1");
+                GbhDoc.Revision = 1;
+                GbhDoc.bHasRoute = true;
+                GbhDoc.Route.Layer = TEXT("location_content");
+                GbhDoc.Route.InstanceKey = TEXT("gbh01_a");
+                GbhDoc.Route.ScreenId = TEXT("core:screen.gbh01_a");
+                FGV2ScreenInstanceViewModel GbhOverlay;
+                GbhOverlay.Layer = TEXT("character_presentation");
+                GbhOverlay.InstanceKey = TEXT("gbh01_b");
+                GbhOverlay.ScreenId = TEXT("core:screen.gbh01_b");
+                GbhDoc.Overlays.Add(GbhOverlay);
+
+                FGV2LayeredUiReconciler::FPreparedReconciliationPlan GbhPlan;
+                FString GbhError;
+                const bool bGbhPrepared = GbhReconciler.PrepareReconcile(PartialShell, GbhDoc, GbhFactory, GbhPlan, GbhError);
+                TestFalse(*FString::Printf(TEXT("GBH-01: missing layer host is rejected in Prepare [Error: %s]"), *GbhError), bGbhPrepared);
+                TestTrue(*FString::Printf(TEXT("GBH-01: rejection names the missing-host diagnostic [Error: %s]"), *GbhError),
+                    GbhError.Contains(TEXT("core:diagnostic.ui_reconcile.missing_layer_host")));
+                TestTrue(*FString::Printf(TEXT("GBH-01: rejection names the failing layer [Error: %s]"), *GbhError),
+                    GbhError.Contains(TEXT("character_presentation")));
+
+                TestEqual(TEXT("GBH-01: Shell tree unchanged -- location_content host still has no children"),
+                    LocationHostPanel->GetChildrenCount(), 0);
+                TestEqual(TEXT("GBH-01: Reconciler's ActiveScreens untouched"), GbhReconciler.GetActiveScreens().Num(), 0);
+
+                // Full Reconcile() (Prepare + Commit) also fails wholesale and never
+                // reaches Commit -- the plan it would have committed is simply discarded.
+                FString GbhReconcileError;
+                const bool bGbhReconciled = GbhReconciler.Reconcile(PartialShell, GbhDoc, GbhFactory, GbhReconcileError);
+                TestFalse(TEXT("GBH-01: full Reconcile() also rejects the document wholesale"), bGbhReconciled);
+
+                // Positive control: the same partial-host Shell accepts a document that
+                // only targets the layer it does have a host for -- the new check does
+                // not over-reject.
+                FGV2UiDocumentViewModel GbhPositiveDoc;
+                GbhPositiveDoc.UiInstanceId = TEXT("ui@gbh01:2");
+                GbhPositiveDoc.Revision = 1;
+                GbhPositiveDoc.bHasRoute = true;
+                GbhPositiveDoc.Route = GbhDoc.Route;
+                FString GbhPositiveError;
+                TestTrue(*FString::Printf(TEXT("GBH-01: a document naming only the authored layer still succeeds [Error: %s]"), *GbhPositiveError),
+                    GbhReconciler.Reconcile(PartialShell, GbhPositiveDoc, GbhFactory, GbhPositiveError));
+                TestEqual(TEXT("GBH-01: positive control actually attached to the authored host"),
+                    LocationHostPanel->GetChildrenCount(), 1);
+
+                PartialShell->RemoveFromRoot();
+            }
+        }
+
         if (Shell != nullptr)
         {
             TestTrue(TEXT("Location content layer is unblocked after modal closure"), Shell->IsLayerInteractive(TEXT("location_content")));

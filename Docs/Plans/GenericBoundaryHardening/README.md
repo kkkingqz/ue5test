@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-01
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
@@ -42,8 +42,8 @@ decisions:
 | Объявление композита | Хранит `PropertyName`, `ChildWidgetName`, `Kind` — и не хранит, **какую именно** capability ребёнка делегирует |
 | `FGV2NumberPropertyConsumer::Prepare` | Проверяет тип и сохраняет значение; объявленный диапазон capability не применяется |
 | `CommitUiHostProperties` | Выходит по первому отказу; отката уже применённых мутаций нет, предыдущее физическое состояние не хранится |
-| `CommitReconcile` | Присоединяет экраны последовательно; отказ на втором оставляет первый в дереве Shell — остаток записан комментарием в коде, но не строкой статуса |
-| `HasHostForLayer` | Существует и реконсилятором не используется |
+| `CommitReconcile` | Все **предсказуемые** причины отказа attach отклоняются в `PrepareReconcile` (`GBH-01`); остаточный непредсказуемый engine-level отказ явно делегирован `GBH-09/10` |
+| `HasHostForLayer` | Используется в `PrepareReconcile` (`GBH-01`) |
 | `CollectionHost` в Designer | Выбирается в списке видов, объявляется через `AddCustom` без `EntryWidgetClass` и ключевого свойства — создать первый элемент невозможно |
 | UI-схемы | Сканируются с файловой системы, не принадлежат closure активного репозитория (`UPP-R5`) |
 | `ScreenTemplates.md` | Описывает `schema_id` и политику необязательного host на уровне элемента, чего в `IGV2ScreenFieldHost` нет |

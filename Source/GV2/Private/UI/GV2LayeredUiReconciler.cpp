@@ -25,6 +25,21 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
             return false;
         }
 
+        // GBH-01: AttachScreenToLayer's only *predictable* false-branches are a null
+        // widget (already guarded above -- ScreenFactory failure returns false before
+        // this instance could ever reach Commit) and a missing authored host for the
+        // layer (Shell Blueprint misconfiguration). Both are knowable here, before any
+        // live mutation, without calling Attach itself. Checked only when a real Shell
+        // is given: many off-tree unit tests reconcile with Shell == nullptr, and Commit
+        // itself skips Attach entirely in that case (see CommitReconcile step 3).
+        if (Shell != nullptr && !Shell->HasHostForLayer(Instance.Layer))
+        {
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_reconcile.missing_layer_host: layer '%s' has no authored host in Shell"),
+                *Instance.Layer.ToString());
+            return false;
+        }
+
         const FScreenSlotKey Key{Instance.Layer, Instance.InstanceKey};
         if (IncomingKeys.Contains(Key))
         {
@@ -175,14 +190,13 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
     }
 
     // 3. Attach new (already fully committed) screens to their layers in Shell.
-    // PCC-07 residual, not solved here (narrower and structural, not content-driven --
-    // AttachScreenToLayer only fails on a null widget or an unbound layer host, i.e. a
-    // Shell Blueprint misconfiguration, not injectable per-screen test data): if this
-    // loop attaches screen A and *then* fails attaching screen B, A is already live in
-    // the Shell tree even though we abort and leave ActiveScreens untouched below. Every
-    // Commit above has already succeeded by this point, so this is a narrower gap than
-    // the one PCC-07 closes (a partially-attached-but-still-valid screen, not a
-    // partially-committed one), and no existing test drives AttachScreenToLayer to fail.
+    // GBH-01: every *predictable* cause of AttachScreenToLayer returning false (null
+    // widget, invalid layer name, missing authored host) has already been rejected in
+    // PrepareReconcile, before any mutation above -- on a plan that reached this point,
+    // Attach is an invariant-level operation. A false here is therefore necessarily an
+    // unpredictable engine-level failure (e.g. AddChild rejecting the child for a reason
+    // Prepare cannot dry-run); its recovery is delegated to the transactional
+    // commit/rollback model (GBH-09/10), not solved by this loop.
     for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
     {
         if (!Inst.bIsReuse && Shell != nullptr)
