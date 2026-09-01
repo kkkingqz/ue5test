@@ -1,7 +1,7 @@
 ---
 title: Data-Driven UI Composition Plan
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-01
 depends_on:
   - ../Archive/PipelineClosureCorrection.md
@@ -87,7 +87,7 @@ decisions:
 
 - [x] M1 — [Addressable Elements](AddressableElements.md): базовый элемент становится полем, `key` перестаёт быть перечислением классов. DUC-01…04.
 - [x] M2 — [Declared Composite](DeclaredComposite.md): композит объявляется из Designer без C++. DUC-05…08.
-- [ ] M3 — [Nested Screens](NestedScreens.md): `screen_fields` работает end-to-end, вложенность проверена на глубине. DUC-09…11.
+- [x] M3 — [Nested Screens](NestedScreens.md): `screen_fields` работает end-to-end, вложенность проверена на глубине. DUC-09…11.
 
 ## Критический путь
 
@@ -119,5 +119,5 @@ DUC-01 ──► DUC-02 ──► DUC-03 ──► DUC-04        (зависим
 - [x] Схема такого композита плоская: автор пишет `day`, а не `day.text`. (DUC-06)
 - [x] `screen_fields` работает через тот же envelope, что и обычное поле экрана. (DUC-09)
 - [x] Цепочка `экран → вкладки → блок` собрана из данных и покрыта тестом, включая отказ на третьем уровне. (DUC-10)
-- [ ] Композиционный цикл виджетов отклоняется до `Ready`. (DUC-11)
+- [x] Композиционный цикл виджетов отклоняется до `Ready`. (DUC-11)
 - [x] Ни один объявляемый механизм не выводит ожидаемую форму из того, что умеет потребитель. (DUC-07)

@@ -99,7 +99,8 @@ bool PrepareScreenFieldPlans(
     const UGV2ScreenWidgetBase& Screen,
     const TArray<FGV2ScreenFieldValue>& ScreenFields,
     TArray<FGV2ScreenFieldPlan>& OutPlans,
-    FString& OutError)
+    FString& OutError,
+    const TArray<FString>* ActiveCompositionChain)
 {
     TArray<FGV2ScreenHostRecord> Hosts;
     if (!CollectScreenFieldHosts(Screen, Hosts, OutError))
@@ -162,7 +163,8 @@ bool PrepareScreenFieldPlans(
             FString(),
             PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
             MutationPlan,
-            Diagnostics);
+            Diagnostics,
+            ActiveCompositionChain);
         if (!bPrepared)
         {
             OutError = FString::Printf(
@@ -191,9 +193,10 @@ bool PrepareScreenFieldPlans(
 bool UGV2ScreenWidgetBase::PrepareScreenFields(
     const TArray<FGV2ScreenFieldValue>& ScreenFields,
     FGV2ScreenMutationPlan& OutPlan,
-    FString& OutError) const
+    FString& OutError,
+    const TArray<FString>* ActiveCompositionChain) const
 {
-    return PrepareScreenFieldPlans(*this, ScreenFields, OutPlan.FieldPlans, OutError);
+    return PrepareScreenFieldPlans(*this, ScreenFields, OutPlan.FieldPlans, OutError, ActiveCompositionChain);
 }
 
 bool UGV2ScreenWidgetBase::CommitScreenFields(

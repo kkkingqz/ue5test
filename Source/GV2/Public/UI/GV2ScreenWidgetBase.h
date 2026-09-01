@@ -27,10 +27,22 @@ public:
     // Predicts deep child failures (STATUS-004) before commit.
     // PCC-06: [[nodiscard]] -- a discarded result is exactly the swallowed-failure shape
     // this task exists to make impossible; see GV2LayeredUiReconciler.cpp for why.
+    // DUC-11: ActiveCompositionChain is the ordered list of screen_ids already being
+    // prepared on this call stack (root screen first). A nested screen (DUC-09's
+    // FGV2TabContainerTabsPropertyConsumer) forwards its own chain plus the tab's
+    // screen_id into this same parameter on the recursive call, so a screen_id
+    // reappearing on its own composition path -- direct (a tab pointing at its own
+    // screen) or indirect (through an intermediate screen) -- is caught as a cycle.
+    // nullptr (the default, used by ApplyScreenFields/CanApplyScreenFields below and
+    // by any standalone caller) simply means "not tracking a chain here": screen_id
+    // is a runtime string lookup via Screen Registry, not a Blueprint class
+    // reference, so UMG's own circular-dependency detection has no visibility into
+    // it -- this is the only guard against it.
     [[nodiscard]] bool PrepareScreenFields(
         const TArray<FGV2ScreenFieldValue>& ScreenFields,
         FGV2ScreenMutationPlan& OutPlan,
-        FString& OutError) const;
+        FString& OutError,
+        const TArray<FString>* ActiveCompositionChain = nullptr) const;
 
     // Commits a prepared mutation plan. FailureInjector mirrors CommitUiHostProperties'
     // own injector (PCC-06/07 fault-injection tests only; production always omits it).

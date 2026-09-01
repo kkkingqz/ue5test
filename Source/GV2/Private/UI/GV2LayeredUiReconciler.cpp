@@ -74,8 +74,13 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
             }
         }
 
-        // Prepare screen fields (predicts any deep child failure across all field hosts)
-        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError))
+        // Prepare screen fields (predicts any deep child failure across all field hosts).
+        // DUC-11: seed the composition chain with this screen's own screen_id so a
+        // nested tab (any depth below) resolving back to it -- directly or through
+        // an intermediate screen -- is caught as a cycle rather than silently
+        // accepted; see FGV2TabContainerTabsPropertyConsumer's own guard.
+        const TArray<FString> RootCompositionChain{Instance.ScreenId};
+        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError, &RootCompositionChain))
         {
             if (OutError.IsEmpty())
             {

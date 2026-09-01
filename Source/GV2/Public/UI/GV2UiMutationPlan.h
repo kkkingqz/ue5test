@@ -47,6 +47,10 @@ private:
  * Prepares all property mutations for a host widget off-tree without mutating physical widget state.
  * Validates capabilities, target presence, styles, formats, assets, and builds mutation plan.
  */
+// DUC-11: ActiveCompositionChain (default nullptr) is forwarded unchanged to the
+// NestedScreen (tab container) consumer -- see FGV2TabContainerTabsPropertyConsumer's
+// composition-cycle guard and UGV2ScreenWidgetBase::PrepareScreenFields' own doc
+// comment for the full picture. Every other consumer ignores it.
 GV2_API bool PrepareUiHostProperties(
     UUserWidget* HostWidget,
     const FGV2UiCapabilityTree& Capabilities,
@@ -56,7 +60,8 @@ GV2_API bool PrepareUiHostProperties(
     const FString& PropertyPathPrefix,
     const FGV2PreparedUiObject& LastCommittedProperties,
     FGV2UiHostMutationPlan& OutPlan,
-    TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics);
+    TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
+    const TArray<FString>* ActiveCompositionChain = nullptr);
 
 /**
  * Infallibly commits a prepared mutation plan to the physical widget hierarchy.

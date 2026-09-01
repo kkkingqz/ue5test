@@ -15,7 +15,8 @@ bool PrepareUiHostProperties(
     const FString& PropertyPathPrefix,
     const FGV2PreparedUiObject& LastCommittedProperties,
     FGV2UiHostMutationPlan& OutPlan,
-    TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics)
+    TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
+    const TArray<FString>* ActiveCompositionChain)
 {
     // 1. Validate Schema ⊆ Capabilities
     if (!CheckUiSchemaCapabilityCompatibility(Schema, Capabilities, SchemaId, PropertyPathPrefix, OutDiagnostics))
@@ -202,6 +203,16 @@ bool PrepareUiHostProperties(
                             FString(),
                             FieldIdStr);
                     }
+                }
+                else if (Cap.TargetType == EGV2UiCapabilityTargetType::NestedScreen)
+                {
+                    // DUC-11: hand the in-progress composition path down to the tab
+                    // consumer so it can reject a screen_id reappearing on its own
+                    // path (direct or indirect cycle) before creating/recursing into
+                    // the nested screen. See FGV2ScreenMutationPlan/PrepareScreenFields'
+                    // own doc comment for the full picture.
+                    static_cast<FGV2TabContainerTabsPropertyConsumer*>(Consumer.Get())
+                        ->SetActiveCompositionChain(ActiveCompositionChain);
                 }
 
                 FString PrepError;

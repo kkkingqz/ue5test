@@ -1557,6 +1557,27 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
             return false;
         }
 
+        // 3b. DUC-11: composition cycle guard. screen_id is a runtime string looked
+        // up via Screen Registry, not a compile-time Blueprint class reference, so
+        // UMG's own circular-dependency detection (WidgetTree class graph, checked
+        // by the Designer and the Blueprint compiler) has no visibility into this
+        // edge -- a Designer-placed self-containment is already impossible, but
+        // nothing stops content from declaring a tab whose screen_id is the screen
+        // currently being prepared, directly or through an intermediate screen.
+        // ActiveCompositionChain is the ordered path of screen_ids already being
+        // prepared on this call stack (seeded at the root by
+        // FGV2LayeredUiReconciler::PrepareReconcile); TabScreenId reappearing on it
+        // is rejected before Ready, exactly where DUC-05's missing-target check and
+        // DUC-07's kind-mismatch check already reject their own drift.
+        if (ActiveCompositionChain != nullptr && ActiveCompositionChain->Contains(TabScreenId))
+        {
+            const FString Chain = FString::Join(*ActiveCompositionChain, TEXT(" -> ")) + TEXT(" -> ") + TabScreenId;
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_composition.cycle_detected: Tab '%s' composition cycle: %s"),
+                *TabKey.ToString(), *Chain);
+            return false;
+        }
+
         // 4. Resolve ScreenId in UGV2ScreenRegistry
         TSubclassOf<UGV2ScreenWidgetBase> TargetWidgetClass = UGV2ScreenWidgetBase::StaticClass();
         if (ScreenRegistry != nullptr)
@@ -1664,9 +1685,19 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
                 NestedField.CompiledSchema = NestedSchema;
             }
 
+            // DUC-11: extend the composition path with this tab's own screen_id
+            // before recursing, so a deeper tab container (inside ChildWidget) sees
+            // the full ancestor chain and can catch an indirect cycle through it.
+            TArray<FString> ChildCompositionChain;
+            if (ActiveCompositionChain != nullptr)
+            {
+                ChildCompositionChain = *ActiveCompositionChain;
+            }
+            ChildCompositionChain.Add(TabScreenId);
+
             PreparedItem.ChildScreenPlan = MakeShared<FGV2ScreenMutationPlan>();
             FString ChildPrepareError;
-            if (!ChildWidget->PrepareScreenFields(NestedFields, *PreparedItem.ChildScreenPlan, ChildPrepareError))
+            if (!ChildWidget->PrepareScreenFields(NestedFields, *PreparedItem.ChildScreenPlan, ChildPrepareError, &ChildCompositionChain))
             {
                 OutError = FString::Printf(TEXT("core:diagnostic.ui_mutation.prepare_failed: Tab '%s' nested screen fields failed to prepare: %s"), *TabKey.ToString(), *ChildPrepareError);
                 return false;

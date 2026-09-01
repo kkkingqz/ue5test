@@ -1,7 +1,7 @@
 ---
 title: Nested Screens Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -51,15 +51,22 @@ depends_on:
     - Фикстура выявила и закрыла дефект: `PrepareUiHostProperties` не приводит `NestedScreen` consumer к `FGV2KeyedCollectionPropertyConsumer`; item schema назначается только `CollectionHost`, поэтому nested screen не повреждается до Prepare.
     - Проверки: red→green `GV2.Runtime.UI.Duc10NestedChain`, `GV2.UI.CapabilityObservabilityCompositeSweep`, UE compile/save всех трёх Blueprint и registry через MCP, 68/68 `ctest`, `gv2-headless --check-scripts`, documentation validator.
 
-- [ ] **DUC-11 — Композиционный цикл виджетов отклоняется**
+- [x] **DUC-11 — Композиционный цикл виджетов отклоняется**
   - Зависимости: DUC-10.
   - Схемные циклы обнаруживаются компилятором, но композиционный цикл виджетов — другой граф: блок, содержащий сам себя прямо или через промежуточный.
   - Done: установлено и записано, что именно гарантирует UMG для циклических ссылок между Widget Blueprint, и что остаётся непокрытым для generic-композита, разрешающего детей по имени; непокрытая часть закрывается проверкой до `Ready` с диагностикой, содержащей цепочку композиции; отрицательный тест на прямой и косвенный цикл; глубина по-прежнему не ограничивается, и это зафиксировано в контракте как решение, а не как умолчание.
   - Evidence: `Source/GV2/Private/UI/`, `Docs/UI/UIDocumentAndReconciliation.md`.
+  - **Реализация (2026-09-01):**
+    - Исследование (фоновый агент): `IsWidgetFreeFromCircularReferences` (Editor-time) и `HasCircularReferences`/DFS-проверка компилятора (`WidgetBlueprint.cpp`) полностью закрывают self-containment, размещённый в Designer, через граф классов Widget Blueprint. `screen_id` таба — рантайм-строка, разрешаемая Screen Registry, не проходящая через этот граф, поэтому этот путь оставался непокрытым. `UGV2DeclaredCompositeWidgetBase.ChildWidgetName` бэкдора не добавляет: резолвит имена только внутри WidgetTree своего же инстанса.
+    - `PrepareScreenFields` (`GV2ScreenWidgetBase.h/.cpp`) и `PrepareUiHostProperties` (`GV2UiMutationPlan.h/.cpp`) получили опциональный `const TArray<FString>* ActiveCompositionChain = nullptr`, прокидываемый до `FGV2TabContainerTabsPropertyConsumer` через новый сеттер `SetActiveCompositionChain` (не через базовый `IGV2PropertyConsumer::Prepare`, чтобы не трогать сигнатуру и ~15 остальных consumer'ов) — по образцу существующего special-case блока `CollectionHost`/`SetCompiledItemSpec`.
+    - `FGV2LayeredUiReconciler::PrepareReconcile` засеивает цепочку `{Instance.ScreenId}` в корне. `FGV2TabContainerTabsPropertyConsumer::Prepare` проверяет `TabScreenId` на присутствие в цепочке **до** резолва в Screen Registry и создания дочернего виджета; совпадение отклоняется с `core:diagnostic.ui_composition.cycle_detected` и отрендеренной цепочкой (`A -> B -> A`). При наличии `fields` цепочка расширяется текущим `TabScreenId` и передаётся в рекурсивный `ChildWidget->PrepareScreenFields(...)`, поэтому косвенный цикл через один и более промежуточных экранов ловится на той же глубине, где он появляется, а не только прямой.
+    - Прецедент по структуре — `CompileUiFieldSpec`'s `ActiveResolutionChain` (`UiSchema.cpp`) для `schema_ref`-циклов; DUC-11 копирует цепочку при спуске (а не push/pop общего стека), так как табы одного контейнера — не общая линия, а параллельные ветви.
+    - Тест `GV2.Runtime.UI.NestedInstancesAndTabsContract` §"DUC-11": прямой цикл (chain=[A], таб→A), косвенный цикл (chain=[A,B], таб B→A) и позитивный контроль (несвязанный `screen_id` не отклоняется как цикл). Red→green подтверждён отдельно: guard временно отключён недоказуемым компилятором `false`-условием — упали ровно 4 DUC-11 assertion'а с другой ошибкой (`unregistered_screen_id`, не `cycle_detected`), восстановление — снова зелёно.
+    - Верификация: 102/102 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`. По ходу устранена ложная тревога: захват stdout headless-прогона обрывался на форке trace-server демона, что при первых прогонах выглядело как крах движка; авторитетный `Saved/Logs/GV2.log` подтвердил `Test Completed. Result={Success}` и чистый `EXIT CODE: 0` во всех случаях — реального падения не было.
 
 ## Проверка milestone
 
 - [x] Вкладка с вложенными полями материализуется через обычный envelope.
 - [x] Трёхуровневая цепочка собрана из данных и выдерживает отказ на третьем уровне.
-- [ ] Композиционный цикл отклоняется до публикации.
-- [ ] Ограничение глубины не введено, и это записано как решение.
+- [x] Композиционный цикл отклоняется до публикации.
+- [x] Ограничение глубины не введено, и это записано как решение.

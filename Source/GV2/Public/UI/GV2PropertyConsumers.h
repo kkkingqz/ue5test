@@ -346,9 +346,15 @@ public:
 
     const TArray<FPreparedTabItem>& GetPreparedTabs() const { return PreparedTabs; }
 
+    // DUC-11: injected by PrepareUiHostProperties (GV2UiMutationPlan.cpp) right
+    // after this consumer is created, mirroring FGV2KeyedCollectionPropertyConsumer's
+    // SetCompiledItemSpec. Non-owning; the caller's array outlives this Prepare() call.
+    void SetActiveCompositionChain(const TArray<FString>* InChain) { ActiveCompositionChain = InChain; }
+
 private:
     TArray<FPreparedTabItem> PreparedTabs;
     TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> CandidateWidgetsByKey;
+    const TArray<FString>* ActiveCompositionChain = nullptr;
 };
 
 /**

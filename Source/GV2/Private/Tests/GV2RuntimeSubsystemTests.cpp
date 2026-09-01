@@ -1355,7 +1355,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 bUsesTextPipelineBase);
         }
     }
-    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 30);
+    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 33);
     TestTrue(
         TEXT("Theme provides a visible separator brush"),
         Theme->SeparatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
@@ -2984,6 +2984,109 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TestTrue(
                 *FString::Printf(TEXT("DUC-09: rejection names the unknown field [Error: %s]"), *UnknownPrepErr),
                 UnknownPrepErr.Contains(TEXT("unknown field")));
+        }
+    }
+
+    // =========================================================================
+    // DUC-11: composition-cycle guard for screen_id-based nested screens
+    // =========================================================================
+    {
+        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        UWorld* TestWorld = GameInstance->GetWorld();
+
+        // Builds a minimal screen: a DeclaredComposite host declaring one
+        // NestedScreen-kind property ("tabs") targeting a real child
+        // UGV2TabContainerWidgetBase -- the exact shape DUC-09/10 use for a
+        // screen that itself hosts a nested tab set.
+        auto MakeTabsHostScreen = [TestWorld]() -> UGV2ScreenWidgetBase*
+        {
+            UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            Screen->WidgetTree = NewObject<UWidgetTree>(Screen);
+            UGV2DeclaredCompositeWidgetBase* TabsHost = Screen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("TabsHost"));
+            Screen->WidgetTree->RootWidget = TabsHost;
+            TabsHost->WidgetTree = NewObject<UWidgetTree>(TabsHost);
+            UGV2TabContainerWidgetBase* TabsChild = TabsHost->WidgetTree->ConstructWidget<UGV2TabContainerWidgetBase>(
+                UGV2TabContainerWidgetBase::StaticClass(), TEXT("TabsChild"));
+            TabsHost->WidgetTree->RootWidget = TabsChild;
+            TabsHost->SetHostIdentity(FName(TEXT("nested_tabs")));
+            TabsHost->DeclaredCapabilities.Add({ FName(TEXT("tabs")), FName(TEXT("TabsChild")), EGV2DeclaredUiCapabilityKind::NestedScreen });
+            return Screen;
+        };
+
+        // Builds the screen-field payload for the "nested_tabs" host: a single
+        // tab (no nested "fields" of its own -- irrelevant here, since the
+        // cycle check runs before any recursion into a child screen) whose
+        // screen_id is TargetScreenId.
+        auto MakeTabsFieldValue = [](const FString& TargetScreenId) -> FGV2ScreenFieldValue
+        {
+            TMap<FString, FGV2PreparedUiValue> TabMap;
+            TabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("back")));
+            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Back")) }));
+            TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TargetScreenId, TEXT("screen")));
+            TArray<FGV2PreparedUiValue> Tabs;
+            Tabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
+
+            TMap<FString, FGV2PreparedUiValue> HostFields;
+            HostFields.Add(TEXT("tabs"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(Tabs)));
+
+            auto TabsArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Array);
+            TabsArraySpec->KeyedBy = std::string("key");
+
+            GV2ContentCore::FCompiledUiFieldSpec HostSchema;
+            HostSchema.Kind = GV2ContentCore::EUiFieldKind::Object;
+            HostSchema.Fields.push_back({ "tabs", false, TabsArraySpec });
+
+            FGV2ScreenFieldValue Value;
+            Value.FieldId = FName(TEXT("nested_tabs"));
+            Value.SchemaId = TEXT("test:schema.duc11_tabs_host_probe.v1");
+            Value.PreparedValue = FGV2PreparedUiObject::Create(HostFields);
+            Value.CompiledSchema = std::make_shared<const GV2ContentCore::FCompiledUiFieldSpec>(HostSchema);
+            return Value;
+        };
+
+        // 11a. Direct cycle: the screen currently being prepared (chain = [A])
+        // contains a tab whose own screen_id is A itself.
+        {
+            UGV2ScreenWidgetBase* ScreenA = MakeTabsHostScreen();
+            TArray<FGV2ScreenFieldValue> Fields{ MakeTabsFieldValue(TEXT("core:screen.duc11_a")) };
+            const TArray<FString> Chain{ TEXT("core:screen.duc11_a") };
+            FGV2ScreenMutationPlan Plan;
+            FString Error;
+            const bool bPrepared = ScreenA->PrepareScreenFields(Fields, Plan, Error, &Chain);
+            TestFalse(*FString::Printf(TEXT("DUC-11: direct self-reference is rejected [Error: %s]"), *Error), bPrepared);
+            TestTrue(*FString::Printf(TEXT("DUC-11: direct cycle diagnostic code [Error: %s]"), *Error), Error.Contains(TEXT("core:diagnostic.ui_composition.cycle_detected")));
+            TestTrue(*FString::Printf(TEXT("DUC-11: direct cycle renders A -> A [Error: %s]"), *Error), Error.Contains(TEXT("core:screen.duc11_a -> core:screen.duc11_a")));
+        }
+
+        // 11b. Indirect cycle: screen B, reached through A's own tab (chain =
+        // [A, B]), contains a tab whose screen_id is the ancestor A, not B.
+        {
+            UGV2ScreenWidgetBase* ScreenB = MakeTabsHostScreen();
+            TArray<FGV2ScreenFieldValue> Fields{ MakeTabsFieldValue(TEXT("core:screen.duc11_a")) };
+            const TArray<FString> Chain{ TEXT("core:screen.duc11_a"), TEXT("core:screen.duc11_b") };
+            FGV2ScreenMutationPlan Plan;
+            FString Error;
+            const bool bPrepared = ScreenB->PrepareScreenFields(Fields, Plan, Error, &Chain);
+            TestFalse(*FString::Printf(TEXT("DUC-11: indirect cycle through an ancestor is rejected [Error: %s]"), *Error), bPrepared);
+            TestTrue(*FString::Printf(TEXT("DUC-11: indirect cycle diagnostic code [Error: %s]"), *Error), Error.Contains(TEXT("core:diagnostic.ui_composition.cycle_detected")));
+            TestTrue(*FString::Printf(TEXT("DUC-11: indirect cycle renders full A -> B -> A chain [Error: %s]"), *Error), Error.Contains(TEXT("core:screen.duc11_a -> core:screen.duc11_b -> core:screen.duc11_a")));
+        }
+
+        // 11c. Positive control: a screen_id absent from the chain is never
+        // rejected by the cycle guard itself -- whatever else may fail about
+        // it (e.g. it not being registered), it must not be cycle_detected.
+        {
+            UGV2ScreenWidgetBase* ScreenC = MakeTabsHostScreen();
+            TArray<FGV2ScreenFieldValue> Fields{ MakeTabsFieldValue(TEXT("core:screen.duc11_unrelated")) };
+            const TArray<FString> Chain{ TEXT("core:screen.duc11_a"), TEXT("core:screen.duc11_b") };
+            FGV2ScreenMutationPlan Plan;
+            FString Error;
+            const bool bPreparedC = ScreenC->PrepareScreenFields(Fields, Plan, Error, &Chain);
+            (void)bPreparedC;
+            TestFalse(*FString::Printf(TEXT("DUC-11: unrelated screen_id is not rejected as a cycle [Error: %s]"), *Error), Error.Contains(TEXT("cycle_detected")));
         }
     }
 

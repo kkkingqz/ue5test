@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.15
+version: 1.16
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -298,6 +298,10 @@ fields: [
 `ProjectMaterializedValue` резолвит `schema_id` каждого envelope через тот же `GetSchemaCache()`, что и верхнеуровневые поля, и рекурсивно прогоняет `value` через ту же пару `ValidateUiFieldValue` + `ProjectMaterializedValue`, что `BuildFields` использует для обычного поля — отдельного протокола для вложенных экранов не остаётся, а синтез схемы из capability дочернего экрана (риск в духе `UPP-R1`) устранён. `FGV2TabContainerTabsPropertyConsumer` собирает из раскрытых envelope настоящий `TArray<FGV2ScreenFieldValue>` и применяет его через `ChildWidget->PrepareScreenFields(...)`/`CommitScreenFields(...)` — тот же публичный двухфазный API, которым пользуется экран верхнего уровня; неизвестное поле вложенного экрана отклоняется той же биекцией host↔value (`CollectScreenFieldHosts`/`PrepareScreenFieldPlans`), что и для обычного экрана, а не отдельной проверкой.
 
 Во время test-only failure injection nested commit обязан передавать injector дочернему `CommitScreenFields` с префиксом родительского свойства и tab key: leaf путь имеет форму `tabs.<tab_key>.<child_property>`. Это не отдельный runtime protocol: production commit не передаёт injector. Отказ leaf прекращает commit родительской вкладки, а затем `CommitReconcile`; по [ADR-0040](../ADR/0040-universal-ui-property-pipeline.md) candidate screen не публикуется и прежняя `ActiveScreens` revision не меняется.
+
+### Guard композиционного цикла (DUC-11)
+
+`screen_id` таба разрешается через Screen Registry в рантайме, а не через compile-time граф классов Widget Blueprint, поэтому собственная защита UMG от циклических ссылок (`IsWidgetFreeFromCircularReferences`/`HasCircularReferences`, Designer-time и compile-time) на этот путь не распространяется — см. [Композиционные циклы вложенных экранов](UIDocumentAndReconciliation.md#композиционные-циклы-вложенных-экранов-duc-11). `PrepareScreenFields` принимает опциональный `ActiveCompositionChain` — путь `screen_id`, уже готовящихся на этом стеке вызовов; `FGV2TabContainerTabsPropertyConsumer::Prepare` отклоняет таб, чей `screen_id` уже встречается в этой цепочке (прямой или косвенный цикл), с `core:diagnostic.ui_composition.cycle_detected`, прежде чем резолвить его в Screen Registry или создавать дочерний виджет. Проверка выполняется до Ready — ни один виджет по пути к найденному циклу не мутируется. Ограничение глубины вложенности отсутствует намеренно: guard отклоняет только повтор `screen_id`, а не саму глубину.
 
 ### LocationTopBar Field Contract (`textsystem:schema.ui_field.location_top_bar.v1`)
 
