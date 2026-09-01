@@ -1934,7 +1934,21 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                 RegisteredClass);
 
             const TArray<FName> ScreenFieldIds = Screen->GetScreenFieldIds();
-            TestEqual(TEXT("Test screen exposes 0 IGV2ScreenFieldHost fields (proving-ground leaves are static, not field-driven)"), ScreenFieldIds.Num(), 0);
+            // DUC-02: GreetingText (a plain UGV2TextWidgetBase, no dedicated C++ class) is
+            // now addressable and configured with HostIdentity="greeting" -- the other five
+            // original children still have no identity configured and remain unconfigured/
+            // skipped, exactly as before.
+            TestEqual(TEXT("Test screen exposes exactly the DUC-02 'greeting' field, the rest remain static"), ScreenFieldIds, TArray<FName>{FName(TEXT("greeting"))});
+
+            UGV2TextWidgetBase* GreetingWidget = Cast<UGV2TextWidgetBase>(Screen->GetWidgetFromName(TEXT("GreetingText")));
+            TestNotNull(TEXT("DUC-02: GreetingText base element is present"), GreetingWidget);
+            if (GreetingWidget != nullptr)
+            {
+                TestEqual(
+                    TEXT("DUC-02: Lua-published 'greeting' Screen Field value reaches the base element with no dedicated C++ class"),
+                    GreetingWidget->GetTextContent().ToString(),
+                    FString(TEXT("Hello from a base element field")));
+            }
 
             UGV2RichTextWidgetBase* DescriptionWidget = Cast<UGV2RichTextWidgetBase>(
                 Screen->GetWidgetFromName(TEXT("DescriptionText")));
@@ -5516,21 +5530,22 @@ bool FGV2HostIdentityIsSharedTest::RunTest(const FString& Parameters)
     // DUC-01: identity ("this host's identity within its enclosing host") is declared once
     // on FGV2UiPropertyHostState / IGV2UiPropertyHost, not as a per-class property four
     // Location composites each redeclared. Part 1 proves the property is on the *shared*
-    // surface: UGV2TextWidgetBase implements only IGV2UiPropertyHost (not
-    // IGV2ScreenFieldHost) and never had its own identity concept, yet SetHostIdentity/
-    // GetHostIdentity work on it exactly the same way as on a Location composite.
+    // surface: UGV2ListViewWidgetBase is a generic repeater primitive (PCC-10/PCC-12) that
+    // implements only IGV2UiPropertyHost, is not one of DUC-02's addressable base elements,
+    // and never had its own identity concept -- yet SetHostIdentity/GetHostIdentity work on
+    // it exactly the same way as on a Location composite or a DUC-02 base element.
     UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
     TestNotNull(TEXT("DUC-01: TestWorld created"), TestWorld);
     if (TestWorld == nullptr) return false;
 
-    UGV2TextWidgetBase* PlainTextHost = NewObject<UGV2TextWidgetBase>(TestWorld);
-    TestNotNull(TEXT("DUC-01: plain UGV2TextWidgetBase instantiated"), PlainTextHost);
-    if (PlainTextHost != nullptr)
+    UGV2ListViewWidgetBase* PlainHost = NewObject<UGV2ListViewWidgetBase>(TestWorld);
+    TestNotNull(TEXT("DUC-01: plain UGV2ListViewWidgetBase instantiated"), PlainHost);
+    if (PlainHost != nullptr)
     {
-        TestTrue(TEXT("DUC-01: UGV2TextWidgetBase does not implement IGV2ScreenFieldHost"), Cast<IGV2ScreenFieldHost>(PlainTextHost) == nullptr);
-        TestEqual(TEXT("DUC-01: fresh host has no identity"), PlainTextHost->GetHostIdentity(), NAME_None);
-        PlainTextHost->SetHostIdentity(FName(TEXT("some_property_name")));
-        TestEqual(TEXT("DUC-01: identity round-trips on a plain IGV2UiPropertyHost"), PlainTextHost->GetHostIdentity(), FName(TEXT("some_property_name")));
+        TestTrue(TEXT("DUC-01: UGV2ListViewWidgetBase does not implement IGV2ScreenFieldHost"), Cast<IGV2ScreenFieldHost>(PlainHost) == nullptr);
+        TestEqual(TEXT("DUC-01: fresh host has no identity"), PlainHost->GetHostIdentity(), NAME_None);
+        PlainHost->SetHostIdentity(FName(TEXT("some_property_name")));
+        TestEqual(TEXT("DUC-01: identity round-trips on a plain IGV2UiPropertyHost"), PlainHost->GetHostIdentity(), FName(TEXT("some_property_name")));
     }
 
     // Part 2: the existing screen-level duplicate-field_id rejection
@@ -5559,6 +5574,41 @@ bool FGV2HostIdentityIsSharedTest::RunTest(const FString& Parameters)
         TEXT("DUC-01: distinct identities on the same host are accepted"),
         DupScreen->GetScreenFieldIds(),
         TArray<FName>{FName(TEXT("top_bar")), FName(TEXT("top_bar_2"))});
+
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2BaseElementNonCanonicalIdentityTest,
+    "GV2.Runtime.Presentation.BaseElementNonCanonicalIdentityRejected",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2BaseElementNonCanonicalIdentityTest::RunTest(const FString& Parameters)
+{
+    // DUC-02: "неканоническая идентичность отклоняется с диагностикой" -- proven on a base
+    // element (UGV2TextWidgetBase, newly addressable, no dedicated C++ class), not just on a
+    // Location composite: the existing IsCanonicalFieldId check in
+    // GV2ScreenWidgetBase.cpp's CollectScreenFieldHosts applies identically regardless of
+    // which IGV2ScreenFieldHost implementer configured the bad value.
+    AddExpectedErrorPlain(TEXT("has non-canonical field_id"), EAutomationExpectedErrorFlags::Contains, 1);
+
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    TestNotNull(TEXT("DUC-02: TestWorld created"), TestWorld);
+    if (TestWorld == nullptr) return false;
+
+    UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    Screen->WidgetTree = NewObject<UWidgetTree>(Screen);
+    UGV2TextWidgetBase* TextHost = Screen->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(
+        UGV2TextWidgetBase::StaticClass(), TEXT("TextHost"));
+    Screen->WidgetTree->RootWidget = TextHost;
+    TextHost->SetHostIdentity(FName(TEXT("Not-Canonical")));
+
+    TestEqual(
+        TEXT("DUC-02: non-canonical identity on a base element is rejected, not silently accepted"),
+        Screen->GetScreenFieldIds(),
+        TArray<FName>{});
 
     TestWorld->DestroyWorld(false);
     GEngine->DestroyWorldContext(TestWorld);

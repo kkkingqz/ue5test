@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.1
-updated: 2026-08-31
+version: 3.2
+updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -57,24 +57,24 @@ Entry регистрируется до registry freeze. Duplicate ID с нес�
 
 ```text
 UGV2ScreenWidgetBase
-UGV2TextWidgetBase            implements IGV2UiStyleConsumer, IGV2UiPropertyHost
-UGV2RichTextWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost
+UGV2TextWidgetBase            implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
+UGV2RichTextWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2RichTextPopoverWidgetBase  implements IGV2UiStyleConsumer
-UGV2ImageWidgetBase           implements IGV2UiStyleConsumer, IGV2UiPropertyHost
-UGV2ButtonWidgetBase          implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget
-UGV2CheckboxWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget
-UGV2InputFieldWidgetBase      implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget
+UGV2ImageWidgetBase           implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
+UGV2ButtonWidgetBase          implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
+UGV2CheckboxWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
+UGV2InputFieldWidgetBase      implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
 UGV2DropdownSelectWidgetBase  implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget
 UGV2ButtonListWidgetBase      implements IGV2UiStyleConsumer, IGV2UiPropertyHost
-UGV2ProgressBarWidgetBase     implements IGV2UiStyleConsumer, IGV2UiPropertyHost
-UGV2PortraitWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost
+UGV2ProgressBarWidgetBase     implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
+UGV2PortraitWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2ModalWidgetBase           implements IGV2UiStyleConsumer, IGV2UiPropertyHost
 UGV2TabContainerWidgetBase    implements IGV2UiStyleConsumer, IGV2UiPropertyHost
 UGV2SeparatorWidgetBase       implements IGV2UiStyleConsumer
 UGV2LoadingIndicatorWidgetBase implements IGV2UiStyleConsumer
 ```
 
-Ни один из этих reusable-виджетов не реализует `IGV2ScreenFieldHost` — все они adressable только как nested property host (внутри `CollectionHost` composite'а или дерева capability родителя), не как самостоятельный top-level Screen Field. `IGV2ScreenFieldHost` в текущем коде реализуют исключительно четыре Location-композита экрана локации (`UGV2LocationTopBarWidgetBase`, `UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase`) — см. [Screen Templates § Screen Field Host and Property Host contract](ScreenTemplates.md#screen-field-host-and-property-host-contract).
+DUC-02 made eight base elements addressable as a top-level Screen Field the same way the four Location composites already were: `UGV2TextWidgetBase`, `UGV2RichTextWidgetBase`, `UGV2ImageWidgetBase`, `UGV2ButtonWidgetBase`, `UGV2CheckboxWidgetBase`, `UGV2InputFieldWidgetBase`, `UGV2ProgressBarWidgetBase`, `UGV2PortraitWidgetBase` now implement `IGV2ScreenFieldHost` too, delegating `GetScreenFieldId()` to the same shared `HostIdentity` every `IGV2UiPropertyHost` carries (DUC-01) — no separate per-class field, no dedicated C++ subclass. The remaining reusable widgets (`UGV2DropdownSelectWidgetBase`, `UGV2ButtonListWidgetBase`, `UGV2ModalWidgetBase`, `UGV2TabContainerWidgetBase`, `UGV2RichTextPopoverWidgetBase`, `UGV2ListViewWidgetBase`) are collection/composite-ish or transient-projection widgets outside DUC-02's scope and remain addressable only as a nested property host (inside a `CollectionHost` composite or a parent's capability tree), not as an independent top-level Screen Field — см. [Screen Templates § Screen Field Host and Property Host contract](ScreenTemplates.md#screen-field-host-and-property-host-contract).
 
 ```text
 WBP_ScreenBase (abstract)
@@ -129,23 +129,23 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 | Native class | Role & Capabilities | Associated schema¹ | Required `BindWidget` |
 |---|---|---|---|
 | `UGV2ScreenWidgetBase` | Screen orchestrator (`PrepareScreenFields`, `CommitScreenFields`, `CanApplyScreenFields`, `ApplyScreenFields`) | Aggregate contract | Dynamic hosts находятся через Widget tree по `IGV2ScreenFieldHost` |
-| `UGV2TextWidgetBase` | Property host: `text` (Text) | Leaf presentation | `TextBlock: UCommonTextBlock` |
-| `UGV2RichTextWidgetBase` | Property host: `text` (Text), `spans` (RichTextSpans) | `core:schema.ui_field.rich_text.v3`† | `RichTextScrollBox: UScrollBox`, `RichTextBlock: UCommonRichTextBlock` |
+| `UGV2TextWidgetBase` | Property host: `text` (Text) | `core:schema.ui_field.text.v1` — addressable (DUC-02) | `TextBlock: UCommonTextBlock` |
+| `UGV2RichTextWidgetBase` | Property host: `text` (Text), `spans` (RichTextSpans) | `core:schema.ui_field.rich_text.v3` — addressable (DUC-02) | `RichTextScrollBox: UScrollBox`, `RichTextBlock: UCommonRichTextBlock` |
 | `UGV2RichTextPopoverWidgetBase` | Presentation popover: `InitializePopover(FGV2RichTextHoverViewModel)` | Transient tooltip projection | `PopoverBorder: UBorder`, `PopoverWidth: USizeBox`, `TitleText: UCommonTextBlock`, `DescriptionText: WBP_RichText`; optional `Icon` |
-| `UGV2ImageWidgetBase` | Property host: `resource_id` (Ref), `key` (Key); `ApplyImageResource` | `core:schema.ui_field.image.v1`† | `Image: UImage` |
-| `UGV2ButtonWidgetBase` | Property host: `text` (Text), `binding` (Binding), `key` (Key); implements `IGV2UiBindingTarget` | Leaf interaction element | `LabelText: UCommonTextBlock` |
-| `UGV2CheckboxWidgetBase` | Property host: `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding); `SubmitCheckboxState(bool)` | `core:schema.ui_field.checkbox.v1`† | `Checkbox: UCheckBox`, `LabelText: UCommonTextBlock` |
-| `UGV2InputFieldWidgetBase` | Property host: `key` (Key), `label` (Text), `placeholder` (Text), `value` (Scalar), `binding` (Binding); `SubmitTextValue(FString)` | `core:schema.ui_field.input_field.v1`† | `EditableTextBox: UEditableTextBox`; optional `LabelText: UCommonTextBlock` |
+| `UGV2ImageWidgetBase` | Property host: `resource_id` (Ref), `key` (Key); `ApplyImageResource` | `core:schema.ui_field.image.v1` — addressable (DUC-02) | `Image: UImage` |
+| `UGV2ButtonWidgetBase` | Property host: `text` (Text), `binding` (Binding), `key` (Key); implements `IGV2UiBindingTarget` | Leaf interaction element — addressable (DUC-02), no dedicated top-level schema yet | `LabelText: UCommonTextBlock` |
+| `UGV2CheckboxWidgetBase` | Property host: `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding); `SubmitCheckboxState(bool)` | `core:schema.ui_field.checkbox.v1` — addressable (DUC-02) | `Checkbox: UCheckBox`, `LabelText: UCommonTextBlock` |
+| `UGV2InputFieldWidgetBase` | Property host: `key` (Key), `label` (Text), `placeholder` (Text), `value` (Scalar), `binding` (Binding); `SubmitTextValue(FString)` | `core:schema.ui_field.input_field.v1` — addressable (DUC-02) | `EditableTextBox: UEditableTextBox`; optional `LabelText: UCommonTextBlock` |
 | `UGV2DropdownSelectWidgetBase` | Property host: `placeholder` (Text), `selected_key` (Key), `options` (CollectionHost), `binding` (Binding); `SubmitSelection(FName)` | `core:schema.ui_field.dropdown_select.v1`† | `HeaderButton: UGV2ButtonWidgetBase`, `PopupBorder: UBorder`, `PopupSizeBox: USizeBox`, `OptionsScrollBox: UScrollBox` |
 | `UGV2ButtonListWidgetBase` | Property host: `items` (CollectionHost для кнопок) | `core:schema.ui_field.button_list.v2`† | `ButtonContainer: UVerticalBox` |
-| `UGV2ProgressBarWidgetBase` | Property host: `percent` (Scalar), `label` (Text), `key` (Key) | `core:schema.ui_field.progress_bar.v1`† | `ProgressBar: UProgressBar` |
-| `UGV2PortraitWidgetBase` | Property host: `resource_id` (Ref), `frame_resource_id` (Ref), `key` (Key) | `core:schema.ui_field.portrait.v1`† | `PortraitImage: UImage`, `FrameImage: UImage` |
+| `UGV2ProgressBarWidgetBase` | Property host: `percent` (Scalar), `label` (Text), `key` (Key) | `core:schema.ui_field.progress_bar.v1` — addressable (DUC-02) | `ProgressBar: UProgressBar` |
+| `UGV2PortraitWidgetBase` | Property host: `resource_id` (Ref), `frame_resource_id` (Ref), `key` (Key) | `core:schema.ui_field.portrait.v1` — addressable (DUC-02) | `PortraitImage: UImage`, `FrameImage: UImage` |
 | `UGV2ModalWidgetBase` | Property host: `title` (Text), `content` (Text), `buttons` (CollectionHost), `backdrop_close_action` (Binding) | `core:schema.ui_field.modal.v1`† | Content layout and slot hosts |
 | `UGV2TabContainerWidgetBase` | Property host: `default_tab_key` (Key), `tabs` (CollectionHost) | `core:schema.ui_field.tab_container.v1`† | Tab header container and content slot |
 | `UGV2SeparatorWidgetBase` | Только central style | Purely visual | `SeparatorSizeBox: USizeBox`, `SeparatorImage: UImage` |
 | `UGV2LoadingIndicatorWidgetBase` | Только central style | UE-local operation state | `LoadingIndicator: UCircularThrobber` |
 
-¹ Схема, разделяющая форму capability-дерева этого класса — не то же самое, что "виджет сконфигурирован как Screen Field". † Класс реализует только `IGV2UiPropertyHost`, не `IGV2ScreenFieldHost`: он не может быть top-level приёмником этой схемы через `GetScreenFieldId()` сейчас; схема остаётся валидируемым, протестированным на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` контрактом и может применяться как вложенное свойство composite'а (`CollectionHost` entry) либо ждать будущего host. Единственные классы, реализующие `IGV2ScreenFieldHost` в текущем коде — `UGV2LocationTopBarWidgetBase`, `UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase` (см. [Screen Templates](ScreenTemplates.md#screen-field-host-and-property-host-contract)); ни один из них не входит в эту таблицу reusable UI-kit виджетов.
+¹ Схема, разделяющая форму capability-дерева этого класса — не то же самое, что "виджет сконфигурирован как Screen Field". «Addressable (DUC-02)» — класс реализует `IGV2ScreenFieldHost`, делегируя `GetScreenFieldId()` в общий `HostIdentity` (DUC-01); может быть top-level приёмником Screen Field, если `HostIdentity` настроен на конкретном размещении, — проверено `GV2.Runtime.Presentation.LuaCreatesRegisteredScreen` (виджет `GreetingText` в `WBP_Testscreen`) сквозь реальный Lua/materializer pipeline. † Класс реализует только `IGV2UiPropertyHost`, не `IGV2ScreenFieldHost`: он не может быть top-level приёмником этой схемы через `GetScreenFieldId()` сейчас — это collection/composite-виджет вне границ DUC-02; схема остаётся валидируемым, протестированным на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` контрактом и может применяться как вложенное свойство composite'а (`CollectionHost` entry). Классы, реализующие `IGV2ScreenFieldHost` в текущем коде — четыре Location-композита (`UGV2LocationTopBarWidgetBase`, `UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase`) плюс восемь адресуемых base-элементов, отмеченных «addressable (DUC-02)» выше (см. [Screen Templates](ScreenTemplates.md#screen-field-host-and-property-host-contract)).
 
 `UGV2ScreenWidgetBase` централизует discovery, двухфазную подготовку и применение Screen Fields. Он не содержит concrete Screen fields или `screen_id` branches. Unset `ScreenFieldId` исключает nested Widget из aggregate contract.
 
@@ -250,7 +250,7 @@ Click span получает только `FGV2UiBindingHandle`. `SubmitSpanInter
 
 ## Current WBP_Testscreen contract
 
-`WBP_Testscreen` является physical UMG integration fixture и не вводит новый reusable `widget_id`. Его abstract parent — `WBP_ScreenBase`; template содержит пять reusable-компонентов:
+`WBP_Testscreen` является physical UMG integration fixture и не вводит новый reusable `widget_id`. Его abstract parent — `WBP_ScreenBase`; template содержит шесть reusable-компонентов:
 
 | Element name | Element | Screen Field |
 |---|---|---|
@@ -259,10 +259,11 @@ Click span получает только `FGV2UiBindingHandle`. `SubmitSpanInter
 | `ClassSelectField` | `WBP_DropdownSelect` | Нет — static leaf |
 | `PlayerNameField` | `WBP_InputField` | Нет — static leaf |
 | `ButtonList` | `WBP_ButtonList` | Нет — static leaf |
+| `GreetingText` | `WBP_Text` | **Да** — `field_id = "greeting"`, `core:schema.ui_field.text.v1` |
 
-Ни один из этих компонентов не реализует `IGV2ScreenFieldHost`: `GetScreenFieldIds()` для этого экрана возвращает 0 элементов (`GV2.Runtime.Presentation.LuaCreatesRegisteredScreen`). Lua `debug/start.lua` публикует `screens.create("core:screen.test", {})` с пустым `fields` — `GV2ScreenFieldMaterializer`/`PrepareScreenFields`/`CommitScreenFields` для этого экрана не задействованы вовсе. Каждый leaf получает состояние напрямую: interaction methods (`SubmitCheckboxState`, `SubmitTextValue(FString)`, `SubmitSelection(FName)`) каждого reusable-компонента вызываются и проверяются по отдельности; Checkbox стартует unchecked (UMG default, не результат Screen Field apply). Concrete class/path отсутствует в runtime source и Lua boundary; C++ не вызывает Lua Screen builder и не принимает `TSubclassOf`.
+Пять из шести компонентов не сконфигурированы Screen Field'ом (`HostIdentity` не задан) и остаются static leaves, как и раньше. `GreetingText` (DUC-02) — доказательство, что базовый элемент без выделенного C++-класса адресуем: `GetScreenFieldIds()` для этого экрана возвращает ровно `["greeting"]` (`GV2.Runtime.Presentation.LuaCreatesRegisteredScreen`). Lua `debug/start.lua` публикует `screens.create("core:screen.test", { greeting = { schema_id = "core:schema.ui_field.text.v1", value = {...} } })` — генерический `GV2ScreenFieldMaterializer`/`PrepareScreenFields`/`CommitScreenFields` доставляет значение до `GreetingText` тем же путём, что и `WBP_LocationScreen`. Пять static leaves продолжают получать состояние напрямую: interaction methods (`SubmitCheckboxState`, `SubmitTextValue(FString)`, `SubmitSelection(FName)`) каждого reusable-компонента вызываются и проверяются по отдельности; Checkbox стартует unchecked (UMG default, не результат Screen Field apply). Concrete class/path отсутствует в runtime source и Lua boundary; C++ не вызывает Lua Screen builder и не принимает `TSubclassOf`.
 
-`WBP_Testscreen` остаётся полезной proving-ground fixture для reusable leaf-компонентов и их opaque interaction handles — но НЕ демонстрирует Screen Field materialization. Актуальный, реально Screen-Field-driven vertical slice — `WBP_LocationScreen` (`textsystem:screen.location`), см. [Screen Templates § Current vertical slice](ScreenTemplates.md#current-vertical-slice).
+`WBP_Testscreen` остаётся полезной proving-ground fixture для reusable leaf-компонентов и их opaque interaction handles, а с DUC-02 — также и для Screen Field addressability базовых элементов. Основной, полноценный Screen-Field-driven vertical slice — `WBP_LocationScreen` (`textsystem:screen.location`), см. [Screen Templates § Current vertical slice](ScreenTemplates.md#current-vertical-slice).
 
 Legacy parallel arrays и untyped interaction token не являются Screen Template API. Runtime использует универсальные property hosts с opaque binding handles.
 

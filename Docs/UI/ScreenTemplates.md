@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.7
+version: 1.8
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -183,7 +183,7 @@ FGV2UiPropertyHostState:
 
 Экран и блок (DUC-05+) различаются только тем, что экран сверяется с матрицей разрешений, а блок — нет; смысл самого значения одинаков — **идентичность внутри объемлющего хоста**:
 
-- На уровне экрана это `field_id`: `IGV2ScreenFieldHost::GetScreenFieldId()` каждого из четырёх Location-композитов делегирует в `GetHostIdentity()`, не хранит собственное отдельное значение.
+- На уровне экрана это `field_id`: `IGV2ScreenFieldHost::GetScreenFieldId()` делегирует в `GetHostIdentity()`, не хранит собственное отдельное значение. Изначально — только у четырёх Location-композитов; DUC-02 дал ту же адресуемость восьми базовым элементам (`UGV2TextWidgetBase`, `UGV2RichTextWidgetBase`, `UGV2ImageWidgetBase`, `UGV2ButtonWidgetBase`, `UGV2CheckboxWidgetBase`, `UGV2InputFieldWidgetBase`, `UGV2ProgressBarWidgetBase`, `UGV2PortraitWidgetBase`) без единого нового C++-класса — см. [Widget Registry](WidgetRegistry.md#native-adapters-and-blueprint-bases).
 - На уровне composite-свойства (DUC-05+) это имя свойства, под которым родительский композит адресует данного ребёнка в своём плоском списке capability.
 
 Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
@@ -345,7 +345,7 @@ Production Lua document использует `TextSpec`; `UGV2TextPipeline` вы
 
 Lua presenter (`GameData/textsystem/scripts/presentation/location_presenter.lua`, `M.build_screen_request`) публикует все четыре поля через `game.presentation.register_source` при каждой успешно закоммиченной команде (см. [Источник презентации](#источник-презентации-и-автоматическая-инвалидация-sas-1416-adr-0028)). `GV2ScreenFieldMaterializer` генерически материализует значения полей и биндинги по скомпилированным схемам; Runtime разрешает class только через `DA_ScreenRegistry`. Идентичность route зафиксирована ([UI Document § Устойчивая идентичность LocationScreen](UIDocumentAndReconciliation.md)): `screen_id`/`instance_key` не меняются между локациями, переход обновляет поля существующего widget.
 
-`WBP_Testscreen` (`core:screen.test`) остаётся отдельной, более старой proving-ground fixture: её пять reusable-компонентов (`DescriptionText`, `CheckboxField`, `ClassSelectField`, `PlayerNameField`, `ButtonList`) — static leaves, не Screen Field hosts (`GetScreenFieldIds()` возвращает 0 элементов); Lua публикует её с пустым `fields = {}` (`GameData/sample/scripts/debug/start.lua`) и управляет каждым компонентом напрямую через его interaction API (`SubmitCheckboxState`, `SubmitTextValue`, `SubmitSelection`). См. [Widget Registry § Current WBP_Testscreen contract](WidgetRegistry.md#current-wbptestscreen-contract).
+`WBP_Testscreen` (`core:screen.test`) остаётся отдельной, более старой proving-ground fixture: пять из шести её reusable-компонентов (`DescriptionText`, `CheckboxField`, `ClassSelectField`, `PlayerNameField`, `ButtonList`) — static leaves, не Screen Field hosts; Lua управляет каждым напрямую через его interaction API (`SubmitCheckboxState`, `SubmitTextValue`, `SubmitSelection`). Шестой, `GreetingText` (`WBP_Text`, DUC-02), — единственный настоящий Screen Field этого экрана: `HostIdentity = "greeting"`, `GetScreenFieldIds()` возвращает ровно `["greeting"]`; Lua публикует его через обычный `fields` (`GameData/sample/scripts/debug/start.lua`), генерический материализатор доставляет значение тем же путём, что и `WBP_LocationScreen`. См. [Widget Registry § Current WBP_Testscreen contract](WidgetRegistry.md#current-wbptestscreen-contract).
 
 ## Failure and recovery
 
@@ -369,7 +369,7 @@ Lua presenter (`GameData/textsystem/scripts/presentation/location_presenter.lua`
 - `WBP_ScreenBase` загружается как abstract Blueprint class и имеет native parent `UGV2ScreenWidgetBase`.
 - `WBP_Testscreen` является его child class и компилируется без test-specific native parent.
 - `DA_ScreenRegistry` загружается через config, содержит `core:screen.test` и разрешает concrete non-abstract child `WBP_ScreenBase`.
-- Contract `WBP_Testscreen` содержит deterministic `buttons`, `checkbox`, `class_select`, `description`, `player_name`; все поля required и имеют ожидаемые schemas.
+- `WBP_Testscreen` содержит deterministic `ButtonList`, `CheckboxField`, `ClassSelectField`, `DescriptionText`, `PlayerNameField` по имени (`BindWidget`/named children) — они static leaves, не Screen Fields; единственный настоящий Screen Field этого экрана — `greeting` (`GreetingText`, DUC-02), required, со схемой `core:schema.ui_field.text.v1`.
 - `DescriptionSurface` ограничивает `WBP_RichText` оставшейся высотой экрана; длинный текст переносится и прокручивается внутри блока.
 - Unknown, duplicate, missing required и schema mismatch payloads отклоняются до mutation.
 - Предиктивный preflight `CanApplyScreenFields` предсказывает ошибки глубоких детей до мутаций (`ScreenPreflightPredictsDeepChildFailure`).

@@ -5,6 +5,7 @@
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
+#include "UI/GV2ScreenFieldHost.h"
 #include "GV2PortraitWidgetBase.generated.h"
 
 class UImage;
@@ -18,6 +19,7 @@ class GV2_API UGV2PortraitWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer
     , public IGV2UiPropertyHost
+    , public IGV2ScreenFieldHost
 {
     GENERATED_BODY()
 
@@ -54,6 +56,10 @@ public:
     // IGV2UiStyleConsumer
     virtual bool ApplyCentralStyle_Implementation() override;
 
+    // IGV2ScreenFieldHost (DUC-02): same shared HostIdentity every IGV2UiPropertyHost
+    // carries -- see FGV2UiPropertyHostState.
+    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
+
 protected:
     virtual void NativePreConstruct() override;
 
@@ -70,5 +76,7 @@ private:
     FString AppliedPortraitId;
     FString AppliedFrameId;
     FName Key;
+
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 };

@@ -1,7 +1,7 @@
 ---
 title: Addressable Elements Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -35,11 +35,21 @@ depends_on:
     - Документация: `Docs/UI/ScreenTemplates.md` получил раздел «Host Identity (DUC-01)», фиксирующий единственное значение свойства на обоих уровнях (`field_id` / имя свойства композита) и Designer-поверхность.
     - Верификация: 98/98 UE Automation, 68/68 Headless ctest, все 6 content/doc-гейтов зелёные.
 
-- [ ] **DUC-02 — Базовые элементы становятся адресуемыми**
+- [x] **DUC-02 — Базовые элементы становятся адресуемыми**
   - Зависимости: DUC-01.
   - `UGV2TextWidgetBase`, `UGV2ImageWidgetBase`, `UGV2ProgressBarWidgetBase`, `UGV2ButtonWidgetBase`, Checkbox, InputField, RichText, Portrait уже реализуют `IGV2UiPropertyHost` и имеют одинаковую сигнатуру наследования; не хватает только адресуемости.
   - Done: каждый базовый элемент может быть полем объемлющего хоста; экран, собранный из базовых элементов с проставленными в Designer идентичностями, применяет поля без единого нового C++-класса — проверено тестом, который загружает такой ассет и прогоняет значения со стороны Lua; элемент без заданной идентичности считается неконфигурированным и пропускается, как и раньше; неканоническая идентичность отклоняется с диагностикой.
   - Evidence: `Source/GV2/Public/UI/`, `Content/`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-01):**
+    - Все 8 названных классов получили `, public IGV2ScreenFieldHost` в списке наследования и одну и ту же делегирующую реализацию `virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }` (тот же однострочник, что у Location-композитов) + `PropertyHostState` переведён в `UPROPERTY(EditAnywhere, meta=(ShowOnlyInnerProperties))`, чтобы `HostIdentity` стал редактируемым в Designer на каждом размещении. Composite/collection-виджеты вне списка (`DropdownSelect`, `ButtonList`, `Modal`, `TabContainer`) и transient-проекция (`RichTextPopover`) сознательно не тронуты — они вне границ этой задачи.
+    - Живая демонстрация «экран из базовых элементов без нового C++-класса»: в `WBP_Testscreen` через `unreal-mcp` (`UMGToolSet.AddWidget`) добавлен шестой child — `GreetingText` (`WBP_Text`, класс `UGV2TextWidgetBase` — уже существующий базовый элемент, не новый), `PropertyHostState.HostIdentity = "greeting"`; `GameData/sample/scripts/debug/start.lua` публикует поле `greeting` (`core:schema.ui_field.text.v1`) вместо пустого `fields = {}`.
+    - **Найденный и устранённый живой дефект (не в C++, в content pipeline)**: значение `text_id` в `FGV2UiPropertyHostState`/Screen Field pipeline резолвится через `Theme->TextCatalog` (`TMap<FName,FText>` на `DA_UITheme_Default`) — это **не** автоматически синхронизированная с `GameData/*/definitions/texts.json5` структура, а вручную поддерживаемый ассет. Добавление `sample:text.screen.test.greeting` только в `texts.json5` дало `ResolveText: ... failed: Unknown text_id` при первом реальном прогоне через Lua (диагностика добавлена этой задачей: `GV2ScreenFieldMaterializer.cpp` теперь логирует причину при несостоявшемся `GetCompiledSchema`/`ProjectMaterializedValue`/`ResolveText`, которые раньше падали молча). Устранено: запись добавлена в `DA_UITheme_Default.TextCatalog` через `unreal-mcp` (`ObjectTools.set_properties`).
+    - **Побочная находка, НЕ устранённая (вне границ задачи)**: все прочие `sample:text.screen.test.*` id из `texts.json5` (`checkbox`, `name_label`, `dropdown_placeholder` и т.д.) в `DA_UITheme_Default.TextCatalog` хранятся под старым namespace `core:text.screen.test.*` — расхождение, пережившее переименование пакета `core`→`sample`, которое никогда не проявлялось, потому что ни один из них не проходил через реальный `ResolveText` (только через прямые `FGV2TextViewModel`-конструкции в unit-тестах). Не исправлено в этой задаче — вынесено отдельной задачей на дозволенный follow-up.
+    - Расширен `GV2.Runtime.Presentation.LuaCreatesRegisteredScreen`: `GetScreenFieldIds()` теперь ожидаемо `["greeting"]` (не `0`), `GreetingText`-виджет получает точное текстовое значение через полный реальный путь Lua → `GV2ScreenFieldMaterializer` → `PrepareScreenFields`/`CommitScreenFields`. Пять исходных static leaves остаются непроверенными на identity (как раньше) — Done-критерий «элемент без идентичности пропускается» подтверждён тем же тестом.
+    - Новый тест `GV2.Runtime.Presentation.BaseElementNonCanonicalIdentityRejected`: синтетический `UGV2TextWidgetBase` с `HostIdentity = "Not-Canonical"` — `GetScreenFieldIds()` отклоняет с диагностикой `has non-canonical field_id`, используя тот же `IsCanonicalFieldId`, что и Location-композиты (не новый, отдельный путь проверки).
+    - Красный тест на откате подтверждён: временный `GetScreenFieldId()` → `NAME_None` на `UGV2TextWidgetBase` — `LuaCreatesRegisteredScreen` красный целиком (`payload contains unknown field 'greeting'`, вся сессия не стартует, поскольку сконфигурированный host без ответа — инвариант, а не мягкий пропуск); восстановление — 99/99 зелёных.
+    - `WidgetRegistry.md`/`ScreenTemplates.md` обновлены: таблица implementations, footnote, секция "Host Identity", секция "Current WBP_Testscreen contract" и один найденный по пути устаревший verification-пункт (`WBP_Testscreen содержит deterministic ... required` — противоречил уже исправленной в PCC-11 секции того же файла).
+    - Верификация: 99/99 UE Automation, 68/68 Headless ctest, все content/doc-гейты зелёные.
 
 - [ ] **DUC-03 — `key` перестаёт быть перечислением классов**
   - `FGV2KeyPropertyConsumer::Commit` перечисляет 15 классов; 13 веток идентичны. Новый хост, объявивший `key`, обязан быть добавлен туда вручную — и до недавнего исправления его отсутствие давало тихий успех, что и произвело дефект `UGV2ModalWidgetBase`.

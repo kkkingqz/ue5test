@@ -26,7 +26,16 @@ local function create_screen()
         end
     end
 
-    return screens.create("core:screen.test", {})
+    -- DUC-02: "greeting" is a plain UGV2TextWidgetBase base element (GreetingText),
+    -- addressable as a Screen Field with no dedicated C++ class -- the other five
+    -- children of WBP_Testscreen have no HostIdentity configured and remain static,
+    -- exactly as before.
+    return screens.create("core:screen.test", {
+        greeting = {
+            schema_id = "core:schema.ui_field.text.v1",
+            value = { text = text.spec("sample:text.screen.test.greeting") },
+        },
+    })
 end
 
 function M.register(_ctx)

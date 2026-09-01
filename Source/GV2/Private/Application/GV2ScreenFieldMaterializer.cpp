@@ -79,12 +79,17 @@ bool ResolveText(const GV2ContentCore::FValue& Value, FGV2TextViewModel& OutText
     }
 
     FString Error;
-    return UGV2TextPipeline::Resolve(
+    const bool bResolved = UGV2TextPipeline::Resolve(
         UTF8_TO_TCHAR(TextId.c_str()),
         Args,
         FName(UTF8_TO_TCHAR(Style.c_str())),
         OutText,
         Error);
+    if (!bResolved)
+    {
+        UE_LOG(LogTemp, Error, TEXT("ResolveText: '%s' failed: %s"), UTF8_TO_TCHAR(TextId.c_str()), *Error);
+    }
+    return bResolved;
 }
 
 bool ReadBinding(
@@ -531,6 +536,7 @@ bool BuildFields(
         GV2ContentCore::FCompiledUiFieldSpecPtr Schema = GetSchemaCache().GetCompiledSchema(Field.SchemaId, SchemaError);
         if (!Schema)
         {
+            UE_LOG(LogTemp, Error, TEXT("BuildFields: schema '%s' could not be compiled: %s"), UTF8_TO_TCHAR(Field.SchemaId.c_str()), *SchemaError);
             OutFields.Reset();
             return false;
         }
@@ -579,6 +585,7 @@ bool BuildFields(
                 PreparedValue)
             || !PreparedValue.IsObject())
         {
+            UE_LOG(LogTemp, Error, TEXT("BuildFields: '%s' ProjectMaterializedValue failed or did not produce an object"), *FieldIdOf(Field));
             OutFields.Reset();
             return false;
         }

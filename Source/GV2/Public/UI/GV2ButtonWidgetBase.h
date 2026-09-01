@@ -5,6 +5,7 @@
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiBindingTarget.h"
+#include "UI/GV2ScreenFieldHost.h"
 #include "GV2ButtonWidgetBase.generated.h"
 
 class UCommonTextBlock;
@@ -24,6 +25,7 @@ class GV2_API UGV2ButtonWidgetBase
     , public IGV2UiStyleConsumer
     , public IGV2UiPropertyHost
     , public IGV2UiBindingTarget
+    , public IGV2ScreenFieldHost
 {
     GENERATED_BODY()
 
@@ -60,6 +62,10 @@ public:
     virtual void SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle) override;
     virtual FGV2UiBindingHandle GetBindingHandle() const override;
 
+    // IGV2ScreenFieldHost (DUC-02): same shared HostIdentity every IGV2UiPropertyHost
+    // carries -- see FGV2UiPropertyHostState.
+    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
+
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeOnClicked() override;
@@ -80,6 +86,7 @@ private:
     UPROPERTY(Transient)
     FName CurrentTextStyleToken;
 
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
     bool bAutomaticInteractionSubmission = true;

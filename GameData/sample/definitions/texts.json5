@@ -45,6 +45,13 @@
       extensions: {},
     },
     {
+      id: "sample:text.screen.test.greeting",
+      data: { source_message: "Hello from a base element field" },
+      tags: ["sample", "test"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
       id: "sample:text.screen.test.name_label",
       data: { source_message: "Player name" },
       tags: ["sample", "test"],
