@@ -4,6 +4,8 @@
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/VerticalBox.h"
+#include "UI/GV2DeclaredCompositeWidgetBase.h"
+#include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "UI/GV2TextWidgetBase.h"
@@ -439,6 +441,164 @@ bool FGV2DeclaredCompositeChildKindCompatibilityTest::RunTest(const FString& Par
         GoodDiagnostics);
     TestTrue(TEXT("DUC-07: declaring Text against the same Text-only child is accepted"), bGoodPrepared);
     TestEqual(TEXT("DUC-07: accepted declaration produces no diagnostics"), GoodDiagnostics.Num(), 0);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DeclaredCompositeKindSelectabilityGateTest,
+    "GV2.UI.DeclaredComposite.KindSelectabilityGate",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DeclaredCompositeKindSelectabilityGateTest::RunTest(const FString& Parameters)
+{
+    // GBH-02A: every EGV2DeclaredUiCapabilityKind value must be classified -- Supported
+    // (selectable, proven end-to-end) or Hidden (UMETA(Hidden), reason recorded). A brand
+    // new enum value with neither fails this gate instead of silently defaulting to
+    // selectable-but-unproven.
+    TArray<FString> GateDiagnostics;
+    const bool bAllClassified = FGV2DesignerCapabilityKindGate::ValidateAllKindsClassified(GateDiagnostics);
+    TestTrue(
+        *FString::Printf(TEXT("GBH-02A: every Designer kind is classified [Diagnostics: %s]"), *FString::Join(GateDiagnostics, TEXT("; "))),
+        bAllClassified);
+    TestEqual(TEXT("GBH-02A: zero unclassified-kind diagnostics"), GateDiagnostics.Num(), 0);
+
+    // Currently-Hidden kinds and their recorded reasons.
+    TestEqual(
+        TEXT("GBH-02A: CollectionHost status is Hidden"),
+        FGV2DesignerCapabilityKindGate::GetKindStatus(EGV2DeclaredUiCapabilityKind::CollectionHost),
+        EGV2DesignerKindStatus::Hidden);
+    TestEqual(
+        TEXT("GBH-02A: RichTextSpans status is Hidden"),
+        FGV2DesignerCapabilityKindGate::GetKindStatus(EGV2DeclaredUiCapabilityKind::RichTextSpans),
+        EGV2DesignerKindStatus::Hidden);
+
+    FString CollectionHostReason;
+    TestTrue(
+        TEXT("GBH-02A: CollectionHost is registered Hidden"),
+        FGV2DesignerCapabilityKindGate::IsHiddenKind(EGV2DeclaredUiCapabilityKind::CollectionHost, &CollectionHostReason));
+    TestFalse(TEXT("GBH-02A: CollectionHost has a recorded reason"), CollectionHostReason.IsEmpty());
+
+    FString RichTextSpansReason;
+    TestTrue(
+        TEXT("GBH-02A: RichTextSpans is registered Hidden"),
+        FGV2DesignerCapabilityKindGate::IsHiddenKind(EGV2DeclaredUiCapabilityKind::RichTextSpans, &RichTextSpansReason));
+    TestFalse(TEXT("GBH-02A: RichTextSpans has a recorded reason"), RichTextSpansReason.IsEmpty());
+
+    const TArray<FGV2HiddenDesignerKindInfo> HiddenKinds = FGV2DesignerCapabilityKindGate::GetHiddenKinds();
+    TestEqual(TEXT("GBH-02A: exactly 2 Hidden kinds (CollectionHost, RichTextSpans)"), HiddenKinds.Num(), 2);
+
+    // Currently-selectable kinds remain Supported: the 8 flat RendererControl kinds proven
+    // by DUC-05/06/07/08 (this file's own earlier tests, plus the real TopBar conversion),
+    // and NestedScreen proven by DUC-09/10/11.
+    const EGV2DeclaredUiCapabilityKind SupportedKinds[] = {
+        EGV2DeclaredUiCapabilityKind::Boolean,
+        EGV2DeclaredUiCapabilityKind::Integer,
+        EGV2DeclaredUiCapabilityKind::Number,
+        EGV2DeclaredUiCapabilityKind::String,
+        EGV2DeclaredUiCapabilityKind::Key,
+        EGV2DeclaredUiCapabilityKind::Text,
+        EGV2DeclaredUiCapabilityKind::ResourceRef,
+        EGV2DeclaredUiCapabilityKind::Binding,
+        EGV2DeclaredUiCapabilityKind::NestedScreen,
+    };
+    for (const EGV2DeclaredUiCapabilityKind Kind : SupportedKinds)
+    {
+        TestEqual(
+            *FString::Printf(TEXT("GBH-02A: kind %d is Supported"), static_cast<int32>(Kind)),
+            FGV2DesignerCapabilityKindGate::GetKindStatus(Kind),
+            EGV2DesignerKindStatus::Supported);
+    }
+
+    // REM-05, reproduced directly: the reason CollectionHost is Hidden, not merely a
+    // documentation claim. DescribeUiCapabilities' CollectionHost case calls AddCustom(...),
+    // which has no EntryWidgetClass parameter at all -- so on a *genuinely empty* collection
+    // (no existing entries to infer a class from), Prepare cannot create the first item
+    // through this delegation path, regardless of what the schema itself declares.
+    {
+        UClass* const CompositeClass = FindObject<UClass>(nullptr, TEXT("/Script/GV2.GV2DeclaredCompositeWidgetBase"));
+        TestNotNull(TEXT("GBH-02A: generic declared composite class exists"), CompositeClass);
+        if (CompositeClass == nullptr)
+        {
+            return false;
+        }
+
+        UUserWidget* const Composite = NewObject<UUserWidget>(GetTransientPackage(), CompositeClass);
+        IGV2UiPropertyHost* const PropertyHost = Composite != nullptr ? Cast<IGV2UiPropertyHost>(Composite) : nullptr;
+        TestNotNull(TEXT("GBH-02A: composite instance exposes property host interface"), PropertyHost);
+        if (PropertyHost == nullptr)
+        {
+            return false;
+        }
+
+        Composite->WidgetTree = NewObject<UWidgetTree>(Composite);
+        UGV2ListViewWidgetBase* const ItemsList = Composite->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(
+            UGV2ListViewWidgetBase::StaticClass(), TEXT("ItemsList"));
+        Composite->WidgetTree->RootWidget = ItemsList;
+        UVerticalBox* const ContainerPanel = NewObject<UVerticalBox>(ItemsList);
+        ItemsList->SetContainerPanel(ContainerPanel);
+        TestEqual(TEXT("GBH-02A: fixture collection starts genuinely empty"), ContainerPanel->GetChildrenCount(), 0);
+
+        FArrayProperty* const DeclaredCapabilitiesProperty =
+            FindFProperty<FArrayProperty>(CompositeClass, TEXT("DeclaredCapabilities"));
+        FStructProperty* const EntryProperty =
+            DeclaredCapabilitiesProperty != nullptr ? CastField<FStructProperty>(DeclaredCapabilitiesProperty->Inner) : nullptr;
+        TestNotNull(TEXT("GBH-02A: declared capability list stores triples"), EntryProperty);
+        if (DeclaredCapabilitiesProperty == nullptr || EntryProperty == nullptr)
+        {
+            return false;
+        }
+
+        FScriptArrayHelper Entries(DeclaredCapabilitiesProperty, DeclaredCapabilitiesProperty->ContainerPtrToValuePtr<void>(Composite));
+        Entries.EmptyValues();
+        const FDeclaredCapabilityExpectation CollectionDeclaration = {
+            TEXT("CollectionHost"), TEXT("items"), TEXT("ItemsList"), EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost, TEXT("") };
+        if (!SetDeclaredCapabilityEntry(*this, Entries, *EntryProperty, CollectionDeclaration))
+        {
+            return false;
+        }
+
+        FGV2UiCapabilityBuilder Builder;
+        PropertyHost->DescribeUiCapabilities(Builder);
+
+        auto ItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Object);
+        ItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+        auto ItemsArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Array);
+        ItemsArraySpec->KeyedBy = std::string("key");
+        ItemsArraySpec->Items = ItemSpec;
+
+        GV2ContentCore::FCompiledUiFieldSpec Schema;
+        Schema.Kind = GV2ContentCore::EUiFieldKind::Object;
+        Schema.Fields.push_back({ "items", false, ItemsArraySpec });
+
+        TMap<FString, FGV2PreparedUiValue> FirstItemMap;
+        FirstItemMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("first")));
+        TArray<FGV2PreparedUiValue> ItemsArray;
+        ItemsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FirstItemMap)));
+        TMap<FString, FGV2PreparedUiValue> HostFields;
+        HostFields.Add(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(ItemsArray)));
+        const TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(HostFields);
+
+        FGV2UiHostMutationPlan Plan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+        const bool bPrepared = PrepareUiHostProperties(
+            Composite,
+            Builder.Build(),
+            *Candidate,
+            Schema,
+            TEXT("test:schema.gbh02_collection_host_probe.v1"),
+            TEXT(""),
+            PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+            Plan,
+            Diagnostics);
+        TestFalse(TEXT("GBH-02A: CollectionHost cannot create the first item of an empty collection through DeclaredComposite"), bPrepared);
+        TestTrue(
+            TEXT("GBH-02A: rejection is specifically missing_entry_class, justifying the Hidden classification"),
+            Diagnostics.ContainsByPredicate([](const FGV2UiSchemaCompatibilityDiagnostic& Diagnostic)
+            {
+                return Diagnostic.Message.Contains(TEXT("missing_entry_class"));
+            }));
+    }
 
     return true;
 }

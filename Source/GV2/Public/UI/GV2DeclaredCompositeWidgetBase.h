@@ -9,6 +9,15 @@
  * Designer-facing kind of one flat property mapping in a declared composite.
  * Null and direct Object are deliberately absent: PCC-05 marks both inapplicable to
  * direct UI mutation. Array has one entry per consumer target shape.
+ *
+ * GBH-02A completeness gate: every value here is either selectable (no UMETA(Hidden))
+ * with a proven end-to-end path through UGV2DeclaredCompositeWidgetBase specifically --
+ * not merely a capability-tree shape check, and not proof via a leaf widget's own native
+ * DescribeUiCapabilities, a different delegation path -- or Hidden with a recorded
+ * ToolTip reason. FGV2DesignerCapabilityKindGate::ValidateAllKindsClassified enumerates
+ * the live UEnum, so a new value added here without updating that gate's proven-kind list
+ * (and, if selectable, without UMETA(Hidden)) fails the gate instead of silently defaulting
+ * to selectable-but-unproven -- the exact shape of defect REM-05 found in CollectionHost.
  */
 UENUM(BlueprintType)
 enum class EGV2DeclaredUiCapabilityKind : uint8
@@ -21,9 +30,74 @@ enum class EGV2DeclaredUiCapabilityKind : uint8
     Text,
     ResourceRef,
     Binding,
-    CollectionHost,
-    RichTextSpans,
+
+    // REM-05: the flat (PropertyName, ChildWidgetName, Kind) triple carries no
+    // EntryWidgetClass/KeyPropertyName/item contract, so DescribeUiCapabilities' Custom
+    // AddCustom(...) call for this kind never populates EntryWidgetClass; the keyed
+    // collection consumer's own existing-entry/existing-child inference has nothing to
+    // infer from on a truly empty collection and rejects with missing_entry_class before
+    // the first item can ever be created. Hidden until GBH-02B (after GBH-06...08) gives
+    // the declaration a full contract and an empty-collection E2E test proves it.
+    CollectionHost UMETA(Hidden),
+
+    // GBH-02A: this kind's only proof is FGV2RichTextSpansPropertyConsumer applied to
+    // UGV2RichTextWidgetBase's own *native* DescribeUiCapabilities (a leaf widget
+    // declaring its own "spans" capability directly) -- a different delegation path from
+    // a DeclaredComposite mapping a Designer property to a RichText *child*. No test
+    // exercises Designer declaration -> child resolution -> Commit -> observed spans
+    // through UGV2DeclaredCompositeWidgetBase for this kind. Hidden until that path has
+    // its own proof, by the same rule REM-05 applies to CollectionHost.
+    RichTextSpans UMETA(Hidden),
+
+    // DUC-09/10/11: proven end-to-end through DeclaredComposite -- TabsHost declares
+    // this kind targeting a real TabContainer child, tabs resolve real nested screens,
+    // and the composition-cycle guard is covered by its own red/green tests.
     NestedScreen,
+};
+
+/**
+ * Classification of EGV2DeclaredUiCapabilityKind for the Designer selection surface (GBH-02A).
+ */
+enum class EGV2DesignerKindStatus : uint8
+{
+    Supported,
+    Hidden
+};
+
+struct GV2_API FGV2HiddenDesignerKindInfo
+{
+    EGV2DeclaredUiCapabilityKind Kind;
+    FString Reason;
+};
+
+/**
+ * GBH-02A completeness gate over EGV2DeclaredUiCapabilityKind, symmetric to
+ * FGV2PropertyConsumerFactory's PCC-05 gate over EGV2PreparedUiValueKind: every enum
+ * value must be either Supported (selectable, with a proven end-to-end path -- listed in
+ * the internal proven-kinds set) or Hidden (UMETA(Hidden) on the enumerator, with a
+ * recorded ToolTip reason). Unlike PCC-05's gate, status is read from the live UEnum
+ * metadata rather than duplicated in a second switch, so the enum's actual Designer
+ * surface and this gate's classification cannot drift apart.
+ */
+class GV2_API FGV2DesignerCapabilityKindGate
+{
+public:
+    /** Reads UMETA(Hidden) on the live UEnum for this value. */
+    static EGV2DesignerKindStatus GetKindStatus(EGV2DeclaredUiCapabilityKind Kind);
+
+    /** Returns true if the kind is Hidden, optionally returning its recorded ToolTip reason. */
+    static bool IsHiddenKind(EGV2DeclaredUiCapabilityKind Kind, FString* OutReason = nullptr);
+
+    /** Returns every currently Hidden kind with its recorded reason. */
+    static TArray<FGV2HiddenDesignerKindInfo> GetHiddenKinds();
+
+    /**
+     * Gate validating that every live value of EGV2DeclaredUiCapabilityKind is either
+     * Supported (in the internal proven-kinds list) XOR Hidden (UMETA(Hidden) with a
+     * non-empty ToolTip reason) -- never both, never neither. A new enum value added
+     * without updating the proven-kinds list and without UMETA(Hidden) fails this gate.
+     */
+    static bool ValidateAllKindsClassified(TArray<FString>& OutDiagnostics);
 };
 
 /**

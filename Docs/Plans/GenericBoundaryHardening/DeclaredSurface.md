@@ -1,7 +1,7 @@
 ---
 title: Declared Surface Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -44,6 +44,13 @@ depends_on:
   - Done: gate не позволяет добавить новый Designer kind без `Supported+E2E` либо `Hidden/Inapplicable`; selectable kind всегда имеет сквозной положительный и отрицательный тест; `CollectionHost` не может быть одновременно selectable и не способным создать первый элемент пустой коллекции.
   - Зависимости: часть A — нет; часть B — `GBH-06`, `GBH-08`.
   - Evidence: `Source/GV2/Public/UI/GV2DeclaredCompositeWidgetBase.h`, `Source/GV2/Private/Tests/`.
+  - **Реализация часть A (2026-09-01):**
+    - `EGV2DeclaredUiCapabilityKind`: `CollectionHost` и `RichTextSpans` помечены `UMETA(Hidden)` — скрыты из Designer picker (`GV2DeclaredCompositeWidgetBase.h`), но символ enum остаётся (не удалён), чтобы `GBH-02B` мог вернуть `CollectionHost` без миграции данных. `NestedScreen` оставлен selectable (доказан DUC-09/10/11), проверено по тому же правилу, а не отдельным исключением, как того требует Done.
+    - Обоснование по каждому: `CollectionHost` — `DescribeUiCapabilities`' ветка вызывает `OutBuilder.AddCustom(...)`, у которого нет параметра `EntryWidgetClass` вообще; на **действительно пустой** коллекции ни existing-entry, ни existing-child источник вывода класса недоступен, и `Prepare` отклоняет первый элемент с `missing_entry_class` — REM-05, воспроизведено напрямую тестом. `RichTextSpans` — единственное существующее доказательство (`FGV2RichTextSpansPropertyConsumer` + `UGV2RichTextWidgetBase`) идёт через **нативную** `DescribeUiCapabilities` листового виджета, а не через делегирование `DeclaredComposite → child`; ни один тест не проводит Designer-объявление через `PrepareUiHostProperties` → реального RichText-ребёнка → observable spans для этого пути.
+    - Новый `FGV2DesignerCapabilityKindGate` (`GetKindStatus`/`IsHiddenKind`/`GetHiddenKinds`/`ValidateAllKindsClassified`) — completeness-гейт, симметричный `FGV2PropertyConsumerFactory`'s PCC-05 гейту для `EGV2PreparedUiValueKind`, но читает статус из **живой** `UEnum`-метадаты (`HasMetaData(TEXT("Hidden"))`), а не дублирует классификацию во втором switch — единый источник истины, дрейф между Designer surface и гейтом невозможен по конструкции. `ValidateAllKindsClassified` перечисляет **все** текущие значения enum через reflection и требует: `Hidden` (с непустым `ToolTip`-reason, автоматически подхваченным UHT из doc-комментария над значением) XOR в списке доказанных (`Boolean`, `Integer`, `Number`, `String`, `Key`, `Text`, `ResourceRef`, `Binding`, `NestedScreen`) — новое значение без ни того ни другого проваливает гейт.
+    - Тест `GV2.UI.DeclaredComposite.KindSelectabilityGate`: проверяет гейт целиком (0 диагностик), статус каждого из 11 значений, и напрямую воспроизводит REM-05 — `UGV2DeclaredCompositeWidgetBase` с `CollectionHost` на реальный пустой `UGV2ListViewWidgetBase`, полный `PrepareUiHostProperties` с валидной схемой и одним новым элементом отклоняется именно с `missing_entry_class`, что и оправдывает `Hidden`, а не голословно.
+    - Red→green: `UMETA(Hidden)` временно снят с `CollectionHost` — упали ровно 6 ассерций гейта (classified/status/reason/count), гейт назвал ровно эту причину («selectable... but has no recorded end-to-end proof»); восстановление — снова чисто.
+    - Верификация: 103/103 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`.
 
 - [ ] **GBH-03 — Судьба принадлежности UI-схем репозиторию решена**
   - `FGV2UiSchemaCache` сканирует файловую систему и не является частью pinned `GameDataRepository`; существуют две несовпадающие проекции набора пакетов. Отложено как `UPP-R5` с условием «становится обязательным, когда блоки начнут поставляться модами». Условие не наступило, но разрыв живёт только в тексте архивных сводок, а не там, где его читают при планировании.
@@ -64,7 +71,7 @@ depends_on:
 
 - [x] Ни одна **предсказуемая** причина отказа attach не доживает до Commit: она отклоняется в `PrepareReconcile` до первой live mutation, и это подтверждено аудитом всех `false`-ветвей `AttachScreenToLayer`.
 - [x] Остаточный непредсказуемый engine-level отказ attach явно делегирован `GBH-09/10` записью в задаче, а не оставлен комментарием в коде. Утверждение «частично присоединённое дерево невозможно» становится полностью истинным только после M3 и там же проверяется.
-- [ ] Ни один вид Designer не является одновременно selectable и неработоспособным: часть A скрывает такие виды, и гейт не позволяет добавить новый вид в обход этого правила.
-- [ ] `CollectionHost` на момент закрытия M1 либо скрыт, либо, если его контракт не нужен проекту, удалён окончательно — работоспособным он становится только в `GBH-02B` после `GBH-08`.
+- [x] Ни один вид Designer не является одновременно selectable и неработоспособным: часть A скрывает такие виды, и гейт не позволяет добавить новый вид в обход этого правила.
+- [x] `CollectionHost` на момент закрытия M1 либо скрыт, либо, если его контракт не нужен проекту, удалён окончательно — работоспособным он становится только в `GBH-02B` после `GBH-08`.
 - [ ] Разрыв принадлежности схем либо закрыт, либо записан там, где его читают при планировании, и отражён во всей нормативной цепочке.
 - [ ] Ни один контракт не описывает поверхность, которой нет.

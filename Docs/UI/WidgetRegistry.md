@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.8
+version: 3.9
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -158,6 +158,8 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 `UGV2DeclaredCompositeWidgetBase` — единственный generic base для композита, чьи capability объявляет Designer. Он хранит редактируемый рядом с WidgetTree плоский `DeclaredCapabilities` из троек `PropertyName`, `ChildWidgetName`, `Kind`; дерево capability строится только из этих троек, а не выводится из реализации ребёнка. Сверка с capability ребёнка остаётся самостоятельной задачей DUC-07.
 
 `Kind` соответствует всем прямым consumer-backed маршрутам после PCC-05: `Boolean`, `Integer`, `Number`, `String`, `Key`, `Text`, `ResourceRef`, `Binding`, а для `Array` — `CollectionHost`, `RichTextSpans`, `NestedScreen`. `Null` и прямой `Object` намеренно не имеют значения Designer enum: для них consumer отсутствует или вид неприменим; object/array composition остаётся плоским mapping либо специальным collection/nested route.
+
+**GBH-02A:** `CollectionHost` и `RichTextSpans` помечены `UMETA(Hidden)` и не выбираемы в Designer picker — ни один не имеет доказанного end-to-end пути именно через `UGV2DeclaredCompositeWidgetBase` (`DescribeUiCapabilities`' `CollectionHost`-ветка вызывает `AddCustom(...)`, у которого нет параметра `EntryWidgetClass`, поэтому первый элемент по-настоящему пустой коллекции создать невозможно — REM-05; `RichTextSpans` доказан только как нативная capability самого `UGV2RichTextWidgetBase`, а не как делегирование от composite к ребёнку). `NestedScreen` остаётся selectable — доказан DUC-09/10/11. `FGV2DesignerCapabilityKindGate::ValidateAllKindsClassified` (`GV2DeclaredCompositeWidgetBase.h`) — completeness-гейт по всем значениям enum, симметричный `FGV2PropertyConsumerFactory::ValidateAllKindsHandled` (PCC-05): новое значение enum без явной классификации (Hidden с причиной либо в списке доказанных) проваливает гейт, а не молча становится selectable.
 
 `ChildWidgetName` — точная декларация target в instance WidgetTree. Если named child отсутствует, preflight `PrepareUiHostProperties` обязан остановить candidate до публикации с `core:diagnostic.ui_consumer.missing_target`; fallback на сам host допустим только для capability с `TargetName == NAME_None`. `WBP_DeclaredCompositeFixture` фиксирует production-конфигурацию `label → LabelText: WBP_Text` и одновременно является обязательной WBP-fixture capability sweep. DUC-05 не меняет существующие Location-композиты.
 
