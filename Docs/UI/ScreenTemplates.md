@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.6
-updated: 2026-08-31
+version: 1.7
+updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -169,6 +169,26 @@ IGV2UiPropertyHost:
 ```
 
 `GetScreenFieldId()` возвращает имя поля экрана (`field_id`), настроенное для данного виджета (например, `description`, `buttons`, `top_bar`, `scene`). Возврат `NAME_None` означает, что виджет не сконфигурирован как приёмник поля экрана и исключается из экранного контракта.
+
+### Host Identity (DUC-01)
+
+`field_id` — не собственное свойство `IGV2ScreenFieldHost`. Это одно конкретное значение общего `HostIdentity`, которое несёт **любой** `IGV2UiPropertyHost` через `FGV2UiPropertyHostState`:
+
+```text
+FGV2UiPropertyHostState:
+  UPROPERTY(EditAnywhere) FName HostIdentity;
+  GetHostIdentity() -> FName
+  SetHostIdentity(FName)
+```
+
+Экран и блок (DUC-05+) различаются только тем, что экран сверяется с матрицей разрешений, а блок — нет; смысл самого значения одинаков — **идентичность внутри объемлющего хоста**:
+
+- На уровне экрана это `field_id`: `IGV2ScreenFieldHost::GetScreenFieldId()` каждого из четырёх Location-композитов делегирует в `GetHostIdentity()`, не хранит собственное отдельное значение.
+- На уровне composite-свойства (DUC-05+) это имя свойства, под которым родительский композит адресует данного ребёнка в своём плоском списке capability.
+
+Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
+
+Дубликат идентичности среди `IGV2ScreenFieldHost` одного экрана отклоняется до `Ready`: `UGV2ScreenWidgetBase`'s discovery (`CollectScreenFieldHosts`) поддерживает `SeenFieldIds` и возвращает ошибку `duplicate screen field host '<value>'` при повторе — это регрессионно проверено `GV2.Runtime.Presentation.HostIdentityIsSharedNotPerClass` после переноса значения на общую поверхность.
 
 `UGV2ScreenWidgetBase` управляет двухфазным жизненным циклом применения полей:
 

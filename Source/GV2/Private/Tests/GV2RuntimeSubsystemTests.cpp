@@ -2400,10 +2400,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             // child is sufficient without also wiring the (protected) BindWidget member.
             UGV2TextWidgetBase* FaultDayTextWidget = FaultScreen->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
             TestNotNull(TEXT("PCC-06: DayText child constructs"), FaultDayTextWidget);
-            if (FNameProperty* ScreenFieldIdProp = FindFProperty<FNameProperty>(TopBar->GetClass(), TEXT("ScreenFieldId")))
-            {
-                ScreenFieldIdProp->SetPropertyValue_InContainer(TopBar, FName(TEXT("top_bar")));
-            }
+            // DUC-01: identity is the shared HostIdentity (public via IGV2UiPropertyHost),
+            // not a per-class reflected property -- no reflection needed to set it.
+            TopBar->SetHostIdentity(FName(TEXT("top_bar")));
             // DescribeUiCapabilities only advertises "day" when its own DayText BindWidget
             // pointer is non-null (protected -- not settable from outside without reflection).
             if (FObjectProperty* DayTextProp = FindFProperty<FObjectProperty>(TopBar->GetClass(), TEXT("DayText")))
@@ -2511,10 +2510,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TopBarScreenV1->WidgetTree->RootWidget = TopBarV1;
             UGV2TextWidgetBase* TopBarV1DayText = TopBarScreenV1->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
             TestNotNull(TEXT("PCC-07: layer A v1 DayText child constructs"), TopBarV1DayText);
-            if (FNameProperty* Prop = FindFProperty<FNameProperty>(TopBarV1->GetClass(), TEXT("ScreenFieldId")))
-            {
-                Prop->SetPropertyValue_InContainer(TopBarV1, FName(TEXT("top_bar")));
-            }
+            TopBarV1->SetHostIdentity(FName(TEXT("top_bar")));
             if (FObjectProperty* Prop = FindFProperty<FObjectProperty>(TopBarV1->GetClass(), TEXT("DayText")))
             {
                 Prop->SetObjectPropertyValue_InContainer(TopBarV1, TopBarV1DayText);
@@ -2527,10 +2523,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TopBarScreenV2->WidgetTree->RootWidget = TopBarV2;
             UGV2TextWidgetBase* TopBarV2DayText = TopBarScreenV2->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
             TestNotNull(TEXT("PCC-07: layer A v2 DayText child constructs"), TopBarV2DayText);
-            if (FNameProperty* Prop = FindFProperty<FNameProperty>(TopBarV2->GetClass(), TEXT("ScreenFieldId")))
-            {
-                Prop->SetPropertyValue_InContainer(TopBarV2, FName(TEXT("top_bar")));
-            }
+            TopBarV2->SetHostIdentity(FName(TEXT("top_bar")));
             if (FObjectProperty* Prop = FindFProperty<FObjectProperty>(TopBarV2->GetClass(), TEXT("DayText")))
             {
                 Prop->SetObjectPropertyValue_InContainer(TopBarV2, TopBarV2DayText);
@@ -4741,10 +4734,7 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     {
         *ContainerProp->ContainerPtrToValuePtr<TObjectPtr<UWrapBox>>(CommandPanel) = ButtonBox;
     }
-    if (FProperty* FieldIdProp = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ScreenFieldId")))
-    {
-        *FieldIdProp->ContainerPtrToValuePtr<FName>(CommandPanel) = FName(TEXT("commands"));
-    }
+    CommandPanel->SetHostIdentity(FName(TEXT("commands")));
     TestEqual(TEXT("CommandPanel answers to screen field 'commands'"), Screen->GetScreenFieldIds(), TArray<FName>{FName(TEXT("commands"))});
 
     auto MakeCommandsSchema = []() -> std::shared_ptr<FCompiledUiFieldSpec>
@@ -5510,6 +5500,65 @@ bool FGV2LocationCompositeCapabilityQueryIsPureTest::RunTest(const FString& Para
             TestNotNull(TEXT("PCC-12: CommandPanel 'items' capability is declared"), CmdBuilderA.Build().FindProperty(TEXT("items")));
         }
     }
+
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2HostIdentityIsSharedTest,
+    "GV2.Runtime.Presentation.HostIdentityIsSharedNotPerClass",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2HostIdentityIsSharedTest::RunTest(const FString& Parameters)
+{
+    // DUC-01: identity ("this host's identity within its enclosing host") is declared once
+    // on FGV2UiPropertyHostState / IGV2UiPropertyHost, not as a per-class property four
+    // Location composites each redeclared. Part 1 proves the property is on the *shared*
+    // surface: UGV2TextWidgetBase implements only IGV2UiPropertyHost (not
+    // IGV2ScreenFieldHost) and never had its own identity concept, yet SetHostIdentity/
+    // GetHostIdentity work on it exactly the same way as on a Location composite.
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    TestNotNull(TEXT("DUC-01: TestWorld created"), TestWorld);
+    if (TestWorld == nullptr) return false;
+
+    UGV2TextWidgetBase* PlainTextHost = NewObject<UGV2TextWidgetBase>(TestWorld);
+    TestNotNull(TEXT("DUC-01: plain UGV2TextWidgetBase instantiated"), PlainTextHost);
+    if (PlainTextHost != nullptr)
+    {
+        TestTrue(TEXT("DUC-01: UGV2TextWidgetBase does not implement IGV2ScreenFieldHost"), Cast<IGV2ScreenFieldHost>(PlainTextHost) == nullptr);
+        TestEqual(TEXT("DUC-01: fresh host has no identity"), PlainTextHost->GetHostIdentity(), NAME_None);
+        PlainTextHost->SetHostIdentity(FName(TEXT("some_property_name")));
+        TestEqual(TEXT("DUC-01: identity round-trips on a plain IGV2UiPropertyHost"), PlainTextHost->GetHostIdentity(), FName(TEXT("some_property_name")));
+    }
+
+    // Part 2: the existing screen-level duplicate-field_id rejection
+    // (CollectScreenFieldHosts's SeenFieldIds check in GV2ScreenWidgetBase.cpp) is now
+    // backed by the shared HostIdentity instead of each class's own ScreenFieldId member --
+    // confirm it still rejects two hosts configured with the same identity, not silently
+    // deduplicated or accepted.
+    UGV2ScreenWidgetBase* DupScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+    DupScreen->WidgetTree = NewObject<UWidgetTree>(DupScreen);
+    UVerticalBox* DupRoot = DupScreen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+    DupScreen->WidgetTree->RootWidget = DupRoot;
+    UGV2LocationTopBarWidgetBase* TopBarA = DupScreen->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
+        UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBarA"));
+    UGV2LocationTopBarWidgetBase* TopBarB = DupScreen->WidgetTree->ConstructWidget<UGV2LocationTopBarWidgetBase>(
+        UGV2LocationTopBarWidgetBase::StaticClass(), TEXT("TopBarB"));
+    DupRoot->AddChildToVerticalBox(TopBarA);
+    DupRoot->AddChildToVerticalBox(TopBarB);
+    TopBarA->SetHostIdentity(FName(TEXT("top_bar")));
+    TopBarB->SetHostIdentity(FName(TEXT("top_bar")));
+
+    AddExpectedErrorPlain(TEXT("GetScreenFieldIds failed: duplicate screen field host 'top_bar'"), EAutomationExpectedErrorFlags::Contains, 1);
+    TestEqual(TEXT("DUC-01: duplicate identity within one host is rejected, not silently accepted"), DupScreen->GetScreenFieldIds(), TArray<FName>{});
+
+    TopBarB->SetHostIdentity(FName(TEXT("top_bar_2")));
+    TestEqual(
+        TEXT("DUC-01: distinct identities on the same host are accepted"),
+        DupScreen->GetScreenFieldIds(),
+        TArray<FName>{FName(TEXT("top_bar")), FName(TEXT("top_bar_2"))});
 
     TestWorld->DestroyWorld(false);
     GEngine->DestroyWorldContext(TestWorld);

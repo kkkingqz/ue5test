@@ -30,7 +30,10 @@ public:
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
     // IGV2ScreenFieldHost
-    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
+    // DUC-01: field_id is this host's identity within its enclosing screen --
+    // the same shared HostIdentity every IGV2UiPropertyHost carries, not a
+    // separate per-class property. See FGV2UiPropertyHostState.
+    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -46,12 +49,8 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: ResourceIcon is unused because PrimaryResource contains formatted text.")) TObjectPtr<UWidget> ResourceIcon;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> DayLocationSeparator;
 
-    // UPP-27: which Screen Field (e.g. "top_bar") this instance answers to, set
-    // per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
-    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
-    FName ScreenFieldId;
-
 private:
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
     UPROPERTY(Transient)
@@ -69,7 +68,10 @@ public:
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
     // IGV2ScreenFieldHost
-    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
+    // DUC-01: field_id is this host's identity within its enclosing screen --
+    // the same shared HostIdentity every IGV2UiPropertyHost carries, not a
+    // separate per-class property. See FGV2UiPropertyHostState.
+    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -106,12 +108,8 @@ protected:
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> IconWidgetClass;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ProgressBarWidgetBase> MeterWidgetClass;
 
-    // UPP-27: which Screen Field (e.g. "player_status") this instance answers to,
-    // set per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
-    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
-    FName ScreenFieldId;
-
 private:
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
     UPROPERTY(Transient)
@@ -133,7 +131,10 @@ public:
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
     // IGV2ScreenFieldHost
-    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
+    // DUC-01: field_id is this host's identity within its enclosing screen --
+    // the same shared HostIdentity every IGV2UiPropertyHost carries, not a
+    // separate per-class property. See FGV2UiPropertyHostState.
+    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -157,12 +158,8 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;
 
-    // UPP-27: which Screen Field (e.g. "scene") this instance answers to, set
-    // per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
-    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
-    FName ScreenFieldId;
-
 private:
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
     UPROPERTY(Transient)
@@ -183,7 +180,10 @@ public:
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
 
     // IGV2ScreenFieldHost
-    virtual FName GetScreenFieldId() const override { return ScreenFieldId; }
+    // DUC-01: field_id is this host's identity within its enclosing screen --
+    // the same shared HostIdentity every IGV2UiPropertyHost carries, not a
+    // separate per-class property. See FGV2UiPropertyHostState.
+    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { Key = InKey; }
@@ -205,12 +205,8 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UWrapBox> ButtonContainer;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="GV2|UI") TSubclassOf<UGV2ButtonWidgetBase> ButtonWidgetClass;
 
-    // UPP-27: which Screen Field (e.g. "commands") this instance answers to, set
-    // per-placement on the LocationScreen widget tree -- see IGV2ScreenFieldHost.
-    UPROPERTY(EditAnywhere, Category = "GV2|UI|Screen")
-    FName ScreenFieldId;
-
 private:
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
 
     UPROPERTY(Transient)
