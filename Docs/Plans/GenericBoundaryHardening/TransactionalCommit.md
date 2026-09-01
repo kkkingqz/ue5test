@@ -1,7 +1,7 @@
 ---
 title: Transactional Commit Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -30,7 +30,7 @@ depends_on:
 
 - [ ] **GBH-09 — Решение о механизме восстановления**
   - Выбор меняет модель, а не реализацию, поэтому принимается до кода.
-  - Done: ADR фиксирует и обосновывает механизм, обеспечивающий один наблюдаемый результат: если отказ возникает после одной или нескольких live mutations, **вся предыдущая committed physical presentation восстанавливается до возврата failure и candidate revision не публикуется**. Рассматриваются как минимум: rollback stack с предыдущими projection values; shadow/staged state со свопом; rebuild из сохранённого previous prepared snapshot; иной эквивалентный transaction/recovery mechanism. Допустим отдельный путь «после первой live mutation Commit структурно не может вернуть failure» только если все fallible operations физически вынесены до неё и unexpected invariant-level failure имеет deterministic recovery к previous snapshot. Простое сужение нормативного контракта до допустимого partial state **запрещено как closure REM-02**. ADR отдельно рассматривает reused widgets, keyed collections, nested screens и Shell attach publication.
+  - Done: ADR фиксирует и обосновывает механизм, обеспечивающий один наблюдаемый результат: если отказ возникает после одной или нескольких live mutations, **вся предыдущая committed physical presentation восстанавливается до возврата failure и candidate revision не публикуется**. Рассматриваются как минимум: rollback stack с предыдущими projection values; shadow/staged state со свопом; rebuild из сохранённого previous prepared snapshot; иной эквивалентный transaction/recovery mechanism. Допустим отдельный путь «после первой live mutation Commit структурно не может вернуть failure» только если все fallible operations физически вынесены до неё и unexpected invariant-level failure имеет deterministic recovery к previous snapshot. Два условия этого пути связаны конъюнкцией и не подлежат раздельному исполнению: deterministic recovery к previous snapshot **не является дополнением** к выносу fallible operations, и путь, выполнивший только вынос, закрытием `REM-02` не считается. Этот путь не дешевле остальных: требуемое им восстановление само по себе является recovery mechanism, и выбирать его как облегчённый вариант — ошибка. Именно раздельное исполнение двух условий и породило `REM-02` из `PCC-07`, где инъекция была поставлена в удобную точку вместо опасной. Простое сужение нормативного контракта до допустимого partial state **запрещено как closure REM-02**. ADR отдельно рассматривает reused widgets, keyed collections, nested screens и Shell attach publication.
   - Evidence: `Docs/ADR/`, `Docs/UI/UIDocumentAndReconciliation.md`.
 
 - [ ] **GBH-10 — Реализация выбранного механизма**
