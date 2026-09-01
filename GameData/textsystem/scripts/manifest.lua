@@ -14,6 +14,15 @@ return {
             source = "presentation/location_presenter.lua",
             dependencies = {
                 "core:module.authoring.context",
+                "textsystem:module.presentation.duc10_fixture",
+            },
+            replaceable = false,
+        },
+        {
+            module_id = "textsystem:module.presentation.duc10_fixture",
+            source = "presentation/duc10_fixture_presenter.lua",
+            dependencies = {
+                "core:module.authoring.context",
             },
             replaceable = false,
         },

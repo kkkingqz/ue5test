@@ -1687,6 +1687,16 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
 
 bool FGV2TabContainerTabsPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
+    const TFunction<bool(const FString& PropertyPath)> NoFailureInjector;
+    return CommitWithFailureInjector(TargetWidget, OutError, NoFailureInjector, FString());
+}
+
+bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
+    UWidget* TargetWidget,
+    FString& OutError,
+    const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
+    const FString& PropertyPath)
+{
     UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget);
     if (!TabContainer && TargetWidget)
     {
@@ -1699,7 +1709,19 @@ bool FGV2TabContainerTabsPropertyConsumer::Commit(UWidget* TargetWidget, FString
     {
         if (Item.bHasChildPlan && Item.ChildScreenPlan.IsValid() && Item.ScreenWidget != nullptr)
         {
-            if (!Item.ScreenWidget->CommitScreenFields(*Item.ChildScreenPlan))
+            TFunction<bool(const FString& PropertyPath)> ChildFailureInjector;
+            if (FailureInjector)
+            {
+                const FString ChildPrefix = FString::Printf(
+                    TEXT("%s.%s"),
+                    *PropertyPath,
+                    *Item.Key.ToString());
+                ChildFailureInjector = [FailureInjector, ChildPrefix](const FString& ChildPropertyPath)
+                {
+                    return FailureInjector(FString::Printf(TEXT("%s.%s"), *ChildPrefix, *ChildPropertyPath));
+                };
+            }
+            if (!Item.ScreenWidget->CommitScreenFields(*Item.ChildScreenPlan, ChildFailureInjector))
             {
                 OutError = FString::Printf(TEXT("nested screen fields commit failed for tab '%s'"), *Item.Key.ToString());
                 return false;

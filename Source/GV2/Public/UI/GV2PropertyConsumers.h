@@ -37,6 +37,18 @@ public:
      */
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) = 0;
 
+    // PCC-06 / DUC-10: Commit fault injection is a test-only traversal hook.
+    // Most consumers have no nested commit and keep the ordinary Commit behavior;
+    // nested consumers override it to forward a fully scoped property path.
+    virtual bool CommitWithFailureInjector(
+        UWidget* TargetWidget,
+        FString& OutError,
+        const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
+        const FString& PropertyPath)
+    {
+        return Commit(TargetWidget, OutError);
+    }
+
     /**
      * Reset phase: restores default state when property is missing without default.
      */
@@ -325,6 +337,11 @@ public:
     virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
+    virtual bool CommitWithFailureInjector(
+        UWidget* TargetWidget,
+        FString& OutError,
+        const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
+        const FString& PropertyPath) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
     const TArray<FPreparedTabItem>& GetPreparedTabs() const { return PreparedTabs; }

@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.14
+version: 1.15
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -296,6 +296,8 @@ fields: [
 ```
 
 `ProjectMaterializedValue` резолвит `schema_id` каждого envelope через тот же `GetSchemaCache()`, что и верхнеуровневые поля, и рекурсивно прогоняет `value` через ту же пару `ValidateUiFieldValue` + `ProjectMaterializedValue`, что `BuildFields` использует для обычного поля — отдельного протокола для вложенных экранов не остаётся, а синтез схемы из capability дочернего экрана (риск в духе `UPP-R1`) устранён. `FGV2TabContainerTabsPropertyConsumer` собирает из раскрытых envelope настоящий `TArray<FGV2ScreenFieldValue>` и применяет его через `ChildWidget->PrepareScreenFields(...)`/`CommitScreenFields(...)` — тот же публичный двухфазный API, которым пользуется экран верхнего уровня; неизвестное поле вложенного экрана отклоняется той же биекцией host↔value (`CollectScreenFieldHosts`/`PrepareScreenFieldPlans`), что и для обычного экрана, а не отдельной проверкой.
+
+Во время test-only failure injection nested commit обязан передавать injector дочернему `CommitScreenFields` с префиксом родительского свойства и tab key: leaf путь имеет форму `tabs.<tab_key>.<child_property>`. Это не отдельный runtime protocol: production commit не передаёт injector. Отказ leaf прекращает commit родительской вкладки, а затем `CommitReconcile`; по [ADR-0040](../ADR/0040-universal-ui-property-pipeline.md) candidate screen не публикуется и прежняя `ActiveScreens` revision не меняется.
 
 ### LocationTopBar Field Contract (`textsystem:schema.ui_field.location_top_bar.v1`)
 

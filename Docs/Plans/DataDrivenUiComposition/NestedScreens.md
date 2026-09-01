@@ -1,7 +1,7 @@
 ---
 title: Nested Screens Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -40,10 +40,16 @@ depends_on:
     - Красный тест на откате подтверждён дважды по отдельности: (1) `ProjectMaterializedValue`'s `ScreenFields` case временно возвращён к `return false` — упал ровно тест (a), без каскада; (2) блок `fields` в consumer'е временно заменён на безусловный `return false` — упали ровно assertion'ы теста (b) (prepare/commit/оба виджета/сообщение negative-кейса), без каскада на остальные 100 тестов. Оба восстановления — снова 101/101.
     - Верификация: 101/101 UE Automation, 68/68 Headless ctest.
 
-- [ ] **DUC-10 — Цепочка из трёх уровней собрана из данных и покрыта отказом**
+- [x] **DUC-10 — Цепочка из трёх уровней собрана из данных и покрыта отказом**
   - Зависимости: DUC-09.
   - Done: существует фикстура `экран → вкладки → блок`, собранная **только** из ассетов, объявлений и схем, без C++-классов сверх generic-композита; значения приходят со стороны Lua и доходят до конечных виджетов; инъекция отказа подготовки **на третьем уровне** не оставляет следов на первых двух — проверяется состояние, а не количество; инъекция отказа фиксации на третьем уровне даёт поведение, описанное `ADR-0040`; sweep наблюдаемости проходит по всей цепочке.
   - Evidence: `Content/`, `GameData/`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-01):**
+    - Через Unreal Editor API созданы `WBP_Duc10NestedChainScreen`, `WBP_Duc10NestedBlockScreen` и `WBP_Duc10TabsHost`; в registry добавлены `textsystem:screen.duc10_nested_chain` и embedded `textsystem:screen.duc10_nested_block`. Корень использует только `UGV2ScreenWidgetBase`, generic `UGV2DeclaredCompositeWidgetBase` и existing `WBP_TabContainer`; leaf-блок — existing `WBP_DeclaredCompositeFlatFixture`. Нового specialised C++ класса нет.
+    - Lua-модуль `textsystem:module.presentation.duc10_fixture` публикуется через зарегистрированный presentation source и отдаёт обычный tab `screen_fields` envelope. `GV2.Runtime.UI.Duc10NestedChain` запускает команды `duc10_show`, `duc10_prepare_failure`, `duc10_update` в реальной Lua VM, проверяет `DayText` и `ValueBar` на конечном блоке, а не промежуточную модель.
+    - Prepare с отсутствующим `missing_block` проверяет равенство root Screen, TabContainer, nested Screen и leaf-values прежней revision. Commit fault на `tabs.info.day` доходит до leaf через `FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector`, отклоняет candidate с `core:diagnostic.ui_reconcile.commit_failed` и сохраняет те же объекты и значения, как требует ADR-0040.
+    - Фикстура выявила и закрыла дефект: `PrepareUiHostProperties` не приводит `NestedScreen` consumer к `FGV2KeyedCollectionPropertyConsumer`; item schema назначается только `CollectionHost`, поэтому nested screen не повреждается до Prepare.
+    - Проверки: red→green `GV2.Runtime.UI.Duc10NestedChain`, `GV2.UI.CapabilityObservabilityCompositeSweep`, UE compile/save всех трёх Blueprint и registry через MCP, 68/68 `ctest`, `gv2-headless --check-scripts`, documentation validator.
 
 - [ ] **DUC-11 — Композиционный цикл виджетов отклоняется**
   - Зависимости: DUC-10.
@@ -54,6 +60,6 @@ depends_on:
 ## Проверка milestone
 
 - [x] Вкладка с вложенными полями материализуется через обычный envelope.
-- [ ] Трёхуровневая цепочка собрана из данных и выдерживает отказ на третьем уровне.
+- [x] Трёхуровневая цепочка собрана из данных и выдерживает отказ на третьем уровне.
 - [ ] Композиционный цикл отклоняется до публикации.
 - [ ] Ограничение глубины не введено, и это записано как решение.

@@ -3,6 +3,7 @@
 -- and semantic actions, and registers as the presentation source.
 
 local authoring = require("core:module.authoring.context")
+local duc10_fixture = require("textsystem:module.presentation.duc10_fixture")
 
 local M = authoring.gameplay("textsystem")
 M.id = "textsystem:module.presentation.location_presenter"
@@ -146,6 +147,11 @@ function M.build_screen_request(location_id)
 end
 
 function M.build_and_publish_screen()
+    local fixture_document = duc10_fixture.build_requested_screen()
+    if fixture_document ~= nil then
+        return fixture_document
+    end
+
     local current_loc = M.world.current_location_id
     if not current_loc then
         return nil

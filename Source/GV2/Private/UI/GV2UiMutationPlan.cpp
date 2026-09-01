@@ -176,8 +176,15 @@ bool PrepareUiHostProperties(
                     return false;
                 }
 
-                if (FGV2KeyedCollectionPropertyConsumer* CollConsumer = static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get()))
+                // Item schemas belong only to the generic keyed-collection consumer.
+                // NestedScreen also has Array kind but is handled by the distinct tab
+                // consumer, whose child fields carry their own Screen Field envelope.
+                // Casting that consumer as FGV2KeyedCollectionPropertyConsumer corrupts
+                // its state before Prepare can report a typed result.
+                if (Cap.TargetType == EGV2UiCapabilityTargetType::CollectionHost)
                 {
+                    FGV2KeyedCollectionPropertyConsumer* const CollConsumer =
+                        static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get());
                     if (MatchingFieldSpec != nullptr && *MatchingFieldSpec != nullptr && (*MatchingFieldSpec)->Items != nullptr)
                     {
                         FString FieldIdStr = PropName;
@@ -415,7 +422,11 @@ bool CommitUiHostProperties(
             if (Mutation.Consumer.IsValid() && Mutation.TargetWidget.IsValid())
             {
                 FString CommitError;
-                if (!Mutation.Consumer->Commit(Mutation.TargetWidget.Get(), CommitError))
+                if (!Mutation.Consumer->CommitWithFailureInjector(
+                        Mutation.TargetWidget.Get(),
+                        CommitError,
+                        FailureInjector,
+                        Mutation.PropertyPath))
                 {
                     OutFailedPropertyPath = Mutation.PropertyPath;
                     OutError = CommitError;
