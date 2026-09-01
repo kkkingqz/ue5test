@@ -449,3 +449,17 @@ bool CheckUiSchemaCapabilityCompatibility(
 
     return bSuccess;
 }
+
+bool DoesCapabilityTreeSupportKind(
+    const FGV2UiCapabilityTree& ChildCapabilities,
+    EGV2PreparedUiValueKind DeclaredKind)
+{
+    for (const auto& Entry : ChildCapabilities.Properties)
+    {
+        if (Entry.Value.SupportedKind == DeclaredKind)
+        {
+            return true;
+        }
+    }
+    return false;
+}

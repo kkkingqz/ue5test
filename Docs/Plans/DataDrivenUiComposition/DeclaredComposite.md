@@ -1,7 +1,7 @@
 ---
 title: Declared Composite Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -43,11 +43,19 @@ depends_on:
       2. `GV2.Runtime.UIKit.CentralThemeAndComponents` ссылался на `core:text.screen.test.*` id литералами, ожидая реальный контент в `DA_UITheme_Default.TextCatalog`; отдельная (ранее вынесенная как follow-up) задача корректно переименовала эти записи каталога в `sample:`-namespace, устраняя настоящий namespace drift, но не обновила тест. Поскольку `Source/GV2` не может ссылаться на `sample:`-id литералом (`core_decoupling_gate_contract`), тест переведён на синтетические `core:`-fixture, регистрируемые прямо в тесте через `Theme->TextCatalog.Add(...)` (тот же паттерн, что уже применялся для `FallbackTextCatalog` чуть ниже) — тест проверяет механику text pipeline (аргументы, style token, экранирование), а не реальный контент. Та же задача добавила два новых production WBP (композитные fixture DUC-05/06) под `/Game/TextSystem/UI`, что сдвинуло аудит `WidgetBlueprintCount` с 28 на 30, и дала `WBP_Modal` реальные `TitleText`/`ContentText` (DUC-04) — оба изменения корректны, но не были отражены в hardcoded audit-инвариантах теста; счётчик обновлён, `UGV2ModalWidgetBase` добавлен в allowlist "text-bearing WBP must use a Text Pipeline native base" рядом с остальными composite-хостами (`UGV2LocationTopBarWidgetBase` и т.д.), которые по той же причине легитимно содержат вложенный текстовый примитив не напрямую, а через собственных text-pipeline детей.
     - Верификация: 100/100 UE Automation (headless, `-nullrhi`), 68/68 Headless ctest (включая `core_decoupling_gate_contract`), все content/doc-гейты зелёные.
 
-- [ ] **DUC-07 — Объявление проверяется против умений детей**
+- [x] **DUC-07 — Объявление проверяется против умений детей**
   - Зависимости: DUC-06, `PCC-02` и `PCC-03` плана доведения.
   - Это то место, где план может воспроизвести `UPP-R1`. Если дерево capability композита выводить из того, что умеют дети, проверка станет истинной по построению.
   - Done: объявление composite-свойства сверяется с capability дочернего виджета как **независимый** источник — объявленный вид обязан быть совместим с тем, что ребёнок действительно принимает, и несовместимость отклоняется до `Ready` с различимым кодом; тест фиксирует, что обе стороны сравнения происходят из разных источников; отрицательный случай: объявить `number` на дочернем текстовом блоке невозможно; capability композита проходят sweep наблюдаемости наравне с C++-объявленными.
   - Evidence: `Source/GV2/Private/UI/GV2UiCapability.cpp`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-01):**
+    - Новая функция `DoesCapabilityTreeSupportKind` (`GV2UiCapability.h/.cpp`) — принимает уже построенное дерево capability ребёнка (не выводит его сама) и проверяет, что среди его записей есть хотя бы одна с тем же `SupportedKind`, что declared `Kind` composite-свойства. Подключена в `PrepareUiHostProperties` (`GV2UiMutationPlan.cpp`) во всех трёх местах разрешения target (apply-с-значением, reset-без-значения, reset-property-больше-не-в-schema): если именованный target сам реализует `IGV2UiPropertyHost`, его собственный `DescribeUiCapabilities()` вызывается напрямую и сверяется — второй источник, независимый от того, что объявила composite. Несовпадение отклоняется до `Ready` (тот же preflight-гейт, что уже отклоняет `missing_target`/`unsupported_kind`) новым кодом `core:diagnostic.ui_consumer.target_kind_mismatch`.
+    - Проверка ограничена `Cap.TargetType == RendererControl`. Первая попытка без этого ограничения покраснила 4 существующих теста (`RhStartOpensLocationScreen`, `LocationScreenTransitionContract`, `ScreenPreflightPredictsDeepChildFailure`, `StandardPropertyConsumers`) — все через `CollectionHost`-таргеты (`ButtonRepeater` и аналоги): репитер тоже `IGV2UiPropertyHost` ради общей `PropertyHostState`/`HostIdentity` поверхности (DUC-04), но не обязан самообъявлять capability того же смысла, которым его адресует родительская коллекция. Сужение до `RendererControl` вернуло все 4 теста в зелёное состояние без ослабления самой проверки для её реального назначения — прямых значений (`Text`/`Number`/`Key`/…), где именованный ребёнок — это WBP-обёртка конкретного значения, а не generic-контейнер.
+    - Новый тест `GV2.UI.DeclaredComposite.ChildKindCompatibility`: транзиентный `UGV2DeclaredCompositeWidgetBase` с реальным `WidgetTree` и настоящим native-child `UGV2TextWidgetBase` ("DayText", чья `DescribeUiCapabilities` авторски объявляет только `Text` — независимо от того, что впишет тест). Отрицательный случай — `DeclaredCapabilities = [{day, DayText, Number}]` с содержательно совместимой schema (`day: number`, чтобы шаг 1 `Schema ⊆ Capabilities` прошёл и красноту дал именно шаг 2) — `PrepareUiHostProperties` отклоняет с `target_kind_mismatch`. Положительный случай меняет только `Kind` на `Text` на том же ребёнке — принимается без диагностик, доказывая, что обе стороны читаются независимо, а не выводятся друг из друга.
+    - Sweep `GV2.UI.CapabilityObservabilityCompositeSweep` уже (с DUC-04/06) прогоняет capability объявляемого composite наравне с C++-объявленными — DUC-07 не добавляет отдельный механизм для этого пункта Done, только подтверждает регрессионным прогоном, что sweep остался зелёным после нового кода.
+    - Красный тест на откате подтверждён дважды: (1) сначала `&& false` на guard-условии — компилятор отверг как `-Werror,-Wunreachable-code`, поэтому откат сделан на уровне функции (`DoesCapabilityTreeSupportKind` временно всегда `true`); (2) полный прогон дал ровно один красный тест (`ChildKindCompatibility`, обе новых assertion, без каскада на другие 100 тестов) — восстановление функции вернуло 101/101.
+    - Документация: `Docs/UI/ScreenTemplates.md` получил раздел «Объявление против capability ребёнка (DUC-07)»; `Docs/UI/WidgetRegistry.md` — абзац с кодом диагностики и границей `RendererControl`-only.
+    - Верификация: 101/101 UE Automation, 68/68 Headless ctest, все content/doc-гейты зелёные. (Один изолированный прогон дал случайный `NestedInstancesAndTabsContract` fail на `LogModelContextProtocol: Call to unknown method "server/discover"` — MCP-шум без единого `Expected`-assertion; повторный прогон сразу же чистый 101/101, не воспроизводится.)
 
 - [ ] **DUC-08 — Один композит локации переписан на объявление**
   - Зависимости: DUC-07.
@@ -59,5 +67,5 @@ depends_on:
 
 - [x] Блок из двух существующих элементов собран без C++.
 - [x] Схема блока плоская.
-- [ ] Объявление и умения детей — независимые источники сравнения.
+- [x] Объявление и умения детей — независимые источники сравнения.
 - [ ] Один реальный композит переписан, его класс удалён.

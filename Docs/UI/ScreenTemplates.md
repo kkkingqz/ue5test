@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.11
+version: 1.12
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -208,6 +208,14 @@ FGV2UiPropertyHostState:
 ```
 
 Здесь `day` не раскрывается в `day.text`, а `value` — в `value.percent` или `value.key`: это implementation detail `DayText` и `ValueBar`, не authoring surface composite. Schema по-прежнему принадлежит package content и загружается независимо от Blueprint; `CheckUiSchemaCapabilityCompatibility` сверяет её с capability tree, построенным из троек. DUC-06 фиксирует только эту плоскую форму; проверка соответствия declared `Kind` реальному capability ребёнка принадлежит DUC-07.
+
+### Объявление против capability ребёнка (DUC-07)
+
+`Schema ⊆ Capabilities` (шаг 1 `PrepareUiHostProperties`) сверяет объявленный composite с content schema — обе стороны описывают саму composite-поверхность и ничего не знают о том, что `ChildWidgetName` реально умеет. Автоматическое выведение capability композита из ребёнка сделало бы эту сверку истинной по построению (тот же класс ошибки, что `UPP-R1`): composite мог бы объявить любой `Kind`, и проверка прошла бы, потому что она смотрела бы только на саму себя.
+
+Вторая, независимая сверка происходит на шаге разрешения `TargetWidget` (`GV2UiMutationPlan.cpp`, все три места apply/reset): если именованный target сам реализует `IGV2UiPropertyHost`, его **собственный** `DescribeUiCapabilities()` — авторски объявленный на классе ребёнка, не выводимый из объявления composite — обязан содержать хотя бы одну capability того же `SupportedKind`, что и declared `Kind` composite. `DoesCapabilityTreeSupportKind` (`GV2UiCapability.h/.cpp`) сравнивает эти два независимо построенных дерева; несовпадение отклоняется до `Ready` с `core:diagnostic.ui_consumer.target_kind_mismatch`, отдельным от `missing_target`/`unsupported_kind`/`ui_capability.kind_mismatch` кодом. Проверка ограничена `TargetType == RendererControl`: `CollectionHost`/`NestedScreen`/`CustomControl` target — это репитер или слот, а не значение с тем же смыслом, что и адресующая его capability, и не обязан самообъявлять совпадающий `Kind`.
+
+Отрицательный случай зафиксирован `GV2.UI.DeclaredComposite.ChildKindCompatibility`: объявить `value: Number` на ребёнке, чья собственная capability — только `Text` (`WBP_Text`/`UGV2TextWidgetBase`), невозможно; тот же тест меняет только `Kind` на `Text` (совпадающий с тем, что ребёнок объявляет сам) на том же ребёнке и подтверждает принятие — доказательство, что обе стороны сравнения читаются из разных источников, а не одна выводится из другой.
 
 Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
 

@@ -2,8 +2,11 @@
 
 #include "Misc/AutomationTest.h"
 #include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/VerticalBox.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiSchemaCache.h"
@@ -290,6 +293,153 @@ bool FGV2DeclaredCompositeFlatSchemaTest::RunTest(const FString& Parameters)
         Diagnostics);
     TestTrue(TEXT("DUC-06: authored flat schema is compatible with declared properties"), bCompatible);
     TestEqual(TEXT("DUC-06: flat schema compatibility produces no diagnostics"), Diagnostics.Num(), 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DeclaredCompositeChildKindCompatibilityTest,
+    "GV2.UI.DeclaredComposite.ChildKindCompatibility",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DeclaredCompositeChildKindCompatibilityTest::RunTest(const FString& Parameters)
+{
+    using namespace GV2ContentCore;
+
+    UClass* const CompositeClass = FindObject<UClass>(nullptr, TEXT("/Script/GV2.GV2DeclaredCompositeWidgetBase"));
+    TestNotNull(TEXT("DUC-07: generic declared composite class exists"), CompositeClass);
+    if (CompositeClass == nullptr)
+    {
+        return false;
+    }
+
+    UUserWidget* const Composite = NewObject<UUserWidget>(GetTransientPackage(), CompositeClass);
+    TestNotNull(TEXT("DUC-07: composite instance can be created"), Composite);
+    IGV2UiPropertyHost* const PropertyHost = Composite != nullptr ? Cast<IGV2UiPropertyHost>(Composite) : nullptr;
+    TestNotNull(TEXT("DUC-07: composite instance exposes property host interface"), PropertyHost);
+    if (PropertyHost == nullptr)
+    {
+        return false;
+    }
+
+    // DayText's own DescribeUiCapabilities is authored on UGV2TextWidgetBase, entirely
+    // independently of whatever this composite instance below declares for it -- neither
+    // side is derived from the other. It only ever declares a Text-kind capability.
+    Composite->WidgetTree = NewObject<UWidgetTree>(Composite);
+    UVerticalBox* const Root = Composite->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+    Composite->WidgetTree->RootWidget = Root;
+    UGV2TextWidgetBase* const DayText = Composite->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+    TestNotNull(TEXT("DUC-07: Text-only child constructed"), DayText);
+    if (DayText == nullptr)
+    {
+        return false;
+    }
+    Root->AddChildToVerticalBox(DayText);
+
+    FArrayProperty* const DeclaredCapabilitiesProperty =
+        FindFProperty<FArrayProperty>(CompositeClass, TEXT("DeclaredCapabilities"));
+    TestNotNull(TEXT("DUC-07: declared capability list exists"), DeclaredCapabilitiesProperty);
+    if (DeclaredCapabilitiesProperty == nullptr)
+    {
+        return false;
+    }
+    FStructProperty* const EntryProperty = CastField<FStructProperty>(DeclaredCapabilitiesProperty->Inner);
+    TestNotNull(TEXT("DUC-07: declared capability list stores triples"), EntryProperty);
+    if (EntryProperty == nullptr)
+    {
+        return false;
+    }
+
+    // Negative case: this composite instance declares `day` as Number against DayText --
+    // impossible, since DayText's own, independent capability tree only ever declares Text.
+    FScriptArrayHelper Entries(DeclaredCapabilitiesProperty, DeclaredCapabilitiesProperty->ContainerPtrToValuePtr<void>(Composite));
+    Entries.EmptyValues();
+    const FDeclaredCapabilityExpectation BadDeclaration = {
+        TEXT("Number"), TEXT("day"), TEXT("DayText"), EGV2PreparedUiValueKind::Number, EGV2UiCapabilityTargetType::RendererControl, TEXT("") };
+    if (!SetDeclaredCapabilityEntry(*this, Entries, *EntryProperty, BadDeclaration))
+    {
+        return false;
+    }
+
+    auto MakeNumberFieldSpec = []() -> std::shared_ptr<FCompiledUiFieldSpec>
+    {
+        auto Spec = std::make_shared<FCompiledUiFieldSpec>();
+        Spec->Kind = EUiFieldKind::Scalar;
+        Spec->Scalar = FScalarFieldSpec{};
+        Spec->Scalar->Kind = EScalarFieldKind::Number;
+        return Spec;
+    };
+
+    FCompiledUiFieldSpec NumberSchema;
+    NumberSchema.Kind = EUiFieldKind::Object;
+    NumberSchema.Fields.push_back({ "day", true, MakeNumberFieldSpec() });
+
+    FGV2UiCapabilityBuilder BadBuilder;
+    PropertyHost->DescribeUiCapabilities(BadBuilder);
+
+    TMap<FString, FGV2PreparedUiValue> NumberFields;
+    NumberFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeNumber(5.0));
+    const TSharedRef<const FGV2PreparedUiObject> NumberCandidate = FGV2PreparedUiObject::Create(MoveTemp(NumberFields));
+
+    FGV2UiHostMutationPlan BadPlan;
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> BadDiagnostics;
+    const bool bBadPrepared = PrepareUiHostProperties(
+        Composite,
+        BadBuilder.Build(),
+        *NumberCandidate,
+        NumberSchema,
+        TEXT("core:schema.ui_field.declared_composite_kind_probe.v1"),
+        TEXT(""),
+        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        BadPlan,
+        BadDiagnostics);
+    TestFalse(TEXT("DUC-07: declaring Number against a Text-only child is rejected"), bBadPrepared);
+    TestTrue(
+        TEXT("DUC-07: rejection reports the typed target_kind_mismatch diagnostic"),
+        BadDiagnostics.ContainsByPredicate([](const FGV2UiSchemaCompatibilityDiagnostic& Diagnostic)
+        {
+            return Diagnostic.Code == TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+        }));
+
+    // Positive case, same two independent sources: correcting only the declared Kind to
+    // Text (matching what DayText independently declares for itself) is now accepted --
+    // proving the rejection above tracked the child's own capability, not something the
+    // composite's declaration alone could ever fail against.
+    Entries.EmptyValues();
+    const FDeclaredCapabilityExpectation GoodDeclaration = {
+        TEXT("Text"), TEXT("day"), TEXT("DayText"), EGV2PreparedUiValueKind::Text, EGV2UiCapabilityTargetType::RendererControl, TEXT("") };
+    if (!SetDeclaredCapabilityEntry(*this, Entries, *EntryProperty, GoodDeclaration))
+    {
+        return false;
+    }
+
+    FCompiledUiFieldSpec TextSchema;
+    TextSchema.Kind = EUiFieldKind::Object;
+    TextSchema.Fields.push_back({ "day", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+
+    FGV2UiCapabilityBuilder GoodBuilder;
+    PropertyHost->DescribeUiCapabilities(GoodBuilder);
+
+    FGV2TextViewModel DayTextValue;
+    DayTextValue.Text = FText::FromString(TEXT("Monday"));
+    TMap<FString, FGV2PreparedUiValue> TextFields;
+    TextFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(DayTextValue));
+    const TSharedRef<const FGV2PreparedUiObject> TextCandidate = FGV2PreparedUiObject::Create(MoveTemp(TextFields));
+
+    FGV2UiHostMutationPlan GoodPlan;
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> GoodDiagnostics;
+    const bool bGoodPrepared = PrepareUiHostProperties(
+        Composite,
+        GoodBuilder.Build(),
+        *TextCandidate,
+        TextSchema,
+        TEXT("core:schema.ui_field.declared_composite_kind_probe.v1"),
+        TEXT(""),
+        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        GoodPlan,
+        GoodDiagnostics);
+    TestTrue(TEXT("DUC-07: declaring Text against the same Text-only child is accepted"), bGoodPrepared);
+    TestEqual(TEXT("DUC-07: accepted declaration produces no diagnostics"), GoodDiagnostics.Num(), 0);
+
     return true;
 }
 

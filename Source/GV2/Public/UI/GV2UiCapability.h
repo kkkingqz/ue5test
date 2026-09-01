@@ -118,3 +118,16 @@ GV2_API bool CheckUiSchemaCapabilityCompatibility(
     const FString& SchemaId,
     const FString& PropertyPathPrefix,
     TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics);
+
+/**
+ * DUC-07: true if ChildCapabilities (independently declared by a named target widget's own
+ * DescribeUiCapabilities, not derived from the composite that addresses it) contains at
+ * least one property of DeclaredKind. A composite's Designer-authored capability declaration
+ * is checked against this -- the child's own declaration is the second, independent source;
+ * neither side is derived from the other, so a mismatch (e.g. `Number` declared against a
+ * child that only ever declares `Text`) is a real, catchable drift rather than true by
+ * construction.
+ */
+GV2_API bool DoesCapabilityTreeSupportKind(
+    const FGV2UiCapabilityTree& ChildCapabilities,
+    EGV2PreparedUiValueKind DeclaredKind);

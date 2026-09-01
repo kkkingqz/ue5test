@@ -132,6 +132,37 @@ bool PrepareUiHostProperties(
                     return false;
                 }
 
+                // DUC-07: a named target that is itself a property host declares its own
+                // capability tree independently of this composite's declaration -- checking
+                // the declared Kind against that second source catches drift (e.g. `Number`
+                // declared against a child that only ever declares `Text`) that the schema
+                // check above cannot, since the schema only ever sees this composite's side.
+                // Scoped to RendererControl: a CollectionHost/NestedScreen/CustomControl
+                // target (a repeater, a nested-screen slot) is a generic property host in
+                // its own right and is not expected to self-declare a capability of the
+                // same Kind it is addressed by from the outside.
+                if (TargetWidget != nullptr && Cap.TargetName != NAME_None
+                    && Cap.TargetType == EGV2UiCapabilityTargetType::RendererControl)
+                {
+                    if (const IGV2UiPropertyHost* ChildHost = Cast<IGV2UiPropertyHost>(TargetWidget))
+                    {
+                        FGV2UiCapabilityBuilder ChildBuilder;
+                        ChildHost->DescribeUiCapabilities(ChildBuilder);
+                        if (!DoesCapabilityTreeSupportKind(ChildBuilder.Build(), Cap.SupportedKind))
+                        {
+                            FGV2UiSchemaCompatibilityDiagnostic Diag;
+                            Diag.Code = TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+                            Diag.PropertyPath = ChildPath;
+                            Diag.SchemaId = SchemaId;
+                            Diag.Message = FString::Printf(
+                                TEXT("Target widget '%s' does not declare a capability of the kind declared for property '%s'"),
+                                *Cap.TargetName.ToString(), *PropName);
+                            OutDiagnostics.Add(MoveTemp(Diag));
+                            return false;
+                        }
+                    }
+                }
+
                 TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     Cap.SupportedKind, Cap.TargetType, Cap.TargetKind);
                 if (!Consumer)
@@ -208,6 +239,29 @@ bool PrepareUiHostProperties(
                     return false;
                 }
 
+                // DUC-07: same independent-source check as the apply branch above.
+                if (TargetWidget != nullptr && Cap.TargetName != NAME_None
+                    && Cap.TargetType == EGV2UiCapabilityTargetType::RendererControl)
+                {
+                    if (const IGV2UiPropertyHost* ChildHost = Cast<IGV2UiPropertyHost>(TargetWidget))
+                    {
+                        FGV2UiCapabilityBuilder ChildBuilder;
+                        ChildHost->DescribeUiCapabilities(ChildBuilder);
+                        if (!DoesCapabilityTreeSupportKind(ChildBuilder.Build(), Cap.SupportedKind))
+                        {
+                            FGV2UiSchemaCompatibilityDiagnostic Diag;
+                            Diag.Code = TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+                            Diag.PropertyPath = ChildPath;
+                            Diag.SchemaId = SchemaId;
+                            Diag.Message = FString::Printf(
+                                TEXT("Target widget '%s' does not declare a capability of the kind declared for reset of property '%s'"),
+                                *Cap.TargetName.ToString(), *PropName);
+                            OutDiagnostics.Add(MoveTemp(Diag));
+                            return false;
+                        }
+                    }
+                }
+
                 TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     Cap.SupportedKind, Cap.TargetType, Cap.TargetKind);
                 if (!Consumer)
@@ -257,6 +311,29 @@ bool PrepareUiHostProperties(
                         *Cap.TargetName.ToString(), *PropName);
                     OutDiagnostics.Add(MoveTemp(Diag));
                     return false;
+                }
+
+                // DUC-07: same independent-source check as the branches above.
+                if (TargetWidget != nullptr && Cap.TargetName != NAME_None
+                    && Cap.TargetType == EGV2UiCapabilityTargetType::RendererControl)
+                {
+                    if (const IGV2UiPropertyHost* ChildHost = Cast<IGV2UiPropertyHost>(TargetWidget))
+                    {
+                        FGV2UiCapabilityBuilder ChildBuilder;
+                        ChildHost->DescribeUiCapabilities(ChildBuilder);
+                        if (!DoesCapabilityTreeSupportKind(ChildBuilder.Build(), Cap.SupportedKind))
+                        {
+                            FGV2UiSchemaCompatibilityDiagnostic Diag;
+                            Diag.Code = TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+                            Diag.PropertyPath = ChildPath;
+                            Diag.SchemaId = SchemaId;
+                            Diag.Message = FString::Printf(
+                                TEXT("Target widget '%s' does not declare a capability of the kind declared for reset of property '%s'"),
+                                *Cap.TargetName.ToString(), *PropName);
+                            OutDiagnostics.Add(MoveTemp(Diag));
+                            return false;
+                        }
+                    }
                 }
 
                 TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
