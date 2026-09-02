@@ -101,9 +101,14 @@ public:
 };
 
 /**
- * One declared capability: presentation property name, child widget name, and its kind.
- * The list is intentionally flat; it is a contract authored beside the UMG tree, not a
- * recursive description inferred from a child's own implementation.
+ * One declared capability: presentation property name, child widget name, its kind, and
+ * (GBH-06) the kind-dependent constraints and child-capability selector a flat triple
+ * cannot express. The list is intentionally flat; it is a contract authored beside the
+ * UMG tree, not a recursive description inferred from a child's own implementation --
+ * these fields are authored independently of ChildWidgetName's own DescribeUiCapabilities
+ * (never read from it), the same independent-sources discipline DUC-07 established for
+ * Kind alone. The schema form visible to a content author is unchanged; only this
+ * Designer-side declaration is enriched.
  */
 USTRUCT(BlueprintType)
 struct GV2_API FGV2DeclaredUiCapability
@@ -118,6 +123,37 @@ struct GV2_API FGV2DeclaredUiCapability
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities")
     EGV2DeclaredUiCapabilityKind Kind = EGV2DeclaredUiCapabilityKind::Text;
+
+    // GBH-06: which of ChildWidgetName's own declared capabilities (by its PropertyName)
+    // this entry delegates to. Required whenever ChildWidgetName declares more than one
+    // capability of Kind -- left NAME_None otherwise falls back to resolving by Kind
+    // alone, which is rejected as ambiguous if that ever stops being unique.
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities")
+    FName ChildCapabilityName;
+
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::Number", EditConditionHides))
+    double NumberMin = 0.0;
+
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::Number", EditConditionHides))
+    double NumberMax = 1.0;
+
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::Integer", EditConditionHides))
+    int64 IntMin = 0;
+
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::Integer", EditConditionHides))
+    int64 IntMax = 100;
+
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::ResourceRef", EditConditionHides))
+    FString TargetKind = TEXT("resource");
+
+    // GBH-06: reserved for GBH-02B -- CollectionHost stays Hidden (GBH-02A) and these are
+    // not yet wired into DescribeUiCapabilities, so the item-contract question GBH-02B
+    // still has to answer does not require another struct migration when it lands.
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::CollectionHost", EditConditionHides))
+    TSubclassOf<UUserWidget> EntryWidgetClass;
+
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::CollectionHost", EditConditionHides))
+    FString KeyPropertyName = TEXT("key");
 };
 
 /**

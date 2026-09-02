@@ -7,7 +7,9 @@
 #include "UI/GV2DeclaredCompositeWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2PreparedUiValue.h"
+#include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2UiPropertyHost.h"
@@ -362,12 +364,18 @@ bool FGV2DeclaredCompositeChildKindCompatibilityTest::RunTest(const FString& Par
         return false;
     }
 
+    // GBH-06: matches DeclaredComposite's own default Number range ([0..1], chosen to
+    // retroactively match the canonical ValueBar/ProgressBar fixture without a content
+    // migration) so this schema exercises only the kind mismatch under test, not an
+    // unrelated range mismatch against that default.
     auto MakeNumberFieldSpec = []() -> std::shared_ptr<FCompiledUiFieldSpec>
     {
         auto Spec = std::make_shared<FCompiledUiFieldSpec>();
         Spec->Kind = EUiFieldKind::Scalar;
         Spec->Scalar = FScalarFieldSpec{};
         Spec->Scalar->Kind = EScalarFieldKind::Number;
+        Spec->Scalar->MinimumNumber = 0.0;
+        Spec->Scalar->MaximumNumber = 1.0;
         return Spec;
     };
 
@@ -441,6 +449,168 @@ bool FGV2DeclaredCompositeChildKindCompatibilityTest::RunTest(const FString& Par
         GoodDiagnostics);
     TestTrue(TEXT("DUC-07: declaring Text against the same Text-only child is accepted"), bGoodPrepared);
     TestEqual(TEXT("DUC-07: accepted declaration produces no diagnostics"), GoodDiagnostics.Num(), 0);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DeclaredCompositeConstraintsAndSelectorTest,
+    "GV2.UI.DeclaredComposite.ConstraintsAndSelector",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DeclaredCompositeConstraintsAndSelectorTest::RunTest(const FString& Parameters)
+{
+    using namespace GV2ContentCore;
+
+    UClass* const CompositeClass = FindObject<UClass>(nullptr, TEXT("/Script/GV2.GV2DeclaredCompositeWidgetBase"));
+    TestNotNull(TEXT("GBH-06: generic declared composite class exists"), CompositeClass);
+    if (CompositeClass == nullptr)
+    {
+        return false;
+    }
+
+    // 1. REM-01's own confirmed example, closed: a declaration targeting a real
+    // UGV2ProgressBarWidgetBase (which natively declares "percent" in [0..1]) now
+    // carries that same range on the DECLARATION side (GBH-06's default matches it
+    // without requiring a content migration). The existing, unmodified
+    // CheckUiSchemaCapabilityCompatibility (schema range vs capability range) then
+    // rejects a schema wider than the range and accepts one that fits inside it --
+    // exactly the milestone check this task exists to prove.
+    {
+        UGV2DeclaredCompositeWidgetBase* const Composite = NewObject<UGV2DeclaredCompositeWidgetBase>(GetTransientPackage(), CompositeClass);
+        TestNotNull(TEXT("GBH-06: composite instance created"), Composite);
+        if (Composite == nullptr)
+        {
+            return false;
+        }
+        Composite->WidgetTree = NewObject<UWidgetTree>(Composite);
+        UGV2ProgressBarWidgetBase* const Bar = Composite->WidgetTree->ConstructWidget<UGV2ProgressBarWidgetBase>(
+            UGV2ProgressBarWidgetBase::StaticClass(), TEXT("Bar"));
+        Composite->WidgetTree->RootWidget = Bar;
+
+        FGV2DeclaredUiCapability Entry;
+        Entry.PropertyName = FName(TEXT("value"));
+        Entry.ChildWidgetName = FName(TEXT("Bar"));
+        Entry.Kind = EGV2DeclaredUiCapabilityKind::Number;
+        // NumberMin/NumberMax left at their [0..1] defaults -- the point being proven
+        // is that the default itself now matches ProgressBar's real range, not that
+        // this test had to set it explicitly.
+        Composite->DeclaredCapabilities.Add(Entry);
+
+        FGV2UiCapabilityBuilder Builder;
+        Composite->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree Capabilities = Builder.Build();
+        const FGV2UiPropertyCapability* const ValueCap = Capabilities.FindProperty(TEXT("value"));
+        TestNotNull(TEXT("GBH-06: 'value' capability produced"), ValueCap);
+        if (ValueCap != nullptr)
+        {
+            TestTrue(TEXT("GBH-06: declaration's NumberMin is set"), ValueCap->NumberMin.IsSet());
+            TestEqual(TEXT("GBH-06: declaration's NumberMin matches ProgressBar's own [0..1]"), ValueCap->NumberMin.GetValue(), 0.0);
+            TestTrue(TEXT("GBH-06: declaration's NumberMax is set"), ValueCap->NumberMax.IsSet());
+            TestEqual(TEXT("GBH-06: declaration's NumberMax matches ProgressBar's own [0..1]"), ValueCap->NumberMax.GetValue(), 1.0);
+        }
+
+        auto MakeNumberField = [](TOptional<double> Min, TOptional<double> Max) -> FCompiledUiFieldSpec
+        {
+            FCompiledUiFieldSpec Spec;
+            Spec.Kind = EUiFieldKind::Scalar;
+            Spec.Scalar = FScalarFieldSpec{};
+            Spec.Scalar->Kind = EScalarFieldKind::Number;
+            if (Min.IsSet()) Spec.Scalar->MinimumNumber = Min.GetValue();
+            if (Max.IsSet()) Spec.Scalar->MaximumNumber = Max.GetValue();
+            return Spec;
+        };
+
+        // 1a. REM-01's exact confirmed shape: schema [0..100] against capability
+        // [0..1] -- previously accepted (capability was unbounded), now rejected.
+        FCompiledUiFieldSpec WideSchema;
+        WideSchema.Kind = EUiFieldKind::Object;
+        WideSchema.Fields.push_back({ "value", true, std::make_shared<FCompiledUiFieldSpec>(MakeNumberField(0.0, 100.0)) });
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> WideDiagnostics;
+        const bool bWideCompatible = CheckUiSchemaCapabilityCompatibility(
+            WideSchema, Capabilities, TEXT("test:schema.gbh06_wide_probe.v1"), TEXT(""), WideDiagnostics);
+        TestFalse(TEXT("GBH-06: schema [0..100] against declared [0..1] is rejected"), bWideCompatible);
+        TestTrue(
+            TEXT("GBH-06: rejection is the typed range_unsupported diagnostic"),
+            WideDiagnostics.ContainsByPredicate([](const FGV2UiSchemaCompatibilityDiagnostic& Diagnostic)
+            {
+                return Diagnostic.Code == TEXT("core:diagnostic.ui_capability.range_unsupported");
+            }));
+
+        // 1b. A schema narrower than the declared range fits and is accepted.
+        FCompiledUiFieldSpec NarrowSchema;
+        NarrowSchema.Kind = EUiFieldKind::Object;
+        NarrowSchema.Fields.push_back({ "value", true, std::make_shared<FCompiledUiFieldSpec>(MakeNumberField(0.0, 0.5)) });
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> NarrowDiagnostics;
+        const bool bNarrowCompatible = CheckUiSchemaCapabilityCompatibility(
+            NarrowSchema, Capabilities, TEXT("test:schema.gbh06_narrow_probe.v1"), TEXT(""), NarrowDiagnostics);
+        TestTrue(TEXT("GBH-06: schema [0..0.5] against declared [0..1] is accepted"), bNarrowCompatible);
+        TestEqual(TEXT("GBH-06: accepted narrow schema produces no diagnostics"), NarrowDiagnostics.Num(), 0);
+    }
+
+    // 2. Ambiguous child capability: UGV2TabContainerWidgetBase natively declares two
+    // Key-kind capabilities of its own ("default_tab_key" and "key", both real,
+    // both independently consumed -- see GV2PropertyConsumers.cpp). A declaration
+    // targeting it with Kind=Key, a property name matching neither of those two, and
+    // no explicit ChildCapabilityName cannot be resolved unambiguously and must be
+    // rejected rather than silently picking whichever one iteration finds first.
+    {
+        UGV2DeclaredCompositeWidgetBase* const Composite = NewObject<UGV2DeclaredCompositeWidgetBase>(GetTransientPackage(), CompositeClass);
+        Composite->WidgetTree = NewObject<UWidgetTree>(Composite);
+        UGV2TabContainerWidgetBase* const Tabs = Composite->WidgetTree->ConstructWidget<UGV2TabContainerWidgetBase>(
+            UGV2TabContainerWidgetBase::StaticClass(), TEXT("Tabs"));
+        Composite->WidgetTree->RootWidget = Tabs;
+
+        FGV2DeclaredUiCapability AmbiguousEntry;
+        AmbiguousEntry.PropertyName = FName(TEXT("some_key"));
+        AmbiguousEntry.ChildWidgetName = FName(TEXT("Tabs"));
+        AmbiguousEntry.Kind = EGV2DeclaredUiCapabilityKind::Key;
+        Composite->DeclaredCapabilities.Add(AmbiguousEntry);
+
+        FGV2UiCapabilityBuilder Builder;
+        Composite->DescribeUiCapabilities(Builder);
+
+        FCompiledUiFieldSpec KeySchema;
+        KeySchema.Kind = EUiFieldKind::Object;
+        KeySchema.Fields.push_back({ "some_key", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key) });
+
+        TMap<FString, FGV2PreparedUiValue> KeyFields;
+        KeyFields.Add(TEXT("some_key"), FGV2PreparedUiValue::MakeKey(TEXT("anything")));
+        const TSharedRef<const FGV2PreparedUiObject> KeyCandidate = FGV2PreparedUiObject::Create(KeyFields);
+
+        FGV2UiHostMutationPlan AmbiguousPlan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> AmbiguousDiagnostics;
+        const bool bAmbiguousPrepared = PrepareUiHostProperties(
+            Composite, Builder.Build(), *KeyCandidate, KeySchema,
+            TEXT("test:schema.gbh06_ambiguous_probe.v1"), TEXT(""),
+            Composite->GetPropertyHostState().GetLastCommittedProperties(),
+            AmbiguousPlan, AmbiguousDiagnostics);
+        TestFalse(TEXT("GBH-06: ambiguous child capability (no selector, no name match) is rejected"), bAmbiguousPrepared);
+        TestTrue(
+            TEXT("GBH-06: rejection is the typed ambiguous_child_capability diagnostic"),
+            AmbiguousDiagnostics.ContainsByPredicate([](const FGV2UiSchemaCompatibilityDiagnostic& Diagnostic)
+            {
+                return Diagnostic.Code == TEXT("core:diagnostic.ui_consumer.ambiguous_child_capability");
+            }));
+
+        // 3. The same ambiguity, resolved by an explicit ChildCapabilityName: setting
+        // it to "key" picks that one capability unambiguously and Prepare succeeds.
+        Composite->DeclaredCapabilities[0].ChildCapabilityName = FName(TEXT("key"));
+        FGV2UiCapabilityBuilder ResolvedBuilder;
+        Composite->DescribeUiCapabilities(ResolvedBuilder);
+
+        FGV2UiHostMutationPlan ResolvedPlan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> ResolvedDiagnostics;
+        const bool bResolvedPrepared = PrepareUiHostProperties(
+            Composite, ResolvedBuilder.Build(), *KeyCandidate, KeySchema,
+            TEXT("test:schema.gbh06_ambiguous_probe.v1"), TEXT(""),
+            Composite->GetPropertyHostState().GetLastCommittedProperties(),
+            ResolvedPlan, ResolvedDiagnostics);
+        TestTrue(
+            *FString::Printf(TEXT("GBH-06: explicit ChildCapabilityName resolves the same ambiguity [Diagnostics: %s]"),
+                ResolvedDiagnostics.Num() > 0 ? *ResolvedDiagnostics[0].ToString() : TEXT("")),
+            bResolvedPrepared);
+    }
 
     return true;
 }

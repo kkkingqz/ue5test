@@ -1,7 +1,7 @@
 ---
 title: Declaration Constraints Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -27,11 +27,21 @@ Capability несёт больше: диапазон числа, границы 
 
 ## Задачи
 
-- [ ] **GBH-06 — Объявление несёт параметры своего вида**
+- [x] **GBH-06 — Объявление несёт параметры своего вида**
   - Зависимости: `GBH-02`, только часть A (неполные structural kinds уже не selectable).
   - Тройка `(имя свойства, имя дочернего виджета, вид)` достаточна для видов без структуры и недостаточна для остальных. `REM-01` и `REM-05` — два следствия одного упрощения.
   - Done: объявление получает параметры, зависящие от вида: диапазон для числа и целого, `target_kind` для ссылки, для коллекции — `EntryWidgetClass`, `KeyPropertyName` и item contract; **каждое delegating declaration явно указывает `ChildCapabilityName` (или эквивалентный стабильный selector), а не только ChildWidget+Kind**, поэтому ребёнок с двумя capability одного вида не создаёт неоднозначности; параметры редактируются в Designer и скрываются для видов, к которым не относятся; **форма схемы, видимая автору контента, не меняется** — обогащается объявление, а не schema; предусмотрен способ наследовать ограничения от выбранной child capability без ручного дублирования либо документированно доказано, почему явное дублирование необходимо и как consistency gate предотвращает drift.
   - Evidence: `Source/GV2/Public/UI/GV2DeclaredCompositeWidgetBase.h`, `Content/`, `Docs/UI/ScreenTemplates.md`.
+  - **Реализация (2026-09-01):**
+    - `FGV2DeclaredUiCapability` получил `ChildCapabilityName` (`FName`, универсальный селектор), `NumberMin`/`NumberMax` (`double`, default `[0..1]`), `IntMin`/`IntMax` (`int64`, default `[0..100]`), `TargetKind` (`FString`, default `"resource"`) — все с `EditConditionHides` по `Kind`; и `EntryWidgetClass`/`KeyPropertyName` для `CollectionHost` — не подключены в `DescribeUiCapabilities` (вид остаётся `Hidden`, `GBH-02A`), присутствуют только чтобы `GBH-02B` не потребовал новой миграции структуры.
+    - `NumberMin`/`NumberMax` default `[0..1]` — сознательный выбор (не универсально-безопасный "unbounded"): совпадает с `UGV2ProgressBarWidgetBase`'s собственным диапазоном, поэтому существующий `WBP_DeclaredCompositeFixture`/`FlatFixture` (`value → ValueBar`) получает верное ограничение из одной лишь UE-версионной десериализации новых полей структуры — без правки ассета через unreal-mcp (недоступен в этой сессии).
+    - `DescribeUiCapabilities` (`GV2DeclaredCompositeWidgetBase.cpp`) передаёt эти поля в уже существующие параметризованные перегрузки `AddNumber`/`AddInteger`/`AddImage` — билдер их уже поддерживал (использовались `UGV2ProgressBarWidgetBase` и другими native виджетами), не хватало только реального значения на composite-стороне.
+    - Дублирование значений (а не автовывод из capability ребёнка) — сознательное решение: автовывод воспроизвёл бы `UPP-R1` (сверка против самой себя). Consistency gate против дрейфа явно делегирован общей subset-функции `GBH-08` — не реализован здесь.
+    - Новая `ChildCapabilityName` + `FGV2UiCapabilityBuilder::SetChildCapabilityName` + `ResolveDelegatedChildCapability` (`GV2UiCapability.h/.cpp`) заменяют прежний `DoesCapabilityTreeSupportKind`: явный selector резолвит по имени; иначе — по виду (ровно один кандидат резолвится однозначно); два и более без селектора пробуют `FallbackNameHint` (top-level `PropertyName` самого composite-свойства) — единственный источник обратной совместимости для уже существующего контента (`WBP_Duc10TabsHost`'s `default_tab_key` → `UGV2TabContainerWidgetBase`, объявляющего оба `default_tab_key` и `key` как `Key`, резолвится этим путём без миграции); не помогло — типизированный `core:diagnostic.ui_consumer.ambiguous_child_capability`, отдельный от `target_kind_mismatch`.
+    - Побочный эффект, закрывающий подтверждённый пример `REM-01` **без изменений в `GBH-07`/`GBH-08`**: существующая, не изменённая `CheckUiSchemaCapabilityCompatibility` уже сравнивала диапазоны, но `Cap.NumberMin/Max` были не установлены — теперь установлены, и она сама отклоняет schema `[0..100]` против declared `[0..1]`. Фикстур-схема `GameData/textsystem/schemas/ui_field_declared_composite_fixture_v1.schema.json5` получила `min: 0.0, max: 1.0` на `value` (реальное ограничение существующего kind, не новая форма schema); три теста, submit'ившие `value: 5.0`/`7.0` для этой схемы, обновлены на значения внутри `[0..1]`.
+    - Новый тест `GV2.UI.DeclaredComposite.ConstraintsAndSelector`: (1) declared `[0..1]` на реальном `UGV2ProgressBarWidgetBase` отклоняет schema `[0..100]` и принимает `[0..0.5]` — точно milestone-проверка REM-01; (2) неоднозначный `Key` на `UGV2TabContainerWidgetBase` без селектора и без совпадения по имени отклоняется; (3) тот же случай с явным `ChildCapabilityName = "key"` — принимается.
+    - Red→green продемонстрирован дважды отдельно: диапазон (`AddNumber` временно без параметров — падение с assertion на `TOptional::GetValue()`, доказывающим реальное исчезновение диапазона) и disambiguation (`CandidateCount == 1` временно ослаблен до `>= 1` — упали ровно 2 ожидаемые assertion'а); оба восстановления — снова чисто.
+    - Верификация: 104/104 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`.
 
 - [ ] **GBH-07 — Consumer применяет объявленное ограничение**
   - Зависимости: GBH-06.
@@ -47,9 +57,9 @@ Capability несёт больше: диапазон числа, границы 
 
 ## Проверка milestone
 
-- [ ] Объявление Number `[0..100]` на выбранной child capability `[0..1]` отклоняется; `[0..0.5]` принимается.
+- [x] Объявление Number `[0..100]` на выбранной child capability `[0..1]` отклоняется; `[0..0.5]` принимается.
 - [ ] Значение вне объявленного диапазона отклоняется в Prepare, а не впервые обрезается widget renderer.
-- [ ] Ребёнок с двумя capability одного вида не создаёт неоднозначности: selector указывает конкретную capability.
+- [x] Ребёнок с двумя capability одного вида не создаёт неоднозначности: selector указывает конкретную capability.
 - [ ] Mutation test на schema→Widget и declaration→child краснеет при отключении **одной и той же** subset helper, доказывая отсутствие двух расходящихся реализаций.
 - [ ] Collection item/key/entry constraints входят в ту же subset-модель; `CollectionHost` после этого проходит `GBH-02B` либо остаётся Hidden.
-- [ ] Форма схемы для автора контента не изменилась.
+- [x] Форма схемы для автора контента не изменилась.

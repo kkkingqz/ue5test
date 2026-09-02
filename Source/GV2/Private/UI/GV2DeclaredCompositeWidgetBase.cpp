@@ -130,10 +130,10 @@ void UGV2DeclaredCompositeWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBui
             OutBuilder.AddBoolean(PropertyName, ChildWidgetName);
             break;
         case EGV2DeclaredUiCapabilityKind::Integer:
-            OutBuilder.AddInteger(PropertyName, ChildWidgetName);
+            OutBuilder.AddInteger(PropertyName, ChildWidgetName, DeclaredCapability.IntMin, DeclaredCapability.IntMax);
             break;
         case EGV2DeclaredUiCapabilityKind::Number:
-            OutBuilder.AddNumber(PropertyName, ChildWidgetName);
+            OutBuilder.AddNumber(PropertyName, ChildWidgetName, DeclaredCapability.NumberMin, DeclaredCapability.NumberMax);
             break;
         case EGV2DeclaredUiCapabilityKind::String:
             OutBuilder.AddString(PropertyName, ChildWidgetName);
@@ -145,7 +145,7 @@ void UGV2DeclaredCompositeWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBui
             OutBuilder.AddText(PropertyName, ChildWidgetName);
             break;
         case EGV2DeclaredUiCapabilityKind::ResourceRef:
-            OutBuilder.AddImage(PropertyName, ChildWidgetName, TEXT("resource"));
+            OutBuilder.AddImage(PropertyName, ChildWidgetName, DeclaredCapability.TargetKind);
             break;
         case EGV2DeclaredUiCapabilityKind::Binding:
             OutBuilder.AddBinding(PropertyName, ChildWidgetName);
@@ -167,6 +167,11 @@ void UGV2DeclaredCompositeWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBui
         case EGV2DeclaredUiCapabilityKind::NestedScreen:
             OutBuilder.AddNestedScreenCollection(PropertyName, ChildWidgetName);
             break;
+        }
+
+        if (!DeclaredCapability.ChildCapabilityName.IsNone())
+        {
+            OutBuilder.SetChildCapabilityName(PropertyName, DeclaredCapability.ChildCapabilityName.ToString());
         }
     }
 }

@@ -2862,7 +2862,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             };
             const FContentObject InnerValueObj{
                 { "day", GV2ContentCore::FValue(TextObj) },
-                { "value", GV2ContentCore::FValue(5.0) },
+                { "value", GV2ContentCore::FValue(0.5) },
             };
             const FContentObject EnvelopeObj{
                 { "field_id", GV2ContentCore::FValue(std::string("day_block")) },
@@ -3016,7 +3016,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             DayVM.Text = FText::FromString(TEXT("Tuesday"));
             TMap<FString, FGV2PreparedUiValue> InnerFields;
             InnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(DayVM));
-            InnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(7.0));
+            InnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.7));
 
             TArray<TPair<FString, FGV2PreparedUiValue>> EnvelopeFields;
             EnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
@@ -3044,7 +3044,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TestTrue(*FString::Printf(TEXT("DUC-09: tab with nested fields commits [Error: %s]"), *NestedCommitErr), bNestedCommitted);
 
             TestEqual(TEXT("DUC-09: nested field applied to the real DayText widget"), DayText->GetTextContent().ToString(), TEXT("Tuesday"));
-            TestEqual(TEXT("DUC-09: nested field applied to the real ValueBar widget"), ValueBar->GetProgress(), 7.0f);
+            TestEqual(TEXT("DUC-09: nested field applied to the real ValueBar widget"), ValueBar->GetProgress(), 0.7f);
 
             // Negative: an *extra* field_id the child screen has no host for is
             // rejected, not silently ignored (DUC-09's own Done criterion) --

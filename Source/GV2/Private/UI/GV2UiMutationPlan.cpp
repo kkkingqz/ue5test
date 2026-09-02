@@ -149,15 +149,20 @@ bool PrepareUiHostProperties(
                     {
                         FGV2UiCapabilityBuilder ChildBuilder;
                         ChildHost->DescribeUiCapabilities(ChildBuilder);
-                        if (!DoesCapabilityTreeSupportKind(ChildBuilder.Build(), Cap.SupportedKind))
+                        const FGV2UiPropertyCapability* ResolvedChildCap = nullptr;
+                        FString ResolveError;
+                        bool bAmbiguous = false;
+                        if (!ResolveDelegatedChildCapability(ChildBuilder.Build(), Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
                         {
                             FGV2UiSchemaCompatibilityDiagnostic Diag;
-                            Diag.Code = TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+                            Diag.Code = bAmbiguous
+                                ? TEXT("core:diagnostic.ui_consumer.ambiguous_child_capability")
+                                : TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
                             Diag.PropertyPath = ChildPath;
                             Diag.SchemaId = SchemaId;
                             Diag.Message = FString::Printf(
-                                TEXT("Target widget '%s' does not declare a capability of the kind declared for property '%s'"),
-                                *Cap.TargetName.ToString(), *PropName);
+                                TEXT("Target widget '%s' for property '%s': %s"),
+                                *Cap.TargetName.ToString(), *PropName, *ResolveError);
                             OutDiagnostics.Add(MoveTemp(Diag));
                             return false;
                         }
@@ -265,15 +270,20 @@ bool PrepareUiHostProperties(
                     {
                         FGV2UiCapabilityBuilder ChildBuilder;
                         ChildHost->DescribeUiCapabilities(ChildBuilder);
-                        if (!DoesCapabilityTreeSupportKind(ChildBuilder.Build(), Cap.SupportedKind))
+                        const FGV2UiPropertyCapability* ResolvedChildCap = nullptr;
+                        FString ResolveError;
+                        bool bAmbiguous = false;
+                        if (!ResolveDelegatedChildCapability(ChildBuilder.Build(), Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
                         {
                             FGV2UiSchemaCompatibilityDiagnostic Diag;
-                            Diag.Code = TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+                            Diag.Code = bAmbiguous
+                                ? TEXT("core:diagnostic.ui_consumer.ambiguous_child_capability")
+                                : TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
                             Diag.PropertyPath = ChildPath;
                             Diag.SchemaId = SchemaId;
                             Diag.Message = FString::Printf(
-                                TEXT("Target widget '%s' does not declare a capability of the kind declared for reset of property '%s'"),
-                                *Cap.TargetName.ToString(), *PropName);
+                                TEXT("Target widget '%s' for reset of property '%s': %s"),
+                                *Cap.TargetName.ToString(), *PropName, *ResolveError);
                             OutDiagnostics.Add(MoveTemp(Diag));
                             return false;
                         }
@@ -339,15 +349,20 @@ bool PrepareUiHostProperties(
                     {
                         FGV2UiCapabilityBuilder ChildBuilder;
                         ChildHost->DescribeUiCapabilities(ChildBuilder);
-                        if (!DoesCapabilityTreeSupportKind(ChildBuilder.Build(), Cap.SupportedKind))
+                        const FGV2UiPropertyCapability* ResolvedChildCap = nullptr;
+                        FString ResolveError;
+                        bool bAmbiguous = false;
+                        if (!ResolveDelegatedChildCapability(ChildBuilder.Build(), Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
                         {
                             FGV2UiSchemaCompatibilityDiagnostic Diag;
-                            Diag.Code = TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+                            Diag.Code = bAmbiguous
+                                ? TEXT("core:diagnostic.ui_consumer.ambiguous_child_capability")
+                                : TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
                             Diag.PropertyPath = ChildPath;
                             Diag.SchemaId = SchemaId;
                             Diag.Message = FString::Printf(
-                                TEXT("Target widget '%s' does not declare a capability of the kind declared for reset of property '%s'"),
-                                *Cap.TargetName.ToString(), *PropName);
+                                TEXT("Target widget '%s' for reset of property '%s': %s"),
+                                *Cap.TargetName.ToString(), *PropName, *ResolveError);
                             OutDiagnostics.Add(MoveTemp(Diag));
                             return false;
                         }

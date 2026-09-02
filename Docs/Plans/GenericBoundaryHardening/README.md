@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.7
+version: 1.8
 updated: 2026-09-01
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
@@ -38,8 +38,8 @@ decisions:
 
 | Что | Сейчас |
 |---|---|
-| Сверка объявления композита с ребёнком | `DoesCapabilityTreeSupportKind` сравнивает только вид; диапазон, `TargetKind`, требования идентичности коллекции не участвуют |
-| Объявление композита | Хранит `PropertyName`, `ChildWidgetName`, `Kind` — и не хранит, **какую именно** capability ребёнка делегирует |
+| Сверка объявления композита с ребёнком | `ResolveDelegatedChildCapability` (`GBH-06`) резолвит конкретную capability по имени/виду/ambiguity; диапазон/`TargetKind` пока сравниваются только на стороне schema↔declaration (`GBH-08` объединит с этой сверкой) |
+| Объявление композита | Хранит `PropertyName`, `ChildWidgetName`, `Kind`, `ChildCapabilityName` и зависящие от `Kind` параметры (`GBH-06`) |
 | `FGV2NumberPropertyConsumer::Prepare` | Проверяет тип и сохраняет значение; объявленный диапазон capability не применяется |
 | `CommitUiHostProperties` | Выходит по первому отказу; отката уже применённых мутаций нет, предыдущее физическое состояние не хранится |
 | `CommitReconcile` | Все **предсказуемые** причины отказа attach отклоняются в `PrepareReconcile` (`GBH-01`); остаточный непредсказуемый engine-level отказ явно делегирован `GBH-09/10` |

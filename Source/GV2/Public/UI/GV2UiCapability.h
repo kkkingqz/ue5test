@@ -40,6 +40,13 @@ struct GV2_API FGV2UiPropertyCapability
     EGV2UiCapabilityTargetType TargetType = EGV2UiCapabilityTargetType::RendererControl;
     FName TargetName = NAME_None;
 
+    // GBH-06: which of TargetName's own DescribeUiCapabilities entries this delegating
+    // declaration addresses, by that capability's own PropertyName. Empty means "resolve
+    // by kind alone" (DUC-07's original behavior), valid only while TargetName declares
+    // exactly one capability of SupportedKind -- two or more is ambiguous and rejected,
+    // not silently matched to whichever one iteration happens to find first.
+    FString ChildCapabilityName;
+
     // Semantic constraints
     FString TargetKind; // For Ref/StableId, e.g. "resource", "item", "screen"
     TOptional<int64> IntMin;
@@ -102,6 +109,12 @@ public:
     FGV2UiCapabilityBuilder& AddNestedScreenCollection(const FString& Name, const FName& TargetName, const FString& KeyField = TEXT("key"));
     FGV2UiCapabilityBuilder& AddCustom(const FString& Name, EGV2PreparedUiValueKind Kind, EGV2UiCapabilityTargetType TargetType, const FName& TargetName);
 
+    // GBH-06: sets ChildCapabilityName on an already-added property (by Name). Called
+    // after the matching AddXxx above rather than added as a parameter to each of them,
+    // so existing call sites that do not delegate to a named child capability are
+    // untouched.
+    FGV2UiCapabilityBuilder& SetChildCapabilityName(const FString& Name, const FString& ChildCapabilityName);
+
     FGV2UiCapabilityTree Build() const { return Tree; }
 
 private:
@@ -120,14 +133,29 @@ GV2_API bool CheckUiSchemaCapabilityCompatibility(
     TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics);
 
 /**
- * DUC-07: true if ChildCapabilities (independently declared by a named target widget's own
- * DescribeUiCapabilities, not derived from the composite that addresses it) contains at
- * least one property of DeclaredKind. A composite's Designer-authored capability declaration
- * is checked against this -- the child's own declaration is the second, independent source;
- * neither side is derived from the other, so a mismatch (e.g. `Number` declared against a
- * child that only ever declares `Text`) is a real, catchable drift rather than true by
- * construction.
+ * GBH-06: resolves which single entry of ChildCapabilities a delegating declaration of
+ * DeclaredKind refers to, replacing DoesCapabilityTreeSupportKind's "any capability of
+ * this kind" scan with an actual disambiguation. If ChildCapabilityName is non-empty,
+ * resolves by that exact PropertyName and requires its SupportedKind to match -- unknown
+ * name or kind mismatch fails. If empty, scans for DeclaredKind: exactly one candidate
+ * resolves (matching prior behavior when there was never any ambiguity to begin with);
+ * Two or more candidates try FallbackNameHint next -- typically the delegating
+ * declaration's own top-level PropertyName, since content authored before GBH-06 existed
+ * sometimes already names its property the same as the child capability it means (e.g. a
+ * composite's own "default_tab_key" property targeting a child that itself declares a
+ * "default_tab_key" capability among others of the same kind) -- so pre-existing content
+ * is not forced through a migration pass only to re-state what its own naming already
+ * expressed. Only when FallbackNameHint also fails to resolve uniquely is this rejected
+ * as genuinely ambiguous, demanding an explicit ChildCapabilityName. Returns the resolved
+ * capability via OutResolved (nullptr on failure), always sets OutError describing why on
+ * failure, and sets bOutAmbiguous so the caller can report a distinct diagnostic code for
+ * "ambiguous" versus "not found"/"wrong kind".
  */
-GV2_API bool DoesCapabilityTreeSupportKind(
+GV2_API bool ResolveDelegatedChildCapability(
     const FGV2UiCapabilityTree& ChildCapabilities,
-    EGV2PreparedUiValueKind DeclaredKind);
+    EGV2PreparedUiValueKind DeclaredKind,
+    const FString& ChildCapabilityName,
+    const FGV2UiPropertyCapability*& OutResolved,
+    FString& OutError,
+    bool& bOutAmbiguous,
+    const FString& FallbackNameHint = FString());

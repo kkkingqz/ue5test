@@ -71,7 +71,8 @@ bool FGV2UiPropertyCapability::operator==(const FGV2UiPropertyCapability& Other)
         && NumberMax == Other.NumberMax
         && bRequiresKeyedIdentity == Other.bRequiresKeyedIdentity
         && KeyPropertyName == Other.KeyPropertyName
-        && EntryWidgetClass == Other.EntryWidgetClass;
+        && EntryWidgetClass == Other.EntryWidgetClass
+        && ChildCapabilityName == Other.ChildCapabilityName;
 }
 
 // --- FGV2UiCapabilityBuilder ---
@@ -235,6 +236,15 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::AddCustom(
     Cap.TargetType = TargetType;
     Cap.TargetName = TargetName;
     Tree.Properties.Add(Name, MoveTemp(Cap));
+    return *this;
+}
+
+FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::SetChildCapabilityName(const FString& Name, const FString& ChildCapabilityName)
+{
+    if (FGV2UiPropertyCapability* Cap = Tree.Properties.Find(Name))
+    {
+        Cap->ChildCapabilityName = ChildCapabilityName;
+    }
     return *this;
 }
 
@@ -450,16 +460,73 @@ bool CheckUiSchemaCapabilityCompatibility(
     return bSuccess;
 }
 
-bool DoesCapabilityTreeSupportKind(
+bool ResolveDelegatedChildCapability(
     const FGV2UiCapabilityTree& ChildCapabilities,
-    EGV2PreparedUiValueKind DeclaredKind)
+    EGV2PreparedUiValueKind DeclaredKind,
+    const FString& ChildCapabilityName,
+    const FGV2UiPropertyCapability*& OutResolved,
+    FString& OutError,
+    bool& bOutAmbiguous,
+    const FString& FallbackNameHint)
 {
+    OutResolved = nullptr;
+    bOutAmbiguous = false;
+
+    if (!ChildCapabilityName.IsEmpty())
+    {
+        const FGV2UiPropertyCapability* Found = ChildCapabilities.FindProperty(ChildCapabilityName);
+        if (Found == nullptr)
+        {
+            OutError = FString::Printf(TEXT("child has no capability named '%s'"), *ChildCapabilityName);
+            return false;
+        }
+        if (Found->SupportedKind != DeclaredKind)
+        {
+            OutError = FString::Printf(TEXT("child capability '%s' does not declare the expected kind"), *ChildCapabilityName);
+            return false;
+        }
+        OutResolved = Found;
+        return true;
+    }
+
+    int32 CandidateCount = 0;
     for (const auto& Entry : ChildCapabilities.Properties)
     {
         if (Entry.Value.SupportedKind == DeclaredKind)
         {
-            return true;
+            OutResolved = &Entry.Value;
+            ++CandidateCount;
         }
+    }
+
+    if (CandidateCount == 1)
+    {
+        return true;
+    }
+
+    if (CandidateCount > 1 && !FallbackNameHint.IsEmpty())
+    {
+        if (const FGV2UiPropertyCapability* HintMatch = ChildCapabilities.FindProperty(FallbackNameHint))
+        {
+            if (HintMatch->SupportedKind == DeclaredKind)
+            {
+                OutResolved = HintMatch;
+                return true;
+            }
+        }
+    }
+
+    OutResolved = nullptr;
+    if (CandidateCount == 0)
+    {
+        OutError = TEXT("child does not declare a capability of the expected kind");
+    }
+    else
+    {
+        OutError = FString::Printf(
+            TEXT("child declares %d capabilities of the expected kind; set ChildCapabilityName to disambiguate"),
+            CandidateCount);
+        bOutAmbiguous = true;
     }
     return false;
 }
