@@ -1,7 +1,7 @@
 ---
 title: Declared Surface Tasks
 status: active
-version: 1.6
+version: 1.7
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -76,10 +76,16 @@ depends_on:
     - Red→green: обе проверки в `PrepareScreenFieldPlans` временно обойдены недоказуемым компилятором `false`-условием — упали ровно 2 новые GBH-04 assertion'а (реальной мутации не было — Prepare с этим багом просто пропускает несуществующий host, ничего не коммитя); восстановление — снова чисто.
     - Верификация: 103/103 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`, `validate_docs.py`.
 
-- [ ] **GBH-05 — Параллельные optional-пути применения удалены**
+- [x] **GBH-05 — Параллельные optional-пути применения удалены**
   - `ApplyOptionalImageResource` и `ApplyOptionalPortrait` остались в публичном API, хотя `ADR-0040` определял политику подстановки заглушки как свойство схемы и ожидал удаления параллельных путей. Это не дефект времени выполнения, а поверхность, из которой вырастает второй путь презентации.
   - Done: проверены все места вызова; при отсутствии production-авторитета методы удалены вместе с тестами и упоминаниями старого пути; если какой-то вызов остаётся необходимым, он переведён на путь схемы, а не сохранён исключением; гейт запрета legacy-поверхности из `PCC` расширен на эти имена.
   - Evidence: `Source/GV2/Public/UI/GV2ImageWidgetBase.h`, `Source/GV2/Public/UI/GV2PortraitWidgetBase.h`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-01):**
+    - Все места вызова проверены: 3 сайта в тестах (`GV2RuntimeSubsystemTests.cpp`), ни production, ни Blueprint/Content вызовов не найдено. Ни один из трёх не проверял поведение заглушки — все использовали уже валидные resource ID как удобный способ применить произвольный ресурс в тесте, не относящемся к optional/fallback семантике (генерик key-based reconciliation виджета-репитера и non-asserting diagnostic-тест). Переведены на `ApplyImageResource` — производственный, единственный путь; путь схемы не потребовался, поскольку ни один вызов не проверял fallback-семантику как таковую.
+    - `UGV2ImageWidgetBase::ApplyOptionalImageResource` и `UGV2PortraitWidgetBase::ApplyOptionalPortrait` удалены вместе с единственным их общим вызываемым — `FGV2ImagePresentation::ResolveOptionalAndApply`, которая после удаления обоих overload'ов стала мёртвым кодом.
+    - Гейт запрета legacy-поверхности расширен: раздел «Code Audit Test: centralized presentation pipeline compliance» (`GV2.UI.StandardPropertyConsumers`, `GV2PropertyConsumersTests.cpp`) теперь рекурсивно сканирует **весь** `Source/GV2` (`*.h`/`*.cpp`) на три удалённых имени (`ApplyOptionalImageResource`, `ApplyOptionalPortrait`, `ResolveOptionalAndApply`) — не только файлы, из которых их убрали, поэтому реинтродукция в ЛЮБОМ файле модуля ловится, а не только в исходных четырёх.
+    - Red→green: имя `ApplyOptionalImageResource` временно возвращено комментарием в `GV2ImageWidgetBase.h` (файл, из которого метод был удалён, а не файл с самим гейтом) — упал ровно `GV2.UI.StandardPropertyConsumers` с точным диагнозом, называющим файл; восстановление — снова чисто.
+    - Верификация: 103/103 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`.
 
 ## Проверка milestone
 
@@ -88,4 +94,4 @@ depends_on:
 - [x] Ни один вид Designer не является одновременно selectable и неработоспособным: часть A скрывает такие виды, и гейт не позволяет добавить новый вид в обход этого правила.
 - [x] `CollectionHost` на момент закрытия M1 либо скрыт, либо, если его контракт не нужен проекту, удалён окончательно — работоспособным он становится только в `GBH-02B` после `GBH-08`.
 - [x] Разрыв принадлежности схем либо закрыт, либо записан там, где его читают при планировании, и отражён во всей нормативной цепочке.
-- [ ] Ни один контракт не описывает поверхность, которой нет.
+- [x] Ни один контракт не описывает поверхность, которой нет.

@@ -236,6 +236,48 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TEXT("PropertyConsumers uses FGV2ImagePresentation::ResolveAndApply"),
                 ConsumerSource.Contains(TEXT("FGV2ImagePresentation::ResolveAndApply")));
         }
+
+        // GBH-05: ADR-0040 defined placeholder substitution as a schema/presentation
+        // contract property and expected the parallel ApplyOptionalXxx overloads
+        // removed once a real production authority used the schema path instead. No
+        // call site was found to need them (their only callers were test convenience
+        // shortcuts using already-valid resource IDs, not fallback behavior itself),
+        // so they -- and the now-dead FGV2ImagePresentation::ResolveOptionalAndApply
+        // they alone called -- were deleted rather than kept behind an exception.
+        // This scans every Source/GV2 header and source file so the names cannot
+        // silently reappear anywhere in the module, not just in the files they were
+        // removed from.
+        TArray<FString> LegacySurfaceFiles;
+        const FString SourceRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("Source/GV2"));
+        IFileManager::Get().FindFilesRecursive(LegacySurfaceFiles, *SourceRoot, TEXT("*.h"), true, false, false);
+        IFileManager::Get().FindFilesRecursive(LegacySurfaceFiles, *SourceRoot, TEXT("*.cpp"), true, false, false);
+        TestTrue(TEXT("GBH-05: legacy-surface scan found Source/GV2 files"), LegacySurfaceFiles.Num() > 0);
+
+        const TCHAR* BannedLegacyNames[] = {
+            TEXT("ApplyOptionalImageResource"),
+            TEXT("ApplyOptionalPortrait"),
+            TEXT("ResolveOptionalAndApply"),
+        };
+        for (const FString& FilePath : LegacySurfaceFiles)
+        {
+            // Skip this audit's own file: it necessarily names the banned identifiers
+            // in its ban list and doc comment above, which is not a reappearance.
+            if (FilePath.EndsWith(TEXT("GV2PropertyConsumersTests.cpp")))
+            {
+                continue;
+            }
+            FString FileSource;
+            if (!FFileHelper::LoadFileToString(FileSource, *FilePath))
+            {
+                continue;
+            }
+            for (const TCHAR* BannedName : BannedLegacyNames)
+            {
+                TestFalse(
+                    *FString::Printf(TEXT("GBH-05: '%s' does not reappear in %s"), BannedName, *FilePath),
+                    FileSource.Contains(BannedName));
+            }
+        }
     }
 
     // 5. UPP-14: UGV2ButtonWidgetBase binding/key consumer & negative schema compatibility test

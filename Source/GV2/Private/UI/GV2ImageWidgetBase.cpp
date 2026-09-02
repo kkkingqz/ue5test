@@ -40,25 +40,6 @@ bool UGV2ImageWidgetBase::ApplyImageResource(const FString& ResourceId, FString&
     return true;
 }
 
-bool UGV2ImageWidgetBase::ApplyOptionalImageResource(
-    const FString& ResourceId,
-    const FString& PlaceholderResourceId,
-    FString& OutError)
-{
-    FGV2ResolvedImageResource Resource;
-    const TOptional<float> RequiredAspect = (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio > 0.0f)
-        ? TOptional<float>(FixedAspectRatio)
-        : TOptional<float>();
-    if (!FGV2ImagePresentation::ResolveOptionalAndApply(
-        Image, ResourceId, PlaceholderResourceId, ScalePolicy, RequiredAspect, Resource, OutError))
-    {
-        return false;
-    }
-    AppliedResourceId = Resource.ResourceId;
-    ResolvedAspectRatio = Resource.FixedAspectRatio;
-    return true;
-}
-
 FSlateBrush UGV2ImageWidgetBase::GetImageBrush() const
 {
     return Image != nullptr ? Image->GetBrush() : FSlateBrush();

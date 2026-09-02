@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.6
+version: 1.7
 updated: 2026-09-01
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
@@ -47,7 +47,7 @@ decisions:
 | `CollectionHost` в Designer | Скрыт `UMETA(Hidden)` (`GBH-02A`); вернётся в `GBH-02B` после `GBH-06…08` |
 | UI-схемы | Сканируются с файловой системы, не принадлежат closure активного репозитория; defer зафиксирован `STATUS-008` (`GBH-03`) |
 | `ScreenTemplates.md` | Описывает фактический `IGV2ScreenFieldHost` и строгую bijection без optional policy (`GBH-04`) |
-| `ApplyOptionalImageResource`, `ApplyOptionalPortrait` | Остались в публичном API вопреки `ADR-0040` |
+| `ApplyOptionalImageResource`, `ApplyOptionalPortrait` | Удалены вместе с `ResolveOptionalAndApply`; legacy-гейт расширен на весь `Source/GV2` (`GBH-05`) |
 
 ## Принятые решения
 
@@ -65,7 +65,7 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Declared Surface](DeclaredSurface.md): объявляемая поверхность не рекламирует неработоспособные kinds, Shell structural failure предсказывается до мутации, а authority/docs debt имеет явный владелец. GBH-01…05 (для `GBH-02` часть A выполняется до M2, часть B — после `GBH-08`).
+- [x] M1 — [Declared Surface](DeclaredSurface.md): объявляемая поверхность не рекламирует неработоспособные kinds, Shell structural failure предсказывается до мутации, а authority/docs debt имеет явный владелец. GBH-01…05 (для `GBH-02` часть A выполняется до M2, часть B — после `GBH-08`).
 - [ ] M2 — [Declaration Constraints](DeclarationConstraints.md): объявление несёт свои ограничения, указывает конкретную child capability и сверяется с ней общей subset-функцией. GBH-06…08.
 - [ ] M3 — [Transactional Commit](TransactionalCommit.md): mid-Commit failure live reuse path восстанавливает предыдущую физическую presentation; partial-state contract не допускается как closure. GBH-09…11.
 
@@ -100,7 +100,7 @@ GBH-03, GBH-04, GBH-05 — независимы
 - [ ] Каждый выбираемый в Designer вид работоспособен от объявления до отрисовки; неготовый вид **не selectable** (Hidden/удалён), а `CollectionHost` возвращается в public surface только после E2E proof первого элемента в пустой коллекции. (GBH-02A/B, GBH-06…08)
 - [x] Судьба принадлежности UI-схем репозиторию решена: либо реализована, либо defer отражён в `ImplementationStatus` **и во всей нормативной цепочке**, включая ADR-level caveat/follow-up decision. (GBH-03)
 - [x] Контракты описывают фактический `IGV2ScreenFieldHost`. (GBH-04)
-- [ ] Параллельные optional-пути применения удалены из публичного API. (GBH-05)
+- [x] Параллельные optional-пути применения удалены из публичного API. (GBH-05)
 - [ ] Объявление несёт параметры своего вида и указывает, какую capability ребёнка делегирует. (GBH-06, GBH-08)
 - [ ] Значение, выходящее за объявленное ограничение capability, отклоняется до виджета, а не обрезается им. (GBH-07)
 - [ ] Сверка объявления с ребёнком и schema→Widget используют **одну общую implementation** subset-совместимости; capability сравнивается целиком, а не только по виду. (GBH-08)

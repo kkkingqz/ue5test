@@ -4170,7 +4170,7 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             {
                 Widget.SetKey(Entry.Key);
                 FString Err;
-                return Widget.ApplyOptionalImageResource(Entry.ResourceId, TEXT("textsystem:resource.ui.missing_character"), Err);
+                return Widget.ApplyImageResource(Entry.ResourceId, Err);
             };
 
             // Positive single character with key identity
@@ -5371,7 +5371,7 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
                 if (Bg != nullptr)
                 {
                     FString Error;
-                    Bg->ApplyOptionalImageResource(MarketResourceId, TEXT("core:resource.ui.missing_background"), Error);
+                    Bg->ApplyImageResource(MarketResourceId, Error);
                     AddInfo(FString::Printf(TEXT("Background: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
                         *Bg->GetAppliedResourceId(),
                         static_cast<int32>(Bg->GetVisibility()),
@@ -5380,7 +5380,7 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
                 if (BgTile != nullptr)
                 {
                     FString Error;
-                    BgTile->ApplyOptionalImageResource(TEXT("core:resource.ui.old_paper_tile_256"), TEXT("core:resource.ui.missing_background"), Error);
+                    BgTile->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
                     AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
                         *BgTile->GetAppliedResourceId(),
                         static_cast<int32>(BgTile->GetVisibility()),
