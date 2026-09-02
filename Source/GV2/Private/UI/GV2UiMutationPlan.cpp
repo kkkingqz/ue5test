@@ -24,6 +24,9 @@ FString MapSubsetMismatchToConsumerDiagnosticCode(EGV2UiCapabilitySubsetMismatch
         return TEXT("core:diagnostic.ui_consumer.collection_identity_mismatch");
     case EGV2UiCapabilitySubsetMismatch::ItemMismatch:
         return TEXT("core:diagnostic.ui_consumer.item_capability_mismatch");
+    case EGV2UiCapabilitySubsetMismatch::KeyPropertyMismatch:
+    case EGV2UiCapabilitySubsetMismatch::EntryWidgetClassMismatch:
+        return TEXT("core:diagnostic.ui_consumer.collection_identity_mismatch");
     case EGV2UiCapabilitySubsetMismatch::KindMismatch:
     case EGV2UiCapabilitySubsetMismatch::TargetKindMismatch:
     case EGV2UiCapabilitySubsetMismatch::None:

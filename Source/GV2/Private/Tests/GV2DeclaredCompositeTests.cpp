@@ -928,4 +928,84 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiCapabilitySubsetConstraintCoverageTest,
+    "GV2.UI.CapabilitySubsetConstraintCoverage",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiCapabilitySubsetConstraintCoverageTest::RunTest(const FString& Parameters)
+{
+    // GBH-08 follow-up. KeyPropertyName and EntryWidgetClass are constraint-bearing fields
+    // that IsUiCapabilitySubset did not compare. The omission was argued from CollectionHost
+    // being Hidden -- an argument GBH-02B retired one commit later by making it selectable.
+    // These cases pin both comparisons; the static_assert next to the function is what stops
+    // the *next* field from slipping through the same way.
+
+    auto MakeCollectionCap = [](const TCHAR* KeyProperty, UClass* EntryClass)
+    {
+        FGV2UiPropertyCapability Cap;
+        Cap.PropertyName = TEXT("items");
+        Cap.SupportedKind = EGV2PreparedUiValueKind::Array;
+        Cap.TargetType = EGV2UiCapabilityTargetType::CollectionHost;
+        Cap.bRequiresKeyedIdentity = true;
+        Cap.KeyPropertyName = KeyProperty;
+        Cap.EntryWidgetClass = EntryClass;
+        return Cap;
+    };
+
+    // 1. Identical identity contract is a subset of itself.
+    {
+        const FGV2UiPropertyCapability Required = MakeCollectionCap(TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+        const FGV2UiPropertyCapability Provided = MakeCollectionCap(TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+
+        EGV2UiCapabilitySubsetMismatch Mismatch = EGV2UiCapabilitySubsetMismatch::None;
+        FString Detail;
+        TestTrue(TEXT("matching key property and entry class are accepted"),
+            IsUiCapabilitySubset(Required, Provided, Mismatch, Detail));
+    }
+
+    // 2. A declaration keying by "id" against a child keying by "key" must be rejected: the
+    //    collection consumer looks the item key up by the declared name, so it would find no
+    //    key at all rather than a differently-named one.
+    {
+        const FGV2UiPropertyCapability Required = MakeCollectionCap(TEXT("id"), UGV2ButtonWidgetBase::StaticClass());
+        const FGV2UiPropertyCapability Provided = MakeCollectionCap(TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+
+        EGV2UiCapabilitySubsetMismatch Mismatch = EGV2UiCapabilitySubsetMismatch::None;
+        FString Detail;
+        TestFalse(TEXT("differing key property is rejected"),
+            IsUiCapabilitySubset(Required, Provided, Mismatch, Detail));
+        TestEqual(TEXT("rejection reports KeyPropertyMismatch"),
+            Mismatch, EGV2UiCapabilitySubsetMismatch::KeyPropertyMismatch);
+        TestTrue(TEXT("detail names both sides"), Detail.Contains(TEXT("id")) && Detail.Contains(TEXT("key")));
+    }
+
+    // 3. Naming a different entry widget class than the child repeats is a disagreement, not
+    //    a narrowing.
+    {
+        const FGV2UiPropertyCapability Required = MakeCollectionCap(TEXT("key"), UGV2TextWidgetBase::StaticClass());
+        const FGV2UiPropertyCapability Provided = MakeCollectionCap(TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+
+        EGV2UiCapabilitySubsetMismatch Mismatch = EGV2UiCapabilitySubsetMismatch::None;
+        FString Detail;
+        TestFalse(TEXT("differing entry widget class is rejected"),
+            IsUiCapabilitySubset(Required, Provided, Mismatch, Detail));
+        TestEqual(TEXT("rejection reports EntryWidgetClassMismatch"),
+            Mismatch, EGV2UiCapabilitySubsetMismatch::EntryWidgetClassMismatch);
+    }
+
+    // 4. An unset entry class on the declaration inherits the child's rather than conflicting.
+    {
+        FGV2UiPropertyCapability Required = MakeCollectionCap(TEXT("key"), nullptr);
+        const FGV2UiPropertyCapability Provided = MakeCollectionCap(TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+
+        EGV2UiCapabilitySubsetMismatch Mismatch = EGV2UiCapabilitySubsetMismatch::None;
+        FString Detail;
+        TestTrue(TEXT("unset entry class on the declaration is accepted"),
+            IsUiCapabilitySubset(Required, Provided, Mismatch, Detail));
+    }
+
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

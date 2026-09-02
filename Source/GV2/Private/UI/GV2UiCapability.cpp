@@ -250,6 +250,43 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::SetChildCapabilityName(const F
 
 // --- IsUiCapabilitySubset ---
 
+// Layout the classification table below was written against. Changing this number without
+// revisiting the table defeats the gate.
+constexpr SIZE_T GV2_UI_PROPERTY_CAPABILITY_GATED_SIZE = 192;
+
+// GBH-08 completeness gate over the constraint fields of FGV2UiPropertyCapability.
+//
+// PCC-05 gates every EGV2PreparedUiValueKind, GBH-02A gates every Designer kind; both walk
+// an enum, so a new value cannot slip past them. FGV2UiPropertyCapability is a plain struct
+// with no reflection, so there is no enum to walk -- and that is exactly how KeyPropertyName
+// stayed out of IsUiCapabilitySubset unnoticed. The detector here is the struct's layout:
+// adding, removing or retyping any field changes its size and breaks this build, forcing the
+// author to classify the change in the table below rather than silently omitting it.
+//
+// Classification of every field at the time of this assertion:
+//   PropertyName           - identity of the property, not a constraint
+//   SupportedKind          - COMPARED (KindMismatch)
+//   TargetType             - how the target is resolved, not a constraint
+//   TargetName             - which widget is addressed, not a constraint
+//   ChildCapabilityName    - selector into the child, resolved before this call
+//   TargetKind             - COMPARED (TargetKindMismatch)
+//   IntMin, IntMax         - COMPARED (IntRangeMismatch)
+//   NumberMin, NumberMax   - COMPARED (NumberRangeMismatch)
+//   bRequiresKeyedIdentity - COMPARED (KeyedIdentityMismatch)
+//   KeyPropertyName        - COMPARED (KeyPropertyMismatch)
+//   EntryWidgetClass       - COMPARED (EntryWidgetClassMismatch)
+//   ChildTree              - nested tree, compared by CheckUiSchemaCapabilityCompatibility
+//   ItemCapability         - COMPARED recursively (ItemMismatch)
+//
+// If this assertion fires: add the new field to the table, then either compare it here with
+// its own mismatch code or state in the table why it carries no constraint. Updating the
+// number alone is not a resolution.
+static_assert(
+    sizeof(FGV2UiPropertyCapability) == GV2_UI_PROPERTY_CAPABILITY_GATED_SIZE,
+    "FGV2UiPropertyCapability changed shape: classify the new/changed field in the table "
+    "above and either compare it in IsUiCapabilitySubset or record why it is not a constraint "
+    "(GBH-08 completeness gate).");
+
 bool IsUiCapabilitySubset(
     const FGV2UiPropertyCapability& Required,
     const FGV2UiPropertyCapability& Provided,
@@ -305,6 +342,33 @@ bool IsUiCapabilitySubset(
     {
         OutMismatch = EGV2UiCapabilitySubsetMismatch::KeyedIdentityMismatch;
         OutDetail = TEXT("provided capability requires keyed elements, required side does not declare them");
+        return false;
+    }
+
+    // GBH-08 follow-up: the identity field name is a constraint, not decoration -- the
+    // collection consumer looks the item key up by the *declared* KeyPropertyName
+    // (GV2PropertyConsumers.cpp), so a declaration naming "id" against a child that keys by
+    // "key" finds no key at all. Deferring this comparison was argued from CollectionHost
+    // being Hidden; GBH-02B made it selectable one commit later, which retired that argument.
+    if (Required.KeyPropertyName != Provided.KeyPropertyName)
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::KeyPropertyMismatch;
+        OutDetail = FString::Printf(
+            TEXT("key property mismatch: required '%s', provided '%s'"),
+            *Required.KeyPropertyName, *Provided.KeyPropertyName);
+        return false;
+    }
+
+    // A declaration may leave the entry class unset (inherit the child's), but naming a
+    // different one than the child repeats is a contract disagreement, not a narrowing.
+    if (Required.EntryWidgetClass != nullptr
+        && Provided.EntryWidgetClass != nullptr
+        && Required.EntryWidgetClass != Provided.EntryWidgetClass)
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::EntryWidgetClassMismatch;
+        OutDetail = FString::Printf(
+            TEXT("entry widget class mismatch: required '%s', provided '%s'"),
+            *Required.EntryWidgetClass->GetName(), *Provided.EntryWidgetClass->GetName());
         return false;
     }
 
@@ -428,6 +492,15 @@ bool CheckUiSchemaCapabilityCompatibility(
                 case EGV2UiCapabilitySubsetMismatch::KeyedIdentityMismatch:
                     Diag.Code = TEXT("core:diagnostic.ui_capability.collection_identity_mismatch");
                     Diag.Message = FString::Printf(TEXT("Collection '%s' requires keyed elements, but schema array has no keyed_by"), *FieldName);
+                    break;
+                case EGV2UiCapabilitySubsetMismatch::KeyPropertyMismatch:
+                case EGV2UiCapabilitySubsetMismatch::EntryWidgetClassMismatch:
+                    // Not reached from this projection either: a schema array projects
+                    // keyed_by into bRequiresKeyedIdentity, never into KeyPropertyName or
+                    // EntryWidgetClass, both of which exist only on the declaration side.
+                    // Kept so the switch stays exhaustive.
+                    Diag.Code = TEXT("core:diagnostic.ui_capability.collection_identity_mismatch");
+                    Diag.Message = FString::Printf(TEXT("Collection '%s' identity contract mismatch: %s"), *FieldName, *SubsetDetail);
                     break;
                 case EGV2UiCapabilitySubsetMismatch::ItemMismatch:
                     // Not reached from this projection (RequiredFromSchema never sets

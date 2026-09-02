@@ -138,6 +138,8 @@ enum class EGV2UiCapabilitySubsetMismatch : uint8
     IntRangeMismatch,
     NumberRangeMismatch,
     KeyedIdentityMismatch,
+    KeyPropertyMismatch,
+    EntryWidgetClassMismatch,
     ItemMismatch,
 };
 
