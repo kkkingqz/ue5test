@@ -61,6 +61,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/RichTextBlock.h"
 #include "Components/ScrollBox.h"
+#include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
 #include "Engine/Engine.h"
@@ -2729,6 +2730,133 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                     LocationHostPanel->GetChildrenCount(), 1);
 
                 PartialShell->RemoveFromRoot();
+            }
+        }
+
+        // GBF-01: a real engine-level Attach failure must abort CommitReconcile and
+        // restore the previous Shell tree. USizeBox is a real single-child UPanelWidget:
+        // once the unrelated blocker occupies it, UPanelWidget::AddChild returns nullptr
+        // for the candidate overlay. This deliberately reaches production CommitReconcile
+        // instead of calling AttachScreenToLayer as a helper-level unit test.
+        {
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.attach_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+
+            UGV2GameShellWidgetBase* AttachFailureShell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
+            TestNotNull(TEXT("GBF-01: attach-failure Shell instantiated"), AttachFailureShell);
+            if (AttachFailureShell != nullptr)
+            {
+                AttachFailureShell->AddToRoot();
+
+                UVerticalBox* LocationHostPanel = NewObject<UVerticalBox>(AttachFailureShell);
+                USizeBox* BlockingOverlayHost = NewObject<USizeBox>(AttachFailureShell);
+                auto SetShellHost = [](UGV2GameShellWidgetBase* TargetShell, const FName PropertyName, UPanelWidget* Host)
+                {
+                    if (FObjectPropertyBase* HostProperty = FindFProperty<FObjectPropertyBase>(TargetShell->GetClass(), PropertyName))
+                    {
+                        HostProperty->SetObjectPropertyValue_InContainer(TargetShell, Host);
+                    }
+                };
+                SetShellHost(AttachFailureShell, TEXT("LocationContentHost"), LocationHostPanel);
+                SetShellHost(AttachFailureShell, TEXT("OverlayStackHost"), BlockingOverlayHost);
+
+                UGV2PanelWidgetBase* ExistingOverlayChild = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
+                TestNotNull(TEXT("GBF-01: blocking overlay child constructs"), ExistingOverlayChild);
+                TestNotNull(TEXT("GBF-01: blocker occupies the single-child overlay host"),
+                    ExistingOverlayChild != nullptr ? BlockingOverlayHost->SetContent(ExistingOverlayChild) : nullptr);
+
+                UGV2ScreenWidgetBase* RouteV1 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+                UGV2ScreenWidgetBase* RouteV2 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+                UGV2ScreenWidgetBase* RejectedOverlay = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+                TestNotNull(TEXT("GBF-01: prior route constructs"), RouteV1);
+                TestNotNull(TEXT("GBF-01: replacement route constructs"), RouteV2);
+                TestNotNull(TEXT("GBF-01: rejected overlay constructs"), RejectedOverlay);
+
+                TMap<FString, UGV2ScreenWidgetBase*> ScreensById;
+                ScreensById.Add(TEXT("core:screen.gbf01_route_v1"), RouteV1);
+                ScreensById.Add(TEXT("core:screen.gbf01_route_v2"), RouteV2);
+                ScreensById.Add(TEXT("core:screen.gbf01_overlay"), RejectedOverlay);
+                auto AttachFailureFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+                {
+                    UGV2ScreenWidgetBase** Found = ScreensById.Find(ScreenId);
+                    return Found != nullptr ? *Found : nullptr;
+                };
+                auto MakeAttachFailureDocument = [](const FString& RouteScreenId, bool bIncludeOverlay)
+                {
+                    FGV2UiDocumentViewModel Document;
+                    Document.UiInstanceId = TEXT("ui@gbf01:1");
+                    Document.Revision = bIncludeOverlay ? 2 : 1;
+                    Document.bHasRoute = true;
+                    Document.Route.Layer = TEXT("location_content");
+                    Document.Route.InstanceKey = TEXT("gbf01_route");
+                    Document.Route.ScreenId = RouteScreenId;
+                    if (bIncludeOverlay)
+                    {
+                        FGV2ScreenInstanceViewModel Overlay;
+                        Overlay.Layer = TEXT("overlay_stack");
+                        Overlay.InstanceKey = TEXT("gbf01_overlay");
+                        Overlay.ScreenId = TEXT("core:screen.gbf01_overlay");
+                        Document.Overlays.Add(Overlay);
+                    }
+                    return Document;
+                };
+
+                FGV2LayeredUiReconciler AttachFailureReconciler;
+                FString AttachFailureError;
+                const bool bBaselineCommitted = AttachFailureReconciler.Reconcile(
+                    AttachFailureShell,
+                    MakeAttachFailureDocument(TEXT("core:screen.gbf01_route_v1"), false),
+                    AttachFailureFactory,
+                    AttachFailureError);
+                TestTrue(*FString::Printf(TEXT("GBF-01: baseline route commits [Error: %s]"), *AttachFailureError), bBaselineCommitted);
+                TestEqual(TEXT("GBF-01: baseline active route is v1"),
+                    AttachFailureReconciler.GetActiveScreen(TEXT("location_content"), TEXT("gbf01_route")), RouteV1);
+                TestTrue(TEXT("GBF-01: baseline route is physically attached"),
+                    AttachFailureShell->GetScreensInLayer(TEXT("location_content")).Contains(RouteV1));
+
+                const FGV2LayeredUiReconciler::FScreenSlotKey RouteKey{TEXT("location_content"), TEXT("gbf01_route")};
+                const FGV2LayeredUiReconciler::FActiveScreenEntry* BaselineRouteEntry = AttachFailureReconciler.GetActiveScreens().Find(RouteKey);
+                TestNotNull(TEXT("GBF-01: baseline ActiveScreens stores route metadata"), BaselineRouteEntry);
+                if (BaselineRouteEntry != nullptr)
+                {
+                    TestEqual(TEXT("GBF-01: baseline metadata stores v1 screen id"), BaselineRouteEntry->ScreenId, TEXT("core:screen.gbf01_route_v1"));
+                }
+
+                const int32 ActiveCountBeforeFailure = AttachFailureReconciler.GetActiveScreens().Num();
+                const bool bRejectedCommit = AttachFailureReconciler.Reconcile(
+                    AttachFailureShell,
+                    MakeAttachFailureDocument(TEXT("core:screen.gbf01_route_v2"), true),
+                    AttachFailureFactory,
+                    AttachFailureError);
+
+                TestFalse(TEXT("GBF-01: occupied single-child host rejects document Commit"), bRejectedCommit);
+                TestTrue(TEXT("GBF-01: failure reports the attach diagnostic"),
+                    AttachFailureError.Contains(TEXT("core:diagnostic.ui_reconcile.attach_failed")));
+                TestTrue(TEXT("GBF-01: failure names the rejected overlay"),
+                    AttachFailureError.Contains(TEXT("core:screen.gbf01_overlay")));
+                TestEqual(TEXT("GBF-01: ActiveScreens count stays on the previous revision"),
+                    AttachFailureReconciler.GetActiveScreens().Num(), ActiveCountBeforeFailure);
+                TestEqual(TEXT("GBF-01: prior route stays active after recovery"),
+                    AttachFailureReconciler.GetActiveScreen(TEXT("location_content"), TEXT("gbf01_route")), RouteV1);
+                TestNull(TEXT("GBF-01: rejected overlay is absent from ActiveScreens"),
+                    AttachFailureReconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("gbf01_overlay")));
+                const FGV2LayeredUiReconciler::FActiveScreenEntry* RouteAfterFailure = AttachFailureReconciler.GetActiveScreens().Find(RouteKey);
+                TestNotNull(TEXT("GBF-01: prior route metadata remains present after recovery"), RouteAfterFailure);
+                if (RouteAfterFailure != nullptr)
+                {
+                    TestEqual(TEXT("GBF-01: prior route metadata remains on v1"), RouteAfterFailure->ScreenId, TEXT("core:screen.gbf01_route_v1"));
+                }
+                TestTrue(TEXT("GBF-01: prior route is reattached to the Shell tree"),
+                    AttachFailureShell->GetScreensInLayer(TEXT("location_content")).Contains(RouteV1));
+                TestFalse(TEXT("GBF-01: replacement route is removed by recovery"),
+                    AttachFailureShell->GetScreensInLayer(TEXT("location_content")).Contains(RouteV2));
+                TestTrue(TEXT("GBF-01: failed overlay host retains its prior blocker"),
+                    BlockingOverlayHost->GetContent() == ExistingOverlayChild);
+                TestEqual(TEXT("GBF-01: failed overlay host still has exactly its prior child"),
+                    BlockingOverlayHost->GetChildrenCount(), 1);
+                TestFalse(TEXT("GBF-01: rejected overlay is physically absent from the Shell tree"),
+                    AttachFailureShell->GetScreensInLayer(TEXT("overlay_stack")).Contains(RejectedOverlay));
+
+                AttachFailureShell->RemoveFromRoot();
             }
         }
 

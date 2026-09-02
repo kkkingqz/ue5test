@@ -131,4 +131,19 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Content/validate_ui_pipeline_legacy_gate.py"
             "--self-test"
     )
+    # GBF-01: derive every fallible Engine AddChild call in the Game Shell attach
+    # path from source and require its result to reach the transaction as failure.
+    add_test(
+        NAME shell_attach_failure_consumption_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_shell_attach_failure_consumption.py"
+    )
+    add_test(
+        NAME shell_attach_failure_consumption_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_shell_attach_failure_consumption.py"
+            "--self-test"
+    )
 endif()

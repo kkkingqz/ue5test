@@ -73,6 +73,10 @@ bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* Scre
             ScreenWidget->RemoveFromParent();
         }
         UPanelSlot* NewSlot = Host->AddChild(ScreenWidget);
+        if (NewSlot == nullptr)
+        {
+            return false;
+        }
         if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(NewSlot))
         {
             OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
