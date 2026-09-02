@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.1
-updated: 2026-08-20
+version: 3.2
+updated: 2026-09-02
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -26,7 +26,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `ctest_expected_failure_contract`, `ctest_process_contract_self_test`, `ctest_headless_json_contract_self_test`, `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `content_cli_router_gate_contract`, `content_cli_router_gate_negative_contract`, `gv2_content_*`.
+> **Проверки:** `ctest_expected_failure_contract`, `ctest_process_contract_self_test`, `ctest_headless_json_contract_self_test`, `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `content_cli_router_gate_contract`, `content_cli_router_gate_negative_contract`, `ui_capability_member_inventory_contract`, `ui_capability_member_inventory_negative_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -187,6 +187,8 @@ Exit code одинаков для `--format=text` и `--format=json`.
 Для tool/configuration failures `gv2-content --format=json` публикует конкретный `code`, если причина известна. В частности, отсутствующий package root использует `package_root_not_found`, контейнер вместо одиночного пакета для мутирующих команд — `container_not_a_package`, неверная область `--provenance` — `provenance_requires_inspect`, а `--watch` вне `validate` — `watch_requires_validate`. Тестам запрещено сопоставлять human-readable `message` вместо этих кодов.
 
 Positive headless contract-тесты обязаны разбирать JSON и проверять значения, а не только наличие поля или соответствие общей форме hash. Детерминированные `--commands/--seed`, replay и `--check-scripts` исполняются на frozen corpus и читают ожидаемые `repository_content_hash`, `script_set_hash`, `digest_hash`, `state_hash` и run result непосредственно из golden digest fixture. Производные поля верхнего уровня и вложенного `digest` обязаны совпадать. Динамический `commands_per_second` не является частью oracle. `ctest_headless_json_contract_self_test` доказывает, что runner отклоняет неверный golden digest. Отдельные тесты с live `GameData` являются только smoke: они проверяют успешное завершение, JSON schema, SHA-256 grammar и внутреннюю согласованность дублированных полей, но не пинят изменяемый gameplay content.
+
+**Инвентарь UI capability (GBF-03).** `Tools/Testing/validate_ui_capability_member_inventory.py` извлекает top-level data members из public declaration `FGV2UiPropertyCapability` и сравнивает их с независимой explicit classification table. `sizeof(FGV2UiPropertyCapability)` запрещено использовать как surrogate completeness: memory layout не перечисляет semantic members. `ui_capability_member_inventory_contract` останавливает CTest при добавлении либо удалении неклассифицированного члена, а `ui_capability_member_inventory_negative_contract` вводит synthetic unknown member во временную копию header и требует отказ гейта.
 
 ## Shared fixtures and conformance
 

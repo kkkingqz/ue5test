@@ -250,43 +250,6 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::SetChildCapabilityName(const F
 
 // --- IsUiCapabilitySubset ---
 
-// Layout the classification table below was written against. Changing this number without
-// revisiting the table defeats the gate.
-constexpr SIZE_T GV2_UI_PROPERTY_CAPABILITY_GATED_SIZE = 192;
-
-// GBH-08 completeness gate over the constraint fields of FGV2UiPropertyCapability.
-//
-// PCC-05 gates every EGV2PreparedUiValueKind, GBH-02A gates every Designer kind; both walk
-// an enum, so a new value cannot slip past them. FGV2UiPropertyCapability is a plain struct
-// with no reflection, so there is no enum to walk -- and that is exactly how KeyPropertyName
-// stayed out of IsUiCapabilitySubset unnoticed. The detector here is the struct's layout:
-// adding, removing or retyping any field changes its size and breaks this build, forcing the
-// author to classify the change in the table below rather than silently omitting it.
-//
-// Classification of every field at the time of this assertion:
-//   PropertyName           - identity of the property, not a constraint
-//   SupportedKind          - COMPARED (KindMismatch)
-//   TargetType             - how the target is resolved, not a constraint
-//   TargetName             - which widget is addressed, not a constraint
-//   ChildCapabilityName    - selector into the child, resolved before this call
-//   TargetKind             - COMPARED (TargetKindMismatch)
-//   IntMin, IntMax         - COMPARED (IntRangeMismatch)
-//   NumberMin, NumberMax   - COMPARED (NumberRangeMismatch)
-//   bRequiresKeyedIdentity - COMPARED (KeyedIdentityMismatch)
-//   KeyPropertyName        - COMPARED (KeyPropertyMismatch)
-//   EntryWidgetClass       - COMPARED (EntryWidgetClassMismatch)
-//   ChildTree              - nested tree, compared by CheckUiSchemaCapabilityCompatibility
-//   ItemCapability         - COMPARED recursively (ItemMismatch)
-//
-// If this assertion fires: add the new field to the table, then either compare it here with
-// its own mismatch code or state in the table why it carries no constraint. Updating the
-// number alone is not a resolution.
-static_assert(
-    sizeof(FGV2UiPropertyCapability) == GV2_UI_PROPERTY_CAPABILITY_GATED_SIZE,
-    "FGV2UiPropertyCapability changed shape: classify the new/changed field in the table "
-    "above and either compare it in IsUiCapabilitySubset or record why it is not a constraint "
-    "(GBH-08 completeness gate).");
-
 bool IsUiCapabilitySubset(
     const FGV2UiPropertyCapability& Required,
     const FGV2UiPropertyCapability& Provided,

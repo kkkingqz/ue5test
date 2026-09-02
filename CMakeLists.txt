@@ -146,4 +146,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_shell_attach_failure_consumption.py"
             "--self-test"
     )
+    # GBF-03: enumerate capability struct members from the source declaration and
+    # compare them with the independent classification table; do not use ABI layout
+    # as a surrogate for semantic completeness.
+    add_test(
+        NAME ui_capability_member_inventory_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_capability_member_inventory.py"
+    )
+    add_test(
+        NAME ui_capability_member_inventory_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_capability_member_inventory.py"
+            "--self-test"
+    )
 endif()
