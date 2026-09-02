@@ -1,0 +1,111 @@
+---
+title: Generic Boundary Hardening Plan
+status: active
+version: 1.15
+updated: 2026-09-02
+depends_on:
+  - ../../Status/Archive/GV2RemainingReview2026-09-01.md
+  - ../Archive/UniversalUiPropertyPipeline.md
+  - ../Archive/PipelineClosureCorrection.md
+  - ../Archive/DataDrivenUiComposition.md
+  - ../../UI/ScreenTemplates.md
+  - ../../Status/ImplementationStatus.md
+decisions:
+  - ../../ADR/0040-universal-ui-property-pipeline.md
+  - ../../ADR/0041-ui-commit-rollback-model.md
+---
+
+# План укрепления границ generic-абстракций
+
+> **Материализует:** находки `REM-01`…`REM-07` внешнего ревью от [2026-09-01](../../Status/Archive/GV2RemainingReview2026-09-01.md) (архивировано после закрытия всех находок).
+> **Задачи:** GBH-01…11.
+> **Результат:** три границы generic-модели перестают быть местами, где утверждение сильнее проверки.
+
+## Цель
+
+Ревью фиксирует смену характера рисков, и это главный его вывод: **критические проблемы больше не в schema-specific адаптерах — они переехали в границы generic-абстракций.**
+
+Три границы названы точно:
+
+```text
+объявленная capability   →  реальная capability ребёнка
+подготовленная мутация   →  транзакционный commit живого виджета
+схемы на файловой системе →  авторитет репозитория
+```
+
+Классификация различается по природе проблемы. `REM-01` — баг реализации с архитектурным корнем в слишком бедном declaration contract. `REM-02` — самая глубокая архитектурная недоработка: модели не хватает гарантированного способа вернуть прежнее физическое состояние после отказа, случившегося **после** начала live Commit. `REM-04` и `REM-05` — архитектурные незавершённости публичных границ (authority схем и Designer surface соответственно). `REM-03` — implementation bug предсказуемости Shell. `REM-06` и `REM-07` — contract/teardown debt.
+
+## Состояние на входе
+
+| Что | Сейчас |
+|---|---|
+| Сверка объявления композита с ребёнком | `IsUiCapabilitySubset` (`GBH-08`) — одна функция для schema↔Widget и declaration↔child; kind/диапазон/`TargetKind`/keyed identity |
+| Объявление композита | Хранит `PropertyName`, `ChildWidgetName`, `Kind`, `ChildCapabilityName` и зависящие от `Kind` параметры (`GBH-06`) |
+| `FGV2NumberPropertyConsumer::Prepare` | Проверяет тип, диапазон (`NumberMin`/`NumberMax`) и сохраняет значение; то же для Integer и `TargetKind` ссылки (`GBH-07`) |
+| `CommitUiHostProperties` | Опциональный `RollbackPlan`: при отказе на мутации K уже применённые `0..K-1` откатываются той же Prepare/Commit-машиной (`GBH-10`) |
+| `CommitReconcile` | Все **предсказуемые** причины отказа attach отклоняются в `PrepareReconcile` (`GBH-01`); остаточный непредсказуемый engine-level отказ на шаге 1 (экраны) и шаге 3 (Shell attach) восстанавливается через `RollbackFieldPlans` (`GBH-10`) |
+| `HasHostForLayer` | Используется в `PrepareReconcile` (`GBH-01`) |
+| `CollectionHost` в Designer | Selectable, полный contract (`EntryWidgetClass`/`KeyPropertyName`, item capability из CDO) — `GBH-02B` |
+| Механизм восстановления mid-Commit failure | [`ADR-0041`](../../ADR/0041-ui-commit-rollback-model.md) реализован (`GBH-10`) на всех шести границах: property/host/screen/document, Shell attach, keyed collection item, nested screen в табе |
+| UI-схемы | Сканируются с файловой системы, не принадлежат closure активного репозитория; defer зафиксирован `STATUS-008` (`GBH-03`) |
+| `ScreenTemplates.md` | Описывает фактический `IGV2ScreenFieldHost` и строгую bijection без optional policy (`GBH-04`) |
+| `ApplyOptionalImageResource`, `ApplyOptionalPortrait` | Удалены вместе с `ResolveOptionalAndApply`; legacy-гейт расширен на весь `Source/GV2` (`GBH-05`) |
+
+## Принятые решения
+
+- **Объявление обязано нести параметры своего вида.** Плоскость схемы для автора контента сохраняется — он по-прежнему пишет `day: TextSpec`, а не `day.text`. Обогащается **объявление**, а не схема: для числа это диапазон, для коллекции — класс элемента и ключевое свойство. Тройка `(имя, ребёнок, вид)` оказалась недостаточной для видов со структурой, и `REM-01` с `REM-05` — два следствия одного упрощения.
+- **Каждый выбираемый в Designer вид обязан быть работоспособен от объявления до отрисовки.** `CollectionHost` — тот же класс дефектов, что `AddObject` до `PCC-05`, только на поверхности, которую видит автор контента, а не программист. Поэтому вводится гейт по перечислению видов Designer, симметричный гейту по `EGV2PreparedUiValueKind`.
+- **`REM-02` решается ADR, а не документационной капитуляцией.** Допустимы rollback каждой live-мутации, shadow/staged commit со свопом, восстановление предыдущего committed snapshot или иной механизм с тем же наблюдаемым результатом. Простое сужение контракта до «предыдущая ревизия может остаться физически частично мутированной» **не считается закрытием**: это узаконивает несогласованное состояние вместо устранения P1. Если выбирается путь «Commit после начала live mutation не может отказать», ADR обязан доказать это структурно и убрать все fallible-ветви после первой мутации; неожиданный invariant-level отказ всё равно должен иметь deterministic recovery к предыдущей committed presentation.
+- **Одна функция subset-совместимости является общей для обеих границ.** Схема→Widget и DeclaredComposite→child не реализуют «те же правила» двумя копиями. Вводится одна нормализованная проверка capability subset (вид, диапазоны, `target_kind`, keyed identity, item contract и будущие constraints), используемая обоими путями.
+- **Shell Attach после успешного Prepare должен быть invariant-level infallible.** Все предсказуемые причины `AttachScreenToLayer == false` переносятся в `PrepareReconcile`. Если остаётся непредсказуемый engine-level отказ после начала публикации Shell tree, он принадлежит общей transaction/recovery модели `GBH-09/10`, а не локальному комментарию.
+- **Отложенный `REM-04` обязан быть виден во всей нормативной цепочке.** Если repository ownership UI-схем пока не внедряется, недостаточно одной строки STATUS: `ScreenTemplates`, `UIDocumentAndReconciliation` и ADR-level decision/caveat должны однозначно отделять целевой контракт от текущей реализации.
+- **Инъекция отказа ставится в опасную точку, а не в удобную.** `PCC-07` закрывался инъекцией и не обнаружил `REM-02`, потому что инъекция стояла на уровне экрана, а не в середине commit переиспользуемого живого экземпляра. Это повторяется в `GBH-11` как явное требование.
+
+## Границы
+
+Не входят: `STATUS-001`, `STATUS-002`, `STATUS-003`. Форма схемы, видимая автору контента, не меняется — обогащается только объявление в Designer.
+
+## Milestones
+
+- [x] M1 — [Declared Surface](DeclaredSurface.md): объявляемая поверхность не рекламирует неработоспособные kinds, Shell structural failure предсказывается до мутации, а authority/docs debt имеет явный владелец. GBH-01…05 (для `GBH-02` часть A выполняется до M2, часть B — после `GBH-08`).
+- [x] M2 — [Declaration Constraints](DeclarationConstraints.md): объявление несёт свои ограничения, указывает конкретную child capability и сверяется с ней общей subset-функцией. GBH-06…08.
+- [x] M3 — [Transactional Commit](TransactionalCommit.md): mid-Commit failure live reuse path восстанавливает предыдущую физическую presentation; partial-state contract не допускается как closure. GBH-09…11.
+
+## Критический путь
+
+```text
+GBH-02A ──► GBH-06 ──► GBH-07 ──► GBH-08 ──► GBH-02B
+            └──── полный declaration contract ────┘
+
+GBH-01 ──► GBH-09 ──► GBH-10 ──► GBH-11
+
+GBH-03, GBH-04, GBH-05 — независимы
+
+Завершают план: GBH-11 и GBH-02B
+```
+
+`GBH-02A` временно скрывает неготовый `CollectionHost`, `GBH-02B` возвращает его только после сквозного доказательства. Так разорван цикл `GBH-02 ↔ GBH-06` первой редакции плана.
+
+`GBH-01` предшествует M3, а не входит в него: он убирает из Commit все **предсказуемые** причины отказа attach, после чего остаточный непредсказуемый отказ становится частным случаем общей модели восстановления и решается вместе с ней. Поэтому утверждение «частично присоединённое дерево невозможно» закрывается парой `GBH-01` + `GBH-10`, а не одним `GBH-01`.
+
+## Общие правила выполнения
+
+1. Задача не отмечается `[x]`, пока не назван гейт, который **покраснеет** при откате изменения, и это не продемонстрировано. Для runtime/code fix это automation/unit test; для сознательно deferred `REM-04` допустим docs/status consistency gate, потому что искусственный runtime test отсутствующей фичи не доказывает корректность defer.
+2. Закрытие дефекта, тронувшего N мест одной формы, обязано либо покрыть все N, либо объяснить, почему часть не нуждается в отдельном доказательстве.
+3. Остаток, сознательно не закрываемый задачей, записывается строкой `STATUS-NNN` с наблюдаемым условием повторного открытия, а не комментарием в коде.
+4. Ассеты меняются только через `unreal-mcp`, с compile, save и прогоном automation.
+5. Правки нормативных контрактов выполняются в той же задаче, что и код.
+
+## Итоговый Definition of Done
+
+- [x] Структурная непригодность Shell и **все предсказуемые** причины отказа attach отвергаются в Prepare; после successful Prepare attach является invariant-level infallible, а остаточный unexpected failure покрывается общей transaction/recovery моделью. (GBH-01, GBH-09/10)
+- [x] Каждый выбираемый в Designer вид работоспособен от объявления до отрисовки; неготовый вид **не selectable** (Hidden/удалён), а `CollectionHost` возвращается в public surface только после E2E proof первого элемента в пустой коллекции. (GBH-02A/B, GBH-06…08)
+- [x] Судьба принадлежности UI-схем репозиторию решена: либо реализована, либо defer отражён в `ImplementationStatus` **и во всей нормативной цепочке**, включая ADR-level caveat/follow-up decision. (GBH-03)
+- [x] Контракты описывают фактический `IGV2ScreenFieldHost`. (GBH-04)
+- [x] Параллельные optional-пути применения удалены из публичного API. (GBH-05)
+- [x] Объявление несёт параметры своего вида и указывает, какую capability ребёнка делегирует. (GBH-06, GBH-08)
+- [x] Значение, выходящее за объявленное ограничение capability, отклоняется до виджета, а не обрезается им. (GBH-07)
+- [x] Сверка объявления с ребёнком и schema→Widget используют **одну общую implementation** subset-совместимости; capability сравнивается целиком, а не только по виду. (GBH-08)
+- [x] Отказ commit переиспользуемого живого экрана не оставляет физически применённой части новой ревизии; простое документирование partial state не считается closure. (GBH-09, GBH-10)
+- [x] Инъекция отказа стоит в середине commit переиспользуемого живого экземпляра. (GBH-11)
+- [x] Каждая находка ревью закрыта продемонстрированным red-on-revert gate; для consciously deferred `REM-04` — docs/status consistency gate. (GBH-11)

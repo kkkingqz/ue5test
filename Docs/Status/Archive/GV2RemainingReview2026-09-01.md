@@ -13,7 +13,7 @@ updated: 2026-09-02
 
 Внешнее ревью на commit `15ae6c5c6c7097f5c3ff5fb310c194103f34a1f0` (ветка `main`), полученное после закрытия `PipelineClosureCorrection` и `DataDrivenUiComposition`. Ревью проверяло не наличие отдельных классов/тестов, а границы generic-абстракций — declared capability → реальная capability ребёнка, подготовленная мутация → транзакционный commit живого виджета, схемы на файловой системе → авторитет репозитория — и нашло 7 находок P1…P3 на работе, закрытой с полностью зелёной верификацией.
 
-Каждая находка закрывалась планом [GenericBoundaryHardening](../../Plans/Archive/GenericBoundaryHardening.md) (`GBH-01…11`); для `REM-02` (самой глубокой архитектурной недоработки раунда) отдельно проверено, что закрыт весь класс дефекта, а не один экземпляр — существующая screen-level инъекция отказа (`PCC-07`) проверяла только замену widget instance (V1→V2, target off-tree до коммита), а не mid-Commit failure на уже живом переиспользуемом экземпляре. Новый danger-point test (`GBH-11`) на реально опасной точке подтверждён red-on-revert независимо от старого теста, который остаётся зелёным.
+Каждая находка закрывалась планом [GenericBoundaryHardening](../../Plans/GenericBoundaryHardening/README.md) (`GBH-01…11`); для `REM-02` (самой глубокой архитектурной недоработки раунда) отдельно проверено, что закрыт весь класс дефекта, а не один экземпляр — существующая screen-level инъекция отказа (`PCC-07`) проверяла только замену widget instance (V1→V2, target off-tree до коммита), а не mid-Commit failure на уже живом переиспользуемом экземпляре. Новый danger-point test (`GBH-11`) на реально опасной точке подтверждён red-on-revert независимо от старого теста, который остаётся зелёным.
 
 ## Счёт
 
@@ -50,7 +50,7 @@ updated: 2026-09-02
 - [Widget Registry](../../UI/WidgetRegistry.md)
 - [ADR-0041: UI Commit Rollback Model](../../ADR/0041-ui-commit-rollback-model.md)
 - [Confirmed Contract Gaps](../ImplementationStatus.md)
-- [GenericBoundaryHardening](../../Plans/Archive/GenericBoundaryHardening.md)
+- [GenericBoundaryHardening](../../Plans/GenericBoundaryHardening/README.md)
 
 ## Полная история
 
