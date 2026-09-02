@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.13
+version: 1.14
 updated: 2026-09-02
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
@@ -69,7 +69,7 @@ decisions:
 
 - [x] M1 — [Declared Surface](DeclaredSurface.md): объявляемая поверхность не рекламирует неработоспособные kinds, Shell structural failure предсказывается до мутации, а authority/docs debt имеет явный владелец. GBH-01…05 (для `GBH-02` часть A выполняется до M2, часть B — после `GBH-08`).
 - [x] M2 — [Declaration Constraints](DeclarationConstraints.md): объявление несёт свои ограничения, указывает конкретную child capability и сверяется с ней общей subset-функцией. GBH-06…08.
-- [ ] M3 — [Transactional Commit](TransactionalCommit.md): mid-Commit failure live reuse path восстанавливает предыдущую физическую presentation; partial-state contract не допускается как closure. GBH-09…11.
+- [x] M3 — [Transactional Commit](TransactionalCommit.md): mid-Commit failure live reuse path восстанавливает предыдущую физическую presentation; partial-state contract не допускается как closure. GBH-09…11.
 
 ## Критический путь
 
@@ -107,5 +107,5 @@ GBH-03, GBH-04, GBH-05 — независимы
 - [x] Значение, выходящее за объявленное ограничение capability, отклоняется до виджета, а не обрезается им. (GBH-07)
 - [x] Сверка объявления с ребёнком и schema→Widget используют **одну общую implementation** subset-совместимости; capability сравнивается целиком, а не только по виду. (GBH-08)
 - [x] Отказ commit переиспользуемого живого экрана не оставляет физически применённой части новой ревизии; простое документирование partial state не считается closure. (GBH-09, GBH-10)
-- [ ] Инъекция отказа стоит в середине commit переиспользуемого живого экземпляра. (GBH-11)
-- [ ] Каждая находка ревью закрыта продемонстрированным red-on-revert gate; для consciously deferred `REM-04` — docs/status consistency gate. (GBH-11)
+- [x] Инъекция отказа стоит в середине commit переиспользуемого живого экземпляра. (GBH-11)
+- [x] Каждая находка ревью закрыта продемонстрированным red-on-revert gate; для consciously deferred `REM-04` — docs/status consistency gate. (GBH-11)

@@ -2732,6 +2732,139 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             }
         }
 
+        // Step K: GBH-11 (REM-02, ADR-0041) -- the danger point PCC-07 (Step J above)
+        // never reached. PCC-07 injects failure on a screen that is being REPLACED by a
+        // brand-new widget instance (V1 -> V2): the target widget is off-tree until the
+        // whole document commits, so a mid-Commit failure there was always safe -- there
+        // is nothing live to leave half-mutated. This step targets the actually dangerous
+        // case: the SAME reused live screen widget across two fields (field_a, field_b),
+        // where field_a's Commit succeeds -- physically mutating a widget that is already
+        // the active, on-screen previous revision -- before field_b's Commit is injected
+        // to fail. Before GBH-10 this left field_a's widget showing the new revision's
+        // text while ActiveScreens/LastCommittedProperties stayed on revision 1 (REM-02's
+        // literal "logically old, physically part-new" shape). Also closes the one
+        // GBH-10 boundary that had no dedicated fault-injection test yet: several field
+        // hosts of one reused Screen (CommitScreenFields' own multi-host loop).
+        {
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+
+            UGV2ScreenWidgetBase* ReusedScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            ReusedScreen->WidgetTree = NewObject<UWidgetTree>(ReusedScreen);
+            UVerticalBox* ReusedScreenRoot = ReusedScreen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+            ReusedScreen->WidgetTree->RootWidget = ReusedScreenRoot;
+
+            UGV2DeclaredCompositeWidgetBase* FieldA = ReusedScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("FieldA"));
+            ReusedScreenRoot->AddChildToVerticalBox(FieldA);
+            FieldA->WidgetTree = NewObject<UWidgetTree>(FieldA);
+            UGV2TextWidgetBase* TextA = FieldA->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("TextA"));
+            FieldA->WidgetTree->RootWidget = TextA;
+            FieldA->SetHostIdentity(FName(TEXT("field_a")));
+            FieldA->DeclaredCapabilities.Add({ FName(TEXT("value_a")), FName(TEXT("TextA")), EGV2DeclaredUiCapabilityKind::Text });
+
+            UGV2DeclaredCompositeWidgetBase* FieldB = ReusedScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("FieldB"));
+            ReusedScreenRoot->AddChildToVerticalBox(FieldB);
+            FieldB->WidgetTree = NewObject<UWidgetTree>(FieldB);
+            UGV2TextWidgetBase* TextB = FieldB->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("TextB"));
+            FieldB->WidgetTree->RootWidget = TextB;
+            FieldB->SetHostIdentity(FName(TEXT("field_b")));
+            FieldB->DeclaredCapabilities.Add({ FName(TEXT("value_b")), FName(TEXT("TextB")), EGV2DeclaredUiCapabilityKind::Text });
+
+            auto MakeReusedFieldValue = [](const FName& FieldId, const FString& PropName, const FString& Text) -> FGV2ScreenFieldValue
+            {
+                auto ItemSchema = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Object);
+                ItemSchema->Fields.push_back({ TCHAR_TO_UTF8(*PropName), false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                FGV2TextViewModel Model;
+                Model.Text = FText::FromString(Text);
+                TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+                Fields.Emplace(PropName, FGV2PreparedUiValue::MakeText(Model));
+                FGV2ScreenFieldValue FieldValue;
+                FieldValue.FieldId = FieldId;
+                FieldValue.SchemaId = TEXT("test:schema.gbh11_reused_field.v1");
+                FieldValue.PreparedValue = FGV2PreparedUiObject::Create(MoveTemp(Fields));
+                FieldValue.CompiledSchema = ItemSchema;
+                return FieldValue;
+            };
+
+            auto MakeReusedDoc = [&](const FString& TextA_Value, const FString& TextB_Value) -> FGV2UiDocumentViewModel
+            {
+                FGV2UiDocumentViewModel Doc;
+                Doc.UiInstanceId = TEXT("ui@1:1");
+                Doc.Revision = 40;
+                Doc.bHasRoute = false;
+                FGV2ScreenInstanceViewModel OverlayInst;
+                OverlayInst.Layer = TEXT("overlay_stack");
+                OverlayInst.InstanceKey = TEXT("gbh11_reused");
+                OverlayInst.ScreenId = TEXT("core:screen.gbh11_reused");
+                OverlayInst.Fields.Add(MakeReusedFieldValue(FName(TEXT("field_a")), TEXT("value_a"), TextA_Value));
+                OverlayInst.Fields.Add(MakeReusedFieldValue(FName(TEXT("field_b")), TEXT("value_b"), TextB_Value));
+                Doc.Overlays.Add(OverlayInst);
+                return Doc;
+            };
+
+            auto ReusedFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+            {
+                return ScreenId == TEXT("core:screen.gbh11_reused") ? ReusedScreen : nullptr;
+            };
+
+            FString ReusedError;
+            TestTrue(*FString::Printf(TEXT("GBH-11: baseline reconcile of the reused screen succeeds [Error: %s]"), *ReusedError),
+                Reconciler.Reconcile(Shell, MakeReusedDoc(TEXT("OldA"), TEXT("OldB")), ReusedFactory, ReusedError));
+            TestEqual(TEXT("GBH-11: baseline widget is ReusedScreen"), Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("gbh11_reused")), ReusedScreen);
+            TestEqual(TEXT("GBH-11: baseline TextA reads OldA"), TextA->GetTextContent().ToString(), TEXT("OldA"));
+            TestEqual(TEXT("GBH-11: baseline TextB reads OldB"), TextB->GetTextContent().ToString(), TEXT("OldB"));
+
+            const int32 ActiveScreensCountBeforeFault = Reconciler.GetActiveScreens().Num();
+
+            auto ReusedFailInjector = [](const FString& ScreenId, const FString& PropertyPath) -> bool
+            {
+                return ScreenId == TEXT("core:screen.gbh11_reused") && PropertyPath == TEXT("value_b");
+            };
+            const bool bReusedFault = Reconciler.Reconcile(Shell, MakeReusedDoc(TEXT("NewA"), TEXT("NewB")), ReusedFactory, ReusedError, ReusedFailInjector);
+            TestFalse(TEXT("GBH-11: Reconcile fails when the reused screen's field_b Commit is injected"), bReusedFault);
+
+            TestEqual(TEXT("GBH-11: same reused widget is STILL the active screen (never replaced)"),
+                Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("gbh11_reused")), ReusedScreen);
+            TestEqual(TEXT("GBH-11: ActiveScreens count is unchanged by the failed reconcile"),
+                Reconciler.GetActiveScreens().Num(), ActiveScreensCountBeforeFault);
+
+            // The actual danger point: field_a's Commit succeeded (it runs before field_b
+            // in mutation order) and physically wrote "NewA" to TextA before field_b's
+            // injected failure aborted the screen. Without GBH-10's rollback, this
+            // assertion is exactly the one that would fail -- TextA would read "NewA".
+            TestEqual(TEXT("GBH-11: TextA restored to OldA, NOT left on the uncommitted NewA (REM-02's core claim)"),
+                TextA->GetTextContent().ToString(), TEXT("OldA"));
+            TestEqual(TEXT("GBH-11: TextB still reads OldB (its own Commit was never reached)"),
+                TextB->GetTextContent().ToString(), TEXT("OldB"));
+
+            const FGV2PreparedUiObject& FieldALastCommitted = FieldA->GetPropertyHostState().GetLastCommittedProperties();
+            const FGV2PreparedUiValue* FieldALastValueA = FieldALastCommitted.FindField(TEXT("value_a"));
+            TestTrue(TEXT("GBH-11: FieldA's LastCommittedProperties has value_a"), FieldALastValueA != nullptr);
+            if (FieldALastValueA != nullptr)
+            {
+                TestEqual(TEXT("GBH-11: FieldA's LastCommittedProperties still names revision 1's OldA, not advanced past the failed commit"),
+                    FieldALastValueA->AsText().Text.ToString(), TEXT("OldA"));
+            }
+
+            if (Shell != nullptr)
+            {
+                TestTrue(TEXT("GBH-11: Shell still shows the same reused widget attached (reuse never touches attach)"),
+                    Shell->GetScreensInLayer(TEXT("overlay_stack")).Contains(ReusedScreen));
+            }
+
+            // Clean up this scenario's overlay so later shared-Shell assertions in this
+            // test function see the state they expect (no GBH-11-specific residue).
+            FGV2UiDocumentViewModel ReusedCleanupDoc;
+            ReusedCleanupDoc.UiInstanceId = TEXT("ui@1:1");
+            ReusedCleanupDoc.Revision = 41;
+            ReusedCleanupDoc.bHasRoute = false;
+            FString ReusedCleanupError;
+            TestTrue(*FString::Printf(TEXT("GBH-11: cleanup reconcile succeeds [Error: %s]"), *ReusedCleanupError),
+                Reconciler.Reconcile(Shell, ReusedCleanupDoc, ReusedFactory, ReusedCleanupError));
+        }
+
         if (Shell != nullptr)
         {
             TestTrue(TEXT("Location content layer is unblocked after modal closure"), Shell->IsLayerInteractive(TEXT("location_content")));

@@ -1,7 +1,7 @@
 ---
 title: Transactional Commit Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-02
 depends_on:
   - README.md
@@ -50,15 +50,32 @@ decisions:
     - **Тесты**: новый сценарий 5 в `GV2.UI.PrepareCommitAndFailureInjection` (property-уровень, реальные виджеты `Label`/`Bar`, инъекция на второй мутации, оба widget-состояния проверены) и новый сценарий 8b2 в `GV2.UI.StandardPropertyConsumers` (Commit-фазовый — не Prepare-фазовый, как существующий 8b — отказ на переиспользуемом keyed collection item через новый `CommitWithFailureInjector`). Red-on-revert продемонстрирован вручную: временное отключение отката в `FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector` (always-false-но-не-provable guard) красит `GV2.UI.StandardPropertyConsumers` с точным сообщением "BtnA binding restored... NOT left on the uncommitted new revision", не затрагивая `GV2.UI.PrepareCommitAndFailureInjection`; восстановление кода возвращает оба теста в зелёное. Полный набор: 105/105 `GV2.*` UE Automation (headless, `-nullrhi`, подтверждено через `Saved/Logs/GV2.log`).
     - **Осознанно не закрыто отдельным regression-тестом здесь** (закрывается `GBH-11`): выделенный fault-injection тест для document-level (`CommitReconcile` шаг 1, несколько экранов) и Shell attach (шаг 3) конкретно — механизм реализован и структурно идентичен уже протестированным уровням (та же `RollbackFieldPlans`), но `GBH-11`'s мандат — именно инъекция в опасную точку с полной сверкой (`ActiveScreens`, binding revision, child order) по всем границам, поэтому эта комплексная проверка сознательно оставлена там, а не дублируется здесь по частям.
 
-- [ ] **GBH-11 — Инъекция в опасную точку и сверка закрытий**
+- [x] **GBH-11 — Инъекция в опасную точку и сверка закрытий**
   - Зависимости: GBH-10.
   - Done: test гарантированно выполняет **реальную physical mutation A**, затем инъектирует failure на mutation B того же reused live host/screen; после failure сравниваются actual renderer/control state A, `LastCommittedProperties`, child pointers/order при collection case, `ActiveScreens` и binding revision с baseline previous revision. Отдельно доказано, что прежняя screen-level injection остаётся зелёной на старом коде, а новый mid-host test — красный, то есть опасная точка действительно новая. Для каждой находки `REM-01`…`REM-07` назван regression gate и продемонстрирован red-on-revert; для deferred `REM-04` разрешён docs/status consistency gate вместо фиктивного runtime test. Закрытие класса, тронувшего несколько мест одной формы, покрывает все либо объясняет исключения; ревью переносится в `Docs/Status/Archive/` по процедуре `AGENTS.md`.
   - Evidence: отчёт change set, `Source/GV2/Private/Tests/`, `Docs/Status/Archive/`.
+  - **Реализация (2026-09-02):** новый Step K в `GV2.UI.LayeredReconciliationContract` (`GV2RuntimeSubsystemTests.cpp`) — единственный реально опасный сценарий, который существующий Step J (`PCC-07`) никогда не проверял: `PCC-07` инъектирует отказ на экране, который **заменяется** новым widget instance (V1→V2) — target ещё off-tree до успешного коммита всего документа, поэтому mid-Commit failure там всегда была безопасна. Step K вместо этого использует ОДИН **переиспользуемый** (`bIsReuse == true`) live screen с двумя Screen Field host'ами (`field_a`, `field_b`): `field_a` успешно коммитится (физически мутируя уже показанный виджет предыдущей ревизии) **до** того, как инъектированный отказ ломает `field_b`. Проверено: `TextA` восстановлен к `"OldA"`, а не оставлен на закоммиченном, но не опубликованном `"NewA"` (буквальная формулировка `REM-02`); `TextB` остаётся на `"OldB"` (его Commit не был достигнут); `FieldA->GetPropertyHostState().GetLastCommittedProperties()` всё ещё называет revision 1; `Reconciler.GetActiveScreens()` и `GetActiveScreen(...)` не продвинуты и указывают на тот же переиспользованный widget; Shell tree не тронут (reuse не проходит через attach/detach). Попутно закрыт единственный оставшийся непротестированный boundary `GBH-10` — несколько field host'ов одного переиспользуемого экрана (`CommitScreenFields`'s собственный multi-host цикл).
+
+    Red-on-revert продемонстрирован: временное отключение cross-host отката в `CommitScreenFields` (`GV2ScreenWidgetBase.cpp`, always-false-но-не-provable guard) красит именно и только Step K с точным сообщением `"GBH-11: TextA restored to OldA... Expected 'OldA', but it was 'NewA'"`, не затрагивая Step J (`PCC-07`) или любой другой шаг того же теста — подтверждает, что опасная точка действительно новая, а не то же самое свойство, что уже доказывал `PCC-07`. Восстановление кода вернуло полный набор в зелёное (105/105 `GV2.*` UE Automation, 68/68 ctest).
+
+    **Сверка закрытий по находкам ревью** (`GV2_remaining_review_2026-09-01.md`):
+
+    | ID | Закрыто | Regression gate |
+    |---|---|---|
+    | `REM-01` | `GBH-06`/`GBH-07`/`GBH-08` | `GV2.UI.DeclaredComposite.ConstraintsAndSelector`: declaration `Number[0..100]` против реального `UGV2ProgressBarWidgetBase[0..1]` отклоняется до любой physical mutation (`core:diagnostic.ui_consumer.range_unsupported`) |
+    | `REM-02` | `GBH-09` (решение, `ADR-0041`) + `GBH-10` (реализация) + `GBH-11` (danger-point test) | `GV2.UI.LayeredReconciliationContract` Step K (см. выше) — единственный, ранее отсутствовавший тест именно на reused live screen |
+    | `REM-03` | `GBH-01` | `GV2.UI.LayeredReconciliationContract` (GBH-01 блок): layer с отсутствующим host отклоняет `PrepareReconcile` целиком (`core:diagnostic.ui_reconcile.missing_layer_host`), Shell tree и `ActiveScreens` не тронуты, `CommitReconcile` не запускается — точное совпадение с regression test, сформулированным в самом ревью |
+    | `REM-04` | `GBH-03` (defer, вариант B) | `STATUS-008` в `ImplementationStatus.md` + `Validation.validate_status_008_consistency` (`validate_docs.py`) — docs/status consistency gate вместо фиктивного runtime test отсутствующей фичи, как и разрешает эта задача |
+    | `REM-05` | `GBH-02A` (скрытие) + `GBH-02B` (полный contract) | `GV2.UI.DeclaredComposite.CollectionHostFirstEntry` — первый элемент по-настоящему пустой коллекции создаётся без authored dummy child |
+    | `REM-06` | `GBH-04` | `ScreenTemplates.md` переписан под фактическую bijection; `GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure` (пункт 4, GBH-04) доказывает обе стороны bijection на top-level Screen Field |
+    | `REM-07` | `GBH-05` | Расширенный code-audit gate в `GV2PropertyConsumersTests.cpp` сканирует весь `Source/GV2` на `ApplyOptionalImageResource`/`ApplyOptionalPortrait`/`ResolveOptionalAndApply` — методы физически удалены |
+
+    Все семь находок имеют владельца и закрывающий гейт; ни одна не осталась без исхода. Ревью архивируется отдельным commit'ом по процедуре `AGENTS.md` («Audit archive lifecycle», применённой к этому one-off ревью по тому же принципу, что и к `AuditFindings.md`).
 
 ## Проверка milestone
 
-- [ ] После `A.Commit == success`, `B.Commit == failure` физическое состояние A восстановлено к baseline previous revision.
-- [ ] Recovery покрывает reused host, keyed collection/nested screen и document/Shell publication boundaries либо архитектурно доказано, почему конкретная boundary не может иметь post-mutation failure.
-- [ ] Новый mid-host test краснеет там, где прежняя screen-level injection зелёная.
-- [ ] Partial physical revision не объявлена допустимым normal contract ни в ADR, ни в `UIDocumentAndReconciliation`.
-- [ ] Каждая находка раунда закрыта red-on-revert gate; для consciously deferred `REM-04` — docs/status consistency gate.
+- [x] После `A.Commit == success`, `B.Commit == failure` физическое состояние A восстановлено к baseline previous revision.
+- [x] Recovery покрывает reused host, keyed collection/nested screen и document/Shell publication boundaries либо архитектурно доказано, почему конкретная boundary не может иметь post-mutation failure.
+- [x] Новый mid-host test краснеет там, где прежняя screen-level injection зелёная.
+- [x] Partial physical revision не объявлена допустимым normal contract ни в ADR, ни в `UIDocumentAndReconciliation`.
+- [x] Каждая находка раунда закрыта red-on-revert gate; для consciously deferred `REM-04` — docs/status consistency gate.
