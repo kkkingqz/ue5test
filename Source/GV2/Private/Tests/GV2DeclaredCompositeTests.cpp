@@ -1008,4 +1008,99 @@ bool FGV2UiCapabilitySubsetConstraintCoverageTest::RunTest(const FString& Parame
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DeclaredCompositeNestedCompositeTest,
+    "GV2.UI.DeclaredComposite.NestedComposite",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DeclaredCompositeNestedCompositeTest::RunTest(const FString& Parameters)
+{
+    // The practical question this pins: can a declared block be assembled out of other
+    // declared blocks, not only out of leaf widgets? Every existing DeclaredComposite test
+    // targets a leaf or a collection host (ProgressBar, ListView, TabContainer); nothing
+    // proved a composite delegating into another composite, which is what "собрать блок из
+    // существующих блоков" actually means once the first blocks stop being leaves.
+    UClass* const CompositeClass = FindObject<UClass>(nullptr, TEXT("/Script/GV2.GV2DeclaredCompositeWidgetBase"));
+    TestNotNull(TEXT("declared composite class exists"), CompositeClass);
+    if (CompositeClass == nullptr)
+    {
+        return false;
+    }
+
+    // Inner block: one Text property over a real text leaf.
+    UGV2DeclaredCompositeWidgetBase* const Inner = NewObject<UGV2DeclaredCompositeWidgetBase>(GetTransientPackage(), CompositeClass);
+    Inner->WidgetTree = NewObject<UWidgetTree>(Inner);
+    UGV2TextWidgetBase* const InnerLeaf = Inner->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(
+        UGV2TextWidgetBase::StaticClass(), TEXT("Caption"));
+    Inner->WidgetTree->RootWidget = InnerLeaf;
+
+    FGV2DeclaredUiCapability InnerEntry;
+    InnerEntry.PropertyName = FName(TEXT("caption"));
+    InnerEntry.ChildWidgetName = FName(TEXT("Caption"));
+    InnerEntry.Kind = EGV2DeclaredUiCapabilityKind::Text;
+    Inner->DeclaredCapabilities.Add(InnerEntry);
+
+    FGV2UiCapabilityBuilder InnerBuilder;
+    Inner->DescribeUiCapabilities(InnerBuilder);
+    const FGV2UiCapabilityTree InnerCaps = InnerBuilder.Build();
+    TestNotNull(TEXT("inner block declares 'caption'"), InnerCaps.FindProperty(TEXT("caption")));
+
+    // Outer block: delegates its own property into the inner block, addressing it by the
+    // inner block's declared capability name -- the same selector mechanism GBH-06/08 added
+    // for disambiguating a child with several capabilities of one kind.
+    UGV2DeclaredCompositeWidgetBase* const Outer = NewObject<UGV2DeclaredCompositeWidgetBase>(GetTransientPackage(), CompositeClass);
+    Outer->WidgetTree = NewObject<UWidgetTree>(Outer);
+    UGV2DeclaredCompositeWidgetBase* const NestedBlock = Outer->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+        CompositeClass, TEXT("Block"));
+    Outer->WidgetTree->RootWidget = NestedBlock;
+    NestedBlock->DeclaredCapabilities.Add(InnerEntry);
+    NestedBlock->WidgetTree = NewObject<UWidgetTree>(NestedBlock);
+    UGV2TextWidgetBase* const NestedLeaf = NestedBlock->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(
+        UGV2TextWidgetBase::StaticClass(), TEXT("Caption"));
+    NestedBlock->WidgetTree->RootWidget = NestedLeaf;
+
+    FGV2DeclaredUiCapability OuterEntry;
+    OuterEntry.PropertyName = FName(TEXT("title"));
+    OuterEntry.ChildWidgetName = FName(TEXT("Block"));
+    OuterEntry.Kind = EGV2DeclaredUiCapabilityKind::Text;
+    OuterEntry.ChildCapabilityName = TEXT("caption");
+    Outer->DeclaredCapabilities.Add(OuterEntry);
+
+    FGV2UiCapabilityBuilder OuterBuilder;
+    Outer->DescribeUiCapabilities(OuterBuilder);
+    const FGV2UiCapabilityTree OuterCaps = OuterBuilder.Build();
+    const FGV2UiPropertyCapability* const TitleCap = OuterCaps.FindProperty(TEXT("title"));
+    TestNotNull(TEXT("outer block declares 'title'"), TitleCap);
+
+    // The check that matters: the outer declaration is verified against the inner block's
+    // own capability tree as an independent second source, exactly as it is for a leaf.
+    if (TitleCap != nullptr)
+    {
+        const FGV2UiPropertyCapability* const ResolvedInner = InnerCaps.FindProperty(TEXT("caption"));
+        TestNotNull(TEXT("selector resolves to the inner block's own capability"), ResolvedInner);
+        if (ResolvedInner != nullptr)
+        {
+            EGV2UiCapabilitySubsetMismatch Mismatch = EGV2UiCapabilitySubsetMismatch::None;
+            FString Detail;
+            TestTrue(TEXT("outer declaration is a subset of the inner block's capability"),
+                IsUiCapabilitySubset(*TitleCap, *ResolvedInner, Mismatch, Detail));
+        }
+
+        // And a mismatching declaration against the same nested block is rejected.
+        FGV2UiPropertyCapability WrongKind = *TitleCap;
+        WrongKind.SupportedKind = EGV2PreparedUiValueKind::Number;
+        const FGV2UiPropertyCapability* const ResolvedInner2 = InnerCaps.FindProperty(TEXT("caption"));
+        if (ResolvedInner2 != nullptr)
+        {
+            EGV2UiCapabilitySubsetMismatch Mismatch = EGV2UiCapabilitySubsetMismatch::None;
+            FString Detail;
+            TestFalse(TEXT("declaring Number against the inner block's Text capability is rejected"),
+                IsUiCapabilitySubset(WrongKind, *ResolvedInner2, Mismatch, Detail));
+            TestEqual(TEXT("rejection reports KindMismatch"), Mismatch, EGV2UiCapabilitySubsetMismatch::KindMismatch);
+        }
+    }
+
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
