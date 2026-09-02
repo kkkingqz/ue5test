@@ -1,7 +1,7 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.13
+version: 1.14
 updated: 2026-09-02
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -129,6 +129,7 @@ Lua не передаёт children, Widget Blueprint class или физичес
   - *Скалярные*: `bool`, `integer`, `number`, `string`;
   - *Семантические*: `key` (валидируемый ключ коллекции), `text` (`TextSpec`), `ref` (типизированная ссылка Stable ID на ресурс/сущность), `binding` (семантическая привязка команды);
   - *Структурные*: `object`, `array` (с поддержкой `keyed_by`, `min_items`, `max_items`), `screen_fields`, `schema_ref` (inline-включение именованной схемы без циклических зависимостей).
+- **Идентичность array capability**: `array.keyed_by` обязан проецироваться в требуемый `KeyPropertyName` schema capability, а не только в boolean-признак keyed-identity. До `Ready` это имя сравнивается с `KeyPropertyName` widget capability тем же `SchemaContract ⊆ WidgetCapabilities` preflight; различие отклоняется `core:diagnostic.ui_capability.key_property_mismatch` (`KeyPropertyMismatch`). Совпадение одного default-имени без проекции схемы не является доказательством совместимости.
 - **Замкнутость на всех уровнях (Closed Schemas)**: любой неизвестный ключ на любом уровне вложенности значения поля или схемы отклоняется типизированной ошибкой валидации (`core:diagnostic.ui_schema.value.unknown_field`).
 - **Владение namespace**: пакет объявляет схемы исключительно своего namespace (`core:`, `textsystem:`, `rh:`, `<mod>:`). Попытка объявить схему чужого namespace отклоняется на стадии сборки репозитория.
 - **Политика отказа для мода**: моды собирают схемы исключительно из стандартных kinds в данных без написания C++. Несовместимая или ошибочная схема мода отбраковывает мод, а не приводит к сбою сессии. **Текущая реализация ([`STATUS-008`](../Status/ImplementationStatus.md)):** это целевой контракт `ADR-0040` Decision 6/7, ещё не реализованный для `ui_field`/`ui_value` — `FGV2UiSchemaCache` резолвит их статичным сканированием фиксированных файловых корней, независимо от pinned `GameDataRepository`/package closure и accept/reject решения по модам. Разрыв не наблюдается, пока ни один текущий пакет (`core`/`textsystem`/`rh`) не является модом; открывается, когда мод впервые поставит `ui_field`/`ui_value` схему.

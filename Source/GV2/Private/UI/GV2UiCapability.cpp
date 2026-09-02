@@ -415,6 +415,13 @@ static FGV2UiPropertyCapability ProjectSchemaFieldToCapability(const GV2ContentC
     if (FieldSpec.Kind == GV2ContentCore::EUiFieldKind::Array)
     {
         Required.bRequiresKeyedIdentity = FieldSpec.KeyedBy.has_value();
+        if (FieldSpec.KeyedBy.has_value())
+        {
+            // GBF-02: keyed_by is an identity-field name, not merely an on/off
+            // requirement. Preserve it on the schema side so the shared subset
+            // rule can compare the actual schema contract with the declaration.
+            Required.KeyPropertyName = UTF8_TO_TCHAR(FieldSpec.KeyedBy->c_str());
+        }
     }
 
     return Required;
@@ -494,11 +501,13 @@ bool CheckUiSchemaCapabilityCompatibility(
                     Diag.Message = FString::Printf(TEXT("Collection '%s' requires keyed elements, but schema array has no keyed_by"), *FieldName);
                     break;
                 case EGV2UiCapabilitySubsetMismatch::KeyPropertyMismatch:
+                    Diag.Code = TEXT("core:diagnostic.ui_capability.key_property_mismatch");
+                    Diag.Message = FString::Printf(
+                        TEXT("Collection '%s' key property mismatch: %s"), *FieldName, *SubsetDetail);
+                    break;
                 case EGV2UiCapabilitySubsetMismatch::EntryWidgetClassMismatch:
-                    // Not reached from this projection either: a schema array projects
-                    // keyed_by into bRequiresKeyedIdentity, never into KeyPropertyName or
-                    // EntryWidgetClass, both of which exist only on the declaration side.
-                    // Kept so the switch stays exhaustive.
+                    // EntryWidgetClass exists only on the declaration side; kept so
+                    // the switch stays exhaustive against future projection changes.
                     Diag.Code = TEXT("core:diagnostic.ui_capability.collection_identity_mismatch");
                     Diag.Message = FString::Printf(TEXT("Collection '%s' identity contract mismatch: %s"), *FieldName, *SubsetDetail);
                     break;

@@ -212,7 +212,35 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
                 Diagnostics.Num() > 0 && Diagnostics[0].Code == TEXT("core:diagnostic.ui_capability.collection_identity_mismatch"));
         }
 
-        // Schema array with keyed_by -> PASS
+        // GBF-02: `keyed_by` is a name-bearing schema constraint, not merely a
+        // boolean. Before this task the schema projection retained only the boolean,
+        // so this preflight comparison falsely accepted `id` against the declaration's
+        // `key` default without needing any runtime items to expose the disagreement.
+        // Restoring that flag-only projection must make this regression fail again.
+        {
+            FCompiledUiFieldSpec Schema;
+            Schema.Kind = EUiFieldKind::Object;
+            auto ArrSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Array);
+            ArrSpec->KeyedBy = "id";
+            ArrSpec->Items = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text);
+            Schema.Fields.push_back({ "options", false, ArrSpec });
+
+            TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+            const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
+                Schema, DropdownCaps, TEXT("core:schema.ui_field.dropdown.v1"), TEXT(""), Diagnostics);
+
+            TestFalse(TEXT("GBF-02: keyed_by name mismatch is rejected before Ready"), bCompatible);
+            TestEqual(TEXT("GBF-02: keyed_by name mismatch emits one diagnostic"), Diagnostics.Num(), 1);
+            if (Diagnostics.Num() > 0)
+            {
+                TestEqual(TEXT("GBF-02: keyed_by name mismatch reports KeyPropertyMismatch"),
+                    Diagnostics[0].Code, TEXT("core:diagnostic.ui_capability.key_property_mismatch"));
+                TestTrue(TEXT("GBF-02: diagnostic names both schema and capability keys"),
+                    Diagnostics[0].Message.Contains(TEXT("id")) && Diagnostics[0].Message.Contains(TEXT("key")));
+            }
+        }
+
+        // Schema array with matching keyed_by -> PASS
         {
             FCompiledUiFieldSpec Schema;
             Schema.Kind = EUiFieldKind::Object;
@@ -225,7 +253,8 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
                 Schema, DropdownCaps, TEXT("core:schema.ui_field.dropdown.v1"), TEXT(""), Diagnostics);
 
-            TestTrue(TEXT("Keyed array on keyed collection passes"), bCompatible);
+            TestTrue(TEXT("Matching keyed_by name on keyed collection passes"), bCompatible);
+            TestEqual(TEXT("Matching keyed_by name has no diagnostics"), Diagnostics.Num(), 0);
         }
     }
 
