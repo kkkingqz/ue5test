@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-01
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
@@ -45,7 +45,7 @@ decisions:
 | `CommitReconcile` | Все **предсказуемые** причины отказа attach отклоняются в `PrepareReconcile` (`GBH-01`); остаточный непредсказуемый engine-level отказ явно делегирован `GBH-09/10` |
 | `HasHostForLayer` | Используется в `PrepareReconcile` (`GBH-01`) |
 | `CollectionHost` в Designer | Скрыт `UMETA(Hidden)` (`GBH-02A`); вернётся в `GBH-02B` после `GBH-06…08` |
-| UI-схемы | Сканируются с файловой системы, не принадлежат closure активного репозитория (`UPP-R5`) |
+| UI-схемы | Сканируются с файловой системы, не принадлежат closure активного репозитория; defer зафиксирован `STATUS-008` (`GBH-03`) |
 | `ScreenTemplates.md` | Описывает `schema_id` и политику необязательного host на уровне элемента, чего в `IGV2ScreenFieldHost` нет |
 | `ApplyOptionalImageResource`, `ApplyOptionalPortrait` | Остались в публичном API вопреки `ADR-0040` |
 
@@ -98,7 +98,7 @@ GBH-03, GBH-04, GBH-05 — независимы
 
 - [ ] Структурная непригодность Shell и **все предсказуемые** причины отказа attach отвергаются в Prepare; после successful Prepare attach является invariant-level infallible, а остаточный unexpected failure покрывается общей transaction/recovery моделью. (GBH-01, GBH-09/10)
 - [ ] Каждый выбираемый в Designer вид работоспособен от объявления до отрисовки; неготовый вид **не selectable** (Hidden/удалён), а `CollectionHost` возвращается в public surface только после E2E proof первого элемента в пустой коллекции. (GBH-02A/B, GBH-06…08)
-- [ ] Судьба принадлежности UI-схем репозиторию решена: либо реализована, либо defer отражён в `ImplementationStatus` **и во всей нормативной цепочке**, включая ADR-level caveat/follow-up decision. (GBH-03)
+- [x] Судьба принадлежности UI-схем репозиторию решена: либо реализована, либо defer отражён в `ImplementationStatus` **и во всей нормативной цепочке**, включая ADR-level caveat/follow-up decision. (GBH-03)
 - [ ] Контракты описывают фактический `IGV2ScreenFieldHost`. (GBH-04)
 - [ ] Параллельные optional-пути применения удалены из публичного API. (GBH-05)
 - [ ] Объявление несёт параметры своего вида и указывает, какую capability ребёнка делегирует. (GBH-06, GBH-08)

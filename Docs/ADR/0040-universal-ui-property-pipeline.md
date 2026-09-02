@@ -56,6 +56,14 @@ Headless и content-инструменты получают тот же пере
 
 Требуется обязательная остановка (go/no-go) после proving slice из трёх элементов (Text/Image/Button, `UPP-15`): если harness наблюдаемости capability, распространение отказа ребёнка, чистота Prepare и инъекция отказа Commit не удаётся заставить давать описанное наблюдаемое поведение на трёх элементах — на двадцати пяти не удастся тем более, и миграция останавливается до пересмотра, а не продолжается по инерции.
 
+## Implementation caveat: UI schema authority (STATUS-008)
+
+Decision 6 (владение schema ID по namespace) и Decision 7 (политика отказа зависит от владельца схемы) описывают целевой контракт, но сегодня применяются к `ui_field`/`ui_value` схемам **не полностью**: `FGV2UiSchemaCache` резолвит их статичным сканированием фиксированного списка файловых корней (`GameData/core`, `GameData/textsystem`, `GameData/rh`, `GameData/sample`), регистрируя каждую схему по её собственному полю `id` — без проверки, что namespace `id` совпадает с пакетом-источником, и без какой-либо связи с pinned `GameDataRepository`/package closure текущей сессии или её accept/reject решением по модам. Это отдельный путь резолюции от `RepositoryBuilder`'s `FSchemaRegistry`, которым владеют остальные типы контента.
+
+Условие, при котором эта оговорка отменяется: реализация repository-owned closure для UI-схем (`GBH-03`, вариант A) — тогда Decision 6/7 начинают действовать без изъятия для `ui_field`/`ui_value` так же, как и для остальных типов схем репозитория.
+
+До этого момента: сессия с существующим content set (`core`/`textsystem`/`rh`) не наблюдает разрыва — ни один из этих пакетов не является модом, и вопрос accept/reject для них не стоит. Разрыв становится наблюдаемым только когда мод впервые попытается поставить `ui_field`/`ui_value` схему; см. [`STATUS-008`](../Status/ImplementationStatus.md) для точного условия повторного открытия и evidence.
+
 ## Rejected alternatives
 
 - **Reflection `UPROPERTY` binding по имени свойства.** Отклонён: превращает переименование C++ member в protocol change, делает Blueprint internals публичным Lua-контрактом, не позволяет гарантировать прохождение Text/Image pipelines, усложняет проверку mod permissions и не даёт выразить target-specific preflight (proposal §39).

@@ -456,6 +456,35 @@ class Validation:
                 if target_metadata is not None and target_metadata.get("status") not in {"accepted", "superseded"}:
                     self.fail(path, f"'superseded_by' target has invalid status: {superseded_by}")
 
+    def validate_status_008_consistency(self, texts: dict[Path, str]) -> None:
+        """GBH-03/REM-04 docs/status consistency gate. STATUS-008 records a
+        deliberately deferred gap (UI schema authority not yet repository-owned)
+        rather than a runtime defect, so there is no code path to red-test; the
+        gate instead is that all four places recording the decision agree. If
+        one drifts -- e.g. ImplementationStatus.md's row is removed after a
+        future GBH-03 variant A implementation, but a caveat elsewhere is not --
+        this fails instead of the docs silently disagreeing about whether the
+        gap still exists. If every one of the four has already dropped the
+        marker together (a clean full removal), there is nothing to flag.
+        """
+        marker = "STATUS-008"
+        required = (
+            self.docs_root / "Status" / "ImplementationStatus.md",
+            self.docs_root / "UI" / "ScreenTemplates.md",
+            self.docs_root / "UI" / "UIDocumentAndReconciliation.md",
+            self.docs_root / "ADR" / "0040-universal-ui-property-pipeline.md",
+        )
+        present = {path: marker in texts.get(path.resolve(), "") for path in required}
+        if not any(present.values()):
+            return
+        for path, has_marker in present.items():
+            if not has_marker:
+                self.fail(
+                    path,
+                    f"missing '{marker}' -- {path.name} must stay consistent with the other "
+                    f"three docs recording the deferred UI schema authority gap (GBH-03/REM-04)",
+                )
+
     def run(self) -> int:
         markdown_files = sorted(self.docs_root.rglob("*.md"))
         texts: dict[Path, str] = {}
@@ -479,6 +508,7 @@ class Validation:
             self.validate_links(path, text, texts)
         self.validate_adr_references()
         self.validate_dependency_graph()
+        self.validate_status_008_consistency(texts)
 
         if self.errors:
             for error in sorted(set(self.errors)):

@@ -1,7 +1,7 @@
 ---
 title: Declared Surface Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -52,10 +52,16 @@ depends_on:
     - Red→green: `UMETA(Hidden)` временно снят с `CollectionHost` — упали ровно 6 ассерций гейта (classified/status/reason/count), гейт назвал ровно эту причину («selectable... but has no recorded end-to-end proof»); восстановление — снова чисто.
     - Верификация: 103/103 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`.
 
-- [ ] **GBH-03 — Судьба принадлежности UI-схем репозиторию решена**
+- [x] **GBH-03 — Судьба принадлежности UI-схем репозиторию решена**
   - `FGV2UiSchemaCache` сканирует файловую систему и не является частью pinned `GameDataRepository`; существуют две несовпадающие проекции набора пакетов. Отложено как `UPP-R5` с условием «становится обязательным, когда блоки начнут поставляться модами». Условие не наступило, но разрыв живёт только в тексте архивных сводок, а не там, где его читают при планировании.
   - Done: принято и записано одно из двух. **A — реализовать:** UI-схемы входят в closure pinned repository, package rejection policy выполняется до publication repository, а runtime materializer резолвит schema только из этого authority. **B — defer:** разрыв получает `STATUS-NNN` с наблюдаемым условием повторного открытия; `ScreenTemplates.md` и `UIDocumentAndReconciliation.md` явно описывают текущий filesystem authority; ADR-0040 получает implementation caveat либо отдельный follow-up ADR, временно сужающий применимость Decision 6/7 до момента наступления trigger — историческое решение не переписывается молча, но текущая normative chain не утверждает реализованную mod isolation. Для defer closure проверяется docs/status consistency gate; искусственный runtime red test отсутствующей feature не требуется. Выбор обоснован и не делается по умолчанию.
   - Evidence: `Docs/Status/ImplementationStatus.md`, `Docs/UI/`, при реализации — `Source/GV2/`.
+  - **Реализация (2026-09-01):** выбран вариант **B — defer**, подтверждено пользователем: условие триггера (мод поставляет `ui_field`/`ui_value` схему) не наступило, а полная реализация repository-owned closure — крупная инфраструктурная работа (изменения repository build pipeline, mod rejection gate, замена `GV2ScreenFieldMaterializer`'s schema cache) ради возможности, которой сегодня никто не пользуется.
+    - Новая строка [`STATUS-008`](../../Status/ImplementationStatus.md) (`known_nonconformance`) с точным evidence (`GV2UiSchemaCache.h`'s собственный doc-комментарий: "self-identifying by their own `id` field ... never bound to a `DefinitionType` the way `RepositoryBuilder`'s `FSchemaRegistry` binds them"; `EnsureDiscovered()` — фиксированный `PackageRoots`, ноль namespace/package-acceptance проверок) и наблюдаемым условием повторного открытия: любой мод впервые поставляет `ui_field`/`ui_value` схему.
+    - `ADR-0040` получил раздел «Implementation caveat: UI schema authority (STATUS-008)» после `## Consequences`, сужающий применимость Decision 6/7 к `ui_field`/`ui_value` до реализации `GBH-03` варианта A — историческое решение не переписано, добавлена явная оговорка о текущей реализации.
+    - `ScreenTemplates.md` и `UIDocumentAndReconciliation.md`: строка «Политика отказа для мода» дополнена абзацем «Текущая реализация (`STATUS-008`)», явно отделяющим целевой contract от факта — namespace/rejection policy для UI-схем мода не реализована, разрыв не наблюдается только потому, что ни один текущий пакет не является модом.
+    - Docs/status consistency gate: новый `Validation.validate_status_008_consistency` в `Tools/Documentation/validate_docs.py` — проверяет, что `STATUS-008` упоминается во всех четырёх документах одновременно (ImplementationStatus.md, оба UI-документа, ADR-0040); частичное удаление (дрейф) проваливает `validate_docs.py`, полное согласованное удаление (после будущей реализации варианта A) — нет. Red→green продемонстрирован: маркер временно заменён в `ScreenTemplates.md` на несовпадающую строку — упал ровно `validate_docs.py` с точным диагнозом «missing 'STATUS-008' ... ScreenTemplates.md»; восстановление — снова чисто. Runtime red test не требовался (Done явно допускает это для defer closure).
+    - Верификация: `python3 Tools/Documentation/validate_docs.py` и `--self-test` зелены; код не менялся, UE Automation/ctest не запускались повторно (не затронуты).
 
 - [ ] **GBH-04 — Контракты описывают фактический host API**
   - `ScreenTemplates.md` утверждает, что configured element объявляет `schema_id` и политику обязательности, тогда как `IGV2ScreenFieldHost` содержит только `GetScreenFieldId()`, а `schema_id` приходит из runtime envelope.
@@ -73,5 +79,5 @@ depends_on:
 - [x] Остаточный непредсказуемый engine-level отказ attach явно делегирован `GBH-09/10` записью в задаче, а не оставлен комментарием в коде. Утверждение «частично присоединённое дерево невозможно» становится полностью истинным только после M3 и там же проверяется.
 - [x] Ни один вид Designer не является одновременно selectable и неработоспособным: часть A скрывает такие виды, и гейт не позволяет добавить новый вид в обход этого правила.
 - [x] `CollectionHost` на момент закрытия M1 либо скрыт, либо, если его контракт не нужен проекту, удалён окончательно — работоспособным он становится только в `GBH-02B` после `GBH-08`.
-- [ ] Разрыв принадлежности схем либо закрыт, либо записан там, где его читают при планировании, и отражён во всей нормативной цепочке.
+- [x] Разрыв принадлежности схем либо закрыт, либо записан там, где его читают при планировании, и отражён во всей нормативной цепочке.
 - [ ] Ни один контракт не описывает поверхность, которой нет.

@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.16
+version: 1.17
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -55,7 +55,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - UI-схемы собираются исключительно из стандартных kinds: скалярных (`bool`, `integer`, `number`, `string`), семантических (`key`, `text`, `ref`, `binding`) и структурных (`object`, `array`, `screen_fields`, `schema_ref`). Попытка ввести нестандартный примитивный kind отклоняется.
 - Схемы всех Screen Fields и всех их вложенных объектов являются **замкнутыми (closed schemas)**. Любой не объявленный в схеме ключ на любом уровне вложенности (значение поля, элемент коллекции, `TextSpec`, `Binding`) является невалидным и приводит к типизированному отказу построения и применения поля.
 - **Владение namespace**: пакет объявляет схемы только своего namespace (`core:`, `textsystem:`, `rh:`, `<mod>:`). Попытка объявить чужой namespace отклоняется на стадии сборки репозитория.
-- **Политика отказа для мода**: несовместимая или некорректная UI-схема мода отбраковывает мод, а не приводит к сбою сессии.
+- **Политика отказа для мода**: несовместимая или некорректная UI-схема мода отбраковывает мод, а не приводит к сбою сессии. **Текущая реализация ([`STATUS-008`](../Status/ImplementationStatus.md)):** это целевой контракт `ADR-0040` Decision 6/7. `FGV2UiSchemaCache` сегодня резолвит `ui_field`/`ui_value` схемы статичным сканированием фиксированных файловых корней (`GameData/core`/`textsystem`/`rh`/`sample`), не связанным с pinned `GameDataRepository`/package closure и accept/reject решением по модам — namespace/rejection policy для UI-схем мода пока не реализована. Ни один текущий пакет не является модом, поэтому разрыв не наблюдается сегодня; он становится актуальным, когда мод впервые начнёт поставлять `ui_field`/`ui_value` схему.
 - Lua публикует полный набор полей текущего screen instance, а не mutation operations.
 - Blueprint не интерпретирует `command_id`, не вызывает Lua function и не меняет canonical gameplay-state.
 - Добавление нового Screen Field не требует C++-адаптера и осуществляется декларативной схемой в данных; схемы компилируются и материализуются переносимо (`GV2ContentCore`), создание C++ класса-адаптера запрещено.
