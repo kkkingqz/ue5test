@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 6.6
+version: 6.7
 updated: 2026-09-02
 depends_on:
   - ../README.md
@@ -25,7 +25,7 @@ depends_on:
 
 ## Активные планы
 
-Активных планов нет.
+- [Declared Composite Adoption](DeclaredCompositeAdoption/README.md) — перевод трёх композитов локации на объявление, удаление специального мостика в планировщике и три полностью новых композита, собранных без C++. DCA-01…12.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
