@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.18
+version: 1.19
 updated: 2026-09-01
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -226,6 +226,12 @@ Composite указывает **какую именно** capability ребёнк
 Проверено `GV2.UI.DeclaredComposite.ConstraintsAndSelector`: declared `[0..1]` на реальном `UGV2ProgressBarWidgetBase` отклоняет schema `[0..100]` (`core:diagnostic.ui_capability.range_unsupported`) и принимает `[0..0.5]`; неоднозначный `Key` на `UGV2TabContainerWidgetBase` без селектора и без совпадения по имени отклоняется (`ambiguous_child_capability`), а с явным `ChildCapabilityName = "key"` — резолвится и принимается.
 
 `CollectionHost`'s `EntryWidgetClass`/`KeyPropertyName` уже присутствуют на `FGV2DeclaredUiCapability`, но не подключены в `DescribeUiCapabilities` — вид остаётся `Hidden` (`GBH-02A`) до `GBH-02B`, и item contract для коллекции — отдельный вопрос, который `GBH-02B` ещё должен решить.
+
+### Consumer применяет объявленное ограничение (GBH-07)
+
+`GBH-06` дал объявлению реальный диапазон/`target_kind`, но `CheckUiSchemaCapabilityCompatibility` сравнивает только **декларируемые** границы schema и capability — она ничего не знает про фактическое runtime-значение. `FGV2NumberPropertyConsumer::Prepare` и `FGV2IntegerPropertyConsumer::Prepare` проверяли только вид значения и сохраняли его; `Capability.NumberMin`/`NumberMax`/`IntMin`/`IntMax` не участвовали. Теперь оба проверяют кандидата против объявленной границы **до** `Commit` и отклоняют типизированным `core:diagnostic.ui_consumer.value_out_of_range`, а не полагаются на то, что виджет обрежет значение при отрисовке (widget-side clamp остаётся защитой последней инстанции, а не местом, где ограничение впервые применяется). `FGV2ImageResourcePropertyConsumer::Prepare` сравнивал `target_kind` входящего `StableId` с литералом `"resource"`; теперь — с `Capability.TargetKind`, объявленным на capability, а не подразумеваемым кодом.
+
+Проверено `GV2.UI.StandardPropertyConsumers`: `ProgressBar` отклоняет `5.0` и `-0.5` при declared `[0..1]` (полученный физический `Percent` не меняется рядом с уже закоммиченным `0.75`); `EditableTextBox`'s `max_length` отклоняет `50` при declared `[0..10]`; `Portrait`'s resource consumer отклоняет `StableId` с `target_kind: "item"` при declared `target_kind: "resource"`, называя объявленный `target_kind` в диагностике.
 
 Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
 

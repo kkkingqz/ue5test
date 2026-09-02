@@ -462,6 +462,22 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("EditableTextBox MaxLength Commit succeeds"), MaxLenConsumer.Commit(InnerEdit, CommitErr));
             TestEqual(TEXT("InputWidget MaxLength updated to 5"), InputWidget->GetMaxLength(), static_cast<int64>(5));
 
+            // GBH-07: same range enforcement as Number, for Integer -- a declared bound
+            // now rejects an out-of-range value in Prepare rather than accepting anything
+            // of the right kind regardless of IntMin/IntMax.
+            FGV2UiPropertyCapability BoundedIntCap = MaxLenCap;
+            BoundedIntCap.IntMin = 0;
+            BoundedIntCap.IntMax = 10;
+            FGV2IntegerPropertyConsumer BoundedIntConsumer(TEXT("max_length"));
+            FString IntRangeErr;
+            TestFalse(
+                TEXT("GBH-07: Integer Prepare rejects a value above the declared maximum"),
+                BoundedIntConsumer.Prepare(FGV2PreparedUiValue::MakeInteger(50), BoundedIntCap, InnerEdit, IntRangeErr));
+            TestTrue(
+                *FString::Printf(TEXT("GBH-07: rejection is the typed value_out_of_range diagnostic [Error: %s]"), *IntRangeErr),
+                IntRangeErr.Contains(TEXT("core:diagnostic.ui_consumer.value_out_of_range")));
+            TestEqual(TEXT("GBH-07: InputWidget MaxLength unchanged by the rejected out-of-range value"), InputWidget->GetMaxLength(), static_cast<int64>(5));
+
             FGV2StringPropertyConsumer StrConsumer;
             FGV2UiPropertyCapability StrCap;
             StrCap.PropertyName = TEXT("value");
@@ -492,6 +508,30 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestTrue(TEXT("ProgressBar Number Prepare succeeds for 0.75"), NumConsumer.Prepare(FGV2PreparedUiValue::MakeNumber(0.75), NumCap, InnerBar, PrepErr));
             TestTrue(TEXT("ProgressBar Number Commit succeeds"), NumConsumer.Commit(InnerBar, CommitErr));
             TestEqual(TEXT("ProgressBar percent is 0.75"), InnerBar->GetPercent(), 0.75f);
+
+            // GBH-07: a value outside the declared capability range is rejected in
+            // Prepare -- REM-01's confirmed defect was exactly this value (5.0) reaching
+            // Commit and being silently clamped by the widget instead.
+            FGV2NumberPropertyConsumer OutOfRangeNumConsumer;
+            FString OutOfRangeHighErr;
+            TestFalse(
+                TEXT("GBH-07: Number Prepare rejects a value above the declared maximum"),
+                OutOfRangeNumConsumer.Prepare(FGV2PreparedUiValue::MakeNumber(5.0), NumCap, InnerBar, OutOfRangeHighErr));
+            TestTrue(
+                *FString::Printf(TEXT("GBH-07: rejection is the typed value_out_of_range diagnostic [Error: %s]"), *OutOfRangeHighErr),
+                OutOfRangeHighErr.Contains(TEXT("core:diagnostic.ui_consumer.value_out_of_range")));
+
+            FString OutOfRangeLowErr;
+            TestFalse(
+                TEXT("GBH-07: Number Prepare rejects a value below the declared minimum"),
+                OutOfRangeNumConsumer.Prepare(FGV2PreparedUiValue::MakeNumber(-0.5), NumCap, InnerBar, OutOfRangeLowErr));
+            TestTrue(
+                *FString::Printf(TEXT("GBH-07: rejection is the typed value_out_of_range diagnostic [Error: %s]"), *OutOfRangeLowErr),
+                OutOfRangeLowErr.Contains(TEXT("core:diagnostic.ui_consumer.value_out_of_range")));
+
+            // No mutation from either rejected Prepare: the widget still shows the last
+            // successfully committed value, not whatever the rejected candidate was.
+            TestEqual(TEXT("GBH-07: ProgressBar percent is unchanged by the rejected out-of-range values"), InnerBar->GetPercent(), 0.75f);
 
             FGV2KeyPropertyConsumer KeyConsumer;
             FGV2UiPropertyCapability KeyCap;
@@ -529,6 +569,20 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")),
                 ImageCap, InnerPortrait, PrepErr));
             TestTrue(TEXT("Portrait resource Commit succeeds"), ImageConsumer.Commit(InnerPortrait, CommitErr));
+
+            // GBH-07: the value's own target_kind is checked against the capability's
+            // declared TargetKind ("resource" here), not a literal "resource" string --
+            // a StableId tagged for a different target_kind is rejected even though the
+            // capability's target_kind happens to be the one this consumer supports.
+            FString TargetKindErr;
+            TestFalse(
+                TEXT("GBH-07: Prepare rejects a StableId whose target_kind does not match the declared capability"),
+                ImageConsumer.Prepare(
+                    FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("item")),
+                    ImageCap, InnerPortrait, TargetKindErr));
+            TestTrue(
+                *FString::Printf(TEXT("GBH-07: rejection names the declared target_kind [Error: %s]"), *TargetKindErr),
+                TargetKindErr.Contains(TEXT("target_kind 'resource'")));
 
             FGV2KeyPropertyConsumer KeyConsumer;
             FGV2UiPropertyCapability KeyCap;

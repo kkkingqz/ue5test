@@ -273,9 +273,16 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
         return false;
     }
 
-    if (!Value.IsStableId() || Value.AsStableId().TargetKind != TEXT("resource"))
+    // GBH-07: checked against the capability's own declared TargetKind, not a literal
+    // "resource" -- the declared constraint (GBH-06) is what Prepare must honor; every
+    // capability that reaches this consumer today happens to declare "resource" (the
+    // only target_kind this consumer's catalog resolution supports), but the check
+    // itself no longer assumes that instead of reading it.
+    if (!Value.IsStableId() || Value.AsStableId().TargetKind != Capability.TargetKind)
     {
-        OutError = TEXT("core:diagnostic.ui_consumer.value_kind_mismatch: Expected StableId with target_kind 'resource'");
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_consumer.value_kind_mismatch: Expected StableId with target_kind '%s'"),
+            *Capability.TargetKind);
         return false;
     }
 
@@ -543,7 +550,26 @@ bool FGV2IntegerPropertyConsumer::Prepare(
         return false;
     }
 
-    PreparedValue = Value.AsInteger();
+    const int64 Candidate = Value.AsInteger();
+    // GBH-07: same reasoning as FGV2NumberPropertyConsumer -- the declared range is
+    // checked here, in Prepare, not left to whatever the target happens to do with an
+    // out-of-range value.
+    if (Capability.IntMin.IsSet() && Candidate < *Capability.IntMin)
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_consumer.value_out_of_range: Integer %lld is below capability minimum %lld"),
+            Candidate, *Capability.IntMin);
+        return false;
+    }
+    if (Capability.IntMax.IsSet() && Candidate > *Capability.IntMax)
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_consumer.value_out_of_range: Integer %lld is above capability maximum %lld"),
+            Candidate, *Capability.IntMax);
+        return false;
+    }
+
+    PreparedValue = Candidate;
     PropertyName = Capability.PropertyName;
     return true;
 }
@@ -612,7 +638,29 @@ bool FGV2NumberPropertyConsumer::Prepare(
         return false;
     }
 
-    PreparedValue = Value.AsNumber();
+    const double Candidate = Value.AsNumber();
+    // GBH-07: the declared capability's own range is the first place this is checked,
+    // not the widget clamping it at render (REM-01) -- Schema <-> capability range
+    // compatibility (GBH-06) only ever compared the two *declared* ranges; nothing
+    // before this stopped an in-range-for-the-schema but genuinely malformed runtime
+    // value (or one reaching Prepare through a path the schema check does not cover)
+    // from silently reaching Commit.
+    if (Capability.NumberMin.IsSet() && Candidate < *Capability.NumberMin)
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_consumer.value_out_of_range: Number %f is below capability minimum %f"),
+            Candidate, *Capability.NumberMin);
+        return false;
+    }
+    if (Capability.NumberMax.IsSet() && Candidate > *Capability.NumberMax)
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_consumer.value_out_of_range: Number %f is above capability maximum %f"),
+            Candidate, *Capability.NumberMax);
+        return false;
+    }
+
+    PreparedValue = Candidate;
     return true;
 }
 

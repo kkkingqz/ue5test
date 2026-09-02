@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.8
+version: 1.9
 updated: 2026-09-01
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
@@ -40,7 +40,7 @@ decisions:
 |---|---|
 | Сверка объявления композита с ребёнком | `ResolveDelegatedChildCapability` (`GBH-06`) резолвит конкретную capability по имени/виду/ambiguity; диапазон/`TargetKind` пока сравниваются только на стороне schema↔declaration (`GBH-08` объединит с этой сверкой) |
 | Объявление композита | Хранит `PropertyName`, `ChildWidgetName`, `Kind`, `ChildCapabilityName` и зависящие от `Kind` параметры (`GBH-06`) |
-| `FGV2NumberPropertyConsumer::Prepare` | Проверяет тип и сохраняет значение; объявленный диапазон capability не применяется |
+| `FGV2NumberPropertyConsumer::Prepare` | Проверяет тип, диапазон (`NumberMin`/`NumberMax`) и сохраняет значение; то же для Integer и `TargetKind` ссылки (`GBH-07`) |
 | `CommitUiHostProperties` | Выходит по первому отказу; отката уже применённых мутаций нет, предыдущее физическое состояние не хранится |
 | `CommitReconcile` | Все **предсказуемые** причины отказа attach отклоняются в `PrepareReconcile` (`GBH-01`); остаточный непредсказуемый engine-level отказ явно делегирован `GBH-09/10` |
 | `HasHostForLayer` | Используется в `PrepareReconcile` (`GBH-01`) |
@@ -102,7 +102,7 @@ GBH-03, GBH-04, GBH-05 — независимы
 - [x] Контракты описывают фактический `IGV2ScreenFieldHost`. (GBH-04)
 - [x] Параллельные optional-пути применения удалены из публичного API. (GBH-05)
 - [ ] Объявление несёт параметры своего вида и указывает, какую capability ребёнка делегирует. (GBH-06, GBH-08)
-- [ ] Значение, выходящее за объявленное ограничение capability, отклоняется до виджета, а не обрезается им. (GBH-07)
+- [x] Значение, выходящее за объявленное ограничение capability, отклоняется до виджета, а не обрезается им. (GBH-07)
 - [ ] Сверка объявления с ребёнком и schema→Widget используют **одну общую implementation** subset-совместимости; capability сравнивается целиком, а не только по виду. (GBH-08)
 - [ ] Отказ commit переиспользуемого живого экрана не оставляет физически применённой части новой ревизии; простое документирование partial state не считается closure. (GBH-09, GBH-10)
 - [ ] Инъекция отказа стоит в середине commit переиспользуемого живого экземпляра. (GBH-11)
