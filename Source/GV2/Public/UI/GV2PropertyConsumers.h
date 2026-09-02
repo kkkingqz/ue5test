@@ -244,6 +244,15 @@ public:
     virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
+    // GBH-10/11 (ADR-0041): lets a test (or a future nested caller) inject a Commit-phase
+    // failure on a specific reused item's own property, scoped as "[key].<child_path>" --
+    // the same scoping FGV2TabContainerTabsPropertyConsumer already uses for its nested
+    // screens. Production callers omit the injector, same as everywhere else.
+    virtual bool CommitWithFailureInjector(
+        UWidget* TargetWidget,
+        FString& OutError,
+        const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
+        const FString& PropertyPath) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
     const TMap<FName, TObjectPtr<UWidget>>& GetActiveWidgetsByKey() const { return ActiveWidgetsByKey; }
@@ -274,6 +283,20 @@ private:
         TObjectPtr<UWidget> Widget;
         TSharedPtr<FGV2UiHostMutationPlan> Plan;
         bool bIsHost = false;
+        // GBH-10 (ADR-0041): set only when Widget is a REUSED entry (found in
+        // ExistingWidgets during Prepare, not freshly created). RollbackPlan restores it
+        // to its own previous committed value if Commit fails on a later item in the
+        // same collection -- a freshly created entry was never shown, so there is
+        // nothing on it to roll back.
+        bool bIsReused = false;
+        TSharedPtr<FGV2UiHostMutationPlan> RollbackPlan;
+        // GBH-10 (ADR-0041): this item's own candidate value, captured at Prepare time so
+        // Commit can record it as the item host's LastCommittedProperties once the whole
+        // collection commits cleanly -- without this, a collection item's own previous
+        // value is never tracked anywhere, and a later revision's RollbackPlan would have
+        // nothing but an empty object to prepare against (an all-Reset plan, not an
+        // actual restore).
+        TSharedPtr<const FGV2PreparedUiObject> CommittedValue;
     };
 
     FString KeyPropertyName = TEXT("key");

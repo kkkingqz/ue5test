@@ -263,6 +263,103 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
             Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")))->GetPercent(), PercentBeforePrepare);
     }
 
+    // 5. GBH-10 (ADR-0041): Commit rollback restores an already-committed property when
+    // a LATER property in the same host's plan fails, so a reused host is never left
+    // with a partially-new revision (REM-02). Mutation order is explicit here (text
+    // first, then percent) rather than left to capability-tree iteration order, so this
+    // test does not depend on the same ordering the production forward/rollback plan
+    // pair relies on structurally (both built from the same FGV2UiCapabilityTree).
+    {
+        UUserWidget* Host = MakeTestHostWidget();
+        UCommonTextBlock* LabelWidget = Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")));
+        UProgressBar* BarWidget = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")));
+
+        FGV2TextViewModel OldText;
+        OldText.Text = FText::FromString(TEXT("OldRollbackText"));
+
+        FGV2UiHostMutationPlan ForwardPlan;
+        FGV2UiHostMutationPlan RollbackPlan;
+        FString PrepError;
+
+        // Mutation 0: text, new value (will already be committed when percent fails).
+        {
+            FGV2TextViewModel NewText;
+            NewText.Text = FText::FromString(TEXT("NewRollbackText"));
+            const FGV2UiPropertyCapability TextCap;
+
+            TSharedPtr<IGV2PropertyConsumer> ForwardConsumer = MakeShared<FGV2TextPropertyConsumer>();
+            TestTrue(TEXT("GBH-10: forward text consumer prepares"),
+                ForwardConsumer->Prepare(FGV2PreparedUiValue::MakeText(NewText), TextCap, LabelWidget, PrepError));
+            FGV2UiPropertyMutation ForwardMut;
+            ForwardMut.PropertyName = TEXT("text");
+            ForwardMut.PropertyPath = TEXT("screen.item.text");
+            ForwardMut.Kind = EGV2PreparedUiValueKind::Text;
+            ForwardMut.Consumer = ForwardConsumer;
+            ForwardMut.TargetWidget = LabelWidget;
+            ForwardPlan.AddMutation(ForwardMut);
+
+            TSharedPtr<IGV2PropertyConsumer> RollbackConsumer = MakeShared<FGV2TextPropertyConsumer>();
+            TestTrue(TEXT("GBH-10: rollback text consumer prepares old value"),
+                RollbackConsumer->Prepare(FGV2PreparedUiValue::MakeText(OldText), TextCap, LabelWidget, PrepError));
+            FGV2UiPropertyMutation RollbackMut = ForwardMut;
+            RollbackMut.Consumer = RollbackConsumer;
+            RollbackPlan.AddMutation(RollbackMut);
+        }
+
+        // Mutation 1: percent, new value (this is where the injected failure hits).
+        {
+            FGV2UiPropertyCapability PercentCap;
+            PercentCap.NumberMin = 0.0;
+            PercentCap.NumberMax = 1.0;
+
+            TSharedPtr<IGV2PropertyConsumer> ForwardConsumer = MakeShared<FGV2NumberPropertyConsumer>();
+            TestTrue(TEXT("GBH-10: forward percent consumer prepares"),
+                ForwardConsumer->Prepare(FGV2PreparedUiValue::MakeNumber(0.75), PercentCap, BarWidget, PrepError));
+            FGV2UiPropertyMutation ForwardMut;
+            ForwardMut.PropertyName = TEXT("percent");
+            ForwardMut.PropertyPath = TEXT("screen.item.percent");
+            ForwardMut.Kind = EGV2PreparedUiValueKind::Number;
+            ForwardMut.Consumer = ForwardConsumer;
+            ForwardMut.TargetWidget = BarWidget;
+            ForwardPlan.AddMutation(ForwardMut);
+
+            TSharedPtr<IGV2PropertyConsumer> RollbackConsumer = MakeShared<FGV2NumberPropertyConsumer>();
+            TestTrue(TEXT("GBH-10: rollback percent consumer prepares old value"),
+                RollbackConsumer->Prepare(FGV2PreparedUiValue::MakeNumber(0.25), PercentCap, BarWidget, PrepError));
+            FGV2UiPropertyMutation RollbackMut = ForwardMut;
+            RollbackMut.Consumer = RollbackConsumer;
+            RollbackPlan.AddMutation(RollbackMut);
+        }
+
+        // Seed the host's pre-transaction physical state by committing RollbackPlan once,
+        // up front -- the same consumers get reused below to actually perform the
+        // rollback, which is simply committing them again with the same cached value.
+        FString SeedFailedPath, SeedError;
+        TestTrue(TEXT("GBH-10: seeding pre-transaction state via rollback plan succeeds"),
+            CommitUiHostProperties(Cast<UUserWidget>(Host), RollbackPlan, SeedFailedPath, SeedError));
+        TestEqual(TEXT("GBH-10: seeded text reads back as OLD value"),
+            LabelWidget->GetText().ToString(), OldText.Text.ToString());
+        TestEqual(TEXT("GBH-10: seeded percent reads back as 0.25"), BarWidget->GetPercent(), 0.25f);
+
+        // Inject failure on percent (the SECOND mutation) -- text has already committed
+        // to its NEW value by the time percent's Commit is attempted.
+        auto Injector = [](const FString& InPropertyPath) -> bool
+        {
+            return InPropertyPath == TEXT("screen.item.percent");
+        };
+
+        FString FailedPath, Error;
+        const bool bCommitResult = CommitUiHostProperties(
+            Cast<UUserWidget>(Host), ForwardPlan, FailedPath, Error, Injector, &RollbackPlan);
+
+        TestFalse(TEXT("GBH-10: Commit fails when injected on the second property"), bCommitResult);
+        TestEqual(TEXT("GBH-10: failed property path names percent"), FailedPath, TEXT("screen.item.percent"));
+        TestEqual(TEXT("GBH-10: text widget restored to OLD value after rollback, not left on NEW value"),
+            LabelWidget->GetText().ToString(), OldText.Text.ToString());
+        TestEqual(TEXT("GBH-10: percent widget stays at its pre-transaction value (never committed)"),
+            BarWidget->GetPercent(), 0.25f);
+    }
+
     return true;
 }
 

@@ -151,17 +151,19 @@ bool PrepareScreenFieldPlans(
 
         FGV2UiCapabilityBuilder Builder;
         PropertyHost->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree CapabilityTree = Builder.Build();
+        const FGV2PreparedUiObject PreviousCommittedValue = PropertyHost->GetPropertyHostState().GetLastCommittedProperties();
 
         FGV2UiHostMutationPlan MutationPlan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bPrepared = PrepareUiHostProperties(
             Host.HostWidget,
-            Builder.Build(),
+            CapabilityTree,
             *Value.PreparedValue,
             *Value.CompiledSchema,
             Value.SchemaId,
             FString(),
-            PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+            PreviousCommittedValue,
             MutationPlan,
             Diagnostics,
             ActiveCompositionChain);
@@ -174,8 +176,33 @@ bool PrepareScreenFieldPlans(
             return false;
         }
 
+        // GBH-10 (ADR-0041): prepare the rollback plan the same way, off-tree, against
+        // the host's own previous committed value -- both calls iterate the same
+        // CapabilityTree, so RollbackPlan's mutations line up 1:1 with MutationPlan's.
+        // A failure here only means this host cannot self-heal if Commit later fails;
+        // it does not block Prepare -- the forward plan was already proven valid.
+        FGV2UiHostMutationPlan RollbackPlan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> RollbackDiagnostics;
+        if (!PrepareUiHostProperties(
+                Host.HostWidget,
+                CapabilityTree,
+                PreviousCommittedValue,
+                *Value.CompiledSchema,
+                Value.SchemaId,
+                FString(),
+                PreviousCommittedValue,
+                RollbackPlan,
+                RollbackDiagnostics,
+                ActiveCompositionChain))
+        {
+            UE_LOG(LogGV2ScreenWidget, Warning,
+                TEXT("GBH-10: failed to prepare rollback plan for screen field '%s': %s -- a Commit failure on this host will not be able to restore its previous state"),
+                *Host.FieldId.ToString(),
+                RollbackDiagnostics.Num() > 0 ? *RollbackDiagnostics[0].ToString() : TEXT("unknown error"));
+        }
+
         ConsumedFieldIds.Add(Host.FieldId);
-        OutPlans.Add({Host.HostWidget, MoveTemp(MutationPlan), Value.PreparedValue});
+        OutPlans.Add({Host.HostWidget, MoveTemp(MutationPlan), Value.PreparedValue, MoveTemp(RollbackPlan)});
     }
 
     for (const TPair<FName, const FGV2ScreenFieldValue*>& Pair : ValuesById)
@@ -188,6 +215,21 @@ bool PrepareScreenFieldPlans(
     }
     return true;
 }
+}
+
+void RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan> FieldPlans)
+{
+    for (int32 Index = FieldPlans.Num() - 1; Index >= 0; --Index)
+    {
+        const FGV2ScreenFieldPlan& FieldPlan = FieldPlans[Index];
+        FString RollbackFailedPath, RollbackError;
+        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.RollbackPlan, RollbackFailedPath, RollbackError))
+        {
+            UE_LOG(LogGV2ScreenWidget, Error,
+                TEXT("GBH-10: rollback failed restoring host '%s' property '%s': %s -- invariant violation, physical state may not match previous revision"),
+                *GetNameSafe(FieldPlan.HostWidget.Get()), *RollbackFailedPath, *RollbackError);
+        }
+    }
 }
 
 bool UGV2ScreenWidgetBase::PrepareScreenFields(
@@ -203,17 +245,19 @@ bool UGV2ScreenWidgetBase::CommitScreenFields(
     const FGV2ScreenMutationPlan& Plan,
     TFunction<bool(const FString& PropertyPath)> FailureInjector)
 {
+    int32 CommittedHostCount = 0;
     for (const FGV2ScreenFieldPlan& FieldPlan : Plan.FieldPlans)
     {
         FString FailedPath, CommitError;
-        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError, FailureInjector))
+        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError, FailureInjector, &FieldPlan.RollbackPlan))
         {
-            // Every plan above already prepared cleanly; CommitUiHostProperties is
-            // documented infallible against a plan it prepared itself. Reaching this
-            // is therefore either injected test failure or a genuine engine-level
-            // fault, not a predictable content error -- there is nothing to roll back
-            // to (no compensating capture exists any more), so this is logged as the
-            // implementation-limit case it is, not silently absorbed.
+            // GBH-10 (ADR-0041): every plan above already prepared cleanly, so reaching
+            // this is either injected test failure or a genuine engine-level fault, not
+            // a predictable content error. CommitUiHostProperties already self-healed
+            // *this* host back to its own previous value via FieldPlan.RollbackPlan;
+            // hosts committed earlier in this same call still sit on their NEW value and
+            // must be restored too, since this whole screen's revision is not published.
+            RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan>(Plan.FieldPlans.GetData(), CommittedHostCount));
             UE_LOG(
                 LogGV2ScreenWidget,
                 Error,
@@ -222,6 +266,15 @@ bool UGV2ScreenWidgetBase::CommitScreenFields(
                 *CommitError);
             return false;
         }
+        ++CommittedHostCount;
+    }
+
+    // Only reached once every host above committed cleanly -- advance LastCommittedProperties
+    // for the whole screen in one pass, after the fact, so a mid-loop failure above never
+    // sees a host whose metadata already claims the new revision while rollback restores
+    // its widget to the old one.
+    for (const FGV2ScreenFieldPlan& FieldPlan : Plan.FieldPlans)
+    {
         if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(FieldPlan.HostWidget.Get()))
         {
             PropertyHost->GetPropertyHostState().SetLastCommittedProperties(*FieldPlan.CommittedValue);

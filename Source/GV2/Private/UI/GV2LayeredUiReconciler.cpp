@@ -147,8 +147,9 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
     // nothing below (detach/attach/ActiveScreens/layer interactivity) has run yet, every
     // *other* layer's widget instances, bindings, and the previous ActiveScreens revision
     // are still exactly what they were before this call -- not merely equal in count.
-    for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
+    for (int32 InstIndex = 0; InstIndex < Plan.ScreensToUpdateOrAttach.Num(); ++InstIndex)
     {
+        const FPreparedScreenInstance& Inst = Plan.ScreensToUpdateOrAttach[InstIndex];
         if (Inst.TargetWidget == nullptr)
         {
             continue;
@@ -164,6 +165,17 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
         }
         if (!Inst.TargetWidget->CommitScreenFields(Inst.MutationPlan, PerScreenInjector))
         {
+            // GBH-10 (ADR-0041): CommitScreenFields already self-healed *this* screen
+            // back to its own previous properties. Screens committed earlier in this
+            // same step (indices [0..InstIndex-1]; a null-widget entry never commits so
+            // it never needs rollback either) still sit on their new revision and must
+            // be restored too -- ActiveScreens has not advanced yet, so the whole
+            // document commit must not leave any screen physically on a revision it is
+            // not publishing.
+            for (int32 RollbackIndex = InstIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+            {
+                RollbackFieldPlans(Plan.ScreensToUpdateOrAttach[RollbackIndex].MutationPlan.FieldPlans);
+            }
             OutError = FString::Printf(
                 TEXT("core:diagnostic.ui_reconcile.commit_failed: layer='%s' instance_key='%s' screen_id='%s'"),
                 *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId);
@@ -195,14 +207,50 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
     // PrepareReconcile, before any mutation above -- on a plan that reached this point,
     // Attach is an invariant-level operation. A false here is therefore necessarily an
     // unpredictable engine-level failure (e.g. AddChild rejecting the child for a reason
-    // Prepare cannot dry-run); its recovery is delegated to the transactional
-    // commit/rollback model (GBH-09/10), not solved by this loop.
-    for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
+    // Prepare cannot dry-run). GBH-10 (ADR-0041): recovery is no longer merely "delegated"
+    // -- a failure here undoes every new screen already attached earlier in this same
+    // step, re-attaches (best-effort) any old widget step 2 detached to make room for a
+    // replacement, and rolls back step 1's property commits for every screen in the plan
+    // (all of them physically changed in step 1, regardless of where attach fails), so
+    // CommitReconcile returns false with the Shell tree, every screen's properties and
+    // ActiveScreens (not yet touched) exactly at the previous revision.
+    for (int32 InstIndex = 0; InstIndex < Plan.ScreensToUpdateOrAttach.Num(); ++InstIndex)
     {
+        const FPreparedScreenInstance& Inst = Plan.ScreensToUpdateOrAttach[InstIndex];
         if (!Inst.bIsReuse && Shell != nullptr)
         {
             if (!Shell->AttachScreenToLayer(Inst.Layer, Inst.TargetWidget.Get()))
             {
+                for (int32 RollbackIndex = InstIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+                {
+                    const FPreparedScreenInstance& AttachedInst = Plan.ScreensToUpdateOrAttach[RollbackIndex];
+                    if (!AttachedInst.bIsReuse)
+                    {
+                        if (!Shell->DetachScreen(AttachedInst.TargetWidget.Get()))
+                        {
+                            UE_LOG(LogTemp, Error,
+                                TEXT("GBH-10: rollback failed detaching newly-attached screen '%s' (layer='%s' instance_key='%s') -- invariant violation"),
+                                *AttachedInst.ScreenId, *AttachedInst.Layer.ToString(), *AttachedInst.InstanceKey.ToString());
+                        }
+                    }
+                }
+                for (const FPreparedScreenInstance& ReplacedInst : Plan.ScreensToUpdateOrAttach)
+                {
+                    if (!ReplacedInst.bIsReuse && ReplacedInst.ReplacedOldWidget != nullptr)
+                    {
+                        if (!Shell->AttachScreenToLayer(ReplacedInst.Layer, ReplacedInst.ReplacedOldWidget.Get()))
+                        {
+                            UE_LOG(LogTemp, Error,
+                                TEXT("GBH-10: rollback failed re-attaching replaced screen (layer='%s' instance_key='%s') detached in step 2 -- invariant violation"),
+                                *ReplacedInst.Layer.ToString(), *ReplacedInst.InstanceKey.ToString());
+                        }
+                    }
+                }
+                for (const FPreparedScreenInstance& CommittedInst : Plan.ScreensToUpdateOrAttach)
+                {
+                    RollbackFieldPlans(CommittedInst.MutationPlan.FieldPlans);
+                }
+
                 OutError = FString::Printf(
                     TEXT("core:diagnostic.ui_reconcile.attach_failed: layer='%s' instance_key='%s' screen_id='%s'"),
                     *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId);

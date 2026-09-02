@@ -781,6 +781,50 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("Container child 0 remains BtnA"), ContainerBox->GetChildAt(0), Cast<UWidget>(BtnA));
             TestEqual(TEXT("Container child 1 remains BtnB"), ContainerBox->GetChildAt(1), Cast<UWidget>(BtnB));
 
+            // 8b2. GBH-10 (ADR-0041): Commit-PHASE rollback, distinct from 8b's Prepare-
+            // phase rejection above. Both items here Prepare cleanly (no schema
+            // violation) -- the failure is injected into item_b's own Commit via the new
+            // CommitWithFailureInjector override, after item_a (reused) has already had
+            // its new binding physically committed. Panel/ActiveWidgetsByKey never
+            // advance on this failure path, so a reused item left on its new value would
+            // be an observable partial-revision bug (REM-02) even though the collection
+            // as a whole correctly reports failure.
+            const FGV2UiBindingHandle HandleACommitPhaseNew = FGV2UiBindingHandle::Create(TEXT("action_a_commit_new@1:1"));
+            TMap<FString, FGV2PreparedUiValue> ItemACommitPhaseMap;
+            ItemACommitPhaseMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_a")));
+            ItemACommitPhaseMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(HandleACommitPhaseNew));
+
+            const FGV2UiBindingHandle HandleBCommitPhaseNew = FGV2UiBindingHandle::Create(TEXT("action_b_commit_new@1:1"));
+            TMap<FString, FGV2PreparedUiValue> ItemBCommitPhaseMap;
+            ItemBCommitPhaseMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_b")));
+            ItemBCommitPhaseMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(HandleBCommitPhaseNew));
+
+            TArray<FGV2PreparedUiValue> CommitPhaseElements;
+            CommitPhaseElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemACommitPhaseMap)));
+            CommitPhaseElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemBCommitPhaseMap)));
+
+            FString CommitPhasePrepErr;
+            const bool bCommitPhasePrep = Consumer->Prepare(
+                FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(CommitPhaseElements)), *CollCap, ListView, CommitPhasePrepErr);
+            TestTrue(TEXT("GBH-10: both items Prepare cleanly this time (no schema violation)"), bCommitPhasePrep);
+
+            auto CommitPhaseInjector = [](const FString& InPropertyPath) -> bool
+            {
+                return InPropertyPath.Contains(TEXT("item_b"));
+            };
+
+            FString CommitPhaseError;
+            const bool bCommitPhaseCommit = static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get())->CommitWithFailureInjector(
+                ListView, CommitPhaseError, CommitPhaseInjector, TEXT("items"));
+
+            TestFalse(TEXT("GBH-10: collection Commit fails when item_b's own Commit is injected"), bCommitPhaseCommit);
+            TestEqual(TEXT("GBH-10: BtnA binding restored to its previous value, NOT left on the uncommitted new revision"),
+                BtnA->GetBindingHandle(), TestHandleA);
+            TestEqual(TEXT("GBH-10: BtnA key unaffected"), BtnA->GetKey(), FName(TEXT("item_a")));
+            TestEqual(TEXT("GBH-10: Container still reports the previous (uncommitted) children"), ContainerBox->GetChildrenCount(), 2);
+            TestEqual(TEXT("GBH-10: Container child 0 is still BtnA"), ContainerBox->GetChildAt(0), Cast<UWidget>(BtnA));
+            TestEqual(TEXT("GBH-10: Container child 1 is still BtnB"), ContainerBox->GetChildAt(1), Cast<UWidget>(BtnB));
+
             // 8c. Negative tests: missing key, empty key, duplicate key
             TMap<FString, FGV2PreparedUiValue> MissingKeyMap;
             MissingKeyMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleA));

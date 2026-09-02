@@ -64,12 +64,22 @@ GV2_API bool PrepareUiHostProperties(
     const TArray<FString>* ActiveCompositionChain = nullptr);
 
 /**
- * Infallibly commits a prepared mutation plan to the physical widget hierarchy.
+ * Commits a prepared mutation plan to the physical widget hierarchy.
  * Supports failure injection to verify atomicity and error diagnostics.
+ *
+ * GBH-10 (ADR-0041): RollbackPlan, when given, is a plan prepared the same way as Plan
+ * but against the host's previous committed value (same property order, since both are
+ * built by iterating the same capability tree). If Commit fails partway through Plan,
+ * every mutation already applied is undone by replaying the corresponding RollbackPlan
+ * mutation, in reverse order, through the same consumer Commit/Reset path -- before this
+ * function returns false. Callers that are themselves already inside a self-healing
+ * scope (rolling back a mutation built purely for that purpose) pass nullptr to avoid
+ * recursing into a rollback of a rollback.
  */
 GV2_API bool CommitUiHostProperties(
     UUserWidget* HostWidget,
     const FGV2UiHostMutationPlan& Plan,
     FString& OutFailedPropertyPath,
     FString& OutError,
-    TFunction<bool(const FString& PropertyPath)> FailureInjector = nullptr);
+    TFunction<bool(const FString& PropertyPath)> FailureInjector = nullptr,
+    const FGV2UiHostMutationPlan* RollbackPlan = nullptr);

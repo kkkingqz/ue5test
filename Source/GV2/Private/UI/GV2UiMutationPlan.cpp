@@ -31,6 +31,42 @@ FString MapSubsetMismatchToConsumerDiagnosticCode(EGV2UiCapabilitySubsetMismatch
         return TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
     }
 }
+
+// GBH-10 (ADR-0041): undoes the first CommittedCount mutations of a forward plan by
+// replaying the corresponding mutations of its RollbackPlan, in reverse order. Both
+// plans are built by iterating the same FGV2UiCapabilityTree, so RollbackMutations[i]
+// always targets the same property/widget as ForwardMutations[i] -- restoring
+// [0..CommittedCount-1] is therefore just re-running Commit/Reset with the old
+// prepared value already sitting in RollbackPlan, not a bespoke undo code path.
+// Best-effort: a rollback mutation failing is logged as the invariant violation it is
+// (the old value was already proven valid once) but does not stop restoring the rest.
+void RollbackCommittedMutations(const FGV2UiHostMutationPlan& RollbackPlan, int32 CommittedCount)
+{
+    const TArray<FGV2UiPropertyMutation>& RollbackMutations = RollbackPlan.GetMutations();
+    const int32 RollbackCount = FMath::Min(CommittedCount, RollbackMutations.Num());
+    for (int32 Index = RollbackCount - 1; Index >= 0; --Index)
+    {
+        const FGV2UiPropertyMutation& Mutation = RollbackMutations[Index];
+        if (!Mutation.Consumer.IsValid() || !Mutation.TargetWidget.IsValid())
+        {
+            continue;
+        }
+        if (Mutation.bIsReset)
+        {
+            Mutation.Consumer->Reset(Mutation.TargetWidget.Get());
+        }
+        else
+        {
+            FString RollbackError;
+            if (!Mutation.Consumer->Commit(Mutation.TargetWidget.Get(), RollbackError))
+            {
+                UE_LOG(LogTemp, Error,
+                    TEXT("GBH-10: rollback commit failed on '%s': %s -- invariant violation, physical state may not match previous revision"),
+                    *Mutation.PropertyPath, *RollbackError);
+            }
+        }
+    }
+}
 }
 
 bool PrepareUiHostProperties(
@@ -508,8 +544,10 @@ bool CommitUiHostProperties(
     const FGV2UiHostMutationPlan& Plan,
     FString& OutFailedPropertyPath,
     FString& OutError,
-    TFunction<bool(const FString& PropertyPath)> FailureInjector)
+    TFunction<bool(const FString& PropertyPath)> FailureInjector,
+    const FGV2UiHostMutationPlan* RollbackPlan)
 {
+    int32 CommittedCount = 0;
     for (const auto& Mutation : Plan.GetMutations())
     {
         // Check failure injection
@@ -518,6 +556,10 @@ bool CommitUiHostProperties(
             OutFailedPropertyPath = Mutation.PropertyPath;
             OutError = FString::Printf(TEXT("core:diagnostic.ui_mutation.commit_failed_injected: Injected failure on property '%s'"),
                 *Mutation.PropertyPath);
+            if (RollbackPlan != nullptr)
+            {
+                RollbackCommittedMutations(*RollbackPlan, CommittedCount);
+            }
             return false;
         }
 
@@ -540,6 +582,10 @@ bool CommitUiHostProperties(
                 OutError = FString::Printf(
                     TEXT("core:diagnostic.ui_mutation.reset_target_invalidated: consumer or target for '%s' became invalid between Prepare and Commit"),
                     *Mutation.PropertyPath);
+                if (RollbackPlan != nullptr)
+                {
+                    RollbackCommittedMutations(*RollbackPlan, CommittedCount);
+                }
                 return false;
             }
         }
@@ -556,10 +602,15 @@ bool CommitUiHostProperties(
                 {
                     OutFailedPropertyPath = Mutation.PropertyPath;
                     OutError = CommitError;
+                    if (RollbackPlan != nullptr)
+                    {
+                        RollbackCommittedMutations(*RollbackPlan, CommittedCount);
+                    }
                     return false;
                 }
             }
         }
+        ++CommittedCount;
     }
 
     return true;

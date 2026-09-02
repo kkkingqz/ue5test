@@ -1122,6 +1122,7 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
         }
 
         UWidget* ItemWidget = ExistingWidgets.FindRef(ItemKey);
+        const bool bItemReused = (ItemWidget != nullptr);
         if (!ItemWidget)
         {
             if (!EntryClass)
@@ -1212,6 +1213,43 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
             PreparedItem.Widget = ItemWidget;
             PreparedItem.Plan = ItemPlan;
             PreparedItem.bIsHost = true;
+            PreparedItem.bIsReused = bItemReused;
+            PreparedItem.CommittedValue = ItemVal.AsObjectRef();
+
+            // GBH-10 (ADR-0041): a reused entry may already have visible, physically
+            // mutated state from a previous revision -- if a LATER item in this same
+            // Commit fails, this one must be restorable back to it. A freshly created
+            // entry was never shown (Panel/ActiveWidgetsByKey only advance after the
+            // whole collection commits cleanly), so there is nothing to capture for it.
+            if (bItemReused)
+            {
+                if (IGV2UiPropertyHost* ReusedItemHost = Cast<IGV2UiPropertyHost>(ItemWidget))
+                {
+                    const FGV2PreparedUiObject PreviousItemValue = ReusedItemHost->GetPropertyHostState().GetLastCommittedProperties();
+                    TSharedPtr<FGV2UiHostMutationPlan> ItemRollbackPlan = MakeShared<FGV2UiHostMutationPlan>();
+                    TArray<FGV2UiSchemaCompatibilityDiagnostic> RollbackDiagnostics;
+                    if (PrepareUiHostProperties(
+                            Cast<UUserWidget>(ItemWidget),
+                            ItemCaps,
+                            PreviousItemValue,
+                            *CompiledItemSpec,
+                            ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId,
+                            FullItemPrefix,
+                            PreviousItemValue,
+                            *ItemRollbackPlan,
+                            RollbackDiagnostics))
+                    {
+                        PreparedItem.RollbackPlan = ItemRollbackPlan;
+                    }
+                    else
+                    {
+                        UE_LOG(LogTemp, Warning,
+                            TEXT("GBH-10: failed to prepare rollback plan for collection item '%s' -- a Commit failure on a later item will not be able to restore this one"),
+                            *ItemKey.ToString());
+                    }
+                }
+            }
+
             PreparedItems.Add(MoveTemp(PreparedItem));
         }
         else
@@ -1267,19 +1305,62 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
 
 bool FGV2KeyedCollectionPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
+    const TFunction<bool(const FString& PropertyPath)> NoFailureInjector;
+    return CommitWithFailureInjector(TargetWidget, OutError, NoFailureInjector, FString());
+}
+
+bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
+    UWidget* TargetWidget,
+    FString& OutError,
+    const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
+    const FString& PropertyPath)
+{
     if (!TargetWidget)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.missing_target: Target widget is null during Commit");
         return false;
     }
 
-    for (FPreparedCollectionItem& Item : PreparedItems)
+    for (int32 ItemIndex = 0; ItemIndex < PreparedItems.Num(); ++ItemIndex)
     {
+        FPreparedCollectionItem& Item = PreparedItems[ItemIndex];
         if (Item.bIsHost && Item.Plan)
         {
-            FString FailedPath, CommitError;
-            if (!CommitUiHostProperties(Cast<UUserWidget>(Item.Widget), *Item.Plan, FailedPath, CommitError))
+            TFunction<bool(const FString&)> ItemFailureInjector = nullptr;
+            if (FailureInjector)
             {
+                const FString ItemPrefix = FString::Printf(TEXT("%s[%s]"), *PropertyPath, *Item.Key.ToString());
+                ItemFailureInjector = [FailureInjector, ItemPrefix](const FString& ChildPropertyPath)
+                {
+                    return FailureInjector(FString::Printf(TEXT("%s.%s"), *ItemPrefix, *ChildPropertyPath));
+                };
+            }
+            FString FailedPath, CommitError;
+            const FGV2UiHostMutationPlan* ItemRollbackPlan = (Item.bIsReused && Item.RollbackPlan.IsValid())
+                ? Item.RollbackPlan.Get()
+                : nullptr;
+            if (!CommitUiHostProperties(Cast<UUserWidget>(Item.Widget), *Item.Plan, FailedPath, CommitError, ItemFailureInjector, ItemRollbackPlan))
+            {
+                // GBH-10 (ADR-0041): this item's own properties already self-healed via
+                // ItemRollbackPlan if it had one. Items committed earlier in this same call may be
+                // reused entries already visible with their new value -- Panel/
+                // ActiveWidgetsByKey have not advanced yet (that only happens below,
+                // once every item commits cleanly), so this collection is not
+                // publishing this revision and no reused entry may be left on it.
+                for (int32 RollbackIndex = ItemIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+                {
+                    FPreparedCollectionItem& CommittedItem = PreparedItems[RollbackIndex];
+                    if (CommittedItem.bIsReused && CommittedItem.RollbackPlan.IsValid())
+                    {
+                        FString RollbackFailedPath, RollbackError;
+                        if (!CommitUiHostProperties(Cast<UUserWidget>(CommittedItem.Widget), *CommittedItem.RollbackPlan, RollbackFailedPath, RollbackError))
+                        {
+                            UE_LOG(LogTemp, Error,
+                                TEXT("GBH-10: rollback failed restoring collection item '%s' property '%s': %s -- invariant violation"),
+                                *CommittedItem.Key.ToString(), *RollbackFailedPath, *RollbackError);
+                        }
+                    }
+                }
                 OutError = CommitError;
                 return false;
             }
@@ -1304,6 +1385,21 @@ bool FGV2KeyedCollectionPropertyConsumer::Commit(UWidget* TargetWidget, FString&
     if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
     {
         IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
+    }
+
+    // GBH-10 (ADR-0041): only reached once every item above committed cleanly. Nothing
+    // else in this consumer ever recorded a collection item's own LastCommittedProperties
+    // -- without this, a future revision's RollbackPlan for a reused item would have
+    // only an empty object to prepare against (an all-Reset plan, not an actual restore).
+    for (const FPreparedCollectionItem& Item : PreparedItems)
+    {
+        if (Item.bIsHost && Item.CommittedValue.IsValid())
+        {
+            if (IGV2UiPropertyHost* ItemHost = Cast<IGV2UiPropertyHost>(Item.Widget))
+            {
+                ItemHost->GetPropertyHostState().SetLastCommittedProperties(*Item.CommittedValue);
+            }
+        }
     }
 
     ActiveWidgetsByKey = MoveTemp(CandidateWidgetsByKey);
@@ -1784,8 +1880,9 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
 
     // Commit child screen field plans, through the same CommitScreenFields a
     // top-level screen uses (DUC-09).
-    for (FPreparedTabItem& Item : PreparedTabs)
+    for (int32 TabIndex = 0; TabIndex < PreparedTabs.Num(); ++TabIndex)
     {
+        FPreparedTabItem& Item = PreparedTabs[TabIndex];
         if (Item.bHasChildPlan && Item.ChildScreenPlan.IsValid() && Item.ScreenWidget != nullptr)
         {
             TFunction<bool(const FString& PropertyPath)> ChildFailureInjector;
@@ -1802,6 +1899,20 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
             }
             if (!Item.ScreenWidget->CommitScreenFields(*Item.ChildScreenPlan, ChildFailureInjector))
             {
+                // GBH-10 (ADR-0041): this tab's own nested screen already self-healed via
+                // CommitScreenFields' internal rollback. Tabs committed earlier in this
+                // same call may be reused nested screens already visible with their new
+                // value -- ApplyTabEntries below (which is what actually publishes the
+                // new tab list/ActiveTab) never runs on this failure path, so none of
+                // them may be left on it.
+                for (int32 RollbackIndex = TabIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+                {
+                    const FPreparedTabItem& CommittedItem = PreparedTabs[RollbackIndex];
+                    if (CommittedItem.bHasChildPlan && CommittedItem.ChildScreenPlan.IsValid())
+                    {
+                        RollbackFieldPlans(CommittedItem.ChildScreenPlan->FieldPlans);
+                    }
+                }
                 OutError = FString::Printf(TEXT("nested screen fields commit failed for tab '%s'"), *Item.Key.ToString());
                 return false;
             }
