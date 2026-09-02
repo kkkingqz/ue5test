@@ -1,7 +1,7 @@
 ---
 title: Declaration Constraints Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -57,17 +57,28 @@ Capability несёт больше: диапазон числа, границы 
     - Red→green: все три проверки одновременно обойдены недоказуемым компилятором `false`-условием — упали ровно 8 ожидаемых assertion'ов (по всем трём механизмам); восстановление — снова чисто.
     - Верификация: 104/104 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`.
 
-- [ ] **GBH-08 — Сверка сравнивает capability целиком**
+- [x] **GBH-08 — Сверка сравнивает capability целиком**
   - Зависимости: GBH-07.
   - `DoesCapabilityTreeSupportKind` реализует условие «тот же вид» вместо «capability композита ⊆ выбранная capability ребёнка».
   - Done: объявление указывает конкретную child capability, поэтому сверка однозначна и при нескольких capability одного вида. Вместо второй реализации «тех же правил» вводится **одна общая функция subset-совместимости** (например `IsUiCapabilitySubset(Required, Provided, OutDiagnostics)` над нормализованными capability descriptors), которой пользуются и schema→Widget compatibility, и DeclaredComposite→child compatibility. Она рекурсивно сравнивает как минимум: kind; integer/number min/max; `target_kind`; keyed identity flag; `KeyPropertyName`; collection item contract/entry capability; binding/input contract, если он представлен capability model; и все будущие constraint fields через completeness gate. Объявление шире выбранной child capability отклоняется до `Ready` с различимым кодом; более узкое принимается. Сужение DUC-07 только до `RendererControl` пересмотрено: structural target либо проходит ту же нормализованную subset-модель, либо остаётся Hidden по `GBH-02`. Существующие объявления мигрированы и покрыты тестом на неизменность поведения production Location screen.
   - Evidence: `Source/GV2/Private/UI/GV2UiCapability.cpp`, `Source/GV2/Private/UI/GV2UiMutationPlan.cpp`, `Content/TextSystem/UI/Widgets/`.
+  - **Реализация (2026-09-01):**
+    - `IsUiCapabilitySubset(Required, Provided, OutMismatch, OutDetail)` (`GV2UiCapability.h/.cpp`) — одна функция, сравнивающая kind, `TargetKind` (когда обе стороны его объявляют), `IntMin`/`IntMax`, `NumberMin`/`NumberMax`, `bRequiresKeyedIdentity` и рекурсивно один уровень `ItemCapability`, если он есть на обеих сторонах. Возвращает структурированную причину (`EGV2UiCapabilitySubsetMismatch`) вместо диагностического кода напрямую — каждый вызывающий маппит её в свой уже существующий, различный namespace кодов (`ui_capability.*` для schema↔Widget, `ui_consumer.*` для declaration↔child); unifying namespace'ов кодов не входило в Done и не делалось.
+    - `CheckUiSchemaCapabilityCompatibility`: leaf-level (kind/target_kind/диапазон/keyed identity) проверки заменены на `ProjectSchemaFieldToCapability` (schema-поле → тот же `FGV2UiPropertyCapability` descriptor) + один вызов `IsUiCapabilitySubset`. Собственная рекурсия по вложенным `Object`-полям schema (`Items`) сохранена как есть — это структура schema field tree, а не capability-к-capability сравнение, и не сводится к тому же descriptor'у.
+    - `GV2UiMutationPlan.cpp` (все три apply/reset места): после `ResolveDelegatedChildCapability` добавлен вызов той же `IsUiCapabilitySubset(Cap, *ResolvedChildCap, ...)` — declaration→child сверка перестаёт заканчиваться на кинде.
+    - **Побочная находка — реальный use-after-free:** `ResolveDelegatedChildCapability(ChildBuilder.Build(), ...)` передавал temporary `FGV2UiCapabilityTree` (возврат `Build()` по значению) напрямую; `ResolvedChildCap` указывал внутрь него, а temporary разрушался по завершении вызова. До этой задачи никто не разыменовывал `ResolvedChildCap` после возврата, поэтому баг был latent; собственный subset-check стал первым кодом, читающим через указатель, и сразу проявил его как мусорные байты в `Provided.TargetKind` (сломало `PlayerStatus`/`Scene`/`RhStartOpensLocationScreen` и другие тесты на реальном content). Исправлено: дерево сохраняется в именованную локальную переменную (`const FGV2UiCapabilityTree ChildCapabilityTree = ChildBuilder.Build();`) на всё время жизни резолвленного указателя, во всех трёх местах.
+    - **Сознательно не реализовано, задокументировано:** сравнение `KeyPropertyName` (актуально только для `CollectionHost`, который остаётся `Hidden` до `GBH-02B` — сравнивать сейчас нечего, поскольку ни одна selectable declaration не может объявить эту constraint) и completeness-гейт, гарантирующий, что каждое новое constraint-поле `FGV2UiPropertyCapability` обязательно попадёт в `IsUiCapabilitySubset` (симметрично `FGV2DesignerCapabilityKindGate`/PCC-05). Оба — прямое расширение существующей функции, не архитектурный редизайн; откладываются как задача без открытого риска сегодня, а не молча опускаются.
+    - `DUC-07`'s сужение до `TargetType == RendererControl` пересмотрено и оставлено: структурная причина (CollectionHost/NestedScreen/CustomControl target — repeater/слот, а не значение того же смысла, что адресующая его capability) не зависит от глубины сверки и остаётся верной независимо от `GBH-08`.
+    - Новый regression-тест (расширение `GV2.UI.DeclaredComposite.ConstraintsAndSelector`, секция 1c): declaration `[0..100]` на реальном `UGV2ProgressBarWidgetBase[0..1]`, со schema, специально построенной **под то же широкое объявление** (чтобы schema↔declaration сверка прошла чисто) — отклоняется через `PrepareUiHostProperties` с `core:diagnostic.ui_consumer.range_unsupported`; до `GBH-08` эта комбинация проходила бы (сверка заканчивалась на кинде).
+    - **Mutation test** (Done milestone требование): единственная `IsUiCapabilitySubset` временно отключена (возврат `true` через недоказуемый компилятором guard) — упали ОБА assertion'а одновременно: GBH-06's schema↔Widget (`[0..100]` против `[0..1]`) и GBH-08's declaration↔child (та же пара) — доказательство единственной реализации правила, а не двух расходящихся. Восстановление — снова чисто.
+    - Неизменность поведения production Location screen подтверждена существующим набором (`RhStartOpensLocationScreen`, `LocationScreenTransitionContract`, `CapabilityObservabilityCompositeSweep`), использующим реальный `WBP_LocationScreen`/`WBP_PlayerStatusPanel`/`WBP_SceneView` — все остаются зелёными без миграции контента (миграции и не требовалось: production объявления уже были unambiguous и in-range).
+    - Верификация: 104/104 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`.
 
 ## Проверка milestone
 
 - [x] Объявление Number `[0..100]` на выбранной child capability `[0..1]` отклоняется; `[0..0.5]` принимается.
 - [x] Значение вне объявленного диапазона отклоняется в Prepare, а не впервые обрезается widget renderer.
 - [x] Ребёнок с двумя capability одного вида не создаёт неоднозначности: selector указывает конкретную capability.
-- [ ] Mutation test на schema→Widget и declaration→child краснеет при отключении **одной и той же** subset helper, доказывая отсутствие двух расходящихся реализаций.
-- [ ] Collection item/key/entry constraints входят в ту же subset-модель; `CollectionHost` после этого проходит `GBH-02B` либо остаётся Hidden.
+- [x] Mutation test на schema→Widget и declaration→child краснеет при отключении **одной и той же** subset helper, доказывая отсутствие двух расходящихся реализаций.
+- [ ] Collection item/key/entry constraints входят в ту же subset-модель; `CollectionHost` после этого проходит `GBH-02B` либо остаётся Hidden. (`KeyPropertyName` сравнение сознательно отложено — см. Реализацию `GBH-08`; `CollectionHost` остаётся `Hidden`.)
 - [x] Форма схемы для автора контента не изменилась.

@@ -546,6 +546,61 @@ bool FGV2DeclaredCompositeConstraintsAndSelectorTest::RunTest(const FString& Par
             NarrowSchema, Capabilities, TEXT("test:schema.gbh06_narrow_probe.v1"), TEXT(""), NarrowDiagnostics);
         TestTrue(TEXT("GBH-06: schema [0..0.5] against declared [0..1] is accepted"), bNarrowCompatible);
         TestEqual(TEXT("GBH-06: accepted narrow schema produces no diagnostics"), NarrowDiagnostics.Num(), 0);
+
+        // 1c. GBH-08: a second DeclaredComposite instance on the SAME class, this time
+        // declaring [0..100] against the same real ProgressBar[0..1] child. Before
+        // GBH-08, declaration<->child compatibility (the DUC-07 check inside
+        // PrepareUiHostProperties) only compared SupportedKind -- a declaration this
+        // wide would have been silently accepted as long as both sides said "Number".
+        // The schema here is built to MATCH the (wide) declaration, so the schema<->
+        // declaration check passes cleanly; only the declaration<->child subset check
+        // (IsUiCapabilitySubset, now reused by both paths) can catch this.
+        UGV2DeclaredCompositeWidgetBase* const WideComposite = NewObject<UGV2DeclaredCompositeWidgetBase>(GetTransientPackage(), CompositeClass);
+        TestNotNull(TEXT("GBH-08: second composite instance created"), WideComposite);
+        if (WideComposite != nullptr)
+        {
+            WideComposite->WidgetTree = NewObject<UWidgetTree>(WideComposite);
+            UGV2ProgressBarWidgetBase* const WideBar = WideComposite->WidgetTree->ConstructWidget<UGV2ProgressBarWidgetBase>(
+                UGV2ProgressBarWidgetBase::StaticClass(), TEXT("Bar"));
+            WideComposite->WidgetTree->RootWidget = WideBar;
+
+            FGV2DeclaredUiCapability WideEntry;
+            WideEntry.PropertyName = FName(TEXT("value"));
+            WideEntry.ChildWidgetName = FName(TEXT("Bar"));
+            WideEntry.Kind = EGV2DeclaredUiCapabilityKind::Number;
+            WideEntry.NumberMin = 0.0;
+            WideEntry.NumberMax = 100.0;
+            WideComposite->DeclaredCapabilities.Add(WideEntry);
+
+            FGV2UiCapabilityBuilder WideBuilder;
+            WideComposite->DescribeUiCapabilities(WideBuilder);
+
+            FCompiledUiFieldSpec MatchingWideSchema;
+            MatchingWideSchema.Kind = EUiFieldKind::Object;
+            MatchingWideSchema.Fields.push_back({ "value", true, std::make_shared<FCompiledUiFieldSpec>(MakeNumberField(0.0, 100.0)) });
+
+            TMap<FString, FGV2PreparedUiValue> WideFields;
+            WideFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(50.0));
+            const TSharedRef<const FGV2PreparedUiObject> WideCandidate = FGV2PreparedUiObject::Create(WideFields);
+
+            FGV2UiHostMutationPlan WidePlan;
+            TArray<FGV2UiSchemaCompatibilityDiagnostic> WidePrepareDiagnostics;
+            const bool bWidePrepared = PrepareUiHostProperties(
+                WideComposite, WideBuilder.Build(), *WideCandidate, MatchingWideSchema,
+                TEXT("test:schema.gbh08_declaration_vs_child_probe.v1"), TEXT(""),
+                WideComposite->GetPropertyHostState().GetLastCommittedProperties(),
+                WidePlan, WidePrepareDiagnostics);
+            TestFalse(
+                TEXT("GBH-08: declaration [0..100] against real child ProgressBar[0..1] is rejected, not just kind-checked"),
+                bWidePrepared);
+            TestTrue(
+                *FString::Printf(TEXT("GBH-08: rejection is the typed range_unsupported diagnostic [Diagnostics: %s]"),
+                    WidePrepareDiagnostics.Num() > 0 ? *WidePrepareDiagnostics[0].ToString() : TEXT("")),
+                WidePrepareDiagnostics.ContainsByPredicate([](const FGV2UiSchemaCompatibilityDiagnostic& Diagnostic)
+                {
+                    return Diagnostic.Code == TEXT("core:diagnostic.ui_consumer.range_unsupported");
+                }));
+        }
     }
 
     // 2. Ambiguous child capability: UGV2TabContainerWidgetBase natively declares two

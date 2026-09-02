@@ -6,6 +6,33 @@
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2ScreenFieldHost.h"
 
+namespace
+{
+// GBH-08: DeclaredComposite<->child compatibility uses its own, pre-existing
+// `core:diagnostic.ui_consumer.*` diagnostic namespace (distinct from schema<->Widget
+// compatibility's `core:diagnostic.ui_capability.*`); this only names which of those
+// existing codes corresponds to which IsUiCapabilitySubset mismatch reason, it does not
+// introduce a new namespace.
+FString MapSubsetMismatchToConsumerDiagnosticCode(EGV2UiCapabilitySubsetMismatch Mismatch)
+{
+    switch (Mismatch)
+    {
+    case EGV2UiCapabilitySubsetMismatch::IntRangeMismatch:
+    case EGV2UiCapabilitySubsetMismatch::NumberRangeMismatch:
+        return TEXT("core:diagnostic.ui_consumer.range_unsupported");
+    case EGV2UiCapabilitySubsetMismatch::KeyedIdentityMismatch:
+        return TEXT("core:diagnostic.ui_consumer.collection_identity_mismatch");
+    case EGV2UiCapabilitySubsetMismatch::ItemMismatch:
+        return TEXT("core:diagnostic.ui_consumer.item_capability_mismatch");
+    case EGV2UiCapabilitySubsetMismatch::KindMismatch:
+    case EGV2UiCapabilitySubsetMismatch::TargetKindMismatch:
+    case EGV2UiCapabilitySubsetMismatch::None:
+    default:
+        return TEXT("core:diagnostic.ui_consumer.target_kind_mismatch");
+    }
+}
+}
+
 bool PrepareUiHostProperties(
     UUserWidget* HostWidget,
     const FGV2UiCapabilityTree& Capabilities,
@@ -149,10 +176,18 @@ bool PrepareUiHostProperties(
                     {
                         FGV2UiCapabilityBuilder ChildBuilder;
                         ChildHost->DescribeUiCapabilities(ChildBuilder);
+                        // GBH-08: Build() returns FGV2UiCapabilityTree by value -- must be
+                        // kept alive in a named local for as long as ResolvedChildCap (a
+                        // pointer INTO it) is read, including by the subset check below.
+                        // Passing ChildBuilder.Build() directly as the call argument would
+                        // dangle the moment this statement finished (temporary lifetime
+                        // ends at the semicolon), which nothing detected before GBH-08
+                        // since no caller dereferenced the resolved pointer afterward.
+                        const FGV2UiCapabilityTree ChildCapabilityTree = ChildBuilder.Build();
                         const FGV2UiPropertyCapability* ResolvedChildCap = nullptr;
                         FString ResolveError;
                         bool bAmbiguous = false;
-                        if (!ResolveDelegatedChildCapability(ChildBuilder.Build(), Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
+                        if (!ResolveDelegatedChildCapability(ChildCapabilityTree, Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
                         {
                             FGV2UiSchemaCompatibilityDiagnostic Diag;
                             Diag.Code = bAmbiguous
@@ -163,6 +198,25 @@ bool PrepareUiHostProperties(
                             Diag.Message = FString::Printf(
                                 TEXT("Target widget '%s' for property '%s': %s"),
                                 *Cap.TargetName.ToString(), *PropName, *ResolveError);
+                            OutDiagnostics.Add(MoveTemp(Diag));
+                            return false;
+                        }
+
+                        // GBH-08: resolution above only disambiguates *which* child
+                        // capability is meant; this is the same subset rule schema<->Widget
+                        // compatibility uses (IsUiCapabilitySubset), now also comparing
+                        // range/target_kind/keyed-identity here, not just kind.
+                        EGV2UiCapabilitySubsetMismatch SubsetMismatch;
+                        FString SubsetDetail;
+                        if (!IsUiCapabilitySubset(Cap, *ResolvedChildCap, SubsetMismatch, SubsetDetail))
+                        {
+                            FGV2UiSchemaCompatibilityDiagnostic Diag;
+                            Diag.Code = MapSubsetMismatchToConsumerDiagnosticCode(SubsetMismatch);
+                            Diag.PropertyPath = ChildPath;
+                            Diag.SchemaId = SchemaId;
+                            Diag.Message = FString::Printf(
+                                TEXT("Target widget '%s' for property '%s': %s"),
+                                *Cap.TargetName.ToString(), *PropName, *SubsetDetail);
                             OutDiagnostics.Add(MoveTemp(Diag));
                             return false;
                         }
@@ -270,10 +324,18 @@ bool PrepareUiHostProperties(
                     {
                         FGV2UiCapabilityBuilder ChildBuilder;
                         ChildHost->DescribeUiCapabilities(ChildBuilder);
+                        // GBH-08: Build() returns FGV2UiCapabilityTree by value -- must be
+                        // kept alive in a named local for as long as ResolvedChildCap (a
+                        // pointer INTO it) is read, including by the subset check below.
+                        // Passing ChildBuilder.Build() directly as the call argument would
+                        // dangle the moment this statement finished (temporary lifetime
+                        // ends at the semicolon), which nothing detected before GBH-08
+                        // since no caller dereferenced the resolved pointer afterward.
+                        const FGV2UiCapabilityTree ChildCapabilityTree = ChildBuilder.Build();
                         const FGV2UiPropertyCapability* ResolvedChildCap = nullptr;
                         FString ResolveError;
                         bool bAmbiguous = false;
-                        if (!ResolveDelegatedChildCapability(ChildBuilder.Build(), Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
+                        if (!ResolveDelegatedChildCapability(ChildCapabilityTree, Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
                         {
                             FGV2UiSchemaCompatibilityDiagnostic Diag;
                             Diag.Code = bAmbiguous
@@ -284,6 +346,21 @@ bool PrepareUiHostProperties(
                             Diag.Message = FString::Printf(
                                 TEXT("Target widget '%s' for reset of property '%s': %s"),
                                 *Cap.TargetName.ToString(), *PropName, *ResolveError);
+                            OutDiagnostics.Add(MoveTemp(Diag));
+                            return false;
+                        }
+
+                        EGV2UiCapabilitySubsetMismatch SubsetMismatch;
+                        FString SubsetDetail;
+                        if (!IsUiCapabilitySubset(Cap, *ResolvedChildCap, SubsetMismatch, SubsetDetail))
+                        {
+                            FGV2UiSchemaCompatibilityDiagnostic Diag;
+                            Diag.Code = MapSubsetMismatchToConsumerDiagnosticCode(SubsetMismatch);
+                            Diag.PropertyPath = ChildPath;
+                            Diag.SchemaId = SchemaId;
+                            Diag.Message = FString::Printf(
+                                TEXT("Target widget '%s' for reset of property '%s': %s"),
+                                *Cap.TargetName.ToString(), *PropName, *SubsetDetail);
                             OutDiagnostics.Add(MoveTemp(Diag));
                             return false;
                         }
@@ -349,10 +426,18 @@ bool PrepareUiHostProperties(
                     {
                         FGV2UiCapabilityBuilder ChildBuilder;
                         ChildHost->DescribeUiCapabilities(ChildBuilder);
+                        // GBH-08: Build() returns FGV2UiCapabilityTree by value -- must be
+                        // kept alive in a named local for as long as ResolvedChildCap (a
+                        // pointer INTO it) is read, including by the subset check below.
+                        // Passing ChildBuilder.Build() directly as the call argument would
+                        // dangle the moment this statement finished (temporary lifetime
+                        // ends at the semicolon), which nothing detected before GBH-08
+                        // since no caller dereferenced the resolved pointer afterward.
+                        const FGV2UiCapabilityTree ChildCapabilityTree = ChildBuilder.Build();
                         const FGV2UiPropertyCapability* ResolvedChildCap = nullptr;
                         FString ResolveError;
                         bool bAmbiguous = false;
-                        if (!ResolveDelegatedChildCapability(ChildBuilder.Build(), Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
+                        if (!ResolveDelegatedChildCapability(ChildCapabilityTree, Cap.SupportedKind, Cap.ChildCapabilityName, ResolvedChildCap, ResolveError, bAmbiguous, PropName))
                         {
                             FGV2UiSchemaCompatibilityDiagnostic Diag;
                             Diag.Code = bAmbiguous
@@ -363,6 +448,21 @@ bool PrepareUiHostProperties(
                             Diag.Message = FString::Printf(
                                 TEXT("Target widget '%s' for reset of property '%s': %s"),
                                 *Cap.TargetName.ToString(), *PropName, *ResolveError);
+                            OutDiagnostics.Add(MoveTemp(Diag));
+                            return false;
+                        }
+
+                        EGV2UiCapabilitySubsetMismatch SubsetMismatch;
+                        FString SubsetDetail;
+                        if (!IsUiCapabilitySubset(Cap, *ResolvedChildCap, SubsetMismatch, SubsetDetail))
+                        {
+                            FGV2UiSchemaCompatibilityDiagnostic Diag;
+                            Diag.Code = MapSubsetMismatchToConsumerDiagnosticCode(SubsetMismatch);
+                            Diag.PropertyPath = ChildPath;
+                            Diag.SchemaId = SchemaId;
+                            Diag.Message = FString::Printf(
+                                TEXT("Target widget '%s' for reset of property '%s': %s"),
+                                *Cap.TargetName.ToString(), *PropName, *SubsetDetail);
                             OutDiagnostics.Add(MoveTemp(Diag));
                             return false;
                         }

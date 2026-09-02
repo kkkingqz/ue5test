@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.9
+version: 1.10
 updated: 2026-09-01
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
@@ -38,7 +38,7 @@ decisions:
 
 | Что | Сейчас |
 |---|---|
-| Сверка объявления композита с ребёнком | `ResolveDelegatedChildCapability` (`GBH-06`) резолвит конкретную capability по имени/виду/ambiguity; диапазон/`TargetKind` пока сравниваются только на стороне schema↔declaration (`GBH-08` объединит с этой сверкой) |
+| Сверка объявления композита с ребёнком | `IsUiCapabilitySubset` (`GBH-08`) — одна функция для schema↔Widget и declaration↔child; kind/диапазон/`TargetKind`/keyed identity |
 | Объявление композита | Хранит `PropertyName`, `ChildWidgetName`, `Kind`, `ChildCapabilityName` и зависящие от `Kind` параметры (`GBH-06`) |
 | `FGV2NumberPropertyConsumer::Prepare` | Проверяет тип, диапазон (`NumberMin`/`NumberMax`) и сохраняет значение; то же для Integer и `TargetKind` ссылки (`GBH-07`) |
 | `CommitUiHostProperties` | Выходит по первому отказу; отката уже применённых мутаций нет, предыдущее физическое состояние не хранится |
@@ -66,7 +66,7 @@ decisions:
 ## Milestones
 
 - [x] M1 — [Declared Surface](DeclaredSurface.md): объявляемая поверхность не рекламирует неработоспособные kinds, Shell structural failure предсказывается до мутации, а authority/docs debt имеет явный владелец. GBH-01…05 (для `GBH-02` часть A выполняется до M2, часть B — после `GBH-08`).
-- [ ] M2 — [Declaration Constraints](DeclarationConstraints.md): объявление несёт свои ограничения, указывает конкретную child capability и сверяется с ней общей subset-функцией. GBH-06…08.
+- [x] M2 — [Declaration Constraints](DeclarationConstraints.md): объявление несёт свои ограничения, указывает конкретную child capability и сверяется с ней общей subset-функцией. GBH-06…08.
 - [ ] M3 — [Transactional Commit](TransactionalCommit.md): mid-Commit failure live reuse path восстанавливает предыдущую физическую presentation; partial-state contract не допускается как closure. GBH-09…11.
 
 ## Критический путь
@@ -101,9 +101,9 @@ GBH-03, GBH-04, GBH-05 — независимы
 - [x] Судьба принадлежности UI-схем репозиторию решена: либо реализована, либо defer отражён в `ImplementationStatus` **и во всей нормативной цепочке**, включая ADR-level caveat/follow-up decision. (GBH-03)
 - [x] Контракты описывают фактический `IGV2ScreenFieldHost`. (GBH-04)
 - [x] Параллельные optional-пути применения удалены из публичного API. (GBH-05)
-- [ ] Объявление несёт параметры своего вида и указывает, какую capability ребёнка делегирует. (GBH-06, GBH-08)
+- [x] Объявление несёт параметры своего вида и указывает, какую capability ребёнка делегирует. (GBH-06, GBH-08)
 - [x] Значение, выходящее за объявленное ограничение capability, отклоняется до виджета, а не обрезается им. (GBH-07)
-- [ ] Сверка объявления с ребёнком и schema→Widget используют **одну общую implementation** subset-совместимости; capability сравнивается целиком, а не только по виду. (GBH-08)
+- [x] Сверка объявления с ребёнком и schema→Widget используют **одну общую implementation** subset-совместимости; capability сравнивается целиком, а не только по виду. (GBH-08)
 - [ ] Отказ commit переиспользуемого живого экрана не оставляет физически применённой части новой ревизии; простое документирование partial state не считается closure. (GBH-09, GBH-10)
 - [ ] Инъекция отказа стоит в середине commit переиспользуемого живого экземпляра. (GBH-11)
 - [ ] Каждая находка ревью закрыта продемонстрированным red-on-revert gate; для consciously deferred `REM-04` — docs/status consistency gate. (GBH-11)

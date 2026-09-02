@@ -122,6 +122,51 @@ private:
 };
 
 /**
+ * GBH-08: why a Required capability failed to fit inside a Provided one, distinguishing
+ * "not found at all" (KindMismatch) from every dimension that can independently make an
+ * otherwise-same-kind capability too wide. Callers map this to their own diagnostic code
+ * namespace (schema<->widget uses `core:diagnostic.ui_capability.*`, declaration<->child
+ * uses `core:diagnostic.ui_consumer.*`) -- the *rule* is shared, the reported code is not,
+ * since the two callers were already distinct, pre-existing diagnostic vocabularies and
+ * unifying those too would be a second, unrelated migration.
+ */
+enum class EGV2UiCapabilitySubsetMismatch : uint8
+{
+    None,
+    KindMismatch,
+    TargetKindMismatch,
+    IntRangeMismatch,
+    NumberRangeMismatch,
+    KeyedIdentityMismatch,
+    ItemMismatch,
+};
+
+/**
+ * GBH-08: the one subset-compatibility rule used by both schema<->Widget compatibility
+ * (CheckUiSchemaCapabilityCompatibility, after projecting each schema field into this same
+ * descriptor shape) and DeclaredComposite<->child compatibility (after
+ * ResolveDelegatedChildCapability picks which child capability is meant) -- replacing what
+ * would otherwise be two independent implementations of "does Required fit inside
+ * Provided" that could silently drift apart. Compares, in order: SupportedKind; TargetKind
+ * (only when both sides declare one); IntMin/IntMax and NumberMin/NumberMax (Required's
+ * claimed range must fit entirely within Provided's, exactly like
+ * `SchemaContract ⊆ WidgetCapabilities`'s existing numeric rule -- Provided leaving a bound
+ * unset means unconstrained on that side, not "reject everything"); bRequiresKeyedIdentity
+ * (Provided requiring it means Required must also declare it); and, recursively, one level
+ * of ItemCapability if both sides carry one (a schema's own further-nested Object item
+ * fields are still walked by CheckUiSchemaCapabilityCompatibility's own recursion, not by
+ * this function -- this only compares the two capability descriptors at the leaf, not an
+ * arbitrarily deep schema field tree). Required wider than Provided fails at the first
+ * dimension that does not fit, populating OutMismatch and a human OutDetail; Required
+ * narrower than or equal to Provided succeeds.
+ */
+GV2_API bool IsUiCapabilitySubset(
+    const FGV2UiPropertyCapability& Required,
+    const FGV2UiPropertyCapability& Provided,
+    EGV2UiCapabilitySubsetMismatch& OutMismatch,
+    FString& OutDetail);
+
+/**
  * Validates that SchemaContract is a subset of WidgetCapabilities: SchemaContract ⊆ WidgetCapabilities.
  * Performs recursive verification across kinds, target_kinds, ranges, and nested structures.
  */

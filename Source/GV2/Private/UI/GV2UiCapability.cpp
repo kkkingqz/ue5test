@@ -248,6 +248,114 @@ FGV2UiCapabilityBuilder& FGV2UiCapabilityBuilder::SetChildCapabilityName(const F
     return *this;
 }
 
+// --- IsUiCapabilitySubset ---
+
+bool IsUiCapabilitySubset(
+    const FGV2UiPropertyCapability& Required,
+    const FGV2UiPropertyCapability& Provided,
+    EGV2UiCapabilitySubsetMismatch& OutMismatch,
+    FString& OutDetail)
+{
+    OutMismatch = EGV2UiCapabilitySubsetMismatch::None;
+    OutDetail.Reset();
+
+    if (Required.SupportedKind != Provided.SupportedKind)
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::KindMismatch;
+        OutDetail = TEXT("kind mismatch");
+        return false;
+    }
+
+    if (!Required.TargetKind.IsEmpty() && !Provided.TargetKind.IsEmpty() && Required.TargetKind != Provided.TargetKind)
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::TargetKindMismatch;
+        OutDetail = FString::Printf(
+            TEXT("target_kind mismatch: required '%s', provided '%s'"),
+            *Required.TargetKind, *Provided.TargetKind);
+        return false;
+    }
+
+    if (Provided.IntMin.IsSet() && (!Required.IntMin.IsSet() || *Required.IntMin < *Provided.IntMin))
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::IntRangeMismatch;
+        OutDetail = TEXT("integer min exceeds provided capability bound");
+        return false;
+    }
+    if (Provided.IntMax.IsSet() && (!Required.IntMax.IsSet() || *Required.IntMax > *Provided.IntMax))
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::IntRangeMismatch;
+        OutDetail = TEXT("integer max exceeds provided capability bound");
+        return false;
+    }
+
+    if (Provided.NumberMin.IsSet() && (!Required.NumberMin.IsSet() || *Required.NumberMin < *Provided.NumberMin))
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::NumberRangeMismatch;
+        OutDetail = TEXT("number min exceeds provided capability bound");
+        return false;
+    }
+    if (Provided.NumberMax.IsSet() && (!Required.NumberMax.IsSet() || *Required.NumberMax > *Provided.NumberMax))
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::NumberRangeMismatch;
+        OutDetail = TEXT("number max exceeds provided capability bound");
+        return false;
+    }
+
+    if (Provided.bRequiresKeyedIdentity && !Required.bRequiresKeyedIdentity)
+    {
+        OutMismatch = EGV2UiCapabilitySubsetMismatch::KeyedIdentityMismatch;
+        OutDetail = TEXT("provided capability requires keyed elements, required side does not declare them");
+        return false;
+    }
+
+    if (Provided.ItemCapability.IsValid() && Required.ItemCapability.IsValid())
+    {
+        EGV2UiCapabilitySubsetMismatch ItemMismatch;
+        FString ItemDetail;
+        if (!IsUiCapabilitySubset(*Required.ItemCapability, *Provided.ItemCapability, ItemMismatch, ItemDetail))
+        {
+            OutMismatch = EGV2UiCapabilitySubsetMismatch::ItemMismatch;
+            OutDetail = FString::Printf(TEXT("item %s"), *ItemDetail);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// GBH-08: projects one compiled schema field into the same FGV2UiPropertyCapability shape
+// IsUiCapabilitySubset already compares capabilities in, so CheckUiSchemaCapabilityCompatibility
+// can delegate its leaf-level kind/target_kind/range/keyed-identity checks to that one shared
+// function instead of re-implementing the same rules against a differently-shaped schema
+// field. Only the leaf shape is projected here; a schema's own further-nested Object item
+// fields are still walked by this function's own recursion below, not by the projection.
+static FGV2UiPropertyCapability ProjectSchemaFieldToCapability(const GV2ContentCore::FCompiledUiFieldSpec& FieldSpec)
+{
+    FGV2UiPropertyCapability Required;
+    Required.SupportedKind = MapFieldSpecToPreparedKind(FieldSpec);
+
+    if (FieldSpec.Kind == GV2ContentCore::EUiFieldKind::Ref && !FieldSpec.RefTargetKind.empty())
+    {
+        Required.TargetKind = UTF8_TO_TCHAR(FieldSpec.RefTargetKind.c_str());
+    }
+
+    if (FieldSpec.Scalar.has_value())
+    {
+        const GV2ContentCore::FScalarFieldSpec& Scalar = *FieldSpec.Scalar;
+        if (Scalar.MinimumInteger.has_value()) Required.IntMin = *Scalar.MinimumInteger;
+        if (Scalar.MaximumInteger.has_value()) Required.IntMax = *Scalar.MaximumInteger;
+        if (Scalar.MinimumNumber.has_value()) Required.NumberMin = *Scalar.MinimumNumber;
+        if (Scalar.MaximumNumber.has_value()) Required.NumberMax = *Scalar.MaximumNumber;
+    }
+
+    if (FieldSpec.Kind == GV2ContentCore::EUiFieldKind::Array)
+    {
+        Required.bRequiresKeyedIdentity = FieldSpec.KeyedBy.has_value();
+    }
+
+    return Required;
+}
+
 // --- CheckUiSchemaCapabilityCompatibility ---
 
 bool CheckUiSchemaCapabilityCompatibility(
@@ -290,111 +398,56 @@ bool CheckUiSchemaCapabilityCompatibility(
                 continue;
             }
 
-            // Kind compatibility check
+            // GBH-08: kind, target_kind, int/number range, and keyed-identity are all
+            // checked by the one shared IsUiCapabilitySubset rule -- the schema field is
+            // projected into the same descriptor shape a capability already has, so this
+            // is not a second implementation of "does Required fit inside Provided".
             const EGV2PreparedUiValueKind ExpectedKind = MapFieldSpecToPreparedKind(*FieldSpec);
-            if (Cap->SupportedKind != ExpectedKind)
+            const FGV2UiPropertyCapability RequiredFromSchema = ProjectSchemaFieldToCapability(*FieldSpec);
+            EGV2UiCapabilitySubsetMismatch SubsetMismatch;
+            FString SubsetDetail;
+            if (!IsUiCapabilitySubset(RequiredFromSchema, *Cap, SubsetMismatch, SubsetDetail))
             {
                 FGV2UiSchemaCompatibilityDiagnostic Diag;
-                Diag.Code = TEXT("core:diagnostic.ui_capability.kind_mismatch");
                 Diag.PropertyPath = ChildPath;
                 Diag.SchemaId = SchemaId;
                 Diag.bFatal = !bIsMod;
-                Diag.Message = FString::Printf(TEXT("Kind mismatch for property '%s'"), *FieldName);
+                switch (SubsetMismatch)
+                {
+                case EGV2UiCapabilitySubsetMismatch::TargetKindMismatch:
+                    Diag.Code = TEXT("core:diagnostic.ui_capability.target_kind_mismatch");
+                    Diag.Message = FString::Printf(
+                        TEXT("Target kind mismatch for ref '%s': schema requires '%s', capability supports '%s'"),
+                        *FieldName, *RequiredFromSchema.TargetKind, *Cap->TargetKind);
+                    break;
+                case EGV2UiCapabilitySubsetMismatch::IntRangeMismatch:
+                case EGV2UiCapabilitySubsetMismatch::NumberRangeMismatch:
+                    Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
+                    Diag.Message = FString::Printf(TEXT("Schema range for '%s' exceeds capability bound: %s"), *FieldName, *SubsetDetail);
+                    break;
+                case EGV2UiCapabilitySubsetMismatch::KeyedIdentityMismatch:
+                    Diag.Code = TEXT("core:diagnostic.ui_capability.collection_identity_mismatch");
+                    Diag.Message = FString::Printf(TEXT("Collection '%s' requires keyed elements, but schema array has no keyed_by"), *FieldName);
+                    break;
+                case EGV2UiCapabilitySubsetMismatch::ItemMismatch:
+                    // Not reached from this projection (RequiredFromSchema never sets
+                    // ItemCapability -- the schema's own nested item fields are walked by
+                    // this function's own recursion below instead), kept only so the
+                    // switch stays exhaustive against future EGV2UiCapabilitySubsetMismatch
+                    // values.
+                case EGV2UiCapabilitySubsetMismatch::KindMismatch:
+                case EGV2UiCapabilitySubsetMismatch::None:
+                default:
+                    Diag.Code = TEXT("core:diagnostic.ui_capability.kind_mismatch");
+                    Diag.Message = FString::Printf(TEXT("Kind mismatch for property '%s'"), *FieldName);
+                    break;
+                }
                 OutDiagnostics.Add(MoveTemp(Diag));
                 bSuccess = false;
-                continue;
-            }
-
-            // Target kind check for Ref / StableId
-            if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Ref)
-            {
-                if (!Cap->TargetKind.IsEmpty() && !FieldSpec->RefTargetKind.empty())
+                if (SubsetMismatch == EGV2UiCapabilitySubsetMismatch::KindMismatch
+                    || SubsetMismatch == EGV2UiCapabilitySubsetMismatch::TargetKindMismatch)
                 {
-                    const FString SchemaTargetKind = UTF8_TO_TCHAR(FieldSpec->RefTargetKind.c_str());
-                    if (SchemaTargetKind != Cap->TargetKind)
-                    {
-                        FGV2UiSchemaCompatibilityDiagnostic Diag;
-                        Diag.Code = TEXT("core:diagnostic.ui_capability.target_kind_mismatch");
-                        Diag.PropertyPath = ChildPath;
-                        Diag.SchemaId = SchemaId;
-                        Diag.bFatal = !bIsMod;
-                        Diag.Message = FString::Printf(
-                            TEXT("Target kind mismatch for ref '%s': schema requires '%s', capability supports '%s'"),
-                            *FieldName, *SchemaTargetKind, *Cap->TargetKind);
-                        OutDiagnostics.Add(MoveTemp(Diag));
-                        bSuccess = false;
-                        continue;
-                    }
-                }
-            }
-
-            // Numeric range checks (subset rule: schema range must fit within capability range)
-            if (ExpectedKind == EGV2PreparedUiValueKind::Integer && FieldSpec->Scalar.has_value())
-            {
-                const GV2ContentCore::FScalarFieldSpec& Scalar = *FieldSpec->Scalar;
-                if (Cap->IntMin.IsSet() && (!Scalar.MinimumInteger.has_value() || *Scalar.MinimumInteger < *Cap->IntMin))
-                {
-                    FGV2UiSchemaCompatibilityDiagnostic Diag;
-                    Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
-                    Diag.PropertyPath = ChildPath;
-                    Diag.SchemaId = SchemaId;
-                    Diag.bFatal = !bIsMod;
-                    Diag.Message = FString::Printf(TEXT("Schema integer min for '%s' exceeds capability bound"), *FieldName);
-                    OutDiagnostics.Add(MoveTemp(Diag));
-                    bSuccess = false;
-                }
-                if (Cap->IntMax.IsSet() && (!Scalar.MaximumInteger.has_value() || *Scalar.MaximumInteger > *Cap->IntMax))
-                {
-                    FGV2UiSchemaCompatibilityDiagnostic Diag;
-                    Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
-                    Diag.PropertyPath = ChildPath;
-                    Diag.SchemaId = SchemaId;
-                    Diag.bFatal = !bIsMod;
-                    Diag.Message = FString::Printf(TEXT("Schema integer max for '%s' exceeds capability bound"), *FieldName);
-                    OutDiagnostics.Add(MoveTemp(Diag));
-                    bSuccess = false;
-                }
-            }
-            else if (ExpectedKind == EGV2PreparedUiValueKind::Number && FieldSpec->Scalar.has_value())
-            {
-                const GV2ContentCore::FScalarFieldSpec& Scalar = *FieldSpec->Scalar;
-                if (Cap->NumberMin.IsSet() && (!Scalar.MinimumNumber.has_value() || *Scalar.MinimumNumber < *Cap->NumberMin))
-                {
-                    FGV2UiSchemaCompatibilityDiagnostic Diag;
-                    Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
-                    Diag.PropertyPath = ChildPath;
-                    Diag.SchemaId = SchemaId;
-                    Diag.bFatal = !bIsMod;
-                    Diag.Message = FString::Printf(TEXT("Schema number min for '%s' exceeds capability bound"), *FieldName);
-                    OutDiagnostics.Add(MoveTemp(Diag));
-                    bSuccess = false;
-                }
-                if (Cap->NumberMax.IsSet() && (!Scalar.MaximumNumber.has_value() || *Scalar.MaximumNumber > *Cap->NumberMax))
-                {
-                    FGV2UiSchemaCompatibilityDiagnostic Diag;
-                    Diag.Code = TEXT("core:diagnostic.ui_capability.range_unsupported");
-                    Diag.PropertyPath = ChildPath;
-                    Diag.SchemaId = SchemaId;
-                    Diag.bFatal = !bIsMod;
-                    Diag.Message = FString::Printf(TEXT("Schema number max for '%s' exceeds capability bound"), *FieldName);
-                    OutDiagnostics.Add(MoveTemp(Diag));
-                    bSuccess = false;
-                }
-            }
-
-            // Keyed Collection check
-            if (FieldSpec->Kind == GV2ContentCore::EUiFieldKind::Array && Cap->bRequiresKeyedIdentity)
-            {
-                if (!FieldSpec->KeyedBy.has_value())
-                {
-                    FGV2UiSchemaCompatibilityDiagnostic Diag;
-                    Diag.Code = TEXT("core:diagnostic.ui_capability.collection_identity_mismatch");
-                    Diag.PropertyPath = ChildPath;
-                    Diag.SchemaId = SchemaId;
-                    Diag.bFatal = !bIsMod;
-                    Diag.Message = FString::Printf(TEXT("Collection '%s' requires keyed elements, but schema array has no keyed_by"), *FieldName);
-                    OutDiagnostics.Add(MoveTemp(Diag));
-                    bSuccess = false;
+                    continue;
                 }
             }
 
