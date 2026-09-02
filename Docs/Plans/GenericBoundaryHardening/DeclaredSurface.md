@@ -1,11 +1,11 @@
 ---
 title: Declared Surface Tasks
 status: active
-version: 1.8
-updated: 2026-09-01
+version: 1.9
+updated: 2026-09-02
 depends_on:
   - README.md
-  - ../../Status/GV2_remaining_review_2026-09-01.md
+  - ../../Status/Archive/GV2RemainingReview2026-09-01.md
   - ../../UI/ScreenTemplates.md
 ---
 

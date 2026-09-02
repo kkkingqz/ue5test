@@ -1,7 +1,7 @@
 ---
 title: Transactional Commit Tasks
 status: active
-version: 1.5
+version: 1.6
 updated: 2026-09-02
 depends_on:
   - README.md
@@ -58,7 +58,7 @@ decisions:
 
     Red-on-revert продемонстрирован: временное отключение cross-host отката в `CommitScreenFields` (`GV2ScreenWidgetBase.cpp`, always-false-но-не-provable guard) красит именно и только Step K с точным сообщением `"GBH-11: TextA restored to OldA... Expected 'OldA', but it was 'NewA'"`, не затрагивая Step J (`PCC-07`) или любой другой шаг того же теста — подтверждает, что опасная точка действительно новая, а не то же самое свойство, что уже доказывал `PCC-07`. Восстановление кода вернуло полный набор в зелёное (105/105 `GV2.*` UE Automation, 68/68 ctest).
 
-    **Сверка закрытий по находкам ревью** (`GV2_remaining_review_2026-09-01.md`):
+    **Сверка закрытий по находкам ревью** ([`GV2_remaining_review_2026-09-01.md`](../../Status/Archive/GV2RemainingReview2026-09-01.md), архивировано после закрытия всех находок):
 
     | ID | Закрыто | Regression gate |
     |---|---|---|

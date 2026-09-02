@@ -1,10 +1,10 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.14
+version: 1.15
 updated: 2026-09-02
 depends_on:
-  - ../../Status/GV2_remaining_review_2026-09-01.md
+  - ../../Status/Archive/GV2RemainingReview2026-09-01.md
   - ../Archive/UniversalUiPropertyPipeline.md
   - ../Archive/PipelineClosureCorrection.md
   - ../Archive/DataDrivenUiComposition.md
@@ -17,7 +17,7 @@ decisions:
 
 # План укрепления границ generic-абстракций
 
-> **Материализует:** находки `REM-01`…`REM-07` внешнего ревью от [2026-09-01](../../Status/GV2_remaining_review_2026-09-01.md).
+> **Материализует:** находки `REM-01`…`REM-07` внешнего ревью от [2026-09-01](../../Status/Archive/GV2RemainingReview2026-09-01.md) (архивировано после закрытия всех находок).
 > **Задачи:** GBH-01…11.
 > **Результат:** три границы generic-модели перестают быть местами, где утверждение сильнее проверки.
 
