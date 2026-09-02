@@ -1,7 +1,7 @@
 ---
 title: Declaration Constraints Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -80,5 +80,5 @@ Capability несёт больше: диапазон числа, границы 
 - [x] Значение вне объявленного диапазона отклоняется в Prepare, а не впервые обрезается widget renderer.
 - [x] Ребёнок с двумя capability одного вида не создаёт неоднозначности: selector указывает конкретную capability.
 - [x] Mutation test на schema→Widget и declaration→child краснеет при отключении **одной и той же** subset helper, доказывая отсутствие двух расходящихся реализаций.
-- [ ] Collection item/key/entry constraints входят в ту же subset-модель; `CollectionHost` после этого проходит `GBH-02B` либо остаётся Hidden. (`KeyPropertyName` сравнение сознательно отложено — см. Реализацию `GBH-08`; `CollectionHost` остаётся `Hidden`.)
+- [ ] Collection item/key/entry constraints входят в ту же subset-модель; `CollectionHost` после этого проходит `GBH-02B` либо остаётся Hidden. (`CollectionHost` прошёл `GBH-02B` и selectable — см. Реализацию часть B `GBH-02` в `DeclaredSurface.md`; `KeyPropertyName`-сравнение в `IsUiCapabilitySubset` по-прежнему сознательно отложено, см. Реализацию `GBH-08` — item contract доказан делегированием на `EntryWidgetClass`'s CDO, а не через эту сверку.)
 - [x] Форма схемы для автора контента не изменилась.

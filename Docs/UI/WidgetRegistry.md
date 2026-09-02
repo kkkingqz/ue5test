@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.10
-updated: 2026-09-01
+version: 3.11
+updated: 2026-09-02
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -159,7 +159,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 
 `Kind` соответствует всем прямым consumer-backed маршрутам после PCC-05: `Boolean`, `Integer`, `Number`, `String`, `Key`, `Text`, `ResourceRef`, `Binding`, а для `Array` — `CollectionHost`, `RichTextSpans`, `NestedScreen`. `Null` и прямой `Object` намеренно не имеют значения Designer enum: для них consumer отсутствует или вид неприменим; object/array composition остаётся плоским mapping либо специальным collection/nested route.
 
-**GBH-02A:** `CollectionHost` и `RichTextSpans` помечены `UMETA(Hidden)` и не выбираемы в Designer picker — ни один не имеет доказанного end-to-end пути именно через `UGV2DeclaredCompositeWidgetBase` (`DescribeUiCapabilities`' `CollectionHost`-ветка вызывает `AddCustom(...)`, у которого нет параметра `EntryWidgetClass`, поэтому первый элемент по-настоящему пустой коллекции создать невозможно — REM-05; `RichTextSpans` доказан только как нативная capability самого `UGV2RichTextWidgetBase`, а не как делегирование от composite к ребёнку). `NestedScreen` остаётся selectable — доказан DUC-09/10/11. `FGV2DesignerCapabilityKindGate::ValidateAllKindsClassified` (`GV2DeclaredCompositeWidgetBase.h`) — completeness-гейт по всем значениям enum, симметричный `FGV2PropertyConsumerFactory::ValidateAllKindsHandled` (PCC-05): новое значение enum без явной классификации (Hidden с причиной либо в списке доказанных) проваливает гейт, а не молча становится selectable.
+**GBH-02A/B:** `RichTextSpans` помечен `UMETA(Hidden)` и не выбираем в Designer picker — единственное существующее доказательство идёт через **нативную** capability самого `UGV2RichTextWidgetBase`, а не как делегирование от composite к ребёнку. `CollectionHost` был Hidden по той же причине (`DescribeUiCapabilities`' ветка вызывала `AddCustom(...)`, у которого не было параметра `EntryWidgetClass` — первый элемент по-настоящему пустой коллекции создать было невозможно, REM-05), но `GBH-02B` вернул его в selectable: ветка теперь вызывает `AddKeyedCollection(...)` с `EntryWidgetClass`/`KeyPropertyName` из declaration, а item capability читается из `EntryWidgetClass`'s собственного CDO `DescribeUiCapabilities` — тот же приём, которым `UGV2ButtonListWidgetBase` уже пользуется для своей entry-коллекции. `NestedScreen` остаётся selectable — доказан DUC-09/10/11. `FGV2DesignerCapabilityKindGate::ValidateAllKindsClassified` (`GV2DeclaredCompositeWidgetBase.h`) — completeness-гейт по всем значениям enum, симметричный `FGV2PropertyConsumerFactory::ValidateAllKindsHandled` (PCC-05): новое значение enum без явной классификации (Hidden с причиной либо в списке доказанных) проваливает гейт, а не молча становится selectable.
 
 `ChildWidgetName` — точная декларация target в instance WidgetTree. Если named child отсутствует, preflight `PrepareUiHostProperties` обязан остановить candidate до публикации с `core:diagnostic.ui_consumer.missing_target`; fallback на сам host допустим только для capability с `TargetName == NAME_None`. `WBP_DeclaredCompositeFixture` фиксирует production-конфигурацию `label → LabelText: WBP_Text` и одновременно является обязательной WBP-fixture capability sweep. DUC-05 не меняет существующие Location-композиты.
 

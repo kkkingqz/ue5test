@@ -31,14 +31,16 @@ enum class EGV2DeclaredUiCapabilityKind : uint8
     ResourceRef,
     Binding,
 
-    // REM-05: the flat (PropertyName, ChildWidgetName, Kind) triple carries no
-    // EntryWidgetClass/KeyPropertyName/item contract, so DescribeUiCapabilities' Custom
-    // AddCustom(...) call for this kind never populates EntryWidgetClass; the keyed
-    // collection consumer's own existing-entry/existing-child inference has nothing to
-    // infer from on a truly empty collection and rejects with missing_entry_class before
-    // the first item can ever be created. Hidden until GBH-02B (after GBH-06...08) gives
-    // the declaration a full contract and an empty-collection E2E test proves it.
-    CollectionHost UMETA(Hidden),
+    // GBH-02B: REM-05 closed. DescribeUiCapabilities' CollectionHost case now calls
+    // AddKeyedCollection with EntryWidgetClass/KeyPropertyName (present on
+    // FGV2DeclaredUiCapability since GBH-06, unused until now) -- the item's own
+    // capability tree is read from EntryWidgetClass's own CDO DescribeUiCapabilities,
+    // the same independent-second-source pattern already used for ChildWidgetName, and
+    // the exact precedent UGV2ButtonListWidgetBase already uses for its own entry class.
+    // Proven end-to-end by GV2.UI.DeclaredComposite.CollectionHostFirstEntry: a genuinely
+    // empty collection creates its first real entry through Designer declaration ->
+    // schema/materialization -> Commit -> observable renderer state.
+    CollectionHost,
 
     // GBH-02A: this kind's only proof is FGV2RichTextSpansPropertyConsumer applied to
     // UGV2RichTextWidgetBase's own *native* DescribeUiCapabilities (a leaf widget

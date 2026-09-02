@@ -4,6 +4,9 @@
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/VerticalBox.h"
+#include "Engine/GameInstance.h"
+#include "Engine/Engine.h"
+#include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2DeclaredCompositeWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2PreparedUiValue.h"
@@ -688,21 +691,18 @@ bool FGV2DeclaredCompositeKindSelectabilityGateTest::RunTest(const FString& Para
         bAllClassified);
     TestEqual(TEXT("GBH-02A: zero unclassified-kind diagnostics"), GateDiagnostics.Num(), 0);
 
-    // Currently-Hidden kinds and their recorded reasons.
+    // Currently-Hidden kinds and their recorded reasons. GBH-02B closed REM-05 --
+    // CollectionHost moved from Hidden to Supported (see
+    // GV2.UI.DeclaredComposite.CollectionHostFirstEntry for its own E2E proof); only
+    // RichTextSpans remains Hidden.
     TestEqual(
-        TEXT("GBH-02A: CollectionHost status is Hidden"),
+        TEXT("GBH-02B: CollectionHost status is Supported"),
         FGV2DesignerCapabilityKindGate::GetKindStatus(EGV2DeclaredUiCapabilityKind::CollectionHost),
-        EGV2DesignerKindStatus::Hidden);
+        EGV2DesignerKindStatus::Supported);
     TestEqual(
         TEXT("GBH-02A: RichTextSpans status is Hidden"),
         FGV2DesignerCapabilityKindGate::GetKindStatus(EGV2DeclaredUiCapabilityKind::RichTextSpans),
         EGV2DesignerKindStatus::Hidden);
-
-    FString CollectionHostReason;
-    TestTrue(
-        TEXT("GBH-02A: CollectionHost is registered Hidden"),
-        FGV2DesignerCapabilityKindGate::IsHiddenKind(EGV2DeclaredUiCapabilityKind::CollectionHost, &CollectionHostReason));
-    TestFalse(TEXT("GBH-02A: CollectionHost has a recorded reason"), CollectionHostReason.IsEmpty());
 
     FString RichTextSpansReason;
     TestTrue(
@@ -711,11 +711,12 @@ bool FGV2DeclaredCompositeKindSelectabilityGateTest::RunTest(const FString& Para
     TestFalse(TEXT("GBH-02A: RichTextSpans has a recorded reason"), RichTextSpansReason.IsEmpty());
 
     const TArray<FGV2HiddenDesignerKindInfo> HiddenKinds = FGV2DesignerCapabilityKindGate::GetHiddenKinds();
-    TestEqual(TEXT("GBH-02A: exactly 2 Hidden kinds (CollectionHost, RichTextSpans)"), HiddenKinds.Num(), 2);
+    TestEqual(TEXT("GBH-02B: exactly 1 Hidden kind (RichTextSpans)"), HiddenKinds.Num(), 1);
 
     // Currently-selectable kinds remain Supported: the 8 flat RendererControl kinds proven
     // by DUC-05/06/07/08 (this file's own earlier tests, plus the real TopBar conversion),
-    // and NestedScreen proven by DUC-09/10/11.
+    // NestedScreen proven by DUC-09/10/11, and (GBH-02B) CollectionHost proven by
+    // GV2.UI.DeclaredComposite.CollectionHostFirstEntry.
     const EGV2DeclaredUiCapabilityKind SupportedKinds[] = {
         EGV2DeclaredUiCapabilityKind::Boolean,
         EGV2DeclaredUiCapabilityKind::Integer,
@@ -725,106 +726,205 @@ bool FGV2DeclaredCompositeKindSelectabilityGateTest::RunTest(const FString& Para
         EGV2DeclaredUiCapabilityKind::Text,
         EGV2DeclaredUiCapabilityKind::ResourceRef,
         EGV2DeclaredUiCapabilityKind::Binding,
+        EGV2DeclaredUiCapabilityKind::CollectionHost,
         EGV2DeclaredUiCapabilityKind::NestedScreen,
     };
     for (const EGV2DeclaredUiCapabilityKind Kind : SupportedKinds)
     {
         TestEqual(
-            *FString::Printf(TEXT("GBH-02A: kind %d is Supported"), static_cast<int32>(Kind)),
+            *FString::Printf(TEXT("GBH-02A/B: kind %d is Supported"), static_cast<int32>(Kind)),
             FGV2DesignerCapabilityKindGate::GetKindStatus(Kind),
             EGV2DesignerKindStatus::Supported);
     }
 
-    // REM-05, reproduced directly: the reason CollectionHost is Hidden, not merely a
-    // documentation claim. DescribeUiCapabilities' CollectionHost case calls AddCustom(...),
-    // which has no EntryWidgetClass parameter at all -- so on a *genuinely empty* collection
-    // (no existing entries to infer a class from), Prepare cannot create the first item
-    // through this delegation path, regardless of what the schema itself declares.
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DeclaredCompositeCollectionHostFirstEntryTest,
+    "GV2.UI.DeclaredComposite.CollectionHostFirstEntry",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& Parameters)
+{
+    using namespace GV2ContentCore;
+
+    // GBH-02B: REM-05 closed. DescribeUiCapabilities' CollectionHost case now wires
+    // EntryWidgetClass/KeyPropertyName into AddKeyedCollection, and the item's own
+    // capability tree comes from EntryWidgetClass's own CDO -- the same
+    // independent-second-source pattern DUC-07/GBH-06 established for ChildWidgetName,
+    // and the exact precedent UGV2ButtonListWidgetBase already uses. This proves the
+    // full path a Designer author actually gets: declaration -> schema/materialization
+    // -> creation of the FIRST entry of a genuinely empty collection -> child capability
+    // subset check -> Commit -> observable renderer state.
+    UClass* const CompositeClass = FindObject<UClass>(nullptr, TEXT("/Script/GV2.GV2DeclaredCompositeWidgetBase"));
+    TestNotNull(TEXT("GBH-02B: generic declared composite class exists"), CompositeClass);
+    if (CompositeClass == nullptr)
     {
-        UClass* const CompositeClass = FindObject<UClass>(nullptr, TEXT("/Script/GV2.GV2DeclaredCompositeWidgetBase"));
-        TestNotNull(TEXT("GBH-02A: generic declared composite class exists"), CompositeClass);
-        if (CompositeClass == nullptr)
-        {
-            return false;
-        }
-
-        UUserWidget* const Composite = NewObject<UUserWidget>(GetTransientPackage(), CompositeClass);
-        IGV2UiPropertyHost* const PropertyHost = Composite != nullptr ? Cast<IGV2UiPropertyHost>(Composite) : nullptr;
-        TestNotNull(TEXT("GBH-02A: composite instance exposes property host interface"), PropertyHost);
-        if (PropertyHost == nullptr)
-        {
-            return false;
-        }
-
-        Composite->WidgetTree = NewObject<UWidgetTree>(Composite);
-        UGV2ListViewWidgetBase* const ItemsList = Composite->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(
-            UGV2ListViewWidgetBase::StaticClass(), TEXT("ItemsList"));
-        Composite->WidgetTree->RootWidget = ItemsList;
-        UVerticalBox* const ContainerPanel = NewObject<UVerticalBox>(ItemsList);
-        ItemsList->SetContainerPanel(ContainerPanel);
-        TestEqual(TEXT("GBH-02A: fixture collection starts genuinely empty"), ContainerPanel->GetChildrenCount(), 0);
-
-        FArrayProperty* const DeclaredCapabilitiesProperty =
-            FindFProperty<FArrayProperty>(CompositeClass, TEXT("DeclaredCapabilities"));
-        FStructProperty* const EntryProperty =
-            DeclaredCapabilitiesProperty != nullptr ? CastField<FStructProperty>(DeclaredCapabilitiesProperty->Inner) : nullptr;
-        TestNotNull(TEXT("GBH-02A: declared capability list stores triples"), EntryProperty);
-        if (DeclaredCapabilitiesProperty == nullptr || EntryProperty == nullptr)
-        {
-            return false;
-        }
-
-        FScriptArrayHelper Entries(DeclaredCapabilitiesProperty, DeclaredCapabilitiesProperty->ContainerPtrToValuePtr<void>(Composite));
-        Entries.EmptyValues();
-        const FDeclaredCapabilityExpectation CollectionDeclaration = {
-            TEXT("CollectionHost"), TEXT("items"), TEXT("ItemsList"), EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost, TEXT("") };
-        if (!SetDeclaredCapabilityEntry(*this, Entries, *EntryProperty, CollectionDeclaration))
-        {
-            return false;
-        }
-
-        FGV2UiCapabilityBuilder Builder;
-        PropertyHost->DescribeUiCapabilities(Builder);
-
-        auto ItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Object);
-        ItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
-        auto ItemsArraySpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Array);
-        ItemsArraySpec->KeyedBy = std::string("key");
-        ItemsArraySpec->Items = ItemSpec;
-
-        GV2ContentCore::FCompiledUiFieldSpec Schema;
-        Schema.Kind = GV2ContentCore::EUiFieldKind::Object;
-        Schema.Fields.push_back({ "items", false, ItemsArraySpec });
-
-        TMap<FString, FGV2PreparedUiValue> FirstItemMap;
-        FirstItemMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("first")));
-        TArray<FGV2PreparedUiValue> ItemsArray;
-        ItemsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FirstItemMap)));
-        TMap<FString, FGV2PreparedUiValue> HostFields;
-        HostFields.Add(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(ItemsArray)));
-        const TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(HostFields);
-
-        FGV2UiHostMutationPlan Plan;
-        TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
-        const bool bPrepared = PrepareUiHostProperties(
-            Composite,
-            Builder.Build(),
-            *Candidate,
-            Schema,
-            TEXT("test:schema.gbh02_collection_host_probe.v1"),
-            TEXT(""),
-            PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
-            Plan,
-            Diagnostics);
-        TestFalse(TEXT("GBH-02A: CollectionHost cannot create the first item of an empty collection through DeclaredComposite"), bPrepared);
-        TestTrue(
-            TEXT("GBH-02A: rejection is specifically missing_entry_class, justifying the Hidden classification"),
-            Diagnostics.ContainsByPredicate([](const FGV2UiSchemaCompatibilityDiagnostic& Diagnostic)
-            {
-                return Diagnostic.Message.Contains(TEXT("missing_entry_class"));
-            }));
+        return false;
     }
 
+    // WBP_Button, not the bare native class: UGV2ButtonWidgetBase's own "text" capability
+    // targets "LabelText", which only resolves on a real WidgetTree -- the same
+    // requirement FGV2ScreenPreflightPredictsDeepChildFailureTest's fixture already
+    // documents for this exact class.
+    UClass* ButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+    TestNotNull(TEXT("GBH-02B: real WBP_Button class loads"), ButtonClass);
+    if (ButtonClass == nullptr)
+    {
+        return false;
+    }
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UGV2DeclaredCompositeWidgetBase* const Composite = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CompositeClass);
+    TestNotNull(TEXT("GBH-02B: composite instance created"), Composite);
+    if (Composite == nullptr)
+    {
+        GameInstance->RemoveFromRoot();
+        return false;
+    }
+
+    Composite->WidgetTree = NewObject<UWidgetTree>(Composite);
+    UGV2ListViewWidgetBase* const ItemsList = Composite->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(
+        UGV2ListViewWidgetBase::StaticClass(), TEXT("ItemsList"));
+    Composite->WidgetTree->RootWidget = ItemsList;
+    UVerticalBox* const ContainerPanel = NewObject<UVerticalBox>(ItemsList);
+    ItemsList->SetContainerPanel(ContainerPanel);
+    TestEqual(TEXT("GBH-02B: fixture collection starts genuinely empty"), ContainerPanel->GetChildrenCount(), 0);
+
+    FGV2DeclaredUiCapability CollectionEntry;
+    CollectionEntry.PropertyName = FName(TEXT("items"));
+    CollectionEntry.ChildWidgetName = FName(TEXT("ItemsList"));
+    CollectionEntry.Kind = EGV2DeclaredUiCapabilityKind::CollectionHost;
+    CollectionEntry.EntryWidgetClass = ButtonClass;
+    CollectionEntry.KeyPropertyName = TEXT("key");
+    Composite->DeclaredCapabilities.Add(CollectionEntry);
+
+    FGV2UiCapabilityBuilder Builder;
+    Composite->DescribeUiCapabilities(Builder);
+    const FGV2UiCapabilityTree Capabilities = Builder.Build();
+    const FGV2UiPropertyCapability* const ItemsCap = Capabilities.FindProperty(TEXT("items"));
+    TestNotNull(TEXT("GBH-02B: 'items' capability produced"), ItemsCap);
+    if (ItemsCap != nullptr)
+    {
+        TestEqual(TEXT("GBH-02B: 'items' targets CollectionHost"), ItemsCap->TargetType, EGV2UiCapabilityTargetType::CollectionHost);
+        TestEqual(TEXT("GBH-02B: 'items' carries the declared EntryWidgetClass"), ItemsCap->EntryWidgetClass.Get(), ButtonClass);
+        TestTrue(TEXT("GBH-02B: 'items' requires keyed identity"), ItemsCap->bRequiresKeyedIdentity);
+        TestNotNull(TEXT("GBH-02B: 'items' has an item capability descriptor"), ItemsCap->ItemCapability.Get());
+        if (ItemsCap->ItemCapability.IsValid() && ItemsCap->ItemCapability->ChildTree.IsValid())
+        {
+            // Read from ButtonClass's own CDO, not hand-declared: proves the item
+            // contract is the same independent-second-source delegation as
+            // ChildWidgetName's own capability, not a manual re-statement of it.
+            const FGV2UiCapabilityTree& ItemTree = *ItemsCap->ItemCapability->ChildTree;
+            TestNotNull(TEXT("GBH-02B: item capability includes Button's own 'text'"), ItemTree.FindProperty(TEXT("text")));
+            TestNotNull(TEXT("GBH-02B: item capability includes Button's own 'binding'"), ItemTree.FindProperty(TEXT("binding")));
+            TestNotNull(TEXT("GBH-02B: item capability includes Button's own 'key'"), ItemTree.FindProperty(TEXT("key")));
+        }
+    }
+
+    auto MakeItemSchema = []() -> FCompiledUiFieldSpec
+    {
+        auto KeySpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Key);
+        auto TextSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text);
+        auto BindingSpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Binding);
+        FCompiledUiFieldSpec ItemObjectSpec;
+        ItemObjectSpec.Kind = EUiFieldKind::Object;
+        ItemObjectSpec.Fields.push_back({ "key", true, KeySpec });
+        ItemObjectSpec.Fields.push_back({ "text", true, TextSpec });
+        ItemObjectSpec.Fields.push_back({ "binding", false, BindingSpec });
+        return ItemObjectSpec;
+    };
+
+    auto MakeItemsSchema = [&MakeItemSchema]() -> FCompiledUiFieldSpec
+    {
+        auto ArraySpec = std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Array);
+        ArraySpec->KeyedBy = std::string("key");
+        ArraySpec->Items = std::make_shared<FCompiledUiFieldSpec>(MakeItemSchema());
+        FCompiledUiFieldSpec Schema;
+        Schema.Kind = EUiFieldKind::Object;
+        Schema.Fields.push_back({ "items", false, ArraySpec });
+        return Schema;
+    };
+    const FCompiledUiFieldSpec Schema = MakeItemsSchema();
+
+    auto MakeItemValue = [](const TCHAR* Key, const TCHAR* Text) -> FGV2PreparedUiValue
+    {
+        FGV2TextViewModel TextModel;
+        TextModel.Text = FText::FromString(Text);
+        TMap<FString, FGV2PreparedUiValue> Fields;
+        Fields.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(Key));
+        Fields.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));
+        Fields.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("action@1:1"))));
+        return FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Fields));
+    };
+
+    TMap<FString, FGV2PreparedUiValue> FirstHostFields;
+    TArray<FGV2PreparedUiValue> FirstItemsArray;
+    FirstItemsArray.Add(MakeItemValue(TEXT("first_item"), TEXT("First")));
+    FirstHostFields.Add(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FirstItemsArray)));
+    const TSharedRef<const FGV2PreparedUiObject> FirstCandidate = FGV2PreparedUiObject::Create(FirstHostFields);
+
+    FGV2UiHostMutationPlan Plan;
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+    const bool bPrepared = PrepareUiHostProperties(
+        Composite, Builder.Build(), *FirstCandidate, Schema,
+        TEXT("test:schema.gbh02b_collection_first_entry.v1"), TEXT(""),
+        Composite->GetPropertyHostState().GetLastCommittedProperties(),
+        Plan, Diagnostics);
+    TestTrue(
+        *FString::Printf(TEXT("GBH-02B: Prepare creates the first entry of a genuinely empty collection [Diagnostics: %s]"),
+            Diagnostics.Num() > 0 ? *Diagnostics[0].ToString() : TEXT("")),
+        bPrepared);
+
+    FString FailedPath, CommitError;
+    const bool bCommitted = bPrepared && CommitUiHostProperties(Composite, Plan, FailedPath, CommitError);
+    TestTrue(*FString::Printf(TEXT("GBH-02B: Commit succeeds [Error: %s]"), *CommitError), bCommitted);
+
+    // Observable renderer state: a real Button widget now exists in the previously-empty
+    // panel, with the committed key/text.
+    TestEqual(TEXT("GBH-02B: ListView now has exactly one entry"), ItemsList->GetEntryCount(), 1);
+    TestEqual(TEXT("GBH-02B: ContainerPanel now has exactly one child"), ContainerPanel->GetChildrenCount(), 1);
+    UGV2ButtonWidgetBase* const FirstButton = ItemsList->GetEntry<UGV2ButtonWidgetBase>(FName(TEXT("first_item")));
+    TestNotNull(TEXT("GBH-02B: first entry resolves as a real UGV2ButtonWidgetBase"), FirstButton);
+    if (FirstButton != nullptr)
+    {
+        TestEqual(TEXT("GBH-02B: first entry key matches"), FirstButton->GetKey(), FName(TEXT("first_item")));
+    }
+
+    // A second entry added afterward proves this generalizes past "exactly the first
+    // item ever" -- the collection keeps working once it is no longer empty.
+    TMap<FString, FGV2PreparedUiValue> SecondHostFields;
+    TArray<FGV2PreparedUiValue> SecondItemsArray;
+    SecondItemsArray.Add(MakeItemValue(TEXT("first_item"), TEXT("First")));
+    SecondItemsArray.Add(MakeItemValue(TEXT("second_item"), TEXT("Second")));
+    SecondHostFields.Add(TEXT("items"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(SecondItemsArray)));
+    const TSharedRef<const FGV2PreparedUiObject> SecondCandidate = FGV2PreparedUiObject::Create(SecondHostFields);
+
+    FGV2UiHostMutationPlan SecondPlan;
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> SecondDiagnostics;
+    const bool bSecondPrepared = PrepareUiHostProperties(
+        Composite, Builder.Build(), *SecondCandidate, Schema,
+        TEXT("test:schema.gbh02b_collection_first_entry.v1"), TEXT(""),
+        Composite->GetPropertyHostState().GetLastCommittedProperties(),
+        SecondPlan, SecondDiagnostics);
+    TestTrue(TEXT("GBH-02B: Prepare succeeds for a second entry on the now-non-empty collection"), bSecondPrepared);
+    FString SecondFailedPath, SecondCommitError;
+    const bool bSecondCommitted = bSecondPrepared && CommitUiHostProperties(Composite, SecondPlan, SecondFailedPath, SecondCommitError);
+    TestTrue(TEXT("GBH-02B: second Commit succeeds"), bSecondCommitted);
+    TestEqual(TEXT("GBH-02B: ListView now has two entries"), ItemsList->GetEntryCount(), 2);
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
     return true;
 }
 

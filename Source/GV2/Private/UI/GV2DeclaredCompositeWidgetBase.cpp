@@ -15,6 +15,7 @@ const TSet<EGV2DeclaredUiCapabilityKind>& GetProvenDesignerKinds()
         EGV2DeclaredUiCapabilityKind::Text,
         EGV2DeclaredUiCapabilityKind::ResourceRef,
         EGV2DeclaredUiCapabilityKind::Binding,
+        EGV2DeclaredUiCapabilityKind::CollectionHost,
         EGV2DeclaredUiCapabilityKind::NestedScreen,
     };
     return Kinds;
@@ -151,12 +152,32 @@ void UGV2DeclaredCompositeWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBui
             OutBuilder.AddBinding(PropertyName, ChildWidgetName);
             break;
         case EGV2DeclaredUiCapabilityKind::CollectionHost:
-            OutBuilder.AddCustom(
+        {
+            // GBH-02B: the item's own capability tree is read from EntryWidgetClass's
+            // own DescribeUiCapabilities (its CDO), never hand-declared here -- the same
+            // "second, independent source" pattern DUC-07/GBH-06 already established for
+            // ChildWidgetName, and the exact precedent UGV2ButtonListWidgetBase already
+            // uses for its own entry class. REM-05's actual defect was never "the item
+            // shape is unknown" -- EntryWidgetClass's CDO always answers that -- it was
+            // that AddCustom(...) had no parameter to carry EntryWidgetClass at all.
+            FGV2UiCapabilityTree ItemCapabilities;
+            if (DeclaredCapability.EntryWidgetClass != nullptr)
+            {
+                if (const IGV2UiPropertyHost* EntryHostCDO = Cast<IGV2UiPropertyHost>(DeclaredCapability.EntryWidgetClass->GetDefaultObject()))
+                {
+                    FGV2UiCapabilityBuilder EntryBuilder;
+                    EntryHostCDO->DescribeUiCapabilities(EntryBuilder);
+                    ItemCapabilities = EntryBuilder.Build();
+                }
+            }
+            OutBuilder.AddKeyedCollection(
                 PropertyName,
-                EGV2PreparedUiValueKind::Array,
-                EGV2UiCapabilityTargetType::CollectionHost,
-                ChildWidgetName);
+                ChildWidgetName,
+                ItemCapabilities,
+                DeclaredCapability.KeyPropertyName,
+                DeclaredCapability.EntryWidgetClass);
             break;
+        }
         case EGV2DeclaredUiCapabilityKind::RichTextSpans:
             OutBuilder.AddCustom(
                 PropertyName,

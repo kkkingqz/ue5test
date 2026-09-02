@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.20
-updated: 2026-09-01
+version: 1.21
+updated: 2026-09-02
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -225,7 +225,7 @@ Composite указывает **какую именно** capability ребёнк
 
 Проверено `GV2.UI.DeclaredComposite.ConstraintsAndSelector`: declared `[0..1]` на реальном `UGV2ProgressBarWidgetBase` отклоняет schema `[0..100]` (`core:diagnostic.ui_capability.range_unsupported`) и принимает `[0..0.5]`; неоднозначный `Key` на `UGV2TabContainerWidgetBase` без селектора и без совпадения по имени отклоняется (`ambiguous_child_capability`), а с явным `ChildCapabilityName = "key"` — резолвится и принимается.
 
-`CollectionHost`'s `EntryWidgetClass`/`KeyPropertyName` уже присутствуют на `FGV2DeclaredUiCapability`, но не подключены в `DescribeUiCapabilities` — вид остаётся `Hidden` (`GBH-02A`) до `GBH-02B`, и item contract для коллекции — отдельный вопрос, который `GBH-02B` ещё должен решить.
+`CollectionHost`'s `EntryWidgetClass`/`KeyPropertyName` были добавлены на `FGV2DeclaredUiCapability`, но не подключены в `DescribeUiCapabilities` — вид оставался `Hidden` (`GBH-02A`) до `GBH-02B`. `GBH-02B` вернул `CollectionHost` в selectable: ветка `DescribeUiCapabilities` вызывает `OutBuilder.AddKeyedCollection(PropertyName, ChildWidgetName, ItemCapabilities, KeyPropertyName, EntryWidgetClass)`, а `ItemCapabilities` не объявляется вручную на composite, а читается из **собственного** `DescribeUiCapabilities` CDO класса `EntryWidgetClass` — тот же приём, каким `DUC-07`/`GBH-06` уже добывает `ChildCapabilityName` ребёнка как «второй, независимый источник», и тот же приём, которым `UGV2ButtonListWidgetBase` уже пользуется для своей собственной entry-коллекции кнопок. Действительная причина `REM-05` была не «форма элемента неизвестна» (её всегда можно узнать у CDO `EntryWidgetClass`), а то, что до `GBH-02B` у `AddCustom(...)` вообще не было параметра для передачи `EntryWidgetClass` — создать первый элемент по-настоящему пустой коллекции было нечем. Доказано `GV2.UI.DeclaredComposite.CollectionHostFirstEntry`: реальный `WBP_Button`/`UGV2ButtonWidgetBase` как `EntryWidgetClass`, пустой `UGV2ListViewWidgetBase`, создание первого элемента через `Commit`, наблюдаемое состояние (`GetEntryCount() == 1`, корректный ключ) и добавление второго элемента после первого.
 
 ### Consumer применяет объявленное ограничение (GBH-07)
 
