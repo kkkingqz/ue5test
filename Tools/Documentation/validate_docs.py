@@ -485,6 +485,33 @@ class Validation:
                     f"three docs recording the deferred UI schema authority gap (GBH-03/REM-04)",
                 )
 
+    def validate_gbh09_rollback_decision_consistency(self, texts: dict[Path, str]) -> None:
+        """GBH-09/REM-02 docs consistency gate. The recovery mechanism decided in
+        ADR-0041 is a pure decision with no code yet (GBH-10 implements it), so
+        there is no runtime path to red-test either -- the gate is that the ADR
+        and every doc location describing the boundaries it covers agree it
+        exists. If one drifts -- e.g. a future edit removes the ADR-0041
+        cross-reference from UIDocumentAndReconciliation.md's residual-gap prose
+        without retracting the ADR itself -- this fails instead of the docs
+        silently disagreeing about whether the gap has an owner and a decision.
+        """
+        marker = "ADR-0041"
+        required = (
+            self.docs_root / "Plans" / "GenericBoundaryHardening" / "TransactionalCommit.md",
+            self.docs_root / "UI" / "UIDocumentAndReconciliation.md",
+            self.docs_root / "ADR" / "0041-ui-commit-rollback-model.md",
+        )
+        present = {path: marker in texts.get(path.resolve(), "") for path in required}
+        if not any(present.values()):
+            return
+        for path, has_marker in present.items():
+            if not has_marker:
+                self.fail(
+                    path,
+                    f"missing '{marker}' -- {path.name} must stay consistent with the other "
+                    f"two docs recording the UI commit rollback decision (GBH-09/REM-02)",
+                )
+
     def run(self) -> int:
         markdown_files = sorted(self.docs_root.rglob("*.md"))
         texts: dict[Path, str] = {}
@@ -509,6 +536,7 @@ class Validation:
         self.validate_adr_references()
         self.validate_dependency_graph()
         self.validate_status_008_consistency(texts)
+        self.validate_gbh09_rollback_decision_consistency(texts)
 
         if self.errors:
             for error in sorted(set(self.errors)):

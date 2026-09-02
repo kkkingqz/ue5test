@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.5
-updated: 2026-08-23
+version: 2.6
+updated: 2026-09-02
 ---
 
 # Architecture Decision Records
@@ -52,6 +52,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0038](0038-screen-field-value-flat-struct.md) | superseded | Screen Field Value Stays a Flat Struct: `FGV2ScreenFieldValue` остаётся плоской структурой; заменено UPP-30 — union из 13 payload удалён физически, не пересмотрен по условию |
 | [0039](0039-presentation-source-singleton.md) | rejected | Presentation Source Stays a Singleton: композиция источников не вводится; пересмотр — при втором реальном потребителе |
 | [0040](0040-universal-ui-property-pipeline.md) | accepted | Universal UI Property Pipeline: подготовленное дерево значений вместо schema-specific DTO, Prepare/Commit, `SchemaContract ⊆ WidgetCapabilities` с наблюдаемостью capability, namespace ownership, mod-only отказ, без обратной совместимости |
+| [0041](0041-ui-commit-rollback-model.md) | accepted | UI Commit Rollback Model: захват предыдущего состояния перед live-мутацией и откат в обратном порядке той же Prepare/Commit-машиной на всех границах reused host/screen/collection/Shell attach — `REM-02`/`GBH-09` |
 
 ## Template
 

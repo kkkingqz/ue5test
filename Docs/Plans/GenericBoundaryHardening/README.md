@@ -1,8 +1,8 @@
 ---
 title: Generic Boundary Hardening Plan
 status: active
-version: 1.11
-updated: 2026-09-01
+version: 1.12
+updated: 2026-09-02
 depends_on:
   - ../../Status/GV2_remaining_review_2026-09-01.md
   - ../Archive/UniversalUiPropertyPipeline.md
@@ -12,6 +12,7 @@ depends_on:
   - ../../Status/ImplementationStatus.md
 decisions:
   - ../../ADR/0040-universal-ui-property-pipeline.md
+  - ../../ADR/0041-ui-commit-rollback-model.md
 ---
 
 # План укрепления границ generic-абстракций
@@ -45,6 +46,7 @@ decisions:
 | `CommitReconcile` | Все **предсказуемые** причины отказа attach отклоняются в `PrepareReconcile` (`GBH-01`); остаточный непредсказуемый engine-level отказ явно делегирован `GBH-09/10` |
 | `HasHostForLayer` | Используется в `PrepareReconcile` (`GBH-01`) |
 | `CollectionHost` в Designer | Selectable, полный contract (`EntryWidgetClass`/`KeyPropertyName`, item capability из CDO) — `GBH-02B` |
+| Механизм восстановления mid-Commit failure | Решён [`ADR-0041`](../../ADR/0041-ui-commit-rollback-model.md): захват предыдущего `LastCommittedProperties`/структуры и откат в обратном порядке той же Prepare/Commit-машиной; реализация — `GBH-10` |
 | UI-схемы | Сканируются с файловой системы, не принадлежат closure активного репозитория; defer зафиксирован `STATUS-008` (`GBH-03`) |
 | `ScreenTemplates.md` | Описывает фактический `IGV2ScreenFieldHost` и строгую bijection без optional policy (`GBH-04`) |
 | `ApplyOptionalImageResource`, `ApplyOptionalPortrait` | Удалены вместе с `ResolveOptionalAndApply`; legacy-гейт расширен на весь `Source/GV2` (`GBH-05`) |
