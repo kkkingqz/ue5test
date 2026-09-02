@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.8
-updated: 2026-09-01
+version: 2.9
+updated: 2026-09-02
 depends_on:
   - ../README.md
 ---
@@ -13,6 +13,7 @@ depends_on:
 
 | План | Завершён | Результат |
 |---|---|---|
+| [GenericBoundaryHardening](GenericBoundaryHardening.md) | 2026-09-02 | Объявление композита несёт параметры своего вида и указывает делегируемую capability ребёнка; одна subset-функция сравнивает capability целиком для schema→Widget и declaration→child; каждый selectable Designer kind работоспособен от объявления до отрисовки; Shell structural failure предсказывается в Prepare; mid-Commit failure на переиспользуемом live host/screen/collection восстанавливает предыдущую физическую presentation ([ADR-0041](../../ADR/0041-ui-commit-rollback-model.md)); принадлежность UI-схем репозиторию честно зафиксирована как отложенная; legacy optional-apply API удалены |
 | [BoundaryAndApplyIntegrity](BoundaryAndApplyIntegrity.md) | 2026-08-23 | Замкнутые схемы Screen Field на всех уровнях вложенности; иконки предметов и эффектов доходят до композита; неразрешённый класс дочернего виджета даёт отказ вместо мнимого успеха; границы транзакционности репитера описаны по факту; типографский conformance и проверка 720p измеряют заявленное |
 | [UniversalUiPropertyPipeline](UniversalUiPropertyPipeline.md) | 2026-08-27 | Замена schema-specific адаптеров универсальным property pipeline: data-driven UI-схемы, подготовленное дерево значений, наблюдаемые capability, Prepare/Commit вместо fallible Apply, атомарный документ; каркас старой модели удалён |
 | [PipelineClosureCorrection](PipelineClosureCorrection.md) | 2026-08-31 | Доведение UI property pipeline после внешнего ревью: схема элемента коллекции из репозитория, единый валидатор, `[[nodiscard]]` на отказоспособных операциях, чистый опрос capability, harness внутрь коллекций |

@@ -494,10 +494,12 @@ class Validation:
         cross-reference from UIDocumentAndReconciliation.md's residual-gap prose
         without retracting the ADR itself -- this fails instead of the docs
         silently disagreeing about whether the gap has an owner and a decision.
+        GenericBoundaryHardening (GBH-09/10/11) is archived as of 2026-09-02; the
+        third leg of this check follows it into Plans/Archive/.
         """
         marker = "ADR-0041"
         required = (
-            self.docs_root / "Plans" / "GenericBoundaryHardening" / "TransactionalCommit.md",
+            self.docs_root / "Plans" / "Archive" / "GenericBoundaryHardening.md",
             self.docs_root / "UI" / "UIDocumentAndReconciliation.md",
             self.docs_root / "ADR" / "0041-ui-commit-rollback-model.md",
         )

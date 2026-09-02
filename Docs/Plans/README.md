@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 6.5
-updated: 2026-09-01
+version: 6.6
+updated: 2026-09-02
 depends_on:
   - ../README.md
 ---
@@ -25,7 +25,7 @@ depends_on:
 
 ## Активные планы
 
-- [Generic Boundary Hardening](GenericBoundaryHardening/README.md) — три границы generic-модели: объявление против умений ребёнка, транзакционный commit живого виджета, авторитет над UI-схемами. GBH-01…11.
+Активных планов нет.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
