@@ -1,7 +1,7 @@
 ---
 title: Declared Surface Tasks
 status: active
-version: 1.5
+version: 1.6
 updated: 2026-09-01
 depends_on:
   - README.md
@@ -63,10 +63,18 @@ depends_on:
     - Docs/status consistency gate: новый `Validation.validate_status_008_consistency` в `Tools/Documentation/validate_docs.py` — проверяет, что `STATUS-008` упоминается во всех четырёх документах одновременно (ImplementationStatus.md, оба UI-документа, ADR-0040); частичное удаление (дрейф) проваливает `validate_docs.py`, полное согласованное удаление (после будущей реализации варианта A) — нет. Red→green продемонстрирован: маркер временно заменён в `ScreenTemplates.md` на несовпадающую строку — упал ровно `validate_docs.py` с точным диагнозом «missing 'STATUS-008' ... ScreenTemplates.md»; восстановление — снова чисто. Runtime red test не требовался (Done явно допускает это для defer closure).
     - Верификация: `python3 Tools/Documentation/validate_docs.py` и `--self-test` зелены; код не менялся, UE Automation/ctest не запускались повторно (не затронуты).
 
-- [ ] **GBH-04 — Контракты описывают фактический host API**
+- [x] **GBH-04 — Контракты описывают фактический host API**
   - `ScreenTemplates.md` утверждает, что configured element объявляет `schema_id` и политику обязательности, тогда как `IGV2ScreenFieldHost` содержит только `GetScreenFieldId()`, а `schema_id` приходит из runtime envelope.
   - Done: контракт описывает фактический интерфейс и фактический источник `schema_id`; если политика необязательного host нужна как поведение — она либо реализована, либо описана как отсутствующая с записью в статусе; выборочно проверено, что ни одно оставшееся утверждение контракта об элементах экрана не сильнее того, что подтверждает тест.
   - Evidence: `Docs/UI/ScreenTemplates.md`, `Source/GV2/Public/UI/GV2ScreenFieldHost.h`.
+  - **Реализация (2026-09-01):**
+    - `ScreenTemplates.md`'s Invariants: строка «Каждый configured element объявляет non-empty Stable ID `schema_id` и required/optional policy» переписана под фактический контракт — element объявляет только `field_id` через `GetScreenFieldId()`; `schema_id`/value приходят из runtime envelope; top-level bijection строгая, optional host policy не существует ни в интерфейсе, ни в поведении (`PrepareScreenFieldPlans`).
+    - `IGV2ScreenFieldHost.h`'s собственный doc-комментарий уже был точным (описывает именно bijection и `GetScreenFieldId()`) — изменений не потребовалось.
+    - Побочная находка при выборочной проверке: у `ADR-0011` (`status: accepted`, не archived) была та же формулировка про `field_id`, `schema_id` и required/optional policy для (retired) Dynamic Screen Elements — исправлена короткой оговоркой со ссылкой на актуальный контракт `ScreenTemplates.md`, без переписывания истории решения.
+    - Проверены и признаны не overclaiming: `WidgetRegistry.md` (упоминание `schema_id` — это состав diagnostic-сообщения, не заявление о declaration элемента) и `UIDocumentAndReconciliation.md` (обязательность ключей коллекции — отдельный, реально реализованный механизм, не top-level host policy).
+    - Обнаружено при аудите: ни один существующий тест не проверял именно **top-level** bijection `PrepareScreenFieldPlans` (только вложенный, tab-level, из DUC-09) — новая формулировка контракта сама была бы недоказанным утверждением. Добавлены 2 негативных assertion в `GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure` (`GV2RuntimeSubsystemTests.cpp`): configured host без envelope отклоняется (не как optional), envelope с несуществующим `field_id` отклоняется — обе стороны bijection, без частичной мутации.
+    - Red→green: обе проверки в `PrepareScreenFieldPlans` временно обойдены недоказуемым компилятором `false`-условием — упали ровно 2 новые GBH-04 assertion'а (реальной мутации не было — Prepare с этим багом просто пропускает несуществующий host, ничего не коммитя); восстановление — снова чисто.
+    - Верификация: 103/103 UE Automation (`GV2.*`, headless `-nullrhi`), 68/68 `ctest`, `validate_docs.py`.
 
 - [ ] **GBH-05 — Параллельные optional-пути применения удалены**
   - `ApplyOptionalImageResource` и `ApplyOptionalPortrait` остались в публичном API, хотя `ADR-0040` определял политику подстановки заглушки как свойство схемы и ожидал удаления параллельных путей. Это не дефект времени выполнения, а поверхность, из которой вырастает второй путь презентации.

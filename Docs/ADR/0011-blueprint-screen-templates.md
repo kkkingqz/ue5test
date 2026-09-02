@@ -18,7 +18,7 @@ date: 2026-08-10
 ## Decision
 
 - Каждый конкретный screen является cooked Widget Blueprint template, унаследованным от общего абстрактного `WBP_ScreenBase`/`UGV2ScreenWidgetBase`.
-- Concrete Screen Blueprint задаёт layout и размещает поддерживаемые Dynamic Screen Elements. Каждый такой элемент объявляет `field_id`, `schema_id` и required/optional policy.
+- Concrete Screen Blueprint задаёт layout и размещает поддерживаемые Dynamic Screen Elements. Каждый такой элемент объявляет `field_id`; `schema_id` и value приходят из runtime envelope, не из объявления элемента (текущая форма — `IGV2ScreenFieldHost`, GBH-04: см. [Screen Templates](../UI/ScreenTemplates.md#invariants) для актуального контракта и bijection без optional policy).
 - Lua публикует только value-only `screen_id`, instance identity и полный набор Screen Fields. Blueprint class, UObject, raw asset path и callback boundary не пересекают.
 - Screen Registry на UE-стороне сопоставляет `screen_id` с trusted cooked soft class и layer policy. C++ coordinator и base classes работают только с registry entry и schemas и не знают identifiers конкретных экранов.
 - Новый экран обычно требует нового Widget Blueprint, Screen Registry entry и Lua model builder. Изменение C++ для нового `screen_id` запрещено, пока экран выражается существующими Screen Field schemas.

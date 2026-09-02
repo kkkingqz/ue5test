@@ -50,7 +50,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Lua/portable runtime не получает Blueprint class/path и не знает имён Widget в tree.
 - C++ generic screen layer не содержит switch/branch по concrete `screen_id`.
 - `field_id` unique внутри Screen Template и имеет lowercase `snake_case`.
-- Каждый configured element объявляет non-empty Stable ID `schema_id` и required/optional policy.
+- Каждый configured element (`IGV2ScreenFieldHost`) объявляет только свой non-empty `field_id` через `GetScreenFieldId()`. `schema_id` и value каждого поля приходят из runtime envelope, публикуемого Lua per-instance, а не из объявления самого element — element не хранит и не выбирает свою schema. Top-level bijection строгая и не знает optional policy: каждый configured host обязан получить ровно один incoming envelope, и каждый incoming envelope обязан соответствовать configured host; несоответствие в любую сторону — типизированная ошибка контракта, а не пропущенное необязательное поле (`PrepareScreenFieldPlans`).
 - UI-схемы объявляются данными (`GameData/<package>/schemas/`) с доменом `schema_domain: "ui_field"` или `schema_domain: "ui_value"`.
 - UI-схемы собираются исключительно из стандартных kinds: скалярных (`bool`, `integer`, `number`, `string`), семантических (`key`, `text`, `ref`, `binding`) и структурных (`object`, `array`, `screen_fields`, `schema_ref`). Попытка ввести нестандартный примитивный kind отклоняется.
 - Схемы всех Screen Fields и всех их вложенных объектов являются **замкнутыми (closed schemas)**. Любой не объявленный в схеме ключ на любом уровне вложенности (значение поля, элемент коллекции, `TextSpec`, `Binding`) является невалидным и приводит к типизированному отказу построения и применения поля.

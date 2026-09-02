@@ -5162,7 +5162,7 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     // and ApplyScreenFields both reject it up front, leaving the screen exactly as it
     // was before the failed attempt (no partial mutation to roll back).
 
-    AddExpectedErrorPlain(TEXT("ApplyScreenFields rejected"), EAutomationExpectedErrorFlags::Contains, 1);
+    AddExpectedErrorPlain(TEXT("ApplyScreenFields rejected"), EAutomationExpectedErrorFlags::Contains, 3);
 
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();
@@ -5271,6 +5271,38 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     {
         TestEqual(TEXT("Original button key is unchanged"), OriginalButton->GetKey(), FName(TEXT("btn_ok")));
     }
+
+    // 4. GBH-04: the top-level host<->envelope bijection itself (distinct from the
+    // deep-child failure above) is strict on both sides, with no optional-host
+    // policy -- ScreenTemplates.md's Invariants claims exactly this; this proves it
+    // rather than leaving the claim resting on nothing but the source reading the
+    // same way. A configured host ("commands") with no incoming envelope at all is
+    // rejected, not silently skipped as an optional field.
+    TestFalse(
+        TEXT("GBH-04: a configured host with no incoming envelope is rejected, not treated as optional"),
+        Screen->ApplyScreenFields({}));
+    TestEqual(TEXT("GBH-04: no mutation from the missing-envelope rejection"), ButtonBox->GetChildrenCount(), 1);
+    TestEqual(
+        TEXT("GBH-04: the original button instance survives the missing-envelope rejection"),
+        Cast<UGV2ButtonWidgetBase>(ButtonBox->GetChildAt(0)),
+        OriginalButton);
+
+    // An incoming envelope naming a field_id no configured host answers to is
+    // rejected too -- both directions of the bijection are enforced, not just one.
+    FGV2ScreenFieldValue UnknownField;
+    UnknownField.FieldId = FName(TEXT("nonexistent_field"));
+    UnknownField.SchemaId = ValidField.SchemaId;
+    UnknownField.CompiledSchema = Schema;
+    UnknownField.PreparedValue = MakeCommandsValue({MakeItem(TEXT("btn_ok"), TEXT("OK"))});
+
+    TestFalse(
+        TEXT("GBH-04: an incoming envelope with no matching configured host is rejected"),
+        Screen->ApplyScreenFields({ValidField, UnknownField}));
+    TestEqual(TEXT("GBH-04: no mutation from the unknown-field rejection"), ButtonBox->GetChildrenCount(), 1);
+    TestEqual(
+        TEXT("GBH-04: the original button instance survives the unknown-field rejection"),
+        Cast<UGV2ButtonWidgetBase>(ButtonBox->GetChildAt(0)),
+        OriginalButton);
 
     GameInstance->RemoveFromRoot();
     return true;
