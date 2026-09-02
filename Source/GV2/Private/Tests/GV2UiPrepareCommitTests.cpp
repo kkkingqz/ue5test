@@ -360,6 +360,36 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
             BarWidget->GetPercent(), 0.25f);
     }
 
+    // 6. GBF-04: the named inverse-required kind set is the enumerator for the
+    // rollback-pair gate. For every kind that can directly mutate a widget, deleting
+    // its inverse makes validation fail before Commit can touch physical state.
+    {
+        const TConstArrayView<EGV2PreparedUiValueKind> InverseKinds = GetUiMutationKindsRequiringInverse();
+        TestTrue(TEXT("GBF-04: inverse-required mutation kind set is not empty"), !InverseKinds.IsEmpty());
+        for (const EGV2PreparedUiValueKind Kind : InverseKinds)
+        {
+            FGV2UiPropertyMutation Mutation;
+            Mutation.PropertyName = FString::Printf(TEXT("kind_%d"), static_cast<int32>(Kind));
+            Mutation.PropertyPath = FString::Printf(TEXT("screen.rollback.%s"), *Mutation.PropertyName);
+            Mutation.Kind = Kind;
+
+            FGV2UiHostMutationPlan ForwardPlan;
+            ForwardPlan.AddMutation(Mutation);
+            FGV2UiHostMutationPlan CompleteInverse;
+            CompleteInverse.AddMutation(Mutation);
+            FString CompleteError;
+            TestTrue(*FString::Printf(TEXT("GBF-04: kind %d accepts its paired inverse"), static_cast<int32>(Kind)),
+                ValidateUiRollbackPlan(ForwardPlan, CompleteInverse, CompleteError));
+
+            FGV2UiHostMutationPlan MissingInverse;
+            FString MissingError;
+            TestFalse(*FString::Printf(TEXT("GBF-04: kind %d rejects a removed inverse mutation"), static_cast<int32>(Kind)),
+                ValidateUiRollbackPlan(ForwardPlan, MissingInverse, MissingError));
+            TestTrue(*FString::Printf(TEXT("GBF-04: kind %d emits typed inverse diagnostic"), static_cast<int32>(Kind)),
+                MissingError.Contains(TEXT("core:diagnostic.ui_rollback.plan_mismatch")));
+        }
+    }
+
     return true;
 }
 

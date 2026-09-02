@@ -16,7 +16,8 @@ enum class EGV2PreparedUiValueKind : uint8
     StableId,
     Binding,
     Object,
-    Array
+    Array,
+    Count
 };
 
 struct GV2_API FGV2PreparedUiKey

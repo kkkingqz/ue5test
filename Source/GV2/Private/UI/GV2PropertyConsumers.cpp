@@ -1170,9 +1170,21 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                 ? FString::Printf(TEXT("[%s]"), *ItemKey.ToString())
                 : FString::Printf(TEXT("%s[%s]"), *ContextPropertyPath, *ItemKey.ToString());
 
+            IGV2UiPropertyHost* const ItemHost = Cast<IGV2UiPropertyHost>(ItemWidget);
+            const FGV2PreparedUiObject PreviousItemValue = ItemHost->GetPropertyHostState().GetLastCommittedProperties();
+            const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& PreviousItemSchema = ItemHost->GetPropertyHostState().GetLastCommittedSchema();
+            const FString& PreviousItemSchemaId = ItemHost->GetPropertyHostState().GetLastCommittedSchemaId();
+            const bool bHasPreviousItemSnapshot = PreviousItemSchema && !PreviousItemSchemaId.IsEmpty();
+            if (!PreviousItemValue.IsEmpty() && !bHasPreviousItemSnapshot)
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_rollback.missing_committed_schema: collection item '%s' has a previous value but no committed schema snapshot"),
+                    *ItemKey.ToString());
+                return false;
+            }
+
             TSharedPtr<FGV2UiHostMutationPlan> ItemPlan = MakeShared<FGV2UiHostMutationPlan>();
             TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
-            const FGV2PreparedUiObject EmptyPrev;
             if (!PrepareUiHostProperties(
                     Cast<UUserWidget>(ItemWidget),
                     ItemCaps,
@@ -1180,7 +1192,7 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                     *CompiledItemSpec,
                     ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId,
                     FullItemPrefix,
-                    EmptyPrev,
+                    PreviousItemValue,
                     *ItemPlan,
                     Diagnostics))
             {
@@ -1216,39 +1228,45 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
             PreparedItem.bIsReused = bItemReused;
             PreparedItem.CommittedValue = ItemVal.AsObjectRef();
 
-            // GBH-10 (ADR-0041): a reused entry may already have visible, physically
-            // mutated state from a previous revision -- if a LATER item in this same
-            // Commit fails, this one must be restorable back to it. A freshly created
-            // entry was never shown (Panel/ActiveWidgetsByKey only advance after the
-            // whole collection commits cleanly), so there is nothing to capture for it.
-            if (bItemReused)
+            // GBF-04 (ADR-0041): every direct item mutation receives an inverse. A
+            // reused entry is restored from its committed schema snapshot; a fresh entry
+            // has an empty prior state, so the candidate schema produces its all-Reset
+            // inverse. Both branches remain off-panel until the collection publishes.
+            const GV2ContentCore::FCompiledUiFieldSpec& RollbackSchema = bHasPreviousItemSnapshot
+                ? *PreviousItemSchema
+                : *CompiledItemSpec;
+            const FString& RollbackSchemaId = bHasPreviousItemSnapshot
+                ? PreviousItemSchemaId
+                : (ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId);
+            TSharedPtr<FGV2UiHostMutationPlan> ItemRollbackPlan = MakeShared<FGV2UiHostMutationPlan>();
+            TArray<FGV2UiSchemaCompatibilityDiagnostic> RollbackDiagnostics;
+            if (!PrepareUiHostRollbackPlan(
+                    Cast<UUserWidget>(ItemWidget),
+                    ItemCaps,
+                    *ItemPlan,
+                    PreviousItemValue,
+                    RollbackSchema,
+                    RollbackSchemaId,
+                    *CompiledItemSpec,
+                    ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId,
+                    FullItemPrefix,
+                    *ItemRollbackPlan,
+                    RollbackDiagnostics))
             {
-                if (IGV2UiPropertyHost* ReusedItemHost = Cast<IGV2UiPropertyHost>(ItemWidget))
-                {
-                    const FGV2PreparedUiObject PreviousItemValue = ReusedItemHost->GetPropertyHostState().GetLastCommittedProperties();
-                    TSharedPtr<FGV2UiHostMutationPlan> ItemRollbackPlan = MakeShared<FGV2UiHostMutationPlan>();
-                    TArray<FGV2UiSchemaCompatibilityDiagnostic> RollbackDiagnostics;
-                    if (PrepareUiHostProperties(
-                            Cast<UUserWidget>(ItemWidget),
-                            ItemCaps,
-                            PreviousItemValue,
-                            *CompiledItemSpec,
-                            ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId,
-                            FullItemPrefix,
-                            PreviousItemValue,
-                            *ItemRollbackPlan,
-                            RollbackDiagnostics))
-                    {
-                        PreparedItem.RollbackPlan = ItemRollbackPlan;
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Warning,
-                            TEXT("GBH-10: failed to prepare rollback plan for collection item '%s' -- a Commit failure on a later item will not be able to restore this one"),
-                            *ItemKey.ToString());
-                    }
-                }
+                OutError = RollbackDiagnostics.Num() > 0
+                    ? FString::Printf(TEXT("core:diagnostic.ui_rollback.prepare_failed: collection item '%s' cannot prepare inverse: %s"), *ItemKey.ToString(), *RollbackDiagnostics[0].ToString())
+                    : FString::Printf(TEXT("core:diagnostic.ui_rollback.prepare_failed: collection item '%s' cannot prepare inverse"), *ItemKey.ToString());
+                return false;
             }
+            FString ItemRollbackPlanError;
+            if (!ValidateUiRollbackPlan(*ItemPlan, *ItemRollbackPlan, ItemRollbackPlanError))
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_rollback.prepare_failed: collection item '%s' has no valid inverse: %s"),
+                    *ItemKey.ToString(), *ItemRollbackPlanError);
+                return false;
+            }
+            PreparedItem.RollbackPlan = MoveTemp(ItemRollbackPlan);
 
             PreparedItems.Add(MoveTemp(PreparedItem));
         }
@@ -1336,7 +1354,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                 };
             }
             FString FailedPath, CommitError;
-            const FGV2UiHostMutationPlan* ItemRollbackPlan = (Item.bIsReused && Item.RollbackPlan.IsValid())
+            const FGV2UiHostMutationPlan* ItemRollbackPlan = Item.RollbackPlan.IsValid()
                 ? Item.RollbackPlan.Get()
                 : nullptr;
             if (!CommitUiHostProperties(Cast<UUserWidget>(Item.Widget), *Item.Plan, FailedPath, CommitError, ItemFailureInjector, ItemRollbackPlan))
@@ -1350,7 +1368,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                 for (int32 RollbackIndex = ItemIndex - 1; RollbackIndex >= 0; --RollbackIndex)
                 {
                     FPreparedCollectionItem& CommittedItem = PreparedItems[RollbackIndex];
-                    if (CommittedItem.bIsReused && CommittedItem.RollbackPlan.IsValid())
+                    if (CommittedItem.RollbackPlan.IsValid())
                     {
                         FString RollbackFailedPath, RollbackError;
                         if (!CommitUiHostProperties(Cast<UUserWidget>(CommittedItem.Widget), *CommittedItem.RollbackPlan, RollbackFailedPath, RollbackError))
@@ -1397,7 +1415,10 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
         {
             if (IGV2UiPropertyHost* ItemHost = Cast<IGV2UiPropertyHost>(Item.Widget))
             {
-                ItemHost->GetPropertyHostState().SetLastCommittedProperties(*Item.CommittedValue);
+                ItemHost->GetPropertyHostState().SetLastCommittedSnapshot(
+                    *Item.CommittedValue,
+                    CompiledItemSpec,
+                    ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId);
             }
         }
     }
@@ -2071,22 +2092,9 @@ TArray<FGV2InapplicableKindInfo> FGV2PropertyConsumerFactory::GetInapplicableKin
 bool FGV2PropertyConsumerFactory::ValidateAllKindsHandled(TArray<FString>& OutDiagnostics)
 {
     bool bSuccess = true;
-    const EGV2PreparedUiValueKind AllKinds[] = {
-        EGV2PreparedUiValueKind::Null,
-        EGV2PreparedUiValueKind::Boolean,
-        EGV2PreparedUiValueKind::Integer,
-        EGV2PreparedUiValueKind::Number,
-        EGV2PreparedUiValueKind::String,
-        EGV2PreparedUiValueKind::Key,
-        EGV2PreparedUiValueKind::Text,
-        EGV2PreparedUiValueKind::StableId,
-        EGV2PreparedUiValueKind::Binding,
-        EGV2PreparedUiValueKind::Object,
-        EGV2PreparedUiValueKind::Array
-    };
-
-    for (EGV2PreparedUiValueKind Kind : AllKinds)
+    for (uint8 KindIndex = 0; KindIndex < static_cast<uint8>(EGV2PreparedUiValueKind::Count); ++KindIndex)
     {
+        const EGV2PreparedUiValueKind Kind = static_cast<EGV2PreparedUiValueKind>(KindIndex);
         const EGV2PropertyConsumerKindStatus Status = GetKindHandlingStatus(Kind);
         if (Status == EGV2PropertyConsumerKindStatus::Supported)
         {

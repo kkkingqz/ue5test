@@ -2993,6 +2993,127 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 Reconciler.Reconcile(Shell, ReusedCleanupDoc, ReusedFactory, ReusedCleanupError));
         }
 
+        // GBF-04 (GBH-R2, ADR-0041): the inverse of a reused field host is defined by
+        // its committed schema, not the candidate schema.  Revision A owns two numeric
+        // properties; revision B owns neither.  Injecting a fault after the first reset
+        // makes the old implementation replay a second Reset under schema B, leaving the
+        // earlier value at zero instead of restoring revision A.
+        {
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
+
+            UGV2ScreenWidgetBase* SchemaSwitchScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            SchemaSwitchScreen->WidgetTree = NewObject<UWidgetTree>(SchemaSwitchScreen);
+            UVerticalBox* SchemaSwitchRoot = SchemaSwitchScreen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+            SchemaSwitchScreen->WidgetTree->RootWidget = SchemaSwitchRoot;
+
+            UGV2DeclaredCompositeWidgetBase* SchemaSwitchField = SchemaSwitchScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("SchemaSwitchField"));
+            SchemaSwitchRoot->AddChildToVerticalBox(SchemaSwitchField);
+            SchemaSwitchField->WidgetTree = NewObject<UWidgetTree>(SchemaSwitchField);
+            UVerticalBox* SchemaSwitchFieldRoot = SchemaSwitchField->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("FieldRoot"));
+            SchemaSwitchField->WidgetTree->RootWidget = SchemaSwitchFieldRoot;
+            UGV2ProgressBarWidgetBase* FirstMeter = SchemaSwitchField->WidgetTree->ConstructWidget<UGV2ProgressBarWidgetBase>(
+                UGV2ProgressBarWidgetBase::StaticClass(), TEXT("FirstMeter"));
+            UGV2ProgressBarWidgetBase* SecondMeter = SchemaSwitchField->WidgetTree->ConstructWidget<UGV2ProgressBarWidgetBase>(
+                UGV2ProgressBarWidgetBase::StaticClass(), TEXT("SecondMeter"));
+            UGV2ProgressBarWidgetBase* ThirdMeter = SchemaSwitchField->WidgetTree->ConstructWidget<UGV2ProgressBarWidgetBase>(
+                UGV2ProgressBarWidgetBase::StaticClass(), TEXT("ThirdMeter"));
+            SchemaSwitchFieldRoot->AddChildToVerticalBox(FirstMeter);
+            SchemaSwitchFieldRoot->AddChildToVerticalBox(SecondMeter);
+            SchemaSwitchFieldRoot->AddChildToVerticalBox(ThirdMeter);
+            SchemaSwitchField->SetHostIdentity(FName(TEXT("schema_switch")));
+            SchemaSwitchField->DeclaredCapabilities.Add({ FName(TEXT("first")), FName(TEXT("FirstMeter")), EGV2DeclaredUiCapabilityKind::Number });
+            SchemaSwitchField->DeclaredCapabilities.Add({ FName(TEXT("second")), FName(TEXT("SecondMeter")), EGV2DeclaredUiCapabilityKind::Number });
+            SchemaSwitchField->DeclaredCapabilities.Add({ FName(TEXT("third")), FName(TEXT("ThirdMeter")), EGV2DeclaredUiCapabilityKind::Number });
+
+            auto MakeSchemaSwitchValue = [](const bool bOwnsMeters, const bool bAddsThird = false) -> FGV2ScreenFieldValue
+            {
+                auto Schema = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Object);
+                TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+                if (bOwnsMeters)
+                {
+                    auto MakeNumberSpec = []() -> GV2ContentCore::FCompiledUiFieldSpecPtr
+                    {
+                        auto NumberSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+                        NumberSpec->Kind = GV2ContentCore::EUiFieldKind::Scalar;
+                        GV2ContentCore::FScalarFieldSpec Scalar;
+                        Scalar.Kind = GV2ContentCore::EScalarFieldKind::Number;
+                        Scalar.MinimumNumber = 0.0;
+                        Scalar.MaximumNumber = 1.0;
+                        NumberSpec->Scalar = Scalar;
+                        return NumberSpec;
+                    };
+                    Schema->Fields.push_back({ "first", false, MakeNumberSpec() });
+                    Schema->Fields.push_back({ "second", false, MakeNumberSpec() });
+                    Fields.Emplace(TEXT("first"), FGV2PreparedUiValue::MakeNumber(0.25));
+                    Fields.Emplace(TEXT("second"), FGV2PreparedUiValue::MakeNumber(0.75));
+                    if (bAddsThird)
+                    {
+                        Schema->Fields.push_back({ "third", false, MakeNumberSpec() });
+                        Fields.Emplace(TEXT("third"), FGV2PreparedUiValue::MakeNumber(0.5));
+                    }
+                }
+
+                FGV2ScreenFieldValue FieldValue;
+                FieldValue.FieldId = TEXT("schema_switch");
+                FieldValue.SchemaId = bOwnsMeters
+                    ? TEXT("test:schema.gbf04_meter_pair.v1")
+                    : TEXT("test:schema.gbf04_empty.v2");
+                FieldValue.PreparedValue = FGV2PreparedUiObject::Create(MoveTemp(Fields));
+                FieldValue.CompiledSchema = Schema;
+                return FieldValue;
+            };
+
+            TestTrue(TEXT("GBF-04: baseline schema A commits"),
+                SchemaSwitchScreen->ApplyScreenFields({ MakeSchemaSwitchValue(true) }));
+            TestEqual(TEXT("GBF-04: baseline first meter is materialized"), FirstMeter->GetProgress(), 0.25f);
+            TestEqual(TEXT("GBF-04: baseline second meter is materialized"), SecondMeter->GetProgress(), 0.75f);
+
+            FGV2ScreenMutationPlan SchemaSwitchPlan;
+            FString SchemaSwitchPrepareError;
+            TestTrue(*FString::Printf(TEXT("GBF-04: candidate schema B prepares [Error: %s]"), *SchemaSwitchPrepareError),
+                SchemaSwitchScreen->PrepareScreenFields({ MakeSchemaSwitchValue(false) }, SchemaSwitchPlan, SchemaSwitchPrepareError));
+            TestEqual(TEXT("GBF-04: candidate has one field plan"), SchemaSwitchPlan.FieldPlans.Num(), 1);
+            if (SchemaSwitchPlan.FieldPlans.Num() == 1)
+            {
+                const TArray<FGV2UiPropertyMutation>& ForwardMutations = SchemaSwitchPlan.FieldPlans[0].MutationPlan.GetMutations();
+                TestEqual(TEXT("GBF-04: schema removal prepares a reset for each formerly-owned property"), ForwardMutations.Num(), 2);
+                const FString LastMutationPath = ForwardMutations.Num() > 0 ? ForwardMutations.Last().PropertyPath : FString();
+                TestFalse(TEXT("GBF-04: candidate has a final mutation to inject"), LastMutationPath.IsEmpty());
+                if (!LastMutationPath.IsEmpty())
+                {
+                    TestFalse(TEXT("GBF-04: commit fault rejects candidate schema B"),
+                        SchemaSwitchScreen->CommitScreenFields(SchemaSwitchPlan, [&LastMutationPath](const FString& Path)
+                        {
+                            return Path == LastMutationPath;
+                        }));
+                }
+            }
+
+            TestEqual(TEXT("GBF-04: first meter returns to schema A value after failed schema switch"), FirstMeter->GetProgress(), 0.25f);
+            TestEqual(TEXT("GBF-04: second meter returns to schema A value after failed schema switch"), SecondMeter->GetProgress(), 0.75f);
+
+            // Schema expansion needs the other half of the inverse rule: `third` was
+            // absent from schema A, so its inverse is Reset rather than an old value.
+            FGV2ScreenMutationPlan ExpansionPlan;
+            FString ExpansionPrepareError;
+            TestTrue(*FString::Printf(TEXT("GBF-04: schema expansion prepares [Error: %s]"), *ExpansionPrepareError),
+                SchemaSwitchScreen->PrepareScreenFields({ MakeSchemaSwitchValue(true, true) }, ExpansionPlan, ExpansionPrepareError));
+            TestEqual(TEXT("GBF-04: schema expansion has one inverse per forward mutation"),
+                ExpansionPlan.FieldPlans[0].MutationPlan.Num(), ExpansionPlan.FieldPlans[0].RollbackPlan.Num());
+
+            // A value-only legacy snapshot is deliberately not accepted as an inverse
+            // source: guessing schema B here would recreate the original defect.
+            SchemaSwitchField->GetPropertyHostState().SetLastCommittedProperties(
+                SchemaSwitchField->GetPropertyHostState().GetLastCommittedProperties());
+            FGV2ScreenMutationPlan MissingSchemaPlan;
+            FString MissingSchemaError;
+            TestFalse(TEXT("GBF-04: previous value without committed schema rejects Prepare"),
+                SchemaSwitchScreen->PrepareScreenFields({ MakeSchemaSwitchValue(false) }, MissingSchemaPlan, MissingSchemaError));
+            TestTrue(TEXT("GBF-04: missing committed schema reports typed rollback diagnostic"),
+                MissingSchemaError.Contains(TEXT("core:diagnostic.ui_rollback.missing_committed_schema")));
+        }
+
         if (Shell != nullptr)
         {
             TestTrue(TEXT("Location content layer is unblocked after modal closure"), Shell->IsLayerInteractive(TEXT("location_content")));

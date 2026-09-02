@@ -35,14 +35,11 @@ FString MapSubsetMismatchToConsumerDiagnosticCode(EGV2UiCapabilitySubsetMismatch
     }
 }
 
-// GBH-10 (ADR-0041): undoes the first CommittedCount mutations of a forward plan by
-// replaying the corresponding mutations of its RollbackPlan, in reverse order. Both
-// plans are built by iterating the same FGV2UiCapabilityTree, so RollbackMutations[i]
-// always targets the same property/widget as ForwardMutations[i] -- restoring
-// [0..CommittedCount-1] is therefore just re-running Commit/Reset with the old
-// prepared value already sitting in RollbackPlan, not a bespoke undo code path.
-// Best-effort: a rollback mutation failing is logged as the invariant violation it is
-// (the old value was already proven valid once) but does not stop restoring the rest.
+// GBF-04 (ADR-0041): undoes the first CommittedCount mutations of a forward plan by
+// replaying the corresponding mutations of its validated RollbackPlan, in reverse order.
+// ValidateUiRollbackPlan has established that RollbackMutations[i] targets the same
+// property/widget as ForwardMutations[i], so restoring [0..CommittedCount-1] is simply
+// re-running Commit/Reset with the prior prepared value, not a bespoke undo path.
 void RollbackCommittedMutations(const FGV2UiHostMutationPlan& RollbackPlan, int32 CommittedCount)
 {
     const TArray<FGV2UiPropertyMutation>& RollbackMutations = RollbackPlan.GetMutations();
@@ -70,6 +67,68 @@ void RollbackCommittedMutations(const FGV2UiHostMutationPlan& RollbackPlan, int3
         }
     }
 }
+}
+
+TConstArrayView<EGV2PreparedUiValueKind> GetUiMutationKindsRequiringInverse()
+{
+    // The property-consumer factory is the owner of which value kinds can physically
+    // mutate a widget. Count makes this an enum traversal, not a second hand-written list.
+    static const TArray<EGV2PreparedUiValueKind> Kinds = []
+    {
+        TArray<EGV2PreparedUiValueKind> Result;
+        for (uint8 Index = 0; Index < static_cast<uint8>(EGV2PreparedUiValueKind::Count); ++Index)
+        {
+            const EGV2PreparedUiValueKind Kind = static_cast<EGV2PreparedUiValueKind>(Index);
+            if (FGV2PropertyConsumerFactory::GetKindHandlingStatus(Kind) == EGV2PropertyConsumerKindStatus::Supported)
+            {
+                Result.Add(Kind);
+            }
+        }
+        return Result;
+    }();
+    return MakeArrayView(Kinds);
+}
+
+bool ValidateUiRollbackPlan(
+    const FGV2UiHostMutationPlan& ForwardPlan,
+    const FGV2UiHostMutationPlan& RollbackPlan,
+    FString& OutError)
+{
+    const TArray<FGV2UiPropertyMutation>& ForwardMutations = ForwardPlan.GetMutations();
+    const TArray<FGV2UiPropertyMutation>& RollbackMutations = RollbackPlan.GetMutations();
+    if (ForwardMutations.Num() != RollbackMutations.Num())
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_rollback.plan_mismatch: forward plan has %d mutations but inverse has %d"),
+            ForwardMutations.Num(), RollbackMutations.Num());
+        return false;
+    }
+
+    const TConstArrayView<EGV2PreparedUiValueKind> InverseKinds = GetUiMutationKindsRequiringInverse();
+    for (int32 Index = 0; Index < ForwardMutations.Num(); ++Index)
+    {
+        const FGV2UiPropertyMutation& Forward = ForwardMutations[Index];
+        const FGV2UiPropertyMutation& Inverse = RollbackMutations[Index];
+        if (!InverseKinds.Contains(Forward.Kind))
+        {
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_rollback.unsupported_mutation_kind: forward property '%s' has no inverse-required kind"),
+                *Forward.PropertyPath);
+            return false;
+        }
+        if (Forward.PropertyName != Inverse.PropertyName ||
+            Forward.PropertyPath != Inverse.PropertyPath ||
+            Forward.Kind != Inverse.Kind ||
+            Forward.TargetWidget.Get() != Inverse.TargetWidget.Get())
+        {
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_rollback.plan_mismatch: inverse mutation %d does not match forward property '%s'"),
+                Index, *Forward.PropertyPath);
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool PrepareUiHostProperties(
@@ -542,6 +601,88 @@ bool PrepareUiHostProperties(
     return true;
 }
 
+bool PrepareUiHostRollbackPlan(
+    UUserWidget* HostWidget,
+    const FGV2UiCapabilityTree& Capabilities,
+    const FGV2UiHostMutationPlan& ForwardPlan,
+    const FGV2PreparedUiObject& PreviousCommittedProperties,
+    const GV2ContentCore::FCompiledUiFieldSpec& PreviousSchema,
+    const FString& PreviousSchemaId,
+    const GV2ContentCore::FCompiledUiFieldSpec& CandidateSchema,
+    const FString& CandidateSchemaId,
+    const FString& PropertyPathPrefix,
+    FGV2UiHostMutationPlan& OutPlan,
+    TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
+    const TArray<FString>* ActiveCompositionChain)
+{
+    FGV2UiHostMutationPlan PreviousValuePlan;
+    if (!PrepareUiHostProperties(HostWidget, Capabilities, PreviousCommittedProperties, PreviousSchema,
+            PreviousSchemaId, PropertyPathPrefix, PreviousCommittedProperties, PreviousValuePlan,
+            OutDiagnostics, ActiveCompositionChain))
+    {
+        return false;
+    }
+
+    // Candidate-only properties did not exist in the previous schema/value. Their inverse
+    // is Reset, prepared through the ordinary pipeline against the candidate schema.
+    const FGV2PreparedUiObject EmptyProperties;
+    FGV2UiHostMutationPlan CandidateResetPlan;
+    if (!PrepareUiHostProperties(HostWidget, Capabilities, EmptyProperties, CandidateSchema,
+            CandidateSchemaId, PropertyPathPrefix, EmptyProperties, CandidateResetPlan,
+            OutDiagnostics, ActiveCompositionChain))
+    {
+        return false;
+    }
+
+    OutPlan.Reset();
+    for (const FGV2UiPropertyMutation& Forward : ForwardPlan.GetMutations())
+    {
+        const auto FindMatching = [&Forward](const FGV2UiHostMutationPlan& Plan) -> const FGV2UiPropertyMutation*
+        {
+            for (const FGV2UiPropertyMutation& Candidate : Plan.GetMutations())
+            {
+                if (Candidate.PropertyName == Forward.PropertyName && Candidate.PropertyPath == Forward.PropertyPath &&
+                    Candidate.Kind == Forward.Kind && Candidate.TargetWidget.Get() == Forward.TargetWidget.Get())
+                {
+                    return &Candidate;
+                }
+            }
+            return nullptr;
+        };
+
+        if (const FGV2UiPropertyMutation* PreviousMutation = FindMatching(PreviousValuePlan))
+        {
+            OutPlan.AddMutation(*PreviousMutation);
+        }
+        else if (const FGV2UiPropertyMutation* ResetMutation = FindMatching(CandidateResetPlan))
+        {
+            OutPlan.AddMutation(*ResetMutation);
+        }
+        else
+        {
+            FGV2UiSchemaCompatibilityDiagnostic Diag;
+            Diag.Code = TEXT("core:diagnostic.ui_rollback.inverse_missing");
+            Diag.PropertyPath = Forward.PropertyPath;
+            Diag.SchemaId = CandidateSchemaId;
+            Diag.Message = TEXT("Neither committed schema restoration nor candidate-schema reset produced an inverse mutation");
+            OutDiagnostics.Add(MoveTemp(Diag));
+            return false;
+        }
+    }
+
+    FString ValidationError;
+    if (!ValidateUiRollbackPlan(ForwardPlan, OutPlan, ValidationError))
+    {
+        FGV2UiSchemaCompatibilityDiagnostic Diag;
+        Diag.Code = TEXT("core:diagnostic.ui_rollback.plan_mismatch");
+        Diag.SchemaId = CandidateSchemaId;
+        Diag.Message = ValidationError;
+        OutDiagnostics.Add(MoveTemp(Diag));
+        return false;
+    }
+    return true;
+}
+
 bool CommitUiHostProperties(
     UUserWidget* HostWidget,
     const FGV2UiHostMutationPlan& Plan,
@@ -550,6 +691,12 @@ bool CommitUiHostProperties(
     TFunction<bool(const FString& PropertyPath)> FailureInjector,
     const FGV2UiHostMutationPlan* RollbackPlan)
 {
+    if (RollbackPlan != nullptr && !ValidateUiRollbackPlan(Plan, *RollbackPlan, OutError))
+    {
+        OutFailedPropertyPath.Reset();
+        return false;
+    }
+
     int32 CommittedCount = 0;
     for (const auto& Mutation : Plan.GetMutations())
     {

@@ -152,7 +152,8 @@ bool PrepareScreenFieldPlans(
         FGV2UiCapabilityBuilder Builder;
         PropertyHost->DescribeUiCapabilities(Builder);
         const FGV2UiCapabilityTree CapabilityTree = Builder.Build();
-        const FGV2PreparedUiObject PreviousCommittedValue = PropertyHost->GetPropertyHostState().GetLastCommittedProperties();
+        const FGV2UiPropertyHostState& HostState = PropertyHost->GetPropertyHostState();
+        const FGV2PreparedUiObject PreviousCommittedValue = HostState.GetLastCommittedProperties();
 
         FGV2UiHostMutationPlan MutationPlan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
@@ -176,33 +177,62 @@ bool PrepareScreenFieldPlans(
             return false;
         }
 
-        // GBH-10 (ADR-0041): prepare the rollback plan the same way, off-tree, against
-        // the host's own previous committed value -- both calls iterate the same
-        // CapabilityTree, so RollbackPlan's mutations line up 1:1 with MutationPlan's.
-        // A failure here only means this host cannot self-heal if Commit later fails;
-        // it does not block Prepare -- the forward plan was already proven valid.
+        // GBF-04 (ADR-0041): an inverse is prepared from the complete committed
+        // snapshot. On the first revision there is no old schema, so the candidate
+        // schema correctly produces an all-Reset inverse. A non-empty old value without
+        // its old schema is never guessed from the candidate schema: that would reset
+        // properties the old schema owned but the candidate no longer owns.
+        const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& PreviousCommittedSchema = HostState.GetLastCommittedSchema();
+        const FString& PreviousCommittedSchemaId = HostState.GetLastCommittedSchemaId();
+        const bool bHasCommittedSnapshot = PreviousCommittedSchema && !PreviousCommittedSchemaId.IsEmpty();
+        if (!PreviousCommittedValue.IsEmpty() && !bHasCommittedSnapshot)
+        {
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_rollback.missing_committed_schema: screen field '%s' has a previous value but no committed schema snapshot"),
+                *Host.FieldId.ToString());
+            return false;
+        }
+
+        const GV2ContentCore::FCompiledUiFieldSpec& RollbackSchema = bHasCommittedSnapshot
+            ? *PreviousCommittedSchema
+            : *Value.CompiledSchema;
+        const FString& RollbackSchemaId = bHasCommittedSnapshot
+            ? PreviousCommittedSchemaId
+            : Value.SchemaId;
         FGV2UiHostMutationPlan RollbackPlan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> RollbackDiagnostics;
-        if (!PrepareUiHostProperties(
+        if (!PrepareUiHostRollbackPlan(
                 Host.HostWidget,
                 CapabilityTree,
+                MutationPlan,
                 PreviousCommittedValue,
+                RollbackSchema,
+                RollbackSchemaId,
                 *Value.CompiledSchema,
                 Value.SchemaId,
                 FString(),
-                PreviousCommittedValue,
                 RollbackPlan,
                 RollbackDiagnostics,
                 ActiveCompositionChain))
         {
-            UE_LOG(LogGV2ScreenWidget, Warning,
-                TEXT("GBH-10: failed to prepare rollback plan for screen field '%s': %s -- a Commit failure on this host will not be able to restore its previous state"),
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_rollback.prepare_failed: screen field '%s' cannot prepare inverse: %s"),
                 *Host.FieldId.ToString(),
                 RollbackDiagnostics.Num() > 0 ? *RollbackDiagnostics[0].ToString() : TEXT("unknown error"));
+            return false;
+        }
+
+        FString RollbackPlanError;
+        if (!ValidateUiRollbackPlan(MutationPlan, RollbackPlan, RollbackPlanError))
+        {
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_rollback.prepare_failed: screen field '%s' has no valid inverse: %s"),
+                *Host.FieldId.ToString(), *RollbackPlanError);
+            return false;
         }
 
         ConsumedFieldIds.Add(Host.FieldId);
-        OutPlans.Add({Host.HostWidget, MoveTemp(MutationPlan), Value.PreparedValue, MoveTemp(RollbackPlan)});
+        OutPlans.Add({Host.HostWidget, MoveTemp(MutationPlan), Value.PreparedValue, Value.CompiledSchema, Value.SchemaId, MoveTemp(RollbackPlan)});
     }
 
     for (const TPair<FName, const FGV2ScreenFieldValue*>& Pair : ValuesById)
@@ -269,15 +299,17 @@ bool UGV2ScreenWidgetBase::CommitScreenFields(
         ++CommittedHostCount;
     }
 
-    // Only reached once every host above committed cleanly -- advance LastCommittedProperties
-    // for the whole screen in one pass, after the fact, so a mid-loop failure above never
-    // sees a host whose metadata already claims the new revision while rollback restores
-    // its widget to the old one.
+    // Only reached once every host above committed cleanly -- advance the complete
+    // committed snapshots in one pass, after the fact, so a mid-loop failure never sees
+    // metadata for the new revision while rollback restores the old physical state.
     for (const FGV2ScreenFieldPlan& FieldPlan : Plan.FieldPlans)
     {
         if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(FieldPlan.HostWidget.Get()))
         {
-            PropertyHost->GetPropertyHostState().SetLastCommittedProperties(*FieldPlan.CommittedValue);
+            PropertyHost->GetPropertyHostState().SetLastCommittedSnapshot(
+                *FieldPlan.CommittedValue,
+                FieldPlan.CommittedSchema,
+                FieldPlan.CommittedSchemaId);
         }
     }
 

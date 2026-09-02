@@ -44,6 +44,37 @@ private:
 };
 
 /**
+ * The authoritative set of presentation value kinds that can produce a direct widget
+ * mutation and therefore require an inverse entry in every rollback plan. Tests iterate
+ * this set; a new applicable kind cannot silently bypass the rollback-pair gate.
+ */
+GV2_API TConstArrayView<EGV2PreparedUiValueKind> GetUiMutationKindsRequiringInverse();
+
+/**
+ * Verifies the mandatory one-to-one correspondence between a forward plan and its
+ * inverse. The forward plan itself enumerates every mutation that must be undoable.
+ */
+GV2_API bool ValidateUiRollbackPlan(
+    const FGV2UiHostMutationPlan& ForwardPlan,
+    const FGV2UiHostMutationPlan& RollbackPlan,
+    FString& OutError);
+
+/** Builds one inverse entry for every entry in ForwardPlan from previous and candidate schemas. */
+GV2_API bool PrepareUiHostRollbackPlan(
+    UUserWidget* HostWidget,
+    const FGV2UiCapabilityTree& Capabilities,
+    const FGV2UiHostMutationPlan& ForwardPlan,
+    const FGV2PreparedUiObject& PreviousCommittedProperties,
+    const GV2ContentCore::FCompiledUiFieldSpec& PreviousSchema,
+    const FString& PreviousSchemaId,
+    const GV2ContentCore::FCompiledUiFieldSpec& CandidateSchema,
+    const FString& CandidateSchemaId,
+    const FString& PropertyPathPrefix,
+    FGV2UiHostMutationPlan& OutPlan,
+    TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
+    const TArray<FString>* ActiveCompositionChain = nullptr);
+
+/**
  * Prepares all property mutations for a host widget off-tree without mutating physical widget state.
  * Validates capabilities, target presence, styles, formats, assets, and builds mutation plan.
  */
@@ -67,9 +98,8 @@ GV2_API bool PrepareUiHostProperties(
  * Commits a prepared mutation plan to the physical widget hierarchy.
  * Supports failure injection to verify atomicity and error diagnostics.
  *
- * GBH-10 (ADR-0041): RollbackPlan, when given, is a plan prepared the same way as Plan
- * but against the host's previous committed value (same property order, since both are
- * built by iterating the same capability tree). If Commit fails partway through Plan,
+ * GBF-04 (ADR-0041): RollbackPlan, when given, is a validated plan prepared against the
+ * host's previously committed value and schema. If Commit fails partway through Plan,
  * every mutation already applied is undone by replaying the corresponding RollbackPlan
  * mutation, in reverse order, through the same consumer Commit/Reset path -- before this
  * function returns false. Callers that are themselves already inside a self-healing

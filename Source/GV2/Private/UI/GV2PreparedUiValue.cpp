@@ -175,6 +175,8 @@ bool FGV2PreparedUiValue::operator==(const FGV2PreparedUiValue& Other) const
         return AsObject() == Other.AsObject();
     case EGV2PreparedUiValueKind::Array:
         return AsArray() == Other.AsArray();
+    case EGV2PreparedUiValueKind::Count:
+        return false;
     default:
         return false;
     }
@@ -216,6 +218,8 @@ FString FGV2PreparedUiValue::ToDebugString(const FString& PropertyPath) const
             return AsArray().ToDebugString(TEXT("root"));
         }
         return AsArray().ToDebugString(PropertyPath);
+    case EGV2PreparedUiValueKind::Count:
+        return Prefix + TEXT("<invalid-kind-count>");
     default:
         return Prefix + TEXT("<unknown>");
     }

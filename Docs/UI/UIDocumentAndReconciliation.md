@@ -1,7 +1,7 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.14
+version: 1.15
 updated: 2026-09-02
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -177,7 +177,7 @@ Lua не передаёт children, Widget Blueprint class или физичес
 1. **Контейнерная атомарность структуры**: `FGV2KeyedCollection` и `FGV2KeyedCollectionPropertyConsumer` гарантируют полную атомарность как структуры иерархии детей (`UPanelWidget`), так и состояния каждого дочернего виджета. Добавление, удаление и переупорядочивание детей фиксируются в контейнере только после успешного завершения фазы Prepare для всех элементов.
 2. **Фаза preflight-валидации**: проверка обязательности ключей, их уникальности и вызов `CanApplyItem` происходят до создания новых виджетов и до подготовки состояния переиспользуемых виджетов. Ошибка на этой фазе не мутирует ни контейнер, ни живые виджеты.
 3. **Двухфазная транзакционность элементов (Prepare/Commit)**: consumer коллекции (`FGV2KeyedCollectionPropertyConsumer` и двухфазная реконсиляция `FGV2KeyedCollection::ReconcilePrepared`) подготавливает мутации **всех** элементов off-tree до вызова Commit. При отказе подготовки любого элемента (включая валидацию дочерних свойств, отсутствие ресурсов или ошибки стилизации) фаза Commit не выполняется вовсе. Ни один переиспользованный виджет не остаётся частично или полностью мутированным, а их визуальные и физические значения строго сохраняют предыдущее состояние.
-4. **Отказ ВНУТРИ фазы Commit ([ADR-0041](../ADR/0041-ui-commit-rollback-model.md), `GBH-09`/`GBH-10`)**: пункты 1–3 закрывают только отказ **до** начала Commit. Если Commit коллекции сам отказывает на элементе K после успешного коммита элементов `1..K-1` — а переиспользуемые элементы это тот же widget-объект, что уже стоял в контейнере, — их свойства к этому моменту уже физически замьютированы на новое значение, хотя `Panel`/`ActiveWidgetsByKey` ещё не продвинуты. Этот резидуальный разрыв `REM-02` закрыт: элементы `1..K-1` откатываются к своему предыдущему `LastCommittedProperties` тем же Prepare/Commit pipeline (`FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector`, `GV2PropertyConsumers.cpp`), прежде чем Commit коллекции возвращает failure — доказано `GV2.UI.StandardPropertyConsumers` (red on revert: временное отключение отката красит именно эту проверку, не затрагивая остальные).
+4. **Отказ ВНУТРИ фазы Commit ([ADR-0041](../ADR/0041-ui-commit-rollback-model.md), `GBH-09`/`GBF-04`)**: пункты 1–3 закрывают только отказ **до** начала Commit. Если Commit коллекции сам отказывает на элементе K после успешного коммита элементов `1..K-1` — а переиспользуемые элементы это тот же widget-объект, что уже стоял в контейнере, — их свойства к этому моменту уже физически замьютированы на новое значение, хотя `Panel`/`ActiveWidgetsByKey` ещё не продвинуты. Этот резидуальный разрыв `REM-02` закрыт: у каждого direct mutation есть inverse, подготовленный от committed tuple `LastCommittedProperties` + `LastCommittedSchema` + `LastCommittedSchemaId`; элементы `1..K-1` откатываются тем же Prepare/Commit pipeline (`FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector`, `GV2PropertyConsumers.cpp`) прежде, чем Commit коллекции возвращает failure. Неполный tuple или недостроенный inverse отвергает Prepare typed diagnostic `core:diagnostic.ui_rollback.*`, а не допускает частичный Commit. Это доказано `GV2.UI.StandardPropertyConsumers` и schema-switch сценарием `GV2.UI.LayeredReconciliationContract`.
 
 ### Диагностика переиспользования (Dev Builds)
 

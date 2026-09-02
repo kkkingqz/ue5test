@@ -10,6 +10,8 @@ struct FGV2ScreenFieldPlan
     TObjectPtr<UUserWidget> HostWidget;
     FGV2UiHostMutationPlan MutationPlan;
     TSharedPtr<const FGV2PreparedUiObject> CommittedValue;
+    std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> CommittedSchema;
+    FString CommittedSchemaId;
     // GBH-10 (ADR-0041): prepared off-tree alongside MutationPlan, against this host's
     // previous committed value -- restores the host to its pre-transaction state if
     // Commit fails on this host or a sibling host/screen in the same transaction.
@@ -21,7 +23,7 @@ struct FGV2ScreenMutationPlan
     TArray<FGV2ScreenFieldPlan> FieldPlans;
 };
 
-// GBH-10 (ADR-0041): restores every host in FieldPlans to its RollbackPlan, in reverse
+// GBF-04 (ADR-0041): restores every host in FieldPlans to its mandatory RollbackPlan, in reverse
 // order, via the ordinary CommitUiHostProperties path -- not a bespoke undo per host.
 // Used both to self-heal a screen whose own CommitScreenFields failed partway, and by a
 // caller one level up (document reconciliation, a tab container's nested screens) that

@@ -49,7 +49,30 @@ public:
     }
 
     const FGV2PreparedUiObject& GetLastCommittedProperties() const { return LastCommittedProperties; }
-    void SetLastCommittedProperties(FGV2PreparedUiObject InProperties) { LastCommittedProperties = MoveTemp(InProperties); }
+    const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& GetLastCommittedSchema() const { return LastCommittedSchema; }
+    const FString& GetLastCommittedSchemaId() const { return LastCommittedSchemaId; }
+
+    // GBF-04 (ADR-0041): a rollback is built from the exact state that was committed,
+    // so the value alone is not a sufficient snapshot when a field changes schema.
+    void SetLastCommittedSnapshot(
+        FGV2PreparedUiObject InProperties,
+        std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> InSchema,
+        FString InSchemaId)
+    {
+        LastCommittedProperties = MoveTemp(InProperties);
+        LastCommittedSchema = MoveTemp(InSchema);
+        LastCommittedSchemaId = MoveTemp(InSchemaId);
+    }
+
+    // Compatibility helper for tests and legacy direct callers that have no compiled
+    // schema. Such a non-empty value deliberately cannot later serve as a rollback
+    // snapshot: Prepare rejects it with core:diagnostic.ui_rollback.missing_committed_schema.
+    void SetLastCommittedProperties(FGV2PreparedUiObject InProperties)
+    {
+        LastCommittedProperties = MoveTemp(InProperties);
+        LastCommittedSchema.reset();
+        LastCommittedSchemaId.Reset();
+    }
 
     const TArray<FGV2UiSchemaCompatibilityDiagnostic>& GetLastDiagnostics() const { return LastDiagnostics; }
     void SetLastDiagnostics(TArray<FGV2UiSchemaCompatibilityDiagnostic> InDiagnostics) { LastDiagnostics = MoveTemp(InDiagnostics); }
@@ -75,6 +98,8 @@ private:
 
     FGV2UiCapabilityTree CachedCapabilities;
     FGV2PreparedUiObject LastCommittedProperties;
+    std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> LastCommittedSchema;
+    FString LastCommittedSchemaId;
     TArray<FGV2UiSchemaCompatibilityDiagnostic> LastDiagnostics;
 };
 
