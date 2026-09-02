@@ -490,14 +490,17 @@ class Validation:
         ADR-0041 is a pure decision with no code yet (GBH-10 implements it), so
         there is no runtime path to red-test either -- the gate is that the ADR
         and every doc location describing the boundaries it covers agree it
-        exists. If one drifts -- e.g. a future edit removes the ADR-0041
+        exists. The plan-side location is the archive summary, not the plan's
+        own task file: a task file lives only until the plan is archived, so
+        pointing the gate at it would make the gate expire before the decision
+        it guards. If one drifts -- e.g. a future edit removes the ADR-0041
         cross-reference from UIDocumentAndReconciliation.md's residual-gap prose
         without retracting the ADR itself -- this fails instead of the docs
         silently disagreeing about whether the gap has an owner and a decision.
         """
         marker = "ADR-0041"
         required = (
-            self.docs_root / "Plans" / "GenericBoundaryHardening" / "TransactionalCommit.md",
+            self.docs_root / "Plans" / "Archive" / "GenericBoundaryHardening.md",
             self.docs_root / "UI" / "UIDocumentAndReconciliation.md",
             self.docs_root / "ADR" / "0041-ui-commit-rollback-model.md",
         )

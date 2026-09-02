@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.8
-updated: 2026-09-01
+version: 2.9
+updated: 2026-09-02
 depends_on:
   - ../README.md
 ---
@@ -17,6 +17,7 @@ depends_on:
 | [UniversalUiPropertyPipeline](UniversalUiPropertyPipeline.md) | 2026-08-27 | Замена schema-specific адаптеров универсальным property pipeline: data-driven UI-схемы, подготовленное дерево значений, наблюдаемые capability, Prepare/Commit вместо fallible Apply, атомарный документ; каркас старой модели удалён |
 | [PipelineClosureCorrection](PipelineClosureCorrection.md) | 2026-08-31 | Доведение UI property pipeline после внешнего ревью: схема элемента коллекции из репозитория, единый валидатор, `[[nodiscard]]` на отказоспособных операциях, чистый опрос capability, harness внутрь коллекций |
 | [DataDrivenUiComposition](DataDrivenUiComposition.md) | 2026-09-01 | Блок из существующих элементов без C++: одно свойство идентичности внутри объемлющего хоста, объявляемый из Designer композит с плоской схемой, `screen_fields` через обычный envelope, цепочка `экран → вкладки → блок` из данных |
+| [GenericBoundaryHardening](GenericBoundaryHardening.md) | 2026-09-02 | Три границы generic-модели: предсказание структурного отказа Shell до мутации, объявление композита с параметрами вида и селектором ребёнка, одна общая subset-функция, откат Commit по ADR-0041, честная фиксация владения UI-схемами |
 | [CanonicalGameplayState](CanonicalGameplayState.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |
 | [CommandHandlerRegistry](CommandHandlerRegistry.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |
 | [CommandValidators](CommandValidators.md) | 2026-08-19 | Авторский `validate()` для независимых policy поверх чужих команд, единое декодирование аргументов, охранники побочных эффектов и явная заменяемость обработчика |
