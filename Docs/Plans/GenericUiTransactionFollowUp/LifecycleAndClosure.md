@@ -1,7 +1,7 @@
 ---
 title: Lifecycle and Closure Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-03
 depends_on:
   - README.md

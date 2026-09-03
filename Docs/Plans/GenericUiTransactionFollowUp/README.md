@@ -1,7 +1,7 @@
 ---
 title: Generic UI Transaction Follow-up Plan
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-03
 depends_on:
   - ../../Status/GV2_GenericBoundaryHardening_Followup_Review_2026-09-02.md
