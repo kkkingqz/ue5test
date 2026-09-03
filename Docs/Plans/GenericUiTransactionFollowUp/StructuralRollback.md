@@ -1,8 +1,8 @@
 ---
 title: Structural Rollback Tasks
 status: active
-version: 1.1
-updated: 2026-09-02
+version: 1.2
+updated: 2026-09-03
 depends_on:
   - README.md
   - DeterministicBugs.md

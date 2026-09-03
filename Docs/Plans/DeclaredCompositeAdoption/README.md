@@ -1,7 +1,7 @@
 ---
 title: Declared Composite Adoption Plan
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-02
 depends_on:
   - ../Archive/DataDrivenUiComposition.md
@@ -83,7 +83,7 @@ DCA-05…07 переставляются между собой
 - [ ] Класс элемента каждой коллекции задан явно; трёхступенчатый откат `Resolve*WidgetClass` удалён. (DCA-03)
 - [ ] `OnBindingInvoked`, `StaminaMeter` и `Character` физически отсутствуют. (DCA-04)
 - [ ] `UGV2LocationSceneWidgetBase`, `UGV2LocationPlayerStatusWidgetBase` и `UGV2LocationCommandPanelWidgetBase` удалены из исходников. (DCA-05…07)
-- [ ] Хардкод `Cast` по классам локации в `GV2UiMutationPlan.cpp` удалён, и гейт не даёт ввести специальный путь под конкретный виджет заново. (DCA-08)
+- [ ] Хардкод `Cast` по классам локации в `GV2UiMutationPlan.cpp` удалён; для трёх удалённых классов возврат невозможен по построению — типов не существует, — а для будущих его не даёт гейт с перечислителем по интерфейсу хоста. (DCA-08)
 - [ ] Экран локации работает без изменения поведения, проверено сквозным прогоном от Lua до наблюдаемого состояния виджетов. (DCA-05…08)
 - [ ] Существуют три новых композита — `npc_portrait`, `location_description`, `inventory_tabs` — собранные из существующих компонентов. (DCA-09…11)
 - [ ] Change set каждого из трёх не содержит изменений в `Source/`. (DCA-12)
