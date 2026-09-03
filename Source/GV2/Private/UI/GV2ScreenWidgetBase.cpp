@@ -276,6 +276,7 @@ bool UGV2ScreenWidgetBase::PrepareScreenFields(
     return PrepareScreenFieldPlans(*this, ScreenFields, OutPlan.FieldPlans, OutError, ActiveCompositionChain);
 }
 
+// GBF-07: rollback_boundary=ScreenFields
 bool UGV2ScreenWidgetBase::CommitScreenFields(
     const FGV2ScreenMutationPlan& Plan,
     TFunction<bool(const FString& PropertyPath)> FailureInjector)

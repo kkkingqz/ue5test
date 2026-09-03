@@ -1,6 +1,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "UI/GV2UiMutationPlan.h"
+#include "UI/GV2UiRollbackBoundary.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2PropertyConsumers.h"
@@ -68,6 +69,24 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
 {
     using namespace GV2ContentCore;
+
+    // GBF-07: the inventory's expected side is a real C++ mapping, not only
+    // source text parsed by the portable gate. Count drives this test so adding
+    // an enum boundary requires an executable recovery decision.
+    for (uint8 BoundaryIndex = 0;
+         BoundaryIndex < static_cast<uint8>(EGV2UiRollbackBoundary::Count);
+         ++BoundaryIndex)
+    {
+        const EGV2UiRollbackBoundary Boundary = static_cast<EGV2UiRollbackBoundary>(BoundaryIndex);
+        const EGV2UiRollbackRecovery ExpectedRecovery =
+            Boundary == EGV2UiRollbackBoundary::ShellAttach
+                ? EGV2UiRollbackRecovery::RestoreStructure
+                : EGV2UiRollbackRecovery::ReplayInverse;
+        TestEqual(
+            FString::Printf(TEXT("Rollback boundary %d has its required recovery"), BoundaryIndex),
+            GetUiRollbackBoundaryRecovery(Boundary),
+            ExpectedRecovery);
+    }
 
     // Build capabilities
     const FGV2UiCapabilityTree Caps = FGV2UiCapabilityBuilder()

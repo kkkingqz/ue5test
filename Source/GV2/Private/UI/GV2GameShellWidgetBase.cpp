@@ -53,6 +53,7 @@ bool UGV2GameShellWidgetBase::HasHostForLayer(FName Layer) const
     return FindHostForLayer(Layer) != nullptr;
 }
 
+// GBF-07: rollback_boundary=ShellAttach
 bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* ScreenWidget)
 {
     if (ScreenWidget == nullptr || !IsValidLayerName(Layer))

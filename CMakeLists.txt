@@ -162,4 +162,19 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_capability_member_inventory.py"
             "--self-test"
     )
+    # GBF-07: derive cancellable Commit roots from production UI source and require
+    # each independent sequence boundary to have an enum-backed recovery decision.
+    add_test(
+        NAME ui_rollback_boundary_inventory_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_rollback_boundaries.py"
+    )
+    add_test(
+        NAME ui_rollback_boundary_inventory_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_rollback_boundaries.py"
+            "--self-test"
+    )
 endif()

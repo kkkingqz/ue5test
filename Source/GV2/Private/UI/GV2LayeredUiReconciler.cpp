@@ -129,6 +129,7 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
     return true;
 }
 
+// GBF-07: rollback_boundary=Document
 bool FGV2LayeredUiReconciler::CommitReconcile(
     UGV2GameShellWidgetBase* Shell,
     const FPreparedReconciliationPlan& Plan,

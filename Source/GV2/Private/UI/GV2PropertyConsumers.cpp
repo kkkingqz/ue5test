@@ -102,6 +102,7 @@ bool FGV2TextPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2TextPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     UWidget* ResolvedWidget = TargetWidget;
@@ -357,6 +358,7 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -443,6 +445,7 @@ bool FGV2BooleanPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2BooleanPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -574,6 +577,7 @@ bool FGV2IntegerPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2IntegerPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -664,6 +668,7 @@ bool FGV2NumberPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2NumberPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -724,6 +729,7 @@ bool FGV2StringPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2StringPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -788,6 +794,7 @@ bool FGV2KeyPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -890,6 +897,7 @@ bool FGV2BindingPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2BindingPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -1323,12 +1331,14 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_delegate=KeyedCollection
 bool FGV2KeyedCollectionPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     const TFunction<bool(const FString& PropertyPath)> NoFailureInjector;
     return CommitWithFailureInjector(TargetWidget, OutError, NoFailureInjector, FString());
 }
 
+// GBF-07: rollback_boundary=KeyedCollection
 bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
     UWidget* TargetWidget,
     FString& OutError,
@@ -1610,6 +1620,7 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2RichTextSpansPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     UGV2RichTextWidgetBase* RichTextWidget = Cast<UGV2RichTextWidgetBase>(TargetWidget);
@@ -1887,12 +1898,14 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
     return true;
 }
 
+// GBF-07: rollback_delegate=NestedScreenTabs
 bool FGV2TabContainerTabsPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     const TFunction<bool(const FString& PropertyPath)> NoFailureInjector;
     return CommitWithFailureInjector(TargetWidget, OutError, NoFailureInjector, FString());
 }
 
+// GBF-07: rollback_boundary=NestedScreenTabs
 bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
     UWidget* TargetWidget,
     FString& OutError,

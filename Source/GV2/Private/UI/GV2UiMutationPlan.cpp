@@ -683,6 +683,7 @@ bool PrepareUiHostRollbackPlan(
     return true;
 }
 
+// GBF-07: rollback_boundary=PropertyMutation
 bool CommitUiHostProperties(
     UUserWidget* HostWidget,
     const FGV2UiHostMutationPlan& Plan,
