@@ -23,7 +23,11 @@ public:
 
     UGV2ButtonWidgetBase* GetButton(FName ButtonKey) const;
 
-    TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
+    // DCA-03: class element of the collection is set explicitly on the declaring asset
+    // (Designer), not derived at runtime. A plain accessor, not a resolver -- there is
+    // no fallback chain, so an unset class simply reads back as null.
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    TSubclassOf<UGV2ButtonWidgetBase> GetButtonWidgetClass() const { return ButtonWidgetClass; }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }

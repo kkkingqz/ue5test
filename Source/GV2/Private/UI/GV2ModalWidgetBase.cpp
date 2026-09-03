@@ -86,16 +86,22 @@ void UGV2ModalWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBui
     OutBuilder.AddText(TEXT("title"), FName(TEXT("TitleText")));
     OutBuilder.AddText(TEXT("content"), FName(TEXT("ContentText")));
 
-    // PCC-10: hardcoding the bare native UGV2ButtonWidgetBase class here (instead of
-    // resolving a real button asset, the way ButtonList/CommandPanel/PlayerStatus already
-    // do for their own collections) meant a bare, unwired entry with no LabelText bound --
-    // the collection sweep this task adds found its "text" capability's target resolves to
-    // null in production. ButtonList already owns the correct resolver for exactly this
-    // entry class; delegate to it instead of re-declaring the fallback here.
+    // PCC-10: hardcoding the bare native UGV2ButtonWidgetBase class unconditionally here
+    // (instead of reading ButtonList's own configured class, the way ButtonList/
+    // CommandPanel/PlayerStatus already do for their own collections) meant a bare,
+    // unwired entry with no LabelText bound -- the collection sweep this task adds found
+    // its "text" capability's target resolves to null in production. ButtonList already
+    // owns the class element for exactly this entry; read it instead of re-declaring a
+    // fallback here. The bare-native class remains the deliberate last resort for the
+    // orthogonal case of no ButtonList child at all (a Modal variant without a button
+    // host, not a class-element omission). DCA-03: only the inner resolution -- when
+    // ButtonList exists but its own class element is unset -- drops the fallback; that
+    // case now reads back as null, exactly as an unconfigured collection behaves
+    // anywhere else, instead of silently substituting a default.
     TSubclassOf<UGV2ButtonWidgetBase> ResolvedButtonClass = UGV2ButtonWidgetBase::StaticClass();
     if (ButtonList != nullptr)
     {
-        ResolvedButtonClass = ButtonList->ResolveButtonWidgetClass();
+        ResolvedButtonClass = ButtonList->GetButtonWidgetClass();
     }
 
     FGV2UiPropertyCapability ButtonCap;

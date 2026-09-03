@@ -1078,6 +1078,16 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             UGV2ButtonListWidgetBase* ButtonList = CreateWidget<UGV2ButtonListWidgetBase>(TestWorld, UGV2ButtonListWidgetBase::StaticClass());
             UVerticalBox* BtnBox = NewObject<UVerticalBox>(ButtonList);
             ButtonList->SetButtonContainer(BtnBox);
+            // DCA-03: ButtonWidgetClass has no fallback -- a bare (non-Blueprint) instance
+            // must be given one explicitly. The real WBP_Button (not the bare native
+            // class) is required: Prepare resolves "text" against the entry's bound
+            // LabelText, which only a real Blueprint instance has.
+            if (FProperty* Prop = UGV2ButtonListWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
+            {
+                UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+                *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(ButtonList) =
+                    RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
+            }
 
             FGV2UiCapabilityBuilder BtnBuilder;
             ButtonList->DescribeUiCapabilities(BtnBuilder);
@@ -1151,6 +1161,14 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 UGV2ButtonListWidgetBase* StyledButtonList = CreateWidget<UGV2ButtonListWidgetBase>(TestWorld, UGV2ButtonListWidgetBase::StaticClass());
                 UVerticalBox* StyledBtnBox = NewObject<UVerticalBox>(StyledButtonList);
                 StyledButtonList->SetButtonContainer(StyledBtnBox);
+                // DCA-03: ButtonWidgetClass has no fallback -- see the ButtonList block
+                // above for why the real WBP_Button is required, not the bare native class.
+                if (FProperty* Prop = UGV2ButtonListWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
+                {
+                    UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(StyledButtonList) =
+                        RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
+                }
 
                 FGV2UiCapabilityBuilder StyledBtnBuilder;
                 StyledButtonList->DescribeUiCapabilities(StyledBtnBuilder);
@@ -1222,6 +1240,15 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             Dropdown->SetHeaderButton(HeaderBtn);
             Dropdown->SetOptionsScrollBox(OptBox);
             Dropdown->SetPopupBorder(PopBorder);
+            // DCA-03: OptionWidgetClass has no fallback -- a bare instance needs one set.
+            // The real WBP_Button (not the bare native class) is required: Prepare
+            // resolves "text" against the entry's bound LabelText.
+            if (FProperty* Prop = UGV2DropdownSelectWidgetBase::StaticClass()->FindPropertyByName(TEXT("OptionWidgetClass")))
+            {
+                UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+                *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(Dropdown) =
+                    RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
+            }
 
             FGV2UiCapabilityBuilder DdBuilder;
             Dropdown->DescribeUiCapabilities(DdBuilder);
@@ -1728,6 +1755,22 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 {
                     *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatus) = EffectRep;
                 }
+                // DCA-03: MeterWidgetClass/IconWidgetClass have no fallback -- a bare
+                // instance needs both set. The real WBP_ProgressBar/WBP_Icon (not the
+                // bare native classes) are required: Prepare resolves "percent"/
+                // "resource_id" against the entry's bound children.
+                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("MeterWidgetClass")))
+                {
+                    UClass* RealMeterClass = LoadClass<UGV2ProgressBarWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"));
+                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ProgressBarWidgetBase>>(PlayerStatus) =
+                        RealMeterClass != nullptr ? RealMeterClass : UGV2ProgressBarWidgetBase::StaticClass();
+                }
+                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("IconWidgetClass")))
+                {
+                    UClass* RealIconClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"));
+                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ImageWidgetBase>>(PlayerStatus) =
+                        RealIconClass != nullptr ? RealIconClass : UGV2ImageWidgetBase::StaticClass();
+                }
 
                 FGV2UiCapabilityBuilder StatusBuilder;
                 PlayerStatus->DescribeUiCapabilities(StatusBuilder);
@@ -1925,6 +1968,15 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 {
                     *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(SceneWidget) = CharRep;
                 }
+                // DCA-03: CharacterWidgetClass has no fallback -- a bare instance needs
+                // one set. The real WBP_Icon (not the bare native class) is required:
+                // Prepare resolves "resource_id" against the entry's bound Image.
+                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterWidgetClass")))
+                {
+                    UClass* RealIconClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"));
+                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ImageWidgetBase>>(SceneWidget) =
+                        RealIconClass != nullptr ? RealIconClass : UGV2ImageWidgetBase::StaticClass();
+                }
 
                 FGV2UiCapabilityBuilder SceneBuilder;
                 SceneWidget->DescribeUiCapabilities(SceneBuilder);
@@ -2048,6 +2100,15 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonRepeater")))
                 {
                     *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(CmdPanel) = BtnRep;
+                }
+                // DCA-03: ButtonWidgetClass has no fallback -- a bare instance needs one
+                // set. The real WBP_Button (not the bare native class) is required:
+                // Prepare resolves "text" against the entry's bound LabelText.
+                if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
+                {
+                    UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(CmdPanel) =
+                        RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
                 }
 
                 FGV2UiCapabilityBuilder CmdBuilder;

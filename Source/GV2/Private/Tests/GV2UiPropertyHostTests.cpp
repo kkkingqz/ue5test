@@ -350,6 +350,15 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             UGV2ButtonListWidgetBase* ButtonListWidget = CreateWidget<UGV2ButtonListWidgetBase>(
                 TestWorld, UGV2ButtonListWidgetBase::StaticClass());
             TestNotNull(TEXT("PCC-02 Source 2: Widget created"), ButtonListWidget);
+            // DCA-03: ButtonWidgetClass has no fallback -- without it the "items" nested
+            // item capability tree stays empty, and the S ⊆ C check below sees the
+            // schema's item fields (key/text/binding) as unsupported.
+            if (FProperty* Prop = UGV2ButtonListWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
+            {
+                UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+                *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(ButtonListWidget) =
+                    RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
+            }
 
             FGV2UiCapabilityBuilder WidgetBuilder;
             ButtonListWidget->DescribeUiCapabilities(WidgetBuilder);

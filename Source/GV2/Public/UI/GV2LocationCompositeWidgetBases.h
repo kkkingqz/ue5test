@@ -53,8 +53,14 @@ public:
     UGV2ListViewWidgetBase* ResolveItemRepeater();
     UGV2ListViewWidgetBase* ResolveEffectRepeater();
     UGV2ListViewWidgetBase* ResolveMeterRepeater();
-    virtual TSubclassOf<UGV2ImageWidgetBase> ResolveIconWidgetClass() const;
-    virtual TSubclassOf<UGV2ProgressBarWidgetBase> ResolveMeterWidgetClass() const;
+
+    // DCA-03: class element of a collection is set explicitly on the declaring asset
+    // (Designer), not derived at runtime. A plain accessor, not a resolver -- there is
+    // no fallback chain, so an unset class simply reads back as null.
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    TSubclassOf<UGV2ImageWidgetBase> GetIconWidgetClass() const { return IconWidgetClass; }
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    TSubclassOf<UGV2ProgressBarWidgetBase> GetMeterWidgetClass() const { return MeterWidgetClass; }
 
 protected:
     virtual void NativePreConstruct() override;
@@ -106,7 +112,10 @@ public:
     UGV2ListViewWidgetBase* GetCharacterRepeater() const { if (CharacterRepeater) return CharacterRepeater.Get(); return const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater(); }
     bool HasUsableCharacterRepeaterHost() const;
     UGV2ListViewWidgetBase* ResolveCharacterRepeater();
-    virtual TSubclassOf<UGV2ImageWidgetBase> ResolveCharacterWidgetClass() const;
+
+    // DCA-03: see GetIconWidgetClass -- plain accessor, no fallback chain.
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    TSubclassOf<UGV2ImageWidgetBase> GetCharacterWidgetClass() const { return CharacterWidgetClass; }
 
 protected:
     virtual void NativePreConstruct() override;
@@ -153,7 +162,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     UGV2ListViewWidgetBase* GetRepeater() const { if (ButtonRepeater) return ButtonRepeater.Get(); return const_cast<UGV2LocationCommandPanelWidgetBase*>(this)->ResolveRepeater(); }
     UGV2ListViewWidgetBase* ResolveRepeater();
-    virtual TSubclassOf<UGV2ButtonWidgetBase> ResolveButtonWidgetClass() const;
+
+    // DCA-03: see GetIconWidgetClass -- plain accessor, no fallback chain.
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    TSubclassOf<UGV2ButtonWidgetBase> GetButtonWidgetClass() const { return ButtonWidgetClass; }
 
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI") FGV2LocationCommandBindingInvoked OnBindingInvoked;
 

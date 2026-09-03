@@ -674,7 +674,7 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
             Modal->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("ContentText")));
 
         // PCC-10: without a real ButtonList child, Modal's "buttons" collection had no
-        // ResolveButtonWidgetClass() to delegate to and fell back to a bare, unwired
+        // configured button class to read and fell back to a bare, unwired
         // UGV2ButtonWidgetBase -- exactly the gap the collection sweep below now catches.
         UGV2ButtonListWidgetBase* ModalButtonList = Modal->WidgetTree->ConstructWidget<UGV2ButtonListWidgetBase>(
             UGV2ButtonListWidgetBase::StaticClass(), TEXT("ButtonList"));
@@ -688,6 +688,17 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
         if (FObjectProperty* ButtonListProp = FindFProperty<FObjectProperty>(UGV2ModalWidgetBase::StaticClass(), TEXT("ButtonList")))
         {
             ButtonListProp->SetObjectPropertyValue_InContainer(Modal, ModalButtonList);
+        }
+        // DCA-03: ButtonWidgetClass has no fallback -- this bare ButtonList instance needs
+        // one set for the sweep below to find a non-null EntryWidgetClass to instantiate.
+        // The real WBP_Button (not the bare native class) is required here specifically:
+        // the sweep recurses into the entry and prepares a "text" probe against its bound
+        // LabelText, which only a real Blueprint instance has.
+        if (FProperty* Prop = UGV2ButtonListWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
+        {
+            UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+            *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(ModalButtonList) =
+                RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
         }
 
         FGV2UiCapabilityBuilder Builder;

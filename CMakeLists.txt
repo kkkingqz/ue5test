@@ -177,4 +177,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_rollback_boundaries.py"
             "--self-test"
     )
+    # DCA-03: a class element hardcoded behind LoadClass/FindObject with a fixed /Game/
+    # path is a hidden, backwards dependency of code on content layout. Scans Source/
+    # itself rather than a fixed file list, so the pattern is caught wherever it recurs.
+    add_test(
+        NAME no_hardcoded_asset_paths_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_no_hardcoded_asset_paths.py"
+    )
+    add_test(
+        NAME no_hardcoded_asset_paths_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_no_hardcoded_asset_paths.py"
+            "--self-test"
+    )
 endif()

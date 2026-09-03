@@ -39,15 +39,18 @@ void UGV2DropdownSelectWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilde
 {
     OutBuilder.AddText(TEXT("placeholder"), FName(TEXT("HeaderButton")));
     OutBuilder.AddKey(TEXT("selected_key"), NAME_None);
+    // DCA-03: OptionWidgetClass is read as-is, not resolved through a fallback chain. An
+    // unset class still declares the capability; instantiating a NEW entry against it
+    // fails downstream (missing_entry_class) instead of silently substituting a default.
     FGV2UiPropertyCapability OptionCap;
     OptionCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-    OptionCap.EntryWidgetClass = ResolveOptionWidgetClass();
+    OptionCap.EntryWidgetClass = OptionWidgetClass;
     OutBuilder.AddKeyedCollection(
         TEXT("items"),
         FName(TEXT("OptionsScrollBox")),
         OptionCap,
         TEXT("key"),
-        ResolveOptionWidgetClass());
+        OptionWidgetClass);
     OutBuilder.AddBinding(TEXT("binding"), NAME_None);
     OutBuilder.AddBoolean(TEXT("is_open"), NAME_None);
 }
@@ -134,29 +137,6 @@ void UGV2DropdownSelectWidgetBase::UpdateHeaderLabel()
     HeaderButton->SetBindingHandle(CurrentBinding);
     HeaderButton->ApplyText(*DisplayText);
     HeaderButton->SetAutomaticInteractionSubmission(false);
-}
-
-TSubclassOf<UGV2ButtonWidgetBase> UGV2DropdownSelectWidgetBase::ResolveOptionWidgetClass() const
-{
-    if (OptionWidgetClass != nullptr)
-    {
-        return OptionWidgetClass;
-    }
-    const UGV2DropdownSelectWidgetBase* ClassDefault =
-        GetClass()->GetDefaultObject<UGV2DropdownSelectWidgetBase>();
-    if (ClassDefault != nullptr && ClassDefault != this && ClassDefault->OptionWidgetClass != nullptr)
-    {
-        return ClassDefault->OptionWidgetClass;
-    }
-    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
-    {
-        return Found;
-    }
-    if (UClass* Loaded = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
-    {
-        return Loaded;
-    }
-    return UGV2ButtonWidgetBase::StaticClass();
 }
 
 void UGV2DropdownSelectWidgetBase::HandleHeaderClicked()

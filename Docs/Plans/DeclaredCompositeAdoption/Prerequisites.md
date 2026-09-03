@@ -1,7 +1,7 @@
 ---
 title: Prerequisites Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-03
 depends_on:
   - README.md
@@ -61,7 +61,7 @@ depends_on:
     - `GV2.Runtime.UIKit.CentralThemeAndComponents`'s счётчик WBP-ассетов обновлён `33 → 35` (два новых production-ассета).
     - Верификация: portable ctest (`cmake-build-ci`) — 74/74; полный `GV2.*` UE Automation (live editor через `unreal-mcp`, после ребилда C++ `RunUBT.sh GV2Editor Linux Development`, `Result: Succeeded`) — 100/101, единственный фейл `GV2.Runtime.UI.NestedInstancesAndTabsContract` (`GBF-05`, чужая незакоммиченная работа, не относится к этой задаче); в частности `CentralThemeAndComponents` (WBP-счётчик 35) и `LocationScreenViewportMatrix` (wrap-регрессия) — зелёные.
 
-- [ ] **DCA-03 — Класс элемента задаётся явно**
+- [x] **DCA-03 — Класс элемента задаётся явно**
   - `ResolveIconWidgetClass`, `ResolveMeterWidgetClass`, `ResolveCharacterWidgetClass` и `ResolveButtonWidgetClass` дают откат свойство экземпляра → CDO → `LoadClass` по фиксированному пути. Объявление несёт фиксированный `EntryWidgetClass`, и это правильнее: путь ассета, зашитый в C++, — скрытая зависимость кода от контента.
   - Этих четырёх мест недостаточно. Сканирование `Source/` даёт ещё два, вне композитов локации и потому переживающих `DCA-05…07`: `GV2ButtonListWidgetBase.cpp:74,79` и `GV2DropdownSelectWidgetBase.cpp:151,155` — оба `FindObject`/`LoadClass` по `/Game/UI/Widgets/WBP_Button.WBP_Button_C`. Это компоненты общего назначения, они не удаляются ни одной задачей плана, и без расширения области задача закрылась бы, оставив ровно ту зависимость, которую объявила снятой.
   - Инвариант: код не зависит от расположения контента. Зашитый в C++ путь ассета — скрытая зависимость обратного направления, которая переживает переименование молча.
@@ -74,6 +74,19 @@ depends_on:
     - существует гейт, запрещающий литерал `/Game/` в production-коде `Source/` (тесты и фикстуры — вне области); множество берётся сканированием, не списком файлов;
     - гейт краснеет при внесении синтетического `LoadClass` по фиксированному пути — продемонстрировано.
   - Evidence: `Source/GV2/Private/UI/GV2LocationCompositeWidgetBases.cpp`, `Source/GV2/Private/UI/GV2ButtonListWidgetBase.cpp`, `Source/GV2/Private/UI/GV2DropdownSelectWidgetBase.cpp`, `Content/`, новый гейт.
+  - **Реализация (2026-09-03):** все шесть `Resolve*WidgetClass` (четыре виртуальные на композитах локации + `UGV2ButtonListWidgetBase`/`UGV2DropdownSelectWidgetBase`) удалены целиком вместе с трёхступенчатым откатом (свойство экземпляра → CDO → `LoadClass` по фиксированному пути → `StaticClass()`). Взамен — тривиальные `UFUNCTION(BlueprintPure)` геттеры (`GetIconWidgetClass`, `GetMeterWidgetClass`, `GetCharacterWidgetClass`, `GetButtonWidgetClass`, `GetOptionWidgetClass`), читающие свойство как есть, без отката. `DescribeUiCapabilities` у всех пяти классов больше не оборачивает `AddKeyedCollection` в `if (Class)` — при `nullptr` capability всё равно объявляется (host существует), а `EntryWidgetClass` уходит в дерево пустым; существующий (не новый) generic-путь `FGV2KeyedCollectionPropertyConsumer::Prepare` уже отклоняет попытку создать НОВЫЙ элемент коллекции без класса кодом `core:diagnostic.ui_consumer.missing_entry_class` — переиспользован без изменений, ничего нового под это не писалось.
+
+    `UGV2ModalWidgetBase::DescribeUiCapabilities` — особый случай: сохранён (не удалён) bare-native `UGV2ButtonWidgetBase::StaticClass()` как fallback ровно для случая «`ButtonList` не существует вовсе» (ортогональный вариант Modal без хоста кнопок, задокументированный существующим тестом `GV2.UI.StandardPropertyConsumers`, "Modal buttons entry class is ButtonWidgetBase"). Откат убран только из внутреннего случая — когда `ButtonList` существует, но его собственный класс не задан.
+
+    Ассеты (через `unreal-mcp`, `ObjectTools.get_properties`/`set_properties` на `Default__<Class>_C`, `CompileWidgetBlueprint`, `save_assets`): `WBP_CommandPanel.buttonWidgetClass`, `WBP_ButtonList.buttonWidgetClass` и `WBP_PlayerStatusPanel.iconWidgetClass` уже были явно заданы в Designer до задачи (не зависели от отката). Довнесены недостающие: `WBP_PlayerStatusPanel.meterWidgetClass → WBP_ProgressBar`, `WBP_SceneView.characterWidgetClass → WBP_Icon`, `WBP_DropdownSelect.optionWidgetClass → WBP_Button` — те же классы, что раньше подставлял удалённый откат, поведение экрана локации не изменилось. `WBP_Modal`'s `ButtonList` — инстанс `WBP_ButtonList` (`bInherited: true`), наследует его `buttonWidgetClass` автоматически, отдельной правки не потребовал.
+
+    Новый гейт `Tools/Testing/validate_no_hardcoded_asset_paths.py`: сканирует `Source/GV2/Public` и `Source/GV2/Private` (кроме `Tests/`) на литерал `"..../Game/...."` в строковых литералах; `--self-test` синтетически вносит нарушение во временный `Source/GV2/Public/*.h` (ловится) и в `Source/GV2/Private/Tests/*.cpp` (не ловится — подтверждает исключение тестов). Подключён в `CMakeLists.txt` (`no_hardcoded_asset_paths_contract` + `_negative_contract`), 76/76 portable ctest зелёные.
+
+    Red→green (продемонстрировано дважды): (1) сам гейт — его `--self-test` уже содержит red/green цикл на синтетическом временном дереве; (2) рантайм-инвариант — временный возврат отката внутрь `UGV2LocationSceneWidgetBase::DescribeUiCapabilities` (`CharacterWidgetClass ?? UGV2ImageWidgetBase::StaticClass()`) уронил ровно `GV2.Runtime.Presentation.LocationCompositeUnresolvedClassRejection` («expected null, got non-null»); откат обратно — снова чисто.
+
+    Побочная находка при аудите тестов: несколько существующих unit-тестов (`GV2PropertyConsumersTests.cpp`, `GV2UiPropertyHostTests.cpp`, `GV2UiCapabilityObservabilityTests.cpp`), создающих `ButtonList`/`Dropdown`/`PlayerStatus`/`Scene`/`CommandPanel` bare-native (не из Blueprint-ассета), молча полагались на удалённый откат для получения РЕАЛЬНОГО класса кнопки/иконки/прогресс-бара (нужного, чтобы generic `Prepare` смог разрешить `LabelText`/`Image`-таргеты внутри созданного элемента). Обновлены явным `LoadClass` реальных `WBP_Button`/`WBP_Icon`/`WBP_ProgressBar` через reflection — той же связкой имён ассетов, что раньше подставлял откат.
+
+    Верификация: portable ctest (`cmake-build-ci`) — 76/76 (было 74, +2 новых теста гейта); полный `GV2.*` UE Automation (live editor через `unreal-mcp`, после ребилда `RunUBT.sh GV2Editor Linux Development`, `Result: Succeeded`) — 101/101, без единого фейла (ранее единственный известный фейл `NestedInstancesAndTabsContract`/`GBF-05` закрыт параллельной сессией до начала этой задачи).
 
 - [ ] **DCA-04 — Мёртвая поверхность трёх композитов удалена**
   - `UGV2LocationCommandPanelWidgetBase::OnBindingInvoked` объявлен `BlueprintAssignable` и не транслируется ниоткуда: ноль `Broadcast` в реализации, ноль подписчиков в C++, ноль упоминаний в `WBP_CommandPanel`, `WBP_LocationScreen`, `WBP_GameShell`. `StaminaMeter` и `Character` помечены устаревшими и только сворачиваются.

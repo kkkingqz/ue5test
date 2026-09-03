@@ -56,7 +56,11 @@ public:
     void SetPopupBorder(UBorder* InBorder) { PopupBorder = InBorder; }
     void SetPopupSizeBox(USizeBox* InSizeBox) { PopupSizeBox = InSizeBox; }
 
-    TSubclassOf<UGV2ButtonWidgetBase> ResolveOptionWidgetClass() const;
+    // DCA-03: class element of the collection is set explicitly on the declaring asset
+    // (Designer), not derived at runtime. A plain accessor, not a resolver -- there is
+    // no fallback chain, so an unset class simply reads back as null.
+    UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    TSubclassOf<UGV2ButtonWidgetBase> GetOptionWidgetClass() const { return OptionWidgetClass; }
     void UpdateHeaderLabel();
 
     virtual bool ApplyCentralStyle_Implementation() override;

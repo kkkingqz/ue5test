@@ -18,10 +18,13 @@ void UGV2ButtonListWidgetBase::NativePreConstruct()
 
 void UGV2ButtonListWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
+    // DCA-03: ButtonWidgetClass is read as-is, not resolved through a fallback chain. An
+    // unset class still declares the capability; instantiating a NEW entry against it
+    // fails downstream (missing_entry_class) instead of silently substituting a default.
     FGV2UiCapabilityTree ButtonCaps;
-    if (TSubclassOf<UGV2ButtonWidgetBase> BtnClass = ResolveButtonWidgetClass())
+    if (ButtonWidgetClass != nullptr)
     {
-        if (const IGV2UiPropertyHost* HostCDO = Cast<IGV2UiPropertyHost>(BtnClass->GetDefaultObject()))
+        if (const IGV2UiPropertyHost* HostCDO = Cast<IGV2UiPropertyHost>(ButtonWidgetClass->GetDefaultObject()))
         {
             FGV2UiCapabilityBuilder BtnBuilder;
             HostCDO->DescribeUiCapabilities(BtnBuilder);
@@ -34,7 +37,7 @@ void UGV2ButtonListWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& O
         FName(TEXT("ButtonContainer")),
         ButtonCaps,
         TEXT("key"),
-        ResolveButtonWidgetClass());
+        ButtonWidgetClass);
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
@@ -56,32 +59,6 @@ UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName ButtonKey)
         }
     }
     return nullptr;
-}
-
-TSubclassOf<UGV2ButtonWidgetBase> UGV2ButtonListWidgetBase::ResolveButtonWidgetClass() const
-{
-    if (ButtonWidgetClass != nullptr)
-    {
-        return ButtonWidgetClass;
-    }
-
-    const UGV2ButtonListWidgetBase* ClassDefault = GetClass()->GetDefaultObject<UGV2ButtonListWidgetBase>();
-    if (ClassDefault != nullptr && ClassDefault != this && ClassDefault->ButtonWidgetClass != nullptr)
-    {
-        return ClassDefault->ButtonWidgetClass;
-    }
-
-    if (UClass* Found = FindObject<UClass>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
-    {
-        return Found;
-    }
-
-    if (UClass* Loaded = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C")))
-    {
-        return Loaded;
-    }
-
-    return UGV2ButtonWidgetBase::StaticClass();
 }
 
 bool UGV2ButtonListWidgetBase::ApplyCentralStyle_Implementation()

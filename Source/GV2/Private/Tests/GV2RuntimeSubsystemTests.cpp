@@ -4719,7 +4719,7 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             auto GetKey = [](const FTestButtonModel& B) { return B.Key; };
             auto CreateWidgetLambda = [TestWorld, CmdPanel]() -> UGV2ButtonWidgetBase*
             {
-                TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CmdPanel->ResolveButtonWidgetClass();
+                TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CmdPanel->GetButtonWidgetClass();
                 return BtnClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, BtnClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
             };
             auto ApplyLambda = [](UGV2ButtonWidgetBase& Widget, const FTestButtonModel& Model)
@@ -4877,7 +4877,7 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         UGV2ListViewWidgetBase* CharRep = SceneView->GetCharacterRepeater();
         if (CharRep != nullptr)
         {
-            TSubclassOf<UGV2ImageWidgetBase> CharClass = SceneView->ResolveCharacterWidgetClass();
+            TSubclassOf<UGV2ImageWidgetBase> CharClass = SceneView->GetCharacterWidgetClass();
             auto GetKey = [](const FTestCharEntry& E) { return E.Key; };
             auto CreateWidgetLambda = [TestWorld, CharClass]() -> UGV2ImageWidgetBase*
             {
@@ -5335,7 +5335,7 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                 [](const FTestCmdEntry& E) { return E.Key; },
                                 [TestWorld, CommandWidget]() -> UGV2ButtonWidgetBase*
                                 {
-                                    TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CommandWidget->ResolveButtonWidgetClass();
+                                    TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CommandWidget->GetButtonWidgetClass();
                                     return BtnClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, BtnClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
                                 },
                                 [](UGV2ButtonWidgetBase& Btn, const FTestCmdEntry& Entry)
@@ -6515,8 +6515,19 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
 
         TestTrue(TEXT("SceneWidget has usable character repeater host"), SceneWidget->HasUsableCharacterRepeaterHost());
 
-        TSubclassOf<UGV2ImageWidgetBase> CharClass = SceneWidget->ResolveCharacterWidgetClass();
-        TestTrue(TEXT("SceneWidget ResolveCharacterWidgetClass handles fallback gracefully"), CharClass == nullptr || CharClass->IsChildOf(UGV2ImageWidgetBase::StaticClass()));
+        // DCA-03: no fallback chain remains -- an unset CharacterWidgetClass reads back
+        // as null, not a substituted default class.
+        TestNull(TEXT("SceneWidget's character widget class is unset (no fallback substitution)"), SceneWidget->GetCharacterWidgetClass().Get());
+
+        FGV2UiCapabilityBuilder SceneBuilder;
+        SceneWidget->DescribeUiCapabilities(SceneBuilder);
+        const FGV2UiCapabilityTree SceneCaps = SceneBuilder.Build();
+        const FGV2UiPropertyCapability* CharactersCap = SceneCaps.FindProperty(TEXT("characters"));
+        TestNotNull(TEXT("'characters' capability is still declared (the host exists)"), CharactersCap);
+        if (CharactersCap != nullptr)
+        {
+            TestNull(TEXT("Declared 'characters' capability carries no EntryWidgetClass -- absence is not defaulted"), CharactersCap->EntryWidgetClass.Get());
+        }
     }
 
     // 2. CommandPanel without button widget class
@@ -6535,8 +6546,19 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
 
         TestTrue(TEXT("CommandPanel has usable repeater host"), CommandPanel->HasUsableRepeaterHost());
 
-        TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CommandPanel->ResolveButtonWidgetClass();
-        TestTrue(TEXT("CommandPanel ResolveButtonWidgetClass handles fallback gracefully"), BtnClass == nullptr || BtnClass->IsChildOf(UGV2ButtonWidgetBase::StaticClass()));
+        // DCA-03: no fallback chain remains -- an unset ButtonWidgetClass reads back as
+        // null, not a substituted default class.
+        TestNull(TEXT("CommandPanel's button widget class is unset (no fallback substitution)"), CommandPanel->GetButtonWidgetClass().Get());
+
+        FGV2UiCapabilityBuilder CmdBuilder;
+        CommandPanel->DescribeUiCapabilities(CmdBuilder);
+        const FGV2UiCapabilityTree CmdCaps = CmdBuilder.Build();
+        const FGV2UiPropertyCapability* ItemsCap = CmdCaps.FindProperty(TEXT("items"));
+        TestNotNull(TEXT("'items' capability is still declared (the host exists)"), ItemsCap);
+        if (ItemsCap != nullptr)
+        {
+            TestNull(TEXT("Declared 'items' capability carries no EntryWidgetClass -- absence is not defaulted"), ItemsCap->EntryWidgetClass.Get());
+        }
     }
 
     TestWorld->DestroyWorld(false);
