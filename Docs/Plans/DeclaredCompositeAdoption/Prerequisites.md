@@ -1,7 +1,7 @@
 ---
 title: Prerequisites Tasks
 status: active
-version: 1.5
+version: 1.6
 updated: 2026-09-03
 depends_on:
   - README.md
@@ -88,7 +88,7 @@ depends_on:
 
     Верификация: portable ctest (`cmake-build-ci`) — 76/76 (было 74, +2 новых теста гейта); полный `GV2.*` UE Automation (live editor через `unreal-mcp`, после ребилда `RunUBT.sh GV2Editor Linux Development`, `Result: Succeeded`) — 101/101, без единого фейла (ранее единственный известный фейл `NestedInstancesAndTabsContract`/`GBF-05` закрыт параллельной сессией до начала этой задачи).
 
-- [ ] **DCA-04 — Мёртвая поверхность трёх композитов удалена**
+- [x] **DCA-04 — Мёртвая поверхность трёх композитов удалена**
   - `UGV2LocationCommandPanelWidgetBase::OnBindingInvoked` объявлен `BlueprintAssignable` и не транслируется ниоткуда: ноль `Broadcast` в реализации, ноль подписчиков в C++, ноль упоминаний в `WBP_CommandPanel`, `WBP_LocationScreen`, `WBP_GameShell`. `StaminaMeter` и `Character` помечены устаревшими и только сворачиваются.
   - Инвариант: объявленная поверхность используется либо отсутствует. `OnBindingInvoked` — третий найденный экземпляр этого семейства после `ResourceIcon` и `ApplyOptionalXxx`, и первый, который успел стать обоснованием ложного архитектурного вывода.
   - Не считается закрытием: пометка `DeprecatedProperty` вместо удаления; проверка ссылок только в трёх известных ассетах.
@@ -98,11 +98,20 @@ depends_on:
     - ассеты, если ссылались, приведены через `unreal-mcp`;
     - гейт запрета legacy-поверхности расширен на эти имена.
   - Evidence: `Source/GV2/Public/UI/GV2LocationCompositeWidgetBases.h`, `Content/`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-03):** `OnBindingInvoked` (`UPROPERTY(BlueprintAssignable)`) удалён из `UGV2LocationCommandPanelWidgetBase` вместе с делегатом `FGV2LocationCommandBindingInvoked` (`DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams`), который больше нигде не использовался. `StaminaMeter` удалён из `UGV2LocationPlayerStatusWidgetBase` (`UPROPERTY` + guard-блок в `NativePreConstruct`). `Character` удалён из `UGV2LocationSceneWidgetBase` (`UPROPERTY` + guard-блок в `NativePreConstruct`).
+
+    Проверка ссылок (побайтовый скан `Content/` через `grep -a`, дополнительно перепроверено `unreal-mcp` `GetWidgets`): `OnBindingInvoked` не встречается ни в одном `.uasset` вовсе. `Character` встречается только как часть других, живых имён (`CharacterRepeater`, `CharacterWidgetClass` в `WBP_SceneView`) и двух не относящихся к делу совпадений (`CharacterPresentationHost` в `WBP_GameShell`, `AllowPerCharacterWrapping` в `WBP_RichText`) — сам `Character` нигде физически не привязан (`GetWidgets` подтвердил `widget: "None"`). `StaminaMeter` **был** реально привязан в `WBP_PlayerStatusPanel` (`WBP_ProgressBar` instance) — удалён через `unreal-mcp` (`RemoveWidget` → `CompileWidgetBlueprint` → `save_assets`).
+
+    Гейт (существующий "Code Audit Test" в `GV2PropertyConsumersTests.cpp`, изначально расширенный на модуль в `GBH-05` для `ApplyOptionalXxx`/`ResolveOptionalAndApply`) расширен на все три имени — но не буквально: `OnBindingInvoked` как голая строка **не** забанена, поскольку это тот же самый, ныне живой и Broadcast-ящий member name на `UGV2ButtonWidgetBase`/`UGV2CheckboxWidgetBase`/`UGV2InputFieldWidgetBase` — простой substring-бан немедленно словил бы настоящий продакшн-код. Забанен уникальный тип делегата `FGV2LocationCommandBindingInvoked` вместо этого. Аналогично `Character` как голое слово столкнулось бы с `CharacterRepeater`/`CharacterWidgetClass` (те же классы, тот же файл) и с посторонней локальной переменной `Character` в `GV2ContentCoreRepositoryResolutionTests.cpp` — забанена точная бывшая строка объявления `TObjectPtr<UGV2ImageWidgetBase> Character;` вместо голого слова. `StaminaMeter` добавлен как есть (глобально уникален, коллизий не найдено).
+
+    Red→green: временный возврат `StaminaMeter` в `GV2LocationCompositeWidgetBases.h` уронил ровно `GV2.UI.StandardPropertyConsumers` с точным сообщением о реинтродукции; откат — снова чисто.
+
+    Верификация: portable ctest 76/76; полный `GV2.*` UE Automation 101/101, без единого фейла.
 
 ## Проверка milestone
 
-- [ ] Необязательное свойство выразимо объявлением, обязательное при непривязанном ребёнке по-прежнему отказывает.
-- [ ] Ни одна коллекция трёх композитов не адресует объект вне `WidgetTree`.
-- [ ] Ни один класс элемента не подставляется зашитым в C++ путём ассета, и это утверждает сканирование, а не список.
-- [ ] Три мёртвые сущности отсутствуют, и гейт не даёт им вернуться.
-- [ ] Поведение экрана локации на этом этапе не изменилось.
+- [x] Необязательное свойство выразимо объявлением, обязательное при непривязанном ребёнке по-прежнему отказывает.
+- [x] Ни одна коллекция трёх композитов не адресует объект вне `WidgetTree`.
+- [x] Ни один класс элемента не подставляется зашитым в C++ путём ассета, и это утверждает сканирование, а не список.
+- [x] Три мёртвые сущности отсутствуют, и гейт не даёт им вернуться.
+- [x] Поведение экрана локации на этом этапе не изменилось.

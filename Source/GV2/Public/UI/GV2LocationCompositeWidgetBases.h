@@ -14,11 +14,6 @@ class UGV2ButtonWidgetBase;
 class UWrapBox;
 class UPanelWidget;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(
-    FGV2LocationCommandBindingInvoked,
-    FGV2UiBindingHandle, BindingHandle,
-    EGV2SubmitUiInteractionResult, Result);
-
 UCLASS(Blueprintable)
 class GV2_API UGV2LocationPlayerStatusWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
 {
@@ -66,7 +61,6 @@ protected:
     virtual void NativePreConstruct() override;
     UPROPERTY(meta=(BindWidget)) TObjectPtr<UGV2TextWidgetBase> PlayerNameText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2PortraitWidgetBase> Portrait;
-    UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: Use MeterRepeater / MeterContainer with repeated Meters.")) TObjectPtr<UGV2ProgressBarWidgetBase> StaminaMeter;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> MeterRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> MeterContainer;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> ItemRepeater;
@@ -122,7 +116,6 @@ protected:
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> SceneContextText;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Background;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> BackgroundTile;
-    UPROPERTY(meta=(BindWidgetOptional, DeprecatedProperty, DeprecationMessage="Deprecated: Use CharacterRepeater / CharacterContainer with repeated Characters.")) TObjectPtr<UGV2ImageWidgetBase> Character;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> CharacterRepeater;
     UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
     UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;
@@ -166,8 +159,6 @@ public:
     // DCA-03: see GetIconWidgetClass -- plain accessor, no fallback chain.
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     TSubclassOf<UGV2ButtonWidgetBase> GetButtonWidgetClass() const { return ButtonWidgetClass; }
-
-    UPROPERTY(BlueprintAssignable, Category = "GV2|UI") FGV2LocationCommandBindingInvoked OnBindingInvoked;
 
 protected:
     virtual void NativePreConstruct() override;

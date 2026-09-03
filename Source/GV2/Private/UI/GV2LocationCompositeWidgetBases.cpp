@@ -14,10 +14,6 @@
 void UGV2LocationPlayerStatusWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    if (StaminaMeter)
-    {
-        StaminaMeter->SetVisibility(ESlateVisibility::Collapsed);
-    }
 
     // PCC-09 (proposal 17.2 "Instance wiring check", BAI-11 precedent): internal
     // repeaters are wired once here, at instance construction, instead of lazily from
@@ -141,10 +137,6 @@ UGV2ListViewWidgetBase* UGV2LocationSceneWidgetBase::ResolveCharacterRepeater()
 void UGV2LocationSceneWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    if (Character)
-    {
-        Character->SetVisibility(ESlateVisibility::Collapsed);
-    }
 
     // PCC-09: see UGV2LocationPlayerStatusWidgetBase::NativePreConstruct.
     ResolveCharacterRepeater();

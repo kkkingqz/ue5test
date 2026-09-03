@@ -247,6 +247,21 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         // This scans every Source/GV2 header and source file so the names cannot
         // silently reappear anywhere in the module, not just in the files they were
         // removed from.
+        //
+        // DCA-04: OnBindingInvoked/StaminaMeter/Character (UGV2LocationCommandPanel-
+        // WidgetBase/UGV2LocationPlayerStatusWidgetBase/UGV2LocationSceneWidgetBase --
+        // declared, zero Broadcast/zero non-collapsing use, the third instance of this
+        // family after ResourceIcon and ApplyOptionalXxx) join the ban list. The bare
+        // member name "OnBindingInvoked" is NOT banned here: UGV2ButtonWidgetBase,
+        // UGV2CheckboxWidgetBase and UGV2InputFieldWidgetBase all declare their own
+        // live, Broadcast-ing delegate of that same conventional member name, so a
+        // plain-substring ban on it would flag real production code. The dead surface
+        // was CommandPanel's delegate TYPE (unique to it, used nowhere else) and its
+        // member declaration line -- both banned precisely below. "Character" alone is
+        // similarly unsafe as a bare substring (collides with CharacterRepeater/
+        // CharacterWidgetClass this same class still legitimately declares, and with an
+        // unrelated single-char loop variable elsewhere in the module) -- banned as its
+        // exact former property-declaration substring instead.
         TArray<FString> LegacySurfaceFiles;
         const FString SourceRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("Source/GV2"));
         IFileManager::Get().FindFilesRecursive(LegacySurfaceFiles, *SourceRoot, TEXT("*.h"), true, false, false);
@@ -257,6 +272,9 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TEXT("ApplyOptionalImageResource"),
             TEXT("ApplyOptionalPortrait"),
             TEXT("ResolveOptionalAndApply"),
+            TEXT("FGV2LocationCommandBindingInvoked"),
+            TEXT("StaminaMeter"),
+            TEXT("TObjectPtr<UGV2ImageWidgetBase> Character;"),
         };
         for (const FString& FilePath : LegacySurfaceFiles)
         {
@@ -274,7 +292,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             for (const TCHAR* BannedName : BannedLegacyNames)
             {
                 TestFalse(
-                    *FString::Printf(TEXT("GBH-05: '%s' does not reappear in %s"), BannedName, *FilePath),
+                    *FString::Printf(TEXT("GBH-05/DCA-04: '%s' does not reappear in %s"), BannedName, *FilePath),
                     FileSource.Contains(BannedName));
             }
         }

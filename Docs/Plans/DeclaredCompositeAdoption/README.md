@@ -1,7 +1,7 @@
 ---
 title: Declared Composite Adoption and Enumerator Hardening Plan
 status: active
-version: 1.5
+version: 1.6
 updated: 2026-09-03
 depends_on:
   - ../Archive/DataDrivenUiComposition.md
@@ -58,8 +58,8 @@ decisions:
 | `GV2UiMutationPlan.cpp` | Хардкод трёх `Cast` по классам локации с перечислением имён контейнеров |
 | Запись объявления | Не имеет признака необязательности; композиты объявляют capability условно, `if (Target != nullptr)` — **закрыто DCA-01, 2026-09-03** |
 | `Resolve*WidgetClass` | Удалены (все шесть); трёхступенчатый откат снят — **закрыто DCA-03, 2026-09-03** |
-| `OnBindingInvoked` у `CommandPanel` | `BlueprintAssignable`, ноль `Broadcast`, ноль подписчиков в C++ и в трёх релевантных Blueprint |
-| `StaminaMeter`, `Character` | Помечены `DeprecatedProperty`, только сворачиваются |
+| `OnBindingInvoked` у `CommandPanel` | Удалён вместе с делегатом `FGV2LocationCommandBindingInvoked` — **закрыто DCA-04, 2026-09-03** |
+| `StaminaMeter`, `Character` | Удалены; `StaminaMeter` также был реально привязан в `WBP_PlayerStatusPanel`, отвязка через `unreal-mcp` — **закрыто DCA-04, 2026-09-03** |
 | Новые композиты из данных | Ни одного; объявляемый композит доказан только на `TopBar` и синтетических фикстурах |
 | Отзывчивость раскладки | `ADR-0035` не имеет перечислителя; `WrapSize=1200` в `WBP_ListView_WrapButtons` — замер с 720p, вмороженный как константа |
 | Гейты и `Content/` | Ни один гейт не читает ассеты: все семь — текстовые сканы по `Source/` и `Docs/` |
@@ -79,7 +79,7 @@ decisions:
 
 ## Milestones
 
-- [ ] M1 — [Prerequisites](Prerequisites.md): объявление умеет всё, что умеют три композита; ассеты приведены. DCA-01…04. *(DCA-01, DCA-02, DCA-03 закрыты 2026-09-03)*
+- [x] M1 — [Prerequisites](Prerequisites.md): объявление умеет всё, что умеют три композита; ассеты приведены. DCA-01…04. *(закрыт целиком 2026-09-03)*
 - [ ] M2 — [Migration](Migration.md): три композита переведены, классы и мостик удалены. DCA-05…08.
 - [ ] M3 — [Authoring](Authoring.md): три новых композита собраны из данных. DCA-09…12.
 - [ ] M4 — [Layout Invariant](LayoutInvariant.md): у требования отзывчивой раскладки появляется перечислитель. DCA-13…17.
@@ -88,7 +88,7 @@ decisions:
 ## Критический путь
 
 ```text
-DCA-01✔, DCA-02✔, DCA-03✔, DCA-04   — независимы друг от друга
+DCA-01✔, DCA-02✔, DCA-03✔, DCA-04✔   — независимы друг от друга
 
            └──────► DCA-05, DCA-06, DCA-07 ──────► DCA-08 ──────► DCA-09…11 ──► DCA-12
 
@@ -123,7 +123,7 @@ M4 (DCA-13…17) и M5 (DCA-18…21) не зависят от M1…M3 и пер�
 - [x] Запись объявления выражает необязательное свойство; ссылка на непривязанного ребёнка отклоняется, а объявленная необязательной — нет. (DCA-01)
 - [x] Ни один композит локации не создаёт репитер вне `WidgetTree`. (DCA-02)
 - [x] Класс элемента каждой коллекции задан явно; трёхступенчатый откат `Resolve*WidgetClass` удалён; литерала `/Game/` в production-коде не остаётся, и это утверждает гейт. (DCA-03)
-- [ ] `OnBindingInvoked`, `StaminaMeter` и `Character` физически отсутствуют. (DCA-04)
+- [x] `OnBindingInvoked`, `StaminaMeter` и `Character` физически отсутствуют. (DCA-04)
 - [ ] `UGV2LocationSceneWidgetBase`, `UGV2LocationPlayerStatusWidgetBase` и `UGV2LocationCommandPanelWidgetBase` удалены из исходников. (DCA-05…07)
 - [ ] Хардкод `Cast` по классам локации в `GV2UiMutationPlan.cpp` удалён; для трёх удалённых классов возврат невозможен по построению — типов не существует, — а для будущих его не даёт гейт с перечислителем по интерфейсу хоста. (DCA-08)
 - [ ] Экран локации работает без изменения поведения, проверено сквозным прогоном от Lua до наблюдаемого состояния виджетов. (DCA-05…08)
