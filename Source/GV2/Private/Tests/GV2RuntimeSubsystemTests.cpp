@@ -3649,15 +3649,19 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             NestedFailureTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureTabMap)));
 
             FString NestedRollbackPrepareError;
+            const bool bNestedRollbackPrepared = NestedConsumer->Prepare(
+                FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NestedFailureTabs)), NestedTabCap, NestedTabContainer, NestedRollbackPrepareError);
             TestTrue(*FString::Printf(TEXT("GBF-05: nested reused child prepares candidate before sibling fault [Error: %s]"), *NestedRollbackPrepareError),
-                NestedConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NestedFailureTabs)), NestedTabCap, NestedTabContainer, NestedRollbackPrepareError));
+                bNestedRollbackPrepared);
             const auto NestedFailureInjector = [](const FString& PropertyPath) -> bool
             {
                 return PropertyPath.Contains(TEXT("failure"));
             };
             FString NestedRollbackCommitError;
+            const bool bNestedRollbackCommitted = NestedConsumer->CommitWithFailureInjector(
+                NestedTabContainer, NestedRollbackCommitError, NestedFailureInjector, TEXT("tabs"));
             TestFalse(*FString::Printf(TEXT("GBF-05: nested sibling fault rejects the tab transaction [Error: %s]"), *NestedRollbackCommitError),
-                NestedConsumer->CommitWithFailureInjector(NestedTabContainer, NestedRollbackCommitError, NestedFailureInjector, TEXT("tabs")));
+                bNestedRollbackCommitted);
             TestEqual(TEXT("GBF-05: nested reused child physically rolls back its text"), DayText->GetTextContent().ToString(), TEXT("Tuesday"));
             TestEqual(TEXT("GBF-05: nested reused child physically rolls back its number"), ValueBar->GetProgress(), 0.7f);
             const FGV2PreparedUiValue* NestedCommittedDay = DayBlock->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("day"));
@@ -3673,8 +3677,10 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
             NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureTabMap)));
             FString NestedNextPrepareError;
+            const bool bNestedNextPrepared = NestedConsumer->Prepare(
+                FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NestedRetryTabs)), NestedTabCap, NestedTabContainer, NestedNextPrepareError);
             TestTrue(*FString::Printf(TEXT("GBF-05: next nested Prepare reads restored revision [Error: %s]"), *NestedNextPrepareError),
-                NestedConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NestedRetryTabs)), NestedTabCap, NestedTabContainer, NestedNextPrepareError));
+                bNestedNextPrepared);
             FString NestedNextCommitError;
             TestFalse(TEXT("GBF-05: later nested sibling fault still rejects after retry Prepare"),
                 NestedConsumer->CommitWithFailureInjector(NestedTabContainer, NestedNextCommitError, NestedFailureInjector, TEXT("tabs")));
