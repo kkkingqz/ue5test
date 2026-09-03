@@ -1944,57 +1944,60 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TestEqual(TEXT("PlayerStatus EffectRepeater cleared on reset"), EffectRep->GetEntryCount(), 0);
             }
 
-            // 13c. LocationScene Property Host Reconciliation
+            // 13c. LocationScene (DCA-05: generic declared composite) Property Host Reconciliation
             {
-                UGV2LocationSceneWidgetBase* SceneWidget = CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, UGV2LocationSceneWidgetBase::StaticClass());
+                UGV2DeclaredCompositeWidgetBase* SceneWidget = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, UGV2DeclaredCompositeWidgetBase::StaticClass());
                 TestNotNull(TEXT("SceneWidget instantiated"), SceneWidget);
 
-                UGV2ImageWidgetBase* BgTile = NewObject<UGV2ImageWidgetBase>(SceneWidget);
+                // DescribeUiCapabilities resolves children via GetWidgetFromName, a lookup in
+                // SceneWidget's *own* WidgetTree -- not reflection-set BindWidget pointers, as
+                // the deleted UGV2LocationSceneWidgetBase used. See DUC-08's TopBar precedent.
+                SceneWidget->WidgetTree = NewObject<UWidgetTree>(SceneWidget);
+                UVerticalBox* SceneRoot = SceneWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+                SceneWidget->WidgetTree->RootWidget = SceneRoot;
+
+                UGV2ImageWidgetBase* BgTile = SceneWidget->WidgetTree->ConstructWidget<UGV2ImageWidgetBase>(UGV2ImageWidgetBase::StaticClass(), TEXT("BackgroundTile"));
                 BgTile->SetScalePolicy(EGV2PrimitiveScalePolicy::Tile);
                 UImage* InnerBgTileImage = NewObject<UImage>(BgTile);
                 if (FProperty* Prop = UGV2ImageWidgetBase::StaticClass()->FindPropertyByName(TEXT("Image")))
                 {
                     *Prop->ContainerPtrToValuePtr<TObjectPtr<UImage>>(BgTile) = InnerBgTileImage;
                 }
+                SceneRoot->AddChildToVerticalBox(BgTile);
 
-                UGV2ImageWidgetBase* Bg = NewObject<UGV2ImageWidgetBase>(SceneWidget);
+                UGV2ImageWidgetBase* Bg = SceneWidget->WidgetTree->ConstructWidget<UGV2ImageWidgetBase>(UGV2ImageWidgetBase::StaticClass(), TEXT("Background"));
                 Bg->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
                 UImage* InnerBgImage = NewObject<UImage>(Bg);
                 if (FProperty* Prop = UGV2ImageWidgetBase::StaticClass()->FindPropertyByName(TEXT("Image")))
                 {
                     *Prop->ContainerPtrToValuePtr<TObjectPtr<UImage>>(Bg) = InnerBgImage;
                 }
+                SceneRoot->AddChildToVerticalBox(Bg);
 
-                UGV2TextWidgetBase* ContextText = NewObject<UGV2TextWidgetBase>(SceneWidget);
-                UGV2ListViewWidgetBase* CharRep = NewObject<UGV2ListViewWidgetBase>(SceneWidget);
-                UVerticalBox* CharBox = NewObject<UVerticalBox>(SceneWidget);
+                UGV2TextWidgetBase* ContextText = SceneWidget->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("SceneContextText"));
+                SceneRoot->AddChildToVerticalBox(ContextText);
+
+                UGV2ListViewWidgetBase* CharRep = SceneWidget->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(UGV2ListViewWidgetBase::StaticClass(), TEXT("CharacterRepeater"));
+                UVerticalBox* CharBox = SceneWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("CharacterBox"));
                 CharRep->SetContainerPanel(CharBox);
+                SceneRoot->AddChildToVerticalBox(CharRep);
 
-                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("BackgroundTile")))
+                SceneWidget->DeclaredCapabilities.Add({ FName(TEXT("background_tile_resource_id")), FName(TEXT("BackgroundTile")), EGV2DeclaredUiCapabilityKind::ResourceRef });
+                SceneWidget->DeclaredCapabilities.Add({ FName(TEXT("background_resource_id")), FName(TEXT("Background")), EGV2DeclaredUiCapabilityKind::ResourceRef });
+                SceneWidget->DeclaredCapabilities.Add({ FName(TEXT("context_text")), FName(TEXT("SceneContextText")), EGV2DeclaredUiCapabilityKind::Text });
                 {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ImageWidgetBase>>(SceneWidget) = BgTile;
-                }
-                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("Background")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ImageWidgetBase>>(SceneWidget) = Bg;
-                }
-                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("SceneContextText")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(SceneWidget) = ContextText;
-                }
-                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterRepeater")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(SceneWidget) = CharRep;
-                }
-                // DCA-03: CharacterWidgetClass has no fallback -- a bare instance needs
-                // one set. The real WBP_Icon (not the bare native class) is required:
-                // Prepare resolves "resource_id" against the entry's bound Image.
-                if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterWidgetClass")))
-                {
+                    // The real WBP_Icon (not the bare native class) is required: Prepare
+                    // resolves "resource_id" against the entry's bound Image.
                     UClass* RealIconClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"));
-                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ImageWidgetBase>>(SceneWidget) =
-                        RealIconClass != nullptr ? RealIconClass : UGV2ImageWidgetBase::StaticClass();
+                    FGV2DeclaredUiCapability CharCap;
+                    CharCap.PropertyName = FName(TEXT("characters"));
+                    CharCap.ChildWidgetName = FName(TEXT("CharacterRepeater"));
+                    CharCap.Kind = EGV2DeclaredUiCapabilityKind::CollectionHost;
+                    CharCap.EntryWidgetClass = RealIconClass != nullptr ? RealIconClass : UGV2ImageWidgetBase::StaticClass();
+                    CharCap.KeyPropertyName = TEXT("key");
+                    SceneWidget->DeclaredCapabilities.Add(CharCap);
                 }
+                SceneWidget->DeclaredCapabilities.Add({ FName(TEXT("key")), NAME_None, EGV2DeclaredUiCapabilityKind::Key });
 
                 FGV2UiCapabilityBuilder SceneBuilder;
                 SceneWidget->DescribeUiCapabilities(SceneBuilder);

@@ -306,7 +306,7 @@ Value-only Screen Field имеет форму:
 | `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | `default_tab_key` (Key), `tabs` (CollectionHost) | Нет — nested property host only |
 | `textsystem:schema.ui_field.location_top_bar.v1` | `WBP_LocationTopBar` / `UGV2DeclaredCompositeWidgetBase` (DUC-08) | `day` (Text), `location` (Text), `primary_resource` (Text) | **Да** |
 | `textsystem:schema.ui_field.location_player_status.v1` | `UGV2LocationPlayerStatusWidgetBase` | `name` (Text), `portrait_resource_id` (Ref), `meters` (CollectionHost), `items` (CollectionHost), `effects` (CollectionHost) | **Да** |
-| `textsystem:schema.ui_field.location_scene.v1` | `UGV2LocationSceneWidgetBase` | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) | **Да** |
+| `textsystem:schema.ui_field.location_scene.v1` | `WBP_SceneView` / `UGV2DeclaredCompositeWidgetBase` (DCA-05) | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) | **Да** |
 | `textsystem:schema.ui_field.location_commands.v1` | `UGV2LocationCommandPanelWidgetBase` | `items` (CollectionHost) | **Да** |
 
 Первые десять строк — валидируемые, протестированные на уровне `PrepareUiHostProperties`/`CommitUiHostProperties` schema/capability пары; их Native Widget Class реализует `IGV2UiPropertyHost`, но не `IGV2ScreenFieldHost`, поэтому ни одна из них не может быть настроена как самостоятельный top-level Screen Field сейчас — только как nested property (вложенное свойство composite'а, например `CollectionHost` entry) либо материал для будущего host. Только последние четыре строки — реально используемый, production Screen Field pipeline (`textsystem:screen.location`, см. [Current vertical slice](#current-vertical-slice)).
@@ -433,7 +433,7 @@ fields: [
 |---|---|---|
 | `top_bar` | `WBP_LocationTopBar` (`UGV2DeclaredCompositeWidgetBase`, DUC-08) | `textsystem:schema.ui_field.location_top_bar.v1` |
 | `player_status` | `UGV2LocationPlayerStatusWidgetBase` | `textsystem:schema.ui_field.location_player_status.v1` |
-| `scene` | `UGV2LocationSceneWidgetBase` | `textsystem:schema.ui_field.location_scene.v1` |
+| `scene` | `WBP_SceneView` (`UGV2DeclaredCompositeWidgetBase`, DCA-05) | `textsystem:schema.ui_field.location_scene.v1` |
 | `commands` | `UGV2LocationCommandPanelWidgetBase` | `textsystem:schema.ui_field.location_commands.v1` |
 
 Lua presenter (`GameData/textsystem/scripts/presentation/location_presenter.lua`, `M.build_screen_request`) публикует все четыре поля через `game.presentation.register_source` при каждой успешно закоммиченной команде (см. [Источник презентации](#источник-презентации-и-автоматическая-инвалидация-sas-1416-adr-0028)). `GV2ScreenFieldMaterializer` генерически материализует значения полей и биндинги по скомпилированным схемам; Runtime разрешает class только через `DA_ScreenRegistry`. Идентичность route зафиксирована ([UI Document § Устойчивая идентичность LocationScreen](UIDocumentAndReconciliation.md)): `screen_id`/`instance_key` не меняются между локациями, переход обновляет поля существующего widget.

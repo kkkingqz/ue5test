@@ -80,54 +80,6 @@ private:
     UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalMeterRepeater;
 };
 
-UCLASS(Blueprintable)
-class GV2_API UGV2LocationSceneWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost
-{
-    GENERATED_BODY()
-public:
-    // IGV2UiPropertyHost
-    virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
-    virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
-    virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
-
-    // IGV2ScreenFieldHost
-    // DUC-01: field_id is this host's identity within its enclosing screen --
-    // the same shared HostIdentity every IGV2UiPropertyHost carries, not a
-    // separate per-class property. See FGV2UiPropertyHostState.
-    virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
-
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    void SetKey(FName InKey) { GetPropertyHostState().SetKey(InKey); }
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    FName GetKey() const { return GetPropertyHostState().GetKey(); }
-
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    UGV2ListViewWidgetBase* GetCharacterRepeater() const { if (CharacterRepeater) return CharacterRepeater.Get(); return const_cast<UGV2LocationSceneWidgetBase*>(this)->ResolveCharacterRepeater(); }
-    bool HasUsableCharacterRepeaterHost() const;
-    UGV2ListViewWidgetBase* ResolveCharacterRepeater();
-
-    // DCA-03: see GetIconWidgetClass -- plain accessor, no fallback chain.
-    UFUNCTION(BlueprintPure, Category = "GV2|UI")
-    TSubclassOf<UGV2ImageWidgetBase> GetCharacterWidgetClass() const { return CharacterWidgetClass; }
-
-protected:
-    virtual void NativePreConstruct() override;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2TextWidgetBase> SceneContextText;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> Background;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ImageWidgetBase> BackgroundTile;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UGV2ListViewWidgetBase> CharacterRepeater;
-    UPROPERTY(meta=(BindWidgetOptional)) TObjectPtr<UPanelWidget> CharacterContainer;
-    UPROPERTY(EditDefaultsOnly, Category="GV2|UI") TSubclassOf<UGV2ImageWidgetBase> CharacterWidgetClass;
-
-private:
-    UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
-    FGV2UiPropertyHostState PropertyHostState;
-
-
-    UPROPERTY(Transient) TObjectPtr<UGV2ListViewWidgetBase> InternalCharacterRepeater;
-};
-
 /** LocationScreen's command field is a ButtonList with a textsystem schema. */
 UCLASS(Blueprintable)
 class GV2_API UGV2LocationCommandPanelWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2ScreenFieldHost

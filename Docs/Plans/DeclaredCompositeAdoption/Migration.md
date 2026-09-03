@@ -1,8 +1,8 @@
 ---
 title: Migration Tasks
 status: active
-version: 1.2
-updated: 2026-09-02
+version: 1.3
+updated: 2026-09-03
 depends_on:
   - README.md
   - Prerequisites.md
@@ -24,7 +24,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **DCA-05 — Scene переведён на объявление**
+- [x] **DCA-05 — Scene переведён на объявление**
   - Зависимости: DCA-01, DCA-02, DCA-03.
   - `UGV2LocationSceneWidgetBase` объявляет два `Image` (фон и плитка), один `Text` (контекст), одну `CollectionHost` (персонажи) и идентичность. Все пять видов доступны в Designer.
   - Инвариант: объявление воспроизводит capability один в один, поведение экрана не меняется. Миграция, «почти» воспроизводящая набор, — это тихое изменение контракта поля, которое обнаружится на стороне контента.
@@ -37,6 +37,13 @@ depends_on:
     - sweep наблюдаемости покрывает новый композит;
     - тест на несовместимое объявление против того же ребёнка краснеет.
   - Evidence: `Content/TextSystem/UI/Widgets/WBP_SceneView.uasset`, `Source/GV2/Public/UI/GV2LocationCompositeWidgetBases.h`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-03):** `WBP_SceneView` перепривязан (`unreal-mcp` `set_parent`) с `UGV2LocationSceneWidgetBase` на `UGV2DeclaredCompositeWidgetBase`; его Designer-дерево (`SceneContextText`/`Background`/`BackgroundTile`/`CharacterRepeater`, все реальные production-виджеты) не тронуто — реордер класса не трогает `WidgetTree`. `DeclaredCapabilities` заданы пятью записями и на CDO, и (тот же живой дефект instance-vs-CDO, что DUC-08 нашёл для TopBar) на самом instance `Scene` внутри `WBP_LocationScreen`: `background_tile_resource_id → BackgroundTile: ResourceRef (optional)`, `background_resource_id → Background: ResourceRef (optional)`, `context_text → SceneContextText: Text (optional)`, `characters → CharacterRepeater: CollectionHost (optional, EntryWidgetClass=WBP_Icon, key)`, `key → (self): Key`. Все пять помечены `bOptional=true` (кроме `key`) для параметрической эквивалентности прежним `!= nullptr`/`HasUsableCharacterRepeaterHost()` guard'ам в удалённом C++.
+
+    `UGV2LocationSceneWidgetBase` полностью удалён из `GV2LocationCompositeWidgetBases.h`/`.cpp` (класс, `DescribeUiCapabilities`, `NativePreConstruct`, `ResolveCharacterRepeater`, `HasUsableCharacterRepeaterHost`, `GetCharacterWidgetClass`). Ветка `Cast<UGV2LocationSceneWidgetBase>` в `GV2UiMutationPlan.cpp`'s target-resolution мостике удалена (частичный прогресс к `DCA-08` — гарантирован компилятором для этого класса, PlayerStatus/CommandPanel остаются). Все тестовые usages (`GV2PropertyConsumersTests.cpp` §13c, `GV2RuntimeSubsystemTests.cpp` — allowlist аудита, `RhStartOpensLocationScreen`, viewport matrix test, `LocationScreenTransitionContract`, CCF-06/07/11 фикстуры) переведены на generic-класс: сопоставление по `HostIdentity == "scene"` вместо `Cast` на конкретный класс, `GetWidgetFromName` вместо BindWidget-reflection. Два теста, чей предмет структурно исчез вместе с классом (DCA-03's "SceneWidget without character widget class" — generic-класс не имеет per-class `Resolve*WidgetClass` для отсутствия отката; PCC-12's "Scene eager internal repeater construction" — generic-класс не создаёт transient-объекты вовсе, чистота гарантирована конструкцией, не lifecycle-инвариантом), удалены с explanatory-комментарием, а не молча.
+
+    Red→green на реальном контенте (по образцу DUC-08): временная очистка `DeclaredCapabilities` на instance `Scene` внутри `WBP_LocationScreen` (без сохранения на диск) уронила `GV2.Runtime.Presentation.RhStartOpensLocationScreen` с `core:diagnostic.ui_capability.unknown_schema_property: Schema property 'background_tile_resource_id' is not supported by widget capabilities`; восстановление — снова чисто, подтверждено live через `AutomationTestToolset.RunTests`.
+
+    Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) 101/101 без единого фейла — включая сквозные `RhStartOpensLocationScreen`, `LocationScreenViewportMatrix`, `LocationScreenTransitionContract`, `CapabilityObservabilityCompositeSweep`/`Harness` на реальном мигрированном `WBP_SceneView`/`WBP_LocationScreen`.
 
 - [ ] **DCA-06 — PlayerStatus переведён на объявление**
   - Зависимости: DCA-01, DCA-02, DCA-03.

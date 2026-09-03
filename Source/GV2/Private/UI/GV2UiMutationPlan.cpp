@@ -206,13 +206,6 @@ bool PrepareUiHostProperties(
                             TargetWidget = PlayerStatus->GetEffectRepeater();
                         }
                     }
-                    else if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(HostWidget))
-                    {
-                        if (Cap.TargetName == TEXT("CharacterRepeater") || Cap.TargetName == TEXT("CharacterContainer"))
-                        {
-                            TargetWidget = Scene->GetCharacterRepeater();
-                        }
-                    }
                     else if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(HostWidget))
                     {
                         if (Cap.TargetName == TEXT("ButtonRepeater") || Cap.TargetName == TEXT("ButtonContainer"))

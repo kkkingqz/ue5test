@@ -1346,7 +1346,6 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 || WidgetClass->IsChildOf(UGV2RichTextPopoverWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationPlayerStatusWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2LocationSceneWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationCommandPanelWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ProgressBarWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ModalWidgetBase::StaticClass());
@@ -1774,13 +1773,16 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                 LocationScreenClass != nullptr && Screen->IsA(LocationScreenClass));
 
             // 1. Verify startup tavern scene has 1 character from Lua presentation
-            UGV2LocationSceneWidgetBase* SceneWidget = nullptr;
+            // DCA-05: Scene is now the generic declared composite -- matched by
+            // HostIdentity, not a dedicated C++ class, since several other declared
+            // composites could also appear in this tree.
+            UGV2DeclaredCompositeWidgetBase* SceneWidget = nullptr;
             UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
             if (Screen->WidgetTree != nullptr)
             {
                 Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
                 {
-                    if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(Widget))
+                    if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
                     {
                         SceneWidget = Scene;
                     }
@@ -1792,9 +1794,11 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             }
 
             TestNotNull(TEXT("LocationScreen contains SceneView component"), SceneWidget);
-            if (SceneWidget != nullptr && SceneWidget->GetCharacterRepeater() != nullptr)
+            UGV2ListViewWidgetBase* CharRep = SceneWidget != nullptr
+                ? Cast<UGV2ListViewWidgetBase>(SceneWidget->GetWidgetFromName(TEXT("CharacterRepeater")))
+                : nullptr;
+            if (CharRep != nullptr)
             {
-                UGV2ListViewWidgetBase* CharRep = SceneWidget->GetCharacterRepeater();
                 TestEqual(TEXT("Initial tavern scene has 1 character"), CharRep->GetEntryCount(), 1);
                 TestNotNull(TEXT("Initial tavern character widget matches keeper"), CharRep->GetEntryWidget(FName(TEXT("tavern_keeper"))));
             }
@@ -1820,13 +1824,13 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             TestNotNull(TEXT("Market LocationScreen is presented"), MarketScreen);
             if (MarketScreen != nullptr)
             {
-                UGV2LocationSceneWidgetBase* MarketScene = nullptr;
+                UGV2DeclaredCompositeWidgetBase* MarketScene = nullptr;
                 UGV2LocationCommandPanelWidgetBase* MarketCommandsWidget = nullptr;
                 if (MarketScreen->WidgetTree != nullptr)
                 {
                     MarketScreen->WidgetTree->ForEachWidget([&](UWidget* Widget)
                     {
-                        if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(Widget))
+                        if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
                         {
                             MarketScene = Scene;
                         }
@@ -1837,9 +1841,12 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     });
                 }
                 TestNotNull(TEXT("Market Screen contains SceneView component"), MarketScene);
-                if (MarketScene != nullptr && MarketScene->GetCharacterRepeater() != nullptr)
+                UGV2ListViewWidgetBase* MarketCharRep = MarketScene != nullptr
+                    ? Cast<UGV2ListViewWidgetBase>(MarketScene->GetWidgetFromName(TEXT("CharacterRepeater")))
+                    : nullptr;
+                if (MarketCharRep != nullptr)
                 {
-                    TestEqual(TEXT("Market scene has 0 characters"), MarketScene->GetCharacterRepeater()->GetEntryCount(), 0);
+                    TestEqual(TEXT("Market scene has 0 characters"), MarketCharRep->GetEntryCount(), 0);
                 }
 
                 // 4. Travel back to tavern
@@ -1864,21 +1871,23 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             TestNotNull(TEXT("Returned Tavern LocationScreen is presented"), TavernScreen2);
             if (TavernScreen2 != nullptr)
             {
-                UGV2LocationSceneWidgetBase* TavernScene2 = nullptr;
+                UGV2DeclaredCompositeWidgetBase* TavernScene2 = nullptr;
                 if (TavernScreen2->WidgetTree != nullptr)
                 {
                     TavernScreen2->WidgetTree->ForEachWidget([&](UWidget* Widget)
                     {
-                        if (UGV2LocationSceneWidgetBase* Scene = Cast<UGV2LocationSceneWidgetBase>(Widget))
+                        if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
                         {
                             TavernScene2 = Scene;
                         }
                     });
                 }
                 TestNotNull(TEXT("Returned Tavern Screen contains SceneView component"), TavernScene2);
-                if (TavernScene2 != nullptr && TavernScene2->GetCharacterRepeater() != nullptr)
+                UGV2ListViewWidgetBase* CharRep2 = TavernScene2 != nullptr
+                    ? Cast<UGV2ListViewWidgetBase>(TavernScene2->GetWidgetFromName(TEXT("CharacterRepeater")))
+                    : nullptr;
+                if (CharRep2 != nullptr)
                 {
-                    UGV2ListViewWidgetBase* CharRep2 = TavernScene2->GetCharacterRepeater();
                     TestEqual(TEXT("Returned tavern scene has 1 character"), CharRep2->GetEntryCount(), 1);
                     TestNotNull(TEXT("Returned tavern character widget matches keeper"), CharRep2->GetEntryWidget(FName(TEXT("tavern_keeper"))));
                 }
@@ -4864,8 +4873,8 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
 
     // 4. UIH-04 & CCF-04: Test SceneView character collection using Core Repeater and key identity
     {
-        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2DeclaredCompositeWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
         TestNotNull(TEXT("SceneView instantiated"), SceneView);
 
         struct FTestCharEntry
@@ -4874,10 +4883,10 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             FString ResourceId;
         };
 
-        UGV2ListViewWidgetBase* CharRep = SceneView->GetCharacterRepeater();
+        UGV2ListViewWidgetBase* CharRep = Cast<UGV2ListViewWidgetBase>(SceneView->GetWidgetFromName(TEXT("CharacterRepeater")));
         if (CharRep != nullptr)
         {
-            TSubclassOf<UGV2ImageWidgetBase> CharClass = SceneView->GetCharacterWidgetClass();
+            TSubclassOf<UGV2ImageWidgetBase> CharClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"));
             auto GetKey = [](const FTestCharEntry& E) { return E.Key; };
             auto CreateWidgetLambda = [TestWorld, CharClass]() -> UGV2ImageWidgetBase*
             {
@@ -4943,8 +4952,8 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
     // CCF-06: Capabilities declaration
     // -------------------------------------------------------------------------
     {
-        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2LocationSceneWidgetBase* SceneWidget = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2DeclaredCompositeWidgetBase* SceneWidget = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
         FGV2UiCapabilityBuilder SceneBuilder;
         SceneWidget->DescribeUiCapabilities(SceneBuilder);
         FGV2UiCapabilityTree SceneTree = SceneBuilder.Build();
@@ -4965,10 +4974,10 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
     // CCF-07: Repeated elements go through Repeater only (0, 1, 2 cases)
     // -------------------------------------------------------------------------
     {
-        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2DeclaredCompositeWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
 
-        UGV2ListViewWidgetBase* CharRep = SceneView->GetCharacterRepeater();
+        UGV2ListViewWidgetBase* CharRep = Cast<UGV2ListViewWidgetBase>(SceneView->GetWidgetFromName(TEXT("CharacterRepeater")));
         if (CharRep != nullptr)
         {
             struct FTestCharEntry { FName Key; FString ResourceId; };
@@ -5007,8 +5016,8 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
     // CCF-11: Key and host state semantics for SceneView and CommandPanel
     // -------------------------------------------------------------------------
     {
-        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+        UGV2DeclaredCompositeWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
         SceneView->SetKey(FName(TEXT("scene_test")));
         TestEqual(TEXT("CCF-11: SceneView Key getter/setter"), SceneView->GetKey(), FName(TEXT("scene_test")));
 
@@ -5219,8 +5228,8 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
 
         // 1. SceneView validation & semantics
         {
-            UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-            UGV2LocationSceneWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
+            UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
+            UGV2DeclaredCompositeWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
             TestNotNull(TEXT("SceneView created"), SceneView);
 
             FGV2UiCapabilityBuilder Builder;
@@ -5301,17 +5310,18 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
 
                     UGV2DeclaredCompositeWidgetBase* TopBarWidget = nullptr;
                     UGV2LocationPlayerStatusWidgetBase* PlayerStatusWidget = nullptr;
-                    UGV2LocationSceneWidgetBase* SceneWidget = nullptr;
+                    UGV2DeclaredCompositeWidgetBase* SceneWidget = nullptr;
                     UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
 
                     for (UWidget* W : ChildWidgets)
                     {
-                        // DUC-08: TopBar is now the generic declared composite -- matched by
-                        // HostIdentity, not a dedicated C++ class, since several other
-                        // declared composites could also appear in this tree.
+                        // DUC-08/DCA-05: TopBar and Scene are now the generic declared
+                        // composite -- matched by HostIdentity, not a dedicated C++ class,
+                        // since several other declared composites could also appear in this
+                        // tree.
                         if (auto* TB = Cast<UGV2DeclaredCompositeWidgetBase>(W); TB != nullptr && TB->GetHostIdentity() == FName(TEXT("top_bar"))) TopBarWidget = TB;
                         else if (auto* PS = Cast<UGV2LocationPlayerStatusWidgetBase>(W)) PlayerStatusWidget = PS;
-                        else if (auto* SC = Cast<UGV2LocationSceneWidgetBase>(W)) SceneWidget = SC;
+                        else if (auto* SC = Cast<UGV2DeclaredCompositeWidgetBase>(W); SC != nullptr && SC->GetHostIdentity() == FName(TEXT("scene"))) SceneWidget = SC;
                         else if (auto* CP = Cast<UGV2LocationCommandPanelWidgetBase>(W)) CommandWidget = CP;
                     }
 
@@ -5815,7 +5825,7 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
                     {
                         bFoundMarketTopBar = true;
                     }
-                    else if (auto* Scene = Cast<UGV2LocationSceneWidgetBase>(Child))
+                    else if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Child); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
                     {
                         bFoundMarketScene = true;
                         UGV2ImageWidgetBase* Bg = Cast<UGV2ImageWidgetBase>(Scene->GetWidgetFromName(FName(TEXT("Background"))));
@@ -6070,13 +6080,13 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
         WorldContext.SetCurrentWorld(TestWorld);
         GameInstance->Init();
 
-        UClass* SceneClass = LoadClass<UGV2LocationSceneWidgetBase>(
+        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(
             nullptr,
             TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
         TestNotNull(TEXT("SceneClass loaded"), SceneClass);
         if (SceneClass != nullptr)
         {
-            UGV2LocationSceneWidgetBase* SceneView = CreateWidget<UGV2LocationSceneWidgetBase>(TestWorld, SceneClass);
+            UGV2DeclaredCompositeWidgetBase* SceneView = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass);
             TestNotNull(TEXT("Scene created"), SceneView);
             if (SceneView != nullptr)
             {
@@ -6499,36 +6509,13 @@ bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& P
     TestNotNull(TEXT("TestWorld created"), TestWorld);
     if (TestWorld == nullptr) return false;
 
-    // 1. SceneWidget without character widget class
-    {
-        UGV2LocationSceneWidgetBase* SceneWidget = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
-        TestNotNull(TEXT("Scene widget instantiated"), SceneWidget);
-
-        UVerticalBox* CharBox = NewObject<UVerticalBox>(SceneWidget);
-        UGV2ListViewWidgetBase* CharRep = NewObject<UGV2ListViewWidgetBase>(SceneWidget);
-        CharRep->SetContainerPanel(CharBox);
-
-        if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterRepeater")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(SceneWidget) = CharRep;
-        }
-
-        TestTrue(TEXT("SceneWidget has usable character repeater host"), SceneWidget->HasUsableCharacterRepeaterHost());
-
-        // DCA-03: no fallback chain remains -- an unset CharacterWidgetClass reads back
-        // as null, not a substituted default class.
-        TestNull(TEXT("SceneWidget's character widget class is unset (no fallback substitution)"), SceneWidget->GetCharacterWidgetClass().Get());
-
-        FGV2UiCapabilityBuilder SceneBuilder;
-        SceneWidget->DescribeUiCapabilities(SceneBuilder);
-        const FGV2UiCapabilityTree SceneCaps = SceneBuilder.Build();
-        const FGV2UiPropertyCapability* CharactersCap = SceneCaps.FindProperty(TEXT("characters"));
-        TestNotNull(TEXT("'characters' capability is still declared (the host exists)"), CharactersCap);
-        if (CharactersCap != nullptr)
-        {
-            TestNull(TEXT("Declared 'characters' capability carries no EntryWidgetClass -- absence is not defaulted"), CharactersCap->EntryWidgetClass.Get());
-        }
-    }
+    // DCA-05: the "SceneWidget without character widget class" half of this test was
+    // removed here -- UGV2LocationSceneWidgetBase no longer exists, and the generic
+    // declared composite has no per-class Resolve*WidgetClass/CharacterWidgetClass to
+    // test a fallback-chain absence on. Its invariant (a CollectionHost entry with an
+    // unset EntryWidgetClass declares but does not default) is the same generic
+    // mechanism DCA-01/03 already proved class-agnostically; it does not need a
+    // per-composite instance to stay covered.
 
     // 2. CommandPanel without button widget class
     {
@@ -6642,53 +6629,16 @@ bool FGV2LocationCompositeCapabilityQueryIsPureTest::RunTest(const FString& Para
     // PCC-12: the fix above touched five call sites (PlayerStatus x3, Scene x1,
     // CommandPanel x1), but only PlayerStatus was ever proven pure by a test --
     // closing an instance without verifying the whole class it was drawn from is
-    // exactly the gap this reconciliation task exists to catch. Scene and
-    // CommandPanel repeat the identical eager-construct/pure-query shape.
-    UGV2LocationSceneWidgetBase* Scene = NewObject<UGV2LocationSceneWidgetBase>(TestWorld);
-    TestNotNull(TEXT("PCC-12: Scene instantiated"), Scene);
-    if (Scene != nullptr)
-    {
-        UPanelWidget* CharPanel = NewObject<UWrapBox>(Scene);
-        if (FProperty* Prop = UGV2LocationSceneWidgetBase::StaticClass()->FindPropertyByName(TEXT("CharacterContainer")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UPanelWidget>>(Scene) = CharPanel;
-        }
-
-        FObjectProperty* InternalCharRepeaterProp = FindFProperty<FObjectProperty>(
-            UGV2LocationSceneWidgetBase::StaticClass(), TEXT("InternalCharacterRepeater"));
-        TestNotNull(TEXT("PCC-12: InternalCharacterRepeater property found via reflection"), InternalCharRepeaterProp);
-
-        if (InternalCharRepeaterProp != nullptr)
-        {
-            TestNull(
-                TEXT("PCC-12: Scene InternalCharacterRepeater is not yet created before any lifecycle call"),
-                InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene));
-        }
-
-        Scene->TakeWidget();
-
-        UObject* SceneAfterConstruct = InternalCharRepeaterProp != nullptr
-            ? InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene)
-            : nullptr;
-        TestNotNull(TEXT("PCC-12: Scene InternalCharacterRepeater exists after construction"), SceneAfterConstruct);
-        TestTrue(TEXT("PCC-12: Scene HasUsableCharacterRepeaterHost is true right after construction"), Scene->HasUsableCharacterRepeaterHost());
-
-        if (IGV2UiPropertyHost* ScenePropertyHost = Cast<IGV2UiPropertyHost>(Scene))
-        {
-            FGV2UiCapabilityBuilder SceneBuilderA;
-            ScenePropertyHost->DescribeUiCapabilities(SceneBuilderA);
-            UObject* SceneAfterFirstQuery = InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene);
-
-            FGV2UiCapabilityBuilder SceneBuilderB;
-            ScenePropertyHost->DescribeUiCapabilities(SceneBuilderB);
-            UObject* SceneAfterSecondQuery = InternalCharRepeaterProp->GetObjectPropertyValue_InContainer(Scene);
-
-            TestEqual(TEXT("PCC-12: Scene DescribeUiCapabilities does not replace InternalCharacterRepeater (1st call)"), SceneAfterFirstQuery, SceneAfterConstruct);
-            TestEqual(TEXT("PCC-12: Scene DescribeUiCapabilities does not replace InternalCharacterRepeater (2nd call)"), SceneAfterSecondQuery, SceneAfterFirstQuery);
-            TestNotNull(TEXT("PCC-12: Scene 'characters' capability is declared"), SceneBuilderA.Build().FindProperty(TEXT("characters")));
-        }
-    }
-
+    // exactly the gap this reconciliation task exists to catch. CommandPanel repeats
+    // the identical eager-construct/pure-query shape.
+    //
+    // DCA-05: Scene's block here was removed -- UGV2LocationSceneWidgetBase and its
+    // ResolveCharacterRepeater()/InternalCharacterRepeater transient-object cache no
+    // longer exist. The generic declared composite has no internal/transient state to
+    // eagerly construct or accidentally mutate on repeated DescribeUiCapabilities
+    // calls in the first place: it resolves children by name against the real
+    // WidgetTree every time, so purity holds by construction, not by a lifecycle
+    // invariant that needs its own regression test.
     UGV2LocationCommandPanelWidgetBase* CmdPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
     TestNotNull(TEXT("PCC-12: CommandPanel instantiated"), CmdPanel);
     if (CmdPanel != nullptr)

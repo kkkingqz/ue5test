@@ -115,60 +115,6 @@ void UGV2LocationPlayerStatusWidgetBase::DescribeUiCapabilities(FGV2UiCapability
 }
 
 // ============================================================================
-// SceneView
-// ============================================================================
-bool UGV2LocationSceneWidgetBase::HasUsableCharacterRepeaterHost() const
-{
-    return CharacterRepeater != nullptr || CharacterContainer != nullptr;
-}
-
-UGV2ListViewWidgetBase* UGV2LocationSceneWidgetBase::ResolveCharacterRepeater()
-{
-    if (CharacterRepeater != nullptr) return CharacterRepeater;
-    if (CharacterContainer == nullptr) return nullptr;
-    if (InternalCharacterRepeater == nullptr)
-    {
-        InternalCharacterRepeater = NewObject<UGV2ListViewWidgetBase>(this);
-    }
-    InternalCharacterRepeater->SetContainerPanel(CharacterContainer);
-    return InternalCharacterRepeater;
-}
-
-void UGV2LocationSceneWidgetBase::NativePreConstruct()
-{
-    Super::NativePreConstruct();
-
-    // PCC-09: see UGV2LocationPlayerStatusWidgetBase::NativePreConstruct.
-    ResolveCharacterRepeater();
-}
-
-void UGV2LocationSceneWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
-{
-    if (BackgroundTile != nullptr)
-    {
-        OutBuilder.AddImage(TEXT("background_tile_resource_id"), FName(TEXT("BackgroundTile")), TEXT("resource"));
-    }
-    if (Background != nullptr)
-    {
-        OutBuilder.AddImage(TEXT("background_resource_id"), FName(TEXT("Background")), TEXT("resource"));
-    }
-    if (SceneContextText != nullptr)
-    {
-        OutBuilder.AddText(TEXT("context_text"), FName(TEXT("SceneContextText")));
-    }
-    if (HasUsableCharacterRepeaterHost())
-    {
-        // DCA-03: see PlayerStatus's meters/items/effects above -- same plain-property,
-        // no-fallback shape.
-        FGV2UiPropertyCapability CharCap;
-        CharCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
-        CharCap.EntryWidgetClass = CharacterWidgetClass;
-        OutBuilder.AddKeyedCollection(TEXT("characters"), FName(TEXT("CharacterRepeater")), CharCap, TEXT("key"), CharacterWidgetClass);
-    }
-    OutBuilder.AddKey(TEXT("key"), NAME_None);
-}
-
-// ============================================================================
 // CommandPanel
 // ============================================================================
 void UGV2LocationCommandPanelWidgetBase::NativePreConstruct()
