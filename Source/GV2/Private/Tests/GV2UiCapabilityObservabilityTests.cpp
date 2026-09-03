@@ -28,7 +28,6 @@
 #include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
-#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "Tests/GV2ForgeryTestWidgets.h"

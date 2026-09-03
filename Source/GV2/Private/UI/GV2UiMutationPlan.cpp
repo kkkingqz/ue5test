@@ -1,7 +1,6 @@
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
 #include "UI/GV2UiPropertyHost.h"
-#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2ScreenFieldHost.h"
@@ -187,16 +186,6 @@ bool PrepareUiHostProperties(
                     if (FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(HostWidget->GetClass(), Cap.TargetName))
                     {
                         TargetWidget = Cast<UWidget>(Prop->GetObjectPropertyValue_InContainer(HostWidget));
-                    }
-                }
-                if (TargetWidget == nullptr)
-                {
-                    if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(HostWidget))
-                    {
-                        if (Cap.TargetName == TEXT("ButtonRepeater") || Cap.TargetName == TEXT("ButtonContainer"))
-                        {
-                            TargetWidget = CmdPanel->GetRepeater();
-                        }
                     }
                 }
             }

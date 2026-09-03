@@ -16,7 +16,6 @@
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
-#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
 #include "CommonTextBlock.h"

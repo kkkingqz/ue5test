@@ -1,7 +1,7 @@
 ---
 title: Declared Composite Adoption and Enumerator Hardening Plan
 status: active
-version: 1.8
+version: 1.9
 updated: 2026-09-03
 depends_on:
   - ../Archive/DataDrivenUiComposition.md
@@ -55,7 +55,7 @@ decisions:
 | Что | Сейчас |
 |---|---|
 | Хосты коллекций в трёх композитах | Голые `UWrapBox`/`UPanelWidget`; репитер создаётся внутри и отсутствует в `WidgetTree` — **закрыто DCA-02, 2026-09-03** |
-| `GV2UiMutationPlan.cpp` | Хардкод одного `Cast` по классу локации (`CommandPanel`) с перечислением имён контейнеров; ветки `Scene`/`PlayerStatus` удалены компилятором — **частично закрыто DCA-06, 2026-09-03** |
+| `GV2UiMutationPlan.cpp` | Ни одного `Cast` по классу локации не осталось (все три ветки удалены компилятором вместе с классами); сама conditional-структура и обобщающий гейт против будущих Cast — **закрыто удалением классов DCA-05…07, 2026-09-03; структура и гейт остаются за DCA-08** |
 | Запись объявления | Не имеет признака необязательности; композиты объявляют capability условно, `if (Target != nullptr)` — **закрыто DCA-01, 2026-09-03** |
 | `Resolve*WidgetClass` | Удалены (все шесть); трёхступенчатый откат снят — **закрыто DCA-03, 2026-09-03** |
 | `OnBindingInvoked` у `CommandPanel` | Удалён вместе с делегатом `FGV2LocationCommandBindingInvoked` — **закрыто DCA-04, 2026-09-03** |
@@ -90,7 +90,7 @@ decisions:
 ```text
 DCA-01✔, DCA-02✔, DCA-03✔, DCA-04✔   — независимы друг от друга
 
-           └──────► DCA-05✔, DCA-06✔, DCA-07 ──────► DCA-08 ──────► DCA-09…11 ──► DCA-12
+           └──────► DCA-05✔, DCA-06✔, DCA-07✔ ──────► DCA-08 ──────► DCA-09…11 ──► DCA-12
 
 DCA-05…07 переставляются между собой
 
@@ -124,7 +124,7 @@ M4 (DCA-13…17) и M5 (DCA-18…21) не зависят от M1…M3 и пер�
 - [x] Ни один композит локации не создаёт репитер вне `WidgetTree`. (DCA-02)
 - [x] Класс элемента каждой коллекции задан явно; трёхступенчатый откат `Resolve*WidgetClass` удалён; литерала `/Game/` в production-коде не остаётся, и это утверждает гейт. (DCA-03)
 - [x] `OnBindingInvoked`, `StaminaMeter` и `Character` физически отсутствуют. (DCA-04)
-- [ ] `UGV2LocationSceneWidgetBase`, `UGV2LocationPlayerStatusWidgetBase` и `UGV2LocationCommandPanelWidgetBase` удалены из исходников. (DCA-05…07)
+- [x] `UGV2LocationSceneWidgetBase`, `UGV2LocationPlayerStatusWidgetBase` и `UGV2LocationCommandPanelWidgetBase` удалены из исходников. (DCA-05…07, 2026-09-03)
 - [ ] Хардкод `Cast` по классам локации в `GV2UiMutationPlan.cpp` удалён; для трёх удалённых классов возврат невозможен по построению — типов не существует, — а для будущих его не даёт гейт с перечислителем по интерфейсу хоста. (DCA-08)
 - [ ] Экран локации работает без изменения поведения, проверено сквозным прогоном от Lua до наблюдаемого состояния виджетов. (DCA-05…08)
 - [ ] Существуют три новых композита — `npc_portrait`, `location_description`, `inventory_tabs` — собранные из существующих компонентов. (DCA-09…11)

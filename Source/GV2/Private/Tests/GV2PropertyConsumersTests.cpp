@@ -19,7 +19,6 @@
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2DeclaredCompositeWidgetBase.h"
-#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
@@ -1561,7 +1560,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestFalse(TEXT("Tab with unregistered screen_id rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnregScreenTabs)), *TabsCap, TabContainer, PrepErr));
         }
 
-        // 13. UPP-24: TopBar, PlayerStatus and Scene (DUC-08/DCA-05/DCA-06: generic declared composite) as IGV2UiPropertyHost
+        // 13. UPP-24: TopBar, PlayerStatus, Scene and CommandPanel (DUC-08/DCA-05/06/07: generic declared composite) as IGV2UiPropertyHost
         {
             auto MakeScalarSpec = [](const GV2ContentCore::EScalarFieldKind Kind,
                                      const TOptional<double> Min = {},
@@ -2182,28 +2181,36 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TestEqual(TEXT("Scene Key cleared on reset"), SceneWidget->GetKey(), NAME_None);
             }
 
-            // 13d. LocationCommandPanel Property Host Reconciliation
+            // 13d. LocationCommandPanel (DCA-07: generic declared composite) Property Host Reconciliation
             {
-                UGV2LocationCommandPanelWidgetBase* CmdPanel = CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, UGV2LocationCommandPanelWidgetBase::StaticClass());
+                UGV2DeclaredCompositeWidgetBase* CmdPanel = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, UGV2DeclaredCompositeWidgetBase::StaticClass());
                 TestNotNull(TEXT("CmdPanel instantiated"), CmdPanel);
 
-                UGV2ListViewWidgetBase* BtnRep = NewObject<UGV2ListViewWidgetBase>(CmdPanel);
-                UWrapBox* WrapBox = NewObject<UWrapBox>(CmdPanel);
-                BtnRep->SetContainerPanel(WrapBox);
+                // DescribeUiCapabilities resolves children via GetWidgetFromName against
+                // CmdPanel's own WidgetTree -- not reflection-set BindWidget pointers, as
+                // the deleted UGV2LocationCommandPanelWidgetBase used. See DUC-08/DCA-05/06.
+                CmdPanel->WidgetTree = NewObject<UWidgetTree>(CmdPanel);
+                UVerticalBox* CmdRoot = CmdPanel->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+                CmdPanel->WidgetTree->RootWidget = CmdRoot;
 
-                if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonRepeater")))
+                UGV2ListViewWidgetBase* BtnRep = CmdPanel->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(UGV2ListViewWidgetBase::StaticClass(), TEXT("ButtonRepeater"));
+                UWrapBox* WrapBox = CmdPanel->WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("ButtonBox"));
+                BtnRep->SetContainerPanel(WrapBox);
+                CmdRoot->AddChildToVerticalBox(BtnRep);
+
+                // The real WBP_Button (not the bare native class) is required: Prepare
+                // resolves "text" against the entry's bound LabelText.
+                UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
                 {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(CmdPanel) = BtnRep;
+                    FGV2DeclaredUiCapability ItemsCap;
+                    ItemsCap.PropertyName = FName(TEXT("items"));
+                    ItemsCap.ChildWidgetName = FName(TEXT("ButtonRepeater"));
+                    ItemsCap.Kind = EGV2DeclaredUiCapabilityKind::CollectionHost;
+                    ItemsCap.EntryWidgetClass = RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
+                    ItemsCap.KeyPropertyName = TEXT("key");
+                    CmdPanel->DeclaredCapabilities.Add(ItemsCap);
                 }
-                // DCA-03: ButtonWidgetClass has no fallback -- a bare instance needs one
-                // set. The real WBP_Button (not the bare native class) is required:
-                // Prepare resolves "text" against the entry's bound LabelText.
-                if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
-                {
-                    UClass* RealButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
-                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(CmdPanel) =
-                        RealButtonClass != nullptr ? RealButtonClass : UGV2ButtonWidgetBase::StaticClass();
-                }
+                CmdPanel->DeclaredCapabilities.Add({ FName(TEXT("key")), NAME_None, EGV2DeclaredUiCapabilityKind::Key });
 
                 FGV2UiCapabilityBuilder CmdBuilder;
                 CmdPanel->DescribeUiCapabilities(CmdBuilder);

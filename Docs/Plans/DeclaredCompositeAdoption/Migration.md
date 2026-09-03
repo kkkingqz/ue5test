@@ -1,7 +1,7 @@
 ---
 title: Migration Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-03
 depends_on:
   - README.md
@@ -69,7 +69,7 @@ depends_on:
 
     Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) 101/101 без единого фейла — включая сквозные `RhStartOpensLocationScreen`, `LocationScreenViewportMatrix`, `LocationScreenTransitionContract` на реальном мигрированном `WBP_PlayerStatusPanel`/`WBP_LocationScreen`.
 
-- [ ] **DCA-07 — CommandPanel переведён на объявление**
+- [x] **DCA-07 — CommandPanel переведён на объявление**
   - Зависимости: DCA-01, DCA-02, DCA-03, DCA-04.
   - После удаления мёртвого `OnBindingInvoked` у композита остаются одна `CollectionHost` (кнопки) и идентичность.
   - Инвариант: тот же. Дополнительно проверяется, что удаление мёртвого `OnBindingInvoked` в `DCA-04` не задело работающий путь семантического binding кнопок.
@@ -79,11 +79,22 @@ depends_on:
     - `UGV2LocationCommandPanelWidgetBase` удалён;
     - кнопки локации применяются, семантический binding каждой доходит до реестра и остаётся отклоняемым для устаревшего handle;
     - отказ подготовки текста любой кнопки по-прежнему отказывает всю коллекцию.
-  - Evidence: `Content/TextSystem/UI/Widgets/WBP_CommandPanel.uasset`, `Source/GV2/Public/UI/GV2LocationCompositeWidgetBases.h`.
+  - Evidence: `Content/TextSystem/UI/Widgets/WBP_CommandPanel.uasset`, `Source/GV2/Private/UI/GV2UiMutationPlan.cpp`.
+  - **Реализация (2026-09-03):** `WBP_CommandPanel` перепривязан (`unreal-mcp` `set_parent`) с `UGV2LocationCommandPanelWidgetBase` на `UGV2DeclaredCompositeWidgetBase`; его Designer-дерево (`ButtonRepeater`, реальный `WBP_ListView_WrapButtons`) не тронуто — DCA-02 уже сделало его именованным ребёнком `WidgetTree`, так что `ButtonRepeater`/`ButtonContainer`-специфичная ветка в `GV2UiMutationPlan.cpp`'s target-resolution мостике оказалась мёртвой ещё до этой задачи и просто удалена, без замены. `DeclaredCapabilities` заданы двумя записями и на CDO, и на самом instance `Commands` внутри `WBP_LocationScreen`: `items → ButtonRepeater: CollectionHost (optional, EntryWidgetClass=WBP_Button, key)`, `key → (self): Key`.
+
+    `UGV2LocationCommandPanelWidgetBase` был последним классом в `GV2LocationCompositeWidgetBases.h`/`.cpp` — после его удаления файлы не содержали ничего, кроме мёртвых include'ов, поэтому пара файлов удалена целиком (не оставлена пустой), а `#include "UI/GV2LocationCompositeWidgetBases.h"` снят из шести файлов, которые его больше не используют. Это расширяет DCA-05/06's практику точечного редактирования: там сокращаемый файл ещё не опустел. Ветка `Cast<UGV2LocationCommandPanelWidgetBase>` в `GV2UiMutationPlan.cpp`'s target-resolution мостике удалена — это была последняя из трёх, мостик теперь содержит только общий путь по `GetWidgetFromName`/reflection-fallback (DCA-08 удалит саму структуру, не ветки).
+
+    Все тестовые usages (`GV2PropertyConsumersTests.cpp` §13d, `GV2RuntimeSubsystemTests.cpp` — allowlist аудита, `RhStartOpensLocationScreen`, viewport matrix test, `LocationScreenTransitionContract`, `CoreRepeaterContract`, `ScreenPreflightPredictsDeepChildFailure`) переведены на generic-класс: сопоставление по `HostIdentity == "commands"` вместо `Cast` на конкретный класс, `GetWidgetFromName` вместо `GetRepeater()`/BindWidget-reflection. Два теста, чей предмет структурно исчез вместе с классом (`LocationCompositeUnresolvedClassRejection`'s CommandPanel half — тот же generic "EntryWidgetClass не дефолтится" инвариант, уже доказанный class-agnostically DCA-01/03; PCC-12's CommandPanel half — generic-класс не создаёт transient-объекты вовсе), были **удалены целиком, а не оставлены пустой оболочкой**: после DCA-05/06 уже убрали половины Scene/PlayerStatus, CommandPanel был последним реальным содержимым в обоих тестах — заглушка, создающая и уничтожающая `UWorld` без единой проверки, прошла бы всегда, обещая своим именем покрытие, которого больше нет.
+
+    Существующие проверки семантического binding кнопок (`B1 text committed`, `B1 binding handle valid`, `отказ CmdPanel Prepare fails on invalid text kind` отклоняет всю коллекцию) сохранены без изменений — DCA-07's дополнительное требование ("удаление мёртвого `OnBindingInvoked` в `DCA-04` не задело работающий путь семантического binding") подтверждено тем, что эти тесты продолжают проходить после миграции.
+
+    Red→green на реальном контенте (по образцу DUC-08/DCA-05/06): временная очистка `DeclaredCapabilities` на instance `Commands` внутри `WBP_LocationScreen` (без сохранения на диск) уронила `GV2.Runtime.Presentation.RhStartOpensLocationScreen` с `core:diagnostic.ui_capability.unknown_schema_property: Schema property 'items' is not supported by widget capabilities`; восстановление — снова чисто, подтверждено live через `AutomationTestToolset.RunTests`.
+
+    Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) 99/99 без единого фейла (101 минус два удалённых пустых теста) — включая сквозные `RhStartOpensLocationScreen`, `LocationScreenViewportMatrix`, `LocationScreenTransitionContract`, `ScreenPreflightPredictsDeepChildFailure` на реальном мигрированном `WBP_CommandPanel`/`WBP_LocationScreen`.
 
 - [ ] **DCA-08 — Специальный путь под конкретный виджет удалён и не может вернуться**
   - Зависимости: DCA-05, DCA-06, DCA-07.
-  - `GV2UiMutationPlan.cpp` содержит три `Cast` по конкретным классам локации с перечислением имён контейнеров — путь разрешения цели, существующий только ради того, что нынешние ассеты держат репитер вне `WidgetTree`.
+  - Исходно `GV2UiMutationPlan.cpp` содержал три `Cast` по конкретным классам локации с перечислением имён контейнеров — путь разрешения цели, существующий только ради того, что нынешние ассеты держали репитер вне `WidgetTree`. `DCA-05…07` удалили все три ветки вместе с классами, которые они называли (компилятор гарантировал это для каждой при удалении класса) — сама conditional-структура вокруг них, генерический reflection-fallback (`FindFProperty<FObjectPropertyBase>`, не привязанный к конкретному классу) и задача формально закрыть возможность нового Cast-по-классу остаются целью `DCA-08`.
   - Инвариант: общий путь разрешения цели знает интерфейсы, а не конкретные классы виджетов. Это главный измеримый результат плана: пока мостик существует, утверждение «модель покрывает любой композит» имеет живое исключение.
   - Гарантия для трёх названных классов даётся **компилятором, а не гейтом**: `DCA-05…07` удаляют `UGV2LocationSceneWidgetBase`, `UGV2LocationPlayerStatusWidgetBase` и `UGV2LocationCommandPanelWidgetBase`, после чего `Cast` к ним не компилируется. Компилятор перечисляет все точки использования сам, и обойти его переносом кода или сборкой имени по частям нельзя. Отдельный скан на эти три имени избыточен и не нужен.
   - Гейт охраняет **общий образец** — будущий `Cast` к конкретному классу виджета в разрешении цели, где типы существуют и компилятор не помогает. Его множество: классы, реализующие `IGV2ScreenFieldHost` или `IGV2UiPropertyHost`, — перечисляется по интерфейсу, поэтому новый хост попадает под правило автоматически, а не после ручного дополнения списка.

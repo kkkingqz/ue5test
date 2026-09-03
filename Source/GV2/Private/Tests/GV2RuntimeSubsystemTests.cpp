@@ -42,7 +42,6 @@
 #include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2DeclaredCompositeWidgetBase.h"
-#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "UI/GV2UiMutationPlan.h"
@@ -1345,7 +1344,6 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 || WidgetClass->IsChildOf(UGV2RichTextWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2RichTextPopoverWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2LocationCommandPanelWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ProgressBarWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ModalWidgetBase::StaticClass());
             TestTrue(
@@ -1776,7 +1774,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             // HostIdentity, not a dedicated C++ class, since several other declared
             // composites could also appear in this tree.
             UGV2DeclaredCompositeWidgetBase* SceneWidget = nullptr;
-            UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
+            UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
             if (Screen->WidgetTree != nullptr)
             {
                 Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
@@ -1785,7 +1783,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     {
                         SceneWidget = Scene;
                     }
-                    else if (UGV2LocationCommandPanelWidgetBase* Cmd = Cast<UGV2LocationCommandPanelWidgetBase>(Widget))
+                    else if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
                     {
                         CommandWidget = Cmd;
                     }
@@ -1804,9 +1802,11 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
 
             // 2. Find travel button to market in CommandPanel and submit interaction
             TestNotNull(TEXT("LocationScreen contains CommandPanel component"), CommandWidget);
-            if (CommandWidget != nullptr && CommandWidget->GetRepeater() != nullptr)
+            UGV2ListViewWidgetBase* CmdRep = CommandWidget != nullptr
+                ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
+                : nullptr;
+            if (CmdRep != nullptr)
             {
-                UGV2ListViewWidgetBase* CmdRep = CommandWidget->GetRepeater();
                 UGV2ButtonWidgetBase* TravelMarketBtn = Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))));
                 TestNotNull(TEXT("Travel to market button found in tavern CommandPanel"), TravelMarketBtn);
                 if (TravelMarketBtn != nullptr)
@@ -1824,7 +1824,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             if (MarketScreen != nullptr)
             {
                 UGV2DeclaredCompositeWidgetBase* MarketScene = nullptr;
-                UGV2LocationCommandPanelWidgetBase* MarketCommandsWidget = nullptr;
+                UGV2DeclaredCompositeWidgetBase* MarketCommandsWidget = nullptr;
                 if (MarketScreen->WidgetTree != nullptr)
                 {
                     MarketScreen->WidgetTree->ForEachWidget([&](UWidget* Widget)
@@ -1833,7 +1833,7 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                         {
                             MarketScene = Scene;
                         }
-                        else if (UGV2LocationCommandPanelWidgetBase* Cmd = Cast<UGV2LocationCommandPanelWidgetBase>(Widget))
+                        else if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
                         {
                             MarketCommandsWidget = Cmd;
                         }
@@ -1850,9 +1850,11 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
 
                 // 4. Travel back to tavern
                 TestNotNull(TEXT("Market Screen contains CommandPanel component"), MarketCommandsWidget);
-                if (MarketCommandsWidget != nullptr && MarketCommandsWidget->GetRepeater() != nullptr)
+                UGV2ListViewWidgetBase* MarketCmdRep = MarketCommandsWidget != nullptr
+                    ? Cast<UGV2ListViewWidgetBase>(MarketCommandsWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
+                    : nullptr;
+                if (MarketCmdRep != nullptr)
                 {
-                    UGV2ListViewWidgetBase* MarketCmdRep = MarketCommandsWidget->GetRepeater();
                     UGV2ButtonWidgetBase* TravelTavernBtn = Cast<UGV2ButtonWidgetBase>(MarketCmdRep->GetEntryWidget(FName(TEXT("travel_city_tavern"))));
                     TestNotNull(TEXT("Travel to tavern button found in market CommandPanel"), TravelTavernBtn);
                     if (TravelTavernBtn != nullptr)
@@ -4701,9 +4703,10 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             FGV2UiBindingHandle Binding;
         };
 
-        UClass* CommandClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
-        UGV2LocationCommandPanelWidgetBase* CmdPanel = CommandClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+        UClass* CommandClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+        UGV2DeclaredCompositeWidgetBase* CmdPanel = CommandClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
         TestNotNull(TEXT("CmdPanel instantiated"), CmdPanel);
+        UClass* TestButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
 
         FTestButtonModel BtnA;
         BtnA.Key = FName(TEXT("btn_a"));
@@ -4720,15 +4723,14 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         BtnC.Text.Text = FText::FromString(TEXT("Action C"));
         BtnC.Binding = FGV2UiBindingHandle::Create(TEXT("binding_c"));
 
-        UGV2ListViewWidgetBase* Repeater = CmdPanel->GetRepeater();
+        UGV2ListViewWidgetBase* Repeater = Cast<UGV2ListViewWidgetBase>(CmdPanel->GetWidgetFromName(TEXT("ButtonRepeater")));
         TestNotNull(TEXT("CommandPanel has active Repeater"), Repeater);
         if (Repeater != nullptr)
         {
             auto GetKey = [](const FTestButtonModel& B) { return B.Key; };
-            auto CreateWidgetLambda = [TestWorld, CmdPanel]() -> UGV2ButtonWidgetBase*
+            auto CreateWidgetLambda = [TestWorld, TestButtonClass]() -> UGV2ButtonWidgetBase*
             {
-                TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CmdPanel->GetButtonWidgetClass();
-                return BtnClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, BtnClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
+                return TestButtonClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, TestButtonClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
             };
             auto ApplyLambda = [](UGV2ButtonWidgetBase& Widget, const FTestButtonModel& Model)
             {
@@ -4960,8 +4962,8 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
         TestNotNull(TEXT("CCF-06: Scene context_text declared"), SceneTree.FindProperty(TEXT("context_text")));
         TestNotNull(TEXT("CCF-06: Scene characters declared"), SceneTree.FindProperty(TEXT("characters")));
 
-        UClass* CmdClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
-        UGV2LocationCommandPanelWidgetBase* CmdWidget = CmdClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+        UClass* CmdClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+        UGV2DeclaredCompositeWidgetBase* CmdWidget = CmdClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
         FGV2UiCapabilityBuilder CmdBuilder;
         CmdWidget->DescribeUiCapabilities(CmdBuilder);
         FGV2UiCapabilityTree CmdTree = CmdBuilder.Build();
@@ -5020,8 +5022,8 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
         SceneView->SetKey(FName(TEXT("scene_test")));
         TestEqual(TEXT("CCF-11: SceneView Key getter/setter"), SceneView->GetKey(), FName(TEXT("scene_test")));
 
-        UClass* CmdClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
-        UGV2LocationCommandPanelWidgetBase* CmdPanel = CmdClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+        UClass* CmdClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+        UGV2DeclaredCompositeWidgetBase* CmdPanel = CmdClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
         CmdPanel->SetKey(FName(TEXT("cmd_test")));
         TestEqual(TEXT("CCF-11: CommandPanel Key getter/setter"), CmdPanel->GetKey(), FName(TEXT("cmd_test")));
     }
@@ -5243,8 +5245,8 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
 
         // 4. CommandPanel validation & semantics
         {
-            UClass* CommandClass = LoadClass<UGV2LocationCommandPanelWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
-            UGV2LocationCommandPanelWidgetBase* CommandPanel = CommandClass ? CreateWidget<UGV2LocationCommandPanelWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
+            UClass* CommandClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
+            UGV2DeclaredCompositeWidgetBase* CommandPanel = CommandClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
             TestNotNull(TEXT("CommandPanel created"), CommandPanel);
 
             FGV2UiCapabilityBuilder Builder;
@@ -5310,18 +5312,18 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                     UGV2DeclaredCompositeWidgetBase* TopBarWidget = nullptr;
                     UGV2DeclaredCompositeWidgetBase* PlayerStatusWidget = nullptr;
                     UGV2DeclaredCompositeWidgetBase* SceneWidget = nullptr;
-                    UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
+                    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
 
                     for (UWidget* W : ChildWidgets)
                     {
-                        // DUC-08/DCA-05/DCA-06: TopBar, Scene and PlayerStatus are now the
-                        // generic declared composite -- matched by HostIdentity, not a
-                        // dedicated C++ class, since several other declared composites
-                        // could also appear in this tree.
+                        // DUC-08/DCA-05/DCA-06/DCA-07: TopBar, Scene, PlayerStatus and
+                        // CommandPanel are now the generic declared composite -- matched by
+                        // HostIdentity, not a dedicated C++ class, since several other
+                        // declared composites could also appear in this tree.
                         if (auto* TB = Cast<UGV2DeclaredCompositeWidgetBase>(W); TB != nullptr && TB->GetHostIdentity() == FName(TEXT("top_bar"))) TopBarWidget = TB;
                         else if (auto* PS = Cast<UGV2DeclaredCompositeWidgetBase>(W); PS != nullptr && PS->GetHostIdentity() == FName(TEXT("player_status"))) PlayerStatusWidget = PS;
                         else if (auto* SC = Cast<UGV2DeclaredCompositeWidgetBase>(W); SC != nullptr && SC->GetHostIdentity() == FName(TEXT("scene"))) SceneWidget = SC;
-                        else if (auto* CP = Cast<UGV2LocationCommandPanelWidgetBase>(W)) CommandWidget = CP;
+                        else if (auto* CP = Cast<UGV2DeclaredCompositeWidgetBase>(W); CP != nullptr && CP->GetHostIdentity() == FName(TEXT("commands"))) CommandWidget = CP;
                     }
 
                     TestNotNull(TEXT("TopBar child composite exists"), TopBarWidget);
@@ -5331,7 +5333,7 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
 
                     if (CommandWidget != nullptr)
                     {
-                        if (UGV2ListViewWidgetBase* CmdRep = CommandWidget->GetRepeater())
+                        if (UGV2ListViewWidgetBase* CmdRep = Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater"))))
                         {
                             struct FTestCmdEntry { FName Key; FText Text; };
                             TArray<FTestCmdEntry> TestButtons;
@@ -5339,13 +5341,13 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                             {
                                 TestButtons.Add({ *FString::Printf(TEXT("cmd_%d"), Index), FText::FromString(*FString::Printf(TEXT("[LOCALE_TEST] Speak with Master Alchemist about Mysterious Elixir (#%d)"), Index)) });
                             }
+                            UClass* CmdButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
                             CmdRep->ReconcileEntries<UGV2ButtonWidgetBase, FTestCmdEntry>(
                                 TestButtons,
                                 [](const FTestCmdEntry& E) { return E.Key; },
-                                [TestWorld, CommandWidget]() -> UGV2ButtonWidgetBase*
+                                [TestWorld, CmdButtonClass]() -> UGV2ButtonWidgetBase*
                                 {
-                                    TSubclassOf<UGV2ButtonWidgetBase> BtnClass = CommandWidget->GetButtonWidgetClass();
-                                    return BtnClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, BtnClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
+                                    return CmdButtonClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, CmdButtonClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
                                 },
                                 [](UGV2ButtonWidgetBase& Btn, const FTestCmdEntry& Entry)
                                 {
@@ -5451,7 +5453,7 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                 *FString::Printf(TEXT("CCF-16: [%s] CommandPanel allocated size is positive (%f x %f)"), Res.Name, CommandAllocated.X, CommandAllocated.Y),
                                 CommandAllocated.X > 0.0f && CommandAllocated.Y > 0.0f);
 
-                            if (UGV2ListViewWidgetBase* Repeater = CommandWidget->GetRepeater())
+                            if (UGV2ListViewWidgetBase* Repeater = Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater"))))
                             {
                                 TestEqual(
                                     *FString::Printf(TEXT("CCF-17: [%s] All 6 command buttons instantiated in repeater"), Res.Name),
@@ -5780,9 +5782,9 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
 
             for (UWidget* Child : ChildWidgets)
             {
-                if (auto* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(Child))
+                if (auto* CmdPanel = Cast<UGV2DeclaredCompositeWidgetBase>(Child); CmdPanel != nullptr && CmdPanel->GetHostIdentity() == FName(TEXT("commands")))
                 {
-                    if (UGV2ListViewWidgetBase* Repeater = CmdPanel->GetRepeater())
+                    if (UGV2ListViewWidgetBase* Repeater = Cast<UGV2ListViewWidgetBase>(CmdPanel->GetWidgetFromName(TEXT("ButtonRepeater"))))
                     {
                         if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Repeater->GetEntryWidget(FName(TEXT("travel_city_market")))))
                         {
@@ -5836,10 +5838,10 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
                                 MarketBgResId);
                         }
                     }
-                    else if (auto* Cmd = Cast<UGV2LocationCommandPanelWidgetBase>(Child))
+                    else if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Child); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
                     {
                         bFoundMarketCommands = true;
-                        if (UGV2ListViewWidgetBase* Repeater = Cmd->GetRepeater())
+                        if (UGV2ListViewWidgetBase* Repeater = Cast<UGV2ListViewWidgetBase>(Cmd->GetWidgetFromName(TEXT("ButtonRepeater"))))
                         {
                             bTavernTravelButtonPresentInMarket = Repeater->GetEntryWidget(FName(TEXT("travel_city_market"))) != nullptr;
                         }
@@ -5903,25 +5905,38 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     UVerticalBox* Root = Screen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
     Screen->WidgetTree->RootWidget = Root;
 
-    UGV2LocationCommandPanelWidgetBase* CommandPanel = Screen->WidgetTree->ConstructWidget<UGV2LocationCommandPanelWidgetBase>(
-        UGV2LocationCommandPanelWidgetBase::StaticClass(), TEXT("CommandPanel"));
+    UGV2DeclaredCompositeWidgetBase* CommandPanel = Screen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+        UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("CommandPanel"));
     Root->AddChildToVerticalBox(CommandPanel);
-    if (FProperty* ButtonClassProp = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonWidgetClass")))
-    {
-        // The bare native class has no WidgetTree, so its "text" capability's declared
-        // "LabelText" target can never resolve -- DUC-05 made that a deterministic
-        // preflight rejection rather than a silent self-fallback, so this fixture needs
-        // the real WBP_Button (as production and the other tests in this file do).
-        UClass* const ButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
-        *ButtonClassProp->ContainerPtrToValuePtr<TSubclassOf<UGV2ButtonWidgetBase>>(CommandPanel) =
-            ButtonClass != nullptr ? ButtonClass : UGV2ButtonWidgetBase::StaticClass();
-    }
 
-    UWrapBox* ButtonBox = Screen->WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("ButtonBox"));
-    if (FProperty* ContainerProp = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonContainer")))
+    // The bare native button class has no WidgetTree, so its "text" capability's declared
+    // "LabelText" target can never resolve -- DUC-05 made that a deterministic preflight
+    // rejection rather than a silent self-fallback, so this fixture needs the real
+    // WBP_Button (as production and the other tests in this file do).
+    UClass* const ButtonClass = LoadClass<UGV2ButtonWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Button.WBP_Button_C"));
+
+    // DescribeUiCapabilities resolves children via GetWidgetFromName against CommandPanel's
+    // own WidgetTree, not the Screen's -- ButtonRepeater/ButtonBox must live in it.
+    CommandPanel->WidgetTree = NewObject<UWidgetTree>(CommandPanel);
+    UVerticalBox* CmdRoot = CommandPanel->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+    CommandPanel->WidgetTree->RootWidget = CmdRoot;
+
+    UGV2ListViewWidgetBase* ButtonRepeater = CommandPanel->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(UGV2ListViewWidgetBase::StaticClass(), TEXT("ButtonRepeater"));
+    UWrapBox* ButtonBox = CommandPanel->WidgetTree->ConstructWidget<UWrapBox>(UWrapBox::StaticClass(), TEXT("ButtonBox"));
+    ButtonRepeater->SetContainerPanel(ButtonBox);
+    CmdRoot->AddChildToVerticalBox(ButtonRepeater);
+
     {
-        *ContainerProp->ContainerPtrToValuePtr<TObjectPtr<UWrapBox>>(CommandPanel) = ButtonBox;
+        FGV2DeclaredUiCapability ItemsCap;
+        ItemsCap.PropertyName = FName(TEXT("items"));
+        ItemsCap.ChildWidgetName = FName(TEXT("ButtonRepeater"));
+        ItemsCap.Kind = EGV2DeclaredUiCapabilityKind::CollectionHost;
+        ItemsCap.EntryWidgetClass = ButtonClass != nullptr ? ButtonClass : UGV2ButtonWidgetBase::StaticClass();
+        ItemsCap.KeyPropertyName = TEXT("key");
+        CommandPanel->DeclaredCapabilities.Add(ItemsCap);
     }
+    CommandPanel->DeclaredCapabilities.Add({ FName(TEXT("key")), NAME_None, EGV2DeclaredUiCapabilityKind::Key });
+
     CommandPanel->SetHostIdentity(FName(TEXT("commands")));
     TestEqual(TEXT("CommandPanel answers to screen field 'commands'"), Screen->GetScreenFieldIds(), TArray<FName>{FName(TEXT("commands"))});
 
@@ -6497,146 +6512,22 @@ bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationCompositeUnresolvedClassRejectionTest,
-    "GV2.Runtime.Presentation.LocationCompositeUnresolvedClassRejection",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationCompositeUnresolvedClassRejectionTest::RunTest(const FString& Parameters)
-{
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
-    TestNotNull(TEXT("TestWorld created"), TestWorld);
-    if (TestWorld == nullptr) return false;
-
-    // DCA-05: the "SceneWidget without character widget class" half of this test was
-    // removed here -- UGV2LocationSceneWidgetBase no longer exists, and the generic
-    // declared composite has no per-class Resolve*WidgetClass/CharacterWidgetClass to
-    // test a fallback-chain absence on. Its invariant (a CollectionHost entry with an
-    // unset EntryWidgetClass declares but does not default) is the same generic
-    // mechanism DCA-01/03 already proved class-agnostically; it does not need a
-    // per-composite instance to stay covered.
-
-    // 2. CommandPanel without button widget class
-    {
-        UGV2LocationCommandPanelWidgetBase* CommandPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
-        TestNotNull(TEXT("CommandPanel instantiated"), CommandPanel);
-
-        UWrapBox* ButtonBox = NewObject<UWrapBox>(CommandPanel);
-        UGV2ListViewWidgetBase* BtnRep = NewObject<UGV2ListViewWidgetBase>(CommandPanel);
-        BtnRep->SetContainerPanel(ButtonBox);
-
-        if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonRepeater")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(CommandPanel) = BtnRep;
-        }
-
-        TestTrue(TEXT("CommandPanel has usable repeater host"), CommandPanel->HasUsableRepeaterHost());
-
-        // DCA-03: no fallback chain remains -- an unset ButtonWidgetClass reads back as
-        // null, not a substituted default class.
-        TestNull(TEXT("CommandPanel's button widget class is unset (no fallback substitution)"), CommandPanel->GetButtonWidgetClass().Get());
-
-        FGV2UiCapabilityBuilder CmdBuilder;
-        CommandPanel->DescribeUiCapabilities(CmdBuilder);
-        const FGV2UiCapabilityTree CmdCaps = CmdBuilder.Build();
-        const FGV2UiPropertyCapability* ItemsCap = CmdCaps.FindProperty(TEXT("items"));
-        TestNotNull(TEXT("'items' capability is still declared (the host exists)"), ItemsCap);
-        if (ItemsCap != nullptr)
-        {
-            TestNull(TEXT("Declared 'items' capability carries no EntryWidgetClass -- absence is not defaulted"), ItemsCap->EntryWidgetClass.Get());
-        }
-    }
-
-    TestWorld->DestroyWorld(false);
-    GEngine->DestroyWorldContext(TestWorld);
-
-    return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationCompositeCapabilityQueryIsPureTest,
-    "GV2.Runtime.Presentation.LocationCompositeCapabilityQueryIsPure",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationCompositeCapabilityQueryIsPureTest::RunTest(const FString& Parameters)
-{
-    // PCC-09: DescribeUiCapabilities() used to reach for its internal repeaters through
-    // const_cast + a lazy-creating Resolve*() (GV2LocationCompositeWidgetBases.cpp:138,
-    // 148, 158, 226, 278 before this fix) -- querying a const-declared capability method
-    // could allocate a UObject and mutate the widget, the same defect class BAI-11 closed
-    // elsewhere. The fix moves the wiring to NativePreConstruct (proposal 17.2 "Instance
-    // wiring check": required collection hosts must exist before Screen publish, not be
-    // lazily created from a pure getter/query). This proves both halves: the internal
-    // repeater exists right after construction (eager, not lazy), and DescribeUiCapabilities
-    // creates nothing new and mutates nothing observable when called repeatedly afterward.
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
-    TestNotNull(TEXT("TestWorld created"), TestWorld);
-    if (TestWorld == nullptr) return false;
-
-    // PCC-12: the original fix (see the class-level comment above) touched five call
-    // sites (PlayerStatus x3, Scene x1, CommandPanel x1), but only PlayerStatus was
-    // ever proven pure by a test at the time -- closing an instance without verifying
-    // the whole class it was drawn from is exactly the gap this reconciliation task
-    // exists to catch. CommandPanel repeats the identical eager-construct/pure-query
-    // shape.
-    //
-    // DCA-05/DCA-06: PlayerStatus's and Scene's blocks here were removed --
-    // UGV2LocationPlayerStatusWidgetBase/UGV2LocationSceneWidgetBase and their
-    // Resolve*Repeater()/InternalXxxRepeater transient-object caches no longer exist.
-    // The generic declared composite has no internal/transient state to eagerly
-    // construct or accidentally mutate on repeated DescribeUiCapabilities calls in the
-    // first place: it resolves children by name against the real WidgetTree every
-    // time, so purity holds by construction, not by a lifecycle invariant that needs
-    // its own regression test.
-    UGV2LocationCommandPanelWidgetBase* CmdPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
-    TestNotNull(TEXT("PCC-12: CommandPanel instantiated"), CmdPanel);
-    if (CmdPanel != nullptr)
-    {
-        UWrapBox* ButtonBox = NewObject<UWrapBox>(CmdPanel);
-        if (FProperty* Prop = UGV2LocationCommandPanelWidgetBase::StaticClass()->FindPropertyByName(TEXT("ButtonContainer")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UWrapBox>>(CmdPanel) = ButtonBox;
-        }
-
-        FObjectProperty* InternalRepeaterProp = FindFProperty<FObjectProperty>(
-            UGV2LocationCommandPanelWidgetBase::StaticClass(), TEXT("InternalRepeater"));
-        TestNotNull(TEXT("PCC-12: CommandPanel InternalRepeater property found via reflection"), InternalRepeaterProp);
-
-        if (InternalRepeaterProp != nullptr)
-        {
-            TestNull(
-                TEXT("PCC-12: CommandPanel InternalRepeater is not yet created before any lifecycle call"),
-                InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel));
-        }
-
-        CmdPanel->TakeWidget();
-
-        UObject* CmdAfterConstruct = InternalRepeaterProp != nullptr
-            ? InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel)
-            : nullptr;
-        TestNotNull(TEXT("PCC-12: CommandPanel InternalRepeater exists after construction"), CmdAfterConstruct);
-        TestTrue(TEXT("PCC-12: CommandPanel HasUsableRepeaterHost is true right after construction"), CmdPanel->HasUsableRepeaterHost());
-
-        if (IGV2UiPropertyHost* CmdPropertyHost = Cast<IGV2UiPropertyHost>(CmdPanel))
-        {
-            FGV2UiCapabilityBuilder CmdBuilderA;
-            CmdPropertyHost->DescribeUiCapabilities(CmdBuilderA);
-            UObject* CmdAfterFirstQuery = InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel);
-
-            FGV2UiCapabilityBuilder CmdBuilderB;
-            CmdPropertyHost->DescribeUiCapabilities(CmdBuilderB);
-            UObject* CmdAfterSecondQuery = InternalRepeaterProp->GetObjectPropertyValue_InContainer(CmdPanel);
-
-            TestEqual(TEXT("PCC-12: CommandPanel DescribeUiCapabilities does not replace InternalRepeater (1st call)"), CmdAfterFirstQuery, CmdAfterConstruct);
-            TestEqual(TEXT("PCC-12: CommandPanel DescribeUiCapabilities does not replace InternalRepeater (2nd call)"), CmdAfterSecondQuery, CmdAfterFirstQuery);
-            TestNotNull(TEXT("PCC-12: CommandPanel 'items' capability is declared"), CmdBuilderA.Build().FindProperty(TEXT("items")));
-        }
-    }
-
-    TestWorld->DestroyWorld(false);
-    GEngine->DestroyWorldContext(TestWorld);
-    return true;
-}
+// DCA-07: FGV2LocationCompositeUnresolvedClassRejectionTest
+// ("GV2.Runtime.Presentation.LocationCompositeUnresolvedClassRejection") and
+// FGV2LocationCompositeCapabilityQueryIsPureTest
+// ("GV2.Runtime.Presentation.LocationCompositeCapabilityQueryIsPure") were deleted here,
+// not just emptied. DCA-05/DCA-06 had already stripped both down to their CommandPanel
+// half -- Scene's and PlayerStatus's halves were gone, each replaced by an explanatory
+// comment at the time. DCA-07 deletes UGV2LocationCommandPanelWidgetBase, the last
+// per-class subject either test had left, so nothing of either test's original subject
+// remains to assert against. Their invariants -- a CollectionHost entry with an unset
+// EntryWidgetClass declares but does not default (PCC-09/DCA-01/03); DescribeUiCapabilities
+// allocates and mutates nothing on repeated calls (PCC-12) -- are the same generic
+// mechanisms DCA-01/03 already proved class-agnostically, and the generic composite's
+// construction-by-WidgetTree-lookup (no internal/transient state to eagerly build in the
+// first place) already proves class-agnostically. A stub that only creates and destroys a
+// UWorld would pass without checking anything -- worse than no test, since its name would
+// still promise per-class coverage that no longer exists anywhere in the codebase.
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2HostIdentityIsSharedTest,

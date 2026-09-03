@@ -25,7 +25,6 @@
 #include "UI/GV2ModalWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
-#include "UI/GV2LocationCompositeWidgetBases.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
