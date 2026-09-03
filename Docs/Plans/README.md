@@ -27,7 +27,6 @@ depends_on:
 
 ## Активные планы
 
-- [Generic UI Transaction Follow-up](GenericUiTransactionFollowUp/README.md) — доведение транзакционной модели после ревью от 2026-09-02: отказ attach, обратные мутации от прежней схемы, учётное состояние при откате, перечислитель границ. GBF-01…08.
 - [Declared Composite Adoption](DeclaredCompositeAdoption/README.md) — перевод трёх композитов локации на объявление, удаление специального мостика в планировщике, три полностью новых композита без C++ и устранение рукописных перечислителей в раскладке, аудите компонентов и на границе пакетов. DCA-01…21.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
