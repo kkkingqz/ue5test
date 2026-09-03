@@ -3602,8 +3602,33 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
             TabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FieldsArray)));
 
+            // GBF-05: the first revision must publish BOTH tabs. Commit ends in
+            // ApplyTabEntries, which empties the tab-widget map and refills it from
+            // the committed revision only -- correct behaviour for a tab that left
+            // the document, but it evicts any tab this fixture seeded and did not
+            // publish. A tab absent from revision 1 is a *new* tab in revision 2,
+            // and a new tab is always instantiated from the Screen Registry, not
+            // from the seeded widget: core:screen.test resolves to WBP_Testscreen,
+            // whose screen field host is 'greeting', so a day_block payload is
+            // rightly rejected. Publishing both tabs keeps both widgets reused,
+            // which is what this scenario is about.
+            TMap<FString, FGV2PreparedUiValue> BaselineFailureInner;
+            BaselineFailureInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Baseline")) }));
+            BaselineFailureInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.5));
+            TArray<TPair<FString, FGV2PreparedUiValue>> BaselineFailureEnvelope;
+            BaselineFailureEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
+            BaselineFailureEnvelope.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            BaselineFailureEnvelope.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BaselineFailureInner)));
+            TArray<FGV2PreparedUiValue> BaselineFailureFields;
+            BaselineFailureFields.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BaselineFailureEnvelope)));
+            TMap<FString, FGV2PreparedUiValue> BaselineFailureTabMap = TabMap;
+            BaselineFailureTabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("failure")));
+            BaselineFailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Failure")) }));
+            BaselineFailureTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineFailureFields)));
+
             TArray<FGV2PreparedUiValue> Tabs;
             Tabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
+            Tabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BaselineFailureTabMap)));
 
             FString NestedPrepErr;
             const bool bNestedPrepared = NestedConsumer->Prepare(
@@ -3616,6 +3641,10 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
             TestEqual(TEXT("DUC-09: nested field applied to the real DayText widget"), DayText->GetTextContent().ToString(), TEXT("Tuesday"));
             TestEqual(TEXT("DUC-09: nested field applied to the real ValueBar widget"), ValueBar->GetProgress(), 0.7f);
+            TestEqual(TEXT("GBF-05: seeded failure tab widget is the one that received the baseline revision"),
+                FailureDayText->GetTextContent().ToString(), TEXT("Baseline"));
+            TestEqual(TEXT("GBF-05: both published tabs survive ApplyTabEntries as reused widgets"),
+                NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("failure"))), FailureScreen);
 
             FGV2TextViewModel UpdatedDayVM;
             UpdatedDayVM.Text = FText::FromString(TEXT("Wednesday"));
@@ -3657,6 +3686,12 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             {
                 return PropertyPath.Contains(TEXT("failure"));
             };
+            // The injected fault is the point of this scenario, and the nested screen
+            // logs it at Error level on both the faulting commit and the retry below.
+            // Declaring it keeps the expected diagnostic from failing the test while
+            // still failing if the count changes.
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed on 'day'"), EAutomationExpectedErrorFlags::Contains, 2);
+
             FString NestedRollbackCommitError;
             const bool bNestedRollbackCommitted = NestedConsumer->CommitWithFailureInjector(
                 NestedTabContainer, NestedRollbackCommitError, NestedFailureInjector, TEXT("tabs"));
@@ -3686,6 +3721,47 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                 NestedConsumer->CommitWithFailureInjector(NestedTabContainer, NestedNextCommitError, NestedFailureInjector, TEXT("tabs")));
             TestEqual(TEXT("GBF-05: later nested rollback proves the next Prepare used baseline accounting"),
                 DayText->GetTextContent().ToString(), TEXT("Tuesday"));
+
+            // GBF-05: a rejected Prepare must leave nothing committable behind.
+            // The rejection below happens on the SECOND tab, after the first tab's
+            // plan is already built, which is precisely the state that used to
+            // survive into Commit and apply the prefix of a transaction nobody
+            // accepted. Removing the discard guard in
+            // FGV2TabContainerTabsPropertyConsumer::Prepare turns DayText into
+            // "Thursday" here and makes this assertion red.
+            TMap<FString, FGV2PreparedUiValue> ThursdayInner;
+            ThursdayInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Thursday")) }));
+            ThursdayInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.9));
+            TArray<TPair<FString, FGV2PreparedUiValue>> ThursdayEnvelope;
+            ThursdayEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
+            ThursdayEnvelope.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            ThursdayEnvelope.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ThursdayInner)));
+            TArray<FGV2PreparedUiValue> ThursdayFields;
+            ThursdayFields.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ThursdayEnvelope)));
+            TMap<FString, FGV2PreparedUiValue> ThursdayInfoTabMap = TabMap;
+            ThursdayInfoTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(ThursdayFields)));
+
+            TMap<FString, FGV2PreparedUiValue> TitlelessTabMap = FailureTabMap;
+            TitlelessTabMap.Remove(TEXT("title"));
+
+            TArray<FGV2PreparedUiValue> DiscardTabs;
+            DiscardTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ThursdayInfoTabMap)));
+            DiscardTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TitlelessTabMap)));
+
+            FString DiscardPrepareError;
+            const bool bDiscardPrepared = NestedConsumer->Prepare(
+                FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(DiscardTabs)), NestedTabCap, NestedTabContainer, DiscardPrepareError);
+            TestFalse(TEXT("GBF-05: Prepare rejects a candidate whose second tab is malformed"), bDiscardPrepared);
+            TestTrue(TEXT("GBF-05: rejection names the malformed tab"),
+                DiscardPrepareError.Contains(TEXT("missing_tab_title")));
+            FString DiscardCommitError;
+            NestedConsumer->Commit(NestedTabContainer, DiscardCommitError);
+            TestEqual(TEXT("GBF-05: Commit after a rejected Prepare applies nothing"),
+                DayText->GetTextContent().ToString(), TEXT("Tuesday"));
+            TestEqual(TEXT("GBF-05: Commit after a rejected Prepare leaves the number alone"),
+                ValueBar->GetProgress(), 0.7f);
+            TestEqual(TEXT("GBF-05: Commit after a rejected Prepare does not publish an empty tab list"),
+                NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("info"))), ChildScreen);
 
             // Negative: an *extra* field_id the child screen has no host for is
             // rejected, not silently ignored (DUC-09's own Done criterion) --

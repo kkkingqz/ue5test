@@ -384,6 +384,10 @@ private:
     TArray<FPreparedTabItem> PreparedTabs;
     TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> CandidateWidgetsByKey;
     const TArray<FString>* ActiveCompositionChain = nullptr;
+    // GBF-05: publishing is allowed only for a revision Prepare accepted. Without
+    // this, Commit after a rejected Prepare publishes the empty tab list, which is
+    // an application of state, not the absence of one.
+    bool bHasAcceptedRevision = false;
 };
 
 /**

@@ -1,4 +1,6 @@
 #include "UI/GV2PropertyConsumers.h"
+
+#include "Misc/ScopeExit.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
@@ -1048,6 +1050,19 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
     UWidget* TargetWidget,
     FString& OutError)
 {
+    // GBF-05: same shape as the tab consumer -- entries accumulate per item and
+    // several rejections happen after the first ones exist. A rejected Prepare
+    // must leave nothing committable behind (ADR-0041).
+    bool bCollectionPrepareAccepted = false;
+    ON_SCOPE_EXIT
+    {
+        if (!bCollectionPrepareAccepted)
+        {
+            PreparedItems.Reset();
+            CandidateWidgetsByKey.Reset();
+        }
+    };
+
     if (!TargetWidget)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.missing_target: Target widget is null for keyed collection capability");
@@ -1328,6 +1343,7 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
         }
     }
 
+    bCollectionPrepareAccepted = true;
     return true;
 }
 
@@ -1667,6 +1683,22 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
     PreparedTabs.Reset();
     CandidateWidgetsByKey.Reset();
 
+    // GBF-05: Prepare accumulates one entry per tab and rejects from many points
+    // after the first entries are already built. Leaving them behind makes the
+    // consumer committable after a rejected Prepare, and Commit would then apply
+    // the prefix of a transaction that was never accepted -- the partial state
+    // ADR-0041 forbids. The guard covers every exit, including ones added later.
+    bool bTabsPrepareAccepted = false;
+    bHasAcceptedRevision = false;
+    ON_SCOPE_EXIT
+    {
+        if (!bTabsPrepareAccepted)
+        {
+            PreparedTabs.Reset();
+            CandidateWidgetsByKey.Reset();
+        }
+    };
+
     if (!Value.IsArray())
     {
         OutError = TEXT("core:diagnostic.ui_consumer.value_kind_mismatch: Expected Array for tab container tabs");
@@ -1895,6 +1927,8 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         PreparedTabs.Add(MoveTemp(PreparedItem));
     }
 
+    bTabsPrepareAccepted = true;
+    bHasAcceptedRevision = true;
     return true;
 }
 
@@ -1912,6 +1946,15 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
     const TFunction<bool(const FString& PropertyPath)>& FailureInjector,
     const FString& PropertyPath)
 {
+    // GBF-05: nothing was accepted, so there is nothing to publish. Falling through
+    // would call ApplyTabEntries with an empty list, which empties the tab-widget
+    // map -- an application of state, and exactly the partial/unintended publication
+    // ADR-0041 forbids after a rejected Prepare.
+    if (!bHasAcceptedRevision)
+    {
+        return true;
+    }
+
     UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget);
     if (!TabContainer && TargetWidget)
     {
