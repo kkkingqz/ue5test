@@ -4,7 +4,7 @@ status: active
 version: 1.3
 updated: 2026-09-03
 depends_on:
-  - ../../Status/GV2_GenericBoundaryHardening_Followup_Review_2026-09-02.md
+  - ../../Status/Archive/GenericBoundaryHardeningFollowupReview.md
   - ../Archive/GenericBoundaryHardening.md
   - ../../UI/UIDocumentAndReconciliation.md
   - ../../Status/ImplementationStatus.md
@@ -15,7 +15,7 @@ decisions:
 
 # План доведения транзакционной модели UI
 
-> **Материализует:** находки `GBH-R1`…`GBH-R7` внешнего ревью от [2026-09-02](../../Status/GV2_GenericBoundaryHardening_Followup_Review_2026-09-02.md).
+> **Материализует:** находки `GBH-R1`…`GBH-R7` внешнего ревью от [2026-09-02](../../Status/Archive/GenericBoundaryHardeningFollowupReview.md).
 > **Задачи:** GBF-01…08.
 > **Результат:** обещанная `ADR-0041` атомарность выполняется механизмом, а не совпадением, и каждое универсальное утверждение модели имеет перечислитель.
 

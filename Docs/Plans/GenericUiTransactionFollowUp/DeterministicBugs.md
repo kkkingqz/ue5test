@@ -5,7 +5,7 @@ version: 1.1
 updated: 2026-09-02
 depends_on:
   - README.md
-  - ../../Status/GV2_GenericBoundaryHardening_Followup_Review_2026-09-02.md
+  - ../../Status/Archive/GenericBoundaryHardeningFollowupReview.md
 ---
 
 # M1 — Deterministic Bugs
