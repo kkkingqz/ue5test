@@ -1,8 +1,8 @@
 ---
 title: Prerequisites Tasks
 status: active
-version: 1.1
-updated: 2026-09-02
+version: 1.2
+updated: 2026-09-03
 depends_on:
   - README.md
   - ../../UI/WidgetRegistry.md
@@ -24,7 +24,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **DCA-01 — Объявление выражает необязательное свойство**
+- [x] **DCA-01 — Объявление выражает необязательное свойство**
   - Сегодня условность живёт в C++: `DescribeUiCapabilities` объявляет capability только при `if (Target != nullptr)`, поэтому один класс обслуживает варианты ассета, где, например, портрет отсутствует. Объявление же безусловно, и ссылка на непривязанного ребёнка становится отказом проверки экземпляра.
   - Инвариант: объявление описывает контракт, а не подстраивается под ассет. Условность, живущая в C++ (`if (Target != nullptr)`), делает одно и то же объявление означающим разное в разных ассетах — именно это и мешает выразить композит объявлением.
   - Не считается закрытием: трактовка любой непривязанной цели как необязательной; необязательность, выведенная из состояния ассета вместо записи объявления.
@@ -36,6 +36,13 @@ depends_on:
     - отсутствующее необязательное свойство остаётся отсутствующим полем схемы, а не появляется пустым;
     - контракт описывает, чем необязательность объявления отличается от необязательности поля схемы.
   - Evidence: `Source/GV2/Public/UI/GV2DeclaredCompositeWidgetBase.h`, `Docs/UI/ScreenTemplates.md`, `Source/GV2/Private/Tests/GV2DeclaredCompositeTests.cpp`.
+  - **Реализация (2026-09-03):** `FGV2DeclaredUiCapability` получил `bOptional` (`bool`, default `false`, не зависит от `Kind`, editable в Designer). `UGV2DeclaredCompositeWidgetBase::DescribeUiCapabilities` перед добавлением записи проверяет `bOptional && ChildWidgetName != NAME_None && GetWidgetFromName(ChildWidgetName) == nullptr` — при выполнении всех трёх запись не добавляется в дерево вовсе (capability отсутствует для этой ревизии этого экземпляра целиком, а не появляется пустой). `bOptional == false` (умолчание, поведение до задачи) не меняется: неразрешённый `ChildWidgetName` доходит до switch как раньше, `PrepareUiHostProperties` отклоняет его тем же `core:diagnostic.ui_consumer.missing_target`. Значение читается только из явного флага — временная непривязанность ребёнка (например, ещё не сохранённый ассет) никогда сама по себе не делает запись необязательной.
+
+    Различие с необязательностью поля схемы записано в `ScreenTemplates.md` (новый раздел «Необязательное свойство объявления (DCA-01)»): declaration-optional — структурное свойство экземпляра (существует ли child в `WidgetTree`, решается один раз, не зависит от ревизии значения); optional поле схемы — свойство значения (содержит ли конкретный payload значение для уже существующей capability). Они не требуют согласующего механизма: если объявленно-необязательная capability отсутствует у экземпляра, а schema всё равно требует её как `required`, это отклоняется тем же путём и тем же семейством диагностики, каким сегодня отклоняется schema, требующая любую другую отсутствующую у widget capability (`core:diagnostic.ui_capability.*`) — отдельный код не введён, поскольку это структурно тот же случай «schema шире capability». Отсутствующая capability не порождает mutation тем же существующим путём (`bSchemaOwns == false` в `PrepareUiHostProperties`), которым сегодня не порождает mutation любое не описанное в schema свойство — новый код для этого не понадобился.
+
+    Новый тест `GV2.UI.DeclaredComposite.OptionalDeclaration`: (1) `bOptional=true` + непривязанный child → capability отсутствует в дереве (`FindProperty` возвращает `nullptr`), schema без этого поля готовится без ошибок и без mutation; (2) `bOptional=false` (default) + тот же непривязанный child → по-прежнему отклоняется `missing_target` — необязательность не обходит существующий контракт для обязательного свойства; (3) `bOptional=true` + привязанный child → capability присутствует, значение доходит до виджета через `Commit`. Red→green: временное отключение skip-check (`bOptional` игнорируется недоказуемым-компилятором `false`-guard'ом) уронило ровно сценарий (1) с сообщением «optional property with an unbound child is not declared at all» ожидало `null`, получило существующую capability; сценарий `GV2.UI.DeclaredComposite.ChildKindCompatibility` (не затронутый) остался зелёным. Восстановление — снова чисто.
+
+    Верификация: 107/108 `GV2.*` UE Automation (headless, `-nullrhi`); единственный фейл — `GV2.Runtime.UI.NestedInstancesAndTabsContract` (сценарий с меткой `GBF-05`, незакоммиченная параллельная работа другой сессии над вложенным rollback в табах — не относится к `DCA-01`, не трогалось; вынесено отдельной задачей).
 
 - [ ] **DCA-02 — Хосты коллекций существуют в дереве виджетов**
   - Композиты принимают либо явный `UGV2ListViewWidgetBase`, либо голую панель (`MeterContainer`, `ItemIcons`, `EffectIcons`, `CharacterContainer`, `ButtonContainer`), и во втором случае создают репитер внутри себя. Объект transient, в `WidgetTree` его нет, адресация по имени до него не дотягивается — ради этого и написан мостик в планировщике.

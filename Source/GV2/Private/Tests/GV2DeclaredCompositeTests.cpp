@@ -32,6 +32,7 @@ struct FDeclaredCapabilityExpectation
     EGV2PreparedUiValueKind PreparedKind;
     EGV2UiCapabilityTargetType TargetType;
     const TCHAR* TargetKind;
+    bool bOptional = false;
 };
 
 bool SetDeclaredCapabilityEntry(
@@ -44,13 +45,16 @@ bool SetDeclaredCapabilityEntry(
     const FNameProperty* const PropertyNameProperty = FindFProperty<FNameProperty>(EntryStruct, TEXT("PropertyName"));
     const FNameProperty* const ChildWidgetNameProperty = FindFProperty<FNameProperty>(EntryStruct, TEXT("ChildWidgetName"));
     const FEnumProperty* const KindProperty = FindFProperty<FEnumProperty>(EntryStruct, TEXT("Kind"));
+    const FBoolProperty* const OptionalProperty = FindFProperty<FBoolProperty>(EntryStruct, TEXT("bOptional"));
     UEnum* const KindEnum = FindObject<UEnum>(nullptr, TEXT("/Script/GV2.EGV2DeclaredUiCapabilityKind"));
 
     Test.TestNotNull(TEXT("DUC-05: declared capability has PropertyName"), PropertyNameProperty);
     Test.TestNotNull(TEXT("DUC-05: declared capability has ChildWidgetName"), ChildWidgetNameProperty);
     Test.TestNotNull(TEXT("DUC-05: declared capability has Kind enum"), KindProperty);
+    Test.TestNotNull(TEXT("DCA-01: declared capability has bOptional"), OptionalProperty);
     Test.TestNotNull(TEXT("DUC-05: declared capability kind enum is registered"), KindEnum);
-    if (PropertyNameProperty == nullptr || ChildWidgetNameProperty == nullptr || KindProperty == nullptr || KindEnum == nullptr)
+    if (PropertyNameProperty == nullptr || ChildWidgetNameProperty == nullptr || KindProperty == nullptr
+        || OptionalProperty == nullptr || KindEnum == nullptr)
     {
         return false;
     }
@@ -71,6 +75,7 @@ bool SetDeclaredCapabilityEntry(
     KindProperty->GetUnderlyingProperty()->SetIntPropertyValue(
         KindProperty->ContainerPtrToValuePtr<void>(Entry),
         EnumValue);
+    OptionalProperty->SetPropertyValue_InContainer(Entry, Expected.bOptional);
     return true;
 }
 }
@@ -452,6 +457,190 @@ bool FGV2DeclaredCompositeChildKindCompatibilityTest::RunTest(const FString& Par
         GoodDiagnostics);
     TestTrue(TEXT("DUC-07: declaring Text against the same Text-only child is accepted"), bGoodPrepared);
     TestEqual(TEXT("DUC-07: accepted declaration produces no diagnostics"), GoodDiagnostics.Num(), 0);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DeclaredCompositeOptionalDeclarationTest,
+    "GV2.UI.DeclaredComposite.OptionalDeclaration",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DeclaredCompositeOptionalDeclarationTest::RunTest(const FString& Parameters)
+{
+    using namespace GV2ContentCore;
+
+    UClass* const CompositeClass = FindObject<UClass>(nullptr, TEXT("/Script/GV2.GV2DeclaredCompositeWidgetBase"));
+    TestNotNull(TEXT("DCA-01: generic declared composite class exists"), CompositeClass);
+    if (CompositeClass == nullptr)
+    {
+        return false;
+    }
+
+    UUserWidget* const Composite = NewObject<UUserWidget>(GetTransientPackage(), CompositeClass);
+    TestNotNull(TEXT("DCA-01: composite instance can be created"), Composite);
+    IGV2UiPropertyHost* const PropertyHost = Composite != nullptr ? Cast<IGV2UiPropertyHost>(Composite) : nullptr;
+    TestNotNull(TEXT("DCA-01: composite instance exposes property host interface"), PropertyHost);
+    if (PropertyHost == nullptr)
+    {
+        return false;
+    }
+
+    // Only "BoundText" exists in this instance's WidgetTree -- "UnboundText" is never
+    // constructed, matching a Blueprint variant that simply omits an optional child.
+    Composite->WidgetTree = NewObject<UWidgetTree>(Composite);
+    UVerticalBox* const Root = Composite->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+    Composite->WidgetTree->RootWidget = Root;
+    UGV2TextWidgetBase* const BoundText = Composite->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("BoundText"));
+    TestNotNull(TEXT("DCA-01: bound child constructed"), BoundText);
+    if (BoundText == nullptr)
+    {
+        return false;
+    }
+    Root->AddChildToVerticalBox(BoundText);
+
+    FArrayProperty* const DeclaredCapabilitiesProperty =
+        FindFProperty<FArrayProperty>(CompositeClass, TEXT("DeclaredCapabilities"));
+    TestNotNull(TEXT("DCA-01: declared capability list exists"), DeclaredCapabilitiesProperty);
+    if (DeclaredCapabilitiesProperty == nullptr)
+    {
+        return false;
+    }
+    FStructProperty* const EntryProperty = CastField<FStructProperty>(DeclaredCapabilitiesProperty->Inner);
+    TestNotNull(TEXT("DCA-01: declared capability list stores triples"), EntryProperty);
+    if (EntryProperty == nullptr)
+    {
+        return false;
+    }
+
+    FScriptArrayHelper Entries(DeclaredCapabilitiesProperty, DeclaredCapabilitiesProperty->ContainerPtrToValuePtr<void>(Composite));
+
+    // 1. Optional + unbound child: absent from the capability tree entirely, not a
+    // failure. Necessity is read only from the flag, not inferred from the asset.
+    Entries.EmptyValues();
+    FDeclaredCapabilityExpectation OptionalUnbound = {
+        TEXT("Text"), TEXT("subtitle"), TEXT("UnboundText"), EGV2PreparedUiValueKind::Text, EGV2UiCapabilityTargetType::RendererControl, TEXT("") };
+    OptionalUnbound.bOptional = true;
+    if (!SetDeclaredCapabilityEntry(*this, Entries, *EntryProperty, OptionalUnbound))
+    {
+        return false;
+    }
+
+    FGV2UiCapabilityBuilder OptionalUnboundBuilder;
+    PropertyHost->DescribeUiCapabilities(OptionalUnboundBuilder);
+    const FGV2UiCapabilityTree OptionalUnboundTree = OptionalUnboundBuilder.Build();
+    TestNull(
+        TEXT("DCA-01: optional property with an unbound child is not declared at all"),
+        OptionalUnboundTree.FindProperty(TEXT("subtitle")));
+
+    // A schema that does not mention "subtitle" at all is satisfied trivially -- the
+    // absent capability behaves exactly as if the entry were never authored.
+    FCompiledUiFieldSpec EmptySchema;
+    EmptySchema.Kind = EUiFieldKind::Object;
+    const TSharedRef<const FGV2PreparedUiObject> EmptyCandidate =
+        FGV2PreparedUiObject::Create(TArray<TPair<FString, FGV2PreparedUiValue>>{});
+    FGV2UiHostMutationPlan EmptyPlan;
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> EmptyDiagnostics;
+    const bool bEmptyPrepared = PrepareUiHostProperties(
+        Composite,
+        OptionalUnboundTree,
+        *EmptyCandidate,
+        EmptySchema,
+        TEXT("core:schema.ui_field.declared_composite_optional_probe.v1"),
+        TEXT(""),
+        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        EmptyPlan,
+        EmptyDiagnostics);
+    TestTrue(TEXT("DCA-01: optional+unbound entry does not block an otherwise-empty schema"), bEmptyPrepared);
+    TestEqual(TEXT("DCA-01: optional+unbound entry produces no mutation"), EmptyPlan.Num(), 0);
+
+    // 2. Required (default, bOptional left false) + unbound child: still rejected
+    // exactly as before this task -- optionality never bypasses missing_target for a
+    // required entry.
+    Entries.EmptyValues();
+    const FDeclaredCapabilityExpectation RequiredUnbound = {
+        TEXT("Text"), TEXT("subtitle"), TEXT("UnboundText"), EGV2PreparedUiValueKind::Text, EGV2UiCapabilityTargetType::RendererControl, TEXT("") };
+    if (!SetDeclaredCapabilityEntry(*this, Entries, *EntryProperty, RequiredUnbound))
+    {
+        return false;
+    }
+
+    FGV2UiCapabilityBuilder RequiredUnboundBuilder;
+    PropertyHost->DescribeUiCapabilities(RequiredUnboundBuilder);
+
+    FCompiledUiFieldSpec SubtitleSchema;
+    SubtitleSchema.Kind = EUiFieldKind::Object;
+    SubtitleSchema.Fields.push_back({ "subtitle", true, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
+
+    FGV2TextViewModel RequiredSubtitleValue;
+    RequiredSubtitleValue.Text = FText::FromString(TEXT("required but unbound"));
+    TMap<FString, FGV2PreparedUiValue> RequiredSubtitleFields;
+    RequiredSubtitleFields.Add(TEXT("subtitle"), FGV2PreparedUiValue::MakeText(RequiredSubtitleValue));
+    const TSharedRef<const FGV2PreparedUiObject> RequiredSubtitleCandidate = FGV2PreparedUiObject::Create(MoveTemp(RequiredSubtitleFields));
+
+    FGV2UiHostMutationPlan RequiredPlan;
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> RequiredDiagnostics;
+    const bool bRequiredPrepared = PrepareUiHostProperties(
+        Composite,
+        RequiredUnboundBuilder.Build(),
+        *RequiredSubtitleCandidate,
+        SubtitleSchema,
+        TEXT("core:schema.ui_field.declared_composite_optional_probe.v1"),
+        TEXT(""),
+        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        RequiredPlan,
+        RequiredDiagnostics);
+    TestFalse(TEXT("DCA-01: required entry with an unbound child is still rejected"), bRequiredPrepared);
+    TestTrue(
+        TEXT("DCA-01: rejection still reports the same missing_target diagnostic as before this task"),
+        RequiredDiagnostics.ContainsByPredicate([](const FGV2UiSchemaCompatibilityDiagnostic& Diagnostic)
+        {
+            return Diagnostic.Code == TEXT("core:diagnostic.ui_consumer.missing_target");
+        }));
+
+    // 3. Optional + bound child: behaves exactly like a required property -- the
+    // capability is present and the value flows through Commit normally.
+    Entries.EmptyValues();
+    FDeclaredCapabilityExpectation OptionalBound = {
+        TEXT("Text"), TEXT("subtitle"), TEXT("BoundText"), EGV2PreparedUiValueKind::Text, EGV2UiCapabilityTargetType::RendererControl, TEXT("") };
+    OptionalBound.bOptional = true;
+    if (!SetDeclaredCapabilityEntry(*this, Entries, *EntryProperty, OptionalBound))
+    {
+        return false;
+    }
+
+    FGV2UiCapabilityBuilder OptionalBoundBuilder;
+    PropertyHost->DescribeUiCapabilities(OptionalBoundBuilder);
+    const FGV2UiCapabilityTree OptionalBoundTree = OptionalBoundBuilder.Build();
+    TestNotNull(
+        TEXT("DCA-01: optional property with a bound child is declared normally"),
+        OptionalBoundTree.FindProperty(TEXT("subtitle")));
+
+    FGV2TextViewModel BoundSubtitleValue;
+    BoundSubtitleValue.Text = FText::FromString(TEXT("shown when bound"));
+    TMap<FString, FGV2PreparedUiValue> BoundSubtitleFields;
+    BoundSubtitleFields.Add(TEXT("subtitle"), FGV2PreparedUiValue::MakeText(BoundSubtitleValue));
+    const TSharedRef<const FGV2PreparedUiObject> BoundSubtitleCandidate = FGV2PreparedUiObject::Create(MoveTemp(BoundSubtitleFields));
+
+    FGV2UiHostMutationPlan BoundPlan;
+    TArray<FGV2UiSchemaCompatibilityDiagnostic> BoundDiagnostics;
+    const bool bBoundPrepared = PrepareUiHostProperties(
+        Composite,
+        OptionalBoundTree,
+        *BoundSubtitleCandidate,
+        SubtitleSchema,
+        TEXT("core:schema.ui_field.declared_composite_optional_probe.v1"),
+        TEXT(""),
+        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        BoundPlan,
+        BoundDiagnostics);
+    TestTrue(TEXT("DCA-01: optional+bound entry prepares normally"), bBoundPrepared);
+    TestEqual(TEXT("DCA-01: optional+bound entry produces exactly one mutation"), BoundPlan.Num(), 1);
+
+    FString CommitFailedPath, CommitError;
+    const bool bCommitted = CommitUiHostProperties(Composite, BoundPlan, CommitFailedPath, CommitError);
+    TestTrue(TEXT("DCA-01: optional+bound entry commits"), bCommitted);
+    TestEqual(TEXT("DCA-01: bound child physically receives the value"), BoundText->GetTextContent().ToString(), TEXT("shown when bound"));
 
     return true;
 }

@@ -125,6 +125,18 @@ void UGV2DeclaredCompositeWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBui
         const FString PropertyName = DeclaredCapability.PropertyName.ToString();
         const FName ChildWidgetName = DeclaredCapability.ChildWidgetName;
 
+        // DCA-01: an optional entry whose target is not bound in THIS instance's
+        // WidgetTree is not declared at all -- absent capability, not a Prepare-time
+        // failure. A non-optional (default) entry with the same unresolved target falls
+        // through to the switch below unchanged; PrepareUiHostProperties' existing
+        // missing_target rejection still fires for it, exactly as before this task.
+        if (DeclaredCapability.bOptional
+            && !ChildWidgetName.IsNone()
+            && GetWidgetFromName(ChildWidgetName) == nullptr)
+        {
+            continue;
+        }
+
         switch (DeclaredCapability.Kind)
         {
         case EGV2DeclaredUiCapabilityKind::Boolean:

@@ -133,6 +133,18 @@ struct GV2_API FGV2DeclaredUiCapability
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities")
     FName ChildCapabilityName;
 
+    // DCA-01: necessity belongs to the declaration, not to the state of any particular
+    // asset. Default false (required) preserves today's behavior unchanged: an unbound
+    // ChildWidgetName still rejects Prepare with the same missing_target diagnostic as
+    // before this field existed. true means an unbound ChildWidgetName in THIS instance
+    // makes the entry absent from the capability tree entirely -- never declared, not a
+    // failure -- so one Designer declaration can serve asset variants that omit the
+    // child. Optionality is read only from this flag; it is never inferred from whether
+    // ChildWidgetName happens to resolve (see ScreenTemplates.md for how this differs
+    // from a schema field's own `required`).
+    UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities")
+    bool bOptional = false;
+
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Capabilities", meta = (EditCondition = "Kind == EGV2DeclaredUiCapabilityKind::Number", EditConditionHides))
     double NumberMin = 0.0;
 

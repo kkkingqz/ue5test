@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.22
+version: 1.23
 updated: 2026-09-03
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -240,6 +240,18 @@ Composite указывает **какую именно** capability ребёнк
 Побочная находка при подключении: `ResolveDelegatedChildCapability(ChildBuilder.Build(), ...)` передавал временный `FGV2UiCapabilityTree` (возврат `Build()` по значению) напрямую как аргумент — резолвленный указатель `ResolvedChildCap` указывал внутрь этой temporary, которая разрушалась сразу по завершении вызова. До `GBH-08` это оставалось незамеченным, потому что ничто не разыменовывало указатель после возврата; собственный subset-check `GBH-08` стал первым кодом, который его читает, и сразу проявил баг как мусорные байты в диагностике. Исправлено сохранением дерева в именованную локальную переменную на всё время жизни указателя.
 
 Проверено `GV2.UI.DeclaredComposite.ConstraintsAndSelector`: declaration `[0..100]` на реальном `UGV2ProgressBarWidgetBase[0..1]` теперь отклоняется через `PrepareUiHostProperties` (`core:diagnostic.ui_consumer.range_unsupported`), хотя schema, соответствующая этому же широкому объявлению, сама по себе валидна — раньше сверка declaration↔child это пропускала, поскольку сравнивала только kind. Mutation test: временное отключение единственной `IsUiCapabilitySubset` одновременно роняет и schema→Widget assertion (`GBH-06`), и declaration→child assertion (`GBH-08`) — доказательство отсутствия двух расходящихся реализаций. Неизменность поведения production Location screen подтверждена тем, что весь существующий набор (`RhStartOpensLocationScreen`, `LocationScreenTransitionContract`, `CapabilityObservabilityCompositeSweep` и другие, использующие реальный `WBP_LocationScreen`) остаётся зелёным без миграции контента.
+
+### Необязательное свойство объявления (DCA-01)
+
+До этой задачи условность в трёх композитах локации была выражена в C++ (`if (Portrait != nullptr) OutBuilder.AddImage(...)`), а не в объявлении — одно и то же объявление означало разное в разных ассетах, и это единственное, что мешало выразить композит целиком через `UGV2DeclaredCompositeWidgetBase`: у generic declaration не было способа сказать «этот child может отсутствовать». `FGV2DeclaredUiCapability` получил `bOptional` (`bool`, default `false`, editable в Designer, не зависит от `Kind` — применим к любому виду с именованным target). Значение читается **только** из этого поля, никогда не выводится из состояния ассета: временное отключение bound-child не делает запись optional, и наоборот.
+
+`DescribeUiCapabilities` перед добавлением записи в дерево проверяет `bOptional && ChildWidgetName != NAME_None && GetWidgetFromName(ChildWidgetName) == nullptr` — при выполнении всех трёх условий запись **не добавляется в дерево вовсе**, capability для этого свойства в этой ревизии не существует, а не существует и не имеет значения. `bOptional == false` (по умолчанию, поведение до этой задачи) не меняется: неразрешённый `ChildWidgetName` доходит до switch как раньше, и `PrepareUiHostProperties` отклоняет его тем же `core:diagnostic.ui_consumer.missing_target`, что и до `DCA-01` — необязательность никогда не обходит существующий контракт для обязательного свойства.
+
+**Чем это отличается от `required` поля схемы.** Необязательность объявления — структурное свойство **экземпляра**: существует ли child в `WidgetTree` этого конкретного ассета, решается один раз, независимо от того, какая ревизия значения когда-либо придёт. Необязательность поля схемы — свойство **значения**: содержит ли конкретный payload этой ревизии значение для capability, которая уже существует. Они не заменяют друг друга и не требуют нового согласующего механизма: если `bOptional == true` и child не привязан, capability отсутствует в дереве этого экземпляра целиком, и `Schema ⊆ Capabilities` (шаг 1 `PrepareUiHostProperties`) видит её отсутствующей для **любой** схемы — если схема при этом требует эту capability как `required`, это отклоняется тем же путём и тем же семейством диагностики (`core:diagnostic.ui_capability.*`), каким сегодня отклоняется schema, требующая любую другую capability, которой у widget нет. Отдельного диагностического кода для «объявленно-необязательное, но схема требует» не вводится: это структурно тот же случай «schema шире capability», а не новый.
+
+Отсутствующая (skip'нутая) capability не появляется в подготовленном дереве значений как пустое/null поле — она просто не участвует в сравнении `Schema ⊆ Capabilities` и не порождает mutation, тем же путём, каким сегодня отсутствующее в схеме свойство не порождает mutation (`bSchemaOwns == false`, `GV2UiMutationPlan.cpp`) — новый код для этого не потребовался.
+
+Проверено `GV2.UI.DeclaredComposite.OptionalDeclaration`: `bOptional=true` с непривязанным child — capability отсутствует в дереве, а schema без этого поля готовится без ошибок и без mutation; `bOptional=false` (default) с тем же непривязанным child — по-прежнему отклоняется `missing_target`; `bOptional=true` с привязанным child — capability присутствует и значение доходит до виджета через `Commit` как обычно.
 
 Два разных свойства идентичности дали бы автору ассета два способа выразить одно и то же с неочевидным приоритетом — поэтому оно ровно одно, и его Designer-поверхность (`meta = (ShowOnlyInnerProperties)` на `UPROPERTY() FGV2UiPropertyHostState PropertyHostState;` каждого хоста) идентична независимо от уровня, на котором виджет размещён.
 
