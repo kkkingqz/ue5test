@@ -10,8 +10,6 @@
 class UGV2ScreenWidgetBase;
 class UPanelWidget;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FGV2OnTabChanged, FName, NewTabKey, int32, NewTabIndex);
-
 USTRUCT(BlueprintType)
 struct GV2_API FGV2TabItemEntry
 {
@@ -78,9 +76,6 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Tabs")
     UGV2ScreenWidgetBase* GetScreenWidgetForTab(FName InTabKey) const;
 
-    UPROPERTY(BlueprintAssignable, Category = "GV2|UI|Tabs")
-    FGV2OnTabChanged OnTabChanged;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|ScreenField")
     FName ConfiguredScreenFieldId;
 
@@ -116,12 +111,6 @@ protected:
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
-
-    UFUNCTION(BlueprintImplementableEvent, Category = "GV2|UI|Tabs")
-    void OnTabSelectionUpdated(FName NewTabKey, int32 NewTabIndex);
-
-    UFUNCTION(BlueprintImplementableEvent, Category = "GV2|UI|Tabs")
-    void OnTabModelApplied();
 
 private:
     void UpdateActiveTabDisplay();

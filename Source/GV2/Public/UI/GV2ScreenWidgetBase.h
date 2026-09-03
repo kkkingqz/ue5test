@@ -78,7 +78,4 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Screen")
     TArray<FName> GetScreenFieldIds() const;
 
-protected:
-    UFUNCTION(BlueprintImplementableEvent, Category = "GV2|UI|Screen", meta = (DisplayName = "On Screen Fields Applied"))
-    void OnScreenFieldsApplied();
 };

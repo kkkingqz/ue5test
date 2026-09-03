@@ -97,9 +97,9 @@ void UGV2TabContainerWidgetBase::ApplyTabEntries(
     });
 
     UpdateActiveTabDisplay();
-    OnTabModelApplied();
-    OnTabSelectionUpdated(ActiveTabKey, ActiveTabIndex);
-    OnTabChanged.Broadcast(ActiveTabKey, ActiveTabIndex);
+    // GBF-06: ApplyTabEntries is reached from the cancellable nested-screen Commit
+    // path. Tab-model callbacks are deliberately absent, so model application cannot
+    // execute arbitrary Blueprint/delegate observers before publication.
 
     // Sync active tab state with runtime coordinator
     const FString ResolvedPath = !ContainerPath.IsEmpty()
@@ -162,8 +162,6 @@ bool UGV2TabContainerWidgetBase::SelectTabByKey(FName InTabKey)
     ActiveTabIndex = FoundIndex;
 
     UpdateActiveTabDisplay();
-    OnTabSelectionUpdated(ActiveTabKey, ActiveTabIndex);
-    OnTabChanged.Broadcast(ActiveTabKey, ActiveTabIndex);
 
     // Sync active tab state with runtime coordinator
     const FString ResolvedPath = !ContainerPath.IsEmpty()

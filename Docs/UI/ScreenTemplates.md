@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.21
-updated: 2026-09-02
+version: 1.22
+updated: 2026-09-03
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -409,7 +409,7 @@ fields: [
 5. Предиктивная проверка `CanApplyScreenFields` выполняет фазу Prepare и отбрасывает план, гарантируя обнаружение ошибок глубоких детей и коллекций до вызова мутаций.
 6. При ошибке подготовки хотя бы одного поля план мутаций отбрасывается, и виджеты остаются в прежнем состоянии (компенсирующий откат устранён, так как мутация не начиналась).
 7. `UGV2ScreenWidgetBase::CommitScreenFields` исполняет подготовленный план мутаций (`CommitUiHostProperties`).
-8. Только после полного успеха вызывается `OnScreenFieldsApplied` и коммитятся подготовленные биндинги ревизии.
+8. После полного успеха коммитятся подготовленные биндинги ревизии. `OnScreenFieldsApplied` и tab callbacks (`OnTabModelApplied`, `OnTabSelectionUpdated`, `OnTabChanged`) отсутствуют: GBF-06 удалил неиспользуемые Blueprint callbacks, которые прежде исполнялись внутри отменяемой Commit-фазы.
 
 `GetScreenFieldIds` возвращает сконфигурированные `field_id` экрана и используется validation/tests.
 

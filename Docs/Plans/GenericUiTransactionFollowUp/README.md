@@ -1,8 +1,8 @@
 ---
 title: Generic UI Transaction Follow-up Plan
 status: active
-version: 1.1
-updated: 2026-09-02
+version: 1.2
+updated: 2026-09-03
 depends_on:
   - ../../Status/GV2_GenericBoundaryHardening_Followup_Review_2026-09-02.md
   - ../Archive/GenericBoundaryHardening.md
@@ -35,7 +35,7 @@ decisions:
 | План отката | Строится по **текущей** схеме; при смене схемы восстанавливает значения в форму новой, а не прежней |
 | Восстановление | Возвращает физическое состояние и не возвращает `LastCommittedProperties` и метаданные схемы |
 | Невозможность подготовить откат | Логируется, транзакцию не блокирует |
-| `OnScreenFieldsApplied` | Вызывается до окончательной публикации транзакции документа |
+| `OnScreenFieldsApplied` и tab callbacks | Удалены GBF-06: Asset Registry audit всех `.uasset` не нашёл Blueprint implementation, поэтому не существует callback внутри отменяемого Commit |
 | `keyed_by` схемы | Не проецируется в `KeyPropertyName` capability, поэтому сравнение из `GBH-08` не с чем выполнять |
 | Гейт полноты полей | `sizeof` — суррогат: новое поле садится в padding, размер не меняется, гейт остаётся зелёным |
 | Границы отката | Шесть, найдены аудитом; перечислителя, который найдёт седьмую, нет |

@@ -2,6 +2,7 @@
 
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformTime.h"
 #include "Widgets/SVirtualWindow.h"
@@ -2100,6 +2101,93 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 {
+    // GBF-06: enumerate every asset package actually present under Content, then inspect
+    // every screen Blueprint generated class. A new .uasset cannot evade this audit by
+    // being absent from a hand-maintained list of known screens.
+    FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    FARFilter AllGameAssetsFilter;
+    AllGameAssetsFilter.PackagePaths.Add(TEXT("/Game"));
+    AllGameAssetsFilter.bRecursivePaths = true;
+    TArray<FAssetData> AllGameAssets;
+    AssetRegistryModule.Get().GetAssets(AllGameAssetsFilter, AllGameAssets);
+    TSet<FName> RegistryPackageNames;
+    for (const FAssetData& Asset : AllGameAssets)
+    {
+        RegistryPackageNames.Add(Asset.PackageName);
+    }
+    TArray<FString> ContentAssetFiles;
+    IFileManager::Get().FindFilesRecursive(ContentAssetFiles, *FPaths::ProjectContentDir(), TEXT("*.uasset"), true, false);
+    TestTrue(TEXT("GBF-06: project contains assets to audit"), ContentAssetFiles.Num() > 0);
+    for (const FString& AssetFilename : ContentAssetFiles)
+    {
+        FString PackageName;
+        const bool bHasPackageName = FPackageName::TryConvertFilenameToLongPackageName(AssetFilename, PackageName);
+        TestTrue(*FString::Printf(TEXT("GBF-06: Asset Registry enumerates Content asset '%s'"), *AssetFilename), bHasPackageName);
+        if (bHasPackageName)
+        {
+            TestTrue(*FString::Printf(TEXT("GBF-06: Asset Registry has package '%s'"), *PackageName),
+                RegistryPackageNames.Contains(FName(*PackageName)));
+        }
+    }
+    TArray<FString> CallbackImplementers;
+    TArray<FString> TabModelCallbackImplementers;
+    TArray<FString> TabSelectionCallbackImplementers;
+    TArray<FString> CentralStyleBlueprintOverrides;
+    for (const FAssetData& Asset : AllGameAssets)
+    {
+        if (Asset.AssetClassPath.GetAssetName() != TEXT("WidgetBlueprint"))
+        {
+            continue;
+        }
+        const FString GeneratedClassPath = FString::Printf(TEXT("%s.%s_C"), *Asset.PackageName.ToString(), *Asset.AssetName.ToString());
+        UClass* const GeneratedClass = LoadClass<UUserWidget>(nullptr, *GeneratedClassPath);
+        TestNotNull(*FString::Printf(TEXT("GBF-06: Widget Blueprint generated class loads '%s'"), *Asset.PackageName.ToString()), GeneratedClass);
+        if (GeneratedClass == nullptr)
+        {
+            continue;
+        }
+        const UFunction* CallbackFunction = GeneratedClass->FindFunctionByName(TEXT("OnScreenFieldsApplied"));
+        if (GeneratedClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
+            && CallbackFunction != nullptr
+            && CallbackFunction->GetOuterUClass() == GeneratedClass)
+        {
+            CallbackImplementers.Add(Asset.PackageName.ToString());
+        }
+        const UFunction* TabModelCallbackFunction = GeneratedClass->FindFunctionByName(TEXT("OnTabModelApplied"));
+        if (GeneratedClass->IsChildOf(UGV2TabContainerWidgetBase::StaticClass())
+            && TabModelCallbackFunction != nullptr
+            && TabModelCallbackFunction->GetOuterUClass() == GeneratedClass)
+        {
+            TabModelCallbackImplementers.Add(Asset.PackageName.ToString());
+        }
+        const UFunction* TabSelectionCallbackFunction = GeneratedClass->FindFunctionByName(TEXT("OnTabSelectionUpdated"));
+        if (GeneratedClass->IsChildOf(UGV2TabContainerWidgetBase::StaticClass())
+            && TabSelectionCallbackFunction != nullptr
+            && TabSelectionCallbackFunction->GetOuterUClass() == GeneratedClass)
+        {
+            TabSelectionCallbackImplementers.Add(Asset.PackageName.ToString());
+        }
+        const UFunction* CentralStyleFunction = GeneratedClass->FindFunctionByName(TEXT("ApplyCentralStyle"));
+        if (GeneratedClass->ImplementsInterface(UGV2UiStyleConsumer::StaticClass())
+            && CentralStyleFunction != nullptr
+            && CentralStyleFunction->GetOuterUClass() == GeneratedClass)
+        {
+            CentralStyleBlueprintOverrides.Add(Asset.PackageName.ToString());
+        }
+    }
+    TestEqual(TEXT("GBF-06: no screen Blueprint implements the obsolete callback"), CallbackImplementers.Num(), 0);
+    TestNull(TEXT("GBF-06: screen base exposes no callback inside document Commit"),
+        UGV2ScreenWidgetBase::StaticClass()->FindFunctionByName(TEXT("OnScreenFieldsApplied")));
+    TestEqual(TEXT("GBF-06: no tab Blueprint implements the obsolete model callback"), TabModelCallbackImplementers.Num(), 0);
+    TestNull(TEXT("GBF-06: tab base exposes no model callback inside document Commit"),
+        UGV2TabContainerWidgetBase::StaticClass()->FindFunctionByName(TEXT("OnTabModelApplied")));
+    TestEqual(TEXT("GBF-06: no tab Blueprint implements the obsolete selection callback"), TabSelectionCallbackImplementers.Num(), 0);
+    TestNull(TEXT("GBF-06: tab base exposes no selection callback inside document Commit"),
+        UGV2TabContainerWidgetBase::StaticClass()->FindFunctionByName(TEXT("OnTabSelectionUpdated")));
+    TestNull(TEXT("GBF-06: tab base exposes no multicast callback inside document Commit"),
+        UGV2TabContainerWidgetBase::StaticClass()->FindPropertyByName(TEXT("OnTabChanged")));
+    TestEqual(TEXT("GBF-06: no Widget Blueprint overrides the central style hook used by Commit"), CentralStyleBlueprintOverrides.Num(), 0);
+
     // 1. UIF-17: Game Shell Layers Validation & Order
     TestTrue(TEXT("background is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("background")));
     TestTrue(TEXT("location_content is a valid layer"), UGV2GameShellWidgetBase::IsValidLayerName(TEXT("location_content")));

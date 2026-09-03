@@ -318,7 +318,6 @@ bool UGV2ScreenWidgetBase::CommitScreenFields(
         }
     }
 
-    OnScreenFieldsApplied();
     return true;
 }
 
