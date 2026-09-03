@@ -58,7 +58,7 @@ decisions:
 ## Milestones
 
 - [x] M1 — [Deterministic Bugs](DeterministicBugs.md): дефекты с однозначным правильным ответом закрыты. GBF-01…03.
-- [ ] M2 — [Structural Rollback](StructuralRollback.md): откат восстанавливает то же состояние, что было, а не то, что описывает текущая схема. GBF-04…05.
+- [x] M2 — [Structural Rollback](StructuralRollback.md): откат восстанавливает то же состояние, что было, а не то, что описывает текущая схема. GBF-04…05.
 - [ ] M3 — [Lifecycle and Closure](LifecycleAndClosure.md): побочные эффекты вне транзакции, границы перечислимы, раунд закрыт. GBF-06…08.
 
 ## Критический путь

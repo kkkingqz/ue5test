@@ -3,6 +3,7 @@
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
 #include "UI/GV2UiMutationPlan.h"
+#include "UI/GV2UiPropertyHost.h"
 #include "GV2ScreenWidgetBase.generated.h"
 
 struct FGV2ScreenFieldPlan
@@ -12,6 +13,7 @@ struct FGV2ScreenFieldPlan
     TSharedPtr<const FGV2PreparedUiObject> CommittedValue;
     std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> CommittedSchema;
     FString CommittedSchemaId;
+    FGV2UiPropertyHostState::FCommittedSnapshot PreviousCommittedSnapshot;
     // GBH-10 (ADR-0041): prepared off-tree alongside MutationPlan, against this host's
     // previous committed value -- restores the host to its pre-transaction state if
     // Commit fails on this host or a sibling host/screen in the same transaction.

@@ -52,6 +52,25 @@ public:
     const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& GetLastCommittedSchema() const { return LastCommittedSchema; }
     const FString& GetLastCommittedSchemaId() const { return LastCommittedSchemaId; }
 
+    struct FCommittedSnapshot
+    {
+        FGV2PreparedUiObject Properties;
+        std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> Schema;
+        FString SchemaId;
+    };
+
+    FCommittedSnapshot GetCommittedSnapshot() const
+    {
+        return { LastCommittedProperties, LastCommittedSchema, LastCommittedSchemaId };
+    }
+
+    void RestoreCommittedSnapshot(FCommittedSnapshot InSnapshot)
+    {
+        LastCommittedProperties = MoveTemp(InSnapshot.Properties);
+        LastCommittedSchema = MoveTemp(InSnapshot.Schema);
+        LastCommittedSchemaId = MoveTemp(InSnapshot.SchemaId);
+    }
+
     // GBF-04 (ADR-0041): a rollback is built from the exact state that was committed,
     // so the value alone is not a sufficient snapshot when a field changes schema.
     void SetLastCommittedSnapshot(

@@ -2874,8 +2874,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         // GBH-10 boundary that had no dedicated fault-injection test yet: several field
         // hosts of one reused Screen (CommitScreenFields' own multi-host loop).
         {
-            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
-            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 2);
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 2);
 
             UGV2ScreenWidgetBase* ReusedScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
             ReusedScreen->WidgetTree = NewObject<UWidgetTree>(ReusedScreen);
@@ -2899,6 +2899,17 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             FieldB->WidgetTree->RootWidget = TextB;
             FieldB->SetHostIdentity(FName(TEXT("field_b")));
             FieldB->DeclaredCapabilities.Add({ FName(TEXT("value_b")), FName(TEXT("TextB")), EGV2DeclaredUiCapabilityKind::Text });
+
+            UGV2ScreenWidgetBase* SiblingFailureScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            SiblingFailureScreen->WidgetTree = NewObject<UWidgetTree>(SiblingFailureScreen);
+            UGV2DeclaredCompositeWidgetBase* SiblingFailureField = SiblingFailureScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("SiblingFailureField"));
+            SiblingFailureScreen->WidgetTree->RootWidget = SiblingFailureField;
+            SiblingFailureField->WidgetTree = NewObject<UWidgetTree>(SiblingFailureField);
+            UGV2TextWidgetBase* SiblingFailureText = SiblingFailureField->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("SiblingFailureText"));
+            SiblingFailureField->WidgetTree->RootWidget = SiblingFailureText;
+            SiblingFailureField->SetHostIdentity(FName(TEXT("sibling_field")));
+            SiblingFailureField->DeclaredCapabilities.Add({ FName(TEXT("value_s")), FName(TEXT("SiblingFailureText")), EGV2DeclaredUiCapabilityKind::Text });
 
             auto MakeReusedFieldValue = [](const FName& FieldId, const FString& PropName, const FString& Text) -> FGV2ScreenFieldValue
             {
@@ -2929,12 +2940,22 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 OverlayInst.Fields.Add(MakeReusedFieldValue(FName(TEXT("field_a")), TEXT("value_a"), TextA_Value));
                 OverlayInst.Fields.Add(MakeReusedFieldValue(FName(TEXT("field_b")), TEXT("value_b"), TextB_Value));
                 Doc.Overlays.Add(OverlayInst);
+                FGV2ScreenInstanceViewModel SiblingInst;
+                SiblingInst.Layer = TEXT("overlay_stack");
+                SiblingInst.InstanceKey = TEXT("gbf05_sibling_failure");
+                SiblingInst.ScreenId = TEXT("core:screen.gbf05_sibling_failure");
+                SiblingInst.Fields.Add(MakeReusedFieldValue(FName(TEXT("sibling_field")), TEXT("value_s"), TEXT("Sibling")));
+                Doc.Overlays.Add(SiblingInst);
                 return Doc;
             };
 
             auto ReusedFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
             {
-                return ScreenId == TEXT("core:screen.gbh11_reused") ? ReusedScreen : nullptr;
+                if (ScreenId == TEXT("core:screen.gbh11_reused"))
+                {
+                    return ReusedScreen;
+                }
+                return ScreenId == TEXT("core:screen.gbf05_sibling_failure") ? SiblingFailureScreen : nullptr;
             };
 
             FString ReusedError;
@@ -2981,6 +3002,29 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 TestTrue(TEXT("GBH-11: Shell still shows the same reused widget attached (reuse never touches attach)"),
                     Shell->GetScreensInLayer(TEXT("overlay_stack")).Contains(ReusedScreen));
             }
+
+            // GBF-05: this is the document-level production path. The reused screen
+            // commits both fields successfully, then the later sibling screen rejects
+            // its commit. CommitReconcile must call RollbackFieldPlans for the already
+            // committed screen and restore its accounting as well as its widgets.
+            const auto OuterScreenFailureInjector = [](const FString& ScreenId, const FString& PropertyPath) -> bool
+            {
+                return ScreenId == TEXT("core:screen.gbf05_sibling_failure") && PropertyPath == TEXT("value_s");
+            };
+            const bool bOuterScreenFault = Reconciler.Reconcile(
+                Shell, MakeReusedDoc(TEXT("OuterA"), TEXT("OuterB")), ReusedFactory, ReusedError, OuterScreenFailureInjector);
+            TestFalse(TEXT("GBF-05: later sibling screen fault rejects the document transaction"), bOuterScreenFault);
+            TestEqual(TEXT("GBF-05: document rollback physically restores the earlier reused screen"),
+                TextA->GetTextContent().ToString(), TEXT("OldA"));
+            const FGV2PreparedUiValue* FieldAAfterOuterScreenFault = FieldA->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("value_a"));
+            TestNotNull(TEXT("GBF-05: document rollback restores earlier screen accounting"), FieldAAfterOuterScreenFault);
+            if (FieldAAfterOuterScreenFault != nullptr)
+            {
+                TestEqual(TEXT("GBF-05: document rollback accounting matches restored widget"),
+                    FieldAAfterOuterScreenFault->AsText().Text.ToString(), TEXT("OldA"));
+            }
+            TestEqual(TEXT("GBF-05: document rollback restores earlier screen schema id"),
+                FieldA->GetPropertyHostState().GetLastCommittedSchemaId(), TEXT("test:schema.gbh11_reused_field.v1"));
 
             // Clean up this scenario's overlay so later shared-Shell assertions in this
             // test function see the state they expect (no GBH-11-specific residue).
@@ -3101,6 +3145,35 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 SchemaSwitchScreen->PrepareScreenFields({ MakeSchemaSwitchValue(true, true) }, ExpansionPlan, ExpansionPrepareError));
             TestEqual(TEXT("GBF-04: schema expansion has one inverse per forward mutation"),
                 ExpansionPlan.FieldPlans[0].MutationPlan.Num(), ExpansionPlan.FieldPlans[0].RollbackPlan.Num());
+
+            // GBF-05: a higher transaction can reject this already successful screen
+            // after its Commit advanced the host snapshot. Rollback must restore both
+            // the widgets and the snapshot which the *next* Prepare observes.
+            TestTrue(TEXT("GBF-05: expanded revision commits before outer failure"),
+                SchemaSwitchScreen->CommitScreenFields(ExpansionPlan));
+            TestEqual(TEXT("GBF-05: expanded third meter is physically applied"), ThirdMeter->GetProgress(), 0.5f);
+            RollbackFieldPlans(ExpansionPlan.FieldPlans);
+            TestEqual(TEXT("GBF-05: rollback physically resets candidate-only meter"), ThirdMeter->GetProgress(), 0.0f);
+            const FGV2UiPropertyHostState& StateAfterOuterRollback = SchemaSwitchField->GetPropertyHostState();
+            TestEqual(TEXT("GBF-05: outer rollback restores prior schema id"),
+                StateAfterOuterRollback.GetLastCommittedSchemaId(), TEXT("test:schema.gbf04_meter_pair.v1"));
+            TestNull(TEXT("GBF-05: outer rollback removes candidate-only property from committed state"),
+                StateAfterOuterRollback.GetLastCommittedProperties().FindField(TEXT("third")));
+            FGV2ScreenMutationPlan NextPreparePlan;
+            FString NextPrepareError;
+            TestTrue(*FString::Printf(TEXT("GBF-05: next Prepare reads restored revision [Error: %s]"), *NextPrepareError),
+                SchemaSwitchScreen->PrepareScreenFields({ MakeSchemaSwitchValue(true) }, NextPreparePlan, NextPrepareError));
+            TestEqual(TEXT("GBF-05: next Prepare returns the one declared field plan"), NextPreparePlan.FieldPlans.Num(), 1);
+            if (NextPreparePlan.FieldPlans.Num() == 1)
+            {
+                const TArray<FGV2UiPropertyMutation>& NextMutations = NextPreparePlan.FieldPlans[0].MutationPlan.GetMutations();
+                TestEqual(TEXT("GBF-05: next Prepare has only the prior schema's two properties"), NextMutations.Num(), 2);
+                const bool bNextPrepareResetsCancelledThird = NextMutations.ContainsByPredicate([](const FGV2UiPropertyMutation& Mutation)
+                {
+                    return Mutation.PropertyName == TEXT("third");
+                });
+                TestFalse(TEXT("GBF-05: next Prepare does not see the cancelled third property"), bNextPrepareResetsCancelledThird);
+            }
 
             // A value-only legacy snapshot is deliberately not accepted as an inverse
             // source: guessing schema B here would recreate the original defect.
@@ -3373,6 +3446,26 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             DayBlock->DeclaredCapabilities.Add({ FName(TEXT("day")), FName(TEXT("DayText")), EGV2DeclaredUiCapabilityKind::Text });
             DayBlock->DeclaredCapabilities.Add({ FName(TEXT("value")), FName(TEXT("ValueBar")), EGV2DeclaredUiCapabilityKind::Number });
 
+            // A second tab lets the first, reused child commit successfully before
+            // the second one fails. That is the nested-screen form of an outer
+            // transaction rollback: the first child must restore both its widgets and
+            // the snapshot observed by its next Prepare.
+            UGV2ScreenWidgetBase* FailureScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            FailureScreen->WidgetTree = NewObject<UWidgetTree>(FailureScreen);
+            UGV2DeclaredCompositeWidgetBase* FailureDayBlock = FailureScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("FailureDayBlock"));
+            FailureScreen->WidgetTree->RootWidget = FailureDayBlock;
+            FailureDayBlock->WidgetTree = NewObject<UWidgetTree>(FailureDayBlock);
+            UVerticalBox* FailureDayBlockRoot = FailureDayBlock->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+            FailureDayBlock->WidgetTree->RootWidget = FailureDayBlockRoot;
+            UGV2TextWidgetBase* FailureDayText = FailureDayBlock->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("DayText"));
+            UGV2ProgressBarWidgetBase* FailureValueBar = FailureDayBlock->WidgetTree->ConstructWidget<UGV2ProgressBarWidgetBase>(UGV2ProgressBarWidgetBase::StaticClass(), TEXT("ValueBar"));
+            FailureDayBlockRoot->AddChildToVerticalBox(FailureDayText);
+            FailureDayBlockRoot->AddChildToVerticalBox(FailureValueBar);
+            FailureDayBlock->SetHostIdentity(FName(TEXT("day_block")));
+            FailureDayBlock->DeclaredCapabilities.Add({ FName(TEXT("day")), FName(TEXT("DayText")), EGV2DeclaredUiCapabilityKind::Text });
+            FailureDayBlock->DeclaredCapabilities.Add({ FName(TEXT("value")), FName(TEXT("ValueBar")), EGV2DeclaredUiCapabilityKind::Number });
+
             // Seed the tab container's screen-widget map directly (GetScreenWidgetForTab)
             // so Prepare finds this real child screen off-tree, the same way it would
             // reuse an already-reconciled tab on a later revision -- no Screen Registry
@@ -3383,8 +3476,13 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             SeedEntry.Key = FName(TEXT("info"));
             SeedEntry.ScreenId = TEXT("core:screen.test");
             SeedEntries.Add(SeedEntry);
+            FGV2TabItemEntry FailureSeedEntry;
+            FailureSeedEntry.Key = FName(TEXT("failure"));
+            FailureSeedEntry.ScreenId = TEXT("core:screen.test");
+            SeedEntries.Add(FailureSeedEntry);
             TMap<FName, UGV2ScreenWidgetBase*> SeedWidgets;
             SeedWidgets.Add(FName(TEXT("info")), ChildScreen);
+            SeedWidgets.Add(FName(TEXT("failure")), FailureScreen);
             NestedTabContainer->ApplyTabEntries(SeedEntries, SeedWidgets);
 
             TSharedPtr<IGV2PropertyConsumer> NestedConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
@@ -3427,6 +3525,70 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
             TestEqual(TEXT("DUC-09: nested field applied to the real DayText widget"), DayText->GetTextContent().ToString(), TEXT("Tuesday"));
             TestEqual(TEXT("DUC-09: nested field applied to the real ValueBar widget"), ValueBar->GetProgress(), 0.7f);
+
+            FGV2TextViewModel UpdatedDayVM;
+            UpdatedDayVM.Text = FText::FromString(TEXT("Wednesday"));
+            TMap<FString, FGV2PreparedUiValue> UpdatedInnerFields;
+            UpdatedInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(UpdatedDayVM));
+            UpdatedInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.2));
+            TArray<TPair<FString, FGV2PreparedUiValue>> UpdatedEnvelopeFields;
+            UpdatedEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
+            UpdatedEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            UpdatedEnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UpdatedInnerFields)));
+            TArray<FGV2PreparedUiValue> UpdatedFieldsArray;
+            UpdatedFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UpdatedEnvelopeFields)));
+            TMap<FString, FGV2PreparedUiValue> UpdatedInfoTabMap = TabMap;
+            UpdatedInfoTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UpdatedFieldsArray)));
+
+            TMap<FString, FGV2PreparedUiValue> FailureInnerFields;
+            FailureInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Never committed")) }));
+            FailureInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.1));
+            TArray<TPair<FString, FGV2PreparedUiValue>> FailureEnvelopeFields;
+            FailureEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
+            FailureEnvelopeFields.Emplace(TEXT("schema_id"), FGV2PreparedUiValue::MakeString(TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1")));
+            FailureEnvelopeFields.Emplace(TEXT("value"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureInnerFields)));
+            TArray<FGV2PreparedUiValue> FailureFieldsArray;
+            FailureFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureEnvelopeFields)));
+            TMap<FString, FGV2PreparedUiValue> FailureTabMap = TabMap;
+            FailureTabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("failure")));
+            FailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Failure")) }));
+            FailureTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FailureFieldsArray)));
+            TArray<FGV2PreparedUiValue> NestedFailureTabs;
+            NestedFailureTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UpdatedInfoTabMap)));
+            NestedFailureTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureTabMap)));
+
+            FString NestedRollbackPrepareError;
+            TestTrue(*FString::Printf(TEXT("GBF-05: nested reused child prepares candidate before sibling fault [Error: %s]"), *NestedRollbackPrepareError),
+                NestedConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NestedFailureTabs)), NestedTabCap, NestedTabContainer, NestedRollbackPrepareError));
+            const auto NestedFailureInjector = [](const FString& PropertyPath) -> bool
+            {
+                return PropertyPath.Contains(TEXT("failure"));
+            };
+            FString NestedRollbackCommitError;
+            TestFalse(*FString::Printf(TEXT("GBF-05: nested sibling fault rejects the tab transaction [Error: %s]"), *NestedRollbackCommitError),
+                NestedConsumer->CommitWithFailureInjector(NestedTabContainer, NestedRollbackCommitError, NestedFailureInjector, TEXT("tabs")));
+            TestEqual(TEXT("GBF-05: nested reused child physically rolls back its text"), DayText->GetTextContent().ToString(), TEXT("Tuesday"));
+            TestEqual(TEXT("GBF-05: nested reused child physically rolls back its number"), ValueBar->GetProgress(), 0.7f);
+            const FGV2PreparedUiValue* NestedCommittedDay = DayBlock->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("day"));
+            TestNotNull(TEXT("GBF-05: nested reused child restores committed day metadata"), NestedCommittedDay);
+            if (NestedCommittedDay != nullptr)
+            {
+                TestEqual(TEXT("GBF-05: nested reused child metadata matches the physical baseline"),
+                    NestedCommittedDay->AsText().Text.ToString(), TEXT("Tuesday"));
+            }
+            TestEqual(TEXT("GBF-05: nested reused child restores prior schema id"),
+                DayBlock->GetPropertyHostState().GetLastCommittedSchemaId(), TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1"));
+            TArray<FGV2PreparedUiValue> NestedRetryTabs;
+            NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
+            NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureTabMap)));
+            FString NestedNextPrepareError;
+            TestTrue(*FString::Printf(TEXT("GBF-05: next nested Prepare reads restored revision [Error: %s]"), *NestedNextPrepareError),
+                NestedConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NestedRetryTabs)), NestedTabCap, NestedTabContainer, NestedNextPrepareError));
+            FString NestedNextCommitError;
+            TestFalse(TEXT("GBF-05: later nested sibling fault still rejects after retry Prepare"),
+                NestedConsumer->CommitWithFailureInjector(NestedTabContainer, NestedNextCommitError, NestedFailureInjector, TEXT("tabs")));
+            TestEqual(TEXT("GBF-05: later nested rollback proves the next Prepare used baseline accounting"),
+                DayText->GetTextContent().ToString(), TEXT("Tuesday"));
 
             // Negative: an *extra* field_id the child screen has no host for is
             // rejected, not silently ignored (DUC-09's own Done criterion) --

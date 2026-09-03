@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2UiCapability.h"
+#include "UI/GV2UiPropertyHost.h"
 
 class UWidget;
 class FGV2UiHostMutationPlan;
@@ -283,6 +284,11 @@ private:
         TObjectPtr<UWidget> Widget;
         TSharedPtr<FGV2UiHostMutationPlan> Plan;
         bool bIsHost = false;
+        // GBF-05 (ADR-0041): restore this exact accounting snapshot only after
+        // the paired physical inverse succeeds. Collection commit publishes item
+        // snapshots as a batch, but keeping the prior tuple with the item makes
+        // the invariant explicit at this nested transaction boundary.
+        FGV2UiPropertyHostState::FCommittedSnapshot PreviousCommittedSnapshot;
         // GBH-10 (ADR-0041): set only when Widget is a REUSED entry (found in
         // ExistingWidgets during Prepare, not freshly created). RollbackPlan restores it
         // to its own previous committed value if Commit fails on a later item in the

@@ -1171,6 +1171,7 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                 : FString::Printf(TEXT("%s[%s]"), *ContextPropertyPath, *ItemKey.ToString());
 
             IGV2UiPropertyHost* const ItemHost = Cast<IGV2UiPropertyHost>(ItemWidget);
+            FGV2UiPropertyHostState::FCommittedSnapshot PreviousItemSnapshot = ItemHost->GetPropertyHostState().GetCommittedSnapshot();
             const FGV2PreparedUiObject PreviousItemValue = ItemHost->GetPropertyHostState().GetLastCommittedProperties();
             const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& PreviousItemSchema = ItemHost->GetPropertyHostState().GetLastCommittedSchema();
             const FString& PreviousItemSchemaId = ItemHost->GetPropertyHostState().GetLastCommittedSchemaId();
@@ -1227,6 +1228,7 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
             PreparedItem.bIsHost = true;
             PreparedItem.bIsReused = bItemReused;
             PreparedItem.CommittedValue = ItemVal.AsObjectRef();
+            PreparedItem.PreviousCommittedSnapshot = MoveTemp(PreviousItemSnapshot);
 
             // GBF-04 (ADR-0041): every direct item mutation receives an inverse. A
             // reused entry is restored from its committed schema snapshot; a fresh entry
@@ -1376,6 +1378,10 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                             UE_LOG(LogTemp, Error,
                                 TEXT("GBH-10: rollback failed restoring collection item '%s' property '%s': %s -- invariant violation"),
                                 *CommittedItem.Key.ToString(), *RollbackFailedPath, *RollbackError);
+                        }
+                        else if (IGV2UiPropertyHost* CommittedItemHost = Cast<IGV2UiPropertyHost>(CommittedItem.Widget))
+                        {
+                            CommittedItemHost->GetPropertyHostState().RestoreCommittedSnapshot(CommittedItem.PreviousCommittedSnapshot);
                         }
                     }
                 }

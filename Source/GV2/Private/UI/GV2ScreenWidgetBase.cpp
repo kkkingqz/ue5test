@@ -153,6 +153,7 @@ bool PrepareScreenFieldPlans(
         PropertyHost->DescribeUiCapabilities(Builder);
         const FGV2UiCapabilityTree CapabilityTree = Builder.Build();
         const FGV2UiPropertyHostState& HostState = PropertyHost->GetPropertyHostState();
+		FGV2UiPropertyHostState::FCommittedSnapshot PreviousCommittedSnapshot = HostState.GetCommittedSnapshot();
         const FGV2PreparedUiObject PreviousCommittedValue = HostState.GetLastCommittedProperties();
 
         FGV2UiHostMutationPlan MutationPlan;
@@ -232,7 +233,7 @@ bool PrepareScreenFieldPlans(
         }
 
         ConsumedFieldIds.Add(Host.FieldId);
-        OutPlans.Add({Host.HostWidget, MoveTemp(MutationPlan), Value.PreparedValue, Value.CompiledSchema, Value.SchemaId, MoveTemp(RollbackPlan)});
+        OutPlans.Add({Host.HostWidget, MoveTemp(MutationPlan), Value.PreparedValue, Value.CompiledSchema, Value.SchemaId, MoveTemp(PreviousCommittedSnapshot), MoveTemp(RollbackPlan)});
     }
 
     for (const TPair<FName, const FGV2ScreenFieldValue*>& Pair : ValuesById)
@@ -258,6 +259,10 @@ void RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan> FieldPlans)
             UE_LOG(LogGV2ScreenWidget, Error,
                 TEXT("GBH-10: rollback failed restoring host '%s' property '%s': %s -- invariant violation, physical state may not match previous revision"),
                 *GetNameSafe(FieldPlan.HostWidget.Get()), *RollbackFailedPath, *RollbackError);
+        }
+        else if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(FieldPlan.HostWidget.Get()))
+        {
+            PropertyHost->GetPropertyHostState().RestoreCommittedSnapshot(FieldPlan.PreviousCommittedSnapshot);
         }
     }
 }

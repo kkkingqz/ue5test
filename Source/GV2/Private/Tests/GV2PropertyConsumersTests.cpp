@@ -825,6 +825,28 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("GBH-10: Container child 0 is still BtnA"), ContainerBox->GetChildAt(0), Cast<UWidget>(BtnA));
             TestEqual(TEXT("GBH-10: Container child 1 is still BtnB"), ContainerBox->GetChildAt(1), Cast<UWidget>(BtnB));
 
+            // GBF-05: the reused item must restore accounting together with its
+            // visible binding. The next Prepare reads this snapshot to build its
+            // inverse, so checking only BtnA would miss the delayed divergence.
+            const FGV2PreparedUiValue* ItemACommittedBinding = BtnA->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("binding"));
+            TestNotNull(TEXT("GBF-05: reused item retains a committed binding after rollback"), ItemACommittedBinding);
+            if (ItemACommittedBinding != nullptr)
+            {
+                TestEqual(TEXT("GBF-05: reused item accounting restores the physical baseline binding"),
+                    ItemACommittedBinding->AsBinding(), TestHandleA);
+            }
+            TestEqual(TEXT("GBF-05: reused item accounting restores its prior schema id"),
+                BtnA->GetPropertyHostState().GetLastCommittedSchemaId(), TEXT("test:schema.button_item"));
+            FString CollectionNextPrepareError;
+            TestTrue(*FString::Printf(TEXT("GBF-05: next collection Prepare reads the restored revision [Error: %s]"), *CollectionNextPrepareError),
+                Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineElements)), *CollCap, ListView, CollectionNextPrepareError));
+            FString CollectionNextCommitError;
+            TestFalse(TEXT("GBF-05: later collection fault still rejects after preparing the prior revision"),
+                static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get())->CommitWithFailureInjector(
+                    ListView, CollectionNextCommitError, CommitPhaseInjector, TEXT("items")));
+            TestEqual(TEXT("GBF-05: later collection rollback proves the next Prepare used baseline accounting"),
+                BtnA->GetBindingHandle(), TestHandleA);
+
             // 8c. Negative tests: missing key, empty key, duplicate key
             TMap<FString, FGV2PreparedUiValue> MissingKeyMap;
             MissingKeyMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleA));
