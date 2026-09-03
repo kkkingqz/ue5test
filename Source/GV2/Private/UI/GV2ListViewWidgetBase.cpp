@@ -72,7 +72,8 @@ void UGV2ListViewWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& Out
     // has no single fixed entry class to declare honestly (each call site parameterizes its
     // own widget/model types), so declaring an "items" collection here would be exactly the
     // "declared but never consumed" shape this plan exists to remove. The owning composite
-    // (e.g. UGV2LocationPlayerStatusWidgetBase) is the one that declares real, verifiable
-    // capabilities for what it repeats.
+    // (e.g. UGV2LocationCommandPanelWidgetBase, or a UGV2DeclaredCompositeWidgetBase's own
+    // CollectionHost entry) is the one that declares real, verifiable capabilities for
+    // what it repeats.
     (void)OutBuilder;
 }

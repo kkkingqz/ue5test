@@ -1561,7 +1561,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestFalse(TEXT("Tab with unregistered screen_id rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnregScreenTabs)), *TabsCap, TabContainer, PrepErr));
         }
 
-        // 13. UPP-24: TopBar (DUC-08: generic declared composite) and UGV2LocationPlayerStatusWidgetBase as IGV2UiPropertyHost
+        // 13. UPP-24: TopBar, PlayerStatus and Scene (DUC-08/DCA-05/DCA-06: generic declared composite) as IGV2UiPropertyHost
         {
             auto MakeScalarSpec = [](const GV2ContentCore::EScalarFieldKind Kind,
                                      const TOptional<double> Min = {},
@@ -1729,66 +1729,80 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TestFalse(TEXT("TopBar Prepare rejects number for text"), ApplyHostProps(TopBar, BadTopBarValues, TopBarSchema, TEXT("textsystem:schema.ui_field.location_top_bar.v1"), ApplyErr));
             }
 
-            // 13b. PlayerStatus Property Host Reconciliation
+            // 13b. PlayerStatus (DCA-06: generic declared composite) Property Host Reconciliation
             {
-                UGV2LocationPlayerStatusWidgetBase* PlayerStatus = CreateWidget<UGV2LocationPlayerStatusWidgetBase>(TestWorld, UGV2LocationPlayerStatusWidgetBase::StaticClass());
+                UGV2DeclaredCompositeWidgetBase* PlayerStatus = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, UGV2DeclaredCompositeWidgetBase::StaticClass());
                 TestNotNull(TEXT("PlayerStatus instantiated"), PlayerStatus);
 
-                UGV2TextWidgetBase* NameBlock = NewObject<UGV2TextWidgetBase>(PlayerStatus);
-                UGV2PortraitWidgetBase* PortraitWidget = NewObject<UGV2PortraitWidgetBase>(PlayerStatus);
+                // DescribeUiCapabilities resolves children via GetWidgetFromName, a lookup in
+                // PlayerStatus's *own* WidgetTree -- not reflection-set BindWidget pointers, as
+                // the deleted UGV2LocationPlayerStatusWidgetBase used. See DUC-08/DCA-05.
+                PlayerStatus->WidgetTree = NewObject<UWidgetTree>(PlayerStatus);
+                UVerticalBox* StatusRoot = PlayerStatus->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+                PlayerStatus->WidgetTree->RootWidget = StatusRoot;
+
+                UGV2TextWidgetBase* NameBlock = PlayerStatus->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("PlayerNameText"));
+                StatusRoot->AddChildToVerticalBox(NameBlock);
+
+                UGV2PortraitWidgetBase* PortraitWidget = PlayerStatus->WidgetTree->ConstructWidget<UGV2PortraitWidgetBase>(UGV2PortraitWidgetBase::StaticClass(), TEXT("Portrait"));
                 UImage* InnerPortrait = NewObject<UImage>(PortraitWidget);
                 if (FProperty* Prop = UGV2PortraitWidgetBase::StaticClass()->FindPropertyByName(TEXT("PortraitImage")))
                 {
                     *Prop->ContainerPtrToValuePtr<TObjectPtr<UImage>>(PortraitWidget) = InnerPortrait;
                 }
-                UGV2ListViewWidgetBase* MeterRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatus);
-                UVerticalBox* MeterBox = NewObject<UVerticalBox>(PlayerStatus);
+                StatusRoot->AddChildToVerticalBox(PortraitWidget);
+
+                UGV2ListViewWidgetBase* MeterRep = PlayerStatus->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(UGV2ListViewWidgetBase::StaticClass(), TEXT("MeterRepeater"));
+                UVerticalBox* MeterBox = PlayerStatus->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("MeterBox"));
                 MeterRep->SetContainerPanel(MeterBox);
+                StatusRoot->AddChildToVerticalBox(MeterRep);
 
-                UGV2ListViewWidgetBase* ItemRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatus);
-                UVerticalBox* ItemBox = NewObject<UVerticalBox>(PlayerStatus);
+                UGV2ListViewWidgetBase* ItemRep = PlayerStatus->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(UGV2ListViewWidgetBase::StaticClass(), TEXT("ItemRepeater"));
+                UVerticalBox* ItemBox = PlayerStatus->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("ItemBox"));
                 ItemRep->SetContainerPanel(ItemBox);
+                StatusRoot->AddChildToVerticalBox(ItemRep);
 
-                UGV2ListViewWidgetBase* EffectRep = NewObject<UGV2ListViewWidgetBase>(PlayerStatus);
-                UVerticalBox* EffectBox = NewObject<UVerticalBox>(PlayerStatus);
+                UGV2ListViewWidgetBase* EffectRep = PlayerStatus->WidgetTree->ConstructWidget<UGV2ListViewWidgetBase>(UGV2ListViewWidgetBase::StaticClass(), TEXT("EffectRepeater"));
+                UVerticalBox* EffectBox = PlayerStatus->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("EffectBox"));
                 EffectRep->SetContainerPanel(EffectBox);
+                StatusRoot->AddChildToVerticalBox(EffectRep);
 
-                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("PlayerNameText")))
+                // The real WBP_ProgressBar/WBP_Icon (not the bare native classes) are
+                // required: Prepare resolves "percent"/"label"/"resource_id" against the
+                // entry's bound children.
+                UClass* RealMeterClass = LoadClass<UGV2ProgressBarWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"));
+                UClass* RealIconClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"));
+
+                PlayerStatus->DeclaredCapabilities.Add({ FName(TEXT("name")), FName(TEXT("PlayerNameText")), EGV2DeclaredUiCapabilityKind::Text });
+                PlayerStatus->DeclaredCapabilities.Add({ FName(TEXT("portrait_resource_id")), FName(TEXT("Portrait")), EGV2DeclaredUiCapabilityKind::ResourceRef });
                 {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2TextWidgetBase>>(PlayerStatus) = NameBlock;
+                    FGV2DeclaredUiCapability MeterCap;
+                    MeterCap.PropertyName = FName(TEXT("meters"));
+                    MeterCap.ChildWidgetName = FName(TEXT("MeterRepeater"));
+                    MeterCap.Kind = EGV2DeclaredUiCapabilityKind::CollectionHost;
+                    MeterCap.EntryWidgetClass = RealMeterClass != nullptr ? RealMeterClass : UGV2ProgressBarWidgetBase::StaticClass();
+                    MeterCap.KeyPropertyName = TEXT("key");
+                    PlayerStatus->DeclaredCapabilities.Add(MeterCap);
                 }
-                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("Portrait")))
                 {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2PortraitWidgetBase>>(PlayerStatus) = PortraitWidget;
+                    FGV2DeclaredUiCapability ItemCap;
+                    ItemCap.PropertyName = FName(TEXT("items"));
+                    ItemCap.ChildWidgetName = FName(TEXT("ItemRepeater"));
+                    ItemCap.Kind = EGV2DeclaredUiCapabilityKind::CollectionHost;
+                    ItemCap.EntryWidgetClass = RealIconClass != nullptr ? RealIconClass : UGV2ImageWidgetBase::StaticClass();
+                    ItemCap.KeyPropertyName = TEXT("key");
+                    PlayerStatus->DeclaredCapabilities.Add(ItemCap);
                 }
-                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("MeterRepeater")))
                 {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatus) = MeterRep;
+                    FGV2DeclaredUiCapability EffectCap;
+                    EffectCap.PropertyName = FName(TEXT("effects"));
+                    EffectCap.ChildWidgetName = FName(TEXT("EffectRepeater"));
+                    EffectCap.Kind = EGV2DeclaredUiCapabilityKind::CollectionHost;
+                    EffectCap.EntryWidgetClass = RealIconClass != nullptr ? RealIconClass : UGV2ImageWidgetBase::StaticClass();
+                    EffectCap.KeyPropertyName = TEXT("key");
+                    PlayerStatus->DeclaredCapabilities.Add(EffectCap);
                 }
-                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("ItemRepeater")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatus) = ItemRep;
-                }
-                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("EffectRepeater")))
-                {
-                    *Prop->ContainerPtrToValuePtr<TObjectPtr<UGV2ListViewWidgetBase>>(PlayerStatus) = EffectRep;
-                }
-                // DCA-03: MeterWidgetClass/IconWidgetClass have no fallback -- a bare
-                // instance needs both set. The real WBP_ProgressBar/WBP_Icon (not the
-                // bare native classes) are required: Prepare resolves "percent"/
-                // "resource_id" against the entry's bound children.
-                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("MeterWidgetClass")))
-                {
-                    UClass* RealMeterClass = LoadClass<UGV2ProgressBarWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_ProgressBar.WBP_ProgressBar_C"));
-                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ProgressBarWidgetBase>>(PlayerStatus) =
-                        RealMeterClass != nullptr ? RealMeterClass : UGV2ProgressBarWidgetBase::StaticClass();
-                }
-                if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("IconWidgetClass")))
-                {
-                    UClass* RealIconClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Icon.WBP_Icon_C"));
-                    *Prop->ContainerPtrToValuePtr<TSubclassOf<UGV2ImageWidgetBase>>(PlayerStatus) =
-                        RealIconClass != nullptr ? RealIconClass : UGV2ImageWidgetBase::StaticClass();
-                }
+                PlayerStatus->DeclaredCapabilities.Add({ FName(TEXT("key")), NAME_None, EGV2DeclaredUiCapabilityKind::Key });
 
                 FGV2UiCapabilityBuilder StatusBuilder;
                 PlayerStatus->DescribeUiCapabilities(StatusBuilder);
@@ -1889,10 +1903,69 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TestEqual(TEXT("ItemRepeater count is 2"), ItemRep->GetEntryCount(), 2);
                 TestEqual(TEXT("EffectRepeater count is 1"), EffectRep->GetEntryCount(), 1);
 
+                // DCA-06: count alone does not prove the value reached the screen -- verify
+                // every one of the three collections by VALUE, not just by presence/count.
+                auto ReadMeterLabel = [](UGV2ProgressBarWidgetBase* Meter) -> FString
+                {
+                    if (FProperty* Prop = UGV2ProgressBarWidgetBase::StaticClass()->FindPropertyByName(TEXT("LabelText")))
+                    {
+                        if (UCommonTextBlock* Label = Cast<UCommonTextBlock>(*Prop->ContainerPtrToValuePtr<TObjectPtr<UCommonTextBlock>>(Meter)))
+                        {
+                            return Label->GetText().ToString();
+                        }
+                    }
+                    return FString();
+                };
+
+                UGV2ProgressBarWidgetBase* HpMeter = Cast<UGV2ProgressBarWidgetBase>(MeterRep->GetEntryWidget(FName(TEXT("hp"))));
+                UGV2ProgressBarWidgetBase* StamMeter = Cast<UGV2ProgressBarWidgetBase>(MeterRep->GetEntryWidget(FName(TEXT("stamina"))));
+                TestNotNull(TEXT("HP meter widget exists"), HpMeter);
+                TestNotNull(TEXT("Stamina meter widget exists"), StamMeter);
+                if (HpMeter != nullptr)
+                {
+                    TestEqual(TEXT("HP meter percent applied"), HpMeter->GetProgress(), 0.8f, KINDA_SMALL_NUMBER);
+                    TestEqual(TEXT("HP meter label applied"), ReadMeterLabel(HpMeter), FString(TEXT("80/100")));
+                }
+                if (StamMeter != nullptr)
+                {
+                    TestEqual(TEXT("Stamina meter percent applied"), StamMeter->GetProgress(), 0.5f, KINDA_SMALL_NUMBER);
+                    TestEqual(TEXT("Stamina meter label applied"), ReadMeterLabel(StamMeter), FString(TEXT("50/100")));
+                }
+
+                // A collection entry's own "resource_id" capability targets its inner
+                // "Image" child (UGV2ImageWidgetBase::DescribeUiCapabilities), so Commit
+                // resolves straight to the UImage and never touches the entry's own
+                // AppliedResourceId bookkeeping (that only updates when the host itself is
+                // the capability target, e.g. a composite's top-level image field). Verify
+                // by the rendered brush's resource object instead.
+                UGV2ImageResourceCatalog* IconCatalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+                FGV2ResolvedImageResource ResolvedIcon;
+                FString IconResolveErr;
+                const bool bIconResolved = IconCatalog != nullptr
+                    && IconCatalog->Resolve(TEXT("textsystem:resource.ui.missing_icon"), ResolvedIcon, IconResolveErr);
+                TestTrue(TEXT("Icon catalog resolves textsystem:resource.ui.missing_icon"), bIconResolved);
+                UObject* ExpectedIconTexture = bIconResolved ? ResolvedIcon.Brush.GetResourceObject() : nullptr;
+                TestNotNull(TEXT("Expected icon texture is loaded"), ExpectedIconTexture);
+
                 UWidget* Item1Widget = ItemRep->GetEntryWidget(FName(TEXT("item@1")));
                 UWidget* Item2Widget = ItemRep->GetEntryWidget(FName(TEXT("item@2")));
                 TestNotNull(TEXT("Item 1 widget exists"), Item1Widget);
                 TestNotNull(TEXT("Item 2 widget exists"), Item2Widget);
+                if (UGV2ImageWidgetBase* Item1Image = Cast<UGV2ImageWidgetBase>(Item1Widget))
+                {
+                    TestEqual(TEXT("Item 1 icon texture applied"), Item1Image->GetImageBrush().GetResourceObject(), ExpectedIconTexture);
+                }
+                if (UGV2ImageWidgetBase* Item2Image = Cast<UGV2ImageWidgetBase>(Item2Widget))
+                {
+                    TestEqual(TEXT("Item 2 icon texture applied"), Item2Image->GetImageBrush().GetResourceObject(), ExpectedIconTexture);
+                }
+
+                UWidget* Effect1Widget = EffectRep->GetEntryWidget(FName(TEXT("effect@1")));
+                TestNotNull(TEXT("Effect 1 widget exists"), Effect1Widget);
+                if (UGV2ImageWidgetBase* Effect1Image = Cast<UGV2ImageWidgetBase>(Effect1Widget))
+                {
+                    TestEqual(TEXT("Effect 1 icon texture applied"), Effect1Image->GetImageBrush().GetResourceObject(), ExpectedIconTexture);
+                }
 
                 // Reorder items: item@2, item@3, item@1
                 TArray<TPair<FString, FGV2PreparedUiValue>> Item3Map;

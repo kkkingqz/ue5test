@@ -1,7 +1,7 @@
 ---
 title: Migration Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-03
 depends_on:
   - README.md
@@ -45,7 +45,7 @@ depends_on:
 
     Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) 101/101 без единого фейла — включая сквозные `RhStartOpensLocationScreen`, `LocationScreenViewportMatrix`, `LocationScreenTransitionContract`, `CapabilityObservabilityCompositeSweep`/`Harness` на реальном мигрированном `WBP_SceneView`/`WBP_LocationScreen`.
 
-- [ ] **DCA-06 — PlayerStatus переведён на объявление**
+- [x] **DCA-06 — PlayerStatus переведён на объявление**
   - Зависимости: DCA-01, DCA-02, DCA-03.
   - Самый крупный из трёх: `Text` (имя), `Image` (портрет), три `CollectionHost` (метры, предметы, эффекты) и идентичность. Именно здесь исторически жили четыре экземпляра семейства «значение исчезло на границе», поэтому сквозная проверка обязана дойти до каждой из трёх коллекций.
   - Инвариант: тот же, что у `DCA-05`. Здесь он острее: именно в этом композите жили четыре экземпляра семейства «значение исчезло на границе», поэтому сквозная проверка обязана дойти до каждой из трёх коллекций, а не до композита в целом.
@@ -57,6 +57,17 @@ depends_on:
     - метка метра, иконки предметов и эффектов доходят до экрана — проверено значениями;
     - sweep наблюдаемости покрывает новый композит, включая элементы всех трёх коллекций.
   - Evidence: `Content/TextSystem/UI/Widgets/WBP_PlayerStatusPanel.uasset`, `Source/GV2/Public/UI/GV2LocationCompositeWidgetBases.h`.
+  - **Реализация (2026-09-03):** `WBP_PlayerStatusPanel` перепривязан (`unreal-mcp` `set_parent`) с `UGV2LocationPlayerStatusWidgetBase` на `UGV2DeclaredCompositeWidgetBase`; его Designer-дерево (`PlayerNameText`/`Portrait`/`MeterRepeater`/`ItemRepeater`/`EffectRepeater`, все реальные production-виджеты) не тронуто. `DeclaredCapabilities` заданы шестью записями и на CDO, и (тот же живой дефект instance-vs-CDO) на самом instance `PlayerStatus` внутри `WBP_LocationScreen`: `name → PlayerNameText: Text` (единственное required-поле композита — в удалённом C++ было `BindWidget`, а не `BindWidgetOptional`, как всё остальное в классе), `portrait_resource_id → Portrait: ResourceRef (optional)`, `meters → MeterRepeater: CollectionHost (optional, EntryWidgetClass=WBP_ProgressBar, key)`, `items → ItemRepeater: CollectionHost (optional, EntryWidgetClass=WBP_Icon, key)`, `effects → EffectRepeater: CollectionHost (optional, EntryWidgetClass=WBP_Icon, key)`, `key → (self): Key`.
+
+    `UGV2LocationPlayerStatusWidgetBase` полностью удалён из `GV2LocationCompositeWidgetBases.h`/`.cpp` (класс, `DescribeUiCapabilities`, `NativePreConstruct`, `HasUsableMeterRepeaterHost`/`HasUsableItemRepeaterHost`/`HasUsableEffectRepeaterHost`, `Resolve*Repeater`). Ветка `Cast<UGV2LocationPlayerStatusWidgetBase>` в `GV2UiMutationPlan.cpp`'s target-resolution мостике удалена (после `DCA-05` и `DCA-06` в мостике остаётся только ветка `CommandPanel` — `DCA-07` последняя). Все тестовые usages (`GV2PropertyConsumersTests.cpp` §13b, `GV2RuntimeSubsystemTests.cpp` — allowlist аудита, `RhStartOpensLocationScreen`, viewport matrix test, `LocationScreenTransitionContract`) переведены на generic-класс: сопоставление по `HostIdentity == "player_status"` вместо `Cast` на конкретный класс, реальный `WidgetTree`/`ConstructWidget` вместо BindWidget-reflection на bare `NewObject`. PCC-12's "PlayerStatus eager internal repeater construction" блок (generic-класс не создаёт transient-объекты вовсе, чистота гарантирована конструкцией) удалён с explanatory-комментарием, не молча.
+
+    §13b дополнительно усилен по требованию инварианта задачи (не количество, а значения): метры теперь проверяются по `GetProgress()` (percent) и по применённому тексту `LabelText` (reflection-чтение — `LabelText` `protected`, но резолвится корректно на реальном Blueprint-классе `WBP_ProgressBar_C`, сконструированном через `WidgetTree`/`ConstructWidget`, а не bare `NewObject`); предметы и эффекты — по применённой текстуре иконки (`GetImageBrush().GetResourceObject()` против текстуры, разрешённой из каталога напрямую). Собственный `AppliedResourceId` элемента коллекции здесь не годится для проверки: `UGV2ImageWidgetBase::DescribeUiCapabilities` объявляет `resource_id` на дочернем `Image`, поэтому при разрешении вложенного property host'а (`items`/`effects` как `CollectionHost` из `IGV2UiPropertyHost`-элементов) `Commit` идёт напрямую в `UImage`, минуя `ApplyImageResource()` и его bookkeeping — это существующее поведение пайплайна, не дефект этой задачи, но оно делает `GetAppliedResourceId()` неверным инструментом проверки именно для элементов коллекции (в отличие от top-level `Image`-поля композита, где `Commit` идёt через сам host и `AppliedResourceId` обновляется).
+
+    Content-миграция вскрыла транзиентный артефакт порядка загрузки: после удаления C++-класса и до перепривязки `WBP_PlayerStatusPanel` виджет `PlayerStatus` временно выпадал из `WidgetTree` экрана `WBP_LocationScreen` при компиляции (UMG компилятор не мог разрешить тип ещё-не-перепривязанного дочернего Blueprint-класса и orphan'ил узел — тот самый `[PlayerStatus] was deleted but still has a GUID reference` ensure). Сохранение исправленного `WBP_PlayerStatusPanel` на диск и свежий relaunch редактора (перекомпиляция `WBP_LocationScreen` уже против валидного parent chain) вернули `PlayerStatus` в дерево с прежним `HostIdentity="player_status"` без ручного пересоздания — исходное размещение (`Body.HorizontalBoxSlot_0`, рядом с `Scene`) не пострадало.
+
+    Red→green на реальном контенте (по образцу DUC-08/DCA-05): временная очистка `DeclaredCapabilities` на instance `PlayerStatus` внутри `WBP_LocationScreen` (без сохранения на диск) уронила `GV2.Runtime.Presentation.RhStartOpensLocationScreen` с `core:diagnostic.ui_capability.unknown_schema_property: Schema property 'name' is not supported by widget capabilities`; восстановление — снова чисто, подтверждено live через `AutomationTestToolset.RunTests`.
+
+    Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) 101/101 без единого фейла — включая сквозные `RhStartOpensLocationScreen`, `LocationScreenViewportMatrix`, `LocationScreenTransitionContract` на реальном мигрированном `WBP_PlayerStatusPanel`/`WBP_LocationScreen`.
 
 - [ ] **DCA-07 — CommandPanel переведён на объявление**
   - Зависимости: DCA-01, DCA-02, DCA-03, DCA-04.

@@ -305,7 +305,7 @@ Value-only Screen Field имеет форму:
 | `core:schema.ui_field.modal.v1` | `WBP_Modal` / `UGV2ModalWidgetBase` | `title` (Text), `content` (Text), `buttons` (CollectionHost), `backdrop_close_action` (Binding) | Нет — nested property host only |
 | `core:schema.ui_field.tab_container.v1` | `WBP_TabContainer` / `UGV2TabContainerWidgetBase` | `default_tab_key` (Key), `tabs` (CollectionHost) | Нет — nested property host only |
 | `textsystem:schema.ui_field.location_top_bar.v1` | `WBP_LocationTopBar` / `UGV2DeclaredCompositeWidgetBase` (DUC-08) | `day` (Text), `location` (Text), `primary_resource` (Text) | **Да** |
-| `textsystem:schema.ui_field.location_player_status.v1` | `UGV2LocationPlayerStatusWidgetBase` | `name` (Text), `portrait_resource_id` (Ref), `meters` (CollectionHost), `items` (CollectionHost), `effects` (CollectionHost) | **Да** |
+| `textsystem:schema.ui_field.location_player_status.v1` | `WBP_PlayerStatusPanel` / `UGV2DeclaredCompositeWidgetBase` (DCA-06) | `name` (Text), `portrait_resource_id` (Ref), `meters` (CollectionHost), `items` (CollectionHost), `effects` (CollectionHost) | **Да** |
 | `textsystem:schema.ui_field.location_scene.v1` | `WBP_SceneView` / `UGV2DeclaredCompositeWidgetBase` (DCA-05) | `background_tile_resource_id` (Ref), `background_resource_id` (Ref), `context_text` (Text), `characters` (CollectionHost) | **Да** |
 | `textsystem:schema.ui_field.location_commands.v1` | `UGV2LocationCommandPanelWidgetBase` | `items` (CollectionHost) | **Да** |
 
@@ -432,7 +432,7 @@ fields: [
 | `field_id` | Existing element | Schema |
 |---|---|---|
 | `top_bar` | `WBP_LocationTopBar` (`UGV2DeclaredCompositeWidgetBase`, DUC-08) | `textsystem:schema.ui_field.location_top_bar.v1` |
-| `player_status` | `UGV2LocationPlayerStatusWidgetBase` | `textsystem:schema.ui_field.location_player_status.v1` |
+| `player_status` | `WBP_PlayerStatusPanel` (`UGV2DeclaredCompositeWidgetBase`, DCA-06) | `textsystem:schema.ui_field.location_player_status.v1` |
 | `scene` | `WBP_SceneView` (`UGV2DeclaredCompositeWidgetBase`, DCA-05) | `textsystem:schema.ui_field.location_scene.v1` |
 | `commands` | `UGV2LocationCommandPanelWidgetBase` | `textsystem:schema.ui_field.location_commands.v1` |
 

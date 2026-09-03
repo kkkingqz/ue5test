@@ -1345,7 +1345,6 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 || WidgetClass->IsChildOf(UGV2RichTextWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2RichTextPopoverWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2LocationPlayerStatusWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2LocationCommandPanelWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ProgressBarWidgetBase::StaticClass())
                 || WidgetClass->IsChildOf(UGV2ModalWidgetBase::StaticClass());
@@ -5309,18 +5308,18 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                     LocationScreen->WidgetTree->GetAllWidgets(ChildWidgets);
 
                     UGV2DeclaredCompositeWidgetBase* TopBarWidget = nullptr;
-                    UGV2LocationPlayerStatusWidgetBase* PlayerStatusWidget = nullptr;
+                    UGV2DeclaredCompositeWidgetBase* PlayerStatusWidget = nullptr;
                     UGV2DeclaredCompositeWidgetBase* SceneWidget = nullptr;
                     UGV2LocationCommandPanelWidgetBase* CommandWidget = nullptr;
 
                     for (UWidget* W : ChildWidgets)
                     {
-                        // DUC-08/DCA-05: TopBar and Scene are now the generic declared
-                        // composite -- matched by HostIdentity, not a dedicated C++ class,
-                        // since several other declared composites could also appear in this
-                        // tree.
+                        // DUC-08/DCA-05/DCA-06: TopBar, Scene and PlayerStatus are now the
+                        // generic declared composite -- matched by HostIdentity, not a
+                        // dedicated C++ class, since several other declared composites
+                        // could also appear in this tree.
                         if (auto* TB = Cast<UGV2DeclaredCompositeWidgetBase>(W); TB != nullptr && TB->GetHostIdentity() == FName(TEXT("top_bar"))) TopBarWidget = TB;
-                        else if (auto* PS = Cast<UGV2LocationPlayerStatusWidgetBase>(W)) PlayerStatusWidget = PS;
+                        else if (auto* PS = Cast<UGV2DeclaredCompositeWidgetBase>(W); PS != nullptr && PS->GetHostIdentity() == FName(TEXT("player_status"))) PlayerStatusWidget = PS;
                         else if (auto* SC = Cast<UGV2DeclaredCompositeWidgetBase>(W); SC != nullptr && SC->GetHostIdentity() == FName(TEXT("scene"))) SceneWidget = SC;
                         else if (auto* CP = Cast<UGV2LocationCommandPanelWidgetBase>(W)) CommandWidget = CP;
                     }
@@ -6574,71 +6573,21 @@ bool FGV2LocationCompositeCapabilityQueryIsPureTest::RunTest(const FString& Para
     TestNotNull(TEXT("TestWorld created"), TestWorld);
     if (TestWorld == nullptr) return false;
 
-    UGV2LocationPlayerStatusWidgetBase* PlayerStatus = NewObject<UGV2LocationPlayerStatusWidgetBase>(TestWorld);
-    TestNotNull(TEXT("PCC-09: PlayerStatus instantiated"), PlayerStatus);
-    if (PlayerStatus != nullptr)
-    {
-        UWrapBox* ItemBox = NewObject<UWrapBox>(PlayerStatus);
-        if (FProperty* Prop = UGV2LocationPlayerStatusWidgetBase::StaticClass()->FindPropertyByName(TEXT("ItemIcons")))
-        {
-            *Prop->ContainerPtrToValuePtr<TObjectPtr<UWrapBox>>(PlayerStatus) = ItemBox;
-        }
-
-        FObjectProperty* InternalItemRepeaterProp = FindFProperty<FObjectProperty>(
-            UGV2LocationPlayerStatusWidgetBase::StaticClass(), TEXT("InternalItemRepeater"));
-        TestNotNull(TEXT("PCC-09: InternalItemRepeater property found via reflection"), InternalItemRepeaterProp);
-
-        if (InternalItemRepeaterProp != nullptr)
-        {
-            UObject* BeforeConstruct = InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus);
-            TestNull(TEXT("PCC-09: InternalItemRepeater is not yet created before any lifecycle call"), BeforeConstruct);
-        }
-
-        // TakeWidget() drives the same Slate construction path a real screen does,
-        // which is what actually invokes (protected) NativePreConstruct.
-        PlayerStatus->TakeWidget();
-
-        UObject* AfterConstruct = InternalItemRepeaterProp != nullptr
-            ? InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus)
-            : nullptr;
-        TestNotNull(TEXT("PCC-09: InternalItemRepeater exists after construction, before any capability query"), AfterConstruct);
-        TestTrue(TEXT("PCC-09: HasUsableItemRepeaterHost is true right after construction"), PlayerStatus->HasUsableItemRepeaterHost());
-
-        IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(PlayerStatus);
-        TestNotNull(TEXT("PCC-09: PlayerStatus is an IGV2UiPropertyHost"), PropertyHost);
-        if (PropertyHost != nullptr)
-        {
-            FGV2UiCapabilityBuilder BuilderA;
-            PropertyHost->DescribeUiCapabilities(BuilderA);
-            UObject* AfterFirstQuery = InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus);
-
-            FGV2UiCapabilityBuilder BuilderB;
-            PropertyHost->DescribeUiCapabilities(BuilderB);
-            UObject* AfterSecondQuery = InternalItemRepeaterProp->GetObjectPropertyValue_InContainer(PlayerStatus);
-
-            TestEqual(TEXT("PCC-09: DescribeUiCapabilities does not replace InternalItemRepeater (1st call)"), AfterFirstQuery, AfterConstruct);
-            TestEqual(TEXT("PCC-09: DescribeUiCapabilities does not replace InternalItemRepeater (2nd call)"), AfterSecondQuery, AfterFirstQuery);
-
-            const FGV2UiCapabilityTree CapsA = BuilderA.Build();
-            const FGV2UiCapabilityTree CapsB = BuilderB.Build();
-            TestNotNull(TEXT("PCC-09: 'items' capability is declared (repeated query is not just a no-op)"), CapsA.FindProperty(TEXT("items")));
-            TestNotNull(TEXT("PCC-09: 'items' capability is declared identically on repeat"), CapsB.FindProperty(TEXT("items")));
-        }
-    }
-
-    // PCC-12: the fix above touched five call sites (PlayerStatus x3, Scene x1,
-    // CommandPanel x1), but only PlayerStatus was ever proven pure by a test --
-    // closing an instance without verifying the whole class it was drawn from is
-    // exactly the gap this reconciliation task exists to catch. CommandPanel repeats
-    // the identical eager-construct/pure-query shape.
+    // PCC-12: the original fix (see the class-level comment above) touched five call
+    // sites (PlayerStatus x3, Scene x1, CommandPanel x1), but only PlayerStatus was
+    // ever proven pure by a test at the time -- closing an instance without verifying
+    // the whole class it was drawn from is exactly the gap this reconciliation task
+    // exists to catch. CommandPanel repeats the identical eager-construct/pure-query
+    // shape.
     //
-    // DCA-05: Scene's block here was removed -- UGV2LocationSceneWidgetBase and its
-    // ResolveCharacterRepeater()/InternalCharacterRepeater transient-object cache no
-    // longer exist. The generic declared composite has no internal/transient state to
-    // eagerly construct or accidentally mutate on repeated DescribeUiCapabilities
-    // calls in the first place: it resolves children by name against the real
-    // WidgetTree every time, so purity holds by construction, not by a lifecycle
-    // invariant that needs its own regression test.
+    // DCA-05/DCA-06: PlayerStatus's and Scene's blocks here were removed --
+    // UGV2LocationPlayerStatusWidgetBase/UGV2LocationSceneWidgetBase and their
+    // Resolve*Repeater()/InternalXxxRepeater transient-object caches no longer exist.
+    // The generic declared composite has no internal/transient state to eagerly
+    // construct or accidentally mutate on repeated DescribeUiCapabilities calls in the
+    // first place: it resolves children by name against the real WidgetTree every
+    // time, so purity holds by construction, not by a lifecycle invariant that needs
+    // its own regression test.
     UGV2LocationCommandPanelWidgetBase* CmdPanel = NewObject<UGV2LocationCommandPanelWidgetBase>(TestWorld);
     TestNotNull(TEXT("PCC-12: CommandPanel instantiated"), CmdPanel);
     if (CmdPanel != nullptr)

@@ -191,22 +191,7 @@ bool PrepareUiHostProperties(
                 }
                 if (TargetWidget == nullptr)
                 {
-                    if (UGV2LocationPlayerStatusWidgetBase* PlayerStatus = Cast<UGV2LocationPlayerStatusWidgetBase>(HostWidget))
-                    {
-                        if (Cap.TargetName == TEXT("MeterRepeater") || Cap.TargetName == TEXT("MeterContainer"))
-                        {
-                            TargetWidget = PlayerStatus->GetMeterRepeater();
-                        }
-                        else if (Cap.TargetName == TEXT("ItemRepeater") || Cap.TargetName == TEXT("ItemIcons"))
-                        {
-                            TargetWidget = PlayerStatus->GetItemRepeater();
-                        }
-                        else if (Cap.TargetName == TEXT("EffectRepeater") || Cap.TargetName == TEXT("EffectIcons"))
-                        {
-                            TargetWidget = PlayerStatus->GetEffectRepeater();
-                        }
-                    }
-                    else if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(HostWidget))
+                    if (UGV2LocationCommandPanelWidgetBase* CmdPanel = Cast<UGV2LocationCommandPanelWidgetBase>(HostWidget))
                     {
                         if (Cap.TargetName == TEXT("ButtonRepeater") || Cap.TargetName == TEXT("ButtonContainer"))
                         {
