@@ -1,7 +1,7 @@
 ---
 title: Generic Boundary Hardening Follow-up Review Archive
 status: archived
-version: 1.0
+version: 1.1
 updated: 2026-09-03
 depends_on:
   - ../ImplementationStatus.md
@@ -54,7 +54,9 @@ decisions:
 - `ctest --test-dir build --output-on-failure`: 74/74 passed.
 - `gv2-headless --check-scripts`: `ok=true`, `modules_checked=42`.
 - `python3 Tools/Documentation/validate_docs.py`: passed.
-- `Automation RunTests GV2.UI`: 16/16 success, including `LayeredReconciliationContract`, `PrepareCommitAndFailureInjection`, `PropertyHostAndCapabilities` and `StandardPropertyConsumers`.
+- `Automation RunTests GV2`: 108/108 success, счёт из `index.json` (`-ReportExportPath`).
+
+  **Исправлено 2026-09-03.** Версия 1.0 фиксировала здесь `Automation RunTests GV2.UI`: 16/16 success. Фильтр `GV2.UI` покрывает 16 тестов из 108; группа `GV2.Runtime.UI.*` под него не попадает ни одним тестом, и в ней был красный сценарий `GBF-05` для вложенного экрана. Независимая проверка (`GBF-AF-01`, `GBF-AF-02`) нашла это, дефект устранён коммитом `7414115`, после чего полный набор зелёный.
 - Current and negative-self-test variants passed for shell attach failure consumption, capability member inventory, rollback boundary inventory and UI legacy gate.
 
 ## Source record
