@@ -1,7 +1,7 @@
 ---
 title: GenericUiTransactionFollowUp Archive Summary
 status: archived
-version: 1.0
+version: 1.1
 updated: 2026-09-03
 ---
 
@@ -61,7 +61,7 @@ updated: 2026-09-03
 
 ## Верификация закрытия
 
-- `Automation RunTests GV2`: 108/108 success, счёт из `index.json`.
+- `Automation RunTests GV2`: 108/108 success, счёт из `index.json`. Прогон повторён на tip `8dd4eb8` после того, как параллельный `DCA-04` удалил C++-поверхность трёх композитов между первым прогоном и архивацией.
 - `ctest --test-dir build`: 74/74.
 - `gv2-headless --check-scripts`, `validate_docs.py`: зелёные.
 - Red-on-revert показан для защиты от применения непринятой ревизии: при её снятии краснеют ровно две новые проверки.
