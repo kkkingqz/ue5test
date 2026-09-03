@@ -1,8 +1,8 @@
 ---
 title: GV2 Generic Boundary Hardening Follow-up Review 2026-09-02
 status: informative
-version: 1.0
-updated: 2026-09-02
+version: 1.1
+updated: 2026-09-03
 depends_on:
   - ImplementationStatus.md
   - ../ADR/0041-ui-commit-rollback-model.md
@@ -581,3 +581,51 @@ validate_docs.py: 168 files
 Для `7` нужен negative self-test самого gate.
 
 Полный green suite без доказательства этих danger points недостаточен.
+
+# 9. GBF-08 independent closure audit
+
+> **Показывает:** независимую сверку закрытий на `453eb30a1fb126bbd4f2424b6f4d9c85353fc6c8`, проведённую 2026-09-03. Исходный отчёт и полный вывод команд находятся в `.superpowers/sdd/LifecycleAndClosure/task-1-report.md` и не являются источником нормативных правил.
+
+Все outcomes ниже закрывают finding как класс, а не единственный fixture. Формулировка «assertion станет red при revert» означает проверяемую связь current production path с уже выполненным UE-тестом; независимая сверка **не** подменяет это фиктивной перекомпиляцией временно откаченного C++. Отдельно выполненные negative self-test структурных Python gates действительно подставляют дефектную форму и требуют её rejection.
+
+## GBH-R1 — устранён
+
+`UGV2GameShellWidgetBase::AttachScreenToLayer` теперь возвращает `false` для `Host->AddChild(...) == nullptr` (`GV2GameShellWidgetBase.cpp`). `GV2.UI.LayeredReconciliationContract` проходит production `CommitReconcile` через занятый `USizeBox` и проверяет failed commit, tree, previous screen metadata и неизменённый `ActiveScreens`; возврат старой success-ветки делает его `TestFalse` red. `validate_shell_attach_failure_consumption.py` перечисляет каждый `->AddChild(...)` в body `AttachScreenToLayer`; его executed self-test удаляет null-propagation и discard-ит result, и gate их отклоняет. Текущее множество содержит один вызов `Host->AddChild`.
+
+## GBH-R2 — устранён
+
+Committed tuple теперь включает value, compiled schema и schema ID; `PrepareUiHostRollbackPlan` строит inverse от previous schema/value либо reset candidate-only property (`GV2ScreenWidgetBase.cpp`, `GV2UiMutationPlan.cpp`, reused collection item в `GV2PropertyConsumers.cpp`). `GV2.UI.LayeredReconciliationContract` делает schema A→B switch, вводит failure после первой mutation и проверяет возврат обоих значений формы A; откат к current-schema preparation делает эти assertions red. `GetUiMutationKindsRequiringInverse()` перечисляет direct mutation kinds, а `GV2.UI.PrepareCommitAndFailureInjection` удаляет inverse по очереди для каждого kind. Screen host и reused keyed item — оба production builders generic inverse; nested tab screen делегирует `RollbackFieldPlans`.
+
+## GBH-R3 — устранён
+
+`RollbackFieldPlans` replay-ит inverse и только после physical success вызывает `RestoreCommittedSnapshot`; document, keyed collection и nested-tab boundaries используют тот же путь (`GV2ScreenWidgetBase.cpp`, `GV2LayeredUiReconciler.cpp`, `GV2PropertyConsumers.cpp`). `GV2.UI.LayeredReconciliationContract` проверяет reused two-screen rollback, schema ID, absent candidate-only property и next Prepare; он также проверяет nested child. `GV2.UI.StandardPropertyConsumers` проверяет reused keyed item. Удаление restore accounting делает эти metadata/next-Prepare assertions red. Перечислитель rollback boundaries содержит property, screen fields, document, keyed collection, nested tabs и Shell attach; Shell использует тот же `RollbackFieldPlans` recovery.
+
+## GBH-R4 — устранён
+
+Prepare отклоняет non-empty committed value без schema snapshot, inverse preparation failure и plan mismatch; та же hard-failure логика есть у reused collection item. `GV2.UI.LayeredReconciliationContract` ожидает `core:diagnostic.ui_rollback.missing_committed_schema`; `GV2.UI.PrepareCommitAndFailureInjection` перебирает `GetUiMutationKindsRequiringInverse()` и ожидает `core:diagnostic.ui_rollback.plan_mismatch` после удаления inverse. Возврат warning-and-continue делает эти assertions red. Два production inverse builders — screen host и reused keyed item — найдены source search; единственный UI call without rollback plan является one-property test-only observability probe, не live multi-mutation transaction.
+
+## GBH-R5 — устранён
+
+`OnScreenFieldsApplied`, `OnTabModelApplied`, `OnTabSelectionUpdated` и `OnTabChanged` удалены из screen/tab API и Commit path. `GV2.UI.LayeredReconciliationContract` перечисляет filesystem `.uasset` под `Content`, сверяет их с Asset Registry и инспектирует generated class каждого Widget Blueprint; он требует zero implementers и null reflected base callback surface. Возврат UFUNCTION/callback делает reflection assertions red; новый Blueprint implementation не может скрыться вне ручного списка assets. Это полный enumerator применимых content assets, а не проверка известных трёх Blueprint.
+
+## GBH-R6 — устранён
+
+`ProjectSchemaFieldToCapability` переносит actual `FieldSpec.KeyedBy` в `KeyPropertyName`, а shared subset rule сравнивает это имя (`GV2UiCapability.cpp`). `GV2.UI.PropertyHostAndCapabilities` подаёт `keyed_by: "id"` против widget `key` без items, ожидает `key_property_mismatch` и обе строки в diagnostic; flag-only projection делает `TestFalse` red. Единый schema-side projection перечисляет array keyed identity, а independent member inventory требует classification `KeyPropertyName` как `KeyPropertyMismatch`.
+
+## GBH-R7 — устранён
+
+`sizeof(FGV2UiPropertyCapability)` больше не является proof. CTest gates `ui_capability_member_inventory_contract` и `_negative_contract` извлекают каждый data member public struct и сравнивают с independent `CLASSIFIED_MEMBERS`. Executed self-test добавляет unknown member и удаляет `PropertyName`, требуя failure в обоих случаях. Это enumerates all current 15 members и не зависит от ABI padding.
+
+## Общая проверка модели отката
+
+`validate_ui_rollback_boundaries.py` выполняет source-derived inventory definitions `Commit*`/`AttachScreenToLayer`, требует marker, one-to-one `EGV2UiRollbackBoundary` и executable recovery classification; executed self-test вставляет synthetic root/leaf, удаляет real marker и recovery case. По построению он не распознаёт mutation path вне этой naming grammar и не доказывает тело recovery; новый такой путь обязан расширить gate и получить runtime fault-injection test в том же change set.
+
+Ни одна repair не сужает [ADR-0041](../ADR/0041-ui-commit-rollback-model.md): Decision 7 по-прежнему запрещает partial state. Physical recovery остаётся replay обычного Prepare/Commit через generic `PrepareUiHostRollbackPlan` и `RollbackFieldPlans`; schema-specific rollback DTO/consumer/framework не введён. `ui_pipeline_legacy_gate_contract` и его executed negative self-test запрещают новый schema-specific Prepare/Build, payload или DTO surface.
+
+## STATUS-008 semantic closure check
+
+`STATUS-008` не является finding этого review и остаётся `known_nonconformance`. Параллельные commits `fe3cfdf`/`ade64db` изменили только evidence и linked DCA closure tasks: ID, state, normative requirement и verbatim reopening condition не менялись. Current `GameData` содержит 12 `ui_field` schemas в `core`, 5 в `textsystem`, ноль `ui_value` и ноль UI schemas в `rh`/`sample`; mod-owned `ui_field`/`ui_value` schema не появилась. Поэтому reopening condition не наступил по semantic interpretation controller.
+
+## Executed audit gates
+
+`ctest --test-dir build --output-on-failure` завершился 74/74; `gv2-headless --check-scripts` завершился `ok=true`, `modules_checked=42`; `validate_docs.py` прошёл. В текущем `libUnrealEditor-GV2.so` `Automation RunTests GV2.UI` обнаружил и завершил success все 16 tests, включая `LayeredReconciliationContract`, `PrepareCommitAndFailureInjection`, `PropertyHostAndCapabilities` и `StandardPropertyConsumers`. Отдельно прошли current и negative-self-test варианты shell-attach, capability-member-inventory, rollback-boundary-inventory и UI legacy gates.
