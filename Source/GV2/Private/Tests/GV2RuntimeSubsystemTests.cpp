@@ -1357,7 +1357,10 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 bUsesTextPipelineBase);
         }
     }
-    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 33);
+    // DCA-02: +2 for WBP_ListView_Wrap/WBP_ListView_WrapButtons, the wrap-orientation
+    // repeater archetypes the three location composites now bind directly in
+    // WidgetTree instead of creating an internal repeater over a bare panel.
+    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 35);
     TestTrue(
         TEXT("Theme provides a visible separator brush"),
         Theme->SeparatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);

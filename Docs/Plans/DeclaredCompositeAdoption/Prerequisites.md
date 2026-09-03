@@ -1,7 +1,7 @@
 ---
 title: Prerequisites Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-03
 depends_on:
   - README.md
@@ -44,7 +44,7 @@ depends_on:
 
     Верификация: 107/108 `GV2.*` UE Automation (headless, `-nullrhi`); единственный фейл — `GV2.Runtime.UI.NestedInstancesAndTabsContract` (сценарий с меткой `GBF-05`, незакоммиченная параллельная работа другой сессии над вложенным rollback в табах — не относится к `DCA-01`, не трогалось; вынесено отдельной задачей).
 
-- [ ] **DCA-02 — Хосты коллекций существуют в дереве виджетов**
+- [x] **DCA-02 — Хосты коллекций существуют в дереве виджетов**
   - Композиты принимают либо явный `UGV2ListViewWidgetBase`, либо голую панель (`MeterContainer`, `ItemIcons`, `EffectIcons`, `CharacterContainer`, `ButtonContainer`), и во втором случае создают репитер внутри себя. Объект transient, в `WidgetTree` его нет, адресация по имени до него не дотягивается — ради этого и написан мостик в планировщике.
   - Инвариант: адресуемое существует в дереве виджетов. Объект вне `WidgetTree` недостижим для адресации по имени, и обход этого требует специального кода под конкретный класс — того самого, который удаляется в `DCA-08`.
   - Не считается закрытием: обобщение поиска внутренних репитеров на любой хост — это закрепило бы адресацию объекта вне дерева как часть модели.
@@ -54,6 +54,12 @@ depends_on:
     - ассеты изменены через `unreal-mcp` с compile и save;
     - automation зелёная до удаления мостика: на этом шаге меняется форма ассета, а не поведение.
   - Evidence: `Content/TextSystem/UI/Widgets/`, вывод automation.
+  - **Реализация (2026-09-03):** через `unreal-mcp` (UE Editor запущен агентом самостоятельно — mcp не был подключён на старте сессии, подключение восстановлено пользователем) созданы два новых reusable Widget Blueprint на `UGV2ListViewWidgetBase` с корневым `WrapBox` вместо `VerticalBox` у уже существовавшего `WBP_ListView`: `WBP_ListView_Wrap` (default dynamic wrap, `bExplicitWrapSize=false`) для `MeterRepeater`/`ItemRepeater`/`EffectRepeater`/`CharacterRepeater` и отдельный `WBP_ListView_WrapButtons` (`bExplicitWrapSize=true`, `WrapSize=1200`) для `ButtonRepeater`. Оба нужны, поскольку старый `ButtonContainer` уже был явно настроен вручную (`WrapSize=1200`) — единственный из пяти, для которого существует детальный geometry-тест (`LocationScreenViewportMatrix`, BAI-10); остальные четыре сохраняют dynamic-режим, каким они были прежде (без own теста, поведение не менялось).
+    - В каждом из трёх composite-ассетов голая панель (`MeterContainer`/`ItemIcons`/`EffectIcons`/`CharacterContainer`/`ButtonContainer`) удалена и заменена на месте новым `WBP_ListView*` instance, переименованным в имя соответствующего `BindWidgetOptional`-репитера (`MeterRepeater` и т.д.) — auto-bind по имени сработал (`GetWidgets` подтвердил `bInherited: true` для всех пяти, старые панели-имена — `None`).
+    - **Найденный при этом реальный Slate-баг**, не связанный с содержанием DCA-02, но обнаруженный им: `UWrapBox` с default `bExplicitWrapSize=false` (`bUseAllottedSize=true` внутри `SWrapBox`) обновляет `PreferredSize` только через `SWrapBox::Tick()`, вызываемый Slate-приложением по registered-tick списку. `SVirtualWindow`, которым пользуется `LocationScreenViewportMatrix` (и вообще любой headless/offline geometry-тест этого файла), никогда не регистрируется в `FSlateApplication` и поэтому никогда не тикает вложенные виджеты — `PreferredSize` застревает на значении с первого (самого широкого, 4K) прохода резолюций и никогда не уменьшается для узких. Ровно поэтому `ButtonContainer` был единственным из пяти с explicit `WrapSize` — прежний автор эмпирически обошёл эту же проблему для единственной коллекции, которую тестировал настолько детально. Значение `1200` восстановлено побайтовой сверкой со старым `.uasset` (`git show HEAD:.../WBP_CommandPanel.uasset`, временно загружен `unreal-mcp` во временную папку `/Game/_TempInspect`, `ObjectTools.get_properties` на `WidgetTree.ButtonContainer`, папка удалена после сверки).
+    - Red→green: демонстрация — временная замена `ButtonRepeater`'s класса на `WBP_ListView_Wrap` (dynamic-режим) вместо `WBP_ListView_WrapButtons` красит именно `GV2.Runtime.UI.LocationScreenViewportMatrix` (BAI-10, buttons #4–6 переполняют bounds CommandPanel); возврат на `WBP_ListView_WrapButtons` — снова чисто.
+    - `GV2.Runtime.UIKit.CentralThemeAndComponents`'s счётчик WBP-ассетов обновлён `33 → 35` (два новых production-ассета).
+    - Верификация: portable ctest (`cmake-build-ci`) — 74/74; полный `GV2.*` UE Automation (live editor через `unreal-mcp`, после ребилда C++ `RunUBT.sh GV2Editor Linux Development`, `Result: Succeeded`) — 100/101, единственный фейл `GV2.Runtime.UI.NestedInstancesAndTabsContract` (`GBF-05`, чужая незакоммиченная работа, не относится к этой задаче); в частности `CentralThemeAndComponents` (WBP-счётчик 35) и `LocationScreenViewportMatrix` (wrap-регрессия) — зелёные.
 
 - [ ] **DCA-03 — Класс элемента задаётся явно**
   - `ResolveIconWidgetClass`, `ResolveMeterWidgetClass`, `ResolveCharacterWidgetClass` и `ResolveButtonWidgetClass` дают откат свойство экземпляра → CDO → `LoadClass` по фиксированному пути. Объявление несёт фиксированный `EntryWidgetClass`, и это правильнее: путь ассета, зашитый в C++, — скрытая зависимость кода от контента.
