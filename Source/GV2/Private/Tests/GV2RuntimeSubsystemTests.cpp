@@ -142,6 +142,21 @@ void GV2SimulateResponsiveFrame(const TSharedRef<SVirtualWindow>& Window, const 
     FSlateWindowElementList WindowElementList(Window);
     Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, WindowElementList, FWidgetStyle(), true);
 }
+
+// DCA-14: the one and only definition of 2-axis containment (Left/Top edge
+// on-screen, Right/Bottom edge within Bounds), used identically by every
+// positive per-button assertion and by both negative overflow self-tests in
+// FGV2LocationScreenViewportMatrixTest. Before this, the negative tests
+// exercised a copy of this logic declared as a local lambda a few lines
+// below the positive assertions, which instead compared each axis inline --
+// deleting all twelve positive checks left both negative self-tests green,
+// since neither one actually depended on them.
+bool GV2FitsInBounds(const FVector2D& Pos, const FVector2D& Size, const FVector2D& Bounds)
+{
+    return Pos.X >= -1.0f && Pos.Y >= -1.0f
+        && (Pos.X + Size.X) <= (Bounds.X + 1.0f)
+        && (Pos.Y + Size.Y) <= (Bounds.Y + 1.0f);
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -5633,6 +5648,16 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                     int32 StrictButtonGeometryCoveredCount = 0;
                     TArray<FString> StrictButtonGeometryExclusionReasons;
 
+                    // DCA-14: counted the same way -- two real GV2FitsInBounds-backed
+                    // positive assertions per button (viewport containment, CommandPanel
+                    // containment), summed from the loop itself and compared below
+                    // against the expected total for however many resolutions actually
+                    // reached strict coverage. Deleting a positive assertion (or all of
+                    // them) reduces this count without touching the negative self-tests,
+                    // so it surfaces as its own numeric mismatch instead of leaving the
+                    // negative tests as the only, silently-insufficient signal.
+                    int32 PositivePerButtonBoundsAssertionCount = 0;
+
                     for (const auto& Res : TestResolutions)
                     {
                         LocationScreen->InvalidateLayoutAndVolatility();
@@ -5725,47 +5750,35 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                                 *FString::Printf(TEXT("CCF-17: [%s] Button #%d allocated size is positive (%f x %f)"), Res.Name, BtnIndex + 1, BtnSize.X, BtnSize.Y),
                                                 BtnSize.X > 0.0f && BtnSize.Y > 0.0f);
 
-                                            // 1. Viewport 2-axis bounding box: Left, Top, Right, Bottom
+                                            // DCA-14: both positive checks below and both negative
+                                            // self-tests further down call the exact same
+                                            // GV2FitsInBounds -- there is no second, independently
+                                            // maintained copy of "fits inside these bounds" anywhere
+                                            // in this test.
+
+                                            // 1. Viewport 2-axis containment
+                                            const bool bFitsViewport = GV2FitsInBounds(BtnLocalPos, BtnSize, Res.Size);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d left edge within viewport (%f >= 0)"), Res.Name, BtnIndex + 1, BtnLocalPos.X),
-                                                BtnLocalPos.X >= -1.0f);
-                                            TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d top edge within viewport (%f >= 0)"), Res.Name, BtnIndex + 1, BtnLocalPos.Y),
-                                                BtnLocalPos.Y >= -1.0f);
-                                            TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d right edge fits viewport width (%f <= %f)"), Res.Name, BtnIndex + 1, BtnLocalPos.X + BtnSize.X, Res.Size.X),
-                                                BtnLocalPos.X + BtnSize.X <= Res.Size.X + 1.0f);
-                                            TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d bottom edge fits viewport height (%f <= %f)"), Res.Name, BtnIndex + 1, BtnLocalPos.Y + BtnSize.Y, Res.Size.Y),
-                                                BtnLocalPos.Y + BtnSize.Y <= Res.Size.Y + 1.0f);
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d fits viewport bounds (pos=%s size=%s bounds=%s)"),
+                                                    Res.Name, BtnIndex + 1, *BtnLocalPos.ToString(), *BtnSize.ToString(), *Res.Size.ToString()),
+                                                bFitsViewport);
+                                            ++PositivePerButtonBoundsAssertionCount;
 
                                             // 2. CommandPanel 2-axis containment
+                                            const bool bFitsCommandPanel = GV2FitsInBounds(BtnInCommandPanel, BtnSize, CommandAllocated);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d inside CommandPanel left (%f >= 0)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.X),
-                                                BtnInCommandPanel.X >= -1.0f);
-                                            TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d inside CommandPanel top (%f >= 0)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.Y),
-                                                BtnInCommandPanel.Y >= -1.0f);
-                                            TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d fits CommandPanel width (%f <= %f)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.X + BtnSize.X, CommandAllocated.X),
-                                                BtnInCommandPanel.X + BtnSize.X <= CommandAllocated.X + 1.0f);
-                                            TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d fits CommandPanel height (%f <= %f)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.Y + BtnSize.Y, CommandAllocated.Y),
-                                                BtnInCommandPanel.Y + BtnSize.Y <= CommandAllocated.Y + 1.0f);
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d fits CommandPanel bounds (pos=%s size=%s bounds=%s)"),
+                                                    Res.Name, BtnIndex + 1, *BtnInCommandPanel.ToString(), *BtnSize.ToString(), *CommandAllocated.ToString()),
+                                                bFitsCommandPanel);
+                                            ++PositivePerButtonBoundsAssertionCount;
 
                                             // 3. Negative containment check: simulated oversized button detection
-                                            auto TestFitsInBounds = [](const FVector2D& Pos, const FVector2D& Size, const FVector2D& Bounds) -> bool
-                                            {
-                                                return Pos.X >= -1.0f && Pos.Y >= -1.0f
-                                                    && (Pos.X + Size.X) <= (Bounds.X + 1.0f)
-                                                    && (Pos.Y + Size.Y) <= (Bounds.Y + 1.0f);
-                                            };
                                             TestFalse(
                                                 *FString::Printf(TEXT("BAI-10: [%s] [Negative] Artificial horizontal overflow beyond panel width is rejected"), Res.Name),
-                                                TestFitsInBounds(BtnInCommandPanel, FVector2D(CommandAllocated.X + 50.0f, BtnSize.Y), CommandAllocated));
+                                                GV2FitsInBounds(BtnInCommandPanel, FVector2D(CommandAllocated.X + 50.0f, BtnSize.Y), CommandAllocated));
                                             TestFalse(
                                                 *FString::Printf(TEXT("BAI-10: [%s] [Negative] Artificial vertical overflow beyond viewport height is rejected"), Res.Name),
-                                                TestFitsInBounds(BtnLocalPos, FVector2D(BtnSize.X, Res.Size.Y + 80.0f), Res.Size));
+                                                GV2FitsInBounds(BtnLocalPos, FVector2D(BtnSize.X, Res.Size.Y + 80.0f), Res.Size));
                                         }
                                     }
                                     ++StrictButtonGeometryCoveredCount;
@@ -5812,6 +5825,16 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                             AddError(FString::Printf(TEXT("DCA-13: resolution excluded from strict geometry coverage -- %s"), *Reason));
                         }
                     }
+
+                    // DCA-14: two GV2FitsInBounds-backed positive assertions per button
+                    // (viewport, CommandPanel), six buttons, once per resolution that
+                    // reached strict coverage above -- deleting a positive assertion (or
+                    // all of them) drops this count below the expected total, on its own,
+                    // independently of whether the two negative self-tests still pass.
+                    TestEqual(
+                        TEXT("DCA-14: every strictly-covered resolution ran both per-button bounds assertions"),
+                        PositivePerButtonBoundsAssertionCount,
+                        StrictButtonGeometryCoveredCount * 6 * 2);
 
                     // CCF-18: Compare FHD (1920x1080) vs UW-FHD (2560x1080) allocated geometry
                     TestTrue(TEXT("CCF-18: FHD and UW-FHD scene widths measured"), SceneWidthFHD > 0.0f && SceneWidthUWFHD > 0.0f);

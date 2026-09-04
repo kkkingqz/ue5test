@@ -1,7 +1,7 @@
 ---
 title: Layout Invariant Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-04
 depends_on:
   - README.md
@@ -61,7 +61,7 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
 
     Верификация: headless `GV2.Runtime.UI.LocationScreenViewportMatrix` — `Success`; полный `GV2.*` headless-прогон (`Automation RunTests GV2;Quit`) — 106 passed / 1 failed (тот же, известный `CentralThemeAndComponents`, 35 vs 46, `DCA-17`, не связан с этой задачей) из 107; portable ctest 76/76 (не затронут — C++ редактора вне его области). `git diff --stat -- Source/` подтверждает: единственный изменённый файл — сам тестовый harness, `GV2RuntimeSubsystemTests.cpp` (170 insertions, 29 deletions); ни один production-класс (`SWrapBox`, `WBP_CommandPanel`, `WBP_ListView_WrapButtons`) не тронут — `WrapSize=1200` остаётся статичным ровно как и было, его починка принадлежит `DCA-15`.
 
-- [ ] **DCA-14 — Отрицательная проверка охраняет само утверждение**
+- [x] **DCA-14 — Отрицательная проверка охраняет само утверждение**
   - `BAI-10` объявляет два `TestFalse` вида «Artificial … overflow … is rejected». Оба испытывают лямбду `TestFitsInBounds`, объявленную тут же (`:5416`). Положительные утверждения (`:5390`–`:5414`) её не используют — там развёрнутые `TestTrue` с inline-сравнениями. Лямбда дублирует логику вхождения в границы, а не является ею.
   - Инвариант: отрицательный самотест испытывает ту же функцию, которая выносит положительный вердикт. Здесь это не так, и следствие точное: удаление всех двенадцати реальных проверок оставит оба отрицательных теста зелёными. Это третье наблюдение семейства «тест доказывает свойство слабее собственного имени» и первое, где ослаблен сам механизм защиты от него.
   - Не считается закрытием: комментарий о том, что лямбда «повторяет» утверждения; ручная синхронизация двух копий условия.
@@ -71,6 +71,13 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
     - удаление положительных утверждений роняет тест — продемонстрировано;
     - подмена предиката на всегда-истинный роняет тест — продемонстрировано.
   - Evidence: `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp:5390`.
+  - **Реализация (2026-09-04):** `TestFitsInBounds` вынесена из локальной lambda (объявленной внутри цикла, использованной только двумя `TestFalse`) в единственную свободную функцию `GV2FitsInBounds` в том же анонимном namespace, что и `DCA-13`'s `GV2TickWidgetSubtreeRecursively`/`GV2SimulateResponsiveFrame`. Восемь развёрнутых inline-сравнений на кнопку (Left/Top/Right/Bottom × 2 набора границ — viewport и `CommandPanel`) заменены на два вызова `GV2FitsInBounds` на кнопку (по одному на набор границ) — именно то «двенадцать реальных проверок» (6 кнопок × 2), о которых говорит формулировка задачи. Оба `TestFalse` теперь тоже вызывают `GV2FitsInBounds` — не копию, ту же самую функцию; второй независимо поддерживаемой копии условия «входит в границы» в файле не осталось.
+
+    Покрытие посчитано тем же приёмом, что `DCA-13`: `PositivePerButtonBoundsAssertionCount` инкрементируется из самого цикла при каждом реальном positive-вызове `GV2FitsInBounds`, и после цикла сверяется с `StrictButtonGeometryCoveredCount * 6 * 2` — ожидаемым числом, выведенным из того же счётчика покрытых `DCA-13` разрешений, а не зашитым литералом.
+
+    Обе демонстрации выполнены буквально, тем же циклом «temp-edit → RunUBT.sh → headless прогон → откат → RunUBT.sh»: (1) оба positive `TestTrue` (вместе с их инкрементами счётчика) временно удалены — тест упал явно: `Expected 'DCA-14: every strictly-covered resolution ran both per-button bounds assertions' to be 72, but it was 0`; (2) тело `GV2FitsInBounds` временно заменено на `return true;` — тест упал явно: оба `TestFalse` («horizontal overflow… is rejected», «vertical overflow… is rejected») теперь ожидают `false`, а получают `true`, и это видно в логе для каждого из шести разрешений. Оба раза изменение отменено и пересобрано, тест снова зелёный.
+
+    Верификация: headless `GV2.Runtime.UI.LocationScreenViewportMatrix` — `Success`; полный `GV2.*` headless-прогон — 106/107 (тот же известный `CentralThemeAndComponents`, не связан); portable ctest 76/76. `git diff --stat -- Source/` подтверждает: единственный изменённый файл — `GV2RuntimeSubsystemTests.cpp` (54 insertions, 31 deletions); ни один production-класс не тронут.
 
 - [ ] **DCA-15 — Параметр раскладки выводится из viewport или объявлен исключением**
   - `ADR-0035` требует, чтобы раскладка распределяла фактический viewport, и прямо отвергает равномерное масштабирование кадра ([§ Decision](../../ADR/0035-ui-foundation-and-composition.md)). У требования нет ни одного перечислителя: строка `ADR-0035` не встречается ни в одном тесте, а `WrapSize`/`bExplicitWrapSize` — нигде в `Source/`, `Tools/` и `Docs/`. `Content/` вне досягаемости гейтов целиком: все они — текстовые сканы по `Source/` и `Docs/`. Это не пробел конкретного гейта, а отсутствующий класс гейтов.
