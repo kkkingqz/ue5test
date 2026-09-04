@@ -6,6 +6,7 @@
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "Types/SlateEnums.h"
 #include "GV2InputFieldWidgetBase.generated.h"
 
@@ -25,6 +26,7 @@ class GV2_API UGV2InputFieldWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2UiBindingTarget
     , public IGV2ScreenFieldHost
+    , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
 

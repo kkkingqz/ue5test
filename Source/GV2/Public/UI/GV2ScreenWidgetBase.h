@@ -4,6 +4,7 @@
 #include "CommonUserWidget.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "GV2ScreenWidgetBase.generated.h"
 
 struct FGV2ScreenFieldPlan
@@ -33,7 +34,9 @@ struct FGV2ScreenMutationPlan
 GV2_API void RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan> FieldPlans);
 
 UCLASS(Blueprintable)
-class GV2_API UGV2ScreenWidgetBase : public UCommonUserWidget
+class GV2_API UGV2ScreenWidgetBase
+    : public UCommonUserWidget
+    , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
 

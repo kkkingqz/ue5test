@@ -32,6 +32,7 @@
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiTheme.h"
 #include "UI/GV2LayoutConstants.h"
@@ -1376,66 +1377,15 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     UiAssetFilter.bRecursivePaths = true;
     TArray<FAssetData> UiAssets;
     AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
-    int32 WidgetBlueprintCount = 0;
-    for (const FAssetData& Asset : UiAssets)
-    {
-        const FString AssetName = Asset.AssetName.ToString();
-        if (!AssetName.StartsWith(TEXT("WBP_")))
-        {
-            continue;
-        }
-        ++WidgetBlueprintCount;
-        const FString GeneratedClassPath = FString::Printf(
-            TEXT("%s.%s_C"),
-            *Asset.PackageName.ToString(),
-            *AssetName);
-        UClass* WidgetClass = LoadClass<UUserWidget>(nullptr, *GeneratedClassPath);
-        TestNotNull(
-            *FString::Printf(TEXT("Current WBP has a loadable generated class: %s"), *AssetName),
-            WidgetClass);
-        const UWidgetBlueprintGeneratedClass* GeneratedClass =
-            Cast<UWidgetBlueprintGeneratedClass>(WidgetClass);
-        if (GeneratedClass == nullptr || GeneratedClass->GetWidgetTreeArchetype() == nullptr)
-        {
-            continue;
-        }
 
-        bool bContainsDirectTextPrimitive = false;
-        GeneratedClass->GetWidgetTreeArchetype()->ForEachWidget(
-            [&bContainsDirectTextPrimitive](UWidget* Widget)
-            {
-                bContainsDirectTextPrimitive |= Widget != nullptr
-                    && (Widget->IsA<UTextBlock>() || Widget->IsA<URichTextBlock>());
-            });
-        if (bContainsDirectTextPrimitive)
-        {
-            const bool bUsesTextPipelineBase = WidgetClass->IsChildOf(UGV2TextWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2ButtonWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2CheckboxWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2InputFieldWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2RichTextWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2RichTextPopoverWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2ProgressBarWidgetBase::StaticClass())
-                || WidgetClass->IsChildOf(UGV2ModalWidgetBase::StaticClass());
-            TestTrue(
-                *FString::Printf(
-                    TEXT("Text-bearing WBP must use a Text Pipeline native base: %s"),
-                    *AssetName),
-                bUsesTextPipelineBase);
-        }
-    }
-    // DCA-02: +2 for WBP_ListView_Wrap/WBP_ListView_WrapButtons, the wrap-orientation
-    // repeater archetypes the three location composites now bind directly in
-    // WidgetTree instead of creating an internal repeater over a bare panel.
-    TestEqual(TEXT("UI contract audits every current WBP asset"), WidgetBlueprintCount, 35);
-    TestTrue(
-        TEXT("Theme provides a visible separator brush"),
-        Theme->SeparatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
-    TestTrue(
-        TEXT("Theme provides a visible loading indicator brush"),
-        Theme->LoadingIndicatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
-
+    // DCA-17: the leaf-component contract table (asset -> expected native parent). This pairing
+    // is genuine domain knowledge and stays hand-authored, but every OTHER discovered WBP_* is
+    // now required to fall into a checkable, reflective bucket in the loop below -- a generic
+    // declared composite/screen (UGV2DeclaredCompositeWidgetBase/UGV2ScreenWidgetBase, since
+    // DeclaredCompositeAdoption's whole point is that these need no bespoke C++ of their own) or
+    // a Designer-configured sibling of an already-vetted leaf's native parent (e.g.
+    // WBP_ListView_Wrap/WrapButtons sharing WBP_ListView's UGV2ListViewWidgetBase) -- instead of
+    // silently vanishing from a hand-adjusted total.
     struct FComponentContract
     {
         const TCHAR* ClassPath;
@@ -1459,7 +1409,101 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
         {TEXT("/Game/UI/Widgets/WBP_ScrollArea.WBP_ScrollArea_C"), UGV2ScrollAreaWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_ListView.WBP_ListView_C"), UGV2ListViewWidgetBase::StaticClass()},
         {TEXT("/Game/UI/Widgets/WBP_TabContainer.WBP_TabContainer_C"), UGV2TabContainerWidgetBase::StaticClass()},
+        {TEXT("/Game/TextSystem/UI/Widgets/WBP_Modal.WBP_Modal_C"), UGV2ModalWidgetBase::StaticClass()},
+        {TEXT("/Game/TextSystem/UI/Widgets/WBP_Portrait.WBP_Portrait_C"), UGV2PortraitWidgetBase::StaticClass()},
+        {TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"), UGV2GameShellWidgetBase::StaticClass()},
     };
+
+    TSet<FString> ComponentContractClassPaths;
+    TSet<UClass*> ComponentContractNativeParents;
+    for (const FComponentContract& Component : Components)
+    {
+        ComponentContractClassPaths.Add(Component.ClassPath);
+        ComponentContractNativeParents.Add(Component.NativeParent);
+    }
+
+    int32 WidgetBlueprintCount = 0;
+    int32 ReconciledWidgetBlueprintCount = 0;
+    for (const FAssetData& Asset : UiAssets)
+    {
+        const FString AssetName = Asset.AssetName.ToString();
+        if (!AssetName.StartsWith(TEXT("WBP_")))
+        {
+            continue;
+        }
+        ++WidgetBlueprintCount;
+        const FString GeneratedClassPath = FString::Printf(
+            TEXT("%s.%s_C"),
+            *Asset.PackageName.ToString(),
+            *AssetName);
+        UClass* WidgetClass = LoadClass<UUserWidget>(nullptr, *GeneratedClassPath);
+        TestNotNull(
+            *FString::Printf(TEXT("Current WBP has a loadable generated class: %s"), *AssetName),
+            WidgetClass);
+        if (WidgetClass == nullptr)
+        {
+            continue;
+        }
+
+        const bool bIsComponentContractLeaf = ComponentContractClassPaths.Contains(GeneratedClassPath);
+        const bool bIsGenericDeclaredCompositeOrScreen =
+            WidgetClass->IsChildOf(UGV2DeclaredCompositeWidgetBase::StaticClass())
+            || WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass());
+        bool bSharesComponentContractNativeParent = false;
+        for (UClass* CoveredParent : ComponentContractNativeParents)
+        {
+            if (WidgetClass->IsChildOf(CoveredParent))
+            {
+                bSharesComponentContractNativeParent = true;
+                break;
+            }
+        }
+        if (bIsComponentContractLeaf || bIsGenericDeclaredCompositeOrScreen || bSharesComponentContractNativeParent)
+        {
+            ++ReconciledWidgetBlueprintCount;
+        }
+        else
+        {
+            AddError(FString::Printf(
+                TEXT("WBP has no Components[] contract, declared composite/screen base, or shared leaf native parent: %s"),
+                *AssetName));
+        }
+
+        const UWidgetBlueprintGeneratedClass* GeneratedClass =
+            Cast<UWidgetBlueprintGeneratedClass>(WidgetClass);
+        if (GeneratedClass == nullptr || GeneratedClass->GetWidgetTreeArchetype() == nullptr)
+        {
+            continue;
+        }
+
+        bool bContainsDirectTextPrimitive = false;
+        GeneratedClass->GetWidgetTreeArchetype()->ForEachWidget(
+            [&bContainsDirectTextPrimitive](UWidget* Widget)
+            {
+                bContainsDirectTextPrimitive |= Widget != nullptr
+                    && (Widget->IsA<UTextBlock>() || Widget->IsA<URichTextBlock>());
+            });
+        if (bContainsDirectTextPrimitive)
+        {
+            // DCA-17: a class property (IGV2TextPipelineHost) replaces the former 9-class
+            // IsChildOf enumeration -- see GV2TextPipelineHost.h for what implementing it means.
+            TestTrue(
+                *FString::Printf(
+                    TEXT("Text-bearing WBP must use a Text Pipeline native base: %s"),
+                    *AssetName),
+                WidgetClass->ImplementsInterface(UGV2TextPipelineHost::StaticClass()));
+        }
+    }
+    TestEqual(
+        TEXT("Every discovered WBP is reconciled to a leaf contract, a declared base, or a shared native parent"),
+        ReconciledWidgetBlueprintCount,
+        WidgetBlueprintCount);
+    TestTrue(
+        TEXT("Theme provides a visible separator brush"),
+        Theme->SeparatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
+    TestTrue(
+        TEXT("Theme provides a visible loading indicator brush"),
+        Theme->LoadingIndicatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
 
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();

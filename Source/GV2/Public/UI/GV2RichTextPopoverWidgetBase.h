@@ -3,6 +3,7 @@
 #include "Bridge/GV2BridgeTypes.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "CommonUserWidget.h"
 #include "GV2RichTextPopoverWidgetBase.generated.h"
 
@@ -17,6 +18,7 @@ class GV2_API UGV2RichTextPopoverWidgetBase
     : public UCommonUserWidget
     , public IGV2UiPropertyHost
     , public IGV2UiStyleConsumer
+    , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
 

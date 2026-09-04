@@ -6,6 +6,7 @@
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "GV2ButtonWidgetBase.generated.h"
 
 class UCommonTextBlock;
@@ -26,6 +27,7 @@ class GV2_API UGV2ButtonWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2UiBindingTarget
     , public IGV2ScreenFieldHost
+    , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
 

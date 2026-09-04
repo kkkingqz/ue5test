@@ -4,6 +4,7 @@
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "CommonUserWidget.h"
 #include "GV2RichTextWidgetBase.generated.h"
 
@@ -24,6 +25,7 @@ class GV2_API UGV2RichTextWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2UiStyleConsumer
     , public IGV2ScreenFieldHost
+    , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
 

@@ -6,6 +6,7 @@
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "GV2CheckboxWidgetBase.generated.h"
 
 class UCommonTextBlock;
@@ -24,6 +25,7 @@ class GV2_API UGV2CheckboxWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2UiBindingTarget
     , public IGV2ScreenFieldHost
+    , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
 

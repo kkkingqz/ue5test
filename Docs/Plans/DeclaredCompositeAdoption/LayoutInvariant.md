@@ -1,7 +1,7 @@
 ---
 title: Layout Invariant Tasks
 status: active
-version: 1.6
+version: 1.7
 updated: 2026-09-04
 depends_on:
   - README.md
@@ -138,7 +138,7 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
 
     Верификация: `python3 Tools/Documentation/validate_docs.py` — пройдено; изменены только `AGENTS.md`, `Docs/Plans/README.md` и (сопутствующая правка) `Docs/Plans/DeclaredCompositeAdoption/README.md` — ни одного C++/Content-файла, `unreal-mcp`/сборка/тесты для этой задачи не требовались.
 
-- [ ] **DCA-17 — Аудит компонентов покрывает то, что перечисляет**
+- [x] **DCA-17 — Аудит компонентов покрывает то, что перечисляет**
   - `GV2.Runtime.UIKit.CentralThemeAndComponents` обходит asset registry и насчитывает 35 WBP. Но контракт «правильный нативный родитель» проверяется по рукописному массиву `Components[]` из 17 записей: восемнадцать ассетов не проверены, и какие именно — нигде не сказано. Признак «использует базу Text Pipeline» — рукописный список из 12 классов, три из которых (`UGV2LocationPlayerStatusWidgetBase`, `UGV2LocationSceneWidgetBase`, `UGV2LocationCommandPanelWidgetBase`) удаляются в `DCA-05…07`. Число `35` — отдельная константа: при добавлении ассета её правят на `+1`, и это не требует добавлять что-либо в `Components[]`.
   - Инвариант: перечислитель и множество проверяемых — одно множество. Здесь их два, обход реестра и рукописный массив, и связаны они только соседством в одной функции. Имя утверждения — «UI contract audits every current WBP asset» — сильнее того, что оно доказывает: обходом покрыта одна проверка из двух, вторая закрывает половину ассетов.
   - Не считается закрытием: дописывание недостающих восемнадцати записей руками — множества разойдутся снова на следующем ассете; замена `35` на `Components[].Num()` без ответа, почему у восемнадцати ассетов нет контракта.
@@ -148,7 +148,18 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
     - принадлежность к базе Text Pipeline определяется свойством класса, а не перечислением двенадцати имён;
     - добавление WBP без контракта роняет тест — продемонстрировано;
     - изъятие ассета из покрытия при неизменном обходе роняет тест — продемонстрировано.
-  - Evidence: `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp:1300`.
+  - Evidence: `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp:1371`.
+  - **Реализация (2026-09-04):** проверка фактического состава обнаружила, что дефект «два несвязанных множества» на 2026-09-04 покрывал 46 ассетов (не 35 — рост за счёт `DCA-09…11`), из которых `Components[]` из 17 записей проверял ровно 17; остальные 29 не проверялись никак, и какие именно — было неизвестно до прямой сверки native-parent каждого ассета с `Components[]` и с двумя структурными базами.
+
+    Сверка (`strings` по каждому `.uasset`, native-parent — первый импорт `/Script/GV2.*` в файле) показала, что 43 из 46 расхождений уже объясняются двумя существующими структурными фактами, а не списком: (1) любой WBP с native parent `UGV2DeclaredCompositeWidgetBase` или `UGV2ScreenWidgetBase` — это ровно то, что `DeclaredCompositeAdoption` (M2/M3) уже гарантирует: композиты и экраны объявляются, а не пишутся руками, поэтому их контракт — сама эта проверка `IsChildOf`, а не отдельная запись; (2) `WBP_ListView_Wrap`/`WBP_ListView_WrapButtons` (`DCA-02`'s «+2») делят native parent `UGV2ListViewWidgetBase` с уже проверенным `WBP_ListView` — Designer-варианты одного и того же вектированного класса, а не новая пара. Оставшиеся три (`WBP_Modal`, `WBP_Portrait`, `WBP_GameShell`) оказались настоящим упущением: их native-классы (`UGV2ModalWidgetBase`, `UGV2PortraitWidgetBase`, `UGV2GameShellWidgetBase`) — обычные переиспользуемые leaf-компоненты, реализующие `IGV2UiStyleConsumer` как и остальные 17, просто никогда не попадавшие в `Components[]`; добавлены туда как есть, без категории исключений (исключений в итоге не потребовалось ни одного).
+
+    Реализация: `Components[]` (теперь 20 записей) и его сборка в `TSet<FString> ComponentContractClassPaths` / `TSet<UClass*> ComponentContractNativeParents` подняты перед циклом обхода реестра (раньше объявлялись после и не могли использоваться внутри него). Цикл обхода для каждого найденного WBP считает `bIsReconciled = ComponentContractClassPaths.Contains(...) || WidgetClass->IsChildOf(UGV2DeclaredCompositeWidgetBase|UGV2ScreenWidgetBase) || (WidgetClass->IsChildOf любого NativeParent из Components[])`; непокрытый ассет получает `AddError` с именем, а не только числовое расхождение. `TestEqual(ReconciledWidgetBlueprintCount, WidgetBlueprintCount)` заменил `TestEqual(WidgetBlueprintCount, 35)` — обе части сравнения выведены из одного и того же обхода, литерала не осталось.
+
+    Признак «база Text Pipeline» вынесен в новый маркер-интерфейс `IGV2TextPipelineHost` (`Source/GV2/Public/UI/GV2TextPipelineHost.h`) — чистый marker (без методов), по образцу уже существующего `IGV2ScreenFieldHost`. Проверено, что ни `IGV2UiStyleConsumer`, ни `IGV2UiPropertyHost` для этой роли не годятся: `UGV2PanelWidgetBase`/`ImageWidgetBase`/`ScrollAreaWidgetBase`/`SeparatorWidgetBase`/`ListViewWidgetBase` реализуют оба, но в «базу Text Pipeline» не входят, а `UGV2ScreenWidgetBase` входит, но не реализует ни одного — общего свойства для замены `IsChildOf`-цепочки не было, кроме создания нового. Интерфейс добавлен всем девяти прежним классам (`GV2TextWidgetBase`, `GV2ButtonWidgetBase`, `GV2CheckboxWidgetBase`, `GV2InputFieldWidgetBase`, `GV2RichTextWidgetBase`, `GV2RichTextPopoverWidgetBase`, `GV2ScreenWidgetBase`, `GV2ProgressBarWidgetBase`, `GV2ModalWidgetBase`); проверка в тесте заменена на `WidgetClass->ImplementsInterface(UGV2TextPipelineHost::StaticClass())`.
+
+    Продемонстрировано три захода (временная правка + пересборка + headless-прогон + откат правки, каждый раз до зелёного): (A) удаление записи `WBP_GameShell` из `Components[]` роняет тест с `AddError` «WBP has no Components[] contract...: WBP_GameShell» и `TestEqual` 46 vs 45 — новый ассет без контракта не проходит незамеченным; (B) удаление уже существовавшей записи `WBP_Panel` (не разделяющей native parent ни с чем и не являющейся composite/screen) роняет тест тем же путём, именуя `WBP_Panel` — изъятие покрытия при неизменном обходе тоже ловится; (C) временное снятие `IGV2TextPipelineHost` с `UGV2ModalWidgetBase` роняет «Text-bearing WBP must use a Text Pipeline native base: WBP_Modal» — интерфейсная проверка не была ваккуумной подменой цепочки `IsChildOf`.
+
+    Верификация: headless `Automation RunTests GV2;Quit` — 108/108 passed, 0 ошибок (включая ранее нестабильный `GV2.Runtime.UIKit.CentralThemeAndComponents`, зелёный впервые за `DCA-13…16`); portable `ctest` — 76/76. `git diff --stat -- Source/` — десять изменённых заголовков `UI/GV2*WidgetBase.h` (по одной строке include + одной строке наследования каждый), один новый файл `GV2TextPipelineHost.h`, и `GV2RuntimeSubsystemTests.cpp`; ни один `.uasset` не тронут.
 
 ## Проверка milestone
 
@@ -156,5 +167,5 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
 - [x] Отрицательные проверки `BAI-10` краснеют при удалении положительных утверждений. (DCA-14)
 - [x] Ни один параметр раскладки production-экранов не является константой без записанной причины, и это утверждает перечислитель, а не чтение. (DCA-15)
 - [x] `WrapSize` `ButtonRepeater` следует ширине панели; `STATUS-009` удалён из `ImplementationStatus.md`. (DCA-15)
-- [ ] Правило о направлении обоснования записано в `AGENTS.md` и в `Docs/Plans/README.md`.
-- [ ] Аудит UI-компонентов проверяет контракт у каждого ассета, который сам же перечисляет.
+- [x] Правило о направлении обоснования записано в `AGENTS.md` и в `Docs/Plans/README.md`. (DCA-16)
+- [x] Аудит UI-компонентов проверяет контракт у каждого ассета, который сам же перечисляет. (DCA-17)

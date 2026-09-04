@@ -5,6 +5,7 @@
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2ScreenFieldHost.h"
+#include "UI/GV2TextPipelineHost.h"
 #include "GV2ProgressBarWidgetBase.generated.h"
 
 class UProgressBar;
@@ -16,6 +17,7 @@ class GV2_API UGV2ProgressBarWidgetBase
     , public IGV2UiStyleConsumer
     , public IGV2UiPropertyHost
     , public IGV2ScreenFieldHost
+    , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
 
