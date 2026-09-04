@@ -1790,6 +1790,144 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                 });
             }
 
+            // M2 (DCA-05...07): the three composites are declarations now, so the risk
+            // the migration carries is not a missing widget -- structure and entry counts
+            // stay right -- but a property that silently stops arriving at its leaf. The
+            // set checked here is enumerated from each composite's own DeclaredCapabilities,
+            // not from a hand-written list of properties, so a capability added to a
+            // declaration later falls under this check without anyone updating the test.
+            UGV2DeclaredCompositeWidgetBase* StatusWidget = nullptr;
+            if (Screen->WidgetTree != nullptr)
+            {
+                Screen->WidgetTree->ForEachWidget([&StatusWidget](UWidget* Widget)
+                {
+                    if (auto* Status = Cast<UGV2DeclaredCompositeWidgetBase>(Widget);
+                        Status != nullptr && Status->GetHostIdentity() == FName(TEXT("player_status")))
+                    {
+                        StatusWidget = Status;
+                    }
+                });
+            }
+            TestNotNull(TEXT("LocationScreen contains PlayerStatus component"), StatusWidget);
+
+            auto VerifyDeclaredValuesArrived =
+                [this](UGV2DeclaredCompositeWidgetBase* Composite, const TCHAR* Label) -> int32
+            {
+                if (Composite == nullptr)
+                {
+                    return 0;
+                }
+                const FGV2UiPropertyHostState::FCommittedSnapshot Snapshot =
+                    Composite->GetPropertyHostState().GetCommittedSnapshot();
+                if (!Snapshot.Schema)
+                {
+                    TestTrue(
+                        *FString::Printf(TEXT("M2: [%s] committed a schema after the Lua-driven revision"), Label),
+                        false);
+                    return 0;
+                }
+
+                // The set is the intersection of two independently produced sides: what the
+                // Designer declaration binds, and what the committed schema requires. Both
+                // sides are read, not written here. Schema-optional fields are excluded on
+                // the schema's own say-so -- the composite's identity `key` is declared
+                // `required: false` and is never published by the document, so demanding a
+                // committed value for it would assert the opposite of the schema.
+                TSet<FString> SchemaFieldNames;
+                TSet<FString> RequiredSchemaFieldNames;
+                for (const auto& FieldEntry : Snapshot.Schema->Fields)
+                {
+                    const FString FieldName = UTF8_TO_TCHAR(FieldEntry.Name.c_str());
+                    SchemaFieldNames.Add(FieldName);
+                    if (FieldEntry.bRequired)
+                    {
+                        RequiredSchemaFieldNames.Add(FieldName);
+                    }
+                }
+
+                int32 Arrived = 0;
+                for (const FGV2DeclaredUiCapability& Declared : Composite->DeclaredCapabilities)
+                {
+                    const FString PropertyName = Declared.PropertyName.ToString();
+                    if (!SchemaFieldNames.Contains(PropertyName))
+                    {
+                        continue;
+                    }
+                    // A declaration-optional property whose child is unbound on this asset
+                    // is not declared at all for this instance (DCA-01), so requiring a
+                    // committed value for it would assert the opposite of that contract.
+                    if (Declared.bOptional
+                        && Declared.ChildWidgetName != NAME_None
+                        && Composite->GetWidgetFromName(Declared.ChildWidgetName) == nullptr)
+                    {
+                        continue;
+                    }
+                    const bool bCommitted = Snapshot.Properties.FindField(PropertyName) != nullptr;
+                    if (bCommitted)
+                    {
+                        ++Arrived;
+                    }
+                    // Schema-required is the only case the contract lets us demand. The
+                    // count returned below covers the rest: a revision where nothing at
+                    // all arrived would satisfy every required check of a schema whose
+                    // fields are all optional, which is exactly the scene's situation.
+                    if (RequiredSchemaFieldNames.Contains(PropertyName))
+                    {
+                        TestTrue(
+                            *FString::Printf(
+                                TEXT("M2: [%s] schema-required declared property '%s' has a committed value after the Lua-driven revision"),
+                                Label,
+                                *PropertyName),
+                            bCommitted);
+                    }
+                }
+                return Arrived;
+            };
+
+            const int32 SceneArrived = VerifyDeclaredValuesArrived(SceneWidget, TEXT("scene"));
+            const int32 StatusArrived = VerifyDeclaredValuesArrived(StatusWidget, TEXT("player_status"));
+            const int32 CommandsArrived = VerifyDeclaredValuesArrived(CommandWidget, TEXT("commands"));
+            TestTrue(
+                *FString::Printf(
+                    TEXT("M2: every migrated composite received at least one declared value from Lua (scene=%d, player_status=%d, commands=%d)"),
+                    SceneArrived, StatusArrived, CommandsArrived),
+                SceneArrived > 0 && StatusArrived > 0 && CommandsArrived > 0);
+
+            // Accounting alone is not enough: the value must reach the primitive the
+            // declaration binds. The leaf is resolved through the declaration itself,
+            // so this does not hard-code any widget name.
+            auto DeclaredTextLeafContent =
+                [](UGV2DeclaredCompositeWidgetBase* Composite, const TCHAR* PropertyName) -> FText
+            {
+                if (Composite == nullptr)
+                {
+                    return FText::GetEmpty();
+                }
+                for (const FGV2DeclaredUiCapability& Declared : Composite->DeclaredCapabilities)
+                {
+                    if (Declared.PropertyName != FName(PropertyName)
+                        || Declared.Kind != EGV2DeclaredUiCapabilityKind::Text)
+                    {
+                        continue;
+                    }
+                    if (UGV2TextWidgetBase* Leaf =
+                            Cast<UGV2TextWidgetBase>(Composite->GetWidgetFromName(Declared.ChildWidgetName)))
+                    {
+                        return Leaf->GetTextContent();
+                    }
+                }
+                return FText::GetEmpty();
+            };
+
+            const FText SceneContext = DeclaredTextLeafContent(SceneWidget, TEXT("context_text"));
+            TestFalse(
+                TEXT("M2: scene context text published by Lua reached its text primitive"),
+                SceneContext.IsEmpty());
+            const FText StatusName = DeclaredTextLeafContent(StatusWidget, TEXT("name"));
+            TestFalse(
+                TEXT("M2: player_status name published by Lua reached its text primitive"),
+                StatusName.IsEmpty());
+
             TestNotNull(TEXT("LocationScreen contains SceneView component"), SceneWidget);
             UGV2ListViewWidgetBase* CharRep = SceneWidget != nullptr
                 ? Cast<UGV2ListViewWidgetBase>(SceneWidget->GetWidgetFromName(TEXT("CharacterRepeater")))
