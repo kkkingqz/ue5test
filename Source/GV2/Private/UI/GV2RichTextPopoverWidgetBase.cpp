@@ -66,8 +66,13 @@ bool UGV2RichTextPopoverWidgetBase::ApplyCentralStyle_Implementation()
 
     PopoverBorder->SetBrush(Theme->RichTextPopoverBackground);
     PopoverBorder->SetPadding(Theme->RichTextPopoverPadding);
-    PopoverWidth->SetMaxDesiredWidth(Theme->RichTextPopoverMaxWidth);
-    PopoverWidth->SetMaxDesiredHeight(Theme->RichTextPopoverMaxHeight);
+    // DCA-15 (ADR-0035): the popover's own box follows the same viewport-derived
+    // scale as the text it contains -- a fixed max width/height (the Theme
+    // default, unscaled) would cap the box at its 1080p footprint even where the
+    // text inside is rendering ~60% larger (2160p) or ~15% smaller (720p).
+    const float ViewportScale = Theme->EvaluateTextScale(UGV2TextPipeline::GetViewportHeight(this));
+    PopoverWidth->SetMaxDesiredWidth(Theme->RichTextPopoverMaxWidth * ViewportScale);
+    PopoverWidth->SetMaxDesiredHeight(Theme->RichTextPopoverMaxHeight * ViewportScale);
     if (!UGV2TextPipeline::Apply(TitleText, Model.Title)
         || !IGV2UiStyleConsumer::Execute_ApplyCentralStyle(DescriptionText))
     {

@@ -193,7 +193,12 @@ bool UGV2DropdownSelectWidgetBase::ApplyCentralStyle_Implementation()
     HeaderButton->SetStyle(Theme->DropdownHeaderStyle);
     PopupBorder->SetBrush(Theme->DropdownPopupBackground);
     PopupBorder->SetPadding(Theme->DropdownPopupPadding);
-    PopupSizeBox->SetMaxDesiredHeight(Theme->DropdownMaxPopupHeight);
+    // DCA-15 (ADR-0035): the popup's own box follows the same viewport-derived
+    // scale as the option text inside it -- a fixed max height (the Theme
+    // default, unscaled) shows fewer visible options as the screen grows, the
+    // opposite of what a responsive list should do.
+    const float ViewportScale = Theme->EvaluateTextScale(UGV2TextPipeline::GetViewportHeight(this));
+    PopupSizeBox->SetMaxDesiredHeight(Theme->DropdownMaxPopupHeight * ViewportScale);
 
     for (UPanelSlot* PanelSlot : OptionsScrollBox->GetSlots())
     {

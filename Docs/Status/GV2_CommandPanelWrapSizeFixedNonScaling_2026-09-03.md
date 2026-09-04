@@ -1,8 +1,8 @@
 ---
 title: CommandPanel WrapSize — фиксированное значение не масштабируется под viewport
 status: informative
-version: 1.1
-updated: 2026-09-03
+version: 1.2
+updated: 2026-09-04
 depends_on:
   - ImplementationStatus.md
   - ../UI/ScreenTemplates.md
@@ -78,4 +78,4 @@ WrapSize = 1200
 
 ## Статус
 
-`known_nonconformance`, не закрыт. Зарегистрирован как `STATUS-009` в [ImplementationStatus.md](ImplementationStatus.md). Способ исправления выбран и разложен на `DCA-13…16`; удаление строки `STATUS-009` — часть `Done` задачи `DCA-15`.
+Закрыт (2026-09-04). `DCA-13` (тик поддерева в harness, строгая geometry-проверка на всех шести разрешениях), `DCA-14` (отрицательная проверка `BAI-10` вызывает тот же `GV2FitsInBounds`, что и положительная) и `DCA-15` (`WBP_ListView_WrapButtons` переведён в динамический режим; `GV2RecoveryScreenWidget`/`GV2RichTextPopoverWidgetBase`/`GV2DropdownSelectWidgetBase` выводят свои размеры из фактического viewport через `UGV2UiTheme::EvaluateTextScale`; `GV2SeparatorWidgetBase`'s hairline записан явным исключением с причиной; двухполовинный гейт `GV2.Runtime.UIKit.LayoutParameterViewportDerivation` — `Source/GV2LayoutInvariantSourceTests.cpp` — сканирует `Source/GV2` и обходит дерево виджетов production-ассетов) закрыты. Строка `STATUS-009` удалена из [ImplementationStatus.md](ImplementationStatus.md) тем же change set — детали реализации записаны в [LayoutInvariant.md](../Plans/DeclaredCompositeAdoption/LayoutInvariant.md).

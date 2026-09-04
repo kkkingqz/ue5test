@@ -1,7 +1,7 @@
 ---
 title: Layout Invariant Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-04
 depends_on:
   - README.md
@@ -79,7 +79,7 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
 
     Верификация: headless `GV2.Runtime.UI.LocationScreenViewportMatrix` — `Success`; полный `GV2.*` headless-прогон — 106/107 (тот же известный `CentralThemeAndComponents`, не связан); portable ctest 76/76. `git diff --stat -- Source/` подтверждает: единственный изменённый файл — `GV2RuntimeSubsystemTests.cpp` (54 insertions, 31 deletions); ни один production-класс не тронут.
 
-- [ ] **DCA-15 — Параметр раскладки выводится из viewport или объявлен исключением**
+- [x] **DCA-15 — Параметр раскладки выводится из viewport или объявлен исключением**
   - `ADR-0035` требует, чтобы раскладка распределяла фактический viewport, и прямо отвергает равномерное масштабирование кадра ([§ Decision](../../ADR/0035-ui-foundation-and-composition.md)). У требования нет ни одного перечислителя: строка `ADR-0035` не встречается ни в одном тесте, а `WrapSize`/`bExplicitWrapSize` — нигде в `Source/`, `Tools/` и `Docs/`. `Content/` вне досягаемости гейтов целиком: все они — текстовые сканы по `Source/` и `Docs/`. Это не пробел конкретного гейта, а отсутствующий класс гейтов.
   - `WrapSize` — не единственное место. Сканирование дало ещё четыре, и все четыре задают размер **из C++**, а не свойством ассета:
 
@@ -104,6 +104,19 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
     - `STATUS-009` закрыт и удалён из `ImplementationStatus.md` тем же change set.
   - Зависимости: DCA-13.
   - Evidence: `Content/UI/Widgets/WBP_ListView_WrapButtons.uasset`, `Source/GV2/Private/UI/GV2RecoveryScreenWidget.cpp`, `Source/GV2/Private/UI/GV2RichTextPopoverWidgetBase.cpp`, `Source/GV2/Private/UI/GV2DropdownSelectWidgetBase.cpp`, `Docs/ADR/0035-ui-foundation-and-composition.md`, `Docs/Status/ImplementationStatus.md`, новый гейт.
+  - **Реализация (2026-09-04):** все пять найденных мест исправлены прямыми фиксами, а не подгонкой под гейт. `Content/UI/Widgets/WBP_ListView_WrapButtons.uasset`'s `ContainerPanel` переведён на `bExplicitWrapSize=false` (через `unreal-mcp`) — теперь идентичен по режиму остальным четырём `WBP_ListView_Wrap`-репитерам; хранившееся значение `WrapSize=1200` оставлено нетронутым (в динамическом режиме оно просто не читается — очищать нечего). `UGV2RecoveryScreenWidget::InitializeRecoveryScreen` заменил `CanvasSlot->SetSize(800×400)` на `CanvasSlot->SetAutoSize(true)` — коробка не имеет абсолютного футпринта вовсе, размер выводится из собственного текстового контента; отступ между заголовком и сообщением (`20.0f`) домножен на `Theme->EvaluateTextScale(UGV2TextPipeline::GetViewportHeight(this))`, ту же кривую `0.85 → 1.60`, что уже применяется к самому тексту. `UGV2RichTextPopoverWidgetBase`/`UGV2DropdownSelectWidgetBase`'s `ApplyCentralStyle_Implementation` домножили `Theme->RichTextPopoverMaxWidth`/`MaxHeight`/`Theme->DropdownMaxPopupHeight` на тот же масштабный множитель — коробка растёт и сжимается вместе с текстом внутри неё, а не независимо от него. `GV2SeparatorWidgetBase.cpp`'s `Set{Width,Height}Override(Theme->SeparatorThickness)` не тронуты: волосяная линия оставлена как задокументированное исключение (см. ниже) — масштабирование дробного пикселя сделало бы линию более размытой на каждом разрешении, а не более чёткой ни на одном.
+
+    Новый гейт, `GV2.Runtime.UIKit.LayoutParameterViewportDerivation` (`Source/GV2/Private/Tests/GV2LayoutInvariantSourceTests.cpp`, единственный новый файл этой задачи), реализует обе обязательные половины. **Half A** сканирует каждый `.cpp` под `Source/GV2` (`IFileManager::FindFilesRecursive`, тот же приём, что уже использует `GV2PropertyConsumersTests.cpp`) на текстовые вхождения восьми функций из формулировки задачи; для `SetPadding` действует более узкое правило (флагуется только сырой ненулевой числовой литерал прямо в вызове — `ArgumentHasRawNonzeroNumericLiteral`), поскольку неотмасштабированный `Theme`-паддинг — обычная, принятая по всему проекту форма и не тот класс дефекта, который закрывает эта задача (в отличие от буквального `20.0f`, который был в `GV2RecoveryScreenWidget.cpp`). Для остальных семи функций правило шире: вызов обязан либо содержать вызов `EvaluateTextScale`/`GetViewportHeight` в собственном списке аргументов, либо ссылаться (по цельному идентификатору, не по совпадению подстроки) на локальную переменную, чьё присваивание где-то выше в той же функции вызывает одну из этих двух функций (`FindScaleVariableNames` + `ContainsWholeIdentifier`) — сырой литерал **и** голая, никогда не масштабируемая ссылка на константу (`Theme->SeparatorThickness`) одинаково не проходят эту проверку, что и требуется: перенос `1200` в именованную константу не меняет природы значения, и гейт должен видеть это так же, как видел бы сырой литерал.
+
+    **Half B** обходит asset registry по тем же трём UI-корням, что уже использует `GV2.UI.CapabilityObservabilityCompositeSweep` (`/Game/UI`, `/Game/TextSystem/UI`, `/Game/RH/UI`), для каждого `WBP_*` создаёт экземпляр через `CreateWidget` (пропуская `CLASS_Abstract`-базы вроде `WBP_ScreenBase`) и **до** первого `TakeWidget()`/`NativePreConstruct` читает `WidgetTree` напрямую — это авторски-запечённое состояние ассета, ещё не тронутое рантайм-кодом виджета, ровно то разграничение, которое формулировка задачи проводит между «почти чистыми» `SizeBox`-ассетами (`WBP_Separator`/`WBP_DropdownSelect`/`WBP_RichTextPopover`, где абсолютное значение выставляет C++, а не Designer) и `WBP_ListView_WrapButtons` (единственным местом, где абсолютное значение реально запечено в ассете). Проверяются `UWrapBox::UseExplicitWrapSize()` и все пять `USizeBox::Is*Override()` геттеров.
+
+    **Найденный и исправленный баг гейта во время написания:** первая версия классифицировала «нет ни одного нулевого нелитерала» как «безопасно», из-за чего голая ссылка `Theme->SeparatorThickness` (в аргументе вообще нет цифр) проходила гейт как «эффективно ноль» — совершенно случайно маскируя именно тот класс проблемы (голая, никогда не масштабируемая константа), который Half A должен ловить. Обнаружено демонстрацией: временное удаление списка исключений Separator должно было уронить гейт, но не уронило. Исправлено переписанной `ArgumentIsEffectivelyZero` (идентификатор — не ноль, даже без единой цифры) и последующим повторным добавлением проверки «показывает ли аргумент вывод из viewport» через явное отслеживание имени переменной масштаба, а не простого совпадения текста «где-то рядом» (первая версия ЭТОЙ проверки тоже была слишком широкой: маркер `EvaluateTextScale`, найденный где угодно в предшествующих 400 символах, ошибочно засчитывал синтетический несвязанный вызов в той же функции как «выведенный», что и обнаружила повторная демонстрация синтетического литерала после первого исправления).
+
+    Обе половины продемонстрированы отдельно, финальной, исправленной версией гейта: (1) Half A — синтетический `PopupSizeBox->SetMaxDesiredWidth(500.0f)`, добавленный рядом с уже исправленным вызовом в том же файле/функции, уронил гейт по имени и месту (`GV2DropdownSelectWidgetBase.cpp:202 calls SetMaxDesiredWidth with a value that is not derived from viewport`), не задев соседний реально-исправленный вызов; отменено. (2) Half A, отдельно — временное удаление списка исключений `GetLayoutSourceExceptions()` уронило гейт ровно на двух вхождениях `GV2SeparatorWidgetBase.cpp` и ни на одном другом; восстановлено. (3) Half B — временный откат `bExplicitWrapSize` на `WBP_ListView_WrapButtons` обратно на `true` уронил гейт по имени ассета и свойства; восстановлено, `unreal-mcp` `CompileWidgetBlueprint` + `save_assets` подтвердили сохранение.
+
+    `STATUS-009` удалён из `ImplementationStatus.md` этим же change set; [GV2_CommandPanelWrapSizeFixedNonScaling_2026-09-03.md](../../Status/GV2_CommandPanelWrapSizeFixedNonScaling_2026-09-03.md) переведён в статус «закрыт» с перечислением, что именно закрыла каждая из `DCA-13/14/15`.
+
+    Верификация: headless `GV2.Runtime.UIKit.LayoutParameterViewportDerivation` и `GV2.Runtime.UI.LocationScreenViewportMatrix` — оба `Success`; полный `GV2.*` headless-прогон — 107 passed / 1 failed (тот же известный `CentralThemeAndComponents`, `DCA-17`, не связан) из 108; portable ctest 76/76. `git diff --stat -- Source/` подтверждает: пять изменённых production-файлов (по одной точке дефекта в каждом) и один новый тестовый файл — ни один WBP-ассет не добавлен, счётчик `CentralThemeAndComponents` не сдвинулся с 46.
 
 - [ ] **DCA-16 — Артефакт, изменённый вместе с проверкой, обоснован независимо от неё**
   - `c2526ae` одним change set добавил проверку и подстроил под неё ассет, назвав причиной «предотвращение переполнения по вертикали» — состояние, которого до этой проверки не наблюдал никто. Ослабленный тест ревью находит: на это у проекта есть и словарь, и практика. Подстроенный под тест артефакт не находится ничем — он выглядит как обычное значение свойства, а если он ещё и бинарный, то не попадает даже в чтение diff-а.
@@ -132,9 +145,9 @@ DCA-13 и DCA-14 лежат в одной функции, но задевают 
 
 ## Проверка milestone
 
-- [ ] Строгая geometry-проверка кнопок выполняется на всех шести разрешениях, а фактическое покрытие видно в выводе теста.
-- [ ] Отрицательные проверки `BAI-10` краснеют при удалении положительных утверждений.
-- [ ] Ни один параметр раскладки production-экранов не является константой без записанной причины, и это утверждает перечислитель, а не чтение.
-- [ ] `WrapSize` `ButtonRepeater` следует ширине панели; `STATUS-009` удалён из `ImplementationStatus.md`.
+- [x] Строгая geometry-проверка кнопок выполняется на всех шести разрешениях, а фактическое покрытие видно в выводе теста. (DCA-13)
+- [x] Отрицательные проверки `BAI-10` краснеют при удалении положительных утверждений. (DCA-14)
+- [x] Ни один параметр раскладки production-экранов не является константой без записанной причины, и это утверждает перечислитель, а не чтение. (DCA-15)
+- [x] `WrapSize` `ButtonRepeater` следует ширине панели; `STATUS-009` удалён из `ImplementationStatus.md`. (DCA-15)
 - [ ] Правило о направлении обоснования записано в `AGENTS.md` и в `Docs/Plans/README.md`.
 - [ ] Аудит UI-компонентов проверяет контракт у каждого ассета, который сам же перечисляет.
