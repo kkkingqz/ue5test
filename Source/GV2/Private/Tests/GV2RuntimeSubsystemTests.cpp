@@ -6,6 +6,9 @@
 #include "Misc/Paths.h"
 #include "HAL/PlatformTime.h"
 #include "Widgets/SVirtualWindow.h"
+#include "Layout/ArrangedChildren.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2FilesystemContentSourceProvider.h"
@@ -85,6 +88,60 @@ struct FGV2ScopedSamplePackageOverride
     FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
     ~FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
 };
+
+// DCA-13: a dynamic SWrapBox (UseAllottedSize=true) only recalculates its own
+// wrap threshold (PreferredSize) inside Tick(), which the normal
+// FSlateApplication loop drives every frame for a registered top-level
+// window -- an off-screen SVirtualWindow driven by hand (Resize +
+// SlatePrepass + PaintWindow, no FSlateApplication involved) never receives
+// it, so PreferredSize freezes at whatever the first Paint ever measured and
+// silently reuses that stale threshold at every later, narrower resolution.
+// This walks the Slate tree and calls Tick() directly on every widget that
+// still wants one, using the geometry PaintWindow just cached for it
+// (GetTickSpaceGeometry() -- Paint/Arrange already update that on their own,
+// no Tick needed for that part) -- the explicit-subtree-tick alternative to
+// registering a real window with FSlateApplication.
+void GV2TickWidgetSubtreeRecursively(const TSharedRef<SWidget>& Widget, double CurrentTime, float DeltaTime)
+{
+    if (Widget->GetCanTick())
+    {
+        Widget->Tick(Widget->GetTickSpaceGeometry(), CurrentTime, DeltaTime);
+    }
+    if (FChildren* Children = Widget->GetAllChildren())
+    {
+        const int32 NumChildren = Children->Num();
+        for (int32 Index = 0; Index < NumChildren; ++Index)
+        {
+            const TSharedRef<SWidget> Child = Children->GetChildAt(Index);
+            if (Child != SNullWidget::NullWidget)
+            {
+                GV2TickWidgetSubtreeRecursively(Child, CurrentTime, DeltaTime);
+            }
+        }
+    }
+}
+
+// DCA-13: one full simulated frame on an off-screen SVirtualWindow honest
+// about dynamic (Tick-driven) layouts -- Resize, an initial Paint pass so
+// every widget's GetTickSpaceGeometry() reflects the new size, an explicit
+// subtree tick so any dynamic SWrapBox catches up its PreferredSize to that
+// geometry, then a second Prepass+Paint that actually arranges children
+// against the now-correct threshold. A single Paint (the pre-DCA-13 harness)
+// only ever arranges against whichever PreferredSize the previous iteration
+// left behind.
+void GV2SimulateResponsiveFrame(const TSharedRef<SVirtualWindow>& Window, const FVector2D& Size)
+{
+    Window->Resize(Size);
+    Window->SlatePrepass(1.0f);
+    {
+        FSlateWindowElementList SeedElementList(Window);
+        Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, SeedElementList, FWidgetStyle(), true);
+    }
+    GV2TickWidgetSubtreeRecursively(Window, FPlatformTime::Seconds(), 0.016f);
+    Window->SlatePrepass(1.0f);
+    FSlateWindowElementList WindowElementList(Window);
+    Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, WindowElementList, FWidgetStyle(), true);
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -5516,20 +5573,70 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                     float SceneWidthFHD = 0.0f;
                     float SceneWidthUWFHD = 0.0f;
 
+                    // DCA-13: prove the harness fix actually recalculates a dynamic
+                    // WrapBox's wrap threshold -- not just that geometry queries return
+                    // non-stale numbers for widgets that never depended on Tick() in the
+                    // first place (every check below this already worked before DCA-13,
+                    // since Paint/Arrange update GetTickSpaceGeometry() on their own).
+                    // A standalone SWrapBox with UseAllottedSize=true, unrelated to any
+                    // production composite, is measured at the narrowest and widest
+                    // resolutions in the matrix: if the fix works, more fixed-width
+                    // slots fit on the first row at 3840 than at 1280.
+                    {
+                        TSharedRef<SWrapBox> ProbeWrapBox = SNew(SWrapBox).UseAllottedSize(true).InnerSlotPadding(FVector2D(4.0f, 4.0f));
+                        for (int32 SlotIndex = 0; SlotIndex < 8; ++SlotIndex)
+                        {
+                            ProbeWrapBox->AddSlot()
+                            [
+                                SNew(SBox).WidthOverride(300.0f).HeightOverride(40.0f)
+                            ];
+                        }
+                        TSharedRef<SVirtualWindow> ProbeWindow = SNew(SVirtualWindow).Size(FVector2D(1280, 720));
+                        ProbeWindow->SetContent(ProbeWrapBox);
+
+                        auto MeasureFirstRowSlotCount = [&ProbeWindow, &ProbeWrapBox](const FVector2D& Size) -> int32
+                        {
+                            GV2SimulateResponsiveFrame(ProbeWindow, Size);
+                            FArrangedChildren ArrangedChildren(EVisibility::All);
+                            ProbeWrapBox->ArrangeChildren(ProbeWrapBox->GetTickSpaceGeometry(), ArrangedChildren, true);
+                            int32 FirstRowCount = 0;
+                            float FirstRowY = -1.0f;
+                            for (int32 Index = 0; Index < ArrangedChildren.Num(); ++Index)
+                            {
+                                const float Y = ArrangedChildren[Index].Geometry.GetAbsolutePosition().Y;
+                                if (FirstRowY < 0.0f)
+                                {
+                                    FirstRowY = Y;
+                                }
+                                if (!FMath::IsNearlyEqual(Y, FirstRowY, 1.0f))
+                                {
+                                    break;
+                                }
+                                ++FirstRowCount;
+                            }
+                            return FirstRowCount;
+                        };
+
+                        const int32 FirstRowAt1280 = MeasureFirstRowSlotCount(FVector2D(1280, 720));
+                        const int32 FirstRowAt3840 = MeasureFirstRowSlotCount(FVector2D(3840, 2160));
+                        TestTrue(
+                            *FString::Printf(TEXT("DCA-13: dynamic WrapBox wrap threshold differs between 1280 (%d/row) and 3840 (%d/row)"), FirstRowAt1280, FirstRowAt3840),
+                            FirstRowAt3840 > FirstRowAt1280);
+                    }
+
+                    // DCA-13: strict per-button geometry coverage is computed from the
+                    // loop itself, not asserted by name -- a resolution that cannot be
+                    // strictly checked is named and counted as excluded, and the total
+                    // is compared against the matrix size below, so silently narrowing
+                    // coverage back to one resolution shows up as a numeric mismatch
+                    // instead of passing quietly.
+                    int32 StrictButtonGeometryCoveredCount = 0;
+                    TArray<FString> StrictButtonGeometryExclusionReasons;
+
                     for (const auto& Res : TestResolutions)
                     {
                         LocationScreen->InvalidateLayoutAndVolatility();
-                        VirtualWindow->Resize(Res.Size);
-                        VirtualWindow->SlatePrepass(1.0f);
-
-                        // Trigger top-down Slate layout calculation
-                        FSlateWindowElementList WindowElementList(VirtualWindow);
-                        VirtualWindow->PaintWindow(
-                            FPlatformTime::Seconds(),
-                            0.016f,
-                            WindowElementList,
-                            FWidgetStyle(),
-                            true);
+                        GV2SimulateResponsiveFrame(VirtualWindow, Res.Size);
 
                         const FVector2D WindowAllocated = VirtualWindow->GetTickSpaceGeometry().GetLocalSize();
                         TestEqual(
@@ -5598,11 +5705,13 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                     Repeater->GetEntryCount(),
                                     6);
 
-                                // On HD 720p, verify each instantiated button's allocated geometry is strictly bounded in 2D (BAI-10)
-                                if (Res.Size.X == 1280.0f && Res.Size.Y == 720.0f)
+                                // DCA-13: strict per-button geometry, on every resolution in the
+                                // matrix, not only 720p -- the harness fix above (GV2SimulateResponsiveFrame)
+                                // is what makes this honest at every width, not only the one where the
+                                // old single Paint pass happened to already be correct.
+                                const TArray<UWidget*> Entries = Repeater->GetOrderedEntries();
+                                if (TestEqual(*FString::Printf(TEXT("CCF-17: [%s] Repeater ordered entry widgets count matches 6"), Res.Name), Entries.Num(), 6))
                                 {
-                                    const TArray<UWidget*> Entries = Repeater->GetOrderedEntries();
-                                    TestEqual(TEXT("CCF-17: [720p] Repeater ordered entry widgets count matches 6"), Entries.Num(), 6);
                                     for (int32 BtnIndex = 0; BtnIndex < Entries.Num(); ++BtnIndex)
                                     {
                                         if (Entries[BtnIndex] != nullptr && Entries[BtnIndex]->GetCachedWidget().IsValid())
@@ -5613,35 +5722,35 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                             const FVector2D BtnInCommandPanel = CommandGeom.AbsoluteToLocal(BtnGeom.GetAbsolutePosition());
 
                                             TestTrue(
-                                                *FString::Printf(TEXT("CCF-17: [720p] Button #%d allocated size is positive (%f x %f)"), BtnIndex + 1, BtnSize.X, BtnSize.Y),
+                                                *FString::Printf(TEXT("CCF-17: [%s] Button #%d allocated size is positive (%f x %f)"), Res.Name, BtnIndex + 1, BtnSize.X, BtnSize.Y),
                                                 BtnSize.X > 0.0f && BtnSize.Y > 0.0f);
 
                                             // 1. Viewport 2-axis bounding box: Left, Top, Right, Bottom
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d left edge within viewport (%f >= 0)"), BtnIndex + 1, BtnLocalPos.X),
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d left edge within viewport (%f >= 0)"), Res.Name, BtnIndex + 1, BtnLocalPos.X),
                                                 BtnLocalPos.X >= -1.0f);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d top edge within viewport (%f >= 0)"), BtnIndex + 1, BtnLocalPos.Y),
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d top edge within viewport (%f >= 0)"), Res.Name, BtnIndex + 1, BtnLocalPos.Y),
                                                 BtnLocalPos.Y >= -1.0f);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d right edge fits viewport width (%f <= 1280)"), BtnIndex + 1, BtnLocalPos.X + BtnSize.X),
-                                                BtnLocalPos.X + BtnSize.X <= 1280.0f + 1.0f);
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d right edge fits viewport width (%f <= %f)"), Res.Name, BtnIndex + 1, BtnLocalPos.X + BtnSize.X, Res.Size.X),
+                                                BtnLocalPos.X + BtnSize.X <= Res.Size.X + 1.0f);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d bottom edge fits viewport height (%f <= 720)"), BtnIndex + 1, BtnLocalPos.Y + BtnSize.Y),
-                                                BtnLocalPos.Y + BtnSize.Y <= 720.0f + 1.0f);
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d bottom edge fits viewport height (%f <= %f)"), Res.Name, BtnIndex + 1, BtnLocalPos.Y + BtnSize.Y, Res.Size.Y),
+                                                BtnLocalPos.Y + BtnSize.Y <= Res.Size.Y + 1.0f);
 
                                             // 2. CommandPanel 2-axis containment
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d inside CommandPanel left (%f >= 0)"), BtnIndex + 1, BtnInCommandPanel.X),
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d inside CommandPanel left (%f >= 0)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.X),
                                                 BtnInCommandPanel.X >= -1.0f);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d inside CommandPanel top (%f >= 0)"), BtnIndex + 1, BtnInCommandPanel.Y),
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d inside CommandPanel top (%f >= 0)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.Y),
                                                 BtnInCommandPanel.Y >= -1.0f);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d fits CommandPanel width (%f <= %f)"), BtnIndex + 1, BtnInCommandPanel.X + BtnSize.X, CommandAllocated.X),
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d fits CommandPanel width (%f <= %f)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.X + BtnSize.X, CommandAllocated.X),
                                                 BtnInCommandPanel.X + BtnSize.X <= CommandAllocated.X + 1.0f);
                                             TestTrue(
-                                                *FString::Printf(TEXT("BAI-10: [720p] Button #%d fits CommandPanel height (%f <= %f)"), BtnIndex + 1, BtnInCommandPanel.Y + BtnSize.Y, CommandAllocated.Y),
+                                                *FString::Printf(TEXT("BAI-10: [%s] Button #%d fits CommandPanel height (%f <= %f)"), Res.Name, BtnIndex + 1, BtnInCommandPanel.Y + BtnSize.Y, CommandAllocated.Y),
                                                 BtnInCommandPanel.Y + BtnSize.Y <= CommandAllocated.Y + 1.0f);
 
                                             // 3. Negative containment check: simulated oversized button detection
@@ -5652,15 +5761,31 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                                     && (Pos.Y + Size.Y) <= (Bounds.Y + 1.0f);
                                             };
                                             TestFalse(
-                                                TEXT("BAI-10: [Negative] Artificial horizontal overflow beyond panel width is rejected"),
+                                                *FString::Printf(TEXT("BAI-10: [%s] [Negative] Artificial horizontal overflow beyond panel width is rejected"), Res.Name),
                                                 TestFitsInBounds(BtnInCommandPanel, FVector2D(CommandAllocated.X + 50.0f, BtnSize.Y), CommandAllocated));
                                             TestFalse(
-                                                TEXT("BAI-10: [Negative] Artificial vertical overflow beyond viewport height is rejected"),
-                                                TestFitsInBounds(BtnLocalPos, FVector2D(BtnSize.X, 800.0f), FVector2D(1280.0f, 720.0f)));
+                                                *FString::Printf(TEXT("BAI-10: [%s] [Negative] Artificial vertical overflow beyond viewport height is rejected"), Res.Name),
+                                                TestFitsInBounds(BtnLocalPos, FVector2D(BtnSize.X, Res.Size.Y + 80.0f), Res.Size));
                                         }
                                     }
+                                    ++StrictButtonGeometryCoveredCount;
+                                }
+                                else
+                                {
+                                    StrictButtonGeometryExclusionReasons.Add(FString::Printf(
+                                        TEXT("[%s] ButtonRepeater entry count was not 6"), Res.Name));
                                 }
                             }
+                            else
+                            {
+                                StrictButtonGeometryExclusionReasons.Add(FString::Printf(
+                                    TEXT("[%s] ButtonRepeater not found under CommandPanel"), Res.Name));
+                            }
+                        }
+                        else
+                        {
+                            StrictButtonGeometryExclusionReasons.Add(FString::Printf(
+                                TEXT("[%s] CommandPanel widget missing or not laid out"), Res.Name));
                         }
 
                         // Ultrawide check (CCF-18): 21:9 ratio verified
@@ -5669,6 +5794,22 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                             TestTrue(
                                 *FString::Printf(TEXT("CCF-18: [%s] Ultrawide aspect ratio is > 2.0"), Res.Name),
                                 (Res.Size.X / Res.Size.Y) > 2.0f);
+                        }
+                    }
+
+                    // DCA-13: the count above comes from the loop itself, not a hand-picked
+                    // literal -- a regression that silently narrows strict coverage back
+                    // down (e.g. reintroducing a single-resolution gate) shows up here as
+                    // this count falling below UE_ARRAY_COUNT(TestResolutions), with each
+                    // excluded resolution named and reasoned, not as a silent pass.
+                    if (!TestEqual(
+                        TEXT("DCA-13: strict per-button geometry check covers every resolution in the matrix"),
+                        StrictButtonGeometryCoveredCount,
+                        static_cast<int32>(UE_ARRAY_COUNT(TestResolutions))))
+                    {
+                        for (const FString& Reason : StrictButtonGeometryExclusionReasons)
+                        {
+                            AddError(FString::Printf(TEXT("DCA-13: resolution excluded from strict geometry coverage -- %s"), *Reason));
                         }
                     }
 
