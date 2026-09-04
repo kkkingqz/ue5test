@@ -5,6 +5,7 @@
 local authoring = require("core:module.authoring.context")
 local duc10_fixture = require("textsystem:module.presentation.duc10_fixture")
 local dca09_fixture = require("textsystem:module.presentation.dca09_fixture")
+local dca10_fixture = require("textsystem:module.presentation.dca10_fixture")
 
 local M = authoring.gameplay("textsystem")
 M.id = "textsystem:module.presentation.location_presenter"
@@ -156,6 +157,11 @@ function M.build_and_publish_screen()
     local dca09_document = dca09_fixture.build_requested_screen()
     if dca09_document ~= nil then
         return dca09_document
+    end
+
+    local dca10_document = dca10_fixture.build_requested_screen()
+    if dca10_document ~= nil then
+        return dca10_document
     end
 
     local current_loc = M.world.current_location_id

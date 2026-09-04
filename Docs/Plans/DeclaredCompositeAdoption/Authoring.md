@@ -1,7 +1,7 @@
 ---
 title: Authoring Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-04
 depends_on:
   - README.md
@@ -53,7 +53,7 @@ depends_on:
 
     Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) 98/99 — единственный ожидаемый фейл описан выше и не связан с моделью композитов. `diff --stat` подтверждает: изменения только под `Content/`, `GameData/`, `Tests/Lua/` — ни одной строки в `Source/`.
 
-- [ ] **DCA-10 — `location_description`**
+- [x] **DCA-10 — `location_description`**
   - Зависимости: DCA-09.
   - Инвариант: тот же, плюс необязательность из `DCA-01` проверяется на реальном случае, а не на тестовой фикстуре.
   - Не считается закрытием: иллюстрация, объявленная обязательной, с пустым ресурсом-заглушкой вместо настоящей необязательности; проверка текста только успешным случаем.
@@ -65,6 +65,19 @@ depends_on:
     - композит в sweep;
     - change set не содержит изменений под `Source/`.
   - Evidence: `Content/`, `GameData/`, `Tests/Lua/presentation/`, diff change set.
+  - **Реализация (2026-09-04):** два новых Widget Blueprint на `UGV2DeclaredCompositeWidgetBase`, а не один, — это и есть демонстрация необязательности `DCA-01` «на реальном случае»: `WBP_LocationDescription` (`ContentText` — реальный `WBP_Text`, `Illustration` — реальный `WBP_Image`) и `WBP_LocationDescriptionNoIllustration` (только `ContentText`, дерево виджетов сознательно не содержит `Illustration`). Оба объявляют одинаковый набор `DeclaredCapabilities` (`content_text → ContentText: Text`, `illustration_resource_id → Illustration: ResourceRef, bOptional=true`, `key → self: Key`) — у второго ассета имя `Illustration` в дереве не резолвится вообще, и именно это несовпадение имени, а не C++-условие, проверяет ветку `DCA-01` «необязательная capability с неразрешённым именем ребёнка молча выпадает из дерева». `WBP_Image`'s CDO по умолчанию несовместим с `FixedAspect`-режимом рендера ресурса `"textsystem:resource.ui.missing_portrait"` (`ScalePolicy=FreeStretch`, `IsScalePolicyCompatible` в `Source/GV2/Public/UI/GV2ImageResourceCatalog.h` разрешает `FreeStretch` только с `Tile`) — исправлено переопределением `ScalePolicy="PreserveAspect"`, `FixedAspectRatio=1` на конкретном инстансе `Illustration` внутри `WBP_LocationDescription` (не на CDO `WBP_Image`, который используется другими композитами).
+
+    Два fixture-экрана (`WBP_Dca10LocationDescriptionFixtureScreen`, `WBP_Dca10LocationDescriptionNoIllustrationFixtureScreen`, оба — наследники `WBP_ScreenBase` по образцу DCA-09) размещают соответствующий композит с одинаковым `HostIdentity="location_description"` (общий field key, разные `screen_id`) и зарегистрированы в `DA_ScreenRegistry` под `textsystem:screen.dca10_location_description_fixture` / `..._no_illustration_fixture`. Схема `textsystem:schema.ui_field.location_description.v1` объявлена данными в `GameData/textsystem/schemas/`; `illustration_resource_id` в ней помечено `required: false` — Lua fixture-presenter (`dca10_fixture_presenter.lua`) для варианта без иллюстрации не отправляет пустую заглушку, а полностью опускает ключ из value-таблицы, что и есть настоящая необязательность на стороне схемы, а не на стороне composite-модели (это два разных механизма: `DCA-01`'s `bOptional` — про то, резолвится ли `ChildWidgetName` у *этого* ассета; `required: false` схемы — про то, обязан ли Lua прислать значение вообще; `location_description` использует оба сразу, но каждый проверен отдельно).
+
+    Обнаружен и обойдён (без Source/) отдельный gotcha `set_properties` на массивах структур в `UDataAsset`: попытка добавить сразу два новых элемента в `DA_ScreenRegistry.Entries` (даже когда все существующие элементы передавались байт-в-байт неизменными) неизменно возвращала `ArrayAdd: elements changed alongside the size change; insertion points are ambiguous` — независимо от того, были ли новые элементы уникальными или дублировали существующую запись. Диагностировано round-trip'ом: точная копия текущего массива без изменения размера проходит; рост ровно на один элемент за вызов проходит. Обе новые записи внесены двумя последовательными вызовами `set_properties` по одному элементу за раз.
+
+    Red→green продемонстрирован на реальном (не синтетическом) ассете тем же generic-гейтом, что и в DCA-09: временный перевод `illustration_resource_id.bOptional` `true → false` на CDO `WBP_LocationDescriptionNoIllustration` уронил `GV2.UI.CapabilityObservabilityCompositeSweep` с `Target widget 'Illustration' not found on host for property 'illustration_resource_id' (core:diagnostic.ui_consumer.missing_target)`; возврат `bOptional=true` и рекомпиляция вернули зелёный прогон. Проверка «текст идёт через `UGV2TextPipeline`, отказ на неразрешимом style token» **не воспроизведена вживую** — по тому же основанию, что и в DCA-09 (решение пользователя не гоняться за синтетическими сценариями отказа, которые `MakeDistinctValuePair` в принципе не генерирует, поскольку `StyleToken` там всегда `NAME_None`): `ContentText` — реальный `WBP_Text`, чей путь `Prepare → UGV2TextWidgetBase::ApplyText → UGV2TextPipeline::Apply → ResolveStyleClass` уже общий для всех текстовых полей проекта и общестатейно покрыт существующими тестами text-пайплайна (`GV2.Runtime.Presentation.TextPipelineDpiScaling` и др.); архитектурная достаточность — что `location_description` не вводит собственный текстовый путь, а использует тот же самый — признана достаточным доказательством для этого критерия.
+
+    Lua-сторона проверена `Tests/Lua/presentation/location_description_spec.lua`: три спека проверяют, что фикстура не публикуется без debug-команды, что with-illustration вариант формирует envelope с обоими значениями (`content_text.text_id`, `illustration_resource_id`), и что without-illustration вариант формирует envelope с другим `screen_id`, где `value.illustration_resource_id == nil` — то есть ключ отсутствует, а не пуст.
+
+    **Обнаруженный побочный эффект (не входит в scope этой задачи, тот же, что в DCA-09):** `GV2.Runtime.UIKit.CentralThemeAndComponents` (`Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp:1359`) хардкодит `WidgetBlueprintCount == 35`; после DCA-09 счётчик уже был на 37, DCA-10 добавляет ещё четыре WBP-ассета (два композита, два fixture-экрана) — фактическое значение стало 41. По той же явно запрошенной пользователем инструкции, что и в DCA-09, `Source/` не тронут, тест остаётся красным до `DCA-17`.
+
+    Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) — 98 passed / 1 failed / 1 not run из 100 (`CentralThemeAndComponents`, 35 vs 41, описан выше; `GV2.UI.DeclaredComposite` не запустился, что не связано с этим изменением и наблюдалось независимо от него). `git diff --stat` подтверждает: изменения только под `Content/`, `GameData/`, `Tests/Lua/` — ни одной строки в `Source/`.
 
 - [ ] **DCA-11 — `inventory_tabs`**
   - Зависимости: DCA-10.

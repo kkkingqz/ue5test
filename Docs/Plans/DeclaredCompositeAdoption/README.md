@@ -1,7 +1,7 @@
 ---
 title: Declared Composite Adoption and Enumerator Hardening Plan
 status: active
-version: 2.1
+version: 2.2
 updated: 2026-09-04
 depends_on:
   - ../Archive/DataDrivenUiComposition.md
@@ -90,7 +90,7 @@ decisions:
 ```text
 DCA-01✔, DCA-02✔, DCA-03✔, DCA-04✔   — независимы друг от друга
 
-           └──────► DCA-05✔, DCA-06✔, DCA-07✔ ──────► DCA-08✔ ──────► DCA-09✔, DCA-10, DCA-11 ──► DCA-12
+           └──────► DCA-05✔, DCA-06✔, DCA-07✔ ──────► DCA-08✔ ──────► DCA-09✔, DCA-10✔, DCA-11 ──► DCA-12
 
 DCA-05…07 переставляются между собой
 

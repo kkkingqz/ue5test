@@ -6,6 +6,8 @@
     { id: "textsystem:text.location.gold", data: { source_message: "Gold: {gold}" } },
     { id: "textsystem:text.location.stamina", data: { source_message: "Stamina: {stamina}" } },
     { id: "textsystem:text.dca09.npc_name", data: { source_message: "{npc_name}" } },
+    { id: "textsystem:text.dca10.tavern_notice", data: { source_message: "The tavern keeper posts a notice on the board." } },
+    { id: "textsystem:text.dca10.market_notice", data: { source_message: "The market square has no illustration today." } },
   ],
   extensions: {},
 }

@@ -21,5 +21,9 @@
       source: "presentation/dca09_fixture_presenter.lua",
       module_id: "textsystem:module.presentation.dca09_fixture",
     },
+    {
+      source: "presentation/dca10_fixture_presenter.lua",
+      module_id: "textsystem:module.presentation.dca10_fixture",
+    },
   ],
 }
