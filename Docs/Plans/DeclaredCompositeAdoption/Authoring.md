@@ -1,8 +1,8 @@
 ---
 title: Authoring Tasks
 status: active
-version: 1.1
-updated: 2026-09-02
+version: 1.2
+updated: 2026-09-04
 depends_on:
   - README.md
   - Migration.md
@@ -29,7 +29,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **DCA-09 — `npc_portrait`**
+- [x] **DCA-09 — `npc_portrait`**
   - Зависимости: DCA-08.
   - Инвариант: новый компонент из существующих видов не требует изменений в `Source/`. Нарушение здесь не дефект, а сигнал: если C++ понадобился, значит у модели есть недостающая возможность, и её надо назвать, а не обойти.
   - Не считается закрытием: правка `Source/` «на одну строчку»; композит, собранный из виджетов, созданных этой же задачей.
@@ -41,6 +41,17 @@ depends_on:
     - композит попадает в sweep наблюдаемости;
     - change set не содержит изменений под `Source/`.
   - Evidence: `Content/`, `GameData/`, `Tests/Lua/presentation/`, diff change set.
+  - **Реализация (2026-09-04):** `WBP_NpcPortrait` собран целиком через `unreal-mcp` на существующем `UGV2DeclaredCompositeWidgetBase` — два ребёнка (`NameText` — реальный `WBP_Text`, `Portrait` — реальный `WBP_Portrait`), три `DeclaredCapabilities` (`name → NameText: Text`, `portrait_resource_id → Portrait: ResourceRef`, `key → self: Key`). Отдельный fixture-экран `WBP_Dca09NpcPortraitFixtureScreen` (наследник `WBP_ScreenBase`, по образцу `WBP_Duc10NestedChainScreen`) размещает его единственным полем с `HostIdentity="npc_portrait"` и зарегистрирован в `DA_ScreenRegistry` под `textsystem:screen.dca09_npc_portrait_fixture` — рядом со staged-полями `textsystem:screen.location`, не заменяя их. Схема `textsystem:schema.ui_field.npc_portrait.v1` объявлена данными в `GameData/textsystem/schemas/`. Lua fixture-presenter (`GameData/textsystem/scripts/presentation/dca09_fixture_presenter.lua`, по образцу `duc10_fixture_presenter.lua`) регистрирует три debug-команды (`textsystem:command.debug.dca09_show/update/clear`) и подключён к `location_presenter.lua`'s `build_and_publish_screen` рядом с уже существующим `duc10_fixture` — оба fixture проверяются до обычного location-запроса и взаимно не пересекаются.
+
+    Явная регистрация в `package.json5`'s `modules` (`module_id` override и для `dca09_fixture_presenter.lua`, и для уже существовавшего `duc10_fixture_presenter.lua`) потребовалась потому, что закоммиченный `scripts/manifest.lua` называл модуль `duc10_fixture` (без суффикса `_presenter` из имени файла) без соответствующей explicit-записи в `package.json5` — расхождение, которое `generate_manifest.py --check` не обнаруживало, пока я не перегенерировал манифест впервые за время существования этого файла и не наблюдал, как он переименовывает существующий `duc10_fixture` в `duc10_fixture_presenter`, ломая чужой `require`. Добавление любого нового файла в `GameData/<package>/schemas/` также меняет package fingerprint (`GetSchemaBindings()` входит в `ComputePackageFingerprint`) — `GameData/mods.lock.json5` обновлён на значение, которое сообщил сам движок при mismatch (`gv2_content_validate_gamedata_container`), а не пересчитано отдельным инструментом (публичного CLI для этого нет).
+
+    Red→green продемонстрирован дважды на реальном контенте через уже существующий generic-гейт (без нового C++): временное указание `DeclaredCapabilities[0].ChildWidgetName = "NonExistentChild"` на `WBP_NpcPortrait` уронило `GV2.UI.CapabilityObservabilityCompositeSweep` с `Target widget 'NonExistentChild' not found ... (core:diagnostic.ui_consumer.missing_target)`; восстановление вернуло зелёный прогон. (Отдельная проверка — несовместимый `Kind` того же ребёнка, `ResourceRef` вместо `Text` на `NameText` — прошла зелёной вместо ожидаемого падения; это существующее поведение generic-гарнеса, не специфичное для `npc_portrait`, и не относится к предмету этой задачи.) Оба временных изменения отменены и раскомпилированы обратно.
+
+    Lua-сторона проверена `Tests/Lua/presentation/npc_portrait_spec.lua`: три спека диспетчеризуют реальные debug-команды через `game.runtime.dispatch_command` и проверяют итоговый envelope (`schema_id`, `value.name.text_id`/`.args.npc_name`, `value.portrait_resource_id`) — сквозной прогон на обоих Lua-хостах (`gv2_headless_self_test` и `GV2.Runtime.Lua.SpecRunnerHost`), не только на C++ стороне. Сама наблюдаемость обоих capability (что значение реально доходит до `NameText`/`Portrait` и читается обратно) доказана `GV2.UI.CapabilityObservabilityCompositeSweep`, которая обнаруживает `WBP_NpcPortrait` рефлективно по `/Game/TextSystem/UI/` без единой правки C++.
+
+    **Обнаруженный побочный эффект (не входит в scope этой задачи):** `GV2.Runtime.UIKit.CentralThemeAndComponents` (`Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp:1359`) содержит хардкод `TestEqual(..., WidgetBlueprintCount, 35)`, считающий все WBP-ассеты под тремя UI-путями; добавление любых новых WBP (в данном случае двух — `WBP_NpcPortrait` и `WBP_Dca09NpcPortraitFixtureScreen`) сдвигает счётчик на 35→37 и красит этот тест. Это предсуществующий, уже задокументированный технический долг (`Docs/Plans/DeclaredCompositeAdoption/LayoutInvariant.md`, `DCA-17`: «Число `35` — отдельная константа: при добавлении ассета её правят на `+1`»), а не дефект модели композитов. По решению пользователя (запрошено явно) число **не** поправлено — `Source/` остаётся нетронутым, тест остаётся красным до `DCA-17`. Это ровно тот случай, для которого существует `DCA-12`'s правило «если хотя бы один [из трёх] потребовал C++, причина разобрана и записана» — здесь причина не про сам `npc_portrait`, а про посторонний счётчик, и решение по нему отложено на `DCA-17`, а не на этот change set.
+
+    Верификация: portable ctest 76/76; полный `GV2.*` UE Automation (live editor) 98/99 — единственный ожидаемый фейл описан выше и не связан с моделью композитов. `diff --stat` подтверждает: изменения только под `Content/`, `GameData/`, `Tests/Lua/` — ни одной строки в `Source/`.
 
 - [ ] **DCA-10 — `location_description`**
   - Зависимости: DCA-09.

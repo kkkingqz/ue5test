@@ -1,0 +1,23 @@
+{
+  id: "textsystem:schema.ui_field.npc_portrait.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      name: {
+        kind: "text",
+        required: true,
+      },
+      portrait_resource_id: {
+        kind: "ref",
+        target_kind: "resource",
+        required: true,
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}

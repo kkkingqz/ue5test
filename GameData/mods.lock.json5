@@ -11,7 +11,7 @@
       package_id: "textsystem",
       version: "0.1.0",
       load_index: 1,
-      fingerprint: "d1252f674284cd5e5b41ba0dea96f6082e293d87985c539a28f4312261c83aab",
+      fingerprint: "0142daa59365224b9bfe1cdd000f80c58206020d0b42b8ac432b14b1996bb10f",
     },
     {
       package_id: "rh",
