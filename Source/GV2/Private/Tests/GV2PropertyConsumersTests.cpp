@@ -22,6 +22,7 @@
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
+#include "UI/GV2ScreenFieldHost.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "CommonTextBlock.h"
@@ -42,6 +43,7 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "UObject/UObjectIterator.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2PropertyConsumersTest,
@@ -295,6 +297,104 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                     FileSource.Contains(BannedName));
             }
         }
+    }
+
+    // 4b. DCA-08: target-resolution class-specific Cast gate
+    {
+        // Reflectively enumerate every native class implementing IGV2ScreenFieldHost or
+        // IGV2UiPropertyHost -- the set DCA-05...07 removed the last three
+        // (UGV2LocationSceneWidgetBase, UGV2LocationPlayerStatusWidgetBase,
+        // UGV2LocationCommandPanelWidgetBase) special-case Cast branches for. Enumerating
+        // by interface, not a hand-maintained class-name list, means a future host class
+        // falls under this gate automatically instead of after a manual list update.
+        TArray<FString> PropertyHostClassNames;
+        for (TObjectIterator<UClass> It; It; ++It)
+        {
+            UClass* const Class = *It;
+            if (Class == nullptr
+                || !Class->HasAnyClassFlags(CLASS_Native)
+                || Class->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists))
+            {
+                continue;
+            }
+            if (Class->ImplementsInterface(UGV2UiPropertyHost::StaticClass())
+                || Class->ImplementsInterface(UGV2ScreenFieldHost::StaticClass()))
+            {
+                PropertyHostClassNames.Add(Class->GetPrefixCPP() + Class->GetName());
+            }
+        }
+        TestTrue(TEXT("DCA-08: at least one property/screen-field host class found"), PropertyHostClassNames.Num() > 0);
+
+        auto FindCastOffenders = [](const FString& SourceText, const TArray<FString>& ClassNames) -> TArray<FString>
+        {
+            TArray<FString> Offenders;
+            for (const FString& ClassName : ClassNames)
+            {
+                if (SourceText.Contains(FString::Printf(TEXT("Cast<%s>"), *ClassName)))
+                {
+                    Offenders.Add(ClassName);
+                }
+            }
+            return Offenders;
+        };
+
+        // Negative self-test: the check itself must actually flag a violation, not just
+        // pass vacuously because nothing to find happens to exist right now.
+        const FString SyntheticOffendingSource = TEXT("UWidget* Target = Cast<UGV2ButtonWidgetBase>(HostWidget);");
+        const TArray<FString> SelfTestOffenders = FindCastOffenders(SyntheticOffendingSource, PropertyHostClassNames);
+        TestTrue(
+            TEXT("DCA-08: negative self-test -- synthetic Cast<UGV2ButtonWidgetBase> is detected"),
+            SelfTestOffenders.Contains(TEXT("UGV2ButtonWidgetBase")));
+
+        // The real check: GV2UiMutationPlan.cpp's target-resolution logic must not Cast
+        // to any concrete class implementing either host interface -- only to UWidget or
+        // to the interfaces themselves, which stay generic by construction.
+        const FString MutationPlanPath = FPaths::Combine(FPaths::ProjectDir(), TEXT("Source/GV2/Private/UI/GV2UiMutationPlan.cpp"));
+        FString MutationPlanSource;
+        const bool bLoadedMutationPlan = FFileHelper::LoadFileToString(MutationPlanSource, *MutationPlanPath);
+        TestTrue(TEXT("DCA-08: can read GV2UiMutationPlan.cpp"), bLoadedMutationPlan);
+        if (bLoadedMutationPlan)
+        {
+            const TArray<FString> RealOffenders = FindCastOffenders(MutationPlanSource, PropertyHostClassNames);
+            TestTrue(
+                *FString::Printf(
+                    TEXT("DCA-08: target resolution has no Cast to a concrete property/screen-field host class (found: %s)"),
+                    *FString::Join(RealOffenders, TEXT(", "))),
+                RealOffenders.Num() == 0);
+        }
+
+        // Uniqueness: the reflection-fallback line unique to the mutation-plan's target
+        // resolution must exist in exactly one file. If it were ever duplicated into
+        // another file, that copy would carry the same risk of growing a class-specific
+        // Cast fallback while sitting outside this file-scoped check.
+        TArray<FString> ModuleFiles;
+        const FString SourceRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("Source/GV2"));
+        IFileManager::Get().FindFilesRecursive(ModuleFiles, *SourceRoot, TEXT("*.h"), true, false, false);
+        IFileManager::Get().FindFilesRecursive(ModuleFiles, *SourceRoot, TEXT("*.cpp"), true, false, false);
+        TestTrue(TEXT("DCA-08: module file scan found Source/GV2 files"), ModuleFiles.Num() > 0);
+
+        const TCHAR* TargetResolutionMarker = TEXT("FindFProperty<FObjectPropertyBase>(HostWidget->GetClass(), Cap.TargetName)");
+        int32 FilesContainingMarker = 0;
+        for (const FString& FilePath : ModuleFiles)
+        {
+            // Skip this gate's own file: it necessarily names the marker in its own
+            // source (this literal, and the comment describing it), which is not a
+            // second real occurrence of the target-resolution logic.
+            if (FilePath.EndsWith(TEXT("GV2PropertyConsumersTests.cpp")))
+            {
+                continue;
+            }
+            FString FileSource;
+            if (!FFileHelper::LoadFileToString(FileSource, *FilePath))
+            {
+                continue;
+            }
+            if (FileSource.Contains(TargetResolutionMarker))
+            {
+                ++FilesContainingMarker;
+            }
+        }
+        TestEqual(TEXT("DCA-08: target-resolution logic exists in exactly one file"), FilesContainingMarker, 1);
     }
 
     // 5. UPP-14: UGV2ButtonWidgetBase binding/key consumer & negative schema compatibility test
