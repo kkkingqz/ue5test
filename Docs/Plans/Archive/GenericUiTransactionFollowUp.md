@@ -1,7 +1,7 @@
 ---
 title: GenericUiTransactionFollowUp Archive Summary
 status: archived
-version: 1.1
+version: 1.2
 updated: 2026-09-03
 ---
 
@@ -62,7 +62,7 @@ updated: 2026-09-03
 ## Верификация закрытия
 
 - `Automation RunTests GV2`: 108/108 success, счёт из `index.json`. Прогон повторён на tip `8dd4eb8` после того, как параллельный `DCA-04` удалил C++-поверхность трёх композитов между первым прогоном и архивацией.
-- `ctest --test-dir build`: 74/74.
+- `ctest --test-dir build`: 76/76. *(Исправлено 2026-09-04: версия 1.1 указывала 74/74 — прогон шёл на устаревшей конфигурации `build/`, не видевшей двух тестов гейта `no_hardcoded_asset_paths`, зарегистрированных в `CMakeLists.txt` коммитом `8a2da11` до архивации. Все тесты проходили и тогда; занижено было число.)*
 - `gv2-headless --check-scripts`, `validate_docs.py`: зелёные.
 - Red-on-revert показан для защиты от применения непринятой ревизии: при её снятии краснеют ровно две новые проверки.
 
