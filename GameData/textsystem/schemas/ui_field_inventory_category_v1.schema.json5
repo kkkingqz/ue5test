@@ -1,0 +1,33 @@
+{
+  id: "textsystem:schema.ui_field.inventory_category.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      items: {
+        kind: "array",
+        required: false,
+        keyed_by: "key",
+        items: {
+          kind: "object",
+          fields: {
+            key: {
+              kind: "key",
+              required: true,
+            },
+            resource_id: {
+              kind: "ref",
+              target_kind: "resource",
+              required: false,
+            },
+          },
+        },
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}

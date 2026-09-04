@@ -8,6 +8,8 @@
     { id: "textsystem:text.dca09.npc_name", data: { source_message: "{npc_name}" } },
     { id: "textsystem:text.dca10.tavern_notice", data: { source_message: "The tavern keeper posts a notice on the board." } },
     { id: "textsystem:text.dca10.market_notice", data: { source_message: "The market square has no illustration today." } },
+    { id: "textsystem:text.dca11.weapons_tab", data: { source_message: "Weapons" } },
+    { id: "textsystem:text.dca11.consumables_tab", data: { source_message: "Consumables" } },
   ],
   extensions: {},
 }
