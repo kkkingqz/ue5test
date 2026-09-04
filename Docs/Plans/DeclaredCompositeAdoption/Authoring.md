@@ -1,7 +1,7 @@
 ---
 title: Authoring Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-04
 depends_on:
   - README.md
@@ -107,7 +107,7 @@ depends_on:
 
     Верификация: portable ctest 76/76 (включая новый `Tests/Lua/presentation/inventory_tabs_spec.lua` через оба Lua-хоста); полный `GV2.*` UE Automation (live editor) — 99 passed / 1 failed / 1 not run из 101 (`CentralThemeAndComponents`, 35 vs 46, описан выше; `GV2.UI.DeclaredComposite` не запустился, не связано с этим изменением). `git status`/`git diff --stat` подтверждают: единственная правка под `Source/` — новый файл `GV2Dca11InventoryTabsTests.cpp`, разрешённый Evidence-строкой этой задачи; ни одна существующая строка production-кода не изменена.
 
-- [ ] **DCA-12 — Сверка авторинга**
+- [x] **DCA-12 — Сверка авторинга**
   - Зависимости: DCA-09, DCA-10, DCA-11.
   - Инвариант: закрытие проверяется независимо от задачи, которая его заявила, и утверждение «C++ не понадобился» проверяется diff-ом, а не памятью.
   - Не считается закрытием: утверждение об отсутствии правок `Source/` без показанного diff-а; растворение потребовавшейся правки в отчёте вместо отдельной записи.
@@ -117,10 +117,42 @@ depends_on:
     - если хотя бы один потребовал C++, причина разобрана и записана строкой `STATUS-NNN` либо отдельной задачей;
     - контракт и [Add Screen Field](../../Guides/AddScreenField.md) описывают сборку нового блока из Designer как штатную процедуру.
   - Evidence: отчёт change set, `Docs/UI/ScreenTemplates.md`, `Docs/Guides/AddScreenField.md`.
+  - **Реализация (2026-09-04):** сверка выполнена независимо от трёх задач, которые заявили закрытие — не по памяти исполнителя, а прямым `git diff --stat` каждого из трёх коммитов против HEAD `Source/`:
+
+    | Задача | Коммит | `git diff --stat <parent> <commit> -- Source/` |
+    |---|---|---|
+    | DCA-09 (`npc_portrait`) | `8aa2bfc` | пусто — ноль строк |
+    | DCA-10 (`location_description`) | `5d9f69b` | пусто — ноль строк |
+    | DCA-11 (`inventory_tabs`) | `f5c1f5f` | один новый файл, `Tests/GV2Dca11InventoryTabsTests.cpp`, 284 insertions, 0 существующих строк изменено |
+
+    DCA-11's единственная правка — новый тестовый файл, не производственный код; причина разобрана и записана отдельным документом (не растворена в отчёте задачи и не подшита строкой `STATUS-NNN`, поскольку это не открытое несоответствие с условием закрытия, а уже закрытое, заранее санкционированное исключение) — [GV2_DCA11TestOnlySourceAddition_2026-09-04.md](../../Status/GV2_DCA11TestOnlySourceAddition_2026-09-04.md): почему добавление теста не нарушает инвариант M3 (инвариант — про производственную модель композита, а не про то, чем её поведение доказывается), и почему обойтись без нового файла было нельзя (единственный существующий тест того же класса, `GV2Duc10NestedChainTests.cpp`, жёстко привязан к именам фикстуры `DUC-10` и не параметризуем по контенту — структурное ограничение инструментария, предшествующее этому плану, а не пробел `inventory_tabs`).
+
+    **Возможности модели, задействованные каждым из трёх:**
+
+    | Возможность | `npc_portrait` (DCA-09) | `location_description` (DCA-10) | `inventory_tabs` (DCA-11) |
+    |---|---|---|---|
+    | `Kind: Text` | ✔ (`name`) | ✔ (`content_text`) | — |
+    | `Kind: ResourceRef` | ✔ (`portrait_resource_id`) | ✔ (`illustration_resource_id`) | — (только внутри переиспользуемого `WBP_Icon`, не ново) |
+    | `Kind: Key` | ✔ (`key`) | ✔ (`key`) | ✔ (`default_tab_key`, `key`) |
+    | `Kind: CollectionHost` | — | — | ✔ (`items`, с `EntryWidgetClass`) |
+    | `Kind: NestedScreen` | — | — | ✔ (`tabs`) |
+    | `bOptional` (DCA-01) | — | ✔ (`illustration_resource_id`, доказано на реальном ассете) | объявлено (`items`), но не доказано на новом ассете (см. ниже) |
+    | `ChildCapabilityName` / `FallbackNameHint` (GBH-06) | — | — | ✔ по совпадению имени (`default_tab_key`↔`default_tab_key`, `key`↔`key` на `UGV2TabContainerWidgetBase`), без явного селектора |
+    | Composite оборачивает существующий generic host | — | — | ✔ (`WBP_InventoryTabs` оборачивает `WBP_TabContainer`) |
+    | Гейт композиционных циклов (DUC-11) | — | — | ✔ (`dca11_cycle`) |
+    | Глубокий Prepare-отказ без следов на предках | — | — | ✔ (`dca11_item_prepare_failure`, 5 уровней) |
+
+    **Не задействовано ни одним из трёх** (осталось непроверенным на новых композитах, хотя и покрыто существующими generic-тестами до `DCA-09`): `Kind: Boolean`, `Integer`, `Number`, `String`, `Binding`; `NumberMin`/`NumberMax`/`IntMin`/`IntMax` диапазоны; явный (не fallback) `ChildCapabilityName`; `RichTextSpans` (остаётся `Hidden` по `GBH-02A`, вне скоупа этого плана). Ни один пробел не блокирует закрытие M3: все перечисленные возможности уже доказаны другими, существовавшими до этого плана ассетами (`WBP_LocationTopBar`, `WBP_PlayerStatusPanel`, `WBP_ProgressBar` и т.д., см. [ScreenTemplates.md](../../UI/ScreenTemplates.md)), и заявка этого плана — что **новый** контент не требует C++, а не что три конкретных композита исчерпывают весь `EGV2DeclaredUiCapabilityKind`.
+
+    **CollectionHost's `bOptional` на новом ассете отдельно не доказан** (в отличие от `location_description`'s `ResourceRef`): попытка red→green через `GV2.UI.CapabilityObservabilityCompositeSweep` (временный `bOptional=false` + непривязанный `ChildWidgetName` на `WBP_InventoryCategoryBlock`) дала ложный зелёный — тот же класс ограничения синтетического sweep-гарнеса, что и известная у DCA-09 (`MakeDistinctValuePair` не строит содержательный probe для составных `Kind`). Поскольку `DCA-11`'s собственные Done-критерии не требовали этого доказательства (в отличие от `DCA-10`), а механизм `bOptional` идентичен независимо от `Kind` (читается один раз в `GV2DeclaredCompositeWidgetBase.cpp:133`, до switch по `Kind`), сочтено достаточным, что он уже доказан на `ResourceRef`; отдельная демонстрация для `CollectionHost` — не блокирующий, опциональный пункт для будущей проверки sweep-гарнеса, а не для этого плана.
+
+    **[Add Screen Field](../../Guides/AddScreenField.md)** дополнен (v2.0→v3.0) новой «Частью A», описывающей ровно ту процедуру, которую трижды выполнили DCA-09/10/11: создать Widget Blueprint на `UGV2DeclaredCompositeWidgetBase`, собрать WidgetTree из существующих виджетов, заполнить `DeclaredCapabilities` (с разбором `bOptional`, `ChildCapabilityName`/`FallbackNameHint`, `CollectionHost`'s `EntryWidgetClass`), задать `HostIdentity`, скомпилировать, проверить через sweep. До этой правки гайд описывал только схемную сторону (`ui_field`/`ui_value` JSON5), молча предполагая, что виджет уже существует — этот пробел и был фактическим содержанием критерия «контракт... описывает сборку нового блока из Designer как штатную процедуру», поскольку нормативный контракт (`ScreenTemplates.md`) уже полно документирует правила (DCA-01, GBH-06/07/08, DUC-06/07/09/11), но не пошаговую процедуру для автора контента.
+
+    Верификация: `git diff --stat` трёх коммитов (таблица выше) — независимая проверка, не полагающаяся на память исполнителя; `Docs/Guides/AddScreenField.md` и `Docs/UI/ScreenTemplates.md` вместе покрывают Done-критерий; отдельная запись `GV2_DCA11TestOnlySourceAddition_2026-09-04.md` — не строка `ImplementationStatus.md`, поскольку не открытое несоответствие.
 
 ## Проверка milestone
 
-- [ ] Три новых композита существуют и работают от Lua до экрана.
-- [ ] Ни один из трёх не потребовал изменений под `Source/`, и это показано diff-ом.
-- [ ] `inventory_tabs` доказывает цепочку из четырёх уровней и выдерживает отказ на нижнем.
-- [ ] Записано, какие возможности модели остались непроверенными после этих трёх.
+- [x] Три новых композита существуют и работают от Lua до экрана. (`npc_portrait`, `location_description`, `inventory_tabs` — DCA-09…11, 2026-09-04)
+- [x] Ни один из трёх не потребовал изменений в production-коде под `Source/`, и это показано diff-ом. (DCA-11 добавил один тестовый файл, не производственный код — разобрано отдельно, см. [GV2_DCA11TestOnlySourceAddition_2026-09-04.md](../../Status/GV2_DCA11TestOnlySourceAddition_2026-09-04.md))
+- [x] `inventory_tabs` доказывает цепочку из четырёх уровней и выдерживает отказ на нижнем. (DCA-11, `GV2.Runtime.UI.Dca11InventoryTabs`)
+- [x] Записано, какие возможности модели остались непроверенными после этих трёх. (таблица в `Реализация` DCA-12 выше)
