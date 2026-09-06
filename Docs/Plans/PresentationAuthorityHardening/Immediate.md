@@ -1,7 +1,7 @@
 ---
 title: Immediate Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-06
 depends_on:
   - README.md
@@ -22,7 +22,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **PAH-01 — Отказ обратной мутации наблюдаем**
+- [x] **PAH-01 — Отказ обратной мутации наблюдаем**
   - `void RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan>)` (`GV2ScreenWidgetBase.h:34`) не возвращает значения. Вызывающий не может отличить успешный откат от провалившегося даже теоретически; четыре места в `Source/GV2/Private/UI/` пишут `GBH-10: rollback failed ... invariant violation` и продолжают выполнение.
   - Инвариант: у презентации одно зафиксированное логическое состояние, а физическое дерево — его восстановимая проекция ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), `INV-P4`). Нарушение здесь тише обычного: при отказе обратной мутации дерево уже не соответствует ни новой ревизии, ни прежней, и единственный след этого — строка в логе, которую никакой код не читает. [ADR-0041](../../ADR/0041-ui-commit-rollback-model.md) запрещает частично применённое состояние, но не описывает, что делать, когда его не удалось разобрать.
   - Не считается закрытием: возврат значения без потребителя — это переносит `bFatal` из `DCA-20` в новое место; локальная повторная попытка отката на том же дереве; замена `UE_LOG` на более громкий уровень.
@@ -35,6 +35,19 @@ depends_on:
     - `Tools/Testing/validate_ui_rollback_boundaries.py` расширен: у каждой границы отката результат восстановления обязан быть потреблён, и у расширения есть отрицательный самотест;
     - инъекция отказа обратной мутации в production-пути доходит до границы и наблюдаема в тесте.
   - Evidence: `Source/GV2/Public/UI/GV2ScreenWidgetBase.h`, `Source/GV2/Private/UI/`, `Tools/Testing/validate_ui_rollback_boundaries.py`, `Docs/ADR/0041-ui-commit-rollback-model.md`.
+  - **Реализация (2026-09-06):** новый `[[nodiscard]] FGV2UiRollbackResult` (`GV2UiMutationPlan.h`: `bRestored` + `FailedPropertyPath` + `Diagnostic`, factories `Restored()`/`RestorationFailed()`) заменил `void` на каждом из пяти мест, где обнаружился ровно этот дефект (пять, не четыре — сканирование нашло дополнительное место в `GV2PropertyConsumers.cpp`, не названное в тексте задачи явно, но той же формы): `RollbackCommittedMutations` (внутренний helper `GV2UiMutationPlan.cpp`, self-heal внутри `CommitUiHostProperties`), `RollbackFieldPlans` (`GV2ScreenWidgetBase.h/.cpp`, четыре вызывающих), inline-логика восстановления соседних элементов коллекции (`GV2PropertyConsumers.cpp`, граница `KeyedCollection`) и структурный откат `DetachScreen`/`AttachScreenToLayer` внутри `CommitReconcile` (граница `Document`).
+
+    Границей, до которой поднимается результат, стал не абстрактный «верх стека», а конкретный, уже существующий в проекте перечислитель: `EGV2UiRollbackBoundary` (`GV2UiRollbackBoundary.h`, `GBF-07`) — шесть владельцев (`PropertyMutation`, `ScreenFields`, `Document`, `KeyedCollection`, `NestedScreenTabs`, `ShellAttach`), каждый уже помечен `rollback_boundary=X` и уже проверяется отдельным гейтом (`validate_ui_rollback_boundaries.py`). Задача не изобретает новую границу «владельца транзакции» — она делает так, чтобы каждый из шести уже объявленных владельцев корректно отражал в своём СОБСТВЕННОМ `OutError` факт «восстановление тоже не удалось», а не только факт исходного отказа. Типизированный код `GGV2UiRollbackFailedDiagnosticCode` (`"core:diagnostic.ui_rollback.restoration_failed"`, `GV2UiMutationPlan.h`) — общий маркер, встраиваемый в существующий канал `OutError` каждой границы, а не новый канал: `CommitScreenFields` при этом получил недостающий `OutError` (у него не было вообще никакого канала диагностики, в отличие от всех остальных пяти границ) — это тот же класс пробела, который решение задачи и закрывает, обнаруженный по пути, а не отдельная находка.
+
+    `RollbackFailureInjector` (test-only, по образцу уже существующего `FailureInjector`) добавлен в `CommitUiHostProperties`, `RollbackFieldPlans`, `CommitScreenFields`, `CommitReconcile`/`Reconcile` — позволяет тесту заставить реплей восстановления отказать без обращения к настоящему сломанному виджету, тем же способом, каким PCC-06/07 уже тестируют отказ прямой мутации.
+
+    Новый тест (блок «5b», `GV2.UI.PrepareCommitAndFailureInjection`) воспроизводит существующий сценарий GBH-10 (два свойства хоста, отказ на втором) и дополнительно инжектирует отказ в реплей ПЕРВОГО свойства при восстановлении — граница `PropertyMutation` получает `OutError`, содержащий `GGV2UiRollbackFailedDiagnosticCode`, а не только код исходного сбоя; текстовый виджет остаётся на новом значении (реплей не выполнился), а не откатывается — наблюдаемая физическая проверка, не только строка диагностики.
+
+    `Tools/Testing/validate_ui_rollback_boundaries.py` расширен новой проверкой: `RollbackFieldPlans(...)`, вызванный как самостоятельный оператор без присвоения результата переменной (ровно форма четырёх — на деле пяти — исправленных мест), считается нарушением; отрицательный самотест берёт реальный production-файл, отменяет присвоение результата в одном месте и подтверждает, что гейт это ловит.
+
+    Продемонстрировано на живом коде (правка → пересборка → headless-прогон → откат): временное обнуление потребления результата `RollbackCommittedMutations` в первой (injector) ветке `CommitUiHostProperties` роняет новый тест с точным указанием ожидания, которое перестало выполняться — «OutError carries the rollback-failed diagnostic code» — вместо этого код нёс только исходный `core:diagnostic.ui_mutation.commit_failed_injected`. Восстановлено после демонстрации.
+
+    Верификация: headless `Automation RunTests GV2;Quit` — 110/110 passed, 0 ошибок; portable `ctest` — 76/76 (включая оба существующих `ui_rollback_boundary_inventory_*` теста и `core_decoupling_gate_*`, не задетые). `git diff --stat` подтверждает: `GV2UiMutationPlan.h/.cpp`, `GV2ScreenWidgetBase.h/.cpp`, `GV2LayeredUiReconciler.h/.cpp`, `GV2PropertyConsumers.cpp`, два тестовых файла, один python-гейт — ни один ассет не тронут (задача не предполагает изменений ассетов).
 
 - [ ] **PAH-02 — Экран нельзя получить, не назвав размещение**
   - Авторская запись реестра несёт `screen_id`, класс, слой, singleton-политику и владение. Рантайм использует три представления: DataAsset, проекцию `screen_id → UClass` в `RegisteredScreenClasses` (`GV2RuntimeSubsystem.h:88`) и прямой `GetConfiguredRegistry()->FindEntry()` из вложенного consumer'а (`GV2PropertyConsumers.cpp:1798`), который читает только `Entry->WidgetClass`. Проверка размещения `IsLayerAllowedForEmbedded` при этом не вызывается ни одним production-путём: полный поиск даёт объявление, определение и три утверждения в тесте.
@@ -68,7 +81,7 @@ depends_on:
 
 ## Проверка milestone
 
-- [ ] Ни одно место не продолжает выполнение после неудавшегося отката по записи в логе.
+- [x] Ни одно место не продолжает выполнение после неудавшегося отката по записи в логе. (PAH-01)
 - [ ] Публичных функций проверки размещения без вызывающих не осталось.
 - [ ] Неизвестный корень контента означает отказ, и это проверено синтетическим путём.
 - [ ] Каждая из трёх задач имеет продемонстрированный red-on-revert.

@@ -3481,8 +3481,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 TestFalse(TEXT("GBF-04: candidate has a final mutation to inject"), LastMutationPath.IsEmpty());
                 if (!LastMutationPath.IsEmpty())
                 {
+                    FString SchemaSwitchCommitError;
                     TestFalse(TEXT("GBF-04: commit fault rejects candidate schema B"),
-                        SchemaSwitchScreen->CommitScreenFields(SchemaSwitchPlan, [&LastMutationPath](const FString& Path)
+                        SchemaSwitchScreen->CommitScreenFields(SchemaSwitchPlan, SchemaSwitchCommitError, [&LastMutationPath](const FString& Path)
                         {
                             return Path == LastMutationPath;
                         }));
@@ -3504,10 +3505,12 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             // GBF-05: a higher transaction can reject this already successful screen
             // after its Commit advanced the host snapshot. Rollback must restore both
             // the widgets and the snapshot which the *next* Prepare observes.
+            FString ExpansionCommitError;
             TestTrue(TEXT("GBF-05: expanded revision commits before outer failure"),
-                SchemaSwitchScreen->CommitScreenFields(ExpansionPlan));
+                SchemaSwitchScreen->CommitScreenFields(ExpansionPlan, ExpansionCommitError));
             TestEqual(TEXT("GBF-05: expanded third meter is physically applied"), ThirdMeter->GetProgress(), 0.5f);
-            RollbackFieldPlans(ExpansionPlan.FieldPlans);
+            const FGV2UiRollbackResult OuterRollbackResult = RollbackFieldPlans(ExpansionPlan.FieldPlans);
+            TestTrue(TEXT("GBF-05: outer rollback of a cleanly-prepared plan restores successfully"), OuterRollbackResult.bRestored);
             TestEqual(TEXT("GBF-05: rollback physically resets candidate-only meter"), ThirdMeter->GetProgress(), 0.0f);
             const FGV2UiPropertyHostState& StateAfterOuterRollback = SchemaSwitchField->GetPropertyHostState();
             TestEqual(TEXT("GBF-05: outer rollback restores prior schema id"),

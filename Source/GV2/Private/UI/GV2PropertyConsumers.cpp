@@ -1392,6 +1392,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                 // ActiveWidgetsByKey have not advanced yet (that only happens below,
                 // once every item commits cleanly), so this collection is not
                 // publishing this revision and no reused entry may be left on it.
+                bool bSiblingRollbackFailed = false;
                 for (int32 RollbackIndex = ItemIndex - 1; RollbackIndex >= 0; --RollbackIndex)
                 {
                     FPreparedCollectionItem& CommittedItem = PreparedItems[RollbackIndex];
@@ -1400,6 +1401,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                         FString RollbackFailedPath, RollbackError;
                         if (!CommitUiHostProperties(Cast<UUserWidget>(CommittedItem.Widget), *CommittedItem.RollbackPlan, RollbackFailedPath, RollbackError))
                         {
+                            bSiblingRollbackFailed = true;
                             UE_LOG(LogTemp, Error,
                                 TEXT("GBH-10: rollback failed restoring collection item '%s' property '%s': %s -- invariant violation"),
                                 *CommittedItem.Key.ToString(), *RollbackFailedPath, *RollbackError);
@@ -1410,7 +1412,9 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                         }
                     }
                 }
-                OutError = CommitError;
+                OutError = (bSiblingRollbackFailed && !CommitError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+                    ? FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *CommitError)
+                    : CommitError;
                 return false;
             }
         }
@@ -1979,23 +1983,33 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
                     return FailureInjector(FString::Printf(TEXT("%s.%s"), *ChildPrefix, *ChildPropertyPath));
                 };
             }
-            if (!Item.ScreenWidget->CommitScreenFields(*Item.ChildScreenPlan, ChildFailureInjector))
+            FString ChildCommitError;
+            if (!Item.ScreenWidget->CommitScreenFields(*Item.ChildScreenPlan, ChildCommitError, ChildFailureInjector))
             {
                 // GBH-10 (ADR-0041): this tab's own nested screen already self-healed via
-                // CommitScreenFields' internal rollback. Tabs committed earlier in this
-                // same call may be reused nested screens already visible with their new
-                // value -- ApplyTabEntries below (which is what actually publishes the
-                // new tab list/ActiveTab) never runs on this failure path, so none of
-                // them may be left on it.
+                // CommitScreenFields' internal rollback (and, per PAH-01, already folded
+                // GGV2UiRollbackFailedDiagnosticCode into ChildCommitError if that self-heal
+                // itself failed). Tabs committed earlier in this same call may be reused
+                // nested screens already visible with their new value -- ApplyTabEntries
+                // below (which is what actually publishes the new tab list/ActiveTab) never
+                // runs on this failure path, so none of them may be left on it.
+                bool bSiblingRollbackFailed = false;
                 for (int32 RollbackIndex = TabIndex - 1; RollbackIndex >= 0; --RollbackIndex)
                 {
                     const FPreparedTabItem& CommittedItem = PreparedTabs[RollbackIndex];
                     if (CommittedItem.bHasChildPlan && CommittedItem.ChildScreenPlan.IsValid())
                     {
-                        RollbackFieldPlans(CommittedItem.ChildScreenPlan->FieldPlans);
+                        const FGV2UiRollbackResult SiblingRollback = RollbackFieldPlans(CommittedItem.ChildScreenPlan->FieldPlans);
+                        bSiblingRollbackFailed |= !SiblingRollback.bRestored;
                     }
                 }
-                OutError = FString::Printf(TEXT("nested screen fields commit failed for tab '%s'"), *Item.Key.ToString());
+                OutError = FString::Printf(
+                    TEXT("nested screen fields commit failed for tab '%s': %s"),
+                    *Item.Key.ToString(), *ChildCommitError);
+                if (bSiblingRollbackFailed && !OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+                {
+                    OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
+                }
                 return false;
             }
         }

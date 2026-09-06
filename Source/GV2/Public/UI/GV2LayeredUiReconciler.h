@@ -78,11 +78,17 @@ public:
     // its previous revision) instead of continuing on to the remaining screens.
     // ScreenCommitFailureInjector mirrors CommitScreenFields' own injector, keyed by
     // (screen_id, property_path); PCC-06/07 fault-injection tests only, production omits it.
+    // PAH-01: OutError carries GGV2UiRollbackFailedDiagnosticCode (GV2UiMutationPlan.h)
+    // when a Commit or Attach failure's compensating rollback -- per-screen self-heal,
+    // sibling-screen restoration, or the ShellAttach detach/reattach undo -- itself fails.
+    // ScreenRollbackFailureInjector is test-only (production always omits it), mirroring
+    // ScreenCommitFailureInjector but for the rollback/undo replay specifically.
     [[nodiscard]] bool CommitReconcile(
         UGV2GameShellWidgetBase* Shell,
         const FPreparedReconciliationPlan& Plan,
         FString& OutError,
-        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr);
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr,
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector = nullptr);
 
     // Full atomic reconciliation: Prepare + Commit.
     [[nodiscard]] bool Reconcile(
@@ -90,7 +96,8 @@ public:
         const FGV2UiDocumentViewModel& Document,
         FScreenFactory ScreenFactory,
         FString& OutError,
-        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr);
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr,
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector = nullptr);
 
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }

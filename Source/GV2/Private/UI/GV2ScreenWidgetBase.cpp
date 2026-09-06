@@ -248,23 +248,31 @@ bool PrepareScreenFieldPlans(
 }
 }
 
-void RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan> FieldPlans)
+FGV2UiRollbackResult RollbackFieldPlans(
+    TArrayView<const FGV2ScreenFieldPlan> FieldPlans,
+    TFunction<bool(const FString& PropertyPath)> RollbackFailureInjector)
 {
+    FGV2UiRollbackResult Result = FGV2UiRollbackResult::Restored();
     for (int32 Index = FieldPlans.Num() - 1; Index >= 0; --Index)
     {
         const FGV2ScreenFieldPlan& FieldPlan = FieldPlans[Index];
         FString RollbackFailedPath, RollbackError;
-        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.RollbackPlan, RollbackFailedPath, RollbackError))
+        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.RollbackPlan, RollbackFailedPath, RollbackError, RollbackFailureInjector))
         {
             UE_LOG(LogGV2ScreenWidget, Error,
                 TEXT("GBH-10: rollback failed restoring host '%s' property '%s': %s -- invariant violation, physical state may not match previous revision"),
                 *GetNameSafe(FieldPlan.HostWidget.Get()), *RollbackFailedPath, *RollbackError);
+            if (Result.bRestored)
+            {
+                Result = FGV2UiRollbackResult::RestorationFailed(RollbackFailedPath, RollbackError);
+            }
         }
         else if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(FieldPlan.HostWidget.Get()))
         {
             PropertyHost->GetPropertyHostState().RestoreCommittedSnapshot(FieldPlan.PreviousCommittedSnapshot);
         }
     }
+    return Result;
 }
 
 bool UGV2ScreenWidgetBase::PrepareScreenFields(
@@ -279,27 +287,42 @@ bool UGV2ScreenWidgetBase::PrepareScreenFields(
 // GBF-07: rollback_boundary=ScreenFields
 bool UGV2ScreenWidgetBase::CommitScreenFields(
     const FGV2ScreenMutationPlan& Plan,
-    TFunction<bool(const FString& PropertyPath)> FailureInjector)
+    FString& OutError,
+    TFunction<bool(const FString& PropertyPath)> FailureInjector,
+    TFunction<bool(const FString& PropertyPath)> RollbackFailureInjector)
 {
+    OutError.Reset();
     int32 CommittedHostCount = 0;
     for (const FGV2ScreenFieldPlan& FieldPlan : Plan.FieldPlans)
     {
         FString FailedPath, CommitError;
-        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError, FailureInjector, &FieldPlan.RollbackPlan))
+        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError, FailureInjector, &FieldPlan.RollbackPlan, RollbackFailureInjector))
         {
             // GBH-10 (ADR-0041): every plan above already prepared cleanly, so reaching
             // this is either injected test failure or a genuine engine-level fault, not
             // a predictable content error. CommitUiHostProperties already self-healed
-            // *this* host back to its own previous value via FieldPlan.RollbackPlan;
-            // hosts committed earlier in this same call still sit on their NEW value and
-            // must be restored too, since this whole screen's revision is not published.
-            RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan>(Plan.FieldPlans.GetData(), CommittedHostCount));
+            // *this* host back to its own previous value via FieldPlan.RollbackPlan (and,
+            // per PAH-01, already folded GGV2UiRollbackFailedDiagnosticCode into CommitError
+            // if that self-heal itself failed). Hosts committed earlier in this same call
+            // still sit on their NEW value and must be restored too, since this whole
+            // screen's revision is not published.
+            OutError = CommitError;
+            const FGV2UiRollbackResult SiblingRollback = RollbackFieldPlans(
+                TArrayView<const FGV2ScreenFieldPlan>(Plan.FieldPlans.GetData(), CommittedHostCount),
+                RollbackFailureInjector);
+            if (!SiblingRollback.bRestored && !OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+            {
+                OutError = FString::Printf(
+                    TEXT("%s: forward failure on '%s' (%s) AND sibling restoration failed on '%s': %s"),
+                    GGV2UiRollbackFailedDiagnosticCode, *FailedPath, *CommitError,
+                    *SiblingRollback.FailedPropertyPath, *SiblingRollback.Diagnostic);
+            }
             UE_LOG(
                 LogGV2ScreenWidget,
                 Error,
                 TEXT("ApplyScreenFields commit failed on '%s': %s"),
                 *FailedPath,
-                *CommitError);
+                *OutError);
             return false;
         }
         ++CommittedHostCount;
@@ -331,7 +354,8 @@ bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>&
         UE_LOG(LogGV2ScreenWidget, Error, TEXT("ApplyScreenFields rejected: %s"), *Error);
         return false;
     }
-    return CommitScreenFields(Plan);
+    FString CommitError;
+    return CommitScreenFields(Plan, CommitError);
 }
 
 bool UGV2ScreenWidgetBase::CanApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields) const

@@ -379,6 +379,100 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
             BarWidget->GetPercent(), 0.25f);
     }
 
+    // 5b. PAH-01 (ADR-0042 INV-P4): the exact scenario above, but the restoration replay
+    // ITSELF is also injected to fail -- the "physical state may not match either
+    // revision" case the old `void RollbackFieldPlans`/`RollbackCommittedMutations`
+    // could only log, never report. CommitUiHostProperties (rollback_boundary=
+    // PropertyMutation) is a production path, and this is a real fault injected on it,
+    // not a synthetic struct built by hand.
+    {
+        UUserWidget* Host = MakeTestHostWidget();
+        UCommonTextBlock* LabelWidget = Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")));
+        UProgressBar* BarWidget = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")));
+
+        FGV2TextViewModel OldText;
+        OldText.Text = FText::FromString(TEXT("OldRollbackText"));
+        FGV2TextViewModel NewText;
+        NewText.Text = FText::FromString(TEXT("NewRollbackText"));
+        const FGV2UiPropertyCapability TextCap;
+
+        FGV2UiHostMutationPlan ForwardPlan;
+        FGV2UiHostMutationPlan RollbackPlan;
+        FString PrepError;
+
+        TSharedPtr<IGV2PropertyConsumer> ForwardTextConsumer = MakeShared<FGV2TextPropertyConsumer>();
+        TestTrue(TEXT("PAH-01: forward text consumer prepares"),
+            ForwardTextConsumer->Prepare(FGV2PreparedUiValue::MakeText(NewText), TextCap, LabelWidget, PrepError));
+        FGV2UiPropertyMutation ForwardTextMut;
+        ForwardTextMut.PropertyName = TEXT("text");
+        ForwardTextMut.PropertyPath = TEXT("screen.item.text");
+        ForwardTextMut.Kind = EGV2PreparedUiValueKind::Text;
+        ForwardTextMut.Consumer = ForwardTextConsumer;
+        ForwardTextMut.TargetWidget = LabelWidget;
+        ForwardPlan.AddMutation(ForwardTextMut);
+
+        TSharedPtr<IGV2PropertyConsumer> RollbackTextConsumer = MakeShared<FGV2TextPropertyConsumer>();
+        TestTrue(TEXT("PAH-01: rollback text consumer prepares old value"),
+            RollbackTextConsumer->Prepare(FGV2PreparedUiValue::MakeText(OldText), TextCap, LabelWidget, PrepError));
+        FGV2UiPropertyMutation RollbackTextMut = ForwardTextMut;
+        RollbackTextMut.Consumer = RollbackTextConsumer;
+        RollbackPlan.AddMutation(RollbackTextMut);
+
+        FGV2UiPropertyCapability PercentCap;
+        PercentCap.NumberMin = 0.0;
+        PercentCap.NumberMax = 1.0;
+        TSharedPtr<IGV2PropertyConsumer> ForwardPercentConsumer = MakeShared<FGV2NumberPropertyConsumer>();
+        TestTrue(TEXT("PAH-01: forward percent consumer prepares"),
+            ForwardPercentConsumer->Prepare(FGV2PreparedUiValue::MakeNumber(0.75), PercentCap, BarWidget, PrepError));
+        FGV2UiPropertyMutation ForwardPercentMut;
+        ForwardPercentMut.PropertyName = TEXT("percent");
+        ForwardPercentMut.PropertyPath = TEXT("screen.item.percent");
+        ForwardPercentMut.Kind = EGV2PreparedUiValueKind::Number;
+        ForwardPercentMut.Consumer = ForwardPercentConsumer;
+        ForwardPercentMut.TargetWidget = BarWidget;
+        ForwardPlan.AddMutation(ForwardPercentMut);
+
+        TSharedPtr<IGV2PropertyConsumer> RollbackPercentConsumer = MakeShared<FGV2NumberPropertyConsumer>();
+        TestTrue(TEXT("PAH-01: rollback percent consumer prepares old value"),
+            RollbackPercentConsumer->Prepare(FGV2PreparedUiValue::MakeNumber(0.25), PercentCap, BarWidget, PrepError));
+        FGV2UiPropertyMutation RollbackPercentMut = ForwardPercentMut;
+        RollbackPercentMut.Consumer = RollbackPercentConsumer;
+        RollbackPlan.AddMutation(RollbackPercentMut);
+
+        FString SeedFailedPath, SeedError;
+        TestTrue(TEXT("PAH-01: seeding pre-transaction state via rollback plan succeeds"),
+            CommitUiHostProperties(Cast<UUserWidget>(Host), RollbackPlan, SeedFailedPath, SeedError));
+
+        // Forward fails on percent (mutation 1); the resulting self-heal replay tries to
+        // restore text (mutation 0) back to OldText -- and THAT replay is what fails here.
+        auto ForwardInjector = [](const FString& InPropertyPath) -> bool
+        {
+            return InPropertyPath == TEXT("screen.item.percent");
+        };
+        auto RollbackInjector = [](const FString& InPropertyPath) -> bool
+        {
+            return InPropertyPath == TEXT("screen.item.text");
+        };
+
+        AddExpectedErrorPlain(
+            TEXT("GBH-10: rollback commit failed on 'screen.item.text'"),
+            EAutomationExpectedErrorFlags::Contains,
+            1);
+        FString FailedPath, Error;
+        const bool bCommitResult = CommitUiHostProperties(
+            Cast<UUserWidget>(Host), ForwardPlan, FailedPath, Error, ForwardInjector, &RollbackPlan, RollbackInjector);
+
+        TestFalse(TEXT("PAH-01: Commit still fails when the forward mutation is rejected"), bCommitResult);
+        TestTrue(
+            *FString::Printf(TEXT("PAH-01: OutError carries the rollback-failed diagnostic code: %s"), *Error),
+            Error.Contains(GGV2UiRollbackFailedDiagnosticCode));
+        TestTrue(TEXT("PAH-01: OutError still names the original forward failure too"),
+            Error.Contains(TEXT("screen.item.percent")));
+        TestEqual(
+            TEXT("PAH-01: text widget was NOT restored -- its own rollback replay was injected to fail"),
+            LabelWidget->GetText().ToString(), NewText.Text.ToString());
+    }
+
     // 6. GBF-04: the named inverse-required kind set is the enumerator for the
     // rollback-pair gate. For every kind that can directly mutate a widget, deleting
     // its inverse makes validation fail before Commit can touch physical state.

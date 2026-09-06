@@ -31,7 +31,15 @@ struct FGV2ScreenMutationPlan
 // Used both to self-heal a screen whose own CommitScreenFields failed partway, and by a
 // caller one level up (document reconciliation, a tab container's nested screens) that
 // must undo an entire already-committed screen because a *sibling* screen/tab failed.
-GV2_API void RollbackFieldPlans(TArrayView<const FGV2ScreenFieldPlan> FieldPlans);
+//
+// PAH-01: best-effort across all hosts in FieldPlans (a failure on one host does not skip
+// restoring the rest); [[nodiscard]] result names the first host whose restoration failed,
+// so a caller can no longer call this and discard the outcome the way the old `void`
+// signature let four call sites do. RollbackFailureInjector (test-only) is forwarded to
+// each host's CommitUiHostProperties call.
+[[nodiscard]] GV2_API FGV2UiRollbackResult RollbackFieldPlans(
+    TArrayView<const FGV2ScreenFieldPlan> FieldPlans,
+    TFunction<bool(const FString& PropertyPath)> RollbackFailureInjector = nullptr);
 
 UCLASS(Blueprintable)
 class GV2_API UGV2ScreenWidgetBase
@@ -64,9 +72,16 @@ public:
 
     // Commits a prepared mutation plan. FailureInjector mirrors CommitUiHostProperties'
     // own injector (PCC-06/07 fault-injection tests only; production always omits it).
+    // PAH-01: OutError carries GGV2UiRollbackFailedDiagnosticCode (GV2UiMutationPlan.h)
+    // when a Commit failure's compensating rollback -- this host's own self-heal, or a
+    // sibling host restored via RollbackFieldPlans -- itself fails, distinct from an
+    // ordinary clean-rollback commit failure. RollbackFailureInjector is test-only
+    // (production always omits it), mirroring FailureInjector but for the rollback replay.
     [[nodiscard]] bool CommitScreenFields(
         const FGV2ScreenMutationPlan& Plan,
-        TFunction<bool(const FString& PropertyPath)> FailureInjector = nullptr);
+        FString& OutError,
+        TFunction<bool(const FString& PropertyPath)> FailureInjector = nullptr,
+        TFunction<bool(const FString& PropertyPath)> RollbackFailureInjector = nullptr);
 
     // One-shot Prepare + Commit for standalone screen usage.
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Screen")

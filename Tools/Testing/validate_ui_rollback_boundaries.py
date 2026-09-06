@@ -34,6 +34,12 @@ RECOVERY_CASE_PATTERN = re.compile(
     r"case\s+EGV2UiRollbackBoundary::(?P<boundary>[A-Za-z_]\w*)\s*:\s*"
     r"return\s+EGV2UiRollbackRecovery::(?P<recovery>[A-Za-z_]\w*)\s*;"
 )
+# PAH-01: RollbackFieldPlans (GV2ScreenWidgetBase.h) is [[nodiscard]] -- this pattern finds
+# a call to it, and the check below rejects one used as a bare, discarded statement instead
+# of bound to a variable. Defense in depth alongside the compiler's own [[nodiscard]]
+# diagnostic, matching this repo's established practice of pairing a C++ attribute with an
+# independent text-level gate rather than trusting the compiler warning alone.
+ROLLBACK_RESULT_CALL_PATTERN = re.compile(r"RollbackFieldPlans\s*\(")
 
 
 def extract_enum_values(header_source: str) -> tuple[set[str], list[str]]:
@@ -116,6 +122,24 @@ def mask_comments_and_literals(source: str) -> str:
             continue
         index += 1
     return "".join(masked)
+
+
+def find_discarded_rollback_result_calls(source: str) -> list[int]:
+    """Returns 1-indexed line numbers of a bare, discarded RollbackFieldPlans(...) call --
+    one whose [[nodiscard]] FGV2UiRollbackResult is not bound to anything, i.e. the four
+    call sites PAH-01 closed (silently continuing on a restoration failure), reintroduced.
+    A properly consumed call is always preceded by '=' (assignment into a result variable);
+    anything else -- a bare statement, immediately after '{' or ';' -- is a discard.
+    """
+    masked = mask_comments_and_literals(source)
+    violations: list[int] = []
+    for match in ROLLBACK_RESULT_CALL_PATTERN.finditer(masked):
+        if is_function_definition(masked, match.end() - 1):
+            continue  # the function's own declaration/definition, not a call site
+        preceding = masked[: match.start()].rstrip()
+        if not preceding.endswith("="):
+            violations.append(source.count("\n", 0, match.start()) + 1)
+    return violations
 
 
 def matching_parenthesis(source: str, open_paren: int) -> int | None:
@@ -203,6 +227,14 @@ def classification_marker_for(source: str, function_start: int) -> tuple[str, st
 def validate_sources(source_files: dict[Path, str], header_source: str, recovery_source: str) -> list[str]:
     enum_values, errors = extract_enum_values(header_source)
     discovered: dict[str, tuple[Path, str]] = {}
+
+    for path, source in source_files.items():
+        for line_number in find_discarded_rollback_result_calls(source):
+            errors.append(
+                f"{path}:{line_number}: RollbackFieldPlans(...) result discarded -- PAH-01 requires "
+                "every [[nodiscard]] restoration result to be bound to a variable and consumed, "
+                "not called as a bare statement"
+            )
 
     for path, source in source_files.items():
         for match in iter_function_definitions(source):
@@ -341,6 +373,23 @@ def run_self_test() -> bool:
         errors = validate_sources(production_sources(), header, missing_recovery)
         if not any("Document" in error and "lack a recovery classification" in error for error in errors):
             print(f"FAILED: gate accepted a boundary without recovery classification: {errors}")
+            return False
+
+        # PAH-01: a RollbackFieldPlans(...) call reverted to a bare, discarded statement
+        # (the exact shape of the four call sites this task closed) must be caught, even
+        # though it is real production source with a correctly classified boundary.
+        discardable_sources = production_sources()
+        discard_path = next(
+            path for path, source in discardable_sources.items() if "SiblingRollback = RollbackFieldPlans(" in source
+        )
+        discardable_sources[discard_path] = discardable_sources[discard_path].replace(
+            "const FGV2UiRollbackResult SiblingRollback = RollbackFieldPlans(",
+            "RollbackFieldPlans(",
+            1,
+        )
+        errors = validate_sources(discardable_sources, header, recovery_source)
+        if not any("result discarded" in error and str(discard_path) in error for error in errors):
+            print(f"FAILED: gate accepted a discarded RollbackFieldPlans(...) result: {errors}")
             return False
 
     print("SUCCESS: every cancellable UI Commit root has one enum-backed rollback classification")

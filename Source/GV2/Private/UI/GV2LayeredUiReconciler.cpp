@@ -134,7 +134,8 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
     UGV2GameShellWidgetBase* Shell,
     const FPreparedReconciliationPlan& Plan,
     FString& OutError,
-    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector)
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector,
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector)
 {
     OutError.Reset();
 
@@ -156,6 +157,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             continue;
         }
         TFunction<bool(const FString&)> PerScreenInjector = nullptr;
+        TFunction<bool(const FString&)> PerScreenRollbackInjector = nullptr;
         if (ScreenCommitFailureInjector)
         {
             const FString ScreenId = Inst.ScreenId;
@@ -164,22 +166,40 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                 return ScreenCommitFailureInjector(ScreenId, PropertyPath);
             };
         }
-        if (!Inst.TargetWidget->CommitScreenFields(Inst.MutationPlan, PerScreenInjector))
+        if (ScreenRollbackFailureInjector)
+        {
+            const FString ScreenId = Inst.ScreenId;
+            PerScreenRollbackInjector = [ScreenRollbackFailureInjector, ScreenId](const FString& PropertyPath)
+            {
+                return ScreenRollbackFailureInjector(ScreenId, PropertyPath);
+            };
+        }
+        FString ScreenCommitError;
+        if (!Inst.TargetWidget->CommitScreenFields(Inst.MutationPlan, ScreenCommitError, PerScreenInjector, PerScreenRollbackInjector))
         {
             // GBH-10 (ADR-0041): CommitScreenFields already self-healed *this* screen
-            // back to its own previous properties. Screens committed earlier in this
-            // same step (indices [0..InstIndex-1]; a null-widget entry never commits so
-            // it never needs rollback either) still sit on their new revision and must
-            // be restored too -- ActiveScreens has not advanced yet, so the whole
-            // document commit must not leave any screen physically on a revision it is
-            // not publishing.
+            // back to its own previous properties (and, per PAH-01, already folded
+            // GGV2UiRollbackFailedDiagnosticCode into ScreenCommitError if that self-heal
+            // itself failed). Screens committed earlier in this same step (indices
+            // [0..InstIndex-1]; a null-widget entry never commits so it never needs
+            // rollback either) still sit on their new revision and must be restored too --
+            // ActiveScreens has not advanced yet, so the whole document commit must not
+            // leave any screen physically on a revision it is not publishing.
+            bool bSiblingRollbackFailed = false;
             for (int32 RollbackIndex = InstIndex - 1; RollbackIndex >= 0; --RollbackIndex)
             {
-                RollbackFieldPlans(Plan.ScreensToUpdateOrAttach[RollbackIndex].MutationPlan.FieldPlans);
+                const FGV2UiRollbackResult SiblingRollback = RollbackFieldPlans(
+                    Plan.ScreensToUpdateOrAttach[RollbackIndex].MutationPlan.FieldPlans,
+                    PerScreenRollbackInjector);
+                bSiblingRollbackFailed |= !SiblingRollback.bRestored;
             }
             OutError = FString::Printf(
-                TEXT("core:diagnostic.ui_reconcile.commit_failed: layer='%s' instance_key='%s' screen_id='%s'"),
-                *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId);
+                TEXT("core:diagnostic.ui_reconcile.commit_failed: layer='%s' instance_key='%s' screen_id='%s': %s"),
+                *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId, *ScreenCommitError);
+            if (bSiblingRollbackFailed && !OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+            {
+                OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
+            }
             UE_LOG(LogTemp, Error, TEXT("CommitReconcile: %s"), *OutError);
             return false;
         }
@@ -222,6 +242,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
         {
             if (!Shell->AttachScreenToLayer(Inst.Layer, Inst.TargetWidget.Get()))
             {
+                bool bStructureRestoreFailed = false;
                 for (int32 RollbackIndex = InstIndex - 1; RollbackIndex >= 0; --RollbackIndex)
                 {
                     const FPreparedScreenInstance& AttachedInst = Plan.ScreensToUpdateOrAttach[RollbackIndex];
@@ -229,6 +250,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                     {
                         if (!Shell->DetachScreen(AttachedInst.TargetWidget.Get()))
                         {
+                            bStructureRestoreFailed = true;
                             UE_LOG(LogTemp, Error,
                                 TEXT("GBH-10: rollback failed detaching newly-attached screen '%s' (layer='%s' instance_key='%s') -- invariant violation"),
                                 *AttachedInst.ScreenId, *AttachedInst.Layer.ToString(), *AttachedInst.InstanceKey.ToString());
@@ -241,6 +263,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                     {
                         if (!Shell->AttachScreenToLayer(ReplacedInst.Layer, ReplacedInst.ReplacedOldWidget.Get()))
                         {
+                            bStructureRestoreFailed = true;
                             UE_LOG(LogTemp, Error,
                                 TEXT("GBH-10: rollback failed re-attaching replaced screen (layer='%s' instance_key='%s') detached in step 2 -- invariant violation"),
                                 *ReplacedInst.Layer.ToString(), *ReplacedInst.InstanceKey.ToString());
@@ -249,12 +272,23 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                 }
                 for (const FPreparedScreenInstance& CommittedInst : Plan.ScreensToUpdateOrAttach)
                 {
-                    RollbackFieldPlans(CommittedInst.MutationPlan.FieldPlans);
+                    const FGV2UiRollbackResult FieldRollback = RollbackFieldPlans(
+                        CommittedInst.MutationPlan.FieldPlans,
+                        ScreenRollbackFailureInjector
+                            ? TFunction<bool(const FString&)>(
+                                  [ScreenRollbackFailureInjector, ScreenId = CommittedInst.ScreenId](const FString& PropertyPath)
+                                  { return ScreenRollbackFailureInjector(ScreenId, PropertyPath); })
+                            : nullptr);
+                    bStructureRestoreFailed |= !FieldRollback.bRestored;
                 }
 
                 OutError = FString::Printf(
                     TEXT("core:diagnostic.ui_reconcile.attach_failed: layer='%s' instance_key='%s' screen_id='%s'"),
                     *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId);
+                if (bStructureRestoreFailed)
+                {
+                    OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
+                }
                 UE_LOG(LogTemp, Error, TEXT("CommitReconcile: %s"), *OutError);
                 return false;
             }
@@ -318,14 +352,15 @@ bool FGV2LayeredUiReconciler::Reconcile(
     const FGV2UiDocumentViewModel& Document,
     FScreenFactory ScreenFactory,
     FString& OutError,
-    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector)
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector,
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector)
 {
     FPreparedReconciliationPlan Plan;
     if (!PrepareReconcile(Shell, Document, ScreenFactory, Plan, OutError))
     {
         return false;
     }
-    return CommitReconcile(Shell, Plan, OutError, ScreenCommitFailureInjector);
+    return CommitReconcile(Shell, Plan, OutError, ScreenCommitFailureInjector, ScreenRollbackFailureInjector);
 }
 
 UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetActiveScreen(FName Layer, FName InstanceKey) const

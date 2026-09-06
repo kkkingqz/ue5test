@@ -44,6 +44,39 @@ private:
 };
 
 /**
+ * PAH-01 (ADR-0042, INV-P4): outcome of a compensating restoration attempt -- replaying a
+ * RollbackPlan, or the equivalent structural undo, after a forward Commit failed partway
+ * through. Restoration itself can fail (the same engine-level fault that broke the forward
+ * Commit can break its inverse too); [[nodiscard]] on every function returning this means
+ * no caller can silently drop that outcome the way `void RollbackFieldPlans` and its
+ * siblings did before this task -- physical state that may not match either revision must
+ * be observed by the caller, not left as a log line nobody reads.
+ */
+struct GV2_API FGV2UiRollbackResult
+{
+    bool bRestored = true;
+    FString FailedPropertyPath;
+    FString Diagnostic;
+
+    static FGV2UiRollbackResult Restored() { return FGV2UiRollbackResult(); }
+    static FGV2UiRollbackResult RestorationFailed(FString InFailedPropertyPath, FString InDiagnostic)
+    {
+        FGV2UiRollbackResult Result;
+        Result.bRestored = false;
+        Result.FailedPropertyPath = MoveTemp(InFailedPropertyPath);
+        Result.Diagnostic = MoveTemp(InDiagnostic);
+        return Result;
+    }
+};
+
+// PAH-01: a restoration failure is reported to its rollback boundary (GV2UiRollbackBoundary.h)
+// as this diagnostic code, embedded into the boundary's own OutError -- typed and
+// grep/parseable like every other `core:diagnostic.*` code in this codebase, and distinct
+// from an ordinary forward-commit failure code so a test (or a future caller) can tell
+// "this transaction rejected cleanly" apart from "this transaction's own undo also failed."
+GV2_API extern const TCHAR* const GGV2UiRollbackFailedDiagnosticCode;
+
+/**
  * The authoritative set of presentation value kinds that can produce a direct widget
  * mutation and therefore require an inverse entry in every rollback plan. Tests iterate
  * this set; a new applicable kind cannot silently bypass the rollback-pair gate.
@@ -105,6 +138,14 @@ GV2_API bool PrepareUiHostProperties(
  * function returns false. Callers that are themselves already inside a self-healing
  * scope (rolling back a mutation built purely for that purpose) pass nullptr to avoid
  * recursing into a rollback of a rollback.
+ *
+ * PAH-01: if that self-heal replay itself fails on any mutation, OutError is overwritten
+ * with GGV2UiRollbackFailedDiagnosticCode plus both the original forward failure and the
+ * restoration failure -- never just the forward failure, which would silently discard
+ * that the physical state may now match neither revision. RollbackFailureInjector (test-
+ * only; production always omits it) mirrors FailureInjector but applies to the
+ * restoration replay specifically, letting a test force that replay to fail without
+ * needing a genuinely broken widget.
  */
 GV2_API bool CommitUiHostProperties(
     UUserWidget* HostWidget,
@@ -112,4 +153,5 @@ GV2_API bool CommitUiHostProperties(
     FString& OutFailedPropertyPath,
     FString& OutError,
     TFunction<bool(const FString& PropertyPath)> FailureInjector = nullptr,
-    const FGV2UiHostMutationPlan* RollbackPlan = nullptr);
+    const FGV2UiHostMutationPlan* RollbackPlan = nullptr,
+    TFunction<bool(const FString& PropertyPath)> RollbackFailureInjector = nullptr);

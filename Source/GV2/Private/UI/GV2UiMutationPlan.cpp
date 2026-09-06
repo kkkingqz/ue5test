@@ -39,8 +39,17 @@ FString MapSubsetMismatchToConsumerDiagnosticCode(EGV2UiCapabilitySubsetMismatch
 // ValidateUiRollbackPlan has established that RollbackMutations[i] targets the same
 // property/widget as ForwardMutations[i], so restoring [0..CommittedCount-1] is simply
 // re-running Commit/Reset with the prior prepared value, not a bespoke undo path.
-void RollbackCommittedMutations(const FGV2UiHostMutationPlan& RollbackPlan, int32 CommittedCount)
+//
+// PAH-01: best-effort -- every mutation in range is still attempted even after one fails,
+// since skipping the rest would leave strictly more of the host on its rejected new value,
+// not less. The result names the FIRST failure; RollbackFailureInjector (test-only) lets a
+// test force a specific replayed mutation to fail without needing a genuinely broken widget.
+[[nodiscard]] FGV2UiRollbackResult RollbackCommittedMutations(
+    const FGV2UiHostMutationPlan& RollbackPlan,
+    int32 CommittedCount,
+    const TFunction<bool(const FString& PropertyPath)>& RollbackFailureInjector = nullptr)
 {
+    FGV2UiRollbackResult Result = FGV2UiRollbackResult::Restored();
     const TArray<FGV2UiPropertyMutation>& RollbackMutations = RollbackPlan.GetMutations();
     const int32 RollbackCount = FMath::Min(CommittedCount, RollbackMutations.Num());
     for (int32 Index = RollbackCount - 1; Index >= 0; --Index)
@@ -57,16 +66,46 @@ void RollbackCommittedMutations(const FGV2UiHostMutationPlan& RollbackPlan, int3
         else
         {
             FString RollbackError;
-            if (!Mutation.Consumer->Commit(Mutation.TargetWidget.Get(), RollbackError))
+            const bool bInjectedFailure = RollbackFailureInjector && RollbackFailureInjector(Mutation.PropertyPath);
+            const bool bRestored = !bInjectedFailure && Mutation.Consumer->Commit(Mutation.TargetWidget.Get(), RollbackError);
+            if (!bRestored)
             {
+                if (bInjectedFailure)
+                {
+                    RollbackError = TEXT("core:diagnostic.ui_mutation.rollback_failed_injected: Injected restoration failure");
+                }
                 UE_LOG(LogTemp, Error,
                     TEXT("GBH-10: rollback commit failed on '%s': %s -- invariant violation, physical state may not match previous revision"),
                     *Mutation.PropertyPath, *RollbackError);
+                if (Result.bRestored)
+                {
+                    Result = FGV2UiRollbackResult::RestorationFailed(Mutation.PropertyPath, RollbackError);
+                }
             }
         }
     }
+    return Result;
+}
+
+// PAH-01: the one place CommitUiHostProperties consumes RollbackCommittedMutations'
+// [[nodiscard]] result -- overwrites OutError with the typed rollback-failure code plus
+// both failures (forward and restoration) when restoration itself fails, so this
+// function's own OutError never silently reverts to only the forward-failure message.
+void ReportSelfHealResult(const FGV2UiRollbackResult& SelfHealResult, FString& OutError)
+{
+    if (!SelfHealResult.bRestored)
+    {
+        OutError = FString::Printf(
+            TEXT("%s: forward failure (%s) AND restoration failed on '%s': %s"),
+            GGV2UiRollbackFailedDiagnosticCode,
+            *OutError,
+            *SelfHealResult.FailedPropertyPath,
+            *SelfHealResult.Diagnostic);
+    }
 }
 }
+
+const TCHAR* const GGV2UiRollbackFailedDiagnosticCode = TEXT("core:diagnostic.ui_rollback.restoration_failed");
 
 TConstArrayView<EGV2PreparedUiValueKind> GetUiMutationKindsRequiringInverse()
 {
@@ -657,7 +696,8 @@ bool CommitUiHostProperties(
     FString& OutFailedPropertyPath,
     FString& OutError,
     TFunction<bool(const FString& PropertyPath)> FailureInjector,
-    const FGV2UiHostMutationPlan* RollbackPlan)
+    const FGV2UiHostMutationPlan* RollbackPlan,
+    TFunction<bool(const FString& PropertyPath)> RollbackFailureInjector)
 {
     if (RollbackPlan != nullptr && !ValidateUiRollbackPlan(Plan, *RollbackPlan, OutError))
     {
@@ -676,7 +716,9 @@ bool CommitUiHostProperties(
                 *Mutation.PropertyPath);
             if (RollbackPlan != nullptr)
             {
-                RollbackCommittedMutations(*RollbackPlan, CommittedCount);
+                ReportSelfHealResult(
+                    RollbackCommittedMutations(*RollbackPlan, CommittedCount, RollbackFailureInjector),
+                    OutError);
             }
             return false;
         }
@@ -702,7 +744,9 @@ bool CommitUiHostProperties(
                     *Mutation.PropertyPath);
                 if (RollbackPlan != nullptr)
                 {
-                    RollbackCommittedMutations(*RollbackPlan, CommittedCount);
+                    ReportSelfHealResult(
+                        RollbackCommittedMutations(*RollbackPlan, CommittedCount, RollbackFailureInjector),
+                        OutError);
                 }
                 return false;
             }
@@ -722,7 +766,9 @@ bool CommitUiHostProperties(
                     OutError = CommitError;
                     if (RollbackPlan != nullptr)
                     {
-                        RollbackCommittedMutations(*RollbackPlan, CommittedCount);
+                        ReportSelfHealResult(
+                            RollbackCommittedMutations(*RollbackPlan, CommittedCount, RollbackFailureInjector),
+                            OutError);
                     }
                     return false;
                 }
