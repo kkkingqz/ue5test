@@ -144,10 +144,6 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
             *Item.Binding.CommandId);
 
     });
-    Coordinator->SetScreenSink([this](const FGV2ScreenViewModel& Model)
-    {
-        return HandleScreenRequested(Model);
-    });
     Coordinator->SetDocumentSink([this](const FGV2UiDocumentViewModel& Document)
     {
         return HandleDocumentRequested(Document);
@@ -181,7 +177,6 @@ void UGV2RuntimeSubsystem::Deinitialize()
     {
         Coordinator->EndSession(EGV2SessionState::Destroyed);
         Coordinator->ClearInteractionSink();
-        Coordinator->ClearScreenSink();
         Coordinator->ClearDocumentSink();
         Coordinator.Reset();
     }
@@ -418,39 +413,6 @@ UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::InstantiateScreenWidget(const FStrin
     return CreateWidget<UGV2ScreenWidgetBase>(GetGameInstance(), ScreenClass);
 }
 
-UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::CreateRegisteredScreen(
-    const FGV2ScreenViewModel& Model,
-    const bool bAddToViewport)
-{
-    // PAH-02: FGV2ScreenViewModel (the legacy single-screen sink, superseded by the
-    // document/layered path below and unreachable today -- Initialize() always wires
-    // both sinks and HandleDocumentRequested's DocumentSink unconditionally wins) has no
-    // layer of its own. location_content is FGV2ScreenRegistryEntry's own authoring
-    // default, kept here only as long as this path itself remains.
-    UGV2ScreenWidgetBase* Screen = InstantiateScreenWidget(
-        Model.ScreenId, FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent));
-    if (Screen == nullptr)
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to instantiate registered screen '%s'"), *Model.ScreenId);
-        return nullptr;
-    }
-    if (!Screen->ApplyScreenFields(Model.Fields))
-    {
-        UE_LOG(
-            LogGV2Runtime,
-            Error,
-            TEXT("Failed to apply screen '%s' with %d fields"),
-            *Model.ScreenId,
-            Model.Fields.Num());
-        return nullptr;
-    }
-    if (bAddToViewport)
-    {
-        Screen->AddToViewport();
-    }
-    return Screen;
-}
-
 void UGV2RuntimeSubsystem::HandleStartGameInstance(UGameInstance* StartedGameInstance)
 {
     if (StartedGameInstance != nullptr
@@ -486,19 +448,6 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
             ActiveScreen->AddToViewport();
         }
     }
-    return true;
-}
-
-bool UGV2RuntimeSubsystem::HandleScreenRequested(
-    const FGV2ScreenViewModel& Model)
-{
-    UGV2ScreenWidgetBase* Screen = CreateRegisteredScreen(Model, false);
-    if (Screen == nullptr)
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Unable to create requested screen '%s'"), *Model.ScreenId);
-        return false;
-    }
-    ReplaceActiveScreen(Screen);
     return true;
 }
 

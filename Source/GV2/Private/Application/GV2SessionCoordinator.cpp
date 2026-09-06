@@ -202,16 +202,6 @@ void FGV2SessionCoordinator::ClearInteractionSink()
     InteractionSink = nullptr;
 }
 
-void FGV2SessionCoordinator::SetScreenSink(FScreenSink InSink)
-{
-    ScreenSink = MoveTemp(InSink);
-}
-
-void FGV2SessionCoordinator::ClearScreenSink()
-{
-    ScreenSink = nullptr;
-}
-
 void FGV2SessionCoordinator::SetDocumentSink(FDocumentSink InSink)
 {
     DocumentSink = MoveTemp(InSink);
@@ -287,18 +277,7 @@ bool FGV2SessionCoordinator::StartSession(
         return false;
     }
 
-    bool bApplied = false;
-    if (DocumentSink)
-    {
-        bApplied = DocumentSink(DocModel);
-    }
-    else if (ScreenSink && DocModel.bHasRoute)
-    {
-        FGV2ScreenViewModel ScreenModel;
-        ScreenModel.ScreenId = DocModel.Route.ScreenId;
-        ScreenModel.Fields = DocModel.Route.Fields;
-        bApplied = ScreenSink(ScreenModel);
-    }
+    const bool bApplied = DocumentSink && DocumentSink(DocModel);
     if (!bApplied)
     {
         FailRuntime({"InitialPresentationApplyFailed", "Initial UI document could not be applied."});
@@ -693,18 +672,7 @@ void FGV2SessionCoordinator::PumpIngress()
             FGV2PreparedBindingSet PreparedBindings;
             if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings))
             {
-                bool bApplied = false;
-                if (DocumentSink)
-                {
-                    bApplied = DocumentSink(DocModel);
-                }
-                else if (ScreenSink && DocModel.bHasRoute)
-                {
-                    FGV2ScreenViewModel ScreenModel;
-                    ScreenModel.ScreenId = DocModel.Route.ScreenId;
-                    ScreenModel.Fields = DocModel.Route.Fields;
-                    bApplied = ScreenSink(ScreenModel);
-                }
+                const bool bApplied = DocumentSink && DocumentSink(DocModel);
                 if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
                 {
                     UiRevision = DocModel.Revision;

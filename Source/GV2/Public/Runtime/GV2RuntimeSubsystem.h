@@ -70,12 +70,8 @@ public:
 private:
     bool LoadScreenRegistry();
     UClass* ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const;
-    UGV2ScreenWidgetBase* CreateRegisteredScreen(
-        const FGV2ScreenViewModel& Model,
-        bool bAddToViewport);
     UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
-    bool HandleScreenRequested(const FGV2ScreenViewModel& Model);
     bool HandleDocumentRequested(const FGV2UiDocumentViewModel& Document);
     void ReplaceActiveScreen(UUserWidget* NewScreen);
 

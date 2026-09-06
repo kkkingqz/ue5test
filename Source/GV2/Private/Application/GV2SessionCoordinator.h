@@ -9,15 +9,12 @@ class FGV2SessionCoordinator
 {
 public:
     using FInteractionSink = TFunction<void(const FGV2UiIngressItem&)>;
-    using FScreenSink = TFunction<bool(const FGV2ScreenViewModel&)>;
     using FDocumentSink = TFunction<bool(const FGV2UiDocumentViewModel&)>;
 
     explicit FGV2SessionCoordinator(int32 InIngressCapacity = 256);
 
     void SetInteractionSink(FInteractionSink InSink);
     void ClearInteractionSink();
-    void SetScreenSink(FScreenSink InSink);
-    void ClearScreenSink();
     void SetDocumentSink(FDocumentSink InSink);
     void ClearDocumentSink();
 
@@ -92,7 +89,6 @@ private:
     FGV2RuntimeIngressQueue IngressQueue;
     GV2RuntimeCore::FRuntimeSession RuntimeSession;
     FInteractionSink InteractionSink;
-    FScreenSink ScreenSink;
     FDocumentSink DocumentSink;
     TMap<FString, FString> ActiveTabsByContainerPath;
     int64 NextInputSequence = 1;

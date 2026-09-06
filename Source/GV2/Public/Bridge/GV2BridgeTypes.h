@@ -213,18 +213,6 @@ struct GV2_API FGV2ScreenFieldValue
 };
 
 USTRUCT(BlueprintType)
-struct GV2_API FGV2ScreenViewModel
-{
-    GENERATED_BODY()
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen")
-    FString ScreenId;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Screen")
-    TArray<FGV2ScreenFieldValue> Fields;
-};
-
-USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenInstanceViewModel
 {
     GENERATED_BODY()
