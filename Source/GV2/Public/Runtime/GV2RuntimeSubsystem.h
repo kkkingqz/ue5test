@@ -7,6 +7,7 @@
 
 class FGV2LayeredUiReconciler;
 class FGV2RepositoryPublisher;
+class FGV2ScreenPlacement;
 class FGV2SessionCoordinator;
 class UGV2GameShellWidgetBase;
 class UGV2ScreenRegistry;
@@ -68,11 +69,11 @@ public:
 
 private:
     bool LoadScreenRegistry();
-    UClass* ResolveScreenClass(const FString& ScreenId) const;
+    UClass* ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const;
     UGV2ScreenWidgetBase* CreateRegisteredScreen(
         const FGV2ScreenViewModel& Model,
         bool bAddToViewport);
-    UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId);
+    UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
     bool HandleScreenRequested(const FGV2ScreenViewModel& Model);
     bool HandleDocumentRequested(const FGV2UiDocumentViewModel& Document);
@@ -85,9 +86,6 @@ private:
     TObjectPtr<UGV2ScreenRegistry> ScreenRegistry;
 
     UPROPERTY(Transient)
-    TMap<FString, TObjectPtr<UClass>> RegisteredScreenClasses;
-
-    UPROPERTY(Transient)
     TObjectPtr<UUserWidget> ActiveScreen;
 
     UPROPERTY(Transient)
@@ -98,6 +96,7 @@ private:
     FDelegateHandle StartGameInstanceHandle;
     FString ImageCatalogBuildError;
     bool bImageCatalogReady = false;
+    bool bScreenRegistryReady = false;
     FString RepositoryBuildError;
     TArray<FString> RepositoryPackageRoots;
     bool bRepositoryReady = false;

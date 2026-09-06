@@ -1590,7 +1590,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             FGV2TextViewModel T1Title;
             T1Title.Text = FText::FromString(TEXT("Inventory"));
             Tab1Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T1Title));
-            Tab1Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            Tab1Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab1Map)));
 
             TMap<FString, FGV2PreparedUiValue> Tab2Map;
@@ -1598,7 +1598,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             FGV2TextViewModel T2Title;
             T2Title.Text = FText::FromString(TEXT("Skills"));
             Tab2Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T2Title));
-            Tab2Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            Tab2Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab2Map)));
 
             FString PrepErr, CommitErr;
@@ -1636,7 +1636,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             // Missing title
             TMap<FString, FGV2PreparedUiValue> NoTitleTab;
             NoTitleTab.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("no_title")));
-            NoTitleTab.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            NoTitleTab.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             TArray<FGV2PreparedUiValue> NoTitleTabs;
             NoTitleTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(NoTitleTab)));
             TestFalse(TEXT("Tab missing title rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(NoTitleTabs)), *TabsCap, TabContainer, PrepErr));

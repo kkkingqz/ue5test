@@ -19,9 +19,60 @@ struct GV2_API FGV2ScreenRegistryEntry
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Registry")
     FName Layer = TEXT("location_content");
+};
 
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Registry")
-    bool bSingleton = true;
+// PAH-02 (ADR-0042, preamble): where a screen may be displayed. Embedded (inside a tab or
+// other nested-screen host) carries no layer -- GameShell layers exist only for TopLevel
+// placement, and GetLayer() is reachable only through that variant, never as a loose field
+// present regardless of Kind. Constructed only via the two factories below.
+class GV2_API FGV2ScreenPlacement
+{
+public:
+    static FGV2ScreenPlacement Embedded() { return FGV2ScreenPlacement(EKind::Embedded, NAME_None); }
+    static FGV2ScreenPlacement TopLevel(FName Layer) { return FGV2ScreenPlacement(EKind::TopLevel, Layer); }
+
+    bool IsEmbedded() const { return Kind == EKind::Embedded; }
+    bool IsTopLevel() const { return Kind == EKind::TopLevel; }
+
+    // Only valid to call when IsTopLevel(); asserts otherwise. Embedded truly carries no
+    // layer -- there is no default/sentinel value a caller could read by mistake.
+    FName GetLayer() const
+    {
+        check(IsTopLevel());
+        return Layer;
+    }
+
+    FString ToString() const
+    {
+        return IsEmbedded() ? TEXT("Embedded") : FString::Printf(TEXT("TopLevel(%s)"), *Layer.ToString());
+    }
+
+private:
+    enum class EKind : uint8 { Embedded, TopLevel };
+    FGV2ScreenPlacement(EKind InKind, FName InLayer) : Kind(InKind), Layer(InLayer) {}
+
+    EKind Kind;
+    FName Layer;
+};
+
+// PAH-02: the only thing a resolved screen exposes -- never the authored
+// FGV2ScreenRegistryEntry itself, which stays internal to the registry.
+struct GV2_API FGV2ResolvedScreenDescriptor
+{
+    FString ScreenId;
+    UClass* WidgetClass = nullptr;
+};
+
+enum class EGV2ScreenResolutionError : uint8
+{
+    UnknownScreenId,
+    PlacementMismatch,
+};
+
+struct GV2_API FGV2ScreenResolutionRejection
+{
+    EGV2ScreenResolutionError Code = EGV2ScreenResolutionError::UnknownScreenId;
+    FString Message;
 };
 
 UCLASS(BlueprintType)
@@ -57,18 +108,34 @@ public:
     // package_id ordered by load_index; empty on discovery failure.
     static TArray<FString> GetPackageLoadOrderFromGameData();
 
-    bool Validate(FString& OutError) const;
+    // PAH-02: performs every authoring-time check exactly once -- screen_id format,
+    // duplicates, WidgetClass load/inheritance/non-abstract, layer name validity, and
+    // package ownership of the widget asset (folds in the former, production-dead
+    // Validate()). Must succeed before Resolve() can return anything but
+    // UnknownScreenId. Idempotent: safe to call again (e.g. before a fresh Resolve() in
+    // a standalone test that only loaded the DataAsset), rebuilding from Entries each time.
+    bool Build(FString& OutError);
 
-    const TArray<FGV2ScreenRegistryEntry>& GetEntries() const
-    {
-        return Entries;
-    }
-
-    const FGV2ScreenRegistryEntry* FindEntry(const FString& ScreenId) const;
+    // PAH-02: the only way to get a screen's class. A screen registered for one Placement
+    // is rejected, not silently handed out, when asked for a different one -- Placement
+    // is not optional and there is no overload that omits it.
+    bool Resolve(
+        const FString& ScreenId,
+        const FGV2ScreenPlacement& Placement,
+        FGV2ResolvedScreenDescriptor& OutDescriptor,
+        FGV2ScreenResolutionRejection& OutRejection) const;
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Registry", meta = (AllowPrivateAccess = "true"))
     TArray<FGV2ScreenRegistryEntry> Entries;
+
+    struct FResolvedScreen
+    {
+        UClass* WidgetClass = nullptr;
+        FName Layer;
+    };
+    TMap<FString, FResolvedScreen> ResolvedByScreenId;
+    bool bBuilt = false;
 };
 
 UCLASS(Config = Game, DefaultConfig)
@@ -83,7 +150,10 @@ public:
     UPROPERTY(Config, EditAnywhere, Category = "GV2|UI|Screen Registry")
     TSoftClassPtr<UGV2GameShellWidgetBase> GameShellClass;
 
-    static const UGV2ScreenRegistry* GetConfiguredRegistry()
+    // Non-const: callers need to invoke the registry's own Build() (e.g. a standalone
+    // test that loads the DataAsset directly, without going through the runtime
+    // subsystem's own LoadScreenRegistry()) before Resolve() will return anything.
+    static UGV2ScreenRegistry* GetConfiguredRegistry()
     {
         const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
         if (Settings != nullptr && !Settings->RegistryAsset.IsNull())

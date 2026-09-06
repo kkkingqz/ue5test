@@ -92,16 +92,11 @@ bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
     return AssetPackageIndex <= ScreenPackageIndex;
 }
 
-const FGV2ScreenRegistryEntry* UGV2ScreenRegistry::FindEntry(const FString& ScreenId) const
+bool UGV2ScreenRegistry::Build(FString& OutError)
 {
-    return Entries.FindByPredicate([&ScreenId](const FGV2ScreenRegistryEntry& Entry)
-    {
-        return Entry.ScreenId == ScreenId;
-    });
-}
+    ResolvedByScreenId.Reset();
+    bBuilt = false;
 
-bool UGV2ScreenRegistry::Validate(FString& OutError) const
-{
     if (Entries.IsEmpty())
     {
         OutError = TEXT("Screen Registry contains no entries");
@@ -115,7 +110,7 @@ bool UGV2ScreenRegistry::Validate(FString& OutError) const
         return false;
     }
 
-    TSet<FString> SeenScreenIds;
+    TMap<FString, FResolvedScreen> Built;
     for (const FGV2ScreenRegistryEntry& Entry : Entries)
     {
         if (!GV2StableIdUE::IsOfKind(Entry.ScreenId, "screen"))
@@ -124,12 +119,11 @@ bool UGV2ScreenRegistry::Validate(FString& OutError) const
             return false;
         }
 
-        if (SeenScreenIds.Contains(Entry.ScreenId))
+        if (Built.Contains(Entry.ScreenId))
         {
             OutError = FString::Printf(TEXT("Duplicate screen_id: '%s'"), *Entry.ScreenId);
             return false;
         }
-        SeenScreenIds.Add(Entry.ScreenId);
 
         if (!IsValidLayer(Entry.Layer))
         {
@@ -140,6 +134,21 @@ bool UGV2ScreenRegistry::Validate(FString& OutError) const
         if (Entry.WidgetClass.IsNull())
         {
             OutError = FString::Printf(TEXT("Null WidgetClass for screen_id '%s'"), *Entry.ScreenId);
+            return false;
+        }
+
+        // PAH-02: class load/inheritance/abstractness check folded in here from the
+        // runtime subsystem's own former LoadScreenRegistry() loop -- one builder, one
+        // pass, instead of two separate validation loops over the same Entries.
+        UClass* WidgetClass = Entry.WidgetClass.LoadSynchronous();
+        if (WidgetClass == nullptr
+            || !WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
+            || WidgetClass->HasAnyClassFlags(CLASS_Abstract))
+        {
+            OutError = FString::Printf(
+                TEXT("Screen Registry class is missing, abstract, or has the wrong parent: screen_id='%s' class='%s'"),
+                *Entry.ScreenId,
+                *Entry.WidgetClass.ToSoftObjectPath().ToString());
             return false;
         }
 
@@ -158,7 +167,47 @@ bool UGV2ScreenRegistry::Validate(FString& OutError) const
                 return false;
             }
         }
+
+        Built.Add(Entry.ScreenId, FResolvedScreen{WidgetClass, Entry.Layer});
     }
 
+    ResolvedByScreenId = MoveTemp(Built);
+    bBuilt = true;
+    return true;
+}
+
+bool UGV2ScreenRegistry::Resolve(
+    const FString& ScreenId,
+    const FGV2ScreenPlacement& Placement,
+    FGV2ResolvedScreenDescriptor& OutDescriptor,
+    FGV2ScreenResolutionRejection& OutRejection) const
+{
+    const FResolvedScreen* Found = bBuilt ? ResolvedByScreenId.Find(ScreenId) : nullptr;
+    if (Found == nullptr)
+    {
+        OutRejection.Code = EGV2ScreenResolutionError::UnknownScreenId;
+        OutRejection.Message = FString::Printf(
+            TEXT("core:diagnostic.ui_screen_registry.unknown_screen_id: '%s'"), *ScreenId);
+        return false;
+    }
+
+    // PAH-02: IsLayerAllowedForEmbedded/IsLayerAllowedForTopLevel were declared, tested,
+    // and never called by any production path -- this is that call. A screen registered
+    // for one Placement is rejected when resolved for the other, and TopLevel additionally
+    // requires the exact requested layer to match the registered one.
+    const bool bPlacementMatches = Placement.IsEmbedded()
+        ? IsLayerAllowedForEmbedded(Found->Layer)
+        : IsLayerAllowedForTopLevel(Found->Layer) && Found->Layer == Placement.GetLayer();
+    if (!bPlacementMatches)
+    {
+        OutRejection.Code = EGV2ScreenResolutionError::PlacementMismatch;
+        OutRejection.Message = FString::Printf(
+            TEXT("core:diagnostic.ui_screen_registry.placement_mismatch: screen '%s' is registered for layer '%s', requested as %s"),
+            *ScreenId, *Found->Layer.ToString(), *Placement.ToString());
+        return false;
+    }
+
+    OutDescriptor.ScreenId = ScreenId;
+    OutDescriptor.WidgetClass = Found->WidgetClass;
     return true;
 }

@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "UI/GV2DeclaredCompositeWidgetBase.h"
+#include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2IconWidgetBase.h"
 #include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2ListViewWidgetBase.h"
@@ -30,26 +31,36 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
 {
-    const UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry();
+    UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry();
     TestNotNull(TEXT("DCA-11: configured Screen Registry is available"), Registry);
     if (Registry == nullptr)
     {
         return false;
     }
+    FString RegistryBuildError;
+    TestTrue(
+        *FString::Printf(TEXT("DCA-11: Screen Registry builds [Error: %s]"), *RegistryBuildError),
+        Registry->Build(RegistryBuildError));
 
-    for (const TCHAR* ScreenId : {
-             TEXT("textsystem:screen.dca11_inventory_fixture"),
-             TEXT("textsystem:screen.dca11_inventory_weapons"),
-             TEXT("textsystem:screen.dca11_inventory_consumables")})
+    const TPair<const TCHAR*, FGV2ScreenPlacement> ExpectedScreens[] = {
+        {TEXT("textsystem:screen.dca11_inventory_fixture"), FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent)},
+        {TEXT("textsystem:screen.dca11_inventory_weapons"), FGV2ScreenPlacement::Embedded()},
+        {TEXT("textsystem:screen.dca11_inventory_consumables"), FGV2ScreenPlacement::Embedded()},
+    };
+    for (const auto& [ScreenId, Placement] : ExpectedScreens)
     {
-        const FGV2ScreenRegistryEntry* const Entry = Registry->FindEntry(ScreenId);
-        if (!TestNotNull(*FString::Printf(TEXT("DCA-11: '%s' is registered"), ScreenId), Entry))
+        FGV2ResolvedScreenDescriptor Descriptor;
+        FGV2ScreenResolutionRejection Rejection;
+        const bool bResolved = Registry->Resolve(ScreenId, Placement, Descriptor, Rejection);
+        if (!TestTrue(
+                *FString::Printf(TEXT("DCA-11: '%s' is registered [Error: %s]"), ScreenId, *Rejection.Message),
+                bResolved))
         {
             return false;
         }
         TestNotNull(
             *FString::Printf(TEXT("DCA-11: '%s' resolves to a trusted Screen Template class"), ScreenId),
-            Entry->WidgetClass.LoadSynchronous());
+            Descriptor.WidgetClass);
     }
 
     const TArray<FString> PackageRoots = {
@@ -153,15 +164,15 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    auto ScreenFactory = [Registry, TestWorld](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+    auto ScreenFactory = [Registry, TestWorld](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
     {
-        const FGV2ScreenRegistryEntry* const Entry = Registry->FindEntry(ScreenId);
-        if (Entry == nullptr)
+        FGV2ResolvedScreenDescriptor Descriptor;
+        FGV2ScreenResolutionRejection Rejection;
+        if (!Registry->Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection))
         {
             return nullptr;
         }
-        UClass* const WidgetClass = Entry->WidgetClass.LoadSynchronous();
-        return WidgetClass != nullptr ? CreateWidget<UGV2ScreenWidgetBase>(TestWorld, WidgetClass) : nullptr;
+        return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, Descriptor.WidgetClass);
     };
 
     FGV2LayeredUiReconciler Reconciler;

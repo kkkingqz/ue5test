@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "UI/GV2DeclaredCompositeWidgetBase.h"
+#include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2LayeredUiReconciler.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2ScreenRegistry.h"
@@ -22,36 +23,50 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
 {
-    const UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry();
+    UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry();
     TestNotNull(TEXT("DUC-10: configured Screen Registry is available"), Registry);
     if (Registry == nullptr)
     {
         return false;
     }
+    FString RegistryBuildError;
+    TestTrue(
+        *FString::Printf(TEXT("DUC-10: Screen Registry builds [Error: %s]"), *RegistryBuildError),
+        Registry->Build(RegistryBuildError));
 
-    const FGV2ScreenRegistryEntry* const ChainEntry =
-        Registry->FindEntry(TEXT("textsystem:screen.duc10_nested_chain"));
-    const FGV2ScreenRegistryEntry* const BlockEntry =
-        Registry->FindEntry(TEXT("textsystem:screen.duc10_nested_block"));
+    FGV2ResolvedScreenDescriptor ChainDescriptor;
+    FGV2ScreenResolutionRejection ChainRejection;
+    const bool bChainResolved = Registry->Resolve(
+        TEXT("textsystem:screen.duc10_nested_chain"),
+        FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
+        ChainDescriptor,
+        ChainRejection);
+    TestTrue(
+        *FString::Printf(TEXT("DUC-10: root screen of the data-driven nested-chain fixture is registered [Error: %s]"), *ChainRejection.Message),
+        bChainResolved);
 
-    TestNotNull(
-        TEXT("DUC-10: root screen of the data-driven nested-chain fixture is registered"),
-        ChainEntry);
-    TestNotNull(
-        TEXT("DUC-10: nested block screen of the data-driven fixture is registered"),
-        BlockEntry);
+    FGV2ResolvedScreenDescriptor BlockDescriptor;
+    FGV2ScreenResolutionRejection BlockRejection;
+    const bool bBlockResolved = Registry->Resolve(
+        TEXT("textsystem:screen.duc10_nested_block"),
+        FGV2ScreenPlacement::Embedded(),
+        BlockDescriptor,
+        BlockRejection);
+    TestTrue(
+        *FString::Printf(TEXT("DUC-10: nested block screen of the data-driven fixture is registered [Error: %s]"), *BlockRejection.Message),
+        bBlockResolved);
 
-    if (ChainEntry != nullptr)
+    if (bChainResolved)
     {
         TestNotNull(
             TEXT("DUC-10: root screen fixture resolves to a trusted Screen Template class"),
-            ChainEntry->WidgetClass.LoadSynchronous());
+            ChainDescriptor.WidgetClass);
     }
-    if (BlockEntry != nullptr)
+    if (bBlockResolved)
     {
         TestNotNull(
             TEXT("DUC-10: block screen fixture resolves to a trusted Screen Template class"),
-            BlockEntry->WidgetClass.LoadSynchronous());
+            BlockDescriptor.WidgetClass);
     }
 
     const TArray<FString> PackageRoots = {
@@ -174,15 +189,15 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    auto ScreenFactory = [Registry, TestWorld](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+    auto ScreenFactory = [Registry, TestWorld](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
     {
-        const FGV2ScreenRegistryEntry* const Entry = Registry->FindEntry(ScreenId);
-        if (Entry == nullptr)
+        FGV2ResolvedScreenDescriptor Descriptor;
+        FGV2ScreenResolutionRejection Rejection;
+        if (!Registry->Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection))
         {
             return nullptr;
         }
-        UClass* const WidgetClass = Entry->WidgetClass.LoadSynchronous();
-        return WidgetClass != nullptr ? CreateWidget<UGV2ScreenWidgetBase>(TestWorld, WidgetClass) : nullptr;
+        return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, Descriptor.WidgetClass);
     };
 
     FGV2LayeredUiReconciler Reconciler;

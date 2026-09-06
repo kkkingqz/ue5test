@@ -3,7 +3,6 @@
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
-#include "Bridge/GV2StableIdUE.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
 #include "Logging/LogMacros.h"
@@ -22,11 +21,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
 
 namespace
 {
-bool IsCanonicalScreenId(const FString& Value)
-{
-    return GV2StableIdUE::IsOfKind(Value, "screen");
-}
-
 // TSL-02: default package roots discovered dynamically from GameData container.
 TArray<FString> DiscoverDefaultRepositoryPackageRoots()
 {
@@ -191,7 +185,7 @@ void UGV2RuntimeSubsystem::Deinitialize()
         Coordinator->ClearDocumentSink();
         Coordinator.Reset();
     }
-    RegisteredScreenClasses.Reset();
+    bScreenRegistryReady = false;
     ScreenRegistry = nullptr;
     bImageCatalogReady = false;
     ImageCatalogBuildError.Reset();
@@ -222,7 +216,7 @@ void UGV2RuntimeSubsystem::StartSession()
     check(IsInGameThread());
     check(Coordinator);
 
-    if (RegisteredScreenClasses.IsEmpty())
+    if (!bScreenRegistryReady)
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("StartSession rejected: Screen Registry is not ready"));
         Coordinator->FailBootstrap(TEXT("ScreenRegistryNotReady"), TEXT("Screen Registry is not ready"));
@@ -376,7 +370,7 @@ FString UGV2RuntimeSubsystem::GetActiveTab(const FString& ContainerPath) const
 
 bool UGV2RuntimeSubsystem::LoadScreenRegistry()
 {
-    RegisteredScreenClasses.Reset();
+    bScreenRegistryReady = false;
     const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
     ScreenRegistry = Settings != nullptr ? Settings->RegistryAsset.LoadSynchronous() : nullptr;
     if (ScreenRegistry == nullptr)
@@ -385,66 +379,38 @@ bool UGV2RuntimeSubsystem::LoadScreenRegistry()
         return false;
     }
 
-    for (const FGV2ScreenRegistryEntry& Entry : ScreenRegistry->GetEntries())
+    FString BuildError;
+    if (!ScreenRegistry->Build(BuildError))
     {
-        if (!IsCanonicalScreenId(Entry.ScreenId)
-            || !UGV2ScreenRegistry::IsValidLayer(Entry.Layer)
-            || Entry.WidgetClass.IsNull()
-            || RegisteredScreenClasses.Contains(Entry.ScreenId))
-        {
-            UE_LOG(
-                LogGV2Runtime,
-                Error,
-                TEXT("Invalid or duplicate Screen Registry entry: screen_id='%s' layer='%s' class='%s'"),
-                *Entry.ScreenId,
-                *Entry.Layer.ToString(),
-                *Entry.WidgetClass.ToSoftObjectPath().ToString());
-            RegisteredScreenClasses.Reset();
-            ScreenRegistry = nullptr;
-            return false;
-        }
-
-        UClass* WidgetClass = Entry.WidgetClass.LoadSynchronous();
-        if (WidgetClass == nullptr
-            || !WidgetClass->IsChildOf(UGV2ScreenWidgetBase::StaticClass())
-            || WidgetClass->HasAnyClassFlags(CLASS_Abstract))
-        {
-            UE_LOG(
-                LogGV2Runtime,
-                Error,
-                TEXT("Screen Registry class is missing, abstract, or has the wrong parent: screen_id='%s' class='%s'"),
-                *Entry.ScreenId,
-                *Entry.WidgetClass.ToSoftObjectPath().ToString());
-            RegisteredScreenClasses.Reset();
-            ScreenRegistry = nullptr;
-            return false;
-        }
-        RegisteredScreenClasses.Add(Entry.ScreenId, WidgetClass);
-    }
-
-    if (RegisteredScreenClasses.IsEmpty())
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Screen Registry contains no entries"));
+        UE_LOG(LogGV2Runtime, Error, TEXT("Screen Registry failed to build: %s"), *BuildError);
         ScreenRegistry = nullptr;
         return false;
     }
+
+    bScreenRegistryReady = true;
     return true;
 }
 
-UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId) const
+UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const
 {
-    const TObjectPtr<UClass>* Found = RegisteredScreenClasses.Find(ScreenId);
-    if (Found == nullptr)
+    if (ScreenRegistry == nullptr)
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Unknown screen_id '%s'"), *ScreenId);
+        UE_LOG(LogGV2Runtime, Error, TEXT("Unknown screen_id '%s': Screen Registry is not ready"), *ScreenId);
         return nullptr;
     }
-    return Found->Get();
+    FGV2ResolvedScreenDescriptor Descriptor;
+    FGV2ScreenResolutionRejection Rejection;
+    if (!ScreenRegistry->Resolve(ScreenId, Placement, Descriptor, Rejection))
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("%s"), *Rejection.Message);
+        return nullptr;
+    }
+    return Descriptor.WidgetClass;
 }
 
-UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::InstantiateScreenWidget(const FString& ScreenId)
+UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement)
 {
-    UClass* ScreenClass = ResolveScreenClass(ScreenId);
+    UClass* ScreenClass = ResolveScreenClass(ScreenId, Placement);
     if (ScreenClass == nullptr || GetGameInstance() == nullptr)
     {
         return nullptr;
@@ -456,7 +422,13 @@ UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::CreateRegisteredScreen(
     const FGV2ScreenViewModel& Model,
     const bool bAddToViewport)
 {
-    UGV2ScreenWidgetBase* Screen = InstantiateScreenWidget(Model.ScreenId);
+    // PAH-02: FGV2ScreenViewModel (the legacy single-screen sink, superseded by the
+    // document/layered path below and unreachable today -- Initialize() always wires
+    // both sinks and HandleDocumentRequested's DocumentSink unconditionally wins) has no
+    // layer of its own. location_content is FGV2ScreenRegistryEntry's own authoring
+    // default, kept here only as long as this path itself remains.
+    UGV2ScreenWidgetBase* Screen = InstantiateScreenWidget(
+        Model.ScreenId, FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent));
     if (Screen == nullptr)
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Failed to instantiate registered screen '%s'"), *Model.ScreenId);
@@ -495,9 +467,9 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
     const FGV2UiDocumentViewModel& Document)
 {
     FString ReconcileError;
-    auto ScreenFactory = [this](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+    auto ScreenFactory = [this](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
     {
-        return InstantiateScreenWidget(ScreenId);
+        return InstantiateScreenWidget(ScreenId, FGV2ScreenPlacement::TopLevel(Layer));
     };
 
     if (!Reconciler->Reconcile(ActiveGameShell, Document, ScreenFactory, ReconcileError))

@@ -75,7 +75,7 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         {
             // Instantiate new screen widget
             PreparedInst.bIsReuse = false;
-            PreparedInst.TargetWidget = ScreenFactory(Instance.ScreenId);
+            PreparedInst.TargetWidget = ScreenFactory(Instance.ScreenId, Instance.Layer);
             if (PreparedInst.TargetWidget == nullptr)
             {
                 OutError = FString::Printf(

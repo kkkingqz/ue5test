@@ -193,4 +193,21 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_no_hardcoded_asset_paths.py"
             "--self-test"
     )
+    # PAH-02 (ADR-0042, preamble): a permitted object (a resolved screen) must not be
+    # obtainable except through the check that permits it (UGV2ScreenRegistry::Resolve).
+    # Naming the raw FGV2ScreenRegistryEntry row outside the registry would let production
+    # code read an unvalidated Layer/WidgetClass and bypass that check.
+    add_test(
+        NAME screen_registry_entry_encapsulation_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_screen_registry_entry_encapsulation.py"
+    )
+    add_test(
+        NAME screen_registry_entry_encapsulation_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_screen_registry_entry_encapsulation.py"
+            "--self-test"
+    )
 endif()

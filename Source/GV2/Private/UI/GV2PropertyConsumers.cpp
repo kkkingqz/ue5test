@@ -1795,29 +1795,24 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
             return false;
         }
 
-        // 4. Resolve ScreenId in UGV2ScreenRegistry
+        // 4. Resolve ScreenId in UGV2ScreenRegistry. PAH-02: this is the Embedded
+        // placement -- a screen registered only for a GameShell top-level layer is
+        // rejected here now, instead of being handed out on nothing more than
+        // Entry->WidgetClass being non-null.
         TSubclassOf<UGV2ScreenWidgetBase> TargetWidgetClass = UGV2ScreenWidgetBase::StaticClass();
         if (ScreenRegistry != nullptr)
         {
-            const FGV2ScreenRegistryEntry* Entry = ScreenRegistry->FindEntry(TabScreenId);
-            if (Entry == nullptr)
+            FGV2ResolvedScreenDescriptor Descriptor;
+            FGV2ScreenResolutionRejection Rejection;
+            if (!ScreenRegistry->Resolve(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection))
             {
-                OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.unregistered_screen_id: Screen '%s' for tab '%s' not found in Screen Registry"), *TabScreenId, *TabKey.ToString());
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_consumer.unregistered_screen_id: Screen '%s' for tab '%s': %s"),
+                    *TabScreenId, *TabKey.ToString(), *Rejection.Message);
                 return false;
             }
 
-            if (Entry->WidgetClass.IsNull())
-            {
-                OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.null_screen_widget_class: Null widget class for screen '%s'"), *TabScreenId);
-                return false;
-            }
-
-            TargetWidgetClass = Entry->WidgetClass.LoadSynchronous();
-            if (TargetWidgetClass == nullptr)
-            {
-                OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.screen_widget_load_failed: Failed to load widget class for screen '%s'"), *TabScreenId);
-                return false;
-            }
+            TargetWidgetClass = Descriptor.WidgetClass;
         }
 
         // 5. Reconcile / instantiate screen widget off-tree

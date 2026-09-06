@@ -1670,13 +1670,22 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
         ? RegistrySettings->RegistryAsset.LoadSynchronous()
         : nullptr;
     TestNotNull(TEXT("Configured Screen Registry is loadable"), Registry);
-    const FGV2ScreenRegistryEntry* TestScreenEntry = Registry != nullptr
-        ? Registry->FindEntry(TEXT("core:screen.test"))
-        : nullptr;
-    TestNotNull(TEXT("Screen Registry contains the test screen entry"), TestScreenEntry);
-    UClass* TestScreenClass = TestScreenEntry != nullptr
-        ? TestScreenEntry->WidgetClass.LoadSynchronous()
-        : nullptr;
+    FString BuildError;
+    TestTrue(
+        *FString::Printf(TEXT("Screen Registry builds [Error: %s]"), *BuildError),
+        Registry != nullptr && Registry->Build(BuildError));
+    FGV2ResolvedScreenDescriptor TestScreenDescriptor;
+    FGV2ScreenResolutionRejection TestScreenRejection;
+    const bool bTestScreenResolved = Registry != nullptr
+        && Registry->Resolve(
+            TEXT("core:screen.test"),
+            FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
+            TestScreenDescriptor,
+            TestScreenRejection);
+    TestTrue(
+        *FString::Printf(TEXT("Screen Registry contains the test screen entry [Error: %s]"), *TestScreenRejection.Message),
+        bTestScreenResolved);
+    UClass* TestScreenClass = bTestScreenResolved ? TestScreenDescriptor.WidgetClass : nullptr;
     TestNotNull(TEXT("Screen Registry resolves the test Screen class"), TestScreenClass);
     UClass* ScreenBaseClass = TestScreenClass != nullptr ? TestScreenClass->GetSuperClass() : nullptr;
     TestNotNull(TEXT("WBP_ScreenBase is loadable"), ScreenBaseClass);
@@ -1693,6 +1702,39 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
             ScreenBaseClass->GetSuperClass(),
             UGV2ScreenWidgetBase::StaticClass());
     }
+
+    // PAH-02: a screen registered for one placement is rejected when resolved for the
+    // other, through the real production Resolve() path against the configured asset --
+    // not a synthetic registry. core:screen.test is registered TopLevel(location_content);
+    // core:screen.test_embedded is registered Embedded.
+    FGV2ResolvedScreenDescriptor CrossPlacementDescriptor;
+    FGV2ScreenResolutionRejection EmbeddedRequestedAsTopLevelRejection;
+    const bool bEmbeddedRequestedAsTopLevelResolved = Registry != nullptr
+        && Registry->Resolve(
+            TEXT("core:screen.test_embedded"),
+            FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
+            CrossPlacementDescriptor,
+            EmbeddedRequestedAsTopLevelRejection);
+    TestFalse(
+        TEXT("Screen registered Embedded is rejected when resolved as TopLevel"),
+        bEmbeddedRequestedAsTopLevelResolved);
+    TestTrue(
+        TEXT("Rejection carries the placement_mismatch diagnostic code"),
+        EmbeddedRequestedAsTopLevelRejection.Message.Contains(TEXT("core:diagnostic.ui_screen_registry.placement_mismatch")));
+
+    FGV2ScreenResolutionRejection TopLevelRequestedAsEmbeddedRejection;
+    const bool bTopLevelRequestedAsEmbeddedResolved = Registry != nullptr
+        && Registry->Resolve(
+            TEXT("core:screen.test"),
+            FGV2ScreenPlacement::Embedded(),
+            CrossPlacementDescriptor,
+            TopLevelRequestedAsEmbeddedRejection);
+    TestFalse(
+        TEXT("Screen registered TopLevel is rejected when resolved as Embedded"),
+        bTopLevelRequestedAsEmbeddedResolved);
+    TestTrue(
+        TEXT("Rejection carries the placement_mismatch diagnostic code (Embedded request)"),
+        TopLevelRequestedAsEmbeddedRejection.Message.Contains(TEXT("core:diagnostic.ui_screen_registry.placement_mismatch")));
 
     return true;
 }
@@ -2202,11 +2244,17 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
             UGV2ScreenRegistry* Registry = RegistrySettings != nullptr
                 ? RegistrySettings->RegistryAsset.LoadSynchronous()
                 : nullptr;
-            const FGV2ScreenRegistryEntry* RegisteredEntry = Registry != nullptr
-                ? Registry->FindEntry(TEXT("core:screen.test"))
-                : nullptr;
-            UClass* RegisteredClass = RegisteredEntry != nullptr
-                ? RegisteredEntry->WidgetClass.LoadSynchronous()
+            FString RegistryBuildError;
+            const bool bRegistryBuilt = Registry != nullptr && Registry->Build(RegistryBuildError);
+            FGV2ResolvedScreenDescriptor RegisteredDescriptor;
+            FGV2ScreenResolutionRejection RegisteredRejection;
+            UClass* RegisteredClass = bRegistryBuilt
+                    && Registry->Resolve(
+                        TEXT("core:screen.test"),
+                        FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
+                        RegisteredDescriptor,
+                        RegisteredRejection)
+                ? RegisteredDescriptor.WidgetClass
                 : nullptr;
             TestEqual(
                 TEXT("Created screen class comes from the configured registry entry"),
@@ -2476,7 +2524,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
     // 2. UIF-17: Screen Registry Validation
     UGV2ScreenRegistry* Registry = NewObject<UGV2ScreenRegistry>();
     FString ValidationError;
-    TestFalse(TEXT("Empty registry fails validation"), Registry->Validate(ValidationError));
+    TestFalse(TEXT("Empty registry fails to build"), Registry->Build(ValidationError));
 
     // 3. UIF-19, UIF-20, UIF-21: Multi-layer Reconciliation, Reuse, Replacement, Modal Blocking, Atomicity
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
@@ -2545,7 +2593,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         ScreenClasses.Add(TEXT("core:screen.modal_confirm"), UGV2ScreenWidgetBase::StaticClass());
 
         int32 FactoryInstantiations = 0;
-        auto MockFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+        auto MockFactory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
         {
             TSubclassOf<UGV2ScreenWidgetBase>* FoundClass = ScreenClasses.Find(ScreenId);
             if (FoundClass == nullptr || *FoundClass == nullptr)
@@ -2822,7 +2870,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
             TMap<FString, TSubclassOf<UGV2ScreenWidgetBase>> FaultScreenClasses;
             FaultScreenClasses.Add(TEXT("core:screen.pcc06_fault_target"), UGV2ScreenWidgetBase::StaticClass());
-            auto FaultFactory = [&](const FString&) -> UGV2ScreenWidgetBase*
+            auto FaultFactory = [&](const FString&, FName) -> UGV2ScreenWidgetBase*
             {
                 return FaultScreen;
             };
@@ -2951,7 +2999,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             MultiLayerScreensByScreenId.Add(TEXT("core:screen.pcc07_a_v2"), TopBarScreenV2);
             MultiLayerScreensByScreenId.Add(TEXT("core:screen.pcc07_b_v1"), PlainScreenV1);
             MultiLayerScreensByScreenId.Add(TEXT("core:screen.pcc07_b_v2"), PlainScreenV2);
-            auto MultiLayerFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+            auto MultiLayerFactory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
             {
                 UGV2ScreenWidgetBase** Found = MultiLayerScreensByScreenId.Find(ScreenId);
                 return Found != nullptr ? *Found : nullptr;
@@ -3026,7 +3074,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 TMap<FString, TSubclassOf<UGV2ScreenWidgetBase>> GbhScreenClasses;
                 GbhScreenClasses.Add(TEXT("core:screen.gbh01_a"), UGV2ScreenWidgetBase::StaticClass());
                 GbhScreenClasses.Add(TEXT("core:screen.gbh01_b"), UGV2ScreenWidgetBase::StaticClass());
-                auto GbhFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+                auto GbhFactory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
                 {
                     TSubclassOf<UGV2ScreenWidgetBase>* FoundClass = GbhScreenClasses.Find(ScreenId);
                     return FoundClass != nullptr && *FoundClass != nullptr
@@ -3130,7 +3178,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 ScreensById.Add(TEXT("core:screen.gbf01_route_v1"), RouteV1);
                 ScreensById.Add(TEXT("core:screen.gbf01_route_v2"), RouteV2);
                 ScreensById.Add(TEXT("core:screen.gbf01_overlay"), RejectedOverlay);
-                auto AttachFailureFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+                auto AttachFailureFactory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
                 {
                     UGV2ScreenWidgetBase** Found = ScreensById.Find(ScreenId);
                     return Found != nullptr ? *Found : nullptr;
@@ -3304,7 +3352,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 return Doc;
             };
 
-            auto ReusedFactory = [&](const FString& ScreenId) -> UGV2ScreenWidgetBase*
+            auto ReusedFactory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
             {
                 if (ScreenId == TEXT("core:screen.gbh11_reused"))
                 {
@@ -3637,13 +3685,13 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         TMap<FString, FGV2PreparedUiValue> V1;
         V1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("inventory")));
         V1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Inventory")) }));
-        V1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+        V1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
         ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V1)));
 
         TMap<FString, FGV2PreparedUiValue> V2;
         V2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("skills")));
         V2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Skills")) }));
-        V2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+        V2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
         ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V2)));
 
         TestTrue(TEXT("Valid tabs prepare succeeds"), Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(ValidTabs)), TabCap, nullptr, PrepErr));
@@ -3832,11 +3880,11 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TArray<FGV2TabItemEntry> SeedEntries;
             FGV2TabItemEntry SeedEntry;
             SeedEntry.Key = FName(TEXT("info"));
-            SeedEntry.ScreenId = TEXT("core:screen.test");
+            SeedEntry.ScreenId = TEXT("core:screen.test_embedded");
             SeedEntries.Add(SeedEntry);
             FGV2TabItemEntry FailureSeedEntry;
             FailureSeedEntry.Key = FName(TEXT("failure"));
-            FailureSeedEntry.ScreenId = TEXT("core:screen.test");
+            FailureSeedEntry.ScreenId = TEXT("core:screen.test_embedded");
             SeedEntries.Add(FailureSeedEntry);
             TMap<FName, UGV2ScreenWidgetBase*> SeedWidgets;
             SeedWidgets.Add(FName(TEXT("info")), ChildScreen);
@@ -3866,7 +3914,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TMap<FString, FGV2PreparedUiValue> TabMap;
             TabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("info")));
             TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Info")) }));
-            TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test"), TEXT("screen")));
+            TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             TabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FieldsArray)));
 
             // GBF-05: the first revision must publish BOTH tabs. Commit ends in
@@ -3875,7 +3923,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             // the document, but it evicts any tab this fixture seeded and did not
             // publish. A tab absent from revision 1 is a *new* tab in revision 2,
             // and a new tab is always instantiated from the Screen Registry, not
-            // from the seeded widget: core:screen.test resolves to WBP_Testscreen,
+            // from the seeded widget: core:screen.test_embedded resolves to WBP_Testscreen,
             // whose screen field host is 'greeting', so a day_block payload is
             // rightly rejected. Publishing both tabs keeps both widgets reused,
             // which is what this scenario is about.

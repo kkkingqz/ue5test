@@ -58,7 +58,12 @@ public:
         TArray<TObjectPtr<UGV2ScreenWidgetBase>> Modals; // In modal_stack order
     };
 
-    using FScreenFactory = TFunctionRef<UGV2ScreenWidgetBase*(const FString& ScreenId)>;
+    // PAH-02: Layer is the requested top-level Placement for ScreenId (every screen this
+    // factory instantiates is a top-level route/overlay/modal instance -- embedded/tab
+    // screens resolve through FGV2TabContainerTabsPropertyConsumer instead), so an
+    // implementation backed by UGV2ScreenRegistry::Resolve can reject a screen registered
+    // for a different layer instead of handing out its class regardless.
+    using FScreenFactory = TFunctionRef<UGV2ScreenWidgetBase*(const FString& ScreenId, FName Layer)>;
 
     // UPP-28: Prepares the complete reconciliation plan for every layer and screen
     // before touching any widget or mutating Game Shell. If any screen fails preparation,
