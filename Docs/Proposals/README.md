@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.6
-updated: 2026-08-27
+version: 4.7
+updated: 2026-09-06
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -42,6 +42,7 @@ Proposal не изменяет нормативную архитектуру с�
 | [LuaModuleOverrideProposal](LuaModuleOverrideProposal.md) | accepted for planning | Runtime, Modding, Headless | Замещение Lua-модуля пакетом с доступом к базе; заморозка таблиц экспорта |
 | [MutationWindowTransactionalityProposal](MutationWindowTransactionalityProposal.md) | accepted for planning | Runtime, State, Commands | Журнал записей в окне мутации и откат канонического состояния при ошибке обработчика |
 | [UiCompositionAndScalingProposal](UiCompositionAndScalingProposal.md) | accepted for planning | UI, Presentation, Engine | Композиция UI: идентичность повторяемых элементов, слои, оверлеи, модалки, вкладки, принадлежность темы слою |
+| [PresentationAuthorityConsolidationProposal](PresentationAuthorityConsolidationProposal.md) | accepted for planning | UI, Presentation, Content, Modding | Сведение четырёх источников контентного факта к одному снимку сессии; разрешение экрана и владение ассетами недостижимы в обход проверки; слои GameShell на общий механизм упорядоченной keyed-реконсиляции |
 | [CommonUIRuntimeIntegrationProposal](CommonUIRuntimeIntegrationProposal.md) | accepted for planning | UI, Presentation, Input | CommonUI для focus, input routing, activatable layers и Back без передачи gameplay authority |
 | [ScreenAuthoringWorkflowProposal](ScreenAuthoringWorkflowProposal.md) | accepted for planning | UI, Editor Tooling | UMG Designer как canonical authoring surface и минимальный validator/editor workflow |
 | [ImageResourcePackagedDeploymentProposal](ImageResourcePackagedDeploymentProposal.md) | accepted for planning | UI, Resources, Build | Проверка `NonUFS` staging и единого resource root в packaged build |

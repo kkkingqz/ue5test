@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.6
-updated: 2026-09-02
+version: 2.7
+updated: 2026-09-06
 ---
 
 # Architecture Decision Records
@@ -53,6 +53,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0039](0039-presentation-source-singleton.md) | rejected | Presentation Source Stays a Singleton: композиция источников не вводится; пересмотр — при втором реальном потребителе |
 | [0040](0040-universal-ui-property-pipeline.md) | accepted | Universal UI Property Pipeline: подготовленное дерево значений вместо schema-specific DTO, Prepare/Commit, `SchemaContract ⊆ WidgetCapabilities` с наблюдаемостью capability, namespace ownership, mod-only отказ, без обратной совместимости |
 | [0041](0041-ui-commit-rollback-model.md) | accepted | UI Commit Rollback Model: захват предыдущего состояния перед live-мутацией и откат в обратном порядке той же Prepare/Commit-машиной на всех границах reused host/screen/collection/Shell attach — `REM-02`/`GBH-09` |
+| [0042](0042-presentation-authority-and-publication.md) | accepted | Presentation Authority and Publication: один неизменяемый снимок контента сессии, отсутствие обнаружения после `Ready`, одна абстракция реконсиляции для повторяемых структур, одно зафиксированное логическое состояние с восстановимой физической проекцией, семантика решается до подготовленной транзакции |
 
 ## Template
 
