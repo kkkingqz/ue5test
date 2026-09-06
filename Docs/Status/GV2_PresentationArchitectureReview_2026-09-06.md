@@ -1,7 +1,7 @@
 ---
 title: GV2 Presentation Architecture Review 2026-09-06
 status: informative
-version: 1.0
+version: 1.1
 updated: 2026-09-06
 depends_on:
   - ImplementationStatus.md
@@ -14,7 +14,7 @@ decisions:
 # GV2 Presentation Architecture — Review
 
 > **Показывает:** внешнее ревью архитектуры презентации на commit `698c933cc625e01810b5f786b107ac8151e1ed84`, полученное 2026-09-06, вместе с результатами независимой проверки каждой находки по коду.
-> **Не является нормативным:** направление консолидации ведёт [PresentationAuthorityConsolidationProposal](../Proposals/PresentationAuthorityConsolidationProposal.md), принятые инварианты — [ADR-0042](../ADR/0042-presentation-authority-and-publication.md); действующие расхождения — [Implementation Status](ImplementationStatus.md).
+> **Не является нормативным:** подтверждённые находки ведёт план [PresentationAuthorityHardening](../Plans/PresentationAuthorityHardening/README.md); направление консолидации ведёт [PresentationAuthorityConsolidationProposal](../Proposals/PresentationAuthorityConsolidationProposal.md), принятые инварианты — [ADR-0042](../ADR/0042-presentation-authority-and-publication.md); действующие расхождения — [Implementation Status](ImplementationStatus.md).
 
 ## 1. Scope и метод
 

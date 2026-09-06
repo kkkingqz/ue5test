@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 7.0
-updated: 2026-09-04
+version: 3.4
+updated: 2026-09-06
 depends_on:
   - ../README.md
 ---
@@ -28,6 +28,8 @@ depends_on:
 - До удаления исходного каталога каждый path проверяется через `git cat-file -e <source_commit>:<path>`, representative файл — через `git show`. Summary и [archive index](Archive/README.md) публикуются вторым commit; zip и подкаталоги в `Archive/` запрещены.
 
 ## Активные планы
+
+- [Presentation Authority Hardening](PresentationAuthorityHardening/README.md) — пять находок ревью архитектуры презентации: наблюдаемый отказ отката, разрешение экрана только по размещению, один пиннингованный снимок контента, владение UE-корнями в данных пакета, слои как упорядоченная keyed-коллекция. PAH-01…09.
 
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
