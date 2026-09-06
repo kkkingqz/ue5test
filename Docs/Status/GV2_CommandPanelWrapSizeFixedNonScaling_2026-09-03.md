@@ -43,7 +43,7 @@ WrapSize = 1200
 
 ## Почему это не регрессия DCA-02
 
-Значение `WrapSize=1200` существовало на исходном `ButtonContainer` (`WrapBox`, до появления `UGV2ListViewWidgetBase`-обёртки) до начала работы над `DCA-02` — восстановлено побайтовой сверкой со старым `.uasset` через `unreal-mcp` (`git show HEAD:.../WBP_CommandPanel.uasset` → временная загрузка в `/Game/_TempInspect` → `ObjectTools.get_properties` → удалено после сверки). `DCA-02` по своему скоупу («на этом шаге меняется форма ассета, а не поведение», см. [Prerequisites.md](../Plans/DeclaredCompositeAdoption/Prerequisites.md)) обязан был сохранить существующее поведение геометрии без изменений, поэтому значение было перенесено как есть в отдельный `WBP_ListView_WrapButtons`, а не пересмотрено.
+Значение `WrapSize=1200` существовало на исходном `ButtonContainer` (`WrapBox`, до появления `UGV2ListViewWidgetBase`-обёртки) до начала работы над `DCA-02` — восстановлено побайтовой сверкой со старым `.uasset` через `unreal-mcp` (`git show HEAD:.../WBP_CommandPanel.uasset` → временная загрузка в `/Game/_TempInspect` → `ObjectTools.get_properties` → удалено после сверки). `DCA-02` по своему скоупу («на этом шаге меняется форма ассета, а не поведение», см. [Prerequisites.md](../Plans/Archive/DeclaredCompositeAdoption.md)) обязан был сохранить существующее поведение геометрии без изменений, поэтому значение было перенесено как есть в отдельный `WBP_ListView_WrapButtons`, а не пересмотрено.
 
 ## Происхождение значения
 
@@ -67,7 +67,7 @@ WrapSize = 1200
 
 ## Решение
 
-Пути исправления, перечисленные в версии 1.0 этого файла как возможные, приняты все три и разложены на задачи `M4` плана [DeclaredCompositeAdoption](../Plans/DeclaredCompositeAdoption/LayoutInvariant.md):
+Пути исправления, перечисленные в версии 1.0 этого файла как возможные, приняты все три и разложены на задачи `M4` плана [DeclaredCompositeAdoption](../Plans/Archive/DeclaredCompositeAdoption.md):
 
 | Задача | Что закрывает |
 |---|---|
@@ -78,4 +78,4 @@ WrapSize = 1200
 
 ## Статус
 
-Закрыт (2026-09-04). `DCA-13` (тик поддерева в harness, строгая geometry-проверка на всех шести разрешениях), `DCA-14` (отрицательная проверка `BAI-10` вызывает тот же `GV2FitsInBounds`, что и положительная) и `DCA-15` (`WBP_ListView_WrapButtons` переведён в динамический режим; `GV2RecoveryScreenWidget`/`GV2RichTextPopoverWidgetBase`/`GV2DropdownSelectWidgetBase` выводят свои размеры из фактического viewport через `UGV2UiTheme::EvaluateTextScale`; `GV2SeparatorWidgetBase`'s hairline записан явным исключением с причиной; двухполовинный гейт `GV2.Runtime.UIKit.LayoutParameterViewportDerivation` — `Source/GV2LayoutInvariantSourceTests.cpp` — сканирует `Source/GV2` и обходит дерево виджетов production-ассетов) закрыты. Строка `STATUS-009` удалена из [ImplementationStatus.md](ImplementationStatus.md) тем же change set — детали реализации записаны в [LayoutInvariant.md](../Plans/DeclaredCompositeAdoption/LayoutInvariant.md).
+Закрыт (2026-09-04). `DCA-13` (тик поддерева в harness, строгая geometry-проверка на всех шести разрешениях), `DCA-14` (отрицательная проверка `BAI-10` вызывает тот же `GV2FitsInBounds`, что и положительная) и `DCA-15` (`WBP_ListView_WrapButtons` переведён в динамический режим; `GV2RecoveryScreenWidget`/`GV2RichTextPopoverWidgetBase`/`GV2DropdownSelectWidgetBase` выводят свои размеры из фактического viewport через `UGV2UiTheme::EvaluateTextScale`; `GV2SeparatorWidgetBase`'s hairline записан явным исключением с причиной; двухполовинный гейт `GV2.Runtime.UIKit.LayoutParameterViewportDerivation` — `Source/GV2LayoutInvariantSourceTests.cpp` — сканирует `Source/GV2` и обходит дерево виджетов production-ассетов) закрыты. Строка `STATUS-009` удалена из [ImplementationStatus.md](ImplementationStatus.md) тем же change set — детали реализации записаны в [LayoutInvariant.md](../Plans/Archive/DeclaredCompositeAdoption.md).

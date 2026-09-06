@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.10
-updated: 2026-09-03
+version: 2.11
+updated: 2026-09-06
 depends_on:
   - ../README.md
 ---
@@ -19,6 +19,7 @@ depends_on:
 | [DataDrivenUiComposition](DataDrivenUiComposition.md) | 2026-09-01 | Блок из существующих элементов без C++: одно свойство идентичности внутри объемлющего хоста, объявляемый из Designer композит с плоской схемой, `screen_fields` через обычный envelope, цепочка `экран → вкладки → блок` из данных |
 | [GenericBoundaryHardening](GenericBoundaryHardening.md) | 2026-09-02 | Три границы generic-модели: предсказание структурного отказа Shell до мутации, объявление композита с параметрами вида и селектором ребёнка, одна общая subset-функция, откат Commit по ADR-0041, честная фиксация владения UI-схемами |
 | [GenericUiTransactionFollowUp](GenericUiTransactionFollowUp.md) | 2026-09-03 | Доведение транзакционной модели UI после follow-up review: отказ attach доходит до восстановления, `keyed_by` проецируется в capability, полнота полей — инвентарь членов вместо `sizeof`, обратная мутация обязательна и строится от прежней схемы, учётное состояние восстанавливается вместе с физическим, Blueprint-callback вне отменяемой транзакции, границы отката перечисляет сканер по исходнику |
+| [DeclaredCompositeAdoption](DeclaredCompositeAdoption.md) | 2026-09-06 | Композиты локации переведены на объявление, три композиционных C++-класса и специальный мостик планировщика удалены, три полностью новых композита собраны без C++; плюс перечислители там, где сплошная проверка нашла рукописные списки: отзывчивость раскладки (первый гейт, читающий `Content/`), аудит UI-компонентов, порядок слоёв и владелец схемы из `mods.lock.json5` |
 | [CanonicalGameplayState](CanonicalGameplayState.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |
 | [CommandHandlerRegistry](CommandHandlerRegistry.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |
 | [CommandValidators](CommandValidators.md) | 2026-08-19 | Авторский `validate()` для независимых policy поверх чужих команд, единое декодирование аргументов, охранники побочных эффектов и явная заменяемость обработчика |
