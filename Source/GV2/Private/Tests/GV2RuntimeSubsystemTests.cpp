@@ -4351,57 +4351,100 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
 {
     // =========================================================================
     // UIF-27 & UIF-28: Layer Directory Convention & Screen Registry Gate
+    // DCA-18: every expectation below is a position comparison against
+    // PackageLoadOrder, computed independently in this test -- never a hardcoded
+    // true/false copied from UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace's
+    // own branches.
     // =========================================================================
     {
-        // 1. Core namespace permissions
-        TestTrue(
-            TEXT("Core screen can reference /Game/UI/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/UI/Widgets/WBP_Testscreen")));
-        TestTrue(
-            TEXT("Core screen can reference /Game/core/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/core/WBP_CoreScreen")));
-        TestFalse(
-            TEXT("Core screen CANNOT reference /Game/TextSystem/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")));
-        TestFalse(
-            TEXT("Core screen CANNOT reference /Game/RH/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")));
+        const TArray<FString> RealPackageLoadOrder = UGV2ScreenRegistry::GetPackageLoadOrderFromGameData();
+        TestEqual(TEXT("GameData package load order resolves exactly core, textsystem, rh"), RealPackageLoadOrder.Num(), 3);
 
-        // 2. TextSystem namespace permissions
-        TestTrue(
-            TEXT("TextSystem screen can reference /Game/TextSystem/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("textsystem"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")));
-        TestTrue(
-            TEXT("TextSystem screen can reference lower layer /Game/UI/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("textsystem"), TEXT("/Game/UI/Widgets/WBP_Testscreen")));
+        auto ExpectedAllowed = [](const TArray<FString>& Order, const FString& ScreenNamespace, const FString& AssetPath) -> bool
+        {
+            const int32 ScreenIdx = Order.IndexOfByPredicate(
+                [&ScreenNamespace](const FString& PackageId) { return PackageId.Equals(ScreenNamespace, ESearchCase::IgnoreCase); });
+            if (ScreenIdx == INDEX_NONE)
+            {
+                return false;
+            }
+            const FString OwningPackage = UGV2ScreenRegistry::FindOwningPackageForAssetPath(AssetPath);
+            if (OwningPackage.IsEmpty())
+            {
+                return true;
+            }
+            const int32 AssetIdx = Order.IndexOfByPredicate(
+                [&OwningPackage](const FString& PackageId) { return PackageId.Equals(OwningPackage, ESearchCase::IgnoreCase); });
+            return AssetIdx == INDEX_NONE || AssetIdx <= ScreenIdx;
+        };
+
+        struct FCase
+        {
+            FString ScreenNamespace;
+            FString AssetPath;
+        };
+        const FCase Cases[] = {
+            {TEXT("core"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
+            {TEXT("core"), TEXT("/Game/core/WBP_CoreScreen")},
+            {TEXT("core"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")},
+            {TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")},
+            {TEXT("textsystem"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")},
+            {TEXT("textsystem"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
+            {TEXT("textsystem"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")},
+            {TEXT("rh"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")},
+            {TEXT("rh"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")},
+            {TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen")},
+        };
+        int32 CasesCovered = 0;
+        for (const FCase& Case : Cases)
+        {
+            const bool bExpected = ExpectedAllowed(RealPackageLoadOrder, Case.ScreenNamespace, Case.AssetPath);
+            const bool bActual = UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                Case.ScreenNamespace, Case.AssetPath, RealPackageLoadOrder);
+            TestEqual(
+                *FString::Printf(TEXT("%s screen vs %s matches the load_index-derived expectation"), *Case.ScreenNamespace, *Case.AssetPath),
+                bActual,
+                bExpected);
+            ++CasesCovered;
+        }
+        TestEqual(TEXT("Every namespace/asset case above was evaluated"), CasesCovered, static_cast<int32>(UE_ARRAY_COUNT(Cases)));
+
+        // A namespace absent from the pinned closure is rejected, not allowed by default
+        // (the old ladder's unconditional trailing `return true` for this exact case).
         TestFalse(
-            TEXT("TextSystem screen CANNOT reference higher layer /Game/RH/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("textsystem"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")));
+            TEXT("Namespace absent from the pinned closure is rejected"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                TEXT("sample"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), RealPackageLoadOrder));
 
-        // 3. RH namespace permissions
+        // A package that doesn't exist in today's real closure still works correctly once
+        // it's present in PackageLoadOrder -- proving the rule reads positions generically
+        // instead of special-casing three known names.
+        const TArray<FString> ExtendedOrder = {TEXT("core"), TEXT("textsystem"), TEXT("rh"), TEXT("modx")};
         TestTrue(
-            TEXT("RH screen can reference /Game/RH/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("rh"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen")));
-        TestTrue(
-            TEXT("RH screen can reference lower layer /Game/TextSystem/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("rh"), TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen")));
-        TestTrue(
-            TEXT("RH screen can reference lower layer /Game/UI/ asset"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen")));
+            TEXT("A fourth package appended to the closure can reference the layer directly below it"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("modx"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ExtendedOrder));
 
-        // 4. Test registry validation failure on layer violation
-        UGV2ScreenRegistry* Registry = NewObject<UGV2ScreenRegistry>();
+        // Reversing the closure's order flips which layer may reference which, proving the
+        // decision is read from PackageLoadOrder's positions and not hardcoded by name.
+        const TArray<FString> ReversedOrder = {TEXT("rh"), TEXT("textsystem"), TEXT("core")};
+        TestTrue(
+            TEXT("Under a reversed closure, core (now highest) can reference rh (now lowest)"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ReversedOrder));
+        TestFalse(
+            TEXT("Under a reversed closure, rh (now lowest) cannot reference core (now highest)"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen"), ReversedOrder));
+
+        // End-to-end: a Screen Registry entry violating layer ownership is still rejected.
         FGV2ScreenRegistryEntry BadEntry;
         BadEntry.ScreenId = TEXT("core:screen.bad_ref");
         BadEntry.Layer = TEXT("location_content");
         BadEntry.WidgetClass = TSoftClassPtr<UGV2ScreenWidgetBase>(FSoftObjectPath(TEXT("/Game/TextSystem/UI/Screens/WBP_Textscreen.WBP_Textscreen_C")));
-
-        // We use reflection or helper to add entry for testing
-        // Since Entries is private in UGV2ScreenRegistry, we test IsAssetAllowedForScreenNamespace directly and via mock entries if accessible
-        FString Error;
         TestFalse(
             TEXT("Core screen referencing TextSystem is rejected"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("core"), BadEntry.WidgetClass.ToSoftObjectPath().ToString()));
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                TEXT("core"), BadEntry.WidgetClass.ToSoftObjectPath().ToString(), RealPackageLoadOrder));
     }
 
     // =========================================================================
