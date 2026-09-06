@@ -1,14 +1,9 @@
 #include "UI/GV2ScreenRegistry.h"
 
+#include "Application/GV2PackageClosure.h"
 #include "Bridge/GV2StableIdUE.h"
-#include "Misc/Paths.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ScreenWidgetBase.h"
-#include "GV2ContentHostSupport/PackageDiscovery.h"
-
-#include <filesystem>
-#include <optional>
-#include <vector>
 
 const FName UGV2ScreenRegistry::LayerEmbedded = TEXT("embedded");
 
@@ -50,27 +45,10 @@ FString UGV2ScreenRegistry::FindOwningPackageForAssetPath(const FString& AssetPa
 
 TArray<FString> UGV2ScreenRegistry::GetPackageLoadOrderFromGameData()
 {
-    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
-    const std::string GameDataDirUtf8 = TCHAR_TO_UTF8(*GameDataDir);
-    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    const std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
-        GV2ContentHostSupport::DiscoverPackagesFromContainer(
-            std::filesystem::path(GameDataDirUtf8),
-            Diagnostics);
-    if (!Descriptors.has_value())
-    {
-        return {};
-    }
-
     TArray<FString> PackageLoadOrder;
-    PackageLoadOrder.SetNum(Descriptors->size());
-    for (const GV2ContentCore::FPackageDescriptor& Descriptor : *Descriptors)
+    for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
     {
-        const int32 LoadIndex = static_cast<int32>(Descriptor.GetLoadIndex());
-        if (PackageLoadOrder.IsValidIndex(LoadIndex))
-        {
-            PackageLoadOrder[LoadIndex] = UTF8_TO_TCHAR(Descriptor.GetPackageId().c_str());
-        }
+        PackageLoadOrder.Add(Entry.PackageId);
     }
     return PackageLoadOrder;
 }

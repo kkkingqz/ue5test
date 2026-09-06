@@ -224,7 +224,7 @@ bool FGV2DeclaredCompositeFlatSchemaTest::RunTest(const FString& Parameters)
 
     // Source 1 is the authored content schema. It intentionally names the composite
     // properties themselves, never the internal capabilities of either child.
-    FGV2UiSchemaCache SchemaCache({ FPaths::ProjectDir() / TEXT("GameData/textsystem") });
+    FGV2UiSchemaCache SchemaCache({ FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")} });
     FString SchemaError;
     const FCompiledUiFieldSpecPtr Schema = SchemaCache.GetCompiledSchema(
         "textsystem:schema.ui_field.declared_composite_fixture.v1",

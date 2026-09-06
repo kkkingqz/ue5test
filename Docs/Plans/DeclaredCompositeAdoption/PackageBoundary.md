@@ -1,7 +1,7 @@
 ---
 title: Package Boundary Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-06
 depends_on:
   - README.md
@@ -55,7 +55,7 @@ DCA-18, DCA-19 и DCA-20 независимы: они лежат в разных
 
     Верификация: headless `Automation RunTests GV2;Quit` — 108/108 passed, 0 ошибок; portable `ctest` — 76/76. `STATUS-010` удалён из `ImplementationStatus.md` целиком (версия 2.12 → 2.13) — условие закрытия выполнено дословно.
 
-- [ ] **DCA-19 — Корни схем берутся из пиннингованного замыкания**
+- [x] **DCA-19 — Корни схем берутся из пиннингованного замыкания**
   - `GV2ScreenFieldMaterializer.cpp:21-25` сканирует `GameData/core`, `textsystem`, `rh`, `sample`. `sample` отсутствует в `mods.lock.json5`, то есть сканируется пакет, которого в замыкании сессии нет. Это тот же фиксированный список, что и в `FGV2UiSchemaCache` (`STATUS-008`), но в другом файле — и `STATUS-008` его не называл.
   - Инвариант: сессия видит ровно те пакеты, которые приняло её замыкание. Список корней, живущий отдельно от замыкания, делает состав контента зависящим от того, что физически лежит в каталогах, а не от того, что принято.
   - Не считается закрытием: удаление одного `sample` из списка — список останется списком; вынесение того же списка в общую константу, чтобы «не дублировался» — это устраняет расхождение двух копий, но не их отрыв от замыкания.
@@ -66,6 +66,15 @@ DCA-18, DCA-19 и DCA-20 независимы: они лежат в разных
     - схема, чей namespace не совпадает с пакетом-источником, отклоняется, а не регистрируется по собственному полю `id`;
     - соответствующая часть `STATUS-008` закрыта или сужена до того, что действительно осталось.
   - Evidence: `Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp`, `Source/GV2/Private/UI/GV2UiSchemaCache.cpp`, `GameData/mods.lock.json5`.
+  - **Реализация (2026-09-06):** обе копии списка (`GV2ScreenFieldMaterializer.cpp`'s `DiscoverDefaultSchemaPackageRoots`, четыре зашитых пути включая несуществующий в замыкании `sample`) заменены на новый общий `GV2PackageClosure::DiscoverFromGameData()` (`Source/GV2/Private/Application/GV2PackageClosure.h/.cpp`) — единственное место, читающее `GameData/mods.lock.json5` через `GV2ContentHostSupport::DiscoverPackagesFromContainer` и возвращающее пары `{package_id, каталог}`, упорядоченные по `load_index`. Тот же вызов уже существовал дважды по факту (`UGV2RuntimeSubsystem::ResolveRepositoryPackageRoots` — со своей веткой для тестового фикстура `sample`, не общей; и `UGV2ScreenRegistry::GetPackageLoadOrderFromGameData` из `DCA-18`) — `GV2ScreenRegistry.cpp` переведён на общий хелпер тем же изменением, вместо третьей отдельной копии дискавери-вызова.
+
+    `FGV2UiSchemaCache::PackageRoots` сменил тип с `TArray<FString>` на `TArray<FGV2SchemaPackageRoot>` (`{PackageId, RootDirectory}`) — конструктор и оба тестовых прямых вызова (`GV2UiPropertyHostTests.cpp:342`, `GV2DeclaredCompositeTests.cpp:227`) обновлены. `EnsureDiscovered()` теперь парсит собственное поле `id` каждой найденной схемы через `GV2ContentCore::FStableId::Parse` и сравнивает его namespace с `Root.PackageId`: несовпадение — тот же путь, что для битого JSON5 (схема просто не регистрируется, а не выбрасывает ошибку), поэтому подложенная в чужой каталог схема с namespace `core:` внутри `GameData/rh` больше не проходит по одному только `id`. `RegisterUiSchemaDocument`'s `PackageId` аргумент заодно исправлен с полного пути (`TCHAR_TO_UTF8(*Root)`, использовалось только для диагностик, но было неверного типа) на чистый `package_id`.
+
+    Новый тест `GV2.Runtime.ContentAuthoring.SchemaRootsFromClosure` (`GV2UiPropertyHostTests.cpp`) проверяет оба Done-пункта напрямую: (1) `GV2PackageClosure::DiscoverFromGameData()` возвращает ровно три пакета `mods.lock.json5` и не включает физически существующий, но не пиннингованный `GameData/sample`; (2) реальная схема `textsystem:schema.ui_field.location_commands.v1`, поданная в `FGV2UiSchemaCache` с намеренно неверным тегом `core`, не регистрируется (`GetCompiledSchema` возвращает `nullptr`), а с верным тегом `textsystem` резолвится как раньше — без изменения содержимого `GameData/`, только тегом корня.
+
+    `STATUS-008` сужен до части Decision 7 (`DCA-20`); часть про фиксированные списки и Decision 6 закрыта текстом в самой строке.
+
+    Верификация: headless `Automation RunTests GV2;Quit` — 109/109 passed (было 108, +1 новый тест), 0 ошибок; portable `ctest` — 76/76.
 
 - [ ] **DCA-20 — Политика отказа по владельцу либо действует, либо отсутствует**
   - `IsModNamespace` (`GV2UiCapability.cpp:12`) определяет владельца схемы закрытой тройкой `core`/`textsystem`/`rh` — дословной копией `mods.lock.json5`. Результат идёт в `Diag.bFatal = !bIsMod`, и **ни один production-путь этот флаг не читает**: все три вызывающих (`GV2UiMutationPlan.cpp:147`, `GV2PropertyConsumers.cpp:1291`, `GV2UiPropertyHost.h:48`) ветвятся по возвращаемому значению, а `bSuccess = false` выставляется для мода и первопартийной схемы одинаково. На `bFatal` ссылаются только два утверждения в `GV2UiPropertyHostTests.cpp:93,184`.
@@ -95,7 +104,7 @@ DCA-18, DCA-19 и DCA-20 независимы: они лежат в разных
 ## Проверка milestone
 
 - [x] Правило слоёв выводится из порядка пакетов замыкания и отклоняет неизвестный namespace. (DCA-18)
-- [ ] Ни один список корней схем не живёт отдельно от замыкания.
+- [x] Ни один список корней схем не живёт отдельно от замыкания. (DCA-19)
 - [ ] Политика отказа по владельцу наблюдаема в поведении либо отсутствует вместе со своей поверхностью.
 - [ ] Имя пакета выше `core` не встречается в production-коде, и это утверждает гейт.
 - [ ] `STATUS-008` и `STATUS-010` закрыты либо сужены до того, что действительно осталось.

@@ -1,5 +1,6 @@
 #include "Application/GV2ScreenFieldMaterializer.h"
 
+#include "Application/GV2PackageClosure.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/GV2StableId.h"
@@ -13,16 +14,13 @@
 
 namespace
 {
-TArray<FString> DiscoverDefaultSchemaPackageRoots()
+TArray<FGV2SchemaPackageRoot> DiscoverDefaultSchemaPackageRoots()
 {
-    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
-
-    TArray<FString> Roots = {
-        FPaths::Combine(GameDataDir, TEXT("core")),
-        FPaths::Combine(GameDataDir, TEXT("textsystem")),
-        FPaths::Combine(GameDataDir, TEXT("rh")),
-        FPaths::Combine(GameDataDir, TEXT("sample")),
-    };
+    TArray<FGV2SchemaPackageRoot> Roots;
+    for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+    {
+        Roots.Add(FGV2SchemaPackageRoot{Entry.PackageId, Entry.RootDirectory});
+    }
     return Roots;
 }
 

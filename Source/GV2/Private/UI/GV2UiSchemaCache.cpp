@@ -2,13 +2,14 @@
 
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
+#include "GV2ContentCore/StableId.h"
 
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <sstream>
 
-FGV2UiSchemaCache::FGV2UiSchemaCache(TArray<FString> InPackageRoots)
+FGV2UiSchemaCache::FGV2UiSchemaCache(TArray<FGV2SchemaPackageRoot> InPackageRoots)
     : PackageRoots(MoveTemp(InPackageRoots))
 {
 }
@@ -21,9 +22,9 @@ void FGV2UiSchemaCache::EnsureDiscovered() const
     }
     bDiscovered = true;
 
-    for (const FString& Root : PackageRoots)
+    for (const FGV2SchemaPackageRoot& Root : PackageRoots)
     {
-        const std::filesystem::path RootPath(TCHAR_TO_UTF8(*Root));
+        const std::filesystem::path RootPath(TCHAR_TO_UTF8(*Root.RootDirectory));
         std::error_code Ec;
         if (!std::filesystem::is_directory(RootPath, Ec) || Ec)
         {
@@ -78,8 +79,22 @@ void FGV2UiSchemaCache::EnsureDiscovered() const
                 continue;
             }
 
+            // DCA-19: a schema's own `id` namespace must match the package it was
+            // physically discovered under -- otherwise a file placed in one package's
+            // directory could silently register itself into another package's
+            // namespace (accepted before this check, purely because nothing compared
+            // the two). Treated exactly like a malformed schema: not registered, so
+            // lookups against its declared id report "unknown schema".
+            GV2ContentCore::FStableIdView IdView;
+            const std::string RootPackageIdUtf8 = TCHAR_TO_UTF8(*Root.PackageId);
+            if (!GV2ContentCore::FStableId::Parse(IdField->AsString(), IdView)
+                || IdView.Namespace != RootPackageIdUtf8)
+            {
+                continue;
+            }
+
             auto Document = std::make_shared<const GV2ContentCore::FParsedDocument>(MoveTemp(*Parsed));
-            Resolver.RegisterUiSchemaDocument(IdField->AsString(), Document, TCHAR_TO_UTF8(*Root), RelativeSource);
+            Resolver.RegisterUiSchemaDocument(IdField->AsString(), Document, TCHAR_TO_UTF8(*Root.PackageId), RelativeSource);
         }
     }
 }

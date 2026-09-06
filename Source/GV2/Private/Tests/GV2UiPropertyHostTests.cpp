@@ -1,5 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Application/GV2PackageClosure.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2UiMutationPlan.h"
@@ -339,7 +340,7 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             TestNotNull(TEXT("TestWorld created"), TestWorld);
 
             // Source 1: Schema loaded directly from repository package
-            FGV2UiSchemaCache RepoSchemaCache({ FPaths::ProjectDir() / TEXT("GameData/textsystem") });
+            FGV2UiSchemaCache RepoSchemaCache({ FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")} });
             FString SchemaErr;
             GV2ContentCore::FCompiledUiFieldSpecPtr RepoSchema = RepoSchemaCache.GetCompiledSchema(
                 "textsystem:schema.ui_field.location_commands.v1",
@@ -491,6 +492,49 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             TestWorld->DestroyWorld(false);
         }
     }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SchemaRootsFromClosureTest,
+    "GV2.Runtime.ContentAuthoring.SchemaRootsFromClosure",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SchemaRootsFromClosureTest::RunTest(const FString& Parameters)
+{
+    // DCA-19: schema roots come from the pinned closure (GameData/mods.lock.json5),
+    // not a hand-written list -- a package physically present on disk but absent
+    // from the closure (GameData/sample) must never be scanned for schemas.
+    const TArray<GV2PackageClosure::FEntry> Closure = GV2PackageClosure::DiscoverFromGameData();
+    TestEqual(TEXT("Pinned closure resolves exactly the three mods.lock.json5 packages"), Closure.Num(), 3);
+    bool bClosureIncludesSample = false;
+    for (const GV2PackageClosure::FEntry& Entry : Closure)
+    {
+        bClosureIncludesSample |= Entry.PackageId.Equals(TEXT("sample"), ESearchCase::IgnoreCase);
+    }
+    TestFalse(
+        TEXT("GameData/sample is physically present but absent from mods.lock.json5, so it's not in the closure"),
+        bClosureIncludesSample);
+
+    // A schema whose declared `id` namespace doesn't match the package root it was
+    // discovered under is rejected -- proven with real content (textsystem's own
+    // location_commands schema) deliberately tagged as belonging to "core".
+    FGV2UiSchemaCache MismatchedCache({
+        FGV2SchemaPackageRoot{TEXT("core"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
+    });
+    FString MismatchError;
+    TestNull(
+        TEXT("A schema whose id namespace doesn't match its tagged package root is not registered"),
+        MismatchedCache.GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MismatchError).get());
+
+    FGV2UiSchemaCache MatchedCache({
+        FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
+    });
+    FString MatchedError;
+    TestNotNull(
+        TEXT("The same schema resolves normally when its package root is correctly tagged"),
+        MatchedCache.GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MatchedError).get());
 
     return true;
 }
