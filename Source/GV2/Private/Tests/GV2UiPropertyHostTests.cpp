@@ -91,7 +91,6 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("Code is unknown_schema_property"),
                 Diagnostics[0].Code, TEXT("core:diagnostic.ui_capability.unknown_schema_property"));
             TestEqual(TEXT("Property path is unknown_prop"), Diagnostics[0].PropertyPath, TEXT("unknown_prop"));
-            TestTrue(TEXT("Core schema error is fatal"), Diagnostics[0].bFatal);
         }
     }
 
@@ -165,24 +164,6 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
                 Schema, ButtonCaps, TEXT("core:schema.ui_field.pb.v1"), TEXT(""), Diagnostics);
 
             TestTrue(TEXT("Narrower numeric range passes"), bCompatible);
-        }
-    }
-
-    // 7. Mod schema failure policy: bFatal is false (rejects mod, does not block core session)
-    {
-        FCompiledUiFieldSpec Schema;
-        Schema.Kind = EUiFieldKind::Object;
-        Schema.Fields.push_back({ "bad_prop", false, MakePropertyHostScalarSpec(EScalarFieldKind::String) });
-
-        TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
-        const bool bCompatible = CheckUiSchemaCapabilityCompatibility(
-            Schema, ButtonCaps, TEXT("mymod:schema.ui_field.custom.v1"), TEXT(""), Diagnostics);
-
-        TestTrue(TEXT("Mod schema incompatible fails compatibility"), !bCompatible);
-        TestEqual(TEXT("One diagnostic for mod error"), Diagnostics.Num(), 1);
-        if (Diagnostics.Num() > 0)
-        {
-            TestTrue(TEXT("Mod schema diagnostic is NOT fatal to core session"), !Diagnostics[0].bFatal);
         }
     }
 

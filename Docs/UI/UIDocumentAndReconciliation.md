@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.19
-updated: 2026-09-03
+version: 1.20
+updated: 2026-09-06
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -132,7 +132,7 @@ Lua не передаёт children, Widget Blueprint class или физичес
 - **Идентичность array capability**: `array.keyed_by` обязан проецироваться в требуемый `KeyPropertyName` schema capability, а не только в boolean-признак keyed-identity. До `Ready` это имя сравнивается с `KeyPropertyName` widget capability тем же `SchemaContract ⊆ WidgetCapabilities` preflight; различие отклоняется `core:diagnostic.ui_capability.key_property_mismatch` (`KeyPropertyMismatch`). Совпадение одного default-имени без проекции схемы не является доказательством совместимости.
 - **Замкнутость на всех уровнях (Closed Schemas)**: любой неизвестный ключ на любом уровне вложенности значения поля или схемы отклоняется типизированной ошибкой валидации (`core:diagnostic.ui_schema.value.unknown_field`).
 - **Владение namespace**: пакет объявляет схемы исключительно своего namespace (`core:`, `textsystem:`, `rh:`, `<mod>:`). Попытка объявить схему чужого namespace отклоняется на стадии сборки репозитория.
-- **Политика отказа для мода**: моды собирают схемы исключительно из стандартных kinds в данных без написания C++. Несовместимая или ошибочная схема мода отбраковывает мод, а не приводит к сбою сессии. **Текущая реализация ([`STATUS-008`](../Status/ImplementationStatus.md)):** это целевой контракт `ADR-0040` Decision 6/7, ещё не реализованный для `ui_field`/`ui_value` — `FGV2UiSchemaCache` резолвит их статичным сканированием фиксированных файловых корней, независимо от pinned `GameDataRepository`/package closure и accept/reject решения по модам. Разрыв не наблюдается, пока ни один текущий пакет (`core`/`textsystem`/`rh`) не является модом; открывается, когда мод впервые поставит `ui_field`/`ui_value` схему.
+- **Отказ по совместимости не различает владельца схемы**: несовместимая `ui_field`/`ui_value` схема — любого пакета, включая гипотетический мод, — отклоняет `SchemaContract ⊆ WidgetCapabilities` preflight тем же путём, что и любая другая: сессия не наблюдает разницы между несовместимой схемой `core`/`textsystem`/`rh` и несовместимой схемой мода. `ADR-0040` Decision 7 (отдельная политика отказа для мода — отбраковать мод, продолжить сессию без него) отозвана `DCA-20` (2026-09-06): консьюмера, который проверял бы такое поведение, в проекте нет, а сама сессия не умеет продолжаться без части пакетов ни для одного другого типа контента. Моды по-прежнему собирают схемы исключительно из стандартных kinds в данных, без написания C++ (владение namespace выше).
 
 ### Композиционные циклы вложенных экранов (DUC-11)
 

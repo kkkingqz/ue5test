@@ -18,12 +18,11 @@ struct GV2_API FGV2UiSchemaCompatibilityDiagnostic
     FString PropertyPath;
     FString Message;
     FString SchemaId;
-    bool bFatal = true;
 
     FString ToString() const
     {
-        return FString::Printf(TEXT("[%s] %s at '%s' (schema: %s, fatal: %s)"),
-            *Code, *Message, *PropertyPath, *SchemaId, bFatal ? TEXT("true") : TEXT("false"));
+        return FString::Printf(TEXT("[%s] %s at '%s' (schema: %s)"),
+            *Code, *Message, *PropertyPath, *SchemaId);
     }
 };
 

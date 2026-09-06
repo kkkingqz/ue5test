@@ -1,17 +1,6 @@
 #include "UI/GV2UiCapability.h"
 #include "Blueprint/UserWidget.h"
 
-static bool IsModNamespace(const FString& InSchemaId)
-{
-    int32 ColonIdx = INDEX_NONE;
-    if (!InSchemaId.FindChar(TEXT(':'), ColonIdx) || ColonIdx <= 0)
-    {
-        return false;
-    }
-    const FString Ns = InSchemaId.Left(ColonIdx);
-    return Ns != TEXT("core") && Ns != TEXT("textsystem") && Ns != TEXT("rh");
-}
-
 // GV2ContentCore's compiled UI schema has one Scalar kind wrapping a nested
 // EScalarFieldKind (bool/integer/number/string), not four separate top-level
 // kinds, so the sub-kind must be read off Spec.Scalar to map correctly.
@@ -399,7 +388,6 @@ bool CheckUiSchemaCapabilityCompatibility(
     const FString& PropertyPathPrefix,
     TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics)
 {
-    const bool bIsMod = IsModNamespace(SchemaId);
     bool bSuccess = true;
 
     if (Schema.Kind == GV2ContentCore::EUiFieldKind::Object || Schema.Kind == GV2ContentCore::EUiFieldKind::ScreenFields)
@@ -419,7 +407,6 @@ bool CheckUiSchemaCapabilityCompatibility(
                 Diag.Code = TEXT("core:diagnostic.ui_capability.unknown_schema_property");
                 Diag.PropertyPath = ChildPath;
                 Diag.SchemaId = SchemaId;
-                Diag.bFatal = !bIsMod;
                 Diag.Message = FString::Printf(TEXT("Schema property '%s' is not supported by widget capabilities"), *FieldName);
                 OutDiagnostics.Add(MoveTemp(Diag));
                 bSuccess = false;
@@ -445,7 +432,6 @@ bool CheckUiSchemaCapabilityCompatibility(
                 FGV2UiSchemaCompatibilityDiagnostic Diag;
                 Diag.PropertyPath = ChildPath;
                 Diag.SchemaId = SchemaId;
-                Diag.bFatal = !bIsMod;
                 switch (SubsetMismatch)
                 {
                 case EGV2UiCapabilitySubsetMismatch::TargetKindMismatch:
@@ -517,8 +503,7 @@ bool CheckUiSchemaCapabilityCompatibility(
                         Diag.Code = TEXT("core:diagnostic.ui_capability.kind_mismatch");
                         Diag.PropertyPath = FString::Printf(TEXT("%s[]"), *ChildPath);
                         Diag.SchemaId = SchemaId;
-                        Diag.bFatal = !bIsMod;
-                        Diag.Message = FString::Printf(
+                                Diag.Message = FString::Printf(
                             TEXT("Collection '%s' item kind mismatch: schema expects non-object, capability supports Object"),
                             *FieldName);
                         OutDiagnostics.Add(MoveTemp(Diag));
@@ -543,8 +528,7 @@ bool CheckUiSchemaCapabilityCompatibility(
                         Diag.Code = TEXT("core:diagnostic.ui_capability.kind_mismatch");
                         Diag.PropertyPath = FString::Printf(TEXT("%s[]"), *ChildPath);
                         Diag.SchemaId = SchemaId;
-                        Diag.bFatal = !bIsMod;
-                        Diag.Message = FString::Printf(
+                                Diag.Message = FString::Printf(
                             TEXT("Collection '%s' item kind mismatch"),
                             *FieldName);
                         OutDiagnostics.Add(MoveTemp(Diag));
