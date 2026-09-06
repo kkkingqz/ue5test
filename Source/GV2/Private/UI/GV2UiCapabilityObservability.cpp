@@ -15,6 +15,7 @@
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2UiMutationPlan.h"
 #include "Blueprint/UserWidget.h"
@@ -35,13 +36,24 @@ using namespace GV2ContentCore;
 // non-tile art, a fixed_aspect block rejects mismatched ratios. The default probe pair is
 // therefore not universally applicable, and a rejected probe must not be read as "the
 // capability is unwired". These candidates are tried until two of them are accepted.
-const TCHAR* const GResourceProbeCandidates[] = {
-    TEXT("textsystem:resource.ui.missing_icon"),
-    TEXT("textsystem:resource.ui.missing_portrait"),
-    TEXT("textsystem:resource.ui.missing_background"),
-    TEXT("textsystem:resource.ui.missing_character"),
-    TEXT("core:resource.ui.old_paper_tile_256"),
-};
+//
+// DCA-21: this is core-level code (module GV2), so it must not name a higher package's
+// content (ADR-0035 §5) -- candidates come from whatever the loaded UGV2ImageResourceCatalog
+// actually contains, not a hardcoded list of specific package_id-prefixed resource ids. A
+// session with more or fewer image resources than today's core+textsystem set changes what
+// this returns without anyone editing this file.
+TArray<FString> GetResourceProbeCandidates()
+{
+    TArray<FString> Candidates;
+    if (const UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog())
+    {
+        for (const FGV2ImageResourceDefinition& Entry : Catalog->GetEntries())
+        {
+            Candidates.Add(Entry.ResourceId);
+        }
+    }
+    return Candidates;
+}
 
 TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair(const FGV2UiPropertyCapability& Cap)
 {
@@ -95,9 +107,13 @@ TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair
     case EGV2PreparedUiValueKind::StableId:
         if (Cap.TargetKind == TEXT("resource"))
         {
-            return TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>(
-                FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_icon"), TEXT("resource")),
-                FGV2PreparedUiValue::MakeStableId(TEXT("textsystem:resource.ui.missing_portrait"), TEXT("resource")));
+            const TArray<FString> Candidates = GetResourceProbeCandidates();
+            if (Candidates.Num() >= 2)
+            {
+                return TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>(
+                    FGV2PreparedUiValue::MakeStableId(Candidates[0], TEXT("resource")),
+                    FGV2PreparedUiValue::MakeStableId(Candidates[1], TEXT("resource")));
+            }
         }
         return TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>>();
     case EGV2PreparedUiValueKind::Null:
@@ -458,9 +474,10 @@ bool RunUiCapabilityObservabilityHarness(
             && Cap.SupportedKind == EGV2PreparedUiValueKind::StableId
             && Cap.TargetKind == TEXT("resource"))
         {
+            const TArray<FString> ProbeCandidates = GetResourceProbeCandidates();
             TArray<FString> Accepted;
             TArray<FString> AcceptedStates;
-            for (const TCHAR* Candidate : GResourceProbeCandidates)
+            for (const FString& Candidate : ProbeCandidates)
             {
                 FString State, Detail;
                 if (PrepareAndCommitSingleProperty(
@@ -488,7 +505,7 @@ bool RunUiCapabilityObservabilityHarness(
                 }
                 FailureDetail += FString::Printf(
                     TEXT(" | retry over %d candidates accepted %d distinct states; target=%s %s"),
-                    static_cast<int32>(UE_ARRAY_COUNT(GResourceProbeCandidates)),
+                    ProbeCandidates.Num(),
                     AcceptedStates.Num(), *ProbeTarget->GetClass()->GetName(), *PolicyText);
             }
             if (AcceptedStates.Num() >= 2)
