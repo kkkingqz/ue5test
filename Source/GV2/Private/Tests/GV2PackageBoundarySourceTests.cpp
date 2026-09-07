@@ -31,11 +31,6 @@ const TArray<FGV2PackageBoundaryException>& GetPackageBoundaryExceptions()
 {
     static const TArray<FGV2PackageBoundaryException> Exceptions = {
         {
-            TEXT("GV2ScreenRegistry.cpp"),
-            TEXT("FindOwningPackageForAssetPath's content-root-to-package naming convention "
-                 "cannot be derived from mods.lock.json5, which has no notion of /Game/ paths (DCA-18).")
-        },
-        {
             TEXT("GV2RuntimeSubsystem.cpp"),
             TEXT("Test-only fixture branch, compiled only under WITH_DEV_AUTOMATION_TESTS, that "
                  "opts a test session into core+textsystem+sample instead of the default "

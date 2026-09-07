@@ -1804,6 +1804,12 @@ bool FGV2ScreenAssetRootOwnershipAudit::RunTest(const FString& Parameters)
     // no existing UI Widget Blueprint would be newly rejected -- the audited set comes from
     // the Asset Registry (every WidgetBlueprint under the three known UI content roots),
     // not a hand-typed list in this test, so a future .uasset cannot silently evade it.
+    TArray<FGV2ContentRootOwnership> Ownership;
+    FString OwnershipError;
+    TestTrue(
+        *FString::Printf(TEXT("PAH-05: GameData content root ownership resolves [Error: %s]"), *OwnershipError),
+        UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(Ownership, OwnershipError));
+
     FAssetRegistryModule& AssetRegistryModule =
         FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
     FARFilter UiAssetFilter;
@@ -1823,7 +1829,7 @@ bool FGV2ScreenAssetRootOwnershipAudit::RunTest(const FString& Parameters)
         }
         ++WidgetBlueprintsAudited;
         const FString AssetPath = Asset.PackageName.ToString();
-        const FString OwningPackage = UGV2ScreenRegistry::FindOwningPackageForAssetPath(AssetPath);
+        const FString OwningPackage = UGV2ScreenRegistry::FindOwningPackageForAssetPath(AssetPath, Ownership);
         TestFalse(
             *FString::Printf(TEXT("PAH-03: '%s' under a known UI content root has a package owner"), *AssetPath),
             OwningPackage.IsEmpty());
@@ -4667,7 +4673,17 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         const TArray<FString> RealPackageLoadOrder = UGV2ScreenRegistry::GetPackageLoadOrderFromGameData();
         TestEqual(TEXT("GameData package load order resolves exactly core, textsystem, rh"), RealPackageLoadOrder.Num(), 3);
 
-        auto ExpectedAllowed = [](const TArray<FString>& Order, const FString& ScreenNamespace, const FString& AssetPath) -> bool
+        // PAH-05: content root ownership now comes from each package's own
+        // GameData/<id>/package.json5 "ue_content_roots" -- core declares two
+        // (/Game/core, /Game/UI), textsystem and rh one each.
+        TArray<FGV2ContentRootOwnership> RealOwnership;
+        FString OwnershipError;
+        TestTrue(
+            *FString::Printf(TEXT("GameData content root ownership resolves [Error: %s]"), *OwnershipError),
+            UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(RealOwnership, OwnershipError));
+        TestEqual(TEXT("GameData declares exactly four UE content roots across three packages"), RealOwnership.Num(), 4);
+
+        auto ExpectedAllowed = [](const TArray<FString>& Order, const TArray<FGV2ContentRootOwnership>& Ownership, const FString& ScreenNamespace, const FString& AssetPath) -> bool
         {
             const int32 ScreenIdx = Order.IndexOfByPredicate(
                 [&ScreenNamespace](const FString& PackageId) { return PackageId.Equals(ScreenNamespace, ESearchCase::IgnoreCase); });
@@ -4675,7 +4691,7 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
             {
                 return false;
             }
-            const FString OwningPackage = UGV2ScreenRegistry::FindOwningPackageForAssetPath(AssetPath);
+            const FString OwningPackage = UGV2ScreenRegistry::FindOwningPackageForAssetPath(AssetPath, Ownership);
             if (OwningPackage.IsEmpty())
             {
                 // PAH-03: unowned /Game/ content is rejected; content outside /Game/
@@ -4708,9 +4724,9 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         int32 CasesCovered = 0;
         for (const FCase& Case : Cases)
         {
-            const bool bExpected = ExpectedAllowed(RealPackageLoadOrder, Case.ScreenNamespace, Case.AssetPath);
+            const bool bExpected = ExpectedAllowed(RealPackageLoadOrder, RealOwnership, Case.ScreenNamespace, Case.AssetPath);
             const bool bActual = UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                Case.ScreenNamespace, Case.AssetPath, RealPackageLoadOrder);
+                Case.ScreenNamespace, Case.AssetPath, RealPackageLoadOrder, RealOwnership);
             TestEqual(
                 *FString::Printf(TEXT("%s screen vs %s matches the load_index-derived expectation"), *Case.ScreenNamespace, *Case.AssetPath),
                 bActual,
@@ -4724,18 +4740,18 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         TestFalse(
             TEXT("Namespace absent from the pinned closure is rejected"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("sample"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), RealPackageLoadOrder));
+                TEXT("sample"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), RealPackageLoadOrder, RealOwnership));
 
-        // PAH-03: a /Game/ asset whose root isn't one of the four tracked package roots is
-        // unowned, not unconstrained -- rejected, not the old ladder's `return true` for an
-        // empty FindOwningPackageForAssetPath result.
+        // PAH-03/05: a /Game/ asset whose root isn't declared by any package in the
+        // closure is unowned, not unconstrained -- rejected, not the old ladder's
+        // `return true` for an empty FindOwningPackageForAssetPath result.
         TestFalse(
-            TEXT("PAH-03: synthetic /Game/ path outside every tracked package root is rejected"),
+            TEXT("PAH-03: synthetic /Game/ path outside every declared package root is rejected"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), RealPackageLoadOrder));
+                TEXT("core"), TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), RealPackageLoadOrder, RealOwnership));
         TestTrue(
             TEXT("PAH-03: FindOwningPackageForAssetPath itself returns empty for that path"),
-            UGV2ScreenRegistry::FindOwningPackageForAssetPath(TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned")).IsEmpty());
+            UGV2ScreenRegistry::FindOwningPackageForAssetPath(TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), RealOwnership).IsEmpty());
 
         // PAH-03: content outside /Game/ entirely (engine-shipped, or an enabled plugin's
         // own content root) has no project-package ownership to violate and is trusted by
@@ -4743,11 +4759,11 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         TestTrue(
             TEXT("PAH-03: engine-shipped content path is a trusted external domain"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/Engine/EditorResources/S_Actor"), RealPackageLoadOrder));
+                TEXT("core"), TEXT("/Engine/EditorResources/S_Actor"), RealPackageLoadOrder, RealOwnership));
         TestTrue(
             TEXT("PAH-03: enabled-plugin content path is a trusted external domain"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/CommonUI/Widgets/WBP_SomePluginWidget"), RealPackageLoadOrder));
+                TEXT("core"), TEXT("/CommonUI/Widgets/WBP_SomePluginWidget"), RealPackageLoadOrder, RealOwnership));
         TestTrue(
             TEXT("IsTrustedExternalContentDomain itself: /Engine/ path"),
             UGV2ScreenRegistry::IsTrustedExternalContentDomain(TEXT("/Engine/EditorResources/S_Actor")));
@@ -4757,11 +4773,12 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
 
         // A package that doesn't exist in today's real closure still works correctly once
         // it's present in PackageLoadOrder -- proving the rule reads positions generically
-        // instead of special-casing three known names.
+        // instead of special-casing three known names. Ownership (which package owns
+        // /Game/RH/) is unaffected by load order, so RealOwnership is reused as-is.
         const TArray<FString> ExtendedOrder = {TEXT("core"), TEXT("textsystem"), TEXT("rh"), TEXT("modx")};
         TestTrue(
             TEXT("A fourth package appended to the closure can reference the layer directly below it"),
-            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("modx"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ExtendedOrder));
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(TEXT("modx"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ExtendedOrder, RealOwnership));
 
         // Reversing the closure's order flips which layer may reference which, proving the
         // decision is read from PackageLoadOrder's positions and not hardcoded by name.
@@ -4769,11 +4786,11 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         TestTrue(
             TEXT("Under a reversed closure, core (now highest) can reference rh (now lowest)"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ReversedOrder));
+                TEXT("core"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), ReversedOrder, RealOwnership));
         TestFalse(
             TEXT("Under a reversed closure, rh (now lowest) cannot reference core (now highest)"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen"), ReversedOrder));
+                TEXT("rh"), TEXT("/Game/UI/Widgets/WBP_Testscreen"), ReversedOrder, RealOwnership));
 
         // End-to-end: a Screen Registry entry violating layer ownership is still rejected.
         FGV2ScreenRegistryEntry BadEntry;
@@ -4783,7 +4800,49 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         TestFalse(
             TEXT("Core screen referencing TextSystem is rejected"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
-                TEXT("core"), BadEntry.WidgetClass.ToSoftObjectPath().ToString(), RealPackageLoadOrder));
+                TEXT("core"), BadEntry.WidgetClass.ToSoftObjectPath().ToString(), RealPackageLoadOrder, RealOwnership));
+
+        // PAH-05: a synthetic fourth package declares its OWN content root -- understood
+        // by BuildContentRootOwnership/FindOwningPackageForAssetPath purely from this
+        // data, with zero Source/ changes (no fifth entry added to any hardcoded table,
+        // because none exists anymore).
+        TArray<FGV2ContentRootOwnership> SyntheticOwnership;
+        FString SyntheticError;
+        const TArray<FGV2DeclaredPackageRoots> SyntheticDeclared = {
+            FGV2DeclaredPackageRoots{TEXT("core"), {TEXT("/Game/core"), TEXT("/Game/UI")}},
+            FGV2DeclaredPackageRoots{TEXT("modx"), {TEXT("/Game/ModX")}},
+        };
+        TestTrue(
+            TEXT("PAH-05: a synthetic fourth package's own declared root resolves without any Source/ change"),
+            UGV2ScreenRegistry::BuildContentRootOwnership(SyntheticDeclared, SyntheticOwnership, SyntheticError));
+        TestEqual(
+            TEXT("PAH-05: the synthetic fourth package's asset resolves to its own package_id"),
+            UGV2ScreenRegistry::FindOwningPackageForAssetPath(TEXT("/Game/ModX/Widgets/WBP_ModXScreen"), SyntheticOwnership),
+            FString(TEXT("modx")));
+
+        // PAH-05: two packages declaring the same (or a nested) root is a build error,
+        // rejected outright -- never resolved in favor of the more specific root.
+        TArray<FGV2ContentRootOwnership> OverlappingOwnership;
+        FString OverlapError;
+        const TArray<FGV2DeclaredPackageRoots> OverlappingDeclared = {
+            FGV2DeclaredPackageRoots{TEXT("core"), {TEXT("/Game/UI")}},
+            FGV2DeclaredPackageRoots{TEXT("modx"), {TEXT("/Game/UI/Widgets")}},
+        };
+        TestFalse(
+            TEXT("PAH-05: a nested/overlapping root declared by a different package is rejected"),
+            UGV2ScreenRegistry::BuildContentRootOwnership(OverlappingDeclared, OverlappingOwnership, OverlapError));
+        TestTrue(TEXT("PAH-05: overlap rejection clears any partial ownership result"), OverlappingOwnership.IsEmpty());
+        TestFalse(TEXT("PAH-05: overlap rejection names the conflict"), OverlapError.IsEmpty());
+
+        // Same package declaring the same root twice is not a conflict with itself.
+        TArray<FGV2ContentRootOwnership> SamePackageOwnership;
+        FString SamePackageError;
+        const TArray<FGV2DeclaredPackageRoots> SamePackageDeclared = {
+            FGV2DeclaredPackageRoots{TEXT("core"), {TEXT("/Game/core"), TEXT("/Game/core/Sub")}},
+        };
+        TestTrue(
+            TEXT("PAH-05: a package's own nested root does not conflict with itself"),
+            UGV2ScreenRegistry::BuildContentRootOwnership(SamePackageDeclared, SamePackageOwnership, SamePackageError));
     }
 
     // =========================================================================

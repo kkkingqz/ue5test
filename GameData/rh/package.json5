@@ -2,6 +2,10 @@
   package_id: "rh",
   namespace: "rh",
   version: "0.1.0",
+  // PAH-05: see core/package.json5 for why this field exists and why the portable host
+  // ignores it. No /Game/RH/ content exists yet, but the root is declared for when it
+  // does -- matches the coverage the removed hardcoded table already had.
+  ue_content_roots: ["/Game/RH"],
   dependencies: [
     {
       package_id: "textsystem",

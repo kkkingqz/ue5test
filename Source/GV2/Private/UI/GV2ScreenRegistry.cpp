@@ -2,8 +2,83 @@
 
 #include "Application/GV2PackageClosure.h"
 #include "Bridge/GV2StableIdUE.h"
+#include "GV2ContentCore/Json5Parser.h"
+#include "GV2ContentCore/ParseLimits.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ScreenWidgetBase.h"
+
+namespace
+{
+// PAH-05: lowercase, leading and trailing '/' -- the one place a declared
+// "ue_content_roots" entry (or a legacy caller's raw AssetPath) is normalized before
+// comparison.
+FString NormalizeContentRoot(const FString& RawRoot)
+{
+    FString Root = RawRoot.ToLower();
+    if (!Root.StartsWith(TEXT("/")))
+    {
+        Root = TEXT("/") + Root;
+    }
+    if (!Root.EndsWith(TEXT("/")))
+    {
+        Root += TEXT("/");
+    }
+    return Root;
+}
+
+// PAH-05: reads one package's own GameData/<id>/package.json5 "ue_content_roots" array.
+// UE-only field -- GV2ContentHostSupport::DiscoverPackageFromDirectory (the portable
+// parser) never looks for it, so it can't reach FPackageDescriptor or
+// ComputePackageFingerprint (0F). Absence of the field is valid: zero declared roots,
+// not an error -- a package can own no UE-side widget/resource content at all (e.g.
+// "sample" today).
+// PAH-04: pre_ready_discovery -- only called from ResolveContentRootOwnershipFromGameData(),
+// only called from Build(), only called from LoadScreenRegistry(), only called from
+// Initialize(), before any session exists.
+bool ReadUeContentRootsForPackage(const FString& PackageGameDataDir, TArray<FString>& OutRoots, FString& OutError)
+{
+    OutRoots.Reset();
+    const FString ManifestPath = FPaths::Combine(PackageGameDataDir, TEXT("package.json5"));
+    FString Content;
+    if (!FFileHelper::LoadFileToString(Content, *ManifestPath))
+    {
+        OutError = FString::Printf(TEXT("could not read '%s'"), *ManifestPath);
+        return false;
+    }
+
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    const std::optional<GV2ContentCore::FParsedDocument> Parsed = GV2ContentCore::ParseJson5Document(
+        TCHAR_TO_UTF8(*Content), GV2ContentCore::FParseLimits{}, Diagnostics);
+    if (!Parsed.has_value() || !Diagnostics.empty() || !Parsed->GetRootValue().IsObject())
+    {
+        OutError = FString::Printf(TEXT("'%s' could not be parsed as a JSON5 object"), *ManifestPath);
+        return false;
+    }
+
+    const GV2ContentCore::FValue* RootsField = Parsed->GetRootValue().FindField("ue_content_roots");
+    if (RootsField == nullptr)
+    {
+        return true;
+    }
+    if (!RootsField->IsArray())
+    {
+        OutError = FString::Printf(TEXT("'%s': 'ue_content_roots' must be an array of strings"), *ManifestPath);
+        return false;
+    }
+    for (const GV2ContentCore::FValue& Item : RootsField->AsArray())
+    {
+        if (!Item.IsString())
+        {
+            OutError = FString::Printf(TEXT("'%s': 'ue_content_roots' entries must be strings"), *ManifestPath);
+            return false;
+        }
+        OutRoots.Add(UTF8_TO_TCHAR(Item.AsString().c_str()));
+    }
+    return true;
+}
+}
 
 const FName UGV2ScreenRegistry::LayerEmbedded = TEXT("embedded");
 
@@ -22,25 +97,75 @@ bool UGV2ScreenRegistry::IsLayerAllowedForEmbedded(FName Layer)
     return Layer == LayerEmbedded;
 }
 
-FString UGV2ScreenRegistry::FindOwningPackageForAssetPath(const FString& AssetPath)
+FString UGV2ScreenRegistry::FindOwningPackageForAssetPath(
+    const FString& AssetPath,
+    const TArray<FGV2ContentRootOwnership>& Ownership)
 {
-    // Naming convention between a package_id and the UE content root its UI assets live
-    // under (not itself an ordering rule -- mods.lock.json5 has no notion of /Game/ paths).
-    static const TPair<const TCHAR*, const TCHAR*> ContentRootOwners[] = {
-        {TEXT("/game/core/"), TEXT("core")},
-        {TEXT("/game/ui/"), TEXT("core")},
-        {TEXT("/game/textsystem/"), TEXT("textsystem")},
-        {TEXT("/game/rh/"), TEXT("rh")},
-    };
     const FString LowerPath = AssetPath.ToLower();
-    for (const TPair<const TCHAR*, const TCHAR*>& Owner : ContentRootOwners)
+    for (const FGV2ContentRootOwnership& Entry : Ownership)
     {
-        if (LowerPath.StartsWith(Owner.Key))
+        if (LowerPath.StartsWith(Entry.NormalizedRoot))
         {
-            return Owner.Value;
+            return Entry.PackageId;
         }
     }
     return FString();
+}
+
+bool UGV2ScreenRegistry::BuildContentRootOwnership(
+    const TArray<FGV2DeclaredPackageRoots>& PackageDeclaredRoots,
+    TArray<FGV2ContentRootOwnership>& OutOwnership,
+    FString& OutError)
+{
+    OutOwnership.Reset();
+    for (const FGV2DeclaredPackageRoots& PackageRoots : PackageDeclaredRoots)
+    {
+        for (const FString& RawRoot : PackageRoots.Roots)
+        {
+            const FString Normalized = NormalizeContentRoot(RawRoot);
+            for (const FGV2ContentRootOwnership& Existing : OutOwnership)
+            {
+                // PAH-05: overlap is rejected outright, in either direction -- never
+                // resolved by preferring the more specific (longest-prefix) root.
+                if (!Existing.PackageId.Equals(PackageRoots.PackageId, ESearchCase::IgnoreCase)
+                    && (Normalized.StartsWith(Existing.NormalizedRoot) || Existing.NormalizedRoot.StartsWith(Normalized)))
+                {
+                    OutError = FString::Printf(
+                        TEXT("content root '%s' (package '%s') overlaps '%s' (package '%s')"),
+                        *RawRoot,
+                        *PackageRoots.PackageId,
+                        *Existing.NormalizedRoot,
+                        *Existing.PackageId);
+                    OutOwnership.Reset();
+                    return false;
+                }
+            }
+            OutOwnership.Add(FGV2ContentRootOwnership{Normalized, PackageRoots.PackageId});
+        }
+    }
+    return true;
+}
+
+// PAH-04: pre_ready_discovery -- only called from Build(), only called from
+// LoadScreenRegistry(), only called from Initialize(), before any session exists.
+bool UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(
+    TArray<FGV2ContentRootOwnership>& OutOwnership,
+    FString& OutError)
+{
+    OutOwnership.Reset();
+    TArray<FGV2DeclaredPackageRoots> PackageDeclaredRoots;
+    for (const GV2PackageClosure::FEntry& PackageEntry : GV2PackageClosure::DiscoverFromGameData())
+    {
+        TArray<FString> DeclaredRoots;
+        FString ReadError;
+        if (!ReadUeContentRootsForPackage(PackageEntry.RootDirectory, DeclaredRoots, ReadError))
+        {
+            OutError = FString::Printf(TEXT("package '%s': %s"), *PackageEntry.PackageId, *ReadError);
+            return false;
+        }
+        PackageDeclaredRoots.Add(FGV2DeclaredPackageRoots{PackageEntry.PackageId, MoveTemp(DeclaredRoots)});
+    }
+    return BuildContentRootOwnership(PackageDeclaredRoots, OutOwnership, OutError);
 }
 
 bool UGV2ScreenRegistry::IsTrustedExternalContentDomain(const FString& AssetPath)
@@ -63,7 +188,8 @@ TArray<FString> UGV2ScreenRegistry::GetPackageLoadOrderFromGameData()
 bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
     const FString& ScreenNamespace,
     const FString& AssetPath,
-    const TArray<FString>& PackageLoadOrder)
+    const TArray<FString>& PackageLoadOrder,
+    const TArray<FGV2ContentRootOwnership>& Ownership)
 {
     const FString LowerNamespace = ScreenNamespace.ToLower();
     const int32 ScreenPackageIndex = PackageLoadOrder.IndexOfByPredicate(
@@ -77,7 +203,7 @@ bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
         return false;
     }
 
-    const FString OwningPackage = FindOwningPackageForAssetPath(AssetPath);
+    const FString OwningPackage = FindOwningPackageForAssetPath(AssetPath, Ownership);
     if (OwningPackage.IsEmpty())
     {
         // PAH-03: a /Game/ asset whose root isn't owned by any tracked package layer is
@@ -116,6 +242,16 @@ bool UGV2ScreenRegistry::Build(FString& OutError)
     if (PackageLoadOrder.IsEmpty())
     {
         OutError = TEXT("Screen Registry could not resolve the package load order from GameData/mods.lock.json5");
+        return false;
+    }
+
+    TArray<FGV2ContentRootOwnership> Ownership;
+    FString OwnershipError;
+    if (!ResolveContentRootOwnershipFromGameData(Ownership, OwnershipError))
+    {
+        OutError = FString::Printf(
+            TEXT("core:diagnostic.ui_screen_registry.content_root_ownership_conflict: %s"),
+            *OwnershipError);
         return false;
     }
 
@@ -166,14 +302,14 @@ bool UGV2ScreenRegistry::Build(FString& OutError)
         {
             const FString Namespace = Entry.ScreenId.Left(ColonIdx);
             const FString AssetPath = Entry.WidgetClass.ToSoftObjectPath().ToString();
-            if (!IsAssetAllowedForScreenNamespace(Namespace, AssetPath, PackageLoadOrder))
+            if (!IsAssetAllowedForScreenNamespace(Namespace, AssetPath, PackageLoadOrder, Ownership))
             {
                 // PAH-03: two distinct rejection reasons share this branch -- tell them
                 // apart for the diagnostic instead of reporting the layer-violation
                 // wording for both. Cheap to re-derive: FindOwningPackageForAssetPath does
                 // no I/O, and IsAssetAllowedForScreenNamespace already computed the same
                 // value internally.
-                const FString OwningPackage = FindOwningPackageForAssetPath(AssetPath);
+                const FString OwningPackage = FindOwningPackageForAssetPath(AssetPath, Ownership);
                 OutError = OwningPackage.IsEmpty()
                     ? FString::Printf(
                         TEXT("core:diagnostic.ui_screen_registry.unowned_asset_root: screen '%s' references asset '%s' whose content root is not owned by any package in the load closure"),

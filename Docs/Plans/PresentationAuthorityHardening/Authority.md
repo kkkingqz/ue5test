@@ -1,8 +1,8 @@
 ---
 title: Authority Tasks
 status: active
-version: 1.2
-updated: 2026-09-06
+version: 1.3
+updated: 2026-09-07
 depends_on:
   - README.md
   - Immediate.md
@@ -103,7 +103,7 @@ depends_on:
 
     Верификация: headless `Automation RunTests GV2;Quit` — 113/113 passed, 0 ошибок (было 112 после PAH-04A: `+1` — новый явный тест `ImageCatalogClosureScoping`); portable `ctest` — 80/80 (без изменений — задача не касается portable core); `CORE_DECOUPLING_RULE`, `pre_ready_content_discovery`, `validate_docs.py` — все проходят.
 
-- [ ] **PAH-05 — Пакет владеет своими UE-корнями**
+- [x] **PAH-05 — Пакет владеет своими UE-корнями**
   - Зависимости: PAH-03, PAH-04A, PAH-04B.
   - После `PAH-03` неизвестный корень отклоняется, но таблица из четырёх пар остаётся, и добавление пакета по-прежнему требует правки C++. Будущий пакет с ассетами под собственным корнем не будет понят.
   - Инвариант: состав и порядок пакетов принадлежат данным замыкания, а не коду ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), `INV-P2`). Нарушение здесь расширяемостное, а не корректностное: правило сегодня верно для трёх пакетов, которые есть, и не имеет способа стать верным для четвёртого.
@@ -119,11 +119,24 @@ depends_on:
     - синтетический четвёртый пакет со своим корнем понимается без единой правки `Source/` — показано в тесте;
     - `GameData` существующих трёх пакетов приведён, и `mods.lock.json5` перегенерирован по правилам проекта.
   - Evidence: `GameData/*/package.json5`, `GameData/mods.lock.json5`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `Docs/Architecture/`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-07):** новое поле данных `ue_content_roots: [...]` в `package.json5` (добавлено в `core` → `["/Game/core", "/Game/UI"]`, `textsystem` → `["/Game/TextSystem"]`, `rh` → `["/Game/RH"]` — тот же охват, что даёт старая таблица; `sample` не тронут, у него ноль корней и в старой таблице). Портативный хост (`GV2ContentHostSupport::DiscoverPackageFromDirectory`) ищет поля через `FindField()` и никогда не запрашивает `ue_content_roots` — не попадает в `FPackageDescriptor`, значит не может повлиять на `ComputePackageFingerprint`; проверено эмпирически, не только по чтению кода: `mods.lock.json5` не тронут, portable `ctest` (`/home/king/ue5/GV2/build`) прошёл 76/76 без единой правки фингерпринта.
+
+    Логика владения разбита на чистую и I/O-часть, аналогично разделению `GV2ScreenFieldMaterializer`/`GV2UiSchemaCache`: `BuildContentRootOwnership(TArray<FGV2DeclaredPackageRoots>, OutOwnership, OutError)` — чистая, без обращения к файловой системе, нормализует каждый корень (нижний регистр, ведущий и хвостовой `/`) и отклоняет **всей сборкой**, если два разных пакета объявляют пересекающиеся корни (в любую сторону — не разрешается через longest-prefix); `ResolveContentRootOwnershipFromGameData(OutOwnership, OutError)` — I/O-обёртка (`// PAH-04: pre_ready_discovery`, читает `ue_content_roots` из `package.json5` каждого пакета замыкания через `GV2ContentCore::ParseJson5Document`, тот же парсер, что уже применяет `GV2UiSchemaCache.cpp` для `*.schema.json5`), просто собирает `FGV2DeclaredPackageRoots` и делегирует чистой функции. Разделение сделано специально ради тестируемости: инвариант «пересечение отклоняется всей сборкой» и утверждение «синтетический четвёртый пакет понимается без единой правки `Source/`» проверяются прямыми вызовами `BuildContentRootOwnership` с in-memory данными — без временных файлов на диске.
+
+    Старая зашитая `ContentRootOwners` (TMap из 4 пар, буквально называющая `"textsystem"`/`"rh"`) удалена из `GV2ScreenRegistry.cpp` целиком. `FindOwningPackageForAssetPath` и `IsAssetAllowedForScreenNamespace` получили новый параметр `const TArray<FGV2ContentRootOwnership>&` вместо чтения статической таблицы; `Build()` вычисляет владение один раз через `ResolveContentRootOwnershipFromGameData` и передаёт его дальше — отказ здесь останавливает построение снимка с `core:diagnostic.ui_screen_registry.content_root_ownership_conflict`, тем же путём, что уже использует `PAH-03`'s asset-ownership отказ. Доверенный внешний домен (`IsTrustedExternalContentDomain`, из `PAH-03`) не тронут — он не про владение пакетом, а про заведомо не-пакетный домен, и остаётся отдельной, уже названной проверкой.
+
+    Побочный эффект удаления таблицы: единственная причина исключения `GV2ScreenRegistry.cpp` из гейта `GV2.Runtime.UIKit.PackageNameLiteralGate` (`GV2PackageBoundarySourceTests.cpp`) была сама эта таблица, буквально называющая `"textsystem"`/`"rh"` в production-коде. Строка-исключение удалена из `GetPackageBoundaryExceptions()`; гейт по-прежнему проходит без неё — подтверждено полным прогоном, а не только чтением кода.
+
+    Обнаруженный попутно и исправленный дефект инфраструктуры тестов, не связанный напрямую с задачей: PAH-04B продублировал имя (не только логику) RAII-обёртки `FGV2ScopedRealImageCatalog` в три отдельных .cpp-файла теста, каждую в своём анонимном `namespace {}`. Adaptive Unity Build не гарантирует, что анонимные namespace остаются per-file — при слиянии `GV2PropertyConsumersTests.cpp` и `GV2UiCapabilityObservabilityTests.cpp` в один `Module.GV2.*.cpp` это дало ODR-конфликт (`redefinition of 'FGV2ScopedRealImageCatalog'`), непредсказуемый между сборками. Исправлено переименованием двух неосновных копий в файл-уникальные имена (`FGV2PropertyConsumersScopedImageCatalog`, `FGV2CapabilityObservabilityScopedImageCatalog`); копия в `GV2RuntimeSubsystemTests.cpp` осталась как есть.
+
+    Red-on-revert для нового инварианта (`BuildContentRootOwnership`'s отказ при пересечении корней) продемонстрирован явно: временно убран внутренний цикл проверки пересечения → пересборка → `GV2.Runtime.UI.ThemeOwnershipAndTextLengthContract` упал на трёх ожидаемых ассертах (`PAH-05: a nested/overlapping root declared by a different package is rejected` и двух связанных с ним) → файл восстановлен из бэкапа (`diff` подтвердил побайтовое совпадение) → пересборка → полный набор снова 113/113.
+
+    Верификация: headless `Automation RunTests GV2;Quit` — 113/113 passed, 0 ошибок (без изменения числа top-level тестов — новые проверки добавлены внутрь уже существующего `FGV2UiThemeOwnershipAndTextLengthContract`, а не как отдельный тест); portable `ctest` (`/home/king/ue5/GV2/build`) — 76/76; `CORE_DECOUPLING_RULE`, `pre_ready_content_discovery` (`INV-P1`), `validate_docs.py`, `GV2.Runtime.UIKit.PackageNameLiteralGate` — все проходят.
 
 ## Проверка milestone
 
-- [ ] Ни один из пяти контентных фактов не выводится в двух местах независимо.
-- [ ] Ресурсы изображений принадлежат пакету, а не каталогу из конфига.
-- [ ] Объектов, переживающих сессию и хранящих контент, не существует.
-- [ ] Презентация не выполняет обнаружения после `Ready`, и это утверждает перечислитель с отрицательным самотестом.
-- [ ] Добавление пакета не требует правки `Source/`, и это показано синтетическим пакетом.
+- [x] Ни один из пяти контентных фактов не выводится в двух местах независимо.
+- [x] Ресурсы изображений принадлежат пакету, а не каталогу из конфига.
+- [x] Объектов, переживающих сессию и хранящих контент, не существует.
+- [x] Презентация не выполняет обнаружения после `Ready`, и это утверждает перечислитель с отрицательным самотестом (`Tools/Testing/validate_pre_ready_content_discovery.py --self-test`).
+- [x] Добавление пакета не требует правки `Source/`, и это показано синтетическим пакетом (`GV2.Runtime.UI.ThemeOwnershipAndTextLengthContract`, синтетический пакет `modx`).

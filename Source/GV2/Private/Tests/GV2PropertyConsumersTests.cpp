@@ -54,9 +54,9 @@ namespace
 // FGV2SessionCoordinator::StartSession/EndSession in production). This test resolves
 // real icon resources directly, without starting a real session, so it gives itself a
 // real catalog built from the real GameData closure.
-struct FGV2ScopedRealImageCatalog
+struct FGV2PropertyConsumersScopedImageCatalog
 {
-    FGV2ScopedRealImageCatalog()
+    FGV2PropertyConsumersScopedImageCatalog()
     {
         TArray<FString> PackageIds;
         for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
@@ -66,7 +66,7 @@ struct FGV2ScopedRealImageCatalog
         FString Error;
         UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
     }
-    ~FGV2ScopedRealImageCatalog()
+    ~FGV2PropertyConsumersScopedImageCatalog()
     {
         UGV2ImageResourceCatalog::ReleaseForSession();
     }
@@ -80,7 +80,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+    const FGV2PropertyConsumersScopedImageCatalog ScopedImageCatalog;
 
     // 1. Missing target rejection (must NOT be silently ignored)
     {

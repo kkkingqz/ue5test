@@ -2,6 +2,9 @@
   package_id: "textsystem",
   namespace: "textsystem",
   version: "0.1.0",
+  // PAH-05: see core/package.json5 for why this field exists and why the portable host
+  // ignores it.
+  ue_content_roots: ["/Game/TextSystem"],
   dependencies: [
     {
       package_id: "core",

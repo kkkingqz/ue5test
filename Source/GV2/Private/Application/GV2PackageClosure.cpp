@@ -9,9 +9,10 @@
 
 namespace GV2PackageClosure
 {
-// PAH-04: pre_ready_discovery -- today's one production caller,
-// UGV2ScreenRegistry::GetPackageLoadOrderFromGameData(), only ever runs from
-// Build(), from LoadScreenRegistry(), from Initialize(), before any session exists.
+// PAH-04: pre_ready_discovery -- today's production callers,
+// UGV2ScreenRegistry::GetPackageLoadOrderFromGameData() and (PAH-05)
+// ResolveContentRootOwnershipFromGameData(), only ever run from Build(), from
+// LoadScreenRegistry(), from Initialize(), before any session exists.
 TArray<FEntry> DiscoverFromGameData()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));

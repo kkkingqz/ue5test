@@ -6,4 +6,9 @@
   package_id: "core",
   namespace: "core",
   version: "0.1.0",
+  // PAH-05 (ADR-0042, INV-P2): this package's own UE content roots, as data --
+  // replaces the hardcoded ContentRootOwners table that used to live in
+  // GV2ScreenRegistry.cpp. Ignored entirely by the portable host (GV2ContentHostSupport
+  // never looks for this field), so it cannot affect ComputePackageFingerprint (0F).
+  ue_content_roots: ["/Game/core", "/Game/UI"],
 }

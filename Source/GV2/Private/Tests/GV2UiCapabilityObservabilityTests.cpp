@@ -46,9 +46,9 @@ namespace
 // catalog) via a bare GameInstance::InitializeStandalone() that never broadcasts
 // OnStartGameInstance / calls StartSession(), so they give themselves a real catalog
 // built from the real GameData closure directly.
-struct FGV2ScopedRealImageCatalog
+struct FGV2CapabilityObservabilityScopedImageCatalog
 {
-    FGV2ScopedRealImageCatalog()
+    FGV2CapabilityObservabilityScopedImageCatalog()
     {
         TArray<FString> PackageIds;
         for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
@@ -58,7 +58,7 @@ struct FGV2ScopedRealImageCatalog
         FString Error;
         UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
     }
-    ~FGV2ScopedRealImageCatalog()
+    ~FGV2CapabilityObservabilityScopedImageCatalog()
     {
         UGV2ImageResourceCatalog::ReleaseForSession();
     }
@@ -109,7 +109,7 @@ UUserWidget* MakeUnboundHost()
 
 bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+    const FGV2CapabilityObservabilityScopedImageCatalog ScopedImageCatalog;
 
     // 1. Positive: Boolean/Number/Text all have real UPP-09 consumers with a genuine
     // physical target, so every capability must be provably observable.
@@ -569,7 +569,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+    const FGV2CapabilityObservabilityScopedImageCatalog ScopedImageCatalog;
 
     UWorld* World = MakeSweepWorld();
     const TArray<UClass*> ProductionHostImplementations = CollectProductionUiPropertyHostImplementations();
@@ -762,7 +762,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCollectionForgeryTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+    const FGV2CapabilityObservabilityScopedImageCatalog ScopedImageCatalog;
 
     UWorld* World = MakeSweepWorld();
 
