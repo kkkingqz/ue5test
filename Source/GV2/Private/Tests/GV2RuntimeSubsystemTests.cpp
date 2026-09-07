@@ -3397,13 +3397,20 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             }
         }
 
-        // GBF-01: a real engine-level Attach failure must abort CommitReconcile and
-        // restore the previous Shell tree. USizeBox is a real single-child UPanelWidget:
-        // once the unrelated blocker occupies it, UPanelWidget::AddChild returns nullptr
-        // for the candidate overlay. This deliberately reaches production CommitReconcile
-        // instead of calling AttachScreenToLayer as a helper-level unit test.
+        // GBF-01 (rewritten for PAH-06B): a real engine-level per-layer reconcile failure
+        // must abort CommitReconcile and restore every layer's Shell tree exactly, not
+        // just the failing one. USizeBox is a real single-child UPanelWidget: asking a
+        // single-child host to hold 2 simultaneous screens makes the swap's second
+        // AddChild fail by construction (UPanelWidget::AddChild's own single-child gate --
+        // see PAH-06A's finding that this is the one deterministic, engine-native trigger,
+        // not a mock). This deliberately reaches production CommitReconcile instead of
+        // calling ReconcilePrepared as a helper-level unit test, and deliberately also
+        // replaces location_content's route in the SAME document, so the failure is on a
+        // layer processed AFTER location_content (GetApprovedLayers order) -- proving the
+        // cross-layer rollback PAH-06B adds: location_content must be restored to v1 too,
+        // not just overlay_stack left alone.
         {
-            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.attach_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.layer_reconcile_failed"), EAutomationExpectedErrorFlags::Contains, 1);
 
             UGV2GameShellWidgetBase* AttachFailureShell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
             TestNotNull(TEXT("GBF-01: attach-failure Shell instantiated"), AttachFailureShell);
@@ -3412,7 +3419,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 AttachFailureShell->AddToRoot();
 
                 UVerticalBox* LocationHostPanel = NewObject<UVerticalBox>(AttachFailureShell);
-                USizeBox* BlockingOverlayHost = NewObject<USizeBox>(AttachFailureShell);
+                USizeBox* SingleChildOverlayHost = NewObject<USizeBox>(AttachFailureShell);
                 auto SetShellHost = [](UGV2GameShellWidgetBase* TargetShell, const FName PropertyName, UPanelWidget* Host)
                 {
                     if (FObjectPropertyBase* HostProperty = FindFProperty<FObjectPropertyBase>(TargetShell->GetClass(), PropertyName))
@@ -3421,56 +3428,40 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                     }
                 };
                 SetShellHost(AttachFailureShell, TEXT("LocationContentHost"), LocationHostPanel);
-                SetShellHost(AttachFailureShell, TEXT("OverlayStackHost"), BlockingOverlayHost);
-
-                UGV2PanelWidgetBase* ExistingOverlayChild = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
-                TestNotNull(TEXT("GBF-01: blocking overlay child constructs"), ExistingOverlayChild);
-                TestNotNull(TEXT("GBF-01: blocker occupies the single-child overlay host"),
-                    ExistingOverlayChild != nullptr ? BlockingOverlayHost->SetContent(ExistingOverlayChild) : nullptr);
+                SetShellHost(AttachFailureShell, TEXT("OverlayStackHost"), SingleChildOverlayHost);
 
                 UGV2ScreenWidgetBase* RouteV1 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
                 UGV2ScreenWidgetBase* RouteV2 = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+                UGV2ScreenWidgetBase* AcceptedOverlay = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
                 UGV2ScreenWidgetBase* RejectedOverlay = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
                 TestNotNull(TEXT("GBF-01: prior route constructs"), RouteV1);
                 TestNotNull(TEXT("GBF-01: replacement route constructs"), RouteV2);
+                TestNotNull(TEXT("GBF-01: accepted overlay constructs"), AcceptedOverlay);
                 TestNotNull(TEXT("GBF-01: rejected overlay constructs"), RejectedOverlay);
 
                 TMap<FString, UGV2ScreenWidgetBase*> ScreensById;
                 ScreensById.Add(TEXT("core:screen.gbf01_route_v1"), RouteV1);
                 ScreensById.Add(TEXT("core:screen.gbf01_route_v2"), RouteV2);
-                ScreensById.Add(TEXT("core:screen.gbf01_overlay"), RejectedOverlay);
+                ScreensById.Add(TEXT("core:screen.gbf01_overlay_accepted"), AcceptedOverlay);
+                ScreensById.Add(TEXT("core:screen.gbf01_overlay_rejected"), RejectedOverlay);
                 auto AttachFailureFactory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
                 {
                     UGV2ScreenWidgetBase** Found = ScreensById.Find(ScreenId);
                     return Found != nullptr ? *Found : nullptr;
                 };
-                auto MakeAttachFailureDocument = [](const FString& RouteScreenId, bool bIncludeOverlay)
-                {
-                    FGV2UiDocumentViewModel Document;
-                    Document.UiInstanceId = TEXT("ui@gbf01:1");
-                    Document.Revision = bIncludeOverlay ? 2 : 1;
-                    Document.bHasRoute = true;
-                    Document.Route.Layer = TEXT("location_content");
-                    Document.Route.InstanceKey = TEXT("gbf01_route");
-                    Document.Route.ScreenId = RouteScreenId;
-                    if (bIncludeOverlay)
-                    {
-                        FGV2ScreenInstanceViewModel Overlay;
-                        Overlay.Layer = TEXT("overlay_stack");
-                        Overlay.InstanceKey = TEXT("gbf01_overlay");
-                        Overlay.ScreenId = TEXT("core:screen.gbf01_overlay");
-                        Document.Overlays.Add(Overlay);
-                    }
-                    return Document;
-                };
 
                 FGV2LayeredUiReconciler AttachFailureReconciler;
                 FString AttachFailureError;
-                const bool bBaselineCommitted = AttachFailureReconciler.Reconcile(
-                    AttachFailureShell,
-                    MakeAttachFailureDocument(TEXT("core:screen.gbf01_route_v1"), false),
-                    AttachFailureFactory,
-                    AttachFailureError);
+
+                FGV2UiDocumentViewModel BaselineDoc;
+                BaselineDoc.UiInstanceId = TEXT("ui@gbf01:1");
+                BaselineDoc.Revision = 1;
+                BaselineDoc.bHasRoute = true;
+                BaselineDoc.Route.Layer = TEXT("location_content");
+                BaselineDoc.Route.InstanceKey = TEXT("gbf01_route");
+                BaselineDoc.Route.ScreenId = TEXT("core:screen.gbf01_route_v1");
+
+                const bool bBaselineCommitted = AttachFailureReconciler.Reconcile(AttachFailureShell, BaselineDoc, AttachFailureFactory, AttachFailureError);
                 TestTrue(*FString::Printf(TEXT("GBF-01: baseline route commits [Error: %s]"), *AttachFailureError), bBaselineCommitted);
                 TestEqual(TEXT("GBF-01: baseline active route is v1"),
                     AttachFailureReconciler.GetActiveScreen(TEXT("location_content"), TEXT("gbf01_route")), RouteV1);
@@ -3486,37 +3477,53 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 }
 
                 const int32 ActiveCountBeforeFailure = AttachFailureReconciler.GetActiveScreens().Num();
-                const bool bRejectedCommit = AttachFailureReconciler.Reconcile(
-                    AttachFailureShell,
-                    MakeAttachFailureDocument(TEXT("core:screen.gbf01_route_v2"), true),
-                    AttachFailureFactory,
-                    AttachFailureError);
+                FGV2UiDocumentViewModel CandidateDoc;
+                CandidateDoc.UiInstanceId = TEXT("ui@gbf01:1");
+                CandidateDoc.Revision = 2;
+                CandidateDoc.bHasRoute = true;
+                CandidateDoc.Route.Layer = TEXT("location_content");
+                CandidateDoc.Route.InstanceKey = TEXT("gbf01_route");
+                CandidateDoc.Route.ScreenId = TEXT("core:screen.gbf01_route_v2");
+                FGV2ScreenInstanceViewModel AcceptedOverlayInst;
+                AcceptedOverlayInst.Layer = TEXT("overlay_stack");
+                AcceptedOverlayInst.InstanceKey = TEXT("gbf01_overlay_accepted");
+                AcceptedOverlayInst.ScreenId = TEXT("core:screen.gbf01_overlay_accepted");
+                CandidateDoc.Overlays.Add(AcceptedOverlayInst);
+                FGV2ScreenInstanceViewModel RejectedOverlayInst;
+                RejectedOverlayInst.Layer = TEXT("overlay_stack");
+                RejectedOverlayInst.InstanceKey = TEXT("gbf01_overlay_rejected");
+                RejectedOverlayInst.ScreenId = TEXT("core:screen.gbf01_overlay_rejected");
+                CandidateDoc.Overlays.Add(RejectedOverlayInst);
 
-                TestFalse(TEXT("GBF-01: occupied single-child host rejects document Commit"), bRejectedCommit);
-                TestTrue(TEXT("GBF-01: failure reports the attach diagnostic"),
-                    AttachFailureError.Contains(TEXT("core:diagnostic.ui_reconcile.attach_failed")));
-                TestTrue(TEXT("GBF-01: failure names the rejected overlay"),
-                    AttachFailureError.Contains(TEXT("core:screen.gbf01_overlay")));
+                const bool bRejectedCommit = AttachFailureReconciler.Reconcile(AttachFailureShell, CandidateDoc, AttachFailureFactory, AttachFailureError);
+
+                TestFalse(TEXT("GBF-01: single-child overlay host with 2 desired screens rejects document Commit"), bRejectedCommit);
+                TestTrue(*FString::Printf(TEXT("GBF-01: failure reports the layer-reconcile diagnostic [Error: %s]"), *AttachFailureError),
+                    AttachFailureError.Contains(TEXT("core:diagnostic.ui_reconcile.layer_reconcile_failed")));
+                TestTrue(TEXT("GBF-01: failure names the failing layer"),
+                    AttachFailureError.Contains(TEXT("overlay_stack")));
                 TestEqual(TEXT("GBF-01: ActiveScreens count stays on the previous revision"),
                     AttachFailureReconciler.GetActiveScreens().Num(), ActiveCountBeforeFailure);
                 TestEqual(TEXT("GBF-01: prior route stays active after recovery"),
                     AttachFailureReconciler.GetActiveScreen(TEXT("location_content"), TEXT("gbf01_route")), RouteV1);
+                TestNull(TEXT("GBF-01: accepted overlay is absent from ActiveScreens (whole document rejected)"),
+                    AttachFailureReconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("gbf01_overlay_accepted")));
                 TestNull(TEXT("GBF-01: rejected overlay is absent from ActiveScreens"),
-                    AttachFailureReconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("gbf01_overlay")));
+                    AttachFailureReconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("gbf01_overlay_rejected")));
                 const FGV2LayeredUiReconciler::FActiveScreenEntry* RouteAfterFailure = AttachFailureReconciler.GetActiveScreens().Find(RouteKey);
                 TestNotNull(TEXT("GBF-01: prior route metadata remains present after recovery"), RouteAfterFailure);
                 if (RouteAfterFailure != nullptr)
                 {
                     TestEqual(TEXT("GBF-01: prior route metadata remains on v1"), RouteAfterFailure->ScreenId, TEXT("core:screen.gbf01_route_v1"));
                 }
-                TestTrue(TEXT("GBF-01: prior route is reattached to the Shell tree"),
+                TestTrue(TEXT("GBF-01: prior route is reattached to the Shell tree (cross-layer rollback)"),
                     AttachFailureShell->GetScreensInLayer(TEXT("location_content")).Contains(RouteV1));
                 TestFalse(TEXT("GBF-01: replacement route is removed by recovery"),
                     AttachFailureShell->GetScreensInLayer(TEXT("location_content")).Contains(RouteV2));
-                TestTrue(TEXT("GBF-01: failed overlay host retains its prior blocker"),
-                    BlockingOverlayHost->GetContent() == ExistingOverlayChild);
-                TestEqual(TEXT("GBF-01: failed overlay host still has exactly its prior child"),
-                    BlockingOverlayHost->GetChildrenCount(), 1);
+                TestEqual(TEXT("GBF-01: overlay_stack host is restored to its exact prior (empty) state"),
+                    SingleChildOverlayHost->GetChildrenCount(), 0);
+                TestFalse(TEXT("GBF-01: accepted overlay is physically absent from the Shell tree"),
+                    AttachFailureShell->GetScreensInLayer(TEXT("overlay_stack")).Contains(AcceptedOverlay));
                 TestFalse(TEXT("GBF-01: rejected overlay is physically absent from the Shell tree"),
                     AttachFailureShell->GetScreensInLayer(TEXT("overlay_stack")).Contains(RejectedOverlay));
 
@@ -4018,11 +4025,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 // the swap's second AddChild call fail by construction, not by a test double standing in
 // for the engine.
 //
-// This is also why PAH-06A's own modal_stack integration (GV2LayeredUiReconciler.cpp)
-// cannot exercise this branch in production: every real Game Shell layer host is a
-// genuinely multi-child panel (Overlay/CanvasPanel-family), so a third-or-later screen
-// failing to attach during that swap is structurally unreachable there -- this test is
-// the restore guarantee's only exercise, at the primitive that actually owns it.
+// PAH-06A's own modal_stack integration (GV2LayeredUiReconciler.cpp) could not exercise
+// this branch through the REAL WBP_GameShell asset, since its authored layer hosts are
+// all genuinely multi-child panels (Overlay/CanvasPanel-family) -- so this test, at the
+// primitive that actually owns the guarantee, was its only exercise at the time. PAH-06B
+// later found a production-reachable case after all: a misconfigured Shell whose host for
+// some layer IS single-child (GBF-01, "GV2.UI.LayeredReconciliationContract") -- this test
+// remains the more direct, minimal one.
 bool FGV2KeyedCollectionReconcilePreparedRestoresOnSwapFailure::RunTest(const FString& Parameters)
 {
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
@@ -4074,6 +4083,138 @@ bool FGV2KeyedCollectionReconcilePreparedRestoresOnSwapFailure::RunTest(const FS
     if (PreviousOrderedOut.Num() == 1)
     {
         TestEqual(TEXT("PAH-06A: OutPreviousOrderedWidgets[0] is the original widget"), PreviousOrderedOut[0], ExistingWidget);
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2NonModalLayerReorderAndReplaceContract,
+    "GV2.Runtime.UI.NonModalLayerReorderAndReplaceContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PAH-06B (ADR-0042, INV-P3): PAH-06A proved the shared primitive fits modal_stack alone;
+// this proves the generalization to the other five layers actually landed, using
+// overlay_stack (two simultaneous instances are a legitimate, real use of that layer,
+// unlike the single-instance-by-convention layers). Before PAH-06B, AttachScreenToLayer's
+// per-widget loop could not reorder two already-attached reused widgets at all (no-ops
+// once a widget's parent already equals the host), and replacing one of two screens could
+// leave the untouched sibling in the wrong physical position (the replacement widget is
+// freshly attached and appended, not inserted where the old one was). Both read the ACTUAL
+// panel child order (Shell::GetScreensInLayer), not a returned bool.
+bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+    if (TestWorld != nullptr)
+    {
+        UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+            nullptr,
+            TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+        if (GameShellClass == nullptr)
+        {
+            GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+        }
+        UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
+        TestNotNull(TEXT("PAH-06B: Game shell instantiated"), Shell);
+        if (Shell != nullptr)
+        {
+            Shell->AddToRoot();
+
+            FGV2LayeredUiReconciler Reconciler;
+            auto MockFactory = [&](const FString&, FName) -> UGV2ScreenWidgetBase*
+            {
+                return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            };
+            auto MakeOverlayInstance = [](FName InstanceKey, const FString& ScreenId) -> FGV2ScreenInstanceViewModel
+            {
+                FGV2ScreenInstanceViewModel Inst;
+                Inst.Layer = UGV2GameShellWidgetBase::LayerOverlayStack;
+                Inst.InstanceKey = InstanceKey;
+                Inst.ScreenId = ScreenId;
+                return Inst;
+            };
+
+            FString ReconcileError;
+
+            // [A, B] -> [B, A]: both reused, only order changes.
+            FGV2UiDocumentViewModel Doc1;
+            Doc1.UiInstanceId = TEXT("ui@pah06b");
+            Doc1.Revision = 1;
+            Doc1.Overlays.Add(MakeOverlayInstance(TEXT("overlay_a"), TEXT("core:screen.overlay_probe")));
+            Doc1.Overlays.Add(MakeOverlayInstance(TEXT("overlay_b"), TEXT("core:screen.overlay_probe")));
+            TestTrue(*FString::Printf(TEXT("PAH-06B: reconcile [A,B] succeeds [Error: %s]"), *ReconcileError),
+                Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError));
+
+            UGV2ScreenWidgetBase* WidgetA = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_a"));
+            UGV2ScreenWidgetBase* WidgetB = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_b"));
+            TestNotNull(TEXT("PAH-06B: A created"), WidgetA);
+            TestNotNull(TEXT("PAH-06B: B created"), WidgetB);
+
+            TArray<UUserWidget*> Order = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+            TestEqual(TEXT("PAH-06B: [A,B] has 2 physical children"), Order.Num(), 2);
+            if (Order.Num() == 2)
+            {
+                TestEqual(TEXT("PAH-06B: [A,B] child 0 is A"), Order[0], Cast<UUserWidget>(WidgetA));
+                TestEqual(TEXT("PAH-06B: [A,B] child 1 is B"), Order[1], Cast<UUserWidget>(WidgetB));
+            }
+
+            FGV2UiDocumentViewModel Doc2;
+            Doc2.UiInstanceId = TEXT("ui@pah06b");
+            Doc2.Revision = 2;
+            Doc2.Overlays.Add(MakeOverlayInstance(TEXT("overlay_b"), TEXT("core:screen.overlay_probe")));
+            Doc2.Overlays.Add(MakeOverlayInstance(TEXT("overlay_a"), TEXT("core:screen.overlay_probe")));
+            TestTrue(*FString::Printf(TEXT("PAH-06B: reconcile [B,A] succeeds [Error: %s]"), *ReconcileError),
+                Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError));
+
+            TestEqual(TEXT("PAH-06B: A is the same reused instance after reorder"),
+                Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_a")), WidgetA);
+            TestEqual(TEXT("PAH-06B: B is the same reused instance after reorder"),
+                Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_b")), WidgetB);
+
+            Order = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+            TestEqual(TEXT("PAH-06B: [B,A] has 2 physical children"), Order.Num(), 2);
+            if (Order.Num() == 2)
+            {
+                TestEqual(TEXT("PAH-06B: [B,A] child 0 is B (reused, moved)"), Order[0], Cast<UUserWidget>(WidgetB));
+                TestEqual(TEXT("PAH-06B: [B,A] child 1 is A (reused, moved)"), Order[1], Cast<UUserWidget>(WidgetA));
+            }
+
+            // Replace B (in the 2nd slot) with a new widget B2 -- A's position must not move.
+            FGV2UiDocumentViewModel Doc3;
+            Doc3.UiInstanceId = TEXT("ui@pah06b");
+            Doc3.Revision = 3;
+            Doc3.Overlays.Add(MakeOverlayInstance(TEXT("overlay_b"), TEXT("core:screen.overlay_probe_v2")));
+            Doc3.Overlays.Add(MakeOverlayInstance(TEXT("overlay_a"), TEXT("core:screen.overlay_probe")));
+            TestTrue(*FString::Printf(TEXT("PAH-06B: reconcile replace-B succeeds [Error: %s]"), *ReconcileError),
+                Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError));
+
+            UGV2ScreenWidgetBase* WidgetB2 = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_b"));
+            TestNotNull(TEXT("PAH-06B: B2 was created"), WidgetB2);
+            TestNotEqual(TEXT("PAH-06B: B2 is a different widget instance than B"), WidgetB2, WidgetB);
+            TestEqual(TEXT("PAH-06B: A is still the same reused instance"),
+                Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_a")), WidgetA);
+
+            Order = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerOverlayStack);
+            TestEqual(TEXT("PAH-06B: replace-B has 2 physical children"), Order.Num(), 2);
+            if (Order.Num() == 2)
+            {
+                TestEqual(TEXT("PAH-06B: replaced B2 keeps B's slot (position 0)"), Order[0], Cast<UUserWidget>(WidgetB2));
+                TestEqual(TEXT("PAH-06B: untouched A keeps its position (position 1)"), Order[1], Cast<UUserWidget>(WidgetA));
+            }
+            TestFalse(TEXT("PAH-06B: old B is no longer a child of overlay_stack"), Order.Contains(Cast<UUserWidget>(WidgetB)));
+
+            Shell->RemoveFromRoot();
+        }
     }
 
     GameInstance->Shutdown();

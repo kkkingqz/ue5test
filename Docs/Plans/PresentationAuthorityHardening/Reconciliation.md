@@ -1,7 +1,7 @@
 ---
 title: Reconciliation Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-07
 depends_on:
   - README.md
@@ -56,7 +56,7 @@ depends_on:
 
     Verification: headless `Automation RunTests GV2;Quit` — 115/115 passed (113 from `PAH-05` + 2 new); portable `ctest` (`/home/king/ue5/GV2/build`) — 76/76 (unchanged, task doesn't touch portable core); `CORE_DECOUPLING_RULE`, `pre_ready_content_discovery` (`--self-test`), `validate_ui_rollback_boundaries.py`, `validate_docs.py` all pass.
 
-- [ ] **PAH-06B — Слои GameShell — упорядоченная keyed-коллекция**
+- [x] **PAH-06B — Слои GameShell — упорядоченная keyed-коллекция**
   - Зависимости: PAH-06A.
   - `AttachScreenToLayer(FName Layer, UUserWidget* ScreenWidget)` (`GV2GameShellWidgetBase.h:39`) не имеет параметра позиции. Commit присоединяет обычным `AddChild` в порядке обхода плана (`GV2LayeredUiReconciler.cpp:218`), откат — тем же `AddChild` (`:233`). Идентификаторов `PreviousOrder`/`DesiredOrder` в коде нет ни одного. Следствия: для двух переиспользуемых экранов желаемая перестановка `[A, B] → [B, A]` не выполняется вовсе; замена `[A, B] → [A2, B]` может дать `[B, A2]`; откат восстанавливает состав, но не порядок.
   - Инвариант: каждая повторяемая физическая структура, включая слои GameShell, реконсилируется как упорядоченная keyed-коллекция с явными прежним и желаемым порядком ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), `INV-P3`). Нарушение здесь опаснее рассинхронизации значений: для модального стека логически верхний экран и физический z-order могут описывать **разные** экраны, то есть интерактивность достаётся одному, а видимость другому.
@@ -71,11 +71,28 @@ depends_on:
     - множество мест, обязанных реконсилировать порядок, перечисляется тем же сканером границ отката, что и в `PAH-01`, либо названо, почему для слоёв нужен отдельный перечислитель;
     - `UIDocumentAndReconciliation.md` описывает порядок в слое как часть публикуемого состояния.
   - Evidence: `Source/GV2/Private/UI/GV2LayeredUiReconciler.cpp`, `Source/GV2/Public/UI/GV2GameShellWidgetBase.h`, `Source/GV2/Public/UI/GV2KeyedCollection.h`, `Docs/UI/UIDocumentAndReconciliation.md`, `Source/GV2/Private/Tests/`.
+  - **Реализация (2026-09-07):** `PAH-06A`'s modal_stack-only step обобщён на все шесть слоёв единым циклом по `UGV2GameShellWidgetBase::GetApprovedLayers()` внутри `CommitReconcile`: для каждого слоя с реальным host собирается его собственный список `FPreparedScreenInstance` (порядок — Route → Overlays → Modals, как их отдаёт `Document.GetAllScreenInstances()`, отфильтрованный по слою), сеется одноразовая `TMap` уже известными виджетами (переиспользованными и созданными в Prepare) и вызывается один `FGV2KeyedCollection::ReconcilePrepared` на слой. Три старых по-виджетных шага `CommitReconcile` (detach заменённого, attach нового, detach удалённого) удалены целиком, а не оставлены рядом — атомарный `ClearChildren`+пересборка каждого слоя сам вычищает и заменённый, и удалённый виджет, поскольку они просто отсутствуют в желаемом наборе этого раунда.
+
+    Это устранило и `FPreparedScreenInstance::ReplacedOldWidget`, и `FPreparedReconciliationPlan::ScreensToDetach` (`PAH-06A`'s `FDetachEntry`) как мёртвую поверхность: обе структуры существовали только для старой явной detach-бухгалтерии, которую теперь делает сам примитив. Убраны вместе с единственным кодом, их читавшим.
+
+    Кросс-слойный откат — единственная реальная новая возможность, которой не было в `PAH-06A` (там была ровно одна ReconcilePrepared-транзакция в раунде, откатывать её саму на другую было не от чего): при отказе слоя N в цикле откатываются все слои `0..N-1`, уже успешно закоммиченные в ЭТОМ ЖЕ раунде, к их собственному `PreviousOrder` (`OutPreviousOrderedWidgets`, добавленный `PAH-06A`), плюс, как раньше, откат Commit-мутаций шага 1 для всех экранов плана. Диагностика — новый `core:diagnostic.ui_reconcile.layer_reconcile_failed` (заменяет `attach_failed`/`modal_stack_reconcile_failed`, оба удалены как частные случаи одного и того же).
+
+    Публичные `AttachScreenToLayer`/`DetachScreen` на `UGV2GameShellWidgetBase` НЕ удалены: подтверждено (`strings` по всем `.uasset` в `Content/`), что ни один Blueprint-график их не вызывает, но несколько существующих тестов используют их напрямую как общий примитив «положить виджет в host слоя», не имеющий отношения к алгоритму реконсиляции документа — Done-пункт «специальный путь... удалён» относится к САМОМУ АЛГОРИТМУ (какой виджет в каком порядке), которым `CommitReconcile` их раньше вызывал, а не к этим двум методам как таковым. Это ровно то разграничение, что уже проведено «не считается закрытием»-пунктом задачи (добавление index-параметра `AttachScreenToLayer` не было бы закрытием) — сами методы остаются простым примитивом без позиционирования, реконсиляция документа больше их не использует.
+
+    Существующий gate `Tools/Testing/validate_ui_rollback_boundaries.py` (`PAH-01`/`GBF-07`) не потребовал изменений: единственная затронутая классификация — `FGV2LayeredUiReconciler::CommitReconcile` (`Document` boundary) — осталась той же самой функцией с тем же именем и тем же единственным rollback-boundary; шестислойный цикл — новая внутренняя реализация уже классифицированной границы, а не новая cancellable commit root. `UGV2GameShellWidgetBase::AttachScreenToLayer` сохраняет собственную классификацию (`ShellAttach`) как отдельного, всё ещё существующего примитива — таблица в `UIDocumentAndReconciliation.md` обновлена, чтобы не описывать более не существующий вызов из `CommitReconcile`. Отдельный перечислитель для слоёв не понадобился.
+
+    **Обнаруженный эмпирически побочный эффект, не предполагавшийся заранее:** переход на `ClearChildren`+пересборку сделал недействительным старый механизм отказа в `GBF-01` (`GV2.UI.LayeredReconciliationContract`) — тест держал «блокирующий» виджет в single-child `USizeBox`-хосте `overlay_stack`, ожидая, что `AddChild` нового экрана будет отклонён из-за занятости. Новый код чистит хост целиком перед пересборкой, поэтому блокировщик вычищается вместе со всем остальным, и попытка, которая раньше проваливалась, стала успешной — тест обнаружил это как красный (`GBF-01: occupied single-child host rejects document Commit` == false вместо true), не молча. Переписан на реалистичный триггер: **два** желаемых экрана в ОДНОМ документе нацелены на single-child `overlay_stack`, второй `AddChild` отклоняется движком по построению (тот же приём, что `PAH-06A` использовало для `UBorder`) — и одновременно с этим route в `location_content` заменяется в том же документе, так что тест теперь проверяет именно кросс-слойный откат: `location_content` откатывается к v1 ПОСЛЕ того, как сам успешно закоммитил v2, потому что `overlay_stack` (обрабатывается позже по `GetApprovedLayers()`) отказал следом.
+
+    Новый выделенный тест `GV2.Runtime.UI.NonModalLayerReorderAndReplaceContract` (`overlay_stack`, два одновременных instance) доказывает генерализацию за пределы `modal_stack`: `[A,B]→[B,A]` — оба виджета переиспользованы, физический порядок читается через `Shell->GetScreensInLayer`; замена B на B2 при неизменном A — A остаётся на своей позиции, а не сдвигается на конец, как было бы в старом коде (новый виджет просто дописывался `AddChild`).
+
+    Red-on-revert продемонстрирован временным отключением всего шестислойного цикла (`static bool`-флаг) — `NonModalLayerReorderAndReplaceContract` упал на трёх ожидаемых `physical children == 0` (ничего не присоединяется вовсе, раз цикл выключен целиком), и `GV2.UI.LayeredReconciliationContract` тоже покраснел (большой тест транзитивно зависит от того же кода) — восстановление из бэкапа подтверждено побайтово, полный набор снова зелёный.
+
+    Верификация: headless `Automation RunTests GV2;Quit` — 116/116 (115 от `PAH-06A` + 1 новый); portable `ctest` (`/home/king/ue5/GV2/build`) — 76/76; `CORE_DECOUPLING_RULE`, `pre_ready_content_discovery --self-test`, `validate_ui_rollback_boundaries.py`, `validate_shell_attach_failure_consumption.py` (неизменный gate над `AttachScreenToLayer`'s собственным `AddChild`, всё ещё проходит без правок), `validate_docs.py` — все проходят. Объём `GV2LayeredUiReconciler.cpp`/`.h` за эту задачу: `+92/-208` строк (чистое сокращение), не считая уже сокращённого `PAH-06A`.
 
 ## Проверка milestone
 
 - [x] Пригодность общего примитива доказана сценарием, а не выведена из чтения его кода. (PAH-06A, 2026-09-07)
-- [ ] Порядок в слое существует как состояние, а не как следствие порядка обхода плана.
-- [ ] Собственного алгоритма реконсиляции у слоёв не осталось.
-- [ ] Перестановка, замена и откат проверены по фактическому порядку детей панели.
-- [ ] Объём кода реконсиляции уменьшился, а не вырос.
+- [x] Порядок в слое существует как состояние, а не как следствие порядка обхода плана. (PAH-06B, 2026-09-07)
+- [x] Собственного алгоритма реконсиляции у слоёв не осталось. (PAH-06B — старые detach-заменённого/attach/detach-удалённого шаги удалены целиком)
+- [x] Перестановка, замена и откат проверены по фактическому порядку детей панели. (`ModalStackKeyedCollectionOrderingContract`, `NonModalLayerReorderAndReplaceContract`, переписанный `GBF-01`)
+- [x] Объём кода реконсиляции уменьшился, а не вырос. (`GV2LayeredUiReconciler.cpp/.h`: +92/-208 за PAH-06B)

@@ -8,12 +8,13 @@
 
 namespace
 {
-// PAH-06A: FGV2KeyedCollection::ReconcilePrepared's own Prepare/Commit item lifecycle is
-// unused for modal_stack -- every widget here is already fully resolved (reused or created
-// by ScreenFactory) and its fields already committed by CommitReconcile's step 1, before
-// this primitive is ever called. This call exists purely for the primitive's keyed
-// container-ordering and atomic-swap guarantee, so PreparedType carries no data.
-struct FGV2ModalStackReconcilePrepared
+// PAH-06B: FGV2KeyedCollection::ReconcilePrepared's own Prepare/Commit item lifecycle is
+// unused here -- every widget is already fully resolved (reused or created by
+// ScreenFactory) and its fields already committed by CommitReconcile's step 1, before
+// this primitive is ever called for any layer. Each call exists purely for the
+// primitive's keyed container-ordering and atomic-swap guarantee, so PreparedType
+// carries no data.
+struct FGV2LayerReconcilePrepared
 {
 };
 }
@@ -87,7 +88,12 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         }
         else
         {
-            // Instantiate new screen widget
+            // Instantiate new screen widget. If this replaces an existing widget at the
+            // same slot, the old widget needs no bookkeeping here: PAH-06B's per-layer
+            // ReconcilePrepared commit (CommitReconcile) rebuilds each layer's container
+            // from this round's incoming instances only, so a superseded widget --
+            // simply absent from that rebuild -- is dropped atomically along with any
+            // other removed screen, not detached by a separate step.
             PreparedInst.bIsReuse = false;
             PreparedInst.TargetWidget = ScreenFactory(Instance.ScreenId, Instance.Layer);
             if (PreparedInst.TargetWidget == nullptr)
@@ -96,10 +102,6 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
                     TEXT("Failed to instantiate screen widget for screen_id '%s'"),
                     *Instance.ScreenId);
                 return false;
-            }
-            if (Existing != nullptr && Existing->Widget != nullptr)
-            {
-                PreparedInst.ReplacedOldWidget = Existing->Widget;
             }
         }
 
@@ -127,17 +129,11 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         OutPlan.ScreensToUpdateOrAttach.Add(MoveTemp(PreparedInst));
     }
 
-    // 3. Identify screens to detach (active screens not in incoming document)
-    for (const auto& Pair : ActiveScreens)
-    {
-        if (!IncomingKeys.Contains(Pair.Key))
-        {
-            if (Pair.Value.Widget != nullptr)
-            {
-                OutPlan.ScreensToDetach.Add(FDetachEntry{Pair.Key.Layer, Pair.Value.Widget});
-            }
-        }
-    }
+    // PAH-06B: a screen active in a previous revision but absent from IncomingKeys needs
+    // no bookkeeping here either -- CommitReconcile's per-layer ReconcilePrepared commit
+    // rebuilds each layer's container from ScreensToUpdateOrAttach alone (this round's
+    // incoming instances), so anything not in that list is dropped atomically by the same
+    // per-layer ClearChildren-and-rebuild swap that handles reordering and replacement.
 
     OutPlan.bHasModals = Document.Modals.Num() > 0;
     return true;
@@ -219,177 +215,99 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
         }
     }
 
-    // 2. Detach old screens that were replaced by a new widget instance. Best-effort
-    // cleanup of a widget already being superseded, not a publish step -- a false here
-    // (e.g. it somehow had no parent already) is logged, not treated as an invariant
-    // violation that must halt the commit of the *new* widget replacing it.
-    for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
+    // 2. PAH-06B (ADR-0042, INV-P3): every layer is reconciled atomically through the
+    // shared FGV2KeyedCollection::ReconcilePrepared primitive, in the form PAH-06A proved
+    // on modal_stack alone -- generalized here to all six layers, replacing the old
+    // per-widget AttachScreenToLayer/DetachScreen loop entirely rather than leaving it
+    // alongside. Desired order for a layer is that layer's own screen instances in
+    // incoming-document order (the traversal order ScreensToUpdateOrAttach already
+    // preserves, filtered per layer), not the traversal order of the whole multi-layer
+    // plan. Every widget here already exists and its fields are already committed (step 1
+    // above), so each layer's seed map always has every key its ReconcilePrepared call
+    // could ask for -- CreateItem is unreachable by construction, and returns nullptr
+    // (fail-closed) if that invariant is ever violated by a future change. A layer's own
+    // ClearChildren-and-rebuild swap drops any widget not present in this round's
+    // instances for it -- a removed screen, or the old widget at a slot whose screen_id
+    // changed -- atomically, with no separate detach step required.
+    struct FGV2LayerReconcileState
     {
-        if (!Inst.bIsReuse && Inst.ReplacedOldWidget != nullptr && Shell != nullptr)
-        {
-            if (!Shell->DetachScreen(Inst.ReplacedOldWidget.Get()))
-            {
-                UE_LOG(LogTemp, Warning,
-                    TEXT("CommitReconcile: DetachScreen(replaced) returned false for layer '%s' instance '%s' -- widget had no parent"),
-                    *Inst.Layer.ToString(), *Inst.InstanceKey.ToString());
-            }
-        }
-    }
-
-    // 3. PAH-06A (ADR-0042, INV-P3 proof slice): modal_stack is reconciled atomically
-    // through the shared FGV2KeyedCollection::ReconcilePrepared primitive instead of the
-    // per-widget AddChild loop below -- desired order is the layer's own screen instances
-    // in incoming-document order (Document.Modals, preserved by ScreensToUpdateOrAttach's
-    // own traversal order), not the traversal order of the whole multi-layer plan. Every
-    // widget here already exists and its fields are already committed (step 1 above), so
-    // the seed map below always has every key the primitive could ask for -- CreateItem
-    // is unreachable by construction, and returns nullptr (fail-closed) if that invariant
-    // is ever violated by a future change.
-    UPanelWidget* ModalStackHost = Shell != nullptr ? Shell->GetHostForLayer(UGV2GameShellWidgetBase::LayerModalStack) : nullptr;
-    TArray<UGV2ScreenWidgetBase*> PreviousModalOrder;
-    bool bModalStackCommitted = false;
-    if (ModalStackHost != nullptr)
+        FName Layer;
+        UPanelWidget* Host = nullptr;
+        TArray<UGV2ScreenWidgetBase*> PreviousOrder;
+        bool bCommitted = false;
+    };
+    TArray<FGV2LayerReconcileState> LayerStates;
+    if (Shell != nullptr)
     {
-        TArray<const FPreparedScreenInstance*> ModalInstances;
-        for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
+        for (FName Layer : UGV2GameShellWidgetBase::GetApprovedLayers())
         {
-            if (Inst.Layer == UGV2GameShellWidgetBase::LayerModalStack && Inst.TargetWidget != nullptr)
+            UPanelWidget* Host = Shell->GetHostForLayer(Layer);
+            if (Host == nullptr)
             {
-                ModalInstances.Add(&Inst);
+                // PrepareReconcile's own missing_layer_host check already rejected the
+                // whole plan if this round has any instance for a hostless layer, so a
+                // null Host here means this layer genuinely has nothing to reconcile.
+                continue;
             }
-        }
 
-        TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> ModalSeedByKey;
-        for (const FPreparedScreenInstance* Inst : ModalInstances)
-        {
-            ModalSeedByKey.Add(Inst->InstanceKey, Inst->TargetWidget);
-        }
-
-        TArray<UGV2ScreenWidgetBase*> ModalOrderedOut;
-        const bool bModalReconciled = FGV2KeyedCollection::ReconcilePrepared<UGV2ScreenWidgetBase, const FPreparedScreenInstance*, FGV2ModalStackReconcilePrepared>(
-            ModalStackHost,
-            ModalInstances,
-            ModalSeedByKey,
-            [](const FPreparedScreenInstance* const& Inst) { return Inst->InstanceKey; },
-            []() -> UGV2ScreenWidgetBase* { return nullptr; },
-            [](UGV2ScreenWidgetBase&, const FPreparedScreenInstance* const&, FGV2ModalStackReconcilePrepared&) { return true; },
-            [](UGV2ScreenWidgetBase&, const FGV2ModalStackReconcilePrepared&) {},
-            ModalOrderedOut,
-            nullptr,
-            &PreviousModalOrder);
-
-        if (!bModalReconciled)
-        {
-            // Same recovery shape as the attach-failure branch in step 4 below (GBH-10),
-            // simplified because nothing in that step's loop has attached anything yet at
-            // this point: only step 1's field commits and step 2's replaced-widget
-            // detaches (both already applied for every layer, modal_stack included) need
-            // undoing.
-            bool bStructureRestoreFailed = false;
-            for (const FPreparedScreenInstance& ReplacedInst : Plan.ScreensToUpdateOrAttach)
+            TArray<const FPreparedScreenInstance*> LayerInstances;
+            for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
             {
-                if (!ReplacedInst.bIsReuse && ReplacedInst.ReplacedOldWidget != nullptr)
+                if (Inst.Layer == Layer && Inst.TargetWidget != nullptr)
                 {
-                    if (!Shell->AttachScreenToLayer(ReplacedInst.Layer, ReplacedInst.ReplacedOldWidget.Get()))
-                    {
-                        bStructureRestoreFailed = true;
-                        UE_LOG(LogTemp, Error,
-                            TEXT("GBH-10: rollback failed re-attaching replaced screen (layer='%s' instance_key='%s') after modal_stack reconcile failure -- invariant violation"),
-                            *ReplacedInst.Layer.ToString(), *ReplacedInst.InstanceKey.ToString());
-                    }
+                    LayerInstances.Add(&Inst);
                 }
             }
-            for (const FPreparedScreenInstance& CommittedInst : Plan.ScreensToUpdateOrAttach)
+
+            TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> SeedByKey;
+            for (const FPreparedScreenInstance* Inst : LayerInstances)
             {
-                const FGV2UiRollbackResult FieldRollback = RollbackFieldPlans(
-                    CommittedInst.MutationPlan.FieldPlans,
-                    ScreenRollbackFailureInjector
-                        ? TFunction<bool(const FString&)>(
-                              [ScreenRollbackFailureInjector, ScreenId = CommittedInst.ScreenId](const FString& PropertyPath)
-                              { return ScreenRollbackFailureInjector(ScreenId, PropertyPath); })
-                        : nullptr);
-                bStructureRestoreFailed |= !FieldRollback.bRestored;
+                SeedByKey.Add(Inst->InstanceKey, Inst->TargetWidget);
             }
 
-            OutError = TEXT("core:diagnostic.ui_reconcile.modal_stack_reconcile_failed");
-            if (bStructureRestoreFailed)
-            {
-                OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
-            }
-            UE_LOG(LogTemp, Error, TEXT("CommitReconcile: %s"), *OutError);
-            return false;
-        }
-        bModalStackCommitted = true;
-    }
+            FGV2LayerReconcileState& State = LayerStates.AddDefaulted_GetRef();
+            State.Layer = Layer;
+            State.Host = Host;
 
-    // 4. Attach new (already fully committed) screens to every OTHER layer in Shell.
-    // modal_stack is excluded -- step 3 above already reconciled it atomically.
-    // GBH-01: every *predictable* cause of AttachScreenToLayer returning false (null
-    // widget, invalid layer name, missing authored host) has already been rejected in
-    // PrepareReconcile, before any mutation above -- on a plan that reached this point,
-    // Attach is an invariant-level operation. A false here is therefore necessarily an
-    // unpredictable engine-level failure (e.g. AddChild rejecting the child for a reason
-    // Prepare cannot dry-run). GBH-10 (ADR-0041): recovery is no longer merely "delegated"
-    // -- a failure here undoes every new screen already attached earlier in this same
-    // step, restores modal_stack's order from step 3 if that step already committed one
-    // (PAH-06A), re-attaches (best-effort) any old widget step 2 detached to make room for
-    // a replacement, and rolls back step 1's property commits for every screen in the plan
-    // (all of them physically changed in step 1, regardless of where attach fails), so
-    // CommitReconcile returns false with the Shell tree, every screen's properties and
-    // ActiveScreens (not yet touched) exactly at the previous revision.
-    for (int32 InstIndex = 0; InstIndex < Plan.ScreensToUpdateOrAttach.Num(); ++InstIndex)
-    {
-        const FPreparedScreenInstance& Inst = Plan.ScreensToUpdateOrAttach[InstIndex];
-        if (Inst.Layer == UGV2GameShellWidgetBase::LayerModalStack)
-        {
-            continue;
-        }
-        if (!Inst.bIsReuse && Shell != nullptr)
-        {
-            if (!Shell->AttachScreenToLayer(Inst.Layer, Inst.TargetWidget.Get()))
+            TArray<UGV2ScreenWidgetBase*> OrderedOut;
+            const bool bLayerReconciled = FGV2KeyedCollection::ReconcilePrepared<UGV2ScreenWidgetBase, const FPreparedScreenInstance*, FGV2LayerReconcilePrepared>(
+                Host,
+                LayerInstances,
+                SeedByKey,
+                [](const FPreparedScreenInstance* const& Inst) { return Inst->InstanceKey; },
+                []() -> UGV2ScreenWidgetBase* { return nullptr; },
+                [](UGV2ScreenWidgetBase&, const FPreparedScreenInstance* const&, FGV2LayerReconcilePrepared&) { return true; },
+                [](UGV2ScreenWidgetBase&, const FGV2LayerReconcilePrepared&) {},
+                OrderedOut,
+                nullptr,
+                &State.PreviousOrder);
+
+            if (!bLayerReconciled)
             {
+                // GBH-10 (ADR-0041): roll back every layer already committed earlier in
+                // this same loop to its own exact prior order (via the
+                // OutPreviousOrderedWidgets each of THEIR ReconcilePrepared calls
+                // captured), then undo step 1's property commits for every screen in the
+                // plan (all of them physically changed there, regardless of which layer's
+                // reconcile fails) -- nothing else has mutated yet, so this leaves the
+                // Shell tree, every screen's properties, and ActiveScreens (not yet
+                // touched) exactly at the previous revision.
                 bool bStructureRestoreFailed = false;
-                for (int32 RollbackIndex = InstIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+                for (const FGV2LayerReconcileState& CommittedLayer : LayerStates)
                 {
-                    const FPreparedScreenInstance& AttachedInst = Plan.ScreensToUpdateOrAttach[RollbackIndex];
-                    if (AttachedInst.Layer == UGV2GameShellWidgetBase::LayerModalStack)
+                    if (!CommittedLayer.bCommitted)
                     {
                         continue;
                     }
-                    if (!AttachedInst.bIsReuse)
+                    CommittedLayer.Host->ClearChildren();
+                    for (UGV2ScreenWidgetBase* PrevWidget : CommittedLayer.PreviousOrder)
                     {
-                        if (!Shell->DetachScreen(AttachedInst.TargetWidget.Get()))
+                        if (PrevWidget != nullptr && CommittedLayer.Host->AddChild(PrevWidget) == nullptr)
                         {
                             bStructureRestoreFailed = true;
                             UE_LOG(LogTemp, Error,
-                                TEXT("GBH-10: rollback failed detaching newly-attached screen '%s' (layer='%s' instance_key='%s') -- invariant violation"),
-                                *AttachedInst.ScreenId, *AttachedInst.Layer.ToString(), *AttachedInst.InstanceKey.ToString());
-                        }
-                    }
-                }
-                if (bModalStackCommitted && ModalStackHost != nullptr)
-                {
-                    ModalStackHost->ClearChildren();
-                    for (UGV2ScreenWidgetBase* PrevModalWidget : PreviousModalOrder)
-                    {
-                        if (PrevModalWidget != nullptr && ModalStackHost->AddChild(PrevModalWidget) == nullptr)
-                        {
-                            bStructureRestoreFailed = true;
-                            UE_LOG(LogTemp, Error,
-                                TEXT("GBH-10: rollback failed restoring modal_stack order after a later layer's attach failure -- invariant violation"));
-                        }
-                    }
-                }
-                for (const FPreparedScreenInstance& ReplacedInst : Plan.ScreensToUpdateOrAttach)
-                {
-                    if (!ReplacedInst.bIsReuse && ReplacedInst.ReplacedOldWidget != nullptr)
-                    {
-                        if (!Shell->AttachScreenToLayer(ReplacedInst.Layer, ReplacedInst.ReplacedOldWidget.Get()))
-                        {
-                            bStructureRestoreFailed = true;
-                            UE_LOG(LogTemp, Error,
-                                TEXT("GBH-10: rollback failed re-attaching replaced screen (layer='%s' instance_key='%s') detached in step 2 -- invariant violation"),
-                                *ReplacedInst.Layer.ToString(), *ReplacedInst.InstanceKey.ToString());
+                                TEXT("GBH-10: rollback failed restoring layer '%s' order after layer '%s' reconcile failure -- invariant violation"),
+                                *CommittedLayer.Layer.ToString(), *Layer.ToString());
                         }
                     }
                 }
@@ -405,9 +323,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                     bStructureRestoreFailed |= !FieldRollback.bRestored;
                 }
 
-                OutError = FString::Printf(
-                    TEXT("core:diagnostic.ui_reconcile.attach_failed: layer='%s' instance_key='%s' screen_id='%s'"),
-                    *Inst.Layer.ToString(), *Inst.InstanceKey.ToString(), *Inst.ScreenId);
+                OutError = FString::Printf(TEXT("core:diagnostic.ui_reconcile.layer_reconcile_failed: layer='%s'"), *Layer.ToString());
                 if (bStructureRestoreFailed)
                 {
                     OutError = FString::Printf(TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *OutError);
@@ -415,35 +331,15 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                 UE_LOG(LogTemp, Error, TEXT("CommitReconcile: %s"), *OutError);
                 return false;
             }
+            State.bCommitted = true;
         }
     }
 
-    // 5. Detach removed screens that are no longer present in document (best-effort
-    // cleanup, same reasoning as step 2). modal_stack entries are skipped: step 3's
-    // ReconcilePrepared commit already dropped them from the container atomically via its
-    // own ClearChildren, so calling DetachScreen on them here would just log a spurious
-    // "no parent" warning.
-    for (const FDetachEntry& RemovedEntry : Plan.ScreensToDetach)
-    {
-        if (RemovedEntry.Layer == UGV2GameShellWidgetBase::LayerModalStack)
-        {
-            continue;
-        }
-        if (RemovedEntry.Widget != nullptr && Shell != nullptr)
-        {
-            if (!Shell->DetachScreen(RemovedEntry.Widget.Get()))
-            {
-                UE_LOG(LogTemp, Warning,
-                    TEXT("CommitReconcile: DetachScreen(removed) returned false -- widget had no parent"));
-            }
-        }
-    }
-
-    // 6. Commit active screens map -- only reached once every screen above committed
-    // and attached cleanly.
+    // 3. Commit active screens map -- only reached once every layer above committed
+    // cleanly.
     ActiveScreens = Plan.NewActiveScreens;
 
-    // 7. Layer Rules & Modal Interactivity (UIF-20)
+    // 4. Layer Rules & Modal Interactivity (UIF-20)
     if (Shell != nullptr)
     {
         if (Plan.bHasModals)

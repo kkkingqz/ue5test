@@ -44,25 +44,13 @@ public:
         FName InstanceKey;
         FString ScreenId;
         TObjectPtr<UGV2ScreenWidgetBase> TargetWidget;
-        TObjectPtr<UGV2ScreenWidgetBase> ReplacedOldWidget; // non-null if replacing an existing screen in this slot
         FGV2ScreenMutationPlan MutationPlan;
         bool bIsReuse = false;
-    };
-
-    // PAH-06A: a screen no longer present in the incoming document, paired with the layer
-    // it was attached to -- CommitReconcile needs Layer to skip an entry the modal_stack
-    // ReconcilePrepared commit already removed atomically (its own ClearChildren already
-    // dropped it), so a redundant DetachScreen there doesn't log a spurious "no parent" warning.
-    struct FDetachEntry
-    {
-        FName Layer;
-        TObjectPtr<UGV2ScreenWidgetBase> Widget;
     };
 
     struct FPreparedReconciliationPlan
     {
         TArray<FPreparedScreenInstance> ScreensToUpdateOrAttach;
-        TArray<FDetachEntry> ScreensToDetach;
         TMap<FScreenSlotKey, FActiveScreenEntry> NewActiveScreens;
         bool bHasModals = false;
         TArray<TObjectPtr<UGV2ScreenWidgetBase>> Modals; // In modal_stack order
