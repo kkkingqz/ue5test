@@ -34,6 +34,36 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
+#include "Application/GV2PackageClosure.h"
+#include "UI/GV2ImageResourceCatalog.h"
+
+namespace
+{
+// PAH-04B: the image resource catalog is session-scoped now
+// (UGV2ImageResourceCatalog::RebuildForSession/ReleaseForSession, called by
+// FGV2SessionCoordinator::StartSession/EndSession in production). These tests probe
+// image-typed capabilities (GetResourceProbeCandidates() reads the session-scoped
+// catalog) via a bare GameInstance::InitializeStandalone() that never broadcasts
+// OnStartGameInstance / calls StartSession(), so they give themselves a real catalog
+// built from the real GameData closure directly.
+struct FGV2ScopedRealImageCatalog
+{
+    FGV2ScopedRealImageCatalog()
+    {
+        TArray<FString> PackageIds;
+        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+        {
+            PackageIds.Add(Entry.PackageId);
+        }
+        FString Error;
+        UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
+    }
+    ~FGV2ScopedRealImageCatalog()
+    {
+        UGV2ImageResourceCatalog::ReleaseForSession();
+    }
+};
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiCapabilityObservabilityTest,
@@ -79,6 +109,8 @@ UUserWidget* MakeUnboundHost()
 
 bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     // 1. Positive: Boolean/Number/Text all have real UPP-09 consumers with a genuine
     // physical target, so every capability must be provably observable.
     {
@@ -537,6 +569,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     UWorld* World = MakeSweepWorld();
     const TArray<UClass*> ProductionHostImplementations = CollectProductionUiPropertyHostImplementations();
     TestTrue(TEXT("DUC-04: reflection discovers production IGV2UiPropertyHost implementations"), ProductionHostImplementations.Num() > 0);
@@ -728,6 +762,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCollectionForgeryTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     UWorld* World = MakeSweepWorld();
 
     auto RunForgeryScenario = [this, World](EGV2ForgeryMode Mode, const TCHAR* ExpectedCode, const TCHAR* Label)

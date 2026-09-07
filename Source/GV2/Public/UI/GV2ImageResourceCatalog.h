@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
-#include "Engine/DeveloperSettings.h"
 #include "Engine/Texture2D.h"
 #include "Styling/SlateBrush.h"
 #include "GV2ImageResourceCatalog.generated.h"
@@ -101,6 +100,18 @@ public:
     bool Resolve(const FString& ResourceId, FGV2ResolvedImageResource& OutResource, FString& OutError) const;
     bool BuildFromDirectory(const FString& RootDirectory, FString& OutError);
 
+    // PAH-04B (ADR-0042, INV-P2): scans the fixed `Resources/` tree (project convention,
+    // like `GameData`/`Scripts` -- not a configurable root) via the existing
+    // BuildFromDirectory(), then scopes the published entries to resources whose own
+    // namespace is a member of PackageIds -- this session's resolved package closure.
+    // A resource whose namespace isn't in the closure (e.g. Resources/rh/ when this
+    // session's closure is core+textsystem+sample) is excluded from the snapshot, the
+    // same way that package's schemas/Lua sources are already silently absent from such
+    // a session -- not present, not an error. A structurally malformed path (wrong
+    // segment count/grammar) still fails the whole build, inside BuildFromDirectory
+    // itself, unchanged.
+    bool BuildFromPackageClosure(const TArray<FString>& PackageIds, FString& OutError);
+
     static bool ValidateDefinition(const FGV2ImageResourceDefinition& Definition, FString& OutError);
     static bool ResolveDefinition(const FGV2ImageResourceDefinition& Definition, FGV2ResolvedImageResource& OutResource, FString& OutError);
     static bool TryMakeResourceId(
@@ -108,6 +119,19 @@ public:
         const FString& PngFilename,
         FString& OutResourceId,
         FString& OutError);
+
+    // PAH-04B: session-scoped, not process-lifetime/config-driven -- mirrors
+    // GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession's shape (PAH-04A).
+    // RebuildForSession is called once per StartSession, before Ready, with this
+    // session's resolved package ids (the same set schemas/Lua sources already use);
+    // ReleaseForSession is called on EndSession and on a failed StartSession, so no
+    // catalog survives past the session that owns it. GetSessionCatalog() never rebuilds
+    // lazily -- it returns whatever RebuildForSession last published, or nullptr before
+    // any session/after release, exactly like the presentation call sites already
+    // null-check for today.
+    static bool RebuildForSession(const TArray<FString>& PackageIds, FString& OutError);
+    static void ReleaseForSession();
+    static UGV2ImageResourceCatalog* GetSessionCatalog();
 
 private:
 #if WITH_DEV_AUTOMATION_TESTS
@@ -123,19 +147,4 @@ private:
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> RuntimeTextures;
-};
-
-UCLASS(Config = Game, DefaultConfig, meta = (DisplayName = "GV2 Image Resource Catalog"))
-class GV2_API UGV2ImageResourceCatalogSettings : public UDeveloperSettings
-{
-    GENERATED_BODY()
-
-public:
-    virtual FName GetCategoryName() const override;
-
-    static UGV2ImageResourceCatalog* GetConfiguredCatalog();
-    static bool RebuildConfiguredCatalog(FString& OutError);
-
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Catalog")
-    FString ResourceRootDirectory = TEXT("Resources");
 };

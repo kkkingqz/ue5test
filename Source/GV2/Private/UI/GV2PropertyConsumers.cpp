@@ -329,7 +329,7 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
     PreparedScalePolicy = Policy;
     PreparedFixedAspectRatio = FixedAspect;
 
-    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
     if (Catalog == nullptr)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.missing_catalog: Configured Image Resource Catalog is unavailable");

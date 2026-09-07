@@ -1,15 +1,17 @@
 ---
 title: Image Resource Contract
 status: normative
-version: 1.7
-updated: 2026-09-01
+version: 1.8
+updated: 2026-09-07
 depends_on:
   - ../Architecture/StableIDSpecification.md
+  - ../Architecture/BootstrapAndSessionLifecycle.md
 decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0016-png-suffix-image-metadata.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0035-ui-foundation-and-composition.md
+  - ../ADR/0042-presentation-authority-and-publication.md
 ---
 
 # Image Resource Contract
@@ -27,7 +29,7 @@ decisions:
 ## Ownership and source of truth
 
 - Lua, Definitions и Presentation Snapshot хранят только canonical `resource_id`.
-- Project `Resources` tree является authoring source; startup-built `UGV2ImageResourceCatalog` владеет опубликованным mapping `resource_id → runtime texture + render metadata`.
+- Project `Resources` tree является authoring source; **session-scoped** `UGV2ImageResourceCatalog` (PAH-04B) владеет опубликованным mapping `resource_id → runtime texture + render metadata`. Каталог перестраивается один раз за сессию, синхронно внутри `FGV2SessionCoordinator::StartSession()`, до перехода в `Ready`, из тех же resolved package roots, что уже использует репозиторий и Lua-исходники пакета — не из отдельной настройки. Ресурс, чей namespace не входит в замыкание пакетов этой сессии, отсутствует в опубликованном каталоге (как и схемы/скрипты пакета вне замыкания), а не считается ошибкой сборки. Каталог не переживает `EndSession()`.
 - UE Presentation разрешает resource после repository/catalog validation и до Widget mutation.
 - Headless catalog сохраняет только ID, kind и availability metadata, не загружает texture payload и может не хранить UE-specific image geometry metadata.
 - Screen Template владеет геометрией принимающего image block.
@@ -123,7 +125,7 @@ Mapping в Slate:
 
 Invalid ID, missing texture, duplicate ID, unknown mode, non-positive ratio/tile size, collapsed nine-slice center и target incompatibility возвращают presentation failure до Widget mutation. Required missing resource блокирует owning prepare/apply. `FGV2ImagePresentation::ResolveAndApply` разрешает ровно один `resource_id` и не содержит fallback-цепочки. **Optional resource (GBH-05):** политика подстановки заглушки — свойство схемы/presentation content, а не второй C++-путь применения: отсутствующий или пустой optional `resource_id` в самой схеме field'а замещается Stable ID заглушки (например, `core:resource.ui.missing_portrait`, `core:resource.ui.missing_icon`) до того, как значение доходит до property consumer'а, который резолвит это значение обычным `ResolveAndApply`, как любой другой `resource_id`. Параллельные `ApplyOptionalImageResource`/`ApplyOptionalPortrait`/`ResolveOptionalAndApply` удалены; production-авторитета для отдельного C++ resolve-with-fallback пути не было.
 
-Startup Image Catalog является required application dependency. Failed configured catalog build обязан оставить Runtime Subsystem в non-ready bootstrap state и запретить создание/публикацию session `Ready`. Атомарное сохранение ранее опубликованного catalog защищает существующего consumer-а от partial mutation, но не разрешает новой session использовать stale catalog после failed rebuild.
+Image Catalog является required session dependency (PAH-04B): построение происходит внутри `StartSession()`, не при инициализации подсистемы. Failed catalog build для конкретной сессии обязан оставить эту сессию в `Failed` state, показать UE-native recovery surface и запретить публикацию session `Ready` — тем же generic путём отказа, что уже используют repository/Lua-source failures внутри `FGV2SessionCoordinator::StartSession()`. Ни катастрофический candidate, ни каталог предыдущей сессии не сохраняются: `ReleaseForSession()` вызывается перед каждой попыткой перестроения и при `EndSession()`/отказе, так что неудачная сессия не оставляет после себя ни частичного, ни устаревшего каталога.
 
 ## Compatibility and evolution
 
@@ -145,4 +147,5 @@ Startup Image Catalog является required application dependency. Failed c
 - Непустой `InitialResourceId` использует тот же resolver и mode validation, что и динамическое применение.
 - Lua source и portable DTO не содержат texture path, brush или render mode.
 - `WBP_Image` сохраняет native parent `UGV2ImageWidgetBase`; concrete fixed-aspect Screen block проверяется на matching aspect constraint при добавлении такого поля.
-- Automation с invalid configured resource root подтверждает, что Lua VM/Screen не публикуются и session не достигает `Ready`; после восстановления settings catalog снова успешно строится.
+- Automation с undecodable PNG в реальном дереве `Resources/` пакета из замыкания подтверждает, что Lua VM/Screen не публикуются и session не достигает `Ready`; после удаления сбойного файла следующая сессия снова успешно строит каталог.
+- Automation двумя последовательными сессиями с разными замыканиями пакетов подтверждает, что ресурс пакета вне замыкания отсутствует в опубликованном каталоге (unknown ID, не build-ошибка), а при включении пакета в замыкание — снова резолвится.

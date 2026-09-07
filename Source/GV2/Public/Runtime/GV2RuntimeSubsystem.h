@@ -90,8 +90,6 @@ private:
     TPimplPtr<FGV2LayeredUiReconciler> Reconciler;
 
     FDelegateHandle StartGameInstanceHandle;
-    FString ImageCatalogBuildError;
-    bool bImageCatalogReady = false;
     bool bScreenRegistryReady = false;
     FString RepositoryBuildError;
     TArray<FString> RepositoryPackageRoots;

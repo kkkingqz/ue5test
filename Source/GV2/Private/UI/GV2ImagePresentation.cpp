@@ -11,7 +11,7 @@ bool FGV2ImagePresentation::ResolveAndApply(
     FGV2ResolvedImageResource& OutResource,
     FString& OutError)
 {
-    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
     if (Widget == nullptr || Catalog == nullptr)
     {
         OutError = Widget == nullptr

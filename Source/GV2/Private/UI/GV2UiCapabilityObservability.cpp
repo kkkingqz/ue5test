@@ -45,7 +45,7 @@ using namespace GV2ContentCore;
 TArray<FString> GetResourceProbeCandidates()
 {
     TArray<FString> Candidates;
-    if (const UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog())
+    if (const UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog())
     {
         for (const FGV2ImageResourceDefinition& Entry : Catalog->GetEntries())
         {

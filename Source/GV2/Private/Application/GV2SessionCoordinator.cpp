@@ -6,6 +6,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Templates/UnrealTemplate.h"
+#include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2TextPipeline.h"
 
 namespace
@@ -255,6 +256,7 @@ bool FGV2SessionCoordinator::StartSession(
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     Status.RepositoryVersion = 0;
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
+    UGV2ImageResourceCatalog::ReleaseForSession();
 
     if (!InPinnedRepository.IsValid())
     {
@@ -285,7 +287,27 @@ bool FGV2SessionCoordinator::StartSession(
     // PAH-04A (ADR-0042, INV-P1): discovery happens here, synchronously, before this
     // session can reach Ready -- the exact SchemaPackageRoots LoadPortableRuntimeSources
     // just resolved this session's Lua sources from, not a second independent lookup.
+    TArray<FString> ClosurePackageIds;
+    ClosurePackageIds.Reserve(SchemaPackageRoots.Num());
+    for (const FGV2SchemaPackageRoot& SchemaRoot : SchemaPackageRoots)
+    {
+        ClosurePackageIds.Add(SchemaRoot.PackageId);
+    }
     GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(SchemaPackageRoots));
+
+    // PAH-04B: same closure package ids as schemas -- the image resource catalog is the
+    // second content authority PKG-R1's fix pattern applies to. RebuildForSession fails
+    // closed (a resource whose namespace isn't in ClosurePackageIds, or a decode/duplicate
+    // error) exactly like a required-catalog bootstrap failure used to at Initialize()
+    // time, just moved to this session's own StartSession -- ImageResources.md's "Failed
+    // configured catalog build обязан оставить Runtime Subsystem в non-ready bootstrap
+    // state" now applies per-session instead of once per process.
+    FString ImageCatalogError;
+    if (!UGV2ImageResourceCatalog::RebuildForSession(ClosurePackageIds, ImageCatalogError))
+    {
+        FailRuntime({"ImageCatalogNotReady", SessionCoordinatorToUtf8(ImageCatalogError)});
+        return false;
+    }
 
     if (!RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, RuntimeSources, Fault))
     {
@@ -362,6 +384,7 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
+    UGV2ImageResourceCatalog::ReleaseForSession();
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
     Status.SessionState = FinalState;
     Status.RepositoryVersion = 0;
@@ -742,6 +765,7 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
+    UGV2ImageResourceCatalog::ReleaseForSession();
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;

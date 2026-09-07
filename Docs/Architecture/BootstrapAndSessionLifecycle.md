@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 3.1
-updated: 2026-08-20
+version: 3.2
+updated: 2026-09-07
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -75,7 +75,7 @@ Public readiness — один bool `is_ready`. Он становится true т
 - `SubmitUiInteraction(...)` является единственным публичным путём пользовательского input;
 - создание Screen из C++ параметров, вызов Lua builder из automation и методы с семантикой `ForTest` запрещены.
 
-До открытия session `UGV2RuntimeSubsystem` обязан успешно построить configured `UGV2ImageResourceCatalog`, загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Ошибка любого required presentation catalog/registry или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (выставляя явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
+До открытия session `UGV2RuntimeSubsystem` обязан загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Image Resource Catalog (PAH-04B) строится позже, session-scoped, внутри `FGV2SessionCoordinator::StartSession()` из тех же resolved package roots, что репозиторий и Lua-исходники — не при инициализации подсистемы. Ошибка любого required presentation catalog/registry или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (выставляя явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build — сессия не наследует каталог предыдущей сессии ни при успехе, ни при отказе. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
 
 Start sequence: `GameInstance` start → Screen Registry ready → package modules register and freeze registries → package-owned `start` hook may create its initial gameplay state exclusively through a registered Command Dispatcher command → presentation source resolves the resulting state and publishes an initial Screen request → coordinator забирает pending screen → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit → активный экран отображается во viewport. Screen replacement выполняется после выхода из Lua. C++ не знает ни стартовой команды пакета, ни `screen_id`, ни Widget class.
 

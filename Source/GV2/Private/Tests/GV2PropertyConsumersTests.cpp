@@ -24,7 +24,9 @@
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
+#include "Application/GV2PackageClosure.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
+#include "UI/GV2ImageResourceCatalog.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
 #include "Blueprint/WidgetTree.h"
@@ -45,6 +47,32 @@
 #include "Misc/Paths.h"
 #include "UObject/UObjectIterator.h"
 
+namespace
+{
+// PAH-04B: the image resource catalog is session-scoped now
+// (UGV2ImageResourceCatalog::RebuildForSession/ReleaseForSession, called by
+// FGV2SessionCoordinator::StartSession/EndSession in production). This test resolves
+// real icon resources directly, without starting a real session, so it gives itself a
+// real catalog built from the real GameData closure.
+struct FGV2ScopedRealImageCatalog
+{
+    FGV2ScopedRealImageCatalog()
+    {
+        TArray<FString> PackageIds;
+        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+        {
+            PackageIds.Add(Entry.PackageId);
+        }
+        FString Error;
+        UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
+    }
+    ~FGV2ScopedRealImageCatalog()
+    {
+        UGV2ImageResourceCatalog::ReleaseForSession();
+    }
+};
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2PropertyConsumersTest,
     "GV2.UI.StandardPropertyConsumers",
@@ -52,6 +80,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     // 1. Missing target rejection (must NOT be silently ignored)
     {
         FGV2TextPropertyConsumer TextConsumer;
@@ -2037,7 +2067,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 // AppliedResourceId bookkeeping (that only updates when the host itself is
                 // the capability target, e.g. a composite's top-level image field). Verify
                 // by the rendered brush's resource object instead.
-                UGV2ImageResourceCatalog* IconCatalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+                UGV2ImageResourceCatalog* IconCatalog = UGV2ImageResourceCatalog::GetSessionCatalog();
                 FGV2ResolvedImageResource ResolvedIcon;
                 FString IconResolveErr;
                 const bool bIconResolved = IconCatalog != nullptr

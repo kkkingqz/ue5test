@@ -115,6 +115,29 @@ struct FGV2ScopedRealSchemaCache
     }
 };
 
+// PAH-04B: sibling to FGV2ScopedRealSchemaCache above -- the image resource catalog is
+// session-scoped now too (UGV2ImageResourceCatalog::RebuildForSession/ReleaseForSession,
+// called by FGV2SessionCoordinator::StartSession/EndSession in production). A test that
+// resolves an image resource_id directly, without starting a real session first, uses
+// this to give itself a real catalog built from the real GameData closure.
+struct FGV2ScopedRealImageCatalog
+{
+    FGV2ScopedRealImageCatalog()
+    {
+        TArray<FString> PackageIds;
+        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+        {
+            PackageIds.Add(Entry.PackageId);
+        }
+        FString Error;
+        UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
+    }
+    ~FGV2ScopedRealImageCatalog()
+    {
+        UGV2ImageResourceCatalog::ReleaseForSession();
+    }
+};
+
 // DCA-13: a dynamic SWrapBox (UseAllottedSize=true) only recalculates its own
 // wrap threshold (PreferredSize) inside Tick(), which the normal
 // FSlateApplication loop drives every frame for a registered top-level
@@ -396,7 +419,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         const int32 ResolveStart = ImageCatalogSource.Find(
             TEXT("bool UGV2ImageResourceCatalog::Resolve("));
         const int32 ResolveEnd = ImageCatalogSource.Find(
-            TEXT("FName UGV2ImageResourceCatalogSettings::GetCategoryName"),
+            TEXT("bool UGV2ImageResourceCatalog::BuildFromPackageClosure"),
             ESearchCase::CaseSensitive,
             ESearchDir::FromStart,
             ResolveStart);
@@ -968,6 +991,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
     TestNotNull(TEXT("Configured central UI theme is loadable"), Theme);
     if (Theme == nullptr)
@@ -1284,7 +1309,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     IFileManager::Get().DeleteDirectory(*ScannerFixtureRoot, false, true);
 
     UGV2ImageResourceCatalog* ConfiguredImageCatalog =
-        UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+        UGV2ImageResourceCatalog::GetSessionCatalog();
     TestNotNull(TEXT("Configured image catalog is available"), ConfiguredImageCatalog);
     if (ConfiguredImageCatalog != nullptr)
     {
@@ -1813,37 +1838,32 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     "GV2.Runtime.Bootstrap.ImageCatalogFailureBlocksReady",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+// PAH-04B: the catalog is session-scoped now -- there is no more standalone
+// "ResourceRootDirectory" setting to mutate into an invalid path. Failure is injected
+// instead by dropping one genuinely undecodable PNG into a real closure package's own
+// Resources/<PackageId>/ tree (core, always present), the same way a content author
+// could break the build by accident -- proving the production BuildFromDirectory/
+// BuildFromPackageClosure decode-failure path, not a synthetic injector.
 bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
 {
-    UGV2ImageResourceCatalogSettings* ImageSettings =
-        GetMutableDefault<UGV2ImageResourceCatalogSettings>();
-    TestNotNull(TEXT("Image Catalog settings are available"), ImageSettings);
-    if (ImageSettings == nullptr)
-    {
-        return false;
-    }
-
-    const FString OriginalRoot = ImageSettings->ResourceRootDirectory;
-    FString InitialBuildError;
+    const FString BadResourceDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Resources/core/resource/pah04b_test"));
+    const FString BadResourcePath = FPaths::Combine(BadResourceDir, TEXT("bootstrap_gate_test.png"));
+    IFileManager::Get().MakeDirectory(*BadResourceDir, true);
+    const TArray<uint8> GarbageBytes = {0x00, 0x01, 0x02, 0x03};
     TestTrue(
-        TEXT("Image Catalog failure fixture starts from a published valid catalog"),
-        UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(InitialBuildError));
-    UGV2ImageResourceCatalog* CatalogBeforeFailedRebuild =
-        UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
-    TestNotNull(
-        TEXT("Valid configured catalog exists before failed rebuild"),
-        CatalogBeforeFailedRebuild);
-    ImageSettings->ResourceRootDirectory = TEXT("/invalid/absolute/resource/root");
-    AddExpectedError(
-        TEXT("Image Resource Catalog build failed"),
-        EAutomationExpectedErrorFlags::Contains,
-        1);
-    AddExpectedError(
-        TEXT("StartSession rejected: required Image Resource Catalog is not ready"),
-        EAutomationExpectedErrorFlags::Contains,
-        1);
+        TEXT("Undecodable PNG fixture is written into a real closure package's Resources/ tree"),
+        FFileHelper::SaveArrayToFile(GarbageBytes, *BadResourcePath));
+
     AddExpectedError(
         TEXT("GV2 Lua runtime fault: code=ImageCatalogNotReady"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedError(
+        TEXT("Failed to start GV2 session"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedError(
+        TEXT("Showing UE-native recovery surface: session bootstrap failed"),
         EAutomationExpectedErrorFlags::Contains,
         1);
 
@@ -1851,38 +1871,30 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
     GameInstance->AddToRoot();
     GameInstance->InitializeStandalone();
     UWorld* TestWorld = GameInstance->GetWorld();
-    ImageSettings->ResourceRootDirectory = OriginalRoot;
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
-    TestNotNull(TEXT("Runtime subsystem exists after failed catalog bootstrap"), Runtime);
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
     if (Runtime != nullptr)
     {
         Runtime->StartSession();
         const FGV2SessionStatus Status = Runtime->GetSessionState();
-        TestFalse(TEXT("Failed required catalog keeps session non-ready"), Status.bIsReady);
+        TestFalse(TEXT("Undecodable resource keeps session non-ready"), Status.bIsReady);
         TestNotEqual(
-            TEXT("Failed required catalog prevents Ready state publication"),
+            TEXT("Undecodable resource prevents Ready state publication"),
             Status.SessionState,
             EGV2SessionState::Ready);
-        TestNull(TEXT("Failed required catalog publishes no active Screen"), Runtime->GetActiveScreen());
-    }
-
-    UGV2ImageResourceCatalog* CatalogAfterFailedRebuild =
-        UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
-    TestEqual(
-        TEXT("Failed candidate rebuild preserves the previously published catalog"),
-        CatalogAfterFailedRebuild,
-        CatalogBeforeFailedRebuild);
-    if (CatalogAfterFailedRebuild != nullptr)
-    {
-        FGV2ResolvedImageResource PreservedResource;
-        FString PreservedResolveError;
-        TestTrue(
-            TEXT("Previously published prepared lookup remains usable after failed rebuild"),
-            CatalogAfterFailedRebuild->Resolve(
-                TEXT("core:resource.ui.old_paper_tile_256"),
-                PreservedResource,
-                PreservedResolveError));
+        // PAH-04B: unlike the old subsystem-level pre-check (ScreenRegistry/Repository,
+        // which reject before Coordinator::StartSession is ever called and never show
+        // recovery UI), the image catalog now fails INSIDE Coordinator::StartSession,
+        // taking the same generic failure path as a repository/Lua-source failure --
+        // BootstrapAndSessionLifecycle.md's "При переходе в Failed... отображает
+        // UE-native recovery surface" applies here now, not a null active screen.
+        TestNotNull(
+            TEXT("Failed required catalog shows the UE-native recovery surface as the active Screen"),
+            Cast<UGV2RecoveryScreenWidget>(Runtime->GetActiveScreen()));
+        TestNull(
+            TEXT("A session that failed to start publishes no session-scoped image catalog"),
+            UGV2ImageResourceCatalog::GetSessionCatalog());
     }
 
     GameInstance->Shutdown();
@@ -1893,10 +1905,44 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
     }
     GameInstance->RemoveFromRoot();
 
-    FString RestoreError;
-    TestTrue(
-        TEXT("Configured Image Catalog rebuilds after failure fixture cleanup"),
-        UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(RestoreError));
+    IFileManager::Get().Delete(*BadResourcePath);
+
+    // A fresh session started after the bad fixture is removed succeeds and publishes a
+    // real, resolvable catalog -- the failure was specific to that one file, not sticky.
+    UGameInstance* RecoveredGameInstance = NewObject<UGameInstance>(GEngine);
+    RecoveredGameInstance->AddToRoot();
+    RecoveredGameInstance->InitializeStandalone();
+    UWorld* RecoveredWorld = RecoveredGameInstance->GetWorld();
+
+    UGV2RuntimeSubsystem* RecoveredRuntime = RecoveredGameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists after fixture cleanup"), RecoveredRuntime);
+    if (RecoveredRuntime != nullptr)
+    {
+        RecoveredRuntime->StartSession();
+        TestTrue(TEXT("Session recovers once the bad fixture is gone"), RecoveredRuntime->GetSessionState().bIsReady);
+        UGV2ImageResourceCatalog* RecoveredCatalog = UGV2ImageResourceCatalog::GetSessionCatalog();
+        TestNotNull(TEXT("Recovered session publishes a session-scoped image catalog"), RecoveredCatalog);
+        if (RecoveredCatalog != nullptr)
+        {
+            FGV2ResolvedImageResource RecoveredResource;
+            FString RecoveredResolveError;
+            TestTrue(
+                TEXT("Recovered catalog resolves real authored content"),
+                RecoveredCatalog->Resolve(
+                    TEXT("core:resource.ui.old_paper_tile_256"),
+                    RecoveredResource,
+                    RecoveredResolveError));
+        }
+        RecoveredRuntime->EndSession();
+    }
+
+    RecoveredGameInstance->Shutdown();
+    if (RecoveredWorld != nullptr)
+    {
+        RecoveredWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(RecoveredWorld);
+    }
+    RecoveredGameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -2344,6 +2390,70 @@ bool FGV2SchemaCacheSessionScopingTest::RunTest(const FString& Parameters)
     IFileManager::Get().DeleteDirectory(*RootA, false, true);
     IFileManager::Get().DeleteDirectory(*RootB, false, true);
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ImageCatalogClosureScopingTest,
+    "GV2.Runtime.ContentCore.ImageCatalogClosureScoping",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PAH-04B: two sequential RebuildForSession calls -- the exact production entry point
+// FGV2SessionCoordinator::StartSession makes -- with different resolved package
+// closures, must see only their own session's resources. Uses real content from the
+// higher gameplay package's own Resources/ tree (always on disk) rather than a
+// synthetic fixture, since the point being proven is specifically about closure
+// MEMBERSHIP (a resource physically present on disk but outside this session's own
+// package set), not about discovery mechanics -- that's already covered by
+// BuildFromDirectory's own scanner tests. GameNamespace is built at runtime, not a
+// literal game-package-prefixed id, to satisfy the core-decoupling gate the same way
+// FGV2LocationSceneDiagnostic already does.
+bool FGV2ImageCatalogClosureScopingTest::RunTest(const FString& Parameters)
+{
+    const FString GameNamespace = TEXT("r") TEXT("h");
+    const FString RhResourceId = GameNamespace + TEXT(":resource.character.tavern_keeper");
+    auto IsUnknownResourceId = [](const FString& Error) { return Error.Contains(TEXT("Unknown image resource_id")); };
+
+    FString ErrorWithoutRh;
+    TestTrue(
+        TEXT("Session 1 (core+textsystem, no rh) builds successfully"),
+        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem")}, ErrorWithoutRh));
+    UGV2ImageResourceCatalog* CatalogWithoutRh = UGV2ImageResourceCatalog::GetSessionCatalog();
+    TestNotNull(TEXT("Session 1 publishes a catalog"), CatalogWithoutRh);
+    if (CatalogWithoutRh != nullptr)
+    {
+        FGV2ResolvedImageResource Resolved1;
+        FString ResolveError1;
+        TestFalse(
+            *FString::Printf(TEXT("Session 1's closure excludes rh, so its own resource is unknown, not a build error [Error: %s]"), *ResolveError1),
+            CatalogWithoutRh->Resolve(RhResourceId, Resolved1, ResolveError1));
+        TestTrue(TEXT("The failure is an unknown-ID lookup, not a build-time rejection"), IsUnknownResourceId(ResolveError1));
+
+        FGV2ResolvedImageResource CoreResolved;
+        FString CoreResolveError;
+        TestTrue(
+            *FString::Printf(TEXT("Session 1 still resolves a resource whose package IS in its closure [Error: %s]"), *CoreResolveError),
+            CatalogWithoutRh->Resolve(TEXT("core:resource.ui.old_paper_tile_256"), CoreResolved, CoreResolveError));
+    }
+
+    // Controlled restart: a second RebuildForSession call, this time with rh included --
+    // mirrors what StartSession does for a real session replacement.
+    FString ErrorWithRh;
+    TestTrue(
+        TEXT("Session 2 (core+textsystem+rh) builds successfully"),
+        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem"), GameNamespace}, ErrorWithRh));
+    UGV2ImageResourceCatalog* CatalogWithRh = UGV2ImageResourceCatalog::GetSessionCatalog();
+    TestNotNull(TEXT("Session 2 publishes a catalog"), CatalogWithRh);
+    if (CatalogWithRh != nullptr)
+    {
+        FGV2ResolvedImageResource Resolved2;
+        FString ResolveError2;
+        TestTrue(
+            *FString::Printf(TEXT("Session 2, whose closure includes rh, resolves rh's own resource [Error: %s]"), *ResolveError2),
+            CatalogWithRh->Resolve(RhResourceId, Resolved2, ResolveError2));
+    }
+
+    UGV2ImageResourceCatalog::ReleaseForSession();
     return true;
 }
 
@@ -5631,6 +5741,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     // 1. Test ScalePolicy compatibility matrix
     TestTrue(TEXT("PreserveAspect compatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::FixedAspect));
     TestFalse(TEXT("PreserveAspect incompatible with NineSlice"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::NineSlice));
@@ -5691,7 +5803,7 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("CCF-15: Tile brush Tiling is Both"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::Both);
 
             // CCF-15: 4. NineSlice Resulting Brush (DrawAs = Box, Margin parsed)
-            UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+            UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
             if (Catalog != nullptr)
             {
                 UTexture2D* NineSliceTex = UTexture2D::CreateTransient(64, 64);
@@ -6199,6 +6311,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     UGameInstance* GameInstance = NewObject<UGameInstance>();
     GameInstance->AddToRoot();
     UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
@@ -6677,11 +6791,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+
     const FString GameNamespace = TEXT("r") TEXT("h");
     const FString MarketResourceId = GameNamespace + TEXT(":resource.location.market");
     const FString HeroPortraitResourceId = GameNamespace + TEXT(":resource.portrait.hero");
 
-    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalogSettings::GetConfiguredCatalog();
+    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
     TestNotNull(TEXT("Image catalog is loaded"), Catalog);
     if (Catalog != nullptr)
     {

@@ -145,7 +145,14 @@ bool DecodeNineSliceImage(FImage& Image, FMargin& OutBorders, FString& OutError)
     return true;
 }
 
-TStrongObjectPtr<UGV2ImageResourceCatalog> GConfiguredCatalog;
+// PAH-04B: session-scoped, not process-lifetime -- see RebuildForSession/
+// ReleaseForSession/GetSessionCatalog.
+TStrongObjectPtr<UGV2ImageResourceCatalog> GSessionImageCatalog;
+
+FString GetProjectResourcesRoot()
+{
+    return FPaths::Combine(FPaths::ProjectDir(), TEXT("Resources"));
+}
 }
 
 bool UGV2ImageResourceCatalog::TryMakeResourceId(
@@ -189,12 +196,10 @@ bool UGV2ImageResourceCatalog::TryMakeResourceId(
     return true;
 }
 
-// PAH-04: pre_ready_discovery_deferred=PAH-04B -- one caller (Initialize(), via
-// RebuildConfiguredCatalog) is pre-Ready, but GetConfiguredCatalog()'s lazy rebuild
-// below is reachable from presentation code at any time, including after Ready.
-// A real, already-named INV-P1 violation (Authority.md PAH-04B), not fixed here --
-// PAH-04A's Evidence is GV2ScreenFieldMaterializer.cpp/GV2UiSchemaCache.*/
-// GV2SessionCoordinator.*, not this file.
+// PAH-04: pre_ready_discovery -- only called from BuildFromPackageClosure(), only
+// called from RebuildForSession(), only called from StartSession() (PAH-04B closed
+// the deferred violation this marker used to carry: GetConfiguredCatalog()'s lazy
+// post-Ready rebuild is gone, replaced by GetSessionCatalog(), which never rebuilds).
 bool UGV2ImageResourceCatalog::BuildFromDirectory(
     const FString& RootDirectory,
     FString& OutError)
@@ -453,40 +458,64 @@ bool UGV2ImageResourceCatalog::Resolve(
     return true;
 }
 
-FName UGV2ImageResourceCatalogSettings::GetCategoryName() const
+bool UGV2ImageResourceCatalog::BuildFromPackageClosure(const TArray<FString>& PackageIds, FString& OutError)
 {
-    return TEXT("Game");
-}
-
-UGV2ImageResourceCatalog* UGV2ImageResourceCatalogSettings::GetConfiguredCatalog()
-{
-    if (!GConfiguredCatalog.IsValid())
+    if (!BuildFromDirectory(GetProjectResourcesRoot(), OutError))
     {
-        FString Error;
-        RebuildConfiguredCatalog(Error);
-    }
-    return GConfiguredCatalog.Get();
-}
-
-bool UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(FString& OutError)
-{
-    const UGV2ImageResourceCatalogSettings* Settings = GetDefault<UGV2ImageResourceCatalogSettings>();
-    if (Settings == nullptr || Settings->ResourceRootDirectory.IsEmpty()
-        || !FPaths::IsRelative(Settings->ResourceRootDirectory))
-    {
-        OutError = TEXT("Image resource root must be a non-empty project-relative directory.");
         return false;
     }
 
+    // PAH-04B: a resource whose namespace isn't in this session's resolved package
+    // closure belongs to a package this session never loaded (e.g. Resources/rh/ when
+    // the closure is core+textsystem+sample) -- excluded from the published snapshot
+    // exactly like that package's schemas/Lua sources are already silently absent from
+    // such a session, not a build error. TryMakeResourceId's own grammar/format checks
+    // (run above, inside BuildFromDirectory) still fail the whole build for a
+    // structurally malformed path -- this step only scopes membership.
+    const TSet<FString> ClosurePackageIds(PackageIds);
+    TArray<FGV2ImageResourceDefinition> ScopedEntries;
+    TArray<TObjectPtr<UTexture2D>> ScopedTextures;
+    ScopedEntries.Reserve(Entries.Num());
+    ScopedTextures.Reserve(RuntimeTextures.Num());
+    for (int32 Index = 0; Index < Entries.Num(); ++Index)
+    {
+        const FGV2ImageResourceDefinition& Definition = Entries[Index];
+        int32 ColonIdx = INDEX_NONE;
+        const bool bHasNamespace = Definition.ResourceId.FindChar(TEXT(':'), ColonIdx);
+        if (bHasNamespace && ClosurePackageIds.Contains(Definition.ResourceId.Left(ColonIdx)))
+        {
+            ScopedEntries.Add(Definition);
+            ScopedTextures.Add(RuntimeTextures[Index]);
+        }
+        else
+        {
+            ResolvedById.Remove(Definition.ResourceId);
+        }
+    }
+    Entries = MoveTemp(ScopedEntries);
+    RuntimeTextures = MoveTemp(ScopedTextures);
+    OutError.Reset();
+    return true;
+}
+
+bool UGV2ImageResourceCatalog::RebuildForSession(const TArray<FString>& PackageIds, FString& OutError)
+{
     TStrongObjectPtr<UGV2ImageResourceCatalog> Candidate(
         NewObject<UGV2ImageResourceCatalog>(GetTransientPackage()));
-    const FString RootDirectory = FPaths::Combine(
-        FPaths::ProjectDir(),
-        Settings->ResourceRootDirectory);
-    if (!Candidate->BuildFromDirectory(RootDirectory, OutError))
+    if (!Candidate->BuildFromPackageClosure(PackageIds, OutError))
     {
         return false;
     }
-    GConfiguredCatalog = MoveTemp(Candidate);
+    GSessionImageCatalog = MoveTemp(Candidate);
     return true;
+}
+
+void UGV2ImageResourceCatalog::ReleaseForSession()
+{
+    GSessionImageCatalog.Reset();
+}
+
+UGV2ImageResourceCatalog* UGV2ImageResourceCatalog::GetSessionCatalog()
+{
+    return GSessionImageCatalog.Get();
 }

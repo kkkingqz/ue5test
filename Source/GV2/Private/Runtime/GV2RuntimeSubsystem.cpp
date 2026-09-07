@@ -109,17 +109,6 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
 
-    ImageCatalogBuildError.Reset();
-    bImageCatalogReady = UGV2ImageResourceCatalogSettings::RebuildConfiguredCatalog(
-        ImageCatalogBuildError);
-    if (!bImageCatalogReady)
-    {
-        UE_LOG(
-            LogGV2Runtime,
-            Error,
-            TEXT("Image Resource Catalog build failed: %s"),
-            *ImageCatalogBuildError);
-    }
     LoadScreenRegistry();
 
     RepositoryPackageRoots = ResolveRepositoryPackageRoots();
@@ -184,8 +173,6 @@ void UGV2RuntimeSubsystem::Deinitialize()
     }
     bScreenRegistryReady = false;
     ScreenRegistry = nullptr;
-    bImageCatalogReady = false;
-    ImageCatalogBuildError.Reset();
     RepositoryPublisher.Reset();
     RepositoryPackageRoots.Reset();
     bRepositoryReady = false;
@@ -217,18 +204,6 @@ void UGV2RuntimeSubsystem::StartSession()
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("StartSession rejected: Screen Registry is not ready"));
         Coordinator->FailBootstrap(TEXT("ScreenRegistryNotReady"), TEXT("Screen Registry is not ready"));
-        return;
-    }
-    if (!bImageCatalogReady)
-    {
-        UE_LOG(
-            LogGV2Runtime,
-            Error,
-            TEXT("StartSession rejected: required Image Resource Catalog is not ready: %s"),
-            *ImageCatalogBuildError);
-        Coordinator->FailBootstrap(
-            TEXT("ImageCatalogNotReady"),
-            ImageCatalogBuildError.IsEmpty() ? TEXT("Image Resource Catalog is not ready") : ImageCatalogBuildError);
         return;
     }
     if (!bRepositoryReady || !RepositoryPublisher->HasCurrent())
