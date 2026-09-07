@@ -1740,6 +1740,46 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ScreenAssetRootOwnershipAudit,
+    "GV2.Runtime.ScreenRegistry.AssetRootOwnershipAudit",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ScreenAssetRootOwnershipAudit::RunTest(const FString& Parameters)
+{
+    // PAH-03: before flipping an unowned /Game/ asset root from allowed to rejected, prove
+    // no existing UI Widget Blueprint would be newly rejected -- the audited set comes from
+    // the Asset Registry (every WidgetBlueprint under the three known UI content roots),
+    // not a hand-typed list in this test, so a future .uasset cannot silently evade it.
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    FARFilter UiAssetFilter;
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/UI"));
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/TextSystem/UI"));
+    UiAssetFilter.PackagePaths.Add(TEXT("/Game/RH/UI"));
+    UiAssetFilter.bRecursivePaths = true;
+    TArray<FAssetData> UiAssets;
+    AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
+
+    int32 WidgetBlueprintsAudited = 0;
+    for (const FAssetData& Asset : UiAssets)
+    {
+        if (Asset.AssetClassPath.GetAssetName() != TEXT("WidgetBlueprint"))
+        {
+            continue;
+        }
+        ++WidgetBlueprintsAudited;
+        const FString AssetPath = Asset.PackageName.ToString();
+        const FString OwningPackage = UGV2ScreenRegistry::FindOwningPackageForAssetPath(AssetPath);
+        TestFalse(
+            *FString::Printf(TEXT("PAH-03: '%s' under a known UI content root has a package owner"), *AssetPath),
+            OwningPackage.IsEmpty());
+    }
+    TestTrue(TEXT("PAH-03: audit found Widget Blueprints to check"), WidgetBlueprintsAudited > 0);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2ImageCatalogBootstrapGate,
     "GV2.Runtime.Bootstrap.ImageCatalogFailureBlocksReady",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -4422,7 +4462,10 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
             const FString OwningPackage = UGV2ScreenRegistry::FindOwningPackageForAssetPath(AssetPath);
             if (OwningPackage.IsEmpty())
             {
-                return true;
+                // PAH-03: unowned /Game/ content is rejected; content outside /Game/
+                // entirely is trusted by declared domain. Independently recomputed here,
+                // not copied from the production branch it mirrors.
+                return UGV2ScreenRegistry::IsTrustedExternalContentDomain(AssetPath);
             }
             const int32 AssetIdx = Order.IndexOfByPredicate(
                 [&OwningPackage](const FString& PackageId) { return PackageId.Equals(OwningPackage, ESearchCase::IgnoreCase); });
@@ -4466,6 +4509,35 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
             TEXT("Namespace absent from the pinned closure is rejected"),
             UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
                 TEXT("sample"), TEXT("/Game/RH/UI/Screens/WBP_RHScreen"), RealPackageLoadOrder));
+
+        // PAH-03: a /Game/ asset whose root isn't one of the four tracked package roots is
+        // unowned, not unconstrained -- rejected, not the old ladder's `return true` for an
+        // empty FindOwningPackageForAssetPath result.
+        TestFalse(
+            TEXT("PAH-03: synthetic /Game/ path outside every tracked package root is rejected"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                TEXT("core"), TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned"), RealPackageLoadOrder));
+        TestTrue(
+            TEXT("PAH-03: FindOwningPackageForAssetPath itself returns empty for that path"),
+            UGV2ScreenRegistry::FindOwningPackageForAssetPath(TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned")).IsEmpty());
+
+        // PAH-03: content outside /Game/ entirely (engine-shipped, or an enabled plugin's
+        // own content root) has no project-package ownership to violate and is trusted by
+        // declared domain, not rejected alongside a genuinely unowned /Game/ root.
+        TestTrue(
+            TEXT("PAH-03: engine-shipped content path is a trusted external domain"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                TEXT("core"), TEXT("/Engine/EditorResources/S_Actor"), RealPackageLoadOrder));
+        TestTrue(
+            TEXT("PAH-03: enabled-plugin content path is a trusted external domain"),
+            UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
+                TEXT("core"), TEXT("/CommonUI/Widgets/WBP_SomePluginWidget"), RealPackageLoadOrder));
+        TestTrue(
+            TEXT("IsTrustedExternalContentDomain itself: /Engine/ path"),
+            UGV2ScreenRegistry::IsTrustedExternalContentDomain(TEXT("/Engine/EditorResources/S_Actor")));
+        TestFalse(
+            TEXT("IsTrustedExternalContentDomain itself: a /Game/ path is never a trusted external domain"),
+            UGV2ScreenRegistry::IsTrustedExternalContentDomain(TEXT("/Game/SyntheticUnownedFeature/WBP_Unowned")));
 
         // A package that doesn't exist in today's real closure still works correctly once
         // it's present in PackageLoadOrder -- proving the rule reads positions generically

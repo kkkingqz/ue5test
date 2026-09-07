@@ -91,8 +91,10 @@ public:
     // package_id whose load_index is i, e.g. GetPackageLoadOrderFromGameData()'s result or
     // GameData/mods.lock.json5 read directly) -- not a hand-written per-namespace branch
     // ladder. A ScreenNamespace absent from PackageLoadOrder is rejected, never allowed by
-    // default; an AssetPath whose content root isn't owned by any tracked package layer
-    // (see FindOwningPackageForAssetPath) carries no layering constraint and is allowed.
+    // default. PAH-03: an AssetPath under /Game/ whose content root isn't owned by any
+    // tracked package layer (see FindOwningPackageForAssetPath) is unowned and rejected,
+    // not unconstrained; an AssetPath outside /Game/ entirely (see
+    // IsTrustedExternalContentDomain) is trusted by declared domain instead.
     static bool IsAssetAllowedForScreenNamespace(
         const FString& ScreenNamespace,
         const FString& AssetPath,
@@ -100,8 +102,19 @@ public:
 
     // Resolves the package_id -> content-root naming convention (not itself an ordering
     // rule): returns the package_id that owns AssetPath's UE content root, or an empty
-    // string if AssetPath's root isn't owned by any tracked package layer.
+    // string if AssetPath's root isn't owned by any tracked package layer. Only meaningful
+    // for a /Game/ AssetPath -- see IsTrustedExternalContentDomain for anything else.
     static FString FindOwningPackageForAssetPath(const FString& AssetPath);
+
+    // PAH-03: GV2's package closure and layering rule (ADR-0042, INV-P2) governs the
+    // project's own content under /Game/ only -- mods.lock.json5 has no notion of engine
+    // or plugin content roots for it to own. Content mounted outside /Game/ entirely
+    // (engine-shipped, or an enabled plugin's own content root, e.g. CommonUI) therefore
+    // carries no project-package ownership for the rule to check, and is trusted by
+    // declared domain rather than by an ownership lookup that returns nothing. Without
+    // this, rejecting an unowned /Game/ root by default would also reject any legitimate
+    // reference to engine-shipped or plugin content.
+    static bool IsTrustedExternalContentDomain(const FString& AssetPath);
 
     // Reads GameData/mods.lock.json5 (via the same GV2ContentHostSupport package discovery
     // the runtime subsystem already uses to resolve its repository roots) and returns

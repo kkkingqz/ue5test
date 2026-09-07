@@ -43,6 +43,11 @@ FString UGV2ScreenRegistry::FindOwningPackageForAssetPath(const FString& AssetPa
     return FString();
 }
 
+bool UGV2ScreenRegistry::IsTrustedExternalContentDomain(const FString& AssetPath)
+{
+    return !AssetPath.StartsWith(TEXT("/game/"), ESearchCase::IgnoreCase);
+}
+
 TArray<FString> UGV2ScreenRegistry::GetPackageLoadOrderFromGameData()
 {
     TArray<FString> PackageLoadOrder;
@@ -73,9 +78,11 @@ bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
     const FString OwningPackage = FindOwningPackageForAssetPath(AssetPath);
     if (OwningPackage.IsEmpty())
     {
-        // The asset's content root isn't owned by any tracked package layer, so no
-        // layer-ownership constraint applies to it.
-        return true;
+        // PAH-03: a /Game/ asset whose root isn't owned by any tracked package layer is
+        // unowned, not unconstrained -- reject it. Content outside /Game/ entirely has no
+        // project-package ownership to violate and is trusted by declared domain instead
+        // (the old unconditional `return true` here covered both cases alike).
+        return IsTrustedExternalContentDomain(AssetPath);
     }
 
     const int32 AssetPackageIndex = PackageLoadOrder.IndexOfByPredicate(
@@ -159,11 +166,23 @@ bool UGV2ScreenRegistry::Build(FString& OutError)
             const FString AssetPath = Entry.WidgetClass.ToSoftObjectPath().ToString();
             if (!IsAssetAllowedForScreenNamespace(Namespace, AssetPath, PackageLoadOrder))
             {
-                OutError = FString::Printf(
-                    TEXT("Screen '%s' in namespace '%s' violates layer ownership by referencing higher layer asset '%s'"),
-                    *Entry.ScreenId,
-                    *Namespace,
-                    *AssetPath);
+                // PAH-03: two distinct rejection reasons share this branch -- tell them
+                // apart for the diagnostic instead of reporting the layer-violation
+                // wording for both. Cheap to re-derive: FindOwningPackageForAssetPath does
+                // no I/O, and IsAssetAllowedForScreenNamespace already computed the same
+                // value internally.
+                const FString OwningPackage = FindOwningPackageForAssetPath(AssetPath);
+                OutError = OwningPackage.IsEmpty()
+                    ? FString::Printf(
+                        TEXT("core:diagnostic.ui_screen_registry.unowned_asset_root: screen '%s' references asset '%s' whose content root is not owned by any package in the load closure"),
+                        *Entry.ScreenId,
+                        *AssetPath)
+                    : FString::Printf(
+                        TEXT("core:diagnostic.ui_screen_registry.higher_layer_asset: screen '%s' in namespace '%s' violates layer ownership by referencing higher layer asset '%s' (owned by '%s')"),
+                        *Entry.ScreenId,
+                        *Namespace,
+                        *AssetPath,
+                        *OwningPackage);
                 return false;
             }
         }
