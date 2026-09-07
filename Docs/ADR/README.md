@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.7
-updated: 2026-09-06
+version: 2.8
+updated: 2026-09-07
 ---
 
 # Architecture Decision Records
@@ -54,6 +54,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0040](0040-universal-ui-property-pipeline.md) | accepted | Universal UI Property Pipeline: подготовленное дерево значений вместо schema-specific DTO, Prepare/Commit, `SchemaContract ⊆ WidgetCapabilities` с наблюдаемостью capability, namespace ownership, mod-only отказ, без обратной совместимости |
 | [0041](0041-ui-commit-rollback-model.md) | accepted | UI Commit Rollback Model: захват предыдущего состояния перед live-мутацией и откат в обратном порядке той же Prepare/Commit-машиной на всех границах reused host/screen/collection/Shell attach — `REM-02`/`GBH-09` |
 | [0042](0042-presentation-authority-and-publication.md) | accepted | Presentation Authority and Publication: один неизменяемый снимок контента сессии, отсутствие обнаружения после `Ready`, одна абстракция реконсиляции для повторяемых структур, одно зафиксированное логическое состояние с восстановимой физической проекцией, семантика решается до подготовленной транзакции |
+| [0043](0043-presentation-apply-boundary.md) | accepted | Presentation Apply Boundary: один опубликованный снимок и точный набор пакетов, физическая граница применения отдельным модулем Unreal, самодостаточная подготовленная операция, запрет направления зависимостей как первичная гарантия `INV-P5` |
 
 ## Template
 

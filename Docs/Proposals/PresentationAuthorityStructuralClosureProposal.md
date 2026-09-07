@@ -2,7 +2,7 @@
 title: Presentation Authority Structural Closure Proposal
 status: draft
 proposal_state: accepted_for_planning
-version: 0.1
+version: 0.2
 updated: 2026-09-07
 depends_on:
   - ../Status/AuditFindings.md
@@ -14,6 +14,7 @@ decisions:
   - ../ADR/0040-universal-ui-property-pipeline.md
   - ../ADR/0041-ui-commit-rollback-model.md
   - ../ADR/0042-presentation-authority-and-publication.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # Структурное замыкание авторитета презентации
@@ -313,6 +314,10 @@ Snapshot вводится до переноса модуля: так мигра�
 
 ## Архитектурные изменения перед планированием
 
-Потребуется новый ADR: он не отменяет `INV-P1…P5`, а материализует их через единый session candidate, immutable snapshot и запрещённое dependency direction. ADR обязан явно пересмотреть вывод архивного `PresentationAuthorityConsolidationProposal`, что отдельная физическая граница применения не заслужена: условие повторного открытия наступило, потому что новый Theme authority дал false green существующим фазовым гейтам.
+**Принято: [ADR-0043](../ADR/0043-presentation-apply-boundary.md) (2026-09-07).** Он не отменяет `INV-P1…P5`, а материализует их через единый session candidate, immutable snapshot и запрещённое dependency direction, и пересматривает отклонённую альтернативу `ADR-0042` в части физической границы применения.
+
+Основание пересмотра в ADR сформулировано иначе, чем в версии 0.1 этого документа, и это уточнение существенно. Условие повторного открытия, записанное в архивном `PresentationAuthorityConsolidationProposal`, звучало так: «если гейт начнёт находить утечки, которые нельзя закрыть дополнением подготовленного значения». Утечка темы этому условию **не удовлетворяет** — `PreparedText` может нести разрешённый класс стиля, ровно как `STATUS-012` был закрыт для ресурсов изображений.
+
+Сработало другое: гейт утечку **не увидел**, потому что множество авторитетов задавалось в нём рукописным перечнем имён. То есть дефектным оказалось само условие — оно проверяло свойства найденного, исходя из того, что фактическая сторона гейта полна. Отсюда довод в пользу физической границы сильнее того, который приводила версия 0.1: не «появилась утечка, не чинимая дополнением payload», а «множество авторитетов открыто, и любой гейт уровня исходника обязан знать имя заранее, тогда как запрет направления зависимостей имени не требует».
 
 Синхронно обновляются [System Context and Components](../Architecture/SystemContextAndComponents.md), [Dependency Map](../Architecture/DependencyMap.md), [Bootstrap and Session Lifecycle](../Architecture/BootstrapAndSessionLifecycle.md), [Headless Simulation Contract](../Architecture/HeadlessSimulationContract.md) и UI contracts, владеющие Prepare/Commit и resource/theme semantics.
