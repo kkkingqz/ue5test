@@ -3,6 +3,7 @@
 #include "Bridge/GV2BridgeRuntimeTypes.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "UI/GV2PreparedUiValue.h"
+#include "UI/GV2UiSchemaCache.h"
 
 #include <string_view>
 
@@ -16,6 +17,23 @@
 // *.schema.json5 file declares that schema_id -- nothing here hardcodes a list.
 namespace GV2ScreenFieldMaterializer
 {
+// PAH-04A (ADR-0006, ADR-0042 INV-P1/INV-P2): the schema cache used by every
+// function below is session-scoped, not process-lifetime. FGV2SessionCoordinator
+// calls this once per StartSession, with the exact same resolved package roots
+// (BootstrapAndSessionLifecycle.md: "Одни и те же resolved package roots обязаны
+// использоваться и для repository build, и для загрузки package Lua sources" --
+// this extends that invariant to schemas) used to build this session's repository
+// and load its Lua sources, before Ready. Discovery happens synchronously inside
+// this call (FGV2UiSchemaCache's constructor); nothing here reads the filesystem
+// again afterward.
+void RebuildSchemaCacheForSession(TArray<FGV2SchemaPackageRoot> PackageRoots);
+
+// Releases the session-scoped schema cache: called on EndSession and on a failed
+// StartSession, so no compiled schema or parsed document survives past the
+// session that owns it. Every function below reports "no schema cache" until
+// RebuildSchemaCacheForSession runs again.
+void ReleaseSchemaCacheForSession();
+
 bool PrepareBindingDefinitions(
     const GV2RuntimeCore::FScreenRequest& Request,
     TArray<FGV2UiBindingDefinition>& OutDefinitions);
@@ -30,11 +48,10 @@ bool BuildFields(
     const TArray<FGV2UiBindingHandle>& Handles,
     TArray<FGV2ScreenFieldValue>& OutFields);
 
-bool IsKnownSchema(const std::string& SchemaId);
-
 // DUC-09: lets a nested-screen-fields consumer re-resolve one envelope's compiled
 // schema by schema_id after ProjectMaterializedValue already validated it -- a cache
-// hit against the same singleton, needed only to fill FGV2ScreenFieldValue::CompiledSchema.
+// hit against the same session-scoped cache, needed only to fill
+// FGV2ScreenFieldValue::CompiledSchema.
 std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> GetCompiledSchema(
     const std::string& SchemaId,
     FString& OutError);

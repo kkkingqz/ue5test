@@ -9,6 +9,7 @@
 #include "Layout/ArrangedChildren.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SWrapBox.h"
+#include "Application/GV2PackageClosure.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2FilesystemContentSourceProvider.h"
@@ -88,6 +89,30 @@ struct FGV2ScopedSamplePackageOverride
 {
     FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
     ~FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+};
+
+// PAH-04A: the schema cache is session-scoped now -- RebuildSchemaCacheForSession is a
+// coordinator-only entry point in production, called once per StartSession. A test that
+// calls GV2ScreenFieldMaterializer::PrepareBindingDefinitions/BuildFields/GetCompiledSchema
+// directly, without starting a real session, uses this to give itself one from the real
+// GameData closure, and releases it on scope exit so it can never leak into an unrelated
+// later test (the exact hidden cross-test ordering dependency a process-lifetime static
+// used to risk).
+struct FGV2ScopedRealSchemaCache
+{
+    FGV2ScopedRealSchemaCache()
+    {
+        TArray<FGV2SchemaPackageRoot> Roots;
+        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+        {
+            Roots.Add(FGV2SchemaPackageRoot{Entry.PackageId, Entry.RootDirectory});
+        }
+        GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(Roots));
+    }
+    ~FGV2ScopedRealSchemaCache()
+    {
+        GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
+    }
 };
 
 // DCA-13: a dynamic SWrapBox (UseAllottedSize=true) only recalculates its own
@@ -254,6 +279,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+
     auto ReadSource = [this](const TCHAR* RelativePath, FString& OutSource)
     {
         const FString FullPath = FPaths::Combine(FPaths::ProjectDir(), RelativePath);
@@ -757,6 +784,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+
     if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
     {
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.progress.health"), FText::FromString(TEXT("Health")));
@@ -2244,6 +2273,81 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SchemaCacheSessionScopingTest,
+    "GV2.Runtime.ContentCore.SchemaCacheSessionScoping",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PAH-04A: two sequential sessions -- here, two sequential RebuildSchemaCacheForSession
+// calls, the exact production entry point FGV2SessionCoordinator::StartSession makes --
+// each with their own resolved package roots, must see only their own session's schemas.
+// The core-decoupling gate forbids a game-package namespace literal anywhere under
+// Source/, so this uses two temporary, hand-written *.schema.json5 fixtures under the
+// core namespace instead of real higher-package GameData content -- proving both
+// directions a one-sided real-content asymmetry could only prove one of: schema present
+// in root set 1 and absent from set 2, AND vice versa, AND that rebuilding truly
+// replaces rather than accumulates (set 1's schema must vanish once set 2 is active,
+// not just coexist with it).
+bool FGV2SchemaCacheSessionScopingTest::RunTest(const FString& Parameters)
+{
+    const FString RootA = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("PAH04ATest/RootA"));
+    const FString RootB = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("PAH04ATest/RootB"));
+    IFileManager::Get().DeleteDirectory(*RootA, false, true);
+    IFileManager::Get().DeleteDirectory(*RootB, false, true);
+    IFileManager::Get().MakeDirectory(*RootA, true);
+    IFileManager::Get().MakeDirectory(*RootB, true);
+
+    static const TCHAR* SchemaIdA = TEXT("core:schema.ui_field.pah04a_fixture_a.v1");
+    static const TCHAR* SchemaIdB = TEXT("core:schema.ui_field.pah04a_fixture_b.v1");
+    const FString SchemaJson5A = FString::Printf(
+        TEXT("{ id: \"%s\", schema_domain: \"ui_field\", schema_version: 1, root: { kind: \"object\", fields: { text: { kind: \"text\", required: true } } } }"),
+        SchemaIdA);
+    const FString SchemaJson5B = FString::Printf(
+        TEXT("{ id: \"%s\", schema_domain: \"ui_field\", schema_version: 1, root: { kind: \"object\", fields: { text: { kind: \"text\", required: true } } } }"),
+        SchemaIdB);
+    TestTrue(TEXT("Fixture A written"), FFileHelper::SaveStringToFile(SchemaJson5A, *FPaths::Combine(RootA, TEXT("fixture_a.schema.json5"))));
+    TestTrue(TEXT("Fixture B written"), FFileHelper::SaveStringToFile(SchemaJson5B, *FPaths::Combine(RootB, TEXT("fixture_b.schema.json5"))));
+
+    auto IsUnknownSchemaId = [](const FString& Error) { return Error.Contains(TEXT("unknown schema_id")); };
+
+    GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession({FGV2SchemaPackageRoot{TEXT("core"), RootA}});
+
+    FString ErrorA1;
+    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdA), ErrorA1);
+    TestFalse(
+        *FString::Printf(TEXT("Session 1 (root A) resolves fixture A [Error: %s]"), *ErrorA1),
+        IsUnknownSchemaId(ErrorA1));
+
+    FString ErrorB1;
+    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdB), ErrorB1);
+    TestTrue(
+        *FString::Printf(TEXT("Session 1 (root A) does not know fixture B [Error: %s]"), *ErrorB1),
+        IsUnknownSchemaId(ErrorB1));
+
+    // Controlled restart: a second RebuildSchemaCacheForSession call, root B this time --
+    // mirrors what StartSession does for a real session replacement.
+    GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession({FGV2SchemaPackageRoot{TEXT("core"), RootB}});
+
+    FString ErrorB2;
+    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdB), ErrorB2);
+    TestFalse(
+        *FString::Printf(TEXT("Session 2 (root B) resolves fixture B [Error: %s]"), *ErrorB2),
+        IsUnknownSchemaId(ErrorB2));
+
+    FString ErrorA2;
+    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdA), ErrorA2);
+    TestTrue(
+        *FString::Printf(TEXT("Session 2 (root B) no longer knows fixture A -- replaced, not accumulated [Error: %s]"), *ErrorA2),
+        IsUnknownSchemaId(ErrorA2));
+
+    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
+
+    IFileManager::Get().DeleteDirectory(*RootA, false, true);
+    IFileManager::Get().DeleteDirectory(*RootB, false, true);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2LuaTestScreenWidgetCreation,
     "GV2.Runtime.Presentation.LuaCreatesRegisteredScreen",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -3666,6 +3770,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+
     if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
     {
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inventory"), FText::FromString(TEXT("Inventory")));
@@ -6852,6 +6958,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
@@ -6977,6 +7085,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
@@ -7143,6 +7253,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
@@ -7405,6 +7517,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters)
 {
+    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+
     auto ReadSource = [this](const TCHAR* RelativePath, FString& OutSource)
     {
         const FString FullPath = FPaths::Combine(FPaths::ProjectDir(), RelativePath);

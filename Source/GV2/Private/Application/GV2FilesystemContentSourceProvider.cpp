@@ -27,6 +27,10 @@ FGV2FilesystemContentSourceProvider::FGV2FilesystemContentSourceProvider(
 {
 }
 
+// PAH-04: pre_ready_discovery -- FGV2FilesystemContentSourceProvider is never
+// instantiated in production today (zero callers); if it were, IContentSourceProvider
+// implementations are only ever driven by repository build, itself only called from
+// Initialize(), before any session exists.
 std::optional<std::string> FGV2FilesystemContentSourceProvider::ReadSource(
     const std::string_view RequestedPackageId,
     const std::string_view RelativeSource) const
@@ -46,6 +50,9 @@ std::optional<std::string> FGV2FilesystemContentSourceProvider::ReadSource(
     return std::string(reinterpret_cast<const char*>(FileBytes.GetData()), FileBytes.Num());
 }
 
+// PAH-04: pre_ready_discovery -- only called from Initialize() (directly, and via
+// BuildGV2RepositoryFromDirectory, itself a production-unused convenience wrapper),
+// before any session exists.
 GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectories(const TArray<FString>& PackageRootDirs)
 {
     std::vector<std::filesystem::path> Roots;

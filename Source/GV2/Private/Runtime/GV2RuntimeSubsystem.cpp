@@ -22,6 +22,8 @@ DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
 namespace
 {
 // TSL-02: default package roots discovered dynamically from GameData container.
+// PAH-04: pre_ready_discovery -- only called from ResolveRepositoryPackageRoots(),
+// only called from Initialize(), before any session exists.
 TArray<FString> DiscoverDefaultRepositoryPackageRoots()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));

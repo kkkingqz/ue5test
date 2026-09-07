@@ -48,6 +48,8 @@ bool UGV2ScreenRegistry::IsTrustedExternalContentDomain(const FString& AssetPath
     return !AssetPath.StartsWith(TEXT("/game/"), ESearchCase::IgnoreCase);
 }
 
+// PAH-04: pre_ready_discovery -- only called from Build(), only called from
+// LoadScreenRegistry(), only called from Initialize(), before any session exists.
 TArray<FString> UGV2ScreenRegistry::GetPackageLoadOrderFromGameData()
 {
     TArray<FString> PackageLoadOrder;

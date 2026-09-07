@@ -16,12 +16,16 @@ std::string SessionCoordinatorToUtf8(const FString& Value)
     return std::string(Converted.Get(), Converted.Length());
 }
 
+// PAH-04: pre_ready_discovery -- only called from StartSession(), before this
+// session's Status.bIsReady is ever set true.
 bool LoadPortableRuntimeSources(
     std::vector<GV2RuntimeCore::FRuntimeSource>& OutSources,
     GV2RuntimeCore::FRuntimeFault& OutFault,
-    const TArray<FString>& RuntimePackageRoots)
+    const TArray<FString>& RuntimePackageRoots,
+    TArray<FGV2SchemaPackageRoot>& OutSchemaPackageRoots)
 {
     OutSources.clear();
+    OutSchemaPackageRoots.Reset();
     FString ScriptsDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
     FPaths::NormalizeDirectoryName(ScriptsDirectory);
     const FString ScriptsPrefix = ScriptsDirectory + TEXT("/");
@@ -104,7 +108,12 @@ bool LoadPortableRuntimeSources(
         // together. Tests that opt in via bTestForceIncludeSamplePackage want
         // the sample demo/debug-start screen, not rh's gameplay content, so
         // this substitutes rh for sample instead of following mods.lock.json5.
+        // core is listed too (PAH-04A) -- omitting it here only ever happened to
+        // be safe for the Lua-sources loop below, which always skips core (its
+        // scripts already loaded from Scripts/ above); mirrors
+        // GV2RuntimeSubsystem.cpp's own equivalent override list.
         OrderedRoots = {
+            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("core")))),
             std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("textsystem")))),
             std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("sample")))),
         };
@@ -117,11 +126,26 @@ bool LoadPortableRuntimeSources(
         return true;
     }
 
+    OutSchemaPackageRoots.Reserve(static_cast<int32>(OrderedRoots.size()));
     for (const auto& Root : OrderedRoots)
     {
         std::vector<GV2ContentCore::FDiagnostic> PkgDiags;
         auto Descriptor = GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, PkgDiags);
-        if (!Descriptor || Descriptor->GetPackageId() == "core")
+        if (!Descriptor)
+        {
+            continue;
+        }
+
+        // PAH-04A: schemas reuse this exact resolved root/package_id pairing --
+        // the same OrderedRoots this session's Lua sources load from, not a second
+        // independent discovery pass. Unlike Lua sources, core's schemas (unlike
+        // its scripts, which come from Scripts/ above) live under GameData/core/
+        // like any other package's, so core is not skipped here.
+        OutSchemaPackageRoots.Add(FGV2SchemaPackageRoot{
+            UTF8_TO_TCHAR(Descriptor->GetPackageId().c_str()),
+            UTF8_TO_TCHAR(Root.string().c_str())});
+
+        if (Descriptor->GetPackageId() == "core")
         {
             continue;
         }
@@ -230,6 +254,7 @@ bool FGV2SessionCoordinator::StartSession(
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     Status.RepositoryVersion = 0;
+    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
 
     if (!InPinnedRepository.IsValid())
     {
@@ -250,8 +275,19 @@ bool FGV2SessionCoordinator::StartSession(
 
     GV2RuntimeCore::FRuntimeFault Fault;
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
-    if (!LoadPortableRuntimeSources(RuntimeSources, Fault, RuntimePackageRoots)
-        || !RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, RuntimeSources, Fault))
+    TArray<FGV2SchemaPackageRoot> SchemaPackageRoots;
+    if (!LoadPortableRuntimeSources(RuntimeSources, Fault, RuntimePackageRoots, SchemaPackageRoots))
+    {
+        FailRuntime(Fault);
+        return false;
+    }
+
+    // PAH-04A (ADR-0042, INV-P1): discovery happens here, synchronously, before this
+    // session can reach Ready -- the exact SchemaPackageRoots LoadPortableRuntimeSources
+    // just resolved this session's Lua sources from, not a second independent lookup.
+    GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(SchemaPackageRoots));
+
+    if (!RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, RuntimeSources, Fault))
     {
         FailRuntime(Fault);
         return false;
@@ -325,6 +361,7 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
             UTF8_TO_TCHAR(StopFault.Message.c_str()));
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
+    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
     Status.SessionState = FinalState;
     Status.RepositoryVersion = 0;
@@ -704,6 +741,7 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
             UTF8_TO_TCHAR(StopFault.Message.c_str()));
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
+    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;

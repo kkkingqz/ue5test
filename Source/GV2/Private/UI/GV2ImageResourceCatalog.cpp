@@ -189,6 +189,12 @@ bool UGV2ImageResourceCatalog::TryMakeResourceId(
     return true;
 }
 
+// PAH-04: pre_ready_discovery_deferred=PAH-04B -- one caller (Initialize(), via
+// RebuildConfiguredCatalog) is pre-Ready, but GetConfiguredCatalog()'s lazy rebuild
+// below is reachable from presentation code at any time, including after Ready.
+// A real, already-named INV-P1 violation (Authority.md PAH-04B), not fixed here --
+// PAH-04A's Evidence is GV2ScreenFieldMaterializer.cpp/GV2UiSchemaCache.*/
+// GV2SessionCoordinator.*, not this file.
 bool UGV2ImageResourceCatalog::BuildFromDirectory(
     const FString& RootDirectory,
     FString& OutError)

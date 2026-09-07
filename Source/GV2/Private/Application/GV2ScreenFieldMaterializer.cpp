@@ -1,6 +1,5 @@
 #include "Application/GV2ScreenFieldMaterializer.h"
 
-#include "Application/GV2PackageClosure.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/GV2StableId.h"
@@ -14,20 +13,21 @@
 
 namespace
 {
-TArray<FGV2SchemaPackageRoot> DiscoverDefaultSchemaPackageRoots()
-{
-    TArray<FGV2SchemaPackageRoot> Roots;
-    for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
-    {
-        Roots.Add(FGV2SchemaPackageRoot{Entry.PackageId, Entry.RootDirectory});
-    }
-    return Roots;
-}
+// PAH-04A: session-scoped, not process-lifetime -- rebuilt by
+// RebuildSchemaCacheForSession (called once per StartSession, before Ready) and
+// torn down by ReleaseSchemaCacheForSession (EndSession, and a failed
+// StartSession). No GV2PackageClosure::DiscoverFromGameData() call here anymore:
+// that function always re-derives the canonical mods.lock.json5 default and
+// ignores whatever roots this session actually started with (Editor's
+// EditorPackageRoots override, the test-only sample override), which is exactly
+// PKG-R1 -- a second, independent discovery that can silently diverge from the
+// session's own repository/Lua package set.
+TOptional<FGV2UiSchemaCache> GSessionSchemaCache;
 
 FGV2UiSchemaCache& GetSchemaCache()
 {
-    static FGV2UiSchemaCache Cache(DiscoverDefaultSchemaPackageRoots());
-    return Cache;
+    check(GSessionSchemaCache.IsSet());
+    return *GSessionSchemaCache;
 }
 } // anonymous namespace
 
@@ -568,16 +568,21 @@ static void NormalizeArraysInContentValue(
 
 namespace GV2ScreenFieldMaterializer
 {
-bool IsKnownSchema(const std::string& SchemaId)
+void RebuildSchemaCacheForSession(TArray<FGV2SchemaPackageRoot> PackageRoots)
 {
-    FString Error;
-    return GetSchemaCache().GetCompiledSchema(SchemaId, Error) != nullptr;
+    GSessionSchemaCache.Emplace(MoveTemp(PackageRoots));
+}
+
+void ReleaseSchemaCacheForSession()
+{
+    GSessionSchemaCache.Reset();
 }
 
 // DUC-09: lets a nested-screen-fields consumer (FGV2TabContainerTabsPropertyConsumer)
 // re-resolve one envelope's compiled schema by schema_id -- a cache hit against the
-// same singleton ProjectMaterializedValue already resolved it through above, needed
-// only to fill FGV2ScreenFieldValue::CompiledSchema for PrepareScreenFields.
+// same session-scoped cache ProjectMaterializedValue already resolved it through
+// above, needed only to fill FGV2ScreenFieldValue::CompiledSchema for
+// PrepareScreenFields.
 GV2ContentCore::FCompiledUiFieldSpecPtr GetCompiledSchema(const std::string& SchemaId, FString& OutError)
 {
     return GetSchemaCache().GetCompiledSchema(SchemaId, OutError);

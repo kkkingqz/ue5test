@@ -12,16 +12,13 @@
 FGV2UiSchemaCache::FGV2UiSchemaCache(TArray<FGV2SchemaPackageRoot> InPackageRoots)
     : PackageRoots(MoveTemp(InPackageRoots))
 {
+    DiscoverAll();
 }
 
-void FGV2UiSchemaCache::EnsureDiscovered() const
+// PAH-04: pre_ready_discovery -- only called from this constructor, only called
+// from RebuildSchemaCacheForSession(), only called from StartSession().
+void FGV2UiSchemaCache::DiscoverAll()
 {
-    if (bDiscovered)
-    {
-        return;
-    }
-    bDiscovered = true;
-
     for (const FGV2SchemaPackageRoot& Root : PackageRoots)
     {
         const std::filesystem::path RootPath(TCHAR_TO_UTF8(*Root.RootDirectory));
@@ -103,8 +100,6 @@ GV2ContentCore::FCompiledUiFieldSpecPtr FGV2UiSchemaCache::GetCompiledSchema(
     const std::string& SchemaId,
     FString& OutError) const
 {
-    EnsureDiscovered();
-
     if (const auto CacheIt = CompiledCache.find(SchemaId); CacheIt != CompiledCache.end())
     {
         return CacheIt->second;

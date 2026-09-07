@@ -210,4 +210,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_screen_registry_entry_encapsulation.py"
             "--self-test"
     )
+    # PAH-04A (ADR-0042, INV-P1): after a session reaches Ready, presentation code
+    # must not discover content. Every content-discovery call site in production
+    # source must be classified pre-Ready or explicitly deferred to a named task.
+    add_test(
+        NAME pre_ready_content_discovery_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_pre_ready_content_discovery.py"
+    )
+    add_test(
+        NAME pre_ready_content_discovery_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_pre_ready_content_discovery.py"
+            "--self-test"
+    )
 endif()
