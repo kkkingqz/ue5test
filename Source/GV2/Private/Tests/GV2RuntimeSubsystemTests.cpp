@@ -4228,6 +4228,242 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PresentationCatastrophicRecoveryContract,
+    "GV2.Runtime.UI.PresentationCatastrophicRecoveryContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PAH-07 (ADR-0042, INV-P4): presentation has exactly one committed logical state; the
+// physical UMG tree is its recoverable projection. Proves the two DIFFERENT observable
+// outcomes of a Commit failure: (a) the compensating rollback (GBH-10, ADR-0041) succeeds
+// -- FGV2LayeredUiReconciler::GetHealth() stays Nominal, the previous revision is intact
+// in place, exactly like every pre-PAH-07 rollback test already covered; (b) the rollback
+// itself ALSO fails -- GetHealth() becomes RecoveredFromCatastrophicFailure, and the
+// physical tree (both the failing layer AND an untouched sibling layer, to prove the
+// canonical part actually suffices INCLUDING composition and order there) is discarded
+// and rebuilt from the last successfully committed document, not left in an unverified
+// state. Both are forced via ScreenCommitFailureInjector/ScreenRollbackFailureInjector --
+// the same production-path injectors PAH-01/GBH-10/GBF-05 already established, not a
+// synthetic health flag flipped by hand.
+bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+    if (TestWorld != nullptr)
+    {
+        UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+            nullptr,
+            TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+        if (GameShellClass == nullptr)
+        {
+            GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+        }
+        UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
+        TestNotNull(TEXT("PAH-07: Game shell instantiated"), Shell);
+        if (Shell != nullptr)
+        {
+            Shell->AddToRoot();
+
+            // Route widget at location_content -- a plain, field-less screen. Reused by a
+            // fixed-instance factory (not CreateWidget-per-call) so its C++ identity is
+            // directly comparable before/after catastrophic recovery: recovery must
+            // re-resolve "core:screen.route" through the SAME production ScreenFactory
+            // path and land on this exact object again, proving the canonical composition
+            // of an UNTOUCHED sibling layer survives, not just the layer that failed.
+            UGV2ScreenWidgetBase* RouteWidget = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            UGV2ScreenWidgetBase* ReplacementRouteWidget = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+
+            // A second overlay_stack instance alongside the reused/faulting one, so
+            // recovery's physical order can be checked as [Reused, Extra], not just
+            // composition.
+            UGV2ScreenWidgetBase* ExtraOverlayWidget = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+
+            UGV2ScreenWidgetBase* ReusedScreen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            ReusedScreen->WidgetTree = NewObject<UWidgetTree>(ReusedScreen);
+            UVerticalBox* ReusedScreenRoot = ReusedScreen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
+            ReusedScreen->WidgetTree->RootWidget = ReusedScreenRoot;
+
+            UGV2DeclaredCompositeWidgetBase* FieldA = ReusedScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("FieldA"));
+            ReusedScreenRoot->AddChildToVerticalBox(FieldA);
+            FieldA->WidgetTree = NewObject<UWidgetTree>(FieldA);
+            UGV2TextWidgetBase* TextA = FieldA->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("TextA"));
+            FieldA->WidgetTree->RootWidget = TextA;
+            FieldA->SetHostIdentity(FName(TEXT("field_a")));
+            FieldA->DeclaredCapabilities.Add({ FName(TEXT("value_a")), FName(TEXT("TextA")), EGV2DeclaredUiCapabilityKind::Text });
+
+            UGV2DeclaredCompositeWidgetBase* FieldB = ReusedScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
+                UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("FieldB"));
+            ReusedScreenRoot->AddChildToVerticalBox(FieldB);
+            FieldB->WidgetTree = NewObject<UWidgetTree>(FieldB);
+            UGV2TextWidgetBase* TextB = FieldB->WidgetTree->ConstructWidget<UGV2TextWidgetBase>(UGV2TextWidgetBase::StaticClass(), TEXT("TextB"));
+            FieldB->WidgetTree->RootWidget = TextB;
+            FieldB->SetHostIdentity(FName(TEXT("field_b")));
+            FieldB->DeclaredCapabilities.Add({ FName(TEXT("value_b")), FName(TEXT("TextB")), EGV2DeclaredUiCapabilityKind::Text });
+
+            TMap<FString, UGV2ScreenWidgetBase*> ScreensById;
+            ScreensById.Add(TEXT("core:screen.pah07_route"), RouteWidget);
+            ScreensById.Add(TEXT("core:screen.pah07_route_v2"), ReplacementRouteWidget);
+            ScreensById.Add(TEXT("core:screen.pah07_extra"), ExtraOverlayWidget);
+            ScreensById.Add(TEXT("core:screen.pah07_reused"), ReusedScreen);
+            auto Factory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
+            {
+                UGV2ScreenWidgetBase** Found = ScreensById.Find(ScreenId);
+                return Found != nullptr ? *Found : nullptr;
+            };
+
+            auto MakeFieldValue = [](const FName& FieldId, const FString& PropName, const FString& Text) -> FGV2ScreenFieldValue
+            {
+                auto ItemSchema = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Object);
+                ItemSchema->Fields.push_back({ TCHAR_TO_UTF8(*PropName), false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
+                FGV2TextViewModel Model;
+                Model.Text = FText::FromString(Text);
+                TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
+                Fields.Emplace(PropName, FGV2PreparedUiValue::MakeText(Model));
+                FGV2ScreenFieldValue FieldValue;
+                FieldValue.FieldId = FieldId;
+                FieldValue.SchemaId = TEXT("test:schema.pah07_reused_field.v1");
+                FieldValue.PreparedValue = FGV2PreparedUiObject::Create(MoveTemp(Fields));
+                FieldValue.CompiledSchema = ItemSchema;
+                return FieldValue;
+            };
+
+            auto MakeDoc = [&](int64 Revision, const FString& RouteScreenId, const FString& TextA_Value, const FString& TextB_Value) -> FGV2UiDocumentViewModel
+            {
+                FGV2UiDocumentViewModel Doc;
+                Doc.UiInstanceId = TEXT("ui@pah07");
+                Doc.Revision = Revision;
+                Doc.bHasRoute = true;
+                Doc.Route.Layer = TEXT("location_content");
+                Doc.Route.InstanceKey = TEXT("main");
+                Doc.Route.ScreenId = RouteScreenId;
+
+                FGV2ScreenInstanceViewModel ReusedInst;
+                ReusedInst.Layer = TEXT("overlay_stack");
+                ReusedInst.InstanceKey = TEXT("reused");
+                ReusedInst.ScreenId = TEXT("core:screen.pah07_reused");
+                ReusedInst.Fields.Add(MakeFieldValue(FName(TEXT("field_a")), TEXT("value_a"), TextA_Value));
+                ReusedInst.Fields.Add(MakeFieldValue(FName(TEXT("field_b")), TEXT("value_b"), TextB_Value));
+                Doc.Overlays.Add(ReusedInst);
+
+                FGV2ScreenInstanceViewModel ExtraInst;
+                ExtraInst.Layer = TEXT("overlay_stack");
+                ExtraInst.InstanceKey = TEXT("extra");
+                ExtraInst.ScreenId = TEXT("core:screen.pah07_extra");
+                Doc.Overlays.Add(ExtraInst);
+
+                return Doc;
+            };
+
+            FGV2LayeredUiReconciler Reconciler;
+            FString ReconcileError;
+
+            // D1: baseline commit. This becomes LastCommittedDocument -- what catastrophic
+            // recovery replays.
+            TestTrue(*FString::Printf(TEXT("PAH-07: baseline D1 commits [Error: %s]"), *ReconcileError),
+                Reconciler.Reconcile(Shell, MakeDoc(1, TEXT("core:screen.pah07_route"), TEXT("OldA"), TEXT("OldB")), Factory, ReconcileError));
+            TestEqual(TEXT("PAH-07: baseline health is Nominal"), Reconciler.GetHealth(), EGV2PresentationHealth::Nominal);
+            TestEqual(TEXT("PAH-07: baseline route is RouteWidget"), Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")), RouteWidget);
+            TestEqual(TEXT("PAH-07: baseline TextA reads OldA"), TextA->GetTextContent().ToString(), TEXT("OldA"));
+            TestEqual(TEXT("PAH-07: baseline TextB reads OldB"), TextB->GetTextContent().ToString(), TEXT("OldB"));
+            {
+                const TArray<UUserWidget*> BaselineOverlayOrder = Shell->GetScreensInLayer(TEXT("overlay_stack"));
+                TestEqual(TEXT("PAH-07: baseline overlay_stack has 2 physical children"), BaselineOverlayOrder.Num(), 2);
+                if (BaselineOverlayOrder.Num() == 2)
+                {
+                    TestEqual(TEXT("PAH-07: baseline overlay child 0 is ReusedScreen"), BaselineOverlayOrder[0], Cast<UUserWidget>(ReusedScreen));
+                    TestEqual(TEXT("PAH-07: baseline overlay child 1 is ExtraOverlayWidget"), BaselineOverlayOrder[1], Cast<UUserWidget>(ExtraOverlayWidget));
+                }
+            }
+
+            // D2 (ordinary path): field_b's Commit is injected to fail; its OWN self-heal
+            // rollback is NOT injected, so it succeeds -- the pre-PAH-07 guarantee.
+            // GetHealth() must stay Nominal: this Commit failure is NOT catastrophic.
+            const auto OrdinaryCommitInjector = [](const FString& ScreenId, const FString& PropertyPath) -> bool
+            {
+                return ScreenId == TEXT("core:screen.pah07_reused") && PropertyPath == TEXT("value_b");
+            };
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            const bool bOrdinaryFault = Reconciler.Reconcile(
+                Shell, MakeDoc(2, TEXT("core:screen.pah07_route_v2"), TEXT("NewA"), TEXT("NewB")), Factory, ReconcileError, OrdinaryCommitInjector);
+            TestFalse(TEXT("PAH-07: D2 (ordinary rollback) fails Reconcile"), bOrdinaryFault);
+            TestFalse(TEXT("PAH-07: D2's OutError does NOT carry the rollback-failed marker"),
+                ReconcileError.Contains(GGV2UiRollbackFailedDiagnosticCode));
+            TestEqual(TEXT("PAH-07: health stays Nominal after an ordinary (successfully rolled back) Commit failure"),
+                Reconciler.GetHealth(), EGV2PresentationHealth::Nominal);
+            TestEqual(TEXT("PAH-07: route is still RouteWidget (D2's route replacement never committed)"),
+                Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")), RouteWidget);
+            TestEqual(TEXT("PAH-07: TextA still restored to OldA after the ordinary rollback"), TextA->GetTextContent().ToString(), TEXT("OldA"));
+
+            // D3 (catastrophic path): field_b's Commit is injected to fail AND field_a's
+            // own self-heal rollback (value_a) is ALSO injected to fail -- the physical
+            // tree's relationship to ActiveScreens is now undefined per ADR-0041, and
+            // Reconcile must fall back to catastrophic recovery.
+            const auto CatastrophicCommitInjector = [](const FString& ScreenId, const FString& PropertyPath) -> bool
+            {
+                return ScreenId == TEXT("core:screen.pah07_reused") && PropertyPath == TEXT("value_b");
+            };
+            const auto CatastrophicRollbackInjector = [](const FString& ScreenId, const FString& PropertyPath) -> bool
+            {
+                return ScreenId == TEXT("core:screen.pah07_reused") && PropertyPath == TEXT("value_a");
+            };
+            AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("GBH-10: rollback failed restoring host 'FieldA' property 'value_a'"), EAutomationExpectedErrorFlags::Contains, 1);
+            AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
+            const bool bCatastrophicFault = Reconciler.Reconcile(
+                Shell, MakeDoc(3, TEXT("core:screen.pah07_route_v2"), TEXT("CatA"), TEXT("CatB")), Factory, ReconcileError,
+                CatastrophicCommitInjector, CatastrophicRollbackInjector);
+            TestFalse(TEXT("PAH-07: D3 (catastrophic) fails Reconcile"), bCatastrophicFault);
+            TestTrue(*FString::Printf(TEXT("PAH-07: D3's OutError carries the rollback-failed marker [Error: %s]"), *ReconcileError),
+                ReconcileError.Contains(GGV2UiRollbackFailedDiagnosticCode));
+            TestEqual(TEXT("PAH-07: health becomes RecoveredFromCatastrophicFailure"),
+                Reconciler.GetHealth(), EGV2PresentationHealth::RecoveredFromCatastrophicFailure);
+
+            // Canonical state after recovery must match D1 (the last successfully
+            // committed document), NOT D3 (the rejected candidate) -- read through the
+            // SAME production accessors, not internal bookkeeping alone.
+            TestEqual(TEXT("PAH-07: after recovery, route resolves back to D1's RouteWidget (same C++ identity via the fixed-instance factory)"),
+                Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")), RouteWidget);
+            TestTrue(TEXT("PAH-07: after recovery, RouteWidget is physically attached to location_content"),
+                Shell->GetScreensInLayer(TEXT("location_content")).Contains(RouteWidget));
+            TestFalse(TEXT("PAH-07: after recovery, the rejected D3 route replacement is NOT attached"),
+                Shell->GetScreensInLayer(TEXT("location_content")).Contains(ReplacementRouteWidget));
+            TestEqual(TEXT("PAH-07: after recovery, TextA reads D1's OldA, not D3's CatA"), TextA->GetTextContent().ToString(), TEXT("OldA"));
+            TestEqual(TEXT("PAH-07: after recovery, TextB reads D1's OldB, not D3's CatB"), TextB->GetTextContent().ToString(), TEXT("OldB"));
+            {
+                const TArray<UUserWidget*> RecoveredOverlayOrder = Shell->GetScreensInLayer(TEXT("overlay_stack"));
+                TestEqual(TEXT("PAH-07: after recovery, overlay_stack has D1's 2 physical children"), RecoveredOverlayOrder.Num(), 2);
+                if (RecoveredOverlayOrder.Num() == 2)
+                {
+                    TestEqual(TEXT("PAH-07: after recovery, overlay child 0 is ReusedScreen (D1's order preserved)"), RecoveredOverlayOrder[0], Cast<UUserWidget>(ReusedScreen));
+                    TestEqual(TEXT("PAH-07: after recovery, overlay child 1 is ExtraOverlayWidget (D1's order preserved)"), RecoveredOverlayOrder[1], Cast<UUserWidget>(ExtraOverlayWidget));
+                }
+            }
+
+            // A later, ordinary successful apply clears the recovery marker -- Health
+            // reports the CURRENT state, not a permanent scar from a past incident.
+            TestTrue(*FString::Printf(TEXT("PAH-07: D4 (ordinary, post-recovery) commits [Error: %s]"), *ReconcileError),
+                Reconciler.Reconcile(Shell, MakeDoc(4, TEXT("core:screen.pah07_route"), TEXT("FinalA"), TEXT("FinalB")), Factory, ReconcileError));
+            TestEqual(TEXT("PAH-07: health returns to Nominal after the next successful commit"),
+                Reconciler.GetHealth(), EGV2PresentationHealth::Nominal);
+
+            Shell->RemoveFromRoot();
+        }
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiNestedInstancesAndTabsContract,
     "GV2.Runtime.UI.NestedInstancesAndTabsContract",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

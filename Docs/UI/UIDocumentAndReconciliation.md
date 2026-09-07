@@ -1,7 +1,7 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.21
+version: 1.22
 updated: 2026-09-07
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -243,6 +243,20 @@ Publication является atomic: registry сначала валидируе�
 
 В случае отказа на стадии Prepare физическое дерево виджетов и активные биндинги вообще не затрагиваются; компенсирующий откат устранён физически. Failed candidate не оставляет частично обновлённый interactive screen.
 
+## Presentation health and catastrophic recovery
+
+`PAH-07` ([ADR-0042](../ADR/0042-presentation-authority-and-publication.md) `INV-P4`): у презентации ровно одно зафиксированное логическое состояние; физическое дерево UMG — его восстановимая проекция, а не независимый источник истины.
+
+`FGV2LayeredUiReconciler` хранит `LastCommittedDocument` — сам `FGV2UiDocumentViewModel` последнего успешно закоммиченного `Reconcile`, не копию физического дерева, которое из него получилось. Ревизия, `ui_instance_id` и весь состав/порядок экранов уже часть этого документа; привязки (`FGV2UiBindingRecord`) не нуждаются в отдельном снимке для восстановления — они логическая структура (`node_key_path`, `command_id`, `bound_args`), никогда не хранящая указатель на виджет, и остаются валидными для того же документа независимо от того, какой конкретно физический виджет сейчас резолвит `layer + instance_key`; текущий пиннингованный снимок контента сессии (`PAH-04A`/`04B`/`05`) не переснимается отдельно — он один на сессию и не меняется между документами внутри неё.
+
+`GetHealth()` — явное, наблюдаемое здоровье презентации (`EGV2PresentationHealth`, `GV2LayeredUiReconciler.h`), не флаг, который никто не читает:
+
+- `Nominal` — обычное состояние. Остаётся `Nominal`, если Commit отказал, но его компенсирующий откат ([ADR-0041](../ADR/0041-ui-commit-rollback-model.md), `GBH-10`) успешно восстановил предыдущую ревизию in-place — наблюдаемый исход тот же, что и всегда: `Reconcile` вернул `false`, дерево и `ActiveScreens` не тронуты.
+- `RecoveredFromCatastrophicFailure` — компенсирующий откат САМ отказал (`OutError` несёт `GGV2UiRollbackFailedDiagnosticCode`), и физическое дерево, чья связь с `ActiveScreens` стала неопределённой, было отброшено и пересобрано заново. Устанавливается `PerformCatastrophicRecovery` только после успешной пересборки; следующий обычный успешный `Reconcile` возвращает здоровье к `Nominal` — это не постоянный шрам, а сообщение о том, что произошло с ПОСЛЕДНЕЙ неудачной попыткой.
+- `CatastrophicRecoveryFailed` — даже пересборка из `LastCommittedDocument` не удалась (либо его вообще не было — самый первый документ сессии откатился неудачно). Инвариантный случай без дальнейшего fallback; структурно возможен, специальным тестом не покрыт.
+
+Катастрофическое восстановление (`PerformCatastrophicRecovery`): `Shell->ClearAllLayers()` (уже существующий метод `UGV2GameShellWidgetBase`) отбрасывает физическое дерево целиком; `ActiveScreens` очищается; затем `LastCommittedDocument` реконсилируется заново обычным Prepare/Commit **без** test-инжекторов (production-поведение, даже когда восстановление вызвано инжектированным тестовым отказом) — «обычный свежий Prepare/Apply против пустого GameShell», не восстановление сериализованного физического состояния. Каждый экран создаётся заново через тот же production `ScreenFactory`; `UI-local` состояние (фокус, наведение, прогресс анимации — то, что [ADR-0035](../ADR/0035-ui-foundation-and-composition.md) уже относит к переходному) теряется, как и при обычном создании нового экрана; состав, порядок в каждом слое, значения полей и активная вкладка, заданная документом, восстанавливаются — это ровно тот канонический набор, который раздел «Route/layer rules» ниже и `FGV2KeyedCollection::ReconcilePrepared` (раздел «Reconciliation» выше) уже гарантируют для любого обычного `Reconcile`.
+
 ## Full update policy
 
 Lua всегда отправляет complete document/revision, не operations patch. Internally Presentation может вычислять diff. Boundary-level partial patch, JSON Patch и mutation operations отсутствуют.
@@ -308,3 +322,4 @@ Automation-тесты (`GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Pres
 - Реальный отказ `UPanelWidget::AddChild()` в production `CommitReconcile`: Shell tree, `ActiveScreens` и metadata остаются на предыдущей ревизии; CTest source gate перечисляет все `->AddChild(...)` в `AttachScreenToLayer` и требует propagation `nullptr` как failure;
 - Сохранение UI-local состояния между ревизиями при переиспользовании экземпляра.
 - Editor startup profile создаёт `WBP_Testscreen` через полный repository → Lua presentation → UI document → reconciliation pipeline и присоединяет его к `LocationContentHost` активной Game Shell.
+- `GV2.Runtime.UI.PresentationCatastrophicRecoveryContract` (`PAH-07`): два различимых наблюдаемых исхода отказа Commit через инъекцию отказа на production-пути (`ScreenCommitFailureInjector`/`ScreenRollbackFailureInjector`) — обычный (health остаётся `Nominal`) и катастрофический (компенсирующий откат тоже отказывает, health переходит в `RecoveredFromCatastrophicFailure`); после катастрофического восстановления канонические состав, значения полей и физический порядок в каждом слое (включая нетронутый соседний слой) совпадают с последним успешно закоммиченным документом, а не с отклонённым кандидатом — проверено чтением фактических виджетов, а не только возвращаемого значения.

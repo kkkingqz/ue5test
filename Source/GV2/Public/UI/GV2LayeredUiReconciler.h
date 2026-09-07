@@ -8,6 +8,25 @@
 class UGV2GameShellWidgetBase;
 class UGV2ScreenWidgetBase;
 
+// PAH-07 (ADR-0042, INV-P4): presentation has exactly one committed logical state; this is
+// its observable health, distinct from a log line nobody reads (DCA-20's `bFatal`). A
+// Commit failure whose OWN compensating rollback (GBH-10, ADR-0041) also failed leaves the
+// physical tree's relationship to the committed document undefined -- quick, in-place
+// inverse-mutation recovery already tried and failed. `RecoveredFromCatastrophicFailure`
+// means the physical tree was discarded and rebuilt from the last successfully committed
+// document instead; it is distinct from an ordinary Commit failure whose own rollback
+// succeeded (which leaves Health at `Nominal`, the previous revision intact in place) --
+// the two are different observable outcomes, not the same "false" collapsed together.
+enum class EGV2PresentationHealth : uint8
+{
+    Nominal,
+    RecoveredFromCatastrophicFailure,
+    // Even the last known-good document failed to reapply against an emptied Shell --
+    // no further fallback exists. Structurally possible (defensive), not exercised by a
+    // dedicated test: it requires a second, independent failure on top of the first.
+    CatastrophicRecoveryFailed,
+};
+
 /**
  * FGV2LayeredUiReconciler (UIF-19, UIF-20, UPP-28)
  * Reconciles active UI widgets across Game Shell layers based on document envelopes
@@ -93,7 +112,13 @@ public:
         TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr,
         TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector = nullptr);
 
-    // Full atomic reconciliation: Prepare + Commit.
+    // Full atomic reconciliation: Prepare + Commit. PAH-07: on success, Document becomes
+    // the new committed state (LastCommittedDocument) other calls recover FROM, not a
+    // snapshot of what CommitReconcile happened to produce physically. On a failure whose
+    // OutError carries GGV2UiRollbackFailedDiagnosticCode, performs catastrophic recovery
+    // (see GetHealth()) before returning false -- the caller still learns THIS candidate
+    // was rejected the same way as any other Commit failure; GetHealth() is how it learns
+    // recovery was catastrophic rather than an ordinary in-place rollback.
     [[nodiscard]] bool Reconcile(
         UGV2GameShellWidgetBase* Shell,
         const FGV2UiDocumentViewModel& Document,
@@ -104,8 +129,25 @@ public:
 
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }
+
+    // PAH-07 (ADR-0042, INV-P4).
+    EGV2PresentationHealth GetHealth() const { return Health; }
+    const FGV2UiDocumentViewModel* GetLastCommittedDocument() const { return LastCommittedDocument.GetPtrOrNull(); }
+
+    // Session-boundary reset: clears active screens AND the committed presentation state
+    // (Health, LastCommittedDocument) -- a new session has no prior document to recover
+    // to. Distinct from the internal, mid-session ActiveScreens-only clear catastrophic
+    // recovery performs, which must preserve LastCommittedDocument to replay it.
     void Reset();
 
 private:
+    // PAH-07: discards the physical tree (Shell->ClearAllLayers(), ActiveScreens cleared)
+    // and rebuilds it from LastCommittedDocument via a fresh, uninjected Prepare/Commit --
+    // "обычный свежий Prepare/Apply против пустого GameShell", not a replay of physical
+    // widget state. Sets Health to the outcome; never recurses into Reconcile().
+    void PerformCatastrophicRecovery(UGV2GameShellWidgetBase* Shell, FScreenFactory ScreenFactory);
+
     TMap<FScreenSlotKey, FActiveScreenEntry> ActiveScreens;
+    EGV2PresentationHealth Health = EGV2PresentationHealth::Nominal;
+    TOptional<FGV2UiDocumentViewModel> LastCommittedDocument;
 };

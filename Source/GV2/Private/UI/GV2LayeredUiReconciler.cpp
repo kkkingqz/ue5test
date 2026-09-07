@@ -386,7 +386,65 @@ bool FGV2LayeredUiReconciler::Reconcile(
     {
         return false;
     }
-    return CommitReconcile(Shell, Plan, OutError, ScreenCommitFailureInjector, ScreenRollbackFailureInjector);
+    if (CommitReconcile(Shell, Plan, OutError, ScreenCommitFailureInjector, ScreenRollbackFailureInjector))
+    {
+        // PAH-07 (ADR-0042, INV-P4): the only place a document is ever fully committed --
+        // this is the data a catastrophic rebuild replays, not a copy of the panel tree
+        // CommitReconcile happened to produce from it.
+        LastCommittedDocument = Document;
+        Health = EGV2PresentationHealth::Nominal;
+        return true;
+    }
+
+    // PAH-07: a Commit failure whose own compensating rollback (GBH-10, ADR-0041) ALSO
+    // failed leaves the physical tree's relationship to ActiveScreens undefined -- quick,
+    // in-place inverse-mutation recovery already tried and failed inside CommitReconcile.
+    // Fall back to catastrophic recovery. An ordinary Commit failure whose rollback
+    // succeeded does NOT reach this branch (OutError has no rollback-failed marker) --
+    // Health stays at whatever it already was, matching "the previous revision, physically
+    // and accounting-wise untouched".
+    if (OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+    {
+        PerformCatastrophicRecovery(Shell, ScreenFactory);
+    }
+    return false;
+}
+
+void FGV2LayeredUiReconciler::PerformCatastrophicRecovery(UGV2GameShellWidgetBase* Shell, FScreenFactory ScreenFactory)
+{
+    if (Shell != nullptr)
+    {
+        Shell->ClearAllLayers();
+    }
+    ActiveScreens.Reset();
+
+    if (!LastCommittedDocument.IsSet())
+    {
+        // No prior successful commit exists in this session to recover to (the very first
+        // document a session ever applies failed its own rollback) -- the tree is now
+        // genuinely, correctly empty rather than in an undefined state, but there is
+        // nothing further to rebuild.
+        Health = EGV2PresentationHealth::CatastrophicRecoveryFailed;
+        return;
+    }
+
+    // Deliberately PrepareReconcile+CommitReconcile, not a recursive Reconcile() call: no
+    // injector is forwarded (production behavior even when THIS recovery was triggered by
+    // a test injector on the original candidate), and recursing into Reconcile() would
+    // risk re-entering this same recovery path if the replay somehow failed the same way.
+    FString RecoveryError;
+    FPreparedReconciliationPlan RecoveryPlan;
+    if (!PrepareReconcile(Shell, *LastCommittedDocument, ScreenFactory, RecoveryPlan, RecoveryError)
+        || !CommitReconcile(Shell, RecoveryPlan, RecoveryError))
+    {
+        UE_LOG(LogTemp, Error,
+            TEXT("PAH-07: catastrophic recovery failed reapplying the last committed document: %s"),
+            *RecoveryError);
+        Health = EGV2PresentationHealth::CatastrophicRecoveryFailed;
+        return;
+    }
+
+    Health = EGV2PresentationHealth::RecoveredFromCatastrophicFailure;
 }
 
 UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetActiveScreen(FName Layer, FName InstanceKey) const
@@ -399,4 +457,6 @@ UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetActiveScreen(FName Layer, FNam
 void FGV2LayeredUiReconciler::Reset()
 {
     ActiveScreens.Reset();
+    LastCommittedDocument.Reset();
+    Health = EGV2PresentationHealth::Nominal;
 }
