@@ -4,8 +4,6 @@
 #include "GV2ContentCore/PackageDescriptor.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 
-#include "HAL/FileManager.h"
-#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
 #include <filesystem>
@@ -17,37 +15,6 @@ std::string ToUtf8(const FString& Value)
     const FTCHARToUTF8 Converted(*Value);
     return std::string(Converted.Get(), Converted.Length());
 }
-}
-
-FGV2FilesystemContentSourceProvider::FGV2FilesystemContentSourceProvider(
-    FString InPackageRootDir,
-    std::string InPackageId)
-    : PackageRootDir(MoveTemp(InPackageRootDir))
-    , PackageId(std::move(InPackageId))
-{
-}
-
-// PAH-04: pre_ready_discovery -- FGV2FilesystemContentSourceProvider is never
-// instantiated in production today (zero callers); if it were, IContentSourceProvider
-// implementations are only ever driven by repository build, itself only called from
-// Initialize(), before any session exists.
-std::optional<std::string> FGV2FilesystemContentSourceProvider::ReadSource(
-    const std::string_view RequestedPackageId,
-    const std::string_view RelativeSource) const
-{
-    if (RequestedPackageId != PackageId)
-    {
-        return std::nullopt;
-    }
-
-    const FString RelativeSourceStr = UTF8_TO_TCHAR(std::string(RelativeSource).c_str());
-    const FString FullPath = FPaths::Combine(PackageRootDir, RelativeSourceStr);
-    TArray<uint8> FileBytes;
-    if (!FFileHelper::LoadFileToArray(FileBytes, *FullPath))
-    {
-        return std::nullopt;
-    }
-    return std::string(reinterpret_cast<const char*>(FileBytes.GetData()), FileBytes.Num());
 }
 
 // PAH-04: pre_ready_discovery -- only called from Initialize() (directly, and via
