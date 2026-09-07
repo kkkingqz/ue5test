@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 3.4
-updated: 2026-09-06
+version: 3.5
+updated: 2026-09-07
 depends_on:
   - ../README.md
 ---
@@ -28,6 +28,8 @@ depends_on:
 - До удаления исходного каталога каждый path проверяется через `git cat-file -e <source_commit>:<path>`, representative файл — через `git show`. Summary и [archive index](Archive/README.md) публикуются вторым commit; zip и подкаталоги в `Archive/` запрещены.
 
 ## Активные планы
+
+- [Presentation Structural Closure](PresentationStructuralClosure/README.md) — семь находок аудита презентации: один разрешённый набор пакетов и UE-корни в идентичности пакета, опубликованный снимок сессии вместо согласованных по времени жизни владельцев, физическая граница применения отдельным модулем Unreal, самодостаточная подготовленная нагрузка и структурные гарантии вместо перечня имён. PSC-01…11.
 
 
 
