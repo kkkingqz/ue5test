@@ -1,60 +1,83 @@
 ---
 title: Structural Gates and Closure Tasks
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-07
 depends_on:
   - README.md
-  - Payload.md
+  - ApplyBoundary.md
   - ../../Status/AuditFindings.md
 ---
 
 # M5 — Structural Gates and Closure
 
-> **Материализует:** `PAH-R7`, `D4` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и закрытие раунда.
-> **Задачи:** PSC-10…11.
-> **Результат:** первичной гарантией становится то, что не требует знать имя авторитета заранее.
+> **Материализует:** `PAH-R7`, `D4` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и доказуемое закрытие `PAH-R1…R7`.
+> **Задачи:** PSC-13…14.
+> **Результат:** каждое универсальное утверждение имеет механический actual-set и production-path oracle; active records подготовлены к обязательной post-completion архивации без потери задач.
 
-## Результат этапа
+## Матрица первичных перечислителей
 
-`PAH-R7` — единственная находка, которая говорит не о продукте, а о проверке. Её нельзя закрыть, добавив седьмое имя в перечень: предыдущий раунд уже расширил перечень до шести и пропустил седьмое. Закрытие состоит в смене того, что считается основанием утверждения.
+| Утверждение | Actual-set enumerator | Независимый oracle |
+|---|---|---|
+| Где создаётся package set | declarations, возвращающие `FResolvedPackageSet`, и их call sites | разрешённые host bootstrap layers |
+| Какие модули связаны | все UBT `*.Build.cs` плюс все CMake target/source declarations | dependency allowlist/denylist из contract |
+| Какие операции применяются | exhaustive operation enum/variant | независимая role/behavior classification |
+| Что может нести payload | recursive fields из public declarations | forbidden capability categories |
+| Какие Apply API экспортированы | declarations всего `GV2PresentationApply/Public` | одна transaction façade плюс DTO/result/widget roles |
+| Какие Widget Blueprint мигрируются | Asset Registry inheritance/reference closure | ноль old class paths после clean reload |
 
-`PSC-11` — сверка. Три предыдущие такие сверки нашли непокрытую часть работы собственного плана: `PCC-12` (тест чистоты покрывал один класс из трёх), приёмка `GBH` (отсрочка, пережившая обоснование), `GBF-08` (полный прогон, подтверждённый 16 тестами из 108). Четвёртая, `PAH-09`, прошла чисто — и всё же пропустила тему, потому что проверяла закрытие пяти названных находок, а не полноту множества, из которого они брались. Считать эту сверку формальной оснований нет.
+Сканы конкретных имён авторитетов остаются diagnostic/reminder checks. Они не доказывают полноту authority set.
 
 ## Задачи
 
-- [ ] **PSC-10 — Первичная гарантия перестаёт быть перечнем имён**
-  - Зависимости: PSC-07, PSC-09.
-  - Гейт `validate_presentation_authority_phase.py` выводит места вызова механически, но множество авторитетов задаёт рукописным перечнем из шести имён. `GetConfiguredTheme` в него не попал, и цепочка `Commit → ApplyText → ResolveStyleClass → GetConfiguredTheme()` проходила зелёной три раунда.
-  - Инвариант: универсальное утверждение требует перечислителя (`AGENTS.md`), и перечислитель обязан покрывать не только элементы множества, но и его границу. Нарушение здесь произошло **внутри механизма, написанного против этого образца**, — шестое повторение и первое такого рода.
-  - Не считается закрытием: добавление `GetConfiguredTheme` и прочих найденных имён в тот же перечень; вывод множества авторитетов из другого рукописного места, например из списка заголовков; сохранение скана как основания утверждения при том, что граница модуля уже существует.
+- [ ] **PSC-13 — Собрать structural gates и adversarial production scenarios**
+  - Зависимости: PSC-12.
+  - Инвариант: универсальное утверждение закрывается только enumerator-ом фактического множества и независимым expected oracle; новый элемент не требует помнить имя в старом тесте.
+  - Не считается закрытием: расширение regex-list; `Commit*` prefix как actual set; ручной список source files; self-test без production-path test; UBT graph без CMake/Headless graph.
   - Done:
-    - первичной гарантией `INV-P5` объявлены направление зависимостей в графе сборки и отсутствие типов авторитета в модуле применения; это записано в контракте, а не только в отчёте;
-    - скан по именам сохранён вторым рубежом и явно помечен как таковой — он больше не является основанием утверждения о том, что инвариант держится;
-    - множество авторитетов, если оно всё ещё нужно скану, выводится из свойства типа или объявления, а не из перечня имён; если такого свойства нет, скан сужается до того, что он действительно доказывает;
-    - существуют обязательные отрицательные сценарии, и каждый отвергается: `Commit → GetConfiguredTheme()` не компилируется; `LoadSynchronous()` в модуле применения отвергается гейтом; вкладка без разрешённого дескриптора даёт отказ подготовки; счётчик обращений даёт ноль вокруг применения;
-    - у каждого структурного гейта есть исполняемый отрицательный самотест;
-    - записано, что каждый гейт по построению **не** видит, — граница честности механизма названа, а не подразумевается.
-  - Evidence: `Tools/Testing/`, новый `*.Build.cs`, `Docs/Architecture/DependencyMap.md`, `Docs/ADR/0043-presentation-apply-boundary.md`.
+    - каждый enumerator из таблицы реализован и имеет synthetic negative self-test;
+    - module graph отвергает `GV2PresentationApply → GV2/GV2ContentHostSupport/DeveloperSettings/AssetRegistry/ImageCore/authoring`;
+    - Headless/CMake graph отвергает UE/UMG/CommonUI/`GV2PresentationApply` source/link edge;
+    - exported Apply API inventory отвергает вторую transaction façade или physical mutation entry point вне явно классифицированных widget/lifecycle roles;
+    - operation enum/variant без `default` даёт compiler error для нового необработанного kind;
+    - recursive payload inventory отвергает soft reference, resolver/context/callback/service handle, включая nested members;
+    - forbidden-capability scan перечисляет actual module source tree автоматически и отвергает synchronous load/settings/filesystem imports/calls; документирована граница, что он не является полной классификацией всех будущих UE API;
+    - package-set factory/call inventory отвергает downstream rediscovery независимо от имени helper;
+    - mandatory production scenarios проходят: Theme resolve only in Prepare; nested Tab resolution failure; different Editor set shared by all consumers; corrupt disabled resource unopened; snapshot replacement lifetime; failed candidate preserves active before teardown; recovery semantics; `ue_content_roots` fingerprint separation; initial screen from snapshot;
+    - runtime authority counter показывает Prepare accesses и ноль accesses вокруг Apply для каждого operation kind;
+    - для каждого `PAH-R1…R7` записано, какой gate краснеет при revert, и revert/synthetic mutation действительно демонстрирует failure;
+    - contracts описывают назначение и ограничения каждого gate; source scans явно названы secondary там, где множество capabilities открыто.
+  - Evidence: `Tools/Testing/`, `Source/GV2PresentationApply/`, portable conformance, UE Automation tests/report, обновлённые owner contracts.
 
-- [ ] **PSC-11 — Сверка закрытий и архивация раунда**
-  - Зависимости: PSC-10.
-  - Инвариант: закрытие проверяется независимо от задачи, которая его заявила, и сверка проверяет не только исход каждой находки, но и то, из какого множества находки брались. Предыдущая сверка прошла чисто и пропустила тему именно потому, что второго вопроса не задавала.
-  - Не считается закрытием: ссылка на задачу вместо продемонстрированного красного теста; прогон подмножества тестов, чьё имя совпадает с областью плана; счёт результатов подсчётом строк лога вместо машинного отчёта; проверка семи находок без вопроса о том, чем гарантирована полнота семёрки.
+- [ ] **PSC-14 — Выполнить независимую сверку и подготовить закрытие**
+  - Зависимости: PSC-13.
+  - Инвариант: закрывается класс дефекта, а подтверждённое расхождение не исчезает только потому, что audit становится архивом.
+  - Не считается закрытием: ссылка на task вместо red-on-revert; prefix subset UE tests; число тестов из grep лога; изменение golden без replay; преждевременное удаление active audit/plan.
   - Done:
-    - для каждой находки `PAH-R1…R7` назван гейт и продемонстрировано, что он краснеет при откате соответствующего изменения;
-    - подтверждено, что закрыт класс, а не экземпляр;
-    - **отдельно записано, чем гарантирована полнота множества авторитетов после этого плана** — не перечнем, а свойством; если гарантия неполна, названо, что именно остаётся вне её;
-    - проверено, что ни одна починка не свелась к сужению `ADR-0041`, `ADR-0042` или `ADR-0043`;
-    - полный прогон — UE automation со счётом из машинного отчёта, портативный CTest на переконфигурированном дереве, `gv2-headless --check-scripts`, `validate_docs.py` — зелёный;
-    - run digest Headless сравнён с прежним золотым прогоном и не изменился;
-    - `STATUS-001…003` и `STATUS-011` не изменены: они не входят в область плана;
-    - аудит и предложение перенесены в архив двухкоммитными процедурами, план архивирован своей.
-  - Evidence: отчёт change set, `Source/GV2/Private/Tests/`, `Docs/Status/Archive/`, `Docs/Proposals/Archive/`.
+    - `PAH-R1…R7` построчно сверены с Done/Evidence, каждый finding содержит допустимый исход;
+    - отдельно записано, чем гарантирована полнота authority/apply/package/payload sets и чего каждый gate по построению не видит;
+    - ни одно закрытие не сужает `ADR-0041/0042/0043`; сохранившийся contract gap перенесён в `ImplementationStatus.md` до архивации;
+    - portable дерево заново configured/built; полный CTest, `gv2-headless --self-test`, `gv2-headless --check-scripts`, content smoke и docs validation проходят;
+    - Headless golden воспроизведён из записанного manifest, machine-readable digest совпадает; presentation-only изменения не требуют golden update;
+    - полный `Automation RunTests GV2` проходит, а executed/pass/fail/skip counts читаются из машинного отчёта;
+    - `AuditFindings.md` сохраняет каждый finding с допустимым исходом; выжившие gaps уже перенесены в `ImplementationStatus.md`;
+    - proposal готов к состоянию `implemented`: все его требования сопоставлены с прошедшим evidence;
+    - каждый task и milestone плана может быть отмечен `[x]` без незакрытого требования; archive summaries содержательно подготовлены, но active records ещё не удалены;
+    - `STATUS-001…003` и `STATUS-011` не меняются без отдельного evidence: они вне scope этого плана.
+  - Evidence: machine reports, resolved `AuditFindings.md`, полностью отмеченный active plan и итоговое сопоставление Proposal → implementation.
+
+## Архивация после выполнения PSC-14
+
+Архивация — lifecycle завершённого плана, а не требование ещё не завершённой checkbox-задачи:
+
+1. Создать первый commit, в котором полный `AuditFindings.md` содержит исходы, а полный plan — все tasks/milestones `[x]`. Его полный hash является общим `source_commit` audit и plan archives.
+2. До удаления проверить каждый plan path и audit path через `git cat-file -e <source_commit>:<path>`; восстановить representative plan file и audit через `git show`.
+3. Вторым commit создать плоские audit/plan summaries с каждым finding/task ID ровно один раз, полным hash и repository web links; удалить active audit и plan directory; обновить оба archive indexes.
+4. В том же втором commit поставить Proposal `proposal_state: implemented`, `status: archived`, перенести его в `Proposals/Archive/` и обновить три proposal indexes/links. Proposal не имеет отдельной двухкоммитной процедуры.
 
 ## Проверка milestone
 
-- [ ] Первичная гарантия `INV-P5` не требует знать имя авторитета заранее.
-- [ ] Каждый обязательный отрицательный сценарий отвергается, и у каждого гейта есть исполняемый самотест.
-- [ ] Записано, чего гейты по построению не видят.
-- [ ] Каждая находка раунда закрыта продемонстрированным red-on-revert гейтом, и полнота множества находок обоснована свойством, а не перечнем.
+- [ ] Ни одно первичное доказательство не основано на prefix/ручном списке имён.
+- [ ] UBT и CMake/Headless graphs проверены независимо.
+- [ ] Каждый finding имеет red-on-revert evidence через production path.
+- [ ] Active records готовы к первому closure commit; последующая архивная процедура записана без self-referential checkbox.

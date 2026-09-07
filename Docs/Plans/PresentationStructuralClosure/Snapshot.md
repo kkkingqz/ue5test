@@ -1,7 +1,7 @@
 ---
 title: Snapshot Tasks
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-07
 depends_on:
   - README.md
@@ -11,73 +11,109 @@ depends_on:
 
 # M2 — Snapshot
 
-> **Материализует:** `PAH-R2`, `PAH-R1` (в части владения), `PAH-R5`, `PAH-R4`.
-> **Задачи:** PSC-03…06.
-> **Результат:** у сессии один опубликованный неизменяемый снимок, и глобального пути к авторитету не остаётся.
+> **Материализует:** `PAH-R1/R2/R4/R5` и `D1` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md).
+> **Задачи:** PSC-04…08.
+> **Результат:** coordinator строит полный private candidate, публикует один immutable snapshot и передаёт semantic Prepare явный snapshot-backed context.
 
-## Результат этапа
+## Состав snapshot
 
-`ADR-0042` принял снимок как решение, но объекта не появилось: схемы живут в сессионном `TOptional`, каталог — в собственном сессионном владельце, реестр — в настройках, тема — в глобальном аксессоре. Они согласованы по времени жизни и не согласованы по владению, поэтому «второй авторитет невозможно получить» сегодня неверно: его можно получить у любого из них.
+`FGV2SessionContentSnapshot` — immutable C++ value/object, не `UDataAsset` и не копия repository definitions:
 
-Порядок внутри этапа: `PSC-03` строит снимок и публикует его; `PSC-04` переводит на него авторитеты и убирает глобальные пути; `PSC-05` и `PSC-06` закрывают два конкретных обхода, которые снимок сам по себе не снимает.
+```text
+FRepositoryReadHandle
+ordered package identities
+loaded Lua source set + script_set_hash
+eagerly compiled UI schema set
+FGV2ResolvedScreenRegistry
+FGV2ResolvedImageCatalog
+FGV2ResolvedUiTheme
+resolved GameShell class
+GC-safe asset pin set
+repository_content_hash
+package_set_fingerprint
+presentation_hash
+session_content_id
+```
+
+Absolute roots используются только candidate builders и не публикуются как runtime API. Definitions/provenance остаются в repository read handle.
 
 ## Задачи
 
-- [ ] **PSC-03 — Кандидат и опубликованный снимок**
-  - Зависимости: PSC-01.
-  - Инвариант: у активной сессии ровно один неизменяемый контентный снимок, которым владеет координатор ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `D1`; [ADR-0006](../../ADR/0006-repository-reload-and-session-pinning.md)). Нарушение сегодня выглядит как согласованность по времени жизни: авторитеты создаются и разрушаются вместе, поэтому расхождение невозможно наблюдать в обычном прогоне — и появляется ровно тогда, когда сессия заменяется.
-  - Не считается закрытием: структура, агрегирующая указатели на прежних владельцев, при сохранении прежних путей доступа; публикация по частям, при которой наблюдаема наполовину построенная сессия; копирование определений и провенанса репозитория внутрь снимка — снимок агрегирует авторитеты, а не дублирует репозиторий ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), `INV-P2`).
-  - Done:
-    - существует приватный кандидат, собираемый до `Ready`, и неизменяемый снимок, публикуемый атомарно;
-    - частично построенный снимок не наблюдаем ни одним потребителем;
-    - замена сессии строит нового кандидата и заменяет опубликованный снимок целиком; прежний не мутируется;
-    - снимок хранит read handle репозитория, а не копию определений и провенанса;
-    - время жизни объектов UE, на которые снимок ссылается, покрыто единым GC-безопасным набором закрепления;
-    - существует сценарий двух последовательных сессий в одном процессе, где активный снимок и кандидат-замена не перезаписывают и не освобождают авторитеты друг друга; вторая игровая VM при этом не запускается;
-    - контракт жизненного цикла описывает момент публикации и то, что до него наблюдаемого снимка нет.
-  - Evidence: `Source/GV2/Private/Application/GV2SessionCoordinator.*`, `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `Docs/Architecture/BootstrapAndSessionLifecycle.md`.
-
-- [ ] **PSC-04 — Авторитеты принадлежат снимку, глобальных путей нет**
+- [ ] **PSC-04 — Построить полный session content candidate**
   - Зависимости: PSC-03.
-  - Тема — последний авторитет, живущий в глобальном аксессоре настроек, и единственный, который читается **из фазы применения**: `Commit → ApplyText → UGV2TextPipeline::Apply → ResolveStyleClass → UGV2UiThemeSettings::GetConfiguredTheme()` (`GV2TextPipeline.cpp:264`). Схемы, каталог и реестр принадлежат сессии, но каждый — своему владельцу.
-  - Инвариант: каждое решение презентации выводится из одного снимка, и второй авторитет невозможно получить глобальным аксессором ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `D1`). Тема — шестое подтверждение того, что «аксессор есть, но им пользуются правильно» не является гарантией: она пережила три раунда, потому что ни один перечень авторитетов её не называл.
-  - Не считается закрытием: перенос темы в снимок при сохранении `GetConfiguredTheme()` как работающего пути; замена глобального аксессора на другой глобальный аксессор снимка; исправление одной цепочки темы вместо снятия самого пути.
+  - Инвариант: все входы, способные изменить session behavior/presentation, замораживаются одним candidate из одного exact package set до создания Lua VM.
+  - Не считается закрытием: aggregate указателей на прежних владельцев; snapshot только из четырёх известных presentation authorities; ленивый filesystem/schema fallback после `Ready`; копирование definitions/provenance.
   - Done:
-    - схемы, разрешённый реестр экранов, каталог ресурсов и тема принадлежат снимку;
-    - объектов настроек и глобальных аксессоров как пути получения авторитета в production-коде не остаётся;
-    - разрешение стиля текста происходит на фазе подготовки, а не при применении;
-    - множество мест, где авторитет достаётся, выводится сканированием, и его вход не является рукописным перечнем имён — это прямое следствие `PAH-R7`, и задача не имеет права закрыться перечнем;
-    - сценарий двух сессий с разным контентом показывает, что вторая видит свой снимок, а не первый.
-  - Evidence: `Source/GV2/Private/UI/GV2TextPipeline.cpp`, `Source/GV2/Private/UI/GV2UiTheme.cpp`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp`.
+    - существуют private `FGV2SessionContentCandidate` builder и immutable `FGV2SessionContentSnapshot` с полным составом выше;
+    - repository handle и ordered package identities происходят из одного `FResolvedPackageSet`;
+    - загруженный Lua source set и его hash принадлежат snapshot и затем передаются `FRuntimeSession` без повторного чтения дерева;
+    - UI schemas компилируются eagerly; неизвестная/невалидная schema даёт typed bootstrap failure без post-Ready fallback;
+    - Screen Registry, Image Catalog, Theme/styles/renderers и GameShell разрешаются candidate builder-ом;
+    - `presentation_hash` покрывает resolved screens/resources/theme/GameShell asset identities; `session_content_id` канонически объединяет repository/package/script/presentation identities;
+    - Unreal objects удерживаются единым GC-safe pin set на lifetime snapshot;
+    - source-derived field inventory snapshot сверяется с независимой role classification и имеет negative self-test;
+    - snapshot не содержит absolute roots и не копирует definitions/provenance.
+  - Evidence: новые `GV2SessionContentSnapshot.*`/builder files, `GV2SessionCoordinator.*`, snapshot field inventory, lifecycle contract.
 
-- [ ] **PSC-05 — Отключённый пакет не читается**
-  - Зависимости: PSC-03.
-  - `UGV2ImageResourceCatalog::BuildFromPackageClosure` (`:464`) вызывает `BuildFromDirectory(GetProjectResourcesRoot())` по всему корню ресурсов и фильтрует по замыканию только после (`:478-488`). Комментарий в коде это признаёт: повреждённый ресурс отключённого пакета валит сборку целиком.
-  - Инвариант: сессия видит ровно те пакеты, которые приняло её замыкание ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), `INV-P2`). Нарушение здесь имеет следствие за пределами чистоты: контент, который сессия не принимает, способен помешать ей стартовать.
-  - Не считается закрытием: отлов ошибок отключённых пакетов с продолжением — файл всё равно прочитан и декодирован; фильтрация после чтения, но до декодирования.
+- [ ] **PSC-05 — Зафиксировать publication, replacement и recovery**
+  - Зависимости: PSC-04.
+  - Инвариант: partially built content/session не наблюдаем; one-VM lifecycle не нарушается обещанием сохранить уже уничтоженную VM.
+  - Не считается закрытием: публикация snapshot до initial Commit; замена его полей по частям; запуск второй gameplay VM ради lifetime-теста; обещание оставить прежнюю active session после точки её teardown.
   - Done:
-    - обход, чтение и декодирование выполняются только по корням пакетов замыкания;
-    - ни один файл вне замыкания не открывается — проверено наблюдением за обращениями, а не рассуждением о коде;
-    - повреждённый ресурс в отключённом пакете не мешает старту активной сессии — сценарий воспроизводится;
-    - фильтрация по namespace после сборки, если она остаётся, перестаёт быть единственной защитой и названа как вторичная.
-  - Evidence: `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, `Source/GV2/Private/Tests/`.
+    - candidate snapshot используется приватно для запуска candidate VM и initial Prepare/Commit;
+    - `ActiveSnapshot` становится observable только атомарно с успешным initial Commit и переходом session в `Ready`;
+    - failure любого content builder до teardown replacement оставляет прежнюю active session/snapshot неизменной и уничтожает candidate целиком;
+    - active snapshot и replacement content candidate сосуществуют в одном process с независимыми lifetimes, но вторая VM не запускается;
+    - после teardown прежней VM ошибка новой session приводит к UE-native recovery, а не к фиктивному восстановлению старой VM;
+    - cold-start recovery не требует snapshot, configured Theme, Screen Registry или Lua VM;
+    - catastrophic recovery active session использует её snapshot и `LastCommittedDocument`, выполняя новый обычный Prepare, а не применяя сохранённые widget pointers;
+    - failure tests покрывают каждый builder stage, publication boundary, GC lifetime и оба recovery paths через production coordinator flow.
+  - Evidence: `GV2SessionCoordinator.*`, `GV2RuntimeSubsystem.*`, `GV2LayeredUiReconciler.*`, UE Automation machine report, `BootstrapAndSessionLifecycle.md`.
 
-- [ ] **PSC-06 — Разрешение экрана обязательно на всех путях**
-  - Зависимости: PSC-03.
-  - `FGV2TabContainerTabsPropertyConsumer::Prepare` берёт реестр из настроек напрямую и подставляет `TSubclassOf<UGV2ScreenWidgetBase> TargetWidgetClass = UGV2ScreenWidgetBase::StaticClass()` **до** проверки `if (ScreenRegistry != nullptr)`. При отсутствующем реестре разрешение не выполняется вовсе, и вложенный экран создаётся классом по умолчанию.
-  - Инвариант: разрешённый объект нельзя получить в обход проверки, которая его разрешает ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), преамбула). `PAH-02` сделал разрешение неустранимым для верхнего уровня и оставило запасной путь на вложенном — то есть закрыло экземпляр, а не класс.
-  - Не считается закрытием: проверка `ScreenRegistry != nullptr` с отказом вместо подстановки, при сохранении прямого обращения к настройкам; перенос подстановки ниже по коду.
+- [ ] **PSC-06 — Сделать snapshot владельцем и передать PrepareContext**
+  - Зависимости: PSC-05.
+  - Инвариант: settings/DataAssets выбирают bootstrap inputs до candidate build, но semantic runtime resolution получает authority только через `FGV2PresentationPrepareContext(snapshot)`.
+  - Не считается закрытием: новый global snapshot accessor; чтение settings/DataAssets внутри semantic Prepare; session-scoped объекты с отдельными mutable owners; заявление о закрытии `GetConfiguredTheme()` до появления resolved text payload в `PSC-10`.
   - Done:
-    - вложенный экран разрешается только через контекст подготовки, получающий снимок; прямого обращения к настройкам не остаётся;
-    - подстановки класса по умолчанию нет ни на одном пути;
-    - отсутствие разрешённого дескриптора для вкладки даёт отказ подготовки с типизированной диагностикой;
-    - сценарий с вкладкой, чей экран не разрешается, проходит через production-путь и наблюдает отказ, а не подмену;
-    - гейт `PAH-02` расширен так, что подстановка класса по умолчанию в разрешении цели роняет его.
-  - Evidence: `Source/GV2/Private/UI/GV2PropertyConsumers.cpp`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `Tools/Testing/validate_screen_registry_entry_encapsulation.py`.
+    - compiled schemas, resolved screens, image catalog, Theme/style policies и GameShell принадлежат snapshot;
+    - `UGV2ScreenRegistry`/`UGV2UiTheme` остаются authoring/bootstrap inputs, но не runtime services;
+    - production semantic Prepare получает snapshot только через explicit `FGV2PresentationPrepareContext`;
+    - `UGV2RuntimeSubsystem` хранит coordinator и physical projection, но не отдельные mutable authority owners;
+    - Text/Theme и screen/resource resolution имеют snapshot-backed Prepare entry points; их использование всеми operation kinds и удаление legacy Apply accessors являются Done `PSC-10`;
+    - native recovery использует собственные минимальные значения и не является второй Theme;
+    - два последовательных snapshot с разным контентом доказывают, что новая session не видит authorities предыдущей;
+    - inventory мест получения `FGV2PresentationPrepareContext` выводится из parameter/field type; synthetic Prepare path без context отвергается gate/self-test.
+  - Evidence: `GV2SessionCoordinator.*`, `GV2RuntimeSubsystem.*`, `GV2UiTheme.*`, `GV2ScreenRegistry.*`, `GV2ScreenFieldMaterializer.*`, PrepareContext inventory.
+
+- [ ] **PSC-07 — Не читать ресурсы disabled packages**
+  - Зависимости: PSC-06.
+  - Инвариант: presentation candidate может обходить только roots из своего `FResolvedPackageSet`; исключённый контент не способен сорвать bootstrap.
+  - Не считается закрытием: ignore ошибки после открытия; фильтрация после чтения либо decode; namespace-фильтр как единственная защита.
+  - Done:
+    - traversal, open и decode начинаются только с enabled package resource roots;
+    - root list передаётся snapshot builder-ом, а Image Catalog не открывает canonical `Resources/` самостоятельно;
+    - instrumented file-access test доказывает ноль opens вне set;
+    - corrupt image/metadata disabled package не мешает production session start;
+    - namespace/ownership validation enabled entries сохраняется как вторичная защита;
+    - новый enabled package автоматически попадает в traversal через `FResolvedPackageSet`, без правки списка каталогов.
+  - Evidence: `GV2ImageResourceCatalog.*`, source provider instrumentation, UE production bootstrap tests.
+
+- [ ] **PSC-08 — Сделать screen resolution обязательным для всех placements**
+  - Зависимости: PSC-06.
+  - Инвариант: top-level и nested screen используют один `PrepareContext.ResolveScreen(screen_id, placement)`; класс без успешного Resolve получить нельзя.
+  - Не считается закрытием: null-check configured Registry; перенос generic fallback; отдельный nested resolver; тест helper вне production Tabs path.
+  - Done:
+    - top-level и nested paths получают resolved descriptor только через PrepareContext и snapshot;
+    - generic `UGV2ScreenWidgetBase::StaticClass()` fallback удалён;
+    - missing resolver, unknown screen, forbidden placement и abstract/unloaded class дают typed Prepare failure;
+    - Nested Tab negative scenario проходит реальный `FGV2TabContainerTabsPropertyConsumer`/replacement path и наблюдает отсутствие physical mutation;
+    - placement cases выводятся из placement enum, screen targets — из resolved registry entries; новый enum value без policy даёт compile/test failure;
+    - прежний encapsulation gate обновлён как secondary check и больше не перечисляет resolver accessor names вручную.
+  - Evidence: `GV2PropertyConsumers.*`, `GV2ScreenRegistry.*`, `validate_screen_registry_entry_encapsulation.py`, UE production-path tests.
 
 ## Проверка milestone
 
-- [ ] Снимок один, публикуется атомарно, и частично построенное состояние не наблюдаемо.
-- [ ] Глобальных аксессоров как пути к авторитету в production-коде не осталось, включая тему.
-- [ ] Файлы вне замыкания не открываются, и повреждённый отключённый пакет не мешает старту.
-- [ ] Подстановки класса экрана по умолчанию не осталось ни на одном пути.
+- [ ] Snapshot содержит полный зафиксированный field set и публикуется только с `Ready`.
+- [ ] Candidate failure не изменяет active snapshot; one-VM invariant сохранён.
+- [ ] Snapshot является target owner, а semantic Prepare использует explicit PrepareContext; удаление legacy Apply accessors явно отложено до `PSC-10`.
+- [ ] Disabled packages не открываются, nested screen не имеет bypass/fallback.

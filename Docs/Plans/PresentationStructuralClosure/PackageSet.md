@@ -1,57 +1,70 @@
 ---
 title: Package Set Tasks
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-07
 depends_on:
   - README.md
+  - ContractAlignment.md
   - ../../Architecture/HeadlessSimulationContract.md
 ---
 
 # M1 — Package Set
 
-> **Материализует:** `PAH-R3` и `PAH-R6`.
-> **Задачи:** PSC-01…02.
-> **Результат:** точный набор пакетов выводится один раз, и его состав виден в идентичности пакета.
+> **Материализует:** `PAH-R3`, `PAH-R6` и `D1/D5` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md).
+> **Задачи:** PSC-02…03.
+> **Результат:** package set выводится один раз, а полный manifest входит в package identity без UE-зависимости portable-слоя.
 
-## Результат этапа
+## Зафиксированный portable тип
 
-Этап идёт первым не по важности, а по зависимости: снимок сессии строится из точного набора пакетов, и вводить снимок раньше значило бы строить его из того же канонического замыкания, которое `PAH-R3` и называет вторым авторитетом.
+```text
+GV2ContentHostSupport::FResolvedPackageSource
+  Root: filesystem path used only by builders
+  Descriptor: immutable FPackageDescriptor
+  CanonicalManifestHash: 64 lowercase hex
 
-Обе задачи касаются портативного слоя, поэтому обе обязаны сохранить роли Headless: он не линкует ни Unreal, ни презентацию и продолжает пользоваться тем же резолвером набора пакетов.
+GV2ContentHostSupport::FResolvedPackageSet
+  OrderedSources: immutable load-order sequence
+```
+
+Canonical manifest hash вычисляется из полного разобранного JSON5 root до проекции известных полей в `FPackageDescriptor`. Форматирование и комментарии на hash не влияют; любое semantic field, включая неизвестное будущему descriptor host extension, влияет.
 
 ## Задачи
 
-- [ ] **PSC-01 — Один разрешённый набор пакетов**
-  - `UGV2RuntimeSubsystem::Initialize()` вызывает `LoadScreenRegistry()` (`:112`) **до** `ResolveRepositoryPackageRoots()` (`:114`), а `UGV2ScreenRegistry::Build()` выводит порядок и владение самостоятельно через `GetPackageLoadOrderFromGameData()` и `ResolveContentRootOwnershipFromGameData()`, обе — поверх канонического `GV2PackageClosure::DiscoverFromGameData()`. Репозиторий при этом поддерживает `EditorPackageRoots` и тестовый override, поэтому наборы могут разойтись, а реестр к тому же строится раньше, чем набор вообще определён.
-  - Инвариант: каждое рантайм-решение выводится из одного контентного авторитета ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), `INV-P2`; [ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `D1`). Второй вывод того же факта — дефект, даже когда сегодня даёт тот же результат: расхождение появляется не при изменении кода, а при изменении режима запуска, и штатный режим редактора именно такой.
-  - Не считается закрытием: перестановка вызовов в `Initialize()` без удаления собственного вывода у реестра — порядок исправлен, второй авторитет остался; сверка двух наборов на равенство; передача набора реестру параметром при сохранении публичных `GetPackageLoadOrderFromGameData`/`ResolveContentRootOwnershipFromGameData` как доступного пути.
+- [ ] **PSC-02 — Ввести один `FResolvedPackageSet`**
+  - Зависимости: PSC-01.
+  - Инвариант: repository, Lua source loader и UE presentation builders потребляют один value, построенный до них. Повторное package discovery ниже bootstrap является вторым авторитетом, даже если сейчас даёт тот же порядок.
+  - Не считается закрытием: перестановка `LoadScreenRegistry()`; сравнение независимо выведенных наборов; сохранение public downstream helpers, повторно открывающих canonical `GameData`; отдельные ветки consumers для Editor/test roots.
   - Done:
-    - существует один разрешённый набор пакетов, выводимый один раз и до всех потребителей;
-    - репозиторий, Lua и сборка презентации получают именно его, а не выводят каждый своё;
-    - реестр экранов строится из него; собственный вывод порядка и владения из реестра удалён, а не оставлен рядом;
-    - `EditorPackageRoots` и тестовый override отражаются в этом наборе, а не обходят его;
-    - существует гейт, запрещающий повторное каноническое обнаружение ниже по течению; множество мест берётся сканированием по грамматике вызовов обнаружения, у гейта есть отрицательный самотест;
-    - Headless продолжает пользоваться тем же портативным резолвером и не получает зависимости на UE;
-    - сценарий с набором редактора, отличающимся от канонического, показывает, что репозиторий, схемы, экраны и ресурсы используют один и тот же набор.
-  - Evidence: `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `Source/GV2/Private/Application/GV2PackageClosure.cpp`, `Source/GV2ContentHostSupport/`, новый гейт.
+    - `FResolvedPackageSet` и `FResolvedPackageSource` принадлежат `GV2ContentHostSupport` и не зависят от Unreal;
+    - production lock, Editor profile, automation fixture и Headless CLI различаются только factory-входом, а не consumer path;
+    - repository builder получает ordered descriptors, Lua loader — ordered roots/sources, presentation candidate builder — тот же set целиком;
+    - Screen Registry и schema/resource builders не вызывают package discovery самостоятельно;
+    - legacy core script fallback, если сохраняется из-за layout `Scripts/`, разрешается внутри source для уже выбранного `core` package и не может добавить package вне set;
+    - число мест создания set выводится по функциям, возвращающим `FResolvedPackageSet`, из declarations; разрешены только host bootstrap entry points;
+    - constructor/factory inventory имеет negative self-test: synthetic downstream factory/call отвергается;
+    - production scenario с Editor roots, отличными от `mods.lock`, подтверждает единый порядок repository, Lua, schemas, screens и resources;
+    - Headless использует те же portable factories и не получает Unreal/presentation link edge.
+  - Evidence: `Source/GV2ContentHostSupport/Public/`, `Source/GV2ContentHostSupport/Private/`, `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `Source/GV2/Private/Application/GV2SessionCoordinator.cpp`, `Headless/Source/main.cpp`, новый declaration-derived gate.
 
-- [ ] **PSC-02 — UE-корни входят в идентичность пакета**
-  - `ComputePackageFingerprint` (`Source/GV2ContentHostSupport/Private/ModsLock.cpp:31`) складывает фиксированный перечень полей дескриптора: `package_id`, `namespace`, `version`, `load_index`, `relative_sources`, привязки схем и расширений. `ue_content_roots`, введённые `PAH-05` и определяющие рантайм-авторизацию доступа к ассетам, в него не входят. Пакет может изменить, что ему разрешено, не изменив своей идентичности.
-  - Инвариант: идентичность пакета покрывает всё, что меняет его наблюдаемое поведение. Нарушение здесь тихое вдвойне: изменение проходит проверку `mods.lock`, а следствие проявляется в авторизации, то есть в другой подсистеме.
-  - Не считается закрытием: добавление одного поля `ue_content_roots` в тот же рукописный перечень — перечень останется рукописным, и следующее поле дескриптора выпадет так же; включение в fingerprint всего файла пакета целиком, если это ломает совместимость дайджеста Headless.
+- [ ] **PSC-03 — Зафиксировать canonical manifest identity**
+  - Зависимости: PSC-02.
+  - Инвариант: package fingerprint покрывает полное semantic содержимое manifest, но Headless run digest покрывает только portable gameplay inputs/results. Эти identity намеренно различны.
+  - Не считается закрытием: добавление `ue_content_roots` в старый список полей; source inventory известных descriptor members; hash сырых bytes, меняющийся от пробелов/комментариев; включение package fingerprint или presentation data в `FRunDigest`.
   - Done:
-    - `ue_content_roots` влияют на fingerprint пакета;
-    - **сформулирован инвариант, а не пример**: UE-специфичное изменение пакета обязано менять его fingerprint и обязано не менять run digest Headless; записано, чем эта пара требований совместима, а не только что оба выполняются на текущем контенте;
-    - множество полей, входящих в fingerprint, перестаёт быть рукописным перечнем в теле функции — либо выводится из дескриптора механически, либо неучтённое поле роняет гейт;
-    - `mods.lock.json5` перегенерирован по правилам проекта, и расхождение fingerprint отклоняется как раньше;
-    - Headless собирается без UE, run digest не изменился, и это показано сравнением с прежним золотым прогоном;
-    - изменение `ue_content_roots` в тесте меняет fingerprint и не меняет digest — обе половины проверены.
-  - Evidence: `Source/GV2ContentHostSupport/Private/ModsLock.cpp`, `GameData/mods.lock.json5`, `Docs/Architecture/HeadlessSimulationContract.md`, `Source/GV2RuntimeCore/` (golden replay).
+    - package discovery вычисляет `CanonicalManifestHash` из полного parsed `FValue` до извлечения известных полей;
+    - `ComputePackageFingerprint` использует descriptor identity и `CanonicalManifestHash`, а не повторный перечень manifest fields;
+    - изменение форматирования/комментариев сохраняет hash, изменение любого semantic field меняет hash;
+    - synthetic неизвестное host-extension field меняет manifest hash и package fingerprint без изменения `FPackageDescriptor` API;
+    - `ue_content_roots` меняет package fingerprint и regenerated `mods.lock.json5`;
+    - `repository_content_hash`, `package_fingerprint`, `presentation_hash`, `session_content_id` и `FRunDigest` остаются разными typed concepts;
+    - изменение только UE-specific field/asset не меняет `repository_content_hash`, `script_set_hash`, state hash или Headless run digest;
+    - portable CTest и UE host проверяют одинаковый package order/fingerprint из одного conformance implementation.
+  - Evidence: `Source/GV2ContentHostSupport/Private/PackageDiscovery.cpp`, `Source/GV2ContentHostSupport/Private/ModsLock.cpp`, portable conformance, `GameData/mods.lock.json5`, `Docs/Architecture/HeadlessSimulationContract.md`.
 
 ## Проверка milestone
 
-- [ ] Набор пакетов выводится один раз, и повторного канонического обнаружения ниже по течению не остаётся.
-- [ ] Реестр экранов строится после набора и из него.
-- [ ] `ue_content_roots` видны в идентичности пакета, а перечень полей fingerprint не рукописный.
-- [ ] Headless не получил зависимости на UE, и его run digest не изменился.
+- [ ] Set создаётся только разрешёнными host bootstrap entry points; перечислитель выведен из return type, не из имени функции.
+- [ ] Все consumers получают один immutable set; downstream rediscovery отсутствует.
+- [ ] Arbitrary semantic manifest field меняет fingerprint без ручного обновления перечня.
+- [ ] Headless использует тот же resolver, остаётся UE-free и сохраняет прежний run digest.

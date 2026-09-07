@@ -84,7 +84,7 @@ global settings / DataAsset
 
 # 4. Findings
 
-Находки `PAH-R1…R7` закрывает план [PresentationStructuralClosure](../Plans/PresentationStructuralClosure/README.md) (`PSC-01…11`) на основании [ADR-0043](../ADR/0043-presentation-apply-boundary.md). Соответствие находка → задача приведено в его README.
+Находки `PAH-R1…R7` закрывает план [PresentationStructuralClosure](../Plans/PresentationStructuralClosure/README.md) (`PSC-01…14`) на основании [ADR-0043](../ADR/0043-presentation-apply-boundary.md). Соответствие находка → задача приведено в его README.
 
 ## PAH-R1 — P1 — Theme повторяет defect класса `STATUS-012`
 

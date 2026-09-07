@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-07
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -18,115 +18,135 @@ decisions:
 # План структурного замыкания презентации
 
 > **Материализует:** [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и [предложение о структурном замыкании](../../Proposals/PresentationAuthorityStructuralClosureProposal.md), через них — семь находок `PAH-R1…R7` [аудита](../../Status/AuditFindings.md).
-> **Задачи:** PSC-01…11.
-> **Результат:** обращение к авторитету из фазы применения перестаёт быть тем, что проверка может пропустить, и становится тем, что не собирается.
+> **Задачи:** PSC-01…14.
+> **Результат:** применение получает только самодостаточную подготовленную транзакцию; обращение к content/settings authority из Apply невозможно по dependency direction, а не по соглашению.
+> **Исполнение:** задачи выполняются последовательно по критическому пути; перед реализацией использовать `superpowers:executing-plans`. Параллельная правка общей C++/UAsset surface запрещена.
 
-## Цель
+## Цель и подход
 
-Предыдущий раунд закрыл пять находок и оставил зелёные тесты. Аудит нашёл ту же форму в местах, которых не было в перечне, — и одно из этих мест лежит **внутри механизма, написанного против этой формы**.
+План заменяет открытые множества и рукописные списки структурными границами:
 
-Что подтверждено проверкой кода до начала работ:
+- один portable `FResolvedPackageSet` служит входом repository, Lua и UE presentation build;
+- coordinator строит private candidate и публикует один immutable `FGV2SessionContentSnapshot` только вместе с готовой сессией;
+- верхний `GV2` выполняет semantic resolution через snapshot, нижний `GV2PresentationApply` применяет resolved DTO;
+- Headless использует portable package set, но не линкует Unreal или presentation;
+- build graph, exhaustive operation kind и inventories из фактических declarations являются первичными перечислителями.
 
-| Находка | Подтверждённое состояние |
+Технологии: C++20 portable libraries, Unreal Engine 5 modules, UMG/CommonUI/Slate, CMake/CTest, UE Automation и Unreal Editor API для миграции ассетов.
+
+## Подтверждённое состояние на входе
+
+| Находка | Наблюдаемое нарушение |
 |---|---|
-| `PAH-R1` | `Commit → ApplyText → UGV2TextPipeline::Apply → ResolveStyleClass → GetConfiguredTheme()` — тема опрашивается на фазе применения |
-| `PAH-R2` | Снимка как единого объекта нет: схемы, каталог, реестр и тема принадлежат разным владельцам, согласованным по времени жизни, но не по владению |
-| `PAH-R3` | `LoadScreenRegistry()` в `Initialize()` идёт **до** `ResolveRepositoryPackageRoots()`, и реестр выводит порядок пакетов сам, через каноническое замыкание |
-| `PAH-R4` | В разрешении вкладки сохранена подстановка `UGV2ScreenWidgetBase::StaticClass()` до `if (ScreenRegistry != nullptr)` — при отсутствующем реестре `Resolve` необязателен |
-| `PAH-R5` | `BuildFromPackageClosure` вызывает `BuildFromDirectory` по всему корню и фильтрует по замыканию **после**; ресурс отключённого пакета читается, декодируется и может уронить сборку целиком |
-| `PAH-R6` | `ComputePackageFingerprint` считается по рукописному перечню полей дескриптора; `ue_content_roots` в него не входит |
-| `PAH-R7` | Множество авторитетов в `validate_presentation_authority_phase.py` — рукописный перечень из шести имён; `GetConfiguredTheme` в него не попал |
+| `PAH-R1` | `Commit → ApplyText → ResolveStyleClass → GetConfiguredTheme()` повторно разрешает Theme при применении |
+| `PAH-R2` | schemas, images, screens, Theme, Lua sources и GameShell не объединены одним snapshot owner |
+| `PAH-R3` | Screen Registry сам повторно обнаруживает canonical package closure |
+| `PAH-R4` | Nested Tabs читают configured Registry и допускают generic class fallback |
+| `PAH-R5` | Image Catalog читает и декодирует disabled packages до фильтрации |
+| `PAH-R6` | `ue_content_roots` меняет authorization, но не package fingerprint |
+| `PAH-R7` | authority/discovery gates используют открытые множества имён и дали false green |
 
-**Главный измеримый результат плана — исчезновение направления зависимостей, а не исчезновение очередного вызова.** Пока модулю применения доступны типы авторитета, инвариант держится дисциплиной вызывающего, и любой следующий аксессор проходит зелёным. Когда типы недоступны, имя аксессора знать не нужно.
-
-## Что показал предыдущий раунд
-
-`PAH-08` построил двухчастный гейт: фазовые маркеры с обходом графа вызовов плюс счётчик обращений. Обход работал — он нашёл `STATUS-012` через две ссылки, где прямой осмотр тел `Commit*` ничего не видел.
-
-Неполон был **вход**: набор авторитетов задавался рукописным перечнем. Механизм перечислял места вызова и не перечислял то, что считается авторитетом.
-
-Отсюда следует и то, чего этот план делать не должен: расширять перечень. `PAH-R7` закрывается заменой первичной гарантии, а не добавлением седьмого имени.
-
-## Состояние на входе
-
-| Что | Сейчас |
+| Finding | Задачи закрытия |
 |---|---|
-| Набор пакетов | Репозиторий берёт из `ResolveRepositoryPackageRoots()`; реестр экранов — из канонического `mods.lock` независимо и раньше |
-| Снимок сессии | Как объекта не существует; авторитеты согласованы по времени жизни |
-| Тема | Глобальный аксессор настроек, читается из применения |
-| Каталог ресурсов | Читает и декодирует весь корень до фильтрации по замыканию |
-| Fingerprint пакета | Рукописный перечень полей; UE-корни на него не влияют |
-| Подготовленная нагрузка | Несёт идентификаторы там, где применению нужно значение |
-| Гарантия `INV-P5` | Скан исходника по рукописному множеству имён |
+| `PAH-R1` | `PSC-04`, `PSC-06`, `PSC-10`, `PSC-11`, `PSC-13` |
+| `PAH-R2` | `PSC-04…06`, `PSC-13` |
+| `PAH-R3` | `PSC-02`, `PSC-04`, `PSC-13` |
+| `PAH-R4` | `PSC-08`, `PSC-10`, `PSC-13` |
+| `PAH-R5` | `PSC-07`, `PSC-13` |
+| `PAH-R6` | `PSC-03`, `PSC-13` |
+| `PAH-R7` | `PSC-09…13` |
 
-## Принятые решения
+## Зафиксированные интерфейсы
 
-- **Снимок вводится до переноса модуля.** Иначе миграция смешивает исправление владения с изменением путей `UCLASS`, и ни один этап не имеет наблюдаемой границы.
-- **Перенос путей `UCLASS` — отдельная задача со своей точкой отката.** Это единственный шаг плана, способный испортить контент необратимо; растворять его в задаче создания модуля нельзя.
-- **`PAH-R7` закрывается сменой первичной гарантии.** Скан по именам сохраняется вторым рубежом и перестаёт быть основанием утверждения.
-- **Совместимость fingerprint и headless-дайджеста формулируется инвариантом, а не сценарием.** `ue_content_roots` обязаны менять fingerprint пакета и обязаны не менять run digest headless: два требования совместимы, но их совместимость — самое тонкое место плана, и она задаётся утверждением, а не примером.
-- **Ни один перечень в новых механизмах не является рукописным.** Правило общее для проекта, но здесь оно имеет подтверждённую жертву в предыдущем раунде, поэтому повторено явно.
+```text
+GV2ContentHostSupport::FResolvedPackageSet
+└─ ordered FResolvedPackageSource[]
+   ├─ package root
+   ├─ immutable FPackageDescriptor
+   └─ canonical manifest hash
 
-## Границы
+FGV2SessionContentSnapshot
+├─ FRepositoryReadHandle
+├─ ordered package identities
+├─ loaded Lua source set + script_set_hash
+├─ eagerly compiled UI schemas
+├─ resolved Screen Registry / Image Catalog / Theme / GameShell
+├─ GC-safe asset pins
+├─ repository_content_hash / ordered package_fingerprints / presentation_hash
+└─ session_content_id
 
-Не входит: изменение Lua-геймплея, командного пути и канонического состояния; презентация и загрузка медиа в Headless; новый синтаксис авторинга экранов; возврат schema-specific DTO; асинхронная загрузка до прохождения существующего measurement gate; `STATUS-001…003` и контракт обязательности полей сцены (`STATUS-011`) — они не относятся к замыканию авторитета.
+GV2 semantic Prepare
+  + FGV2PresentationPrepareContext(snapshot)
+  → FGV2PreparedPresentationTransaction
+  → GV2PresentationApply::Apply(transaction)
+  → physical UMG projection
+```
+
+`FGV2PreparedPresentationTransaction` может сохранять Stable ID только как identity/diagnostic metadata. Если ID потребовал lookup, resolved payload обязан находиться в той же операции. Apply не получает snapshot, repository, package set, registry, Theme source или prepare context.
 
 ## Milestones
 
-- [ ] M1 — [Package Set](PackageSet.md): точный набор пакетов один и является входом всех потребителей. PSC-01…02.
-- [ ] M2 — [Snapshot](Snapshot.md): один опубликованный снимок; глобальных аксессоров не остаётся. PSC-03…06.
-- [ ] M3 — [Apply Boundary](ApplyBoundary.md): физическая граница применения и контролируемая миграция путей классов. PSC-07…08.
-- [ ] M4 — [Self-Contained Payload](Payload.md): подготовленная операция несёт разрешённое значение. PSC-09.
-- [ ] M5 — [Structural Gates and Closure](GatesAndClosure.md): структурные гарантии заменяют рукописные перечни; раунд закрыт. PSC-10…11.
+- [ ] M0 — [Contract Alignment](ContractAlignment.md): owner contracts отражают уже принятый ADR до изменения кода. PSC-01.
+- [ ] M1 — [Package Set](PackageSet.md): exact package set и полный canonical manifest hash. PSC-02…03.
+- [ ] M2 — [Snapshot](Snapshot.md): полный candidate/snapshot, atomic publication, recovery и snapshot-backed PrepareContext. PSC-04…08.
+- [ ] M3 — [Self-Contained Payload](Payload.md): разделены Prepare/Apply API и замкнут resolved payload. PSC-09…10.
+- [ ] M4 — [Apply Boundary](ApplyBoundary.md): физическое применение вынесено в нижний модуль, затем атомарно мигрированы `UCLASS` paths. PSC-11…12.
+- [ ] M5 — [Structural Gates and Closure](GatesAndClosure.md): механические перечислители, cross-host verification и двухкоммитная архивация. PSC-13…14.
 
 ## Критический путь
 
 ```text
-PSC-01 ──► PSC-02
-   └──► PSC-03 ──┬──► PSC-04 ──► PSC-05 ──► PSC-06 ──┐
-                 │                                    ├──► PSC-09 ──► PSC-10 ──► PSC-11
-                 └──► PSC-07 ──► PSC-08 ─────────────┘
+PSC-01 → PSC-02 → PSC-03 → PSC-04 → PSC-05 → PSC-06
+                                             ├→ PSC-07 ─┐
+                                             └→ PSC-08 ─┴→ PSC-09 → PSC-10
+                                                                  → PSC-11 → PSC-12
+                                                                  → PSC-13 → PSC-14
 ```
 
-`PSC-03` после `PSC-01`: снимок строится из точного набора пакетов, и вводить его раньше значило бы строить из того же канонического замыкания, которое `PAH-R3` и называет вторым авторитетом.
-
-`PSC-07` после `PSC-03`: модуль применения принимает снимок как вход; создавать его раньше — переносить код, которому ещё нечего получать.
-
-`PSC-08` сразу после `PSC-07` и до всего остального: незавершённая миграция путей `UCLASS` делает ассеты нерабочими, и её нельзя оставлять открытой между этапами.
-
-`PSC-09` после `PSC-06` и `PSC-08`: самодостаточность нагрузки проверяется, когда применению уже физически недоступны авторитеты, иначе проверка снова опирается на дисциплину.
+- `PSC-04` начинается только после exact package set и manifest identity: snapshot нельзя строить из старого canonical rediscovery.
+- `PSC-09/10` предшествуют физическому переносу: текущие `IGV2PropertyConsumer` и `UGV2TextPipeline` смешивают Prepare и Commit, поэтому нижний модуль без предварительного DTO boundary не может быть независимым.
+- `PSC-11` не меняет ни одного `/Script/GV2` path. До его commit все Widget Blueprint продолжают ссылаться на прежние классы; верхние `UCLASS` временно являются тонкими adapters к нижнему Apply.
+- `PSC-12` одним change set переносит `UCLASS`, мигрирует все найденные Asset Registry ассеты и удаляет временные redirects. Промежуточное сломанное дерево не фиксируется.
 
 ## Владение файлами
 
-| Файл или область | Задачи |
+| Область | Задачи |
 |---|---|
-| `GV2ContentHostSupport` (`ModsLock.cpp`, package discovery) | `PSC-01`, `PSC-02` |
-| `GV2SessionCoordinator`, `GV2RuntimeSubsystem` | `PSC-03`, `PSC-04` |
-| `GV2ImageResourceCatalog` | `PSC-05` |
-| `GV2ScreenRegistry`, `GV2PropertyConsumers` (разрешение вкладок) | `PSC-06` |
-| Новый модуль и `*.Build.cs` | `PSC-07`, `PSC-10` |
-| `Content/**` виджет-блюпринты | `PSC-08` |
-| `GV2TextPipeline`, консьюмеры | `PSC-09` |
+| Owner contracts и routers | `PSC-01`, затем синхронно соответствующие code tasks |
+| `GV2ContentHostSupport`, package discovery, `ModsLock` | `PSC-02`, `PSC-03` |
+| `GV2SessionCoordinator`, `GV2RuntimeSubsystem`, snapshot builder и PrepareContext | `PSC-04…06` |
+| `GV2ImageResourceCatalog` | `PSC-07` |
+| `GV2ScreenRegistry`, nested screen preparation | `PSC-08` |
+| Prepared DTO, property consumers, text/image/screen resolution | `PSC-09`, `PSC-10` |
+| `GV2PresentationApply`, `*.Build.cs`, physical apply | `PSC-11`, `PSC-13` |
+| Widget `UCLASS`, `Content/**`, временные Core Redirects | `PSC-12` |
+| Audit/proposal/plan archive records и indexes | `PSC-14` |
 
-## Общие правила выполнения
+## Общие ограничения
 
-1. Задача не отмечается `[x]`, пока не назван гейт, который **покраснеет** при откате изменения, и это не продемонстрировано.
-2. Для каждого универсального утверждения назван перечислитель множества, и он не является рукописным перечнем имён. Предыдущий раунд закрылся с таким перечнем и дал ложное зелёное.
-3. Проверка инварианта стоит на пути, которым ходит продукт (`AGENTS.md`, правило 6).
-4. Удаляемая поверхность удаляется, а не помечается устаревшей.
-5. Правки нормативных контрактов выполняются в той же задаче, что и код.
-6. Ассеты меняются только через `unreal-mcp`; единственная задача, меняющая ассеты, — `PSC-08`.
+1. Lua gameplay, Command/Event path, canonical state и authoring grammar не меняются.
+2. Universal UI Property Pipeline остаётся единственным pipeline; второй UI framework или schema-specific DTO запрещены.
+3. Headless не получает UE/presentation dependency и не загружает media.
+4. Apply-модуль может зависеть только от `Core`, `CoreUObject`, `Engine`, `UMG`, `CommonUI`, `Slate`, `SlateCore`.
+5. Apply-модулю запрещены зависимости на `GV2`, `GV2ContentHostSupport`, `DeveloperSettings`, `AssetRegistry`, `ImageCore`, filesystem/content authoring modules.
+6. Каждый task закрывается только после red-on-revert evidence через production path; ручной перечень является reminder, не доказательством.
+7. Для каждого универсального утверждения назван перечислитель из compiler, enum/variant, declaration inventory, implementation set или module/source graph.
+8. Ассеты меняются только через `unreal-mcp`; единственная задача с UAsset mutation — `PSC-12`.
+9. Нормативные документы обновляются в том же code change set; полностью реализованная возможность не добавляется в `ImplementationStatus`.
 
 ## Итоговый Definition of Done
 
-- [ ] Точный набор пакетов выводится один раз и является входом репозитория, Lua и сборки презентации; повторного канонического обнаружения ниже по течению нет. (PSC-01)
-- [ ] `ue_content_roots` входят в fingerprint пакета; run digest headless при этом не меняется, и это утверждение, а не пример. (PSC-02)
-- [ ] У координатора сессии ровно один опубликованный неизменяемый снимок; замена строит кандидата и публикует атомарно. (PSC-03)
-- [ ] Схемы, экраны, ресурсы и тема принадлежат снимку; глобальных аксессоров настроек как пути получения авторитета в production-коде нет. (PSC-04)
-- [ ] Ни один отключённый пакет не читается и не декодируется сборщиками презентации. (PSC-05)
-- [ ] Разрешение экрана обязательно на всех путях, включая вложенный; подстановки класса по умолчанию не остаётся. (PSC-06)
-- [ ] Физическое применение живёт в отдельном модуле, которому зависимость на авторитеты запрещена графом сборки; обратное ребро останавливает сборку. (PSC-07)
-- [ ] Виджет-блюпринты загружены, скомпилированы и пересохранены; ссылок на прежние пути классов не остаётся, временные редиректы удалены. (PSC-08)
-- [ ] Каждый вид подготовленного значения несёт разрешённую нагрузку, достаточную для применения; мягких ссылок и указателей на резолверы в ней нет. (PSC-09)
-- [ ] Первичная гарантия `INV-P5` — направление зависимостей и отсутствие типов, а не перечень имён; скан по именам остаётся вторым рубежом. (PSC-10)
-- [ ] Каждая находка `PAH-R1…R7` закрыта продемонстрированным red-on-revert гейтом. (PSC-11)
+- [ ] Contracts описывают target ownership, lifecycle, failure semantics, module direction и Headless identity до начала реализации. (`PSC-01`)
+- [ ] Один `FResolvedPackageSet` строится до всех consumers; repository, Lua и presentation не выполняют повторный package discovery. (`PSC-02`)
+- [ ] Canonical hash полного manifest входит в package fingerprint; `ue_content_roots` меняет fingerprint, но не Headless run digest. (`PSC-03`)
+- [ ] Полный `FGV2SessionContentSnapshot` содержит все поля из зафиксированного интерфейса и не копирует definitions/provenance. (`PSC-04`)
+- [ ] Candidate остаётся private; active snapshot публикуется атомарно с успешным initial Commit/`Ready`; failure и recovery не наблюдают частичный snapshot. (`PSC-05`)
+- [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload. (`PSC-06`, `PSC-10`)
+- [ ] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`)
+- [ ] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`)
+- [ ] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09`)
+- [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10`)
+- [ ] `GV2PresentationApply` содержит единственную public transaction Apply entry point и весь Commit/rollback/reconciliation; dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`)
+- [ ] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`)
+- [ ] Compiler/type/module/source enumerators и production scenarios закрывают `PAH-R1…R7`; Headless link graph остаётся UE-free. (`PSC-13`)
+- [ ] Полная verification зелёная, каждый finding имеет исход, active audit и plan готовы к обязательной post-completion архивации. (`PSC-14`)

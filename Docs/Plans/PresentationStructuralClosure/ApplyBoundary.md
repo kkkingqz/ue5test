@@ -1,58 +1,80 @@
 ---
 title: Apply Boundary Tasks
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-07
 depends_on:
   - README.md
-  - Snapshot.md
+  - Payload.md
   - ../../ADR/0043-presentation-apply-boundary.md
 ---
 
-# M3 — Apply Boundary
+# M4 — Apply Boundary
 
-> **Материализует:** `D2` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) — физическую границу применения.
-> **Задачи:** PSC-07…08.
-> **Результат:** обращение к авторитету из фазы применения перестаёт собираться.
+> **Материализует:** `D2/D4` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md).
+> **Задачи:** PSC-11…12.
+> **Результат:** физическое применение находится в нижнем модуле с одной entry point; последующая `UCLASS`-миграция не оставляет сломанного commit.
 
-## Результат этапа
+## Физическая граница
 
-Это ядро плана и единственный этап, дающий гарантию, не зависящую от того, знает ли кто-нибудь имя авторитета. Всё остальное — приведение владения в порядок; здесь меняется то, что физически возможно.
+`GV2PresentationApply` содержит resolved DTO, prepared operations, Commit/Reset/Rollback, keyed reconciliation, projection recovery, physical widget bases и pure layout/viewport calculations.
 
-Этап разделён на две задачи по одной причине, и она не про размер. `PSC-07` создаёт модуль и переносит код — операция обратимая. `PSC-08` меняет пути `UCLASS`, а вместе с ними ссылки в Widget Blueprint — операция, способная испортить контент необратимо. Смешивать их в одной задаче значит лишить миграцию собственной точки отката: при откате пришлось бы возвращать и границу, и ассеты одновременно.
+Разрешённые module dependencies:
+
+```text
+Core, CoreUObject, Engine, UMG, CommonUI, Slate, SlateCore
+```
+
+Запрещённые dependencies/capabilities:
+
+```text
+GV2, GV2ContentHostSupport, DeveloperSettings, AssetRegistry, ImageCore,
+content authoring modules, filesystem/config discovery, soft/synchronous loading
+```
+
+Build graph доказывает отсутствие project authority types. Поскольку `CoreUObject/Engine` сами предоставляют soft-loading API, отдельный source-tree gate запрещает эти capabilities внутри модуля и честно остаётся вторичным к module boundary.
 
 ## Задачи
 
-- [ ] **PSC-07 — Модуль применения и запрещённое направление зависимостей**
-  - Зависимости: PSC-03.
-  - Инвариант: семантика решается до подготовленной транзакции, и это свойство обеспечивается направлением зависимостей, а не дисциплиной вызывающего ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `D2`, `D4`). Причина замены механизма записана в самом ADR: скан по рукописному множеству имён уже дал ложное зелёное на теме.
-  - Не считается закрытием: модуль, которому зависимость на авторитеты запрещена соглашением, а не файлом сборки; сохранение в модуле применения типа настроек, репозитория, реестра или темы «пока не мешает»; список исключений в гейте графа сборки.
+- [ ] **PSC-11 — Завершить `GV2PresentationApply` и запретить обратную зависимость**
+  - Зависимости: PSC-10.
+  - Инвариант: Apply получает только `FGV2PreparedPresentationTransaction`; новый authority с любым именем недоступен lower module по dependency direction.
+  - Не считается закрытием: соглашение без `Build.cs`; несколько public apply paths; вызов upper callback; сохранение Commit/rollback логики в thin adapters; утверждение, что module graph сам запрещает `LoadSynchronous()`.
   - Done:
-    - существует отдельный модуль Unreal, содержащий физическое применение: Commit, откат, keyed-реконсиляцию, восстановление проекции и чистые расчёты раскладки;
-    - его файл сборки не объявляет зависимости на модули авторитета, загрузки контента и настроек; обратное ребро останавливает сборку;
-    - существует гейт, выводящий фактический граф модулей из всех `*.Build.cs` и отвергающий запрещённое ребро; список файлов не задаётся руками, у гейта есть отрицательный самотест;
-    - все корни `Commit*` выводятся из production-исходника и обязаны быть реализованы в этом модуле; верхний модуль передаёт готовую транзакцию единственной публичной точке применения;
-    - в модуле отсутствуют типы репозитория, набора пакетов, источника реестра, источника темы и контекста подготовки — поэтому подготовленная операция не может сохранить такой указатель;
-    - синтетическое обращение `Commit → GetConfiguredTheme()` не компилируется через границу проекта и отвергается гейтом графа — продемонстрировано;
-    - синтетический `LoadSynchronous()` в модуле применения отвергается — продемонстрировано.
-  - Evidence: новый `*.Build.cs`, `Source/GV2/`, `Tools/Testing/`, `Docs/Architecture/DependencyMap.md`.
+    - `Source/GV2PresentationApply/GV2PresentationApply.Build.cs` использует точный allowlist выше и не имеет conditional authority/editor dependencies;
+    - одна public façade `FGV2PresentationApply::Apply(FGV2PreparedPresentationTransaction&, FGV2PresentationApplyResult&)` является единственной production entry point применения целой transaction;
+    - Commit, Reset, rollback, keyed reconciliation, physical projection recovery и pure viewport/layout calculations реализованы ниже façade;
+    - верхний `GV2` выполняет semantic Prepare и одним вызовом передаёт готовую transaction; временные методы существующих `UCLASS` только делегируют и не содержат mutation/lookup logic;
+    - transitive include closure будущих moved widget bases классифицировано механически: authority-free value/physical interfaces принадлежат lower module, authority-aware types остаются в `GV2` за DTO boundary, duplicate bridge types отсутствуют;
+    - exported-public inventory модуля выводится из его `Public/` declarations и классифицирует façade, DTO/results и локальные widget/lifecycle methods; вторая transaction apply entry point запрещена;
+    - actual UBT graph выводится из всех `*.Build.cs`; forbidden edge и conditional edge отвергаются, negative self-test добавляет synthetic edge;
+    - actual CMake target/source graph доказывает, что portable/Headless targets не линкуют и не компилируют `GV2PresentationApply`;
+    - весь source tree модуля перечисляется обходом каталога; secondary forbidden-capability gate отвергает `TSoftObjectPtr` runtime input, `LoadSynchronous`, `StaticLoadObject`, Asset Registry, filesystem/config/settings access;
+    - каждый forbidden-capability case имеет synthetic negative self-test;
+    - runtime authority counter показывает accesses во время Prepare и ноль вокруг единственной Apply façade для каждого operation kind;
+    - production initial screen, replacement, nested collection, rollback и catastrophic recovery проходят через façade;
+    - task не меняет ни одного Widget `UCLASS` module/path.
+  - Evidence: `Source/GV2PresentationApply/`, `Source/GV2/GV2.Build.cs`, `Source/CMakeLists.txt`, `Headless/CMakeLists.txt`, graph/API/capability gates и production tests.
 
-- [ ] **PSC-08 — Контролируемая миграция путей классов**
-  - Зависимости: PSC-07.
-  - Перенос `UCLASS` меняет пути `/Script/GV2` у виджет-баз, на которые ссылаются существующие Widget Blueprint. Это единственный шаг плана, способный испортить контент необратимо.
-  - Инвариант: контент остаётся загружаемым на каждом шаге миграции. Нарушение здесь не обнаруживается тестом логики: ассет не ломается — он перестаёт разрешать класс родителя, и это видно только при загрузке.
-  - Не считается закрытием: постоянный слой совместимости — редиректы, оставленные «на всякий случай», превращаются в вечную вторую истину о том, где живёт класс; пересохранение части ассетов; проверка ссылок только в известных каталогах.
+- [ ] **PSC-12 — Атомарно мигрировать Widget `UCLASS` paths и ассеты**
+  - Зависимости: PSC-11.
+  - Инвариант: до task дерево целиком использует `/Script/GV2`; после task — `/Script/GV2PresentationApply`; ни один commit не содержит смешанную или неразрешимую модель.
+  - Не считается закрытием: перенос classes в `PSC-11`; постоянные redirects; известный список ассетов; пересохранение только `/Game/UI`; source-only проверка без загрузки Blueprint.
   - Done:
-    - миграция выполняется одним change set и оставляет дерево в рабочем состоянии: временные редиректы, загрузка и компиляция затронутых ассетов, пересохранение, проверка отсутствия ссылок на прежние пути, удаление редиректов;
-    - множество затронутых ассетов берётся обходом Asset Registry, а не списком;
-    - после удаления редиректов ни один ассет не ссылается на прежний путь — проверено обходом, а не выборочно;
-    - точка отката названа явно: до этой задачи дерево работает с прежними путями, после — с новыми, промежуточного состояния в истории нет;
-    - счётчик виджет-блюпринтов и контракт компонентов проходят без правки ожидаемой стороны — если они краснеют, это признак, что миграция неполна, а не что число устарело.
-  - Evidence: `Content/`, `Config/DefaultEngine.ini` (временные редиректы), `Source/GV2/Private/Tests/`, отчёт change set.
+    - перед изменением paths зафиксированы baseline Asset Registry inventory и успешная загрузка/компиляция всех Widget Blueprint, наследующих или ссылающихся на переносимые classes;
+    - множество переносимых `UCLASS` выводится из фактической inheritance/dependency closure физических widget bases, а не из списка задачи;
+    - в одном рабочем change set добавляются временные Core Redirects, classes переносятся, каждый affected asset загружается, компилируется и сохраняется через Unreal Editor API;
+    - после resave Asset Registry/full-package sweep не находит old `/Script/GV2` class references;
+    - redirects удаляются до commit, Editor перезапускается/перезагружает packages без них, повторный полный load/compile sweep проходит;
+    - widget blueprint count и component contract сравниваются с baseline, который не меняется в том же task;
+    - `unreal-mcp` сообщает успешные load/compile/save для фактического affected set; failed/unavailable MCP блокирует `[x]`;
+    - commit содержит C++ path move и все affected UAssets вместе; промежуточное состояние не фиксируется.
+  - Evidence: `Source/GV2PresentationApply/`, удалённые/перенесённые `Source/GV2/Public|Private/UI` classes, `Content/`, временный diff `Config/DefaultEngine.ini`, Asset Registry reports и Unreal MCP results.
 
 ## Проверка milestone
 
-- [ ] Запрещённое ребро в графе модулей останавливает сборку, и это продемонстрировано синтетическим ребром.
-- [ ] Модуль применения не содержит типов авторитета, поэтому подготовленная операция не может сохранить ссылку на резолвер.
-- [ ] Все виджет-блюпринты загружаются и компилируются после миграции; ссылок на прежние пути не осталось.
-- [ ] Временные редиректы удалены; постоянного слоя совместимости не возникло.
+- [ ] Project authority type не может попасть в Apply module через UBT edge.
+- [ ] UE loading/settings/filesystem capability отвергается отдельным full-source-tree gate.
+- [ ] Headless/CMake graph не содержит Apply module или его sources.
+- [ ] До `PSC-12` class paths не меняются; после него старые paths и redirects отсутствуют.
+- [ ] Все найденные Widget Blueprint загружаются и компилируются после чистого reload.

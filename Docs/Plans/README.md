@@ -1,7 +1,7 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 3.5
+version: 3.6
 updated: 2026-09-07
 depends_on:
   - ../README.md
@@ -29,7 +29,7 @@ depends_on:
 
 ## Активные планы
 
-- [Presentation Structural Closure](PresentationStructuralClosure/README.md) — семь находок аудита презентации: один разрешённый набор пакетов и UE-корни в идентичности пакета, опубликованный снимок сессии вместо согласованных по времени жизни владельцев, физическая граница применения отдельным модулем Unreal, самодостаточная подготовленная нагрузка и структурные гарантии вместо перечня имён. PSC-01…11.
+- [Presentation Structural Closure](PresentationStructuralClosure/README.md) — семь находок аудита презентации: синхронизация owner contracts, один portable package set, полный session snapshot, self-contained Prepare/Apply DTO boundary, отдельный Unreal Apply module, атомарная миграция `UCLASS` и structural cross-host gates. PSC-01…14.
 
 
 
