@@ -29,7 +29,6 @@ depends_on:
 
 ## Активные планы
 
-- [Presentation Authority Hardening](PresentationAuthorityHardening/README.md) — пять находок ревью архитектуры презентации: наблюдаемый отказ отката, разрешение экрана только по размещению, один пиннингованный снимок контента, владение UE-корнями в данных пакета, слои как упорядоченная keyed-коллекция. PAH-01…09.
 
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).

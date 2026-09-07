@@ -8,7 +8,7 @@ depends_on:
   - ../UI/UIDocumentAndReconciliation.md
   - ../UI/ScreenTemplates.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
-  - ../Status/GV2_PresentationArchitectureReview_2026-09-06.md
+  - ../Status/Archive/PresentationArchitectureReview2026-09-06.md
 decisions:
   - ../ADR/0006-repository-reload-and-session-pinning.md
   - ../ADR/0018-portable-content-core-module.md
@@ -24,7 +24,7 @@ decisions:
 
 ## Задача
 
-[Ревью от 2026-09-06](../Status/GV2_PresentationArchitectureReview_2026-09-06.md) нашло пять находок и объяснило их повторяемость пятью структурными образцами. Проверка подтвердила все пять, три — в более сильной форме.
+[Ревью от 2026-09-06](../Status/Archive/PresentationArchitectureReview2026-09-06.md) нашло пять находок и объяснило их повторяемость пятью структурными образцами. Проверка подтвердила все пять, три — в более сильной форме.
 
 Предложение отвечает на вопрос: что чинить точечно, что требует смены конструкции, и на каком условии принимается самая крупная часть.
 

@@ -1,8 +1,8 @@
 ---
 title: Archived Audit Rounds
 status: archived
-version: 1.5
-updated: 2026-09-03
+version: 1.7
+updated: 2026-09-07
 depends_on:
   - ../ImplementationStatus.md
 ---
@@ -21,3 +21,4 @@ depends_on:
 | [GV2RemainingReview2026-09-01](GV2RemainingReview2026-09-01.md) | 2026-09-02 | Внешнее ревью границ generic-абстракций UI pipeline на `main`, закрыто планом GenericBoundaryHardening (GBH-01…11) | 7 находок: 6 устранено (одна — `REM-02` — потребовала отдельного ADR-0041 и оказалась воспроизведённой в шести местах кода, а не одном), 1 осознанно отложена с условием повторного открытия |
 | [GenericBoundaryHardeningFollowupReview](GenericBoundaryHardeningFollowupReview.md) | 2026-09-03 | Follow-up review транзакционной модели UI после GenericBoundaryHardening, закрыто GBF-01…08 | 7 находок устранены; `STATUS-008` остаётся known nonconformance, semantic reopening condition не наступило |
 | [GenericUiTransactionFollowUpAudit](GenericUiTransactionFollowUpAudit.md) | 2026-09-03 | Независимая проверка плана GenericUiTransactionFollowUp (GBF-01…08), заявленного выполненным | 3 находки устранены: незакрытый путь отката вложенного экрана вместе с латентным применением непринятой ревизии, закрытие по 16 тестам из 108 и расхождение отметок внутри документа плана |
+| [PresentationArchitectureReview2026-09-06](PresentationArchitectureReview2026-09-06.md) | 2026-09-07 | Внешнее ревью архитектуры презентации на `698c933`, закрыто планом PresentationAuthorityHardening (PAH-01…09) | 5 находок устранены; сверх ревью найдены пятый потребитель контентного факта и утечка авторитета на фазе применения (`STATUS-012`) |
