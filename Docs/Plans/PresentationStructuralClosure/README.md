@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-07
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -18,7 +18,7 @@ decisions:
 # План структурного замыкания презентации
 
 > **Материализует:** [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и [предложение о структурном замыкании](../../Proposals/PresentationAuthorityStructuralClosureProposal.md), через них — семь находок `PAH-R1…R7` [аудита](../../Status/AuditFindings.md).
-> **Задачи:** PSC-01…14.
+> **Задачи:** PSC-01…14; `PSC-09` разделена на `09A` и `09B`.
 > **Результат:** применение получает только самодостаточную подготовленную транзакцию; обращение к content/settings authority из Apply невозможно по dependency direction, а не по соглашению.
 > **Исполнение:** задачи выполняются последовательно по критическому пути; перед реализацией использовать `superpowers:executing-plans`. Параллельная правка общей C++/UAsset surface запрещена.
 
@@ -48,13 +48,13 @@ decisions:
 
 | Finding | Задачи закрытия |
 |---|---|
-| `PAH-R1` | `PSC-04`, `PSC-06`, `PSC-10`, `PSC-11`, `PSC-13` |
+| `PAH-R1` | `PSC-04`, `PSC-06`, `PSC-09B`, `PSC-10`, `PSC-11`, `PSC-13` |
 | `PAH-R2` | `PSC-04…06`, `PSC-13` |
 | `PAH-R3` | `PSC-02`, `PSC-04`, `PSC-13` |
 | `PAH-R4` | `PSC-08`, `PSC-10`, `PSC-13` |
 | `PAH-R5` | `PSC-07`, `PSC-13` |
 | `PAH-R6` | `PSC-03`, `PSC-13` |
-| `PAH-R7` | `PSC-09…13` |
+| `PAH-R7` | `PSC-09A…13` |
 
 ## Зафиксированные интерфейсы
 
@@ -89,7 +89,7 @@ GV2 semantic Prepare
 - [ ] M0 — [Contract Alignment](ContractAlignment.md): owner contracts отражают уже принятый ADR до изменения кода. PSC-01.
 - [ ] M1 — [Package Set](PackageSet.md): exact package set и полный canonical manifest hash. PSC-02…03.
 - [ ] M2 — [Snapshot](Snapshot.md): полный candidate/snapshot, atomic publication, recovery и snapshot-backed PrepareContext. PSC-04…08.
-- [ ] M3 — [Self-Contained Payload](Payload.md): разделены Prepare/Apply API и замкнут resolved payload. PSC-09…10.
+- [ ] M3 — [Self-Contained Payload](Payload.md): установлена типовая граница, весь путь заведён через транзакцию, замкнут resolved payload. PSC-09A…09B, PSC-10.
 - [ ] M4 — [Apply Boundary](ApplyBoundary.md): физическое применение вынесено в нижний модуль, затем атомарно мигрированы `UCLASS` paths. PSC-11…12.
 - [ ] M5 — [Structural Gates and Closure](GatesAndClosure.md): механические перечислители, cross-host verification и двухкоммитная архивация. PSC-13…14.
 
@@ -97,14 +97,15 @@ GV2 semantic Prepare
 
 ```text
 PSC-01 → PSC-02 → PSC-03 → PSC-04 → PSC-05 → PSC-06
-                                             ├→ PSC-07 ─┐
-                                             └→ PSC-08 ─┴→ PSC-09 → PSC-10
-                                                                  → PSC-11 → PSC-12
-                                                                  → PSC-13 → PSC-14
+                                             ├→ PSC-07 ────────────┐
+                                             └→ PSC-08 → PSC-09A → PSC-09B → PSC-10
+                                                                              → PSC-11 → PSC-12
+                                                                              → PSC-13 → PSC-14
 ```
 
 - `PSC-04` начинается только после exact package set и manifest identity: snapshot нельзя строить из старого canonical rediscovery.
-- `PSC-09/10` предшествуют физическому переносу: текущие `IGV2PropertyConsumer` и `UGV2TextPipeline` смешивают Prepare и Commit, поэтому нижний модуль без предварительного DTO boundary не может быть независимым.
+- `PSC-09A` зависит от `PSC-06` (контекст подготовки) и `PSC-08` (разрешение экрана), но не от `PSC-07`: фильтрация ресурсов отключённых пакетов не влияет на разделение Prepare/Apply. Порядок исполнения последователен по общему ограничению плана, а не по этой связи.
+- `PSC-09A/09B/10` предшествуют физическому переносу: текущие `IGV2PropertyConsumer` и `UGV2TextPipeline` смешивают Prepare и Commit, поэтому нижний модуль без предварительного DTO boundary не может быть независимым.
 - `PSC-11` не меняет ни одного `/Script/GV2` path. До его commit все Widget Blueprint продолжают ссылаться на прежние классы; верхние `UCLASS` временно являются тонкими adapters к нижнему Apply.
 - `PSC-12` одним change set переносит `UCLASS`, мигрирует все найденные Asset Registry ассеты и удаляет временные redirects. Промежуточное сломанное дерево не фиксируется.
 
@@ -117,7 +118,7 @@ PSC-01 → PSC-02 → PSC-03 → PSC-04 → PSC-05 → PSC-06
 | `GV2SessionCoordinator`, `GV2RuntimeSubsystem`, snapshot builder и PrepareContext | `PSC-04…06` |
 | `GV2ImageResourceCatalog` | `PSC-07` |
 | `GV2ScreenRegistry`, nested screen preparation | `PSC-08` |
-| Prepared DTO, property consumers, text/image/screen resolution | `PSC-09`, `PSC-10` |
+| Prepared DTO, property consumers, text/image/screen resolution | `PSC-09A`, `PSC-09B`, `PSC-10` |
 | `GV2PresentationApply`, `*.Build.cs`, physical apply | `PSC-11`, `PSC-13` |
 | Widget `UCLASS`, `Content/**`, временные Core Redirects | `PSC-12` |
 | Audit/proposal/plan archive records и indexes | `PSC-14` |
@@ -144,7 +145,8 @@ PSC-01 → PSC-02 → PSC-03 → PSC-04 → PSC-05 → PSC-06
 - [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload. (`PSC-06`, `PSC-10`)
 - [ ] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`)
 - [ ] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`)
-- [ ] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09`)
+- [ ] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09A`)
+- [ ] Каждый вид операции проходит через транзакцию; второго пути, минующего её, не существует. (`PSC-09B`)
 - [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10`)
 - [ ] `GV2PresentationApply` содержит единственную public transaction Apply entry point и весь Commit/rollback/reconciliation; dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`)
 - [ ] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`)

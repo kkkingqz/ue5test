@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-07
 depends_on:
   - README.md
@@ -13,7 +13,7 @@ depends_on:
 # M3 — Self-Contained Payload
 
 > **Материализует:** `PAH-R1`, `D3/D4` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и необходимую перед module extraction типовую границу.
-> **Задачи:** PSC-09…10.
+> **Задачи:** PSC-09A…09B, PSC-10.
 > **Результат:** Prepare и Apply больше не являются методами одного authority-aware объекта; нижний DTO содержит всё необходимое физическому применению.
 
 ## Почему этап идёт до module extraction
@@ -24,8 +24,8 @@ depends_on:
 
 ## Задачи
 
-- [ ] **PSC-09 — Разделить authority-aware Prepare и authority-free Apply API**
-  - Зависимости: PSC-07, PSC-08.
+- [ ] **PSC-09A — Типовая граница: контекст подготовки, каркас модуля и транзакция**
+  - Зависимости: PSC-06, PSC-08.
   - Инвариант: объект, способный обратиться к snapshot/registry/Theme, не исполняет physical mutation; объект применения не имеет authority capability.
   - Не считается закрытием: перенос существующего `IGV2PropertyConsumer` целиком; callback из lower operation в upper resolver; `void*`/generic service locator; временная обратная module dependency; изменение `UCLASS` paths.
   - Done:
@@ -33,17 +33,28 @@ depends_on:
     - создаётся DTO-only каркас `Source/GV2PresentationApply/` с окончательным dependency allowlist; `GV2` зависит от него, обратное ребро отсутствует;
     - `FGV2PreparedPresentationTransaction` сразу объявлен в `GV2PresentationApply/Public`, состоит из immutable resolved operations и не включает PrepareContext;
     - `IGV2PropertyConsumer` разделён: upper preparers создают operations, lower applicator/operations выполняют Commit/Reset/Rollback;
+    - public lower DTO использует только value/resolved UE types из разрешённого dependency set;
+    - task не меняет ни одного `/Script/GV2` class path;
+    - явно записано, какие виды операций ещё не проходят через транзакцию на конец задачи, — это состояние закрывает `PSC-09B`, и оно названо, а не подразумевается.
+  - Evidence: `Source/GV2PresentationApply/GV2PresentationApply.Build.cs`, public prepared transaction/operation declarations, разделённые property interfaces, module graph gate.
+
+- [ ] **PSC-09B — Весь production-путь проходит через транзакцию**
+  - Зависимости: PSC-09A.
+  - Разделение вынесено из `PSC-09A` не по размеру, а потому что у крупной задачи нет промежуточной точки, с которой видно, что пошло не так: `PSC-09A` устанавливает границу типов, `PSC-09B` заводит через неё всё. Та же причина, по которой разделены `PSC-11` и `PSC-12`.
+  - Инвариант: транзакция является единственным протоколом между разрешением и применением; второго пути, минующего её, не существует ни для одного вида операции.
+  - Не считается закрытием: перевод части видов при сохранении прежнего пути для остальных; `UGV2TextPipeline`, оставшийся вторым полным pipeline; дубли типов и compatibility alias вместо переноса; callback из нижней операции наверх.
+  - Done:
     - `UGV2TextPipeline` разделён на upper text/theme preparation и lower widget application; прежний тип не остаётся вторым полным pipeline;
     - все authority-free value/interface types, необходимые lower DTO и будущим physical widget bases, перемещаются вниз либо заменяются одним canonical lower type; дубли и compatibility aliases не остаются;
     - keyed collections, nested screens и screen replacement выражены тем же transaction protocol, без callback в upper module;
     - существующий production path уже строит новую transaction; временный `GV2` adapter только делегирует её применение и не выполняет semantic lookup;
-    - public lower DTO использует только value/resolved UE types из разрешённого dependency set;
-    - source-derived field inventory отвергает function/callback, PrepareContext, repository/package/registry/theme source pointers и generic service handles;
+    - source-derived field inventory отвергает function/callback, PrepareContext, repository/package/registry/theme source pointers и generic service handles; у инвентаря есть отрицательный самотест;
+    - множество видов операций, обязанных проходить через транзакцию, берётся обходом перечисления видов, а не списком в задаче;
     - task не меняет ни одного `/Script/GV2` class path.
-  - Evidence: `Source/GV2PresentationApply/GV2PresentationApply.Build.cs`, public prepared transaction/operation declarations, разделённые property/text interfaces, production initial-screen test, payload inventory/self-test.
+  - Evidence: разделённые text interfaces, production initial-screen test, payload inventory/self-test, exhaustive kind walk.
 
 - [ ] **PSC-10 — Замкнуть resolved payload для всех operation kinds**
-  - Зависимости: PSC-09.
+  - Зависимости: PSC-09B.
   - Инвариант: если semantic ID/token был проверен в Prepare, Apply использует именно полученный resolved payload и не повторяет решение.
   - Не считается закрытием: покрытие только Text/Image; ID без соседнего payload; `TSoftObjectPtr` с поздним разыменованием; pointer на resolver/context; switch с `default` либо ручной список kinds.
   - Done:

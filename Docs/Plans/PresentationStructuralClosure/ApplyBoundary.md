@@ -1,7 +1,7 @@
 ---
 title: Apply Boundary Tasks
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-07
 depends_on:
   - README.md
@@ -59,7 +59,7 @@ Build graph доказывает отсутствие project authority types. �
 - [ ] **PSC-12 — Атомарно мигрировать Widget `UCLASS` paths и ассеты**
   - Зависимости: PSC-11.
   - Инвариант: до task дерево целиком использует `/Script/GV2`; после task — `/Script/GV2PresentationApply`; ни один commit не содержит смешанную или неразрешимую модель.
-  - Не считается закрытием: перенос classes в `PSC-11`; постоянные redirects; известный список ассетов; пересохранение только `/Game/UI`; source-only проверка без загрузки Blueprint.
+  - Не считается закрытием: перенос classes в `PSC-11`; постоянные redirects; известный список ассетов; пересохранение только `/Game/UI`; source-only проверка без загрузки Blueprint; попытка довести прерванную миграцию вручную вместо возврата к точке отката.
   - Done:
     - перед изменением paths зафиксированы baseline Asset Registry inventory и успешная загрузка/компиляция всех Widget Blueprint, наследующих или ссылающихся на переносимые classes;
     - множество переносимых `UCLASS` выводится из фактической inheritance/dependency closure физических widget bases, а не из списка задачи;
@@ -68,7 +68,8 @@ Build graph доказывает отсутствие project authority types. �
     - redirects удаляются до commit, Editor перезапускается/перезагружает packages без них, повторный полный load/compile sweep проходит;
     - widget blueprint count и component contract сравниваются с baseline, который не меняется в том же task;
     - `unreal-mcp` сообщает успешные load/compile/save для фактического affected set; failed/unavailable MCP блокирует `[x]`;
-    - commit содержит C++ path move и все affected UAssets вместе; промежуточное состояние не фиксируется.
+    - commit содержит C++ path move и все affected UAssets вместе; промежуточное состояние не фиксируется;
+    - **точка возврата названа явно и проверена до начала**: ею является коммит `PSC-11`, дерево на нём целиком использует прежние пути; при обрыве миграции на любом шаге — включая частично пересохранённые ассеты и неснятые редиректы — восстановление выполняется возвратом рабочего дерева к этому коммиту целиком, а не доведением наполовину мигрированного состояния.
   - Evidence: `Source/GV2PresentationApply/`, удалённые/перенесённые `Source/GV2/Public|Private/UI` classes, `Content/`, временный diff `Config/DefaultEngine.ini`, Asset Registry reports и Unreal MCP results.
 
 ## Проверка milestone
