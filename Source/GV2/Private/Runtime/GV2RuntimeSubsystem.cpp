@@ -363,6 +363,9 @@ bool UGV2RuntimeSubsystem::LoadScreenRegistry()
     return true;
 }
 
+// PAH-08: phase=prepare -- the screen factory the reconciler calls from
+// PrepareReconcile to obtain a candidate widget class; no caller is on the
+// application path.
 UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const
 {
     if (ScreenRegistry == nullptr)

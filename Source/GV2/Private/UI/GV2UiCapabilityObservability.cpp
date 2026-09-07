@@ -42,6 +42,8 @@ using namespace GV2ContentCore;
 // actually contains, not a hardcoded list of specific package_id-prefixed resource ids. A
 // session with more or fewer image resources than today's core+textsystem set changes what
 // this returns without anyone editing this file.
+// PAH-08: phase=prepare -- observability harness, outside any presentation
+// transaction; it probes capabilities, it does not apply a revision.
 TArray<FString> GetResourceProbeCandidates()
 {
     TArray<FString> Candidates;

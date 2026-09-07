@@ -1,4 +1,5 @@
 #include "UI/GV2UiSchemaCache.h"
+#include "UI/GV2PresentationAuthorityProbe.h"
 
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
@@ -96,10 +97,12 @@ void FGV2UiSchemaCache::DiscoverAll()
     }
 }
 
+// PAH-08: phase=authority
 GV2ContentCore::FCompiledUiFieldSpecPtr FGV2UiSchemaCache::GetCompiledSchema(
     const std::string& SchemaId,
     FString& OutError) const
 {
+    GV2_NOTE_AUTHORITY_RESOLVE();
     if (const auto CacheIt = CompiledCache.find(SchemaId); CacheIt != CompiledCache.end())
     {
         return CacheIt->second;

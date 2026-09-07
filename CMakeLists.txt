@@ -193,6 +193,23 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_no_hardcoded_asset_paths.py"
             "--self-test"
     )
+    # PAH-08 (ADR-0042, INV-P5): structural half of the two-part gate. Every
+    # presentation-authority access is phase-classified, and no authority is
+    # reachable from an application-phase root. The observational half is a
+    # runtime counter (GV2.Runtime.UI.PresentationAuthorityPhaseContract).
+    add_test(
+        NAME presentation_authority_phase_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_authority_phase.py"
+    )
+    add_test(
+        NAME presentation_authority_phase_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_authority_phase.py"
+            "--self-test"
+    )
     # PAH-02 (ADR-0042, preamble): a permitted object (a resolved screen) must not be
     # obtainable except through the check that permits it (UGV2ScreenRegistry::Resolve).
     # Naming the raw FGV2ScreenRegistryEntry row outside the registry would let production

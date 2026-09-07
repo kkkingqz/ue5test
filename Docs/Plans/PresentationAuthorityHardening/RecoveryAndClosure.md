@@ -1,7 +1,7 @@
 ---
 title: Recovery and Closure Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-07
 depends_on:
   - README.md
@@ -55,7 +55,7 @@ depends_on:
 
     Верификация: headless `Automation RunTests GV2;Quit` — 117/117 (116 от `PAH-06B` + 1 новый); portable `ctest` (`/home/king/ue5/GV2/build`) — 76/76; `CORE_DECOUPLING_RULE`, `pre_ready_content_discovery --self-test`, `validate_ui_rollback_boundaries.py`, `validate_shell_attach_failure_consumption.py`, `validate_docs.py` — все проходят.
 
-- [ ] **PAH-08 — Гейт `INV-P5` и решение по разделению**
+- [x] **PAH-08 — Гейт `INV-P5` и решение по разделению**
   - Зависимости: PAH-05, PAH-06B, PAH-07.
   - [Предложение](../../Proposals/PresentationAuthorityConsolidationProposal.md) содержит три отложенных компонента — компилятор презентации, подготовленная транзакция и исполнитель. Ни одна из пяти находок их не требует; их польза в предотвращении будущих утечек семантики за границу подготовки. Принимать её на веру нельзя: раунд `GenericBoundaryHardening` → `GenericUiTransactionFollowUp` был историей о механизме, построенном раньше перечислителя, который его охраняет.
   - Инвариант: после построения подготовленного плана на пути Commit не происходит разрешения реестра, разрешения схемы, решения о владении пакетом и чтения файловой системы ([ADR-0042](../../ADR/0042-presentation-authority-and-publication.md), `INV-P5`). Инвариант сформулирован как свойство кода, а не как требование к составу классов, поэтому его можно проверить до того, как решать, нужны ли классы.
@@ -77,7 +77,26 @@ depends_on:
     - **если гейт держится** — соответствующая часть предложения закрывается как ненужная, с записанной причиной, и это фиксируется в самом предложении;
     - **если гейт не держится** — названо конкретное место утечки, и оно становится основанием отдельного плана, а не задачей этого;
     - исход записан в предложении в любом случае, а не только в отчёте задачи.
-  - Evidence: `Tools/Testing/`, `Docs/Proposals/PresentationAuthorityConsolidationProposal.md`, отчёт change set.
+  - Evidence: `Tools/Testing/validate_presentation_authority_phase.py`, `Source/GV2/Public/UI/GV2PresentationAuthorityProbe.h`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`, `Docs/Proposals/PresentationAuthorityConsolidationProposal.md`, `Docs/Status/ImplementationStatus.md`.
+  - **Реализация (2026-09-07): гейт не удержался; разделение всё равно закрыто как ненужное.**
+
+    **Часть 1** — `Tools/Testing/validate_presentation_authority_phase.py`, зарегистрирован в CTest вместе с самотестом. Работает в два прохода. Первый: выводит каждое обращение к авторитету по грамматике (`GetCompiledSchema`, `GetSchemaCache`, `GetSessionCatalog`, `FindOwningPackageForAssetPath`, `GetPackageLoadOrderFromGameData`, `ResolveContentRootOwnershipFromGameData`, любой `->Resolve(`) и требует у охватывающей функции маркер `PAH-08: phase=`. Второй: строит по всему production-коду индекс «имя функции → вызываемые имена», обходит его в ширину из каждого корня фазы применения (`Commit*`/`AttachScreenToLayer`, та же грамматика, что у гейта границ отката `GBF-07`) и сообщает любой достижимый авторитет вместе с цепочкой вызовов. Именно второй проход и нашёл единственную утечку.
+
+    Гранулярность — функция, а не единица трансляции, и это не стилистический выбор: `GV2PropertyConsumers.cpp` содержит `FGV2TabContainerTabsPropertyConsumer::Prepare`, который законно резолвит реестр, и его же `CommitWithFailureInjector`. Запрет на уровне включений покраснел бы на корректном коде в первый же прогон.
+
+    Индекс достижимости намеренно избыточен: имена функций не разрешаются по классам, поэтому одноимённые методы разных классов сливаются, и путь может быть сообщён там, где его нет. Ошибка в сторону ложного срабатывания, а не пропуска, — записано в docstring гейта.
+
+    **Часть 2** — `GV2PresentationAuthorityProbe.h`: три авторитета (`FGV2UiSchemaCache::GetCompiledSchema`, `UGV2ImageResourceCatalog::Resolve`, `UGV2ScreenRegistry::Resolve`) инкрементируют один монотонный счётчик в non-shipping сборке. Понятие фазы в production не введено: тест `GV2.Runtime.UI.PresentationAuthorityPhaseContract` берёт дельту вокруг `PrepareReconcile` (строго больше нуля) и вокруг `CommitReconcile` (ноль). Фабрика экранов в тесте резолвит через реестр — производственная форма, которую сам `GV2LayeredUiReconciler.h` и предписывает, а не вызов, придуманный ради теста.
+
+    Оговорка про катастрофический путь измеряется, а не декларируется: третий сценарий берёт дельту вокруг целого `Reconcile` и утверждает, что она положительна, — то есть `Reconcile` является неверной скобкой для инварианта, а верной является `CommitReconcile`. Первая редакция этого утверждения **упала**, и это дало отдельную находку: подготовка обращается к фабрике только для нового экземпляра экрана, а переиспользуемый не резолвит ничего. Сценарий исправлен на другой `screen_id`, а причина записана в комментарии теста, а не заглажена.
+
+    **Найденная утечка.** `FGV2ImageResourcePropertyConsumer::Commit` доходит до каталога ресурсов цепочкой `Commit -> ResolveAndApply -> Catalog->Resolve` (для голого `UImage`) и на шаг длиннее через `UGV2ImageWidgetBase::ApplyImageResource` / `UGV2PortraitWidgetBase::ApplyPortrait`. `Prepare` при этом уже резолвил тот же идентификатор и проверял по нему режим отрисовки и соотношение сторон — и сохранил только идентификатор. Применяется значение, выведенное повторно, а не одобренное подготовкой. Сегодня безвредно (каталог пиннингован на сессию), структурно — нарушение `INV-P5`. Зафиксировано как `STATUS-012`; место помечено `PAH-08: phase=commit_resolve_deferred=STATUS-012`, поэтому гейт зелен, а расхождение названо в документе, который читают при планировании, — а не растворено в отчёте, как истёкшая отсрочка `GBH-08`.
+
+    **Решение.** Утечка не в том, что применению негде взять решение, а в том, что подготовленное значение неполно. Лечение — дополнить его разрешённым ресурсом; отдельный слой компиляции и отдельный исполнитель для этого не нужны, и остальные 20 обращений классифицировались как подготовка или как сам авторитет без единого спора. `FGV2PresentationCompiler`, `FGV2PreparedUiTransaction` и `FGV2PresentationExecutor` закрыты как ненужные; исход и наблюдаемое условие повторного открытия записаны в самом предложении, а не только здесь.
+
+    Red-on-revert показан для обеих половин **раздельно**, одним синтетическим нарушением: `Registry->Resolve` временно вставлен в тело `UGV2ScreenWidgetBase::CommitScreenFields`. Часть 1 упала тремя сообщениями сразу — прямым («корень фазы применения резолвит авторитет») и двумя транзитивными с цепочками `Commit -> CommitWithFailureInjector -> CommitScreenFields` и `CommitReconcile -> CommitScreenFields`. Часть 2 упала на `Commit == 0`, получив 1. Восстановление сверено с `git show` побайтово.
+
+    Верификация: `Automation RunTests GV2` — 118/118 (счёт из `index.json`); `ctest` — 82/82; `gv2-headless --check-scripts` — `ok=true`; `validate_docs.py` — 179 файлов.
 
 - [ ] **PAH-09 — Сверка закрытий и архивация раунда**
   - Зависимости: PAH-08.

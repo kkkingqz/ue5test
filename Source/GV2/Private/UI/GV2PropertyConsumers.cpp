@@ -244,6 +244,8 @@ bool FGV2ImageResourcePropertyConsumer::CanConsume(const FGV2PreparedUiValue& Va
     return Value.IsStableId() && Value.AsStableId().TargetKind == TEXT("resource");
 }
 
+// PAH-08: phase=prepare -- validates the candidate resource against the catalog
+// before any widget is touched.
 bool FGV2ImageResourcePropertyConsumer::Prepare(
     const FGV2PreparedUiValue& Value,
     const FGV2UiPropertyCapability& Capability,
@@ -1677,6 +1679,9 @@ bool FGV2TabContainerTabsPropertyConsumer::CanConsume(const FGV2PreparedUiValue&
     return Value.IsArray();
 }
 
+// PAH-08: phase=prepare -- resolves each tab's screen and nested field schemas
+// off-tree; this is the legitimate both-phases-in-one-file case the gate's
+// function granularity exists for (its Commit is in this same translation unit).
 bool FGV2TabContainerTabsPropertyConsumer::Prepare(
     const FGV2PreparedUiValue& Value,
     const FGV2UiPropertyCapability& Capability,

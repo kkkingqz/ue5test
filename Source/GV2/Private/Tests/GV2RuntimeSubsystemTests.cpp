@@ -45,6 +45,7 @@
 #include "UI/GV2IconWidgetBase.h"
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2LayeredUiReconciler.h"
+#include "UI/GV2PresentationAuthorityProbe.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2DeclaredCompositeWidgetBase.h"
 #include "UI/GV2PreparedUiValue.h"
@@ -4212,6 +4213,140 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
                 TestEqual(TEXT("PAH-06B: untouched A keeps its position (position 1)"), Order[1], Cast<UUserWidget>(WidgetA));
             }
             TestFalse(TEXT("PAH-06B: old B is no longer a child of overlay_stack"), Order.Contains(Cast<UUserWidget>(WidgetB)));
+
+            Shell->RemoveFromRoot();
+        }
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PresentationAuthorityPhaseContract,
+    "GV2.Runtime.UI.PresentationAuthorityPhaseContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PAH-08 (ADR-0042, INV-P5): observational half of the two-part gate. The structural
+// half (Tools/Testing/validate_presentation_authority_phase.py) classifies every
+// authority access by phase and walks call chains out of every application-phase root;
+// it reads source. This one observes the property directly: each authority bumps a
+// counter (GV2PresentationAuthorityProbe.h), and the test brackets the two public phase
+// functions and compares deltas. A source scan can be defeated by indirection
+// (Commit() -> helper() -> service() -> lookup); a counter cannot.
+//
+// The Prepare > 0 half is not decoration. Without it the Commit == 0 assertion is
+// satisfied just as well by a fixture that resolves nothing at all, which is a check
+// that passes because it checks nothing -- the exact shape that made an earlier
+// milestone's "every schema-required property arrived" assertion vacuous for a schema
+// whose fields are all optional.
+//
+// Measurement point is CommitReconcile, never the enclosing Reconcile: since PAH-07,
+// Reconcile answers a failed compensating rollback by replaying PrepareReconcile against
+// the last committed document. That nested preparation is legitimate, and the third
+// scenario below measures it rather than asserting it away -- a caveat that is proven is
+// a caveat; one that is only written down is an excuse waiting to be used.
+bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+    if (TestWorld != nullptr)
+    {
+        UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+            nullptr, TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+        if (GameShellClass == nullptr)
+        {
+            GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+        }
+        UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
+        TestNotNull(TEXT("PAH-08: Game shell instantiated"), Shell);
+
+        // The factory is registry-backed on purpose: GV2LayeredUiReconciler.h documents
+        // FScreenFactory as "an implementation backed by UGV2ScreenRegistry::Resolve", so
+        // this is the production shape, not an authority call invented for the test.
+        UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry() != nullptr
+            ? const_cast<UGV2ScreenRegistry*>(UGV2ScreenRegistrySettings::GetConfiguredRegistry())
+            : nullptr;
+        TestNotNull(TEXT("PAH-08: a configured Screen Registry is available"), Registry);
+
+        UGV2ScreenWidgetBase* Fixture = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+
+        if (Shell != nullptr && Registry != nullptr && Fixture != nullptr)
+        {
+            Shell->AddToRoot();
+
+            auto Factory = [&](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
+            {
+                FGV2ResolvedScreenDescriptor Descriptor;
+                FGV2ScreenResolutionRejection Rejection;
+                // Result deliberately unused for widget selection: the fixture screen is
+                // returned either way. What matters here is that the production factory
+                // shape consults the authority, and that it does so during preparation.
+                (void)Registry->Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection);
+                return Fixture;
+            };
+
+            FGV2UiDocumentViewModel Doc;
+            Doc.UiInstanceId = TEXT("ui@1:1");
+            Doc.Revision = 1;
+            Doc.bHasRoute = true;
+            Doc.Route.Layer = TEXT("location_content");
+            Doc.Route.InstanceKey = TEXT("main");
+            Doc.Route.ScreenId = TEXT("core:screen.pah08_probe");
+
+            FGV2LayeredUiReconciler Reconciler;
+            FGV2LayeredUiReconciler::FPreparedReconciliationPlan Plan;
+            FString Error;
+
+            const uint64 BeforePrepare = GV2PresentationAuthorityProbe::GetResolveCount();
+            const bool bPrepared = Reconciler.PrepareReconcile(Shell, Doc, Factory, Plan, Error);
+            const uint64 AfterPrepare = GV2PresentationAuthorityProbe::GetResolveCount();
+            TestTrue(*FString::Printf(TEXT("PAH-08: candidate prepares [Error: %s]"), *Error), bPrepared);
+            TestTrue(
+                *FString::Printf(
+                    TEXT("PAH-08: preparation resolves at least one authority (delta %llu) -- without this the "
+                         "commit assertion below would pass on a fixture that resolves nothing"),
+                    static_cast<unsigned long long>(AfterPrepare - BeforePrepare)),
+                AfterPrepare > BeforePrepare);
+
+            const uint64 BeforeCommit = GV2PresentationAuthorityProbe::GetResolveCount();
+            const bool bCommitted = Reconciler.CommitReconcile(Shell, Plan, Error);
+            const uint64 AfterCommit = GV2PresentationAuthorityProbe::GetResolveCount();
+            TestTrue(*FString::Printf(TEXT("PAH-08: candidate commits [Error: %s]"), *Error), bCommitted);
+            TestEqual(
+                TEXT("PAH-08: application resolves no authority -- the prepared plan already carries what it needs"),
+                static_cast<int64>(AfterCommit - BeforeCommit),
+                static_cast<int64>(0));
+
+            // Third scenario: the caveat, measured. A full Reconcile of a second revision
+            // prepares once, so its delta is strictly positive -- which is exactly why the
+            // invariant is asserted around CommitReconcile and not around Reconcile. If a
+            // later change moved the bracket outward, this assertion is what shows the
+            // measurement point is load-bearing rather than incidental.
+            // A *different* screen id, not just a later revision: preparation consults the
+            // factory only when a screen instance is new. Reusing the same screen resolves
+            // nothing at all -- which is itself the invariant working, and which made the
+            // first draft of this assertion fail. Recorded rather than quietly patched.
+            FGV2UiDocumentViewModel NextDoc = Doc;
+            NextDoc.Revision = 2;
+            NextDoc.Route.ScreenId = TEXT("core:screen.pah08_probe_second");
+            const uint64 BeforeWhole = GV2PresentationAuthorityProbe::GetResolveCount();
+            FString WholeError;
+            const bool bWhole = Reconciler.Reconcile(Shell, NextDoc, Factory, WholeError);
+            const uint64 AfterWhole = GV2PresentationAuthorityProbe::GetResolveCount();
+            TestTrue(*FString::Printf(TEXT("PAH-08: whole reconcile succeeds [Error: %s]"), *WholeError), bWhole);
+            TestTrue(
+                TEXT("PAH-08: Reconcile as a whole DOES resolve (it contains preparation), so it is the wrong "
+                     "bracket for the invariant -- CommitReconcile is"),
+                AfterWhole > BeforeWhole);
 
             Shell->RemoveFromRoot();
         }

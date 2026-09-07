@@ -1,4 +1,5 @@
 #include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2PresentationAuthorityProbe.h"
 
 #include "Bridge/GV2StableIdUE.h"
 #include "HAL/FileManager.h"
@@ -436,11 +437,13 @@ bool UGV2ImageResourceCatalog::Validate(FString& OutError) const
     return true;
 }
 
+// PAH-08: phase=authority
 bool UGV2ImageResourceCatalog::Resolve(
     const FString& ResourceId,
     FGV2ResolvedImageResource& OutResource,
     FString& OutError) const
 {
+    GV2_NOTE_AUTHORITY_RESOLVE();
     OutResource = {};
     if (!IsCanonicalResourceId(ResourceId))
     {

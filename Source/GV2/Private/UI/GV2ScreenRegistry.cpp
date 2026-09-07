@@ -1,4 +1,5 @@
 #include "UI/GV2ScreenRegistry.h"
+#include "UI/GV2PresentationAuthorityProbe.h"
 
 #include "Application/GV2PackageClosure.h"
 #include "Bridge/GV2StableIdUE.h"
@@ -185,6 +186,8 @@ TArray<FString> UGV2ScreenRegistry::GetPackageLoadOrderFromGameData()
     return PackageLoadOrder;
 }
 
+// PAH-08: phase=prepare -- called only from Build(), below, which compiles the
+// authoring registry once before any session presents anything.
 bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
     const FString& ScreenNamespace,
     const FString& AssetPath,
@@ -227,6 +230,9 @@ bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
     return AssetPackageIndex <= ScreenPackageIndex;
 }
 
+// PAH-08: phase=prepare -- compiles the authoring registry once, before a
+// session presents anything; this is where package order and content-root
+// ownership are read, and the only place they are.
 bool UGV2ScreenRegistry::Build(FString& OutError)
 {
     ResolvedByScreenId.Reset();
@@ -333,12 +339,14 @@ bool UGV2ScreenRegistry::Build(FString& OutError)
     return true;
 }
 
+// PAH-08: phase=authority
 bool UGV2ScreenRegistry::Resolve(
     const FString& ScreenId,
     const FGV2ScreenPlacement& Placement,
     FGV2ResolvedScreenDescriptor& OutDescriptor,
     FGV2ScreenResolutionRejection& OutRejection) const
 {
+    GV2_NOTE_AUTHORITY_RESOLVE();
     const FResolvedScreen* Found = bBuilt ? ResolvedByScreenId.Find(ScreenId) : nullptr;
     if (Found == nullptr)
     {

@@ -24,6 +24,7 @@ namespace
 // session's own repository/Lua package set.
 TOptional<FGV2UiSchemaCache> GSessionSchemaCache;
 
+// PAH-08: phase=authority -- the session schema cache accessor itself.
 FGV2UiSchemaCache& GetSchemaCache()
 {
     check(GSessionSchemaCache.IsSet());
@@ -173,6 +174,8 @@ struct FCollectBindingsContext
     TArray<FGV2UiBindingDefinition>* Definitions = nullptr;
 };
 
+// PAH-08: phase=prepare -- reached only from PrepareBindingDefinitions, which
+// runs while a revision is being materialised, never during application.
 bool CollectBindingDefinitions(
     FCollectBindingsContext& Ctx,
     const GV2ContentCore::FCompiledUiFieldSpec& Spec,
@@ -345,6 +348,8 @@ bool CollectBindingDefinitions(
 // file-backed schema in GameData/ just to exercise this step.
 namespace GV2ScreenFieldMaterializer
 {
+// PAH-08: phase=prepare -- materialises a candidate value; every caller is on
+// the BuildFields/PrepareBindingDefinitions path.
 bool ProjectMaterializedValue(
     FMaterializeContext& Ctx,
     const GV2ContentCore::FCompiledUiFieldSpec& Spec,
@@ -583,11 +588,13 @@ void ReleaseSchemaCacheForSession()
 // same session-scoped cache ProjectMaterializedValue already resolved it through
 // above, needed only to fill FGV2ScreenFieldValue::CompiledSchema for
 // PrepareScreenFields.
+// PAH-08: phase=authority -- free-function face of the same cache.
 GV2ContentCore::FCompiledUiFieldSpecPtr GetCompiledSchema(const std::string& SchemaId, FString& OutError)
 {
     return GetSchemaCache().GetCompiledSchema(SchemaId, OutError);
 }
 
+// PAH-08: phase=prepare -- named for its phase; called before any mutation.
 bool PrepareBindingDefinitions(
     const GV2RuntimeCore::FScreenRequest& Request,
     TArray<FGV2UiBindingDefinition>& OutDefinitions)
@@ -655,6 +662,7 @@ bool PrepareBindingDefinitions(
     return true;
 }
 
+// PAH-08: phase=prepare -- builds the candidate field set from the document.
 bool BuildFields(
     const GV2RuntimeCore::FScreenRequest& Request,
     const TArray<FGV2UiBindingHandle>& Handles,

@@ -3,6 +3,15 @@
 #include "Components/Image.h"
 #include "Logging/LogMacros.h"
 
+// PAH-08: phase=commit_resolve_deferred=STATUS-012
+// Reached from FGV2ImageResourcePropertyConsumer::Commit (directly for a bare
+// UImage, and through UGV2ImageWidgetBase::ApplyImageResource /
+// UGV2PortraitWidgetBase::ApplyPortrait for the hosts), so the image resource
+// authority is consulted during application. Prepare already resolved the same
+// id and validated render mode and aspect ratio against it, then kept only the
+// id -- so the value applied is re-derived, not the value that was approved.
+// Benign today (the catalog is session-pinned and cannot change between the two
+// phases), a real INV-P5 violation structurally. STATUS-012 carries it.
 bool FGV2ImagePresentation::ResolveAndApply(
     UImage* Widget,
     const FString& ResourceId,
