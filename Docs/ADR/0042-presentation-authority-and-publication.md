@@ -27,7 +27,7 @@ date: 2026-09-06
 
 ## Decision
 
-Принимаются пять инвариантов. Они нормативны; механизмы их выполнения определяет [PresentationAuthorityConsolidationProposal](../Proposals/PresentationAuthorityConsolidationProposal.md), и настоящий ADR намеренно не предписывает состав классов.
+Принимаются пять инвариантов. Они нормативны; механизмы их выполнения определяет [PresentationAuthorityConsolidationProposal](../Proposals/Archive/PresentationAuthorityConsolidationProposal.md), и настоящий ADR намеренно не предписывает состав классов.
 
 ### INV-P1 — после `Ready` нет обнаружения
 

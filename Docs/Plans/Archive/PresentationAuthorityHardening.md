@@ -88,7 +88,7 @@ updated: 2026-09-07
 
 - [ADR-0042: Presentation Authority and Publication](../../ADR/0042-presentation-authority-and-publication.md)
 - [ADR-0041: UI Commit Rollback Model](../../ADR/0041-ui-commit-rollback-model.md)
-- [Presentation Authority Consolidation Proposal](../../Proposals/PresentationAuthorityConsolidationProposal.md)
+- [Presentation Authority Consolidation Proposal](../../Proposals/Archive/PresentationAuthorityConsolidationProposal.md)
 - [Ревью архитектуры презентации: архив](../../Status/Archive/PresentationArchitectureReview2026-09-06.md)
 
 ## Source record
