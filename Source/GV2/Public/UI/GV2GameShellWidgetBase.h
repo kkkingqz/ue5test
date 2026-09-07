@@ -56,6 +56,11 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|GameShell")
     bool HasHostForLayer(FName Layer) const;
 
+    // PAH-06A: exposes the raw container so a caller can reconcile it directly through
+    // FGV2KeyedCollection::ReconcilePrepared instead of per-widget AttachScreenToLayer
+    // calls. C++-only (not a UFUNCTION) -- Blueprint has no use for a raw UPanelWidget*.
+    UPanelWidget* GetHostForLayer(FName Layer) const { return FindHostForLayer(Layer); }
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:

@@ -55,6 +55,7 @@
 #include "Components/HorizontalBox.h"
 #include "Components/ProgressBar.h"
 #include "Components/WrapBox.h"
+#include "Components/Border.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Blueprint/UserWidget.h"
@@ -3867,6 +3868,212 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         {
             Shell->RemoveFromRoot();
         }
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ModalStackKeyedCollectionOrderingContract,
+    "GV2.Runtime.UI.ModalStackKeyedCollectionOrderingContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PAH-06A (ADR-0042, INV-P3 proof slice): modal_stack is the one Game Shell layer
+// converted from the per-widget AttachScreenToLayer loop to
+// FGV2KeyedCollection::ReconcilePrepared (Source/GV2/Public/UI/GV2KeyedCollection.h). The
+// old loop could not reorder two already-attached (reused) widgets at all --
+// AttachScreenToLayer no-ops once a widget's parent already equals the host -- so this
+// proves reuse + create + remove + reorder in a single reconcile call, reading the Host
+// panel's ACTUAL physical child order (Shell::GetScreensInLayer, which walks
+// Host->GetChildAt(i)), not just the reconciler's ActiveScreens bookkeeping or a returned
+// bool. The remaining five layers are untouched -- this is scoped to modal_stack alone.
+bool FGV2ModalStackKeyedCollectionOrderingContract::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+    if (TestWorld != nullptr)
+    {
+        UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+            nullptr,
+            TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+        if (GameShellClass == nullptr)
+        {
+            GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+        }
+        UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
+        TestNotNull(TEXT("PAH-06A: Game shell instantiated"), Shell);
+        if (Shell != nullptr)
+        {
+            Shell->AddToRoot();
+
+            FGV2LayeredUiReconciler Reconciler;
+            auto MockFactory = [&](const FString&, FName) -> UGV2ScreenWidgetBase*
+            {
+                return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+            };
+            auto MakeModalInstance = [](FName InstanceKey) -> FGV2ScreenInstanceViewModel
+            {
+                FGV2ScreenInstanceViewModel Inst;
+                Inst.Layer = UGV2GameShellWidgetBase::LayerModalStack;
+                Inst.InstanceKey = InstanceKey;
+                Inst.ScreenId = TEXT("core:screen.modal_probe");
+                return Inst;
+            };
+
+            FString ReconcileError;
+
+            FGV2UiDocumentViewModel Doc1;
+            Doc1.UiInstanceId = TEXT("ui@pah06a");
+            Doc1.Revision = 1;
+            Doc1.Modals.Add(MakeModalInstance(TEXT("modal_a")));
+            Doc1.Modals.Add(MakeModalInstance(TEXT("modal_b")));
+            Doc1.Modals.Add(MakeModalInstance(TEXT("modal_c")));
+            TestTrue(*FString::Printf(TEXT("PAH-06A: reconcile [A,B,C] succeeds [Error: %s]"), *ReconcileError),
+                Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError));
+
+            UGV2ScreenWidgetBase* WidgetA = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_a"));
+            UGV2ScreenWidgetBase* WidgetB = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_b"));
+            UGV2ScreenWidgetBase* WidgetC = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_c"));
+            TestNotNull(TEXT("PAH-06A: A created"), WidgetA);
+            TestNotNull(TEXT("PAH-06A: B created"), WidgetB);
+            TestNotNull(TEXT("PAH-06A: C created"), WidgetC);
+
+            const TArray<UUserWidget*> InitialOrder = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerModalStack);
+            TestEqual(TEXT("PAH-06A: [A,B,C] has 3 physical children"), InitialOrder.Num(), 3);
+            if (InitialOrder.Num() == 3)
+            {
+                TestEqual(TEXT("PAH-06A: physical child 0 is A"), InitialOrder[0], Cast<UUserWidget>(WidgetA));
+                TestEqual(TEXT("PAH-06A: physical child 1 is B"), InitialOrder[1], Cast<UUserWidget>(WidgetB));
+                TestEqual(TEXT("PAH-06A: physical child 2 is C"), InitialOrder[2], Cast<UUserWidget>(WidgetC));
+            }
+
+            // [A, B, C] -> [C, A, D]: A and C reused (same widget identity), B removed, D
+            // newly created -- physical order must become exactly C, A, D.
+            FGV2UiDocumentViewModel Doc2;
+            Doc2.UiInstanceId = TEXT("ui@pah06a");
+            Doc2.Revision = 2;
+            Doc2.Modals.Add(MakeModalInstance(TEXT("modal_c")));
+            Doc2.Modals.Add(MakeModalInstance(TEXT("modal_a")));
+            Doc2.Modals.Add(MakeModalInstance(TEXT("modal_d")));
+            TestTrue(*FString::Printf(TEXT("PAH-06A: reconcile [C,A,D] succeeds [Error: %s]"), *ReconcileError),
+                Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError));
+
+            TestEqual(TEXT("PAH-06A: A is the same reused instance"),
+                Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_a")), WidgetA);
+            TestEqual(TEXT("PAH-06A: C is the same reused instance"),
+                Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_c")), WidgetC);
+            UGV2ScreenWidgetBase* WidgetD = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_d"));
+            TestNotNull(TEXT("PAH-06A: D was created"), WidgetD);
+            TestNull(TEXT("PAH-06A: B removed from active set"),
+                Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_b")));
+
+            const TArray<UUserWidget*> ReorderedOrder = Shell->GetScreensInLayer(UGV2GameShellWidgetBase::LayerModalStack);
+            TestEqual(TEXT("PAH-06A: [C,A,D] has 3 physical children"), ReorderedOrder.Num(), 3);
+            if (ReorderedOrder.Num() == 3)
+            {
+                TestEqual(TEXT("PAH-06A: physical child 0 is C (reused, moved)"), ReorderedOrder[0], Cast<UUserWidget>(WidgetC));
+                TestEqual(TEXT("PAH-06A: physical child 1 is A (reused, moved)"), ReorderedOrder[1], Cast<UUserWidget>(WidgetA));
+                TestEqual(TEXT("PAH-06A: physical child 2 is D (newly created)"), ReorderedOrder[2], Cast<UUserWidget>(WidgetD));
+            }
+            TestFalse(TEXT("PAH-06A: B is no longer a child of modal_stack"), ReorderedOrder.Contains(Cast<UUserWidget>(WidgetB)));
+            TestNull(TEXT("PAH-06A: B has no parent after removal"), WidgetB->GetParent());
+
+            Shell->RemoveFromRoot();
+        }
+    }
+
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2KeyedCollectionReconcilePreparedRestoresOnSwapFailure,
+    "GV2.Runtime.UI.KeyedCollectionReconcilePreparedRestoresOnSwapFailure",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PAH-06A (ADR-0042, INV-P3 proof slice): proves FGV2KeyedCollection::ReconcilePrepared's
+// container-swap restore-on-failure path (GV2KeyedCollection.h, the AddChild-fails branch
+// a few lines after "Commit to Container atomically") by reading the ACTUAL container
+// children afterward, not the returned bool. UPanelWidget::AddChild's only failure
+// conditions are a null widget and the single-child gate
+// (!bCanHaveMultipleChildren && GetChildrenCount() > 0); AddChild is not virtual, so no
+// C++ subclass can inject a failure at an arbitrary position within a genuinely
+// multi-child container. UBorder (a UContentWidget, single-child by construction) is the
+// one deterministic, engine-native trigger: reconciling 2 desired widgets into it makes
+// the swap's second AddChild call fail by construction, not by a test double standing in
+// for the engine.
+//
+// This is also why PAH-06A's own modal_stack integration (GV2LayeredUiReconciler.cpp)
+// cannot exercise this branch in production: every real Game Shell layer host is a
+// genuinely multi-child panel (Overlay/CanvasPanel-family), so a third-or-later screen
+// failing to attach during that swap is structurally unreachable there -- this test is
+// the restore guarantee's only exercise, at the primitive that actually owns it.
+bool FGV2KeyedCollectionReconcilePreparedRestoresOnSwapFailure::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UBorder* FailingContainer = NewObject<UBorder>(TestWorld);
+    UGV2ButtonWidgetBase* ExistingWidget = NewObject<UGV2ButtonWidgetBase>(TestWorld);
+    TestNotNull(TEXT("PAH-06A: pre-existing widget attaches to the single-child container"),
+        FailingContainer->AddChild(ExistingWidget));
+    TestEqual(TEXT("PAH-06A: container starts with exactly 1 child"), FailingContainer->GetChildrenCount(), 1);
+
+    TMap<FName, TObjectPtr<UGV2ButtonWidgetBase>> WidgetsByKey;
+    WidgetsByKey.Add(TEXT("existing"), ExistingWidget);
+
+    UGV2ButtonWidgetBase* NewWidget = NewObject<UGV2ButtonWidgetBase>(TestWorld);
+    const TArray<FName> DesiredKeys = { TEXT("existing"), TEXT("new") };
+
+    struct FGV2TestNoopPrepared
+    {
+    };
+
+    TArray<UGV2ButtonWidgetBase*> OrderedOut;
+    TArray<UGV2ButtonWidgetBase*> PreviousOrderedOut;
+    const bool bReconciled = FGV2KeyedCollection::ReconcilePrepared<UGV2ButtonWidgetBase, FName, FGV2TestNoopPrepared>(
+        FailingContainer,
+        DesiredKeys,
+        WidgetsByKey,
+        [](const FName& Key) { return Key; },
+        [&]() -> UGV2ButtonWidgetBase* { return NewWidget; },
+        [](UGV2ButtonWidgetBase&, const FName&, FGV2TestNoopPrepared&) { return true; },
+        [](UGV2ButtonWidgetBase&, const FGV2TestNoopPrepared&) {},
+        OrderedOut,
+        nullptr,
+        &PreviousOrderedOut);
+
+    TestFalse(TEXT("PAH-06A: reconciling a 2nd widget into a single-child container fails (engine-native AddChild rejection, not a mock)"), bReconciled);
+    TestEqual(TEXT("PAH-06A: container is restored to exactly its prior 1 child"), FailingContainer->GetChildrenCount(), 1);
+    if (FailingContainer->GetChildrenCount() == 1)
+    {
+        TestEqual(TEXT("PAH-06A: the restored child is the ORIGINAL widget, not a partially-applied one"),
+            FailingContainer->GetChildAt(0), Cast<UWidget>(ExistingWidget));
+    }
+    TestEqual(TEXT("PAH-06A: the widget that failed to attach was never parented anywhere"),
+        NewWidget->GetParent(), static_cast<UPanelWidget*>(nullptr));
+
+    TestEqual(TEXT("PAH-06A: OutPreviousOrderedWidgets captured the container's exact prior order"), PreviousOrderedOut.Num(), 1);
+    if (PreviousOrderedOut.Num() == 1)
+    {
+        TestEqual(TEXT("PAH-06A: OutPreviousOrderedWidgets[0] is the original widget"), PreviousOrderedOut[0], ExistingWidget);
     }
 
     GameInstance->Shutdown();

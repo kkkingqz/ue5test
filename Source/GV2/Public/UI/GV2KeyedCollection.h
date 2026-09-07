@@ -37,7 +37,16 @@ public:
         TFunctionRef<bool(WidgetType&, const ModelType&, PreparedType&)> PrepareItem,
         TFunctionRef<void(WidgetType&, const PreparedType&)> CommitItem,
         TArray<WidgetType*>& OutOrderedWidgets,
-        TFunction<bool(const ModelType&)> CanApplyItem = nullptr)
+        TFunction<bool(const ModelType&)> CanApplyItem = nullptr,
+        // PAH-06A (ADR-0042, INV-P3): the container swap below already restores this
+        // panel to its exact prior children on an AddChild failure *within this call*
+        // (see the restore loop a few lines down) -- but once this call RETURNS true,
+        // that prior order is gone from its scope. A caller whose own wider transaction
+        // spans multiple such calls (e.g. one call per Game Shell layer) and needs to
+        // undo THIS call's already-committed reorder because a LATER, sibling call in
+        // that same transaction failed has no way to recover what this call replaced.
+        // Optional and additive: every existing call site is unaffected.
+        TArray<WidgetType*>* OutPreviousOrderedWidgets = nullptr)
     {
         if (Container == nullptr) return false;
 
@@ -101,6 +110,17 @@ public:
 
         // Commit to Container atomically
         const TArray<UWidget*> PreviousChildren = Container->GetAllChildren();
+        if (OutPreviousOrderedWidgets != nullptr)
+        {
+            OutPreviousOrderedWidgets->Reset(PreviousChildren.Num());
+            for (UWidget* Prev : PreviousChildren)
+            {
+                if (WidgetType* TypedPrev = Cast<WidgetType>(Prev))
+                {
+                    OutPreviousOrderedWidgets->Add(TypedPrev);
+                }
+            }
+        }
         Container->ClearChildren();
         for (WidgetType* Widget : TempOrderedWidgets)
         {
