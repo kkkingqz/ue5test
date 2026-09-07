@@ -23,6 +23,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     bool ApplyImageResource(const FString& ResourceId, FString& OutError);
 
+    // STATUS-012: application-phase entry point. Takes what preparation already
+    // resolved instead of re-deriving it from the id.
+    bool ApplyResolvedImageResource(const FGV2ResolvedImageResource& Resolved, FString& OutError);
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     UImage* GetImageWidget() const { return Image; }
 

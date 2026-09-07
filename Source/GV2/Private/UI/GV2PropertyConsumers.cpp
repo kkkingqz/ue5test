@@ -343,6 +343,8 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
     {
         return false;
     }
+    // STATUS-012: keep the resolution, not just the id it came from.
+    PreparedResource = Candidate;
 
     if (!IsScalePolicyCompatible(PreparedScalePolicy, Candidate.RenderMode))
     {
@@ -375,20 +377,23 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
     // (AppliedResourceId/ResolvedAspectRatio, GetPortraitResourceId/GetFrameResourceId) as
     // part of their own bookkeeping, and bypassing it here left that bookkeeping frozen at
     // whatever NativePreConstruct set (or unset) even though the brush itself did update.
+    // STATUS-012 (ADR-0042, INV-P5): every branch applies PreparedResource, the
+    // resolution Prepare validated. None of them consults the catalog, so the value
+    // that reaches the widget is the value that was approved -- not one re-derived
+    // from its id, which is what the three ApplyX(PreparedResourceId) calls here
+    // used to do.
     if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
     {
-        return ImageBase->ApplyImageResource(PreparedResourceId, OutError);
+        return ImageBase->ApplyResolvedImageResource(PreparedResource, OutError);
     }
     if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
     {
-        PortraitWidget->SetVisibility(ESlateVisibility::Visible);
-        return PortraitWidget->ApplyPortrait(PreparedResourceId, FString(), OutError);
+        return PortraitWidget->ApplyResolvedPortrait(PreparedResource, OutError);
     }
     if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
     {
-        FGV2ResolvedImageResource Resolved;
-        return FGV2ImagePresentation::ResolveAndApply(
-            ImageWidget, PreparedResourceId, PreparedScalePolicy, PreparedFixedAspectRatio, Resolved, OutError);
+        return FGV2ImagePresentation::ApplyResolved(
+            ImageWidget, PreparedResource, PreparedScalePolicy, PreparedFixedAspectRatio, OutError);
     }
 
     OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");

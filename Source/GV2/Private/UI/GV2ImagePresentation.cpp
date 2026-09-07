@@ -3,15 +3,58 @@
 #include "Components/Image.h"
 #include "Logging/LogMacros.h"
 
-// PAH-08: phase=commit_resolve_deferred=STATUS-012
-// Reached from FGV2ImageResourcePropertyConsumer::Commit (directly for a bare
-// UImage, and through UGV2ImageWidgetBase::ApplyImageResource /
-// UGV2PortraitWidgetBase::ApplyPortrait for the hosts), so the image resource
-// authority is consulted during application. Prepare already resolved the same
-// id and validated render mode and aspect ratio against it, then kept only the
-// id -- so the value applied is re-derived, not the value that was approved.
-// Benign today (the catalog is session-pinned and cannot change between the two
-// phases), a real INV-P5 violation structurally. STATUS-012 carries it.
+// STATUS-012: pure application. No catalog, no resolution -- everything this needs
+// arrives already resolved, so what is applied is exactly what preparation validated.
+bool FGV2ImagePresentation::ApplyResolved(
+    UImage* Widget,
+    const FGV2ResolvedImageResource& Resolved,
+    const EGV2PrimitiveScalePolicy ScalePolicy,
+    const TOptional<float> FixedAspectRatio,
+    FString& OutError)
+{
+    if (Widget == nullptr)
+    {
+        OutError = TEXT("Image widget is unavailable.");
+        return false;
+    }
+    if (!IsScalePolicyCompatible(ScalePolicy, Resolved.RenderMode))
+    {
+        OutError = TEXT("Image resource render mode is incompatible with the primitive scaling policy.");
+        return false;
+    }
+    if (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio.IsSet()
+        && (!FMath::IsFinite(FixedAspectRatio.GetValue()) || FixedAspectRatio.GetValue() <= 0.0f
+            || !FMath::IsNearlyEqual(Resolved.FixedAspectRatio, FixedAspectRatio.GetValue(), 0.001f)))
+    {
+        OutError = TEXT("fixed_aspect resource ratio does not match the target block ratio.");
+        return false;
+    }
+    FSlateBrush ResolvedBrush = Resolved.Brush;
+    if (ScalePolicy == EGV2PrimitiveScalePolicy::Tile)
+    {
+        ResolvedBrush.Tiling = ESlateBrushTileType::Both;
+        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
+    }
+    else if (ScalePolicy == EGV2PrimitiveScalePolicy::NineSlice)
+    {
+        ResolvedBrush.DrawAs = ESlateBrushDrawType::Box;
+    }
+    else
+    {
+        ResolvedBrush.Tiling = ESlateBrushTileType::NoTile;
+        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
+    }
+    Widget->SetBrush(ResolvedBrush);
+    Widget->SetDesiredSizeOverride(ResolvedBrush.ImageSize);
+    OutError.Reset();
+    return true;
+}
+
+// PAH-08: phase=prepare
+// Resolve + apply, for callers that legitimately consult the catalog: the
+// consumer's Prepare, and widget-local paths outside a presentation transaction.
+// STATUS-012 removed the application-phase callers, so this is no longer reachable
+// from a Commit root -- validate_presentation_authority_phase.py asserts that.
 bool FGV2ImagePresentation::ResolveAndApply(
     UImage* Widget,
     const FString& ResourceId,
@@ -29,38 +72,16 @@ bool FGV2ImagePresentation::ResolveAndApply(
         return false;
     }
     FGV2ResolvedImageResource Candidate;
-    if (!Catalog->Resolve(ResourceId, Candidate, OutError)) return false;
-    if (!IsScalePolicyCompatible(ScalePolicy, Candidate.RenderMode))
+    if (!Catalog->Resolve(ResourceId, Candidate, OutError))
     {
-        OutError = TEXT("Image resource render mode is incompatible with the primitive scaling policy.");
         return false;
     }
-    if (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio.IsSet()
-        && (!FMath::IsFinite(FixedAspectRatio.GetValue()) || FixedAspectRatio.GetValue() <= 0.0f
-            || !FMath::IsNearlyEqual(Candidate.FixedAspectRatio, FixedAspectRatio.GetValue(), 0.001f)))
+    if (!ApplyResolved(Widget, Candidate, ScalePolicy, FixedAspectRatio, OutError))
     {
-        OutError = TEXT("fixed_aspect resource ratio does not match the target block ratio.");
         return false;
     }
-    FSlateBrush ResolvedBrush = Candidate.Brush;
-    if (ScalePolicy == EGV2PrimitiveScalePolicy::Tile)
-    {
-        ResolvedBrush.Tiling = ESlateBrushTileType::Both;
-        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
-    }
-    else if (ScalePolicy == EGV2PrimitiveScalePolicy::NineSlice)
-    {
-        ResolvedBrush.DrawAs = ESlateBrushDrawType::Box;
-    }
-    else
-    {
-        ResolvedBrush.Tiling = ESlateBrushTileType::NoTile;
-        ResolvedBrush.DrawAs = ESlateBrushDrawType::Image;
-    }
-    Widget->SetBrush(ResolvedBrush);
-    Widget->SetDesiredSizeOverride(ResolvedBrush.ImageSize);
     OutResource = MoveTemp(Candidate);
-    OutResource.Brush = ResolvedBrush;
+    OutResource.Brush = Widget->GetBrush();
     OutError.Reset();
     return true;
 }

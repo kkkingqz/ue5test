@@ -74,6 +74,27 @@ bool UGV2PortraitWidgetBase::ApplyPortrait(
     return true;
 }
 
+bool UGV2PortraitWidgetBase::ApplyResolvedPortrait(const FGV2ResolvedImageResource& Resolved, FString& OutError)
+{
+    if (PortraitImage == nullptr)
+    {
+        OutError = TEXT("Portrait resource supplied but PortraitImage renderer is not bound");
+        return false;
+    }
+    if (!FGV2ImagePresentation::ApplyResolved(
+            PortraitImage,
+            Resolved,
+            EGV2PrimitiveScalePolicy::PreserveAspect,
+            TOptional<float>(PortraitAspectRatio),
+            OutError))
+    {
+        return false;
+    }
+    AppliedPortraitId = Resolved.ResourceId;
+    SetVisibility(ESlateVisibility::Visible);
+    return true;
+}
+
 bool UGV2PortraitWidgetBase::ApplyCentralStyle_Implementation()
 {
     UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();

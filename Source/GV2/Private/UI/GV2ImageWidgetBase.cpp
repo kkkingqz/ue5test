@@ -24,6 +24,20 @@ void UGV2ImageWidgetBase::NativePreConstruct()
     }
 }
 
+bool UGV2ImageWidgetBase::ApplyResolvedImageResource(const FGV2ResolvedImageResource& Resolved, FString& OutError)
+{
+    const TOptional<float> RequiredAspect = (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio > 0.0f)
+        ? TOptional<float>(FixedAspectRatio)
+        : TOptional<float>();
+    if (!FGV2ImagePresentation::ApplyResolved(Image, Resolved, ScalePolicy, RequiredAspect, OutError))
+    {
+        return false;
+    }
+    AppliedResourceId = Resolved.ResourceId;
+    ResolvedAspectRatio = Resolved.FixedAspectRatio;
+    return true;
+}
+
 bool UGV2ImageWidgetBase::ApplyImageResource(const FString& ResourceId, FString& OutError)
 {
     FGV2ResolvedImageResource Resource;

@@ -27,6 +27,11 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Portrait")
     bool ApplyPortrait(const FString& ResourceId, const FString& FrameResourceId, FString& OutError);
 
+    // STATUS-012: application-phase entry point; the portrait resource arrives
+    // already resolved. Frame is not part of the prepared value today (no consumer
+    // supplies one), so this variant covers the portrait only.
+    bool ApplyResolvedPortrait(const FGV2ResolvedImageResource& Resolved, FString& OutError);
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Portrait")
     FString GetPortraitResourceId() const { return AppliedPortraitId; }
 

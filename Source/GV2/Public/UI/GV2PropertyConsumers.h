@@ -89,6 +89,10 @@ public:
     virtual void Reset(UWidget* TargetWidget) override;
 
 private:
+    // STATUS-012: Prepare resolves the resource and keeps the RESULT, not just the
+    // id. Commit applies this; it never asks the catalog again, so what is applied
+    // is what preparation validated (ADR-0042, INV-P5).
+    FGV2ResolvedImageResource PreparedResource;
     FString PreparedResourceId;
     EGV2PrimitiveScalePolicy PreparedScalePolicy = EGV2PrimitiveScalePolicy::Unset;
     TOptional<float> PreparedFixedAspectRatio;

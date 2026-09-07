@@ -263,9 +263,20 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestTrue(
                 TEXT("PropertyConsumers uses UGV2TextPipeline::Apply"),
                 ConsumerSource.Contains(TEXT("UGV2TextPipeline::Apply")));
+            // STATUS-012: the property is "image application goes through the central
+            // presentation path", not "through one particular function of it". Pinning
+            // the function name made this assertion fail when Commit moved from
+            // ResolveAndApply to ApplyResolved -- a change that strengthened the very
+            // centralization this checks, since application stopped re-resolving.
             TestTrue(
-                TEXT("PropertyConsumers uses FGV2ImagePresentation::ResolveAndApply"),
-                ConsumerSource.Contains(TEXT("FGV2ImagePresentation::ResolveAndApply")));
+                TEXT("PropertyConsumers routes image application through FGV2ImagePresentation"),
+                ConsumerSource.Contains(TEXT("FGV2ImagePresentation::")));
+            TestFalse(
+                TEXT("STATUS-012: the consumer's Commit does not re-resolve by id -- it applies "
+                     "the resolution Prepare validated"),
+                ConsumerSource.Contains(TEXT("ApplyImageResource(PreparedResourceId"))
+                    || ConsumerSource.Contains(TEXT("ApplyPortrait(PreparedResourceId"))
+                    || ConsumerSource.Contains(TEXT("ResolveAndApply(\n            ImageWidget, PreparedResourceId")));
         }
 
         // GBH-05: ADR-0040 defined placeholder substitution as a schema/presentation
