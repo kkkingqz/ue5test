@@ -1,11 +1,14 @@
 #pragma once
 
+#include "CommonTextBlock.h"
 #include "CoreMinimal.h"
 #include "Styling/SlateBrush.h"
+#include "Styling/SlateTypes.h"
 
 class UImage;
 class UWidget;
 class UCheckBox;
+class UCommonRichTextBlock;
 class UEditableTextBox;
 class UProgressBar;
 
@@ -265,6 +268,37 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextOperation
     bool bIsReset = false;
 };
 
+// PSC-09B (ADR-0043 D2/D3, PAH-R1): UGV2TextPipeline::Apply's own widget mutation --
+// unlike the FPreparedTextOperation family above (built for widget wrappers/UGV2TextPipeline
+// itself as an opaque call), this is UGV2TextPipeline's OWN internals split across the
+// module boundary: Style/FontSize are already resolved (upper, still Theme-dependent --
+// removing that Theme access entirely is PSC-10's named job, not this split's), so Apply
+// performs no decision, only the CommonUI/UMG-native SetStyle/SetText/SetFont calls.
+struct GV2PRESENTATIONAPPLY_API FPreparedPlainTextOperation
+{
+    TWeakObjectPtr<UCommonTextBlock> TargetWidget;
+    TSubclassOf<UCommonTextStyle> Style;
+    FText Text;
+    float FontSize = 0.0f;
+};
+
+// PSC-09B: UGV2TextPipeline::ApplyRichText's own widget mutation, split the same way.
+struct GV2PRESENTATIONAPPLY_API FPreparedRichTextRenderOperation
+{
+    TWeakObjectPtr<UCommonRichTextBlock> TargetWidget;
+    TSubclassOf<UCommonTextStyle> Style;
+    FTextBlockStyle DefaultStyle;
+    bool bHasDefaultStyle = false;
+    FString Markup;
+};
+
+// PSC-09B: UGV2TextPipeline::ApplyHint's own widget mutation, split the same way.
+struct GV2PRESENTATIONAPPLY_API FPreparedTextHintOperation
+{
+    TWeakObjectPtr<UEditableTextBox> TargetWidget;
+    FText Text;
+};
+
 // PSC-09A/09B (ADR-0043 D3): immutable once built -- an upper GV2 preparer appends
 // operations, then hands the finished transaction to Apply() below; nothing mutates it
 // afterward, and it carries no PrepareContext, snapshot, or resolver of any kind.
@@ -327,6 +361,18 @@ public:
     {
         TabContainerOperations.Add(MoveTemp(Operation));
     }
+    void AddPlainTextOperation(FPreparedPlainTextOperation Operation)
+    {
+        PlainTextOperations.Add(MoveTemp(Operation));
+    }
+    void AddRichTextRenderOperation(FPreparedRichTextRenderOperation Operation)
+    {
+        RichTextRenderOperations.Add(MoveTemp(Operation));
+    }
+    void AddTextHintOperation(FPreparedTextHintOperation Operation)
+    {
+        TextHintOperations.Add(MoveTemp(Operation));
+    }
 
     const TArray<FPreparedImageResourceOperation>& GetImageResourceOperations() const { return ImageResourceOperations; }
     const TArray<FPreparedImageHostOperation>& GetImageHostOperations() const { return ImageHostOperations; }
@@ -342,6 +388,9 @@ public:
     const TArray<FPreparedTextOperation>& GetTextOperations() const { return TextOperations; }
     const TArray<FPreparedKeyedCollectionOperation>& GetKeyedCollectionOperations() const { return KeyedCollectionOperations; }
     const TArray<FPreparedTabContainerOperation>& GetTabContainerOperations() const { return TabContainerOperations; }
+    const TArray<FPreparedPlainTextOperation>& GetPlainTextOperations() const { return PlainTextOperations; }
+    const TArray<FPreparedRichTextRenderOperation>& GetRichTextRenderOperations() const { return RichTextRenderOperations; }
+    const TArray<FPreparedTextHintOperation>& GetTextHintOperations() const { return TextHintOperations; }
 
     bool IsEmpty() const
     {
@@ -358,7 +407,10 @@ public:
             && RichTextSpansOperations.IsEmpty()
             && TextOperations.IsEmpty()
             && KeyedCollectionOperations.IsEmpty()
-            && TabContainerOperations.IsEmpty();
+            && TabContainerOperations.IsEmpty()
+            && PlainTextOperations.IsEmpty()
+            && RichTextRenderOperations.IsEmpty()
+            && TextHintOperations.IsEmpty();
     }
 
 private:
@@ -376,6 +428,9 @@ private:
     TArray<FPreparedTextOperation> TextOperations;
     TArray<FPreparedKeyedCollectionOperation> KeyedCollectionOperations;
     TArray<FPreparedTabContainerOperation> TabContainerOperations;
+    TArray<FPreparedPlainTextOperation> PlainTextOperations;
+    TArray<FPreparedRichTextRenderOperation> RichTextRenderOperations;
+    TArray<FPreparedTextHintOperation> TextHintOperations;
 };
 
 // PSC-09A (ADR-0043 D2): the only public entry point physical Apply exposes -- there is

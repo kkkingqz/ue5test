@@ -307,4 +307,37 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_module_graph.py"
             "--self-test"
     )
+    # PSC-09B (ADR-0043 D2/D3): every prepared-operation field is a plain, self-contained
+    # value -- never a function/callback, a PrepareContext/repository/registry/theme
+    # pointer, or a generic untyped service handle. Second, denylist-independent rubric
+    # on top of the module-graph gate above.
+    add_test(
+        NAME presentation_apply_field_inventory_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_field_inventory.py"
+    )
+    add_test(
+        NAME presentation_apply_field_inventory_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_field_inventory.py"
+            "--self-test"
+    )
+    # PSC-09B (ADR-0043 D2/D3): the set of IGV2PropertyConsumer kinds is derived from
+    # GV2PropertyConsumers.h's own class declarations, not a task-authored list; every one
+    # of them must route its own Commit through the transaction protocol.
+    add_test(
+        NAME property_consumer_transaction_coverage_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_property_consumer_transaction_coverage.py"
+    )
+    add_test(
+        NAME property_consumer_transaction_coverage_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_property_consumer_transaction_coverage.py"
+            "--self-test"
+    )
 endif()

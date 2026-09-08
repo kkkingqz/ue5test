@@ -3,6 +3,7 @@
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
 #include "Components/EditableTextBox.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2UiTheme.h"
 
 namespace
@@ -270,26 +271,36 @@ TSubclassOf<UCommonTextStyle> UGV2TextPipeline::ResolveStyleClass(const FName St
     return Token != nullptr ? Token->Style : nullptr;
 }
 
+// PSC-09B (ADR-0043 D2/D3, PAH-R1): split into upper preparation (this function --
+// resolves Style/FontSize from Theme, still Theme-dependent; removing that Theme access
+// entirely is PSC-10's named job, not this split's) and lower widget application
+// (GV2PresentationApply::Apply, which performs no decision, only the CommonUI/UMG-native
+// SetStyle/SetText/SetFont calls). Widget/UCommonTextBlock is a plain CommonUI type, so
+// the physical mutation genuinely lives in GV2PresentationApply now, not merely behind a
+// call-shape that still resolves inside the same function.
 bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text)
 {
     const TSubclassOf<UCommonTextStyle> Style = ResolveStyleClass(Text.StyleToken);
     // Plain renderer deliberately rejects semantic styled/interactive runs instead of
     // leaking authoring markup to the player. Such content must use the RichText leaf.
     if (Widget == nullptr || Style == nullptr || Text.NormalizedMarkup.Contains(TEXT("<gv2"))) return false;
-    Widget->SetStyle(Style);
-    Widget->SetText(Text.Text);
 
-    // Apply DPI-aware scaled font size without wiping out the widget's FontObject/typeface
     const float ScaledFontSize = ResolveEffectiveFontSize(Text.StyleToken, Widget);
-    FSlateFontInfo FontInfo = Widget->GetFont();
-    if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
-    {
-        FontInfo.Size = ScaledFontSize;
-        Widget->SetFont(FontInfo);
-    }
-    return true;
+
+    GV2PresentationApply::FPreparedPlainTextOperation Operation;
+    Operation.TargetWidget = Widget;
+    Operation.Style = Style;
+    Operation.Text = Text.Text;
+    Operation.FontSize = ScaledFontSize;
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddPlainTextOperation(MoveTemp(Operation));
+    FString ApplyError;
+    return GV2PresentationApply::Apply(Transaction, ApplyError);
 }
 
+// PSC-09B: same split as Apply() above -- Style/DefaultStyle/Markup are all resolved here
+// (Theme-dependent), the widget mutation itself moved to GV2PresentationApply.
 bool UGV2TextPipeline::ApplyRichText(
     UCommonRichTextBlock* Widget,
     const FGV2TextViewModel& Text,
@@ -303,15 +314,8 @@ bool UGV2TextPipeline::ApplyRichText(
     const TSubclassOf<UCommonTextStyle> Style = Text.StyleToken.IsNone()
         ? (Theme != nullptr ? Theme->RichTextStyle : nullptr)
         : ResolveStyleClass(Text.StyleToken);
-    if (Style != nullptr)
-    {
-        Widget->SetStyle(Style);
-    }
     FTextBlockStyle DefaultStyle;
-    if (ResolveStyle(Text.StyleToken, DefaultStyle, ContextWidget != nullptr ? ContextWidget : Widget))
-    {
-        Widget->SetDefaultTextStyle(DefaultStyle);
-    }
+    const bool bHasDefaultStyle = ResolveStyle(Text.StyleToken, DefaultStyle, ContextWidget != nullptr ? ContextWidget : Widget);
     FString Markup = Text.NormalizedMarkup;
     if (Markup.IsEmpty() && !Text.Text.IsEmpty())
     {
@@ -321,18 +325,38 @@ bool UGV2TextPipeline::ApplyRichText(
             return false;
         }
     }
-    Widget->SetText(FText::FromString(Markup));
-    return true;
+
+    GV2PresentationApply::FPreparedRichTextRenderOperation Operation;
+    Operation.TargetWidget = Widget;
+    Operation.Style = Style;
+    Operation.DefaultStyle = DefaultStyle;
+    Operation.bHasDefaultStyle = bHasDefaultStyle;
+    Operation.Markup = MoveTemp(Markup);
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddRichTextRenderOperation(MoveTemp(Operation));
+    FString ApplyError;
+    return GV2PresentationApply::Apply(Transaction, ApplyError);
 }
 
+// PSC-09B: same split -- no Theme lookup needed here beyond the guard already checked,
+// so this is the smallest of the three, but still goes through the same protocol as the
+// other two, not a direct SetHintText call.
 bool UGV2TextPipeline::ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text)
 {
     if (Widget == nullptr || Text.NormalizedMarkup.Contains(TEXT("<gv2")))
     {
         return false;
     }
-    Widget->SetHintText(Text.Text);
-    return true;
+
+    GV2PresentationApply::FPreparedTextHintOperation Operation;
+    Operation.TargetWidget = Widget;
+    Operation.Text = Text.Text;
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddTextHintOperation(MoveTemp(Operation));
+    FString ApplyError;
+    return GV2PresentationApply::Apply(Transaction, ApplyError);
 }
 
 bool UGV2TextPipeline::NormalizeMarkup(
