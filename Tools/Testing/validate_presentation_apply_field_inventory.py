@@ -257,6 +257,29 @@ struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticOperation
         print(f"FAILED: gate did not reject a Theme-named field: {errors}")
         return False
 
+    # PSC-10A: a violation buried inside a NESTED struct (referenced from a container via
+    # TArray<...>, the same shape FPreparedTabEntry/FPreparedKeyedCollectionEntry use)
+    # must be caught too -- not just violations at the outer struct's own top level. The
+    # gate scans every GV2PRESENTATIONAPPLY_API struct declared in the file independently
+    # (STRUCT_PATTERN.finditer over the whole source), so a nested struct is caught
+    # because it is ALSO scanned directly, not skipped as "somebody else's problem".
+    synthetic_recursive_violation = """
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticNestedBad
+{
+    FString Value;
+    TFunction<void()> OnResolved;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticContainer
+{
+    TArray<FPreparedSyntheticNestedBad> Items;
+};
+"""
+    errors = find_violations(synthetic_recursive_violation)
+    if not any("FPreparedSyntheticNestedBad" in error and "TFunction" in error for error in errors):
+        print(f"FAILED: gate did not catch a callback field buried inside a nested (TArray-referenced) struct: {errors}")
+        return False
+
     # A fully-allowed synthetic struct (plain values, a locally-declared nested struct,
     # and an array of it) must produce zero violations.
     synthetic_allowed = """
