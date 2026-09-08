@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.6
+version: 1.7
 updated: 2026-09-08
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -98,7 +98,7 @@ GV2 semantic Prepare
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
                                              ├→ PSC-07✔ ───────────┐
-                                             └→ PSC-08✔ → PSC-09A✔ → PSC-09B → PSC-10
+                                             └→ PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10
                                                                               → PSC-11 → PSC-12
                                                                               → PSC-13 → PSC-14
 ```
@@ -146,7 +146,7 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`, 2026-09-08)
 - [x] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`, 2026-09-08)
 - [x] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09A`, 2026-09-08 — установлено для одного демонстрационного kind (image resource, plain UImage target); остальные kinds — `PSC-09B`)
-- [ ] Каждый вид операции проходит через транзакцию; второго пути, минующего её, не существует. (`PSC-09B`)
+- [x] Каждый вид операции проходит через транзакцию; второго пути, минующего её, не существует. (`PSC-09B`, 2026-09-08 — все 11 `IGV2PropertyConsumer` kinds и `UGV2TextPipeline` переведены семью под-коммитами; source-derived coverage/field-inventory gates)
 - [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10`)
 - [ ] `GV2PresentationApply` содержит единственную public transaction Apply entry point и весь Commit/rollback/reconciliation; dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`)
 - [ ] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`)

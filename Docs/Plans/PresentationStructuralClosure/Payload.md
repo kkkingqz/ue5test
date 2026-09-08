@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.3
+version: 1.4
 updated: 2026-09-08
 depends_on:
   - README.md
@@ -53,7 +53,7 @@ depends_on:
 
     Верификация: 128/128 UE Automation (127 существующих + 1 новый), 90/90 portable ctest (+2 новых gate-теста), все 13 standalone `validate_*.py`, `validate_core_decoupling.py`, `validate_docs.py` (185 файлов) — зелёные. Ни один `/Script/GV2` class path не изменён.
 
-- [ ] **PSC-09B — Весь production-путь проходит через транзакцию**
+- [x] **PSC-09B — Весь production-путь проходит через транзакцию**
   - Зависимости: PSC-09A.
   - Разделение вынесено из `PSC-09A` не по размеру, а потому что у крупной задачи нет промежуточной точки, с которой видно, что пошло не так: `PSC-09A` устанавливает границу типов, `PSC-09B` заводит через неё всё. Та же причина, по которой разделены `PSC-11` и `PSC-12`.
   - Инвариант: транзакция является единственным протоколом между разрешением и применением; второго пути, минующего её, не существует ни для одного вида операции.
@@ -67,6 +67,84 @@ depends_on:
     - множество видов операций, обязанных проходить через транзакцию, берётся обходом перечисления видов, а не списком в задаче;
     - task не меняет ни одного `/Script/GV2` class path.
   - Evidence: разделённые text interfaces, production initial-screen test, payload inventory/self-test, exhaustive kind walk.
+  - **Реализация (2026-09-08):** Задача выполнена последовательностью из 7 независимо
+    верифицированных и закоммиченных под-шагов (`31c2ecf`…`1c9c839`) — по явному
+    выбору пользователя разбить крупную задачу на под-коммиты вместо одного большого
+    изменения или частичного покрытия.
+
+    **Паттерн разделения физической мутации**, применённый одинаково для всех 11
+    `IGV2PropertyConsumer` kinds: если target — plain Engine/UMG/CommonUI тип
+    (`UCheckBox`, `UEditableTextBox`, `UProgressBar`, `UCommonTextBlock`,
+    `UCommonRichTextBlock`), операция — новый `FPreparedXxxOperation` struct в
+    `GV2PresentationApply`, применяемый напрямую `GV2PresentationApply::Apply()` —
+    это НЕ adapter, это подлинно нижний код. Если target требует GV2-owned widget/
+    interface (`UGV2ImageWidgetBase`, `UGV2PortraitWidgetBase`,
+    `UGV2DropdownSelectWidgetBase`, `UGV2InputFieldWidgetBase`,
+    `UGV2ProgressBarWidgetBase`, `UGV2TabContainerWidgetBase`, `UGV2TextWidgetBase`,
+    `UGV2ButtonWidgetBase`, `UGV2RichTextWidgetBase`, `IGV2UiPropertyHost`,
+    `IGV2UiBindingTarget`, `UGV2ListViewWidgetBase`, `UGV2ButtonListWidgetBase`,
+    `IGV2UiStyleConsumer`) — которые `GV2PresentationApply.Build.cs`'s denylist делает
+    структурно недостижимыми — та же транзакция применяется новым
+    `Source/GV2/{Public,Private}/UI/GV2LegacyPresentationApplyAdapter.{h,cpp}`,
+    живущим в `GV2` (верхний модуль), выполняющим "no semantic lookup" — чисто
+    механический Cast+call dispatch по уже разрешённым данным. Это явно временная
+    конструкция (Payload.md M3 intro: "physical Apply ещё может временно вызываться
+    через adapters в `GV2`") — не мигрируется, а удаляется в `PSC-11`, когда
+    widget-owning UCLASS'ы физически переезжают в `GV2PresentationApply`.
+
+    **Canonical lower types**, заменившие GV2-owned USTRUCT/UENUM(BlueprintType) payload
+    (не копии/алиасы, отдельные типы только на Core/Engine/Slate/CommonUI): `FPreparedResolvedImageValue`/
+    `EPreparedImageRenderMode` (вместо `FGV2ResolvedImageResource`/`EGV2ImageRenderMode`),
+    `FPreparedRichTextHover`/`FPreparedRichTextSpan` (вместо `FGV2RichTextHoverViewModel`/
+    `FGV2RichTextSpanViewModel`, `FGV2UiBindingHandle` сведён к plain `FString
+    SerializedBinding`), `FPreparedTextValue` (вместо `FGV2TextViewModel`, переиспользован
+    внутри `FPreparedTabEntry::Title`), `FPreparedTabEntry` (вместо `FGV2TabItemEntry`).
+
+    **Точные поведенческие асимметрии сохранены явно, не выведены**: оригинальный
+    `FGV2TextPropertyConsumer::Commit()` перенаправлял `UGV2RichTextWidgetBase` targets
+    на внутренний `RichTextBlock`, `Reset()` — нет; сохранено полем `bool bIsReset` на
+    `FPreparedTextOperation`/`FPreparedKeyedCollectionOperation`/
+    `FPreparedTabContainerOperation`, читаемым только адаптером.
+
+    **Рекурсивные consumers** (`FGV2KeyedCollectionPropertyConsumer`,
+    `FGV2TabContainerTabsPropertyConsumer`): recursive per-item/per-tab
+    `CommitUiHostProperties`/`CommitScreenFields` вызовы не изменены — каждое
+    вложенное capability уже применяется через собственный мигрированный leaf
+    consumer, это не физическая мутация ЭТОГО consumer'а. Мигрирован только финальный
+    шаг сборки дерева виджетов (panel reconciliation, `ApplyTabEntries`).
+
+    **`UGV2TextPipeline::Apply/ApplyRichText/ApplyHint`** разделены: Theme-resolution
+    (Style/DefaultStyle/Markup, guard'ы, `ResolveEffectiveFontSize`/`ResolveStyle`/
+    `ResolveStyleClass`/`NormalizeMarkup`) остаётся upper (удаление Theme-доступа —
+    именованная работа `PSC-10`, не этой задачи); физическая мутация — новые
+    `FPreparedPlainTextOperation`/`FPreparedRichTextRenderOperation`/
+    `FPreparedTextHintOperation`, применяемые `GV2PresentationApply::Apply()`.
+    Публичные сигнатуры не изменены — ни один из 24+ call sites не тронут.
+    `UCommonTextStyle` объявлен внутри `CommonTextBlock.h` (отдельного
+    `CommonTextStyle.h` не существует) — заголовок транзакции подключает
+    `CommonTextBlock.h` напрямую вместо forward declaration, поскольку
+    `TSubclassOf<UCommonTextStyle>` как поле требует complete type.
+
+    **Новые gates**: `validate_presentation_apply_field_inventory.py`
+    (source-derived: сканирует поля всех struct'ов транзакции, отвергает
+    `TFunction`/`PrepareContext`/`Repository`/`Registry`/`Theme`/`Session`/`Snapshot`/
+    generic `void*` по типу И по имени поля; allowlist для `TWeakObjectPtr<X>` и
+    `TSubclassOf<X>` targets; 7 self-test кейсов) и
+    `validate_property_consumer_transaction_coverage.py` (множество из 11
+    `IGV2PropertyConsumer` kinds выводится обходом `class GV2_API
+    F...PropertyConsumer : public IGV2PropertyConsumer` деклараций в
+    `GV2PropertyConsumers.h`, не список в задаче; для каждого требуется вызов
+    `GV2PresentationApply::Apply`/`GV2LegacyPresentationApplyAdapter::Apply`; 4
+    self-test кейса).
+
+    Red-on-revert проведён для каждого из 7 под-шагов независимо — каждый раз
+    временный no-op соответствующей физической мутации проваливал конкретные
+    production-тесты (от 3 до 12 тестов на шаг), откат восстанавливал зелёный статус.
+
+    Верификация (финальный прогон): 128/128 UE Automation, 94/94 portable ctest, все
+    13 standalone `validate_*.py` + `validate_core_decoupling.py` + `validate_docs.py`
+    (185 файлов) — зелёные. Ни один `/Script/GV2` class path не изменён за все 7
+    под-коммитов.
 
 - [ ] **PSC-10 — Замкнуть resolved payload для всех operation kinds**
   - Зависимости: PSC-09B.
