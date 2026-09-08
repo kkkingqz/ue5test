@@ -11,6 +11,7 @@
 #include "Components/EditableTextBox.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImageWidgetBase.h"
+#include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2ButtonListWidgetBase.h"
@@ -525,6 +526,56 @@ bool FGV2BooleanPropertyConsumer::Prepare(
     return true;
 }
 
+namespace
+{
+// PSC-09B: shared by BuildPreparedOperation (Commit) and Reset -- both need to agree on
+// exactly which setter a given (TargetWidget, PropertyName) pair maps to; only the VALUE
+// applied differs between the two.
+GV2PresentationApply::EPreparedBooleanTarget DetermineBooleanOperationTarget(UWidget* TargetWidget, const FString& PropertyName)
+{
+    if (Cast<UCheckBox>(TargetWidget) != nullptr)
+    {
+        return PropertyName == TEXT("is_read_only")
+            ? GV2PresentationApply::EPreparedBooleanTarget::WidgetEnabled
+            : GV2PresentationApply::EPreparedBooleanTarget::CheckBoxChecked;
+    }
+    if (Cast<UEditableTextBox>(TargetWidget) != nullptr)
+    {
+        return PropertyName == TEXT("is_read_only")
+            ? GV2PresentationApply::EPreparedBooleanTarget::EditableTextReadOnly
+            : GV2PresentationApply::EPreparedBooleanTarget::WidgetEnabled;
+    }
+    if (Cast<UGV2DropdownSelectWidgetBase>(TargetWidget) != nullptr && PropertyName == TEXT("is_open"))
+    {
+        return GV2PresentationApply::EPreparedBooleanTarget::RequiresLegacyAdapter;
+    }
+    return GV2PresentationApply::EPreparedBooleanTarget::WidgetEnabled;
+}
+}
+
+// PSC-09B (ADR-0043 D2/D3): narrows to exactly which setter Commit() will apply --
+// CheckBox's own "is_read_only" branch inverts the value (SetIsEnabled(!bPreparedValue)),
+// every other WidgetEnabled branch applies it directly.
+bool FGV2BooleanPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    GV2PresentationApply::FPreparedBooleanOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.PropertyName = FName(*PropertyName);
+    Operation.Target = DetermineBooleanOperationTarget(TargetWidget, PropertyName);
+    Operation.Value = (Operation.Target == GV2PresentationApply::EPreparedBooleanTarget::WidgetEnabled
+            && Cast<UCheckBox>(TargetWidget) != nullptr
+            && PropertyName == TEXT("is_read_only"))
+        ? !bPreparedValue
+        : bPreparedValue;
+
+    OutTransaction.AddBooleanOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2BooleanPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
@@ -534,77 +585,39 @@ bool FGV2BooleanPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
         return false;
     }
 
-    if (UCheckBox* CheckBox = Cast<UCheckBox>(TargetWidget))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        if (PropertyName == TEXT("is_read_only"))
-        {
-            CheckBox->SetIsEnabled(!bPreparedValue);
-        }
-        else
-        {
-            CheckBox->SetIsChecked(bPreparedValue);
-        }
-        return true;
+        return false;
     }
-    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
     {
-        if (PropertyName == TEXT("is_read_only"))
-        {
-            EditableBox->SetIsReadOnly(bPreparedValue);
-        }
-        else
-        {
-            EditableBox->SetIsEnabled(bPreparedValue);
-        }
-        return true;
+        return false;
     }
-    if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-    {
-        if (PropertyName == TEXT("is_open"))
-        {
-            Dropdown->SetDropdownOpen(bPreparedValue);
-            return true;
-        }
-    }
-
-    TargetWidget->SetIsEnabled(bPreparedValue);
-    return true;
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2BooleanPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (UCheckBox* CheckBox = Cast<UCheckBox>(TargetWidget))
+    if (!TargetWidget)
     {
-        if (PropertyName == TEXT("is_read_only"))
-        {
-            CheckBox->SetIsEnabled(true);
-        }
-        else
-        {
-            CheckBox->SetIsChecked(false);
-        }
+        return;
     }
-    else if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+
+    GV2PresentationApply::FPreparedBooleanOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.PropertyName = FName(*PropertyName);
+    Operation.Target = DetermineBooleanOperationTarget(TargetWidget, PropertyName);
+    // PSC-09B: every branch's own reset default -- WidgetEnabled resets to enabled
+    // (true), every other target resets to false (unchecked/not-read-only/closed).
+    Operation.Value = Operation.Target == GV2PresentationApply::EPreparedBooleanTarget::WidgetEnabled;
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddBooleanOperation(MoveTemp(Operation));
+    FString ApplyError;
+    if (GV2PresentationApply::Apply(Transaction, ApplyError))
     {
-        if (PropertyName == TEXT("is_read_only"))
-        {
-            EditableBox->SetIsReadOnly(false);
-        }
-        else
-        {
-            EditableBox->SetIsEnabled(true);
-        }
-    }
-    else if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-    {
-        if (PropertyName == TEXT("is_open"))
-        {
-            Dropdown->SetDropdownOpen(false);
-        }
-    }
-    else if (TargetWidget)
-    {
-        TargetWidget->SetIsEnabled(true);
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
 }
 
@@ -657,6 +670,19 @@ bool FGV2IntegerPropertyConsumer::Prepare(
     return true;
 }
 
+bool FGV2IntegerPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    GV2PresentationApply::FPreparedIntegerOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.Value = PreparedValue;
+    OutTransaction.AddIntegerOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2IntegerPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
@@ -666,33 +692,29 @@ bool FGV2IntegerPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
         return false;
     }
 
-    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        if (UGV2InputFieldWidgetBase* InputField = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
-        {
-            InputField->SetMaxLength(PreparedValue);
-        }
-        if (PreparedValue > 0)
-        {
-            const FString Current = EditableBox->GetText().ToString();
-            if (Current.Len() > PreparedValue)
-            {
-                EditableBox->SetText(FText::FromString(Current.Left(static_cast<int32>(PreparedValue))));
-            }
-        }
+        return false;
     }
-
-    return true;
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    {
+        return false;
+    }
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2IntegerPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    if (TargetWidget)
     {
-        if (UGV2InputFieldWidgetBase* InputField = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
-        {
-            InputField->SetMaxLength(0);
-        }
+        GV2PresentationApply::FPreparedIntegerOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.Value = 0;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddIntegerOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
     PreparedValue = 0;
 }
@@ -748,6 +770,29 @@ bool FGV2NumberPropertyConsumer::Prepare(
     return true;
 }
 
+bool FGV2NumberPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    if (UProgressBar* PB = Cast<UProgressBar>(TargetWidget))
+    {
+        GV2PresentationApply::FPreparedProgressBarOperation Operation;
+        Operation.TargetWidget = PB;
+        Operation.Percent = static_cast<float>(PreparedValue);
+        OutTransaction.AddProgressBarOperation(MoveTemp(Operation));
+    }
+    else
+    {
+        GV2PresentationApply::FPreparedNumberOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.Value = PreparedValue;
+        OutTransaction.AddNumberOperation(MoveTemp(Operation));
+    }
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2NumberPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
@@ -757,26 +802,44 @@ bool FGV2NumberPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError
         return false;
     }
 
-    if (UProgressBar* PB = Cast<UProgressBar>(TargetWidget))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        PB->SetPercent(static_cast<float>(PreparedValue));
+        return false;
     }
-    else if (UGV2ProgressBarWidgetBase* ProgressHost = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
     {
-        ProgressHost->ApplyProgress(static_cast<float>(PreparedValue));
+        return false;
     }
-    return true;
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2NumberPropertyConsumer::Reset(UWidget* TargetWidget)
 {
+    if (!TargetWidget)
+    {
+        return;
+    }
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     if (UProgressBar* PB = Cast<UProgressBar>(TargetWidget))
     {
-        PB->SetPercent(0.0f);
+        GV2PresentationApply::FPreparedProgressBarOperation Operation;
+        Operation.TargetWidget = PB;
+        Operation.Percent = 0.0f;
+        Transaction.AddProgressBarOperation(MoveTemp(Operation));
     }
-    else if (UGV2ProgressBarWidgetBase* ProgressHost = Cast<UGV2ProgressBarWidgetBase>(TargetWidget))
+    else
     {
-        ProgressHost->ApplyProgress(0.0f);
+        GV2PresentationApply::FPreparedNumberOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.Value = 0.0;
+        Transaction.AddNumberOperation(MoveTemp(Operation));
+    }
+    FString ApplyError;
+    if (GV2PresentationApply::Apply(Transaction, ApplyError))
+    {
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
 }
 
@@ -809,6 +872,19 @@ bool FGV2StringPropertyConsumer::Prepare(
     return true;
 }
 
+bool FGV2StringPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    GV2PresentationApply::FPreparedStringOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.Value = PreparedValue;
+    OutTransaction.AddStringOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2StringPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
@@ -818,28 +894,31 @@ bool FGV2StringPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError
         return false;
     }
 
-    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        FString FinalText = PreparedValue;
-        if (const UGV2InputFieldWidgetBase* Host = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
-        {
-            const int64 MaxLength = Host->GetMaxLength();
-            if (MaxLength > 0 && FinalText.Len() > MaxLength)
-            {
-                FinalText = FinalText.Left(static_cast<int32>(MaxLength));
-            }
-        }
-        EditableBox->SetText(FText::FromString(FinalText));
+        return false;
     }
-
-    return true;
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    {
+        return false;
+    }
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2StringPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(TargetWidget))
+    if (TargetWidget)
     {
-        EditableBox->SetText(FText::GetEmpty());
+        // PSC-09B: reset always applies the empty string, so the adapter's own
+        // max-length truncation is a no-op here regardless of whether the target has a
+        // UGV2InputFieldWidgetBase host -- same adapter path as Commit, no special case.
+        GV2PresentationApply::FPreparedStringOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddStringOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
     PreparedValue.Empty();
 }
@@ -874,6 +953,25 @@ bool FGV2KeyPropertyConsumer::Prepare(
     return true;
 }
 
+// DUC-03: "selected_key" and "default_tab_key" are their own capabilities, not the
+// generic `key` identity, and are routed by name so they can never be shadowed by (or
+// shadow) a host's real `key` -- see UGV2TabContainerWidgetBase, which declares both
+// "key" (its own identity) and "default_tab_key" (its own concept) on itself. Actual
+// dispatch lives in GV2LegacyPresentationApplyAdapter (every real target is GV2-owned).
+bool FGV2KeyPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    GV2PresentationApply::FPreparedKeyOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.PropertyName = FName(*PropertyName);
+    Operation.Value = PreparedValue;
+    OutTransaction.AddKeyOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
@@ -883,60 +981,30 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
         return false;
     }
 
-    // DUC-03: "selected_key" and "default_tab_key" are their own capabilities, not the
-    // generic `key` identity, and are routed by name so they can never be shadowed by (or
-    // shadow) a host's real `key` -- see UGV2TabContainerWidgetBase, which declares both
-    // "key" (its own identity) and "default_tab_key" (its own concept) on itself.
-    if (PropertyName == TEXT("selected_key"))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-        {
-            Dropdown->SetSelectedKey(FName(*PreparedValue));
-            return true;
-        }
+        return false;
     }
-    else if (PropertyName == TEXT("default_tab_key"))
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
     {
-        if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
-        {
-            TabContainer->ApplyDefaultTabKey(FName(*PreparedValue));
-            return true;
-        }
+        return false;
     }
-    else if (IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(TargetWidget))
-    {
-        Host->SetKey(FName(*PreparedValue));
-        return true;
-    }
-
-    // A host that declares a `key`-kind capability but has no branch here would otherwise
-    // report a successful commit while storing nothing -- the exact shape this pipeline
-    // exists to make impossible. Unhandled target type/property is a defect, not a no-op.
-    OutError = FString::Printf(
-        TEXT("core:diagnostic.ui_consumer.unhandled_target: '%s' capability declared for '%s' has no commit branch"),
-        *PropertyName, *TargetWidget->GetClass()->GetName());
-    return false;
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (PropertyName == TEXT("selected_key"))
+    if (TargetWidget)
     {
-        if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-        {
-            Dropdown->SetSelectedKey(NAME_None);
-        }
-    }
-    else if (PropertyName == TEXT("default_tab_key"))
-    {
-        if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget))
-        {
-            TabContainer->ApplyDefaultTabKey(NAME_None);
-        }
-    }
-    else if (IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(TargetWidget))
-    {
-        Host->SetKey(NAME_None);
+        GV2PresentationApply::FPreparedKeyOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.PropertyName = FName(*PropertyName);
+        Operation.Value = FString(); // NAME_None once reconstructed by the adapter
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddKeyOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
     PreparedValue.Empty();
     PropertyName.Empty();
@@ -977,6 +1045,19 @@ bool FGV2BindingPropertyConsumer::Prepare(
     return true;
 }
 
+bool FGV2BindingPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    GV2PresentationApply::FPreparedBindingOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.SerializedHandle = PreparedBinding.ToString();
+    OutTransaction.AddBindingOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2BindingPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
@@ -986,18 +1067,29 @@ bool FGV2BindingPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
         return false;
     }
 
-    if (IGV2UiBindingTarget* BindingTarget = Cast<IGV2UiBindingTarget>(TargetWidget))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        BindingTarget->SetBindingHandle(PreparedBinding);
+        return false;
     }
-    return true;
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    {
+        return false;
+    }
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2BindingPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (IGV2UiBindingTarget* BindingTarget = Cast<IGV2UiBindingTarget>(TargetWidget))
+    if (TargetWidget)
     {
-        BindingTarget->SetBindingHandle(FGV2UiBindingHandle());
+        GV2PresentationApply::FPreparedBindingOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.SerializedHandle = FGV2UiBindingHandle().ToString();
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddBindingOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
 }
 

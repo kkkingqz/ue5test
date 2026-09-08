@@ -165,6 +165,14 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
+    // PSC-09B (ADR-0043 D2/D3): builds a FPreparedBooleanOperation already narrowed to
+    // exactly which setter Commit()/Reset() would have called. See GV2PropertyConsumers.cpp
+    // for the exact target/property-name -> EPreparedBooleanTarget mapping.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
+
 private:
     bool bPreparedValue = false;
     FString PropertyName;
@@ -183,6 +191,14 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
+    // PSC-09B (ADR-0043 D2/D3): carries the resolved value only -- every real target
+    // (UGV2InputFieldWidgetBase) is GV2-owned, so GV2LegacyPresentationApplyAdapter
+    // performs the actual mutation from this same operation.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
+
 private:
     int64 PreparedValue = 0;
     FString PropertyName;
@@ -200,6 +216,15 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
+    // PSC-09B (ADR-0043 D2/D3): UProgressBar is a plain UMG target -- GV2PresentationApply
+    // applies a FPreparedProgressBarOperation for it directly. UGV2ProgressBarWidgetBase
+    // is GV2-owned, so that case builds a FPreparedNumberOperation instead, applied by
+    // GV2LegacyPresentationApplyAdapter.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
+
 private:
     double PreparedValue = 0.0;
 };
@@ -215,6 +240,14 @@ public:
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
+
+    // PSC-09B (ADR-0043 D2/D3): carries the resolved value only -- the truncation-against-
+    // max-length behavior is UGV2InputFieldWidgetBase-owned, so
+    // GV2LegacyPresentationApplyAdapter performs the actual mutation from this operation.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
 
 private:
     FString PreparedValue;
@@ -249,6 +282,14 @@ public:
      */
     void SetPropertyNameForRouting(const FString& InPropertyName) { PropertyName = InPropertyName; }
 
+    // PSC-09B (ADR-0043 D2/D3): carries the resolved value only -- every real target
+    // is GV2-owned (or a GV2-owned interface), so GV2LegacyPresentationApplyAdapter
+    // performs the actual mutation, including the "no branch matched" typed failure.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
+
 private:
     FString PreparedValue;
     FString PropertyName;
@@ -266,6 +307,14 @@ public:
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
+
+    // PSC-09B (ADR-0043 D2/D3): carries the resolved handle's serialized value only --
+    // IGV2UiBindingTarget is a GV2-owned interface, so GV2LegacyPresentationApplyAdapter
+    // performs the actual mutation from this operation.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
 
 private:
     FGV2UiBindingHandle PreparedBinding;
