@@ -32,9 +32,9 @@ CLASSIFIED_SITES = {
     ("UI/GV2PropertyConsumers.h", "virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) {}"):
         "IGV2PropertyConsumer::SetPrepareContext base (no-op default)",
     ("UI/GV2PropertyConsumers.h", "virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }"):
-        "consumer override storing the context for its own Prepare() to use (two classes share this exact line: FGV2TabContainerTabsPropertyConsumer, FGV2ImageResourcePropertyConsumer)",
+        "consumer override storing the context for its own Prepare() to use (three classes share this exact line: FGV2TabContainerTabsPropertyConsumer, FGV2ImageResourcePropertyConsumer, FGV2RichTextSpansPropertyConsumer -- PSC-10A)",
     ("UI/GV2PropertyConsumers.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr;"):
-        "consumer's stored context field (two classes share this exact line: FGV2TabContainerTabsPropertyConsumer, FGV2ImageResourcePropertyConsumer)",
+        "consumer's stored context field (three classes share this exact line: FGV2TabContainerTabsPropertyConsumer, FGV2ImageResourcePropertyConsumer, FGV2RichTextSpansPropertyConsumer -- PSC-10A)",
     ("UI/GV2UiMutationPlan.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):
         "PrepareUiHostProperties parameter",
     ("UI/GV2TextPipeline.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):

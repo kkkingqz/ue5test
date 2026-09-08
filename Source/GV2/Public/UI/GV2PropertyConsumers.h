@@ -458,8 +458,14 @@ public:
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
         FString& OutError) const override;
 
+    // PSC-10A (ADR-0043 D1): Prepare's hover-popover-availability check needs Theme
+    // (RichTextPopoverClass) -- resolved through PrepareContext->GetTheme() when set,
+    // instead of the legacy GetConfiguredTheme() static accessor.
+    virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
+
 private:
     TArray<FGV2RichTextSpanViewModel> PreparedSpans;
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr;
 };
 
 class UGV2ScreenWidgetBase;

@@ -1717,7 +1717,13 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
 
     if (bHasHover)
     {
-        const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+        // PSC-10A (ADR-0043 D1): PrepareContext->GetTheme() when set (the operation-kind
+        // production path always sets one, PrepareUiHostProperties injects it
+        // unconditionally); GetConfiguredTheme() remains only for callers with none
+        // (tests, and the test-only observability harness).
+        const UGV2UiTheme* Theme = PrepareContext != nullptr
+            ? PrepareContext->GetTheme().Theme.Get()
+            : UGV2UiThemeSettings::GetConfiguredTheme();
         if (Theme == nullptr || Theme->RichTextPopoverClass.IsNull() || Theme->RichTextPopoverClass.LoadSynchronous() == nullptr)
         {
             OutError = TEXT("core:diagnostic.ui_consumer.missing_popover_renderer: RichText popover renderer unavailable in theme");
@@ -1839,10 +1845,15 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         TabContainer = TargetWidget->GetTypedOuter<UGV2TabContainerWidgetBase>();
     }
 
-    // PSC-06 (ADR-0043 D1): resolve through this session's own snapshot when available;
-    // GetConfiguredRegistry()'s independent access path remains the fallback for a caller
-    // with no PrepareContext (mostly tests, and any Prepare path not yet wired to one) --
-    // PSC-10 retires this fallback once every operation kind is migrated.
+    // PSC-06/10A (ADR-0043 D1): resolve through this session's own snapshot when
+    // available. PSC-10A verified every production operation-kind call site now threads
+    // a real PrepareContext here (PrepareUiHostProperties injects it unconditionally,
+    // and its own callers -- PrepareDocumentRequest, PrepareScreenFields -- always have
+    // one for an active session); GetConfiguredRegistry()'s independent access path is
+    // therefore reached only by tests (GV2PropertyConsumersTests.cpp's own consumer-level
+    // unit tests, and the test-only RunUiCapabilityObservabilityHarness) that construct a
+    // consumer directly without wiring one. PSC-10B removes the function itself once
+    // central style also no longer needs it.
     const UGV2ScreenRegistry* ScreenRegistry =
         PrepareContext == nullptr ? UGV2ScreenRegistrySettings::GetConfiguredRegistry() : nullptr;
 
