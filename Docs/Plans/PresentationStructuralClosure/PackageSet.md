@@ -64,7 +64,7 @@ Canonical manifest hash вычисляется из полного разобр�
 
     M1 НЕ закрыт этим изменением: `PSC-03` (canonical manifest identity / `ComputePackageFingerprint` redesign) остаётся открытой второй половиной milestone.
 
-- [ ] **PSC-03 — Зафиксировать canonical manifest identity**
+- [x] **PSC-03 — Зафиксировать canonical manifest identity**
   - Зависимости: PSC-02.
   - Инвариант: package fingerprint покрывает полное semantic содержимое manifest, но Headless run digest покрывает только portable gameplay inputs/results. Эти identity намеренно различны.
   - Не считается закрытием: добавление `ue_content_roots` в старый список полей; source inventory известных descriptor members; hash сырых bytes, меняющийся от пробелов/комментариев; включение package fingerprint или presentation data в `FRunDigest`.
@@ -78,10 +78,23 @@ Canonical manifest hash вычисляется из полного разобр�
     - изменение только UE-specific field/asset не меняет `repository_content_hash`, `script_set_hash`, state hash или Headless run digest;
     - portable CTest и UE host проверяют одинаковый package order/fingerprint из одного conformance implementation.
   - Evidence: `Source/GV2ContentHostSupport/Private/PackageDiscovery.cpp`, `Source/GV2ContentHostSupport/Private/ModsLock.cpp`, portable conformance, `GameData/mods.lock.json5`, `Docs/Architecture/HeadlessSimulationContract.md`.
+  - **Реализация (2026-09-08):** `ComputePackageFingerprint` переписан с ручного перечня manifest-полей (namespace/version/relative_sources/schema_bindings/extension_schema_bindings/redirects/tombstones/dependencies — восемь отдельных полей, требовавших ручного обновления при любом новом поле дескриптора) на `identity + CanonicalManifestHash`: `package_id` (identity), `load_index` (load-order context, назначается discovery, а не содержимое manifest — остаётся отдельным полем, а не частью hash) и уже существующий (с PSC-02) `CanonicalManifestHash` источника. Поскольку `CanonicalManifestHash` хэширует ПОЛНОЕ разобранное дерево `package.json5` до проекции в `FPackageDescriptor`, любое semantic поле — известное дескриптору или нет, включая `ue_content_roots` — теперь меняет fingerprint автоматически, без отдельного перечня.
+
+    `GenerateModsLockContent`/`VerifyModsLock` сменили сигнатуру с `vector<FPackageDescriptor>` на `vector<FResolvedPackageSource>` (тип из PSC-02) — единственный способ передать `CanonicalManifestHash` вместе с дескриптором для вычисления fingerprint. Production call site (`DiscoverPackagesFromContainer`'s lock-verify ветка, `PackageDiscovery.cpp`) строит `FResolvedPackageSet` через уже существующий internal `BuildResolvedPackageSet` из КОПИИ `Descriptors` (не move) — оригинал `Descriptors` возвращается вызывающему в конце функции неизменным, поэтому копия обязательна, а не оптимизация-опечатка.
+
+    `GameData/mods.lock.json5` перегенерирован под новую формулу (все три fingerprint изменились — ожидаемо, это смена identity-функции, а не баг). Регенерация выполнена одноразовой scratch-программой (`clang++` напрямую против `libgv2_content_host_support.a`/`libgv2_content_core.a` из `build/`, без нового постоянного CLI) — `Tools/Content` (`gv2-content`) намеренно не получил отдельной команды регенерации lock-файла, так как ни один Done-bullet PSC-03 её не требует, а построение одноразовой compiled-программы против уже собранных portable-библиотек полностью достаточно и не добавляет постоянную CLI-поверхность, которую придётся поддерживать.
+
+    Новые conformance-кейсы 13 и 14 (`PackageDiscoveryAndOrderConformance.cpp`, тот же shared entry point, что и case 12 из PSC-02, исполняется и portable CTest, и UE host'ом): case 13 доказывает `ComputePackageFingerprint`'s свойства — форматирование/комментарии не меняют fingerprint (наследуется от `CanonicalManifestHash`), `ue_content_roots` конкретно (не generic synthetic-поле — Done-bullet называет его отдельно) меняет fingerprint, одинаковый package_id/content с разным `load_index` тоже даёт разный fingerprint. Case 14 доказывает независимость: `ue_content_roots` меняет fingerprint (case 13), но НЕ меняет `repository_content_hash` того же пакета — `BuildRepository` читает только `FPackageDescriptor`'s спроецированные `relative_sources` через `IContentSourceProvider`, никогда сырой manifest или `CanonicalManifestHash`, поэтому package identity/content hashing и repository content hashing остаются независимыми typed concepts структурно, не только по соглашению. `gv2_headless_golden_replay_matches_digest` (пин на конкретный digest) остался зелёным без изменений — независимое подтверждение, что Headless run digest не задет сменой fingerprint-формулы.
+
+    Red-on-revert: временно откачен `ComputePackageFingerprint` на игнорирование `CanonicalManifestHash` (`(void)CanonicalManifestHash;`, только identity) — `gv2-headless --self-test` тут же перестал резолвить контент вообще (`content_root_not_found`), потому что перегенерированный `GameData/mods.lock.json5` больше не совпадал с откаченной формулой; для изолированной проверки конкретно case 13 повторено с `--content-root=GameData/core,GameData/textsystem,GameData/rh` (explicit roots в обход lock-verify), что дало точный ожидаемый провал `case13_ue_content_roots_did_not_change_fingerprint`. Откат применён обратно, портативный ctest и UE Automation (119/119) перепроверены зелёными.
+
+    Верификация: 84/84 portable ctest (включая новые case 13/14), 119/119 UE Automation, все 9 standalone gate'ов, `validate_docs.py` (185 файлов) — зелёные.
+
+    **M1 закрыт этим изменением** — PSC-02 и PSC-03 оба done; см. README.md.
 
 ## Проверка milestone
 
 - [x] Set создаётся только разрешёнными host bootstrap entry points; перечислитель выведен из return type, не из имени функции. (`PSC-02`, 2026-09-08 — `validate_package_set_factory_inventory.py`)
 - [x] Все consumers получают один immutable set; downstream rediscovery отсутствует. (`PSC-02`, 2026-09-08 — `GV2.Runtime.Content.PackageSetSingleResolutionAcrossConsumers`, red-on-revert подтверждён)
-- [ ] Arbitrary semantic manifest field меняет fingerprint без ручного обновления перечня.
+- [x] Arbitrary semantic manifest field меняет fingerprint без ручного обновления перечня. (`PSC-03`, 2026-09-08 — conformance case 13, включая `ue_content_roots`)
 - [x] Headless использует тот же resolver, остаётся UE-free и сохраняет прежний run digest. (`PSC-02`, 2026-09-08 — `gv2_headless_golden_replay_matches_digest` не изменился)

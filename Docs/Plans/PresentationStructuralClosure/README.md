@@ -87,7 +87,7 @@ GV2 semantic Prepare
 ## Milestones
 
 - [x] M0 — [Contract Alignment](ContractAlignment.md): owner contracts отражают уже принятый ADR до изменения кода. PSC-01. (2026-09-07)
-- [ ] M1 — [Package Set](PackageSet.md): exact package set и полный canonical manifest hash. PSC-02…03.
+- [x] M1 — [Package Set](PackageSet.md): exact package set и полный canonical manifest hash. PSC-02…03. (2026-09-08)
 - [ ] M2 — [Snapshot](Snapshot.md): полный candidate/snapshot, atomic publication, recovery и snapshot-backed PrepareContext. PSC-04…08.
 - [ ] M3 — [Self-Contained Payload](Payload.md): установлена типовая граница, весь путь заведён через транзакцию, замкнут resolved payload. PSC-09A…09B, PSC-10.
 - [ ] M4 — [Apply Boundary](ApplyBoundary.md): физическое применение вынесено в нижний модуль, затем атомарно мигрированы `UCLASS` paths. PSC-11…12.
@@ -96,7 +96,7 @@ GV2 semantic Prepare
 ## Критический путь
 
 ```text
-PSC-01✔ → PSC-02✔ → PSC-03 → PSC-04 → PSC-05 → PSC-06
+PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04 → PSC-05 → PSC-06
                                              ├→ PSC-07 ────────────┐
                                              └→ PSC-08 → PSC-09A → PSC-09B → PSC-10
                                                                               → PSC-11 → PSC-12
@@ -139,7 +139,7 @@ PSC-01✔ → PSC-02✔ → PSC-03 → PSC-04 → PSC-05 → PSC-06
 
 - [x] Contracts описывают target ownership, lifecycle, failure semantics, module direction и Headless identity до начала реализации. (`PSC-01`, 2026-09-07)
 - [x] Один `FResolvedPackageSet` строится до всех consumers; repository, Lua и presentation не выполняют повторный package discovery. (`PSC-02`, 2026-09-08)
-- [ ] Canonical hash полного manifest входит в package fingerprint; `ue_content_roots` меняет fingerprint, но не Headless run digest. (`PSC-03`)
+- [x] Canonical hash полного manifest входит в package fingerprint; `ue_content_roots` меняет fingerprint, но не Headless run digest. (`PSC-03`, 2026-09-08)
 - [ ] Полный `FGV2SessionContentSnapshot` содержит все поля из зафиксированного интерфейса и не копирует definitions/provenance. (`PSC-04`)
 - [ ] Candidate остаётся private; active snapshot публикуется атомарно с успешным initial Commit/`Ready`; failure и recovery не наблюдают частичный snapshot. (`PSC-05`)
 - [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload. (`PSC-06`, `PSC-10`)

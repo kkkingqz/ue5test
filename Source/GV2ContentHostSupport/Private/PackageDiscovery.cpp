@@ -781,7 +781,18 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
             return std::nullopt;
         }
 
-        if (!VerifyModsLock(*LockContent, *Descriptors, OutDiagnostics))
+        // PSC-03: VerifyModsLock checks fingerprints, which need each source's
+        // CanonicalManifestHash -- built from a COPY of Descriptors (BuildResolvedPackageSet
+        // takes its descriptors by value and moves them) so the original, returned below,
+        // is left untouched.
+        std::optional<FResolvedPackageSet> ResolvedForVerify =
+            BuildResolvedPackageSet(Descriptors, OrderedRoots, OutDiagnostics);
+        if (!ResolvedForVerify)
+        {
+            return std::nullopt;
+        }
+
+        if (!VerifyModsLock(*LockContent, ResolvedForVerify->OrderedSources, OutDiagnostics))
         {
             return std::nullopt;
         }

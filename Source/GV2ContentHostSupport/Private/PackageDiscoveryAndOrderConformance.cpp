@@ -338,22 +338,23 @@ std::string RunPackageDiscoveryAndOrderConformance()
         })json5");
 
         std::vector<FDiagnostic> Diagnostics;
-        std::optional<std::vector<FPackageDescriptor>> Descriptors =
-            DiscoverPackagesFromDirectories({CoreRoot, ModARoot}, Diagnostics);
-        if (!Descriptors)
+        std::optional<FResolvedPackageSet> ResolvedSet =
+            ResolvePackageSetFromDirectories({CoreRoot, ModARoot}, Diagnostics);
+        if (!ResolvedSet)
         {
             return "discovery_order.case6_discovery_failed";
         }
+        const std::vector<FResolvedPackageSource>& Sources = ResolvedSet->OrderedSources;
 
-        const std::string LockContent1 = GenerateModsLockContent(*Descriptors);
-        const std::string LockContent2 = GenerateModsLockContent(*Descriptors);
+        const std::string LockContent1 = GenerateModsLockContent(Sources);
+        const std::string LockContent2 = GenerateModsLockContent(Sources);
         if (LockContent1 != LockContent2)
         {
             return "discovery_order.case6_lock_generation_not_deterministic";
         }
 
         std::vector<FDiagnostic> LockDiagnostics;
-        if (!VerifyModsLock(LockContent1, *Descriptors, LockDiagnostics))
+        if (!VerifyModsLock(LockContent1, Sources, LockDiagnostics))
         {
             return "discovery_order.case6_lock_verification_failed";
         }
@@ -365,7 +366,7 @@ std::string RunPackageDiscoveryAndOrderConformance()
         {
             TamperedContent.replace(FingerprintPos + 14, 4, "dead");
             std::vector<FDiagnostic> TamperDiagnostics;
-            if (VerifyModsLock(TamperedContent, *Descriptors, TamperDiagnostics))
+            if (VerifyModsLock(TamperedContent, Sources, TamperDiagnostics))
             {
                 return "discovery_order.case6_tampered_lock_should_fail";
             }
@@ -506,13 +507,16 @@ std::string RunPackageDiscoveryAndOrderConformance()
             ],
         })json5");
 
-        std::vector<FPackageDescriptor> Descs;
-        std::vector<FDiagnostic> TempDiags;
-        Descs.push_back(*DiscoverPackageFromDirectory(CoreRoot, TempDiags));
-        Descs.push_back((*DiscoverPackageFromDirectory(RhRoot, TempDiags)).WithLoadIndex(1));
+        std::vector<FDiagnostic> ResolveDiags;
+        std::optional<FResolvedPackageSet> ResolvedForLock =
+            ResolvePackageSetFromDirectories({CoreRoot, RhRoot}, ResolveDiags);
+        if (!ResolvedForLock)
+        {
+            return "discovery_order.case8_resolve_for_lock_failed";
+        }
 
         std::ofstream LockOut(Container / "mods.lock.json5");
-        LockOut << GenerateModsLockContent(Descs);
+        LockOut << GenerateModsLockContent(ResolvedForLock->OrderedSources);
         LockOut.close();
 
         std::vector<FDiagnostic> DiscoveryDiagnostics;
@@ -772,6 +776,213 @@ std::string RunPackageDiscoveryAndOrderConformance()
         if (ExtendedSet->OrderedSources[0].CanonicalManifestHash == CoreSource.CanonicalManifestHash)
         {
             return "discovery_order.case12_unknown_field_did_not_change_hash";
+        }
+    }
+
+    // 13. PSC-03: ComputePackageFingerprint is identity (package_id, load_index) plus
+    // CanonicalManifestHash, not a re-listing of manifest fields -- so every property
+    // case 12 already proved for the hash (formatting-insensitive, semantic-field- and
+    // unknown-field-sensitive) carries through to the fingerprint automatically, and
+    // ue_content_roots specifically (a UE-only field FPackageDescriptor's parser never
+    // projects) changes it too.
+    {
+        const std::filesystem::path BaseRoot = TempDir.Dir / "case13_base";
+        WritePackage(BaseRoot, R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+        })json5");
+        std::vector<FDiagnostic> BaseDiagnostics;
+        std::optional<FResolvedPackageSet> BaseSet = ResolvePackageSetFromDirectories({BaseRoot}, BaseDiagnostics);
+        if (!BaseSet.has_value() || BaseSet->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case13_base_resolve_failed";
+        }
+        const FResolvedPackageSource& BaseSource = BaseSet->OrderedSources[0];
+        const std::string BaseFingerprint = ComputePackageFingerprint(BaseSource.Descriptor, BaseSource.CanonicalManifestHash);
+
+        // Reformatting (whitespace/comment change, same semantic content) must not
+        // change the fingerprint.
+        const std::filesystem::path ReformattedRoot = TempDir.Dir / "case13_reformatted";
+        WritePackage(ReformattedRoot, R"json5({
+            // a comment -- same semantic content as case13_base
+            package_id:    "core",
+            namespace: "core",
+            version: "1.0.0",
+        })json5");
+        std::vector<FDiagnostic> ReformattedDiagnostics;
+        std::optional<FResolvedPackageSet> ReformattedSet =
+            ResolvePackageSetFromDirectories({ReformattedRoot}, ReformattedDiagnostics);
+        if (!ReformattedSet.has_value() || ReformattedSet->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case13_reformatted_resolve_failed";
+        }
+        const FResolvedPackageSource& ReformattedSource = ReformattedSet->OrderedSources[0];
+        if (ComputePackageFingerprint(ReformattedSource.Descriptor, ReformattedSource.CanonicalManifestHash) != BaseFingerprint)
+        {
+            return "discovery_order.case13_formatting_change_altered_fingerprint";
+        }
+
+        // ue_content_roots (UE-only; DiscoverPackageFromDirectory's portable parser never
+        // reads it into FPackageDescriptor) must still change the fingerprint, because
+        // CanonicalManifestHash is computed from the full parsed manifest, not from
+        // FPackageDescriptor's projected fields.
+        const std::filesystem::path UeRootsRoot = TempDir.Dir / "case13_ue_content_roots";
+        WritePackage(UeRootsRoot, R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+            ue_content_roots: ["/Game/core"],
+        })json5");
+        std::vector<FDiagnostic> UeRootsDiagnostics;
+        std::optional<FResolvedPackageSet> UeRootsSet =
+            ResolvePackageSetFromDirectories({UeRootsRoot}, UeRootsDiagnostics);
+        if (!UeRootsSet.has_value() || UeRootsSet->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case13_ue_content_roots_resolve_failed";
+        }
+        const FResolvedPackageSource& UeRootsSource = UeRootsSet->OrderedSources[0];
+        if (UeRootsSource.Descriptor.GetRelativeSources().size() != BaseSource.Descriptor.GetRelativeSources().size())
+        {
+            return "discovery_order.case13_ue_content_roots_leaked_into_descriptor";
+        }
+        if (ComputePackageFingerprint(UeRootsSource.Descriptor, UeRootsSource.CanonicalManifestHash) == BaseFingerprint)
+        {
+            return "discovery_order.case13_ue_content_roots_did_not_change_fingerprint";
+        }
+
+        // Same manifest content, different load_index (position in the resolved set) --
+        // load_index is external load-order context, not manifest content, but it is
+        // still folded into the fingerprint identity, so it must change too.
+        const std::filesystem::path SecondRoot = TempDir.Dir / "case13_second";
+        WritePackage(SecondRoot, R"json5({
+            package_id: "case13_second",
+            namespace: "case13_second",
+            version: "1.0.0",
+            dependencies: [
+                { package_id: "core", load_after: true },
+            ],
+        })json5");
+        std::vector<FDiagnostic> PairDiagnostics;
+        std::optional<FResolvedPackageSet> PairSet =
+            ResolvePackageSetFromDirectories({BaseRoot, SecondRoot}, PairDiagnostics);
+        if (!PairSet.has_value() || PairSet->OrderedSources.size() != 2)
+        {
+            return "discovery_order.case13_pair_resolve_failed";
+        }
+        const FResolvedPackageSource& CoreAtIndex0 = PairSet->OrderedSources[0];
+        if (CoreAtIndex0.Descriptor.GetLoadIndex() == BaseSource.Descriptor.GetLoadIndex()
+            && ComputePackageFingerprint(CoreAtIndex0.Descriptor, CoreAtIndex0.CanonicalManifestHash) != BaseFingerprint)
+        {
+            return "discovery_order.case13_same_identity_and_content_fingerprint_diverged";
+        }
+
+        // GenerateModsLockContent/VerifyModsLock round-trip using ComputePackageFingerprint
+        // internally -- already exercised end-to-end by cases 6 and 8 above.
+    }
+
+    // 14. PSC-03: a UE-specific manifest field changes the package fingerprint (case 13)
+    // but must NOT change repository_content_hash -- BuildRepository only ever reads
+    // FPackageDescriptor's projected relative_sources through the source provider, never
+    // the raw manifest or CanonicalManifestHash, so package identity/content hashing and
+    // repository content hashing stay independent typed concepts by construction.
+    {
+        const std::filesystem::path PlainRoot = TempDir.Dir / "case14_plain";
+        WritePackage(
+            PlainRoot,
+            R"json5({
+                package_id: "core",
+                namespace: "core",
+                version: "1.0.0",
+            })json5",
+            {
+                {"screens.json5", R"json5({
+                    schema_version: 1,
+                    type: "screen",
+                    definitions: [
+                        { id: "core:screen.main", data: { title: "Case14" }, tags: [] },
+                    ],
+                })json5"},
+            },
+            {
+                {"screen_v1.schema.json5", R"json5({
+                    id: "core:schema.definition.screen.v1",
+                    definition_type: "screen",
+                    schema_version: 1,
+                    root: {
+                        kind: "object",
+                        fields: {
+                            title: { kind: "string", required: true },
+                        },
+                    },
+                    semantic_validators: [],
+                    extensions: {},
+                })json5"},
+            });
+
+        const std::filesystem::path UeRootsRoot = TempDir.Dir / "case14_ue_roots";
+        WritePackage(
+            UeRootsRoot,
+            R"json5({
+                package_id: "core",
+                namespace: "core",
+                version: "1.0.0",
+                ue_content_roots: ["/Game/core"],
+            })json5",
+            {
+                {"screens.json5", R"json5({
+                    schema_version: 1,
+                    type: "screen",
+                    definitions: [
+                        { id: "core:screen.main", data: { title: "Case14" }, tags: [] },
+                    ],
+                })json5"},
+            },
+            {
+                {"screen_v1.schema.json5", R"json5({
+                    id: "core:schema.definition.screen.v1",
+                    definition_type: "screen",
+                    schema_version: 1,
+                    root: {
+                        kind: "object",
+                        fields: {
+                            title: { kind: "string", required: true },
+                        },
+                    },
+                    semantic_validators: [],
+                    extensions: {},
+                })json5"},
+            });
+
+        auto BuildSingleRepo = [](const std::filesystem::path& Root) -> std::optional<std::string>
+        {
+            std::vector<FDiagnostic> Diags;
+            std::optional<std::vector<FPackageDescriptor>> Descs = DiscoverPackagesFromDirectories({Root}, Diags);
+            if (!Descs)
+            {
+                return std::nullopt;
+            }
+            FMultiPackageSourceProvider Provider;
+            Provider.RegisterPackage("core", Root);
+            FBuildOptions Options;
+            Options.SourceProvider = &Provider;
+            FBuildResult Outcome = BuildRepository(*Descs, Options);
+            if (!Outcome.IsSuccess())
+            {
+                return std::nullopt;
+            }
+            return Outcome.GetCandidate().GetReadHandle().GetContentHash();
+        };
+
+        const std::optional<std::string> PlainHash = BuildSingleRepo(PlainRoot);
+        const std::optional<std::string> UeRootsHash = BuildSingleRepo(UeRootsRoot);
+        if (!PlainHash.has_value() || !UeRootsHash.has_value())
+        {
+            return "discovery_order.case14_build_failed";
+        }
+        if (*PlainHash != *UeRootsHash)
+        {
+            return "discovery_order.case14_ue_content_roots_changed_repository_content_hash";
         }
     }
 
