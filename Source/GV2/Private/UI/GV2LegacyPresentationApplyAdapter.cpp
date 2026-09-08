@@ -27,6 +27,18 @@
 
 namespace
 {
+// PSC-10A: same "overloaded lambda set" idiom as GV2PresentationApply::Apply() -- see
+// that function's own TOverloaded doc comment. This module's copy is independent (this
+// file lives in GV2, the other in GV2PresentationApply; duplicating five lines avoids
+// creating a dependency between them purely for a generic idiom).
+template <typename... Ts>
+struct TOverloaded : Ts...
+{
+    using Ts::operator()...;
+};
+template <typename... Ts>
+TOverloaded(Ts...) -> TOverloaded<Ts...>;
+
 EGV2ImageRenderMode FromPreparedRenderMode(GV2PresentationApply::EPreparedImageRenderMode RenderMode)
 {
     switch (RenderMode)
@@ -168,335 +180,353 @@ namespace GV2LegacyPresentationApplyAdapter
 {
 bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Transaction, FString& OutError)
 {
-    for (const GV2PresentationApply::FPreparedImageHostOperation& Operation : Transaction.GetImageHostOperations())
+    OutError.Reset();
+    bool bFailed = false;
+
+    for (const GV2PresentationApply::FGV2PreparedOperationVariant& Operation : Transaction.GetOperations())
     {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        if (Operation.bResetToDefault)
+        if (bFailed)
         {
-            // Reaches past the host's own Apply UFUNCTION directly into its inner
-            // UImage, the same way Commit()'s Reset always did -- Reset clears the
-            // physical brush without going through bookkeeping meant for a resolved
-            // Commit.
-            if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(Widget))
+            break;
+        }
+
+        Visit(TOverloaded{
+            // ImageResource/EditableTextValue/ProgressBar/PlainText/RichTextRender/
+            // TextHint operations are entirely GV2PresentationApply's own territory
+            // (plain Engine/UMG/CommonUI targets) -- nothing to do here.
+            [](const GV2PresentationApply::FPreparedImageResourceOperation&) {},
+            [&bFailed, &OutError](const GV2PresentationApply::FPreparedImageHostOperation& Op)
             {
-                PortraitWidget->SetVisibility(ESlateVisibility::Collapsed);
-                if (UImage* Img = PortraitWidget->GetPortraitImage())
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (Op.bResetToDefault)
                 {
-                    Img->SetBrush(FSlateBrush());
+                    // Reaches past the host's own Apply UFUNCTION directly into its
+                    // inner UImage, the same way Commit()'s Reset always did -- Reset
+                    // clears the physical brush without going through bookkeeping meant
+                    // for a resolved Commit.
+                    if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(Widget))
+                    {
+                        PortraitWidget->SetVisibility(ESlateVisibility::Collapsed);
+                        if (UImage* Img = PortraitWidget->GetPortraitImage())
+                        {
+                            Img->SetBrush(FSlateBrush());
+                        }
+                    }
+                    else if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
+                    {
+                        if (UImage* Img = ImageBase->GetImageWidget())
+                        {
+                            Img->SetBrush(FSlateBrush());
+                        }
+                    }
+                    return;
                 }
-            }
-            else if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
-            {
-                if (UImage* Img = ImageBase->GetImageWidget())
+
+                FGV2ResolvedImageResource Resolved;
+                Resolved.ResourceId = Op.Resolved.ResourceId;
+                Resolved.RenderMode = FromPreparedRenderMode(Op.Resolved.RenderMode);
+                Resolved.FixedAspectRatio = Op.Resolved.FixedAspectRatio;
+                Resolved.Brush = Op.Resolved.Brush;
+
+                if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
                 {
-                    Img->SetBrush(FSlateBrush());
+                    if (!ImageBase->ApplyResolvedImageResource(Resolved, OutError))
+                    {
+                        bFailed = true;
+                    }
                 }
-            }
-            continue;
-        }
-
-        FGV2ResolvedImageResource Resolved;
-        Resolved.ResourceId = Operation.Resolved.ResourceId;
-        Resolved.RenderMode = FromPreparedRenderMode(Operation.Resolved.RenderMode);
-        Resolved.FixedAspectRatio = Operation.Resolved.FixedAspectRatio;
-        Resolved.Brush = Operation.Resolved.Brush;
-
-        if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
-        {
-            if (!ImageBase->ApplyResolvedImageResource(Resolved, OutError))
-            {
-                return false;
-            }
-        }
-        else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(Widget))
-        {
-            if (!PortraitWidget->ApplyResolvedPortrait(Resolved, OutError))
-            {
-                return false;
-            }
-        }
-    }
-
-    for (const GV2PresentationApply::FPreparedBooleanOperation& Operation : Transaction.GetBooleanOperations())
-    {
-        if (Operation.Target != GV2PresentationApply::EPreparedBooleanTarget::RequiresLegacyAdapter)
-        {
-            continue;
-        }
-        UWidget* Widget = Operation.TargetWidget.Get();
-        if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget))
-        {
-            if (Operation.PropertyName == TEXT("is_open"))
-            {
-                Dropdown->SetDropdownOpen(Operation.Value);
-            }
-        }
-    }
-
-    for (const GV2PresentationApply::FPreparedNumberOperation& Operation : Transaction.GetNumberOperations())
-    {
-        if (UGV2ProgressBarWidgetBase* ProgressHost = Cast<UGV2ProgressBarWidgetBase>(Operation.TargetWidget.Get()))
-        {
-            ProgressHost->ApplyProgress(static_cast<float>(Operation.Value));
-        }
-    }
-
-    for (const GV2PresentationApply::FPreparedIntegerOperation& Operation : Transaction.GetIntegerOperations())
-    {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(Widget))
-        {
-            if (UGV2InputFieldWidgetBase* InputField = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
-            {
-                InputField->SetMaxLength(Operation.Value);
-            }
-            if (Operation.Value > 0)
-            {
-                const FString Current = EditableBox->GetText().ToString();
-                if (Current.Len() > Operation.Value)
+                else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(Widget))
                 {
-                    EditableBox->SetText(FText::FromString(Current.Left(static_cast<int32>(Operation.Value))));
+                    if (!PortraitWidget->ApplyResolvedPortrait(Resolved, OutError))
+                    {
+                        bFailed = true;
+                    }
                 }
-            }
-        }
-    }
-
-    for (const GV2PresentationApply::FPreparedStringOperation& Operation : Transaction.GetStringOperations())
-    {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(Widget))
-        {
-            FString FinalText = Operation.Value;
-            if (const UGV2InputFieldWidgetBase* Host = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
+            },
+            [](const GV2PresentationApply::FPreparedBooleanOperation& Op)
             {
-                const int64 MaxLength = Host->GetMaxLength();
-                if (MaxLength > 0 && FinalText.Len() > MaxLength)
+                if (Op.Target != GV2PresentationApply::EPreparedBooleanTarget::RequiresLegacyAdapter)
                 {
-                    FinalText = FinalText.Left(static_cast<int32>(MaxLength));
+                    return;
                 }
-            }
-            EditableBox->SetText(FText::FromString(FinalText));
-        }
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget))
+                {
+                    if (Op.PropertyName == TEXT("is_open"))
+                    {
+                        Dropdown->SetDropdownOpen(Op.Value);
+                    }
+                }
+            },
+            [](const GV2PresentationApply::FPreparedEditableTextValueOperation&) {},
+            [](const GV2PresentationApply::FPreparedProgressBarOperation&) {},
+            [](const GV2PresentationApply::FPreparedNumberOperation& Op)
+            {
+                if (UGV2ProgressBarWidgetBase* ProgressHost = Cast<UGV2ProgressBarWidgetBase>(Op.TargetWidget.Get()))
+                {
+                    ProgressHost->ApplyProgress(static_cast<float>(Op.Value));
+                }
+            },
+            [](const GV2PresentationApply::FPreparedIntegerOperation& Op)
+            {
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(Widget))
+                {
+                    if (UGV2InputFieldWidgetBase* InputField = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
+                    {
+                        InputField->SetMaxLength(Op.Value);
+                    }
+                    if (Op.Value > 0)
+                    {
+                        const FString Current = EditableBox->GetText().ToString();
+                        if (Current.Len() > Op.Value)
+                        {
+                            EditableBox->SetText(FText::FromString(Current.Left(static_cast<int32>(Op.Value))));
+                        }
+                    }
+                }
+            },
+            [](const GV2PresentationApply::FPreparedStringOperation& Op)
+            {
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(Widget))
+                {
+                    FString FinalText = Op.Value;
+                    if (const UGV2InputFieldWidgetBase* Host = EditableBox->GetTypedOuter<UGV2InputFieldWidgetBase>())
+                    {
+                        const int64 MaxLength = Host->GetMaxLength();
+                        if (MaxLength > 0 && FinalText.Len() > MaxLength)
+                        {
+                            FinalText = FinalText.Left(static_cast<int32>(MaxLength));
+                        }
+                    }
+                    EditableBox->SetText(FText::FromString(FinalText));
+                }
+            },
+            [&bFailed, &OutError](const GV2PresentationApply::FPreparedKeyOperation& Op)
+            {
+                UWidget* Widget = Op.TargetWidget.Get();
+                // DUC-03: "selected_key" and "default_tab_key" are their own
+                // capabilities, not the generic `key` identity, and are routed by name
+                // so they can never be shadowed by (or shadow) a host's real `key`.
+                if (Op.PropertyName == TEXT("selected_key"))
+                {
+                    if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget))
+                    {
+                        Dropdown->SetSelectedKey(FName(*Op.Value));
+                        return;
+                    }
+                }
+                else if (Op.PropertyName == TEXT("default_tab_key"))
+                {
+                    if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(Widget))
+                    {
+                        TabContainer->ApplyDefaultTabKey(FName(*Op.Value));
+                        return;
+                    }
+                }
+                else if (IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(Widget))
+                {
+                    Host->SetKey(FName(*Op.Value));
+                    return;
+                }
+
+                // A host that declares a `key`-kind capability but has no branch here
+                // would otherwise report a successful commit while storing nothing --
+                // the exact shape this pipeline exists to make impossible. Unhandled
+                // target type/property is a defect, not a no-op.
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_consumer.unhandled_target: '%s' capability declared for '%s' has no commit branch"),
+                    *Op.PropertyName.ToString(),
+                    Widget != nullptr ? *Widget->GetClass()->GetName() : TEXT("<null>"));
+                bFailed = true;
+            },
+            [](const GV2PresentationApply::FPreparedBindingOperation& Op)
+            {
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (IGV2UiBindingTarget* BindingTarget = Cast<IGV2UiBindingTarget>(Widget))
+                {
+                    BindingTarget->SetBindingHandle(FGV2UiBindingHandle::FromSerialized(Op.SerializedHandle));
+                }
+            },
+            [](const GV2PresentationApply::FPreparedRichTextSpansOperation& Op)
+            {
+                UWidget* Widget = Op.TargetWidget.Get();
+                UGV2RichTextWidgetBase* RichTextWidget = Cast<UGV2RichTextWidgetBase>(Widget);
+                if (!RichTextWidget && Widget)
+                {
+                    RichTextWidget = Widget->GetTypedOuter<UGV2RichTextWidgetBase>();
+                }
+                if (RichTextWidget == nullptr)
+                {
+                    return;
+                }
+
+                TArray<FGV2RichTextSpanViewModel> Spans;
+                Spans.Reserve(Op.Spans.Num());
+                for (const GV2PresentationApply::FPreparedRichTextSpan& FlatSpan : Op.Spans)
+                {
+                    FGV2RichTextSpanViewModel Span;
+                    Span.SpanId = FlatSpan.SpanId;
+                    Span.Key = FlatSpan.Key;
+                    Span.Hover.Title.Text = FlatSpan.Hover.Title;
+                    Span.Hover.Description.Text = FlatSpan.Hover.Description;
+                    Span.Hover.ImageResourceId = FlatSpan.Hover.ImageResourceId;
+                    Span.Binding = FGV2UiBindingHandle::FromSerialized(FlatSpan.SerializedBinding);
+                    Spans.Add(MoveTemp(Span));
+                }
+                RichTextWidget->ApplySpans(Spans);
+            },
+            [&bFailed, &OutError](const GV2PresentationApply::FPreparedTextOperation& Op)
+            {
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (Widget == nullptr)
+                {
+                    return;
+                }
+
+                FGV2TextViewModel Text;
+                Text.Text = Op.Value.Text;
+                Text.StyleToken = Op.Value.StyleToken;
+                Text.NormalizedMarkup = Op.Value.NormalizedMarkup;
+
+                if (Op.bIsReset)
+                {
+                    // Fire-and-forget, matching Reset()'s own original shape, which
+                    // never checked these return values either.
+                    DispatchTextOperation(Widget, Text, true, nullptr);
+                }
+                else if (!DispatchTextOperation(Widget, Text, false, &OutError))
+                {
+                    bFailed = true;
+                }
+            },
+            [](const GV2PresentationApply::FPreparedKeyedCollectionOperation& Op)
+            {
+                UWidget* TargetWidget = Op.TargetWidget.Get();
+                if (TargetWidget == nullptr)
+                {
+                    return;
+                }
+
+                UGV2ListViewWidgetBase* ListView = Cast<UGV2ListViewWidgetBase>(TargetWidget);
+                UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget);
+
+                if (Op.bIsReset)
+                {
+                    if (ListView != nullptr)
+                    {
+                        ListView->ClearEntries();
+                    }
+                    else if (ButtonList != nullptr)
+                    {
+                        if (ButtonList->GetButtonContainer())
+                        {
+                            ButtonList->GetButtonContainer()->ClearChildren();
+                        }
+                    }
+                    else if (UPanelWidget* Panel = Cast<UPanelWidget>(TargetWidget))
+                    {
+                        Panel->ClearChildren();
+                    }
+                    return;
+                }
+
+                UPanelWidget* Panel = ListView
+                    ? ListView->GetContainerPanel()
+                    : (ButtonList ? Cast<UPanelWidget>(ButtonList->GetButtonContainer()) : Cast<UPanelWidget>(TargetWidget));
+
+                if (Panel != nullptr)
+                {
+                    Panel->ClearChildren();
+                    for (const GV2PresentationApply::FPreparedKeyedCollectionEntry& Entry : Op.OrderedEntries)
+                    {
+                        if (UWidget* Child = Entry.Widget.Get())
+                        {
+                            Panel->AddChild(Child);
+                        }
+                    }
+                }
+
+                // Newly added slots have no styling of their own; let the container
+                // reapply its central style (e.g. per-item slot padding) now that the
+                // collection has settled.
+                if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
+                {
+                    IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
+                }
+
+                if (ListView != nullptr)
+                {
+                    TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
+                    for (const GV2PresentationApply::FPreparedKeyedCollectionEntry& Entry : Op.OrderedEntries)
+                    {
+                        if (UWidget* Child = Entry.Widget.Get())
+                        {
+                            ActiveWidgetsByKey.Add(Entry.Key, Child);
+                        }
+                    }
+                    ListView->SetActiveWidgetsMap(ActiveWidgetsByKey);
+                }
+
+                if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget->GetOuter()))
+                {
+                    Dropdown->UpdateHeaderLabel();
+                }
+                else if (UGV2DropdownSelectWidgetBase* DropdownOuter = TargetWidget->GetTypedOuter<UGV2DropdownSelectWidgetBase>())
+                {
+                    DropdownOuter->UpdateHeaderLabel();
+                }
+            },
+            [](const GV2PresentationApply::FPreparedTabContainerOperation& Op)
+            {
+                UWidget* Widget = Op.TargetWidget.Get();
+                UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(Widget);
+                if (!TabContainer && Widget)
+                {
+                    TabContainer = Widget->GetTypedOuter<UGV2TabContainerWidgetBase>();
+                }
+                if (TabContainer == nullptr)
+                {
+                    return;
+                }
+
+                if (Op.bIsReset)
+                {
+                    TabContainer->ResetTabContainerModel();
+                    return;
+                }
+
+                TArray<FGV2TabItemEntry> Entries;
+                TMap<FName, UGV2ScreenWidgetBase*> Widgets;
+                Entries.Reserve(Op.Entries.Num());
+                for (const GV2PresentationApply::FPreparedTabEntry& FlatEntry : Op.Entries)
+                {
+                    FGV2TabItemEntry Entry;
+                    Entry.Key = FlatEntry.Key;
+                    Entry.Title.Text = FlatEntry.Title.Text;
+                    Entry.Title.StyleToken = FlatEntry.Title.StyleToken;
+                    Entry.Title.NormalizedMarkup = FlatEntry.Title.NormalizedMarkup;
+                    Entry.ScreenId = FlatEntry.ScreenId;
+                    Entries.Add(MoveTemp(Entry));
+
+                    if (UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(FlatEntry.ScreenWidget.Get()))
+                    {
+                        Widgets.Add(FlatEntry.Key, ScreenWidget);
+                    }
+                }
+                TabContainer->ApplyTabEntries(Entries, Widgets);
+            },
+            [](const GV2PresentationApply::FPreparedPlainTextOperation&) {},
+            [](const GV2PresentationApply::FPreparedRichTextRenderOperation&) {},
+            [](const GV2PresentationApply::FPreparedTextHintOperation&) {}
+        }, Operation);
     }
 
-    for (const GV2PresentationApply::FPreparedKeyOperation& Operation : Transaction.GetKeyOperations())
+    if (bFailed)
     {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        // DUC-03: "selected_key" and "default_tab_key" are their own capabilities, not
-        // the generic `key` identity, and are routed by name so they can never be
-        // shadowed by (or shadow) a host's real `key`.
-        if (Operation.PropertyName == TEXT("selected_key"))
-        {
-            if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget))
-            {
-                Dropdown->SetSelectedKey(FName(*Operation.Value));
-                continue;
-            }
-        }
-        else if (Operation.PropertyName == TEXT("default_tab_key"))
-        {
-            if (UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(Widget))
-            {
-                TabContainer->ApplyDefaultTabKey(FName(*Operation.Value));
-                continue;
-            }
-        }
-        else if (IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(Widget))
-        {
-            Host->SetKey(FName(*Operation.Value));
-            continue;
-        }
-
-        // A host that declares a `key`-kind capability but has no branch here would
-        // otherwise report a successful commit while storing nothing -- the exact shape
-        // this pipeline exists to make impossible. Unhandled target type/property is a
-        // defect, not a no-op.
-        OutError = FString::Printf(
-            TEXT("core:diagnostic.ui_consumer.unhandled_target: '%s' capability declared for '%s' has no commit branch"),
-            *Operation.PropertyName.ToString(),
-            Widget != nullptr ? *Widget->GetClass()->GetName() : TEXT("<null>"));
         return false;
     }
-
-    for (const GV2PresentationApply::FPreparedBindingOperation& Operation : Transaction.GetBindingOperations())
-    {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        if (IGV2UiBindingTarget* BindingTarget = Cast<IGV2UiBindingTarget>(Widget))
-        {
-            BindingTarget->SetBindingHandle(FGV2UiBindingHandle::FromSerialized(Operation.SerializedHandle));
-        }
-    }
-
-    for (const GV2PresentationApply::FPreparedRichTextSpansOperation& Operation : Transaction.GetRichTextSpansOperations())
-    {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        UGV2RichTextWidgetBase* RichTextWidget = Cast<UGV2RichTextWidgetBase>(Widget);
-        if (!RichTextWidget && Widget)
-        {
-            RichTextWidget = Widget->GetTypedOuter<UGV2RichTextWidgetBase>();
-        }
-        if (RichTextWidget == nullptr)
-        {
-            continue;
-        }
-
-        TArray<FGV2RichTextSpanViewModel> Spans;
-        Spans.Reserve(Operation.Spans.Num());
-        for (const GV2PresentationApply::FPreparedRichTextSpan& FlatSpan : Operation.Spans)
-        {
-            FGV2RichTextSpanViewModel Span;
-            Span.SpanId = FlatSpan.SpanId;
-            Span.Key = FlatSpan.Key;
-            Span.Hover.Title.Text = FlatSpan.Hover.Title;
-            Span.Hover.Description.Text = FlatSpan.Hover.Description;
-            Span.Hover.ImageResourceId = FlatSpan.Hover.ImageResourceId;
-            Span.Binding = FGV2UiBindingHandle::FromSerialized(FlatSpan.SerializedBinding);
-            Spans.Add(MoveTemp(Span));
-        }
-        RichTextWidget->ApplySpans(Spans);
-    }
-
-    for (const GV2PresentationApply::FPreparedKeyedCollectionOperation& Operation : Transaction.GetKeyedCollectionOperations())
-    {
-        UWidget* TargetWidget = Operation.TargetWidget.Get();
-        if (TargetWidget == nullptr)
-        {
-            continue;
-        }
-
-        UGV2ListViewWidgetBase* ListView = Cast<UGV2ListViewWidgetBase>(TargetWidget);
-        UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget);
-
-        if (Operation.bIsReset)
-        {
-            if (ListView != nullptr)
-            {
-                ListView->ClearEntries();
-            }
-            else if (ButtonList != nullptr)
-            {
-                if (ButtonList->GetButtonContainer())
-                {
-                    ButtonList->GetButtonContainer()->ClearChildren();
-                }
-            }
-            else if (UPanelWidget* Panel = Cast<UPanelWidget>(TargetWidget))
-            {
-                Panel->ClearChildren();
-            }
-            continue;
-        }
-
-        UPanelWidget* Panel = ListView
-            ? ListView->GetContainerPanel()
-            : (ButtonList ? Cast<UPanelWidget>(ButtonList->GetButtonContainer()) : Cast<UPanelWidget>(TargetWidget));
-
-        if (Panel != nullptr)
-        {
-            Panel->ClearChildren();
-            for (const GV2PresentationApply::FPreparedKeyedCollectionEntry& Entry : Operation.OrderedEntries)
-            {
-                if (UWidget* Child = Entry.Widget.Get())
-                {
-                    Panel->AddChild(Child);
-                }
-            }
-        }
-
-        // Newly added slots have no styling of their own; let the container reapply its
-        // central style (e.g. per-item slot padding) now that the collection has settled.
-        if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
-        {
-            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
-        }
-
-        if (ListView != nullptr)
-        {
-            TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
-            for (const GV2PresentationApply::FPreparedKeyedCollectionEntry& Entry : Operation.OrderedEntries)
-            {
-                if (UWidget* Child = Entry.Widget.Get())
-                {
-                    ActiveWidgetsByKey.Add(Entry.Key, Child);
-                }
-            }
-            ListView->SetActiveWidgetsMap(ActiveWidgetsByKey);
-        }
-
-        if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget->GetOuter()))
-        {
-            Dropdown->UpdateHeaderLabel();
-        }
-        else if (UGV2DropdownSelectWidgetBase* DropdownOuter = TargetWidget->GetTypedOuter<UGV2DropdownSelectWidgetBase>())
-        {
-            DropdownOuter->UpdateHeaderLabel();
-        }
-    }
-
-    for (const GV2PresentationApply::FPreparedTabContainerOperation& Operation : Transaction.GetTabContainerOperations())
-    {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(Widget);
-        if (!TabContainer && Widget)
-        {
-            TabContainer = Widget->GetTypedOuter<UGV2TabContainerWidgetBase>();
-        }
-        if (TabContainer == nullptr)
-        {
-            continue;
-        }
-
-        if (Operation.bIsReset)
-        {
-            TabContainer->ResetTabContainerModel();
-            continue;
-        }
-
-        TArray<FGV2TabItemEntry> Entries;
-        TMap<FName, UGV2ScreenWidgetBase*> Widgets;
-        Entries.Reserve(Operation.Entries.Num());
-        for (const GV2PresentationApply::FPreparedTabEntry& FlatEntry : Operation.Entries)
-        {
-            FGV2TabItemEntry Entry;
-            Entry.Key = FlatEntry.Key;
-            Entry.Title.Text = FlatEntry.Title.Text;
-            Entry.Title.StyleToken = FlatEntry.Title.StyleToken;
-            Entry.Title.NormalizedMarkup = FlatEntry.Title.NormalizedMarkup;
-            Entry.ScreenId = FlatEntry.ScreenId;
-            Entries.Add(MoveTemp(Entry));
-
-            if (UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(FlatEntry.ScreenWidget.Get()))
-            {
-                Widgets.Add(FlatEntry.Key, ScreenWidget);
-            }
-        }
-        TabContainer->ApplyTabEntries(Entries, Widgets);
-    }
-
-    for (const GV2PresentationApply::FPreparedTextOperation& Operation : Transaction.GetTextOperations())
-    {
-        UWidget* Widget = Operation.TargetWidget.Get();
-        if (Widget == nullptr)
-        {
-            continue;
-        }
-
-        FGV2TextViewModel Text;
-        Text.Text = Operation.Value.Text;
-        Text.StyleToken = Operation.Value.StyleToken;
-        Text.NormalizedMarkup = Operation.Value.NormalizedMarkup;
-
-        if (Operation.bIsReset)
-        {
-            DispatchTextOperation(Widget, Text, true, nullptr);
-        }
-        else if (!DispatchTextOperation(Widget, Text, false, &OutError))
-        {
-            return false;
-        }
-    }
-
-    OutError.Reset();
     return true;
 }
 }

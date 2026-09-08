@@ -2,6 +2,7 @@
 
 #include "CommonTextBlock.h"
 #include "CoreMinimal.h"
+#include "Misc/TVariant.h"
 #include "Styling/SlateBrush.h"
 #include "Styling/SlateTypes.h"
 
@@ -299,138 +300,149 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextHintOperation
     FText Text;
 };
 
-// PSC-09A/09B (ADR-0043 D3): immutable once built -- an upper GV2 preparer appends
+// PSC-10A (ADR-0043 D3): the whole family of operation kinds as ONE enum/variant, not
+// parallel per-kind arrays -- Visit() over FGV2PreparedOperationVariant is the only
+// dispatch mechanism Apply() (both this module's and GV2LegacyPresentationApplyAdapter's)
+// is allowed to use; a lambda-overload-set missing a case for one of these alternatives
+// is a COMPILE ERROR (see PreparedPresentationTransaction.cpp's TOverloaded<...> uses),
+// not a silently-skipped `default:` branch. Declaration order here MUST match
+// FGV2PreparedOperationVariant's template argument order below -- GetPreparedOperationKind()
+// relies on it (variant index == enum value) and a self-test in the field-inventory gate
+// checks this invariant against the source text directly.
+enum class EGV2PreparedOperationKind : uint8
+{
+    ImageResource,
+    ImageHost,
+    Boolean,
+    EditableTextValue,
+    ProgressBar,
+    Number,
+    Integer,
+    String,
+    Key,
+    Binding,
+    RichTextSpans,
+    Text,
+    KeyedCollection,
+    TabContainer,
+    PlainText,
+    RichTextRender,
+    TextHint,
+};
+
+using FGV2PreparedOperationVariant = TVariant<
+    FPreparedImageResourceOperation,
+    FPreparedImageHostOperation,
+    FPreparedBooleanOperation,
+    FPreparedEditableTextValueOperation,
+    FPreparedProgressBarOperation,
+    FPreparedNumberOperation,
+    FPreparedIntegerOperation,
+    FPreparedStringOperation,
+    FPreparedKeyOperation,
+    FPreparedBindingOperation,
+    FPreparedRichTextSpansOperation,
+    FPreparedTextOperation,
+    FPreparedKeyedCollectionOperation,
+    FPreparedTabContainerOperation,
+    FPreparedPlainTextOperation,
+    FPreparedRichTextRenderOperation,
+    FPreparedTextHintOperation
+>;
+
+GV2PRESENTATIONAPPLY_API EGV2PreparedOperationKind GetPreparedOperationKind(const FGV2PreparedOperationVariant& Operation);
+
+// PSC-09A/09B/10A (ADR-0043 D3): immutable once built -- an upper GV2 preparer appends
 // operations, then hands the finished transaction to Apply() below; nothing mutates it
-// afterward, and it carries no PrepareContext, snapshot, or resolver of any kind.
+// afterward, and it carries no PrepareContext, snapshot, or resolver of any kind. Typed
+// Add*Operation() convenience wrappers keep every existing producer call site unchanged
+// (same pattern FGV2PreparedUiValue's Make*() factories use over their own TVariant) --
+// the structural claim "one enum/variant" is about STORAGE (one TArray<FGV2PreparedOperationVariant>
+// below, not seventeen parallel arrays) and DISPATCH (Visit(), not per-kind Get*Operations()
+// accessors letting a consumer silently ignore a kind it doesn't yet know about).
 class GV2PRESENTATIONAPPLY_API FGV2PreparedPresentationTransaction
 {
 public:
+    void AddOperation(FGV2PreparedOperationVariant Operation)
+    {
+        Operations.Add(MoveTemp(Operation));
+    }
+
     void AddImageResourceOperation(FPreparedImageResourceOperation Operation)
     {
-        ImageResourceOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedImageResourceOperation>(), MoveTemp(Operation)));
     }
     void AddImageHostOperation(FPreparedImageHostOperation Operation)
     {
-        ImageHostOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedImageHostOperation>(), MoveTemp(Operation)));
     }
     void AddBooleanOperation(FPreparedBooleanOperation Operation)
     {
-        BooleanOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedBooleanOperation>(), MoveTemp(Operation)));
     }
     void AddEditableTextValueOperation(FPreparedEditableTextValueOperation Operation)
     {
-        EditableTextValueOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedEditableTextValueOperation>(), MoveTemp(Operation)));
     }
     void AddProgressBarOperation(FPreparedProgressBarOperation Operation)
     {
-        ProgressBarOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedProgressBarOperation>(), MoveTemp(Operation)));
     }
     void AddNumberOperation(FPreparedNumberOperation Operation)
     {
-        NumberOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedNumberOperation>(), MoveTemp(Operation)));
     }
     void AddIntegerOperation(FPreparedIntegerOperation Operation)
     {
-        IntegerOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedIntegerOperation>(), MoveTemp(Operation)));
     }
     void AddStringOperation(FPreparedStringOperation Operation)
     {
-        StringOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedStringOperation>(), MoveTemp(Operation)));
     }
     void AddKeyOperation(FPreparedKeyOperation Operation)
     {
-        KeyOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedKeyOperation>(), MoveTemp(Operation)));
     }
     void AddBindingOperation(FPreparedBindingOperation Operation)
     {
-        BindingOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedBindingOperation>(), MoveTemp(Operation)));
     }
     void AddRichTextSpansOperation(FPreparedRichTextSpansOperation Operation)
     {
-        RichTextSpansOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedRichTextSpansOperation>(), MoveTemp(Operation)));
     }
     void AddTextOperation(FPreparedTextOperation Operation)
     {
-        TextOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedTextOperation>(), MoveTemp(Operation)));
     }
     void AddKeyedCollectionOperation(FPreparedKeyedCollectionOperation Operation)
     {
-        KeyedCollectionOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedKeyedCollectionOperation>(), MoveTemp(Operation)));
     }
     void AddTabContainerOperation(FPreparedTabContainerOperation Operation)
     {
-        TabContainerOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedTabContainerOperation>(), MoveTemp(Operation)));
     }
     void AddPlainTextOperation(FPreparedPlainTextOperation Operation)
     {
-        PlainTextOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedPlainTextOperation>(), MoveTemp(Operation)));
     }
     void AddRichTextRenderOperation(FPreparedRichTextRenderOperation Operation)
     {
-        RichTextRenderOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedRichTextRenderOperation>(), MoveTemp(Operation)));
     }
     void AddTextHintOperation(FPreparedTextHintOperation Operation)
     {
-        TextHintOperations.Add(MoveTemp(Operation));
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedTextHintOperation>(), MoveTemp(Operation)));
     }
 
-    const TArray<FPreparedImageResourceOperation>& GetImageResourceOperations() const { return ImageResourceOperations; }
-    const TArray<FPreparedImageHostOperation>& GetImageHostOperations() const { return ImageHostOperations; }
-    const TArray<FPreparedBooleanOperation>& GetBooleanOperations() const { return BooleanOperations; }
-    const TArray<FPreparedEditableTextValueOperation>& GetEditableTextValueOperations() const { return EditableTextValueOperations; }
-    const TArray<FPreparedProgressBarOperation>& GetProgressBarOperations() const { return ProgressBarOperations; }
-    const TArray<FPreparedNumberOperation>& GetNumberOperations() const { return NumberOperations; }
-    const TArray<FPreparedIntegerOperation>& GetIntegerOperations() const { return IntegerOperations; }
-    const TArray<FPreparedStringOperation>& GetStringOperations() const { return StringOperations; }
-    const TArray<FPreparedKeyOperation>& GetKeyOperations() const { return KeyOperations; }
-    const TArray<FPreparedBindingOperation>& GetBindingOperations() const { return BindingOperations; }
-    const TArray<FPreparedRichTextSpansOperation>& GetRichTextSpansOperations() const { return RichTextSpansOperations; }
-    const TArray<FPreparedTextOperation>& GetTextOperations() const { return TextOperations; }
-    const TArray<FPreparedKeyedCollectionOperation>& GetKeyedCollectionOperations() const { return KeyedCollectionOperations; }
-    const TArray<FPreparedTabContainerOperation>& GetTabContainerOperations() const { return TabContainerOperations; }
-    const TArray<FPreparedPlainTextOperation>& GetPlainTextOperations() const { return PlainTextOperations; }
-    const TArray<FPreparedRichTextRenderOperation>& GetRichTextRenderOperations() const { return RichTextRenderOperations; }
-    const TArray<FPreparedTextHintOperation>& GetTextHintOperations() const { return TextHintOperations; }
+    const TArray<FGV2PreparedOperationVariant>& GetOperations() const { return Operations; }
 
-    bool IsEmpty() const
-    {
-        return ImageResourceOperations.IsEmpty()
-            && ImageHostOperations.IsEmpty()
-            && BooleanOperations.IsEmpty()
-            && EditableTextValueOperations.IsEmpty()
-            && ProgressBarOperations.IsEmpty()
-            && NumberOperations.IsEmpty()
-            && IntegerOperations.IsEmpty()
-            && StringOperations.IsEmpty()
-            && KeyOperations.IsEmpty()
-            && BindingOperations.IsEmpty()
-            && RichTextSpansOperations.IsEmpty()
-            && TextOperations.IsEmpty()
-            && KeyedCollectionOperations.IsEmpty()
-            && TabContainerOperations.IsEmpty()
-            && PlainTextOperations.IsEmpty()
-            && RichTextRenderOperations.IsEmpty()
-            && TextHintOperations.IsEmpty();
-    }
+    bool IsEmpty() const { return Operations.IsEmpty(); }
 
 private:
-    TArray<FPreparedImageResourceOperation> ImageResourceOperations;
-    TArray<FPreparedImageHostOperation> ImageHostOperations;
-    TArray<FPreparedBooleanOperation> BooleanOperations;
-    TArray<FPreparedEditableTextValueOperation> EditableTextValueOperations;
-    TArray<FPreparedProgressBarOperation> ProgressBarOperations;
-    TArray<FPreparedNumberOperation> NumberOperations;
-    TArray<FPreparedIntegerOperation> IntegerOperations;
-    TArray<FPreparedStringOperation> StringOperations;
-    TArray<FPreparedKeyOperation> KeyOperations;
-    TArray<FPreparedBindingOperation> BindingOperations;
-    TArray<FPreparedRichTextSpansOperation> RichTextSpansOperations;
-    TArray<FPreparedTextOperation> TextOperations;
-    TArray<FPreparedKeyedCollectionOperation> KeyedCollectionOperations;
-    TArray<FPreparedTabContainerOperation> TabContainerOperations;
-    TArray<FPreparedPlainTextOperation> PlainTextOperations;
-    TArray<FPreparedRichTextRenderOperation> RichTextRenderOperations;
-    TArray<FPreparedTextHintOperation> TextHintOperations;
+    TArray<FGV2PreparedOperationVariant> Operations;
 };
 
 // PSC-09A (ADR-0043 D2): the only public entry point physical Apply exposes -- there is
