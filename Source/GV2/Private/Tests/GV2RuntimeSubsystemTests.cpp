@@ -22,6 +22,7 @@
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Components/Image.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
@@ -1864,6 +1865,57 @@ bool FGV2NestedTabRejectedScreenLeavesNoPhysicalMutationTest::RunTest(const FStr
         TestEqual(TEXT("Seeded entry's key is unchanged"), TabContainer->GetTabEntries()[0].Key, SeedEntry.Key);
         TestEqual(TEXT("Seeded entry's screen_id is unchanged"), TabContainer->GetTabEntries()[0].ScreenId, SeedEntry.ScreenId);
     }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PresentationApplyImageOperationTest,
+    "GV2.Runtime.Presentation.PresentationApplyImageOperation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PSC-09A (ADR-0043 D2/D3): exercises GV2PresentationApply::Apply() directly, in
+// isolation from any property consumer, session, or snapshot -- this module has no
+// resolver type to build one with, so this synthetic transaction is exactly the shape a
+// real preparer builds. Proves both halves of the new module's own contract: a valid
+// operation physically mutates the widget, and an operation whose target is unavailable
+// (the same observable shape a widget garbage-collected between Prepare and Apply would
+// have) is a typed failure, not a crash or a silent no-op.
+bool FGV2PresentationApplyImageOperationTest::RunTest(const FString& Parameters)
+{
+    UImage* Widget = NewObject<UImage>();
+
+    FSlateBrush Brush;
+    Brush.DrawAs = ESlateBrushDrawType::Box;
+    Brush.ImageSize = FVector2D(42.0f, 24.0f);
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    TestTrue(TEXT("A freshly built transaction has no operations yet"), Transaction.IsEmpty());
+    GV2PresentationApply::FPreparedImageResourceOperation Operation;
+    Operation.TargetWidget = Widget;
+    Operation.Brush = Brush;
+    Transaction.AddImageResourceOperation(Operation);
+    TestFalse(TEXT("A transaction with one added operation is no longer empty"), Transaction.IsEmpty());
+
+    FString ApplyError;
+    TestTrue(
+        *FString::Printf(TEXT("Apply succeeds for a valid target [Error: %s]"), *ApplyError),
+        GV2PresentationApply::Apply(Transaction, ApplyError));
+    TestEqual(TEXT("Apply set the exact prepared brush's DrawAs"), Widget->GetBrush().DrawAs, ESlateBrushDrawType::Box);
+    TestEqual(TEXT("Apply set the exact prepared brush's ImageSize"), FVector2D(Widget->GetBrush().ImageSize), FVector2D(42.0f, 24.0f));
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction StaleTransaction;
+    GV2PresentationApply::FPreparedImageResourceOperation StaleOperation;
+    // TargetWidget is deliberately left unassigned -- an unset TWeakObjectPtr resolves
+    // to nullptr via Get(), the same observable shape a garbage-collected target has by
+    // the time Apply runs.
+    StaleTransaction.AddImageResourceOperation(StaleOperation);
+
+    FString StaleError;
+    TestFalse(
+        TEXT("Apply rejects an operation whose target widget is unavailable"),
+        GV2PresentationApply::Apply(StaleTransaction, StaleError));
+    TestFalse(TEXT("Rejection carries a diagnostic message"), StaleError.IsEmpty());
 
     return true;
 }

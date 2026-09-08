@@ -78,6 +78,6 @@ gv2-content   →  только Content Core, без Lua VM
 | `GV2ContentAuthoring` | Portable atomic authoring operations | `GV2ContentCore`, `GV2ContentHostSupport` |
 | `GV2ContentEditor` | Editor Adapter и Unreal Editor Slate frontend | `GV2ContentAuthoring`, `GV2ContentCore`, `GV2ContentHostSupport`; editor-only |
 | `GV2` | UE composition, Bridge, Presentation (semantic: snapshot, Prepare, транзакция) | runtime modules, `GV2PresentationApply`; `GV2TestSupport`, `GV2ContentAuthoring`, `GV2ContentEditor` только в Editor target |
-| `GV2PresentationApply` (ADR-0043 D2, target module — PSC-11) | Физическое применение: Commit, откат, keyed-реконсиляция, восстановление проекции, чистые расчёты раскладки | `Core`, `CoreUObject`, `Engine`, `UMG`, `CommonUI`, `Slate`, `SlateCore` — только |
+| `GV2PresentationApply` (ADR-0043 D2, DTO-only skeleton — PSC-09A; полная реализация — PSC-11) | Физическое применение: Commit, откат, keyed-реконсиляция, восстановление проекции, чистые расчёты раскладки | `Core`, `CoreUObject`, `Engine`, `UMG`, `CommonUI`, `Slate`, `SlateCore` — только |
 
 Точная физическая раскладка и build-таргеты — [Build and Tooling](BuildAndTooling.md).

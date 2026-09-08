@@ -291,4 +291,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_prepare_context_inventory.py"
             "--self-test"
     )
+    # PSC-09A (ADR-0043 D2/D4): GV2PresentationApply's own Build.cs dependency list IS
+    # the primary guarantee physical Apply cannot reach a content/authority type -- this
+    # gate reads that declaration directly and requires GV2's forward edge onto it exist.
+    add_test(
+        NAME presentation_apply_module_graph_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_module_graph.py"
+    )
+    add_test(
+        NAME presentation_apply_module_graph_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_module_graph.py"
+            "--self-test"
+    )
 endif()

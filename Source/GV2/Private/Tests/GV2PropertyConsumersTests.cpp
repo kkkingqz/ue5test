@@ -243,6 +243,29 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         FString IconError;
         const bool bIconPrepared = ImageConsumer.Prepare(ImageVal, ImageCap, InnerIcon, IconError);
         TestTrue(TEXT("FGV2ImageResourcePropertyConsumer succeeds with UGV2IconWidgetBase"), bIconPrepared);
+
+        // 3e. PSC-09A (ADR-0043 D2/D3): InnerIcon is a raw UImage passed directly as the
+        // consumer's TargetWidget (constructed loose in a WidgetTree, not reached via
+        // Cast<UGV2ImageWidgetBase>/Cast<UGV2PortraitWidgetBase>), so Commit()/Reset()
+        // both take the migrated branch that builds a transaction and calls
+        // GV2PresentationApply::Apply -- proving the new module's own Apply() actually
+        // mutates the widget, not just that it compiles.
+        FString IconCommitError;
+        TestTrue(
+            *FString::Printf(TEXT("FGV2ImageResourcePropertyConsumer Commit applies through GV2PresentationApply [Error: %s]"), *IconCommitError),
+            ImageConsumer.Commit(InnerIcon, IconCommitError));
+        TestNotNull(
+            TEXT("Committed brush carries a resource object (texture) after GV2PresentationApply::Apply"),
+            InnerIcon->GetBrush().GetResourceObject());
+        TestEqual(
+            TEXT("Committed brush DrawAs matches PreserveAspect's Image draw type"),
+            InnerIcon->GetBrush().DrawAs,
+            ESlateBrushDrawType::Image);
+
+        ImageConsumer.Reset(InnerIcon);
+        TestNull(
+            TEXT("Reset through GV2PresentationApply clears the brush's resource object"),
+            InnerIcon->GetBrush().GetResourceObject());
     }
 
     // 4. Code Audit Test: centralized presentation pipeline compliance
@@ -268,9 +291,21 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             // the function name made this assertion fail when Commit moved from
             // ResolveAndApply to ApplyResolved -- a change that strengthened the very
             // centralization this checks, since application stopped re-resolving.
+            // PSC-09A (ADR-0043 D2/D3): Commit's plain-UImage branch moved a further
+            // step -- GV2PresentationApply::Apply, not FGV2ImagePresentation::
+            // ApplyResolved directly -- while the two widget-host branches still route
+            // through the widget's own ApplyResolvedImageResource/ApplyResolvedPortrait
+            // (which themselves still call FGV2ImagePresentation::ApplyResolved, in
+            // GV2ImageWidgetBase.cpp/GV2PortraitWidgetBase.cpp, not this file). All
+            // three centralized entry points count; this file's own source no longer
+            // names FGV2ImagePresentation directly.
             TestTrue(
-                TEXT("PropertyConsumers routes image application through FGV2ImagePresentation"),
-                ConsumerSource.Contains(TEXT("FGV2ImagePresentation::")));
+                TEXT("PropertyConsumers routes widget-host image application through their own ApplyResolvedImageResource/ApplyResolvedPortrait"),
+                ConsumerSource.Contains(TEXT("ApplyResolvedImageResource(PreparedResource"))
+                    && ConsumerSource.Contains(TEXT("ApplyResolvedPortrait(PreparedResource")));
+            TestTrue(
+                TEXT("PropertyConsumers routes the migrated plain-UImage case through GV2PresentationApply::Apply"),
+                ConsumerSource.Contains(TEXT("GV2PresentationApply::Apply")));
             TestFalse(
                 TEXT("STATUS-012: the consumer's Commit does not re-resolve by id -- it applies "
                      "the resolution Prepare validated"),

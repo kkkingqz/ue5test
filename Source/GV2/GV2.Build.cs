@@ -25,7 +25,11 @@ public class GV2 : ModuleRules
             "CommonUI",
             "GV2RuntimeCore",
             "GV2ContentCore",
-            "GV2ContentHostSupport"
+            "GV2ContentHostSupport",
+            // PSC-09A (ADR-0043 D2): the one allowed direction -- GV2 depends on the
+            // physical Apply module; GV2PresentationApply.Build.cs has, and must keep,
+            // no reverse edge back to GV2 or any content/authority module.
+            "GV2PresentationApply"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]

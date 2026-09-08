@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2UiPropertyHost.h"
@@ -40,6 +41,31 @@ public:
     // null is legitimate (no session snapshot available to this caller yet) and each such
     // override falls back to its pre-PSC-06 behavior in that case.
     virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) {}
+
+    // PSC-09A (ADR-0043 D2/D3, Payload.md M3): default no-op -- returning false means
+    // this consumer has not been migrated to the GV2PresentationApply transaction
+    // protocol yet, and its own Commit() below still performs physical mutation
+    // directly. Only FGV2ImageResourcePropertyConsumer overrides this so far, and only
+    // for a plain UImage target (its UGV2ImageWidgetBase/UGV2PortraitWidgetBase target
+    // branches are unmigrated too -- moving THEIR own Apply-adjacent UFUNCTIONs is a
+    // separate concern from this consumer's own split). Every other kind (Text,
+    // Boolean, Integer, Number, String, Key, Binding, KeyedCollection, RichTextSpans,
+    // TabContainer) is unmigrated at the end of PSC-09A -- naming this list here,
+    // rather than leaving it implied, is PSC-09A's own Done bullet
+    // ("явно записано, какие виды операций ещё не проходят через транзакцию"); closing
+    // it for the rest is PSC-09B's job, not a silent gap.
+    //
+    // A consumer that overrides this and returns true has appended everything Apply
+    // needs to OutTransaction and performs NO physical mutation itself anymore -- the
+    // reverse (a lower operation calling back up into this consumer, or into any GV2
+    // resolver) is exactly the shape ADR-0043 D2 forbids and is never a valid override.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const
+    {
+        return false;
+    }
 
     /**
      * Infallible commit phase.
@@ -96,6 +122,18 @@ public:
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
+
+    // PSC-09A (ADR-0043 D2/D3): the one migrated target shape -- a plain UImage. Prepare
+    // has already validated scale-policy compatibility and the aspect-ratio constraint
+    // (see Prepare()'s own body); this only bakes the final Slate brush for
+    // PreparedScalePolicy and hands it to GV2PresentationApply, which performs no
+    // validation of its own. UGV2ImageWidgetBase/UGV2PortraitWidgetBase targets are
+    // unmigrated -- Commit() still calls their own ApplyResolvedImageResource/
+    // ApplyResolvedPortrait UFUNCTIONs directly for those.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
 
     // PSC-06 (ADR-0043 D1): when set, Prepare() resolves the resource id through this
     // session's own snapshot instead of UGV2ImageResourceCatalog::GetSessionCatalog()'s

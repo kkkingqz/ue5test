@@ -99,7 +99,7 @@ Source/GV2ContentHostSupport/
   Public/            DiscoverPackageFromDirectory(), FResolvedPackageSet и другие filesystem-based
                      discovery helpers (ADR-0019); portable, не знает про UE
   Private/           std::filesystem-based implementation; depends on GV2ContentCore, not vice versa
-Source/GV2PresentationApply/   (ADR-0043 D2 -- target module, вводится PSC-11)
+Source/GV2PresentationApply/   (ADR-0043 D2 -- DTO-only skeleton введён PSC-09A; полная физическая реализация Apply/Commit/rollback переезжает PSC-11)
   Public/            единственная public transaction Apply entry point и её DTO
   Private/           Commit, откат, keyed-реконсиляция, восстановление проекции, чистые расчёты
                      раскладки; allowlist -- Core/CoreUObject/Engine/UMG/CommonUI/Slate/SlateCore,

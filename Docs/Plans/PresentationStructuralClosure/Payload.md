@@ -1,8 +1,8 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.2
-updated: 2026-09-07
+version: 1.3
+updated: 2026-09-08
 depends_on:
   - README.md
   - Snapshot.md
@@ -24,7 +24,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **PSC-09A — Типовая граница: контекст подготовки, каркас модуля и транзакция**
+- [x] **PSC-09A — Типовая граница: контекст подготовки, каркас модуля и транзакция**
   - Зависимости: PSC-06, PSC-08.
   - Инвариант: объект, способный обратиться к snapshot/registry/Theme, не исполняет physical mutation; объект применения не имеет authority capability.
   - Не считается закрытием: перенос существующего `IGV2PropertyConsumer` целиком; callback из lower operation в upper resolver; `void*`/generic service locator; временная обратная module dependency; изменение `UCLASS` paths.
@@ -37,6 +37,21 @@ depends_on:
     - task не меняет ни одного `/Script/GV2` class path;
     - явно записано, какие виды операций ещё не проходят через транзакцию на конец задачи, — это состояние закрывает `PSC-09B`, и оно названо, а не подразумевается.
   - Evidence: `Source/GV2PresentationApply/GV2PresentationApply.Build.cs`, public prepared transaction/operation declarations, разделённые property interfaces, module graph gate.
+  - **Реализация (2026-09-08):** Новый Unreal module `Source/GV2PresentationApply/` — `GV2PresentationApply.Build.cs` объявляет ТОЛЬКО `Core, CoreUObject, Engine, UMG, CommonUI, Slate, SlateCore` (никакой UHT-рефлексии — plain C++ структуры/namespace-функции, без `USTRUCT`/`UCLASS`, без `Module.cpp`, тот же "чисто C++ dependency-модуль" паттерн, что уже используют `GV2ContentHostSupport`/`GV2RuntimeCore`; НЕ добавлен в `.uproject`'s "Modules"/Target.cs `ExtraModuleNames` — линкуется только транзитивно через `GV2.Build.cs`'s `PublicDependencyModuleNames`, как и они). `GV2` объявляет единственное разрешённое прямое ребро (`GV2.Build.cs` → `"GV2PresentationApply"`); обратного ребра нет физически, поскольку `GV2PresentationApply.Build.cs` его не может объявить (не список имён, а то, что UBT способен слинковать).
+
+    **`FGV2PreparedPresentationTransaction`** (`GV2PresentationApply/Public/GV2PresentationApply/PreparedPresentationTransaction.h`, namespace `GV2PresentationApply`) — immutable контейнер `TArray<FPreparedImageResourceOperation>`; `FPreparedImageResourceOperation{TWeakObjectPtr<UImage> TargetWidget; FSlateBrush Brush}` — Brush уже полностью финализирован (Tiling/DrawAs уже выставлены под scale policy), PrepareContext отсутствует, никакой authority-тип физически недостижим (denylist — граф сборки). Единственная public entry point — `GV2PresentationApply::Apply(transaction, OutError)`: для каждой image-операции либо `SetBrush`+`SetDesiredSizeOverride`, либо typed-ошибка на невалидный (GC'd) target — decision-логики внутри нет, только физическая мутация.
+
+    **`IGV2PropertyConsumer` разделён** новым virtual `BuildPreparedOperation(TargetWidget, OutTransaction, OutError) const` (default `return false` — "не мигрировано"). Единственный override — `FGV2ImageResourcePropertyConsumer`, и только для plain-`UImage` target (тот самый case, что раньше напрямую вызывал `FGV2ImagePresentation::ApplyResolved`). `Commit()`/`Reset()` для этого одного case теперь строят transaction и вызывают `GV2PresentationApply::Apply(...)` — реальная production-wiring, не демо в отрыве от боевого пути. Оба `UGV2ImageWidgetBase`/`UGV2PortraitWidgetBase` target case НЕ мигрированы — `Commit()` по-прежнему вызывает их собственные `ApplyResolvedImageResource`/`ApplyResolvedPortrait` UFUNCTION напрямую (эти классы — `/Script/GV2` UCLASS, менять их пути явно запрещено этой задачей).
+
+    **Явно названный остаток на конец задачи** (Done-bullet "явно записано, какие виды операций ещё не проходят через транзакцию"): НЕ мигрированы — Text, Boolean, Integer, Number, String, Key, Binding, KeyedCollection, RichTextSpans, TabContainer (все 10 остальных consumer kinds) целиком; Image-consumer's собственные `UGV2ImageWidgetBase`/`UGV2PortraitWidgetBase` target cases (2 из 3 веток `Commit()`); `FGV2ImagePresentation::ApplyResolved`/`ResolveAndApply`, `FGV2ResolvedImageResource`, `EGV2ImageRenderMode`, `EGV2PrimitiveScalePolicy` остаются в `GV2` нетронутыми (используются как `UFUNCTION(BlueprintCallable)` параметры на `UGV2ImageWidgetBase`/`UGV2PortraitWidgetBase` — физический перенос вниз потребовал бы UHT-рефлексии в новом модуле, сознательно вынесено за рамки этой задачи). Закрытие всего перечисленного — `PSC-09B`.
+
+    **Новый gate** `validate_presentation_apply_module_graph.py` (declaration-derived): парсит `GV2PresentationApply.Build.cs`'s `Public/PrivateDependencyModuleNames`, требует каждую запись быть в allowlist (denylist-записи называются по имени явно), плюс проверяет, что `GV2.Build.cs` объявляет `"GV2PresentationApply"`. Негативный self-test: synthetic Build.cs с `GV2ContentCore` (denylist) и с неизвестным именем (`SomeFutureModule`) оба корректно отклоняются; синтетический `GV2.Build.cs` без forward-edge отклоняется.
+
+    **Новые тесты**: `GV2.Runtime.Presentation.PresentationApplyImageOperation` — изолированный unit-тест самого `GV2PresentationApply::Apply()` (без property consumer/session вообще): валидная operation мутирует widget корректно (brush/DrawAs/ImageSize), operation со stale/unassigned target даёт typed failure, не crash. `GV2.UI.StandardPropertyConsumers`'s секция 3 расширена (3e): `InnerIcon` — raw `UImage`, переданный НАПРЯМУЮ как `TargetWidget` (не через `UGV2ImageWidgetBase`/`UGV2PortraitWidgetBase` wrapper), поэтому `Commit()`/`Reset()` реально проходят через мигрированную ветку — `GetBrush().GetResourceObject()` проверяется до/после, доказывая физическую мутацию через новый модуль, а не только компиляцию. Существующий source-audit тест (STATUS-012 pipeline compliance) обновлён: искал `ConsumerSource.Contains("FGV2ImagePresentation::")`, который теперь совпадал бы только случайно с текстом комментария (реальный код в `GV2PropertyConsumers.cpp` больше не пишет эту строку напрямую) — заменён на явную проверку обеих реальных форм маршрутизации (`ApplyResolvedImageResource(PreparedResource`/`ApplyResolvedPortrait(PreparedResource` для host-веток, `GV2PresentationApply::Apply` для мигрированной).
+
+    Red-on-revert: временный no-op `GV2PresentationApply::Apply` (всегда `return true` без мутации) немедленно провалил ОБА зависимых теста (`PresentationApplyImageOperation`, `StandardPropertyConsumers`). Откат применён обратно.
+
+    Верификация: 128/128 UE Automation (127 существующих + 1 новый), 90/90 portable ctest (+2 новых gate-теста), все 13 standalone `validate_*.py`, `validate_core_decoupling.py`, `validate_docs.py` (185 файлов) — зелёные. Ни один `/Script/GV2` class path не изменён.
 
 - [ ] **PSC-09B — Весь production-путь проходит через транзакцию**
   - Зависимости: PSC-09A.

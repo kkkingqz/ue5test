@@ -10,7 +10,6 @@
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "UI/GV2TextPipeline.h"
-#include "UI/GV2ImagePresentation.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
@@ -405,19 +404,79 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
     }
     if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
     {
-        return FGV2ImagePresentation::ApplyResolved(
-            ImageWidget, PreparedResource, PreparedScalePolicy, PreparedFixedAspectRatio, OutError);
+        // PSC-09A (ADR-0043 D2/D3): the one migrated target shape in this Commit --
+        // builds a self-contained transaction (no re-validation; Prepare() already
+        // checked scale-policy compatibility and the aspect-ratio constraint above) and
+        // hands it to the ONLY entry point GV2PresentationApply exposes.
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        if (!BuildPreparedOperation(ImageWidget, Transaction, OutError))
+        {
+            return false;
+        }
+        return GV2PresentationApply::Apply(Transaction, OutError);
     }
 
     OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");
     return false;
 }
 
+// PSC-09A (ADR-0043 D2/D3): duplicates the Tile/NineSlice/else brush-finalization that
+// GV2ImagePresentation.cpp's ApplyResolved still performs for its OWN two remaining
+// callers (UGV2ImageWidgetBase::ApplyResolvedImageResource,
+// UGV2PortraitWidgetBase::ApplyResolvedPortrait) -- not shared, because those two
+// UFUNCTIONs are unmigrated. Unifying onto one code path is PSC-09B/PSC-10's job, once
+// those widget-owned Apply methods migrate too.
+bool FGV2ImageResourcePropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    UImage* ImageWidget = Cast<UImage>(TargetWidget);
+    if (ImageWidget == nullptr)
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: BuildPreparedOperation only supports a plain UImage target");
+        return false;
+    }
+
+    FSlateBrush FinalBrush = PreparedResource.Brush;
+    switch (PreparedScalePolicy)
+    {
+    case EGV2PrimitiveScalePolicy::Tile:
+        FinalBrush.Tiling = ESlateBrushTileType::Both;
+        FinalBrush.DrawAs = ESlateBrushDrawType::Image;
+        break;
+    case EGV2PrimitiveScalePolicy::NineSlice:
+        FinalBrush.DrawAs = ESlateBrushDrawType::Box;
+        break;
+    case EGV2PrimitiveScalePolicy::Unset:
+    case EGV2PrimitiveScalePolicy::FreeStretch:
+    case EGV2PrimitiveScalePolicy::PreserveAspect:
+        FinalBrush.Tiling = ESlateBrushTileType::NoTile;
+        FinalBrush.DrawAs = ESlateBrushDrawType::Image;
+        break;
+    }
+
+    GV2PresentationApply::FPreparedImageResourceOperation Operation;
+    Operation.TargetWidget = ImageWidget;
+    Operation.Brush = FinalBrush;
+    OutTransaction.AddImageResourceOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
 {
     if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
     {
-        ImageWidget->SetBrush(FSlateBrush());
+        // PSC-09A: same GV2PresentationApply entry point Commit() now uses for this
+        // target shape -- a default-constructed operation's Brush is FSlateBrush()'s own
+        // default, the same value this Reset always applied directly before.
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        GV2PresentationApply::FPreparedImageResourceOperation Operation;
+        Operation.TargetWidget = ImageWidget;
+        Transaction.AddImageResourceOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2PresentationApply::Apply(Transaction, ApplyError);
     }
     else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
     {
