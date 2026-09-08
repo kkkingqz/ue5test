@@ -1,8 +1,8 @@
 ---
 title: Structural Gates and Closure Tasks
 status: active
-version: 1.1
-updated: 2026-09-07
+version: 1.2
+updated: 2026-09-08
 depends_on:
   - README.md
   - ApplyBoundary.md
@@ -22,6 +22,7 @@ depends_on:
 | Где создаётся package set | declarations, возвращающие `FResolvedPackageSet`, и их call sites | разрешённые host bootstrap layers |
 | Какие модули связаны | все UBT `*.Build.cs` плюс все CMake target/source declarations | dependency allowlist/denylist из contract |
 | Какие операции применяются | exhaustive operation enum/variant | независимая role/behavior classification |
+| Какие central-style targets мутируются | реализации value-only target interface и все его production call sites | только prepared central-style operation внутри transaction façade; отдельно design-time-only branch |
 | Что может нести payload | recursive fields из public declarations | forbidden capability categories |
 | Какие Apply API экспортированы | declarations всего `GV2PresentationApply/Public` | одна transaction façade плюс DTO/result/widget roles |
 | Какие Widget Blueprint мигрируются | Asset Registry inheritance/reference closure | ноль old class paths после clean reload |
@@ -40,11 +41,13 @@ depends_on:
     - Headless/CMake graph отвергает UE/UMG/CommonUI/`GV2PresentationApply` source/link edge;
     - exported Apply API inventory отвергает вторую transaction façade или physical mutation entry point вне явно классифицированных widget/lifecycle roles;
     - operation enum/variant без `default` даёт compiler error для нового необработанного kind;
+    - central-style implementation/call-site inventory отвергает новый target без prepared operation, runtime `NativePreConstruct` application и physical helper call вне transaction façade;
     - recursive payload inventory отвергает soft reference, resolver/context/callback/service handle, включая nested members;
     - forbidden-capability scan перечисляет actual module source tree автоматически и отвергает synchronous load/settings/filesystem imports/calls; документирована граница, что он не является полной классификацией всех будущих UE API;
     - package-set factory/call inventory отвергает downstream rediscovery независимо от имени helper;
-    - mandatory production scenarios проходят: Theme resolve only in Prepare; nested Tab resolution failure; different Editor set shared by all consumers; corrupt disabled resource unopened; snapshot replacement lifetime; failed candidate preserves active before teardown; recovery semantics; `ue_content_roots` fingerprint separation; initial screen from snapshot;
-    - runtime authority counter показывает Prepare accesses и ноль accesses вокруг Apply для каждого operation kind;
+    - configured-accessor symbol gate отвергает declaration, definition или call site `GetConfiguredTheme()`/`GetConfiguredRegistry()`; отдельный production call-site inventory разрешает `GetCoreMinimalTheme()` только recovery surface;
+    - mandatory production scenarios проходят: Theme resolve only in Prepare; central style applied as prepared transaction operation; design-time preview does not read runtime authority; nested Tab resolution failure; different Editor set shared by all consumers; corrupt disabled resource unopened; snapshot replacement lifetime; failed candidate preserves active before teardown; cold-start recovery uses only core-minimal values; catastrophic recovery uses the pinned snapshot through normal Prepare/Apply; `ue_content_roots` fingerprint separation; initial screen from snapshot;
+    - runtime authority counter показывает Prepare accesses и ноль accesses вокруг Apply для каждого operation kind, включая central style;
     - для каждого `PAH-R1…R7` записано, какой gate краснеет при revert, и revert/synthetic mutation действительно демонстрирует failure;
     - contracts описывают назначение и ограничения каждого gate; source scans явно названы secondary там, где множество capabilities открыто.
   - Evidence: `Tools/Testing/`, `Source/GV2PresentationApply/`, portable conformance, UE Automation tests/report, обновлённые owner contracts.

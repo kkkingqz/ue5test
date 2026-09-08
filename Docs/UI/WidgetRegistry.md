@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.12
-updated: 2026-09-07
+version: 3.13
+updated: 2026-09-08
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -174,7 +174,7 @@ Repeated-field items обязаны иметь deterministic `key`. Общий `
 
 ## Central style contract
 
-`DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает identity active theme через UE-only project config, но резолюция происходит один раз — при построении session content snapshot (ADR-0043 D1), не заново на каждый `Commit`. Prepare несёт уже разрешённые typography/style значения; `GetConfiguredTheme()`/`ThemeAsset.LoadSynchronous()` не должны быть достижимы из Apply-фазы (`PAH-R1`, закрывается `PSC-04…06`, `09B`, `10`, `13`). Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
+`DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает identity active theme через UE-only project config, но резолюция происходит один раз — при построении session content snapshot (ADR-0043 D1), не заново на каждый `Commit`. Prepare несёт уже разрешённые typography/style значения; `GetConfiguredTheme()`/`ThemeAsset.LoadSynchronous()` не должны быть достижимы из Apply-фазы (`PAH-R1`, закрывается `PSC-04…06`, `PSC-09B`, `PSC-10A`, `PSC-10B`, `PSC-13`). Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
 
 Theme обязан задавать:
 
@@ -241,7 +241,9 @@ Canonical localized markup:
 
 Parser преобразует вложенные scopes в flat internal `<gv2 ...>...</>` runs для Slate. Этот internal markup запрещено хранить в localization/content. Interactive run наследует полностью разрешённый font/typeface/size/outline окружающего scope и добавляет только hyperlink interaction state.
 
-Каждый reusable visual component реализует `IGV2UiStyleConsumer.ApplyCentralStyle()` и вызывает его из `NativePreConstruct`. Это обеспечивает одинаковое поведение editor preview и runtime reconstruction. Отсутствующий theme, required style class или required `BindWidget` возвращает failure; silent local fallback для production component запрещён.
+**Target rule (`ADR-0043`, `PSC-10B`):** central style runtime-компонента является resolved operation общей `FGV2PreparedPresentationTransaction`. Theme resolution выполняется Prepare-фазой из session snapshot; физическое применение выполняет только transaction façade. No-argument `IGV2UiStyleConsumer.ApplyCentralStyle()` и runtime-вызов стилизации из `NativePreConstruct` не являются частью target API.
+
+Designer preview не является исключением к runtime authority boundary. При `IsDesignTime()` компонент может применить только сериализованные Widget/Blueprint defaults через pure value-only helper; configured Theme, snapshot, content lookup и loading ему недоступны. Preview остаётся структурной визуальной подсказкой, но не обязан воспроизводить выбранную runtime Theme до запуска Prepare. Отсутствующий required `BindWidget` остаётся failure; silent local fallback для production component запрещён.
 
 Default CommonUI styles `BP_UIStyle_Text_Default` и `BP_UIStyle_ButtonLabel_Default` обязаны иметь explicit font object и typeface. Development fixture использует engine Roboto, typeface `Regular`; empty font/typeface запрещены, поскольку platform fallback может отображать Cyrillic неверными glyphs.
 

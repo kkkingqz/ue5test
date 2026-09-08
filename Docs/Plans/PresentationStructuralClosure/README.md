@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.3
+version: 1.8
 updated: 2026-09-08
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -54,7 +54,7 @@ decisions:
 | `PAH-R4` | `PSC-08`, `PSC-10A`, `PSC-13` |
 | `PAH-R5` | `PSC-07`, `PSC-13` |
 | `PAH-R6` | `PSC-03`, `PSC-13` |
-| `PAH-R7` | `PSC-09A…13` |
+| `PAH-R7` | `PSC-09A`, `PSC-09B`, `PSC-10A`, `PSC-10B`, `PSC-11`, `PSC-12`, `PSC-13` |
 
 ## Зафиксированные интерфейсы
 
@@ -97,15 +97,13 @@ GV2 semantic Prepare
 
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
-                                             ├→ PSC-07✔ ───────────┐
-                                             └→ PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10
-                                                                              → PSC-11 → PSC-12
-                                                                              → PSC-13 → PSC-14
+       → PSC-07✔ → PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10A
+       → PSC-10B → PSC-11 → PSC-12 → PSC-13 → PSC-14
 ```
 
 - `PSC-04` начинается только после exact package set и manifest identity: snapshot нельзя строить из старого canonical rediscovery.
 - `PSC-09A` зависит от `PSC-06` (контекст подготовки) и `PSC-08` (разрешение экрана), но не от `PSC-07`: фильтрация ресурсов отключённых пакетов не влияет на разделение Prepare/Apply. Порядок исполнения последователен по общему ограничению плана, а не по этой связи.
-- `PSC-09A/09B/10` предшествуют физическому переносу: текущие `IGV2PropertyConsumer` и `UGV2TextPipeline` смешивают Prepare и Commit, поэтому нижний модуль без предварительного DTO boundary не может быть независимым.
+- `PSC-09A`/`PSC-09B`/`PSC-10A`/`PSC-10B` предшествуют физическому переносу: текущие `IGV2PropertyConsumer`, `UGV2TextPipeline` и central style path смешивают Prepare и Commit, поэтому нижний модуль без предварительного DTO boundary не может быть независимым.
 - `PSC-11` не меняет ни одного `/Script/GV2` path. До его commit все Widget Blueprint продолжают ссылаться на прежние классы; верхние `UCLASS` временно являются тонкими adapters к нижнему Apply.
 - `PSC-12` одним change set переносит `UCLASS`, мигрирует все найденные Asset Registry ассеты и удаляет временные redirects. Промежуточное сломанное дерево не фиксируется.
 
@@ -119,7 +117,7 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 | `GV2ImageResourceCatalog` | `PSC-07` |
 | `GV2ScreenRegistry`, nested screen preparation | `PSC-08` |
 | Prepared DTO, property consumers, text/image/screen resolution | `PSC-09A`, `PSC-09B`, `PSC-10A` |
-| `IGV2UiStyleConsumer` и 19 реализаций `ApplyCentralStyle` | `PSC-10B` |
+| `IGV2UiStyleConsumer` и фактическое множество реализаций `ApplyCentralStyle` | `PSC-10B` |
 | `GV2PresentationApply`, `*.Build.cs`, physical apply | `PSC-11`, `PSC-13` |
 | Widget `UCLASS`, `Content/**`, временные Core Redirects | `PSC-12` |
 | Audit/proposal/plan archive records и indexes | `PSC-14` |
@@ -146,10 +144,10 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload обоих путей. (`PSC-06`, `PSC-10A`, `PSC-10B`)
 - [x] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`, 2026-09-08)
 - [x] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`, 2026-09-08)
-- [x] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09A`, 2026-09-08 — установлено для одного демонстрационного kind (image resource, plain UImage target); остальные kinds — `PSC-09B`)
-- [x] Каждый вид операции проходит через транзакцию; второго пути, минующего её, не существует. (`PSC-09B`, 2026-09-08 — все 11 `IGV2PropertyConsumer` kinds и `UGV2TextPipeline` переведены семью под-коммитами; source-derived coverage/field-inventory gates)
+- [x] Prepare и Apply разделены типами; lower-facing DTO существующего property/text pipeline не содержит authority capability. (`PSC-09A` ввела границу на image resource, `PSC-09B` распространила её на фактическое множество `IGV2PropertyConsumer` kinds и `UGV2TextPipeline`, 2026-09-08)
+- [x] Каждый operation kind существующего property/text pipeline проходит через транзакцию. Central style пока остаётся отдельным runtime-путём и явно принадлежит `PSC-10B`. (`PSC-09B`, 2026-09-08 — source-derived coverage/field-inventory gates)
 - [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10A`)
-- [ ] Центральная стилизация не читает тему в рантайме; `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде, а исключение cold-start recovery названо с причиной. (`PSC-10B`)
+- [ ] Центральная стилизация входит в ту же prepared transaction и не читает тему в рантайме; `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют без исключений. Только `GetCoreMinimalTheme()` разрешён UE-native cold-start recovery и запрещён остальным production paths. (`PSC-10B`)
 - [ ] `GV2PresentationApply` содержит единственную public transaction Apply entry point и весь Commit/rollback/reconciliation; dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`)
 - [ ] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`)
 - [ ] Compiler/type/module/source enumerators и production scenarios закрывают `PAH-R1…R7`; Headless link graph остаётся UE-free. (`PSC-13`)

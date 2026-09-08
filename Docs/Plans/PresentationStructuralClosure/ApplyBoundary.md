@@ -1,8 +1,8 @@
 ---
 title: Apply Boundary Tasks
 status: active
-version: 1.3
-updated: 2026-09-07
+version: 1.4
+updated: 2026-09-08
 depends_on:
   - README.md
   - Payload.md
@@ -51,10 +51,10 @@ Build graph доказывает отсутствие project authority types. �
     - actual CMake target/source graph доказывает, что portable/Headless targets не линкуют и не компилируют `GV2PresentationApply`;
     - весь source tree модуля перечисляется обходом каталога; secondary forbidden-capability gate отвергает `TSoftObjectPtr` runtime input, `LoadSynchronous`, `StaticLoadObject`, Asset Registry, filesystem/config/settings access;
     - каждый forbidden-capability case имеет synthetic negative self-test;
-    - runtime authority counter показывает accesses во время Prepare и ноль вокруг единственной Apply façade для каждого operation kind;
+    - runtime authority counter показывает accesses во время Prepare и ноль вокруг единственной Apply façade для каждого operation kind, включая central style;
     - production initial screen, replacement, nested collection, rollback и catastrophic recovery проходят через façade;
     - task не меняет ни одного Widget `UCLASS` module/path;
-    - **предпосылка проверена до переноса**: ни один класс, подлежащий переносу, не достигает авторитета — ни через виды операций, ни через `ApplyCentralStyle`. Это результат `PSC-10A`/`PSC-10B`; здесь он не переделывается, а подтверждается обходом, потому что класс с обращением к теме в нижнем модуле не собирается, и обнаружить это на этапе переноса значит обнаружить слишком поздно.
+    - **предпосылка проверена до переноса**: ни один класс, подлежащий переносу, не достигает авторитета — ни через виды операций, ни через central style. Это результат `PSC-10A`/`PSC-10B`; здесь он не переделывается, а подтверждается implementation/call-site inventory. Runtime `NativePreConstruct` не является обходом façade; design-time branch применяет только сериализованные value defaults и не получает authority capability.
   - Evidence: `Source/GV2PresentationApply/`, `Source/GV2/GV2.Build.cs`, `Source/CMakeLists.txt`, `Headless/CMakeLists.txt`, graph/API/capability gates и production tests.
 
 - [ ] **PSC-12 — Атомарно мигрировать Widget `UCLASS` paths и ассеты**

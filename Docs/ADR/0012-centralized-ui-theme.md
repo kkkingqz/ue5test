@@ -30,6 +30,10 @@ Reusable Widget Blueprints уже ссылались на отдельные Com
 - Runtime theme replacement требует reapply/reconstruction UI, но не restart Lua gameplay и не изменение save.
 - Новый UI component обязан либо реализовать central style consumer, либо быть явно документированным purely structural container без собственного visual style.
 
+## Subsequent decision
+
+[ADR-0043](0043-presentation-apply-boundary.md) заменил только механизм runtime-применения этого решения. Active Theme по-прежнему едина и централизована, но после сборки session snapshot разрешается в Prepare и применяется как value-only operation общей presentation transaction. Требование применять Theme через no-argument `ApplyCentralStyle` из runtime `NativePreConstruct` больше не действует. Design-time preview не читает configured Theme и использует только сериализованные Widget/Blueprint defaults; это не создаёт второй runtime authority.
+
 ## Rejected alternatives
 
 - **Style только в каждом Widget Blueprint.** Отклонено из-за дублирования и drift.

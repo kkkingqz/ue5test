@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.5
+version: 1.6
 updated: 2026-09-08
 depends_on:
   - README.md
@@ -160,26 +160,30 @@ depends_on:
     - soft references, resolver/context pointers и callable callbacks отсутствуют во всех nested public payload fields; recursive declaration inventory имеет negative self-test;
     - viewport-dependent font/layout size вычисляется Apply как pure function от prepared policy и текущей geometry, без Theme/config lookup;
     - на путях видов операций не остаётся ни одного обращения к `GetConfiguredTheme()`/`GetConfiguredRegistry()` и эквивалентным configured accessors; settings/DataAssets остаются только candidate-builder inputs;
-    - **область этого пункта — только пути видов операций.** Центральная стилизация (`IGV2UiStyleConsumer::ApplyCentralStyle`, 18 из 35 production-обращений к теме) — отдельный механизм со своим входом, и её закрывает `PSC-10B`. Физическое удаление самих accessor-функций возможно только когда закрыты обе задачи, и это условие названо в `PSC-10B`, а не подразумевается здесь;
+    - **область этого пункта — только пути видов операций.** Центральная стилизация сейчас является отдельным механизмом со своим входом, и её закрывает `PSC-10B`. Физическое удаление самих accessor-функций возможно только когда закрыты обе задачи, и это условие названо в `PSC-10B`, а не подразумевается здесь;
     - unresolvable value даёт typed Prepare failure и не создаёт partial transaction;
     - production test проходит каждый фактический operation kind; actual set выводится из enum/variant, expected behavior — из независимой classification table.
   - Evidence: prepared operation declarations, compiler exhaustive switch/visitor, recursive field inventory, Text/Image/Nested/Collection production tests.
 
-- [ ] **PSC-10B — Центральная стилизация перестаёт читать тему в рантайме**
+- [ ] **PSC-10B — Включить central style в transaction и удалить runtime accessors**
   - Зависимости: PSC-10A.
-  - `IGV2UiStyleConsumer::ApplyCentralStyle` — второй путь применения, независимый от видов операций: 19 виджет-баз реализуют `ApplyCentralStyle_Implementation`, и 18 из 35 production-обращений к `GetConfiguredTheme()` находятся именно там. Вызывается он в том числе с пути применения — `IGV2UiStyleConsumer::Execute_ApplyCentralStyle` из временного адаптера, введённого `PSC-09B`.
-  - Инвариант: ни один путь, ведущий к физической мутации, не разрешает семантику ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `INV-P5`, `D3`). Задача существует потому, что предыдущая формулировка `PSC-10` оставляла эти 18 мест без владельца: под «переводом всех operation kinds» они не подпадают, а классы, в которых они живут, `PSC-12` переносит в модуль, где `GetConfiguredTheme` недостижим по построению. Без этой задачи `PSC-11` упирается в стену.
-  - Не считается закрытием: перенос темы в поле виджета, читаемое при стилизации, — момент чтения сдвигается, авторитет остаётся; передача указателя на тему в подготовленную операцию; закрытие части из 19 классов; сохранение `ApplyCentralStyle` как второго пути применения рядом с транзакцией.
+  - `IGV2UiStyleConsumer::ApplyCentralStyle` — второй путь применения, независимый от существующих видов операций. Его фактическое множество выводится из реализаций интерфейса; текущие прямые и косвенные обращения к Theme внутри этих классов являются scope задачи, а не фиксированным ручным списком.
+  - Инвариант: ни один путь, ведущий к физической мутации, не разрешает семантику ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `INV-P5`, `D3`). Предыдущая формулировка `PSC-10` оставляла central style без владельца: под перевод существующих operation kinds он не подпадал, а содержащие его классы `PSC-12` переносит в модуль, где Theme недостижим по построению.
+  - Не считается закрытием: перенос темы в поле виджета, читаемое при стилизации; передача указателя на Theme; отдельный runtime prepare/apply entry point; закрытие только известного списка классов; сохранение no-argument `ApplyCentralStyle` или runtime-вызова из `NativePreConstruct` рядом с транзакцией.
   - Done:
     - множество классов, реализующих `IGV2UiStyleConsumer`, берётся обходом реализаций интерфейса, а не списком в задаче;
-    - стилевые решения приходят к применению разрешёнными: через ту же транзакцию либо через явный вход подготовки, получающий `FGV2PresentationPrepareContext`;
-    - ни одна реализация `ApplyCentralStyle_Implementation` не обращается к теме, настройкам или иному авторитету;
-    - `RichTextWidgetBase`'s разрешение стиля прогона и интерактивного стиля переведено тем же способом — это не `ApplyCentralStyle`, но тот же механизм разрешения при применении;
-    - **после закрытия `PSC-10A` и этой задачи** `GetConfiguredTheme()`/`GetConfiguredRegistry()` физически удалены из production-кода; оставшиеся `UGV2UiTheme`/`UGV2ScreenRegistry` — только bootstrap-входы кандидата;
-    - `UGV2UiTheme::GetCoreMinimalTheme()` для cold-start recovery сохраняется и явно назван исключением с записанной причиной: он не является вторым авторитетом, поскольку не читает контент и существует до снимка;
-    - счётчик обращений к авторитетам даёт ноль вокруг стилизации так же, как вокруг применения операций;
-    - гейт отвергает синтетическое обращение к теме, внесённое в любую реализацию `ApplyCentralStyle_Implementation`.
-  - Evidence: `Source/GV2/Private/UI/GV2*WidgetBase.cpp` (19 реализаций), `Source/GV2/Private/UI/GV2TextPipeline.cpp`, `Source/GV2/Public/UI/GV2UiStyleConsumer.h`, inventory реализаций интерфейса, счётчик обращений.
+    - central style представлен замкнутым kind/variant той же `FGV2PreparedPresentationTransaction`; операция несёт concrete CommonUI/Slate classes, brushes, colors, spacing и scale policies, необходимые target-виджету, без Theme object или token lookup;
+    - central-style kind включён в exhaustive visitor и независимую behavior classification, созданные `PSC-10A`; добавление или удаление kind без Prepare/Apply semantics ломает тот же compiler/test gate;
+    - runtime style Prepare получает `FGV2PresentationPrepareContext`, добавляет prepared central-style operation в общую transaction, а физическая мутация выполняется только единственной transaction façade;
+    - no-argument `IGV2UiStyleConsumer::ApplyCentralStyle` удалён как самостоятельный runtime API; если остаётся локальный target-helper, он принимает только resolved value и все его production call sites структурно принадлежат transaction façade;
+    - runtime-ветка `NativePreConstruct` не применяет central style и не читает Theme/settings. Design-time preview может применять только сериализованные Widget/Blueprint defaults через pure value-only helper при `IsDesignTime()`; он не читает configured Theme, не загружает content и не является runtime entry point;
+    - `RichTextWidgetBase`'s разрешение run style и interactive style входит в тот же Prepare → prepared operation → transaction Apply path, хотя сейчас не является `ApplyCentralStyle`;
+    - **после закрытия `PSC-10A` и этой задачи** символы `GetConfiguredTheme()`/`GetConfiguredRegistry()` физически удалены из production declarations, definitions и call sites; candidate builder читает settings/DataAssets только как explicit bootstrap inputs и публикует их результат исключительно через snapshot;
+    - `UGV2UiTheme::GetCoreMinimalTheme()` сохраняется только для UE-native cold-start recovery. Это не исключение к предыдущему пункту: метод не читает configured content, а production call-site inventory допускает его только внутри recovery surface;
+    - authority counter даёт ноль вокруг central-style Prepare result application и остаётся secondary evidence к transaction/module boundary;
+    - implementation inventory и production call-site inventory отвергают синтетическое обращение к Theme, runtime `NativePreConstruct → style`, вызов target-helper вне transaction façade и `GetCoreMinimalTheme()` вне recovery;
+    - в том же change set обновлены [Widget Registry](../../UI/WidgetRegistry.md), [UI Document](../../UI/UIDocumentAndReconciliation.md) и partial-supersession note [ADR-0012](../../ADR/0012-centralized-ui-theme.md): runtime reconstruction и editor preview больше не описываются одним authority-aware путём.
+  - Evidence: prepared central-style operation/variant, implementation and call-site inventories, transaction façade production tests, design-time preview test, recovery call-site gate и обновлённые owner contracts.
 
 ## Проверка milestone
 
@@ -187,5 +191,5 @@ depends_on:
 - [ ] Все operation kinds перечисляет enum/variant, а не задача или test list.
 - [ ] Ни один payload не требует lookup/load при Apply.
 - [ ] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация.
-- [ ] `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде; исключение для cold-start recovery названо с причиной.
+- [ ] `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде без исключений; `GetCoreMinimalTheme()` достижим только из UE-native cold-start recovery.
 - [ ] `UCLASS` paths ещё не менялись; production path работает через временный delegating adapter.
