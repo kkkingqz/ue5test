@@ -1827,35 +1827,40 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         // placement -- a screen registered only for a GameShell top-level layer is
         // rejected here now, instead of being handed out on nothing more than
         // Entry->WidgetClass being non-null.
-        TSubclassOf<UGV2ScreenWidgetBase> TargetWidgetClass = UGV2ScreenWidgetBase::StaticClass();
+        // PSC-08 (ADR-0043 D1, PAH-R4): there is no default/generic WidgetClass here
+        // anymore -- every branch below either resolves TargetWidgetClass from a
+        // successful Resolve() or falls into the shared rejection below. "Neither a
+        // PrepareContext nor a configured Registry is available" used to silently leave
+        // TargetWidgetClass at UGV2ScreenWidgetBase::StaticClass() and proceed to
+        // instantiate a blank generic screen -- that is now itself a typed Prepare
+        // failure (EGV2ScreenResolutionError::UnknownScreenId), not a resolver-less
+        // fallthrough.
+        FGV2ResolvedScreenDescriptor Descriptor;
+        FGV2ScreenResolutionRejection Rejection;
+        bool bScreenResolved = false;
         if (PrepareContext != nullptr)
         {
-            FGV2ResolvedScreenDescriptor Descriptor;
-            FGV2ScreenResolutionRejection Rejection;
-            if (!PrepareContext->ResolveScreen(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection))
-            {
-                OutError = FString::Printf(
-                    TEXT("core:diagnostic.ui_consumer.unregistered_screen_id: Screen '%s' for tab '%s': %s"),
-                    *TabScreenId, *TabKey.ToString(), *Rejection.Message);
-                return false;
-            }
-
-            TargetWidgetClass = Descriptor.WidgetClass;
+            bScreenResolved = PrepareContext->ResolveScreen(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection);
         }
         else if (ScreenRegistry != nullptr)
         {
-            FGV2ResolvedScreenDescriptor Descriptor;
-            FGV2ScreenResolutionRejection Rejection;
-            if (!ScreenRegistry->Resolve(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection))
-            {
-                OutError = FString::Printf(
-                    TEXT("core:diagnostic.ui_consumer.unregistered_screen_id: Screen '%s' for tab '%s': %s"),
-                    *TabScreenId, *TabKey.ToString(), *Rejection.Message);
-                return false;
-            }
-
-            TargetWidgetClass = Descriptor.WidgetClass;
+            bScreenResolved = ScreenRegistry->Resolve(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection);
         }
+        else
+        {
+            Rejection.Code = EGV2ScreenResolutionError::UnknownScreenId;
+            Rejection.Message = TEXT("core:diagnostic.ui_screen_registry.no_resolver_available: no PrepareContext or configured Screen Registry is available");
+        }
+
+        if (!bScreenResolved)
+        {
+            OutError = FString::Printf(
+                TEXT("core:diagnostic.ui_consumer.unregistered_screen_id: Screen '%s' for tab '%s': %s"),
+                *TabScreenId, *TabKey.ToString(), *Rejection.Message);
+            return false;
+        }
+
+        const TSubclassOf<UGV2ScreenWidgetBase> TargetWidgetClass = Descriptor.WidgetClass;
 
         // 5. Reconcile / instantiate screen widget off-tree
         TObjectPtr<UGV2ScreenWidgetBase> ChildWidget = nullptr;

@@ -373,9 +373,23 @@ bool UGV2ScreenRegistry::Resolve(
     // and never called by any production path -- this is that call. A screen registered
     // for one Placement is rejected when resolved for the other, and TopLevel additionally
     // requires the exact requested layer to match the registered one.
-    const bool bPlacementMatches = Placement.IsEmbedded()
-        ? IsLayerAllowedForEmbedded(Found->Layer)
-        : IsLayerAllowedForTopLevel(Found->Layer) && Found->Layer == Placement.GetLayer();
+    // PSC-08: exhaustive switch over FGV2ScreenPlacement::EKind, not an IsEmbedded()
+    // ternary -- a third Kind with no case here trips the `default:` guard instead of
+    // silently taking whichever branch a boolean happened to select.
+    bool bPlacementMatches = false;
+    switch (Placement.GetKind())
+    {
+    case FGV2ScreenPlacement::EKind::Embedded:
+        bPlacementMatches = IsLayerAllowedForEmbedded(Found->Layer);
+        break;
+    case FGV2ScreenPlacement::EKind::TopLevel:
+        bPlacementMatches = IsLayerAllowedForTopLevel(Found->Layer) && Found->Layer == Placement.GetLayer();
+        break;
+    default:
+        checkf(false, TEXT("Unhandled FGV2ScreenPlacement::EKind value"));
+        bPlacementMatches = false;
+        break;
+    }
     if (!bPlacementMatches)
     {
         OutRejection.Code = EGV2ScreenResolutionError::PlacementMismatch;

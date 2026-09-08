@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-08
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -88,7 +88,7 @@ GV2 semantic Prepare
 
 - [x] M0 — [Contract Alignment](ContractAlignment.md): owner contracts отражают уже принятый ADR до изменения кода. PSC-01. (2026-09-07)
 - [x] M1 — [Package Set](PackageSet.md): exact package set и полный canonical manifest hash. PSC-02…03. (2026-09-08)
-- [ ] M2 — [Snapshot](Snapshot.md): полный candidate/snapshot, atomic publication, recovery и snapshot-backed PrepareContext. PSC-04…08.
+- [x] M2 — [Snapshot](Snapshot.md): полный candidate/snapshot, atomic publication, recovery и snapshot-backed PrepareContext. PSC-04…08. (2026-09-08)
 - [ ] M3 — [Self-Contained Payload](Payload.md): установлена типовая граница, весь путь заведён через транзакцию, замкнут resolved payload. PSC-09A…09B, PSC-10.
 - [ ] M4 — [Apply Boundary](ApplyBoundary.md): физическое применение вынесено в нижний модуль, затем атомарно мигрированы `UCLASS` paths. PSC-11…12.
 - [ ] M5 — [Structural Gates and Closure](GatesAndClosure.md): механические перечислители, cross-host verification и двухкоммитная архивация. PSC-13…14.
@@ -98,7 +98,7 @@ GV2 semantic Prepare
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
                                              ├→ PSC-07✔ ───────────┐
-                                             └→ PSC-08 → PSC-09A → PSC-09B → PSC-10
+                                             └→ PSC-08✔ → PSC-09A → PSC-09B → PSC-10
                                                                               → PSC-11 → PSC-12
                                                                               → PSC-13 → PSC-14
 ```
@@ -144,7 +144,7 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] Candidate остаётся private; active snapshot публикуется атомарно с успешным initial Commit/`Ready`; failure и recovery не наблюдают частичный snapshot. (`PSC-05`, 2026-09-08)
 - [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload. (`PSC-06`, `PSC-10`)
 - [x] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`, 2026-09-08)
-- [ ] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`)
+- [x] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`, 2026-09-08)
 - [ ] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09A`)
 - [ ] Каждый вид операции проходит через транзакцию; второго пути, минующего её, не существует. (`PSC-09B`)
 - [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10`)

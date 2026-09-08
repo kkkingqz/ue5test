@@ -50,9 +50,17 @@ struct GV2_API FGV2DeclaredPackageRoots
 class GV2_API FGV2ScreenPlacement
 {
 public:
+    // PSC-08: public so UGV2ScreenRegistry::Resolve() can switch over it exhaustively
+    // instead of chaining IsEmbedded()/IsTopLevel() booleans -- a third Kind (and its own
+    // factory) added here without a matching case in that switch trips its `default:`
+    // guard the first time anything resolves a placement of that Kind, rather than being
+    // silently folded into whichever boolean branch happens to run.
+    enum class EKind : uint8 { Embedded, TopLevel };
+
     static FGV2ScreenPlacement Embedded() { return FGV2ScreenPlacement(EKind::Embedded, NAME_None); }
     static FGV2ScreenPlacement TopLevel(FName Layer) { return FGV2ScreenPlacement(EKind::TopLevel, Layer); }
 
+    EKind GetKind() const { return Kind; }
     bool IsEmbedded() const { return Kind == EKind::Embedded; }
     bool IsTopLevel() const { return Kind == EKind::TopLevel; }
 
@@ -70,7 +78,6 @@ public:
     }
 
 private:
-    enum class EKind : uint8 { Embedded, TopLevel };
     FGV2ScreenPlacement(EKind InKind, FName InLayer) : Kind(InKind), Layer(InLayer) {}
 
     EKind Kind;

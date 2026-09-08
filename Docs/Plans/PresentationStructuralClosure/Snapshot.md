@@ -1,7 +1,7 @@
 ---
 title: Snapshot Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-08
 depends_on:
   - README.md
@@ -152,7 +152,7 @@ Absolute roots используются только candidate builders и не 
 
     Верификация: 126/126 UE Automation (124 существующих + 2 новых), 88/88 portable ctest (без изменений — задача чисто UE-side), все 11 standalone `validate_*.py` (включая `validate_pre_ready_content_discovery.py` и `validate_core_decoupling.py`), `validate_docs.py` (185 файлов) — зелёные.
 
-- [ ] **PSC-08 — Сделать screen resolution обязательным для всех placements**
+- [x] **PSC-08 — Сделать screen resolution обязательным для всех placements**
   - Зависимости: PSC-06.
   - Инвариант: top-level и nested screen используют один `PrepareContext.ResolveScreen(screen_id, placement)`; класс без успешного Resolve получить нельзя.
   - Не считается закрытием: null-check configured Registry; перенос generic fallback; отдельный nested resolver; тест helper вне production Tabs path.
@@ -164,10 +164,23 @@ Absolute roots используются только candidate builders и не 
     - placement cases выводятся из placement enum, screen targets — из resolved registry entries; новый enum value без policy даёт compile/test failure;
     - прежний encapsulation gate обновлён как secondary check и больше не перечисляет resolver accessor names вручную.
   - Evidence: `GV2PropertyConsumers.*`, `GV2ScreenRegistry.*`, `validate_screen_registry_entry_encapsulation.py`, UE production-path tests.
+  - **Реализация (2026-09-08):** Дефект (`PAH-R4`) находился в `FGV2TabContainerTabsPropertyConsumer::Prepare()`: `TargetWidgetClass` инициализировался `UGV2ScreenWidgetBase::StaticClass()` (generic base), а resolve-попытки (`PrepareContext->ResolveScreen(...)` при наличии контекста, иначе legacy `ScreenRegistry->Resolve(...)`) либо переопределяли эту переменную при успехе, либо возвращали `false` при явном отказе Resolve — но если НИ `PrepareContext`, НИ legacy `ScreenRegistry` не были доступны одновременно, код молча проваливался сквозь оба `if`/`else if` и продолжал работу с generic-классом, инстанцируя пустой screen БЕЗ единого вызова `Resolve()`. Top-level путь (`UGV2RuntimeSubsystem::ResolveScreenClass`) этого дефекта не имел — он уже с PSC-06 безусловно возвращает `nullptr` при отсутствии snapshot.
+
+    **Фикс**: единая resolve-или-typed-failure форма — `bScreenResolved` инициализируется `false`, `TargetWidgetClass` объявляется `const` и присваивается ТОЛЬКО из `Descriptor.WidgetClass` ПОСЛЕ успешного resolve; "ни один резолвер не доступен" — теперь тоже explicit `Rejection` (`core:diagnostic.ui_screen_registry.no_resolver_available`), проходящий через тот же `if (!bScreenResolved) { ...; return false; }`, что и остальные отказы. Никакого пути, где `TargetWidgetClass` мог бы остаться generic-классом, структурно не существует. Legacy `ScreenRegistry`-ветка (`GetConfiguredRegistry()`) сохранена НЕТРОНУТОЙ — её ретирание остаётся `PSC-10`'s работой (PSC-06's прецедент); PSC-08 закрывает именно silent-fallthrough половину `PAH-R4`, не саму legacy-ветку.
+
+    **Exhaustive placement dispatch**: `FGV2ScreenPlacement::EKind` сделан публичным (был `private`), добавлен `GetKind()`; `UGV2ScreenRegistry::Resolve()`'s `IsEmbedded() ? A : B` тернарник заменён на `switch (Placement.GetKind())` с `default: checkf(false, ...)` — тот же idiom, что уже используют switches в `GV2ImageResourceCatalog.cpp` (`EGV2ImageRenderMode`) для "новый variant без policy": третий `EKind` без своего `case` больше не будет молча трактоваться как TopLevel через инверсию `IsEmbedded()`, а упадёт в assert-ловушку в момент первого реального resolve этого kind'а.
+
+    **Новый тест** `GV2.Runtime.UI.NestedTabRejectedScreenLeavesNoPhysicalMutation`: сидирует `UGV2TabContainerWidgetBase` реальным committed табом (`ApplyTabEntries` + `SelectTabByKey`), затем через РЕАЛЬНЫЙ `FGV2TabContainerTabsPropertyConsumer` (полученный из `FGV2PropertyConsumerFactory::CreateConsumer`, не test double) пытается `Prepare()` с несуществующим `screen_id` — проверяет отказ (`unregistered_screen_id` diagnostic) И что `GetTabEntries()`/`GetActiveTabKey()`/`GetScreenWidgetForTab()` остаются БИТ-В-БИТ идентичны довызовному состоянию (Commit никогда не достигается, `ApplyTabEntries` — единственная точка физической мутации контейнера — не вызывается). Существующие `FGV2ScreenRegistryContract` (placement mismatch, abstract-class rejection через реальный configured asset) и `GV2PropertyConsumersTests.cpp`'s "Unregistered screen_id" (12b, через реальный consumer) остались зелёными без изменений — они уже покрывали unknown-screen/forbidden-placement/abstract-class на уровне общего `Resolve()`-механизма, который `PrepareContext.ResolveScreen` лишь делегирует; дублировать это через Tabs специально не требовалось (тот же принцип "один representative доказывает общий механизм", что и PSC-05).
+
+    **`validate_screen_registry_entry_encapsulation.py` docstring обновлён** — явно переформулирован как SECONDARY check: первичная гарантия теперь структурно живёт в самом control flow consumer'а (нет пути получить resolved класс без успешного `Resolve()`), а gate остаётся независимой второй линией защиты именно против прямого именования `FGV2ScreenRegistryEntry` вне registry — не заменяется и не становится первичным.
+
+    Red-on-revert: временный откат `FGV2TabContainerTabsPropertyConsumer::Prepare()` к pre-PSC-08 generic-fallback форме немедленно провалил ОБА зависимых теста — новый `NestedTabRejectedScreenLeavesNoPhysicalMutation` (Prepare больше не отказывал) И существующий `GV2.UI.StandardPropertyConsumers` (его "Unregistered screen_id rejected" assertion на строке 1701 использует тот же consumer). Откат применён обратно.
+
+    Верификация: 127/127 UE Automation (126 существующих + 1 новый), 88/88 portable ctest (без изменений — задача чисто UE-side), все 11 standalone `validate_*.py`, `validate_core_decoupling.py`, `validate_docs.py` (185 файлов) — зелёные.
 
 ## Проверка milestone
 
 - [x] Snapshot содержит полный зафиксированный field set и публикуется только с `Ready`. (`PSC-04`/`PSC-05`, 2026-09-08)
 - [x] Candidate failure не изменяет active snapshot; one-VM invariant сохранён. (`PSC-05`, 2026-09-08)
 - [x] Snapshot является target owner, а semantic Prepare использует explicit PrepareContext; удаление legacy Apply accessors явно отложено до `PSC-10`. (`PSC-06`, 2026-09-08 — screen/resource resolution; Theme/Text entry point exists but has no real caller yet, see PSC-06's own Реализация note)
-- [ ] Disabled packages не открываются, nested screen не имеет bypass/fallback.
+- [x] Disabled packages не открываются, nested screen не имеет bypass/fallback. (`PSC-07`/`PSC-08`, 2026-09-08)

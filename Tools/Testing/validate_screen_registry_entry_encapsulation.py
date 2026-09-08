@@ -12,6 +12,15 @@ pattern is caught regardless of which file it lands in.
 
 Tests are deliberately out of scope: a test constructing a raw entry to exercise Build()'s
 own validation is not the bypass this gate forbids.
+
+PSC-08 (ADR-0043 D1, PAH-R4): the primary guarantee that a resolved screen class cannot be
+obtained without Resolve() now lives in the consumer's own control flow --
+FGV2TabContainerTabsPropertyConsumer::Prepare has no generic-class fallback left to reach
+for, structurally, not by convention. This gate stays as a SECOND, independent line of
+defense against the specific bypass PAH-R4 named (naming the raw, unvalidated authoring
+row directly, instead of going through Build()/Resolve()) -- it was never the primary
+guarantee and does not become one; it is unaffected by, and does not supersede, PSC-08's
+own fix.
 """
 
 from __future__ import annotations

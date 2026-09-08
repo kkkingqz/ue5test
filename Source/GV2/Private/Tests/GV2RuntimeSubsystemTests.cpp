@@ -1797,6 +1797,78 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2NestedTabRejectedScreenLeavesNoPhysicalMutationTest,
+    "GV2.Runtime.UI.NestedTabRejectedScreenLeavesNoPhysicalMutation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PSC-08 (ADR-0043 D1, PAH-R4): FGV2TabContainerTabsPropertyConsumer::Prepare no longer
+// has a generic UGV2ScreenWidgetBase::StaticClass() fallback -- an unregistered screen_id
+// is a typed Prepare failure through the real production consumer (the same object
+// FGV2PropertyConsumerFactory::CreateConsumer hands to PrepareUiHostProperties), whatever
+// resolver (PrepareContext, legacy configured Registry, or neither) happens to be
+// available. This proves the other half of that fix: a rejected Prepare leaves the
+// container's own already-committed state -- what Commit()/ApplyTabEntries would
+// otherwise mutate -- completely untouched, not partially applied.
+bool FGV2NestedTabRejectedScreenLeavesNoPhysicalMutationTest::RunTest(const FString& Parameters)
+{
+    UGV2ScreenWidgetBase* SeededScreen = NewObject<UGV2ScreenWidgetBase>();
+
+    UGV2TabContainerWidgetBase* TabContainer = NewObject<UGV2TabContainerWidgetBase>();
+    TArray<FGV2TabItemEntry> SeedEntries;
+    FGV2TabItemEntry SeedEntry;
+    SeedEntry.Key = FName(TEXT("info"));
+    SeedEntry.ScreenId = TEXT("core:screen.test_embedded");
+    SeedEntries.Add(SeedEntry);
+    TMap<FName, UGV2ScreenWidgetBase*> SeedWidgets;
+    SeedWidgets.Add(FName(TEXT("info")), SeededScreen);
+    TabContainer->ApplyTabEntries(SeedEntries, SeedWidgets);
+    TabContainer->SelectTabByKey(FName(TEXT("info")));
+
+    const int32 EntryCountBefore = TabContainer->GetTabEntries().Num();
+    const FName ActiveTabBefore = TabContainer->GetActiveTabKey();
+    UGV2ScreenWidgetBase* const WidgetBefore = TabContainer->GetScreenWidgetForTab(FName(TEXT("info")));
+    TestEqual(TEXT("Seeded baseline has one tab"), EntryCountBefore, 1);
+    TestEqual(TEXT("Seeded baseline's widget is the one just created"), WidgetBefore, SeededScreen);
+
+    TSharedPtr<IGV2PropertyConsumer> TabsConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+        EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+    TestNotNull(TEXT("Factory created FGV2TabContainerTabsPropertyConsumer"), TabsConsumer.Get());
+
+    FGV2UiPropertyCapability TabsCap;
+    TabsCap.TargetType = EGV2UiCapabilityTargetType::NestedScreen;
+
+    TMap<FString, FGV2PreparedUiValue> RejectedTab;
+    RejectedTab.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("rejected")));
+    RejectedTab.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{FText::FromString(TEXT("Rejected"))}));
+    RejectedTab.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.psc08_nonexistent"), TEXT("screen")));
+    TArray<FGV2PreparedUiValue> RejectedTabs;
+    RejectedTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(RejectedTab)));
+
+    FString PrepareError;
+    TestFalse(
+        TEXT("Prepare with an unregistered screen_id is rejected through the real production consumer"),
+        TabsConsumer->Prepare(
+            FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(RejectedTabs)),
+            TabsCap,
+            TabContainer,
+            PrepareError));
+    TestTrue(
+        *FString::Printf(TEXT("Rejection carries the unregistered-screen diagnostic [Error: %s]"), *PrepareError),
+        PrepareError.Contains(TEXT("core:diagnostic.ui_consumer.unregistered_screen_id")));
+
+    TestEqual(TEXT("Tab entry count is unchanged after the rejected Prepare"), TabContainer->GetTabEntries().Num(), EntryCountBefore);
+    TestEqual(TEXT("Active tab is unchanged after the rejected Prepare"), TabContainer->GetActiveTabKey(), ActiveTabBefore);
+    TestEqual(TEXT("Seeded tab's widget is unchanged after the rejected Prepare"), TabContainer->GetScreenWidgetForTab(FName(TEXT("info"))), WidgetBefore);
+    if (TabContainer->GetTabEntries().Num() == 1)
+    {
+        TestEqual(TEXT("Seeded entry's key is unchanged"), TabContainer->GetTabEntries()[0].Key, SeedEntry.Key);
+        TestEqual(TEXT("Seeded entry's screen_id is unchanged"), TabContainer->GetTabEntries()[0].ScreenId, SeedEntry.ScreenId);
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2ScreenAssetRootOwnershipAudit,
     "GV2.Runtime.ScreenRegistry.AssetRootOwnershipAudit",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
