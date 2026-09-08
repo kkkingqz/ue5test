@@ -377,6 +377,83 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
 }
 
 // GBF-07: rollback_leaf=PropertyMutation
+namespace
+{
+GV2PresentationApply::EPreparedImageRenderMode ToPreparedRenderMode(EGV2ImageRenderMode RenderMode)
+{
+    switch (RenderMode)
+    {
+    case EGV2ImageRenderMode::NineSlice:
+        return GV2PresentationApply::EPreparedImageRenderMode::NineSlice;
+    case EGV2ImageRenderMode::Tile:
+        return GV2PresentationApply::EPreparedImageRenderMode::Tile;
+    case EGV2ImageRenderMode::FixedAspect:
+        return GV2PresentationApply::EPreparedImageRenderMode::FixedAspect;
+    }
+    return GV2PresentationApply::EPreparedImageRenderMode::FixedAspect;
+}
+}
+
+// STATUS-012 (ADR-0042, INV-P5): every branch applies PreparedResource, the resolution
+// Prepare validated -- none re-consults the catalog, so the value that reaches the
+// widget is the value that was approved.
+bool FGV2ImageResourcePropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
+    {
+        FSlateBrush FinalBrush = PreparedResource.Brush;
+        switch (PreparedScalePolicy)
+        {
+        case EGV2PrimitiveScalePolicy::Tile:
+            FinalBrush.Tiling = ESlateBrushTileType::Both;
+            FinalBrush.DrawAs = ESlateBrushDrawType::Image;
+            break;
+        case EGV2PrimitiveScalePolicy::NineSlice:
+            FinalBrush.DrawAs = ESlateBrushDrawType::Box;
+            break;
+        case EGV2PrimitiveScalePolicy::Unset:
+        case EGV2PrimitiveScalePolicy::FreeStretch:
+        case EGV2PrimitiveScalePolicy::PreserveAspect:
+            FinalBrush.Tiling = ESlateBrushTileType::NoTile;
+            FinalBrush.DrawAs = ESlateBrushDrawType::Image;
+            break;
+        }
+
+        GV2PresentationApply::FPreparedImageResourceOperation Operation;
+        Operation.TargetWidget = ImageWidget;
+        Operation.Brush = FinalBrush;
+        OutTransaction.AddImageResourceOperation(MoveTemp(Operation));
+    }
+    // PSC-09B: UGV2ImageWidgetBase/UGV2PortraitWidgetBase route through their own
+    // ApplyResolvedImageResource/ApplyResolvedPortrait UFUNCTIONs (via
+    // GV2LegacyPresentationApplyAdapter, not GV2PresentationApply::Apply) rather than
+    // reaching past them to their inner UImage: those UFUNCTIONs also update bookkeeping
+    // (AppliedResourceId/ResolvedAspectRatio, GetPortraitResourceId/GetFrameResourceId)
+    // that a direct SetBrush would leave frozen at whatever NativePreConstruct set.
+    else if (Cast<UGV2ImageWidgetBase>(TargetWidget) != nullptr || Cast<UGV2PortraitWidgetBase>(TargetWidget) != nullptr)
+    {
+        GV2PresentationApply::FPreparedImageHostOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.Resolved.ResourceId = PreparedResource.ResourceId;
+        Operation.Resolved.RenderMode = ToPreparedRenderMode(PreparedResource.RenderMode);
+        Operation.Resolved.FixedAspectRatio = PreparedResource.FixedAspectRatio;
+        Operation.Resolved.Brush = PreparedResource.Brush;
+        OutTransaction.AddImageHostOperation(MoveTemp(Operation));
+    }
+    else
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");
+        return false;
+    }
+
+    OutError.Reset();
+    return true;
+}
+
+// GBF-07: rollback_leaf=PropertyMutation
 bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
     if (!TargetWidget)
@@ -385,114 +462,46 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
         return false;
     }
 
-    // Routes through the host's own Apply method rather than reaching past it to its
-    // inner UImage: GV2ImageWidgetBase/GV2PortraitWidgetBase track what they last applied
-    // (AppliedResourceId/ResolvedAspectRatio, GetPortraitResourceId/GetFrameResourceId) as
-    // part of their own bookkeeping, and bypassing it here left that bookkeeping frozen at
-    // whatever NativePreConstruct set (or unset) even though the brush itself did update.
-    // STATUS-012 (ADR-0042, INV-P5): every branch applies PreparedResource, the
-    // resolution Prepare validated. None of them consults the catalog, so the value
-    // that reaches the widget is the value that was approved -- not one re-derived
-    // from its id, which is what the three ApplyX(PreparedResourceId) calls here
-    // used to do.
-    if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        return ImageBase->ApplyResolvedImageResource(PreparedResource, OutError);
-    }
-    if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
-    {
-        return PortraitWidget->ApplyResolvedPortrait(PreparedResource, OutError);
-    }
-    if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
-    {
-        // PSC-09A (ADR-0043 D2/D3): the one migrated target shape in this Commit --
-        // builds a self-contained transaction (no re-validation; Prepare() already
-        // checked scale-policy compatibility and the aspect-ratio constraint above) and
-        // hands it to the ONLY entry point GV2PresentationApply exposes.
-        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
-        if (!BuildPreparedOperation(ImageWidget, Transaction, OutError))
-        {
-            return false;
-        }
-        return GV2PresentationApply::Apply(Transaction, OutError);
-    }
-
-    OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a UImage or image host");
-    return false;
-}
-
-// PSC-09A (ADR-0043 D2/D3): duplicates the Tile/NineSlice/else brush-finalization that
-// GV2ImagePresentation.cpp's ApplyResolved still performs for its OWN two remaining
-// callers (UGV2ImageWidgetBase::ApplyResolvedImageResource,
-// UGV2PortraitWidgetBase::ApplyResolvedPortrait) -- not shared, because those two
-// UFUNCTIONs are unmigrated. Unifying onto one code path is PSC-09B/PSC-10's job, once
-// those widget-owned Apply methods migrate too.
-bool FGV2ImageResourcePropertyConsumer::BuildPreparedOperation(
-    UWidget* TargetWidget,
-    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
-    FString& OutError) const
-{
-    UImage* ImageWidget = Cast<UImage>(TargetWidget);
-    if (ImageWidget == nullptr)
-    {
-        OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: BuildPreparedOperation only supports a plain UImage target");
         return false;
     }
-
-    FSlateBrush FinalBrush = PreparedResource.Brush;
-    switch (PreparedScalePolicy)
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
     {
-    case EGV2PrimitiveScalePolicy::Tile:
-        FinalBrush.Tiling = ESlateBrushTileType::Both;
-        FinalBrush.DrawAs = ESlateBrushDrawType::Image;
-        break;
-    case EGV2PrimitiveScalePolicy::NineSlice:
-        FinalBrush.DrawAs = ESlateBrushDrawType::Box;
-        break;
-    case EGV2PrimitiveScalePolicy::Unset:
-    case EGV2PrimitiveScalePolicy::FreeStretch:
-    case EGV2PrimitiveScalePolicy::PreserveAspect:
-        FinalBrush.Tiling = ESlateBrushTileType::NoTile;
-        FinalBrush.DrawAs = ESlateBrushDrawType::Image;
-        break;
+        return false;
     }
-
-    GV2PresentationApply::FPreparedImageResourceOperation Operation;
-    Operation.TargetWidget = ImageWidget;
-    Operation.Brush = FinalBrush;
-    OutTransaction.AddImageResourceOperation(MoveTemp(Operation));
-    OutError.Reset();
-    return true;
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
 {
+    if (!TargetWidget)
+    {
+        return;
+    }
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     if (UImage* ImageWidget = Cast<UImage>(TargetWidget))
     {
-        // PSC-09A: same GV2PresentationApply entry point Commit() now uses for this
-        // target shape -- a default-constructed operation's Brush is FSlateBrush()'s own
-        // default, the same value this Reset always applied directly before.
-        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        // A default-constructed operation's Brush is FSlateBrush()'s own default, the
+        // same value this Reset always applied directly before.
         GV2PresentationApply::FPreparedImageResourceOperation Operation;
         Operation.TargetWidget = ImageWidget;
         Transaction.AddImageResourceOperation(MoveTemp(Operation));
-        FString ApplyError;
-        GV2PresentationApply::Apply(Transaction, ApplyError);
     }
-    else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(TargetWidget))
+    else
     {
-        PortraitWidget->SetVisibility(ESlateVisibility::Collapsed);
-        if (UImage* Img = PortraitWidget->GetPortraitImage())
-        {
-            Img->SetBrush(FSlateBrush());
-        }
+        GV2PresentationApply::FPreparedImageHostOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.bResetToDefault = true;
+        Transaction.AddImageHostOperation(MoveTemp(Operation));
     }
-    else if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(TargetWidget))
+
+    FString ApplyError;
+    if (GV2PresentationApply::Apply(Transaction, ApplyError))
     {
-        if (UImage* Img = ImageBase->GetImageWidget())
-        {
-            Img->SetBrush(FSlateBrush());
-        }
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
 }
 

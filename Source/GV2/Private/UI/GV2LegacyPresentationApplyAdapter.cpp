@@ -2,18 +2,88 @@
 
 #include "Bridge/GV2BridgeTypes.h"
 #include "Components/EditableTextBox.h"
+#include "Components/Image.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
+#include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
+#include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2UiPropertyHost.h"
 
+namespace
+{
+EGV2ImageRenderMode FromPreparedRenderMode(GV2PresentationApply::EPreparedImageRenderMode RenderMode)
+{
+    switch (RenderMode)
+    {
+    case GV2PresentationApply::EPreparedImageRenderMode::NineSlice:
+        return EGV2ImageRenderMode::NineSlice;
+    case GV2PresentationApply::EPreparedImageRenderMode::Tile:
+        return EGV2ImageRenderMode::Tile;
+    case GV2PresentationApply::EPreparedImageRenderMode::FixedAspect:
+        return EGV2ImageRenderMode::FixedAspect;
+    }
+    return EGV2ImageRenderMode::FixedAspect;
+}
+}
+
 namespace GV2LegacyPresentationApplyAdapter
 {
 bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Transaction, FString& OutError)
 {
+    for (const GV2PresentationApply::FPreparedImageHostOperation& Operation : Transaction.GetImageHostOperations())
+    {
+        UWidget* Widget = Operation.TargetWidget.Get();
+        if (Operation.bResetToDefault)
+        {
+            // Reaches past the host's own Apply UFUNCTION directly into its inner
+            // UImage, the same way Commit()'s Reset always did -- Reset clears the
+            // physical brush without going through bookkeeping meant for a resolved
+            // Commit.
+            if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(Widget))
+            {
+                PortraitWidget->SetVisibility(ESlateVisibility::Collapsed);
+                if (UImage* Img = PortraitWidget->GetPortraitImage())
+                {
+                    Img->SetBrush(FSlateBrush());
+                }
+            }
+            else if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
+            {
+                if (UImage* Img = ImageBase->GetImageWidget())
+                {
+                    Img->SetBrush(FSlateBrush());
+                }
+            }
+            continue;
+        }
+
+        FGV2ResolvedImageResource Resolved;
+        Resolved.ResourceId = Operation.Resolved.ResourceId;
+        Resolved.RenderMode = FromPreparedRenderMode(Operation.Resolved.RenderMode);
+        Resolved.FixedAspectRatio = Operation.Resolved.FixedAspectRatio;
+        Resolved.Brush = Operation.Resolved.Brush;
+
+        if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
+        {
+            if (!ImageBase->ApplyResolvedImageResource(Resolved, OutError))
+            {
+                return false;
+            }
+        }
+        else if (UGV2PortraitWidgetBase* PortraitWidget = Cast<UGV2PortraitWidgetBase>(Widget))
+        {
+            if (!PortraitWidget->ApplyResolvedPortrait(Resolved, OutError))
+            {
+                return false;
+            }
+        }
+    }
+
     for (const GV2PresentationApply::FPreparedBooleanOperation& Operation : Transaction.GetBooleanOperations())
     {
         if (Operation.Target != GV2PresentationApply::EPreparedBooleanTarget::RequiresLegacyAdapter)

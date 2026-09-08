@@ -291,27 +291,34 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             // the function name made this assertion fail when Commit moved from
             // ResolveAndApply to ApplyResolved -- a change that strengthened the very
             // centralization this checks, since application stopped re-resolving.
-            // PSC-09A (ADR-0043 D2/D3): Commit's plain-UImage branch moved a further
-            // step -- GV2PresentationApply::Apply, not FGV2ImagePresentation::
-            // ApplyResolved directly -- while the two widget-host branches still route
-            // through the widget's own ApplyResolvedImageResource/ApplyResolvedPortrait
-            // (which themselves still call FGV2ImagePresentation::ApplyResolved, in
-            // GV2ImageWidgetBase.cpp/GV2PortraitWidgetBase.cpp, not this file). All
-            // three centralized entry points count; this file's own source no longer
-            // names FGV2ImagePresentation directly.
+            // PSC-09B (ADR-0043 D2/D3): ALL THREE image target shapes (plain UImage,
+            // UGV2ImageWidgetBase, UGV2PortraitWidgetBase) now route through the same
+            // BuildPreparedOperation -> GV2PresentationApply::Apply ->
+            // GV2LegacyPresentationApplyAdapter::Apply pipeline in THIS file; the actual
+            // ApplyResolvedImageResource/ApplyResolvedPortrait calls moved into
+            // GV2LegacyPresentationApplyAdapter.cpp (checked separately below), so this
+            // file no longer names them directly.
             TestTrue(
-                TEXT("PropertyConsumers routes widget-host image application through their own ApplyResolvedImageResource/ApplyResolvedPortrait"),
-                ConsumerSource.Contains(TEXT("ApplyResolvedImageResource(PreparedResource"))
-                    && ConsumerSource.Contains(TEXT("ApplyResolvedPortrait(PreparedResource")));
-            TestTrue(
-                TEXT("PropertyConsumers routes the migrated plain-UImage case through GV2PresentationApply::Apply"),
+                TEXT("PropertyConsumers routes image application through GV2PresentationApply::Apply"),
                 ConsumerSource.Contains(TEXT("GV2PresentationApply::Apply")));
+            TestTrue(
+                TEXT("PropertyConsumers routes image application through GV2LegacyPresentationApplyAdapter::Apply"),
+                ConsumerSource.Contains(TEXT("GV2LegacyPresentationApplyAdapter::Apply")));
             TestFalse(
                 TEXT("STATUS-012: the consumer's Commit does not re-resolve by id -- it applies "
                      "the resolution Prepare validated"),
                 ConsumerSource.Contains(TEXT("ApplyImageResource(PreparedResourceId"))
                     || ConsumerSource.Contains(TEXT("ApplyPortrait(PreparedResourceId"))
                     || ConsumerSource.Contains(TEXT("ResolveAndApply(\n            ImageWidget, PreparedResourceId")));
+
+            FString AdapterSource;
+            if (ReadSource(TEXT("Source/GV2/Private/UI/GV2LegacyPresentationApplyAdapter.cpp"), AdapterSource))
+            {
+                TestTrue(
+                    TEXT("Legacy adapter applies the resolved value through the widget-host's own UFUNCTION"),
+                    AdapterSource.Contains(TEXT("ApplyResolvedImageResource(Resolved"))
+                        && AdapterSource.Contains(TEXT("ApplyResolvedPortrait(Resolved")));
+            }
         }
 
         // GBH-05: ADR-0040 defined placeholder substitution as a schema/presentation

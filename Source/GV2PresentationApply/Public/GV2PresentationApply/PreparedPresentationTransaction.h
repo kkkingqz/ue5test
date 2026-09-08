@@ -25,6 +25,39 @@ struct GV2PRESENTATIONAPPLY_API FPreparedImageResourceOperation
     FSlateBrush Brush;
 };
 
+// PSC-09B: canonical lower replacement for GV2's own FGV2ResolvedImageResource/
+// EGV2ImageRenderMode (GV2ImageResourceCatalog.h, USTRUCT/UENUM(BlueprintType) --
+// UGV2ImageWidgetBase::ApplyResolvedImageResource/UGV2PortraitWidgetBase::
+// ApplyResolvedPortrait take the GV2 type directly as a UFUNCTION(BlueprintCallable)
+// parameter, so it stays GV2-owned; this is a distinct type built from the same
+// resolved fields via plain Core types only, not a copy or alias of it.
+enum class EPreparedImageRenderMode : uint8
+{
+    FixedAspect,
+    NineSlice,
+    Tile,
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedResolvedImageValue
+{
+    FString ResourceId;
+    EPreparedImageRenderMode RenderMode = EPreparedImageRenderMode::FixedAspect;
+    float FixedAspectRatio = 0.0f;
+    FSlateBrush Brush;
+};
+
+// PSC-09B: UGV2ImageWidgetBase/UGV2PortraitWidgetBase are GV2-owned -- entirely
+// legacy-adapter territory, which also owns their own reset-specific behavior
+// (UGV2PortraitWidgetBase additionally collapses visibility on reset; both reach past
+// their own Apply UFUNCTION into their inner UImage directly for reset, the same way
+// Commit() always did before this operation existed).
+struct GV2PRESENTATIONAPPLY_API FPreparedImageHostOperation
+{
+    TWeakObjectPtr<UWidget> TargetWidget;
+    FPreparedResolvedImageValue Resolved;
+    bool bResetToDefault = false;
+};
+
 // PSC-09B (ADR-0043 D2/D3): Prepare (upper GV2) has already narrowed a boolean
 // capability down to exactly which widget-native setter applies -- Apply performs no
 // decision, only the cast+call for the setter it recognizes. RequiresLegacyAdapter marks
@@ -160,6 +193,10 @@ public:
     {
         ImageResourceOperations.Add(MoveTemp(Operation));
     }
+    void AddImageHostOperation(FPreparedImageHostOperation Operation)
+    {
+        ImageHostOperations.Add(MoveTemp(Operation));
+    }
     void AddBooleanOperation(FPreparedBooleanOperation Operation)
     {
         BooleanOperations.Add(MoveTemp(Operation));
@@ -198,6 +235,7 @@ public:
     }
 
     const TArray<FPreparedImageResourceOperation>& GetImageResourceOperations() const { return ImageResourceOperations; }
+    const TArray<FPreparedImageHostOperation>& GetImageHostOperations() const { return ImageHostOperations; }
     const TArray<FPreparedBooleanOperation>& GetBooleanOperations() const { return BooleanOperations; }
     const TArray<FPreparedEditableTextValueOperation>& GetEditableTextValueOperations() const { return EditableTextValueOperations; }
     const TArray<FPreparedProgressBarOperation>& GetProgressBarOperations() const { return ProgressBarOperations; }
@@ -211,6 +249,7 @@ public:
     bool IsEmpty() const
     {
         return ImageResourceOperations.IsEmpty()
+            && ImageHostOperations.IsEmpty()
             && BooleanOperations.IsEmpty()
             && EditableTextValueOperations.IsEmpty()
             && ProgressBarOperations.IsEmpty()
@@ -224,6 +263,7 @@ public:
 
 private:
     TArray<FPreparedImageResourceOperation> ImageResourceOperations;
+    TArray<FPreparedImageHostOperation> ImageHostOperations;
     TArray<FPreparedBooleanOperation> BooleanOperations;
     TArray<FPreparedEditableTextValueOperation> EditableTextValueOperations;
     TArray<FPreparedProgressBarOperation> ProgressBarOperations;
