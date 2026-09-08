@@ -1,8 +1,11 @@
 #include "UI/GV2LegacyPresentationApplyAdapter.h"
 
 #include "Bridge/GV2BridgeTypes.h"
+#include "CommonRichTextBlock.h"
+#include "CommonTextBlock.h"
 #include "Components/EditableTextBox.h"
 #include "Components/Image.h"
+#include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ImageWidgetBase.h"
@@ -11,6 +14,8 @@
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "UI/GV2TextPipeline.h"
+#include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2UiPropertyHost.h"
 
@@ -28,6 +33,128 @@ EGV2ImageRenderMode FromPreparedRenderMode(GV2PresentationApply::EPreparedImageR
         return EGV2ImageRenderMode::FixedAspect;
     }
     return EGV2ImageRenderMode::FixedAspect;
+}
+
+// PSC-09B: replicates FGV2TextPropertyConsumer::Commit()/Reset()'s exact original
+// per-target dispatch (now reading a reconstructed FGV2TextViewModel instead of the
+// consumer's own PreparedText member) -- every real target is either a GV2-owned widget
+// wrapper or reached only through GV2's own UGV2TextPipeline UCLASS. bIsReset selects
+// between the two ORIGINALLY DIFFERENT UGV2RichTextWidgetBase redirect rules (Commit
+// redirected to the inner RichTextBlock when present; Reset did not); OutError is null
+// for a Reset call (fire-and-forget, matching Reset()'s own original shape, which never
+// checked these return values either).
+bool DispatchTextOperation(UWidget* TargetWidget, const FGV2TextViewModel& Text, bool bIsReset, FString* OutError)
+{
+    UWidget* ResolvedWidget = TargetWidget;
+    if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = TW->GetTextBlock() ? Cast<UWidget>(TW->GetTextBlock()) : Cast<UWidget>(TW);
+    }
+    else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = bIsReset
+            ? Cast<UWidget>(RTW)
+            : (RTW->GetRichTextBlock() ? Cast<UWidget>(RTW->GetRichTextBlock()) : Cast<UWidget>(RTW));
+    }
+    else if (UGV2ButtonWidgetBase* BW = Cast<UGV2ButtonWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = BW;
+    }
+    else if (UGV2DropdownSelectWidgetBase* DW = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
+    {
+        ResolvedWidget = DW;
+    }
+
+    if (!ResolvedWidget)
+    {
+        if (OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.missing_target: Target widget is null during Commit");
+        }
+        return false;
+    }
+
+    if (UGV2TextWidgetBase* TextWidget = Cast<UGV2TextWidgetBase>(ResolvedWidget))
+    {
+        const bool bResult = TextWidget->ApplyText(Text);
+        if (!bResult && OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2TextWidgetBase::ApplyText rejected the resolved text");
+        }
+        return bResult;
+    }
+    if (UGV2ButtonWidgetBase* ButtonWidget = Cast<UGV2ButtonWidgetBase>(ResolvedWidget))
+    {
+        const bool bResult = ButtonWidget->ApplyText(Text);
+        if (!bResult && OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2ButtonWidgetBase::ApplyText rejected the resolved text");
+        }
+        return bResult;
+    }
+    if (UGV2DropdownSelectWidgetBase* DropdownWidget = Cast<UGV2DropdownSelectWidgetBase>(ResolvedWidget))
+    {
+        const bool bResult = DropdownWidget->ApplyPlaceholderText(Text);
+        if (!bResult && OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2DropdownSelectWidgetBase::ApplyPlaceholderText rejected the resolved text");
+        }
+        return bResult;
+    }
+    if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(ResolvedWidget))
+    {
+        const bool bResult = RichText->ApplyText(Text);
+        if (!bResult && OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2RichTextWidgetBase::ApplyText rejected the resolved text");
+        }
+        return bResult;
+    }
+    if (UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(ResolvedWidget))
+    {
+        if (UGV2ButtonWidgetBase* ParentButton = TextBlock->GetTypedOuter<UGV2ButtonWidgetBase>())
+        {
+            ParentButton->ApplyText(Text);
+        }
+        else if (UGV2TextWidgetBase* ParentTW = TextBlock->GetTypedOuter<UGV2TextWidgetBase>())
+        {
+            ParentTW->ApplyText(Text);
+        }
+        const bool bResult = UGV2TextPipeline::Apply(TextBlock, Text);
+        if (!bResult && OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2TextPipeline::Apply rejected the resolved text");
+        }
+        return bResult;
+    }
+    if (UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(ResolvedWidget))
+    {
+        if (UGV2RichTextWidgetBase* ParentRT = RichTextBlock->GetTypedOuter<UGV2RichTextWidgetBase>())
+        {
+            ParentRT->ApplyText(Text);
+        }
+        const bool bResult = UGV2TextPipeline::ApplyRichText(RichTextBlock, Text);
+        if (!bResult && OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2TextPipeline::ApplyRichText rejected the resolved text");
+        }
+        return bResult;
+    }
+    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(ResolvedWidget))
+    {
+        const bool bResult = UGV2TextPipeline::ApplyHint(EditableBox, Text);
+        if (!bResult && OutError != nullptr)
+        {
+            *OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2TextPipeline::ApplyHint rejected the resolved text");
+        }
+        return bResult;
+    }
+
+    if (OutError != nullptr)
+    {
+        *OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a supported text renderer");
+    }
+    return false;
 }
 }
 
@@ -221,6 +348,29 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
             Spans.Add(MoveTemp(Span));
         }
         RichTextWidget->ApplySpans(Spans);
+    }
+
+    for (const GV2PresentationApply::FPreparedTextOperation& Operation : Transaction.GetTextOperations())
+    {
+        UWidget* Widget = Operation.TargetWidget.Get();
+        if (Widget == nullptr)
+        {
+            continue;
+        }
+
+        FGV2TextViewModel Text;
+        Text.Text = Operation.Value.Text;
+        Text.StyleToken = Operation.Value.StyleToken;
+        Text.NormalizedMarkup = Operation.Value.NormalizedMarkup;
+
+        if (Operation.bIsReset)
+        {
+            DispatchTextOperation(Widget, Text, true, nullptr);
+        }
+        else if (!DispatchTextOperation(Widget, Text, false, &OutError))
+        {
+            return false;
+        }
     }
 
     OutError.Reset();

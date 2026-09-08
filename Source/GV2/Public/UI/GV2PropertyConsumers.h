@@ -104,6 +104,15 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
+    // PSC-09B (ADR-0043 D2/D3): carries the resolved text/style/markup only -- every real
+    // target is either a GV2-owned widget wrapper or reached only via GV2's own
+    // UGV2TextPipeline UCLASS, so GV2LegacyPresentationApplyAdapter performs the actual
+    // per-target dispatch this operation used to perform directly in Commit().
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
+
 private:
     FGV2TextViewModel PreparedText;
 };

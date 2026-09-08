@@ -283,9 +283,21 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         FString ConsumerSource;
         if (ReadSource(TEXT("Source/GV2/Private/UI/GV2PropertyConsumers.cpp"), ConsumerSource))
         {
+            // PSC-09B (ADR-0043 D2/D3): FGV2TextPropertyConsumer's Commit()/Reset() now
+            // build a transaction and delegate to GV2LegacyPresentationApplyAdapter,
+            // which is what still names UGV2TextPipeline::Apply directly (checked below)
+            // -- this file's own source no longer does.
             TestTrue(
-                TEXT("PropertyConsumers uses UGV2TextPipeline::Apply"),
-                ConsumerSource.Contains(TEXT("UGV2TextPipeline::Apply")));
+                TEXT("PropertyConsumers routes text application through GV2LegacyPresentationApplyAdapter::Apply"),
+                ConsumerSource.Contains(TEXT("GV2LegacyPresentationApplyAdapter::Apply")));
+
+            FString TextAdapterSource;
+            if (ReadSource(TEXT("Source/GV2/Private/UI/GV2LegacyPresentationApplyAdapter.cpp"), TextAdapterSource))
+            {
+                TestTrue(
+                    TEXT("Legacy adapter routes plain-text application through UGV2TextPipeline::Apply"),
+                    TextAdapterSource.Contains(TEXT("UGV2TextPipeline::Apply")));
+            }
             // STATUS-012: the property is "image application goes through the central
             // presentation path", not "through one particular function of it". Pinning
             // the function name made this assertion fail when Commit moved from

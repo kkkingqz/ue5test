@@ -104,138 +104,56 @@ bool FGV2TextPropertyConsumer::Prepare(
     return true;
 }
 
+bool FGV2TextPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    GV2PresentationApply::FPreparedTextOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.Value.Text = PreparedText.Text;
+    Operation.Value.StyleToken = PreparedText.StyleToken;
+    Operation.Value.NormalizedMarkup = PreparedText.NormalizedMarkup;
+    OutTransaction.AddTextOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2TextPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
-    UWidget* ResolvedWidget = TargetWidget;
-    if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
-    {
-        ResolvedWidget = TW->GetTextBlock() ? Cast<UWidget>(TW->GetTextBlock()) : Cast<UWidget>(TW);
-    }
-    else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
-    {
-        ResolvedWidget = RTW->GetRichTextBlock() ? Cast<UWidget>(RTW->GetRichTextBlock()) : Cast<UWidget>(RTW);
-    }
-    else if (UGV2ButtonWidgetBase* BW = Cast<UGV2ButtonWidgetBase>(TargetWidget))
-    {
-        ResolvedWidget = BW;
-    }
-    else if (UGV2DropdownSelectWidgetBase* DW = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-    {
-        ResolvedWidget = DW;
-    }
-
-    if (!ResolvedWidget)
+    if (!TargetWidget)
     {
         OutError = TEXT("core:diagnostic.ui_consumer.missing_target: Target widget is null during Commit");
         return false;
     }
 
-    if (UGV2TextWidgetBase* TextWidget = Cast<UGV2TextWidgetBase>(ResolvedWidget))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        return TextWidget->ApplyText(PreparedText);
+        return false;
     }
-    if (UGV2ButtonWidgetBase* ButtonWidget = Cast<UGV2ButtonWidgetBase>(ResolvedWidget))
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
     {
-        return ButtonWidget->ApplyText(PreparedText);
+        return false;
     }
-    if (UGV2DropdownSelectWidgetBase* DropdownWidget = Cast<UGV2DropdownSelectWidgetBase>(ResolvedWidget))
-    {
-        return DropdownWidget->ApplyPlaceholderText(PreparedText);
-    }
-    if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(ResolvedWidget))
-    {
-        return RichText->ApplyText(PreparedText);
-    }
-    if (UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(ResolvedWidget))
-    {
-        if (UGV2ButtonWidgetBase* ParentButton = TextBlock->GetTypedOuter<UGV2ButtonWidgetBase>())
-        {
-            ParentButton->ApplyText(PreparedText);
-        }
-        else if (UGV2TextWidgetBase* ParentTW = TextBlock->GetTypedOuter<UGV2TextWidgetBase>())
-        {
-            ParentTW->ApplyText(PreparedText);
-        }
-        return UGV2TextPipeline::Apply(TextBlock, PreparedText);
-    }
-    if (UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(ResolvedWidget))
-    {
-        if (UGV2RichTextWidgetBase* ParentRT = RichTextBlock->GetTypedOuter<UGV2RichTextWidgetBase>())
-        {
-            ParentRT->ApplyText(PreparedText);
-        }
-        return UGV2TextPipeline::ApplyRichText(RichTextBlock, PreparedText);
-    }
-    if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(ResolvedWidget))
-    {
-        return UGV2TextPipeline::ApplyHint(EditableBox, PreparedText);
-    }
-
-    OutError = TEXT("core:diagnostic.ui_consumer.target_type_mismatch: Target widget is not a supported text renderer");
-    return false;
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2TextPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    UWidget* ResolvedWidget = TargetWidget;
-    if (UGV2TextWidgetBase* TW = Cast<UGV2TextWidgetBase>(TargetWidget))
+    if (!TargetWidget)
     {
-        ResolvedWidget = TW->GetTextBlock() ? Cast<UWidget>(TW->GetTextBlock()) : Cast<UWidget>(TW);
-    }
-    else if (UGV2RichTextWidgetBase* RTW = Cast<UGV2RichTextWidgetBase>(TargetWidget))
-    {
-        ResolvedWidget = RTW;
-    }
-    else if (UGV2ButtonWidgetBase* BW = Cast<UGV2ButtonWidgetBase>(TargetWidget))
-    {
-        ResolvedWidget = BW;
-    }
-    else if (UGV2DropdownSelectWidgetBase* DW = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget))
-    {
-        ResolvedWidget = DW;
+        return;
     }
 
-    if (UGV2TextWidgetBase* TextWidget = Cast<UGV2TextWidgetBase>(ResolvedWidget))
-    {
-        TextWidget->ApplyText({});
-    }
-    else if (UGV2ButtonWidgetBase* ButtonWidget = Cast<UGV2ButtonWidgetBase>(ResolvedWidget))
-    {
-        ButtonWidget->ApplyText({});
-    }
-    else if (UGV2DropdownSelectWidgetBase* DropdownWidget = Cast<UGV2DropdownSelectWidgetBase>(ResolvedWidget))
-    {
-        DropdownWidget->ApplyPlaceholderText({});
-    }
-    else if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(ResolvedWidget))
-    {
-        RichText->ApplyText({});
-    }
-    else if (UCommonTextBlock* TextBlock = Cast<UCommonTextBlock>(ResolvedWidget))
-    {
-        if (UGV2ButtonWidgetBase* ParentButton = TextBlock->GetTypedOuter<UGV2ButtonWidgetBase>())
-        {
-            ParentButton->ApplyText({});
-        }
-        else if (UGV2TextWidgetBase* ParentTW = TextBlock->GetTypedOuter<UGV2TextWidgetBase>())
-        {
-            ParentTW->ApplyText({});
-        }
-        UGV2TextPipeline::Apply(TextBlock, FGV2TextViewModel());
-    }
-    else if (UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(ResolvedWidget))
-    {
-        if (UGV2RichTextWidgetBase* ParentRT = RichTextBlock->GetTypedOuter<UGV2RichTextWidgetBase>())
-        {
-            ParentRT->ApplyText({});
-        }
-        UGV2TextPipeline::ApplyRichText(RichTextBlock, FGV2TextViewModel());
-    }
-    else if (UEditableTextBox* EditableBox = Cast<UEditableTextBox>(ResolvedWidget))
-    {
-        UGV2TextPipeline::ApplyHint(EditableBox, FGV2TextViewModel());
-    }
+    GV2PresentationApply::FPreparedTextOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.bIsReset = true;
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddTextOperation(MoveTemp(Operation));
+    FString ApplyError;
+    GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
 }
 
 // --- FGV2ImageResourcePropertyConsumer ---

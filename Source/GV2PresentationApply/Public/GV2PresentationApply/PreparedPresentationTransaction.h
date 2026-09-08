@@ -183,6 +183,38 @@ struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpansOperation
     TArray<FPreparedRichTextSpan> Spans;
 };
 
+// PSC-09B: canonical lower replacement for GV2's own FGV2TextViewModel
+// (Bridge/GV2BridgeTypes.h, USTRUCT(BlueprintType)) -- built from the same resolved
+// fields via plain Core types only. Every real Text target is either a GV2-owned widget
+// wrapper (UGV2TextWidgetBase, UGV2ButtonWidgetBase, UGV2DropdownSelectWidgetBase,
+// UGV2RichTextWidgetBase -- each with its own bookkeeping, e.g. CurrentContent, that a
+// direct SetText would leave stale) or reached only via GV2's own UGV2TextPipeline UCLASS
+// (a GV2-owned type, however plain the widgets it ultimately touches are) --
+// GV2LegacyPresentationApplyAdapter reconstructs the USTRUCT and replicates the exact
+// per-target dispatch FGV2TextPropertyConsumer::Commit() used to perform directly.
+// Removing the Theme lookup still nested inside that dispatch (UGV2TextPipeline::Apply/
+// ApplyRichText/ApplyHint's own ResolveStyleClass/ResolveStyle calls) is PSC-10's job,
+// named there explicitly ("legacy runtime GetConfiguredTheme()... удалены после перевода
+// всех operation kinds") -- PSC-09B's own scope is the call SHAPE (transaction protocol,
+// not a direct Commit-time call), not yet eliminating every Theme access it still wraps.
+struct GV2PRESENTATIONAPPLY_API FPreparedTextValue
+{
+    FText Text;
+    FName StyleToken;
+    FString NormalizedMarkup;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedTextOperation
+{
+    TWeakObjectPtr<UWidget> TargetWidget;
+    FPreparedTextValue Value;
+    // Selects between two ORIGINALLY DIFFERENT UGV2RichTextWidgetBase redirect rules the
+    // pre-transaction Commit()/Reset() each had (Commit redirected to the inner
+    // RichTextBlock when present; Reset did not) -- not a general-purpose flag, only
+    // GV2LegacyPresentationApplyAdapter reads it, to reproduce that exact asymmetry.
+    bool bIsReset = false;
+};
+
 // PSC-09A/09B (ADR-0043 D3): immutable once built -- an upper GV2 preparer appends
 // operations, then hands the finished transaction to Apply() below; nothing mutates it
 // afterward, and it carries no PrepareContext, snapshot, or resolver of any kind.
@@ -233,6 +265,10 @@ public:
     {
         RichTextSpansOperations.Add(MoveTemp(Operation));
     }
+    void AddTextOperation(FPreparedTextOperation Operation)
+    {
+        TextOperations.Add(MoveTemp(Operation));
+    }
 
     const TArray<FPreparedImageResourceOperation>& GetImageResourceOperations() const { return ImageResourceOperations; }
     const TArray<FPreparedImageHostOperation>& GetImageHostOperations() const { return ImageHostOperations; }
@@ -245,6 +281,7 @@ public:
     const TArray<FPreparedKeyOperation>& GetKeyOperations() const { return KeyOperations; }
     const TArray<FPreparedBindingOperation>& GetBindingOperations() const { return BindingOperations; }
     const TArray<FPreparedRichTextSpansOperation>& GetRichTextSpansOperations() const { return RichTextSpansOperations; }
+    const TArray<FPreparedTextOperation>& GetTextOperations() const { return TextOperations; }
 
     bool IsEmpty() const
     {
@@ -258,7 +295,8 @@ public:
             && StringOperations.IsEmpty()
             && KeyOperations.IsEmpty()
             && BindingOperations.IsEmpty()
-            && RichTextSpansOperations.IsEmpty();
+            && RichTextSpansOperations.IsEmpty()
+            && TextOperations.IsEmpty();
     }
 
 private:
@@ -273,6 +311,7 @@ private:
     TArray<FPreparedKeyOperation> KeyOperations;
     TArray<FPreparedBindingOperation> BindingOperations;
     TArray<FPreparedRichTextSpansOperation> RichTextSpansOperations;
+    TArray<FPreparedTextOperation> TextOperations;
 };
 
 // PSC-09A (ADR-0043 D2): the only public entry point physical Apply exposes -- there is
