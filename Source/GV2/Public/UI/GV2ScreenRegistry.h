@@ -194,6 +194,13 @@ public:
         FGV2ResolvedScreenDescriptor& OutDescriptor,
         FGV2ScreenResolutionRejection& OutRejection) const;
 
+    // PSC-04 (ADR-0043 D1): every resolved screen's own identity (screen_id, its already-
+    // loaded WidgetClass's path) for presentation_hash -- not FGV2ScreenRegistryEntry (the
+    // raw, unvalidated authoring row validate_screen_registry_entry_encapsulation.py keeps
+    // out of production code), and not usable to obtain a class outside Resolve()'s checks.
+    // Deterministic (sorted by screen_id) so the hash doesn't depend on TMap iteration order.
+    TArray<TPair<FString, FString>> GetResolvedScreenIdentities() const;
+
 private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Registry", meta = (AllowPrivateAccess = "true"))
     TArray<FGV2ScreenRegistryEntry> Entries;

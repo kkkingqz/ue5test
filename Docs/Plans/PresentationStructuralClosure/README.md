@@ -96,7 +96,7 @@ GV2 semantic Prepare
 ## Критический путь
 
 ```text
-PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04 → PSC-05 → PSC-06
+PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05 → PSC-06
                                              ├→ PSC-07 ────────────┐
                                              └→ PSC-08 → PSC-09A → PSC-09B → PSC-10
                                                                               → PSC-11 → PSC-12
@@ -140,7 +140,7 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04 → PSC-05 → PSC-06
 - [x] Contracts описывают target ownership, lifecycle, failure semantics, module direction и Headless identity до начала реализации. (`PSC-01`, 2026-09-07)
 - [x] Один `FResolvedPackageSet` строится до всех consumers; repository, Lua и presentation не выполняют повторный package discovery. (`PSC-02`, 2026-09-08)
 - [x] Canonical hash полного manifest входит в package fingerprint; `ue_content_roots` меняет fingerprint, но не Headless run digest. (`PSC-03`, 2026-09-08)
-- [ ] Полный `FGV2SessionContentSnapshot` содержит все поля из зафиксированного интерфейса и не копирует definitions/provenance. (`PSC-04`)
+- [x] Полный `FGV2SessionContentSnapshot` содержит все поля из зафиксированного интерфейса и не копирует definitions/provenance. (`PSC-04`, 2026-09-08)
 - [ ] Candidate остаётся private; active snapshot публикуется атомарно с успешным initial Commit/`Ready`; failure и recovery не наблюдают частичный snapshot. (`PSC-05`)
 - [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload. (`PSC-06`, `PSC-10`)
 - [ ] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`)

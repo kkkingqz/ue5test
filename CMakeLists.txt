@@ -259,4 +259,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_package_set_factory_inventory.py"
             "--self-test"
     )
+    # PSC-04 (ADR-0043 D1): every FGV2SessionContentSnapshot member has an explicit role
+    # classification, derived from the struct's own declaration -- a new/removed member
+    # cannot silently pass by leaving the independent classification table stale.
+    add_test(
+        NAME session_content_snapshot_field_inventory_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_content_snapshot_field_inventory.py"
+    )
+    add_test(
+        NAME session_content_snapshot_field_inventory_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_content_snapshot_field_inventory.py"
+            "--self-test"
+    )
 endif()

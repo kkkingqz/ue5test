@@ -5,6 +5,7 @@
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
+#include "Application/GV2SessionContentSnapshot.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/Testing/GV2LuaMarshallerConformance.h"
@@ -1691,6 +1692,104 @@ bool FGV2PackageDiscoveryAndOrderConformanceCrossHostTest::RunTest(const FString
             UTF8_TO_TCHAR(Error.c_str())));
         return false;
     }
+    return true;
+}
+
+// PSC-04 (ADR-0043 D1): StartSession() builds one FGV2SessionContentSnapshot -- this test
+// proves it is genuinely populated (repository/package identities/Lua sources/eagerly
+// compiled schemas/Screen Registry/Image Catalog/Theme/GameShell class all resolved, no
+// absolute filesystem roots leaked into it) and that its four identity hashes are real
+// 64-lowercase-hex SHA-256 values, not empty placeholders.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionContentSnapshotContract,
+    "GV2.Runtime.Session.ContentSnapshotContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionContentSnapshotContract::RunTest(const FString& Parameters)
+{
+    // MakeFrozenCoreFixturePinnedRepository pins a core-only synthetic repository; the
+    // default (non-override) fallback closure would load the real rh package's gameplay
+    // Lua, whose start hook expects rh-specific repository content this frozen fixture
+    // doesn't have. The sample override switches the fallback closure to core+textsystem+
+    // sample instead (CBM-03), matching what the fixture repository can actually satisfy --
+    // the same override FGV2SessionCoordinatorPreparedCommitAndFailureInjectionTest already
+    // uses with this exact repository fixture.
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
+
+    const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("StartSession publishes a content snapshot"), Snapshot);
+    if (Snapshot == nullptr)
+    {
+        return false;
+    }
+
+    TestTrue(TEXT("Snapshot's repository handle is valid"), Snapshot->GetRepository().IsValid());
+
+    // core+textsystem+sample -- the sample-override fallback closure (CBM-03), unrelated
+    // to which repository handle MakeFrozenCoreFixturePinnedRepository pinned.
+    TArray<FString> ExpectedPackageIds = {TEXT("core"), TEXT("textsystem"), TEXT("sample")};
+    TestEqual(
+        TEXT("Snapshot's ordered package ids match the canonical closure"),
+        FString::Join(Snapshot->GetOrderedPackageIds(), TEXT(",")),
+        FString::Join(ExpectedPackageIds, TEXT(",")));
+
+    TestTrue(TEXT("Snapshot's Lua source set is non-empty"), !Snapshot->GetLuaSources().empty());
+    TestTrue(TEXT("Snapshot's script_set_hash is populated after RuntimeSession::Start"), !Snapshot->GetScriptSetHash().IsEmpty());
+
+    // Eagerly compiled: a known ui_field schema resolves instantly (no discovery, no
+    // filesystem access) through the snapshot's own cache.
+    FString SchemaError;
+    TestNotNull(
+        TEXT("A known ui_field schema is already compiled in the snapshot's schema cache"),
+        Snapshot->GetSchemaCache().GetCompiledSchema("core:schema.ui_field.text.v1", SchemaError).get());
+
+    TestTrue(TEXT("Snapshot owns a resolved Screen Registry"), Snapshot->GetScreenRegistry().Registry.IsValid());
+    TestTrue(TEXT("Snapshot owns a resolved Image Catalog"), Snapshot->GetImageCatalog().Catalog.IsValid());
+    TestTrue(TEXT("Snapshot owns a resolved Theme"), Snapshot->GetTheme().Theme.IsValid());
+
+    auto IsLowercaseHex = [](const FString& Value)
+    {
+        if (Value.IsEmpty())
+        {
+            return false;
+        }
+        for (const TCHAR Ch : Value)
+        {
+            const bool bDigit = Ch >= TEXT('0') && Ch <= TEXT('9');
+            const bool bLowerHexLetter = Ch >= TEXT('a') && Ch <= TEXT('f');
+            if (!bDigit && !bLowerHexLetter)
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    TestTrue(TEXT("repository_content_hash is lowercase hex"), IsLowercaseHex(Snapshot->GetRepositoryContentHash()));
+    TestTrue(TEXT("package_set_fingerprint is lowercase hex"), IsLowercaseHex(Snapshot->GetPackageSetFingerprint()));
+    TestTrue(TEXT("presentation_hash is lowercase hex"), IsLowercaseHex(Snapshot->GetPresentationHash()));
+    TestTrue(TEXT("session_content_id is lowercase hex"), IsLowercaseHex(Snapshot->GetSessionContentId()));
+
+    // No absolute filesystem root leaks: OrderedPackageIds carries bare package_id strings
+    // only, never a '/' (which an absolute path would always contain).
+    for (const FString& PackageId : Snapshot->GetOrderedPackageIds())
+    {
+        TestFalse(
+            *FString::Printf(TEXT("Package id '%s' is not a filesystem path"), *PackageId),
+            PackageId.Contains(TEXT("/")));
+    }
+
+    Coordinator.EndSession();
+    TestNull(TEXT("EndSession clears the content snapshot"), Coordinator.GetContentSnapshot());
+
     return true;
 }
 

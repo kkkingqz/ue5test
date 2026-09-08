@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Application/GV2SessionContentSnapshot.h"
 #include "Bridge/GV2RuntimeIngressQueue.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2ContentCore/RepositorySnapshot.h"
@@ -38,6 +39,11 @@ public:
 
     const FGV2SessionStatus& GetStatus() const;
     const GV2ContentCore::FRepositoryReadHandle& GetPinnedRepository() const { return PinnedRepository; }
+
+    // PSC-04 (ADR-0043 D1): null before a successful StartSession() and after EndSession()/
+    // a failed StartSession(). Not yet read by production presentation code -- PSC-06 wires
+    // FGV2PresentationPrepareContext to it.
+    const FGV2SessionContentSnapshot* GetContentSnapshot() const { return ContentSnapshot.Get(); }
 
     bool PublishUiBindings(
         const FString& UiInstanceId,
@@ -91,6 +97,7 @@ private:
 
     FGV2SessionStatus Status;
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
+    TUniquePtr<FGV2SessionContentSnapshot> ContentSnapshot;
     FGV2UiBindingRegistry BindingRegistry;
     FGV2RuntimeIngressQueue IngressQueue;
     GV2RuntimeCore::FRuntimeSession RuntimeSession;

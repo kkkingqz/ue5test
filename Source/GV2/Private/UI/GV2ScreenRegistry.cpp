@@ -389,3 +389,23 @@ bool UGV2ScreenRegistry::Resolve(
     OutDescriptor.WidgetClass = Found->WidgetClass;
     return true;
 }
+
+TArray<TPair<FString, FString>> UGV2ScreenRegistry::GetResolvedScreenIdentities() const
+{
+    TArray<TPair<FString, FString>> Identities;
+    if (!bBuilt)
+    {
+        return Identities;
+    }
+    Identities.Reserve(ResolvedByScreenId.Num());
+    for (const auto& [ScreenId, Resolved] : ResolvedByScreenId)
+    {
+        const FString ClassPath = Resolved.WidgetClass != nullptr ? Resolved.WidgetClass->GetPathName() : FString();
+        Identities.Emplace(ScreenId, ClassPath);
+    }
+    Identities.Sort([](const TPair<FString, FString>& A, const TPair<FString, FString>& B)
+    {
+        return A.Key < B.Key;
+    });
+    return Identities;
+}

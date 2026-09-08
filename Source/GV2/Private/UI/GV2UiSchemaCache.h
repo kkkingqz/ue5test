@@ -49,10 +49,20 @@ public:
         const std::string& SchemaId,
         FString& OutError) const;
 
+    // PSC-04 (ADR-0043 D1): compiles every schema DiscoverAll() found, not just the ones a
+    // UI field happens to reference before Ready. An unknown/invalid schema is a typed
+    // bootstrap failure (blocks StartSession, never a post-Ready fallback) instead of a
+    // per-field UiPropertyDiscrepancy discovered only when some screen first uses it.
+    // Deterministic order (sorted schema_id) so OutError names the same offender across
+    // runs. Memoizes into the same CompiledCache GetCompiledSchema reads, so a call site
+    // that resolves a schema after this never recompiles it.
+    bool CompileAll(FString& OutError) const;
+
 private:
     void DiscoverAll();
 
     TArray<FGV2SchemaPackageRoot> PackageRoots;
     GV2ContentCore::FInMemoryUiSchemaResolver Resolver;
     mutable std::map<std::string, GV2ContentCore::FCompiledUiFieldSpecPtr, std::less<>> CompiledCache;
+    TArray<FString> DiscoveredSchemaIds;
 };

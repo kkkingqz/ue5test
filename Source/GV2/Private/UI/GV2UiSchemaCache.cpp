@@ -77,6 +77,20 @@ void FGV2UiSchemaCache::DiscoverAll()
                 continue;
             }
 
+            // PSC-04: *.schema.json5 is shared with repository content-definition schemas
+            // (definition_type-bound, validated by FSchemaRegistry at repository build --
+            // e.g. GameData/core/schemas/actor_v1.schema.json5), which are not ui_field/
+            // ui_value schemas and were never meant to reach CompileUiFieldSpec. Only a
+            // schema_domain-bearing file belongs to this cache; a definition_type file (or
+            // any other schema.json5 lacking schema_domain) is silently not registered here,
+            // exactly like a malformed file -- it was already unreachable via any production
+            // lookup (nothing queries a ui_field schema_id for it), CompileAll() just made
+            // the distinction load-bearing instead of latent.
+            if (SchemaRoot.FindField("schema_domain") == nullptr)
+            {
+                continue;
+            }
+
             // DCA-19: a schema's own `id` namespace must match the package it was
             // physically discovered under -- otherwise a file placed in one package's
             // directory could silently register itself into another package's
@@ -93,8 +107,26 @@ void FGV2UiSchemaCache::DiscoverAll()
 
             auto Document = std::make_shared<const GV2ContentCore::FParsedDocument>(MoveTemp(*Parsed));
             Resolver.RegisterUiSchemaDocument(IdField->AsString(), Document, TCHAR_TO_UTF8(*Root.PackageId), RelativeSource);
+            DiscoveredSchemaIds.AddUnique(UTF8_TO_TCHAR(IdField->AsString().c_str()));
         }
     }
+    DiscoveredSchemaIds.Sort();
+}
+
+// PAH-08: phase=prepare -- called only from FGV2SessionContentCandidate::Build(), during
+// StartSession()'s bootstrap, before the Lua VM/session can reach Ready.
+bool FGV2UiSchemaCache::CompileAll(FString& OutError) const
+{
+    for (const FString& SchemaId : DiscoveredSchemaIds)
+    {
+        FString CompileError;
+        if (GetCompiledSchema(TCHAR_TO_UTF8(*SchemaId), CompileError) == nullptr)
+        {
+            OutError = CompileError;
+            return false;
+        }
+    }
+    return true;
 }
 
 // PAH-08: phase=authority

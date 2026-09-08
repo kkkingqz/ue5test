@@ -282,6 +282,7 @@ bool FGV2SessionCoordinator::StartSession(
     Status.RepositoryVersion = 0;
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     UGV2ImageResourceCatalog::ReleaseForSession();
+    ContentSnapshot.Reset();
 
     if (!InPinnedRepository.IsValid())
     {
@@ -318,6 +319,26 @@ bool FGV2SessionCoordinator::StartSession(
     {
         ClosurePackageIds.Add(SchemaRoot.PackageId);
     }
+
+    // PSC-04 (ADR-0043 D1): resolves Screen Registry/Image Catalog/Theme/GameShell/eagerly
+    // compiled schemas from this exact ResolvedPackageSet, entirely before the Lua VM is
+    // created -- runs alongside (not yet replacing) RebuildSchemaCacheForSession/
+    // RebuildForSession below; PSC-06 retires those legacy session globals in favor of
+    // this snapshot once production Prepare reads it through FGV2PresentationPrepareContext.
+    TUniquePtr<FGV2SessionContentSnapshot> Candidate = MakeUnique<FGV2SessionContentSnapshot>();
+    GV2RuntimeCore::FRuntimeFault CandidateFault;
+    if (!FGV2SessionContentCandidate::Build(
+            InPinnedRepository,
+            ResolvedPackageSet,
+            SchemaPackageRoots,
+            MoveTemp(RuntimeSources),
+            *Candidate,
+            CandidateFault))
+    {
+        FailRuntime(CandidateFault);
+        return false;
+    }
+
     GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(SchemaPackageRoots));
 
     // PAH-04B: same closure package ids as schemas -- the image resource catalog is the
@@ -334,11 +355,15 @@ bool FGV2SessionCoordinator::StartSession(
         return false;
     }
 
-    if (!RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, RuntimeSources, Fault))
+    // PSC-04: RuntimeSession consumes the snapshot's own Lua source set -- it was moved
+    // into the candidate above, not read a second time from a separately-held local copy.
+    if (!RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, Candidate->GetLuaSources(), Fault))
     {
         FailRuntime(Fault);
         return false;
     }
+    FGV2SessionContentCandidate::FinalizeScriptIdentity(*Candidate, RuntimeSession.GetScriptSetHash());
+    ContentSnapshot = MoveTemp(Candidate);
 
     std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
     if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
@@ -410,6 +435,7 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     UGV2ImageResourceCatalog::ReleaseForSession();
+    ContentSnapshot.Reset();
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
     Status.SessionState = FinalState;
     Status.RepositoryVersion = 0;
@@ -791,6 +817,7 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     UGV2ImageResourceCatalog::ReleaseForSession();
+    ContentSnapshot.Reset();
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;
