@@ -10,7 +10,7 @@
 
 namespace
 {
-std::string ToUtf8(const FString& Value)
+std::string SnapshotToUtf8(const FString& Value)
 {
     const FTCHARToUTF8 Converted(*Value);
     return std::string(Converted.Get(), Converted.Length());
@@ -129,7 +129,7 @@ bool FGV2SessionContentCandidate::Build(
     FString SchemaError;
     if (!OutSnapshot.SchemaCache->CompileAll(SchemaError))
     {
-        OutFault = {"UiSchemaNotReady", ToUtf8(SchemaError)};
+        OutFault = {"UiSchemaNotReady", SnapshotToUtf8(SchemaError)};
         return false;
     }
 
@@ -169,7 +169,7 @@ bool FGV2SessionContentCandidate::Build(
     FString RegistryError;
     if (!RegistryAsset->Build(ClosureEntries, RegistryError))
     {
-        OutFault = {"ScreenRegistryNotReady", ToUtf8(RegistryError)};
+        OutFault = {"ScreenRegistryNotReady", SnapshotToUtf8(RegistryError)};
         return false;
     }
     OutSnapshot.ScreenRegistry.Registry = TStrongObjectPtr<UGV2ScreenRegistry>(RegistryAsset);
@@ -181,7 +181,7 @@ bool FGV2SessionContentCandidate::Build(
     FString CatalogError;
     if (!CatalogInstance->BuildFromPackageClosure(OutSnapshot.OrderedPackageIds, CatalogError))
     {
-        OutFault = {"ImageCatalogNotReady", ToUtf8(CatalogError)};
+        OutFault = {"ImageCatalogNotReady", SnapshotToUtf8(CatalogError)};
         return false;
     }
     OutSnapshot.ImageCatalog.Catalog = TStrongObjectPtr<UGV2ImageResourceCatalog>(CatalogInstance);
@@ -211,8 +211,8 @@ bool FGV2SessionContentCandidate::Build(
     for (const TPair<FString, FString>& Identity : RegistryAsset->GetResolvedScreenIdentities())
     {
         std::vector<std::pair<std::string, GV2ContentCore::FValue>> ScreenFields;
-        ScreenFields.emplace_back("screen_id", GV2ContentCore::FValue::MakeString(ToUtf8(Identity.Key)));
-        ScreenFields.emplace_back("widget_class", GV2ContentCore::FValue::MakeString(ToUtf8(Identity.Value)));
+        ScreenFields.emplace_back("screen_id", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Identity.Key)));
+        ScreenFields.emplace_back("widget_class", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Identity.Value)));
         ScreensArray.push_back(GV2ContentCore::FValue::MakeObject(std::move(ScreenFields)));
     }
     PresentationFields.emplace_back("screens", GV2ContentCore::FValue::MakeArray(std::move(ScreensArray)));
@@ -226,19 +226,19 @@ bool FGV2SessionContentCandidate::Build(
     for (const FGV2ImageResourceDefinition& Entry : ResourceEntries)
     {
         std::vector<std::pair<std::string, GV2ContentCore::FValue>> ResourceFields;
-        ResourceFields.emplace_back("resource_id", GV2ContentCore::FValue::MakeString(ToUtf8(Entry.ResourceId)));
-        ResourceFields.emplace_back("texture", GV2ContentCore::FValue::MakeString(ToUtf8(Entry.Texture.ToString())));
+        ResourceFields.emplace_back("resource_id", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Entry.ResourceId)));
+        ResourceFields.emplace_back("texture", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Entry.Texture.ToString())));
         ResourceFields.emplace_back(
             "render_mode", GV2ContentCore::FValue::MakeInteger(static_cast<std::int64_t>(Entry.RenderMode)));
         ResourcesArray.push_back(GV2ContentCore::FValue::MakeObject(std::move(ResourceFields)));
     }
     PresentationFields.emplace_back("resources", GV2ContentCore::FValue::MakeArray(std::move(ResourcesArray)));
 
-    PresentationFields.emplace_back("theme", GV2ContentCore::FValue::MakeString(ToUtf8(ResolvedTheme->GetPathName())));
+    PresentationFields.emplace_back("theme", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(ResolvedTheme->GetPathName())));
     PresentationFields.emplace_back(
         "game_shell_class",
         GV2ContentCore::FValue::MakeString(
-            GameShellClass != nullptr ? ToUtf8(GameShellClass->GetPathName()) : std::string()));
+            GameShellClass != nullptr ? SnapshotToUtf8(GameShellClass->GetPathName()) : std::string()));
 
     OutSnapshot.PresentationHash = UTF8_TO_TCHAR(
         GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue::MakeObject(std::move(PresentationFields))).c_str());
@@ -255,10 +255,10 @@ void FGV2SessionContentCandidate::FinalizeScriptIdentity(
     // session_content_id: canonically combines repository/package/script/presentation
     // identities -- the one identity that only exists once all four are known.
     std::vector<std::pair<std::string, GV2ContentCore::FValue>> Fields;
-    Fields.emplace_back("repository_content_hash", GV2ContentCore::FValue::MakeString(ToUtf8(Snapshot.RepositoryContentHash)));
-    Fields.emplace_back("package_set_fingerprint", GV2ContentCore::FValue::MakeString(ToUtf8(Snapshot.PackageSetFingerprint)));
+    Fields.emplace_back("repository_content_hash", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Snapshot.RepositoryContentHash)));
+    Fields.emplace_back("package_set_fingerprint", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Snapshot.PackageSetFingerprint)));
     Fields.emplace_back("script_set_hash", GV2ContentCore::FValue::MakeString(ScriptSetHash));
-    Fields.emplace_back("presentation_hash", GV2ContentCore::FValue::MakeString(ToUtf8(Snapshot.PresentationHash)));
+    Fields.emplace_back("presentation_hash", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Snapshot.PresentationHash)));
     Snapshot.SessionContentId = UTF8_TO_TCHAR(
         GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue::MakeObject(std::move(Fields))).c_str());
 }

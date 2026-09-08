@@ -6,6 +6,7 @@
 #include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionContentSnapshot.h"
+#include "UI/GV2ImageResourceCatalog.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/Testing/GV2LuaMarshallerConformance.h"
@@ -1273,10 +1274,16 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
         Coordinator.GetStatus().SessionState,
         EGV2SessionState::Failed);
 
-    // 2. Start valid session, then call StartSession with invalid handle to ensure full teardown
+    // 2. Start valid session, then call StartSession with invalid handle -- PSC-05
+    // (BootstrapAndSessionLifecycle.md "Целевое правило"): a failure before StartSession
+    // commits to replacing the active session (repository validity is the very first such
+    // check) must leave that active session completely untouched, not tear it down for a
+    // replacement attempt that never got far enough to justify destroying it.
     TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     TestTrue(TEXT("Lua VM is started for valid session"), Coordinator.IsLuaVmStarted());
     TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
+    const GV2ContentCore::FRepositoryReadHandle ActivePinnedRepository = Coordinator.GetPinnedRepository();
+    const int32 ActiveSessionGeneration = Coordinator.GetStatus().SessionGeneration;
 
     AddExpectedError(
         TEXT("GV2 Lua runtime fault: code=RepositoryNotReady"),
@@ -1285,13 +1292,172 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
     TestFalse(
         TEXT("StartSession rejects invalid handle on active session"),
         Coordinator.StartSession(GV2ContentCore::FRepositoryReadHandle(), 0));
-    TestFalse(TEXT("Active VM is stopped on failed StartSession"), Coordinator.IsLuaVmStarted());
-    TestFalse(TEXT("Coordinator is not ready after failed StartSession"), Coordinator.GetStatus().bIsReady);
-    TestFalse(TEXT("Pinned repository handle is cleared on failure"), Coordinator.GetPinnedRepository().IsValid());
+    TestTrue(TEXT("Active VM keeps running -- the replacement attempt never committed"), Coordinator.IsLuaVmStarted());
+    TestTrue(TEXT("Coordinator remains ready -- the prior session is untouched"), Coordinator.GetStatus().bIsReady);
+    TestTrue(TEXT("Pinned repository handle is unchanged"), Coordinator.GetPinnedRepository().IsValid());
     TestEqual(
-        TEXT("Session state is Failed after failed StartSession on active session"),
+        TEXT("Pinned repository handle is the SAME handle the active session pinned"),
+        Coordinator.GetPinnedRepository().GetContentHash(),
+        ActivePinnedRepository.GetContentHash());
+    TestEqual(
+        TEXT("Session state is still Ready -- no replacement session was ever created"),
         Coordinator.GetStatus().SessionState,
-        EGV2SessionState::Failed);
+        EGV2SessionState::Ready);
+    TestEqual(
+        TEXT("Session generation did not advance -- StartSession never reached the commit boundary"),
+        Coordinator.GetStatus().SessionGeneration,
+        ActiveSessionGeneration);
+
+    return true;
+}
+
+// PSC-05 (ADR-0043 D1, BootstrapAndSessionLifecycle.md "Целевое правило"): a content
+// candidate builder failure (Screen Registry/Image Catalog/UI schemas/Theme -- not just
+// the repository-handle precondition FGV2SessionRejectsInvalidRepositoryTest covers) during
+// a REPLACEMENT attempt must also leave a prior active session completely untouched, since
+// StartSession has not yet committed to tearing anything down at that point.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionReplacementContentBuilderFailurePreservesActiveSessionTest,
+    "GV2.Runtime.Session.ReplacementContentBuilderFailurePreservesActiveSession",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionReplacementContentBuilderFailurePreservesActiveSessionTest::RunTest(const FString& Parameters)
+{
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+
+    TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
+    const FGV2SessionContentSnapshot* ActiveSnapshot = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("Active session published a content snapshot"), ActiveSnapshot);
+    const int32 ActiveSessionGeneration = Coordinator.GetStatus().SessionGeneration;
+
+    // An empty (but non-null) ResolvedPackageSet resolves zero package/schema roots --
+    // FGV2SessionContentCandidate::Build's Screen Registry step fails closed on an empty
+    // closure (UGV2ScreenRegistry::Build's own "empty package load order" check), giving a
+    // deterministic ScreenRegistryNotReady without needing to corrupt any real content file.
+    const GV2ContentHostSupport::FResolvedPackageSet EmptyResolvedSet;
+    AddExpectedError(
+        TEXT("GV2 Lua runtime fault: code=ScreenRegistryNotReady"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    TestFalse(
+        TEXT("Replacement attempt with an empty package set fails at the content candidate stage"),
+        Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 2, &EmptyResolvedSet));
+
+    TestTrue(TEXT("Active VM keeps running"), Coordinator.IsLuaVmStarted());
+    TestTrue(TEXT("Coordinator remains ready"), Coordinator.GetStatus().bIsReady);
+    TestEqual(TEXT("Session state is still Ready"), Coordinator.GetStatus().SessionState, EGV2SessionState::Ready);
+    TestEqual(
+        TEXT("Session generation did not advance"),
+        Coordinator.GetStatus().SessionGeneration,
+        ActiveSessionGeneration);
+    TestEqual(
+        TEXT("Content snapshot is the SAME instance the active session published"),
+        Coordinator.GetContentSnapshot(),
+        ActiveSnapshot);
+
+    return true;
+}
+
+// PSC-05 (ADR-0043 D1): the content snapshot must never become observable before the
+// session it belongs to actually reaches Ready -- a failure AFTER the Lua VM starts but
+// BEFORE the initial document commits (here: a DocumentSink that rejects the apply) must
+// leave GetContentSnapshot() null, not a snapshot for a session that never became Ready.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionContentSnapshotNotPublishedBeforeReadyTest,
+    "GV2.Runtime.Session.ContentSnapshotNotPublishedBeforeReady",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionContentSnapshotNotPublishedBeforeReadyTest::RunTest(const FString& Parameters)
+{
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+    bool bSnapshotWasNullDuringDocumentSink = false;
+    bool bDocumentSinkRan = false;
+    // The DocumentSink runs synchronously from inside StartSession, strictly before
+    // Status.bIsReady is ever set true -- reading GetContentSnapshot() from here is the
+    // only way a black-box test can observe the mid-flight state directly (a post-failure
+    // check alone can't distinguish "never published" from "published early, then reset by
+    // FailRuntime" -- both look identical after the fact).
+    Coordinator.SetDocumentSink(
+        [&Coordinator, &bSnapshotWasNullDuringDocumentSink, &bDocumentSinkRan](const FGV2UiDocumentViewModel&) -> bool
+        {
+            bDocumentSinkRan = true;
+            bSnapshotWasNullDuringDocumentSink = Coordinator.GetContentSnapshot() == nullptr;
+            return false;
+        });
+
+    AddExpectedError(
+        TEXT("GV2 Lua runtime fault: code=InitialPresentationApplyFailed"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    TestFalse(
+        TEXT("StartSession fails when the initial document cannot be applied"),
+        Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    TestTrue(TEXT("DocumentSink actually ran"), bDocumentSinkRan);
+    TestTrue(
+        TEXT("Content snapshot was still null when observed from inside the DocumentSink -- not published before Ready"),
+        bSnapshotWasNullDuringDocumentSink);
+    TestFalse(TEXT("Session is not ready"), Coordinator.GetStatus().bIsReady);
+    TestNull(
+        TEXT("Content snapshot was never published for a session that never reached Ready"),
+        Coordinator.GetContentSnapshot());
+
+    return true;
+}
+
+// PSC-04/05: the snapshot's Image Catalog is a fresh transient instance the candidate owns
+// via TStrongObjectPtr (not a shared config asset, unlike Screen Registry/Theme) -- once
+// EndSession() drops the snapshot and nothing else references it, it must actually become
+// collectible, not linger pinned by some other forgotten strong reference.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionContentSnapshotImageCatalogGcLifetimeTest,
+    "GV2.Runtime.Session.ContentSnapshotImageCatalogGcLifetime",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionContentSnapshotImageCatalogGcLifetimeTest::RunTest(const FString& Parameters)
+{
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    TWeakObjectPtr<UGV2ImageResourceCatalog> WeakCatalog;
+    {
+        FGV2SessionCoordinator Coordinator;
+        Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+        TestTrue(TEXT("Start session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+        const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
+        TestNotNull(TEXT("Session published a content snapshot"), Snapshot);
+        if (Snapshot == nullptr)
+        {
+            return false;
+        }
+        WeakCatalog = Snapshot->GetImageCatalog().Catalog.Get();
+        TestTrue(TEXT("Weak reference to the snapshot's Image Catalog is valid while the session is active"), WeakCatalog.IsValid());
+
+        Coordinator.EndSession();
+        TestNull(TEXT("EndSession clears the content snapshot"), Coordinator.GetContentSnapshot());
+        // Coordinator (and its snapshot's TStrongObjectPtr pin) is destroyed here, at scope exit.
+    }
+
+    CollectGarbage(RF_NoFlags);
+    TestFalse(
+        TEXT("Image Catalog is collectible once the snapshot that pinned it is gone"),
+        WeakCatalog.IsValid());
 
     return true;
 }

@@ -269,44 +269,26 @@ bool FGV2SessionCoordinator::StartSession(
 {
     check(IsInGameThread());
 
-    BindingRegistry.EndSession();
-    IngressQueue.Reset();
-    
-    GV2RuntimeCore::FRuntimeFault StopFault;
-    if (!RuntimeSession.Stop(&StopFault))
-    {
-        FailRuntime(StopFault);
-        return false;
-    }
-    PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
-    Status.RepositoryVersion = 0;
-    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
-    UGV2ImageResourceCatalog::ReleaseForSession();
-    ContentSnapshot.Reset();
+    // PSC-05 (BootstrapAndSessionLifecycle.md "Целевое правило"): captured before anything
+    // is touched. A failure below, before the commit-to-replace boundary, either preserves
+    // this exact session (nothing mutated yet) or -- if there was nothing valid running --
+    // transitions to Failed so the attempt is never silently indistinguishable from "no
+    // session was ever started".
+    const bool bHadPriorReadySession = Status.bIsReady;
 
     if (!InPinnedRepository.IsValid())
     {
-        GV2RuntimeCore::FRuntimeFault Fault{"RepositoryNotReady", "No published GameDataRepository to pin."};
-        FailRuntime(Fault);
+        FailReplacementAttempt(
+            {"RepositoryNotReady", "No published GameDataRepository to pin."}, bHadPriorReadySession);
         return false;
     }
-
-    ++Status.SessionGeneration;
-    Status.ApplicationState = EGV2ApplicationState::Bootstrapping;
-    Status.SessionState = EGV2SessionState::Creating;
-    Status.bIsReady = false;
-    Status.RepositoryVersion = InRepositoryVersion;
-    NextInputSequence = 1;
-    UiRevision = 0;
-    PinnedRepository = InPinnedRepository;
-    BindingRegistry.BeginSession(Status.SessionGeneration);
 
     GV2RuntimeCore::FRuntimeFault Fault;
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
     TArray<FGV2SchemaPackageRoot> SchemaPackageRoots;
     if (!LoadPortableRuntimeSources(RuntimeSources, Fault, ResolvedPackageSet, SchemaPackageRoots))
     {
-        FailRuntime(Fault);
+        FailReplacementAttempt(Fault, bHadPriorReadySession);
         return false;
     }
 
@@ -320,24 +302,52 @@ bool FGV2SessionCoordinator::StartSession(
         ClosurePackageIds.Add(SchemaRoot.PackageId);
     }
 
-    // PSC-04 (ADR-0043 D1): resolves Screen Registry/Image Catalog/Theme/GameShell/eagerly
-    // compiled schemas from this exact ResolvedPackageSet, entirely before the Lua VM is
-    // created -- runs alongside (not yet replacing) RebuildSchemaCacheForSession/
-    // RebuildForSession below; PSC-06 retires those legacy session globals in favor of
-    // this snapshot once production Prepare reads it through FGV2PresentationPrepareContext.
+    // PSC-04/05 (ADR-0043 D1): resolves Screen Registry/Image Catalog/Theme/GameShell/
+    // eagerly compiled schemas from this exact ResolvedPackageSet -- still entirely before
+    // touching whatever session is currently active, so a content-builder failure here
+    // (UiSchemaNotReady/ScreenRegistryNotReady/ImageCatalogNotReady/ThemeNotReady) has not
+    // yet committed to replacing anything. Runs alongside (not yet replacing)
+    // RebuildSchemaCacheForSession/RebuildForSession below; PSC-06 retires those legacy
+    // session globals in favor of this snapshot once production Prepare reads it through
+    // FGV2PresentationPrepareContext.
     TUniquePtr<FGV2SessionContentSnapshot> Candidate = MakeUnique<FGV2SessionContentSnapshot>();
     GV2RuntimeCore::FRuntimeFault CandidateFault;
     if (!FGV2SessionContentCandidate::Build(
             InPinnedRepository,
             ResolvedPackageSet,
             SchemaPackageRoots,
-            MoveTemp(RuntimeSources),
+            RuntimeSources,
             *Candidate,
             CandidateFault))
     {
-        FailRuntime(CandidateFault);
+        FailReplacementAttempt(CandidateFault, bHadPriorReadySession);
         return false;
     }
+
+    // ---- Past this point, StartSession commits to replacing whatever was active. ----
+    // Every failure from here on legitimately ends this attempt with the prior session
+    // already gone (its VM is about to be stopped below) -- FailRuntime, not
+    // FailReplacementAttempt, is correct for all of them.
+    BindingRegistry.EndSession();
+    IngressQueue.Reset();
+    GV2RuntimeCore::FRuntimeFault StopFault;
+    if (!RuntimeSession.Stop(&StopFault))
+    {
+        FailRuntime(StopFault);
+        return false;
+    }
+    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
+    UGV2ImageResourceCatalog::ReleaseForSession();
+
+    ++Status.SessionGeneration;
+    Status.ApplicationState = EGV2ApplicationState::Bootstrapping;
+    Status.SessionState = EGV2SessionState::Creating;
+    Status.bIsReady = false;
+    Status.RepositoryVersion = InRepositoryVersion;
+    NextInputSequence = 1;
+    UiRevision = 0;
+    PinnedRepository = InPinnedRepository;
+    BindingRegistry.BeginSession(Status.SessionGeneration);
 
     GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(SchemaPackageRoots));
 
@@ -363,7 +373,6 @@ bool FGV2SessionCoordinator::StartSession(
         return false;
     }
     FGV2SessionContentCandidate::FinalizeScriptIdentity(*Candidate, RuntimeSession.GetScriptSetHash());
-    ContentSnapshot = MoveTemp(Candidate);
 
     std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
     if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
@@ -397,6 +406,10 @@ bool FGV2SessionCoordinator::StartSession(
         return false;
     }
 
+    // PSC-05 (ADR-0043 D1): ContentSnapshot becomes observable atomically with the exact
+    // moment this session becomes Ready -- never before, and never on an attempt that
+    // fails at any later step.
+    ContentSnapshot = MoveTemp(Candidate);
     UiRevision = DocModel.Revision;
     Status.ApplicationState = EGV2ApplicationState::MenuActive;
     Status.SessionState = EGV2SessionState::Ready;
@@ -795,6 +808,32 @@ void FGV2SessionCoordinator::PumpIngress()
             InteractionSink(Item);
         }
     }
+}
+
+void FGV2SessionCoordinator::FailReplacementAttempt(
+    const GV2RuntimeCore::FRuntimeFault& Fault,
+    const bool bHadPriorReadySession)
+{
+    if (!bHadPriorReadySession)
+    {
+        // Nothing valid was running -- report the failed attempt itself, same terminal
+        // state FailRuntime would report, but without touching RuntimeSession/
+        // BindingRegistry/PinnedRepository/ContentSnapshot, none of which this attempt
+        // ever mutated.
+        Status.bIsReady = false;
+        Status.ApplicationState = EGV2ApplicationState::Failed;
+        Status.SessionState = EGV2SessionState::Failed;
+    }
+    // else: a Ready session was active when this attempt began and nothing about it has
+    // been touched -- Status/PinnedRepository/BindingRegistry/RuntimeSession/
+    // ContentSnapshot all still describe it exactly as they did before this call.
+
+    UE_LOG(
+        LogTemp,
+        Error,
+        TEXT("GV2 Lua runtime fault: code=%s message=%s"),
+        UTF8_TO_TCHAR(Fault.Code.c_str()),
+        UTF8_TO_TCHAR(Fault.Message.c_str()));
 }
 
 void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault)

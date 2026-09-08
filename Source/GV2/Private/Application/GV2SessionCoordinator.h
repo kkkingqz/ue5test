@@ -95,6 +95,18 @@ private:
     void PumpIngress();
     void FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault);
 
+    // PSC-05 (ADR-0042/BootstrapAndSessionLifecycle.md "Session states"): used only for a
+    // failure that occurs BEFORE StartSession commits to tearing down whatever session was
+    // previously active (repository validity, Lua source loading, content candidate build --
+    // none of these have touched RuntimeSession/BindingRegistry/PinnedRepository/
+    // ContentSnapshot yet). When bHadPriorReadySession is true, this leaves every one of
+    // those completely untouched -- the prior active session/snapshot stays observably
+    // unchanged, per PSC-05's invariant. When false (nothing valid to preserve), it still
+    // transitions Status to Failed, matching the state diagram's "Any build phase -> Failed"
+    // -- a failed attempt is never silently indistinguishable from "no session was ever
+    // started".
+    void FailReplacementAttempt(const GV2RuntimeCore::FRuntimeFault& Fault, bool bHadPriorReadySession);
+
     FGV2SessionStatus Status;
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     TUniquePtr<FGV2SessionContentSnapshot> ContentSnapshot;
