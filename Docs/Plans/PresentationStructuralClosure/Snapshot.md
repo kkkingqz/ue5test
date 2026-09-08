@@ -1,8 +1,8 @@
 ---
 title: Snapshot Tasks
 status: active
-version: 1.1
-updated: 2026-09-07
+version: 1.2
+updated: 2026-09-08
 depends_on:
   - README.md
   - PackageSet.md
@@ -126,9 +126,9 @@ Absolute roots используются только candidate builders и не 
 
     Верификация: 124/124 UE Automation (123 существующих + 1 новый), 88/88 portable ctest (включая 2 новых gate-теста), все 11 standalone `validate_*.py`, `validate_docs.py` (185 файлов) — зелёные.
 
-    `PSC-07` (не читать ресурсы disabled packages) остаётся следующей задачей M2.
+    `PSC-07` (не читать ресурсы disabled packages) и `PSC-08` (обязательное screen resolution для всех placements) остаются следующими задачами M2.
 
-- [ ] **PSC-07 — Не читать ресурсы disabled packages**
+- [x] **PSC-07 — Не читать ресурсы disabled packages**
   - Зависимости: PSC-06.
   - Инвариант: presentation candidate может обходить только roots из своего `FResolvedPackageSet`; исключённый контент не способен сорвать bootstrap.
   - Не считается закрытием: ignore ошибки после открытия; фильтрация после чтения либо decode; namespace-фильтр как единственная защита.
@@ -140,6 +140,17 @@ Absolute roots используются только candidate builders и не 
     - namespace/ownership validation enabled entries сохраняется как вторичная защита;
     - новый enabled package автоматически попадает в traversal через `FResolvedPackageSet`, без правки списка каталогов.
   - Evidence: `GV2ImageResourceCatalog.*`, source provider instrumentation, UE production bootstrap tests.
+  - **Реализация (2026-09-08):** Дефект (`PAH-R5`) находился в `UGV2ImageResourceCatalog::BuildFromPackageClosure`: она вызывала `BuildFromDirectory(GetProjectResourcesRoot(), ...)` — рекурсивный `IFileManager::FindFilesRecursive` + decode КАЖДОГО `.png` под ВСЕМ деревом `Resources/`, включая disabled-пакеты — и только ПОСЛЕ этого отфильтровывала опубликованные entries по namespace-принадлежности `PackageIds`. Любой нечитаемый/битый PNG в disabled-пакете уже успевал провалить весь build (`Cannot decode PNG resource`) до того, как namespace-фильтр вообще запускался.
+
+    **Новая scoped-traversal сборка**: `BuildFromPackageResourceRoots(const TArray<FGV2ImagePackageResourceRoot>& PackageResourceRoots, FString& OutError)` — новый метод, единственный, который реально вызывает `IFileManager::FindFilesRecursive` для production bootstrap. Каждый `FGV2ImagePackageResourceRoot{PackageId, ResourceRoot}` — один enabled-пакет; traversal рекурсирует ТОЛЬКО в `ResourceRoot`, поэтому директория disabled-пакета физически не открывается — это не постфактум-фильтр, а структурная невозможность её достичь. Namespace каждого resource_id теперь получается напрямую из известного `PackageId` (через новый `TryMakeResourceIdForPackage`, грамматика `resource/<path>.png` относительно ЛИЧНОГО root пакета — не парсится из текста пути), с дополнительной вторичной проверкой "namespace-сегмент произведённого id == PackageId" — вторичная защита сохранена, как и требует Done-bullet, хотя первичной защитой теперь является сам scoping traversal.
+
+    `BuildFromPackageClosure(PackageIds, OutError)` (сигнатура не изменена — ни один из 7 вызывающих кода/тестов не тронут) стала тонкой production-обёрткой: строит `TArray<FGV2ImagePackageResourceRoot>` из `Combine(GetProjectResourcesRoot(), PackageId)` для каждого `PackageId` и делегирует в `BuildFromPackageResourceRoots`. `BuildFromDirectory` (общий unscoped-сканер) остался нетронутым по поведению — но production bootstrap больше НИКОГДА его не вызывает; единственные оставшиеся вызывающие — прямые scanner-тесты. Декодирование PNG (LoadImage/9-slice/tile/CreateTexture2D/ResolveDefinition) вынесено в общий `BuildEntryFromPngFile`, переиспользуемый `BuildFromDirectory` и `BuildFromPackageResourceRoots` — ноль дублирования, ноль изменений в самой decode-логике.
+
+    **Новые тесты**: `GV2.Runtime.ContentCore.ImageCatalogScopedRootsNeverOpenExcludedDirectory` — instrumented file-access proof: синтетический temp-каталог с enabled-пакетом (валидный PNG) и disabled-пакетом (заведомо недекодируемый PNG), вызов `BuildFromPackageResourceRoots` только со списком enabled root — build успешен, что возможно ТОЛЬКО если disabled-файл вообще не открывался (одиночный недекодируемый PNG безусловно проваливает весь build, см. `FGV2ImageCatalogBootstrapGate`) — доказательство от противного без необходимости хуков `IFileManager`. `GV2.Runtime.ContentCore.ImageCatalogDisabledPackageCorruptFileDoesNotBlockBootstrap` — реальный production entry point (`RebuildForSession`, та же функция, что вызывает `FGV2SessionCoordinator::StartSession`): битый PNG кладётся в РЕАЛЬНОЕ дерево `Resources/<rh>/resource/psc07_test/` (в стиле `pah04b_test`, GameNamespace через `TEXT("r") TEXT("h")` — core-decoupling gate); closure без rh строится успешно, closure С rh проваливается на ТОМ ЖЕ файле (подтверждает, что файл реально битый, а не тест тривиально проходит), и `RebuildForSession`'s failed-candidate контракт подтверждён — прежний (rh-excluded) session catalog остаётся опубликованным после неудачной попытки замены.
+
+    Red-on-revert: временный откат `BuildFromPackageClosure` к старому scan-then-filter (`BuildFromDirectory(GetProjectResourcesRoot())` + постфактум namespace-фильтр) немедленно провалил `ImageCatalogDisabledPackageCorruptFileDoesNotBlockBootstrap` (единственный тест, идущий через реальный production call chain) — подтверждено, что тест ловит именно эту регрессию; `ImageCatalogScopedRootsNeverOpenExcludedDirectory` корректно остался зелёным (он проверяет нижний, не тронутый откатом примитив `BuildFromPackageResourceRoots` напрямую). Откат применён обратно.
+
+    Верификация: 126/126 UE Automation (124 существующих + 2 новых), 88/88 portable ctest (без изменений — задача чисто UE-side), все 11 standalone `validate_*.py` (включая `validate_pre_ready_content_discovery.py` и `validate_core_decoupling.py`), `validate_docs.py` (185 файлов) — зелёные.
 
 - [ ] **PSC-08 — Сделать screen resolution обязательным для всех placements**
   - Зависимости: PSC-06.

@@ -1,8 +1,8 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.3
-updated: 2026-09-07
+version: 1.4
+updated: 2026-09-08
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
   - ../../Status/AuditFindings.md
@@ -97,7 +97,7 @@ GV2 semantic Prepare
 
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
-                                             ├→ PSC-07 ────────────┐
+                                             ├→ PSC-07✔ ───────────┐
                                              └→ PSC-08 → PSC-09A → PSC-09B → PSC-10
                                                                               → PSC-11 → PSC-12
                                                                               → PSC-13 → PSC-14
@@ -143,7 +143,7 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] Полный `FGV2SessionContentSnapshot` содержит все поля из зафиксированного интерфейса и не копирует definitions/provenance. (`PSC-04`, 2026-09-08)
 - [x] Candidate остаётся private; active snapshot публикуется атомарно с успешным initial Commit/`Ready`; failure и recovery не наблюдают частичный snapshot. (`PSC-05`, 2026-09-08)
 - [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload. (`PSC-06`, `PSC-10`)
-- [ ] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`)
+- [x] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`, 2026-09-08)
 - [ ] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`)
 - [ ] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09A`)
 - [ ] Каждый вид операции проходит через транзакцию; второго пути, минующего её, не существует. (`PSC-09B`)

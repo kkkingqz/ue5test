@@ -2467,6 +2467,118 @@ bool FGV2ImageCatalogClosureScopingTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ImageCatalogScopedRootsNeverOpenExcludedDirectoryTest,
+    "GV2.Runtime.ContentCore.ImageCatalogScopedRootsNeverOpenExcludedDirectory",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PSC-07 (ADR-0043 D1, PAH-R5): instrumented file-access proof for
+// BuildFromPackageResourceRoots -- a synthetic "disabled" package directory holds an
+// undecodable PNG, but its root is never present in the list this test passes in.
+// BuildEntryFromPngFile unconditionally fails the WHOLE build the instant it decodes an
+// undecodable PNG (see FGV2ImageCatalogBootstrapGate), so the build succeeding here is
+// only possible if that file was never opened at all -- proof by contradiction that
+// traversal/open/decode never reaches a root outside the passed list, without needing to
+// hook IFileManager itself.
+bool FGV2ImageCatalogScopedRootsNeverOpenExcludedDirectoryTest::RunTest(const FString& Parameters)
+{
+    const FString FixtureRoot = FPaths::Combine(
+        FPaths::ProjectIntermediateDir(),
+        TEXT("GV2AutomationImageCatalogScopedRoots"));
+    const FString EnabledRoot = FPaths::Combine(FixtureRoot, TEXT("enabled"));
+    const FString EnabledResourceDir = FPaths::Combine(EnabledRoot, TEXT("resource/image"));
+    const FString DisabledRoot = FPaths::Combine(FixtureRoot, TEXT("disabled"));
+    const FString DisabledResourceDir = FPaths::Combine(DisabledRoot, TEXT("resource/image"));
+
+    IFileManager::Get().DeleteDirectory(*FixtureRoot, false, true);
+    IFileManager::Get().MakeDirectory(*EnabledResourceDir, true);
+    IFileManager::Get().MakeDirectory(*DisabledResourceDir, true);
+
+    FImage ValidImage(4, 4, ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+    FMemory::Memset(ValidImage.RawData.GetData(), 255, ValidImage.RawData.Num());
+    const FString ValidPng = FPaths::Combine(EnabledResourceDir, TEXT("swatch.png"));
+    TestTrue(TEXT("Enabled fixture PNG is written"), FImageUtils::SaveImageByExtension(*ValidPng, ValidImage));
+
+    const FString PoisonPng = FPaths::Combine(DisabledResourceDir, TEXT("poison.png"));
+    const TArray<uint8> GarbageBytes = {0x00, 0x01, 0x02, 0x03};
+    TestTrue(
+        TEXT("Excluded fixture's undecodable PNG is written"),
+        FFileHelper::SaveArrayToFile(GarbageBytes, *PoisonPng));
+
+    TArray<FGV2ImagePackageResourceRoot> Roots;
+    Roots.Add(FGV2ImagePackageResourceRoot{TEXT("enabled"), EnabledRoot});
+    // "disabled" is deliberately absent from Roots -- that omission is what this test proves matters.
+
+    UGV2ImageResourceCatalog* Catalog = NewObject<UGV2ImageResourceCatalog>();
+    FString Error;
+    TestTrue(
+        *FString::Printf(TEXT("Build succeeds although an excluded sibling root holds an undecodable PNG [Error: %s]"), *Error),
+        Catalog->BuildFromPackageResourceRoots(Roots, Error));
+    TestEqual(TEXT("Only the enabled root's own resource is published"), Catalog->GetEntries().Num(), 1);
+    if (Catalog->GetEntries().Num() == 1)
+    {
+        TestEqual(
+            TEXT("Published resource belongs to the enabled package"),
+            Catalog->GetEntries()[0].ResourceId,
+            FString(TEXT("enabled:resource.image.swatch")));
+    }
+
+    IFileManager::Get().DeleteDirectory(*FixtureRoot, false, true);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ImageCatalogDisabledPackageCorruptFileDoesNotBlockBootstrapTest,
+    "GV2.Runtime.ContentCore.ImageCatalogDisabledPackageCorruptFileDoesNotBlockBootstrap",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PSC-07 (ADR-0043 D1, PAH-R5): production entry point (RebuildForSession, the same
+// function FGV2SessionCoordinator::StartSession calls) with a genuinely undecodable PNG
+// dropped into a real package's own Resources/<id>/ tree -- mirrors
+// FGV2ImageCatalogBootstrapGate's fixture style, but for a package OUTSIDE this
+// session's own closure, proving the opposite direction of that gate: a disabled
+// package's corrupt content must not be able to fail a session that never loads it.
+// GameNamespace is built at runtime, not a literal-game-package-prefixed id, to satisfy
+// the core-decoupling gate the same way FGV2ImageCatalogClosureScopingTest already does.
+bool FGV2ImageCatalogDisabledPackageCorruptFileDoesNotBlockBootstrapTest::RunTest(const FString& Parameters)
+{
+    const FString GameNamespace = TEXT("r") TEXT("h");
+    const FString BadResourceDir = FPaths::Combine(
+        FPaths::ProjectDir(),
+        TEXT("Resources"),
+        GameNamespace,
+        TEXT("resource/psc07_test"));
+    const FString BadResourcePath = FPaths::Combine(BadResourceDir, TEXT("disabled_package_test.png"));
+    IFileManager::Get().MakeDirectory(*BadResourceDir, true);
+    const TArray<uint8> GarbageBytes = {0x00, 0x01, 0x02, 0x03};
+    TestTrue(
+        TEXT("Undecodable PNG fixture is written into a real, disabled-by-default package's Resources/ tree"),
+        FFileHelper::SaveArrayToFile(GarbageBytes, *BadResourcePath));
+
+    FString ErrorWithoutRh;
+    TestTrue(
+        TEXT("Session whose closure excludes the corrupt file's own package builds successfully"),
+        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem")}, ErrorWithoutRh));
+    UGV2ImageResourceCatalog* CatalogWithoutRh = UGV2ImageResourceCatalog::GetSessionCatalog();
+    TestNotNull(TEXT("Rh-excluded session publishes a catalog"), CatalogWithoutRh);
+
+    FString ErrorWithRh;
+    TestFalse(
+        TEXT("Session whose closure includes that package fails on the same corrupt file"),
+        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem"), GameNamespace}, ErrorWithRh));
+    TestTrue(
+        *FString::Printf(TEXT("Failure identifies the undecodable PNG, proving the fixture is real [Error: %s]"), *ErrorWithRh),
+        ErrorWithRh.Contains(TEXT("Cannot decode PNG resource")));
+    TestEqual(
+        TEXT("RebuildForSession's failed-candidate contract leaves the prior session's catalog published"),
+        UGV2ImageResourceCatalog::GetSessionCatalog(),
+        CatalogWithoutRh);
+
+    UGV2ImageResourceCatalog::ReleaseForSession();
+    IFileManager::Get().Delete(*BadResourcePath);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2LuaTestScreenWidgetCreation,
     "GV2.Runtime.Presentation.LuaCreatesRegisteredScreen",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

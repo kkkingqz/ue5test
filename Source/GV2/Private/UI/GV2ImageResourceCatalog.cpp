@@ -154,6 +154,68 @@ FString GetProjectResourcesRoot()
 {
     return FPaths::Combine(FPaths::ProjectDir(), TEXT("Resources"));
 }
+
+// PSC-07: shared by BuildFromDirectory's generic scan and
+// BuildFromPackageResourceRoots' scoped-per-package scan -- both already know the
+// resource_id (derived by their own, different grammar checks) before reaching this
+// point, so this only owns decode/texture-creation/resolve, not namespace derivation.
+bool BuildEntryFromPngFile(
+    const FString& PngFile,
+    const FString& ResourceId,
+    FGV2ImageResourceDefinition& OutDefinition,
+    FGV2ResolvedImageResource& OutResolved,
+    FString& OutError)
+{
+    FImage SourceImage;
+    if (!FImageUtils::LoadImage(*PngFile, SourceImage)
+        || SourceImage.SizeX <= 0 || SourceImage.SizeY <= 0)
+    {
+        OutError = FString::Printf(TEXT("Cannot decode PNG resource: %s"), *PngFile);
+        return false;
+    }
+    SourceImage.ChangeFormat(ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+
+    FGV2ImageResourceDefinition Definition;
+    Definition.ResourceId = ResourceId;
+    switch (GetSourceImageKind(PngFile))
+    {
+    case ESourceImageKind::FixedAspect:
+        Definition.RenderMode = EGV2ImageRenderMode::FixedAspect;
+        Definition.FixedAspectRatio = static_cast<float>(SourceImage.SizeX)
+            / static_cast<float>(SourceImage.SizeY);
+        break;
+    case ESourceImageKind::NineSlice:
+        Definition.RenderMode = EGV2ImageRenderMode::NineSlice;
+        if (!DecodeNineSliceImage(SourceImage, Definition.NineSliceBorderPixels, OutError))
+        {
+            OutError = FString::Printf(TEXT("%s: %s"), *PngFile, *OutError);
+            return false;
+        }
+        break;
+    case ESourceImageKind::Tile:
+        Definition.RenderMode = EGV2ImageRenderMode::Tile;
+        Definition.TileSize = FVector2D(SourceImage.SizeX, SourceImage.SizeY);
+        break;
+    }
+
+    UTexture2D* Texture = FImageUtils::CreateTexture2DFromImage(SourceImage);
+    if (Texture == nullptr)
+    {
+        OutError = FString::Printf(TEXT("Cannot create runtime texture: %s"), *PngFile);
+        return false;
+    }
+    Texture->NeverStream = true;
+    Definition.Texture = Texture;
+
+    if (!UGV2ImageResourceCatalog::ResolveDefinition(Definition, OutResolved, OutError))
+    {
+        OutError = FString::Printf(TEXT("%s: %s"), *PngFile, *OutError);
+        return false;
+    }
+
+    OutDefinition = MoveTemp(Definition);
+    return true;
+}
 }
 
 bool UGV2ImageResourceCatalog::TryMakeResourceId(
@@ -197,10 +259,63 @@ bool UGV2ImageResourceCatalog::TryMakeResourceId(
     return true;
 }
 
-// PAH-04: pre_ready_discovery -- only called from BuildFromPackageClosure(), only
-// called from RebuildForSession(), only called from StartSession() (PAH-04B closed
-// the deferred violation this marker used to carry: GetConfiguredCatalog()'s lazy
-// post-Ready rebuild is gone, replaced by GetSessionCatalog(), which never rebuilds).
+bool UGV2ImageResourceCatalog::TryMakeResourceIdForPackage(
+    const FString& PackageId,
+    const FString& PackageResourceRoot,
+    const FString& PngFilename,
+    FString& OutResourceId,
+    FString& OutError)
+{
+    OutResourceId.Reset();
+    FString Root = FPaths::ConvertRelativePathToFull(PackageResourceRoot);
+    FString Filename = FPaths::ConvertRelativePathToFull(PngFilename);
+    FPaths::NormalizeDirectoryName(Root);
+    FPaths::NormalizeFilename(Filename);
+    const FString Prefix = Root + TEXT("/");
+    if (!Filename.StartsWith(Prefix, ESearchCase::CaseSensitive)
+        || FPaths::GetExtension(Filename, true) != TEXT(".png"))
+    {
+        OutError = TEXT("Image file must be a lowercase .png below the package's own resource root.");
+        return false;
+    }
+
+    FString Relative = Filename.RightChop(Prefix.Len());
+    TArray<FString> Segments;
+    Relative.ParseIntoArray(Segments, TEXT("/"), false);
+    if (Segments.Num() < 3 || Segments[0] != TEXT("resource"))
+    {
+        OutError = TEXT("Image path must be resource/<path>.png below the package's own resource root.");
+        return false;
+    }
+    Segments.Last() = GetCanonicalSourceBasename(Segments.Last());
+    Segments.RemoveAt(0);
+    OutResourceId = PackageId + TEXT(":resource.") + FString::Join(Segments, TEXT("."));
+    if (!IsCanonicalResourceId(OutResourceId))
+    {
+        OutError = TEXT("Image path contains a non-canonical Stable ID segment.");
+        OutResourceId.Reset();
+        return false;
+    }
+
+    // PSC-07: secondary defense (see this function's header comment) -- re-derive the
+    // namespace segment from the id we just produced and check it matches the PackageId
+    // whose own root we were told to scan.
+    int32 ColonIndex = INDEX_NONE;
+    if (!OutResourceId.FindChar(TEXT(':'), ColonIndex) || OutResourceId.Left(ColonIndex) != PackageId)
+    {
+        OutError = TEXT("Image resource namespace does not match its owning package.");
+        OutResourceId.Reset();
+        return false;
+    }
+    OutError.Reset();
+    return true;
+}
+
+// PAH-04: pre_ready_discovery -- a generic, unscoped directory scan. PSC-07 stopped
+// routing production session bootstrap through this function (BuildFromPackageClosure
+// now calls the scoped BuildFromPackageResourceRoots() below instead, never this one) --
+// its only remaining callers are direct scanner tests (excluded from this gate) that
+// exercise the raw scan/decode grammar in isolation from package-closure scoping.
 bool UGV2ImageResourceCatalog::BuildFromDirectory(
     const FString& RootDirectory,
     FString& OutError)
@@ -232,57 +347,15 @@ bool UGV2ImageResourceCatalog::BuildFromDirectory(
             return false;
         }
 
-        FImage SourceImage;
-        if (!FImageUtils::LoadImage(*PngFile, SourceImage)
-            || SourceImage.SizeX <= 0 || SourceImage.SizeY <= 0)
-        {
-            OutError = FString::Printf(TEXT("Cannot decode PNG resource: %s"), *PngFile);
-            return false;
-        }
-        SourceImage.ChangeFormat(ERawImageFormat::BGRA8, EGammaSpace::sRGB);
-
         FGV2ImageResourceDefinition Definition;
-        Definition.ResourceId = ResourceId;
-        switch (GetSourceImageKind(PngFile))
-        {
-        case ESourceImageKind::FixedAspect:
-            Definition.RenderMode = EGV2ImageRenderMode::FixedAspect;
-            Definition.FixedAspectRatio = static_cast<float>(SourceImage.SizeX)
-                / static_cast<float>(SourceImage.SizeY);
-            break;
-        case ESourceImageKind::NineSlice:
-            Definition.RenderMode = EGV2ImageRenderMode::NineSlice;
-            if (!DecodeNineSliceImage(SourceImage, Definition.NineSliceBorderPixels, OutError))
-            {
-                OutError = FString::Printf(TEXT("%s: %s"), *PngFile, *OutError);
-                return false;
-            }
-            break;
-        case ESourceImageKind::Tile:
-            Definition.RenderMode = EGV2ImageRenderMode::Tile;
-            Definition.TileSize = FVector2D(SourceImage.SizeX, SourceImage.SizeY);
-            break;
-        }
-
-        UTexture2D* Texture = FImageUtils::CreateTexture2DFromImage(SourceImage);
-        if (Texture == nullptr)
-        {
-            OutError = FString::Printf(TEXT("Cannot create runtime texture: %s"), *PngFile);
-            return false;
-        }
-        Texture->NeverStream = true;
-
-        Definition.Texture = Texture;
-
         FGV2ResolvedImageResource ResolvedResource;
-        if (!ResolveDefinition(Definition, ResolvedResource, OutError))
+        if (!BuildEntryFromPngFile(PngFile, ResourceId, Definition, ResolvedResource, OutError))
         {
-            OutError = FString::Printf(TEXT("%s: %s"), *PngFile, *OutError);
             return false;
         }
         SeenIds.Add(ResourceId);
         CandidateResolvedById.Add(ResourceId, MoveTemp(ResolvedResource));
-        CandidateTextures.Add(Texture);
+        CandidateTextures.Add(Definition.Texture.Get());
         CandidateEntries.Add(MoveTemp(Definition));
     }
 
@@ -461,44 +534,77 @@ bool UGV2ImageResourceCatalog::Resolve(
     return true;
 }
 
-bool UGV2ImageResourceCatalog::BuildFromPackageClosure(const TArray<FString>& PackageIds, FString& OutError)
+// PAH-04: pre_ready_discovery -- only called from BuildFromPackageClosure(), only
+// called from RebuildForSession(), only called from StartSession()/
+// FGV2SessionContentCandidate::Build() (PAH-04B/PSC-07: the sole production discovery
+// path for image resources; never reached after a session reaches Ready).
+bool UGV2ImageResourceCatalog::BuildFromPackageResourceRoots(
+    const TArray<FGV2ImagePackageResourceRoot>& PackageResourceRoots,
+    FString& OutError)
 {
-    if (!BuildFromDirectory(GetProjectResourcesRoot(), OutError))
+    TArray<FGV2ImageResourceDefinition> CandidateEntries;
+    TMap<FString, FGV2ResolvedImageResource> CandidateResolvedById;
+    TArray<TObjectPtr<UTexture2D>> CandidateTextures;
+    TSet<FString> SeenIds;
+
+    for (const FGV2ImagePackageResourceRoot& PackageRoot : PackageResourceRoots)
     {
-        return false;
+        // PSC-07 (PAH-R5): recursing into exactly this one package's own root is what
+        // makes a sibling (disabled) package's directory physically unreachable here --
+        // not a filter applied to a wholesale scan's results afterward.
+        TArray<FString> PngFiles;
+        IFileManager::Get().FindFilesRecursive(
+            PngFiles,
+            *PackageRoot.ResourceRoot,
+            TEXT("*.png"),
+            true,
+            false,
+            false);
+        PngFiles.Sort();
+
+        for (const FString& PngFile : PngFiles)
+        {
+            FString ResourceId;
+            if (!TryMakeResourceIdForPackage(PackageRoot.PackageId, PackageRoot.ResourceRoot, PngFile, ResourceId, OutError))
+            {
+                return false;
+            }
+            if (SeenIds.Contains(ResourceId))
+            {
+                OutError = FString::Printf(TEXT("Duplicate image resource_id: %s"), *ResourceId);
+                return false;
+            }
+
+            FGV2ImageResourceDefinition Definition;
+            FGV2ResolvedImageResource ResolvedResource;
+            if (!BuildEntryFromPngFile(PngFile, ResourceId, Definition, ResolvedResource, OutError))
+            {
+                return false;
+            }
+            SeenIds.Add(ResourceId);
+            CandidateResolvedById.Add(ResourceId, MoveTemp(ResolvedResource));
+            CandidateTextures.Add(Definition.Texture.Get());
+            CandidateEntries.Add(MoveTemp(Definition));
+        }
     }
 
-    // PAH-04B: a resource whose namespace isn't in this session's resolved package
-    // closure belongs to a package this session never loaded (e.g. Resources/rh/ when
-    // the closure is core+textsystem+sample) -- excluded from the published snapshot
-    // exactly like that package's schemas/Lua sources are already silently absent from
-    // such a session, not a build error. TryMakeResourceId's own grammar/format checks
-    // (run above, inside BuildFromDirectory) still fail the whole build for a
-    // structurally malformed path -- this step only scopes membership.
-    const TSet<FString> ClosurePackageIds(PackageIds);
-    TArray<FGV2ImageResourceDefinition> ScopedEntries;
-    TArray<TObjectPtr<UTexture2D>> ScopedTextures;
-    ScopedEntries.Reserve(Entries.Num());
-    ScopedTextures.Reserve(RuntimeTextures.Num());
-    for (int32 Index = 0; Index < Entries.Num(); ++Index)
-    {
-        const FGV2ImageResourceDefinition& Definition = Entries[Index];
-        int32 ColonIdx = INDEX_NONE;
-        const bool bHasNamespace = Definition.ResourceId.FindChar(TEXT(':'), ColonIdx);
-        if (bHasNamespace && ClosurePackageIds.Contains(Definition.ResourceId.Left(ColonIdx)))
-        {
-            ScopedEntries.Add(Definition);
-            ScopedTextures.Add(RuntimeTextures[Index]);
-        }
-        else
-        {
-            ResolvedById.Remove(Definition.ResourceId);
-        }
-    }
-    Entries = MoveTemp(ScopedEntries);
-    RuntimeTextures = MoveTemp(ScopedTextures);
+    Entries = MoveTemp(CandidateEntries);
+    ResolvedById = MoveTemp(CandidateResolvedById);
+    RuntimeTextures = MoveTemp(CandidateTextures);
     OutError.Reset();
     return true;
+}
+
+bool UGV2ImageResourceCatalog::BuildFromPackageClosure(const TArray<FString>& PackageIds, FString& OutError)
+{
+    const FString ResourcesRoot = GetProjectResourcesRoot();
+    TArray<FGV2ImagePackageResourceRoot> PackageResourceRoots;
+    PackageResourceRoots.Reserve(PackageIds.Num());
+    for (const FString& PackageId : PackageIds)
+    {
+        PackageResourceRoots.Add(FGV2ImagePackageResourceRoot{PackageId, FPaths::Combine(ResourcesRoot, PackageId)});
+    }
+    return BuildFromPackageResourceRoots(PackageResourceRoots, OutError);
 }
 
 bool UGV2ImageResourceCatalog::RebuildForSession(const TArray<FString>& PackageIds, FString& OutError)
