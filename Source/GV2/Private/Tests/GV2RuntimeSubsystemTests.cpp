@@ -23,6 +23,8 @@
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
+#include "Components/CheckBox.h"
+#include "Components/EditableTextBox.h"
 #include "Components/Image.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
@@ -1916,6 +1918,277 @@ bool FGV2PresentationApplyImageOperationTest::RunTest(const FString& Parameters)
         TEXT("Apply rejects an operation whose target widget is unavailable"),
         GV2PresentationApply::Apply(StaleTransaction, StaleError));
     TestFalse(TEXT("Rejection carries a diagnostic message"), StaleError.IsEmpty());
+
+    return true;
+}
+
+namespace
+{
+using GV2PresentationApply::EGV2PreparedOperationKind;
+
+// PSC-10A (ADR-0043 D3): expected behavior for the exhaustive kind-walk test below,
+// authored independently by reading each kind's own doc comment in
+// PreparedPresentationTransaction.h -- not derived from GV2PresentationApply::Apply()'s
+// own lambda bodies, so this table cannot silently agree with a regression there.
+enum class EGV2ExpectedOperationRoute : uint8
+{
+    LowerModuleMutatesDirectly,
+    LeftEntirelyForAdapter,
+};
+
+EGV2ExpectedOperationRoute ExpectedRouteFor(EGV2PreparedOperationKind Kind)
+{
+    switch (Kind)
+    {
+    case EGV2PreparedOperationKind::ImageResource:      return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    case EGV2PreparedOperationKind::ImageHost:          return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::Boolean:            return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    case EGV2PreparedOperationKind::EditableTextValue:  return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    case EGV2PreparedOperationKind::ProgressBar:        return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    case EGV2PreparedOperationKind::Number:             return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::Integer:            return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::String:             return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::Key:                return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::Binding:            return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::RichTextSpans:      return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::Text:               return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::KeyedCollection:    return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::TabContainer:       return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::PlainText:          return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    case EGV2PreparedOperationKind::RichTextRender:     return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    case EGV2PreparedOperationKind::TextHint:           return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    }
+    checkf(false, TEXT("EGV2PreparedOperationKind has an unclassified value -- add it to ExpectedRouteFor"));
+    return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ExhaustiveOperationKindWalkTest,
+    "GV2.Runtime.Presentation.ExhaustiveOperationKindWalk",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PSC-10A (ADR-0043 D3): actual set of operation kinds is derived from the variant
+// itself (TVariantSize_V), not a hand-typed list in this test -- and the construction
+// switch below has no default, so a kind added to the variant without a corresponding
+// case here fails to COMPILE, not just fails to run. Expected behavior per kind comes
+// from ExpectedRouteFor's independent classification table above.
+bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
+{
+    using GV2PresentationApply::EGV2PreparedOperationKind;
+
+    static_assert(TVariantSize_V<GV2PresentationApply::FGV2PreparedOperationVariant> == 17,
+        "A kind was added to or removed from FGV2PreparedOperationVariant -- update this "
+        "literal AND the construction switch AND ExpectedRouteFor's switch below before "
+        "trusting this test again.");
+
+    for (uint8 RawKind = 0; RawKind < static_cast<uint8>(TVariantSize_V<GV2PresentationApply::FGV2PreparedOperationVariant>); ++RawKind)
+    {
+        const EGV2PreparedOperationKind Kind = static_cast<EGV2PreparedOperationKind>(RawKind);
+        const EGV2ExpectedOperationRoute ExpectedRoute = ExpectedRouteFor(Kind);
+
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        FString KindLabel;
+        bool bMutationObserved = false;
+
+        switch (Kind)
+        {
+        case EGV2PreparedOperationKind::ImageResource:
+        {
+            KindLabel = TEXT("ImageResource");
+            UImage* Widget = NewObject<UImage>();
+            GV2PresentationApply::FPreparedImageResourceOperation Op;
+            Op.TargetWidget = Widget;
+            Op.Brush.ImageSize = FVector2D(7.0f, 7.0f);
+            Transaction.AddImageResourceOperation(Op);
+            TestEqual(TEXT("ImageResource: variant reports the expected kind"),
+                static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Transaction.GetOperations()[0])), static_cast<uint8>(Kind));
+            FString Error;
+            TestTrue(TEXT("ImageResource: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            bMutationObserved = FVector2D(Widget->GetBrush().ImageSize).X > 0.0;
+            break;
+        }
+        case EGV2PreparedOperationKind::ImageHost:
+        {
+            KindLabel = TEXT("ImageHost");
+            GV2PresentationApply::FPreparedImageHostOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddImageHostOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::Boolean:
+        {
+            KindLabel = TEXT("Boolean");
+            UCheckBox* Widget = NewObject<UCheckBox>();
+            Widget->SetIsChecked(false);
+            GV2PresentationApply::FPreparedBooleanOperation Op;
+            Op.TargetWidget = Widget;
+            Op.Target = GV2PresentationApply::EPreparedBooleanTarget::CheckBoxChecked;
+            Op.Value = true;
+            Transaction.AddBooleanOperation(Op);
+            FString Error;
+            TestTrue(TEXT("Boolean: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            bMutationObserved = Widget->IsChecked();
+            break;
+        }
+        case EGV2PreparedOperationKind::EditableTextValue:
+        {
+            KindLabel = TEXT("EditableTextValue");
+            UEditableTextBox* Widget = NewObject<UEditableTextBox>();
+            GV2PresentationApply::FPreparedEditableTextValueOperation Op;
+            Op.TargetWidget = Widget;
+            Op.Value = FText::FromString(TEXT("kind-walk"));
+            Transaction.AddEditableTextValueOperation(Op);
+            FString Error;
+            TestTrue(TEXT("EditableTextValue: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            bMutationObserved = Widget->GetText().ToString() == TEXT("kind-walk");
+            break;
+        }
+        case EGV2PreparedOperationKind::ProgressBar:
+        {
+            KindLabel = TEXT("ProgressBar");
+            UProgressBar* Widget = NewObject<UProgressBar>();
+            GV2PresentationApply::FPreparedProgressBarOperation Op;
+            Op.TargetWidget = Widget;
+            Op.Percent = 0.42f;
+            Transaction.AddProgressBarOperation(Op);
+            FString Error;
+            TestTrue(TEXT("ProgressBar: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            bMutationObserved = FMath::IsNearlyEqual(Widget->GetPercent(), 0.42f, 0.001f);
+            break;
+        }
+        case EGV2PreparedOperationKind::Number:
+        {
+            KindLabel = TEXT("Number");
+            GV2PresentationApply::FPreparedNumberOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddNumberOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::Integer:
+        {
+            KindLabel = TEXT("Integer");
+            GV2PresentationApply::FPreparedIntegerOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddIntegerOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::String:
+        {
+            KindLabel = TEXT("String");
+            GV2PresentationApply::FPreparedStringOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddStringOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::Key:
+        {
+            KindLabel = TEXT("Key");
+            GV2PresentationApply::FPreparedKeyOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddKeyOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::Binding:
+        {
+            KindLabel = TEXT("Binding");
+            GV2PresentationApply::FPreparedBindingOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddBindingOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::RichTextSpans:
+        {
+            KindLabel = TEXT("RichTextSpans");
+            GV2PresentationApply::FPreparedRichTextSpansOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddRichTextSpansOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::Text:
+        {
+            KindLabel = TEXT("Text");
+            GV2PresentationApply::FPreparedTextOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddTextOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::KeyedCollection:
+        {
+            KindLabel = TEXT("KeyedCollection");
+            GV2PresentationApply::FPreparedKeyedCollectionOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddKeyedCollectionOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::TabContainer:
+        {
+            KindLabel = TEXT("TabContainer");
+            GV2PresentationApply::FPreparedTabContainerOperation Op;
+            Op.TargetWidget = NewObject<UImage>();
+            Transaction.AddTabContainerOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::PlainText:
+        {
+            KindLabel = TEXT("PlainText");
+            UCommonTextBlock* Widget = NewObject<UCommonTextBlock>();
+            GV2PresentationApply::FPreparedPlainTextOperation Op;
+            Op.TargetWidget = Widget;
+            Op.Text = FText::FromString(TEXT("kind-walk"));
+            Op.ScalePolicy.BaseFontSize = 14.0f;
+            Op.ScalePolicy.bIsAlreadyScaled = true;
+            Transaction.AddPlainTextOperation(Op);
+            FString Error;
+            TestTrue(TEXT("PlainText: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            bMutationObserved = Widget->GetText().ToString() == TEXT("kind-walk");
+            break;
+        }
+        case EGV2PreparedOperationKind::RichTextRender:
+        {
+            KindLabel = TEXT("RichTextRender");
+            UCommonRichTextBlock* Widget = NewObject<UCommonRichTextBlock>();
+            GV2PresentationApply::FPreparedRichTextRenderOperation Op;
+            Op.TargetWidget = Widget;
+            Op.Markup = TEXT("kind-walk");
+            Transaction.AddRichTextRenderOperation(Op);
+            FString Error;
+            TestTrue(TEXT("RichTextRender: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            bMutationObserved = Widget->GetText().ToString() == TEXT("kind-walk");
+            break;
+        }
+        case EGV2PreparedOperationKind::TextHint:
+        {
+            KindLabel = TEXT("TextHint");
+            UEditableTextBox* Widget = NewObject<UEditableTextBox>();
+            GV2PresentationApply::FPreparedTextHintOperation Op;
+            Op.TargetWidget = Widget;
+            Op.Text = FText::FromString(TEXT("kind-walk"));
+            Transaction.AddTextHintOperation(Op);
+            FString Error;
+            TestTrue(TEXT("TextHint: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            bMutationObserved = Widget->GetHintText().ToString() == TEXT("kind-walk");
+            break;
+        }
+        }
+
+        TestEqual(*FString::Printf(TEXT("%s: variant index matches its own enum value"), *KindLabel),
+            static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Transaction.GetOperations()[0])), static_cast<uint8>(Kind));
+
+        if (ExpectedRoute == EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly)
+        {
+            TestTrue(*FString::Printf(TEXT("%s: classified LowerModuleMutatesDirectly and GV2PresentationApply::Apply() alone physically mutated the target"), *KindLabel),
+                bMutationObserved);
+        }
+        else
+        {
+            FString AdapterOnlyError;
+            TestTrue(*FString::Printf(TEXT("%s: classified LeftEntirelyForAdapter -- GV2PresentationApply::Apply() alone is a safe no-op, not an error"), *KindLabel),
+                GV2PresentationApply::Apply(Transaction, AdapterOnlyError));
+            TestFalse(*FString::Printf(TEXT("%s: classified LeftEntirelyForAdapter -- GV2PresentationApply::Apply() alone did not physically mutate the target"), *KindLabel),
+                bMutationObserved);
+        }
+    }
 
     return true;
 }
