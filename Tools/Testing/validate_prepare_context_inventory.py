@@ -37,6 +37,8 @@ CLASSIFIED_SITES = {
         "consumer's stored context field (two classes share this exact line: FGV2TabContainerTabsPropertyConsumer, FGV2ImageResourcePropertyConsumer)",
     ("UI/GV2UiMutationPlan.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):
         "PrepareUiHostProperties parameter",
+    ("UI/GV2TextPipeline.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):
+        "PSC-10A: UGV2TextPipeline::Resolve parameter -- routes Theme through the session snapshot instead of GetConfiguredTheme() and populates FGV2TextViewModel's resolved-presentation fields",
 }
 
 

@@ -74,6 +74,7 @@ ALLOWED_BASE_TYPES = {
     "FText",
     "FSlateBrush",
     "FTextBlockStyle",
+    "FRuntimeFloatCurve",
 }
 
 # UObject-derived types a TWeakObjectPtr<...> field may point to. Structurally, this

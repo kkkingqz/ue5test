@@ -7,6 +7,8 @@
 
 #include <string_view>
 
+class FGV2PresentationPrepareContext;
+
 // UPP-30: schema-driven materialization for Screen Fields, as free functions --
 // replaces the deleted FGV2ScreenFieldAdapterRegistry class. That class had held
 // zero per-schema adapters since UPP-25 (the last one was deleted); the "Registry"
@@ -43,10 +45,17 @@ bool PrepareBindingDefinitions(
 // PrepareBindingDefinitions() + FGV2UiBindingRegistry::PrepareBindings() pass --
 // Handles must be in the same order PrepareBindingDefinitions produced them in,
 // since both passes walk the same schema/value tree in the same deterministic order.
+// PSC-10A: PrepareContext is optional so the one existing production call site (and
+// every test call site) keeps compiling unchanged; passing one routes Text field
+// resolution through PrepareContext->GetTheme() instead of the legacy
+// GetConfiguredTheme() static accessor (see UGV2TextPipeline::Resolve()'s own doc
+// comment) and populates the resolved presentation UGV2TextPipeline::Apply() then
+// reads without touching Theme again.
 bool BuildFields(
     const GV2RuntimeCore::FScreenRequest& Request,
     const TArray<FGV2UiBindingHandle>& Handles,
-    TArray<FGV2ScreenFieldValue>& OutFields);
+    TArray<FGV2ScreenFieldValue>& OutFields,
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr);
 
 // DUC-09: lets a nested-screen-fields consumer re-resolve one envelope's compiled
 // schema by schema_id after ProjectMaterializedValue already validated it -- a cache
@@ -64,6 +73,8 @@ struct FMaterializeContext
 {
     const TArray<FGV2UiBindingHandle>* Handles = nullptr;
     int32* HandleCursor = nullptr;
+    // PSC-10A: optional, threaded through to ResolveText -> UGV2TextPipeline::Resolve().
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr;
 };
 
 bool ProjectMaterializedValue(

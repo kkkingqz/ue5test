@@ -1,5 +1,6 @@
 #include "UI/GV2TextPipeline.h"
 
+#include "Application/GV2SessionContentSnapshot.h"
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
 #include "Components/EditableTextBox.h"
@@ -107,6 +108,37 @@ bool ReadInteractiveId(const FString& Body, FString& OutValue)
     OutValue.ToLowerInline();
     return IsToken(OutValue);
 }
+
+// PSC-10A: Theme-parameterized cores, factored out of ResolveStyleClass/
+// ResolveStyleForHeight so Resolve() (which already has a Theme pointer in scope --
+// either from PrepareContext or the legacy static accessor) can reuse the exact same
+// resolution logic without fetching Theme a second time.
+TSubclassOf<UCommonTextStyle> ResolveStyleClassCore(const UGV2UiTheme* Theme, FName StyleToken)
+{
+    const FGV2TextStyleToken* Token = Theme != nullptr
+        ? Theme->TextStyleTokens.Find(StyleToken.IsNone() ? Theme->DefaultTextStyleToken : StyleToken)
+        : nullptr;
+    return Token != nullptr ? Token->Style : nullptr;
+}
+
+bool ResolveStyleCore(const UGV2UiTheme* Theme, FName StyleToken, FTextBlockStyle& OutStyle)
+{
+    const FName EffectiveToken = StyleToken.IsNone()
+        ? ((Theme != nullptr && !Theme->DefaultTextStyleToken.IsNone()) ? Theme->DefaultTextStyleToken : FName("default"))
+        : StyleToken;
+    const FGV2TextStyleToken* Token = Theme != nullptr
+        ? Theme->TextStyleTokens.Find(EffectiveToken)
+        : nullptr;
+    const UCommonTextStyle* Style = Token != nullptr && Token->Style != nullptr
+        ? Cast<UCommonTextStyle>(Token->Style->GetDefaultObject())
+        : (Theme != nullptr && Theme->TextStyle != nullptr ? Cast<UCommonTextStyle>(Theme->TextStyle->GetDefaultObject()) : nullptr);
+    if (Style == nullptr)
+    {
+        return false;
+    }
+    Style->ToTextBlockStyle(OutStyle);
+    return true;
+}
 }
 
 bool UGV2TextPipeline::Resolve(
@@ -114,11 +146,14 @@ bool UGV2TextPipeline::Resolve(
     const TArray<FGV2UiControlValue>& Args,
     FName StyleToken,
     FGV2TextViewModel& OutText,
-    FString& OutError)
+    FString& OutError,
+    const FGV2PresentationPrepareContext* PrepareContext)
 {
     OutText = {};
     OutError.Reset();
-    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    const UGV2UiTheme* Theme = PrepareContext != nullptr
+        ? PrepareContext->GetTheme().Theme.Get()
+        : UGV2UiThemeSettings::GetConfiguredTheme();
     const FText* Template = Theme != nullptr ? Theme->TextCatalog.Find(TextId) : nullptr;
     if (Template == nullptr && Theme != nullptr)
     {
@@ -176,6 +211,20 @@ bool UGV2TextPipeline::Resolve(
     }
     OutText.Text = FormatArgs.IsEmpty() ? *Template : FText::Format(*Template, FormatArgs);
     OutText.StyleToken = StyleToken;
+
+    if (PrepareContext != nullptr)
+    {
+        // StyleToken above is already the effective (non-None) token. Resolved here,
+        // once, so Apply()/ApplyRichText() touch no Theme accessor of their own.
+        OutText.bHasResolvedPresentation = true;
+        OutText.ResolvedStyleClass = ResolveStyleClassCore(Theme, StyleToken);
+        OutText.ResolvedBaseFontSize = Theme != nullptr ? Theme->ResolveUnscaledFontSize(StyleToken) : 14.0f;
+        OutText.ResolvedMinReadableFontSize = Theme != nullptr ? Theme->MinReadableFontSize : 10.0f;
+        OutText.ResolvedReferenceViewportHeight = Theme != nullptr ? Theme->ReferenceViewportHeight : 1080.0f;
+        OutText.ResolvedFontScaleCurve = Theme != nullptr ? Theme->TextScaleCurve : FRuntimeFloatCurve();
+        OutText.bHasResolvedDefaultStyle = ResolveStyleCore(Theme, StyleToken, OutText.ResolvedDefaultStyle);
+    }
+
     return NormalizeMarkup(OutText.Text.ToString(), OutText.NormalizedMarkup, OutError);
 }
 
@@ -238,17 +287,10 @@ bool UGV2TextPipeline::ResolveStyleForHeight(const FName StyleToken, FTextBlockS
     const FName EffectiveToken = StyleToken.IsNone()
         ? ((Theme != nullptr && !Theme->DefaultTextStyleToken.IsNone()) ? Theme->DefaultTextStyleToken : FName("default"))
         : StyleToken;
-    const FGV2TextStyleToken* Token = Theme != nullptr
-        ? Theme->TextStyleTokens.Find(EffectiveToken)
-        : nullptr;
-    const UCommonTextStyle* Style = Token != nullptr && Token->Style != nullptr
-        ? Cast<UCommonTextStyle>(Token->Style->GetDefaultObject())
-        : (Theme != nullptr && Theme->TextStyle != nullptr ? Cast<UCommonTextStyle>(Theme->TextStyle->GetDefaultObject()) : nullptr);
-    if (Style == nullptr)
+    if (!ResolveStyleCore(Theme, StyleToken, OutStyle))
     {
         return false;
     }
-    Style->ToTextBlockStyle(OutStyle);
 
     // Apply DPI scaling and clamp to MinReadableFontSize
     const float EffectiveSize = ResolveEffectiveFontSizeForHeight(EffectiveToken, ViewportHeight);
@@ -264,34 +306,45 @@ bool UGV2TextPipeline::ResolveStyle(const FName StyleToken, FTextBlockStyle& Out
 
 TSubclassOf<UCommonTextStyle> UGV2TextPipeline::ResolveStyleClass(const FName StyleToken)
 {
-    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    const FGV2TextStyleToken* Token = Theme != nullptr
-        ? Theme->TextStyleTokens.Find(StyleToken.IsNone() ? Theme->DefaultTextStyleToken : StyleToken)
-        : nullptr;
-    return Token != nullptr ? Token->Style : nullptr;
+    return ResolveStyleClassCore(UGV2UiThemeSettings::GetConfiguredTheme(), StyleToken);
 }
 
-// PSC-09B (ADR-0043 D2/D3, PAH-R1): split into upper preparation (this function --
-// resolves Style/FontSize from Theme, still Theme-dependent; removing that Theme access
-// entirely is PSC-10's named job, not this split's) and lower widget application
-// (GV2PresentationApply::Apply, which performs no decision, only the CommonUI/UMG-native
-// SetStyle/SetText/SetFont calls). Widget/UCommonTextBlock is a plain CommonUI type, so
-// the physical mutation genuinely lives in GV2PresentationApply now, not merely behind a
-// call-shape that still resolves inside the same function.
+// PSC-09B/10A (ADR-0043 D2/D3, PAH-R1): split into upper preparation (this function)
+// and lower widget application (GV2PresentationApply::Apply, which performs no
+// decision, only the CommonUI/UMG-native SetStyle/SetText/SetFont calls). When Text
+// carries a resolved presentation (Resolve() was given a PrepareContext -- the
+// operation-kind pipeline's own path), Style/ScalePolicy are read directly from it and
+// this function touches no Theme accessor at all. Otherwise (every call site outside
+// the operation-kind pipeline -- PSC-10B's own scope, not yet converted) this falls
+// back to the exact same Theme-touching resolution as before this task, unchanged.
 bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text)
 {
-    const TSubclassOf<UCommonTextStyle> Style = ResolveStyleClass(Text.StyleToken);
+    const TSubclassOf<UCommonTextStyle> Style = Text.bHasResolvedPresentation
+        ? Text.ResolvedStyleClass
+        : ResolveStyleClass(Text.StyleToken);
     // Plain renderer deliberately rejects semantic styled/interactive runs instead of
     // leaking authoring markup to the player. Such content must use the RichText leaf.
     if (Widget == nullptr || Style == nullptr || Text.NormalizedMarkup.Contains(TEXT("<gv2"))) return false;
 
-    const float ScaledFontSize = ResolveEffectiveFontSize(Text.StyleToken, Widget);
+    GV2PresentationApply::FPreparedTextScalePolicy ScalePolicy;
+    if (Text.bHasResolvedPresentation)
+    {
+        ScalePolicy.BaseFontSize = Text.ResolvedBaseFontSize;
+        ScalePolicy.MinReadableFontSize = Text.ResolvedMinReadableFontSize;
+        ScalePolicy.ReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
+        ScalePolicy.ScaleCurve = Text.ResolvedFontScaleCurve;
+    }
+    else
+    {
+        ScalePolicy.BaseFontSize = ResolveEffectiveFontSize(Text.StyleToken, Widget);
+        ScalePolicy.bIsAlreadyScaled = true;
+    }
 
     GV2PresentationApply::FPreparedPlainTextOperation Operation;
     Operation.TargetWidget = Widget;
     Operation.Style = Style;
     Operation.Text = Text.Text;
-    Operation.FontSize = ScaledFontSize;
+    Operation.ScalePolicy = ScalePolicy;
 
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddPlainTextOperation(MoveTemp(Operation));
@@ -299,8 +352,11 @@ bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& 
     return GV2PresentationApply::Apply(Transaction, ApplyError);
 }
 
-// PSC-09B: same split as Apply() above -- Style/DefaultStyle/Markup are all resolved here
-// (Theme-dependent), the widget mutation itself moved to GV2PresentationApply.
+// PSC-09B/10A: same split as Apply() above -- resolved-presentation-first, legacy
+// Theme-touching fallback otherwise. See Apply()'s own doc comment for the split
+// rationale; StyleToken.IsNone() is never true on the resolved path (Resolve() always
+// stores the already-effective, non-None token), so the RichTextStyle-specific
+// None-token fallback below is only ever reached by the legacy path, unchanged.
 bool UGV2TextPipeline::ApplyRichText(
     UCommonRichTextBlock* Widget,
     const FGV2TextViewModel& Text,
@@ -310,12 +366,36 @@ bool UGV2TextPipeline::ApplyRichText(
     {
         return false;
     }
-    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    const TSubclassOf<UCommonTextStyle> Style = Text.StyleToken.IsNone()
-        ? (Theme != nullptr ? Theme->RichTextStyle : nullptr)
-        : ResolveStyleClass(Text.StyleToken);
+
+    TSubclassOf<UCommonTextStyle> Style;
     FTextBlockStyle DefaultStyle;
-    const bool bHasDefaultStyle = ResolveStyle(Text.StyleToken, DefaultStyle, ContextWidget != nullptr ? ContextWidget : Widget);
+    bool bHasDefaultStyle = false;
+    GV2PresentationApply::FPreparedTextScalePolicy ScalePolicy;
+
+    if (Text.bHasResolvedPresentation)
+    {
+        Style = Text.ResolvedStyleClass;
+        bHasDefaultStyle = Text.bHasResolvedDefaultStyle;
+        DefaultStyle = Text.ResolvedDefaultStyle;
+        ScalePolicy.BaseFontSize = Text.ResolvedBaseFontSize;
+        ScalePolicy.MinReadableFontSize = Text.ResolvedMinReadableFontSize;
+        ScalePolicy.ReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
+        ScalePolicy.ScaleCurve = Text.ResolvedFontScaleCurve;
+    }
+    else
+    {
+        const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+        Style = Text.StyleToken.IsNone()
+            ? (Theme != nullptr ? Theme->RichTextStyle : nullptr)
+            : ResolveStyleClass(Text.StyleToken);
+        bHasDefaultStyle = ResolveStyle(Text.StyleToken, DefaultStyle, ContextWidget != nullptr ? ContextWidget : Widget);
+        // DefaultStyle already carries its final, scaled font size from ResolveStyle --
+        // ScalePolicy.bIsAlreadyScaled makes Apply's own SetFontSize call a same-value
+        // no-op instead of a second scaling pass.
+        ScalePolicy.BaseFontSize = bHasDefaultStyle ? DefaultStyle.Font.Size : 0.0f;
+        ScalePolicy.bIsAlreadyScaled = true;
+    }
+
     FString Markup = Text.NormalizedMarkup;
     if (Markup.IsEmpty() && !Text.Text.IsEmpty())
     {
@@ -332,6 +412,7 @@ bool UGV2TextPipeline::ApplyRichText(
     Operation.DefaultStyle = DefaultStyle;
     Operation.bHasDefaultStyle = bHasDefaultStyle;
     Operation.Markup = MoveTemp(Markup);
+    Operation.ScalePolicy = ScalePolicy;
 
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddRichTextRenderOperation(MoveTemp(Operation));

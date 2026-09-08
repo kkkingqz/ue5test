@@ -1,5 +1,6 @@
 #include "Application/GV2ScreenFieldMaterializer.h"
 
+#include "Application/GV2SessionContentSnapshot.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/GV2StableId.h"
@@ -71,7 +72,7 @@ bool ToControlValue(
     return false;
 }
 
-bool ResolveText(const GV2ContentCore::FValue& Value, FGV2TextViewModel& OutText)
+bool ResolveText(const GV2ContentCore::FValue& Value, FGV2TextViewModel& OutText, const FGV2PresentationPrepareContext* PrepareContext)
 {
     if (!Value.IsObject()) return false;
     const GV2ContentCore::FValue* TextIdVal = Value.FindField("text_id");
@@ -105,7 +106,8 @@ bool ResolveText(const GV2ContentCore::FValue& Value, FGV2TextViewModel& OutText
         Args,
         FName(UTF8_TO_TCHAR(Style.c_str())),
         OutText,
-        Error);
+        Error,
+        PrepareContext);
     if (!bResolved)
     {
         UE_LOG(LogTemp, Error, TEXT("ResolveText: '%s' failed: %s"), UTF8_TO_TCHAR(TextId.c_str()), *Error);
@@ -395,7 +397,7 @@ bool ProjectMaterializedValue(
     case EUiFieldKind::Text:
     {
         FGV2TextViewModel Resolved;
-        if (!ResolveText(MaterializedValue, Resolved))
+        if (!ResolveText(MaterializedValue, Resolved, Ctx.PrepareContext))
         {
             return false;
         }
@@ -666,7 +668,8 @@ bool PrepareBindingDefinitions(
 bool BuildFields(
     const GV2RuntimeCore::FScreenRequest& Request,
     const TArray<FGV2UiBindingHandle>& Handles,
-    TArray<FGV2ScreenFieldValue>& OutFields)
+    TArray<FGV2ScreenFieldValue>& OutFields,
+    const FGV2PresentationPrepareContext* PrepareContext)
 {
     OutFields.Reset();
     OutFields.Reserve(static_cast<int32>(Request.Fields.size()));
@@ -719,6 +722,7 @@ bool BuildFields(
         FMaterializeContext MatContext;
         MatContext.Handles = &Handles;
         MatContext.HandleCursor = &HandleCursor;
+        MatContext.PrepareContext = PrepareContext;
         FGV2PreparedUiValue PreparedValue;
         if (!ProjectMaterializedValue(
                 MatContext,

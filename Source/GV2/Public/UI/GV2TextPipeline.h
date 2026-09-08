@@ -10,6 +10,7 @@ class UCommonRichTextBlock;
 class UCommonTextStyle;
 class UEditableTextBox;
 class UWidget;
+class FGV2PresentationPrepareContext;
 
 UCLASS()
 class GV2_API UGV2TextPipeline : public UBlueprintFunctionLibrary
@@ -17,12 +18,21 @@ class GV2_API UGV2TextPipeline : public UBlueprintFunctionLibrary
     GENERATED_BODY()
 
 public:
+    // PSC-10A: PrepareContext is optional so every existing call site keeps compiling
+    // unchanged. When given, Theme is read through PrepareContext->GetTheme() (the
+    // session snapshot's own pinned Theme, ADR-0043 D1) instead of the legacy
+    // GetConfiguredTheme() static accessor, and OutText's ResolvedStyleClass/
+    // ResolvedBaseFontSize/etc. are populated so Apply()/ApplyRichText()/ApplyHint() do
+    // not need to touch Theme again at Commit time (see FGV2TextViewModel's own doc
+    // comment). Without one (this function's two non-PrepareContext callers, and any
+    // test/legacy caller), behavior is unchanged from before this task.
     static bool Resolve(
         const FString& TextId,
         const TArray<FGV2UiControlValue>& Args,
         FName StyleToken,
         FGV2TextViewModel& OutText,
-        FString& OutError);
+        FString& OutError,
+        const FGV2PresentationPrepareContext* PrepareContext = nullptr);
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Text")
     static float GetViewportHeight(const UWidget* ContextWidget = nullptr);

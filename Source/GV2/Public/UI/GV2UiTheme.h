@@ -42,6 +42,13 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Typography")
     float GetEffectiveFontSize(FName TextSizeToken, float ViewportHeight) const;
 
+    // PSC-10A: the UnscaledSize half of GetEffectiveFontSize, extracted so Prepare-phase
+    // callers (UGV2TextPipeline::Resolve(), given a PrepareContext) can resolve a base
+    // font size once, without needing this Theme object again at Apply/Commit time --
+    // GetEffectiveFontSize itself now calls this, unchanged behavior.
+    UFUNCTION(BlueprintPure, Category = "GV2|UI|Typography")
+    float ResolveUnscaledFontSize(FName TextSizeToken) const;
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Theme")
     static UGV2UiTheme* GetCoreMinimalTheme(UObject* WorldContextObject = nullptr);
 

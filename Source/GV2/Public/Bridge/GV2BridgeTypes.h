@@ -1,11 +1,14 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Curves/CurveFloat.h"
+#include "Styling/SlateTypes.h"
 
 #include <memory>
 
 namespace GV2ContentCore { struct FCompiledUiFieldSpec; }
 class FGV2PreparedUiObject;
+class UCommonTextStyle;
 
 #include "GV2BridgeTypes.generated.h"
 
@@ -140,6 +143,45 @@ struct GV2_API FGV2TextViewModel
     // Prepared renderer markup. Produced only by UGV2TextPipeline.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
     FString NormalizedMarkup;
+
+    // PSC-10A (ADR-0043 D3, PAH-R1): resolved presentation cache -- populated only when
+    // UGV2TextPipeline::Resolve() is given a PrepareContext, which resolves Theme through
+    // the session snapshot instead of the legacy GetConfiguredTheme() static accessor.
+    // When bHasResolvedPresentation is true, Apply()/ApplyRichText() use these fields
+    // directly and touch no Theme accessor of their own; when false (Resolve()'s two
+    // non-PrepareContext callers -- UGV2RuntimeSubsystem's cold-start recovery screen,
+    // which legitimately has no session/snapshot yet -- or any hand-built ViewModel),
+    // Apply()/ApplyRichText()/ApplyHint() fall back to the unchanged, Theme-touching
+    // resolution, exactly as before this task. A derived resolution cache, not part of
+    // this value's own identity -- deliberately excluded from operator==.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    bool bHasResolvedPresentation = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    TSubclassOf<UCommonTextStyle> ResolvedStyleClass;
+
+    // GetEffectiveFontSize's own UnscaledSize -- resolved once from Theme's
+    // TextSizeTokens/TextStyleTokens/hardcoded fallback, still needs live viewport height
+    // (only known where the widget actually renders) to become a final font size.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    float ResolvedBaseFontSize = 0.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    float ResolvedMinReadableFontSize = 0.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    float ResolvedReferenceViewportHeight = 0.0f;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    FRuntimeFloatCurve ResolvedFontScaleCurve;
+
+    // RichText-only: the resolved default text style, WITHOUT a font size baked in --
+    // Apply computes the scaled size itself from the fields above plus live geometry.
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    bool bHasResolvedDefaultStyle = false;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
+    FTextBlockStyle ResolvedDefaultStyle;
 
     bool operator==(const FGV2TextViewModel& Other) const
     {

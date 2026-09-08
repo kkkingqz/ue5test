@@ -36,7 +36,7 @@ float UGV2UiTheme::EvaluateTextScale(float ViewportHeight) const
     }
 }
 
-float UGV2UiTheme::GetEffectiveFontSize(FName TextSizeToken, float ViewportHeight) const
+float UGV2UiTheme::ResolveUnscaledFontSize(FName TextSizeToken) const
 {
     float UnscaledSize = 0.0f;
     if (const float* BaseSize = TextSizeTokens.Find(TextSizeToken))
@@ -67,6 +67,12 @@ float UGV2UiTheme::GetEffectiveFontSize(FName TextSizeToken, float ViewportHeigh
         else if (TextSizeToken == TEXT("small")) UnscaledSize = 12.0f;
         else UnscaledSize = 14.0f;
     }
+    return UnscaledSize;
+}
+
+float UGV2UiTheme::GetEffectiveFontSize(FName TextSizeToken, float ViewportHeight) const
+{
+    const float UnscaledSize = ResolveUnscaledFontSize(TextSizeToken);
     const float Scale = EvaluateTextScale(ViewportHeight);
     const float ScaledSize = UnscaledSize * Scale;
     return FMath::Max(MinReadableFontSize, ScaledSize);

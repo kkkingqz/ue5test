@@ -2,6 +2,7 @@
 
 #include "CommonTextBlock.h"
 #include "CoreMinimal.h"
+#include "Curves/CurveFloat.h"
 #include "Misc/TVariant.h"
 #include "Styling/SlateBrush.h"
 #include "Styling/SlateTypes.h"
@@ -269,21 +270,56 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextOperation
     bool bIsReset = false;
 };
 
-// PSC-09B (ADR-0043 D2/D3, PAH-R1): UGV2TextPipeline::Apply's own widget mutation --
+// PSC-10A (ADR-0043 D3): resolved once in Prepare from Theme (BaseFontSize is the
+// already-resolved UnscaledSize for a style/size token; MinReadableFontSize/
+// ReferenceViewportHeight/ScaleCurve are copied straight from the resolved Theme) --
+// EvaluatePreparedFontSize() below is a pure function of this policy and CURRENT
+// geometry, read live by Apply itself. No Theme object or token lookup happens here.
+struct GV2PRESENTATIONAPPLY_API FPreparedTextScalePolicy
+{
+    float BaseFontSize = 14.0f;
+    float MinReadableFontSize = 10.0f;
+    float ReferenceViewportHeight = 1080.0f;
+    FRuntimeFloatCurve ScaleCurve;
+
+    // PSC-10A legacy-fallback escape hatch: true only for callers outside the
+    // operation-kind pipeline (widget NativePreConstruct self-styling and similar --
+    // PSC-10B's own scope, not yet converted), where BaseFontSize is already the final,
+    // fully-scaled value the legacy Theme-touching resolver computed at the moment this
+    // operation was built. EvaluatePreparedFontSize returns it verbatim instead of
+    // re-applying scale math on top of an already-scaled number.
+    bool bIsAlreadyScaled = false;
+};
+
+// Mirrors UGV2UiTheme::EvaluateTextScale + GetEffectiveFontSize's own math exactly, as a
+// free function with no Theme/UObject dependency -- the curve/fallback-lerp evaluation
+// itself needs no authority, only the already-resolved policy plus current geometry.
+GV2PRESENTATIONAPPLY_API float EvaluatePreparedFontSize(const FPreparedTextScalePolicy& Policy, float ViewportHeight);
+
+// Live viewport query (GEngine->GameViewport, falling back to ContextWidget's own
+// world) -- the same lookup UGV2TextPipeline::GetViewportHeight used to perform, minus
+// the Theme-sourced fallback (now a parameter, itself resolved in Prepare).
+GV2PRESENTATIONAPPLY_API float ResolveLiveViewportHeight(const UWidget* ContextWidget, float FallbackHeight);
+
+// PSC-09B/10A (ADR-0043 D2/D3, PAH-R1): UGV2TextPipeline::Apply's own widget mutation --
 // unlike the FPreparedTextOperation family above (built for widget wrappers/UGV2TextPipeline
 // itself as an opaque call), this is UGV2TextPipeline's OWN internals split across the
-// module boundary: Style/FontSize are already resolved (upper, still Theme-dependent --
-// removing that Theme access entirely is PSC-10's named job, not this split's), so Apply
-// performs no decision, only the CommonUI/UMG-native SetStyle/SetText/SetFont calls.
+// module boundary: Style/ScalePolicy are already resolved (upper, from Theme, PSC-10A),
+// so Apply performs no decision, only the CommonUI/UMG-native SetStyle/SetText/SetFont
+// calls plus the scale-policy pure-function evaluation against live geometry.
 struct GV2PRESENTATIONAPPLY_API FPreparedPlainTextOperation
 {
     TWeakObjectPtr<UCommonTextBlock> TargetWidget;
     TSubclassOf<UCommonTextStyle> Style;
     FText Text;
-    float FontSize = 0.0f;
+    FPreparedTextScalePolicy ScalePolicy;
 };
 
-// PSC-09B: UGV2TextPipeline::ApplyRichText's own widget mutation, split the same way.
+// PSC-09B/10A: UGV2TextPipeline::ApplyRichText's own widget mutation, split the same
+// way. ScalePolicy.bIsAlreadyScaled covers the legacy (non-PrepareContext) resolution
+// path -- DefaultStyle there already carries a font size baked in by the caller, and
+// EvaluatePreparedFontSize returns BaseFontSize verbatim instead of re-deriving it, so
+// re-applying it via SetFontSize is a same-value no-op, not a second scaling pass.
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextRenderOperation
 {
     TWeakObjectPtr<UCommonRichTextBlock> TargetWidget;
@@ -291,6 +327,7 @@ struct GV2PRESENTATIONAPPLY_API FPreparedRichTextRenderOperation
     FTextBlockStyle DefaultStyle;
     bool bHasDefaultStyle = false;
     FString Markup;
+    FPreparedTextScalePolicy ScalePolicy;
 };
 
 // PSC-09B: UGV2TextPipeline::ApplyHint's own widget mutation, split the same way.

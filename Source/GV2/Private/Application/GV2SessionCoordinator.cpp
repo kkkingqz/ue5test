@@ -714,6 +714,18 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         return false;
     }
 
+    // PSC-10A (ADR-0043 D1): same TOptional<FGV2PresentationPrepareContext> idiom
+    // UGV2RuntimeSubsystem::HandleDocumentRequested already uses -- GetContentSnapshotForPrepare()
+    // returns the in-progress candidate while StartSession() is still preparing/committing
+    // the initial document (before Ready), or the published snapshot for every later
+    // document update, so this covers both of PrepareDocumentRequest's own call sites.
+    const FGV2SessionContentSnapshot* SnapshotForPrepare = GetContentSnapshotForPrepare();
+    const TOptional<FGV2PresentationPrepareContext> PrepareContext =
+        SnapshotForPrepare != nullptr
+            ? TOptional<FGV2PresentationPrepareContext>(FGV2PresentationPrepareContext(*SnapshotForPrepare))
+            : TOptional<FGV2PresentationPrepareContext>();
+    const FGV2PresentationPrepareContext* PrepareContextPtr = PrepareContext.IsSet() ? &PrepareContext.GetValue() : nullptr;
+
     auto BuildInstanceModel = [&](const GV2RuntimeCore::FScreenInstance& Inst, const FInstDefRange& Range, FGV2ScreenInstanceViewModel& OutInstModel) -> bool
     {
         OutInstModel.Layer = FName(UTF8_TO_TCHAR(Inst.Layer.c_str()));
@@ -730,7 +742,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = Inst.ScreenId;
         Request.Fields = Inst.Fields;
-        if (!GV2ScreenFieldMaterializer::BuildFields(Request, InstHandles, OutInstModel.Fields))
+        if (!GV2ScreenFieldMaterializer::BuildFields(Request, InstHandles, OutInstModel.Fields, PrepareContextPtr))
         {
             UE_LOG(LogTemp, Error, TEXT("GV2 initial document fields could not be built for screen '%s'"), *OutInstModel.ScreenId);
             return false;

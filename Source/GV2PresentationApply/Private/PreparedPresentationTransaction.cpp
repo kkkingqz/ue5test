@@ -7,6 +7,10 @@
 #include "Components/Image.h"
 #include "Components/ProgressBar.h"
 #include "Components/Widget.h"
+#include "Curves/RichCurve.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/World.h"
 #include "Math/UnrealMathUtility.h"
 
 namespace GV2PresentationApply
@@ -30,6 +34,72 @@ TOverloaded(Ts...) -> TOverloaded<Ts...>;
 EGV2PreparedOperationKind GetPreparedOperationKind(const FGV2PreparedOperationVariant& Operation)
 {
     return static_cast<EGV2PreparedOperationKind>(Operation.GetIndex());
+}
+
+// PSC-10A: mirrors UGV2UiTheme::EvaluateTextScale's own curve-eval-with-fallback-lerp
+// math exactly (same breakpoints: 720/1080/1440/2160), against the resolved policy's
+// OWN curve instead of a live Theme object.
+float EvaluatePreparedFontSize(const FPreparedTextScalePolicy& Policy, float ViewportHeight)
+{
+    if (Policy.bIsAlreadyScaled)
+    {
+        return Policy.BaseFontSize;
+    }
+
+    float Scale = 1.0f;
+    if (ViewportHeight > 0.0f)
+    {
+        const FRichCurve* Curve = Policy.ScaleCurve.GetRichCurveConst();
+        if (Curve != nullptr && Curve->GetNumKeys() > 0)
+        {
+            Scale = FMath::Max(0.1f, Curve->Eval(ViewportHeight));
+        }
+        else if (ViewportHeight < 1080.0f)
+        {
+            const float Alpha = FMath::Clamp((ViewportHeight - 720.0f) / (1080.0f - 720.0f), 0.0f, 1.0f);
+            Scale = FMath::Lerp(0.85f, 1.0f, Alpha);
+        }
+        else
+        {
+            const float Alpha = FMath::Clamp((ViewportHeight - 1080.0f) / (2160.0f - 1080.0f), 0.0f, 1.0f);
+            Scale = FMath::Lerp(1.0f, 1.60f, Alpha);
+        }
+    }
+    const float ScaledSize = Policy.BaseFontSize * Scale;
+    return FMath::Max(Policy.MinReadableFontSize, ScaledSize);
+}
+
+// PSC-10A: mirrors UGV2TextPipeline::GetViewportHeight's own live-query logic exactly,
+// minus the Theme-sourced fallback (now a parameter, itself already resolved in Prepare).
+float ResolveLiveViewportHeight(const UWidget* ContextWidget, float FallbackHeight)
+{
+    if (GEngine != nullptr && GEngine->GameViewport != nullptr)
+    {
+        FVector2D ViewportSize;
+        GEngine->GameViewport->GetViewportSize(ViewportSize);
+        if (ViewportSize.Y > 0.0f)
+        {
+            return ViewportSize.Y;
+        }
+    }
+
+    if (ContextWidget != nullptr)
+    {
+        if (const UWorld* World = ContextWidget->GetWorld())
+        {
+            if (const UGameViewportClient* ViewportClient = World->GetGameViewport())
+            {
+                FVector2D ViewportSize;
+                ViewportClient->GetViewportSize(ViewportSize);
+                if (ViewportSize.Y > 0.0f)
+                {
+                    return ViewportSize.Y;
+                }
+            }
+        }
+    }
+
+    return FallbackHeight;
 }
 
 bool Apply(const FGV2PreparedPresentationTransaction& Transaction, FString& OutError)
@@ -125,12 +195,17 @@ bool Apply(const FGV2PreparedPresentationTransaction& Transaction, FString& OutE
                 Widget->SetStyle(Op.Style);
                 Widget->SetText(Op.Text);
 
+                // PSC-10A: pure function of the resolved policy and CURRENT geometry,
+                // queried live here -- no Theme/config lookup.
+                const float ViewportHeight = ResolveLiveViewportHeight(Widget, Op.ScalePolicy.ReferenceViewportHeight);
+                const float ScaledFontSize = EvaluatePreparedFontSize(Op.ScalePolicy, ViewportHeight);
+
                 // Apply DPI-aware scaled font size without wiping out the widget's
                 // FontObject/typeface.
                 FSlateFontInfo FontInfo = Widget->GetFont();
-                if (!FMath::IsNearlyEqual(FontInfo.Size, Op.FontSize, 0.01f))
+                if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
                 {
-                    FontInfo.Size = Op.FontSize;
+                    FontInfo.Size = ScaledFontSize;
                     Widget->SetFont(FontInfo);
                 }
             },
@@ -147,7 +222,14 @@ bool Apply(const FGV2PreparedPresentationTransaction& Transaction, FString& OutE
                 }
                 if (Op.bHasDefaultStyle)
                 {
-                    Widget->SetDefaultTextStyle(Op.DefaultStyle);
+                    // PSC-10A: pure function of the resolved policy and CURRENT
+                    // geometry; for the legacy (non-PrepareContext) path,
+                    // ScalePolicy.bIsAlreadyScaled makes this a same-value no-op --
+                    // DefaultStyle's own already-baked font size is unchanged.
+                    FTextBlockStyle FinalStyle = Op.DefaultStyle;
+                    const float ViewportHeight = ResolveLiveViewportHeight(Widget, Op.ScalePolicy.ReferenceViewportHeight);
+                    FinalStyle.SetFontSize(EvaluatePreparedFontSize(Op.ScalePolicy, ViewportHeight));
+                    Widget->SetDefaultTextStyle(FinalStyle);
                 }
                 Widget->SetText(FText::FromString(Op.Markup));
             },
