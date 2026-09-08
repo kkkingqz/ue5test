@@ -13,6 +13,7 @@
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2FilesystemContentSourceProvider.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
 #include "Runtime/GV2RuntimeSubsystem.h"
 #include "UI/GV2ButtonListWidgetBase.h"
@@ -1729,7 +1730,7 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
     FString BuildError;
     TestTrue(
         *FString::Printf(TEXT("Screen Registry builds [Error: %s]"), *BuildError),
-        Registry != nullptr && Registry->Build(BuildError));
+        Registry != nullptr && Registry->Build(GV2PackageClosure::DiscoverFromGameData(), BuildError));
     FGV2ResolvedScreenDescriptor TestScreenDescriptor;
     FGV2ScreenResolutionRejection TestScreenRejection;
     const bool bTestScreenResolved = Registry != nullptr
@@ -1810,7 +1811,7 @@ bool FGV2ScreenAssetRootOwnershipAudit::RunTest(const FString& Parameters)
     FString OwnershipError;
     TestTrue(
         *FString::Printf(TEXT("PAH-05: GameData content root ownership resolves [Error: %s]"), *OwnershipError),
-        UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(Ownership, OwnershipError));
+        UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(GV2PackageClosure::DiscoverFromGameData(), Ownership, OwnershipError));
 
     FAssetRegistryModule& AssetRegistryModule =
         FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
@@ -2507,7 +2508,7 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                 ? RegistrySettings->RegistryAsset.LoadSynchronous()
                 : nullptr;
             FString RegistryBuildError;
-            const bool bRegistryBuilt = Registry != nullptr && Registry->Build(RegistryBuildError);
+            const bool bRegistryBuilt = Registry != nullptr && Registry->Build(GV2PackageClosure::DiscoverFromGameData(), RegistryBuildError);
             FGV2ResolvedScreenDescriptor RegisteredDescriptor;
             FGV2ScreenResolutionRejection RegisteredRejection;
             UClass* RegisteredClass = bRegistryBuilt
@@ -2786,7 +2787,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
     // 2. UIF-17: Screen Registry Validation
     UGV2ScreenRegistry* Registry = NewObject<UGV2ScreenRegistry>();
     FString ValidationError;
-    TestFalse(TEXT("Empty registry fails to build"), Registry->Build(ValidationError));
+    TestFalse(TEXT("Empty registry fails to build"), Registry->Build({}, ValidationError));
 
     // 3. UIF-19, UIF-20, UIF-21: Multi-layer Reconciliation, Reuse, Replacement, Modal Blocking, Atomicity
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
@@ -5389,7 +5390,8 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
     // own branches.
     // =========================================================================
     {
-        const TArray<FString> RealPackageLoadOrder = UGV2ScreenRegistry::GetPackageLoadOrderFromGameData();
+        const TArray<GV2PackageClosure::FEntry> RealClosureEntries = GV2PackageClosure::DiscoverFromGameData();
+        const TArray<FString> RealPackageLoadOrder = UGV2ScreenRegistry::GetPackageLoadOrderFromGameData(RealClosureEntries);
         TestEqual(TEXT("GameData package load order resolves exactly core, textsystem, rh"), RealPackageLoadOrder.Num(), 3);
 
         // PAH-05: content root ownership now comes from each package's own
@@ -5399,7 +5401,7 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
         FString OwnershipError;
         TestTrue(
             *FString::Printf(TEXT("GameData content root ownership resolves [Error: %s]"), *OwnershipError),
-            UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(RealOwnership, OwnershipError));
+            UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(RealClosureEntries, RealOwnership, OwnershipError));
         TestEqual(TEXT("GameData declares exactly four UE content roots across three packages"), RealOwnership.Num(), 4);
 
         auto ExpectedAllowed = [](const TArray<FString>& Order, const TArray<FGV2ContentRootOwnership>& Ownership, const FString& ScreenNamespace, const FString& AssetPath) -> bool
@@ -8506,6 +8508,103 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
         TestFalse(TEXT("PCC-04: Percent 1.5 above max 1.0 rejected by BuildFields"),
             RunBuildFields("textsystem:schema.ui_field.location_player_status.v1", "player_status", GV2RuntimeCore::FValue(StatusObj)));
     }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PackageSetSingleResolutionAcrossConsumersContract,
+    "GV2.Runtime.Content.PackageSetSingleResolutionAcrossConsumers",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PackageSetSingleResolutionAcrossConsumersContract::RunTest(const FString& Parameters)
+{
+    // PSC-02 (ADR-0043 D1/D5, PAH-R3): proves the "single resolved package set shared
+    // by every consumer" invariant with two genuinely different candidate closures --
+    // mirroring the divergence PAH-R3 actually found (an Editor profile whose package
+    // roots differ from GameData/'s canonical mods.lock order). Each candidate is fed,
+    // independently, into both Screen Registry and the repository builder; each
+    // consumer's output must reflect exactly the input it was given, never the other
+    // candidate's, and never a third, independently-rediscovered closure.
+    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+
+    auto ResolveFixtureSet =
+        [&GameDataDir](std::initializer_list<const TCHAR*> PackageIds) -> TOptional<GV2ContentHostSupport::FResolvedPackageSet>
+    {
+        std::vector<std::filesystem::path> Roots;
+        for (const TCHAR* PackageId : PackageIds)
+        {
+            Roots.push_back(std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, PackageId))));
+        }
+        std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+        std::optional<GV2ContentHostSupport::FResolvedPackageSet> Resolved =
+            GV2ContentHostSupport::ResolvePackageSetFromDirectories(Roots, Diagnostics);
+        return Resolved
+            ? TOptional<GV2ContentHostSupport::FResolvedPackageSet>(MoveTemp(*Resolved))
+            : TOptional<GV2ContentHostSupport::FResolvedPackageSet>();
+    };
+
+    // SetA mirrors the canonical GameData/ closure (core, textsystem, rh); SetB mirrors
+    // an Editor profile that diverges from it (core, textsystem, sample) -- the same two
+    // real fixture compositions FGV2RhStartScreenFlow/FGV2DebugStartScreenFlow already
+    // exercise elsewhere in this file, reused here as two genuinely distinct inputs.
+    const TOptional<GV2ContentHostSupport::FResolvedPackageSet> SetA = ResolveFixtureSet({TEXT("core"), TEXT("textsystem"), TEXT("rh")});
+    const TOptional<GV2ContentHostSupport::FResolvedPackageSet> SetB = ResolveFixtureSet({TEXT("core"), TEXT("textsystem"), TEXT("sample")});
+    TestTrue(TEXT("Candidate set A (core, textsystem, rh) resolves"), SetA.IsSet());
+    TestTrue(TEXT("Candidate set B (core, textsystem, sample) resolves"), SetB.IsSet());
+    if (!SetA.IsSet() || !SetB.IsSet())
+    {
+        return false;
+    }
+
+    auto OrderOf = [](const GV2ContentHostSupport::FResolvedPackageSet& Set) -> TArray<FString>
+    {
+        TArray<FString> Order;
+        Order.Reserve(static_cast<int32>(Set.OrderedSources.size()));
+        for (const GV2ContentHostSupport::FResolvedPackageSource& Source : Set.OrderedSources)
+        {
+            Order.Add(UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()));
+        }
+        return Order;
+    };
+
+    auto VerifyConsumersMatchInput = [this](const GV2ContentHostSupport::FResolvedPackageSet& Input, const TArray<FString>& ExpectedOrder, const TCHAR* Label) -> bool
+    {
+        bool bOk = true;
+        const TArray<GV2PackageClosure::FEntry> ClosureEntries = GV2PackageClosure::FromResolvedPackageSet(Input);
+
+        const TArray<FString> RegistryOrder = UGV2ScreenRegistry::GetPackageLoadOrderFromGameData(ClosureEntries);
+        bOk &= TestEqual(
+            *FString::Printf(TEXT("%s: Screen Registry's package load order matches the input set exactly"), Label),
+            FString::Join(RegistryOrder, TEXT(",")), FString::Join(ExpectedOrder, TEXT(",")));
+
+        // BuildGV2RepositoryFromResolvedPackageSet is a pure projection of Input.OrderedSources
+        // (PackageDiscoveryAndOrderConformance case 12 already proves this projection's
+        // correctness at the portable layer) -- here it only needs to succeed from this
+        // exact input, proving the repository consumed it rather than rediscovering.
+        const GV2ContentCore::FBuildResult RepositoryBuild = BuildGV2RepositoryFromResolvedPackageSet(Input);
+        bOk &= TestFalse(
+            *FString::Printf(TEXT("%s: repository builds successfully from this exact input set"), Label),
+            RepositoryBuild.IsFailure());
+        return bOk;
+    };
+
+    const TArray<FString> ExpectedOrderA = OrderOf(*SetA);
+    const TArray<FString> ExpectedOrderB = OrderOf(*SetB);
+    TestTrue(TEXT("The two candidate sets have genuinely different composition (rh vs sample)"), ExpectedOrderA != ExpectedOrderB);
+
+    VerifyConsumersMatchInput(*SetA, ExpectedOrderA, TEXT("SetA(core,textsystem,rh)"));
+    VerifyConsumersMatchInput(*SetB, ExpectedOrderB, TEXT("SetB(core,textsystem,sample)"));
+
+    // The failure mode this defends against (PAH-R3): a consumer silently ignoring its
+    // given input and reading some other, independently-discovered closure instead --
+    // which would make both consumers agree on ONE order regardless of which set they
+    // were handed. Cross-checking the two orders directly rules that out.
+    const TArray<FString> RegistryOrderForA = UGV2ScreenRegistry::GetPackageLoadOrderFromGameData(GV2PackageClosure::FromResolvedPackageSet(*SetA));
+    const TArray<FString> RegistryOrderForB = UGV2ScreenRegistry::GetPackageLoadOrderFromGameData(GV2PackageClosure::FromResolvedPackageSet(*SetB));
+    TestTrue(
+        TEXT("Screen Registry's resolved order for SetA differs from SetB -- not collapsed to one shared closure"),
+        RegistryOrderForA != RegistryOrderForB);
 
     return true;
 }

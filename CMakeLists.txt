@@ -243,4 +243,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_pre_ready_content_discovery.py"
             "--self-test"
     )
+    # PSC-02 (ADR-0043 D1/D5): FResolvedPackageSet may be constructed only by the two
+    # blessed host-bootstrap factories -- a second, independently declared factory
+    # anywhere in the tree would be a second package-set authority (PAH-R3).
+    add_test(
+        NAME package_set_factory_inventory_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_package_set_factory_inventory.py"
+    )
+    add_test(
+        NAME package_set_factory_inventory_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_package_set_factory_inventory.py"
+            "--self-test"
+    )
 endif()

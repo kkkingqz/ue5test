@@ -1,9 +1,12 @@
 #pragma once
 
 #include "Bridge/GV2BridgeTypes.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Templates/PimplPtr.h"
 #include "GV2RuntimeSubsystem.generated.h"
+
+namespace GV2PackageClosure { struct FEntry; }
 
 class FGV2LayeredUiReconciler;
 class FGV2RepositoryPublisher;
@@ -68,7 +71,11 @@ public:
     FString GetActiveTab(const FString& ContainerPath) const;
 
 private:
-    bool LoadScreenRegistry();
+    // PSC-02 (ADR-0043 D1/D5): ClosureEntries is this GameInstance's single resolved
+    // package set (see ResolvedPackageSet below), already computed by Initialize() --
+    // LoadScreenRegistry() threads it into UGV2ScreenRegistry::Build() instead of the
+    // registry discovering its own package closure (PAH-R3).
+    bool LoadScreenRegistry(const TArray<GV2PackageClosure::FEntry>& ClosureEntries);
     UClass* ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const;
     UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
@@ -92,7 +99,12 @@ private:
     FDelegateHandle StartGameInstanceHandle;
     bool bScreenRegistryReady = false;
     FString RepositoryBuildError;
-    TArray<FString> RepositoryPackageRoots;
+
+    // PSC-02 (ADR-0043 D1/D5): resolved exactly once in Initialize() -- repository build,
+    // Screen Registry build, and every FGV2SessionCoordinator::StartSession() call (one
+    // per session replacement, potentially many per GameInstance lifetime) all consume
+    // THIS value; none of them re-discovers the package set independently.
+    TOptional<GV2ContentHostSupport::FResolvedPackageSet> ResolvedPackageSet;
     bool bRepositoryReady = false;
     bool bActiveScreenAddedToViewport = false;
 };

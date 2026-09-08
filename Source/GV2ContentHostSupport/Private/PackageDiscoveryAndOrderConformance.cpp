@@ -646,6 +646,135 @@ std::string RunPackageDiscoveryAndOrderConformance()
         }
     }
 
+    // 12. PSC-02: FResolvedPackageSet -- ResolvePackageSetFromDirectories pairs each
+    // descriptor with its root and a 64-lowercase-hex CanonicalManifestHash; two packages
+    // with different manifest content get different hashes; the hash is insensitive to
+    // formatting/comments (parsed-value hash, not raw bytes) but sensitive to a semantic
+    // field FPackageDescriptor itself never projects (an unknown host-extension key) --
+    // the exact property PSC-03's fingerprint redesign needs this type to already have.
+    {
+        const std::filesystem::path CoreRoot = TempDir.Dir / "case12_core";
+        const std::filesystem::path ModRoot = TempDir.Dir / "case12_mod";
+
+        WritePackage(CoreRoot, R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+        })json5");
+        WritePackage(ModRoot, R"json5({
+            package_id: "case12_mod",
+            namespace: "case12_mod",
+            version: "1.0.0",
+            dependencies: [
+                { package_id: "core", load_after: true },
+            ],
+        })json5");
+
+        std::vector<FDiagnostic> Diagnostics;
+        std::optional<FResolvedPackageSet> Set =
+            ResolvePackageSetFromDirectories({CoreRoot, ModRoot}, Diagnostics);
+        if (!Set.has_value())
+        {
+            return "discovery_order.case12_failed_resolve: "
+                + (Diagnostics.empty() ? "no diagnostics" : Diagnostics.front().Code);
+        }
+        if (Set->OrderedSources.size() != 2)
+        {
+            return "discovery_order.case12_wrong_size: " + std::to_string(Set->OrderedSources.size());
+        }
+        const FResolvedPackageSource& CoreSource = Set->OrderedSources[0];
+        const FResolvedPackageSource& ModSource = Set->OrderedSources[1];
+        if (CoreSource.Root != CoreRoot || ModSource.Root != ModRoot)
+        {
+            return "discovery_order.case12_root_mismatch";
+        }
+        if (CoreSource.Descriptor.GetPackageId() != "core" || ModSource.Descriptor.GetPackageId() != "case12_mod")
+        {
+            return "discovery_order.case12_descriptor_mismatch";
+        }
+        const auto IsLowercaseHex64 = [](const std::string& Hash)
+        {
+            if (Hash.size() != 64) return false;
+            for (const char Ch : Hash)
+            {
+                const bool bDigit = Ch >= '0' && Ch <= '9';
+                const bool bLowerHexLetter = Ch >= 'a' && Ch <= 'f';
+                if (!bDigit && !bLowerHexLetter) return false;
+            }
+            return true;
+        };
+        if (!IsLowercaseHex64(CoreSource.CanonicalManifestHash) || !IsLowercaseHex64(ModSource.CanonicalManifestHash))
+        {
+            return "discovery_order.case12_hash_not_lowercase_hex64";
+        }
+        if (CoreSource.CanonicalManifestHash == ModSource.CanonicalManifestHash)
+        {
+            return "discovery_order.case12_distinct_manifests_hash_equal";
+        }
+
+        // ResolvePackageSetFromContainer (topological, no mods.lock.json5) over a
+        // container holding the SAME two package roots must compute the SAME hash for
+        // 'core' as the direct-directories call above -- the hash does not depend on
+        // which factory/discovery path found the package.
+        const std::filesystem::path ContainerDir = TempDir.Dir / "case12_container";
+        WritePackage(ContainerDir / "core", R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+        })json5");
+        std::vector<FDiagnostic> ContainerDiagnostics;
+        std::optional<FResolvedPackageSet> ContainerSet =
+            ResolvePackageSetFromContainer(ContainerDir, ContainerDiagnostics);
+        if (!ContainerSet.has_value() || ContainerSet->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case12_container_resolve_failed";
+        }
+        if (ContainerSet->OrderedSources[0].CanonicalManifestHash != CoreSource.CanonicalManifestHash)
+        {
+            return "discovery_order.case12_container_hash_diverges_from_directories";
+        }
+
+        // Reformatting (whitespace/comment change, same semantic content) must not
+        // change the hash; adding a field FPackageDescriptor never reads must change it.
+        const std::filesystem::path ReformattedRoot = TempDir.Dir / "case12_reformatted";
+        WritePackage(ReformattedRoot, R"json5({
+            // a comment DiscoverPackageFromDirectory never sees as a semantic field
+            package_id:    "core",
+            namespace: "core",
+            version: "1.0.0",
+        })json5");
+        std::vector<FDiagnostic> ReformattedDiagnostics;
+        std::optional<FResolvedPackageSet> ReformattedSet =
+            ResolvePackageSetFromDirectories({ReformattedRoot}, ReformattedDiagnostics);
+        if (!ReformattedSet.has_value() || ReformattedSet->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case12_reformatted_resolve_failed";
+        }
+        if (ReformattedSet->OrderedSources[0].CanonicalManifestHash != CoreSource.CanonicalManifestHash)
+        {
+            return "discovery_order.case12_formatting_change_altered_hash";
+        }
+
+        const std::filesystem::path ExtendedRoot = TempDir.Dir / "case12_extended";
+        WritePackage(ExtendedRoot, R"json5({
+            package_id: "core",
+            namespace: "core",
+            version: "1.0.0",
+            synthetic_host_extension_field: "unread_by_descriptor",
+        })json5");
+        std::vector<FDiagnostic> ExtendedDiagnostics;
+        std::optional<FResolvedPackageSet> ExtendedSet =
+            ResolvePackageSetFromDirectories({ExtendedRoot}, ExtendedDiagnostics);
+        if (!ExtendedSet.has_value() || ExtendedSet->OrderedSources.size() != 1)
+        {
+            return "discovery_order.case12_extended_resolve_failed";
+        }
+        if (ExtendedSet->OrderedSources[0].CanonicalManifestHash == CoreSource.CanonicalManifestHash)
+        {
+            return "discovery_order.case12_unknown_field_did_not_change_hash";
+        }
+    }
+
     return "";
 }
 } // namespace GV2ContentHostSupport::Testing

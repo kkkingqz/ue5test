@@ -115,22 +115,22 @@ bool TryParsePositive(const std::string& Text, std::int64_t& OutValue)
     return Result.ec == std::errc{} && Result.ptr == End && OutValue > 0;
 }
 
+// PSC-02 (ADR-0043 D1/D5): consumes the session's already-resolved package set --
+// no independent re-discovery of package identity/order here. Mirrors
+// UGV2RuntimeSubsystem::Initialize()'s single-resolution pattern: main() resolves
+// once via GV2ContentHostSupport::ResolvePackageSetFromDirectories and this function
+// and BuildRepositoryFromResolvedPackageSet() below both consume that one result.
 bool LoadRuntimeSources(
     const char* ExecutableArgument,
-    const std::vector<std::filesystem::path>& ContentRoots,
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet>& ResolvedPackageSet,
     std::vector<GV2RuntimeCore::FRuntimeSource>& OutSources)
 {
-    if (!ContentRoots.empty())
+    if (ResolvedPackageSet.has_value() && !ResolvedPackageSet->OrderedSources.empty())
     {
         std::vector<std::pair<std::string, std::filesystem::path>> Packages;
-        for (const auto& Root : ContentRoots)
+        for (const auto& Source : ResolvedPackageSet->OrderedSources)
         {
-            std::vector<GV2ContentCore::FDiagnostic> Diags;
-            auto Descriptor = GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, Diags);
-            if (Descriptor)
-            {
-                Packages.emplace_back(Descriptor->GetPackageId(), Root);
-            }
+            Packages.emplace_back(Source.Descriptor.GetPackageId(), Source.Root);
         }
         if (!Packages.empty())
         {
@@ -250,6 +250,29 @@ GV2ContentCore::FBuildResult BuildRepositoryFromDirectories(const std::vector<st
 GV2ContentCore::FBuildResult BuildRepositoryFromDirectory(const std::filesystem::path& PackageRoot)
 {
     return BuildRepositoryFromDirectories({PackageRoot});
+}
+
+// PSC-02 (ADR-0043 D1/D5): pure consumption of an already-resolved package set -- no
+// discovery call of its own. This is the production session-bootstrap path (see main()
+// below); BuildRepositoryFromDirectories() above remains in independent use only for
+// --self-test's isolated per-tier repository builds, which intentionally resolve their
+// own, deliberately distinct temp-directory roots each iteration.
+GV2ContentCore::FBuildResult BuildRepositoryFromResolvedPackageSet(
+    const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)
+{
+    GV2ContentHostSupport::FMultiPackageSourceProvider Provider;
+    std::vector<GV2ContentCore::FPackageDescriptor> Descriptors;
+    Descriptors.reserve(ResolvedPackageSet.OrderedSources.size());
+    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet.OrderedSources)
+    {
+        Provider.RegisterPackage(Source.Descriptor.GetPackageId(), Source.Root);
+        Descriptors.push_back(Source.Descriptor);
+    }
+
+    GV2ContentCore::FBuildOptions Options;
+    Options.SourceProvider = &Provider;
+
+    return GV2ContentCore::BuildRepository(Descriptors, Options);
 }
 
 std::vector<std::filesystem::path> LoadContentRoots(
@@ -799,7 +822,7 @@ int Run(
     const std::int64_t Seed,
     const bool bSelfTest,
     const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources,
-    const std::vector<std::filesystem::path>& ContentRoots,
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet>& ResolvedPackageSet,
     const std::optional<std::string>& ManifestPath = std::nullopt,
     const std::optional<std::string>& OutputManifestPath = std::nullopt,
     const std::optional<std::string>& OutputDigestPath = std::nullopt)
@@ -922,12 +945,12 @@ int Run(
 
     // PCC-35: pin a repository read handle before Lua bootstrap. Missing or
     // invalid repository content blocks session startup entirely.
-    if (ContentRoots.empty())
+    if (!ResolvedPackageSet.has_value() || ResolvedPackageSet->OrderedSources.empty())
     {
         std::cerr << "content_root_not_found\n";
         return 9;
     }
-    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromDirectories(ContentRoots);
+    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromResolvedPackageSet(*ResolvedPackageSet);
     if (RepositoryBuild.IsFailure())
     {
         PrintRepositoryDiagnostics(RepositoryBuild.GetDiagnostics());
@@ -1488,14 +1511,14 @@ int Run(
 
 int RunCheckScripts(
     const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources,
-    const std::vector<std::filesystem::path>& ContentRoots)
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet>& ResolvedPackageSet)
 {
-    if (ContentRoots.empty())
+    if (!ResolvedPackageSet.has_value() || ResolvedPackageSet->OrderedSources.empty())
     {
         std::cerr << "content_root_not_found\n";
         return 9;
     }
-    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromDirectories(ContentRoots);
+    const GV2ContentCore::FBuildResult RepositoryBuild = BuildRepositoryFromResolvedPackageSet(*ResolvedPackageSet);
     if (RepositoryBuild.IsFailure())
     {
         PrintRepositoryDiagnostics(RepositoryBuild.GetDiagnostics());
@@ -1604,15 +1627,34 @@ int main(int argc, char** argv)
     }
 
     const std::vector<std::filesystem::path> ContentRoots = LoadContentRoots(argv[0], ExplicitContentRoot);
+
+    // PSC-02 (ADR-0043 D1/D5): resolve the package set ONCE here -- LoadRuntimeSources,
+    // RunCheckScripts, and Run all consume this single result instead of each
+    // independently re-discovering package identity/order from the same ContentRoots
+    // (PAH-R3: a second, independent discovery of the same closure is a second
+    // authority, even when it returns the same order today).
+    std::optional<GV2ContentHostSupport::FResolvedPackageSet> ResolvedPackageSet;
+    if (!ContentRoots.empty())
+    {
+        std::vector<GV2ContentCore::FDiagnostic> ResolveDiagnostics;
+        ResolvedPackageSet = GV2ContentHostSupport::ResolvePackageSetFromDirectories(ContentRoots, ResolveDiagnostics);
+        if (!ResolvedPackageSet.has_value())
+        {
+            PrintRepositoryDiagnostics(ResolveDiagnostics);
+            std::cerr << "repository_build_failed\n";
+            return 9;
+        }
+    }
+
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
-    if (!LoadRuntimeSources(argv[0], ContentRoots, RuntimeSources))
+    if (!LoadRuntimeSources(argv[0], ResolvedPackageSet, RuntimeSources))
     {
         std::cerr << "unable to locate a non-empty Scripts module tree\n";
         return 66;
     }
     if (bCheckScripts)
     {
-        return RunCheckScripts(RuntimeSources, ContentRoots);
+        return RunCheckScripts(RuntimeSources, ResolvedPackageSet);
     }
-    return Run(CommandCount, Seed, bSelfTest, RuntimeSources, ContentRoots, ManifestPath, OutputManifestPath, OutputDigestPath);
+    return Run(CommandCount, Seed, bSelfTest, RuntimeSources, ResolvedPackageSet, ManifestPath, OutputManifestPath, OutputDigestPath);
 }

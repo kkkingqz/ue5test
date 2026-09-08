@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 
 // DCA-19: the single place that reads GameData/mods.lock.json5 (via
 // GV2ContentHostSupport's package discovery, the same mechanism
@@ -22,5 +23,14 @@ struct FEntry
 // Ordered by load_index. Empty on discovery failure (missing/invalid
 // mods.lock.json5, a listed package not found on disk, etc.) -- callers
 // treat an empty result as "nothing to scan", never as "scan everything".
+// PSC-02: retained as a general-purpose convenience (e.g. a test building its own,
+// genuinely independent oracle) -- the production registry-build path no longer calls
+// this itself (see FromResolvedPackageSet below).
 TArray<FEntry> DiscoverFromGameData();
+
+// PSC-02 (ADR-0043 D1/D5): pure projection of an already-resolved package set into this
+// UE-friendly (PackageId, RootDirectory) shape -- no discovery of its own. This is what
+// the production path (UGV2RuntimeSubsystem::Initialize, resolving its package set once)
+// feeds UGV2ScreenRegistry::Build() with, instead of a second independent discovery.
+TArray<FEntry> FromResolvedPackageSet(const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet);
 }

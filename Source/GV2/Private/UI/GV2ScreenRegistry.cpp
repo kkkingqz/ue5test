@@ -147,15 +147,24 @@ bool UGV2ScreenRegistry::BuildContentRootOwnership(
     return true;
 }
 
+// PSC-02 (ADR-0043 D1/D5): ClosureEntries is supplied by the caller's ALREADY-resolved
+// package set (UGV2RuntimeSubsystem::Initialize, from GV2ContentHostSupport::
+// ResolvePackageSet{FromContainer,FromDirectories}) -- this function no longer discovers
+// the package set itself (PAH-R3: a second, independent discovery of the same closure is
+// a second authority, even when it returns the same order today). It still reads each
+// entry's own "ue_content_roots" field directly, which is not package-set discovery: the
+// portable descriptor parser deliberately never looks at that field (0F), so it cannot be
+// obtained any other way once the package set is already resolved.
 // PAH-04: pre_ready_discovery -- only called from Build(), only called from
 // LoadScreenRegistry(), only called from Initialize(), before any session exists.
 bool UGV2ScreenRegistry::ResolveContentRootOwnershipFromGameData(
+    const TArray<GV2PackageClosure::FEntry>& ClosureEntries,
     TArray<FGV2ContentRootOwnership>& OutOwnership,
     FString& OutError)
 {
     OutOwnership.Reset();
     TArray<FGV2DeclaredPackageRoots> PackageDeclaredRoots;
-    for (const GV2PackageClosure::FEntry& PackageEntry : GV2PackageClosure::DiscoverFromGameData())
+    for (const GV2PackageClosure::FEntry& PackageEntry : ClosureEntries)
     {
         TArray<FString> DeclaredRoots;
         FString ReadError;
@@ -174,12 +183,14 @@ bool UGV2ScreenRegistry::IsTrustedExternalContentDomain(const FString& AssetPath
     return !AssetPath.StartsWith(TEXT("/game/"), ESearchCase::IgnoreCase);
 }
 
-// PAH-04: pre_ready_discovery -- only called from Build(), only called from
-// LoadScreenRegistry(), only called from Initialize(), before any session exists.
-TArray<FString> UGV2ScreenRegistry::GetPackageLoadOrderFromGameData()
+// PSC-02: pure projection of the caller's already-resolved closure order -- see
+// ResolveContentRootOwnershipFromGameData's comment above for why Build() no longer
+// discovers the package set itself.
+TArray<FString> UGV2ScreenRegistry::GetPackageLoadOrderFromGameData(const TArray<GV2PackageClosure::FEntry>& ClosureEntries)
 {
     TArray<FString> PackageLoadOrder;
-    for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+    PackageLoadOrder.Reserve(ClosureEntries.Num());
+    for (const GV2PackageClosure::FEntry& Entry : ClosureEntries)
     {
         PackageLoadOrder.Add(Entry.PackageId);
     }
@@ -233,7 +244,9 @@ bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
 // PAH-08: phase=prepare -- compiles the authoring registry once, before a
 // session presents anything; this is where package order and content-root
 // ownership are read, and the only place they are.
-bool UGV2ScreenRegistry::Build(FString& OutError)
+// PSC-02 (ADR-0043 D1/D5): ClosureEntries comes from the caller's single resolved package
+// set (UGV2RuntimeSubsystem::Initialize) -- Build() itself performs no package discovery.
+bool UGV2ScreenRegistry::Build(const TArray<GV2PackageClosure::FEntry>& ClosureEntries, FString& OutError)
 {
     ResolvedByScreenId.Reset();
     bBuilt = false;
@@ -244,16 +257,16 @@ bool UGV2ScreenRegistry::Build(FString& OutError)
         return false;
     }
 
-    const TArray<FString> PackageLoadOrder = GetPackageLoadOrderFromGameData();
+    const TArray<FString> PackageLoadOrder = GetPackageLoadOrderFromGameData(ClosureEntries);
     if (PackageLoadOrder.IsEmpty())
     {
-        OutError = TEXT("Screen Registry could not resolve the package load order from GameData/mods.lock.json5");
+        OutError = TEXT("Screen Registry could not resolve the package load order from the session's resolved package set");
         return false;
     }
 
     TArray<FGV2ContentRootOwnership> Ownership;
     FString OwnershipError;
-    if (!ResolveContentRootOwnershipFromGameData(Ownership, OwnershipError))
+    if (!ResolveContentRootOwnershipFromGameData(ClosureEntries, Ownership, OwnershipError))
     {
         OutError = FString::Printf(
             TEXT("core:diagnostic.ui_screen_registry.content_root_ownership_conflict: %s"),

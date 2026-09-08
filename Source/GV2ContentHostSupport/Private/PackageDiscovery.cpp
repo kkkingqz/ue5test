@@ -1,6 +1,7 @@
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "GV2ContentHostSupport/ModsLock.h"
 
+#include "GV2ContentCore/CanonicalHash.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
 #include "GV2ContentCore/StableId.h"
@@ -45,6 +46,78 @@ std::optional<std::string> ReadFileToString(const std::filesystem::path& FilePat
     return std::string(
         (std::istreambuf_iterator<char>(Stream)),
         std::istreambuf_iterator<char>());
+}
+
+// PSC-02: computes FResolvedPackageSource::CanonicalManifestHash from the complete parsed
+// package.json5 root -- independent of, and read separately from, DiscoverPackageFromDirectory's
+// own projection into FPackageDescriptor's known fields, so an unknown/future semantic field
+// still changes it. A package root that already passed DiscoverPackageFromDirectory always has
+// a readable, parseable manifest, so failure here would indicate the file changed on disk
+// between the two reads -- reported as nullopt rather than assumed impossible.
+std::optional<std::string> ComputeCanonicalManifestHash(const std::filesystem::path& PackageRoot)
+{
+    const std::optional<std::string> ManifestContent = ReadFileToString(PackageRoot / "package.json5");
+    if (!ManifestContent)
+    {
+        return std::nullopt;
+    }
+    const GV2ContentCore::FParseLimits Limits;
+    std::vector<GV2ContentCore::FDiagnostic> ParseDiagnostics;
+    const std::optional<GV2ContentCore::FValue> ParsedManifest = GV2ContentCore::ParseJson5(
+        *ManifestContent, Limits, ParseDiagnostics, std::nullopt, 0u, "package.json5");
+    if (!ParsedManifest)
+    {
+        return std::nullopt;
+    }
+    return GV2ContentCore::ComputeCanonicalHash(*ParsedManifest);
+}
+
+// PSC-02: shared by both FResolvedPackageSet factories -- pairs each already-discovered
+// descriptor with its root (by LoadIndex, matching the input roots array index exactly)
+// and its canonical manifest hash.
+std::optional<FResolvedPackageSet> BuildResolvedPackageSet(
+    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors,
+    const std::vector<std::filesystem::path>& OrderedRoots,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
+{
+    if (!Descriptors)
+    {
+        return std::nullopt;
+    }
+
+    FResolvedPackageSet Set;
+    Set.OrderedSources.reserve(Descriptors->size());
+    for (GV2ContentCore::FPackageDescriptor& Descriptor : *Descriptors)
+    {
+        const std::size_t LoadIndex = static_cast<std::size_t>(Descriptor.GetLoadIndex());
+        if (LoadIndex >= OrderedRoots.size())
+        {
+            GV2ContentCore::FDiagnostic Diagnostic;
+            Diagnostic.Code = "core:diagnostic.package.discovery.resolved_set_index_mismatch";
+            Diagnostic.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
+            Diagnostic.Message = "descriptor LoadIndex has no corresponding root -- internal discovery invariant violated";
+            Diagnostic.PackageId = Descriptor.GetPackageId();
+            OutDiagnostics.push_back(std::move(Diagnostic));
+            return std::nullopt;
+        }
+
+        const std::filesystem::path& Root = OrderedRoots[LoadIndex];
+        std::optional<std::string> ManifestHash = ComputeCanonicalManifestHash(Root);
+        if (!ManifestHash)
+        {
+            GV2ContentCore::FDiagnostic Diagnostic;
+            Diagnostic.Code = "core:diagnostic.package.manifest.unreadable";
+            Diagnostic.Severity = GV2ContentCore::EDiagnosticSeverity::Error;
+            Diagnostic.Message = "package.json5 could not be re-read for canonical manifest hash";
+            Diagnostic.PackageId = Descriptor.GetPackageId();
+            OutDiagnostics.push_back(std::move(Diagnostic));
+            return std::nullopt;
+        }
+
+        Set.OrderedSources.push_back(FResolvedPackageSource{
+            Root, std::move(Descriptor), std::move(*ManifestHash)});
+    }
+    return Set;
 }
 
 GV2ContentCore::FDiagnostic MakeManifestDiagnostic(
@@ -900,6 +973,25 @@ std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> DiscoverPackagesF
         *OutOrderedRoots = OrderedRoots;
     }
     return Descriptors;
+}
+
+std::optional<FResolvedPackageSet> ResolvePackageSetFromContainer(
+    const std::filesystem::path& ContainerDir,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
+{
+    std::vector<std::filesystem::path> OrderedRoots;
+    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
+        DiscoverPackagesFromContainer(ContainerDir, OutDiagnostics, &OrderedRoots);
+    return BuildResolvedPackageSet(std::move(Descriptors), OrderedRoots, OutDiagnostics);
+}
+
+std::optional<FResolvedPackageSet> ResolvePackageSetFromDirectories(
+    const std::vector<std::filesystem::path>& PackageRoots,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics)
+{
+    std::optional<std::vector<GV2ContentCore::FPackageDescriptor>> Descriptors =
+        DiscoverPackagesFromDirectories(PackageRoots, OutDiagnostics);
+    return BuildResolvedPackageSet(std::move(Descriptors), PackageRoots, OutDiagnostics);
 }
 
 std::vector<FDiscoveredScriptSource> DiscoverPackageScripts(

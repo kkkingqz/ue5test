@@ -3,6 +3,8 @@
 #include "Engine/DataAsset.h"
 #include "GV2ScreenRegistry.generated.h"
 
+namespace GV2PackageClosure { struct FEntry; }
+
 class UGV2ScreenWidgetBase;
 class UGV2GameShellWidgetBase;
 
@@ -139,10 +141,11 @@ public:
     // reference to engine-shipped or plugin content.
     static bool IsTrustedExternalContentDomain(const FString& AssetPath);
 
-    // Reads GameData/mods.lock.json5 (via the same GV2ContentHostSupport package discovery
-    // the runtime subsystem already uses to resolve its repository roots) and returns
-    // package_id ordered by load_index; empty on discovery failure.
-    static TArray<FString> GetPackageLoadOrderFromGameData();
+    // PSC-02 (ADR-0043 D1/D5): pure projection of ClosureEntries (the caller's single
+    // already-resolved package set) into package_id ordered by load_index -- no
+    // discovery of its own. ClosureEntries empty means the caller couldn't resolve a
+    // package set at all, not "scan GameData/ instead".
+    static TArray<FString> GetPackageLoadOrderFromGameData(const TArray<GV2PackageClosure::FEntry>& ClosureEntries);
 
     // PAH-05 (ADR-0042, INV-P2): reads every closure package's own GameData/<id>/
     // package.json5 "ue_content_roots" array -- a UE-only field the portable host never
@@ -154,7 +157,11 @@ public:
     // error -- overlap is rejected outright, never resolved by a longest-prefix-wins rule.
     // Delegates the actual validation to BuildContentRootOwnership below (no filesystem
     // access in that function -- only here, gathering PackageDeclaredRoots to feed it).
+    // PSC-02: ClosureEntries is the caller's single already-resolved package set -- this
+    // function no longer discovers it itself, only reads each entry's own
+    // "ue_content_roots" field (not package-set discovery -- see .cpp comment).
     static bool ResolveContentRootOwnershipFromGameData(
+        const TArray<GV2PackageClosure::FEntry>& ClosureEntries,
         TArray<FGV2ContentRootOwnership>& OutOwnership,
         FString& OutError);
 
@@ -174,7 +181,9 @@ public:
     // Validate()). Must succeed before Resolve() can return anything but
     // UnknownScreenId. Idempotent: safe to call again (e.g. before a fresh Resolve() in
     // a standalone test that only loaded the DataAsset), rebuilding from Entries each time.
-    bool Build(FString& OutError);
+    // PSC-02 (ADR-0043 D1/D5): ClosureEntries is the caller's single already-resolved
+    // package set -- Build() performs no package discovery of its own.
+    bool Build(const TArray<GV2PackageClosure::FEntry>& ClosureEntries, FString& OutError);
 
     // PAH-02: the only way to get a screen's class. A screen registered for one Placement
     // is rejected, not silently handed out, when asked for a different one -- Placement

@@ -55,3 +55,22 @@ GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectory(const FString& Pack
 {
     return BuildGV2RepositoryFromDirectories({PackageRootDir});
 }
+
+GV2ContentCore::FBuildResult BuildGV2RepositoryFromResolvedPackageSet(
+    const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)
+{
+    std::vector<GV2ContentCore::FPackageDescriptor> Descriptors;
+    Descriptors.reserve(ResolvedPackageSet.OrderedSources.size());
+
+    GV2ContentHostSupport::FMultiPackageSourceProvider Provider;
+    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet.OrderedSources)
+    {
+        Provider.RegisterPackage(Source.Descriptor.GetPackageId(), Source.Root);
+        Descriptors.push_back(Source.Descriptor);
+    }
+
+    GV2ContentCore::FBuildOptions Options;
+    Options.SourceProvider = &Provider;
+
+    return GV2ContentCore::BuildRepository(Descriptors, Options);
+}

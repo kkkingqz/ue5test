@@ -19,10 +19,17 @@ std::string SessionCoordinatorToUtf8(const FString& Value)
 
 // PAH-04: pre_ready_discovery -- only called from StartSession(), before this
 // session's Status.bIsReady is ever set true.
+// PSC-02 (ADR-0043 D1/D5): ResolvedPackageSet is the caller's single already-resolved
+// package set. When given, this function reads PackageId/Root straight from it -- no
+// second discovery of the package set, not even a per-root re-parse of package.json5
+// (the old code called DiscoverPackageFromDirectory again here, after the caller had
+// already discovered the same roots to build RuntimePackageRoots). nullptr falls back to
+// this function's own discovery, for callers -- mostly tests -- with no resolved set of
+// their own.
 bool LoadPortableRuntimeSources(
     std::vector<GV2RuntimeCore::FRuntimeSource>& OutSources,
     GV2RuntimeCore::FRuntimeFault& OutFault,
-    const TArray<FString>& RuntimePackageRoots,
+    const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet,
     TArray<FGV2SchemaPackageRoot>& OutSchemaPackageRoots)
 {
     OutSources.clear();
@@ -84,6 +91,37 @@ bool LoadPortableRuntimeSources(
             static_cast<std::size_t>(Bytes.Num() - Offset));
     }
 
+    if (ResolvedPackageSet != nullptr)
+    {
+        OutSchemaPackageRoots.Reserve(static_cast<int32>(ResolvedPackageSet->OrderedSources.size()));
+        for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet->OrderedSources)
+        {
+            // PAH-04A: schemas reuse this exact resolved root/package_id pairing --
+            // the same set this session's Lua sources load from, not a second
+            // independent discovery pass. Unlike Lua sources, core's schemas (unlike
+            // its scripts, which come from Scripts/ above) live under GameData/core/
+            // like any other package's, so core is not skipped here.
+            OutSchemaPackageRoots.Add(FGV2SchemaPackageRoot{
+                UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
+                UTF8_TO_TCHAR(Source.Root.string().c_str())});
+
+            if (Source.Descriptor.GetPackageId() == "core")
+            {
+                continue;
+            }
+            auto PkgSources = GV2ContentHostSupport::DiscoverPackageScripts(Source.Root, Source.Descriptor.GetPackageId());
+            for (auto& Src : PkgSources)
+            {
+                GV2RuntimeCore::FRuntimeSource& RuntimeSrc = OutSources.emplace_back();
+                RuntimeSrc.Name = std::move(Src.Name);
+                RuntimeSrc.Text = std::move(Src.Text);
+            }
+        }
+        return true;
+    }
+
+    // Fallback discovery for a caller with no resolved package set of its own (mostly
+    // tests) -- unchanged from before PSC-02, just no longer the production path.
     const FString GameDataDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
     const std::string GameDataDirUtf8 = SessionCoordinatorToUtf8(GameDataDirectory);
     std::vector<GV2ContentCore::FDiagnostic> Diags;
@@ -94,15 +132,7 @@ bool LoadPortableRuntimeSources(
     bUseSampleOverride = FGV2SessionCoordinator::bTestForceIncludeSamplePackage;
 #endif
 
-    if (!RuntimePackageRoots.IsEmpty())
-    {
-        OrderedRoots.reserve(RuntimePackageRoots.Num());
-        for (const FString& Root : RuntimePackageRoots)
-        {
-            OrderedRoots.emplace_back(SessionCoordinatorToUtf8(Root));
-        }
-    }
-    else if (bUseSampleOverride)
+    if (bUseSampleOverride)
     {
         // CBM-03 override: GameData/sample and GameData/rh both bind the shared
         // "textsystem:action.location.travel" action, so they cannot load
@@ -137,11 +167,6 @@ bool LoadPortableRuntimeSources(
             continue;
         }
 
-        // PAH-04A: schemas reuse this exact resolved root/package_id pairing --
-        // the same OrderedRoots this session's Lua sources load from, not a second
-        // independent discovery pass. Unlike Lua sources, core's schemas (unlike
-        // its scripts, which come from Scripts/ above) live under GameData/core/
-        // like any other package's, so core is not skipped here.
         OutSchemaPackageRoots.Add(FGV2SchemaPackageRoot{
             UTF8_TO_TCHAR(Descriptor->GetPackageId().c_str()),
             UTF8_TO_TCHAR(Root.string().c_str())});
@@ -240,7 +265,7 @@ void FGV2SessionCoordinator::ClearDocumentSink()
 bool FGV2SessionCoordinator::StartSession(
     const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
     const int64 InRepositoryVersion,
-    const TArray<FString>& RuntimePackageRoots)
+    const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet)
 {
     check(IsInGameThread());
 
@@ -278,7 +303,7 @@ bool FGV2SessionCoordinator::StartSession(
     GV2RuntimeCore::FRuntimeFault Fault;
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
     TArray<FGV2SchemaPackageRoot> SchemaPackageRoots;
-    if (!LoadPortableRuntimeSources(RuntimeSources, Fault, RuntimePackageRoots, SchemaPackageRoots))
+    if (!LoadPortableRuntimeSources(RuntimeSources, Fault, ResolvedPackageSet, SchemaPackageRoots))
     {
         FailRuntime(Fault);
         return false;

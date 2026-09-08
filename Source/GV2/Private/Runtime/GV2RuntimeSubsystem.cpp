@@ -1,6 +1,7 @@
 #include "Runtime/GV2RuntimeSubsystem.h"
 
 #include "Application/GV2FilesystemContentSourceProvider.h"
+#include "Application/GV2PackageClosure.h"
 #include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Blueprint/UserWidget.h"
@@ -21,12 +22,27 @@ DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
 
 namespace
 {
-// TSL-02: default package roots discovered dynamically from GameData container.
-// PAH-04: pre_ready_discovery -- only called from ResolveRepositoryPackageRoots(),
-// only called from Initialize(), before any session exists.
-TArray<FString> DiscoverDefaultRepositoryPackageRoots()
+TOptional<GV2ContentHostSupport::FResolvedPackageSet> ToTOptional(
+    std::optional<GV2ContentHostSupport::FResolvedPackageSet> Set)
+{
+    if (!Set.has_value())
+    {
+        return {};
+    }
+    return TOptional<GV2ContentHostSupport::FResolvedPackageSet>(MoveTemp(*Set));
+}
+
+// TSL-02/PSC-02 (ADR-0043 D1/D5): the SINGLE package-set resolution point for this
+// GameInstance. Repository build, Screen Registry build, and Lua/schema source loading
+// (FGV2SessionCoordinator::StartSession, called once per session replacement) all
+// consume this ONE result; none of them re-discovers the package set independently
+// (PAH-R3: a second, independent discovery of the same closure is a second authority,
+// even when it returns the same order today).
+// PAH-04: pre_ready_discovery -- only called from Initialize(), before any session exists.
+TOptional<GV2ContentHostSupport::FResolvedPackageSet> ResolveSessionPackageSet()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
 
 #if WITH_DEV_AUTOMATION_TESTS
     if (FGV2SessionCoordinator::bTestForceIncludeSamplePackage)
@@ -35,49 +51,24 @@ TArray<FString> DiscoverDefaultRepositoryPackageRoots()
         // and GameData/rh cannot coexist (both bind the shared
         // "textsystem:action.location.travel" action), so tests that opt in
         // get core+textsystem+sample instead of the default core+textsystem+rh.
-        return {
-            FPaths::Combine(GameDataDir, TEXT("core")),
-            FPaths::Combine(GameDataDir, TEXT("textsystem")),
-            FPaths::Combine(GameDataDir, TEXT("sample")),
+        const std::vector<std::filesystem::path> SampleRoots = {
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("core")))),
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("textsystem")))),
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("sample")))),
         };
-    }
-#endif
-
-    const std::string GameDataDirUtf8 = TCHAR_TO_UTF8(*GameDataDir);
-    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
-    std::vector<std::filesystem::path> OrderedRoots;
-    if (GV2ContentHostSupport::DiscoverPackagesFromContainer(
-            std::filesystem::path(GameDataDirUtf8),
-            Diagnostics,
-            &OrderedRoots))
-    {
-        TArray<FString> Roots;
-        for (const auto& Root : OrderedRoots)
-        {
-            Roots.Add(UTF8_TO_TCHAR(Root.string().c_str()));
-        }
-        return Roots;
-    }
-    return {};
-}
-
-TArray<FString> ResolveRepositoryPackageRoots()
-{
-#if WITH_DEV_AUTOMATION_TESTS
-    if (FGV2SessionCoordinator::bTestForceIncludeSamplePackage)
-    {
-        return DiscoverDefaultRepositoryPackageRoots();
+        return ToTOptional(GV2ContentHostSupport::ResolvePackageSetFromDirectories(SampleRoots, Diagnostics));
     }
 #endif
 
 #if WITH_EDITOR
-    if (GIsEditor && !IsRunningCommandlet() && !FApp::IsUnattended())
+    const bool bIsInteractiveEditorSession = GIsEditor && !IsRunningCommandlet() && !FApp::IsUnattended();
+    if (bIsInteractiveEditorSession)
     {
         const UGV2RuntimeSettings* Settings = GetDefault<UGV2RuntimeSettings>();
         if (Settings != nullptr && !Settings->EditorPackageRoots.IsEmpty())
         {
-            TArray<FString> Roots;
-            Roots.Reserve(Settings->EditorPackageRoots.Num());
+            std::vector<std::filesystem::path> Roots;
+            Roots.reserve(Settings->EditorPackageRoots.Num());
             for (const FString& ConfiguredRoot : Settings->EditorPackageRoots)
             {
                 FString Root = ConfiguredRoot;
@@ -87,14 +78,15 @@ TArray<FString> ResolveRepositoryPackageRoots()
                 }
                 Root = FPaths::ConvertRelativePathToFull(Root);
                 FPaths::NormalizeDirectoryName(Root);
-                Roots.Add(MoveTemp(Root));
+                Roots.emplace_back(TCHAR_TO_UTF8(*Root));
             }
-            return Roots;
+            return ToTOptional(GV2ContentHostSupport::ResolvePackageSetFromDirectories(Roots, Diagnostics));
         }
     }
 #endif
 
-    return DiscoverDefaultRepositoryPackageRoots();
+    return ToTOptional(GV2ContentHostSupport::ResolvePackageSetFromContainer(
+        std::filesystem::path(TCHAR_TO_UTF8(*GameDataDir)), Diagnostics));
 }
 }
 
@@ -109,12 +101,23 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
     Super::Initialize(Collection);
 
-    LoadScreenRegistry();
+    // PSC-02 (ADR-0043 D1/D5): resolve the package set ONCE, before anything that used
+    // to discover it independently -- Screen Registry build now runs AFTER this (it used
+    // to run before ANY package resolution at all, PAH-R3), and repository build consumes
+    // this same value's descriptors directly instead of re-discovering them.
+    ResolvedPackageSet = ResolveSessionPackageSet();
 
-    RepositoryPackageRoots = ResolveRepositoryPackageRoots();
+    TArray<GV2PackageClosure::FEntry> ClosureEntries;
+    if (ResolvedPackageSet.IsSet())
+    {
+        ClosureEntries = GV2PackageClosure::FromResolvedPackageSet(*ResolvedPackageSet);
+    }
+    LoadScreenRegistry(ClosureEntries);
+
     RepositoryPublisher = MakePimpl<FGV2RepositoryPublisher>();
-    bRepositoryReady = RepositoryPublisher->PublishCandidate(
-        BuildGV2RepositoryFromDirectories(RepositoryPackageRoots));
+    bRepositoryReady = ResolvedPackageSet.IsSet()
+        && RepositoryPublisher->PublishCandidate(
+            BuildGV2RepositoryFromResolvedPackageSet(*ResolvedPackageSet));
     if (!bRepositoryReady)
     {
         RepositoryBuildError = TEXT("failed to build the initial GameDataRepository");
@@ -174,7 +177,7 @@ void UGV2RuntimeSubsystem::Deinitialize()
     bScreenRegistryReady = false;
     ScreenRegistry = nullptr;
     RepositoryPublisher.Reset();
-    RepositoryPackageRoots.Reset();
+    ResolvedPackageSet.Reset();
     bRepositoryReady = false;
     RepositoryBuildError.Reset();
 
@@ -247,7 +250,7 @@ void UGV2RuntimeSubsystem::StartSession()
     if (!Coordinator->StartSession(
             RepositoryPublisher->GetCurrent(),
             RepositoryPublisher->GetVersion(),
-            RepositoryPackageRoots))
+            ResolvedPackageSet.GetPtrOrNull()))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
         if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed && GetGameInstance() != nullptr)
@@ -340,7 +343,7 @@ FString UGV2RuntimeSubsystem::GetActiveTab(const FString& ContainerPath) const
     return FString();
 }
 
-bool UGV2RuntimeSubsystem::LoadScreenRegistry()
+bool UGV2RuntimeSubsystem::LoadScreenRegistry(const TArray<GV2PackageClosure::FEntry>& ClosureEntries)
 {
     bScreenRegistryReady = false;
     const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
@@ -352,7 +355,7 @@ bool UGV2RuntimeSubsystem::LoadScreenRegistry()
     }
 
     FString BuildError;
-    if (!ScreenRegistry->Build(BuildError))
+    if (!ScreenRegistry->Build(ClosureEntries, BuildError))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Screen Registry failed to build: %s"), *BuildError);
         ScreenRegistry = nullptr;

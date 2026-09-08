@@ -7,8 +7,10 @@ code must not discover content -- no directory walk, no raw file read, no packag
 scan. The actual side is every occurrence of a small, fixed grammar of filesystem/
 discovery primitives (std::filesystem directory iteration, IFileManager::FindFiles*,
 FFileHelper::LoadFileTo*, std::ifstream, GV2ContentHostSupport::Discover*,
-GV2PackageClosure::DiscoverFromGameData) anywhere in Source/GV2/{Public,Private}
-production code. Each occurrence's enclosing function must carry a PAH-04 marker
+GV2ContentHostSupport::ResolvePackageSet* (PSC-02: the blessed package-set factories,
+which discover exactly like the functions they replaced), GV2PackageClosure::
+DiscoverFromGameData) anywhere in Source/GV2/{Public,Private} production code. Each
+occurrence's enclosing function must carry a PAH-04 marker
 comment immediately above its definition:
 
   PAH-04: pre_ready_discovery
@@ -48,6 +50,7 @@ DISCOVERY_GRAMMAR = re.compile(
     r"|FFileHelper::LoadFileToString"
     r"|std::ifstream"
     r"|GV2ContentHostSupport::Discover\w+"
+    r"|GV2ContentHostSupport::ResolvePackageSet\w+"
     r"|GV2PackageClosure::DiscoverFromGameData"
 )
 

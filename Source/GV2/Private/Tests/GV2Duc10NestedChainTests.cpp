@@ -3,7 +3,9 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
 #include "Application/GV2FilesystemContentSourceProvider.h"
+#include "Application/GV2PackageClosure.h"
 #include "Application/GV2SessionCoordinator.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "Components/ProgressBar.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -29,10 +31,27 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
     {
         return false;
     }
+
+    // PSC-02 (ADR-0043 D1/D5): one resolved package set feeds the registry build,
+    // the repository build, and the session below -- not three independent discoveries.
+    const std::vector<std::filesystem::path> FixturePackageRoots = {
+        std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core")))),
+        std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/textsystem")))),
+        std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/rh")))),
+    };
+    std::vector<GV2ContentCore::FDiagnostic> ResolveDiagnostics;
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> ResolvedSet =
+        GV2ContentHostSupport::ResolvePackageSetFromDirectories(FixturePackageRoots, ResolveDiagnostics);
+    TestTrue(TEXT("DUC-10: fixture package set resolves"), ResolvedSet.has_value());
+    if (!ResolvedSet.has_value())
+    {
+        return false;
+    }
+
     FString RegistryBuildError;
     TestTrue(
         *FString::Printf(TEXT("DUC-10: Screen Registry builds [Error: %s]"), *RegistryBuildError),
-        Registry->Build(RegistryBuildError));
+        Registry->Build(GV2PackageClosure::FromResolvedPackageSet(*ResolvedSet), RegistryBuildError));
 
     FGV2ResolvedScreenDescriptor ChainDescriptor;
     FGV2ScreenResolutionRejection ChainRejection;
@@ -69,12 +88,7 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
             BlockDescriptor.WidgetClass);
     }
 
-    const TArray<FString> PackageRoots = {
-        FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core")),
-        FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/textsystem")),
-        FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/rh")),
-    };
-    const GV2ContentCore::FBuildResult RepositoryBuild = BuildGV2RepositoryFromDirectories(PackageRoots);
+    const GV2ContentCore::FBuildResult RepositoryBuild = BuildGV2RepositoryFromResolvedPackageSet(*ResolvedSet);
     TestTrue(TEXT("DUC-10: fixture package repository builds"), RepositoryBuild.IsSuccess());
     if (!RepositoryBuild.IsSuccess())
     {
@@ -92,7 +106,7 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
     });
     TestTrue(
         TEXT("DUC-10: fixture session starts"),
-        Coordinator.StartSession(RepositoryBuild.GetCandidate().GetReadHandle(), 1, PackageRoots));
+        Coordinator.StartSession(RepositoryBuild.GetCandidate().GetReadHandle(), 1, &*ResolvedSet));
     if (!Coordinator.GetStatus().bIsReady)
     {
         return false;

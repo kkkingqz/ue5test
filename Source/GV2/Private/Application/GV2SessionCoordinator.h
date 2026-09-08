@@ -3,6 +3,7 @@
 #include "Bridge/GV2RuntimeIngressQueue.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2ContentCore/RepositorySnapshot.h"
+#include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 
 class FGV2SessionCoordinator
@@ -23,10 +24,15 @@ public:
     // of this call. It is held for the whole session lifetime and is never
     // swapped for a later Application-level republish (BootstrapAndSessionLifecycle.md
     // "Active session никогда не переключает pinned handle").
+    // PSC-02 (ADR-0043 D1/D5): ResolvedPackageSet is the caller's single already-resolved
+    // package set (UGV2RuntimeSubsystem::Initialize) -- when given, Lua/schema source
+    // loading reads it directly instead of re-discovering the package closure. nullptr
+    // (the default) falls back to this function's own discovery, for callers -- mostly
+    // tests -- that have no resolved set of their own to hand in.
     bool StartSession(
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
         int64 RepositoryVersion,
-        const TArray<FString>& RuntimePackageRoots = {});
+        const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet = nullptr);
     void FailBootstrap(const FString& Code, const FString& Message);
     void EndSession(EGV2SessionState FinalState = EGV2SessionState::Destroyed);
 

@@ -90,6 +90,46 @@ GV2_CONTENT_HOST_SUPPORT_API std::optional<std::vector<GV2ContentCore::FPackageD
     std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics,
     std::vector<std::filesystem::path>* OutOrderedRoots = nullptr);
 
+// PSC-02 (ADR-0043 D1/D5): one package resolved into a host's package set -- filesystem
+// root (used only by builders, never re-derived from it), immutable descriptor, and the
+// manifest's full canonical identity hash. CanonicalManifestHash is independent of
+// FPackageDescriptor's own known-field projection: it is computed from the complete
+// parsed package.json5 root BEFORE projection into descriptor fields, so a semantic field
+// FPackageDescriptor doesn't itself parse (e.g. a future host-extension field, or
+// PSC-03's `ue_content_roots`) still changes it. Formatting/comments do not change it --
+// it hashes the parsed value tree, not raw bytes.
+struct GV2_CONTENT_HOST_SUPPORT_API FResolvedPackageSource
+{
+    std::filesystem::path Root;
+    GV2ContentCore::FPackageDescriptor Descriptor;
+    std::string CanonicalManifestHash;
+};
+
+// PSC-02 (ADR-0043 D1/D5): the ordered, immutable package set for one host bootstrap.
+// Repository build, Lua/schema source loading, and UE presentation candidate build all
+// consume this SAME value -- none of them re-discovers the package set independently
+// (PAH-R3). Constructed only by the two factories below; a consumer that needs its own
+// package_id order or root reads OrderedSources, it does not call DiscoverPackagesFrom*
+// itself.
+struct GV2_CONTENT_HOST_SUPPORT_API FResolvedPackageSet
+{
+    std::vector<FResolvedPackageSource> OrderedSources;
+};
+
+// PSC-02: the two blessed host-bootstrap entry points that construct a
+// FResolvedPackageSet -- every consumer (production canonical lock, Editor profile,
+// automation fixture, Headless CLI) differs only in which of these it calls and with
+// what input, never in a separate discovery path of its own. Semantics mirror
+// DiscoverPackagesFromContainer/DiscoverPackagesFromDirectories exactly (same order,
+// same validation), adding CanonicalManifestHash per source.
+GV2_CONTENT_HOST_SUPPORT_API std::optional<FResolvedPackageSet> ResolvePackageSetFromContainer(
+    const std::filesystem::path& ContainerDir,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics);
+
+GV2_CONTENT_HOST_SUPPORT_API std::optional<FResolvedPackageSet> ResolvePackageSetFromDirectories(
+    const std::vector<std::filesystem::path>& PackageRoots,
+    std::vector<GV2ContentCore::FDiagnostic>& OutDiagnostics);
+
 /**
  * Discovered Lua script source belonging to a package.
  * PKG-14/15: Name is '@<package_id>/<relative_path>'.

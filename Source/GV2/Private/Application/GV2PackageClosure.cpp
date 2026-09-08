@@ -47,4 +47,18 @@ TArray<FEntry> DiscoverFromGameData()
     }
     return Result;
 }
+
+TArray<FEntry> FromResolvedPackageSet(const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)
+{
+    TArray<FEntry> Result;
+    Result.Reserve(static_cast<int32>(ResolvedPackageSet.OrderedSources.size()));
+    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet.OrderedSources)
+    {
+        FEntry Entry;
+        Entry.PackageId = UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str());
+        Entry.RootDirectory = UTF8_TO_TCHAR(Source.Root.string().c_str());
+        Result.Add(MoveTemp(Entry));
+    }
+    return Result;
+}
 }
