@@ -2152,26 +2152,32 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
         }
     }
 
+    // PSC-09B (ADR-0043 D2/D3): the sole physical mutation this Commit performs directly
+    // -- ApplyTabEntries is GV2-owned (UGV2TabContainerWidgetBase), so
+    // GV2LegacyPresentationApplyAdapter performs the actual call, reconstructing the
+    // USTRUCT array/TMap from this flattened operation.
     if (TabContainer != nullptr)
     {
-        TArray<FGV2TabItemEntry> Entries;
-        TMap<FName, UGV2ScreenWidgetBase*> Widgets;
-
+        GV2PresentationApply::FPreparedTabContainerOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.Entries.Reserve(PreparedTabs.Num());
         for (const FPreparedTabItem& Item : PreparedTabs)
         {
-            FGV2TabItemEntry Entry;
+            GV2PresentationApply::FPreparedTabEntry Entry;
             Entry.Key = Item.Key;
-            Entry.Title = Item.Title;
+            Entry.Title.Text = Item.Title.Text;
+            Entry.Title.StyleToken = Item.Title.StyleToken;
+            Entry.Title.NormalizedMarkup = Item.Title.NormalizedMarkup;
             Entry.ScreenId = Item.ScreenId;
-            Entries.Add(MoveTemp(Entry));
-
-            if (Item.ScreenWidget != nullptr)
-            {
-                Widgets.Add(Item.Key, Item.ScreenWidget.Get());
-            }
+            Entry.ScreenWidget = Item.ScreenWidget.Get();
+            Operation.Entries.Add(MoveTemp(Entry));
         }
-
-        TabContainer->ApplyTabEntries(Entries, Widgets);
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddTabContainerOperation(MoveTemp(Operation));
+        if (!GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError))
+        {
+            return false;
+        }
     }
 
     return true;
@@ -2179,15 +2185,15 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
 
 void FGV2TabContainerTabsPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(TargetWidget);
-    if (!TabContainer && TargetWidget)
+    if (TargetWidget)
     {
-        TabContainer = TargetWidget->GetTypedOuter<UGV2TabContainerWidgetBase>();
-    }
-
-    if (TabContainer != nullptr)
-    {
-        TabContainer->ResetTabContainerModel();
+        GV2PresentationApply::FPreparedTabContainerOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.bIsReset = true;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddTabContainerOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
     PreparedTabs.Reset();
     CandidateWidgetsByKey.Reset();

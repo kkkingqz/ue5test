@@ -231,6 +231,29 @@ struct GV2PRESENTATIONAPPLY_API FPreparedKeyedCollectionOperation
     bool bIsReset = false;
 };
 
+// PSC-09B: canonical lower replacement for GV2's own FGV2TabItemEntry
+// (GV2TabContainerWidgetBase.h, USTRUCT(BlueprintType)) -- UGV2TabContainerWidgetBase::
+// ApplyTabEntries/ResetTabContainerModel are GV2-owned, so GV2LegacyPresentationApplyAdapter
+// reconstructs the USTRUCT array and TMap before calling them; this is the sole physical
+// mutation FGV2TabContainerTabsPropertyConsumer's own Commit()/Reset() performs directly
+// -- per-tab nested-screen field commits (CommitScreenFields, DUC-09) are unchanged,
+// applied through each tab's own screen the same way a top-level screen is, and neither
+// reach a content/authority type nor are themselves this consumer's own mutation.
+struct GV2PRESENTATIONAPPLY_API FPreparedTabEntry
+{
+    FName Key;
+    FPreparedTextValue Title;
+    FString ScreenId;
+    TWeakObjectPtr<UWidget> ScreenWidget;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedTabContainerOperation
+{
+    TWeakObjectPtr<UWidget> TargetWidget;
+    TArray<FPreparedTabEntry> Entries;
+    bool bIsReset = false;
+};
+
 struct GV2PRESENTATIONAPPLY_API FPreparedTextOperation
 {
     TWeakObjectPtr<UWidget> TargetWidget;
@@ -300,6 +323,10 @@ public:
     {
         KeyedCollectionOperations.Add(MoveTemp(Operation));
     }
+    void AddTabContainerOperation(FPreparedTabContainerOperation Operation)
+    {
+        TabContainerOperations.Add(MoveTemp(Operation));
+    }
 
     const TArray<FPreparedImageResourceOperation>& GetImageResourceOperations() const { return ImageResourceOperations; }
     const TArray<FPreparedImageHostOperation>& GetImageHostOperations() const { return ImageHostOperations; }
@@ -314,6 +341,7 @@ public:
     const TArray<FPreparedRichTextSpansOperation>& GetRichTextSpansOperations() const { return RichTextSpansOperations; }
     const TArray<FPreparedTextOperation>& GetTextOperations() const { return TextOperations; }
     const TArray<FPreparedKeyedCollectionOperation>& GetKeyedCollectionOperations() const { return KeyedCollectionOperations; }
+    const TArray<FPreparedTabContainerOperation>& GetTabContainerOperations() const { return TabContainerOperations; }
 
     bool IsEmpty() const
     {
@@ -329,7 +357,8 @@ public:
             && BindingOperations.IsEmpty()
             && RichTextSpansOperations.IsEmpty()
             && TextOperations.IsEmpty()
-            && KeyedCollectionOperations.IsEmpty();
+            && KeyedCollectionOperations.IsEmpty()
+            && TabContainerOperations.IsEmpty();
     }
 
 private:
@@ -346,6 +375,7 @@ private:
     TArray<FPreparedRichTextSpansOperation> RichTextSpansOperations;
     TArray<FPreparedTextOperation> TextOperations;
     TArray<FPreparedKeyedCollectionOperation> KeyedCollectionOperations;
+    TArray<FPreparedTabContainerOperation> TabContainerOperations;
 };
 
 // PSC-09A (ADR-0043 D2): the only public entry point physical Apply exposes -- there is

@@ -17,6 +17,7 @@
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
+#include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2TextWidgetBase.h"
@@ -430,6 +431,46 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
         {
             DropdownOuter->UpdateHeaderLabel();
         }
+    }
+
+    for (const GV2PresentationApply::FPreparedTabContainerOperation& Operation : Transaction.GetTabContainerOperations())
+    {
+        UWidget* Widget = Operation.TargetWidget.Get();
+        UGV2TabContainerWidgetBase* TabContainer = Cast<UGV2TabContainerWidgetBase>(Widget);
+        if (!TabContainer && Widget)
+        {
+            TabContainer = Widget->GetTypedOuter<UGV2TabContainerWidgetBase>();
+        }
+        if (TabContainer == nullptr)
+        {
+            continue;
+        }
+
+        if (Operation.bIsReset)
+        {
+            TabContainer->ResetTabContainerModel();
+            continue;
+        }
+
+        TArray<FGV2TabItemEntry> Entries;
+        TMap<FName, UGV2ScreenWidgetBase*> Widgets;
+        Entries.Reserve(Operation.Entries.Num());
+        for (const GV2PresentationApply::FPreparedTabEntry& FlatEntry : Operation.Entries)
+        {
+            FGV2TabItemEntry Entry;
+            Entry.Key = FlatEntry.Key;
+            Entry.Title.Text = FlatEntry.Title.Text;
+            Entry.Title.StyleToken = FlatEntry.Title.StyleToken;
+            Entry.Title.NormalizedMarkup = FlatEntry.Title.NormalizedMarkup;
+            Entry.ScreenId = FlatEntry.ScreenId;
+            Entries.Add(MoveTemp(Entry));
+
+            if (UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(FlatEntry.ScreenWidget.Get()))
+            {
+                Widgets.Add(FlatEntry.Key, ScreenWidget);
+            }
+        }
+        TabContainer->ApplyTabEntries(Entries, Widgets);
     }
 
     for (const GV2PresentationApply::FPreparedTextOperation& Operation : Transaction.GetTextOperations())
