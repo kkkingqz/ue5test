@@ -5,6 +5,7 @@
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2UiPropertyHost.h"
@@ -121,6 +122,35 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
         {
             BindingTarget->SetBindingHandle(FGV2UiBindingHandle::FromSerialized(Operation.SerializedHandle));
         }
+    }
+
+    for (const GV2PresentationApply::FPreparedRichTextSpansOperation& Operation : Transaction.GetRichTextSpansOperations())
+    {
+        UWidget* Widget = Operation.TargetWidget.Get();
+        UGV2RichTextWidgetBase* RichTextWidget = Cast<UGV2RichTextWidgetBase>(Widget);
+        if (!RichTextWidget && Widget)
+        {
+            RichTextWidget = Widget->GetTypedOuter<UGV2RichTextWidgetBase>();
+        }
+        if (RichTextWidget == nullptr)
+        {
+            continue;
+        }
+
+        TArray<FGV2RichTextSpanViewModel> Spans;
+        Spans.Reserve(Operation.Spans.Num());
+        for (const GV2PresentationApply::FPreparedRichTextSpan& FlatSpan : Operation.Spans)
+        {
+            FGV2RichTextSpanViewModel Span;
+            Span.SpanId = FlatSpan.SpanId;
+            Span.Key = FlatSpan.Key;
+            Span.Hover.Title.Text = FlatSpan.Hover.Title;
+            Span.Hover.Description.Text = FlatSpan.Hover.Description;
+            Span.Hover.ImageResourceId = FlatSpan.Hover.ImageResourceId;
+            Span.Binding = FGV2UiBindingHandle::FromSerialized(FlatSpan.SerializedBinding);
+            Spans.Add(MoveTemp(Span));
+        }
+        RichTextWidget->ApplySpans(Spans);
     }
 
     OutError.Reset();

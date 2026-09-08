@@ -1810,33 +1810,59 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
     return true;
 }
 
+namespace
+{
+GV2PresentationApply::FPreparedRichTextSpan FlattenRichTextSpan(const FGV2RichTextSpanViewModel& Span)
+{
+    GV2PresentationApply::FPreparedRichTextSpan Flattened;
+    Flattened.SpanId = Span.SpanId;
+    Flattened.Key = Span.Key;
+    Flattened.Hover.Title = Span.Hover.Title.Text;
+    Flattened.Hover.Description = Span.Hover.Description.Text;
+    Flattened.Hover.ImageResourceId = Span.Hover.ImageResourceId;
+    Flattened.SerializedBinding = Span.Binding.ToString();
+    return Flattened;
+}
+}
+
+bool FGV2RichTextSpansPropertyConsumer::BuildPreparedOperation(
+    UWidget* TargetWidget,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError) const
+{
+    GV2PresentationApply::FPreparedRichTextSpansOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.Spans.Reserve(PreparedSpans.Num());
+    for (const FGV2RichTextSpanViewModel& Span : PreparedSpans)
+    {
+        Operation.Spans.Add(FlattenRichTextSpan(Span));
+    }
+    OutTransaction.AddRichTextSpansOperation(MoveTemp(Operation));
+    OutError.Reset();
+    return true;
+}
+
 // GBF-07: rollback_leaf=PropertyMutation
 bool FGV2RichTextSpansPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
 {
-    UGV2RichTextWidgetBase* RichTextWidget = Cast<UGV2RichTextWidgetBase>(TargetWidget);
-    if (!RichTextWidget && TargetWidget)
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    if (!BuildPreparedOperation(TargetWidget, Transaction, OutError))
     {
-        RichTextWidget = TargetWidget->GetTypedOuter<UGV2RichTextWidgetBase>();
+        return false;
     }
-
-    if (RichTextWidget != nullptr)
-    {
-        RichTextWidget->ApplySpans(PreparedSpans);
-    }
-    return true;
+    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
 }
 
 void FGV2RichTextSpansPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    UGV2RichTextWidgetBase* RichTextWidget = Cast<UGV2RichTextWidgetBase>(TargetWidget);
-    if (!RichTextWidget && TargetWidget)
+    if (TargetWidget)
     {
-        RichTextWidget = TargetWidget->GetTypedOuter<UGV2RichTextWidgetBase>();
-    }
-
-    if (RichTextWidget != nullptr)
-    {
-        RichTextWidget->ApplySpans({});
+        GV2PresentationApply::FPreparedRichTextSpansOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddRichTextSpansOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
     PreparedSpans.Reset();
 }

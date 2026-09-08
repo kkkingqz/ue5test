@@ -440,6 +440,15 @@ public:
 
     const TArray<FGV2RichTextSpanViewModel>& GetPreparedSpans() const { return PreparedSpans; }
 
+    // PSC-09B (ADR-0043 D2/D3): flattens PreparedSpans into the lower module's own
+    // canonical FPreparedRichTextSpan (plain Core types only) -- UGV2RichTextWidgetBase::
+    // ApplySpans is GV2-owned, so GV2LegacyPresentationApplyAdapter reconstructs the
+    // USTRUCT array from this before calling it.
+    virtual bool BuildPreparedOperation(
+        UWidget* TargetWidget,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+        FString& OutError) const override;
+
 private:
     TArray<FGV2RichTextSpanViewModel> PreparedSpans;
 };

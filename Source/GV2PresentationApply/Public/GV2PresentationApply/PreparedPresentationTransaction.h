@@ -121,6 +121,35 @@ struct GV2PRESENTATIONAPPLY_API FPreparedBindingOperation
     FString SerializedHandle;
 };
 
+// PSC-09B: canonical lower replacement for GV2's own FGV2RichTextHoverViewModel/
+// FGV2RichTextSpanViewModel USTRUCTs (Bridge/GV2BridgeTypes.h) -- not a copy of them or
+// a compatibility alias, a distinct type this module owns, built from the same resolved
+// fields via plain Core types only. UGV2RichTextWidgetBase::ApplySpans is entirely
+// GV2-owned, so GV2LegacyPresentationApplyAdapter reconstructs the USTRUCT array from
+// this before calling it; GV2PresentationApply::Apply() has nothing to do for this
+// operation, same as Key/Binding. SerializedBinding mirrors FPreparedBindingOperation's
+// own flattening of FGV2UiBindingHandle.
+struct GV2PRESENTATIONAPPLY_API FPreparedRichTextHover
+{
+    FText Title;
+    FText Description;
+    FString ImageResourceId;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpan
+{
+    FName SpanId;
+    FName Key;
+    FPreparedRichTextHover Hover;
+    FString SerializedBinding;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpansOperation
+{
+    TWeakObjectPtr<UWidget> TargetWidget;
+    TArray<FPreparedRichTextSpan> Spans;
+};
+
 // PSC-09A/09B (ADR-0043 D3): immutable once built -- an upper GV2 preparer appends
 // operations, then hands the finished transaction to Apply() below; nothing mutates it
 // afterward, and it carries no PrepareContext, snapshot, or resolver of any kind.
@@ -163,6 +192,10 @@ public:
     {
         BindingOperations.Add(MoveTemp(Operation));
     }
+    void AddRichTextSpansOperation(FPreparedRichTextSpansOperation Operation)
+    {
+        RichTextSpansOperations.Add(MoveTemp(Operation));
+    }
 
     const TArray<FPreparedImageResourceOperation>& GetImageResourceOperations() const { return ImageResourceOperations; }
     const TArray<FPreparedBooleanOperation>& GetBooleanOperations() const { return BooleanOperations; }
@@ -173,6 +206,7 @@ public:
     const TArray<FPreparedStringOperation>& GetStringOperations() const { return StringOperations; }
     const TArray<FPreparedKeyOperation>& GetKeyOperations() const { return KeyOperations; }
     const TArray<FPreparedBindingOperation>& GetBindingOperations() const { return BindingOperations; }
+    const TArray<FPreparedRichTextSpansOperation>& GetRichTextSpansOperations() const { return RichTextSpansOperations; }
 
     bool IsEmpty() const
     {
@@ -184,7 +218,8 @@ public:
             && IntegerOperations.IsEmpty()
             && StringOperations.IsEmpty()
             && KeyOperations.IsEmpty()
-            && BindingOperations.IsEmpty();
+            && BindingOperations.IsEmpty()
+            && RichTextSpansOperations.IsEmpty();
     }
 
 private:
@@ -197,6 +232,7 @@ private:
     TArray<FPreparedStringOperation> StringOperations;
     TArray<FPreparedKeyOperation> KeyOperations;
     TArray<FPreparedBindingOperation> BindingOperations;
+    TArray<FPreparedRichTextSpansOperation> RichTextSpansOperations;
 };
 
 // PSC-09A (ADR-0043 D2): the only public entry point physical Apply exposes -- there is
