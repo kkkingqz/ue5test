@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.6
+version: 1.7
 updated: 2026-09-08
 depends_on:
   - README.md
@@ -146,7 +146,7 @@ depends_on:
     (185 файлов) — зелёные. Ни один `/Script/GV2` class path не изменён за все 7
     под-коммитов.
 
-- [ ] **PSC-10A — Замкнуть resolved payload для всех operation kinds**
+- [x] **PSC-10A — Замкнуть resolved payload для всех operation kinds**
   - Зависимости: PSC-09B.
   - Инвариант: если semantic ID/token был проверен в Prepare, Apply использует именно полученный resolved payload и не повторяет решение.
   - Не считается закрытием: покрытие только Text/Image; ID без соседнего payload; `TSoftObjectPtr` с поздним разыменованием; pointer на resolver/context; switch с `default` либо ручной список kinds.
@@ -164,6 +164,96 @@ depends_on:
     - unresolvable value даёт typed Prepare failure и не создаёт partial transaction;
     - production test проходит каждый фактический operation kind; actual set выводится из enum/variant, expected behavior — из независимой classification table.
   - Evidence: prepared operation declarations, compiler exhaustive switch/visitor, recursive field inventory, Text/Image/Nested/Collection production tests.
+  - **Реализация (2026-09-08):** Задача выполнена последовательностью из 5 независимо
+    верифицированных и закоммиченных под-шагов (`d2ffab6`…`a7f683f`), тем же способом
+    (несколько под-коммитов внутри задачи), что и `PSC-09B`.
+
+    **Единый enum/variant** (под-шаг 1): `FGV2PreparedPresentationTransaction` хранил 17
+    параллельных `TArray`, по одному на operation kind — заменено на единственный
+    `TArray<FGV2PreparedOperationVariant>` (`TVariant` по всем 17 struct'ам) плюс
+    `EGV2PreparedOperationKind` enum (порядок объявления зеркалит порядок шаблонных
+    аргументов variant'а). Типовые `Add*Operation()` методы сохранены как тонкие обёртки
+    над одним `AddOperation()` — тот же паттерн, что уже использует
+    `FGV2PreparedUiValue::Make*()` поверх собственного `TVariant` в этом кодбейзе, что
+    оставило 29 producer call sites нетронутыми. Типовые `Get*Operations()` удалены и
+    заменены одним `GetOperations()`; оба потребителя (`GV2PresentationApply::Apply()` и
+    `GV2LegacyPresentationApplyAdapter::Apply()`) переписаны на единственный цикл с
+    `Visit()` поверх `TOverloaded<...>` (стандартная "overloaded lambda set" идиома,
+    deduction guide + `using Ts::operator()...`) — лямбда без кейса для одной из 17
+    альтернатив теперь ошибка компиляции, а не тихо пропущенный `default`.
+
+    **Font/scale policy как pure function** (под-шаг 2, самый крупный): `FGV2TextViewModel`
+    получил resolved-presentation cache (`bHasResolvedPresentation`, `ResolvedStyleClass`,
+    `ResolvedBaseFontSize`/`MinReadableFontSize`/`ReferenceViewportHeight`/`FontScaleCurve`,
+    `bHasResolvedDefaultStyle`/`ResolvedDefaultStyle`), заполняемый только
+    `UGV2TextPipeline::Resolve()`, когда вызван с новым опциональным PrepareContext —
+    Theme читается через `PrepareContext->GetTheme()` (пин из session snapshot), не
+    `GetConfiguredTheme()`. `UGV2UiTheme::GetEffectiveFontSize` разделён на публичный
+    `ResolveUnscaledFontSize()` (Theme-lookup half) и существующую scale-математику —
+    behavior-preserving рефакторинг, переиспользуемый и `Resolve()`, и старым путём.
+    `Apply()`/`ApplyRichText()` резолвят `Style`/`ScalePolicy` из `bHasResolvedPresentation`
+    когда он true — ни одного обращения к Theme в этом случае; иначе (~24 call site вне
+    operation-kind pipeline — собственное `NativePreConstruct`-стилирование виджетов,
+    scope `PSC-10B`) поведение не изменилось, `ScalePolicy.bIsAlreadyScaled=true` делает
+    финальный `SetFontSize` в нижнем модуле same-value no-op. Новые
+    `GV2PresentationApply::FPreparedTextScalePolicy` + pure-function
+    `EvaluatePreparedFontSize()`/`ResolveLiveViewportHeight()` зеркалят
+    `UGV2UiTheme::EvaluateTextScale`/`GetEffectiveFontSize` и
+    `UGV2TextPipeline::GetViewportHeight`'s математику один-в-один, но без Theme/UObject
+    зависимости; финальный размер шрифта вычисляется `GV2PresentationApply::Apply()` как
+    pure function от policy и LIVE viewport height, считанного в момент применения.
+    `PrepareContext` прокинут в production: `GV2ScreenFieldMaterializer::BuildFields`/
+    `FMaterializeContext`/`ResolveText` получили опциональный параметр (нулевой churn),
+    `GV2SessionCoordinator::PrepareDocumentRequest` строит его тем же
+    `TOptional<FGV2PresentationPrepareContext>`-паттерном, что уже использует
+    `UGV2RuntimeSubsystem::HandleDocumentRequested` — единственный production call site
+    `BuildFields`, резолюция текста для инициального документа и всех document update
+    теперь идёт через PrepareContext.
+
+    **RichTextSpans hover-popover** (под-шаг 3): последний прямой вызов
+    `GetConfiguredTheme()` в `GV2PropertyConsumers.cpp` — та же PrepareContext-first схема.
+    Отдельно ВЕРИФИЦИРОВАНО (не предположено), что `GetConfiguredRegistry()`'s fallback в
+    `FGV2TabContainerTabsPropertyConsumer::Prepare()` (PSC-06-era код) уже недостижим ни с
+    одного production operation-kind пути: все три production call site
+    `PrepareUiHostProperties` либо сами получают PrepareContext параметром, либо строят
+    его через `GetContentSnapshotForPrepare()`; единственный другой похожий на production
+    call site (`RunUiCapabilityObservabilityHarness`) вызывается только из
+    `GV2UiCapabilityObservabilityTests.cpp`.
+
+    **Exhaustive kind-walk test** (под-шаг 4): `GV2.Runtime.Presentation.
+    ExhaustiveOperationKindWalk` — множество kinds берётся обходом `TVariantSize_V`, не
+    список в тесте; для каждого kind switch без `default` строит одну валидную операцию
+    (новый kind без соответствующего case не компилируется здесь тоже); ожидаемое
+    поведение (`LowerModuleMutatesDirectly` / `LeftEntirelyForAdapter`) читается из
+    независимой `ExpectedRouteFor`-таблицы, написанной по doc-комментариям структур, не
+    выведено из тех же лямбд, которые использует сам `Apply()`.
+
+    **Recursive field inventory** (под-шаг 5): новый self-test кейс доказывает, что
+    `validate_presentation_apply_field_inventory.py` ловит нарушение, спрятанное внутри
+    NESTED struct'а (referenced через `TArray<...>`), не только на верхнем уровне.
+
+    **Payload completeness для остальных kinds** (verified via reading, не новый код):
+    image/resource (bullet 3) уже несёт `Brush`/`RenderMode`/`FixedAspectRatio`, а не
+    только `resource_id` — установлено `PSC-09B`. screen/nested (bullet 4): `FPreparedTabEntry`
+    несёт УЖЕ СКОНСТРУИРОВАННЫЙ `ScreenWidget` (виджет физически построен с resolved
+    class ДО того, как Commit строит эту операцию — резолюция класса и валидация
+    placement уже произошли в Prepare через `PrepareContext->ResolveScreen`), что
+    сильнее, чем нести отдельно `UClass*`. primitive/binding/collection/reset (bullet 5)
+    несут resolved value через canonical lower types, установленные `PSC-09B`. Stable
+    IDs (bullet 6) везде остаются рядом с resolved payload, не заменяют его. Unresolvable
+    value (bullet 11): каждый существующий `Prepare()` возвращает `false` ДО вызова
+    `Add*Operation()` на любом failure path — partial transaction структурно невозможна
+    без явного нарушения этого уже установленного паттерна.
+
+    Верификация (финальный прогон): 129/129 UE Automation (128 + 1 новый), 94/94 portable
+    ctest, все 13 standalone `validate_*.py` + `validate_core_decoupling.py` +
+    `validate_docs.py` (185 файлов) — зелёные. Red-on-revert проведён для каждого из 5
+    под-шагов независимо (кроме RichTextSpans-ветки под-шага 3 — честно отмечено в
+    коммите как непроверенная production-путём: единственный существующий тест на эту
+    проверку строит consumer напрямую без `SetPrepareContext`, а GameData не использует
+    span hover нигде; построение session/candidate fixture только ради одной проверки
+    посчитано непропорциональным, тот же компромисс, что `PSC-08` сделал для
+    `GetConfiguredRegistry()`).
 
 - [ ] **PSC-10B — Включить central style в transaction и удалить runtime accessors**
   - Зависимости: PSC-10A.

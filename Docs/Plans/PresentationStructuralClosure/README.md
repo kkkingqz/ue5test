@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.8
+version: 1.9
 updated: 2026-09-08
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -97,7 +97,7 @@ GV2 semantic Prepare
 
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
-       → PSC-07✔ → PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10A
+       → PSC-07✔ → PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10A✔
        → PSC-10B → PSC-11 → PSC-12 → PSC-13 → PSC-14
 ```
 
@@ -146,7 +146,7 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`, 2026-09-08)
 - [x] Prepare и Apply разделены типами; lower-facing DTO существующего property/text pipeline не содержит authority capability. (`PSC-09A` ввела границу на image resource, `PSC-09B` распространила её на фактическое множество `IGV2PropertyConsumer` kinds и `UGV2TextPipeline`, 2026-09-08)
 - [x] Каждый operation kind существующего property/text pipeline проходит через транзакцию. Central style пока остаётся отдельным runtime-путём и явно принадлежит `PSC-10B`. (`PSC-09B`, 2026-09-08 — source-derived coverage/field-inventory gates)
-- [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10A`)
+- [x] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10A`, 2026-09-08 — единый enum/variant, font/scale policy как pure function, PrepareContext прокинут до BuildFields, exhaustive kind-walk test)
 - [ ] Центральная стилизация входит в ту же prepared transaction и не читает тему в рантайме; `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют без исключений. Только `GetCoreMinimalTheme()` разрешён UE-native cold-start recovery и запрещён остальным production paths. (`PSC-10B`)
 - [ ] `GV2PresentationApply` содержит единственную public transaction Apply entry point и весь Commit/rollback/reconciliation; dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`)
 - [ ] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`)
