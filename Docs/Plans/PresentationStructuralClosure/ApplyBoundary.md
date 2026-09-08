@@ -1,7 +1,7 @@
 ---
 title: Apply Boundary Tasks
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-07
 depends_on:
   - README.md
@@ -37,7 +37,7 @@ Build graph доказывает отсутствие project authority types. �
 ## Задачи
 
 - [ ] **PSC-11 — Завершить `GV2PresentationApply` и запретить обратную зависимость**
-  - Зависимости: PSC-10.
+  - Зависимости: PSC-10A, PSC-10B.
   - Инвариант: Apply получает только `FGV2PreparedPresentationTransaction`; новый authority с любым именем недоступен lower module по dependency direction.
   - Не считается закрытием: соглашение без `Build.cs`; несколько public apply paths; вызов upper callback; сохранение Commit/rollback логики в thin adapters; утверждение, что module graph сам запрещает `LoadSynchronous()`.
   - Done:
@@ -53,7 +53,8 @@ Build graph доказывает отсутствие project authority types. �
     - каждый forbidden-capability case имеет synthetic negative self-test;
     - runtime authority counter показывает accesses во время Prepare и ноль вокруг единственной Apply façade для каждого operation kind;
     - production initial screen, replacement, nested collection, rollback и catastrophic recovery проходят через façade;
-    - task не меняет ни одного Widget `UCLASS` module/path.
+    - task не меняет ни одного Widget `UCLASS` module/path;
+    - **предпосылка проверена до переноса**: ни один класс, подлежащий переносу, не достигает авторитета — ни через виды операций, ни через `ApplyCentralStyle`. Это результат `PSC-10A`/`PSC-10B`; здесь он не переделывается, а подтверждается обходом, потому что класс с обращением к теме в нижнем модуле не собирается, и обнаружить это на этапе переноса значит обнаружить слишком поздно.
   - Evidence: `Source/GV2PresentationApply/`, `Source/GV2/GV2.Build.cs`, `Source/CMakeLists.txt`, `Headless/CMakeLists.txt`, graph/API/capability gates и production tests.
 
 - [ ] **PSC-12 — Атомарно мигрировать Widget `UCLASS` paths и ассеты**

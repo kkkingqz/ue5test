@@ -29,7 +29,7 @@ depends_on:
 
 ## Активные планы
 
-- [Presentation Structural Closure](PresentationStructuralClosure/README.md) — семь находок аудита презентации: синхронизация owner contracts, один portable package set, полный session snapshot, self-contained Prepare/Apply DTO boundary, отдельный Unreal Apply module, атомарная миграция `UCLASS` и structural cross-host gates. PSC-01…14 (`09` разделена на `09A`/`09B`).
+- [Presentation Structural Closure](PresentationStructuralClosure/README.md) — семь находок аудита презентации: синхронизация owner contracts, один portable package set, полный session snapshot, self-contained Prepare/Apply DTO boundary, отдельный Unreal Apply module, атомарная миграция `UCLASS` и structural cross-host gates. PSC-01…14 (`09` и `10` разделены на `A`/`B`).
 
 
 

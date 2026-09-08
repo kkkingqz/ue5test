@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.4
+version: 1.5
 updated: 2026-09-08
 depends_on:
   - README.md
@@ -13,8 +13,8 @@ depends_on:
 # M3 — Self-Contained Payload
 
 > **Материализует:** `PAH-R1`, `D3/D4` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и необходимую перед module extraction типовую границу.
-> **Задачи:** PSC-09A…09B, PSC-10.
-> **Результат:** Prepare и Apply больше не являются методами одного authority-aware объекта; нижний DTO содержит всё необходимое физическому применению.
+> **Задачи:** PSC-09A…09B, PSC-10A…10B.
+> **Результат:** Prepare и Apply больше не являются методами одного authority-aware объекта; нижний DTO содержит всё необходимое физическому применению — и для видов операций, и для центральной стилизации.
 
 ## Почему этап идёт до module extraction
 
@@ -116,7 +116,7 @@ depends_on:
     **`UGV2TextPipeline::Apply/ApplyRichText/ApplyHint`** разделены: Theme-resolution
     (Style/DefaultStyle/Markup, guard'ы, `ResolveEffectiveFontSize`/`ResolveStyle`/
     `ResolveStyleClass`/`NormalizeMarkup`) остаётся upper (удаление Theme-доступа —
-    именованная работа `PSC-10`, не этой задачи); физическая мутация — новые
+    именованная работа `PSC-10A`, не этой задачи); физическая мутация — новые
     `FPreparedPlainTextOperation`/`FPreparedRichTextRenderOperation`/
     `FPreparedTextHintOperation`, применяемые `GV2PresentationApply::Apply()`.
     Публичные сигнатуры не изменены — ни один из 24+ call sites не тронут.
@@ -146,7 +146,7 @@ depends_on:
     (185 файлов) — зелёные. Ни один `/Script/GV2` class path не изменён за все 7
     под-коммитов.
 
-- [ ] **PSC-10 — Замкнуть resolved payload для всех operation kinds**
+- [ ] **PSC-10A — Замкнуть resolved payload для всех operation kinds**
   - Зависимости: PSC-09B.
   - Инвариант: если semantic ID/token был проверен в Prepare, Apply использует именно полученный resolved payload и не повторяет решение.
   - Не считается закрытием: покрытие только Text/Image; ID без соседнего payload; `TSoftObjectPtr` с поздним разыменованием; pointer на resolver/context; switch с `default` либо ручной список kinds.
@@ -159,14 +159,33 @@ depends_on:
     - Stable IDs остаются только identity/diagnostic metadata рядом с resolved payload;
     - soft references, resolver/context pointers и callable callbacks отсутствуют во всех nested public payload fields; recursive declaration inventory имеет negative self-test;
     - viewport-dependent font/layout size вычисляется Apply как pure function от prepared policy и текущей geometry, без Theme/config lookup;
-    - legacy runtime `GetConfiguredTheme()`/`GetConfiguredRegistry()` и эквивалентные configured accessors удалены после перевода всех operation kinds; settings/DataAssets остаются только candidate-builder inputs;
+    - на путях видов операций не остаётся ни одного обращения к `GetConfiguredTheme()`/`GetConfiguredRegistry()` и эквивалентным configured accessors; settings/DataAssets остаются только candidate-builder inputs;
+    - **область этого пункта — только пути видов операций.** Центральная стилизация (`IGV2UiStyleConsumer::ApplyCentralStyle`, 18 из 35 production-обращений к теме) — отдельный механизм со своим входом, и её закрывает `PSC-10B`. Физическое удаление самих accessor-функций возможно только когда закрыты обе задачи, и это условие названо в `PSC-10B`, а не подразумевается здесь;
     - unresolvable value даёт typed Prepare failure и не создаёт partial transaction;
     - production test проходит каждый фактический operation kind; actual set выводится из enum/variant, expected behavior — из независимой classification table.
   - Evidence: prepared operation declarations, compiler exhaustive switch/visitor, recursive field inventory, Text/Image/Nested/Collection production tests.
+
+- [ ] **PSC-10B — Центральная стилизация перестаёт читать тему в рантайме**
+  - Зависимости: PSC-10A.
+  - `IGV2UiStyleConsumer::ApplyCentralStyle` — второй путь применения, независимый от видов операций: 19 виджет-баз реализуют `ApplyCentralStyle_Implementation`, и 18 из 35 production-обращений к `GetConfiguredTheme()` находятся именно там. Вызывается он в том числе с пути применения — `IGV2UiStyleConsumer::Execute_ApplyCentralStyle` из временного адаптера, введённого `PSC-09B`.
+  - Инвариант: ни один путь, ведущий к физической мутации, не разрешает семантику ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `INV-P5`, `D3`). Задача существует потому, что предыдущая формулировка `PSC-10` оставляла эти 18 мест без владельца: под «переводом всех operation kinds» они не подпадают, а классы, в которых они живут, `PSC-12` переносит в модуль, где `GetConfiguredTheme` недостижим по построению. Без этой задачи `PSC-11` упирается в стену.
+  - Не считается закрытием: перенос темы в поле виджета, читаемое при стилизации, — момент чтения сдвигается, авторитет остаётся; передача указателя на тему в подготовленную операцию; закрытие части из 19 классов; сохранение `ApplyCentralStyle` как второго пути применения рядом с транзакцией.
+  - Done:
+    - множество классов, реализующих `IGV2UiStyleConsumer`, берётся обходом реализаций интерфейса, а не списком в задаче;
+    - стилевые решения приходят к применению разрешёнными: через ту же транзакцию либо через явный вход подготовки, получающий `FGV2PresentationPrepareContext`;
+    - ни одна реализация `ApplyCentralStyle_Implementation` не обращается к теме, настройкам или иному авторитету;
+    - `RichTextWidgetBase`'s разрешение стиля прогона и интерактивного стиля переведено тем же способом — это не `ApplyCentralStyle`, но тот же механизм разрешения при применении;
+    - **после закрытия `PSC-10A` и этой задачи** `GetConfiguredTheme()`/`GetConfiguredRegistry()` физически удалены из production-кода; оставшиеся `UGV2UiTheme`/`UGV2ScreenRegistry` — только bootstrap-входы кандидата;
+    - `UGV2UiTheme::GetCoreMinimalTheme()` для cold-start recovery сохраняется и явно назван исключением с записанной причиной: он не является вторым авторитетом, поскольку не читает контент и существует до снимка;
+    - счётчик обращений к авторитетам даёт ноль вокруг стилизации так же, как вокруг применения операций;
+    - гейт отвергает синтетическое обращение к теме, внесённое в любую реализацию `ApplyCentralStyle_Implementation`.
+  - Evidence: `Source/GV2/Private/UI/GV2*WidgetBase.cpp` (19 реализаций), `Source/GV2/Private/UI/GV2TextPipeline.cpp`, `Source/GV2/Public/UI/GV2UiStyleConsumer.h`, inventory реализаций интерфейса, счётчик обращений.
 
 ## Проверка milestone
 
 - [ ] Верхний слой только разрешает semantics и формирует transaction; lower-facing types не могут вызвать authority.
 - [ ] Все operation kinds перечисляет enum/variant, а не задача или test list.
 - [ ] Ни один payload не требует lookup/load при Apply.
+- [ ] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация.
+- [ ] `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде; исключение для cold-start recovery названо с причиной.
 - [ ] `UCLASS` paths ещё не менялись; production path работает через временный delegating adapter.

@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 1.7
+version: 1.3
 updated: 2026-09-08
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -18,7 +18,7 @@ decisions:
 # План структурного замыкания презентации
 
 > **Материализует:** [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и [предложение о структурном замыкании](../../Proposals/PresentationAuthorityStructuralClosureProposal.md), через них — семь находок `PAH-R1…R7` [аудита](../../Status/AuditFindings.md).
-> **Задачи:** PSC-01…14; `PSC-09` разделена на `09A` и `09B`.
+> **Задачи:** PSC-01…14; `PSC-09` разделена на `09A`/`09B`, `PSC-10` — на `10A`/`10B`.
 > **Результат:** применение получает только самодостаточную подготовленную транзакцию; обращение к content/settings authority из Apply невозможно по dependency direction, а не по соглашению.
 > **Исполнение:** задачи выполняются последовательно по критическому пути; перед реализацией использовать `superpowers:executing-plans`. Параллельная правка общей C++/UAsset surface запрещена.
 
@@ -48,10 +48,10 @@ decisions:
 
 | Finding | Задачи закрытия |
 |---|---|
-| `PAH-R1` | `PSC-04`, `PSC-06`, `PSC-09B`, `PSC-10`, `PSC-11`, `PSC-13` |
+| `PAH-R1` | `PSC-04`, `PSC-06`, `PSC-09B`, `PSC-10A`, `PSC-10B`, `PSC-11`, `PSC-13` |
 | `PAH-R2` | `PSC-04…06`, `PSC-13` |
 | `PAH-R3` | `PSC-02`, `PSC-04`, `PSC-13` |
-| `PAH-R4` | `PSC-08`, `PSC-10`, `PSC-13` |
+| `PAH-R4` | `PSC-08`, `PSC-10A`, `PSC-13` |
 | `PAH-R5` | `PSC-07`, `PSC-13` |
 | `PAH-R6` | `PSC-03`, `PSC-13` |
 | `PAH-R7` | `PSC-09A…13` |
@@ -89,7 +89,7 @@ GV2 semantic Prepare
 - [x] M0 — [Contract Alignment](ContractAlignment.md): owner contracts отражают уже принятый ADR до изменения кода. PSC-01. (2026-09-07)
 - [x] M1 — [Package Set](PackageSet.md): exact package set и полный canonical manifest hash. PSC-02…03. (2026-09-08)
 - [x] M2 — [Snapshot](Snapshot.md): полный candidate/snapshot, atomic publication, recovery и snapshot-backed PrepareContext. PSC-04…08. (2026-09-08)
-- [ ] M3 — [Self-Contained Payload](Payload.md): установлена типовая граница, весь путь заведён через транзакцию, замкнут resolved payload. PSC-09A…09B, PSC-10.
+- [ ] M3 — [Self-Contained Payload](Payload.md): установлена типовая граница, весь путь заведён через транзакцию, замкнут resolved payload видов операций и центральной стилизации. PSC-09A…09B, PSC-10A…10B.
 - [ ] M4 — [Apply Boundary](ApplyBoundary.md): физическое применение вынесено в нижний модуль, затем атомарно мигрированы `UCLASS` paths. PSC-11…12.
 - [ ] M5 — [Structural Gates and Closure](GatesAndClosure.md): механические перечислители, cross-host verification и двухкоммитная архивация. PSC-13…14.
 
@@ -118,7 +118,8 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 | `GV2SessionCoordinator`, `GV2RuntimeSubsystem`, snapshot builder и PrepareContext | `PSC-04…06` |
 | `GV2ImageResourceCatalog` | `PSC-07` |
 | `GV2ScreenRegistry`, nested screen preparation | `PSC-08` |
-| Prepared DTO, property consumers, text/image/screen resolution | `PSC-09A`, `PSC-09B`, `PSC-10` |
+| Prepared DTO, property consumers, text/image/screen resolution | `PSC-09A`, `PSC-09B`, `PSC-10A` |
+| `IGV2UiStyleConsumer` и 19 реализаций `ApplyCentralStyle` | `PSC-10B` |
 | `GV2PresentationApply`, `*.Build.cs`, physical apply | `PSC-11`, `PSC-13` |
 | Widget `UCLASS`, `Content/**`, временные Core Redirects | `PSC-12` |
 | Audit/proposal/plan archive records и indexes | `PSC-14` |
@@ -142,12 +143,13 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] Canonical hash полного manifest входит в package fingerprint; `ue_content_roots` меняет fingerprint, но не Headless run digest. (`PSC-03`, 2026-09-08)
 - [x] Полный `FGV2SessionContentSnapshot` содержит все поля из зафиксированного интерфейса и не копирует definitions/provenance. (`PSC-04`, 2026-09-08)
 - [x] Candidate остаётся private; active snapshot публикуется атомарно с успешным initial Commit/`Ready`; failure и recovery не наблюдают частичный snapshot. (`PSC-05`, 2026-09-08)
-- [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload. (`PSC-06`, `PSC-10`)
+- [ ] Runtime authorities принадлежат snapshot, а semantic Prepare получает их через explicit PrepareContext; legacy Apply accessors удаляются вместе с resolved payload обоих путей. (`PSC-06`, `PSC-10A`, `PSC-10B`)
 - [x] Disabled package не обходится, не читается и не декодируется presentation builders. (`PSC-07`, 2026-09-08)
 - [x] Top-level и nested screen разрешаются одним PrepareContext без generic fallback. (`PSC-08`, 2026-09-08)
 - [x] Prepare и Apply разделены типами; lower-facing DTO не содержит authority capability. (`PSC-09A`, 2026-09-08 — установлено для одного демонстрационного kind (image resource, plain UImage target); остальные kinds — `PSC-09B`)
 - [x] Каждый вид операции проходит через транзакцию; второго пути, минующего её, не существует. (`PSC-09B`, 2026-09-08 — все 11 `IGV2PropertyConsumer` kinds и `UGV2TextPipeline` переведены семью под-коммитами; source-derived coverage/field-inventory gates)
-- [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10`)
+- [ ] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10A`)
+- [ ] Центральная стилизация не читает тему в рантайме; `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде, а исключение cold-start recovery названо с причиной. (`PSC-10B`)
 - [ ] `GV2PresentationApply` содержит единственную public transaction Apply entry point и весь Commit/rollback/reconciliation; dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`)
 - [ ] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`)
 - [ ] Compiler/type/module/source enumerators и production scenarios закрывают `PAH-R1…R7`; Headless link graph остаётся UE-free. (`PSC-13`)
