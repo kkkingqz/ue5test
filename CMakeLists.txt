@@ -275,4 +275,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_content_snapshot_field_inventory.py"
             "--self-test"
     )
+    # PSC-06 (ADR-0043 D1): every declaration receiving a FGV2PresentationPrepareContext
+    # parameter/field has an explicit classification, derived from the declarations
+    # themselves -- a new/removed site cannot silently pass by leaving the table stale.
+    add_test(
+        NAME prepare_context_inventory_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_prepare_context_inventory.py"
+    )
+    add_test(
+        NAME prepare_context_inventory_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_prepare_context_inventory.py"
+            "--self-test"
+    )
 endif()

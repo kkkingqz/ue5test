@@ -24,7 +24,8 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
     const FGV2UiDocumentViewModel& Document,
     FScreenFactory ScreenFactory,
     FPreparedReconciliationPlan& OutPlan,
-    FString& OutError) const
+    FString& OutError,
+    const FGV2PresentationPrepareContext* PrepareContext) const
 {
     OutPlan = {};
     OutError.Reset();
@@ -111,7 +112,7 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         // an intermediate screen -- is caught as a cycle rather than silently
         // accepted; see FGV2TabContainerTabsPropertyConsumer's own guard.
         const TArray<FString> RootCompositionChain{Instance.ScreenId};
-        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError, &RootCompositionChain))
+        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError, &RootCompositionChain, PrepareContext))
         {
             if (OutError.IsEmpty())
             {
@@ -379,10 +380,11 @@ bool FGV2LayeredUiReconciler::Reconcile(
     FScreenFactory ScreenFactory,
     FString& OutError,
     TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector,
-    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector)
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector,
+    const FGV2PresentationPrepareContext* PrepareContext)
 {
     FPreparedReconciliationPlan Plan;
-    if (!PrepareReconcile(Shell, Document, ScreenFactory, Plan, OutError))
+    if (!PrepareReconcile(Shell, Document, ScreenFactory, Plan, OutError, PrepareContext))
     {
         return false;
     }

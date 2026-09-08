@@ -6,6 +6,7 @@
 #include "UI/GV2UiPropertyHost.h"
 
 class UWidget;
+class FGV2PresentationPrepareContext;
 class FGV2UiHostMutationPlan;
 struct FGV2ScreenMutationPlan;
 
@@ -31,6 +32,14 @@ public:
         const FGV2UiPropertyCapability& Capability,
         UWidget* TargetWidget,
         FString& OutError) = 0;
+
+    // PSC-06 (ADR-0043 D1): injected unconditionally by PrepareUiHostProperties right
+    // after this consumer is created, for every consumer kind -- default no-op, since
+    // most consumers resolve nothing session-scoped. A consumer that does (NestedScreen,
+    // resource ids) overrides this and stores the pointer for its own Prepare() to use;
+    // null is legitimate (no session snapshot available to this caller yet) and each such
+    // override falls back to its pre-PSC-06 behavior in that case.
+    virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) {}
 
     /**
      * Infallible commit phase.
@@ -88,7 +97,14 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
+    // PSC-06 (ADR-0043 D1): when set, Prepare() resolves the resource id through this
+    // session's own snapshot instead of UGV2ImageResourceCatalog::GetSessionCatalog()'s
+    // independent session-scoped global. Null falls back to that legacy accessor;
+    // PSC-10 retires the fallback.
+    virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
+
 private:
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr;
     // STATUS-012: Prepare resolves the resource and keeps the RESULT, not just the
     // id. Commit applies this; it never asks the catalog again, so what is applied
     // is what preparation validated (ADR-0042, INV-P5).
@@ -384,10 +400,19 @@ public:
     // SetCompiledItemSpec. Non-owning; the caller's array outlives this Prepare() call.
     void SetActiveCompositionChain(const TArray<FString>* InChain) { ActiveCompositionChain = InChain; }
 
+    // PSC-06 (ADR-0043 D1): when set, Prepare() resolves each tab's embedded screen
+    // through this session's own snapshot instead of
+    // UGV2ScreenRegistrySettings::GetConfiguredRegistry()'s independent access path. Null
+    // is a legitimate value for a caller with no snapshot available yet (see
+    // GV2SessionCoordinator.h's GetContentSnapshotForPrepare doc comment) -- Prepare()
+    // falls back to the legacy accessor in that case; PSC-10 retires that fallback.
+    virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
+
 private:
     TArray<FPreparedTabItem> PreparedTabs;
     TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> CandidateWidgetsByKey;
     const TArray<FString>* ActiveCompositionChain = nullptr;
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr;
     // GBF-05: publishing is allowed only for a revision Prepare accepted. Without
     // this, Commit after a rejected Prepare publishes the empty tab list, which is
     // an application of state, not the absence of one.

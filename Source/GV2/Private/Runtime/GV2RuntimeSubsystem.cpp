@@ -107,13 +107,6 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
     // this same value's descriptors directly instead of re-discovering them.
     ResolvedPackageSet = ResolveSessionPackageSet();
 
-    TArray<GV2PackageClosure::FEntry> ClosureEntries;
-    if (ResolvedPackageSet.IsSet())
-    {
-        ClosureEntries = GV2PackageClosure::FromResolvedPackageSet(*ResolvedPackageSet);
-    }
-    LoadScreenRegistry(ClosureEntries);
-
     RepositoryPublisher = MakePimpl<FGV2RepositoryPublisher>();
     bRepositoryReady = ResolvedPackageSet.IsSet()
         && RepositoryPublisher->PublishCandidate(
@@ -174,8 +167,6 @@ void UGV2RuntimeSubsystem::Deinitialize()
         Coordinator->ClearDocumentSink();
         Coordinator.Reset();
     }
-    bScreenRegistryReady = false;
-    ScreenRegistry = nullptr;
     RepositoryPublisher.Reset();
     ResolvedPackageSet.Reset();
     bRepositoryReady = false;
@@ -203,12 +194,9 @@ void UGV2RuntimeSubsystem::StartSession()
     check(IsInGameThread());
     check(Coordinator);
 
-    if (!bScreenRegistryReady)
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("StartSession rejected: Screen Registry is not ready"));
-        Coordinator->FailBootstrap(TEXT("ScreenRegistryNotReady"), TEXT("Screen Registry is not ready"));
-        return;
-    }
+    // PSC-06: Screen Registry readiness is no longer checked here -- it's resolved fresh,
+    // per session, inside Coordinator->StartSession()'s own content candidate build, which
+    // already fails closed with ScreenRegistryNotReady if it can't build.
     if (!bRepositoryReady || !RepositoryPublisher->HasCurrent())
     {
         UE_LOG(
@@ -343,42 +331,28 @@ FString UGV2RuntimeSubsystem::GetActiveTab(const FString& ContainerPath) const
     return FString();
 }
 
-bool UGV2RuntimeSubsystem::LoadScreenRegistry(const TArray<GV2PackageClosure::FEntry>& ClosureEntries)
-{
-    bScreenRegistryReady = false;
-    const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
-    ScreenRegistry = Settings != nullptr ? Settings->RegistryAsset.LoadSynchronous() : nullptr;
-    if (ScreenRegistry == nullptr)
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Screen Registry asset is not configured or could not be loaded"));
-        return false;
-    }
-
-    FString BuildError;
-    if (!ScreenRegistry->Build(ClosureEntries, BuildError))
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Screen Registry failed to build: %s"), *BuildError);
-        ScreenRegistry = nullptr;
-        return false;
-    }
-
-    bScreenRegistryReady = true;
-    return true;
-}
-
 // PAH-08: phase=prepare -- the screen factory the reconciler calls from
 // PrepareReconcile to obtain a candidate widget class; no caller is on the
 // application path.
+// PSC-06 (ADR-0043 D1): resolves through this session's own FGV2PresentationPrepareContext
+// -- GetContentSnapshotForPrepare() returns the in-progress candidate while StartSession()
+// is still running its own initial Prepare/Commit, or the published snapshot for every
+// later document update once Ready (see GV2SessionCoordinator.h's doc comment). Unlike the
+// old GameInstance-lifetime ScreenRegistry member this replaces, there is no case where a
+// screen can be resolved from a DIFFERENT session's registry -- each session's own
+// candidate/snapshot is the only one this subsystem's single Coordinator ever exposes.
 UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const
 {
-    if (ScreenRegistry == nullptr)
+    const FGV2SessionContentSnapshot* Snapshot = Coordinator ? Coordinator->GetContentSnapshotForPrepare() : nullptr;
+    if (Snapshot == nullptr)
     {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Unknown screen_id '%s': Screen Registry is not ready"), *ScreenId);
+        UE_LOG(LogGV2Runtime, Error, TEXT("Unknown screen_id '%s': no session content snapshot is available"), *ScreenId);
         return nullptr;
     }
+    const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
     FGV2ResolvedScreenDescriptor Descriptor;
     FGV2ScreenResolutionRejection Rejection;
-    if (!ScreenRegistry->Resolve(ScreenId, Placement, Descriptor, Rejection))
+    if (!PrepareContext.ResolveScreen(ScreenId, Placement, Descriptor, Rejection))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("%s"), *Rejection.Message);
         return nullptr;
@@ -417,7 +391,24 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
         return InstantiateScreenWidget(ScreenId, FGV2ScreenPlacement::TopLevel(Layer));
     };
 
-    if (!Reconciler->Reconcile(ActiveGameShell, Document, ScreenFactory, ReconcileError))
+    // PSC-06 (ADR-0043 D1): GetContentSnapshotForPrepare() returns the in-progress
+    // candidate while StartSession() is still preparing/committing the initial document
+    // (before Ready), or the published snapshot for every later document update.
+    const FGV2SessionContentSnapshot* SnapshotForPrepare =
+        Coordinator ? Coordinator->GetContentSnapshotForPrepare() : nullptr;
+    const TOptional<FGV2PresentationPrepareContext> PrepareContext =
+        SnapshotForPrepare != nullptr
+            ? TOptional<FGV2PresentationPrepareContext>(FGV2PresentationPrepareContext(*SnapshotForPrepare))
+            : TOptional<FGV2PresentationPrepareContext>();
+
+    if (!Reconciler->Reconcile(
+            ActiveGameShell,
+            Document,
+            ScreenFactory,
+            ReconcileError,
+            nullptr,
+            nullptr,
+            PrepareContext.IsSet() ? &PrepareContext.GetValue() : nullptr))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("UI Document reconciliation failed: %s"), *ReconcileError);
         return false;

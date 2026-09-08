@@ -115,6 +115,11 @@ GV2_API bool PrepareUiHostRollbackPlan(
 // NestedScreen (tab container) consumer -- see FGV2TabContainerTabsPropertyConsumer's
 // composition-cycle guard and UGV2ScreenWidgetBase::PrepareScreenFields' own doc
 // comment for the full picture. Every other consumer ignores it.
+// PSC-06 (ADR-0043 D1): PrepareContext (default nullptr) is forwarded unchanged to the
+// NestedScreen (tab container) consumer, same non-owning injection shape as
+// ActiveCompositionChain -- null means "no session snapshot available to this caller",
+// which the tab consumer treats as a legitimate fallback to its pre-PSC-06 behavior, not
+// an error. Every other consumer ignores it.
 GV2_API bool PrepareUiHostProperties(
     UUserWidget* HostWidget,
     const FGV2UiCapabilityTree& Capabilities,
@@ -125,7 +130,8 @@ GV2_API bool PrepareUiHostProperties(
     const FGV2PreparedUiObject& LastCommittedProperties,
     FGV2UiHostMutationPlan& OutPlan,
     TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
-    const TArray<FString>* ActiveCompositionChain = nullptr);
+    const TArray<FString>* ActiveCompositionChain = nullptr,
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr);
 
 /**
  * Commits a prepared mutation plan to the physical widget hierarchy.

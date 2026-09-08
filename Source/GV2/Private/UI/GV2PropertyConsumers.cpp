@@ -2,6 +2,7 @@
 
 #include "Misc/ScopeExit.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
+#include "Application/GV2SessionContentSnapshot.h"
 #include "CommonTextBlock.h"
 #include "CommonRichTextBlock.h"
 #include "Components/Image.h"
@@ -331,17 +332,29 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
     PreparedScalePolicy = Policy;
     PreparedFixedAspectRatio = FixedAspect;
 
-    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
-    if (Catalog == nullptr)
-    {
-        OutError = TEXT("core:diagnostic.ui_consumer.missing_catalog: Configured Image Resource Catalog is unavailable");
-        return false;
-    }
-
+    // PSC-06 (ADR-0043 D1): resolve through this session's own snapshot when available;
+    // GetSessionCatalog()'s independent session-scoped global remains the fallback for a
+    // caller with no PrepareContext -- PSC-10 retires this fallback.
     FGV2ResolvedImageResource Candidate;
-    if (!Catalog->Resolve(PreparedResourceId, Candidate, OutError))
+    if (PrepareContext != nullptr)
     {
-        return false;
+        if (!PrepareContext->ResolveResource(PreparedResourceId, Candidate, OutError))
+        {
+            return false;
+        }
+    }
+    else
+    {
+        UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
+        if (Catalog == nullptr)
+        {
+            OutError = TEXT("core:diagnostic.ui_consumer.missing_catalog: Configured Image Resource Catalog is unavailable");
+            return false;
+        }
+        if (!Catalog->Resolve(PreparedResourceId, Candidate, OutError))
+        {
+            return false;
+        }
     }
     // STATUS-012: keep the resolution, not just the id it came from.
     PreparedResource = Candidate;
@@ -1731,7 +1744,12 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         TabContainer = TargetWidget->GetTypedOuter<UGV2TabContainerWidgetBase>();
     }
 
-    const UGV2ScreenRegistry* ScreenRegistry = UGV2ScreenRegistrySettings::GetConfiguredRegistry();
+    // PSC-06 (ADR-0043 D1): resolve through this session's own snapshot when available;
+    // GetConfiguredRegistry()'s independent access path remains the fallback for a caller
+    // with no PrepareContext (mostly tests, and any Prepare path not yet wired to one) --
+    // PSC-10 retires this fallback once every operation kind is migrated.
+    const UGV2ScreenRegistry* ScreenRegistry =
+        PrepareContext == nullptr ? UGV2ScreenRegistrySettings::GetConfiguredRegistry() : nullptr;
 
     TSet<FName> SeenKeys;
 
@@ -1810,7 +1828,21 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         // rejected here now, instead of being handed out on nothing more than
         // Entry->WidgetClass being non-null.
         TSubclassOf<UGV2ScreenWidgetBase> TargetWidgetClass = UGV2ScreenWidgetBase::StaticClass();
-        if (ScreenRegistry != nullptr)
+        if (PrepareContext != nullptr)
+        {
+            FGV2ResolvedScreenDescriptor Descriptor;
+            FGV2ScreenResolutionRejection Rejection;
+            if (!PrepareContext->ResolveScreen(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection))
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_consumer.unregistered_screen_id: Screen '%s' for tab '%s': %s"),
+                    *TabScreenId, *TabKey.ToString(), *Rejection.Message);
+                return false;
+            }
+
+            TargetWidgetClass = Descriptor.WidgetClass;
+        }
+        else if (ScreenRegistry != nullptr)
         {
             FGV2ResolvedScreenDescriptor Descriptor;
             FGV2ScreenResolutionRejection Rejection;

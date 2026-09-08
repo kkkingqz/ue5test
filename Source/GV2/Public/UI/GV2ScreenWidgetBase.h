@@ -68,7 +68,8 @@ public:
         const TArray<FGV2ScreenFieldValue>& ScreenFields,
         FGV2ScreenMutationPlan& OutPlan,
         FString& OutError,
-        const TArray<FString>* ActiveCompositionChain = nullptr) const;
+        const TArray<FString>* ActiveCompositionChain = nullptr,
+        const FGV2PresentationPrepareContext* PrepareContext = nullptr) const;
 
     // Commits a prepared mutation plan. FailureInjector mirrors CommitUiHostProperties'
     // own injector (PCC-06/07 fault-injection tests only; production always omits it).

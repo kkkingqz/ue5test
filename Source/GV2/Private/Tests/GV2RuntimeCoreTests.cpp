@@ -1462,6 +1462,104 @@ bool FGV2SessionContentSnapshotImageCatalogGcLifetimeTest::RunTest(const FString
     return true;
 }
 
+// PSC-06 (ADR-0043 D1): a session that already has a published content snapshot, and a
+// genuinely different candidate built afterward on the SAME coordinator, must not leak
+// into each other -- the second candidate's resolved content reflects only its own input,
+// never session 1's already-active snapshot. Session 1 runs through the coordinator's real
+// StartSession() (proving a genuine Ready session exists and owns a snapshot); the second,
+// differently-composed candidate is built via the exact same production
+// FGV2SessionContentCandidate::Build() StartSession() itself calls (PSC-04's own equivalent
+// test already proved this specific function doesn't leak between two independently-built
+// candidates -- this test adds that the ALREADY-ACTIVE session's own published snapshot
+// doesn't interfere either). A full second StartSession() success with rh's real content
+// isn't used here: rh's gameplay Lua expects repository content the available frozen test
+// fixtures don't provide, unrelated to what this test needs to demonstrate.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SequentialSessionsDoNotShareAuthoritiesTest,
+    "GV2.Runtime.Session.SequentialSessionsDoNotShareAuthorities",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SequentialSessionsDoNotShareAuthoritiesTest::RunTest(const FString& Parameters)
+{
+    FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+
+    // Session 1: sample override -- core+textsystem+sample -- a real, Ready session with
+    // its own published snapshot.
+    {
+        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true;
+        TestTrue(TEXT("Session 1 starts"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false;
+    }
+    const FGV2SessionContentSnapshot* Snapshot1 = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("Session 1 published a content snapshot"), Snapshot1);
+    if (Snapshot1 == nullptr)
+    {
+        return false;
+    }
+    const FString PackageIds1 = FString::Join(Snapshot1->GetOrderedPackageIds(), TEXT(","));
+
+    // A genuinely different candidate -- core+textsystem+rh -- built directly via the same
+    // production function, while session 1's snapshot is still the coordinator's active one.
+    const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+    std::vector<GV2ContentCore::FDiagnostic> ResolveDiagnostics;
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> RhSet =
+        GV2ContentHostSupport::ResolvePackageSetFromDirectories(
+            {
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("core")))),
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("textsystem")))),
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("rh")))),
+            },
+            ResolveDiagnostics);
+    TestTrue(TEXT("core+textsystem+rh package set resolves"), RhSet.has_value());
+    if (!RhSet.has_value())
+    {
+        return false;
+    }
+
+    TArray<FGV2SchemaPackageRoot> SchemaPackageRoots;
+    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : RhSet->OrderedSources)
+    {
+        SchemaPackageRoots.Add(FGV2SchemaPackageRoot{
+            UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
+            UTF8_TO_TCHAR(Source.Root.string().c_str())});
+    }
+
+    FGV2SessionContentSnapshot RhCandidate;
+    GV2RuntimeCore::FRuntimeFault CandidateFault;
+    TestTrue(
+        TEXT("A differently-composed candidate builds successfully alongside session 1's active snapshot"),
+        FGV2SessionContentCandidate::Build(
+            MakeFrozenCoreFixturePinnedRepository(*this),
+            &*RhSet,
+            SchemaPackageRoots,
+            {},
+            RhCandidate,
+            CandidateFault));
+
+    const FString PackageIdsRh = FString::Join(RhCandidate.GetOrderedPackageIds(), TEXT(","));
+    TestNotEqual(TEXT("The new candidate's package ids differ from session 1's (rh vs sample)"), PackageIdsRh, PackageIds1);
+
+    // Session 1's own snapshot is completely unaffected by building the second candidate.
+    TestEqual(TEXT("Session 1's snapshot is still the same instance"), Coordinator.GetContentSnapshot(), Snapshot1);
+    TestEqual(
+        TEXT("Session 1's own package ids are unchanged"),
+        FString::Join(Snapshot1->GetOrderedPackageIds(), TEXT(",")),
+        PackageIds1);
+
+    // The new candidate's own resolved screen identities reflect ITS OWN closure, not
+    // session 1's -- the exact PAH-R3-class check PSC-04's equivalent test already proved
+    // for two independently-built candidates.
+    FGV2ResolvedScreenDescriptor Descriptor;
+    FGV2ScreenResolutionRejection Rejection;
+    const FGV2PresentationPrepareContext RhPrepareContext(RhCandidate);
+    TestTrue(
+        TEXT("The rh-composed candidate's own registered screen resolves through its own snapshot"),
+        RhPrepareContext.ResolveScreen(TEXT("core:screen.test"), FGV2ScreenPlacement::TopLevel(TEXT("location_content")), Descriptor, Rejection));
+
+    return true;
+}
+
 // PCC-39: FGV2LuaMarshaller unified marshalling conformance test
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2LuaMarshallerConformanceTest,

@@ -100,7 +100,8 @@ bool PrepareScreenFieldPlans(
     const TArray<FGV2ScreenFieldValue>& ScreenFields,
     TArray<FGV2ScreenFieldPlan>& OutPlans,
     FString& OutError,
-    const TArray<FString>* ActiveCompositionChain)
+    const TArray<FString>* ActiveCompositionChain,
+    const FGV2PresentationPrepareContext* PrepareContext)
 {
     TArray<FGV2ScreenHostRecord> Hosts;
     if (!CollectScreenFieldHosts(Screen, Hosts, OutError))
@@ -168,7 +169,8 @@ bool PrepareScreenFieldPlans(
             PreviousCommittedValue,
             MutationPlan,
             Diagnostics,
-            ActiveCompositionChain);
+            ActiveCompositionChain,
+            PrepareContext);
         if (!bPrepared)
         {
             OutError = FString::Printf(
@@ -279,9 +281,10 @@ bool UGV2ScreenWidgetBase::PrepareScreenFields(
     const TArray<FGV2ScreenFieldValue>& ScreenFields,
     FGV2ScreenMutationPlan& OutPlan,
     FString& OutError,
-    const TArray<FString>* ActiveCompositionChain) const
+    const TArray<FString>* ActiveCompositionChain,
+    const FGV2PresentationPrepareContext* PrepareContext) const
 {
-    return PrepareScreenFieldPlans(*this, ScreenFields, OutPlan.FieldPlans, OutError, ActiveCompositionChain);
+    return PrepareScreenFieldPlans(*this, ScreenFields, OutPlan.FieldPlans, OutError, ActiveCompositionChain, PrepareContext);
 }
 
 // GBF-07: rollback_boundary=ScreenFields

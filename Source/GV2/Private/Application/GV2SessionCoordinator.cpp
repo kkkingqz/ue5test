@@ -373,6 +373,10 @@ bool FGV2SessionCoordinator::StartSession(
         return false;
     }
     FGV2SessionContentCandidate::FinalizeScriptIdentity(*Candidate, RuntimeSession.GetScriptSetHash());
+    // PSC-06: the initial document's own Prepare step (below) needs this candidate's
+    // resolved Screen Registry/Image Catalog -- GetContentSnapshotForPrepare() exposes it
+    // internally from this point on, while GetContentSnapshot() stays null until Ready.
+    InProgressCandidate = Candidate.Get();
 
     std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
     if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
@@ -408,8 +412,11 @@ bool FGV2SessionCoordinator::StartSession(
 
     // PSC-05 (ADR-0043 D1): ContentSnapshot becomes observable atomically with the exact
     // moment this session becomes Ready -- never before, and never on an attempt that
-    // fails at any later step.
+    // fails at any later step. InProgressCandidate's raw pointer is now dangling-but-unused:
+    // GetContentSnapshotForPrepare() checks ContentSnapshot first, so it's never read again
+    // once this line runs; still cleared for clarity.
     ContentSnapshot = MoveTemp(Candidate);
+    InProgressCandidate = nullptr;
     UiRevision = DocModel.Revision;
     Status.ApplicationState = EGV2ApplicationState::MenuActive;
     Status.SessionState = EGV2SessionState::Ready;
@@ -449,6 +456,7 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     UGV2ImageResourceCatalog::ReleaseForSession();
     ContentSnapshot.Reset();
+    InProgressCandidate = nullptr;
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
     Status.SessionState = FinalState;
     Status.RepositoryVersion = 0;
@@ -857,6 +865,7 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     UGV2ImageResourceCatalog::ReleaseForSession();
     ContentSnapshot.Reset();
+    InProgressCandidate = nullptr;
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;

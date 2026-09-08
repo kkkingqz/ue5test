@@ -40,10 +40,26 @@ public:
     const FGV2SessionStatus& GetStatus() const;
     const GV2ContentCore::FRepositoryReadHandle& GetPinnedRepository() const { return PinnedRepository; }
 
-    // PSC-04 (ADR-0043 D1): null before a successful StartSession() and after EndSession()/
-    // a failed StartSession(). Not yet read by production presentation code -- PSC-06 wires
-    // FGV2PresentationPrepareContext to it.
+    // PSC-04/05 (ADR-0043 D1): null before a successful StartSession() and after
+    // EndSession()/a failed StartSession() -- this is the EXTERNAL-facing contract: only
+    // observable atomically with Ready, never for a session whose bootstrap ultimately
+    // fails, even if the failure happens after the candidate itself was already valid.
     const FGV2SessionContentSnapshot* GetContentSnapshot() const { return ContentSnapshot.Get(); }
+
+    // PSC-06 (ADR-0043 D1): for this coordinator's OWN internal Prepare-phase machinery
+    // ONLY (the ScreenFactory callback UGV2RuntimeSubsystem passes into the Reconciler,
+    // reached synchronously from DocumentSink -- which StartSession() itself invokes,
+    // before Ready, to prepare/commit the initial document). Returns the published
+    // snapshot once Ready (same value as GetContentSnapshot()), or the in-progress
+    // candidate while StartSession() is still executing its own bootstrap -- the initial
+    // document's own screen/resource resolution legitimately needs the candidate that
+    // will become this session's snapshot, before that candidate is externally observable.
+    // Never use this from outside the coordinator's own callback machinery -- any other
+    // caller must use GetContentSnapshot(), which stays strictly Ready-gated.
+    const FGV2SessionContentSnapshot* GetContentSnapshotForPrepare() const
+    {
+        return ContentSnapshot ? ContentSnapshot.Get() : InProgressCandidate;
+    }
 
     bool PublishUiBindings(
         const FString& UiInstanceId,
@@ -110,6 +126,11 @@ private:
     FGV2SessionStatus Status;
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     TUniquePtr<FGV2SessionContentSnapshot> ContentSnapshot;
+    // PSC-06: non-owning, set to the in-progress Candidate right after RuntimeSession::Start
+    // succeeds (before the document pipeline runs), cleared the instant this attempt is
+    // either published (ownership moves to ContentSnapshot) or fails (FailRuntime). See
+    // GetContentSnapshotForPrepare()'s doc comment.
+    const FGV2SessionContentSnapshot* InProgressCandidate = nullptr;
     FGV2UiBindingRegistry BindingRegistry;
     FGV2RuntimeIngressQueue IngressQueue;
     GV2RuntimeCore::FRuntimeSession RuntimeSession;

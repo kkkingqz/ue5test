@@ -13,7 +13,6 @@ class FGV2RepositoryPublisher;
 class FGV2ScreenPlacement;
 class FGV2SessionCoordinator;
 class UGV2GameShellWidgetBase;
-class UGV2ScreenRegistry;
 class UGV2ScreenWidgetBase;
 class UUserWidget;
 
@@ -71,11 +70,11 @@ public:
     FString GetActiveTab(const FString& ContainerPath) const;
 
 private:
-    // PSC-02 (ADR-0043 D1/D5): ClosureEntries is this GameInstance's single resolved
-    // package set (see ResolvedPackageSet below), already computed by Initialize() --
-    // LoadScreenRegistry() threads it into UGV2ScreenRegistry::Build() instead of the
-    // registry discovering its own package closure (PAH-R3).
-    bool LoadScreenRegistry(const TArray<GV2PackageClosure::FEntry>& ClosureEntries);
+    // PSC-06 (ADR-0043 D1): resolves via the coordinator's current session content
+    // snapshot (FGV2PresentationPrepareContext) -- UGV2RuntimeSubsystem no longer owns a
+    // separate, GameInstance-lifetime Screen Registry authority of its own (PAH-R3's
+    // original defect: this used to be built once in Initialize(), before any session's
+    // actual package set was even known).
     UClass* ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const;
     UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
@@ -86,9 +85,6 @@ private:
     TPimplPtr<FGV2RepositoryPublisher> RepositoryPublisher;
 
     UPROPERTY(Transient)
-    TObjectPtr<UGV2ScreenRegistry> ScreenRegistry;
-
-    UPROPERTY(Transient)
     TObjectPtr<UUserWidget> ActiveScreen;
 
     UPROPERTY(Transient)
@@ -97,7 +93,6 @@ private:
     TPimplPtr<FGV2LayeredUiReconciler> Reconciler;
 
     FDelegateHandle StartGameInstanceHandle;
-    bool bScreenRegistryReady = false;
     FString RepositoryBuildError;
 
     // PSC-02 (ADR-0043 D1/D5): resolved exactly once in Initialize() -- repository build,

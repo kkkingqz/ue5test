@@ -87,12 +87,17 @@ public:
     // this returns false, leaving all active screens, widgets, and shell untouched.
     // PCC-06: [[nodiscard]] -- a discarded result here is the exact swallowed-failure
     // shape this task exists to make impossible.
+    // PSC-06 (ADR-0043 D1): PrepareContext (default nullptr) is forwarded unchanged, down
+    // to PrepareUiHostProperties -- see its own doc comment. nullptr is legitimate for the
+    // catastrophic-recovery replay call site (GetHealth()), which has no session snapshot
+    // reference of its own to forward.
     [[nodiscard]] bool PrepareReconcile(
         UGV2GameShellWidgetBase* Shell,
         const FGV2UiDocumentViewModel& Document,
         FScreenFactory ScreenFactory,
         FPreparedReconciliationPlan& OutPlan,
-        FString& OutError) const;
+        FString& OutError,
+        const FGV2PresentationPrepareContext* PrepareContext = nullptr) const;
 
     // UPP-28 / PCC-06: Commits a cleanly prepared reconciliation plan to the Game Shell
     // and active widgets. Attach/Commit are checked per screen; the first failure stops
@@ -125,7 +130,8 @@ public:
         FScreenFactory ScreenFactory,
         FString& OutError,
         TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr,
-        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector = nullptr);
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector = nullptr,
+        const FGV2PresentationPrepareContext* PrepareContext = nullptr);
 
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }

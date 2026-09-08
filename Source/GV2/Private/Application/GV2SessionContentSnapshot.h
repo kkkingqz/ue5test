@@ -120,3 +120,42 @@ public:
     // the one hash spanning repository + package + script + presentation identity.
     static void FinalizeScriptIdentity(FGV2SessionContentSnapshot& Snapshot, const std::string& ScriptSetHash);
 };
+
+// PSC-06 (ADR-0043 D1): the only way production semantic Prepare reaches resolved
+// presentation content -- wraps a session's content snapshot (never owns it, never
+// constructed for a null/absent snapshot: a Prepare call site with no snapshot available
+// simply doesn't construct one and keeps whatever pre-PSC-06 fallback it already had, e.g.
+// UGV2RuntimeSubsystem's own bootstrap-failure recovery path, which runs before any
+// session/snapshot exists at all). Migrating every remaining call site of
+// GetConfiguredTheme()/GetConfiguredRegistry()/the session-scoped schema-cache and
+// image-catalog globals onto this, and deleting those globals, is PSC-10's job, not this
+// one's -- see Snapshot.md's PSC-06 Done bullets.
+class FGV2PresentationPrepareContext
+{
+public:
+    explicit FGV2PresentationPrepareContext(const FGV2SessionContentSnapshot& InSnapshot)
+        : Snapshot(InSnapshot)
+    {
+    }
+
+    const FGV2ResolvedUiTheme& GetTheme() const { return Snapshot.GetTheme(); }
+    UClass* GetGameShellClass() const { return Snapshot.GetGameShellClass(); }
+    const FGV2UiSchemaCache& GetSchemaCache() const { return Snapshot.GetSchemaCache(); }
+
+    bool ResolveScreen(
+        const FString& ScreenId,
+        const FGV2ScreenPlacement& Placement,
+        FGV2ResolvedScreenDescriptor& OutDescriptor,
+        FGV2ScreenResolutionRejection& OutRejection) const
+    {
+        return Snapshot.GetScreenRegistry().Resolve(ScreenId, Placement, OutDescriptor, OutRejection);
+    }
+
+    bool ResolveResource(const FString& ResourceId, FGV2ResolvedImageResource& OutResource, FString& OutError) const
+    {
+        return Snapshot.GetImageCatalog().Resolve(ResourceId, OutResource, OutError);
+    }
+
+private:
+    const FGV2SessionContentSnapshot& Snapshot;
+};

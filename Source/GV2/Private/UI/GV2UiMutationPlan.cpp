@@ -179,7 +179,8 @@ bool PrepareUiHostProperties(
     const FGV2PreparedUiObject& LastCommittedProperties,
     FGV2UiHostMutationPlan& OutPlan,
     TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
-    const TArray<FString>* ActiveCompositionChain)
+    const TArray<FString>* ActiveCompositionChain,
+    const FGV2PresentationPrepareContext* PrepareContext)
 {
     // 1. Validate Schema ⊆ Capabilities
     if (!CheckUiSchemaCapabilityCompatibility(Schema, Capabilities, SchemaId, PropertyPathPrefix, OutDiagnostics))
@@ -339,6 +340,10 @@ bool PrepareUiHostProperties(
                     OutDiagnostics.Add(MoveTemp(Diag));
                     return false;
                 }
+                // PSC-06 (ADR-0043 D1): no-op for most consumer kinds; the ones that
+                // resolve session-scoped content override it (see IGV2PropertyConsumer's
+                // own doc comment).
+                Consumer->SetPrepareContext(PrepareContext);
 
                 // Item schemas belong only to the generic keyed-collection consumer.
                 // NestedScreen also has Array kind but is handled by the distinct tab
@@ -374,8 +379,12 @@ bool PrepareUiHostProperties(
                     // path (direct or indirect cycle) before creating/recursing into
                     // the nested screen. See FGV2ScreenMutationPlan/PrepareScreenFields'
                     // own doc comment for the full picture.
-                    static_cast<FGV2TabContainerTabsPropertyConsumer*>(Consumer.Get())
-                        ->SetActiveCompositionChain(ActiveCompositionChain);
+                    FGV2TabContainerTabsPropertyConsumer* TabConsumer =
+                        static_cast<FGV2TabContainerTabsPropertyConsumer*>(Consumer.Get());
+                    TabConsumer->SetActiveCompositionChain(ActiveCompositionChain);
+                    // PSC-06 (ADR-0043 D1): same injection shape as ActiveCompositionChain
+                    // above -- see PrepareUiHostProperties' own doc comment.
+                    TabConsumer->SetPrepareContext(PrepareContext);
                 }
 
                 FString PrepError;
