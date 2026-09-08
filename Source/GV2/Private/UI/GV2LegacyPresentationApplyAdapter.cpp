@@ -5,11 +5,15 @@
 #include "CommonTextBlock.h"
 #include "Components/EditableTextBox.h"
 #include "Components/Image.h"
+#include "Components/PanelWidget.h"
+#include "Components/VerticalBox.h"
+#include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
+#include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
@@ -18,6 +22,7 @@
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2UiStyleConsumer.h"
 
 namespace
 {
@@ -348,6 +353,83 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
             Spans.Add(MoveTemp(Span));
         }
         RichTextWidget->ApplySpans(Spans);
+    }
+
+    for (const GV2PresentationApply::FPreparedKeyedCollectionOperation& Operation : Transaction.GetKeyedCollectionOperations())
+    {
+        UWidget* TargetWidget = Operation.TargetWidget.Get();
+        if (TargetWidget == nullptr)
+        {
+            continue;
+        }
+
+        UGV2ListViewWidgetBase* ListView = Cast<UGV2ListViewWidgetBase>(TargetWidget);
+        UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget);
+
+        if (Operation.bIsReset)
+        {
+            if (ListView != nullptr)
+            {
+                ListView->ClearEntries();
+            }
+            else if (ButtonList != nullptr)
+            {
+                if (ButtonList->GetButtonContainer())
+                {
+                    ButtonList->GetButtonContainer()->ClearChildren();
+                }
+            }
+            else if (UPanelWidget* Panel = Cast<UPanelWidget>(TargetWidget))
+            {
+                Panel->ClearChildren();
+            }
+            continue;
+        }
+
+        UPanelWidget* Panel = ListView
+            ? ListView->GetContainerPanel()
+            : (ButtonList ? Cast<UPanelWidget>(ButtonList->GetButtonContainer()) : Cast<UPanelWidget>(TargetWidget));
+
+        if (Panel != nullptr)
+        {
+            Panel->ClearChildren();
+            for (const GV2PresentationApply::FPreparedKeyedCollectionEntry& Entry : Operation.OrderedEntries)
+            {
+                if (UWidget* Child = Entry.Widget.Get())
+                {
+                    Panel->AddChild(Child);
+                }
+            }
+        }
+
+        // Newly added slots have no styling of their own; let the container reapply its
+        // central style (e.g. per-item slot padding) now that the collection has settled.
+        if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
+        {
+            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
+        }
+
+        if (ListView != nullptr)
+        {
+            TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
+            for (const GV2PresentationApply::FPreparedKeyedCollectionEntry& Entry : Operation.OrderedEntries)
+            {
+                if (UWidget* Child = Entry.Widget.Get())
+                {
+                    ActiveWidgetsByKey.Add(Entry.Key, Child);
+                }
+            }
+            ListView->SetActiveWidgetsMap(ActiveWidgetsByKey);
+        }
+
+        if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget->GetOuter()))
+        {
+            Dropdown->UpdateHeaderLabel();
+        }
+        else if (UGV2DropdownSelectWidgetBase* DropdownOuter = TargetWidget->GetTypedOuter<UGV2DropdownSelectWidgetBase>())
+        {
+            DropdownOuter->UpdateHeaderLabel();
+        }
     }
 
     for (const GV2PresentationApply::FPreparedTextOperation& Operation : Transaction.GetTextOperations())

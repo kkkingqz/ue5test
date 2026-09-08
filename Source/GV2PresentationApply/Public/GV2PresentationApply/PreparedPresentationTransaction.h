@@ -204,6 +204,33 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextValue
     FString NormalizedMarkup;
 };
 
+// PSC-09B: the widget-touching tail of FGV2KeyedCollectionPropertyConsumer::
+// CommitWithFailureInjector()/Reset() -- panel child-list reconciliation, active-widget
+// map publication, central style refresh, and (for a Dropdown-owned collection) header
+// label refresh. The recursive per-item CommitUiHostProperties() calls that precede this
+// (each item's OWN capabilities, applied through their own already-migrated leaf
+// consumers) and the pure bookkeeping SetLastCommittedSnapshot() calls that follow it
+// (FGV2UiPropertyHostState accounting, no widget touched) are NOT part of this operation
+// -- neither reaches a content/authority type, and neither is itself a widget mutation
+// this module could apply; UPanelWidget::ClearChildren/AddChild is the one genuinely
+// shared, plain-UMG step, but UGV2ListViewWidgetBase::GetContainerPanel/
+// SetActiveWidgetsMap, UGV2ButtonListWidgetBase::GetButtonContainer,
+// IGV2UiStyleConsumer::Execute_ApplyCentralStyle and UGV2DropdownSelectWidgetBase::
+// UpdateHeaderLabel are all GV2-owned, so GV2LegacyPresentationApplyAdapter performs the
+// whole tail, reproducing the original Commit()/Reset() dispatch.
+struct GV2PRESENTATIONAPPLY_API FPreparedKeyedCollectionEntry
+{
+    FName Key;
+    TWeakObjectPtr<UWidget> Widget;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedKeyedCollectionOperation
+{
+    TWeakObjectPtr<UWidget> TargetWidget;
+    TArray<FPreparedKeyedCollectionEntry> OrderedEntries;
+    bool bIsReset = false;
+};
+
 struct GV2PRESENTATIONAPPLY_API FPreparedTextOperation
 {
     TWeakObjectPtr<UWidget> TargetWidget;
@@ -269,6 +296,10 @@ public:
     {
         TextOperations.Add(MoveTemp(Operation));
     }
+    void AddKeyedCollectionOperation(FPreparedKeyedCollectionOperation Operation)
+    {
+        KeyedCollectionOperations.Add(MoveTemp(Operation));
+    }
 
     const TArray<FPreparedImageResourceOperation>& GetImageResourceOperations() const { return ImageResourceOperations; }
     const TArray<FPreparedImageHostOperation>& GetImageHostOperations() const { return ImageHostOperations; }
@@ -282,6 +313,7 @@ public:
     const TArray<FPreparedBindingOperation>& GetBindingOperations() const { return BindingOperations; }
     const TArray<FPreparedRichTextSpansOperation>& GetRichTextSpansOperations() const { return RichTextSpansOperations; }
     const TArray<FPreparedTextOperation>& GetTextOperations() const { return TextOperations; }
+    const TArray<FPreparedKeyedCollectionOperation>& GetKeyedCollectionOperations() const { return KeyedCollectionOperations; }
 
     bool IsEmpty() const
     {
@@ -296,7 +328,8 @@ public:
             && KeyOperations.IsEmpty()
             && BindingOperations.IsEmpty()
             && RichTextSpansOperations.IsEmpty()
-            && TextOperations.IsEmpty();
+            && TextOperations.IsEmpty()
+            && KeyedCollectionOperations.IsEmpty();
     }
 
 private:
@@ -312,6 +345,7 @@ private:
     TArray<FPreparedBindingOperation> BindingOperations;
     TArray<FPreparedRichTextSpansOperation> RichTextSpansOperations;
     TArray<FPreparedTextOperation> TextOperations;
+    TArray<FPreparedKeyedCollectionOperation> KeyedCollectionOperations;
 };
 
 // PSC-09A (ADR-0043 D2): the only public entry point physical Apply exposes -- there is

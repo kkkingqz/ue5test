@@ -1518,24 +1518,32 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
         }
     }
 
-    UGV2ListViewWidgetBase* ListView = Cast<UGV2ListViewWidgetBase>(TargetWidget);
-    UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget);
-    UPanelWidget* Panel = ListView ? ListView->GetContainerPanel() : (ButtonList ? Cast<UPanelWidget>(ButtonList->GetButtonContainer()) : Cast<UPanelWidget>(TargetWidget));
-
-    if (Panel != nullptr)
+    // PSC-09B (ADR-0043 D2/D3): the widget-touching tail (panel reconciliation, active-
+    // widget map, central style, Dropdown header) now flows through a transaction;
+    // GetContainerPanel/GetButtonContainer/SetActiveWidgetsMap/Execute_ApplyCentralStyle/
+    // UpdateHeaderLabel are all GV2-owned, so GV2LegacyPresentationApplyAdapter performs
+    // the actual dispatch this used to perform directly. GBH-10's bookkeeping loop
+    // (SetLastCommittedSnapshot) stays here unchanged -- it updates only
+    // FGV2UiPropertyHostState accounting on each item host, never a widget.
+    GV2PresentationApply::FPreparedKeyedCollectionOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.OrderedEntries.Reserve(PreparedItems.Num());
+    for (const FPreparedCollectionItem& Item : PreparedItems)
     {
-        Panel->ClearChildren();
-        for (const FPreparedCollectionItem& Item : PreparedItems)
-        {
-            Panel->AddChild(Item.Widget);
-        }
+        GV2PresentationApply::FPreparedKeyedCollectionEntry Entry;
+        Entry.Key = Item.Key;
+        Entry.Widget = Item.Widget;
+        Operation.OrderedEntries.Add(MoveTemp(Entry));
     }
-
-    // Newly added slots have no styling of their own; let the container reapply its
-    // central style (e.g. per-item slot padding) now that the collection has settled.
-    if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddKeyedCollectionOperation(MoveTemp(Operation));
+    if (!GV2PresentationApply::Apply(Transaction, OutError))
     {
-        IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
+        return false;
+    }
+    if (!GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError))
+    {
+        return false;
     }
 
     // GBH-10 (ADR-0041): only reached once every item above committed cleanly. Nothing
@@ -1557,38 +1565,21 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
     }
 
     ActiveWidgetsByKey = MoveTemp(CandidateWidgetsByKey);
-    if (ListView != nullptr)
-    {
-        ListView->SetActiveWidgetsMap(ActiveWidgetsByKey);
-    }
-    if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(TargetWidget->GetOuter()))
-    {
-        Dropdown->UpdateHeaderLabel();
-    }
-    else if (UGV2DropdownSelectWidgetBase* DropdownOuter = TargetWidget->GetTypedOuter<UGV2DropdownSelectWidgetBase>())
-    {
-        DropdownOuter->UpdateHeaderLabel();
-    }
 
     return true;
 }
 
 void FGV2KeyedCollectionPropertyConsumer::Reset(UWidget* TargetWidget)
 {
-    if (UGV2ListViewWidgetBase* ListView = Cast<UGV2ListViewWidgetBase>(TargetWidget))
+    if (TargetWidget)
     {
-        ListView->ClearEntries();
-    }
-    else if (UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(TargetWidget))
-    {
-        if (ButtonList->GetButtonContainer())
-        {
-            ButtonList->GetButtonContainer()->ClearChildren();
-        }
-    }
-    else if (UPanelWidget* Panel = Cast<UPanelWidget>(TargetWidget))
-    {
-        Panel->ClearChildren();
+        GV2PresentationApply::FPreparedKeyedCollectionOperation Operation;
+        Operation.TargetWidget = TargetWidget;
+        Operation.bIsReset = true;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        Transaction.AddKeyedCollectionOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
     }
     ActiveWidgetsByKey.Reset();
     CandidateWidgetsByKey.Reset();
