@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.24
-updated: 2026-09-06
+version: 1.25
+updated: 2026-09-07
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0035-ui-foundation-and-composition.md
   - ../ADR/0040-universal-ui-property-pipeline.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # Blueprint Screen Template Contract
@@ -118,7 +119,9 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 
 `widget_class` показан как editor-facing label, а не boundary value и не raw `/Game/...` locator. Registry строится до session registry freeze. Duplicate `screen_id`, class не-наследник `WBP_ScreenBase` или отсутствующий cooked class являются startup validation error.
 
-Текущая реализация использует `UGV2ScreenRegistry : UDataAsset`. Единственный bootstrap locator задаётся UE-only настройкой `UGV2ScreenRegistrySettings.RegistryAsset` в `DefaultGame.ini`; Lua его не получает. При `UGV2RuntimeSubsystem.Initialize` asset загружается один раз, все entries валидируются, soft classes разрешаются и копируются в private immutable lookup текущего subsystem lifetime. Session не переходит в test `Ready`, если registry не готов.
+Текущая реализация использует `UGV2ScreenRegistry : UDataAsset`. Единственный bootstrap locator задаётся UE-only настройкой `UGV2ScreenRegistrySettings.RegistryAsset` в `DefaultGame.ini`; Lua его не получает. Session не переходит в `Ready`, если registry не готов.
+
+**Целевое правило (`ADR-0043` D1, закрывает `PAH-R3`):** asset validate/soft-class-resolve происходит один раз, но как часть построения candidate `FGV2SessionContentSnapshot` внутри `FGV2SessionCoordinator::StartSession()`, из того же `FResolvedPackageSet`, что репозиторий и Lua-исходники этой сессии — не при `UGV2RuntimeSubsystem::Initialize()` и не через собственный вызов `GetPackageLoadOrderFromGameData()`/`ResolveContentRootOwnershipFromGameData()`/`GV2PackageClosure::DiscoverFromGameData()` независимо от session package set. Editor-only профиль (`EditorPackageRoots`) обязан приводить к тому же Screen Registry, что и session package set, которым он резолвится — второе, отдельное canonical discovery того же факта запрещено, даже когда сегодня возвращает тот же результат.
 
 Текущий asset `DA_ScreenRegistry` содержит entry:
 
@@ -332,6 +335,8 @@ fields: [
 ```
 
 `ProjectMaterializedValue` резолвит `schema_id` каждого envelope через тот же `GetSchemaCache()`, что и верхнеуровневые поля, и рекурсивно прогоняет `value` через ту же пару `ValidateUiFieldValue` + `ProjectMaterializedValue`, что `BuildFields` использует для обычного поля — отдельного протокола для вложенных экранов не остаётся, а синтез схемы из capability дочернего экрана (риск в духе `UPP-R1`) устранён. `FGV2TabContainerTabsPropertyConsumer` собирает из раскрытых envelope настоящий `TArray<FGV2ScreenFieldValue>` и применяет его через `ChildWidget->PrepareScreenFields(...)`/`CommitScreenFields(...)` — тот же публичный двухфазный API, которым пользуется экран верхнего уровня; неизвестное поле вложенного экрана отклоняется той же биекцией host↔value (`CollectScreenFieldHosts`/`PrepareScreenFieldPlans`), что и для обычного экрана, а не отдельной проверкой.
+
+**Целевое правило (`ADR-0043`, закрывает `PAH-R4`):** вложенный `screen_id → Widget class` разрешается тем же `FGV2PresentationPrepareContext`, что и top-level Screen (`PrepareContext.ResolveScreen(screen_id, Embedded)` — не отдельным обращением к `UGV2ScreenRegistrySettings::GetConfiguredRegistry()`). Отсутствие resolver/registry — отказ Prepare; generic-class fallback (сохранение `UGV2ScreenWidgetBase::StaticClass()` до проверки наличия Registry) запрещён структурно, а не только по соглашению. Разрешённый Widget class нельзя получить без `Resolve(screen_id, Placement)` — ни для top-level, ни для вложенного экрана.
 
 Во время test-only failure injection nested commit обязан передавать injector дочернему `CommitScreenFields` с префиксом родительского свойства и tab key: leaf путь имеет форму `tabs.<tab_key>.<child_property>`. Это не отдельный runtime protocol: production commit не передаёт injector. Отказ leaf прекращает commit родительской вкладки, а затем `CommitReconcile`; по [ADR-0040](../ADR/0040-universal-ui-property-pipeline.md) candidate screen не публикуется и прежняя `ActiveScreens` revision не меняется.
 

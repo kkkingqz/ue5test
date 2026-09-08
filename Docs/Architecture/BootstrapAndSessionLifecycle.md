@@ -1,7 +1,7 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 3.2
+version: 3.3
 updated: 2026-09-07
 depends_on:
   - SystemContextAndComponents.md
@@ -12,6 +12,8 @@ decisions:
   - ../ADR/0006-repository-reload-and-session-pinning.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0011-blueprint-screen-templates.md
+  - ../ADR/0042-presentation-authority-and-publication.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # Bootstrap and Session Lifecycle
@@ -75,11 +77,11 @@ Public readiness — один bool `is_ready`. Он становится true т
 - `SubmitUiInteraction(...)` является единственным публичным путём пользовательского input;
 - создание Screen из C++ параметров, вызов Lua builder из automation и методы с семантикой `ForTest` запрещены.
 
-До открытия session `UGV2RuntimeSubsystem` обязан загрузить `UGV2ScreenRegistry`, валидировать все `screen_id`, layers, duplicates и concrete non-abstract classes и построить private lookup. Image Resource Catalog (PAH-04B) строится позже, session-scoped, внутри `FGV2SessionCoordinator::StartSession()` из тех же resolved package roots, что репозиторий и Lua-исходники — не при инициализации подсистемы. Ошибка любого required presentation catalog/registry или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (выставляя явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного catalog instance не маскирует failure текущего bootstrap build — сессия не наследует каталог предыдущей сессии ни при успехе, ни при отказе. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
+**Целевое правило (ADR-0043 D1, PSC-04…08 закрывают текущее расхождение — см. [AuditFindings](../Status/AuditFindings.md) `PAH-R2`/`PAH-R3`):** Screen Registry, Image Resource Catalog, UI-схемы, Theme и GameShell layer identity принадлежат одному private candidate `FGV2SessionContentSnapshot`, который `FGV2SessionCoordinator` строит целиком внутри `StartSession()` из одного и того же `FResolvedPackageSet`, что и репозиторий с Lua-исходниками пакета — не по отдельности и не до открытия session. Ни один из них не читается из global config/DataAsset accessor во время `Ready`-рантайма; резолюция происходит один раз, при построении candidate. Candidate snapshot остаётся private до полной сборки и публикуется атомарно вместе с успешным initial Commit — тем же моментом, что и переход session в `Ready` (см. «Session states» выше); отказ на любом шаге кандидата не публикует частичный snapshot. Ошибка построения любой его части или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного snapshot instance не маскирует failure текущего bootstrap build — новая сессия не наследует snapshot предыдущей ни при успехе, ни при отказе, а candidate одной сессии не виден другой одновременно существующей candidate-сборке. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов; этот экран — единственное presentation-состояние, которому по определению неоткуда взять session snapshot (сессия, для которой он показан, в `Ready` не перешла), и он использует программно собранную минимальную тему ядра, а не snapshot-owned Theme. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
 
 Start sequence: `GameInstance` start → Screen Registry ready → package modules register and freeze registries → package-owned `start` hook may create its initial gameplay state exclusively through a registered Command Dispatcher command → presentation source resolves the resulting state and publishes an initial Screen request → coordinator забирает pending screen → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit → активный экран отображается во viewport. Screen replacement выполняется после выхода из Lua. C++ не знает ни стартовой команды пакета, ни `screen_id`, ни Widget class.
 
-Интерактивный Editor использует data-driven development profile `UGV2RuntimeSettings.EditorPackageRoots` из `DefaultGame.ini`: production profile `core + textsystem + rh` открывает `textsystem:screen.location` из начального RH gameplay-state. Одни и те же resolved package roots обязаны использоваться для repository build, для загрузки package Lua sources и (PAH-04A) для обнаружения `ui_field`/`ui_value` схем; расхождение этих наборов запрещено. Обнаружение схем происходит один раз за сессию, синхронно внутри `StartSession()`, до перехода в `Ready` — сессия владеет своим кэшем схем так же, как `PinnedRepository`, и он не переживает `EndSession()`. Commandlet, unattended automation, Headless и Shipping игнорируют Editor profile и используют обычный package set; automation, которой нужен fixture, подключает `sample` явно. Automatic debug fixture запрещён в Shipping и не добавляет отдельный test API.
+Интерактивный Editor использует data-driven development profile `UGV2RuntimeSettings.EditorPackageRoots` из `DefaultGame.ini`: production profile `core + textsystem + rh` открывает `textsystem:screen.location` из начального RH gameplay-state. Один и тот же resolved package set (`FResolvedPackageSet`, ADR-0043 D1) обязан использоваться для repository build, для загрузки package Lua sources, для обнаружения `ui_field`/`ui_value` схем и для построения Screen Registry/Image Catalog/Theme candidate snapshot; расхождение этих наборов, включая повторное самостоятельное discovery канонического замыкания любым из них, запрещено (`PAH-R3`) — второй вывод того же факта является вторым авторитетом, даже когда сегодня совпадает с первым. Обнаружение схем и остальных частей snapshot происходит один раз за сессию, синхронно внутри `StartSession()`, до перехода в `Ready` — сессия владеет своим snapshot так же, как `PinnedRepository` (его частью), и он не переживает `EndSession()`. Commandlet, unattended automation, Headless и Shipping игнорируют Editor profile и используют обычный package set; automation, которой нужен fixture, подключает `sample` явно. Automatic debug fixture запрещён в Shipping и не добавляет отдельный test API.
 
 `FGV2SessionCoordinator` является private UE owner active/candidate session. Он создаёт для каждой generation отдельную portable runtime session, Bridge context, ingress queue, UI binding registry и operation registry. Ни один из этих объектов не переживает уничтожение owning session. `GV2RuntimeCore` не зависит от UObject/UMG и назначает вызывающий Game Thread owner thread-ом VM; standalone host использует тот же lifecycle на своём worker thread.
 
@@ -137,26 +139,26 @@ Order: core modules, затем mods по resolved load order. `stop`/`unregiste
 
 ## Cold start
 
-1. Initialize platform/application services и построить required presentation catalogs/registries.
-2. Discover and resolve core/enabled packages.
-3. Build and atomically publish repository.
+1. Initialize platform/application services.
+2. Discover and resolve core/enabled packages into one `FResolvedPackageSet` (ADR-0043 D1/D5) — единственный вход ниже.
+3. Build and atomically publish repository from that same resolved set.
 4. On repository error, do not create Lua VM; show UE-native recovery surface.
-5. Create full Menu session pinned to repository.
+5. Create full Menu session pinned to repository; build private candidate `FGV2SessionContentSnapshot` (UI schemas, Screen Registry, Image Catalog, Theme, GameShell layer identity) from the same resolved package set — не отдельное discovery.
 6. Register modules and выполнить единый registry freeze gate.
 7. Build empty menu state, restore runtime objects, validate, start.
 8. Apply initial menu presentation.
-9. Commit session `Ready` and Application `MenuActive`.
+9. Commit session `Ready` and Application `MenuActive`; publish candidate snapshot atomically with this commit — не раньше и не по частям.
 
 ## New/load session build
 
-1. Allocate new session ID/generation, VM, Bridge and service set privately.
+1. Allocate new session ID/generation, VM, Bridge and service set privately; build private candidate `FGV2SessionContentSnapshot` (schemas, Screen Registry, Image Catalog, Theme, GameShell) from the resolved package set pinned to this session.
 2. Register modules and выполнить единый registry freeze gate.
 3. Build temporary state: defaults for NewGame; decoded/migrated tree for LoadSave.
 4. Restore instances and validate module/global invariants.
 5. Assign canonical state only after full validation.
 6. Run start hooks with external gates closed.
-7. Build/apply initial presentation snapshot.
-8. Commit `Ready` and enable input.
+7. Build initial UI document and apply it against the (still private) candidate snapshot.
+8. Commit `Ready` and enable input; publish candidate snapshot atomically with this same commit.
 
 ## Lifecycle requests
 

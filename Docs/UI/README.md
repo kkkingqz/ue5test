@@ -1,8 +1,8 @@
 ---
 title: UI Documentation Index
 status: normative
-version: 1.8
-updated: 2026-08-20
+version: 1.9
+updated: 2026-09-07
 ---
 
 # UI Documentation
@@ -70,4 +70,4 @@ UI является перестраиваемой presentation projection. Lua 
 
 Правило проверяется реестром экранов (`UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace`, `Validate`): экран нижнего слоя не может ссылаться на ассет из верхнего слоя.
 
-Рантайм разрешает активную тему (`UGV2UiThemeSettings::GetConfiguredTheme()`, конфигурируется `Config/DefaultGame.ini`), а при её отсутствии откатывается к минимальной теме ядра (`UGV2UiTheme::GetCoreMinimalTheme()`) — она собирается программно в C++, не является отдельным ассетом, и гарантирует базовую типографику и аварийные строки каталога (`core:text.screen.recovery.title`, `core:text.screen.error.*`) для работы нативного экрана восстановления `UGV2RecoveryScreenWidget` при отказе сессии.
+Активная тема выбирается конфигом `Config/DefaultGame.ini` (`UGV2UiThemeSettings.ThemeAsset`), но резолюция принадлежит построению session content snapshot (`ADR-0043` D1) и происходит один раз за сессию, не заново на каждый Apply — целевое правило, закрывающее `PAH-R1`. Единственное исключение — нативный экран восстановления `UGV2RecoveryScreenWidget`: он показывается именно тогда, когда у сессии нет snapshot вовсе (bootstrap ещё не дошёл до `Ready` либо сессия уже `Failed`), поэтому использует программно собранную в C++ минимальную тему ядра (`UGV2UiTheme::GetCoreMinimalTheme()`, не отдельный ассет) с базовой типографикой и аварийными строками каталога (`core:text.screen.recovery.title`, `core:text.screen.error.*`) — это bootstrap/failure-time fallback без snapshot, а не повторное разрешение snapshot-owned Theme.

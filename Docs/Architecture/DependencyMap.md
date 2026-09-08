@@ -1,11 +1,13 @@
 ---
 title: Dependency Map
 status: normative
-version: 1.2
-updated: 2026-08-20
+version: 1.3
+updated: 2026-09-07
 depends_on:
   - Overview.md
   - SystemContextAndComponents.md
+decisions:
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # Карта зависимостей
@@ -21,13 +23,17 @@ depends_on:
 ```text
 External Content            GameData/, Scripts/, Resources/
         ↓
-Content Core                GV2ContentCore + GV2ContentHostSupport
+Content Core                GV2ContentCore + GV2ContentHostSupport (+ FResolvedPackageSet, ADR-0043 D1/D5)
         ↓
 Lua Gameplay Runtime        GV2RuntimeCore + Scripts/
         ↓
 C++ Host Boundary           GV2 (Application, Bridge)
         ↓
-UE Presentation             GV2 (UI), UMG, Blueprint
+UE Presentation (semantic)  GV2 (UI): session content snapshot, Prepare, transaction
+        ↓
+UE Presentation (apply)     GV2PresentationApply: Commit/rollback/reconciliation (ADR-0043 D2)
+        ↓
+Unreal Engine only          Core, CoreUObject, Engine, UMG, CommonUI, Slate, SlateCore
 
 core  ←  feature packages  ←  gameplay package  ←  mods
         обратное направление запрещено (ADR-0026)
@@ -36,7 +42,7 @@ gv2-headless  →  тот же Content Core + тот же Lua Runtime, без Pr
 gv2-content   →  только Content Core, без Lua VM
 ```
 
-Стрелка означает «может зависеть». Обратное направление запрещено во всех случаях.
+Стрелка означает «может зависеть». Обратное направление запрещено во всех случаях. `GV2PresentationApply` — единственный узел этой цепочки, чей allowlist обрывается на голом Unreal Engine: ему запрещена зависимость на `GV2ContentCore`, `GV2ContentHostSupport`, `GV2RuntimeCore` и сам `GV2`, поэтому он физически не может прочитать ни один content/authority авторитет, даже если бы захотел (ADR-0043 D2/D4) — граф сборки, а не текстовый скан, первичная гарантия `INV-P5`.
 
 ## Запрещённые зависимости
 
@@ -55,6 +61,8 @@ gv2-content   →  только Content Core, без Lua VM
 | Runtime instance ссылается на definition по Stable ID, а не хранит копию | [Canonical State and Save](CanonicalStateAndSave.md), [Stable ID Specification](StableIDSpecification.md) |
 | Tooling не становится runtime dependency | [Build and Tooling](BuildAndTooling.md) |
 | `gv2-content` не линкует Lua VM | [Build and Tooling](BuildAndTooling.md) |
+| `GV2PresentationApply` не зависит от `GV2`, `GV2ContentCore`, `GV2ContentHostSupport`, `GV2RuntimeCore`, `DeveloperSettings`, `AssetRegistry`, `ImageCore` и content authoring modules; запрет — граф сборки, не текстовый скан | [System Context](SystemContextAndComponents.md), [ADR-0043](../ADR/0043-presentation-apply-boundary.md) |
+| Подготовленная презентационная транзакция несёт разрешённое значение, а не ссылку/мягкий указатель на резолвер | [UI Document and Reconciliation](../UI/UIDocumentAndReconciliation.md), [ADR-0043](../ADR/0043-presentation-apply-boundary.md) |
 | Gameplay и presentation не импортируют `boundary` | [Lua Runtime Contract](LuaRuntimeContract.md) |
 | `core` не зависит от игрового пакета: не импортирует его модули, не ссылается на его ID и не предполагает наличия инвентаря, торговли, боя или квестов | [Modding](Modding.md), [ADR-0026](../ADR/0026-core-and-gameplay-ownership.md) |
 | Код принадлежит C++ только при выполнении одного из двух условий | [ADR-0020](../ADR/0020-cpp-scope-criterion.md) |
@@ -69,6 +77,7 @@ gv2-content   →  только Content Core, без Lua VM
 | `GV2TestSupport` | Spec runner и тестовые фикстуры | `GV2RuntimeCore` |
 | `GV2ContentAuthoring` | Portable atomic authoring operations | `GV2ContentCore`, `GV2ContentHostSupport` |
 | `GV2ContentEditor` | Editor Adapter и Unreal Editor Slate frontend | `GV2ContentAuthoring`, `GV2ContentCore`, `GV2ContentHostSupport`; editor-only |
-| `GV2` | UE composition, Bridge, Presentation | runtime modules; `GV2TestSupport`, `GV2ContentAuthoring`, `GV2ContentEditor` только в Editor target |
+| `GV2` | UE composition, Bridge, Presentation (semantic: snapshot, Prepare, транзакция) | runtime modules, `GV2PresentationApply`; `GV2TestSupport`, `GV2ContentAuthoring`, `GV2ContentEditor` только в Editor target |
+| `GV2PresentationApply` (ADR-0043 D2, target module — PSC-11) | Физическое применение: Commit, откат, keyed-реконсиляция, восстановление проекции, чистые расчёты раскладки | `Core`, `CoreUObject`, `Engine`, `UMG`, `CommonUI`, `Slate`, `SlateCore` — только |
 
 Точная физическая раскладка и build-таргеты — [Build and Tooling](BuildAndTooling.md).

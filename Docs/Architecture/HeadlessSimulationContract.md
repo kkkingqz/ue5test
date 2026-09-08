@@ -1,8 +1,8 @@
 ---
 title: Headless Simulation Contract
 status: normative
-version: 2.7
-updated: 2026-08-16
+version: 2.8
+updated: 2026-09-07
 depends_on:
   - LuaRuntimeContract.md
   - CommandsAndEvents.md
@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0013-unified-text-pipeline.md
   - ../ADR/0024-lua-spec-runner.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # Headless Simulation Contract
@@ -111,6 +112,21 @@ lua_release_num (int), repository_content_hash (64 hex), script_set_hash (64 hex
 - Одинаковый manifest даёт бит-в-бит идентичный digest в `gv2-headless` и в UE integration-тесте (`GV2.Runtime.Session.CrossHostDigestParity`).
 
 Конкретные exit codes перечислены в [Build and Tooling](BuildAndTooling.md).
+
+### Content identity vs. presentation identity (ADR-0043 D5)
+
+Четыре разные величины называют идентичность на разных уровнях, и намеренно не смешиваются:
+
+| Величина | Уровень | Владелец | Входит в run digest |
+|---|---|---|---|
+| `package_fingerprint` (`ComputePackageFingerprint`, per-package) | Portable | `GV2ContentHostSupport`/`ModsLock` | Косвенно, через `repository_content_hash` |
+| `repository_content_hash` | Portable | Repository build result | Да — часть `FRunManifest`/`FRunDigest` |
+| `presentation_hash` | UE-only | `FGV2SessionContentSnapshot` | Нет |
+| `session_content_id` | UE-only | `FGV2SessionContentSnapshot` | Нет |
+
+`package_fingerprint` — portable identity пакета и обязан включать всё, что меняет portable-behavior, включая `ue_content_roots` (ADR-0043 D3, закрывает `PAH-R6`: поле меняет UE-side authorization, поэтому меняет identity пакета, даже оставаясь бессмысленным для portable host, который его не читает). `repository_content_hash` агрегирует `package_fingerprint` каждого пакета замыкания и остаётся единственной величиной, которую видит Headless — он не строит UE presentation и не вычисляет `presentation_hash`/`session_content_id` вовсе.
+
+`presentation_hash` и `session_content_id` существуют только в UE-host, внутри `FGV2SessionContentSnapshot`: они описывают идентичность разрешённых UE-only presentation authorities (Screen Registry, Image Catalog, Theme, GameShell) для данной опубликованной сессии и не пересекают portable boundary. Run digest (ниже) детерминирован по `repository_content_hash` + `script_set_hash` + `state_hash`; изменение presentation-only данных (например, `ue_content_roots` без изменения portable-затрагивающих полей манифеста) не обязано и не должно менять run digest — Headless не строит presentation вовсе, поэтому у него нет possibility заметить presentation-only identity, а UE-host, чей digest обязан совпадать с Headless (`GV2.Runtime.Session.CrossHostDigestParity`), не включает в него то, что portable-стороне недоступно.
 
 Manifest и digest выводятся в machine-readable JSON-строку в stdout (поля `state_hash`, `digest_hash` и объект `digest`), а также могут сохраняться в файлы через флаги `--output-manifest` и `--output-digest`. Эталонные golden-манифесты и дайджесты хранятся в `Tests/Fixtures/GoldenRuns/` и проверяются в CI.
 

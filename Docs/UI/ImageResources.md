@@ -1,7 +1,7 @@
 ---
 title: Image Resource Contract
 status: normative
-version: 1.8
+version: 1.9
 updated: 2026-09-07
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0035-ui-foundation-and-composition.md
   - ../ADR/0042-presentation-authority-and-publication.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # Image Resource Contract
@@ -29,7 +30,7 @@ decisions:
 ## Ownership and source of truth
 
 - Lua, Definitions и Presentation Snapshot хранят только canonical `resource_id`.
-- Project `Resources` tree является authoring source; **session-scoped** `UGV2ImageResourceCatalog` (PAH-04B) владеет опубликованным mapping `resource_id → runtime texture + render metadata`. Каталог перестраивается один раз за сессию, синхронно внутри `FGV2SessionCoordinator::StartSession()`, до перехода в `Ready`, из тех же resolved package roots, что уже использует репозиторий и Lua-исходники пакета — не из отдельной настройки. Ресурс, чей namespace не входит в замыкание пакетов этой сессии, отсутствует в опубликованном каталоге (как и схемы/скрипты пакета вне замыкания), а не считается ошибкой сборки. Каталог не переживает `EndSession()`.
+- Project `Resources` tree является authoring source; **session-scoped** `UGV2ImageResourceCatalog` (PAH-04B) владеет опубликованным mapping `resource_id → runtime texture + render metadata` и входит частью в session content snapshot (`ADR-0043` D1) наравне со Screen Registry, UI-схемами, Theme и GameShell — не отдельный по владению surface с координированным lifetime. Каталог перестраивается один раз за сессию, синхронно внутри `FGV2SessionCoordinator::StartSession()`, до перехода в `Ready`, из тех же resolved package roots, что уже использует репозиторий и Lua-исходники пакета — не из отдельной настройки. Ресурс, чей namespace не входит в замыкание пакетов этой сессии, отсутствует в опубликованном каталоге (как и схемы/скрипты пакета вне замыкания), а не считается ошибкой сборки. **Целевое правило (закрывает `PAH-R5`):** фильтрация по замыканию пакетов происходит **до** чтения/decode файла, per-package root (`for package in ResolvedPackageClosure: scan Resources/<package_id>/`), а не сканированием всего дерева `Resources/` с последующим отбрасыванием — файл отключённого пакета не должен влиять на bootstrap активной сессии даже если он повреждён. Каталог не переживает `EndSession()`.
 - UE Presentation разрешает resource после repository/catalog validation и до Widget mutation.
 - Headless catalog сохраняет только ID, kind и availability metadata, не загружает texture payload и может не хранить UE-specific image geometry metadata.
 - Screen Template владеет геометрией принимающего image block.
@@ -95,7 +96,7 @@ Render mode кодируется suffix имени source-файла:
 
 `.tile` и `.9` не входят в `resource_id`. Для `.9.png` верхняя граница обязана содержать ровно один непрерывный чёрный marker run, задающий горизонтально растягиваемую область; левая — один run для вертикальной области. Runtime border widths вычисляются относительно внутреннего bitmap после удаления рамки. JSON sidecar для image metadata запрещён.
 
-`FGV2ImagePresentation.ResolveAndApply` является единственным runtime path `resource_id → resolved brush → UImage mutation`: он разрешает configured catalog, проверяет contract target block и атомарно применяет resolved brush. `UGV2ImageWidgetBase.ApplyImageResource(resource_id)` и approved native composite adapters обязаны делегировать ему. Public raw-brush mutation API отсутствует.
+`FGV2ImagePresentation` предоставляет ровно два публичных пути, разделённых Prepare/Apply границей (`STATUS-012`, `ADR-0043` D3): `ResolveAndApply` разрешает `resource_id` через session-scoped catalog и применяет результат за один вызов — легитимно только для caller'ов, которые сами являются точкой разрешения (Prepare/материализация, статическая composition вроде `InitialResourceId`), не для документной Commit-транзакции. `ApplyResolved` принимает уже разрешённый `FGV2ResolvedImageResource` (без доступа к каталогу) и является единственным путём, которым документная Commit-транзакция применяет image resource — Prepare резолвит `resource_id` через каталог и сохраняет результат в подготовленном значении; Commit только вызывает `ApplyResolved`, без повторного catalog lookup. `UGV2ImageWidgetBase.ApplyImageResource(resource_id)` и approved native composite adapters обязаны делегировать одному из этих двух путей согласно тому, в какой фазе они находятся. Public raw-brush mutation API отсутствует.
 
 `UGV2ImageWidgetBase.InitialResourceId` может быть задан конкретным Screen Blueprint для статической composition. При `NativePreConstruct` компонент разрешает его тем же `ApplyImageResource` path; Blueprint не обязан дублировать event graph. Пустое значение означает, что resource будет передан динамически.
 

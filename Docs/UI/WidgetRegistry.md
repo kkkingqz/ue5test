@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.11
-updated: 2026-09-02
+version: 3.12
+updated: 2026-09-07
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -14,6 +14,7 @@ decisions:
   - ../ADR/0016-png-suffix-image-metadata.md
   - ../ADR/0017-centralized-ui-presentation-paths.md
   - ../ADR/0040-universal-ui-property-pipeline.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # Widget Registry Contract
@@ -173,7 +174,7 @@ Repeated-field items обязаны иметь deterministic `key`. Общий `
 
 ## Central style contract
 
-`DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает active theme через UE-only project config. Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
+`DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает identity active theme через UE-only project config, но резолюция происходит один раз — при построении session content snapshot (ADR-0043 D1), не заново на каждый `Commit`. Prepare несёт уже разрешённые typography/style значения; `GetConfiguredTheme()`/`ThemeAsset.LoadSynchronous()` не должны быть достижимы из Apply-фазы (`PAH-R1`, закрывается `PSC-04…06`, `09B`, `10`, `13`). Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
 
 Theme обязан задавать:
 
@@ -207,6 +208,8 @@ Theme обязан задавать:
 3. проверить и нормализовать semantic markup;
 4. разрешить style/color/size tokens через active theme;
 5. передать renderer-у готовую typography и flat runs.
+
+Шаги 1–4 — semantic resolution и принадлежат Prepare/материализации (тот же принцип, что `STATUS-012` уже закрыл для image resources: Prepare разрешает, подготовленное значение несёт готовый результат). Шаг 5 (Apply) обязан только применить уже разрешённую typography — не выполнять шаги 1–4 заново и не обращаться к active theme напрямую (`ADR-0043` D3, закрывает `PAH-R1`).
 
 Theme хранит `TextCatalog`, `TextStyleTokens`, `TextColorTokens`, `TextSizeTokens` и `DefaultTextStyleToken`. Добавление конкретного token или `text_id` является data change и не требует изменения C++. Duplicate/unknown token, missing `text_id` и style без configured CommonUI class отклоняются до Widget mutation.
 

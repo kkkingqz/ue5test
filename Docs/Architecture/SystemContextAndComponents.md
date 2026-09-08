@@ -1,8 +1,8 @@
 ---
 title: System Context and Components
 status: normative
-version: 2.7
-updated: 2026-08-27
+version: 2.8
+updated: 2026-09-07
 depends_on:
   - Overview.md
   - GlossaryAndNaming.md
@@ -15,6 +15,8 @@ decisions:
   - ../ADR/0018-portable-content-core-module.md
   - ../ADR/0019-content-host-support-module.md
   - ../ADR/0040-universal-ui-property-pipeline.md
+  - ../ADR/0042-presentation-authority-and-publication.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # System Context and Components
@@ -46,14 +48,17 @@ decisions:
 | Application | Process mode, session lifecycle, operation coordination, top-level recovery | Content, LuaRuntime, Bridge, Presentation |
 | Content | Package resolution input, repository build, schemas, immutable data | Engine/Core only |
 | LuaRuntime | VM, state, commands, gameplay services, EventBus, UI projection | Content |
-| Presentation | UI/world/audio/resource projection и semantic input capture | Content |
+| Presentation | UI/world/audio/resource projection, semantic input capture, one immutable session content snapshot | Content, PresentationApply |
+| PresentationApply | Физическое применение подготовленной презентационной транзакции: Commit, откат, keyed-реконсиляция, восстановление проекции, чистые расчёты раскладки (ADR-0043 D2) | Engine/Core only |
 | Bridge | Typed value-only façade между LuaRuntime и UE-facing services | Content, LuaRuntime, Presentation |
 
-`Application` — composition root. `Content` — нижний module. `LuaRuntime` и `Presentation` не зависят друг от друга напрямую. Tooling никогда не становится runtime dependency.
+`Application` — composition root. `Content` — нижний module. `LuaRuntime` и `Presentation` не зависят друг от друга напрямую. `PresentationApply` (ADR-0043) — отдельный нижний module физического применения: `Presentation` зависит от него (вызывает единственную public entry point `Apply(transaction)`), а обратная зависимость запрещена графом сборки. Ему запрещена зависимость на `Content`, `LuaRuntime`, `Bridge` и на сам `Presentation` — модулю, которому недоступен тип авторитета/настроек, не нужно знать его имя, чтобы не суметь его прочитать. Tooling никогда не становится runtime dependency.
 
 `GV2ContentCore` является нижней portable library для Content value model, Stable ID, package descriptors, repository build result и validators; её public API и shared sources никогда не выполняют filesystem I/O (ADR-0018). `GV2RuntimeCore` является portable library под `LuaRuntime`/portable DTO и зависит от `GV2ContentCore`, но не от UE Presentation. `GV2` Unreal module и `gv2-headless` являются sibling gameplay host adapters; `gv2-content` — дополнительный portable CLI (`validate`/`inspect`/`hash`), использующий тот же `BuildRepository()` reference path без Lua/UE dependency и без запуска gameplay session.
 
 `GV2ContentHostSupport` (ADR-0019) — отдельная portable library, единственный владелец filesystem-based package discovery (`DiscoverPackageFromDirectory`: сканирует `definitions/*.json5` + self-describing `schemas/*.json5`). Она зависит от `GV2ContentCore` (типы `FPackageDescriptor`/`FDiagnostic`); обратная зависимость запрещена. `gv2-content`, `gv2-headless` и `GV2` (через `FGV2FilesystemContentSourceProvider`) — единственные consumers; ни один из них не дублирует discovery-логику самостоятельно.
+
+`GV2ContentHostSupport::FResolvedPackageSet` (ADR-0043 D1/D5) — portable ordered набор `FResolvedPackageSource` (package root, immutable `FPackageDescriptor`, canonical manifest hash), выводимый ровно один раз. Repository build, загрузка Lua-исходников и сборка UE presentation snapshot принимают его как общий вход; повторное discovery канонического замыкания ниже по течению любым из них запрещено — это второй авторитет того же факта, даже когда он сегодня возвращает тот же результат (`INV-P2`). Тип остаётся portable и не знает про UE; `GV2PresentationApply` (ниже) его не видит вовсе.
 
 `GV2ContentAuthoring` (ADR-0037) — portable write library поверх Core/HostSupport. Она готовит candidate в памяти, вызывает authoritative `BuildRepository()`, проверяет optimistic file stamp и только затем заменяет файл. `GV2ContentEditor` состоит из portable Editor Adapter/form/reference части и editor-only Slate frontend. Gameplay runtime, Headless и Shipping target не зависят ни от authoring, ни от editor/test modules.
 
@@ -63,11 +68,13 @@ Canonical Stable ID parser `GV2ContentCore::FStableId` принадлежит н
 
 ## Unreal module mapping
 
-Проектный Unreal Build Module `GV2` является runtime composition module для UE boundary и presentation integration. Он может зависеть от `Core`, `CoreUObject`, `Engine`, `UMG`, `Slate` и `SlateCore`.
+Проектный Unreal Build Module `GV2` является runtime composition module для UE boundary и presentation integration. Он может зависеть от `Core`, `CoreUObject`, `Engine`, `UMG`, `CommonUI`, `Slate` и `SlateCore`, а также от `GV2PresentationApply` (ниже).
 
 `GV2` не владеет canonical gameplay-state и не добавляет gameplay rules. Новые C++ классы должны сохранять logical ownership из таблицы выше: UE-facing adapters, UMG и DTO относятся к `Presentation` или `Bridge`, а gameplay mutation проходит через Lua `Command Dispatcher`.
 
-Physical mapping использует runtime modules `GV2`, `GV2RuntimeCore`, `GV2ContentCore`, `GV2ContentHostSupport` и editor-only modules `GV2ContentAuthoring`, `GV2ContentEditor`, `GV2TestSupport`. Shared `GV2ContentCore` implementation/public sources запрещено включать Unreal headers или вызывать Lua/filesystem API; filesystem-based package discovery принадлежит исключительно `GV2ContentHostSupport` (ADR-0019), который зависит от `GV2ContentCore`, но не наоборот. Тонкая generated Unreal module-bootstrap translation unit может иметь private dependency на UE `Core`; эта dependency не пересекает portable API и отсутствует у CMake static library. При добавлении native CommonUI bases `CommonUI` становится явной dependency `GV2`; Lua и optional serialization libraries остаются private implementation dependencies соответствующих host/runtime modules.
+**`GV2PresentationApply` (ADR-0043 D2)** — отдельный Unreal Build Module физического применения презентации: Commit, откат, keyed-реконсиляция, восстановление проекции из зафиксированного логического состояния и чистые расчёты раскладки. Разрешённый allowlist зависимостей — ровно `Core`, `CoreUObject`, `Engine`, `UMG`, `CommonUI`, `Slate`, `SlateCore`; explicit denylist — `GV2`, `GV2ContentCore`, `GV2ContentHostSupport`, `GV2RuntimeCore`, `DeveloperSettings`, `AssetRegistry`, `ImageCore` и любой filesystem/content authoring module. Запрет выражен `*.Build.cs` графом сборки, а не соглашением или sourcecode-сканированием (ADR-0043 D4: направление зависимостей и отсутствие типов авторитета в модуле — первичные структурные гарантии; сканирование исходника по именам — второй, менее надёжный рубеж). Единственная public entry point — `Apply(FGV2PreparedPresentationTransaction)`; она принимает только самодостаточную подготовленную транзакцию, несущую уже разрешённые значения (ресурс, класс стиля, дескриптор экрана), а не ссылку/мягкий указатель, по которой авторитет можно было бы получить заново (ADR-0043 D3). `GV2` строит транзакцию через single `FGV2PresentationPrepareContext`, разрешающий semantic-содержимое из session content snapshot, и передаёт готовую транзакцию `GV2PresentationApply::Apply(...)` — обратного пути, минующего эту единственную точку входа, не существует.
+
+Physical mapping использует runtime modules `GV2`, `GV2PresentationApply`, `GV2RuntimeCore`, `GV2ContentCore`, `GV2ContentHostSupport` и editor-only modules `GV2ContentAuthoring`, `GV2ContentEditor`, `GV2TestSupport`. Shared `GV2ContentCore` implementation/public sources запрещено включать Unreal headers или вызывать Lua/filesystem API; filesystem-based package discovery принадлежит исключительно `GV2ContentHostSupport` (ADR-0019), который зависит от `GV2ContentCore`, но не наоборот. Тонкая generated Unreal module-bootstrap translation unit может иметь private dependency на UE `Core`; эта dependency не пересекает portable API и отсутствует у CMake static library. `CommonUI` — явная dependency `GV2` и `GV2PresentationApply`; Lua и optional serialization libraries остаются private implementation dependencies соответствующих host/runtime modules.
 
 ### C++ implementation profile
 
@@ -89,8 +96,14 @@ Source/GV2ContentCore/
   Public/            Stable ID, value/diagnostic/package/schema-registry/scalar-validation/build-result API
   Private/           portable validators и reference repository build path; no filesystem I/O (ADR-0018)
 Source/GV2ContentHostSupport/
-  Public/            DiscoverPackageFromDirectory() и другие filesystem-based discovery helpers (ADR-0019)
+  Public/            DiscoverPackageFromDirectory(), FResolvedPackageSet и другие filesystem-based
+                     discovery helpers (ADR-0019); portable, не знает про UE
   Private/           std::filesystem-based implementation; depends on GV2ContentCore, not vice versa
+Source/GV2PresentationApply/   (ADR-0043 D2 -- target module, вводится PSC-11)
+  Public/            единственная public transaction Apply entry point и её DTO
+  Private/           Commit, откат, keyed-реконсиляция, восстановление проекции, чистые расчёты
+                     раскладки; allowlist -- Core/CoreUObject/Engine/UMG/CommonUI/Slate/SlateCore,
+                     без GV2/content/authority modules
 Source/GV2ContentAuthoring/
   Public/            authoring operations, typed outcomes и file-state stamp
   Private/           comment-preserving rewrite, candidate validation и atomic file replacement
@@ -115,7 +128,7 @@ Scripts/
 Имена concrete private classes являются implementation baseline, но не compatibility API. Нормативны следующие границы:
 
 - `UGV2RuntimeSubsystem : UGameInstanceSubsystem` — единственный Blueprint-facing façade runtime/session уровня.
-- `FGV2SessionCoordinator` владеет UE active session composition: generation, pinned repository handle, portable runtime session, ingress queue, UI binding registry, operations и latest accepted Presentation Snapshot.
+- `FGV2SessionCoordinator` владеет UE active session composition: generation, portable runtime session, ingress queue, UI binding registry, operations и ровно одним неизменяемым `FGV2SessionContentSnapshot` (ADR-0043 D1) -- он агрегирует pinned repository handle, exact resolved package set, скомпилированные UI-схемы, разрешённый Screen Registry, Image Catalog, Theme и GameShell layer identity под одним владельцем вместо раздельных по времени жизни, но не по владению surfaces. Candidate snapshot остаётся private до полной сборки; публикация атомарна вместе с успешным initial Commit/переходом в `Ready` (см. [Bootstrap and Session Lifecycle](BootstrapAndSessionLifecycle.md)). Никакой глобальный аксессор настроек или статический кэш не остаётся путём получения authority в рантайме -- только snapshot/context, полученный от coordinator.
 - `GV2ScreenFieldMaterializer` выполняет универсальную материализацию schema-driven Screen Fields на основе скомпилированных UI-схем (`FCompiledUiFieldSpec`); извлекает binding definitions и строит typed `FGV2ScreenFieldValue` без использования per-schema C++ классов-адаптеров.
 - `GV2RuntimeCore::FRuntimeSession` является STL-only public façade; Lua headers и `lua_State*` остаются в его private implementation.
 - `FGV2UiDocumentReconciler`, Screen Registry, Widget Registry и Semantic Input Adapter принадлежат Presentation/Bridge, но не LuaRuntime.
@@ -180,12 +193,12 @@ Public C++ headers не выставляют Lua types, JSON strings, Slate impl
 - Presentation coordinator и snapshot reconciler.
 - UI document renderer и Game Shell.
 - Route/layer manager.
-- Screen Registry и Widget Registry.
-- Central UI theme settings/Data Asset и style consumers.
+- Screen Registry, Widget Registry и Theme -- разрешённые значения session content snapshot (ADR-0043 D1), не отдельные по времени жизни authority-surfaces со своим доступом к config/DataAsset из фазы Apply.
 - Semantic input adapter.
 - Resource resolver/streaming service.
-- Startup filesystem scanner и Image Resource Catalog с `fixed_aspect`/`nine_slice`/`tile` metadata.
+- Startup filesystem scanner и Image Resource Catalog с `fixed_aspect`/`nine_slice`/`tile` metadata -- построение принадлежит snapshot candidate build, не Apply.
 - Localization, portrait/character, world и audio presenters.
+- `PresentationApply` (ADR-0043 D2) -- физическое применение подготовленной транзакции; отдельный module, не подраздел Presentation.
 
 ## Dependency rules
 

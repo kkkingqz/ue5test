@@ -15,6 +15,7 @@ decisions:
   - ../ADR/0040-universal-ui-property-pipeline.md
   - ../ADR/0041-ui-commit-rollback-model.md
   - ../ADR/0042-presentation-authority-and-publication.md
+  - ../ADR/0043-presentation-apply-boundary.md
 ---
 
 # UI Document and Reconciliation
@@ -256,6 +257,15 @@ Publication является atomic: registry сначала валидируе�
 - `CatastrophicRecoveryFailed` — даже пересборка из `LastCommittedDocument` не удалась (либо его вообще не было — самый первый документ сессии откатился неудачно). Инвариантный случай без дальнейшего fallback; структурно возможен, специальным тестом не покрыт.
 
 Катастрофическое восстановление (`PerformCatastrophicRecovery`): `Shell->ClearAllLayers()` (уже существующий метод `UGV2GameShellWidgetBase`) отбрасывает физическое дерево целиком; `ActiveScreens` очищается; затем `LastCommittedDocument` реконсилируется заново обычным Prepare/Commit **без** test-инжекторов (production-поведение, даже когда восстановление вызвано инжектированным тестовым отказом) — «обычный свежий Prepare/Apply против пустого GameShell», не восстановление сериализованного физического состояния. Каждый экран создаётся заново через тот же production `ScreenFactory`; `UI-local` состояние (фокус, наведение, прогресс анимации — то, что [ADR-0035](../ADR/0035-ui-foundation-and-composition.md) уже относит к переходному) теряется, как и при обычном создании нового экрана; состав, порядок в каждом слое, значения полей и активная вкладка, заданная документом, восстанавливаются — это ровно тот канонический набор, который раздел «Route/layer rules» ниже и `FGV2KeyedCollection::ReconcilePrepared` (раздел «Reconciliation» выше) уже гарантируют для любого обычного `Reconcile`.
+
+## Apply boundary (ADR-0043 — target rule, PSC-09A…11)
+
+Реконсиляция выше описывает текущую реализацию: `FGV2LayeredUiReconciler` живёт в `GV2` и выполняет и semantic resolution, и физическое применение в одних и тех же `PrepareReconcile`/`CommitReconcile`. Целевое правило `ADR-0043` разделяет это на две стороны структурной границы, которую `PSC-01…14` вводит поэтапно:
+
+- **`GV2` (semantic Prepare)** разрешает `screen_id` → Widget class, ресурсы, стиль/тему, порядок слоя и вложенные экраны через один `FGV2PresentationPrepareContext`, построенный из session content snapshot ([Bootstrap and Session Lifecycle § Cold start](../Architecture/BootstrapAndSessionLifecycle.md#cold-start)). Результат — самодостаточная `FGV2PreparedPresentationTransaction`, несущая уже разрешённые значения (ресурс, класс стиля, дескриптор экрана), а не Stable ID или ссылку, по которой их можно получить заново; Stable ID в ней допустим только как identity/diagnostic metadata, не как lookup key для Apply.
+- **`GV2PresentationApply` (физическое применение)** получает только эту транзакцию и выполняет Commit, откат, keyed-реконсиляцию слоёв и восстановление проекции — той же `FGV2KeyedCollection::ReconcilePrepared` формой, что уже описана выше, и тем же двухуровневым восстановлением, что описано в «Presentation health and catastrophic recovery». Единственная public entry point — `GV2PresentationApply::Apply(transaction)`; второго пути, минующего её, не существует. Модулю недоступны типы snapshot, repository, package set, Screen Registry или Theme source — ему нечем их прочитать, даже если Prepare что-то упустит.
+
+Каждый вид операции (route/overlay/modal attach, keyed collection item, nested tab, resource, text/style) проходит через транзакцию одного вида; второго пути для того же вида операции, минующего транзакцию, не остаётся. Это не меняет наблюдаемое поведение Prepare/Commit, описанное выше в этом документе, — меняется, какой модуль физически способен выполнить какую часть, и это выражено графом сборки, а не соглашением.
 
 ## Full update policy
 
