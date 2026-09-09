@@ -8,7 +8,8 @@
 void UGV2CheckboxWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: runtime style arrives as FPreparedCheckboxStyle; serialized checkbox and
+    // label styles already render at design time. See UGV2SeparatorWidgetBase.
 }
 
 void UGV2CheckboxWidgetBase::NativeConstruct()
@@ -91,24 +92,23 @@ bool UGV2CheckboxWidgetBase::ApplyText(const FGV2TextViewModel& InText)
     return true;
 }
 
+void UGV2CheckboxWidgetBase::ApplyCheckboxStyleValues(const FCheckBoxStyle& InWidgetStyle, TSubclassOf<UCommonTextStyle> InDefaultLabelStyle)
+{
+    if (Checkbox != nullptr)
+    {
+        Checkbox->SetWidgetStyle(InWidgetStyle);
+    }
+    // See UGV2ButtonWidgetBase::ApplyButtonStyleValues for why a token-carrying label is
+    // deliberately left to its own text operation.
+    if (LabelText != nullptr && InDefaultLabelStyle != nullptr && AppliedText.StyleToken.IsNone())
+    {
+        LabelText->SetStyle(InDefaultLabelStyle);
+    }
+}
+
 bool UGV2CheckboxWidgetBase::ApplyCentralStyle_Implementation()
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || Checkbox == nullptr || LabelText == nullptr
-        || Theme->CheckboxLabelStyle == nullptr)
-    {
-        return false;
-    }
-
-    Checkbox->SetWidgetStyle(Theme->CheckboxStyle);
-
-    const TSubclassOf<UCommonTextStyle> LabelStyle = AppliedText.StyleToken.IsNone()
-        ? Theme->CheckboxLabelStyle
-        : UGV2TextPipeline::ResolveStyleClass(AppliedText.StyleToken);
-
-    if (LabelStyle == nullptr) return false;
-    LabelText->SetStyle(LabelStyle);
-
+    // PSC-10B: carried by FPreparedCheckboxStyle, written by ApplyCheckboxStyleValues.
     return true;
 }
 

@@ -6,10 +6,13 @@
 #include "Components/PanelWidget.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2ButtonListWidgetBase.h"
+#include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2CheckboxWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
+#include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiTheme.h"
 
 namespace
@@ -84,6 +87,38 @@ void EmitForWidget(UWidget* Widget, const UGV2UiTheme& Theme, FGV2PreparedPresen
         FPreparedCentralStyleOperation Operation;
         Operation.TargetWidget = LoadingIndicator;
         Operation.Payload.Set<FPreparedLoadingIndicatorStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    // Button must be tested before Checkbox only in the sense that both are independent
+    // classes -- the order of these branches carries no precedence, each Cast is exact.
+    if (UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(Widget))
+    {
+        FPreparedButtonStyle Style;
+        Style.ButtonStyle = Theme.ButtonStyle;
+        // The theme names the button-label default explicitly; the scale policy for it
+        // comes from the theme's own default text token, resolved by the text pipeline so
+        // this preparer does not become a second implementation of that math.
+        Style.DefaultLabelStyle = Theme.ButtonLabelStyle;
+        Style.DefaultLabelScale = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, NAME_None);
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = Button;
+        Operation.Payload.Set<FPreparedButtonStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    if (UGV2CheckboxWidgetBase* Checkbox = Cast<UGV2CheckboxWidgetBase>(Widget))
+    {
+        FPreparedCheckboxStyle Style;
+        Style.WidgetStyle = Theme.CheckboxStyle;
+        Style.DefaultLabelStyle = Theme.CheckboxLabelStyle;
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = Checkbox;
+        Operation.Payload.Set<FPreparedCheckboxStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
     }
 }

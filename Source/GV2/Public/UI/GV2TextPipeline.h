@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Bridge/GV2BridgeTypes.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Styling/SlateTypes.h"
 #include "GV2TextPipeline.generated.h"
@@ -10,7 +11,9 @@ class UCommonRichTextBlock;
 class UCommonTextStyle;
 class UEditableTextBox;
 class UWidget;
+
 class FGV2PresentationPrepareContext;
+class UGV2UiTheme;
 
 UCLASS()
 class GV2_API UGV2TextPipeline : public UBlueprintFunctionLibrary
@@ -46,6 +49,15 @@ public:
     static bool ResolveStyle(FName StyleToken, FTextBlockStyle& OutStyle, const UWidget* ContextWidget = nullptr);
     static bool ResolveStyleForHeight(FName StyleToken, FTextBlockStyle& OutStyle, float ViewportHeight);
     static TSubclassOf<UCommonTextStyle> ResolveStyleClass(FName StyleToken);
+
+    // PSC-10B: the same theme -> style-class / scale-policy resolution Resolve() performs
+    // for a text operation, against an explicitly supplied Theme rather than the configured
+    // one. GV2CentralStylePreparer needs exactly this to build a central-style role's
+    // default-label fields, and taking it from here keeps one implementation of the math
+    // instead of a second copy in the preparer. A null StyleToken resolves the same way
+    // Resolve() resolves it: the theme's DefaultTextStyleToken, else "default".
+    static TSubclassOf<UCommonTextStyle> ResolveStyleClassForTheme(const UGV2UiTheme* Theme, FName StyleToken);
+    static GV2PresentationApply::FPreparedTextScalePolicy ResolveScalePolicyForTheme(const UGV2UiTheme* Theme, FName StyleToken);
     static bool Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text);
     static bool ApplyRichText(UCommonRichTextBlock* Widget, const FGV2TextViewModel& Text, const UWidget* ContextWidget = nullptr);
     static bool ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text);

@@ -9,6 +9,7 @@
 #include "Components/VerticalBox.h"
 #include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2CheckboxWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ImageWidgetBase.h"
@@ -596,6 +597,28 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                             return;
                         }
                         LoadingIndicator->ApplyLoadingIndicatorStyleValues(Style.Brush, Style.Period, Style.Radius, Style.Pieces);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedButtonStyle& Style)
+                    {
+                        UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(Widget);
+                        if (Button == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: button style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        Button->ApplyButtonStyleValues(Style.ButtonStyle, Style.DefaultLabelStyle, Style.DefaultLabelScale);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedCheckboxStyle& Style)
+                    {
+                        UGV2CheckboxWidgetBase* Checkbox = Cast<UGV2CheckboxWidgetBase>(Widget);
+                        if (Checkbox == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: checkbox style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        Checkbox->ApplyCheckboxStyleValues(Style.WidgetStyle, Style.DefaultLabelStyle);
                     }
                 }, Op.Payload);
             }

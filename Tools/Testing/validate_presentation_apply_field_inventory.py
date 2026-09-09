@@ -89,6 +89,7 @@ ALLOWED_BASE_TYPES = {
     "FLinearColor",
     "FMargin",
     "FProgressBarStyle",
+    "FCheckBoxStyle",
 }
 
 # UObject-derived types a TWeakObjectPtr<...> field may point to. Structurally, this
@@ -110,6 +111,8 @@ ALLOWED_WEAK_OBJECT_TARGETS = {
 # GV2-owned class here, this is the narrower explicit allowlist of plain CommonUI types.
 ALLOWED_SUBCLASS_TARGETS = {
     "UCommonTextStyle",
+    # PSC-10B: CommonUI's own button style class, same category as UCommonTextStyle above.
+    "UCommonButtonStyle",
 }
 
 

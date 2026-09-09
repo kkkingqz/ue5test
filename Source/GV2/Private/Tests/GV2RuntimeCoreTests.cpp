@@ -7,6 +7,7 @@
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionContentSnapshot.h"
 #include "Blueprint/UserWidget.h"
+#include "UObject/UObjectIterator.h"
 #include "Components/VerticalBox.h"
 #include "Blueprint/WidgetTree.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
@@ -2196,6 +2197,121 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     IGV2UiStyleConsumer::Execute_ApplyCentralStyle(Separator);
     TestEqual(TEXT("The widget's own style entry point resolves NOTHING and leaves the sentinel in place"),
         Separator->ReadAppliedThickness(), Sentinel);
+
+    Coordinator.EndSession();
+    return true;
+}
+
+// PSC-10B: the actual set of central-style targets is the set of classes implementing
+// IGV2UiStyleConsumer -- enumerated from the reflection system here, never typed into this
+// test. Each is instantiated and offered to the real preparer; a class that emits no
+// central-style operation is not yet on the push model and must be named in
+// NOT_YET_CONVERTED below, with the entry removed as soon as it converts.
+//
+// This is the gate that makes the remaining work impossible to lose: a NEW style consumer
+// added without a prepared role fails here rather than silently pulling a Theme, and a
+// converted class left on the list fails here too, so the list cannot rot into a
+// permanent exemption.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CentralStyleImplementationInventoryTest,
+    "GV2.Runtime.Presentation.CentralStyleImplementationInventory",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2CentralStyleImplementationInventoryTest::RunTest(const FString& Parameters)
+{
+    // Classes still reading a Theme inside their own ApplyCentralStyle. Each is blocked on
+    // the same open question, not on volume: their style depends on a text style token
+    // committed in the SAME transaction, so a role resolved before that commit would carry
+    // a stale token. See PSC-10B's implementation record.
+    const TSet<FString> NotYetConverted = {
+        TEXT("GV2DropdownSelectWidgetBase"),
+        TEXT("GV2InputFieldWidgetBase"),
+        TEXT("GV2RichTextPopoverWidgetBase"),
+        TEXT("GV2RichTextWidgetBase"),
+        // Style consumers whose ApplyCentralStyle body carries no Theme read at all
+        // (PSC-10B slice 1 removed the dead null-check). They need no role.
+        TEXT("GV2GameShellWidgetBase"),
+        TEXT("GV2ListViewWidgetBase"),
+        TEXT("GV2ModalWidgetBase"),
+        TEXT("GV2PanelWidgetBase"),
+        TEXT("GV2PortraitWidgetBase"),
+        TEXT("GV2ScrollAreaWidgetBase"),
+        TEXT("GV2TabContainerWidgetBase"),
+        TEXT("GV2TextWidgetBase"),
+    };
+
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("Session publishes a content snapshot"), Snapshot);
+    if (Snapshot == nullptr)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
+
+    TSet<FString> ObservedUnconverted;
+    int32 InspectedCount = 0;
+    for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+    {
+        UClass* Class = *ClassIt;
+        if (!Class->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
+        {
+            continue;
+        }
+        if (Class->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
+        {
+            continue;
+        }
+        // Native production classes only: Blueprint-generated subclasses and this suite's
+        // own test seams inherit their base's role and would double-count it.
+        if (!Class->HasAnyClassFlags(CLASS_Native) || Class->HasMetaData(TEXT("GV2TestOnly")))
+        {
+            continue;
+        }
+        if (!Class->IsChildOf(UWidget::StaticClass()))
+        {
+            continue;
+        }
+
+        ++InspectedCount;
+        UWidget* Instance = NewObject<UWidget>(GetTransientPackage(), Class);
+        GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+        GV2CentralStylePreparer::PrepareForSubtree(Instance, PrepareContext, Transaction);
+        if (Transaction.GetOperations().Num() == 0)
+        {
+            ObservedUnconverted.Add(Class->GetName());
+        }
+    }
+
+    TestTrue(TEXT("The reflection walk actually found style consumers to inspect"), InspectedCount > 0);
+
+    for (const FString& ClassName : ObservedUnconverted)
+    {
+        TestTrue(
+            *FString::Printf(
+                TEXT("'%s' implements IGV2UiStyleConsumer but the preparer emits no central-style "
+                     "operation for it -- give it a prepared role, or classify it in NOT_YET_CONVERTED"),
+                *ClassName),
+            NotYetConverted.Contains(ClassName));
+    }
+
+    for (const FString& ClassName : NotYetConverted)
+    {
+        TestTrue(
+            *FString::Printf(
+                TEXT("NOT_YET_CONVERTED names '%s', which now emits a central-style operation (or no "
+                     "longer exists) -- remove the stale entry"),
+                *ClassName),
+            ObservedUnconverted.Contains(ClassName));
+    }
 
     Coordinator.EndSession();
     return true;

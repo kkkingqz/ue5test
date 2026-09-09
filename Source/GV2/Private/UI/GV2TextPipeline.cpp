@@ -228,6 +228,33 @@ bool UGV2TextPipeline::Resolve(
     return NormalizeMarkup(OutText.Text.ToString(), OutText.NormalizedMarkup, OutError);
 }
 
+static FName ResolveEffectiveStyleToken(const UGV2UiTheme* Theme, FName StyleToken)
+{
+    if (!StyleToken.IsNone())
+    {
+        return StyleToken;
+    }
+    return (Theme != nullptr && !Theme->DefaultTextStyleToken.IsNone())
+        ? Theme->DefaultTextStyleToken
+        : FName("default");
+}
+
+TSubclassOf<UCommonTextStyle> UGV2TextPipeline::ResolveStyleClassForTheme(const UGV2UiTheme* Theme, FName StyleToken)
+{
+    return ResolveStyleClassCore(Theme, ResolveEffectiveStyleToken(Theme, StyleToken));
+}
+
+GV2PresentationApply::FPreparedTextScalePolicy UGV2TextPipeline::ResolveScalePolicyForTheme(const UGV2UiTheme* Theme, FName StyleToken)
+{
+    const FName EffectiveToken = ResolveEffectiveStyleToken(Theme, StyleToken);
+    GV2PresentationApply::FPreparedTextScalePolicy Policy;
+    Policy.BaseFontSize = Theme != nullptr ? Theme->ResolveUnscaledFontSize(EffectiveToken) : 14.0f;
+    Policy.MinReadableFontSize = Theme != nullptr ? Theme->MinReadableFontSize : 10.0f;
+    Policy.ReferenceViewportHeight = Theme != nullptr ? Theme->ReferenceViewportHeight : 1080.0f;
+    Policy.ScaleCurve = Theme != nullptr ? Theme->TextScaleCurve : FRuntimeFloatCurve();
+    return Policy;
+}
+
 float UGV2TextPipeline::GetViewportHeight(const UWidget* ContextWidget)
 {
     const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();

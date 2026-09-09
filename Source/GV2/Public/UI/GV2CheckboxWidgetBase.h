@@ -73,6 +73,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     bool ApplyText(const FGV2TextViewModel& InText);
 
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
+    void ApplyCheckboxStyleValues(const FCheckBoxStyle& InWidgetStyle, TSubclassOf<UCommonTextStyle> InDefaultLabelStyle);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonButtonBase.h"
 #include "UI/GV2UiStyleConsumer.h"
@@ -52,6 +53,13 @@ public:
 
     UCommonTextBlock* GetLabelText() const { return LabelText; }
     const FGV2TextViewModel& GetTextViewModel() const { return CurrentTextViewModel; }
+
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
+    void ApplyButtonStyleValues(
+        TSubclassOf<UCommonButtonStyle> InButtonStyle,
+        TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
+        const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale);
 
     virtual bool ApplyCentralStyle_Implementation() override;
 

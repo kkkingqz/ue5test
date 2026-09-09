@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CommonButtonBase.h"
 #include "CommonTextBlock.h"
 #include "CoreMinimal.h"
 #include "Curves/CurveFloat.h"
@@ -400,6 +401,24 @@ struct GV2PRESENTATIONAPPLY_API FPreparedProgressBarStyle
     FLinearColor FillColor = FLinearColor::White;
 };
 
+// PSC-10B: DefaultLabelStyle/DefaultLabelScale are the style a label carrying NO style
+// token would otherwise have none at all. A label that does carry a token was already
+// styled by that token's own text operation, earlier in the same transaction -- central
+// style deliberately does not restyle it, which is what removes the duplicate resolution
+// these classes used to perform on every ApplyCentralStyle call.
+struct GV2PRESENTATIONAPPLY_API FPreparedButtonStyle
+{
+    TSubclassOf<UCommonButtonStyle> ButtonStyle;
+    TSubclassOf<UCommonTextStyle> DefaultLabelStyle;
+    FPreparedTextScalePolicy DefaultLabelScale;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedCheckboxStyle
+{
+    FCheckBoxStyle WidgetStyle;
+    TSubclassOf<UCommonTextStyle> DefaultLabelStyle;
+};
+
 struct GV2PRESENTATIONAPPLY_API FPreparedLoadingIndicatorStyle
 {
     FSlateBrush Brush;
@@ -413,7 +432,9 @@ using FPreparedCentralStylePayload = TVariant<
     FPreparedTintStyle,
     FPreparedItemPaddingStyle,
     FPreparedProgressBarStyle,
-    FPreparedLoadingIndicatorStyle
+    FPreparedLoadingIndicatorStyle,
+    FPreparedButtonStyle,
+    FPreparedCheckboxStyle
 >;
 
 // TargetWidget is a GV2-owned widget base for every role that exists today, so the
