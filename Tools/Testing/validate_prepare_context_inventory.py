@@ -39,6 +39,8 @@ CLASSIFIED_SITES = {
         "PrepareUiHostProperties parameter",
     ("UI/GV2TextPipeline.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):
         "PSC-10A: UGV2TextPipeline::Resolve parameter -- routes Theme through the session snapshot instead of GetConfiguredTheme() and populates FGV2TextViewModel's resolved-presentation fields",
+    ("UI/GV2CentralStylePreparer.h", "const FGV2PresentationPrepareContext& PrepareContext,"):
+        "PSC-10B: GV2CentralStylePreparer::PrepareForSubtree parameter -- the only place a Theme is read on behalf of a styled widget; turns it into central-style operations on the caller's transaction. By reference, not pointer: unlike the Prepare paths above there is no legacy no-context call site to keep working, so a caller without a snapshot cannot reach this function at all",
 }
 
 

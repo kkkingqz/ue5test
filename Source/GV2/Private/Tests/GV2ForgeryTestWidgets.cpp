@@ -1,5 +1,8 @@
 #include "Tests/GV2ForgeryTestWidgets.h"
 
+#include "Blueprint/WidgetTree.h"
+#include "Components/Image.h"
+#include "Components/SizeBox.h"
 #include "UI/GV2UiCapability.h"
 
 EGV2ForgeryMode& UGV2ForgeryEntryTestWidget::ModeForNextInstance()
@@ -38,4 +41,27 @@ void UGV2ForgeryEntryTestWidget::DescribeUiCapabilities(FGV2UiCapabilityBuilder&
 void UGV2NewHostAddedOnlyInTestWidget::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
     OutBuilder.AddKey(TEXT("key"), NAME_None);
+}
+
+void UGV2SeparatorBoundTestWidget::BuildBoundSubWidgets()
+{
+    WidgetTree = NewObject<UWidgetTree>(this);
+    SeparatorSizeBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("SeparatorSizeBox"));
+    SeparatorImage = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("SeparatorImage"));
+    SeparatorSizeBox->AddChild(SeparatorImage);
+    WidgetTree->RootWidget = SeparatorSizeBox;
+}
+
+float UGV2SeparatorBoundTestWidget::ReadAppliedThickness() const
+{
+    if (SeparatorSizeBox == nullptr)
+    {
+        return -1.0f;
+    }
+    return IsHorizontal() ? SeparatorSizeBox->GetHeightOverride() : SeparatorSizeBox->GetWidthOverride();
+}
+
+FSlateBrush UGV2SeparatorBoundTestWidget::ReadAppliedBrush() const
+{
+    return SeparatorImage != nullptr ? SeparatorImage->GetBrush() : FSlateBrush();
 }

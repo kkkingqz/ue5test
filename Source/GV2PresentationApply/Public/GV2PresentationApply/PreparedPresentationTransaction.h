@@ -365,6 +365,49 @@ enum class EGV2PreparedOperationKind : uint8
     PlainText,
     RichTextRender,
     TextHint,
+    CentralStyle,
+};
+
+// PSC-10B (ADR-0043 D3): central style as prepared operations. The payload is a VARIANT
+// BY STYLE ROLE, not one struct with an optional field per widget class: a bag of
+// optionals would accept a new style target silently, which is the shape this plan exists
+// to remove. A new role without an Apply alternative is a compile error, exactly like a
+// new operation kind.
+//
+// Roles carry finished physical values -- brush, colour, thickness, padding -- resolved
+// by Prepare from the session snapshot's theme. Apply performs no lookup and holds no
+// reference to a theme, resolved or otherwise.
+struct GV2PRESENTATIONAPPLY_API FPreparedSeparatorStyle
+{
+    FSlateBrush Brush;
+    float Thickness = 1.0f;
+    bool bHorizontal = true;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedTintStyle
+{
+    FLinearColor Tint = FLinearColor::White;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedItemPaddingStyle
+{
+    FMargin Padding;
+};
+
+using FPreparedCentralStylePayload = TVariant<
+    FPreparedSeparatorStyle,
+    FPreparedTintStyle,
+    FPreparedItemPaddingStyle
+>;
+
+// TargetWidget is a GV2-owned widget base for every role that exists today, so the
+// physical write lands in GV2LegacyPresentationApplyAdapter until PSC-12 moves those
+// UCLASSes down -- the same split PSC-09B established for image hosts. The operation
+// itself, and every value in it, already lives here.
+struct GV2PRESENTATIONAPPLY_API FPreparedCentralStyleOperation
+{
+    TWeakObjectPtr<UWidget> TargetWidget;
+    FPreparedCentralStylePayload Payload;
 };
 
 using FGV2PreparedOperationVariant = TVariant<
@@ -384,7 +427,8 @@ using FGV2PreparedOperationVariant = TVariant<
     FPreparedTabContainerOperation,
     FPreparedPlainTextOperation,
     FPreparedRichTextRenderOperation,
-    FPreparedTextHintOperation
+    FPreparedTextHintOperation,
+    FPreparedCentralStyleOperation
 >;
 
 GV2PRESENTATIONAPPLY_API EGV2PreparedOperationKind GetPreparedOperationKind(const FGV2PreparedOperationVariant& Operation);
@@ -472,6 +516,11 @@ public:
     void AddTextHintOperation(FPreparedTextHintOperation Operation)
     {
         AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedTextHintOperation>(), MoveTemp(Operation)));
+    }
+
+    void AddCentralStyleOperation(FPreparedCentralStyleOperation Operation)
+    {
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedCentralStyleOperation>(), MoveTemp(Operation)));
     }
 
     const TArray<FGV2PreparedOperationVariant>& GetOperations() const { return Operations; }

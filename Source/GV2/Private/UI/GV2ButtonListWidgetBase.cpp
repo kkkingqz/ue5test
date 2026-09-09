@@ -6,14 +6,15 @@
 #include "Components/VerticalBoxSlot.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2UiCapability.h"
-#include "UI/GV2UiTheme.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2ButtonListWidget, Log, All);
 
 void UGV2ButtonListWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: runtime item padding arrives as FPreparedItemPaddingStyle. There is nothing
+    // serialized on this widget to re-apply at design time -- the Blueprint's own slot
+    // paddings already render -- so design-time preview does nothing at all.
 }
 
 void UGV2ButtonListWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
@@ -61,21 +62,25 @@ UGV2ButtonWidgetBase* UGV2ButtonListWidgetBase::GetButton(const FName ButtonKey)
     return nullptr;
 }
 
-bool UGV2ButtonListWidgetBase::ApplyCentralStyle_Implementation()
+void UGV2ButtonListWidgetBase::ApplyItemPaddingStyleValue(const FMargin& Padding)
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || ButtonContainer == nullptr)
+    if (ButtonContainer == nullptr)
     {
-        return false;
+        return;
     }
 
     for (UPanelSlot* PanelSlot : ButtonContainer->GetSlots())
     {
         if (UVerticalBoxSlot* Slot = Cast<UVerticalBoxSlot>(PanelSlot))
         {
-            Slot->SetPadding(Theme->ButtonListItemPadding);
+            Slot->SetPadding(Padding);
         }
     }
+}
+
+bool UGV2ButtonListWidgetBase::ApplyCentralStyle_Implementation()
+{
+    // PSC-10B: carried by FPreparedItemPaddingStyle, written by ApplyItemPaddingStyleValue.
     return true;
 }
 

@@ -35,6 +35,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
+    void ApplyItemPaddingStyleValue(const FMargin& Padding);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
     // IGV2UiPropertyHost

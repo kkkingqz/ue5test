@@ -63,6 +63,10 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Image")
     FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
+    void ApplyImageTintStyleValue(const FLinearColor& Tint);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
     // IGV2UiPropertyHost

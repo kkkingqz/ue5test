@@ -239,6 +239,15 @@ bool Apply(const FGV2PreparedPresentationTransaction& Transaction, FString& OutE
                 {
                     Widget->SetHintText(Op.Text);
                 }
+            },
+            [](const FPreparedCentralStyleOperation&)
+            {
+                // PSC-10B: every central-style role targets a GV2-owned widget base today,
+                // which this module cannot Cast to by construction (Build.cs denylist), so
+                // GV2LegacyPresentationApplyAdapter performs the physical write from the
+                // same operation -- not a second resolution. When PSC-12 moves those
+                // UCLASSes down, the write moves here with them and this branch stops
+                // being empty.
             }
         }, Operation);
     }

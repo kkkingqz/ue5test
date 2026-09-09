@@ -2,6 +2,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "GV2ForgeryTestWidgets.generated.h"
 
@@ -70,4 +71,24 @@ public:
 
 private:
     FGV2UiPropertyHostState PropertyHostState;
+};
+
+/**
+ * PSC-10B: a Separator whose `meta = (BindWidget)` sub-widgets are populated the way a
+ * Widget Blueprint's generated class would populate them, so a C++-only test can observe
+ * the PHYSICAL result of a central-style operation. It adds no behaviour of its own -- it
+ * neither overrides ApplyCentralStyle nor touches a Theme -- so what the test observes is
+ * UGV2SeparatorWidgetBase's own production write path, not a stand-in for it.
+ */
+UCLASS(meta = (GV2TestOnly))
+class UGV2SeparatorBoundTestWidget : public UGV2SeparatorWidgetBase
+{
+    GENERATED_BODY()
+
+public:
+    void BuildBoundSubWidgets();
+    void SetTestOrientation(EOrientation InOrientation) { Orientation = InOrientation; }
+
+    float ReadAppliedThickness() const;
+    FSlateBrush ReadAppliedBrush() const;
 };

@@ -15,6 +15,17 @@ class GV2_API UGV2SeparatorWidgetBase
     GENERATED_BODY()
 
 public:
+    // PSC-10B: read by the preparer to pick the axis; the widget itself no longer decides
+    // anything about its style, only which of two prepared values the axis field carries.
+    bool IsHorizontal() const { return Orientation == Orient_Horizontal; }
+
+    // PSC-10B: the ONLY physical central-style write for this class. Pure value sink --
+    // every input is a finished value, so it cannot reach a Theme, a settings object or
+    // any other runtime authority no matter who calls it. Prepare resolves the values and
+    // ships them inside FGV2PreparedPresentationTransaction; design-time preview passes
+    // this widget's own serialized values. Both callers hit this one function.
+    void ApplySeparatorStyleValues(const FSlateBrush& Brush, float Thickness, bool bHorizontal);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:

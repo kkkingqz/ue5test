@@ -18,6 +18,7 @@
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2ScreenWidgetBase.h"
+#include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2TextWidgetBase.h"
@@ -451,6 +452,14 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                 // Newly added slots have no styling of their own; let the container
                 // reapply its central style (e.g. per-item slot padding) now that the
                 // collection has settled.
+                //
+                // PSC-10B: this is the last surviving PULL of central style from a Commit
+                // path, and it is on the list to go. For a class already converted to the
+                // push model it is already a no-op -- FGV2LayeredUiReconciler applies that
+                // class's prepared central-style operation right after this screen's field
+                // commit, which is after this line has run and the slots exist. It stays
+                // only until the remaining style consumers are converted, at which point
+                // it is deleted rather than left as an alternative route.
                 if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
                 {
                     IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
@@ -519,7 +528,54 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
             },
             [](const GV2PresentationApply::FPreparedPlainTextOperation&) {},
             [](const GV2PresentationApply::FPreparedRichTextRenderOperation&) {},
-            [](const GV2PresentationApply::FPreparedTextHintOperation&) {}
+            [](const GV2PresentationApply::FPreparedTextHintOperation&) {},
+            [&bFailed, &OutError](const GV2PresentationApply::FPreparedCentralStyleOperation& Op)
+            {
+                // PSC-10B: every branch is a pure value handoff into the target's own
+                // value-sink method. No Theme, no settings, no token lookup -- Prepare
+                // already turned the theme into the brush/colour/margin sitting in Op.
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (Widget == nullptr)
+                {
+                    return;
+                }
+
+                Visit(TOverloaded{
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedSeparatorStyle& Style)
+                    {
+                        UGV2SeparatorWidgetBase* Separator = Cast<UGV2SeparatorWidgetBase>(Widget);
+                        if (Separator == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: separator style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        Separator->ApplySeparatorStyleValues(Style.Brush, Style.Thickness, Style.bHorizontal);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedTintStyle& Style)
+                    {
+                        UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget);
+                        if (ImageBase == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: tint style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        ImageBase->ApplyImageTintStyleValue(Style.Tint);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedItemPaddingStyle& Style)
+                    {
+                        UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(Widget);
+                        if (ButtonList == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: item padding style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        ButtonList->ApplyItemPaddingStyleValue(Style.Padding);
+                    }
+                }, Op.Payload);
+            }
         }, Operation);
     }
 

@@ -1,0 +1,122 @@
+#include "UI/GV2CentralStylePreparer.h"
+
+#include "Application/GV2SessionContentSnapshot.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
+#include "UI/GV2ButtonListWidgetBase.h"
+#include "UI/GV2ImageWidgetBase.h"
+#include "UI/GV2SeparatorWidgetBase.h"
+#include "UI/GV2UiTheme.h"
+
+namespace
+{
+using namespace GV2PresentationApply;
+
+// PSC-10B: the ONLY place a UGV2UiTheme is read on behalf of a styled widget. One `if` per
+// style role, each turning theme fields into a finished value payload. A new styled class
+// without a branch here emits nothing and is therefore visible as an unstyled widget, not as
+// a silent second authority read -- there is no fallback path left for it to take.
+void EmitForWidget(UWidget* Widget, const UGV2UiTheme& Theme, FGV2PreparedPresentationTransaction& OutTransaction)
+{
+    if (UGV2SeparatorWidgetBase* Separator = Cast<UGV2SeparatorWidgetBase>(Widget))
+    {
+        FPreparedSeparatorStyle Style;
+        Style.Brush = Theme.SeparatorBrush;
+        Style.Thickness = Theme.SeparatorThickness;
+        Style.bHorizontal = Separator->IsHorizontal();
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = Separator;
+        Operation.Payload.Set<FPreparedSeparatorStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
+    {
+        FPreparedTintStyle Style;
+        Style.Tint = Theme.ImageTint;
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = ImageBase;
+        Operation.Payload.Set<FPreparedTintStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    if (UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(Widget))
+    {
+        FPreparedItemPaddingStyle Style;
+        Style.Padding = Theme.ButtonListItemPadding;
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = ButtonList;
+        Operation.Payload.Set<FPreparedItemPaddingStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+    }
+}
+
+void WalkWidget(
+    UWidget* Widget,
+    const UGV2UiTheme& Theme,
+    TSet<UWidget*>& Visited,
+    FGV2PreparedPresentationTransaction& OutTransaction)
+{
+    if (Widget == nullptr)
+    {
+        return;
+    }
+    bool bAlreadyVisited = false;
+    Visited.Add(Widget, &bAlreadyVisited);
+    if (bAlreadyVisited)
+    {
+        return;
+    }
+
+    EmitForWidget(Widget, Theme, OutTransaction);
+
+    // A UUserWidget's bound sub-widgets live in its own WidgetTree, which ForEachWidget
+    // enumerates flatly but does NOT descend into for nested user widgets -- so each nested
+    // user widget is walked again here for its own tree. Plain panels reached through that
+    // enumeration are covered by the Visited set rather than by a second traversal rule.
+    if (UUserWidget* UserWidget = Cast<UUserWidget>(Widget))
+    {
+        if (UserWidget->WidgetTree != nullptr)
+        {
+            UserWidget->WidgetTree->ForEachWidget([&Theme, &Visited, &OutTransaction](UWidget* Child)
+            {
+                WalkWidget(Child, Theme, Visited, OutTransaction);
+            });
+        }
+        return;
+    }
+
+    if (UPanelWidget* Panel = Cast<UPanelWidget>(Widget))
+    {
+        for (int32 Index = 0; Index < Panel->GetChildrenCount(); ++Index)
+        {
+            WalkWidget(Panel->GetChildAt(Index), Theme, Visited, OutTransaction);
+        }
+    }
+}
+}
+
+namespace GV2CentralStylePreparer
+{
+void PrepareForSubtree(
+    UWidget* Root,
+    const FGV2PresentationPrepareContext& PrepareContext,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction)
+{
+    const UGV2UiTheme* Theme = PrepareContext.GetTheme().Theme.Get();
+    if (Root == nullptr || Theme == nullptr)
+    {
+        return;
+    }
+
+    TSet<UWidget*> Visited;
+    WalkWidget(Root, *Theme, Visited, OutTransaction);
+}
+}

@@ -41,6 +41,8 @@
 #include "Components/ScrollBox.h"
 #include "Components/Border.h"
 #include "Engine/GameInstance.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
+#include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2UiTheme.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -1425,20 +1427,44 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                     TestTrue(TEXT("Styled ButtonList Commit succeeds"), bStyledCommit);
                     TestEqual(TEXT("Styled ButtonList container has 1 child"), StyledBtnBox->GetChildrenCount(), 1);
 
-                    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-                    TestNotNull(TEXT("Theme resolved for padding assertion"), Theme);
+                    // PSC-10B: the slot padding a newly created button gets no longer comes
+                    // from the ButtonList pulling a Theme during Commit -- it comes from a
+                    // prepared central-style operation applied AFTER the collection has
+                    // settled (FGV2LayeredUiReconciler does that ordering in production).
+                    // The expected value is therefore an arbitrary margin this test chose,
+                    // not a Theme field: what is under test here is that the operation
+                    // reaches the slots the collection just created. Resolving a Theme into
+                    // that margin is a Prepare-side concern, proven separately by
+                    // GV2.Runtime.Presentation.CentralStyleThroughPreparedTransaction
+                    // against a real session snapshot.
+                    const FMargin ExpectedItemPadding(3.0f, 11.0f, 5.0f, 13.0f);
+                    {
+                        GV2PresentationApply::FPreparedItemPaddingStyle Style;
+                        Style.Padding = ExpectedItemPadding;
+                        GV2PresentationApply::FPreparedCentralStyleOperation StyleOp;
+                        StyleOp.TargetWidget = StyledButtonList;
+                        StyleOp.Payload.Set<GV2PresentationApply::FPreparedItemPaddingStyle>(Style);
+                        GV2PresentationApply::FGV2PreparedPresentationTransaction StyleTransaction;
+                        StyleTransaction.AddCentralStyleOperation(StyleOp);
 
-                    if (Theme != nullptr && StyledBtnBox->GetChildrenCount() == 1)
+                        FString StyleError;
+                        TestTrue(TEXT("Lower module accepts the ButtonList central-style operation"),
+                            GV2PresentationApply::Apply(StyleTransaction, StyleError));
+                        TestTrue(TEXT("Adapter applies the ButtonList central-style operation"),
+                            GV2LegacyPresentationApplyAdapter::Apply(StyleTransaction, StyleError));
+                    }
+
+                    if (StyledBtnBox->GetChildrenCount() == 1)
                     {
                         UVerticalBoxSlot* NewSlot = Cast<UVerticalBoxSlot>(StyledBtnBox->GetSlots()[0]);
                         TestNotNull(TEXT("New button slot is a UVerticalBoxSlot"), NewSlot);
                         if (NewSlot != nullptr)
                         {
                             const FMargin ActualPadding = NewSlot->GetPadding();
-                            TestEqual(TEXT("New button slot padding.Left matches theme"), ActualPadding.Left, Theme->ButtonListItemPadding.Left);
-                            TestEqual(TEXT("New button slot padding.Top matches theme"), ActualPadding.Top, Theme->ButtonListItemPadding.Top);
-                            TestEqual(TEXT("New button slot padding.Right matches theme"), ActualPadding.Right, Theme->ButtonListItemPadding.Right);
-                            TestEqual(TEXT("New button slot padding.Bottom matches theme"), ActualPadding.Bottom, Theme->ButtonListItemPadding.Bottom);
+                            TestEqual(TEXT("New button slot padding.Left comes from the prepared operation"), ActualPadding.Left, ExpectedItemPadding.Left);
+                            TestEqual(TEXT("New button slot padding.Top comes from the prepared operation"), ActualPadding.Top, ExpectedItemPadding.Top);
+                            TestEqual(TEXT("New button slot padding.Right comes from the prepared operation"), ActualPadding.Right, ExpectedItemPadding.Right);
+                            TestEqual(TEXT("New button slot padding.Bottom comes from the prepared operation"), ActualPadding.Bottom, ExpectedItemPadding.Bottom);
                         }
                     }
                 }

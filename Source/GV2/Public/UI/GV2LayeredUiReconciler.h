@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Bridge/GV2BridgeTypes.h"
 
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2ScreenWidgetBase.h"
 
 class UGV2GameShellWidgetBase;
@@ -64,6 +65,11 @@ public:
         FString ScreenId;
         TObjectPtr<UGV2ScreenWidgetBase> TargetWidget;
         FGV2ScreenMutationPlan MutationPlan;
+        // PSC-10B: central style resolved for this screen's whole subtree during Prepare and
+        // applied in CommitReconcile. It sits beside MutationPlan rather than inside it
+        // because it is not keyed by declared field -- every styled widget below the screen
+        // gets an operation whether or not it hosts a field.
+        GV2PresentationApply::FGV2PreparedPresentationTransaction CentralStyleTransaction;
         bool bIsReuse = false;
     };
 

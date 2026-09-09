@@ -2,7 +2,6 @@
 
 #include "Components/Image.h"
 #include "UI/GV2ImagePresentation.h"
-#include "UI/GV2UiTheme.h"
 #include "UI/GV2UiCapability.h"
 
 void UGV2ImageWidgetBase::PostLoad()
@@ -13,7 +12,12 @@ void UGV2ImageWidgetBase::PostLoad()
 void UGV2ImageWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: runtime tint arrives as FPreparedTintStyle; design-time preview re-applies the
+    // serialized tint this widget already carries. See UGV2SeparatorWidgetBase for the rule.
+    if (IsDesignTime() && Image != nullptr)
+    {
+        ApplyImageTintStyleValue(Image->GetColorAndOpacity());
+    }
     if (!InitialResourceId.IsEmpty() && InitialResourceId != AppliedResourceId)
     {
         FString Error;
@@ -69,14 +73,17 @@ float UGV2ImageWidgetBase::GetResolvedAspectRatio() const
     return ResolvedAspectRatio;
 }
 
+void UGV2ImageWidgetBase::ApplyImageTintStyleValue(const FLinearColor& Tint)
+{
+    if (Image != nullptr)
+    {
+        Image->SetColorAndOpacity(Tint);
+    }
+}
+
 bool UGV2ImageWidgetBase::ApplyCentralStyle_Implementation()
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || Image == nullptr)
-    {
-        return false;
-    }
-    Image->SetColorAndOpacity(Theme->ImageTint);
+    // PSC-10B: carried by FPreparedTintStyle, written by ApplyImageTintStyleValue.
     return true;
 }
 

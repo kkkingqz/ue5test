@@ -37,6 +37,15 @@ STRUCT_PATTERN = re.compile(
     re.DOTALL,
 )
 ENUM_PATTERN = re.compile(r"enum\s+class\s+(?P<name>E\w+)\s*:")
+# PSC-10B: a payload variant alias (`using FX = TVariant<A, B, C>;`). It is NOT accepted on
+# the strength of being declared locally -- that would turn any variant alias into an
+# unchecked escape hatch for exactly the field types this gate rejects. Each alternative
+# must itself classify as safe, and every alternative that is a local struct is separately
+# walked field-by-field by find_violations.
+VARIANT_ALIAS_PATTERN = re.compile(
+    r"using\s+(?P<name>F\w+)\s*=\s*TVariant<(?P<args>.*?)>\s*;",
+    re.DOTALL,
+)
 FIELD_PATTERN = re.compile(
     r"^\s*(?P<type>[A-Za-z_].*?)\s+(?P<name>\w+)\s*(?:=\s*[^;]+)?;\s*$",
     re.MULTILINE,
@@ -75,6 +84,10 @@ ALLOWED_BASE_TYPES = {
     "FSlateBrush",
     "FTextBlockStyle",
     "FRuntimeFloatCurve",
+    # PSC-10B: plain geometry/colour values a central-style role carries. Same class as
+    # FSlateBrush above -- a finished value with no notion of a lookup.
+    "FLinearColor",
+    "FMargin",
 }
 
 # UObject-derived types a TWeakObjectPtr<...> field may point to. Structurally, this
@@ -103,6 +116,28 @@ def extract_locally_declared_types(source: str) -> set[str]:
     names = {match.group("name") for match in STRUCT_PATTERN.finditer(source)}
     names |= {match.group("name") for match in ENUM_PATTERN.finditer(source)}
     return names
+
+
+def extract_safe_variant_aliases(source: str, local_types: set[str]) -> tuple[set[str], list[str]]:
+    """Variant aliases whose every alternative is itself classified safe, plus the
+    reasons for any alias that is not."""
+    safe: set[str] = set()
+    reasons: list[str] = []
+    for match in VARIANT_ALIAS_PATTERN.finditer(source):
+        name = match.group("name")
+        args = re.sub(r"//[^\n]*", "", match.group("args"))
+        alternatives = [arg.strip() for arg in args.split(",") if arg.strip()]
+        unsafe = [
+            alt for alt in alternatives
+            if alt not in local_types and alt not in ALLOWED_BASE_TYPES
+        ]
+        if unsafe:
+            reasons.append(
+                f"variant alias '{name}' has unclassified alternative(s): {', '.join(unsafe)}"
+            )
+        else:
+            safe.add(name)
+    return safe, reasons
 
 
 def classify_field(raw_type: str, field_name: str, local_types: set[str]) -> str | None:
@@ -154,6 +189,9 @@ def classify_field(raw_type: str, field_name: str, local_types: set[str]) -> str
 def find_violations(source: str) -> list[str]:
     violations: list[str] = []
     local_types = extract_locally_declared_types(source)
+    safe_aliases, alias_reasons = extract_safe_variant_aliases(source, local_types)
+    violations.extend(alias_reasons)
+    local_types = local_types | safe_aliases
 
     for struct_match in STRUCT_PATTERN.finditer(source):
         struct_name = struct_match.group("name")
@@ -278,6 +316,62 @@ struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticContainer
     errors = find_violations(synthetic_recursive_violation)
     if not any("FPreparedSyntheticNestedBad" in error and "TFunction" in error for error in errors):
         print(f"FAILED: gate did not catch a callback field buried inside a nested (TArray-referenced) struct: {errors}")
+        return False
+
+    # PSC-10B: a variant alias must not launder an unclassified alternative. The alias is
+    # accepted only when every alternative is itself classified, so this synthetic -- whose
+    # alias names a type declared nowhere -- must be reported, and the field typed with that
+    # alias must not silently pass on the strength of the alias being declared locally.
+    synthetic_variant_launder = """
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticRole
+{
+    FString Value;
+};
+
+using FPreparedSyntheticPayload = TVariant<
+    FPreparedSyntheticRole,
+    FSomeUnclassifiedResolverHandle
+>;
+
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticStyleOperation
+{
+    FPreparedSyntheticPayload Payload;
+};
+"""
+    errors = find_violations(synthetic_variant_launder)
+    if not any("FSomeUnclassifiedResolverHandle" in error for error in errors):
+        print(f"FAILED: gate did not reject a variant alias hiding an unclassified alternative: {errors}")
+        return False
+    if not any("FPreparedSyntheticStyleOperation::Payload" in error for error in errors):
+        print(f"FAILED: gate accepted a field typed with an unsafe variant alias: {errors}")
+        return False
+
+    # A variant alias whose alternatives are all locally declared must be accepted, and a
+    # field typed with it must produce no violation.
+    synthetic_variant_ok = """
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticRoleA
+{
+    FString Value;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticRoleB
+{
+    float Amount = 0.0f;
+};
+
+using FPreparedSyntheticOkPayload = TVariant<
+    FPreparedSyntheticRoleA,
+    FPreparedSyntheticRoleB
+>;
+
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticOkOperation
+{
+    FPreparedSyntheticOkPayload Payload;
+};
+"""
+    errors = find_violations(synthetic_variant_ok)
+    if errors:
+        print(f"FAILED: gate rejected a variant alias whose alternatives are all classified: {errors}")
         return False
 
     # A fully-allowed synthetic struct (plain values, a locally-declared nested struct,

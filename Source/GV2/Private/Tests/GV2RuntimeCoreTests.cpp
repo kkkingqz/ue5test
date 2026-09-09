@@ -6,7 +6,16 @@
 #include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionContentSnapshot.h"
+#include "Blueprint/UserWidget.h"
+#include "Components/VerticalBox.h"
+#include "Blueprint/WidgetTree.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
+#include "Tests/GV2ForgeryTestWidgets.h"
+#include "UI/GV2CentralStylePreparer.h"
 #include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2LegacyPresentationApplyAdapter.h"
+#include "UI/GV2UiStyleConsumer.h"
+#include "UI/GV2UiTheme.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "GV2RuntimeCore/Testing/GV2LuaMarshallerConformance.h"
@@ -2054,6 +2063,112 @@ bool FGV2SessionContentSnapshotContract::RunTest(const FString& Parameters)
     Coordinator.EndSession();
     TestNull(TEXT("EndSession clears the content snapshot"), Coordinator.GetContentSnapshot());
 
+    return true;
+}
+
+// PSC-10B (ADR-0043 D3): central style reaches a widget ONLY as a prepared operation.
+//
+// This is the production path, not a shape check: a real coordinator session publishes a
+// real snapshot, FGV2PresentationPrepareContext reads THAT snapshot's theme during Prepare,
+// and the physical write happens through the same Apply pair every other operation kind
+// goes through. The widget itself is a plain UGV2SeparatorWidgetBase (the test subclass only
+// populates the BindWidget members a Widget Blueprint would have populated).
+//
+// The independent oracle is the second half: after resetting the widget to a sentinel, the
+// widget's OWN IGV2UiStyleConsumer entry point must leave it on that sentinel. Before
+// PSC-10B that call resolved UGV2UiThemeSettings::GetConfiguredTheme() and styled the
+// widget; a regression that restores the pull path makes that half fail even if the push
+// path still works, so the two halves cannot both pass by accident.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CentralStyleThroughPreparedTransactionTest,
+    "GV2.Runtime.Presentation.CentralStyleThroughPreparedTransaction",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Parameters)
+{
+    struct FSampleOverrideScope
+    {
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+
+    const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("Session publishes a content snapshot"), Snapshot);
+    if (Snapshot == nullptr)
+    {
+        return false;
+    }
+    const UGV2UiTheme* SnapshotTheme = Snapshot->GetTheme().Theme.Get();
+    TestNotNull(TEXT("Snapshot owns a resolved Theme"), SnapshotTheme);
+    if (SnapshotTheme == nullptr)
+    {
+        Coordinator.EndSession();
+        return false;
+    }
+
+    // A value the theme provably does not carry, so neither half of this test can pass by
+    // the widget happening to already sit on the expected value.
+    constexpr float Sentinel = -73.5f;
+    TestNotEqual(TEXT("Sentinel thickness differs from the snapshot theme's own thickness"),
+        SnapshotTheme->SeparatorThickness, Sentinel);
+
+    UGV2SeparatorBoundTestWidget* Separator = NewObject<UGV2SeparatorBoundTestWidget>();
+    Separator->BuildBoundSubWidgets();
+    Separator->SetTestOrientation(Orient_Horizontal);
+    Separator->ApplySeparatorStyleValues(FSlateBrush(), Sentinel, /*bHorizontal=*/true);
+    TestEqual(TEXT("Widget starts on the sentinel thickness"), Separator->ReadAppliedThickness(), Sentinel);
+
+    // The preparer must find the separator by WALKING a subtree, not by being handed it --
+    // that is what makes a styled widget nested anywhere below a screen reachable without
+    // the widget pulling anything itself. Both descent rules are exercised at once: the
+    // root is a UUserWidget (its own WidgetTree) whose tree root is a panel (its children).
+    UGV2NewHostAddedOnlyInTestWidget* Root = NewObject<UGV2NewHostAddedOnlyInTestWidget>();
+    Root->WidgetTree = NewObject<UWidgetTree>(Root);
+    UVerticalBox* RootBox = Root->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("RootBox"));
+    Root->WidgetTree->RootWidget = RootBox;
+    RootBox->AddChild(Separator);
+
+    const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    GV2CentralStylePreparer::PrepareForSubtree(Root, PrepareContext, Transaction);
+
+    TestEqual(TEXT("Subtree walk emitted exactly one central-style operation"), Transaction.GetOperations().Num(), 1);
+    if (Transaction.GetOperations().Num() != 1)
+    {
+        Coordinator.EndSession();
+        return false;
+    }
+    TestEqual(TEXT("The emitted operation's kind is CentralStyle"),
+        static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Transaction.GetOperations()[0])),
+        static_cast<uint8>(GV2PresentationApply::EGV2PreparedOperationKind::CentralStyle));
+
+    // Prepare resolved the theme; nothing has been written yet.
+    TestEqual(TEXT("Preparing does not mutate the widget"), Separator->ReadAppliedThickness(), Sentinel);
+
+    FString ApplyError;
+    TestTrue(TEXT("Lower module's Apply accepts the central-style operation"),
+        GV2PresentationApply::Apply(Transaction, ApplyError));
+    TestEqual(TEXT("Lower module alone does not write a GV2-owned widget base"), Separator->ReadAppliedThickness(), Sentinel);
+
+    TestTrue(TEXT("Adapter Apply completes the central-style operation"),
+        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError));
+    TestEqual(TEXT("Applied thickness is the snapshot theme's own SeparatorThickness"),
+        Separator->ReadAppliedThickness(), SnapshotTheme->SeparatorThickness);
+    TestEqual(TEXT("Applied brush is the snapshot theme's own SeparatorBrush"),
+        Separator->ReadAppliedBrush().GetResourceName(), SnapshotTheme->SeparatorBrush.GetResourceName());
+
+    // Independent oracle: the pull path is gone.
+    Separator->ApplySeparatorStyleValues(FSlateBrush(), Sentinel, /*bHorizontal=*/true);
+    TestTrue(TEXT("Separator still implements IGV2UiStyleConsumer"), Separator->Implements<UGV2UiStyleConsumer>());
+    IGV2UiStyleConsumer::Execute_ApplyCentralStyle(Separator);
+    TestEqual(TEXT("The widget's own style entry point resolves NOTHING and leaves the sentinel in place"),
+        Separator->ReadAppliedThickness(), Sentinel);
+
+    Coordinator.EndSession();
     return true;
 }
 

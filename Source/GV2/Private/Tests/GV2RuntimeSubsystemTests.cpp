@@ -1957,6 +1957,9 @@ EGV2ExpectedOperationRoute ExpectedRouteFor(EGV2PreparedOperationKind Kind)
     case EGV2PreparedOperationKind::PlainText:          return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
     case EGV2PreparedOperationKind::RichTextRender:     return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
     case EGV2PreparedOperationKind::TextHint:           return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
+    // PSC-10B: every central-style role targets a GV2-owned widget base, which the lower
+    // module cannot Cast to at all, so the physical write is the adapter's until PSC-12.
+    case EGV2PreparedOperationKind::CentralStyle:       return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
     }
     checkf(false, TEXT("EGV2PreparedOperationKind has an unclassified value -- add it to ExpectedRouteFor"));
     return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
@@ -1977,7 +1980,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
 {
     using GV2PresentationApply::EGV2PreparedOperationKind;
 
-    static_assert(TVariantSize_V<GV2PresentationApply::FGV2PreparedOperationVariant> == 17,
+    static_assert(TVariantSize_V<GV2PresentationApply::FGV2PreparedOperationVariant> == 18,
         "A kind was added to or removed from FGV2PreparedOperationVariant -- update this "
         "literal AND the construction switch AND ExpectedRouteFor's switch below before "
         "trusting this test again.");
@@ -2168,6 +2171,17 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             FString Error;
             TestTrue(TEXT("TextHint: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
             bMutationObserved = Widget->GetHintText().ToString() == TEXT("kind-walk");
+            break;
+        }
+        case EGV2PreparedOperationKind::CentralStyle:
+        {
+            KindLabel = TEXT("CentralStyle");
+            GV2PresentationApply::FPreparedSeparatorStyle Style;
+            Style.Thickness = 7.0f;
+            GV2PresentationApply::FPreparedCentralStyleOperation Op;
+            Op.TargetWidget = NewObject<UGV2SeparatorWidgetBase>();
+            Op.Payload.Set<GV2PresentationApply::FPreparedSeparatorStyle>(Style);
+            Transaction.AddCentralStyleOperation(Op);
             break;
         }
         }

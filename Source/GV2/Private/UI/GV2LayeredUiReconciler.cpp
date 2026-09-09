@@ -1,5 +1,8 @@
 #include "UI/GV2LayeredUiReconciler.h"
 
+#include "UI/GV2CentralStylePreparer.h"
+#include "UI/GV2LegacyPresentationApplyAdapter.h"
+
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "UI/GV2GameShellWidgetBase.h"
@@ -121,6 +124,14 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
             return false;
         }
 
+        // PSC-10B: the theme is read HERE, in Prepare, holding the session snapshot -- and
+        // nowhere below. What reaches Commit is finished values.
+        if (PrepareContext != nullptr)
+        {
+            GV2CentralStylePreparer::PrepareForSubtree(
+                PreparedInst.TargetWidget, *PrepareContext, PreparedInst.CentralStyleTransaction);
+        }
+
         OutPlan.NewActiveScreens.Add(Key, {Instance.ScreenId, PreparedInst.TargetWidget});
         if (Instance.Layer == UGV2GameShellWidgetBase::LayerModalStack)
         {
@@ -186,7 +197,38 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             };
         }
         FString ScreenCommitError;
-        if (!Inst.TargetWidget->CommitScreenFields(Inst.MutationPlan, ScreenCommitError, PerScreenInjector, PerScreenRollbackInjector))
+        const bool bScreenFieldsCommitted = Inst.TargetWidget->CommitScreenFields(
+            Inst.MutationPlan, ScreenCommitError, PerScreenInjector, PerScreenRollbackInjector);
+
+        // PSC-10B: central style is applied through the ordinary transaction Apply pair,
+        // inside this same atomic step -- not as a separate lifecycle pass -- and strictly
+        // AFTER the fields. The order is a requirement, not a preference: a keyed collection
+        // creates its children's panel slots during field commit, and per-item slot padding
+        // is one of the things a central-style operation writes, so styling first would
+        // leave every newly created slot unstyled. Apply resolves nothing; every value in
+        // the transaction was fixed during Prepare, so the only way this can fail is a
+        // role/class mismatch, i.e. a bug in the preparer.
+        bool bScreenStyled = true;
+        if (bScreenFieldsCommitted)
+        {
+            bScreenStyled = GV2PresentationApply::Apply(Inst.CentralStyleTransaction, ScreenCommitError)
+                && GV2LegacyPresentationApplyAdapter::Apply(Inst.CentralStyleTransaction, ScreenCommitError);
+            if (!bScreenStyled)
+            {
+                // This screen's fields ARE committed, so unlike a CommitScreenFields failure
+                // nothing has self-healed it yet; restore it here before the sibling loop
+                // below restores the screens committed earlier in this same step.
+                const FGV2UiRollbackResult SelfRollback = RollbackFieldPlans(
+                    Inst.MutationPlan.FieldPlans, PerScreenRollbackInjector);
+                if (!SelfRollback.bRestored && !ScreenCommitError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+                {
+                    ScreenCommitError = FString::Printf(
+                        TEXT("%s: %s"), GGV2UiRollbackFailedDiagnosticCode, *ScreenCommitError);
+                }
+            }
+        }
+
+        if (!bScreenFieldsCommitted || !bScreenStyled)
         {
             // GBH-10 (ADR-0041): CommitScreenFields already self-healed *this* screen
             // back to its own previous properties (and, per PAH-01, already folded
