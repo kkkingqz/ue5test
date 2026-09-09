@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.8
+version: 1.9
 updated: 2026-09-09
 depends_on:
   - README.md
@@ -277,6 +277,15 @@ depends_on:
     - implementation inventory и production call-site inventory отвергают синтетическое обращение к Theme, runtime `NativePreConstruct → style`, вызов target-helper вне transaction façade и `GetCoreMinimalTheme()` вне recovery;
     - в том же change set обновлены [Widget Registry](../../UI/WidgetRegistry.md), [UI Document](../../UI/UIDocumentAndReconciliation.md) и partial-supersession note [ADR-0012](../../ADR/0012-centralized-ui-theme.md): runtime reconstruction и editor preview больше не описываются одним authority-aware путём.
   - Evidence: prepared central-style operation/variant, implementation and call-site inventories, transaction façade production tests, design-time preview test, recovery call-site gate и обновлённые owner contracts.
+  - **Реализация (2026-09-09), срез 1 из N — мёртвый gate удалён.** Обход реализаций интерфейса дал 19 классов, но семь из них (`ScrollArea`, `Panel`, `Modal`, `ListView`, `Portrait`, `GameShell`, `TabContainer`) читали `GetConfiguredTheme()` **только ради null-проверки**: полученное значение не использовалось ни разу, ни одного `Theme->` в теле. У `Modal` и `TabContainer` за проверкой шло настоящее тело (применение текста через уже мигрированный `PSC-10A` конвейер и рекурсия по детям), у остальных пяти — `return true`.
+
+    Это седьмой экземпляр семейства «значение получено и отброшено» после `ResourceIcon`, `ApplyOptionalXxx`, `OnBindingInvoked`, `bFatal`, `IsLayerAllowedForEmbedded` и `bSingleton`. Здесь он вдобавок раздувал оценку самой задачи: масштаб «19 классов, у каждого свой набор Theme-полей» на семь классов держался на чтении, которое ничего не читает.
+
+    Удалены семь обращений (41 → 34), поведение сохранено: реализации по-прежнему возвращают `true`, интерфейс не снимается (`GV2.Runtime.UIKit.CentralThemeAndComponents` проверяет `Implements<UGV2UiStyleConsumer>()` у компонентов, и снятие интерфейса было бы отдельным решением, а не следствием). Единственное изменение наблюдаемого — при отсутствующей теме эти семь возвращают `true` вместо `false`; после закрытия задачи отсутствующая настроенная тема и есть нормальное состояние, поскольку тема приходит из снимка.
+
+    Верификация: полный `Automation RunTests GV2` — 129/129 из машинного отчёта.
+
+    Остаётся: 11 классов с фактическими Theme-полями (`ButtonList`, `Button`, `Checkbox`, `DropdownSelect`, `Image`, `InputField`, `LoadingIndicator`, `ProgressBar`, `RichTextPopover`, `RichText`, `Separator`), третий путь `RichTextWidgetBase`'s run/interactive style, design-time ветка, удаление `ApplyCentralStyle` как runtime API и символов accessor'ов.
 
 ## Проверка milestone
 

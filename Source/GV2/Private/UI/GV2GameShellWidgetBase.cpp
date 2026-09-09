@@ -155,10 +155,10 @@ void UGV2GameShellWidgetBase::ClearAllLayers()
 
 bool UGV2GameShellWidgetBase::ApplyCentralStyle_Implementation()
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr)
-    {
-        return false;
-    }
+    // PSC-10B: this implementation applies nothing from the Theme. The fetch that used
+    // to stand here read the configured Theme only to null-check it and threw the value
+    // away -- a value obtained and discarded, the same family as ResourceIcon /
+    // ApplyOptionalXxx / OnBindingInvoked / bFatal. It also inflated this task's scope,
+    // because the class has no central style payload at all.
     return true;
 }
