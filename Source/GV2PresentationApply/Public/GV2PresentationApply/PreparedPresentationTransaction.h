@@ -394,10 +394,26 @@ struct GV2PRESENTATIONAPPLY_API FPreparedItemPaddingStyle
     FMargin Padding;
 };
 
+struct GV2PRESENTATIONAPPLY_API FPreparedProgressBarStyle
+{
+    FProgressBarStyle WidgetStyle;
+    FLinearColor FillColor = FLinearColor::White;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedLoadingIndicatorStyle
+{
+    FSlateBrush Brush;
+    float Period = 0.75f;
+    float Radius = 64.0f;
+    int32 Pieces = 6;
+};
+
 using FPreparedCentralStylePayload = TVariant<
     FPreparedSeparatorStyle,
     FPreparedTintStyle,
-    FPreparedItemPaddingStyle
+    FPreparedItemPaddingStyle,
+    FPreparedProgressBarStyle,
+    FPreparedLoadingIndicatorStyle
 >;
 
 // TargetWidget is a GV2-owned widget base for every role that exists today, so the

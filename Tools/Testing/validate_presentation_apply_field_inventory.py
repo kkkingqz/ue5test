@@ -88,6 +88,7 @@ ALLOWED_BASE_TYPES = {
     # FSlateBrush above -- a finished value with no notion of a lookup.
     "FLinearColor",
     "FMargin",
+    "FProgressBarStyle",
 }
 
 # UObject-derived types a TWeakObjectPtr<...> field may point to. Structurally, this

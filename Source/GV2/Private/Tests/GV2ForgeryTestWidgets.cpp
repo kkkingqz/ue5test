@@ -2,6 +2,7 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Image.h"
+#include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
 #include "UI/GV2UiCapability.h"
 
@@ -64,4 +65,16 @@ float UGV2SeparatorBoundTestWidget::ReadAppliedThickness() const
 FSlateBrush UGV2SeparatorBoundTestWidget::ReadAppliedBrush() const
 {
     return SeparatorImage != nullptr ? SeparatorImage->GetBrush() : FSlateBrush();
+}
+
+void UGV2ProgressBarBoundTestWidget::BuildBoundSubWidgets()
+{
+    WidgetTree = NewObject<UWidgetTree>(this);
+    ProgressBar = WidgetTree->ConstructWidget<UProgressBar>(UProgressBar::StaticClass(), TEXT("ProgressBar"));
+    WidgetTree->RootWidget = ProgressBar;
+}
+
+FLinearColor UGV2ProgressBarBoundTestWidget::ReadAppliedFillColor() const
+{
+    return ProgressBar != nullptr ? ProgressBar->GetFillColorAndOpacity() : FLinearColor::Transparent;
 }

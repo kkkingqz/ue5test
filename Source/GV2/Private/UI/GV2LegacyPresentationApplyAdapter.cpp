@@ -14,6 +14,7 @@
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
+#include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
@@ -573,6 +574,28 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                             return;
                         }
                         ButtonList->ApplyItemPaddingStyleValue(Style.Padding);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedProgressBarStyle& Style)
+                    {
+                        UGV2ProgressBarWidgetBase* ProgressBar = Cast<UGV2ProgressBarWidgetBase>(Widget);
+                        if (ProgressBar == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: progress bar style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        ProgressBar->ApplyProgressBarStyleValues(Style.WidgetStyle, Style.FillColor);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedLoadingIndicatorStyle& Style)
+                    {
+                        UGV2LoadingIndicatorWidgetBase* LoadingIndicator = Cast<UGV2LoadingIndicatorWidgetBase>(Widget);
+                        if (LoadingIndicator == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: loading indicator style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        LoadingIndicator->ApplyLoadingIndicatorStyleValues(Style.Brush, Style.Period, Style.Radius, Style.Pieces);
                     }
                 }, Op.Payload);
             }

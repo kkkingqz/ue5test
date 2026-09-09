@@ -14,6 +14,10 @@ class GV2_API UGV2LoadingIndicatorWidgetBase
     GENERATED_BODY()
 
 public:
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
+    void ApplyLoadingIndicatorStyleValues(const FSlateBrush& Brush, float Period, float Radius, int32 Pieces);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:

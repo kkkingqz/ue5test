@@ -2,14 +2,19 @@
 
 #include "CommonTextBlock.h"
 #include "Components/ProgressBar.h"
-#include "UI/GV2UiTheme.h"
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
 
 void UGV2ProgressBarWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: runtime style arrives as FPreparedProgressBarStyle; design-time preview
+    // re-applies what this widget's own inner bar already carries. See
+    // UGV2SeparatorWidgetBase::NativePreConstruct for why runtime styling cannot live here.
+    if (IsDesignTime() && ProgressBar != nullptr)
+    {
+        ApplyProgressBarStyleValues(ProgressBar->GetWidgetStyle(), ProgressBar->GetFillColorAndOpacity());
+    }
 }
 
 void UGV2ProgressBarWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
@@ -47,15 +52,18 @@ float UGV2ProgressBarWidgetBase::GetProgress() const
     return ProgressBar != nullptr ? ProgressBar->GetPercent() : CurrentPercent;
 }
 
+void UGV2ProgressBarWidgetBase::ApplyProgressBarStyleValues(const FProgressBarStyle& WidgetStyle, const FLinearColor& FillColor)
+{
+    if (ProgressBar != nullptr)
+    {
+        ProgressBar->SetWidgetStyle(WidgetStyle);
+        ProgressBar->SetFillColorAndOpacity(FillColor);
+    }
+}
+
 bool UGV2ProgressBarWidgetBase::ApplyCentralStyle_Implementation()
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || ProgressBar == nullptr)
-    {
-        return false;
-    }
-    ProgressBar->SetWidgetStyle(Theme->ProgressBarStyle);
-    ProgressBar->SetFillColorAndOpacity(Theme->ProgressFillColor);
+    // PSC-10B: carried by FPreparedProgressBarStyle, written by ApplyProgressBarStyleValues.
     return true;
 }
 

@@ -305,7 +305,17 @@ depends_on:
 
     Верификация: полный `Automation RunTests GV2` — 130/130 из машинного отчёта (129 + новый тест).
 
-    Остаётся: 8 классов (`Button`, `Checkbox`, `DropdownSelect`, `InputField`, `LoadingIndicator`, `ProgressBar`, `RichTextPopover`, `RichText`) и их роли; третий путь `RichTextWidgetBase`'s run/interactive style через Slate-декоратор; удаление `ApplyCentralStyle` как runtime API и строки pull'а в adapter; символы `GetConfiguredTheme()`/`GetConfiguredRegistry()`; ограничение `GetCoreMinimalTheme()` recovery-поверхностью; inventory-гейты; обновление `WidgetRegistry.md`, `UIDocumentAndReconciliation.md` и note к `ADR-0012`.
+    Остаётся: 8 классов (`Button`, `Checkbox`, `DropdownSelect`, `InputField`, `RichTextPopover`, `RichText`) и их роли;
+
+  - **Реализация (2026-09-09), срез 3 из N — два класса без зависимости от токена.** `ProgressBar` (`FPreparedProgressBarStyle`: `FProgressBarStyle` + fill colour) и `LoadingIndicator` (`FPreparedLoadingIndicatorStyle`: кисть, период, радиус, число сегментов) переведены механически — ни один из них не смотрит на style token и не вызывает `UGV2TextPipeline`, поэтому перевод сводится к переносу полей темы в роль.
+
+    `LoadingIndicator` дал частный случай design-time ветки: `UCircularThrobber` не имеет getter'ов для периода, радиуса и числа сегментов, читать назад нечего, и превью честно не делает ничего — сериализованные значения и так отрисовываются. Выдумывать им замену означало бы вводить второй источник значений.
+
+    Production-тест расширен: в поддереве теперь два стилевых класса с **разными** ролями, так что обход доказывается маршрутизирующим по роли, а не выдающим одну форму на всё. Добавлен негативный случай — роль, доставленная не тому классу, отвергается с `central_style_target_mismatch`, а не применяется к тому, чем виджет оказался.
+
+    Верификация: полный `Automation RunTests GV2` — 130/130; гейт recursive field inventory принял `FProgressBarStyle` после явной классификации.
+
+    Остаётся: 6 классов (`Button`, `Checkbox`, `DropdownSelect`, `InputField`, `RichTextPopover`, `RichText`). Все шесть упираются в один и тот же нерешённый вопрос, а не в объём: их стиль зависит от **style token, зафиксированного в той же транзакции**. `Button`/`Checkbox`/`InputField` выбирают класс стиля метки как «токен, если задан, иначе поле темы», а `DropdownSelect`/`RichTextPopover` вдобавок зовут `EvaluateTextScale`. Препарер разрешает роль ДО commit'а полей, то есть по устаревшему токену, тогда как физическая запись идёт ПОСЛЕ него. Разрешать это переносом токена в payload нельзя — это вернуло бы виджету решение; правильный разбор в том, что стиль метки принадлежит text-операции `PSC-10A`, а central style несёт только default. Это отдельный срез с собственным решением, а не остаток объёма. третий путь `RichTextWidgetBase`'s run/interactive style через Slate-декоратор; удаление `ApplyCentralStyle` как runtime API и строки pull'а в adapter; символы `GetConfiguredTheme()`/`GetConfiguredRegistry()`; ограничение `GetCoreMinimalTheme()` recovery-поверхностью; inventory-гейты; обновление `WidgetRegistry.md`, `UIDocumentAndReconciliation.md` и note к `ADR-0012`.
 
 ## Проверка milestone
 

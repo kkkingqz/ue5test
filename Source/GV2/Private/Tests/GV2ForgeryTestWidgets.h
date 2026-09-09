@@ -2,6 +2,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "GV2ForgeryTestWidgets.generated.h"
@@ -91,4 +92,17 @@ public:
 
     float ReadAppliedThickness() const;
     FSlateBrush ReadAppliedBrush() const;
+};
+
+/**
+ * PSC-10B: same seam as UGV2SeparatorBoundTestWidget, for the progress-bar style role.
+ */
+UCLASS(meta = (GV2TestOnly))
+class UGV2ProgressBarBoundTestWidget : public UGV2ProgressBarWidgetBase
+{
+    GENERATED_BODY()
+
+public:
+    void BuildBoundSubWidgets();
+    FLinearColor ReadAppliedFillColor() const;
 };

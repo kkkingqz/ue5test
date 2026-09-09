@@ -43,6 +43,10 @@ public:
     // carries -- see FGV2UiPropertyHostState.
     virtual FName GetScreenFieldId() const override { return GetHostIdentity(); }
 
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
+    void ApplyProgressBarStyleValues(const FProgressBarStyle& WidgetStyle, const FLinearColor& FillColor);
+
     virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:

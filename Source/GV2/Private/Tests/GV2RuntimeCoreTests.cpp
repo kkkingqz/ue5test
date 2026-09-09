@@ -2132,19 +2132,29 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     Root->WidgetTree->RootWidget = RootBox;
     RootBox->AddChild(Separator);
 
+    // A second styled class in the same subtree, carrying a DIFFERENT role, so the walk is
+    // shown to route by role rather than emitting one shape for everything.
+    UGV2ProgressBarBoundTestWidget* ProgressBar = NewObject<UGV2ProgressBarBoundTestWidget>();
+    ProgressBar->BuildBoundSubWidgets();
+    ProgressBar->ApplyProgressBarStyleValues(FProgressBarStyle(), FLinearColor::Transparent);
+    RootBox->AddChild(ProgressBar);
+
     const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     GV2CentralStylePreparer::PrepareForSubtree(Root, PrepareContext, Transaction);
 
-    TestEqual(TEXT("Subtree walk emitted exactly one central-style operation"), Transaction.GetOperations().Num(), 1);
-    if (Transaction.GetOperations().Num() != 1)
+    TestEqual(TEXT("Subtree walk emitted one central-style operation per styled widget"), Transaction.GetOperations().Num(), 2);
+    if (Transaction.GetOperations().Num() != 2)
     {
         Coordinator.EndSession();
         return false;
     }
-    TestEqual(TEXT("The emitted operation's kind is CentralStyle"),
-        static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Transaction.GetOperations()[0])),
-        static_cast<uint8>(GV2PresentationApply::EGV2PreparedOperationKind::CentralStyle));
+    for (const GV2PresentationApply::FGV2PreparedOperationVariant& Operation : Transaction.GetOperations())
+    {
+        TestEqual(TEXT("Every emitted operation's kind is CentralStyle"),
+            static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Operation)),
+            static_cast<uint8>(GV2PresentationApply::EGV2PreparedOperationKind::CentralStyle));
+    }
 
     // Prepare resolved the theme; nothing has been written yet.
     TestEqual(TEXT("Preparing does not mutate the widget"), Separator->ReadAppliedThickness(), Sentinel);
@@ -2160,6 +2170,25 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
         Separator->ReadAppliedThickness(), SnapshotTheme->SeparatorThickness);
     TestEqual(TEXT("Applied brush is the snapshot theme's own SeparatorBrush"),
         Separator->ReadAppliedBrush().GetResourceName(), SnapshotTheme->SeparatorBrush.GetResourceName());
+    TestEqual(TEXT("The second role reached its own target: fill colour is the theme's ProgressFillColor"),
+        ProgressBar->ReadAppliedFillColor(), SnapshotTheme->ProgressFillColor);
+
+    // A role delivered to the wrong class is rejected, not applied to whatever the widget
+    // happens to be. This is what the closed variant buys: the mismatch is impossible to
+    // express in Prepare and diagnosable if a future preparer ever gets it wrong.
+    {
+        GV2PresentationApply::FPreparedCentralStyleOperation Mismatched;
+        Mismatched.TargetWidget = ProgressBar;
+        Mismatched.Payload.Set<GV2PresentationApply::FPreparedSeparatorStyle>(GV2PresentationApply::FPreparedSeparatorStyle());
+        GV2PresentationApply::FGV2PreparedPresentationTransaction MismatchTransaction;
+        MismatchTransaction.AddCentralStyleOperation(Mismatched);
+
+        FString MismatchError;
+        TestFalse(TEXT("A style role delivered to the wrong widget class is rejected"),
+            GV2LegacyPresentationApplyAdapter::Apply(MismatchTransaction, MismatchError));
+        TestTrue(TEXT("The rejection names the mismatch"),
+            MismatchError.Contains(TEXT("central_style_target_mismatch")));
+    }
 
     // Independent oracle: the pull path is gone.
     Separator->ApplySeparatorStyleValues(FSlateBrush(), Sentinel, /*bHorizontal=*/true);

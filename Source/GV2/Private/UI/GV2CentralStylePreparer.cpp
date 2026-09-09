@@ -7,6 +7,8 @@
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
+#include "UI/GV2LoadingIndicatorWidgetBase.h"
+#include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2UiTheme.h"
 
@@ -54,6 +56,34 @@ void EmitForWidget(UWidget* Widget, const UGV2UiTheme& Theme, FGV2PreparedPresen
         FPreparedCentralStyleOperation Operation;
         Operation.TargetWidget = ButtonList;
         Operation.Payload.Set<FPreparedItemPaddingStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    if (UGV2ProgressBarWidgetBase* ProgressBar = Cast<UGV2ProgressBarWidgetBase>(Widget))
+    {
+        FPreparedProgressBarStyle Style;
+        Style.WidgetStyle = Theme.ProgressBarStyle;
+        Style.FillColor = Theme.ProgressFillColor;
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = ProgressBar;
+        Operation.Payload.Set<FPreparedProgressBarStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    if (UGV2LoadingIndicatorWidgetBase* LoadingIndicator = Cast<UGV2LoadingIndicatorWidgetBase>(Widget))
+    {
+        FPreparedLoadingIndicatorStyle Style;
+        Style.Brush = Theme.LoadingIndicatorBrush;
+        Style.Period = Theme.LoadingIndicatorPeriod;
+        Style.Radius = Theme.LoadingIndicatorRadius;
+        Style.Pieces = Theme.LoadingIndicatorPieces;
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = LoadingIndicator;
+        Operation.Payload.Set<FPreparedLoadingIndicatorStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
     }
 }
