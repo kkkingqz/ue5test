@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "CommonUserWidget.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiPropertyHost.h"
@@ -82,6 +83,13 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     bool ApplyPlaceholderText(const FGV2TextViewModel& InPlaceholder);
+
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
+    void ApplyInputFieldStyleValues(
+        const FEditableTextBoxStyle& InWidgetStyle,
+        TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
+        const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale);
 
     virtual bool ApplyCentralStyle_Implementation() override;
 

@@ -8,7 +8,9 @@
 #include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2CheckboxWidgetBase.h"
+#include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
+#include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
@@ -120,7 +122,51 @@ void EmitForWidget(UWidget* Widget, const UGV2UiTheme& Theme, FGV2PreparedPresen
         Operation.TargetWidget = Checkbox;
         Operation.Payload.Set<FPreparedCheckboxStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
     }
+
+    if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget))
+    {
+        FPreparedDropdownStyle Style;
+        Style.HeaderStyle = Theme.DropdownHeaderStyle;
+        Style.PopupBackground = Theme.DropdownPopupBackground;
+        Style.PopupPadding = Theme.DropdownPopupPadding;
+        Style.OptionItemPadding = Theme.DropdownOptionItemPadding;
+        Style.MaxPopupHeight = Theme.DropdownMaxPopupHeight;
+        Style.PopupScale.ScaleCurve = Theme.TextScaleCurve;
+        Style.PopupScale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = Dropdown;
+        Operation.Payload.Set<FPreparedDropdownStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    if (UGV2InputFieldWidgetBase* InputField = Cast<UGV2InputFieldWidgetBase>(Widget))
+    {
+        FPreparedInputFieldStyle Style;
+        Style.WidgetStyle = Theme.InputFieldStyle;
+        Style.DefaultLabelStyle = Theme.InputFieldLabelStyle;
+        // "body", not the theme's default text token: this class's token-less size has
+        // always been the body size, and that is a behaviour to carry over, not to tidy.
+        Style.DefaultLabelScale = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, FName(TEXT("body")));
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = InputField;
+        Operation.Payload.Set<FPreparedInputFieldStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+    }
+}
+
+// PSC-10B: a class that styles its own bound sub-widgets from its own role OWNS that
+// subtree. Descending into it would emit a second, generic role for a child whose style the
+// parent has already decided -- a dropdown's header is not a plain button, and whichever
+// operation happened to be applied last would silently win. Ownership is declared here, in
+// the walk, rather than left to the order operations end up in.
+bool OwnsSubtreeStyling(const UWidget* Widget)
+{
+    return Widget->IsA<UGV2DropdownSelectWidgetBase>();
 }
 
 void WalkWidget(
@@ -141,6 +187,11 @@ void WalkWidget(
     }
 
     EmitForWidget(Widget, Theme, OutTransaction);
+
+    if (OwnsSubtreeStyling(Widget))
+    {
+        return;
+    }
 
     // A UUserWidget's bound sub-widgets live in its own WidgetTree, which ForEachWidget
     // enumerates flatly but does NOT descend into for nested user widgets -- so each nested

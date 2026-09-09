@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
 #include "UI/GV2UiBindingTarget.h"
@@ -62,6 +63,19 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     TSubclassOf<UGV2ButtonWidgetBase> GetOptionWidgetClass() const { return OptionWidgetClass; }
     void UpdateHeaderLabel();
+
+    // PSC-10B: sole physical central-style write for this class -- see
+    // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape. It styles its
+    // own HeaderButton, which is why GV2CentralStylePreparer does not descend into a
+    // dropdown: a dropdown's header is not a plain button and must not also receive the
+    // generic button role.
+    void ApplyDropdownStyleValues(
+        TSubclassOf<UCommonButtonStyle> InHeaderStyle,
+        const FSlateBrush& InPopupBackground,
+        const FMargin& InPopupPadding,
+        const FMargin& InOptionItemPadding,
+        float InMaxPopupHeight,
+        const GV2PresentationApply::FPreparedViewportScalePolicy& InPopupScale);
 
     virtual bool ApplyCentralStyle_Implementation() override;
 

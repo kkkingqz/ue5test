@@ -8,7 +8,8 @@
 void UGV2InputFieldWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: runtime style arrives as FPreparedInputFieldStyle; the serialized box and
+    // label styles already render at design time. See UGV2SeparatorWidgetBase.
 }
 
 void UGV2InputFieldWidgetBase::NativeConstruct()
@@ -106,6 +107,34 @@ bool UGV2InputFieldWidgetBase::ApplyText(const FGV2TextViewModel& InText)
         return false;
     }
     AppliedLabelText = InText;
+
+    // PSC-10B: the box's OWN text size follows this field's label style token, so it is
+    // applied where the token actually arrives -- with the text, in the same transaction --
+    // instead of being re-derived from a Theme later inside ApplyCentralStyle. The
+    // resolved-presentation-first split below is UGV2TextPipeline::Apply's own split; the
+    // legacy branch's ResolveEffectiveFontSize is the same fallback that function still
+    // has, and dies with the configured accessor rather than separately.
+    if (EditableTextBox != nullptr)
+    {
+        GV2PresentationApply::FPreparedTextScalePolicy ScalePolicy;
+        if (InText.bHasResolvedPresentation)
+        {
+            ScalePolicy.BaseFontSize = InText.ResolvedBaseFontSize;
+            ScalePolicy.MinReadableFontSize = InText.ResolvedMinReadableFontSize;
+            ScalePolicy.ReferenceViewportHeight = InText.ResolvedReferenceViewportHeight;
+            ScalePolicy.ScaleCurve = InText.ResolvedFontScaleCurve;
+        }
+        else
+        {
+            ScalePolicy.BaseFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(
+                InText.StyleToken.IsNone() ? FName(TEXT("body")) : InText.StyleToken, this);
+            ScalePolicy.bIsAlreadyScaled = true;
+        }
+        EditableTextBox->WidgetStyle.TextStyle.Font.Size = GV2PresentationApply::EvaluatePreparedFontSize(
+            ScalePolicy,
+            GV2PresentationApply::ResolveLiveViewportHeight(this, ScalePolicy.ReferenceViewportHeight));
+    }
+
     if (LabelText != nullptr)
     {
         return UGV2TextPipeline::Apply(LabelText, InText);
@@ -123,39 +152,46 @@ bool UGV2InputFieldWidgetBase::ApplyPlaceholderText(const FGV2TextViewModel& InP
     return UGV2TextPipeline::ApplyHint(EditableTextBox, InPlaceholder);
 }
 
-bool UGV2InputFieldWidgetBase::ApplyCentralStyle_Implementation()
+void UGV2InputFieldWidgetBase::ApplyInputFieldStyleValues(
+    const FEditableTextBoxStyle& InWidgetStyle,
+    TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
+    const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale)
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || EditableTextBox == nullptr
-        || (LabelText != nullptr && Theme->InputFieldLabelStyle == nullptr))
+    if (EditableTextBox == nullptr)
     {
-        return false;
+        return;
     }
 
-    EditableTextBox->WidgetStyle = Theme->InputFieldStyle;
-    const float ScaledFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(
-        AppliedLabelText.StyleToken.IsNone() ? FName(TEXT("body")) : AppliedLabelText.StyleToken,
-        this);
-    EditableTextBox->WidgetStyle.TextStyle.Font.Size = ScaledFontSize;
+    const bool bHasStyleToken = !AppliedLabelText.StyleToken.IsNone();
+    // Assigning the theme's whole box style would drop the text size ApplyText just set for
+    // this field's token, so that one field is carried across the assignment. Without a
+    // token nothing established a size and the role's own default applies.
+    const float SizeFromTextOperation = EditableTextBox->WidgetStyle.TextStyle.Font.Size;
+    EditableTextBox->WidgetStyle = InWidgetStyle;
+    EditableTextBox->WidgetStyle.TextStyle.Font.Size = bHasStyleToken
+        ? SizeFromTextOperation
+        : GV2PresentationApply::EvaluatePreparedFontSize(
+            InDefaultLabelScale,
+            GV2PresentationApply::ResolveLiveViewportHeight(this, InDefaultLabelScale.ReferenceViewportHeight));
 
-    if (LabelText != nullptr && Theme->InputFieldLabelStyle != nullptr)
+    // See UGV2ButtonWidgetBase::ApplyButtonStyleValues for why a token-carrying label is
+    // left to its own text operation.
+    if (LabelText != nullptr && InDefaultLabelStyle != nullptr && !bHasStyleToken)
     {
-        const TSubclassOf<UCommonTextStyle> LabelStyle = AppliedLabelText.StyleToken.IsNone()
-            ? Theme->InputFieldLabelStyle
-            : UGV2TextPipeline::ResolveStyleClass(AppliedLabelText.StyleToken);
-
-        if (LabelStyle != nullptr)
+        LabelText->SetStyle(InDefaultLabelStyle);
+        FSlateFontInfo FontInfo = LabelText->GetFont();
+        const float DefaultSize = EditableTextBox->WidgetStyle.TextStyle.Font.Size;
+        if (!FMath::IsNearlyEqual(FontInfo.Size, DefaultSize, 0.01f))
         {
-            LabelText->SetStyle(LabelStyle);
-            FSlateFontInfo FontInfo = LabelText->GetFont();
-            if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
-            {
-                FontInfo.Size = ScaledFontSize;
-                LabelText->SetFont(FontInfo);
-            }
+            FontInfo.Size = DefaultSize;
+            LabelText->SetFont(FontInfo);
         }
     }
+}
 
+bool UGV2InputFieldWidgetBase::ApplyCentralStyle_Implementation()
+{
+    // PSC-10B: carried by FPreparedInputFieldStyle, written by ApplyInputFieldStyleValues.
     return true;
 }
 

@@ -2224,8 +2224,6 @@ bool FGV2CentralStyleImplementationInventoryTest::RunTest(const FString& Paramet
     // committed in the SAME transaction, so a role resolved before that commit would carry
     // a stale token. See PSC-10B's implementation record.
     const TSet<FString> NotYetConverted = {
-        TEXT("GV2DropdownSelectWidgetBase"),
-        TEXT("GV2InputFieldWidgetBase"),
         TEXT("GV2RichTextPopoverWidgetBase"),
         TEXT("GV2RichTextWidgetBase"),
         // Style consumers whose ApplyCentralStyle body carries no Theme read at all

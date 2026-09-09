@@ -619,6 +619,30 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                             return;
                         }
                         Checkbox->ApplyCheckboxStyleValues(Style.WidgetStyle, Style.DefaultLabelStyle);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedInputFieldStyle& Style)
+                    {
+                        UGV2InputFieldWidgetBase* InputField = Cast<UGV2InputFieldWidgetBase>(Widget);
+                        if (InputField == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: input field style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        InputField->ApplyInputFieldStyleValues(Style.WidgetStyle, Style.DefaultLabelStyle, Style.DefaultLabelScale);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedDropdownStyle& Style)
+                    {
+                        UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget);
+                        if (Dropdown == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: dropdown style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        Dropdown->ApplyDropdownStyleValues(
+                            Style.HeaderStyle, Style.PopupBackground, Style.PopupPadding,
+                            Style.OptionItemPadding, Style.MaxPopupHeight, Style.PopupScale);
                     }
                 }, Op.Payload);
             }

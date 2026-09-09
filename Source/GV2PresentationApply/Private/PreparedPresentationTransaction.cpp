@@ -39,6 +39,28 @@ EGV2PreparedOperationKind GetPreparedOperationKind(const FGV2PreparedOperationVa
 // PSC-10A: mirrors UGV2UiTheme::EvaluateTextScale's own curve-eval-with-fallback-lerp
 // math exactly (same breakpoints: 720/1080/1440/2160), against the resolved policy's
 // OWN curve instead of a live Theme object.
+// PSC-10B: the curve evaluation itself, so EvaluatePreparedFontSize and every non-font
+// consumer of the same scale share ONE implementation rather than two copies that can drift.
+float EvaluatePreparedViewportScale(const FPreparedViewportScalePolicy& Policy, float ViewportHeight)
+{
+    if (ViewportHeight <= 0.0f)
+    {
+        return 1.0f;
+    }
+    const FRichCurve* Curve = Policy.ScaleCurve.GetRichCurveConst();
+    if (Curve != nullptr && Curve->GetNumKeys() > 0)
+    {
+        return FMath::Max(0.1f, Curve->Eval(ViewportHeight));
+    }
+    if (ViewportHeight < 1080.0f)
+    {
+        const float Alpha = FMath::Clamp((ViewportHeight - 720.0f) / (1080.0f - 720.0f), 0.0f, 1.0f);
+        return FMath::Lerp(0.85f, 1.0f, Alpha);
+    }
+    const float Alpha = FMath::Clamp((ViewportHeight - 1080.0f) / (2160.0f - 1080.0f), 0.0f, 1.0f);
+    return FMath::Lerp(1.0f, 1.60f, Alpha);
+}
+
 float EvaluatePreparedFontSize(const FPreparedTextScalePolicy& Policy, float ViewportHeight)
 {
     if (Policy.bIsAlreadyScaled)
@@ -46,26 +68,10 @@ float EvaluatePreparedFontSize(const FPreparedTextScalePolicy& Policy, float Vie
         return Policy.BaseFontSize;
     }
 
-    float Scale = 1.0f;
-    if (ViewportHeight > 0.0f)
-    {
-        const FRichCurve* Curve = Policy.ScaleCurve.GetRichCurveConst();
-        if (Curve != nullptr && Curve->GetNumKeys() > 0)
-        {
-            Scale = FMath::Max(0.1f, Curve->Eval(ViewportHeight));
-        }
-        else if (ViewportHeight < 1080.0f)
-        {
-            const float Alpha = FMath::Clamp((ViewportHeight - 720.0f) / (1080.0f - 720.0f), 0.0f, 1.0f);
-            Scale = FMath::Lerp(0.85f, 1.0f, Alpha);
-        }
-        else
-        {
-            const float Alpha = FMath::Clamp((ViewportHeight - 1080.0f) / (2160.0f - 1080.0f), 0.0f, 1.0f);
-            Scale = FMath::Lerp(1.0f, 1.60f, Alpha);
-        }
-    }
-    const float ScaledSize = Policy.BaseFontSize * Scale;
+    FPreparedViewportScalePolicy ScalePolicy;
+    ScalePolicy.ScaleCurve = Policy.ScaleCurve;
+    ScalePolicy.ReferenceViewportHeight = Policy.ReferenceViewportHeight;
+    const float ScaledSize = Policy.BaseFontSize * EvaluatePreparedViewportScale(ScalePolicy, ViewportHeight);
     return FMath::Max(Policy.MinReadableFontSize, ScaledSize);
 }
 

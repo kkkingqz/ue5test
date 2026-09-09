@@ -297,6 +297,19 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextScalePolicy
 // itself needs no authority, only the already-resolved policy plus current geometry.
 GV2PRESENTATIONAPPLY_API float EvaluatePreparedFontSize(const FPreparedTextScalePolicy& Policy, float ViewportHeight);
 
+// PSC-10B (ADR-0035, DCA-15): the viewport-derived scale factor on its own, for a prepared
+// operation that scales something other than a font -- a dropdown's popup box follows the
+// same curve as the option text inside it, or a fixed max height would show fewer options
+// as the screen grows. Same curve, same breakpoints, one implementation:
+// EvaluatePreparedFontSize is defined in terms of this.
+struct GV2PRESENTATIONAPPLY_API FPreparedViewportScalePolicy
+{
+    FRuntimeFloatCurve ScaleCurve;
+    float ReferenceViewportHeight = 1080.0f;
+};
+
+GV2PRESENTATIONAPPLY_API float EvaluatePreparedViewportScale(const FPreparedViewportScalePolicy& Policy, float ViewportHeight);
+
 // Live viewport query (GEngine->GameViewport, falling back to ContextWidget's own
 // world) -- the same lookup UGV2TextPipeline::GetViewportHeight used to perform, minus
 // the Theme-sourced fallback (now a parameter, itself resolved in Prepare).
@@ -413,6 +426,23 @@ struct GV2PRESENTATIONAPPLY_API FPreparedButtonStyle
     FPreparedTextScalePolicy DefaultLabelScale;
 };
 
+struct GV2PRESENTATIONAPPLY_API FPreparedDropdownStyle
+{
+    TSubclassOf<UCommonButtonStyle> HeaderStyle;
+    FSlateBrush PopupBackground;
+    FMargin PopupPadding;
+    FMargin OptionItemPadding;
+    float MaxPopupHeight = 200.0f;
+    FPreparedViewportScalePolicy PopupScale;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedInputFieldStyle
+{
+    FEditableTextBoxStyle WidgetStyle;
+    TSubclassOf<UCommonTextStyle> DefaultLabelStyle;
+    FPreparedTextScalePolicy DefaultLabelScale;
+};
+
 struct GV2PRESENTATIONAPPLY_API FPreparedCheckboxStyle
 {
     FCheckBoxStyle WidgetStyle;
@@ -434,7 +464,9 @@ using FPreparedCentralStylePayload = TVariant<
     FPreparedProgressBarStyle,
     FPreparedLoadingIndicatorStyle,
     FPreparedButtonStyle,
-    FPreparedCheckboxStyle
+    FPreparedCheckboxStyle,
+    FPreparedInputFieldStyle,
+    FPreparedDropdownStyle
 >;
 
 // TargetWidget is a GV2-owned widget base for every role that exists today, so the

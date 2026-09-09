@@ -17,7 +17,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogGV2DropdownSelectWidget, Log, All);
 void UGV2DropdownSelectWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: runtime style arrives as FPreparedDropdownStyle. See UGV2SeparatorWidgetBase.
     if (PopupBorder != nullptr)
     {
         PopupBorder->SetVisibility(ESlateVisibility::Collapsed);
@@ -178,36 +178,50 @@ EGV2SubmitUiInteractionResult UGV2DropdownSelectWidgetBase::SubmitSelection(
     return SubmitResult;
 }
 
-bool UGV2DropdownSelectWidgetBase::ApplyCentralStyle_Implementation()
+void UGV2DropdownSelectWidgetBase::ApplyDropdownStyleValues(
+    TSubclassOf<UCommonButtonStyle> InHeaderStyle,
+    const FSlateBrush& InPopupBackground,
+    const FMargin& InPopupPadding,
+    const FMargin& InOptionItemPadding,
+    float InMaxPopupHeight,
+    const GV2PresentationApply::FPreparedViewportScalePolicy& InPopupScale)
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || HeaderButton == nullptr || PopupBorder == nullptr
-        || PopupSizeBox == nullptr || OptionsScrollBox == nullptr
-        || Theme->DropdownHeaderStyle == nullptr
-        || Theme->DropdownPopupBackground.DrawAs == ESlateBrushDrawType::NoDrawType
-        || Theme->DropdownMaxPopupHeight < 32.0f)
+    if (HeaderButton != nullptr && InHeaderStyle != nullptr)
     {
-        return false;
+        HeaderButton->SetStyle(InHeaderStyle);
     }
-
-    HeaderButton->SetStyle(Theme->DropdownHeaderStyle);
-    PopupBorder->SetBrush(Theme->DropdownPopupBackground);
-    PopupBorder->SetPadding(Theme->DropdownPopupPadding);
-    // DCA-15 (ADR-0035): the popup's own box follows the same viewport-derived
-    // scale as the option text inside it -- a fixed max height (the Theme
-    // default, unscaled) shows fewer visible options as the screen grows, the
-    // opposite of what a responsive list should do.
-    const float ViewportScale = Theme->EvaluateTextScale(UGV2TextPipeline::GetViewportHeight(this));
-    PopupSizeBox->SetMaxDesiredHeight(Theme->DropdownMaxPopupHeight * ViewportScale);
-
-    for (UPanelSlot* PanelSlot : OptionsScrollBox->GetSlots())
+    if (PopupBorder != nullptr)
     {
-        if (UScrollBoxSlot* Slot = Cast<UScrollBoxSlot>(PanelSlot))
+        PopupBorder->SetBrush(InPopupBackground);
+        PopupBorder->SetPadding(InPopupPadding);
+    }
+    if (PopupSizeBox != nullptr)
+    {
+        // DCA-15 (ADR-0035): the popup's own box follows the same viewport-derived
+        // scale as the option text inside it -- a fixed max height (the Theme
+        // default, unscaled) shows fewer visible options as the screen grows, the
+        // opposite of what a responsive list should do. PSC-10B: the curve and the
+        // reference height are now prepared values; only the live viewport is read here.
+        const float ViewportScale = GV2PresentationApply::EvaluatePreparedViewportScale(
+            InPopupScale,
+            GV2PresentationApply::ResolveLiveViewportHeight(this, InPopupScale.ReferenceViewportHeight));
+        PopupSizeBox->SetMaxDesiredHeight(InMaxPopupHeight * ViewportScale);
+    }
+    if (OptionsScrollBox != nullptr)
+    {
+        for (UPanelSlot* PanelSlot : OptionsScrollBox->GetSlots())
         {
-            Slot->SetPadding(Theme->DropdownOptionItemPadding);
+            if (UScrollBoxSlot* Slot = Cast<UScrollBoxSlot>(PanelSlot))
+            {
+                Slot->SetPadding(InOptionItemPadding);
+            }
         }
     }
+}
 
+bool UGV2DropdownSelectWidgetBase::ApplyCentralStyle_Implementation()
+{
+    // PSC-10B: carried by FPreparedDropdownStyle, written by ApplyDropdownStyleValues.
     return true;
 }
 

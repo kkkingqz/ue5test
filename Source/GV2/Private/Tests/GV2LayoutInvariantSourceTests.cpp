@@ -131,10 +131,26 @@ bool ContainsWholeIdentifier(const FString& Text, const FString& Identifier)
 // unrelated call in the same function look derived merely by proximity to a
 // real one -- exactly the false negative a synthetic literal planted next to
 // a genuine fix must not produce.
+// PSC-10B: the prepared-transaction equivalents of the two legacy Theme-reading markers.
+// GV2PresentationApply::EvaluatePreparedViewportScale IS UGV2UiTheme::EvaluateTextScale's
+// curve evaluation (the theme method is now one caller of it), and ResolveLiveViewportHeight
+// IS UGV2TextPipeline::GetViewportHeight's live query -- a call site that scales through the
+// prepared pair is exactly as viewport-derived as one that scales through the Theme pair.
+//
+// This remains a NAME list by construction, which is what ADR-0043 D4 classifies a source
+// scan as: secondary. It is why the same task also adds a reflection-derived central-style
+// implementation inventory, whose actual set no rename can shrink.
+const TCHAR* GGv2ViewportDerivationMarkers[] = {
+    TEXT("EvaluateTextScale"),
+    TEXT("GetViewportHeight"),
+    TEXT("EvaluatePreparedViewportScale"),
+    TEXT("ResolveLiveViewportHeight"),
+};
+
 TArray<FString> FindScaleVariableNames(const FString& PrecedingContext)
 {
     TArray<FString> Names;
-    for (const TCHAR* Marker : {TEXT("EvaluateTextScale"), TEXT("GetViewportHeight")})
+    for (const TCHAR* Marker : GGv2ViewportDerivationMarkers)
     {
         int32 SearchFrom = 0;
         for (;;)
@@ -172,9 +188,12 @@ TArray<FString> FindScaleVariableNames(const FString& PrecedingContext)
 
 bool ArgumentShowsViewportDerivation(const FGV2LayoutSourceMatch& Match)
 {
-    if (Match.ArgumentWindow.Contains(TEXT("EvaluateTextScale")) || Match.ArgumentWindow.Contains(TEXT("GetViewportHeight")))
+    for (const TCHAR* Marker : GGv2ViewportDerivationMarkers)
     {
-        return true;
+        if (Match.ArgumentWindow.Contains(Marker))
+        {
+            return true;
+        }
     }
     for (const FString& ScaleVariable : FindScaleVariableNames(Match.PrecedingContext))
     {

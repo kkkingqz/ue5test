@@ -90,6 +90,7 @@ ALLOWED_BASE_TYPES = {
     "FMargin",
     "FProgressBarStyle",
     "FCheckBoxStyle",
+    "FEditableTextBoxStyle",
 }
 
 # UObject-derived types a TWeakObjectPtr<...> field may point to. Structurally, this
