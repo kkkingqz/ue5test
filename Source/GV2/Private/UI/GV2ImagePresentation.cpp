@@ -50,38 +50,39 @@ bool FGV2ImagePresentation::ApplyResolved(
     return true;
 }
 
-// PAH-08: phase=prepare
-// Resolve + apply, for callers that legitimately consult the catalog: the
-// consumer's Prepare, and widget-local paths outside a presentation transaction.
-// STATUS-012 removed the application-phase callers, so this is no longer reachable
-// from a Commit root -- validate_presentation_authority_phase.py asserts that.
-bool FGV2ImagePresentation::ResolveAndApply(
-    UImage* Widget,
-    const FString& ResourceId,
-    const EGV2PrimitiveScalePolicy ScalePolicy,
-    const TOptional<float> FixedAspectRatio,
-    FGV2ResolvedImageResource& OutResource,
-    FString& OutError)
+// PSC-10C: the prepared-operation builder that replaced ResolveAndApply. It takes an
+// ALREADY resolved resource -- the caller obtained it from the session snapshot through
+// FGV2PresentationPrepareContext during Prepare -- and appends the ordinary image-host
+// operation. No catalog, no lookup, no mutation: the physical write happens later, in the
+// same Apply facade every other operation goes through.
+void FGV2ImagePresentation::AppendPreparedImageHostOperation(
+    UWidget* TargetWidget,
+    const FGV2ResolvedImageResource& Resolved,
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction)
 {
-    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
-    if (Widget == nullptr || Catalog == nullptr)
+    if (TargetWidget == nullptr)
     {
-        OutError = Widget == nullptr
-            ? TEXT("Image widget is unavailable.")
-            : TEXT("Configured Image Resource Catalog is unavailable.");
-        return false;
+        return;
     }
-    FGV2ResolvedImageResource Candidate;
-    if (!Catalog->Resolve(ResourceId, Candidate, OutError))
+    GV2PresentationApply::FPreparedImageHostOperation Operation;
+    Operation.TargetWidget = TargetWidget;
+    Operation.Resolved.ResourceId = Resolved.ResourceId;
+    Operation.Resolved.RenderMode = ToPreparedRenderMode(Resolved.RenderMode);
+    Operation.Resolved.FixedAspectRatio = Resolved.FixedAspectRatio;
+    Operation.Resolved.Brush = Resolved.Brush;
+    OutTransaction.AddImageHostOperation(MoveTemp(Operation));
+}
+
+GV2PresentationApply::EPreparedImageRenderMode FGV2ImagePresentation::ToPreparedRenderMode(EGV2ImageRenderMode RenderMode)
+{
+    switch (RenderMode)
     {
-        return false;
+    case EGV2ImageRenderMode::NineSlice:
+        return GV2PresentationApply::EPreparedImageRenderMode::NineSlice;
+    case EGV2ImageRenderMode::Tile:
+        return GV2PresentationApply::EPreparedImageRenderMode::Tile;
+    case EGV2ImageRenderMode::FixedAspect:
+        return GV2PresentationApply::EPreparedImageRenderMode::FixedAspect;
     }
-    if (!ApplyResolved(Widget, Candidate, ScalePolicy, FixedAspectRatio, OutError))
-    {
-        return false;
-    }
-    OutResource = MoveTemp(Candidate);
-    OutResource.Brush = Widget->GetBrush();
-    OutError.Reset();
-    return true;
+    return GV2PresentationApply::EPreparedImageRenderMode::FixedAspect;
 }

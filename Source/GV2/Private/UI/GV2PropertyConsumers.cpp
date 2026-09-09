@@ -10,6 +10,7 @@
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "UI/GV2TextPipeline.h"
+#include "UI/GV2ImagePresentation.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2UiBindingTarget.h"
@@ -303,22 +304,6 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
 }
 
 // GBF-07: rollback_leaf=PropertyMutation
-namespace
-{
-GV2PresentationApply::EPreparedImageRenderMode ToPreparedRenderMode(EGV2ImageRenderMode RenderMode)
-{
-    switch (RenderMode)
-    {
-    case EGV2ImageRenderMode::NineSlice:
-        return GV2PresentationApply::EPreparedImageRenderMode::NineSlice;
-    case EGV2ImageRenderMode::Tile:
-        return GV2PresentationApply::EPreparedImageRenderMode::Tile;
-    case EGV2ImageRenderMode::FixedAspect:
-        return GV2PresentationApply::EPreparedImageRenderMode::FixedAspect;
-    }
-    return GV2PresentationApply::EPreparedImageRenderMode::FixedAspect;
-}
-}
 
 // STATUS-012 (ADR-0042, INV-P5): every branch applies PreparedResource, the resolution
 // Prepare validated -- none re-consults the catalog, so the value that reaches the
@@ -364,7 +349,7 @@ bool FGV2ImageResourcePropertyConsumer::BuildPreparedOperation(
         GV2PresentationApply::FPreparedImageHostOperation Operation;
         Operation.TargetWidget = TargetWidget;
         Operation.Resolved.ResourceId = PreparedResource.ResourceId;
-        Operation.Resolved.RenderMode = ToPreparedRenderMode(PreparedResource.RenderMode);
+        Operation.Resolved.RenderMode = FGV2ImagePresentation::ToPreparedRenderMode(PreparedResource.RenderMode);
         Operation.Resolved.FixedAspectRatio = PreparedResource.FixedAspectRatio;
         Operation.Resolved.Brush = PreparedResource.Brush;
         OutTransaction.AddImageHostOperation(MoveTemp(Operation));

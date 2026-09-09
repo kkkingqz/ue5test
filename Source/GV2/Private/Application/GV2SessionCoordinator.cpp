@@ -306,10 +306,8 @@ bool FGV2SessionCoordinator::StartSession(
     // eagerly compiled schemas from this exact ResolvedPackageSet -- still entirely before
     // touching whatever session is currently active, so a content-builder failure here
     // (UiSchemaNotReady/ScreenRegistryNotReady/ImageCatalogNotReady/ThemeNotReady) has not
-    // yet committed to replacing anything. Runs alongside (not yet replacing)
-    // RebuildSchemaCacheForSession/RebuildForSession below; PSC-06 retires those legacy
-    // session globals in favor of this snapshot once production Prepare reads it through
-    // FGV2PresentationPrepareContext.
+    // yet committed to replacing anything. PSC-10C retired the image catalog session
+    // global entirely; RebuildSchemaCacheForSession below is the last remaining one.
     TUniquePtr<FGV2SessionContentSnapshot> Candidate = MakeUnique<FGV2SessionContentSnapshot>();
     GV2RuntimeCore::FRuntimeFault CandidateFault;
     if (!FGV2SessionContentCandidate::Build(
@@ -337,7 +335,6 @@ bool FGV2SessionCoordinator::StartSession(
         return false;
     }
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
-    UGV2ImageResourceCatalog::ReleaseForSession();
 
     ++Status.SessionGeneration;
     Status.ApplicationState = EGV2ApplicationState::Bootstrapping;
@@ -351,19 +348,10 @@ bool FGV2SessionCoordinator::StartSession(
 
     GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(SchemaPackageRoots));
 
-    // PAH-04B: same closure package ids as schemas -- the image resource catalog is the
-    // second content authority PKG-R1's fix pattern applies to. RebuildForSession fails
-    // closed (a resource whose namespace isn't in ClosurePackageIds, or a decode/duplicate
-    // error) exactly like a required-catalog bootstrap failure used to at Initialize()
-    // time, just moved to this session's own StartSession -- ImageResources.md's "Failed
-    // configured catalog build обязан оставить Runtime Subsystem в non-ready bootstrap
-    // state" now applies per-session instead of once per process.
-    FString ImageCatalogError;
-    if (!UGV2ImageResourceCatalog::RebuildForSession(ClosurePackageIds, ImageCatalogError))
-    {
-        FailRuntime({"ImageCatalogNotReady", SessionCoordinatorToUtf8(ImageCatalogError)});
-        return false;
-    }
+    // PSC-10C: no second image catalog is built here any more. The candidate above already
+    // built this session's catalog from the same closure package ids and pinned it in the
+    // snapshot, failing with the same ImageCatalogNotReady fault on the same inputs; a
+    // process-global copy alongside it was a second content authority for one session.
 
     // PSC-04: RuntimeSession consumes the snapshot's own Lua source set -- it was moved
     // into the candidate above, not read a second time from a separately-held local copy.
@@ -454,7 +442,6 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
-    UGV2ImageResourceCatalog::ReleaseForSession();
     ContentSnapshot.Reset();
     InProgressCandidate = nullptr;
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
@@ -875,7 +862,6 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
-    UGV2ImageResourceCatalog::ReleaseForSession();
     ContentSnapshot.Reset();
     InProgressCandidate = nullptr;
     Status.RepositoryVersion = 0;

@@ -20,8 +20,6 @@ class GV2_API UGV2ImageWidgetBase
     GENERATED_BODY()
 
 public:
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI")
-    bool ApplyImageResource(const FString& ResourceId, FString& OutError);
 
     // STATUS-012: application-phase entry point. Takes what preparation already
     // resolved instead of re-deriving it from the id.
@@ -46,6 +44,10 @@ public:
     }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
+    // PSC-10C: read by the subtree preparer, which resolves this authoring-time content
+    // reference against the session snapshot. The widget itself never resolves it.
+    const FString& GetInitialResourceId() const { return InitialResourceId; }
+
     EGV2PrimitiveScalePolicy GetScalePolicy() const
     {
         return ScalePolicy;

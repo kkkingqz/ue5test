@@ -160,18 +160,15 @@ public:
         FString& OutResourceId,
         FString& OutError);
 
-    // PAH-04B: session-scoped, not process-lifetime/config-driven -- mirrors
-    // GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession's shape (PAH-04A).
-    // RebuildForSession is called once per StartSession, before Ready, with this
-    // session's resolved package ids (the same set schemas/Lua sources already use);
-    // ReleaseForSession is called on EndSession and on a failed StartSession, so no
-    // catalog survives past the session that owns it. GetSessionCatalog() never rebuilds
-    // lazily -- it returns whatever RebuildForSession last published, or nullptr before
-    // any session/after release, exactly like the presentation call sites already
-    // null-check for today.
-    static bool RebuildForSession(const TArray<FString>& PackageIds, FString& OutError);
-    static void ReleaseForSession();
-    static UGV2ImageResourceCatalog* GetSessionCatalog();
+    // PSC-10C: the process-global session catalog (RebuildForSession/ReleaseForSession/
+    // GetSessionCatalog, PAH-04B) is GONE. It was a second content authority for the same
+    // session: FGV2SessionContentCandidate::Build already constructs this exact catalog --
+    // the same BuildFromPackageClosure over the same closure package ids -- and pins it in
+    // FGV2ResolvedImageCatalog, which every Prepare reads through
+    // FGV2PresentationPrepareContext::ResolveResource. The global existed only so widget
+    // code could resolve a resource without a snapshot, which is precisely what this task
+    // removes; its build-failure semantics are unchanged because the candidate's own build
+    // fails with the same ImageCatalogNotReady fault, earlier, on the same inputs.
 
 private:
 #if WITH_DEV_AUTOMATION_TESTS

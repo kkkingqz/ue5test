@@ -10,6 +10,7 @@
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2CheckboxWidgetBase.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
+#include "UI/GV2ImagePresentation.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2ListViewWidgetBase.h"
@@ -66,8 +67,13 @@ FPreparedRichTextPopoverStyle ResolveRichTextPopoverStyle(const UGV2UiTheme& The
 // style role, each turning theme fields into a finished value payload. A new styled class
 // without a branch here emits nothing and is therefore visible as an unstyled widget, not as
 // a silent second authority read -- there is no fallback path left for it to take.
-void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FGV2PreparedPresentationTransaction& OutTransaction)
+bool EmitForWidget(
+    UWidget* Widget,
+    const FGV2PresentationPrepareContext& PrepareContext,
+    FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError)
 {
+    const FGV2ResolvedUiTheme& ResolvedTheme = PrepareContext.GetTheme();
     const UGV2UiTheme& Theme = *ResolvedTheme.Theme;
 
     if (UGV2SeparatorWidgetBase* Separator = Cast<UGV2SeparatorWidgetBase>(Widget))
@@ -81,7 +87,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = Separator;
         Operation.Payload.Set<FPreparedSeparatorStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     if (UGV2ImageWidgetBase* ImageBase = Cast<UGV2ImageWidgetBase>(Widget))
@@ -93,7 +99,32 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = ImageBase;
         Operation.Payload.Set<FPreparedTintStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+
+        // PSC-10C: a Blueprint-authored InitialResourceId is a CONTENT reference, resolved
+        // here against the session snapshot and shipped as an ordinary ImageResource
+        // operation. Before this task the widget resolved it itself from NativePreConstruct
+        // through the process-global session catalog and mutated its own brush -- semantic
+        // resolution reached from a lifecycle callback, the same shape PSC-10B removed for
+        // Theme. A declared `resource_id` screen field, when one arrives, is prepared by
+        // FGV2ImageResourcePropertyConsumer and applied after this operation, so the field
+        // wins over the authoring default exactly as it did before.
+        const FString& InitialResourceId = ImageBase->GetInitialResourceId();
+        if (!InitialResourceId.IsEmpty())
+        {
+            FGV2ResolvedImageResource Resolved;
+            FString ResolveError;
+            if (!PrepareContext.ResolveResource(InitialResourceId, Resolved, ResolveError))
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_image.initial_resource_unresolved: '%s' on '%s': %s"),
+                    *InitialResourceId,
+                    *ImageBase->GetName(),
+                    *ResolveError);
+                return false;
+            }
+            FGV2ImagePresentation::AppendPreparedImageHostOperation(ImageBase, Resolved, OutTransaction);
+        }
+        return true;
     }
 
     if (UGV2ButtonListWidgetBase* ButtonList = Cast<UGV2ButtonListWidgetBase>(Widget))
@@ -105,7 +136,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = ButtonList;
         Operation.Payload.Set<FPreparedItemPaddingStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     if (UGV2ProgressBarWidgetBase* ProgressBar = Cast<UGV2ProgressBarWidgetBase>(Widget))
@@ -118,7 +149,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = ProgressBar;
         Operation.Payload.Set<FPreparedProgressBarStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     if (UGV2LoadingIndicatorWidgetBase* LoadingIndicator = Cast<UGV2LoadingIndicatorWidgetBase>(Widget))
@@ -133,7 +164,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = LoadingIndicator;
         Operation.Payload.Set<FPreparedLoadingIndicatorStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     // Button must be tested before Checkbox only in the sense that both are independent
@@ -152,7 +183,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = Button;
         Operation.Payload.Set<FPreparedButtonStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     if (UGV2CheckboxWidgetBase* Checkbox = Cast<UGV2CheckboxWidgetBase>(Widget))
@@ -165,7 +196,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = Checkbox;
         Operation.Payload.Set<FPreparedCheckboxStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     if (UGV2DropdownSelectWidgetBase* Dropdown = Cast<UGV2DropdownSelectWidgetBase>(Widget))
@@ -183,7 +214,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = Dropdown;
         Operation.Payload.Set<FPreparedDropdownStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     if (UGV2InputFieldWidgetBase* InputField = Cast<UGV2InputFieldWidgetBase>(Widget))
@@ -199,7 +230,7 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.TargetWidget = InputField;
         Operation.Payload.Set<FPreparedInputFieldStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
-        return;
+        return true;
     }
 
     if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(Widget))
@@ -252,6 +283,8 @@ void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FG
         Operation.Payload.Set<FPreparedRichTextStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
     }
+
+    return true;
 }
 
 // PSC-10B: a class that styles its own bound sub-widgets from its own role OWNS that
@@ -270,28 +303,32 @@ bool OwnsSubtreeStyling(const UWidget* Widget)
         || Widget->IsA<UGV2TabContainerWidgetBase>();
 }
 
-void WalkWidget(
+bool WalkWidget(
     UWidget* Widget,
-    const FGV2ResolvedUiTheme& ResolvedTheme,
+    const FGV2PresentationPrepareContext& PrepareContext,
     TSet<UWidget*>& Visited,
-    FGV2PreparedPresentationTransaction& OutTransaction)
+    FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError)
 {
     if (Widget == nullptr)
     {
-        return;
+        return true;
     }
     bool bAlreadyVisited = false;
     Visited.Add(Widget, &bAlreadyVisited);
     if (bAlreadyVisited)
     {
-        return;
+        return true;
     }
 
-    EmitForWidget(Widget, ResolvedTheme, OutTransaction);
+    if (!EmitForWidget(Widget, PrepareContext, OutTransaction, OutError))
+    {
+        return false;
+    }
 
     if (OwnsSubtreeStyling(Widget))
     {
-        return;
+        return true;
     }
 
     // A UUserWidget's bound sub-widgets live in its own WidgetTree, which ForEachWidget
@@ -300,23 +337,36 @@ void WalkWidget(
     // enumeration are covered by the Visited set rather than by a second traversal rule.
     if (UUserWidget* UserWidget = Cast<UUserWidget>(Widget))
     {
-        if (UserWidget->WidgetTree != nullptr)
+        if (UserWidget->WidgetTree == nullptr)
         {
-            UserWidget->WidgetTree->ForEachWidget([&ResolvedTheme, &Visited, &OutTransaction](UWidget* Child)
-            {
-                WalkWidget(Child, ResolvedTheme, Visited, OutTransaction);
-            });
+            return true;
         }
-        return;
+        // ForEachWidget has no early-out, so the first failure is recorded and the remaining
+        // children are skipped by the same flag rather than by aborting the traversal.
+        bool bFailed = false;
+        UserWidget->WidgetTree->ForEachWidget(
+            [&PrepareContext, &Visited, &OutTransaction, &OutError, &bFailed](UWidget* Child)
+            {
+                if (!bFailed && !WalkWidget(Child, PrepareContext, Visited, OutTransaction, OutError))
+                {
+                    bFailed = true;
+                }
+            });
+        return !bFailed;
     }
 
     if (UPanelWidget* Panel = Cast<UPanelWidget>(Widget))
     {
         for (int32 Index = 0; Index < Panel->GetChildrenCount(); ++Index)
         {
-            WalkWidget(Panel->GetChildAt(Index), ResolvedTheme, Visited, OutTransaction);
+            if (!WalkWidget(Panel->GetChildAt(Index), PrepareContext, Visited, OutTransaction, OutError))
+            {
+                return false;
+            }
         }
     }
+
+    return true;
 }
 }
 
@@ -343,7 +393,6 @@ bool PrepareForSubtree(
     }
 
     TSet<UWidget*> Visited;
-    WalkWidget(Root, PrepareContext.GetTheme(), Visited, OutTransaction);
-    return true;
+    return WalkWidget(Root, PrepareContext, Visited, OutTransaction, OutError);
 }
 }

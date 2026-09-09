@@ -1,8 +1,8 @@
 ---
 title: Image Resource Contract
 status: normative
-version: 1.9
-updated: 2026-09-07
+version: 1.10
+updated: 2026-09-09
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -58,7 +58,7 @@ Raw `/Game/...` locator, `UTexture2D`, `FSlateBrush`, source pixels и render mo
 | `NineSlice` | `nine_slice` | Фиксированные углы, растяжение ребер по одной оси, центра по двум |
 | `PreserveAspect` | `fixed_aspect` | Сохранение пропорций (aspect ratio) ресурса внутри слота |
 
-Попытка применить ресурс с несовместимым режимом или с политикой `Unset` отклоняется на этапе Prepare / `FGV2ImagePresentation::ResolveAndApply` без модификации свойств виджета.
+Попытка применить ресурс с несовместимым режимом или с политикой `Unset` отклоняется на этапе Prepare или в `FGV2ImagePresentation::ApplyResolved` без модификации свойств виджета.
 
 ## Invariants
 
@@ -96,9 +96,16 @@ Render mode кодируется suffix имени source-файла:
 
 `.tile` и `.9` не входят в `resource_id`. Для `.9.png` верхняя граница обязана содержать ровно один непрерывный чёрный marker run, задающий горизонтально растягиваемую область; левая — один run для вертикальной области. Runtime border widths вычисляются относительно внутреннего bitmap после удаления рамки. JSON sidecar для image metadata запрещён.
 
-`FGV2ImagePresentation` предоставляет ровно два публичных пути, разделённых Prepare/Apply границей (`STATUS-012`, `ADR-0043` D3): `ResolveAndApply` разрешает `resource_id` через session-scoped catalog и применяет результат за один вызов — легитимно только для caller'ов, которые сами являются точкой разрешения (Prepare/материализация, статическая composition вроде `InitialResourceId`), не для документной Commit-транзакции. `ApplyResolved` принимает уже разрешённый `FGV2ResolvedImageResource` (без доступа к каталогу) и является единственным путём, которым документная Commit-транзакция применяет image resource — Prepare резолвит `resource_id` через каталог и сохраняет результат в подготовленном значении; Commit только вызывает `ApplyResolved`, без повторного catalog lookup. `UGV2ImageWidgetBase.ApplyImageResource(resource_id)` и approved native composite adapters обязаны делегировать одному из этих двух путей согласно тому, в какой фазе они находятся. Public raw-brush mutation API отсутствует.
+`FGV2ImagePresentation` не содержит пути, который разрешает и применяет ресурс одним вызовом (`PSC-10C`). Разрешение и физический эффект разделены по фазам (`STATUS-012`, `ADR-0043` D3):
 
-`UGV2ImageWidgetBase.InitialResourceId` может быть задан конкретным Screen Blueprint для статической composition. При `NativePreConstruct` компонент разрешает его тем же `ApplyImageResource` path; Blueprint не обязан дублировать event graph. Пустое значение означает, что resource будет передан динамически.
+- **Prepare** разрешает `resource_id` **только** через `FGV2PresentationPrepareContext::ResolveResource`, то есть через каталог, принадлежащий snapshot этой сессии, и складывает результат в подготовленную операцию (`FGV2ImagePresentation::AppendPreparedImageHostOperation` для image host'ов, `FPreparedImageResourceOperation` для голого `UImage`).
+- **Apply** принимает уже разрешённый `FGV2ResolvedImageResource` и вызывает `ApplyResolved` — без доступа к каталогу, поэтому применить что-то, чего Prepare не проверил, невозможно.
+
+Прежние `ResolveAndApply`, `UGV2ImageWidgetBase.ApplyImageResource`, `UGV2IconWidgetBase.ApplyIcon` и `UGV2PortraitWidgetBase.ApplyPortrait` удалены: каждый из них сращивал «спросить авторитет» с «мутировать виджет», а именно эта форма позволяла lifecycle-колбэку разрешать контент. Public raw-brush mutation API отсутствует.
+
+Process-global каталог сессии (`RebuildForSession`/`ReleaseForSession`/`GetSessionCatalog`) также удалён: он был вторым content authority для одной сессии — candidate builder строит ровно тот же каталог из того же замыкания пакетов и пришпиливает его в snapshot. Failure-семантика не изменилась: сборка кандидата падает тем же `ImageCatalogNotReady` на тех же входах, только раньше.
+
+`UGV2ImageWidgetBase.InitialResourceId` может быть задан конкретным Screen Blueprint для статической composition. Это **authoring-time значение, а не самоприменяющееся**: `NativePreConstruct` его не разрешает и не применяет — колбэк исполняется на CDO, в редакторе ассета и задолго до появления сессии, поэтому разрешать контент там нельзя. Обход поддерева (`GV2CentralStylePreparer::PrepareForSubtree`) резолвит его во время Prepare через snapshot и отправляет обычной image-host операцией; в design-time виджет показывает собственный сериализованный brush. Пустое значение означает, что resource будет передан динамически. Пришедшее объявленное поле `resource_id` применяется после этой операции и, как и прежде, побеждает authoring-default.
 
 Image block Blueprint задаёт политику масштабирования `ScalePolicy` (`EGV2PrimitiveScalePolicy`). Для `PreserveAspect` он также может задавать `FixedAspectRatio` и обязан использовать layout constraint с одинаковыми minimum/maximum aspect ratio. Объявленный в ресурсе `RenderMode` является authoring capability и проверяется на совместимость со `ScalePolicy` до применения кисти. Concrete resource не может менять aspect ratio Screen layout-а.
 
@@ -124,7 +131,7 @@ Mapping в Slate:
 
 ## Failure and recovery semantics
 
-Invalid ID, missing texture, duplicate ID, unknown mode, non-positive ratio/tile size, collapsed nine-slice center и target incompatibility возвращают presentation failure до Widget mutation. Required missing resource блокирует owning prepare/apply. `FGV2ImagePresentation::ResolveAndApply` разрешает ровно один `resource_id` и не содержит fallback-цепочки. **Optional resource (GBH-05):** политика подстановки заглушки — свойство схемы/presentation content, а не второй C++-путь применения: отсутствующий или пустой optional `resource_id` в самой схеме field'а замещается Stable ID заглушки (например, `core:resource.ui.missing_portrait`, `core:resource.ui.missing_icon`) до того, как значение доходит до property consumer'а, который резолвит это значение обычным `ResolveAndApply`, как любой другой `resource_id`. Параллельные `ApplyOptionalImageResource`/`ApplyOptionalPortrait`/`ResolveOptionalAndApply` удалены; production-авторитета для отдельного C++ resolve-with-fallback пути не было.
+Invalid ID, missing texture, duplicate ID, unknown mode, non-positive ratio/tile size, collapsed nine-slice center и target incompatibility возвращают presentation failure до Widget mutation. Required missing resource блокирует owning prepare/apply. Разрешение принимает ровно один `resource_id` и не содержит fallback-цепочки. **Optional resource (GBH-05):** политика подстановки заглушки — свойство схемы/presentation content, а не второй C++-путь применения: отсутствующий или пустой optional `resource_id` в самой схеме field'а замещается Stable ID заглушки (например, `core:resource.ui.missing_portrait`, `core:resource.ui.missing_icon`) до того, как значение доходит до property consumer'а, который резолвит это значение обычным Prepare-путём, как любой другой `resource_id`. Параллельные `ApplyOptionalImageResource`/`ApplyOptionalPortrait`/`ResolveOptionalAndApply` удалены; production-авторитета для отдельного C++ resolve-with-fallback пути не было.
 
 Image Catalog является required session dependency (PAH-04B): построение происходит внутри `StartSession()`, не при инициализации подсистемы. Failed catalog build для конкретной сессии обязан оставить эту сессию в `Failed` state, показать UE-native recovery surface и запретить публикацию session `Ready` — тем же generic путём отказа, что уже используют repository/Lua-source failures внутри `FGV2SessionCoordinator::StartSession()`. Ни катастрофический candidate, ни каталог предыдущей сессии не сохраняются: `ReleaseForSession()` вызывается перед каждой попыткой перестроения и при `EndSession()`/отказе, так что неудачная сессия не оставляет после себя ни частичного, ни устаревшего каталога.
 

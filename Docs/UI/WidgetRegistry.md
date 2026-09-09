@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.15
+version: 3.16
 updated: 2026-09-09
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -133,7 +133,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 | `UGV2TextWidgetBase` | Property host: `text` (Text) | `core:schema.ui_field.text.v1` — addressable (DUC-02) | `TextBlock: UCommonTextBlock` |
 | `UGV2RichTextWidgetBase` | Property host: `text` (Text), `spans` (RichTextSpans) | `core:schema.ui_field.rich_text.v3` — addressable (DUC-02) | `RichTextScrollBox: UScrollBox`, `RichTextBlock: UCommonRichTextBlock` |
 | `UGV2RichTextPopoverWidgetBase` | Presentation popover: `InitializePopover(FGV2RichTextHoverViewModel, FPreparedRichTextStyle)` — единственная точка входа, стиль обязателен | Transient tooltip projection | `PopoverBorder: UBorder`, `PopoverWidth: USizeBox`, `TitleText: UCommonTextBlock`, `DescriptionText: WBP_RichText`; optional `Icon` |
-| `UGV2ImageWidgetBase` | Property host: `resource_id` (Ref), `key` (Key); `ApplyImageResource` | `core:schema.ui_field.image.v1` — addressable (DUC-02) | `Image: UImage` |
+| `UGV2ImageWidgetBase` | Property host: `resource_id` (Ref), `key` (Key); `ApplyResolvedImageResource` (принимает уже разрешённый ресурс — `PSC-10C`) | `core:schema.ui_field.image.v1` — addressable (DUC-02) | `Image: UImage` |
 | `UGV2ButtonWidgetBase` | Property host: `text` (Text), `binding` (Binding), `key` (Key); implements `IGV2UiBindingTarget` | Leaf interaction element — addressable (DUC-02), no dedicated top-level schema yet | `LabelText: UCommonTextBlock` |
 | `UGV2CheckboxWidgetBase` | Property host: `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding); `SubmitCheckboxState(bool)` | `core:schema.ui_field.checkbox.v1` — addressable (DUC-02) | `Checkbox: UCheckBox`, `LabelText: UCommonTextBlock` |
 | `UGV2InputFieldWidgetBase` | Property host: `key` (Key), `label` (Text), `placeholder` (Text), `value` (Scalar), `binding` (Binding); `SubmitTextValue(FString)` | `core:schema.ui_field.input_field.v1` — addressable (DUC-02) | `EditableTextBox: UEditableTextBox`; optional `LabelText: UCommonTextBlock` |
@@ -243,7 +243,7 @@ Canonical localized markup:
 
 Parser преобразует вложенные scopes в flat internal `<gv2 ...>...</>` runs для Slate. Этот internal markup запрещено хранить в localization/content. Interactive run наследует полностью разрешённый font/typeface/size/outline окружающего scope и добавляет только hyperlink interaction state.
 
-Central style runtime-компонента является resolved operation общей `FGV2PreparedPresentationTransaction`. Theme resolution выполняется Prepare-фазой из session snapshot; физическое применение получает только prepared values. No-argument `IGV2UiStyleConsumer.ApplyCentralStyle()` удалён, а `NativePreConstruct` не применяет runtime style. RichText run/interactive/popover styles тоже разрешаются заранее и входят в prepared RichText style payload; Slate decorator и создаваемый им popover не читают Theme при рендере.
+Central style runtime-компонента является resolved operation общей `FGV2PreparedPresentationTransaction`. Theme resolution выполняется Prepare-фазой из session snapshot; физическое применение получает только prepared values. No-argument `IGV2UiStyleConsumer.ApplyCentralStyle()` удалён, а `NativePreConstruct` не применяет ни runtime style, ни image resource: `PSC-10C` распространил то же правило на `InitialResourceId`, так что lifecycle-колбэк остался чисто value-only design-time поверхностью. RichText run/interactive/popover styles тоже разрешаются заранее и входят в prepared RichText style payload; Slate decorator и создаваемый им popover не читают Theme при рендере.
 
 Designer preview не является исключением к runtime authority boundary. При `IsDesignTime()` компонент может применить только сериализованные Widget/Blueprint defaults через pure value-only helper; configured Theme, snapshot, content lookup и loading ему недоступны. Preview остаётся структурной визуальной подсказкой, но не обязан воспроизводить выбранную runtime Theme до запуска Prepare. Отсутствующий required `BindWidget` остаётся failure; silent local fallback для production component запрещён.
 

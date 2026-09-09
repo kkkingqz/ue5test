@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 2.0
+version: 2.1
 updated: 2026-09-09
 depends_on:
   - README.md
@@ -372,7 +372,7 @@ depends_on:
 
     Верификация: `Automation RunTests GV2` — 133/133 из машинного отчёта; `ctest` — 96/96; все 14 гейтов и их self-test'ы; `validate_docs` — 185 файлов; **`-run=CompileAllBlueprints` — 0 errors, 0 warnings, 0 failed to load**, включая все 47 `WBP_*` проекта: удаление `UFUNCTION` `GetViewportHeight`/`ResolveEffectiveFontSize`/`ApplyCentralStyle`/`ApplyImageResource` ни один Widget Blueprint не сломало.
 
-- [ ] **PSC-10C — Разделить static image resolution и физическое Apply**
+- [x] **PSC-10C — Разделить static image resolution и физическое Apply**
   - Зависимости: PSC-10B.
   - `UGV2ImageWidgetBase::NativePreConstruct()` применяет `InitialResourceId` через `ApplyImageResource` → `FGV2ImagePresentation::ResolveAndApply` → `UGV2ImageResourceCatalog::GetSessionCatalog()` + `SetBrush()`. Это та же форма, что `PSC-10B` убрал для Theme, но для image catalog: lifecycle-колбэк разрешает семантику по process-global authority и тут же физически мутирует виджет. Обнаружено при ревью закрытия `PSC-10B`; к central style дефект отношения не имеет, но делает универсальное утверждение `M3` ложным и нарушает предпосылку `PSC-11`, поэтому закрывается отдельно и до него.
   - Инвариант: ни один путь к физической мутации не разрешает семантику — включая image resource ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `INV-P5`, `D3`). `NativePreConstruct` не является исключением из этого правила ни для Theme, ни для catalog.
@@ -387,11 +387,29 @@ depends_on:
     - [Widget Registry](../../UI/WidgetRegistry.md) и [UI README](../README.md) описывают image resolution как Prepare-side, а `NativePreConstruct` — как чисто value-only design-time surface.
   - Evidence: `Source/GV2/Private/UI/GV2ImageWidgetBase.cpp`, `Source/GV2/Private/UI/GV2ImagePresentation.cpp`, `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, call-site inventory gate, production tests и обновлённые owner contracts.
 
+  - **Реализация (2026-09-09).** Фактическое множество, полученное обходом дерева, оказалось маленьким: `FGV2ImagePresentation::ResolveAndApply` имел три production call site (`UGV2ImageWidgetBase::ApplyImageResource`, два в `UGV2PortraitWidgetBase::ApplyPortrait`), а `GetSessionCatalog()` — ровно один, внутри самого `ResolveAndApply`. То есть весь pull-путь сходился в одну функцию.
+
+    Разрешение и эффект разведены по фазам. `InitialResourceId` остался authoring-time значением: его резолвит обход поддерева через `FGV2PresentationPrepareContext::ResolveResource` и отправляет обычной image-host операцией — тем же видом, которым уже применяется объявленное поле `resource_id`, поэтому поле по-прежнему побеждает authoring-default просто по порядку операций. `NativePreConstruct` не разрешает ничего.
+
+    Удалены `ResolveAndApply`, `ApplyImageResource`, `ApplyIcon`, `ApplyPortrait` — каждый сращивал «спросить авторитет» с «мутировать виджет». Ни на один из них не ссылается ни один ассет (проверено), и `CompileAllBlueprints` это подтвердил.
+
+    **Process-global каталог сессии удалён целиком** (`RebuildForSession`/`ReleaseForSession`/`GetSessionCatalog`), а не спрятан за allowlist. Он был вторым content authority для одной сессии: candidate builder вызывает тот же `BuildFromPackageClosure` по тому же замыканию и пришпиливает результат в snapshot, который читает каждый Prepare. Failure-семантика сохранена — сборка кандидата падает тем же `ImageCatalogNotReady` на тех же входах и раньше по времени, поэтому вызов в координаторе снят без потери проверки.
+
+    Заодно устранено дублирование `ToPreparedRenderMode`: проекция render mode теперь одна, на `FGV2ImagePresentation`.
+
+    Гейт получил **безусловное** правило: content resolution внутри widget lifecycle-колбэка (`NativePreConstruct`, `NativeConstruct`, `NativeOnInitialized`, `NativeDestruct`, `PostLoad`, `PostInitProperties`, `SynchronizeProperties`) отвергается везде, без allowlist — легитимного случая не существует. Множество колбэков сверяется с сигнатурой блока, поэтому новый колбэк в новом файле покрыт с момента написания; проверка идёт по функциям, и тот же вызов в обычном методе того же файла не краснеет — оба направления имеют synthetic self-test. Retired-символы (`GetSessionCatalog`, `RebuildForSession`, `ReleaseForSession`, `ResolveAndApply`, `ApplyImageResource`, `ApplyIcon`, `ApplyPortrait`) добавлены к списку, который отвергается по всему production-дереву.
+
+    Production-тест построен на реальном ассете: `WBP_Testscreen` несёт `DescriptionBackground` с authoring-значением `core:resource.ui.old_paper_tile_256`. Инстанцирование виджета (то есть исполнение `NativePreConstruct`) обязано оставить `AppliedResourceId` пустым, а тот же виджет внутри подготовленного поддерева — получить ресурс и tiling `Both`. Red-on-revert проверен probe'ом, восстанавливающим pull в `NativePreConstruct`: краснеют **два независимых детектора** — утверждение теста («applies no resource … was core:resource.ui.old_paper_tile_256») и структурный гейт («a widget lifecycle callback resolves content»).
+
+    Тесты, опиравшиеся на глобальный каталог, переведены на явные экземпляры (`BuildImageCatalogForClosure`) либо на snapshot: `ImageCatalogBootstrapGate` теперь утверждает отсутствие/наличие **снимка** сессии вместо глобала. Утверждение «неудачная пересборка оставляет прежний каталог опубликованным» удалено вместе с описываемой им семантикой глобала, а не переписано в равнозначное — вместо него проверяется, что отказ атрибутируется повреждённому файлу.
+
+    Верификация: `Automation RunTests GV2` — 133/133; `ctest` — 96/96; 14 гейтов и их self-test'ы; `validate_docs` — 185 файлов; `CompileAllBlueprints` — 0 errors, 0 warnings, 0 failed to load.
+
 ## Проверка milestone
 
 - [x] Верхний слой только разрешает semantics и формирует transaction; lower-facing types не могут вызвать authority.
 - [x] Все operation kinds перечисляет enum/variant, а не задача или test list.
 - [x] Ни один payload не требует lookup/load при Apply.
-- [ ] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация, ни image resource. Виды операций и central style закрыты (`PSC-09B`, `PSC-10A`, `PSC-10B`); `UGV2ImageWidgetBase::NativePreConstruct()` всё ещё разрешает `InitialResourceId` через `GetSessionCatalog()` и мутирует brush — закрывается `PSC-10C`.
+- [x] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация, ни image resource. Widget lifecycle-колбэк не разрешает контент ни в каком виде, и это утверждение держит безусловное структурное правило, а не список исключений.
 - [x] `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде без исключений; `GetCoreMinimalTheme()` достижим только из UE-native cold-start recovery и из bootstrap-разрешения снимка, которое его туда и пришпиливает.
 - [x] `UCLASS` paths ещё не менялись; production path работает через временный delegating adapter.

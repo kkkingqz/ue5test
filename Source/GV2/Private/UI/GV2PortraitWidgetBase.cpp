@@ -17,56 +17,6 @@ void UGV2PortraitWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& Out
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
-bool UGV2PortraitWidgetBase::ApplyPortrait(
-    const FString& ResourceId,
-    const FString& FrameResourceId,
-    FString& OutError)
-{
-    if (!ResourceId.IsEmpty() && PortraitImage == nullptr)
-    {
-        OutError = TEXT("Portrait resource supplied but PortraitImage renderer is not bound");
-        return false;
-    }
-    if (!FrameResourceId.IsEmpty() && FrameImage == nullptr)
-    {
-        OutError = TEXT("Portrait frame resource supplied but FrameImage renderer is not bound");
-        return false;
-    }
-
-    if (PortraitImage != nullptr && !ResourceId.IsEmpty())
-    {
-        FGV2ResolvedImageResource Res;
-        if (!FGV2ImagePresentation::ResolveAndApply(
-            PortraitImage,
-            ResourceId,
-            EGV2PrimitiveScalePolicy::PreserveAspect,
-            TOptional<float>(PortraitAspectRatio),
-            Res,
-            OutError))
-        {
-            return false;
-        }
-        AppliedPortraitId = ResourceId;
-    }
-
-    if (FrameImage != nullptr && !FrameResourceId.IsEmpty())
-    {
-        FGV2ResolvedImageResource FrameRes;
-        if (!FGV2ImagePresentation::ResolveAndApply(
-            FrameImage,
-            FrameResourceId,
-            EGV2PrimitiveScalePolicy::NineSlice,
-            TOptional<float>(),
-            FrameRes,
-            OutError))
-        {
-            return false;
-        }
-        AppliedFrameId = FrameResourceId;
-    }
-
-    return true;
-}
 
 bool UGV2PortraitWidgetBase::ApplyResolvedPortrait(const FGV2ResolvedImageResource& Resolved, FString& OutError)
 {

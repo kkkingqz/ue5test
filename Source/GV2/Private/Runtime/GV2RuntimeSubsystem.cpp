@@ -451,3 +451,10 @@ void UGV2RuntimeSubsystem::ReplaceActiveScreen(UUserWidget* NewScreen)
         ActiveScreen->AddToViewport();
     }
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+const FGV2SessionContentSnapshot* UGV2RuntimeSubsystem::GetContentSnapshotForAutomationTest() const
+{
+    return Coordinator ? Coordinator->GetContentSnapshot() : nullptr;
+}
+#endif

@@ -21,7 +21,36 @@ FORBIDDEN_SYMBOLS = {
     "GetConfiguredRegistry": re.compile(r"\bGetConfiguredRegistry\s*\("),
     "Execute_ApplyCentralStyle": re.compile(r"\bExecute_ApplyCentralStyle\s*\("),
     "ApplyCentralStyle_Implementation": re.compile(r"\bApplyCentralStyle_Implementation\s*\("),
+    # PSC-10C: the retired image-resolution surface. GetSessionCatalog/RebuildForSession/
+    # ReleaseForSession were a SECOND content authority for one session (the snapshot already
+    # owns its catalog); ResolveAndApply/ApplyImageResource/ApplyIcon/ApplyPortrait each
+    # fused "consult that authority" to "mutate the widget", which is the shape that let a
+    # lifecycle callback resolve content.
+    "GetSessionCatalog": re.compile(r"\bGetSessionCatalog\s*\("),
+    "RebuildForSession": re.compile(r"\bRebuildForSession\s*\("),
+    "ReleaseForSession": re.compile(r"\bReleaseForSession\s*\("),
+    "ResolveAndApply": re.compile(r"\bResolveAndApply\s*\("),
+    "ApplyImageResource": re.compile(r"\bApplyImageResource\s*\("),
+    "ApplyIcon": re.compile(r"\bApplyIcon\s*\("),
+    "ApplyPortrait": re.compile(r"\bApplyPortrait\s*\("),
 }
+
+# PSC-10C: UMG lifecycle callbacks. They run on a CDO, in the asset editor, and long before
+# any session exists, so content resolution inside one is unconditionally wrong -- no
+# allowlist, because there is no legitimate instance of it. The set is matched against a
+# block's own signature, so a new callback in a new file is covered as soon as it is written.
+LIFECYCLE_CALLBACKS = re.compile(
+    r"::(NativePreConstruct|NativeConstruct|NativeOnInitialized|NativeDestruct"
+    r"|PostLoad|PostInitProperties|SynchronizeProperties)\s*\("
+)
+
+# Anything that consults content rather than receiving it as a prepared value.
+CONTENT_RESOLUTION = (
+    re.compile(r"\bResolveResource\s*\("),
+    re.compile(r"->\s*Resolve\s*\("),
+    re.compile(r"\bLoadSynchronous\s*\("),
+    re.compile(r"\bStaticLoadObject\s*\("),
+)
 
 RECOVERY_CALL = re.compile(r"\bGetCoreMinimalTheme\s*\(")
 RECOVERY_CALL_FILES = {
@@ -186,6 +215,14 @@ def find_violations(sources: dict[str, str], roles: set[str] | None = None) -> l
                     )
 
         for block_start, block in top_level_blocks(stripped):
+            if LIFECYCLE_CALLBACKS.search(block):
+                for pattern in CONTENT_RESOLUTION:
+                    for match in pattern.finditer(block):
+                        errors.append(
+                            f"{rel}:{line_of(source, block_start + match.start())}: a widget "
+                            "lifecycle callback resolves content; it has no session and must "
+                            "receive prepared values instead"
+                        )
             if not any(marker.search(block) for marker in CENTRAL_STYLE_PARTICIPANT_MARKERS):
                 continue
             for pattern in LATE_EFFECT_FORBIDDEN:
@@ -197,7 +234,7 @@ def find_violations(sources: dict[str, str], roles: set[str] | None = None) -> l
     consumers = style_consumer_classes(sources)
     preparer = sources.get("Private/UI/GV2CentralStylePreparer.cpp", "")
     adapter = sources.get("Private/UI/GV2LegacyPresentationApplyAdapter.cpp", "")
-    prepare_targets = cast_targets(preparer, "void EmitForWidget", "bool OwnsSubtreeStyling")
+    prepare_targets = cast_targets(preparer, "EmitForWidget(", "bool OwnsSubtreeStyling")
     apply_targets = cast_targets(adapter, "FPreparedCentralStyleOperation& Op", "}, Operation);")
 
     # The subtree walk's target set IS the interface implementation set: a widget the walk
@@ -263,7 +300,7 @@ def run_self_test() -> bool:
         ),
         "Private/UI/GV2RecoveryScreenWidget.cpp": "auto* T = GetCoreMinimalTheme();\n",
         "Private/UI/GV2CentralStylePreparer.cpp": (
-            "void EmitForWidget() { Cast<UGV2StyledWidget>(Widget); } "
+            "bool EmitForWidget() { Cast<UGV2StyledWidget>(Widget); } "
             "bool OwnsSubtreeStyling() {}\n"
         ),
         "Private/UI/GV2LegacyPresentationApplyAdapter.cpp": (
@@ -315,7 +352,7 @@ def run_self_test() -> bool:
         (
             "style consumer missing from Prepare",
             "Private/UI/GV2CentralStylePreparer.cpp",
-            "void EmitForWidget() {} bool OwnsSubtreeStyling() {}\n",
+            "bool EmitForWidget() {} bool OwnsSubtreeStyling() {}\n",
         ),
         (
             "style consumer missing from Apply",
@@ -341,6 +378,31 @@ def run_self_test() -> bool:
     if not find_violations(clean, synthetic_roles | {"FPreparedNeverHandledStyle"}):
         print("FAILED: gate accepted a newly declared payload role with no Apply branch")
         return False
+
+    # PSC-10C: content resolution inside a widget lifecycle callback is rejected wherever it
+    # appears, and the same call in an ordinary method of the same file is not -- otherwise
+    # the rule would be a file-level ban rather than a statement about lifecycle callbacks.
+    lifecycle = dict(clean)
+    lifecycle["Private/UI/GV2Lifecycle.cpp"] = (
+        "void UGV2Foo::NativePreConstruct()\n{\n    Catalog->Resolve(Id, Out, Err);\n}\n"
+    )
+    if not find_violations(lifecycle, synthetic_roles):
+        print("FAILED: gate accepted content resolution inside NativePreConstruct")
+        return False
+    lifecycle_ok = dict(clean)
+    lifecycle_ok["Private/UI/GV2Lifecycle.cpp"] = (
+        "void UGV2Foo::NativePreConstruct()\n{\n    ApplySerializedDefaults();\n}\n"
+        "\nvoid UGV2Foo::PrepareSomething()\n{\n    Catalog->Resolve(Id, Out, Err);\n}\n"
+    )
+    if find_violations(lifecycle_ok, synthetic_roles):
+        print("FAILED: gate flagged content resolution in a non-lifecycle method")
+        return False
+    for symbol in ("GetSessionCatalog", "ResolveAndApply", "ApplyImageResource", "ApplyPortrait"):
+        mutated = dict(clean)
+        mutated["Private/UI/Synthetic.cpp"] = f"void F() {{ {symbol}(); }}\n"
+        if not find_violations(mutated, synthetic_roles):
+            print(f"FAILED: gate accepted the retired symbol {symbol}")
+            return False
 
     # A content-resolution capability inside a function that participates in central style
     # must be rejected -- and the same capability in a NON-participating function of the

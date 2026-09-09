@@ -7,6 +7,8 @@
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Misc/Paths.h"
 #include "UI/GV2TextPipeline.h"
+#include "UI/GV2ImageResourceCatalog.h"
+#include "Application/GV2PackageClosure.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2UiTheme.h"
 
@@ -119,6 +121,26 @@ private:
     FGV2SessionContentSnapshot Snapshot;
     TUniquePtr<FGV2PresentationPrepareContext> Context;
 };
+
+// PSC-10C: the image catalog a session builds, as a plain instance. The process-global
+// session catalog it replaces is gone: production resolves resources through the snapshot,
+// so a test that needs a catalog constructs the same object the candidate builder does
+// rather than publishing one into a global nothing reads any more.
+inline UGV2ImageResourceCatalog* BuildImageCatalogForClosure(const TArray<FString>& PackageIds, FString& OutError)
+{
+    UGV2ImageResourceCatalog* Catalog = NewObject<UGV2ImageResourceCatalog>(GetTransientPackage());
+    return Catalog->BuildFromPackageClosure(PackageIds, OutError) ? Catalog : nullptr;
+}
+
+inline UGV2ImageResourceCatalog* BuildGameDataImageCatalog(FString& OutError)
+{
+    TArray<FString> PackageIds;
+    for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
+    {
+        PackageIds.Add(Entry.PackageId);
+    }
+    return BuildImageCatalogForClosure(PackageIds, OutError);
+}
 
 // PSC-10B: the CONFIGURED Theme, with no core-minimal substitution. Production refuses to
 // start a session whose configured Theme cannot be resolved, so a fixture that quietly ran

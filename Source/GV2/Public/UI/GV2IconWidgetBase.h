@@ -15,6 +15,4 @@ class GV2_API UGV2IconWidgetBase : public UGV2ImageWidgetBase
 public:
     UGV2IconWidgetBase();
 
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Icon")
-    bool ApplyIcon(const FString& ResourceId, FString& OutError);
 };

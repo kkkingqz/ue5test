@@ -146,10 +146,6 @@ bool DecodeNineSliceImage(FImage& Image, FMargin& OutBorders, FString& OutError)
     return true;
 }
 
-// PAH-04B: session-scoped, not process-lifetime -- see RebuildForSession/
-// ReleaseForSession/GetSessionCatalog.
-TStrongObjectPtr<UGV2ImageResourceCatalog> GSessionImageCatalog;
-
 FString GetProjectResourcesRoot()
 {
     return FPaths::Combine(FPaths::ProjectDir(), TEXT("Resources"));
@@ -534,9 +530,8 @@ bool UGV2ImageResourceCatalog::Resolve(
     return true;
 }
 
-// PAH-04: pre_ready_discovery -- only called from BuildFromPackageClosure(), only
-// called from RebuildForSession(), only called from StartSession()/
-// FGV2SessionContentCandidate::Build() (PAH-04B/PSC-07: the sole production discovery
+// PAH-04: pre_ready_discovery -- only called from BuildFromPackageClosure(), only called
+// from FGV2SessionContentCandidate::Build() (PSC-07/PSC-10C: the sole production discovery
 // path for image resources; never reached after a session reaches Ready).
 bool UGV2ImageResourceCatalog::BuildFromPackageResourceRoots(
     const TArray<FGV2ImagePackageResourceRoot>& PackageResourceRoots,
@@ -607,24 +602,3 @@ bool UGV2ImageResourceCatalog::BuildFromPackageClosure(const TArray<FString>& Pa
     return BuildFromPackageResourceRoots(PackageResourceRoots, OutError);
 }
 
-bool UGV2ImageResourceCatalog::RebuildForSession(const TArray<FString>& PackageIds, FString& OutError)
-{
-    TStrongObjectPtr<UGV2ImageResourceCatalog> Candidate(
-        NewObject<UGV2ImageResourceCatalog>(GetTransientPackage()));
-    if (!Candidate->BuildFromPackageClosure(PackageIds, OutError))
-    {
-        return false;
-    }
-    GSessionImageCatalog = MoveTemp(Candidate);
-    return true;
-}
-
-void UGV2ImageResourceCatalog::ReleaseForSession()
-{
-    GSessionImageCatalog.Reset();
-}
-
-UGV2ImageResourceCatalog* UGV2ImageResourceCatalog::GetSessionCatalog()
-{
-    return GSessionImageCatalog.Get();
-}

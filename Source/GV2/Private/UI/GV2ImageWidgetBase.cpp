@@ -18,14 +18,11 @@ void UGV2ImageWidgetBase::NativePreConstruct()
     {
         ApplyImageTintStyleValue(Image->GetColorAndOpacity());
     }
-    if (!InitialResourceId.IsEmpty() && InitialResourceId != AppliedResourceId)
-    {
-        FString Error;
-        if (!ApplyImageResource(InitialResourceId, Error))
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Cannot apply initial image resource '%s': %s"), *InitialResourceId, *Error);
-        }
-    }
+    // PSC-10C: InitialResourceId is NOT applied here. It is a content reference, and a
+    // lifecycle callback -- which runs on a CDO, in the asset editor, and long before any
+    // session exists -- is not a place that may resolve content. GV2CentralStylePreparer
+    // resolves it against the session snapshot during Prepare and ships it as an ordinary
+    // image-host operation; at design time the widget's own serialized brush is what shows.
 }
 
 bool UGV2ImageWidgetBase::ApplyResolvedImageResource(const FGV2ResolvedImageResource& Resolved, FString& OutError)
@@ -42,21 +39,6 @@ bool UGV2ImageWidgetBase::ApplyResolvedImageResource(const FGV2ResolvedImageReso
     return true;
 }
 
-bool UGV2ImageWidgetBase::ApplyImageResource(const FString& ResourceId, FString& OutError)
-{
-    FGV2ResolvedImageResource Resource;
-    const TOptional<float> RequiredAspect = (ScalePolicy == EGV2PrimitiveScalePolicy::PreserveAspect && FixedAspectRatio > 0.0f)
-        ? TOptional<float>(FixedAspectRatio)
-        : TOptional<float>();
-    if (!FGV2ImagePresentation::ResolveAndApply(
-        Image, ResourceId, ScalePolicy, RequiredAspect, Resource, OutError))
-    {
-        return false;
-    }
-    AppliedResourceId = Resource.ResourceId;
-    ResolvedAspectRatio = Resource.FixedAspectRatio;
-    return true;
-}
 
 FSlateBrush UGV2ImageWidgetBase::GetImageBrush() const
 {

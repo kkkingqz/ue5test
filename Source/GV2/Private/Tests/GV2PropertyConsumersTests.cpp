@@ -57,23 +57,6 @@ namespace
 // FGV2SessionCoordinator::StartSession/EndSession in production). This test resolves
 // real icon resources directly, without starting a real session, so it gives itself a
 // real catalog built from the real GameData closure.
-struct FGV2PropertyConsumersScopedImageCatalog
-{
-    FGV2PropertyConsumersScopedImageCatalog()
-    {
-        TArray<FString> PackageIds;
-        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
-        {
-            PackageIds.Add(Entry.PackageId);
-        }
-        FString Error;
-        UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
-    }
-    ~FGV2PropertyConsumersScopedImageCatalog()
-    {
-        UGV2ImageResourceCatalog::ReleaseForSession();
-    }
-};
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -83,7 +66,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 {
-    const FGV2PropertyConsumersScopedImageCatalog ScopedImageCatalog;
     GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
     FString ContextError;
     const bool bContextReady = ContextFixture.Initialize(ContextError);

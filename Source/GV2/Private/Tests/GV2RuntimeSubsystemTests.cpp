@@ -35,6 +35,8 @@
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
+#include "UI/GV2CentralStylePreparer.h"
+#include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
@@ -193,23 +195,6 @@ struct FGV2ScopedRealSchemaCache
 // called by FGV2SessionCoordinator::StartSession/EndSession in production). A test that
 // resolves an image resource_id directly, without starting a real session first, uses
 // this to give itself a real catalog built from the real GameData closure.
-struct FGV2ScopedRealImageCatalog
-{
-    FGV2ScopedRealImageCatalog()
-    {
-        TArray<FString> PackageIds;
-        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
-        {
-            PackageIds.Add(Entry.PackageId);
-        }
-        FString Error;
-        UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
-    }
-    ~FGV2ScopedRealImageCatalog()
-    {
-        UGV2ImageResourceCatalog::ReleaseForSession();
-    }
-};
 
 // DCA-13: a dynamic SWrapBox (UseAllottedSize=true) only recalculates its own
 // wrap threshold (PreferredSize) inside Tick(), which the normal
@@ -1064,8 +1049,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
-
     UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
     TestNotNull(TEXT("Configured central UI theme is loadable"), Theme);
     if (Theme == nullptr)
@@ -1386,9 +1369,12 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
             ImagePathError));
     IFileManager::Get().DeleteDirectory(*ScannerFixtureRoot, false, true);
 
+    FString ConfiguredCatalogError;
     UGV2ImageResourceCatalog* ConfiguredImageCatalog =
-        UGV2ImageResourceCatalog::GetSessionCatalog();
-    TestNotNull(TEXT("Configured image catalog is available"), ConfiguredImageCatalog);
+        GV2PresentationTestFixtures::BuildGameDataImageCatalog(ConfiguredCatalogError);
+    TestNotNull(
+        *FString::Printf(TEXT("Configured image catalog builds [Error: %s]"), *ConfiguredCatalogError),
+        ConfiguredImageCatalog);
     if (ConfiguredImageCatalog != nullptr)
     {
         FGV2ResolvedImageResource PaperTile;
@@ -1767,14 +1753,49 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Test screen exposes its WBP_Image description background"), DescriptionBackground);
         if (DescriptionBackground != nullptr)
         {
+            // PSC-10C: the widget carries a Blueprint-authored InitialResourceId, and
+            // instantiating it -- which runs NativePreConstruct -- must NOT resolve it. A
+            // lifecycle callback has no session, so resolving there meant reaching a
+            // process-global catalog; the widget now stays on its serialized brush until a
+            // prepared operation arrives.
             TestEqual(
-                TEXT("Description background applies the suffix-free paper resource_id"),
+                TEXT("PSC-10C: instantiation alone applies no resource, because NativePreConstruct resolves nothing"),
                 DescriptionBackground->GetAppliedResourceId(),
-                FString(TEXT("core:resource.ui.old_paper_tile_256")));
-            TestEqual(
-                TEXT("Description background renders as a two-axis tile"),
-                DescriptionBackground->GetImageBrush().Tiling,
-                ESlateBrushTileType::Both);
+                FString());
+            TestNotEqual(
+                TEXT("PSC-10C: the authoring default is still declared on the widget"),
+                DescriptionBackground->GetInitialResourceId(),
+                FString());
+
+            // The same widget, inside a prepared subtree: the authoring default is resolved
+            // against the session snapshot and applied as an ordinary image-host operation.
+            GV2PresentationTestFixtures::FPrepareContextFixture ImageContextFixture;
+            FString ImageContextError;
+            const bool bImageContextReady = ImageContextFixture.Initialize(ImageContextError);
+            TestTrue(
+                *FString::Printf(TEXT("Prepare context for the image default builds [Error: %s]"), *ImageContextError),
+                bImageContextReady);
+            if (bImageContextReady && ImageContextFixture.Get() != nullptr)
+            {
+                GV2PresentationApply::FGV2PreparedPresentationTransaction ImageTransaction;
+                FString ImagePrepareError;
+                TestTrue(
+                    *FString::Printf(TEXT("PSC-10C: the subtree walk prepares the image default [Error: %s]"), *ImagePrepareError),
+                    GV2CentralStylePreparer::PrepareForSubtree(
+                        DescriptionBackground, *ImageContextFixture.Get(), ImageTransaction, ImagePrepareError));
+                FString ImageApplyError;
+                TestTrue(TEXT("PSC-10C: the prepared image transaction applies"),
+                    GV2PresentationApply::Apply(ImageTransaction, ImageApplyError)
+                        && GV2LegacyPresentationApplyAdapter::Apply(ImageTransaction, ImageApplyError));
+                TestEqual(
+                    TEXT("Description background applies the suffix-free paper resource_id"),
+                    DescriptionBackground->GetAppliedResourceId(),
+                    FString(TEXT("core:resource.ui.old_paper_tile_256")));
+                TestEqual(
+                    TEXT("Description background renders as a two-axis tile"),
+                    DescriptionBackground->GetImageBrush().Tiling,
+                    ESlateBrushTileType::Both);
+            }
         }
     }
 
@@ -2382,8 +2403,8 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
             TEXT("Failed required catalog shows the UE-native recovery surface as the active Screen"),
             Cast<UGV2RecoveryScreenWidget>(Runtime->GetActiveScreen()));
         TestNull(
-            TEXT("A session that failed to start publishes no session-scoped image catalog"),
-            UGV2ImageResourceCatalog::GetSessionCatalog());
+            TEXT("A session that failed to start publishes no content snapshot, and therefore no image catalog"),
+            Runtime->GetContentSnapshotForAutomationTest());
     }
 
     GameInstance->Shutdown();
@@ -2409,8 +2430,11 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
     {
         RecoveredRuntime->StartSession();
         TestTrue(TEXT("Session recovers once the bad fixture is gone"), RecoveredRuntime->GetSessionState().bIsReady);
-        UGV2ImageResourceCatalog* RecoveredCatalog = UGV2ImageResourceCatalog::GetSessionCatalog();
-        TestNotNull(TEXT("Recovered session publishes a session-scoped image catalog"), RecoveredCatalog);
+        const FGV2SessionContentSnapshot* RecoveredSnapshot = RecoveredRuntime->GetContentSnapshotForAutomationTest();
+        TestNotNull(TEXT("Recovered session publishes a content snapshot"), RecoveredSnapshot);
+        UGV2ImageResourceCatalog* RecoveredCatalog =
+            RecoveredSnapshot != nullptr ? RecoveredSnapshot->GetImageCatalog().Catalog.Get() : nullptr;
+        TestNotNull(TEXT("The recovered snapshot owns a session-scoped image catalog"), RecoveredCatalog);
         if (RecoveredCatalog != nullptr)
         {
             FGV2ResolvedImageResource RecoveredResource;
@@ -2904,11 +2928,11 @@ bool FGV2ImageCatalogClosureScopingTest::RunTest(const FString& Parameters)
     auto IsUnknownResourceId = [](const FString& Error) { return Error.Contains(TEXT("Unknown image resource_id")); };
 
     FString ErrorWithoutRh;
-    TestTrue(
-        TEXT("Session 1 (core+textsystem, no rh) builds successfully"),
-        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem")}, ErrorWithoutRh));
-    UGV2ImageResourceCatalog* CatalogWithoutRh = UGV2ImageResourceCatalog::GetSessionCatalog();
-    TestNotNull(TEXT("Session 1 publishes a catalog"), CatalogWithoutRh);
+    UGV2ImageResourceCatalog* CatalogWithoutRh =
+        GV2PresentationTestFixtures::BuildImageCatalogForClosure({TEXT("core"), TEXT("textsystem")}, ErrorWithoutRh);
+    TestNotNull(
+        *FString::Printf(TEXT("Session 1 (core+textsystem, no rh) builds a catalog [Error: %s]"), *ErrorWithoutRh),
+        CatalogWithoutRh);
     if (CatalogWithoutRh != nullptr)
     {
         FGV2ResolvedImageResource Resolved1;
@@ -2925,14 +2949,15 @@ bool FGV2ImageCatalogClosureScopingTest::RunTest(const FString& Parameters)
             CatalogWithoutRh->Resolve(TEXT("core:resource.ui.old_paper_tile_256"), CoreResolved, CoreResolveError));
     }
 
-    // Controlled restart: a second RebuildForSession call, this time with rh included --
-    // mirrors what StartSession does for a real session replacement.
+    // A second, independently built catalog with rh included -- mirrors what a session
+    // replacement's candidate builder produces. PSC-10C: two catalogs now coexist as plain
+    // objects rather than one overwriting a process-global.
     FString ErrorWithRh;
-    TestTrue(
-        TEXT("Session 2 (core+textsystem+rh) builds successfully"),
-        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem"), GameNamespace}, ErrorWithRh));
-    UGV2ImageResourceCatalog* CatalogWithRh = UGV2ImageResourceCatalog::GetSessionCatalog();
-    TestNotNull(TEXT("Session 2 publishes a catalog"), CatalogWithRh);
+    UGV2ImageResourceCatalog* CatalogWithRh = GV2PresentationTestFixtures::BuildImageCatalogForClosure(
+        {TEXT("core"), TEXT("textsystem"), GameNamespace}, ErrorWithRh);
+    TestNotNull(
+        *FString::Printf(TEXT("Session 2 (core+textsystem+rh) builds a catalog [Error: %s]"), *ErrorWithRh),
+        CatalogWithRh);
     if (CatalogWithRh != nullptr)
     {
         FGV2ResolvedImageResource Resolved2;
@@ -2942,7 +2967,6 @@ bool FGV2ImageCatalogClosureScopingTest::RunTest(const FString& Parameters)
             CatalogWithRh->Resolve(RhResourceId, Resolved2, ResolveError2));
     }
 
-    UGV2ImageResourceCatalog::ReleaseForSession();
     return true;
 }
 
@@ -3035,25 +3059,29 @@ bool FGV2ImageCatalogDisabledPackageCorruptFileDoesNotBlockBootstrapTest::RunTes
         FFileHelper::SaveArrayToFile(GarbageBytes, *BadResourcePath));
 
     FString ErrorWithoutRh;
-    TestTrue(
-        TEXT("Session whose closure excludes the corrupt file's own package builds successfully"),
-        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem")}, ErrorWithoutRh));
-    UGV2ImageResourceCatalog* CatalogWithoutRh = UGV2ImageResourceCatalog::GetSessionCatalog();
-    TestNotNull(TEXT("Rh-excluded session publishes a catalog"), CatalogWithoutRh);
+    UGV2ImageResourceCatalog* CatalogWithoutRh =
+        GV2PresentationTestFixtures::BuildImageCatalogForClosure({TEXT("core"), TEXT("textsystem")}, ErrorWithoutRh);
+    TestNotNull(
+        *FString::Printf(TEXT("Closure excluding the corrupt file's own package builds a catalog [Error: %s]"), *ErrorWithoutRh),
+        CatalogWithoutRh);
 
+    // PSC-10C: the old "a failed rebuild leaves the previous catalog published" assertion
+    // described the process-global's replacement semantics. There is no global any more --
+    // a failed candidate simply never becomes a snapshot, and the previously built catalog
+    // is a separate object nothing overwrote. What still matters, and is asserted, is that
+    // the failure is attributed to the corrupt file rather than to the closure as a whole.
     FString ErrorWithRh;
-    TestFalse(
-        TEXT("Session whose closure includes that package fails on the same corrupt file"),
-        UGV2ImageResourceCatalog::RebuildForSession({TEXT("core"), TEXT("textsystem"), GameNamespace}, ErrorWithRh));
+    TestNull(
+        TEXT("Closure including that package fails on the same corrupt file"),
+        GV2PresentationTestFixtures::BuildImageCatalogForClosure(
+            {TEXT("core"), TEXT("textsystem"), GameNamespace}, ErrorWithRh));
     TestTrue(
         *FString::Printf(TEXT("Failure identifies the undecodable PNG, proving the fixture is real [Error: %s]"), *ErrorWithRh),
         ErrorWithRh.Contains(TEXT("Cannot decode PNG resource")));
-    TestEqual(
-        TEXT("RebuildForSession's failed-candidate contract leaves the prior session's catalog published"),
-        UGV2ImageResourceCatalog::GetSessionCatalog(),
-        CatalogWithoutRh);
+    TestTrue(
+        TEXT("The earlier catalog is untouched by the later failed build"),
+        CatalogWithoutRh != nullptr);
 
-    UGV2ImageResourceCatalog::ReleaseForSession();
     IFileManager::Get().Delete(*BadResourcePath);
     return true;
 }
@@ -6927,9 +6955,21 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             Img->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
             return Img;
         };
-        auto ApplyIcon = [](UGV2ImageWidgetBase& Img, const FTestIconEntry& Entry) -> bool {
+        // PSC-10C: resolve first, apply second -- the production shape. UGV2ImageWidgetBase
+        // no longer has a method that does both, because doing both is what let a widget
+        // reach the catalog from its own lifecycle.
+        FString IconCatalogError;
+        UGV2ImageResourceCatalog* IconCatalog =
+            GV2PresentationTestFixtures::BuildGameDataImageCatalog(IconCatalogError);
+        TestNotNull(
+            *FString::Printf(TEXT("Icon repeater test catalog builds [Error: %s]"), *IconCatalogError),
+            IconCatalog);
+        auto ApplyIcon = [IconCatalog](UGV2ImageWidgetBase& Img, const FTestIconEntry& Entry) -> bool {
+            FGV2ResolvedImageResource Resolved;
             FString Err;
-            return Img.ApplyImageResource(Entry.ResourceId, Err);
+            return IconCatalog != nullptr
+                && IconCatalog->Resolve(Entry.ResourceId, Resolved, Err)
+                && Img.ApplyResolvedImageResource(Resolved, Err);
         };
         auto GetIconKey = [](const FTestIconEntry& Entry) -> FName { return Entry.Key; };
 
@@ -7019,11 +7059,21 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             {
                 return CharClass ? CreateWidget<UGV2ImageWidgetBase>(TestWorld, CharClass) : NewObject<UGV2ImageWidgetBase>(TestWorld);
             };
-            auto ApplyLambda = [](UGV2ImageWidgetBase& Widget, const FTestCharEntry& Entry)
+            // PSC-10C: resolve then apply -- see the icon repeater above.
+            FString CharCatalogError;
+            UGV2ImageResourceCatalog* CharCatalog =
+                GV2PresentationTestFixtures::BuildGameDataImageCatalog(CharCatalogError);
+            TestNotNull(
+                *FString::Printf(TEXT("Character repeater test catalog builds [Error: %s]"), *CharCatalogError),
+                CharCatalog);
+            auto ApplyLambda = [CharCatalog](UGV2ImageWidgetBase& Widget, const FTestCharEntry& Entry)
             {
                 Widget.SetKey(Entry.Key);
+                FGV2ResolvedImageResource Resolved;
                 FString Err;
-                return Widget.ApplyImageResource(Entry.ResourceId, Err);
+                return CharCatalog != nullptr
+                    && CharCatalog->Resolve(Entry.ResourceId, Resolved, Err)
+                    && Widget.ApplyResolvedImageResource(Resolved, Err);
             };
 
             // Positive single character with key identity
@@ -7231,7 +7281,23 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+    // PSC-10C: this suite exercises resolve+apply on UGV2ImageWidgetBase, which no longer
+    // has a single method doing both. The catalog is built here, once, and the local helper
+    // performs the two halves in the production order.
+    FString ScalingCatalogError;
+    UGV2ImageResourceCatalog* Catalog =
+        GV2PresentationTestFixtures::BuildGameDataImageCatalog(ScalingCatalogError);
+    TestNotNull(
+        *FString::Printf(TEXT("Graphics scaling test catalog builds [Error: %s]"), *ScalingCatalogError),
+        Catalog);
+    auto ApplyById = [Catalog](UGV2ImageWidgetBase* Widget, const FString& ResourceId, FString& OutError) -> bool
+    {
+        FGV2ResolvedImageResource Resolved;
+        return Catalog != nullptr
+            && Widget != nullptr
+            && Catalog->Resolve(ResourceId, Resolved, OutError)
+            && Widget->ApplyResolvedImageResource(Resolved, OutError);
+    };
 
     // 1. Test ScalePolicy compatibility matrix
     TestTrue(TEXT("PreserveAspect compatible with FixedAspect"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, EGV2ImageRenderMode::FixedAspect));
@@ -7273,27 +7339,26 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("CCF-13: ScalePolicy remains PreserveAspect after PostLoad"), ImageWidget->GetScalePolicy(), EGV2PrimitiveScalePolicy::PreserveAspect);
 
             // CCF-15: 1. PreserveAspect Resulting Brush
-            const bool bAppliedAspect = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
+            const bool bAppliedAspect = ApplyById(ImageWidget, TEXT("textsystem:resource.ui.missing_portrait"), Error);
             TestTrue(TEXT("CCF-15: PreserveAspect applies fixed aspect resource"), bAppliedAspect);
             TestEqual(TEXT("CCF-15: PreserveAspect brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
             TestEqual(TEXT("CCF-15: PreserveAspect brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
 
             // CCF-15: 2. FreeStretch Resulting Brush (DrawAs = Image, Tiling = NoTile)
             ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::FreeStretch);
-            const bool bAppliedStretch = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            const bool bAppliedStretch = ApplyById(ImageWidget, TEXT("core:resource.ui.old_paper_tile_256"), Error);
             TestTrue(TEXT("CCF-15: FreeStretch applies tile resource"), bAppliedStretch);
             TestEqual(TEXT("CCF-15: FreeStretch brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
             TestEqual(TEXT("CCF-15: FreeStretch brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
 
             // CCF-15: 3. Tile Resulting Brush (DrawAs = Image, Tiling = Both)
             ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::Tile);
-            const bool bAppliedTile = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            const bool bAppliedTile = ApplyById(ImageWidget, TEXT("core:resource.ui.old_paper_tile_256"), Error);
             TestTrue(TEXT("CCF-15: Tile applies tile resource"), bAppliedTile);
             TestEqual(TEXT("CCF-15: Tile brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
             TestEqual(TEXT("CCF-15: Tile brush Tiling is Both"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::Both);
 
             // CCF-15: 4. NineSlice Resulting Brush (DrawAs = Box, Margin parsed)
-            UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
             if (Catalog != nullptr)
             {
                 UTexture2D* NineSliceTex = UTexture2D::CreateTransient(64, 64);
@@ -7309,7 +7374,7 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
                 Catalog->ResolvedById.Add(NineSliceDef.ResourceId, MoveTemp(ResolvedNineSlice));
 
                 ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::NineSlice);
-                const bool bAppliedNineSlice = ImageWidget->ApplyImageResource(TEXT("core:resource.surface.test_panel"), Error);
+                const bool bAppliedNineSlice = ApplyById(ImageWidget, TEXT("core:resource.surface.test_panel"), Error);
                 TestTrue(TEXT("CCF-15: NineSlice applies nine-slice resource"), bAppliedNineSlice);
                 TestEqual(TEXT("CCF-15: NineSlice brush DrawAs is Box"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Box);
                 TestEqual(TEXT("CCF-15: NineSlice brush Margin Left is normalized 0.125"), ImageWidget->GetImageBrush().Margin.Left, 0.125f);
@@ -7318,7 +7383,7 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
                 const FSlateBrush BaselineBrush = ImageWidget->GetImageBrush();
                 const FString BaselineId = ImageWidget->GetAppliedResourceId();
 
-                const bool bIncompatibleApply = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
+                const bool bIncompatibleApply = ApplyById(ImageWidget, TEXT("textsystem:resource.ui.missing_portrait"), Error);
                 TestFalse(TEXT("CCF-15: Incompatible FixedAspect resource rejected under NineSlice policy"), bIncompatibleApply);
                 TestEqual(TEXT("CCF-15: AppliedResourceId unchanged after failure"), ImageWidget->GetAppliedResourceId(), BaselineId);
                 TestEqual(TEXT("CCF-15: Brush ResourceObject unchanged after failure"), ImageWidget->GetImageBrush().GetResourceObject(), BaselineBrush.GetResourceObject());
@@ -7805,7 +7870,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
+    // PSC-10C: resolve through a catalog, then apply the resolved value -- see
+    // FGV2GraphicsScalingPolicyTest for why the widget no longer does both.
+    FString RenderingCatalogError;
+    UGV2ImageResourceCatalog* RenderingCatalog =
+        GV2PresentationTestFixtures::BuildGameDataImageCatalog(RenderingCatalogError);
+    TestNotNull(
+        *FString::Printf(TEXT("Rendering conformance test catalog builds [Error: %s]"), *RenderingCatalogError),
+        RenderingCatalog);
+    auto ApplyById = [RenderingCatalog](UGV2ImageWidgetBase* Widget, const FString& ResourceId, FString& OutError) -> bool
+    {
+        FGV2ResolvedImageResource Resolved;
+        return RenderingCatalog != nullptr
+            && Widget != nullptr
+            && RenderingCatalog->Resolve(ResourceId, Resolved, OutError)
+            && Widget->ApplyResolvedImageResource(Resolved, OutError);
+    };
 
     UGameInstance* GameInstance = NewObject<UGameInstance>();
     GameInstance->AddToRoot();
@@ -7928,21 +8008,21 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
 
             // PreserveAspect policy with fixed aspect resource
             ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::PreserveAspect);
-            const bool bAspectOk = ImageWidget->ApplyImageResource(TEXT("textsystem:resource.ui.missing_portrait"), Error);
+            const bool bAspectOk = ApplyById(ImageWidget, TEXT("textsystem:resource.ui.missing_portrait"), Error);
             TestTrue(TEXT("PreserveAspect applied fixed aspect resource"), bAspectOk);
             TestEqual(TEXT("PreserveAspect brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
             TestEqual(TEXT("PreserveAspect brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
 
             // Tile policy with tile resource
             ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::Tile);
-            const bool bTileOk = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            const bool bTileOk = ApplyById(ImageWidget, TEXT("core:resource.ui.old_paper_tile_256"), Error);
             TestTrue(TEXT("Tile policy applied tile resource"), bTileOk);
             TestEqual(TEXT("Tile brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
             TestEqual(TEXT("Tile brush Tiling is Both"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::Both);
 
             // FreeStretch policy with tile resource
             ImageWidget->SetScalePolicy(EGV2PrimitiveScalePolicy::FreeStretch);
-            const bool bStretchOk = ImageWidget->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+            const bool bStretchOk = ApplyById(ImageWidget, TEXT("core:resource.ui.old_paper_tile_256"), Error);
             TestTrue(TEXT("FreeStretch applied resource"), bStretchOk);
             TestEqual(TEXT("FreeStretch brush DrawAs is Image"), ImageWidget->GetImageBrush().DrawAs.GetValue(), ESlateBrushDrawType::Image);
             TestEqual(TEXT("FreeStretch brush Tiling is NoTile"), ImageWidget->GetImageBrush().Tiling.GetValue(), ESlateBrushTileType::NoTile);
@@ -7951,7 +8031,7 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
             const FSlateBrush ValidPrevBrush = ImageWidget->GetImageBrush();
             const FString ValidPrevId = ImageWidget->GetAppliedResourceId();
 
-            const bool bBadApply = ImageWidget->ApplyImageResource(TEXT("nonexistent:resource.image"), Error);
+            const bool bBadApply = ApplyById(ImageWidget, TEXT("nonexistent:resource.image"), Error);
             TestFalse(TEXT("Nonexistent resource is rejected"), bBadApply);
             TestEqual(TEXT("Applied resource id remains previous valid id"), ImageWidget->GetAppliedResourceId(), ValidPrevId);
             TestEqual(TEXT("Applied brush resource object remains unchanged"), ImageWidget->GetImageBrush().GetResourceObject(), ValidPrevBrush.GetResourceObject());
@@ -8301,14 +8381,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealImageCatalog ScopedImageCatalog;
-
     const FString GameNamespace = TEXT("r") TEXT("h");
     const FString MarketResourceId = GameNamespace + TEXT(":resource.location.market");
     const FString HeroPortraitResourceId = GameNamespace + TEXT(":resource.portrait.hero");
 
-    UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
-    TestNotNull(TEXT("Image catalog is loaded"), Catalog);
+    FString SceneCatalogError;
+    UGV2ImageResourceCatalog* Catalog =
+        GV2PresentationTestFixtures::BuildGameDataImageCatalog(SceneCatalogError);
+    TestNotNull(*FString::Printf(TEXT("Image catalog builds [Error: %s]"), *SceneCatalogError), Catalog);
     if (Catalog != nullptr)
     {
         FGV2ResolvedImageResource MarketRes;
@@ -8356,7 +8436,11 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
                 if (Bg != nullptr)
                 {
                     FString Error;
-                    Bg->ApplyImageResource(MarketResourceId, Error);
+                    FGV2ResolvedImageResource BgResolved;
+                    if (Catalog->Resolve(MarketResourceId, BgResolved, Error))
+                    {
+                        Bg->ApplyResolvedImageResource(BgResolved, Error);
+                    }
                     AddInfo(FString::Printf(TEXT("Background: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
                         *Bg->GetAppliedResourceId(),
                         static_cast<int32>(Bg->GetVisibility()),
@@ -8365,7 +8449,11 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
                 if (BgTile != nullptr)
                 {
                     FString Error;
-                    BgTile->ApplyImageResource(TEXT("core:resource.ui.old_paper_tile_256"), Error);
+                    FGV2ResolvedImageResource TileResolved;
+                    if (Catalog->Resolve(TEXT("core:resource.ui.old_paper_tile_256"), TileResolved, Error))
+                    {
+                        BgTile->ApplyResolvedImageResource(TileResolved, Error);
+                    }
                     AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
                         *BgTile->GetAppliedResourceId(),
                         static_cast<int32>(BgTile->GetVisibility()),
@@ -9058,14 +9146,15 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Portrait instantiated"), Portrait);
         if (Portrait != nullptr)
         {
+            // PSC-10C: ApplyPortrait (resolve + mutate) is gone; the surviving production
+            // method takes an already resolved resource. The property under test -- an
+            // unbound renderer rejects rather than silently dropping content -- is unchanged.
             FString Error;
+            FGV2ResolvedImageResource ResolvedPortrait;
+            ResolvedPortrait.ResourceId = TEXT("core:resource.ui.missing_portrait");
             TestFalse(TEXT("REV3-10: Portrait with unbound renderer rejects a supplied resource"),
-                Portrait->ApplyPortrait(TEXT("core:resource.ui.missing_portrait"), FString(), Error));
+                Portrait->ApplyResolvedPortrait(ResolvedPortrait, Error));
             TestTrue(TEXT("REV3-10: Rejection names the unbound renderer"), Error.Contains(TEXT("PortraitImage")));
-
-            FString EmptyError;
-            TestTrue(TEXT("REV3-10: Portrait with no resource and no renderer still succeeds"),
-                Portrait->ApplyPortrait(FString(), FString(), EmptyError));
         }
     }
 

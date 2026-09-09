@@ -22,8 +22,6 @@ class GV2_API UGV2PortraitWidgetBase
     GENERATED_BODY()
 
 public:
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Portrait")
-    bool ApplyPortrait(const FString& ResourceId, const FString& FrameResourceId, FString& OutError);
 
     // STATUS-012: application-phase entry point; the portrait resource arrives
     // already resolved. Frame is not part of the prepared value today (no consumer

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2ImageResourceCatalog.h"
 
 class UImage;
@@ -18,14 +19,18 @@ public:
         TOptional<float> FixedAspectRatio,
         FString& OutError);
 
-    // Resolve + ApplyResolved, for callers that legitimately resolve: preparation,
-    // and widget-local paths outside a presentation transaction (NativePreConstruct,
-    // Blueprint-facing apply). Not reachable from the application phase.
-    static bool ResolveAndApply(
-        UImage* Widget,
-        const FString& ResourceId,
-        EGV2PrimitiveScalePolicy ScalePolicy,
-        TOptional<float> FixedAspectRatio,
-        FGV2ResolvedImageResource& OutResource,
-        FString& OutError);
+    // PSC-10C: turns an ALREADY resolved resource into the ordinary prepared image-host
+    // operation; the host widget applies its own scale policy when it receives it. It
+    // resolved through FGV2PresentationPrepareContext during Prepare. This replaced
+    // ResolveAndApply, whose contract was "consult the process-global session catalog and
+    // mutate the widget", i.e. semantic resolution fused to a physical effect.
+    static void AppendPreparedImageHostOperation(
+        UWidget* TargetWidget,
+        const FGV2ResolvedImageResource& Resolved,
+        GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction);
+
+    // One implementation of the render-mode projection, shared by every builder of an
+    // image-host operation instead of a per-file copy.
+    static GV2PresentationApply::EPreparedImageRenderMode ToPreparedRenderMode(EGV2ImageRenderMode RenderMode);
+
 };

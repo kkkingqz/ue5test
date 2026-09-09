@@ -11,6 +11,7 @@ namespace GV2PackageClosure { struct FEntry; }
 class FGV2LayeredUiReconciler;
 class FGV2RepositoryPublisher;
 class FGV2ScreenPlacement;
+class FGV2SessionContentSnapshot;
 class FGV2SessionCoordinator;
 class UGV2GameShellWidgetBase;
 class UGV2ScreenWidgetBase;
@@ -81,6 +82,17 @@ private:
     bool HandleDocumentRequested(const FGV2UiDocumentViewModel& Document);
     void ReplaceActiveScreen(UUserWidget* NewScreen);
 
+public:
+#if WITH_DEV_AUTOMATION_TESTS
+    // PSC-10C: the session's image catalog now lives only in its content snapshot -- the
+    // process-global one a test could inspect is gone. This exposes the snapshot itself so a
+    // test can still assert the observable property ("a failed session publishes none; a
+    // recovered one publishes a catalog that resolves real content") instead of asserting it
+    // through a global that production no longer has.
+    const FGV2SessionContentSnapshot* GetContentSnapshotForAutomationTest() const;
+#endif
+
+private:
     TPimplPtr<FGV2SessionCoordinator> Coordinator;
     TPimplPtr<FGV2RepositoryPublisher> RepositoryPublisher;
 
