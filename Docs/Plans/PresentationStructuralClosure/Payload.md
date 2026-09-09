@@ -1,8 +1,8 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.7
-updated: 2026-09-08
+version: 1.8
+updated: 2026-09-09
 depends_on:
   - README.md
   - Snapshot.md
@@ -253,7 +253,10 @@ depends_on:
     проверку строит consumer напрямую без `SetPrepareContext`, а GameData не использует
     span hover нигде; построение session/candidate fixture только ради одной проверки
     посчитано непропорциональным, тот же компромисс, что `PSC-08` сделал для
-    `GetConfiguredRegistry()`).
+    `GetConfiguredRegistry()`. Зарегистрировано как
+    [`STATUS-018`](../../Status/ImplementationStatus.md) — код корректен и не нарушает
+    `ADR-0043` D1, но claim «эта ветка red-on-revert-доказана» был бы ложным без этой
+    записи; условие закрытия там же).
 
 - [ ] **PSC-10B — Включить central style в transaction и удалить runtime accessors**
   - Зависимости: PSC-10A.
