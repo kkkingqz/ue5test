@@ -14,6 +14,19 @@
 
 namespace GV2PresentationTestFixtures
 {
+// PSC-11: tests carry an FString of their own; the single Apply facade returns a result
+// struct. This adapts one to the other for test call sites only -- production has exactly
+// one way to apply a transaction and does not go through here.
+inline bool ApplyPreparedTransaction(
+    const GV2PresentationApply::FGV2PreparedPresentationTransaction& Transaction,
+    FString& OutError)
+{
+    FGV2PresentationApplyResult Result;
+    const bool bApplied = FGV2PresentationApply::Apply(Transaction, Result);
+    OutError = Result.Error;
+    return bApplied;
+}
+
 // A compact, test-only owner for the same immutable presentation snapshot that
 // production Prepare receives from FGV2SessionCoordinator. Tests below the
 // coordinator boundary use it instead of reviving process-global Theme/Registry

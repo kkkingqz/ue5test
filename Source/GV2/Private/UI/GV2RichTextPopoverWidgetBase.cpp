@@ -5,7 +5,7 @@
 #include "Components/Image.h"
 #include "Components/SizeBox.h"
 #include "UI/GV2RichTextWidgetBase.h"
-#include "UI/GV2LegacyPresentationApplyAdapter.h"
+#include "UI/GV2ApplyTransaction.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiCapability.h"
 
@@ -56,8 +56,7 @@ bool UGV2RichTextPopoverWidgetBase::InitializePopover(
     DescriptionOperation.Payload.Set<GV2PresentationApply::FPreparedRichTextStyle>(InStyle);
     StyleTransaction.AddCentralStyleOperation(MoveTemp(DescriptionOperation));
     FString StyleError;
-    if (!GV2PresentationApply::Apply(StyleTransaction, StyleError)
-        || !GV2LegacyPresentationApplyAdapter::Apply(StyleTransaction, StyleError))
+    if (!GV2ApplyTransaction(StyleTransaction, StyleError))
     {
         return false;
     }

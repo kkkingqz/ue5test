@@ -11,9 +11,15 @@ bool UGV2TextWidgetBase::ApplyText(const FGV2TextViewModel& Content)
     {
         return false;
     }
-    if (TextBlock != nullptr && !UGV2TextPipeline::Apply(TextBlock, Content))
+    // PSC-11: through the accessor, not the bare BindWidget member -- see
+    // UGV2RichTextWidgetBase::ApplyText for why the retired adapter's redirect made the
+    // name-lookup fallback part of this path's behaviour.
+    if (UCommonTextBlock* Renderer = GetTextBlock())
     {
-        return false;
+        if (!UGV2TextPipeline::Apply(Renderer, Content))
+        {
+            return false;
+        }
     }
     CurrentContent = Content;
     return true;

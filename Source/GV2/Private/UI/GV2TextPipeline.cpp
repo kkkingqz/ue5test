@@ -1,5 +1,6 @@
 #include "UI/GV2TextPipeline.h"
 
+#include "UI/GV2ApplyTransaction.h"
 #include "Application/GV2SessionContentSnapshot.h"
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
@@ -388,7 +389,7 @@ bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& 
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddPlainTextOperation(MoveTemp(Operation));
     FString ApplyError;
-    return GV2PresentationApply::Apply(Transaction, ApplyError);
+    return GV2ApplyTransaction(Transaction, ApplyError);
 }
 
 // RichText follows the same resolved-only boundary. Markup, style and live-geometry scale
@@ -430,7 +431,7 @@ bool UGV2TextPipeline::ApplyRichText(
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddRichTextRenderOperation(MoveTemp(Operation));
     FString ApplyError;
-    return GV2PresentationApply::Apply(Transaction, ApplyError);
+    return GV2ApplyTransaction(Transaction, ApplyError);
 }
 
 // PSC-09B: same split -- no Theme lookup needed here beyond the guard already checked,
@@ -450,7 +451,7 @@ bool UGV2TextPipeline::ApplyHint(UEditableTextBox* Widget, const FGV2TextViewMod
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddTextHintOperation(MoveTemp(Operation));
     FString ApplyError;
-    return GV2PresentationApply::Apply(Transaction, ApplyError);
+    return GV2ApplyTransaction(Transaction, ApplyError);
 }
 
 bool UGV2TextPipeline::NormalizeMarkup(

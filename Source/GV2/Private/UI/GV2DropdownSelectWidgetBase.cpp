@@ -261,4 +261,15 @@ UPanelWidget* UGV2DropdownSelectWidgetBase::GetPreparedCollectionPanel() const
 void UGV2DropdownSelectWidgetBase::OnPreparedCollectionSettled(
     const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& /*Entries*/)
 {
+    // The options collection settled; the header label reflects the selection against the
+    // new option set. The adapter refreshed this by walking outers to the concrete dropdown.
+    UpdateHeaderLabel();
+}
+
+void UGV2DropdownSelectWidgetBase::ResetPreparedCollection()
+{
+    if (OptionsScrollBox != nullptr)
+    {
+        OptionsScrollBox->ClearChildren();
+    }
 }

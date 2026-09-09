@@ -9,7 +9,7 @@ PSC-09B (ADR-0043 D2/D3, Payload.md M3): "второго пути, минующ�
 GV2PropertyConsumers.h's own `class GV2_API F...PropertyConsumer : public
 IGV2PropertyConsumer` declarations, not a fixed enumeration typed into this gate. A new
 consumer class added later is picked up automatically; forgetting to route its own
-Commit() through GV2PresentationApply::Apply()/GV2LegacyPresentationApplyAdapter::Apply()
+Commit() through the single FGV2PresentationApply::Apply() facade
 fails this gate the same way an existing one regressing would.
 """
 
@@ -29,8 +29,10 @@ CLASS_DECLARATION_PATTERN = re.compile(
 )
 
 TRANSACTION_MARKERS = (
-    "GV2PresentationApply::Apply",
-    "GV2LegacyPresentationApplyAdapter::Apply",
+    # PSC-11: one facade, plus the caller-side convenience that forwards to it. The second
+    # entry point (GV2LegacyPresentationApplyAdapter::Apply) no longer exists.
+    "FGV2PresentationApply::Apply",
+    "GV2ApplyTransaction(",
 )
 
 
@@ -84,7 +86,7 @@ def find_violations(header_text: str, source_text: str) -> list[str]:
         if not any(marker in body for body in bodies_found for marker in TRANSACTION_MARKERS):
             violations.append(
                 f"{class_name}: neither Commit() nor CommitWithFailureInjector() calls "
-                "GV2PresentationApply::Apply(...) or GV2LegacyPresentationApplyAdapter::Apply(...) "
+                "FGV2PresentationApply::Apply(...) (directly or through GV2ApplyTransaction) "
                 "-- this kind's physical mutation does not route through the transaction protocol"
             )
 
@@ -124,18 +126,18 @@ def run_self_test() -> bool:
         print(f"FAILED: gate did not flag a Commit() that never calls the transaction protocol: {errors}")
         return False
 
-    # The same class, but with Commit() routing through GV2PresentationApply::Apply, must
+    # The same class, but with Commit() routing through the facade, must
     # not be flagged.
     synthetic_source_good = (
         "bool FGV2SyntheticPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)\n"
         "{\n"
         "    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;\n"
-        "    return GV2PresentationApply::Apply(Transaction, OutError);\n"
+        "    return GV2ApplyTransaction(Transaction, OutError);\n"
         "}\n"
     )
     errors = find_violations(synthetic_header, synthetic_source_good)
     if errors:
-        print(f"FAILED: gate rejected a Commit() that does call GV2PresentationApply::Apply: {errors}")
+        print(f"FAILED: gate rejected a Commit() that does route through the facade: {errors}")
         return False
 
     # A class with no Commit()/CommitWithFailureInjector() definition at all must be
@@ -158,7 +160,7 @@ def run_self_test() -> bool:
         "    const TFunction<bool(const FString&)>& FailureInjector, const FString& PropertyPath)\n"
         "{\n"
         "    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;\n"
-        "    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);\n"
+        "    FGV2PresentationApplyResult R; return FGV2PresentationApply::Apply(Transaction, R);\n"
         "}\n"
     )
     errors = find_violations(synthetic_header, synthetic_source_delegate)

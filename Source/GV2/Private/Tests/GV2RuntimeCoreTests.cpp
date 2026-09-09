@@ -18,7 +18,6 @@
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImageResourceCatalog.h"
-#include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2PresentationAuthorityProbe.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2UiStyleConsumer.h"
@@ -2173,13 +2172,11 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     TestEqual(TEXT("Preparing does not mutate the widget"), Separator->ReadAppliedThickness(), Sentinel);
 
     const uint64 ResolveCountBeforeApply = GV2PresentationAuthorityProbe::GetResolveCount();
+    // PSC-11: one call applies the whole transaction. Before it, this assertion had to be
+    // split across two entry points, and "applied" was not a single fact.
     FString ApplyError;
-    TestTrue(TEXT("Lower module's Apply accepts the central-style operation"),
-        GV2PresentationApply::Apply(Transaction, ApplyError));
-    TestEqual(TEXT("Lower module alone does not write a GV2-owned widget base"), Separator->ReadAppliedThickness(), Sentinel);
-
-    TestTrue(TEXT("Adapter Apply completes the central-style operation"),
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError));
+    TestTrue(TEXT("The single Apply facade applies the central-style operation"),
+        GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, ApplyError));
     const uint64 ResolveCountAfterApply = GV2PresentationAuthorityProbe::GetResolveCount();
     TestEqual(
         TEXT("Applying prepared central style resolves no presentation authority"),
@@ -2220,7 +2217,7 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
 
         FString MismatchError;
         TestFalse(TEXT("A style role delivered to the wrong widget class is rejected"),
-            GV2LegacyPresentationApplyAdapter::Apply(MismatchTransaction, MismatchError));
+            GV2PresentationTestFixtures::ApplyPreparedTransaction(MismatchTransaction, MismatchError));
         TestTrue(TEXT("The rejection names the mismatch"),
             MismatchError.Contains(TEXT("central_style_target_mismatch")));
     }

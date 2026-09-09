@@ -1,12 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "UObject/Interface.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "GV2UiBindingTarget.generated.h"
 
 UINTERFACE(MinimalAPI)
-class UGV2UiBindingTarget : public UInterface
+class UGV2UiBindingTarget : public UGV2PreparedBindingTarget
 {
     GENERATED_BODY()
 };
@@ -17,9 +18,16 @@ class UGV2UiBindingTarget : public UInterface
  * The widget never receives a raw command ID or arguments, only this handle, which it
  * later submits as-is via FGV2UiInteractionEmitter::Submit.
  */
-class GV2_API IGV2UiBindingTarget
+class GV2_API IGV2UiBindingTarget : public IGV2PreparedBindingTarget
 {
     GENERATED_BODY()
+
+public:
+    // PSC-11: every binding target IS a prepared-binding target; see IGV2UiPropertyHost.
+    virtual void ApplyPreparedBinding(const FString& SerializedHandle) override
+    {
+        SetBindingHandle(FGV2UiBindingHandle::FromSerialized(SerializedHandle));
+    }
 
 public:
     virtual void SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle) = 0;

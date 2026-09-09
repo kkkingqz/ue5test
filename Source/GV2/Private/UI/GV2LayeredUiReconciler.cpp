@@ -1,7 +1,7 @@
 #include "UI/GV2LayeredUiReconciler.h"
 
 #include "UI/GV2CentralStylePreparer.h"
-#include "UI/GV2LegacyPresentationApplyAdapter.h"
+#include "UI/GV2ApplyTransaction.h"
 
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
@@ -211,8 +211,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
         bool bScreenStyled = true;
         if (bScreenFieldsCommitted)
         {
-            bScreenStyled = GV2PresentationApply::Apply(Inst.CentralStyleTransaction, ScreenCommitError)
-                && GV2LegacyPresentationApplyAdapter::Apply(Inst.CentralStyleTransaction, ScreenCommitError);
+            bScreenStyled = GV2ApplyTransaction(Inst.CentralStyleTransaction, ScreenCommitError);
             if (!bScreenStyled)
             {
                 // This screen's fields ARE committed, so unlike a CommitScreenFields failure

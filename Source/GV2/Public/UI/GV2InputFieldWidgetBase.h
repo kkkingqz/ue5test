@@ -29,8 +29,6 @@ class GV2_API UGV2InputFieldWidgetBase
     , public IGV2UiBindingTarget
     , public IGV2ScreenFieldHost
     , public IGV2TextPipelineHost
-    , public IGV2PreparedKeyTarget
-    , public IGV2PreparedBindingTarget
     , public IGV2PreparedIntegerTarget
     , public IGV2PreparedInputFieldStyleTarget
 {
@@ -46,21 +44,7 @@ public:
 
     // PSC-11: value sink for the prepared integer operation.
     virtual void ApplyPreparedInteger(int64 Value) override;
-
-    // PSC-11: value sink for the prepared binding operation.
-    virtual void ApplyPreparedBinding(const FString& SerializedHandle) override
-    {
-        SetBindingHandle(FGV2UiBindingHandle::FromSerialized(SerializedHandle));
-    }
-
-    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
-    // same one every property host already performs; a host that routes a NAMED key
-    // capability overrides this and falls back to it.
-    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
-    {
-        GetPropertyHostState().SetKey(Value);
-        return true;
-    }
+    virtual int64 GetPreparedMaxLength() const override { return GetMaxLength(); }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     EGV2SubmitUiInteractionResult SubmitTextValue(const FString& NewTextValue);

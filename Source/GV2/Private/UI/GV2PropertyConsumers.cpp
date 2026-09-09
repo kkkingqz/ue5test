@@ -12,7 +12,7 @@
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImagePresentation.h"
 #include "UI/GV2ImageWidgetBase.h"
-#include "UI/GV2LegacyPresentationApplyAdapter.h"
+#include "UI/GV2ApplyTransaction.h"
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2ButtonListWidgetBase.h"
@@ -153,11 +153,13 @@ bool FGV2TextPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2TextPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -173,7 +175,7 @@ void FGV2TextPropertyConsumer::Reset(UWidget* TargetWidget)
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddTextOperation(MoveTemp(Operation));
     FString ApplyError;
-    GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+    GV2ApplyTransaction(Transaction, ApplyError);
 }
 
 // --- FGV2ImageResourcePropertyConsumer ---
@@ -378,11 +380,13 @@ bool FGV2ImageResourcePropertyConsumer::Commit(UWidget* TargetWidget, FString& O
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
@@ -400,6 +404,8 @@ void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FPreparedImageResourceOperation Operation;
         Operation.TargetWidget = ImageWidget;
         Transaction.AddImageResourceOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     else
     {
@@ -407,13 +413,12 @@ void FGV2ImageResourcePropertyConsumer::Reset(UWidget* TargetWidget)
         Operation.TargetWidget = TargetWidget;
         Operation.bResetToDefault = true;
         Transaction.AddImageHostOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
 
-    FString ApplyError;
-    if (GV2PresentationApply::Apply(Transaction, ApplyError))
-    {
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
-    }
+    FGV2PresentationApplyResult ApplyResult;
+    FGV2PresentationApply::Apply(Transaction, ApplyResult);
 }
 
 // --- FGV2BooleanPropertyConsumer ---
@@ -467,7 +472,7 @@ GV2PresentationApply::EPreparedBooleanTarget DetermineBooleanOperationTarget(UWi
     }
     if (Cast<UGV2DropdownSelectWidgetBase>(TargetWidget) != nullptr && PropertyName == TEXT("is_open"))
     {
-        return GV2PresentationApply::EPreparedBooleanTarget::RequiresLegacyAdapter;
+        return GV2PresentationApply::EPreparedBooleanTarget::HostDeclaredBoolean;
     }
     return GV2PresentationApply::EPreparedBooleanTarget::WidgetEnabled;
 }
@@ -510,11 +515,13 @@ bool FGV2BooleanPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2BooleanPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -534,11 +541,8 @@ void FGV2BooleanPropertyConsumer::Reset(UWidget* TargetWidget)
 
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddBooleanOperation(MoveTemp(Operation));
-    FString ApplyError;
-    if (GV2PresentationApply::Apply(Transaction, ApplyError))
-    {
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
-    }
+    FGV2PresentationApplyResult ApplyResult;
+    FGV2PresentationApply::Apply(Transaction, ApplyResult);
 }
 
 // --- FGV2IntegerPropertyConsumer ---
@@ -617,11 +621,13 @@ bool FGV2IntegerPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2IntegerPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -634,7 +640,7 @@ void FGV2IntegerPropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddIntegerOperation(MoveTemp(Operation));
         FString ApplyError;
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     PreparedValue = 0;
 }
@@ -727,11 +733,13 @@ bool FGV2NumberPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2NumberPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -748,6 +756,8 @@ void FGV2NumberPropertyConsumer::Reset(UWidget* TargetWidget)
         Operation.TargetWidget = PB;
         Operation.Percent = 0.0f;
         Transaction.AddProgressBarOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     else
     {
@@ -755,12 +765,11 @@ void FGV2NumberPropertyConsumer::Reset(UWidget* TargetWidget)
         Operation.TargetWidget = TargetWidget;
         Operation.Value = 0.0;
         Transaction.AddNumberOperation(MoveTemp(Operation));
+        FString ApplyError;
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
-    FString ApplyError;
-    if (GV2PresentationApply::Apply(Transaction, ApplyError))
-    {
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
-    }
+    FGV2PresentationApplyResult ApplyResult;
+    FGV2PresentationApply::Apply(Transaction, ApplyResult);
 }
 
 // --- FGV2StringPropertyConsumer ---
@@ -819,11 +828,13 @@ bool FGV2StringPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2StringPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -838,7 +849,7 @@ void FGV2StringPropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddStringOperation(MoveTemp(Operation));
         FString ApplyError;
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     PreparedValue.Empty();
 }
@@ -906,11 +917,13 @@ bool FGV2KeyPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutError)
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -924,7 +937,7 @@ void FGV2KeyPropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddKeyOperation(MoveTemp(Operation));
         FString ApplyError;
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     PreparedValue.Empty();
     PropertyName.Empty();
@@ -992,11 +1005,13 @@ bool FGV2BindingPropertyConsumer::Commit(UWidget* TargetWidget, FString& OutErro
     {
         return false;
     }
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
+    FGV2PresentationApplyResult ApplyResult;
+    if (!FGV2PresentationApply::Apply(Transaction, ApplyResult))
     {
+        OutError = ApplyResult.Error;
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return true;
 }
 
 void FGV2BindingPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -1009,7 +1024,7 @@ void FGV2BindingPropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddBindingOperation(MoveTemp(Operation));
         FString ApplyError;
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
 }
 
@@ -1508,10 +1523,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
             bool bItemCommitted = bPropertiesCommitted;
             if (bItemCommitted)
             {
-                bItemCommitted = GV2PresentationApply::Apply(
-                        Item.CentralStyleTransaction,
-                        CommitError)
-                    && GV2LegacyPresentationApplyAdapter::Apply(
+                bItemCommitted = GV2ApplyTransaction(
                         Item.CentralStyleTransaction,
                         CommitError);
             }
@@ -1591,11 +1603,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
     }
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
     Transaction.AddKeyedCollectionOperation(MoveTemp(Operation));
-    if (!GV2PresentationApply::Apply(Transaction, OutError))
-    {
-        return false;
-    }
-    if (!GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError))
+    if (!GV2ApplyTransaction(Transaction, OutError))
     {
         return false;
     }
@@ -1633,7 +1641,7 @@ void FGV2KeyedCollectionPropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddKeyedCollectionOperation(MoveTemp(Operation));
         FString ApplyError;
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     ActiveWidgetsByKey.Reset();
     CandidateWidgetsByKey.Reset();
@@ -1850,7 +1858,7 @@ bool FGV2RichTextSpansPropertyConsumer::Commit(UWidget* TargetWidget, FString& O
     {
         return false;
     }
-    return GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError);
+    return GV2ApplyTransaction(Transaction, OutError);
 }
 
 void FGV2RichTextSpansPropertyConsumer::Reset(UWidget* TargetWidget)
@@ -1862,7 +1870,7 @@ void FGV2RichTextSpansPropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddRichTextSpansOperation(MoveTemp(Operation));
         FString ApplyError;
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     PreparedSpans.Reset();
 }
@@ -2249,10 +2257,7 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
         if (Item.ScreenWidget != nullptr)
         {
             FString StyleError;
-            const bool bStyleApplied = GV2PresentationApply::Apply(
-                    Item.CentralStyleTransaction,
-                    StyleError)
-                && GV2LegacyPresentationApplyAdapter::Apply(
+            const bool bStyleApplied = GV2ApplyTransaction(
                     Item.CentralStyleTransaction,
                     StyleError);
             if (!bStyleApplied)
@@ -2310,7 +2315,7 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
         }
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddTabContainerOperation(MoveTemp(Operation));
-        if (!GV2LegacyPresentationApplyAdapter::Apply(Transaction, OutError))
+        if (!GV2ApplyTransaction(Transaction, OutError))
         {
             return false;
         }
@@ -2329,7 +2334,7 @@ void FGV2TabContainerTabsPropertyConsumer::Reset(UWidget* TargetWidget)
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
         Transaction.AddTabContainerOperation(MoveTemp(Operation));
         FString ApplyError;
-        GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError);
+        GV2ApplyTransaction(Transaction, ApplyError);
     }
     PreparedTabs.Reset();
     CandidateWidgetsByKey.Reset();

@@ -87,3 +87,11 @@ void UGV2ButtonListWidgetBase::OnPreparedCollectionSettled(
     const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& /*Entries*/)
 {
 }
+
+void UGV2ButtonListWidgetBase::ResetPreparedCollection()
+{
+    if (ButtonContainer != nullptr)
+    {
+        ButtonContainer->ClearChildren();
+    }
+}

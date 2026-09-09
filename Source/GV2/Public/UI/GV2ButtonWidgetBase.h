@@ -30,8 +30,6 @@ class GV2_API UGV2ButtonWidgetBase
     , public IGV2UiBindingTarget
     , public IGV2ScreenFieldHost
     , public IGV2TextPipelineHost
-    , public IGV2PreparedKeyTarget
-    , public IGV2PreparedBindingTarget
     , public IGV2PreparedTextTarget
     , public IGV2PreparedButtonStyleTarget
 {
@@ -50,21 +48,6 @@ public:
         const GV2PresentationApply::FPreparedTextValue& Value,
         bool bIsReset,
         FString& OutError) override;
-
-    // PSC-11: value sink for the prepared binding operation.
-    virtual void ApplyPreparedBinding(const FString& SerializedHandle) override
-    {
-        SetBindingHandle(FGV2UiBindingHandle::FromSerialized(SerializedHandle));
-    }
-
-    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
-    // same one every property host already performs; a host that routes a NAMED key
-    // capability overrides this and falls back to it.
-    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
-    {
-        GetPropertyHostState().SetKey(Value);
-        return true;
-    }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Button")
     bool ApplyText(const FGV2TextViewModel& InText);

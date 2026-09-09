@@ -27,7 +27,6 @@ struct GV2_API FGV2TabItemEntry
 
 UCLASS(BlueprintType, Blueprintable)
 class GV2_API UGV2TabContainerWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost
-    , public IGV2PreparedKeyTarget
     , public IGV2PreparedTabContainerTarget
 {
     GENERATED_BODY()

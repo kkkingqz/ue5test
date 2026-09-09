@@ -25,8 +25,6 @@ class GV2_API UGV2DropdownSelectWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2UiBindingTarget
     , public IGV2UiStyleConsumer
-    , public IGV2PreparedKeyTarget
-    , public IGV2PreparedBindingTarget
     , public IGV2PreparedTextTarget
     , public IGV2PreparedKeyedCollectionTarget
     , public IGV2PreparedBooleanTarget
@@ -47,6 +45,7 @@ public:
 
     // PSC-11: value sinks for the prepared keyed-collection operation.
     virtual UPanelWidget* GetPreparedCollectionPanel() const override;
+    virtual void ResetPreparedCollection() override;
     virtual void OnPreparedCollectionSettled(
         const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) override;
 
@@ -55,12 +54,6 @@ public:
         const GV2PresentationApply::FPreparedTextValue& Value,
         bool bIsReset,
         FString& OutError) override;
-
-    // PSC-11: value sink for the prepared binding operation.
-    virtual void ApplyPreparedBinding(const FString& SerializedHandle) override
-    {
-        SetBindingHandle(FGV2UiBindingHandle::FromSerialized(SerializedHandle));
-    }
 
     // PSC-11: this host routes a NAMED key capability of its own before the generic
     // identity write; see the implementation.

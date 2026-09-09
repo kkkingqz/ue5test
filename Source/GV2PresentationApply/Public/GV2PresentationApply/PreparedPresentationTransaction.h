@@ -67,7 +67,7 @@ struct GV2PRESENTATIONAPPLY_API FPreparedImageHostOperation
 
 // PSC-09B (ADR-0043 D2/D3): Prepare (upper GV2) has already narrowed a boolean
 // capability down to exactly which widget-native setter applies -- Apply performs no
-// decision, only the cast+call for the setter it recognizes. RequiresLegacyAdapter marks
+// decision, only the cast+call for the setter it recognizes. HostDeclaredBoolean marks
 // an operation whose real target needs a GV2-owned widget/interface type (e.g.
 // UGV2DropdownSelectWidgetBase::SetDropdownOpen) that this module cannot Cast to by
 // construction (Build.cs denylist) -- GV2's own temporary GV2LegacyPresentationApplyAdapter
@@ -77,7 +77,7 @@ enum class EPreparedBooleanTarget : uint8
     WidgetEnabled,
     CheckBoxChecked,
     EditableTextReadOnly,
-    RequiresLegacyAdapter,
+    HostDeclaredBoolean,
 };
 
 struct GV2PRESENTATIONAPPLY_API FPreparedBooleanOperation
@@ -646,11 +646,35 @@ private:
 // no second path into this module's mutation logic. Performs every operation this
 // module recognizes (plain Engine/UMG target types) and nothing else: no lookup, no
 // resolution, no fallback to a value this transaction didn't already carry. An operation
-// whose real target needs a GV2-owned type (EPreparedBooleanTarget::RequiresLegacyAdapter,
+// whose real target needs a GV2-owned type (EPreparedBooleanTarget::HostDeclaredBoolean,
 // or any Integer/String/Key/Binding operation, all of which are GV2-interface-only by
 // construction) is silently left for GV2's own temporary
 // GV2LegacyPresentationApplyAdapter -- not an error here, since this module has no way
 // to tell "a GV2-owned target" apart from "a genuinely unsupported one" without the type
 // it is explicitly denied from ever depending on.
-GV2PRESENTATIONAPPLY_API bool Apply(const FGV2PreparedPresentationTransaction& Transaction, FString& OutError);
 }
+
+// PSC-11 (ADR-0043 D2): the outcome of applying one whole transaction. A struct rather than
+// a bare bool + FString so a caller cannot take the diagnostic without the verdict, and so a
+// later field (counts, health) does not change every call site again.
+struct GV2PRESENTATIONAPPLY_API FGV2PresentationApplyResult
+{
+    bool bApplied = true;
+    int32 AppliedOperationCount = 0;
+    FString Error;
+};
+
+// PSC-11: THE production entry point for applying a prepared transaction. There is exactly
+// one, and it is here, below the boundary. Until PSC-11 there were two -- this module's own
+// visitor plus GV2LegacyPresentationApplyAdapter for the GV2-owned targets this module
+// cannot Cast to -- so every caller had to remember both and "applied" was not one fact.
+// Those targets are now reached through the value-only role interfaces in
+// PreparedApplyTargets.h, which this module CAN name, so the second entry point is gone.
+class GV2PRESENTATIONAPPLY_API FGV2PresentationApply
+{
+public:
+    static bool Apply(
+        const GV2PresentationApply::FGV2PreparedPresentationTransaction& Transaction,
+        FGV2PresentationApplyResult& OutResult);
+};
+

@@ -86,6 +86,9 @@ class GV2PRESENTATIONAPPLY_API IGV2PreparedIntegerTarget
 
 public:
     virtual void ApplyPreparedInteger(int64 Value) = 0;
+    // The limit this target currently enforces, so a prepared string operation can be
+    // truncated to it without asking the target's concrete class.
+    virtual int64 GetPreparedMaxLength() const = 0;
 };
 
 UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
@@ -134,6 +137,7 @@ public:
     // The panel whose children this collection owns. The lower module performs the ordered
     // rebuild itself; the target only says where.
     virtual UPanelWidget* GetPreparedCollectionPanel() const = 0;
+    virtual void ResetPreparedCollection() = 0;
     // Called after the rebuild, for a target that keeps its own key -> widget bookkeeping.
     virtual void OnPreparedCollectionSettled(const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) = 0;
 };

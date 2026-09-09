@@ -25,7 +25,6 @@ class GV2_API UGV2RichTextPopoverWidgetBase
     : public UCommonUserWidget
     , public IGV2UiPropertyHost
     , public IGV2TextPipelineHost
-    , public IGV2PreparedKeyTarget
     , public IGV2PreparedRichTextPopoverStyleTarget
 {
     GENERATED_BODY()
@@ -36,15 +35,6 @@ public:
     virtual void ApplyPreparedRichTextPopoverStyle(const GV2PresentationApply::FPreparedRichTextPopoverStyle& Style) override
     {
         ApplyPopoverStyleValues(Style);
-    }
-
-    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
-    // same one every property host already performs; a host that routes a NAMED key
-    // capability overrides this and falls back to it.
-    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
-    {
-        GetPropertyHostState().SetKey(Value);
-        return true;
     }
 
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;

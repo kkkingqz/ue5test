@@ -90,14 +90,10 @@ CENTRAL_STYLE_PARTICIPANT_MARKERS = (
     re.compile(r"::Apply[A-Za-z0-9_]*Style[A-Za-z0-9_]*\s*\("),
 )
 
-PAYLOAD_HEADER = (
-    REPO_ROOT
-    / "Source"
-    / "GV2PresentationApply"
-    / "Public"
-    / "GV2PresentationApply"
-    / "PreparedPresentationTransaction.h"
-)
+APPLY_MODULE_ROOT = REPO_ROOT / "Source" / "GV2PresentationApply"
+PAYLOAD_HEADER = APPLY_MODULE_ROOT / "Public" / "GV2PresentationApply" / "PreparedPresentationTransaction.h"
+ROLE_HEADER = APPLY_MODULE_ROOT / "Public" / "GV2PresentationApply" / "PreparedApplyTargets.h"
+APPLY_FACADE = APPLY_MODULE_ROOT / "Private" / "PresentationApplyFacade.cpp"
 
 
 def production_sources() -> dict[str, str]:
@@ -177,18 +173,38 @@ def payload_roles() -> set[str]:
     return {arg.strip() for arg in args.split(",") if arg.strip()}
 
 
-def apply_branch_roles(adapter: str) -> set[str]:
-    """Payload roles the adapter's central-style visitor actually handles."""
-    start = adapter.find("FPreparedCentralStyleOperation& Op")
-    end = adapter.find("}, Operation);", start + 1)
+def apply_branch_roles() -> set[str]:
+    """Payload roles the single Apply facade's central-style visitor actually handles.
+
+    PSC-11: read from the facade in the lower module, not from a GV2-side adapter -- there
+    is no second entry point to read any more.
+    """
+    if not APPLY_FACADE.exists():
+        return set()
+    source = strip_comments(APPLY_FACADE.read_text(encoding="utf-8"))
+    start = source.find("ApplyCentralStyleRole")
+    end = source.find("}, Payload);", start + 1)
     if start < 0 or end < 0:
         return set()
-    return set(
-        re.findall(
-            r"const\s+GV2PresentationApply::(FPrepared[A-Za-z0-9_]+)\s*&",
-            adapter[start:end],
-        )
-    )
+    return set(re.findall(r"\[&\]\(const (FPrepared[A-Za-z0-9_]+)&", source[start:end]))
+
+
+def declared_role_interfaces() -> set[str]:
+    """Every central-style role interface the lower module declares."""
+    if not ROLE_HEADER.exists():
+        return set()
+    source = strip_comments(ROLE_HEADER.read_text(encoding="utf-8"))
+    return set(re.findall(r"class GV2PRESENTATIONAPPLY_API (IGV2Prepared\w+StyleTarget)\b", source))
+
+
+def implemented_role_interfaces(sources: dict[str, str]) -> set[str]:
+    """Every central-style role interface a GV2 widget declares it performs."""
+    found: set[str] = set()
+    for rel, source in sources.items():
+        if not rel.startswith("Public/"):
+            continue
+        found |= set(re.findall(r"public (IGV2Prepared\w+StyleTarget)\b", strip_comments(source)))
+    return found
 
 
 def cast_targets(source: str, start_marker: str, end_marker: str) -> set[str]:
@@ -199,7 +215,12 @@ def cast_targets(source: str, start_marker: str, end_marker: str) -> set[str]:
     return set(re.findall(r"Cast<(U[A-Za-z0-9_]+)>\(Widget\)", source[start:end]))
 
 
-def find_violations(sources: dict[str, str], roles: set[str] | None = None) -> list[str]:
+def find_violations(
+    sources: dict[str, str],
+    roles: set[str] | None = None,
+    handled_roles: set[str] | None = None,
+    declared_roles: set[str] | None = None,
+) -> list[str]:
     errors: list[str] = []
     for rel, source in sources.items():
         stripped = strip_comments(source)
@@ -233,9 +254,7 @@ def find_violations(sources: dict[str, str], roles: set[str] | None = None) -> l
                     )
     consumers = style_consumer_classes(sources)
     preparer = sources.get("Private/UI/GV2CentralStylePreparer.cpp", "")
-    adapter = sources.get("Private/UI/GV2LegacyPresentationApplyAdapter.cpp", "")
     prepare_targets = cast_targets(preparer, "EmitForWidget(", "bool OwnsSubtreeStyling")
-    apply_targets = cast_targets(adapter, "FPreparedCentralStyleOperation& Op", "}, Operation);")
 
     # The subtree walk's target set IS the interface implementation set: a widget the walk
     # can meet must have a role, and a branch for a class the walk cannot meet would be a
@@ -250,7 +269,7 @@ def find_violations(sources: dict[str, str], roles: set[str] | None = None) -> l
     # is created outside any prepared subtree (the hover popover) still needs exactly one
     # apply branch, and no role may be left unhandled.
     roles = payload_roles() if roles is None else roles
-    handled = apply_branch_roles(adapter)
+    handled = apply_branch_roles() if handled_roles is None else handled_roles
     if roles != handled:
         errors.append(
             "central-style Apply branches differ from FPreparedCentralStylePayload alternatives; "
@@ -258,10 +277,22 @@ def find_violations(sources: dict[str, str], roles: set[str] | None = None) -> l
         )
     if not consumers or not roles:
         errors.append("central-style enumerators produced an empty set; the derivation is broken")
-    if not consumers <= apply_targets:
+
+    # PSC-11: a payload role reaches its target through a declared role interface, so the
+    # set of declared role interfaces and the set of interfaces GV2 widgets actually
+    # implement must agree. A role nobody performs, and a widget declaring a role the module
+    # does not define, are both defects rather than silent no-ops.
+    declared = declared_role_interfaces() if declared_roles is None else declared_roles
+    implemented = implemented_role_interfaces(sources)
+    if declared and declared != implemented:
         errors.append(
-            "every style consumer must also be an Apply cast target; "
-            f"missing={sorted(consumers - apply_targets)}"
+            "central-style role interfaces differ from the roles GV2 widgets implement; "
+            f"unimplemented={sorted(declared - implemented)}, undeclared={sorted(implemented - declared)}"
+        )
+    if len(declared) != len(roles):
+        errors.append(
+            f"central-style payload alternatives ({len(roles)}) and role interfaces "
+            f"({len(declared)}) are not one-to-one"
         )
 
     helper_call = re.compile(r"(?<!::)\bApply[A-Za-z0-9_]+StyleValues?\s*\(")
@@ -290,13 +321,14 @@ def find_violations(sources: dict[str, str], roles: set[str] | None = None) -> l
 
 def run_self_test() -> bool:
     synthetic_roles = {"FPreparedSyntheticRoleStyle"}
+    synthetic_interfaces = {"IGV2PreparedSyntheticRoleStyleTarget"}
     clean = {
         "Private/UI/Clean.cpp": "void ApplyPreparedStyle() {}\n",
         "Private/UI/GV2UiTheme.cpp": "void UGV2UiTheme::GetCoreMinimalTheme() {}\n",
         "Public/UI/GV2UiTheme.h": "static void GetCoreMinimalTheme();\n",
         "Public/UI/GV2StyledWidget.h": (
             "class GV2_API UGV2StyledWidget : public UWidget, "
-            "public IGV2UiStyleConsumer {};\n"
+            "public IGV2UiStyleConsumer, public IGV2PreparedSyntheticRoleStyleTarget {};\n"
         ),
         "Private/UI/GV2RecoveryScreenWidget.cpp": "auto* T = GetCoreMinimalTheme();\n",
         "Private/UI/GV2CentralStylePreparer.cpp": (
@@ -308,7 +340,7 @@ def run_self_test() -> bool:
             "const GV2PresentationApply::FPreparedSyntheticRoleStyle& S; }, Operation);\n"
         ),
     }
-    if errors := find_violations(clean, synthetic_roles):
+    if errors := find_violations(clean, synthetic_roles, synthetic_roles, synthetic_interfaces):
         print("FAILED: clean synthetic input was rejected:\n" + "\n".join(errors))
         return False
 
@@ -339,7 +371,7 @@ def run_self_test() -> bool:
     for label, (path, source) in mutations.items():
         mutated = dict(clean)
         mutated[path] = source
-        if not find_violations(mutated, synthetic_roles):
+        if not find_violations(mutated, synthetic_roles, synthetic_roles, synthetic_interfaces):
             print(f"FAILED: gate accepted synthetic violation: {label}")
             return False
 
@@ -347,7 +379,8 @@ def run_self_test() -> bool:
         (
             "new style consumer without Prepare/Apply branches",
             "Public/UI/GV2UnwiredWidget.h",
-            "class GV2_API UGV2UnwiredWidget : public UWidget, public IGV2UiStyleConsumer {};\n",
+            "class GV2_API UGV2UnwiredWidget : public UWidget, public IGV2UiStyleConsumer,"
+            " public IGV2PreparedSyntheticRoleStyleTarget {};\n",
         ),
         (
             "style consumer missing from Prepare",
@@ -355,14 +388,17 @@ def run_self_test() -> bool:
             "bool EmitForWidget() {} bool OwnsSubtreeStyling() {}\n",
         ),
         (
-            "style consumer missing from Apply",
-            "Private/UI/GV2LegacyPresentationApplyAdapter.cpp",
-            "FPreparedCentralStyleOperation& Op; }, Operation);\n",
+            # PSC-11: a widget that declares the style-consumer interface but performs no
+            # role interface can never be written to, so it must fail here rather than look
+            # covered because a preparer branch happens to name its class.
+            "style consumer performing no role interface",
+            "Public/UI/GV2RolelessWidget.h",
+            "class GV2_API UGV2RolelessWidget : public UWidget, public IGV2UiStyleConsumer {};\n",
         ),
     ):
         mutated = dict(clean)
         mutated[path] = source
-        if not find_violations(mutated, synthetic_roles):
+        if not find_violations(mutated, synthetic_roles, synthetic_roles, synthetic_interfaces):
             print(f"FAILED: gate accepted synthetic violation: {label}")
             return False
 
@@ -372,10 +408,10 @@ def run_self_test() -> bool:
     unhandled["Private/UI/GV2LegacyPresentationApplyAdapter.cpp"] = (
         "FPreparedCentralStyleOperation& Op; Cast<UGV2StyledWidget>(Widget); }, Operation);\n"
     )
-    if not find_violations(unhandled, synthetic_roles):
+    if not find_violations(unhandled, synthetic_roles, set(), synthetic_interfaces):
         print("FAILED: gate accepted a payload role with no Apply branch")
         return False
-    if not find_violations(clean, synthetic_roles | {"FPreparedNeverHandledStyle"}):
+    if not find_violations(clean, synthetic_roles | {"FPreparedNeverHandledStyle"}, synthetic_roles, synthetic_interfaces):
         print("FAILED: gate accepted a newly declared payload role with no Apply branch")
         return False
 
@@ -386,7 +422,7 @@ def run_self_test() -> bool:
     lifecycle["Private/UI/GV2Lifecycle.cpp"] = (
         "void UGV2Foo::NativePreConstruct()\n{\n    Catalog->Resolve(Id, Out, Err);\n}\n"
     )
-    if not find_violations(lifecycle, synthetic_roles):
+    if not find_violations(lifecycle, synthetic_roles, synthetic_roles, synthetic_interfaces):
         print("FAILED: gate accepted content resolution inside NativePreConstruct")
         return False
     lifecycle_ok = dict(clean)
@@ -394,13 +430,13 @@ def run_self_test() -> bool:
         "void UGV2Foo::NativePreConstruct()\n{\n    ApplySerializedDefaults();\n}\n"
         "\nvoid UGV2Foo::PrepareSomething()\n{\n    Catalog->Resolve(Id, Out, Err);\n}\n"
     )
-    if find_violations(lifecycle_ok, synthetic_roles):
+    if find_violations(lifecycle_ok, synthetic_roles, synthetic_roles, synthetic_interfaces):
         print("FAILED: gate flagged content resolution in a non-lifecycle method")
         return False
     for symbol in ("GetSessionCatalog", "ResolveAndApply", "ApplyImageResource", "ApplyPortrait"):
         mutated = dict(clean)
         mutated["Private/UI/Synthetic.cpp"] = f"void F() {{ {symbol}(); }}\n"
-        if not find_violations(mutated, synthetic_roles):
+        if not find_violations(mutated, synthetic_roles, synthetic_roles, synthetic_interfaces):
             print(f"FAILED: gate accepted the retired symbol {symbol}")
             return False
 
@@ -411,7 +447,7 @@ def run_self_test() -> bool:
     participating["Private/UI/GV2Participant.cpp"] = (
         "void UGV2Foo::ApplyFooStyleValues()\n{\n    Class.LoadSynchronous();\n}\n"
     )
-    if not find_violations(participating, synthetic_roles):
+    if not find_violations(participating, synthetic_roles, synthetic_roles, synthetic_interfaces):
         print("FAILED: gate accepted a synchronous load inside a central-style value sink")
         return False
     unrelated = dict(clean)
@@ -419,7 +455,7 @@ def run_self_test() -> bool:
         "void UGV2Foo::ApplyFooStyleValues()\n{\n    Sink();\n}\n"
         "void UGV2Foo::LoadPicture()\n{\n    Class.LoadSynchronous();\n}\n"
     )
-    if find_violations(unrelated, synthetic_roles):
+    if find_violations(unrelated, synthetic_roles, synthetic_roles, synthetic_interfaces):
         print("FAILED: gate flagged a load in a function that does not participate in central style")
         return False
 

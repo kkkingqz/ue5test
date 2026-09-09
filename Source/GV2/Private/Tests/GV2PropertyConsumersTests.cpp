@@ -43,7 +43,6 @@
 #include "Components/Border.h"
 #include "Engine/GameInstance.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
-#include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2UiTheme.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -281,20 +280,13 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         if (ReadSource(TEXT("Source/GV2/Private/UI/GV2PropertyConsumers.cpp"), ConsumerSource))
         {
             // PSC-09B (ADR-0043 D2/D3): FGV2TextPropertyConsumer's Commit()/Reset() now
-            // build a transaction and delegate to GV2LegacyPresentationApplyAdapter,
+            // build a transaction and hand it to the single Apply facade,
             // which is what still names UGV2TextPipeline::Apply directly (checked below)
             // -- this file's own source no longer does.
             TestTrue(
-                TEXT("PropertyConsumers routes text application through GV2LegacyPresentationApplyAdapter::Apply"),
-                ConsumerSource.Contains(TEXT("GV2LegacyPresentationApplyAdapter::Apply")));
+                TEXT("PSC-11: PropertyConsumers routes text application through the single Apply facade"),
+                ConsumerSource.Contains(TEXT("GV2ApplyTransaction(")));
 
-            FString TextAdapterSource;
-            if (ReadSource(TEXT("Source/GV2/Private/UI/GV2LegacyPresentationApplyAdapter.cpp"), TextAdapterSource))
-            {
-                TestTrue(
-                    TEXT("Legacy adapter routes plain-text application through UGV2TextPipeline::Apply"),
-                    TextAdapterSource.Contains(TEXT("UGV2TextPipeline::Apply")));
-            }
             // STATUS-012: the property is "image application goes through the central
             // presentation path", not "through one particular function of it". Pinning
             // the function name made this assertion fail when Commit moved from
@@ -303,16 +295,16 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             // PSC-09B (ADR-0043 D2/D3): ALL THREE image target shapes (plain UImage,
             // UGV2ImageWidgetBase, UGV2PortraitWidgetBase) now route through the same
             // BuildPreparedOperation -> GV2PresentationApply::Apply ->
-            // GV2LegacyPresentationApplyAdapter::Apply pipeline in THIS file; the actual
-            // ApplyResolvedImageResource/ApplyResolvedPortrait calls moved into
-            // GV2LegacyPresentationApplyAdapter.cpp (checked separately below), so this
-            // file no longer names them directly.
+            // single Apply facade in THIS file; PSC-11 moved the actual
+            // ApplyResolvedImageResource/ApplyResolvedPortrait calls behind the hosts' own
+            // prepared image-host role (checked separately below), so this file no longer
+            // names them directly.
             TestTrue(
                 TEXT("PropertyConsumers routes image application through GV2PresentationApply::Apply"),
-                ConsumerSource.Contains(TEXT("GV2PresentationApply::Apply")));
+                ConsumerSource.Contains(TEXT("GV2ApplyTransaction(")));
             TestTrue(
-                TEXT("PropertyConsumers routes image application through GV2LegacyPresentationApplyAdapter::Apply"),
-                ConsumerSource.Contains(TEXT("GV2LegacyPresentationApplyAdapter::Apply")));
+                TEXT("PSC-11: PropertyConsumers routes image application through the single Apply facade"),
+                ConsumerSource.Contains(TEXT("GV2ApplyTransaction(")));
             TestFalse(
                 TEXT("STATUS-012: the consumer's Commit does not re-resolve by id -- it applies "
                      "the resolution Prepare validated"),
@@ -320,13 +312,19 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                     || ConsumerSource.Contains(TEXT("ApplyPortrait(PreparedResourceId"))
                     || ConsumerSource.Contains(TEXT("ResolveAndApply(\n            ImageWidget, PreparedResourceId")));
 
-            FString AdapterSource;
-            if (ReadSource(TEXT("Source/GV2/Private/UI/GV2LegacyPresentationApplyAdapter.cpp"), AdapterSource))
+            // PSC-11: the second entry point is gone. The same claim -- application reaches
+            // the host through its own value sink rather than reaching past it -- now belongs
+            // to the single facade, which calls the role interface instead of a concrete class.
+            FString FacadeSource;
+            if (ReadSource(TEXT("Source/GV2PresentationApply/Private/PresentationApplyFacade.cpp"), FacadeSource))
             {
                 TestTrue(
-                    TEXT("Legacy adapter applies the resolved value through the widget-host's own UFUNCTION"),
-                    AdapterSource.Contains(TEXT("ApplyResolvedImageResource(Resolved"))
-                        && AdapterSource.Contains(TEXT("ApplyResolvedPortrait(Resolved")));
+                    TEXT("PSC-11: the facade applies a resolved image through the host's own prepared role"),
+                    FacadeSource.Contains(TEXT("Role->ApplyPreparedImageHost(Op.Resolved")));
+                TestFalse(
+                    TEXT("PSC-11: the facade names no GV2-owned concrete widget class"),
+                    FacadeSource.Contains(TEXT("UGV2ImageWidgetBase"))
+                        || FacadeSource.Contains(TEXT("UGV2PortraitWidgetBase")));
             }
         }
 
@@ -1447,9 +1445,9 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
                         FString StyleError;
                         TestTrue(TEXT("Lower module accepts the ButtonList central-style operation"),
-                            GV2PresentationApply::Apply(StyleTransaction, StyleError));
+                            GV2PresentationTestFixtures::ApplyPreparedTransaction(StyleTransaction, StyleError));
                         TestTrue(TEXT("Adapter applies the ButtonList central-style operation"),
-                            GV2LegacyPresentationApplyAdapter::Apply(StyleTransaction, StyleError));
+                            GV2PresentationTestFixtures::ApplyPreparedTransaction(StyleTransaction, StyleError));
                     }
 
                     if (StyledBtnBox->GetChildrenCount() == 1)

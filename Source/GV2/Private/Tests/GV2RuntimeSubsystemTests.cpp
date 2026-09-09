@@ -36,7 +36,6 @@
 #include "UI/GV2ScreenWidgetBase.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
 #include "UI/GV2CentralStylePreparer.h"
-#include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
@@ -1785,8 +1784,8 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                         DescriptionBackground, *ImageContextFixture.Get(), ImageTransaction, ImagePrepareError));
                 FString ImageApplyError;
                 TestTrue(TEXT("PSC-10C: the prepared image transaction applies"),
-                    GV2PresentationApply::Apply(ImageTransaction, ImageApplyError)
-                        && GV2LegacyPresentationApplyAdapter::Apply(ImageTransaction, ImageApplyError));
+                    GV2PresentationTestFixtures::ApplyPreparedTransaction(ImageTransaction, ImageApplyError)
+                        && GV2PresentationTestFixtures::ApplyPreparedTransaction(ImageTransaction, ImageApplyError));
                 TestEqual(
                     TEXT("Description background applies the suffix-free paper resource_id"),
                     DescriptionBackground->GetAppliedResourceId(),
@@ -1967,7 +1966,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     "GV2.Runtime.Presentation.PresentationApplyImageOperation",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-// PSC-09A (ADR-0043 D2/D3): exercises GV2PresentationApply::Apply() directly, in
+// PSC-09A (ADR-0043 D2/D3): exercises GV2PresentationTestFixtures::ApplyPreparedTransaction() directly, in
 // isolation from any property consumer, session, or snapshot -- this module has no
 // resolver type to build one with, so this synthetic transaction is exactly the shape a
 // real preparer builds. Proves both halves of the new module's own contract: a valid
@@ -1993,7 +1992,7 @@ bool FGV2PresentationApplyImageOperationTest::RunTest(const FString& Parameters)
     FString ApplyError;
     TestTrue(
         *FString::Printf(TEXT("Apply succeeds for a valid target [Error: %s]"), *ApplyError),
-        GV2PresentationApply::Apply(Transaction, ApplyError));
+        GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, ApplyError));
     TestEqual(TEXT("Apply set the exact prepared brush's DrawAs"), Widget->GetBrush().DrawAs, ESlateBrushDrawType::Box);
     TestEqual(TEXT("Apply set the exact prepared brush's ImageSize"), FVector2D(Widget->GetBrush().ImageSize), FVector2D(42.0f, 24.0f));
 
@@ -2007,7 +2006,7 @@ bool FGV2PresentationApplyImageOperationTest::RunTest(const FString& Parameters)
     FString StaleError;
     TestFalse(
         TEXT("Apply rejects an operation whose target widget is unavailable"),
-        GV2PresentationApply::Apply(StaleTransaction, StaleError));
+        GV2PresentationTestFixtures::ApplyPreparedTransaction(StaleTransaction, StaleError));
     TestFalse(TEXT("Rejection carries a diagnostic message"), StaleError.IsEmpty());
 
     return true;
@@ -2017,43 +2016,53 @@ namespace
 {
 using GV2PresentationApply::EGV2PreparedOperationKind;
 
-// PSC-10A (ADR-0043 D3): expected behavior for the exhaustive kind-walk test below,
+// PSC-10A/PSC-11 (ADR-0043 D3): expected behavior for the exhaustive kind-walk test below,
 // authored independently by reading each kind's own doc comment in
-// PreparedPresentationTransaction.h -- not derived from GV2PresentationApply::Apply()'s
-// own lambda bodies, so this table cannot silently agree with a regression there.
+// PreparedPresentationTransaction.h -- not derived from the facade's own lambda bodies, so
+// this table cannot silently agree with a regression there.
+//
+// PSC-11 replaced the old two-way split ("this module writes it" vs "the adapter writes it")
+// with what the single facade actually distinguishes: whether a kind writes a plain
+// Engine/UMG target it can reach by type, or needs the target to DECLARE a physical role.
+// The third value is the property the per-role interfaces bought -- a kind whose target does
+// not declare the role it needs is a diagnosable mismatch, not a silent success.
 enum class EGV2ExpectedOperationRoute : uint8
 {
-    LowerModuleMutatesDirectly,
-    LeftEntirelyForAdapter,
+    MutatesPlainTarget,
+    RequiresDeclaredRole,
+    RejectsUndeclaredTarget,
 };
 
 EGV2ExpectedOperationRoute ExpectedRouteFor(EGV2PreparedOperationKind Kind)
 {
     switch (Kind)
     {
-    case EGV2PreparedOperationKind::ImageResource:      return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
-    case EGV2PreparedOperationKind::ImageHost:          return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::Boolean:            return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
-    case EGV2PreparedOperationKind::EditableTextValue:  return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
-    case EGV2PreparedOperationKind::ProgressBar:        return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
-    case EGV2PreparedOperationKind::Number:             return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::Integer:            return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::String:             return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::Key:                return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::Binding:            return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::RichTextSpans:      return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::Text:               return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::KeyedCollection:    return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::TabContainer:       return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
-    case EGV2PreparedOperationKind::PlainText:          return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
-    case EGV2PreparedOperationKind::RichTextRender:     return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
-    case EGV2PreparedOperationKind::TextHint:           return EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly;
-    // PSC-10B: every central-style role targets a GV2-owned widget base, which the lower
-    // module cannot Cast to at all, so the physical write is the adapter's until PSC-12.
-    case EGV2PreparedOperationKind::CentralStyle:       return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    case EGV2PreparedOperationKind::ImageResource:      return EGV2ExpectedOperationRoute::MutatesPlainTarget;
+    case EGV2PreparedOperationKind::Boolean:            return EGV2ExpectedOperationRoute::MutatesPlainTarget;
+    case EGV2PreparedOperationKind::EditableTextValue:  return EGV2ExpectedOperationRoute::MutatesPlainTarget;
+    case EGV2PreparedOperationKind::ProgressBar:        return EGV2ExpectedOperationRoute::MutatesPlainTarget;
+    case EGV2PreparedOperationKind::PlainText:          return EGV2ExpectedOperationRoute::MutatesPlainTarget;
+    case EGV2PreparedOperationKind::RichTextRender:     return EGV2ExpectedOperationRoute::MutatesPlainTarget;
+    case EGV2PreparedOperationKind::TextHint:           return EGV2ExpectedOperationRoute::MutatesPlainTarget;
+
+    case EGV2PreparedOperationKind::ImageHost:          return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::Number:             return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::Integer:            return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::String:             return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::Binding:            return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::RichTextSpans:      return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::KeyedCollection:    return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::TabContainer:       return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+
+    // A declared `key` capability with no route, a text operation on something that renders
+    // no text, and a style role delivered to a class that does not perform it are each a
+    // defect the pipeline exists to surface rather than absorb.
+    case EGV2PreparedOperationKind::Key:                return EGV2ExpectedOperationRoute::RejectsUndeclaredTarget;
+    case EGV2PreparedOperationKind::Text:               return EGV2ExpectedOperationRoute::RejectsUndeclaredTarget;
+    case EGV2PreparedOperationKind::CentralStyle:       return EGV2ExpectedOperationRoute::RejectsUndeclaredTarget;
     }
     checkf(false, TEXT("EGV2PreparedOperationKind has an unclassified value -- add it to ExpectedRouteFor"));
-    return EGV2ExpectedOperationRoute::LeftEntirelyForAdapter;
+    return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
 }
 }
 
@@ -2098,7 +2107,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("ImageResource: variant reports the expected kind"),
                 static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Transaction.GetOperations()[0])), static_cast<uint8>(Kind));
             FString Error;
-            TestTrue(TEXT("ImageResource: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            TestTrue(TEXT("ImageResource: Apply succeeds"), GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, Error));
             bMutationObserved = FVector2D(Widget->GetBrush().ImageSize).X > 0.0;
             break;
         }
@@ -2121,7 +2130,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.Value = true;
             Transaction.AddBooleanOperation(Op);
             FString Error;
-            TestTrue(TEXT("Boolean: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            TestTrue(TEXT("Boolean: Apply succeeds"), GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, Error));
             bMutationObserved = Widget->IsChecked();
             break;
         }
@@ -2134,7 +2143,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.Value = FText::FromString(TEXT("kind-walk"));
             Transaction.AddEditableTextValueOperation(Op);
             FString Error;
-            TestTrue(TEXT("EditableTextValue: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            TestTrue(TEXT("EditableTextValue: Apply succeeds"), GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, Error));
             bMutationObserved = Widget->GetText().ToString() == TEXT("kind-walk");
             break;
         }
@@ -2147,7 +2156,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.Percent = 0.42f;
             Transaction.AddProgressBarOperation(Op);
             FString Error;
-            TestTrue(TEXT("ProgressBar: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            TestTrue(TEXT("ProgressBar: Apply succeeds"), GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, Error));
             bMutationObserved = FMath::IsNearlyEqual(Widget->GetPercent(), 0.42f, 0.001f);
             break;
         }
@@ -2233,7 +2242,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.ScalePolicy.BaseFontSize = 14.0f;
             Transaction.AddPlainTextOperation(Op);
             FString Error;
-            TestTrue(TEXT("PlainText: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            TestTrue(TEXT("PlainText: Apply succeeds"), GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, Error));
             bMutationObserved = Widget->GetText().ToString() == TEXT("kind-walk");
             break;
         }
@@ -2246,7 +2255,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.Markup = TEXT("kind-walk");
             Transaction.AddRichTextRenderOperation(Op);
             FString Error;
-            TestTrue(TEXT("RichTextRender: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            TestTrue(TEXT("RichTextRender: Apply succeeds"), GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, Error));
             bMutationObserved = Widget->GetText().ToString() == TEXT("kind-walk");
             break;
         }
@@ -2259,7 +2268,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.Text = FText::FromString(TEXT("kind-walk"));
             Transaction.AddTextHintOperation(Op);
             FString Error;
-            TestTrue(TEXT("TextHint: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
+            TestTrue(TEXT("TextHint: Apply succeeds"), GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, Error));
             bMutationObserved = Widget->GetHintText().ToString() == TEXT("kind-walk");
             break;
         }
@@ -2269,7 +2278,9 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             GV2PresentationApply::FPreparedSeparatorStyle Style;
             Style.Thickness = 7.0f;
             GV2PresentationApply::FPreparedCentralStyleOperation Op;
-            Op.TargetWidget = NewObject<UGV2SeparatorWidgetBase>();
+            // PSC-11: a plain UMG target, like every other kind here, so this walk exercises
+            // what the facade does with a target that declares no role.
+            Op.TargetWidget = NewObject<UImage>();
             Op.Payload.Set<GV2PresentationApply::FPreparedSeparatorStyle>(Style);
             Transaction.AddCentralStyleOperation(Op);
             break;
@@ -2279,18 +2290,30 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
         TestEqual(*FString::Printf(TEXT("%s: variant index matches its own enum value"), *KindLabel),
             static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Transaction.GetOperations()[0])), static_cast<uint8>(Kind));
 
-        if (ExpectedRoute == EGV2ExpectedOperationRoute::LowerModuleMutatesDirectly)
+        FString RouteError;
+        const bool bRouteApplied = GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, RouteError);
+        switch (ExpectedRoute)
         {
-            TestTrue(*FString::Printf(TEXT("%s: classified LowerModuleMutatesDirectly and GV2PresentationApply::Apply() alone physically mutated the target"), *KindLabel),
+        case EGV2ExpectedOperationRoute::MutatesPlainTarget:
+            TestTrue(*FString::Printf(TEXT("%s: classified MutatesPlainTarget and the facade physically mutated its plain target"), *KindLabel),
                 bMutationObserved);
-        }
-        else
-        {
-            FString AdapterOnlyError;
-            TestTrue(*FString::Printf(TEXT("%s: classified LeftEntirelyForAdapter -- GV2PresentationApply::Apply() alone is a safe no-op, not an error"), *KindLabel),
-                GV2PresentationApply::Apply(Transaction, AdapterOnlyError));
-            TestFalse(*FString::Printf(TEXT("%s: classified LeftEntirelyForAdapter -- GV2PresentationApply::Apply() alone did not physically mutate the target"), *KindLabel),
+            TestTrue(*FString::Printf(TEXT("%s: classified MutatesPlainTarget and the facade reports success [Error: %s]"), *KindLabel, *RouteError),
+                bRouteApplied);
+            break;
+        case EGV2ExpectedOperationRoute::RequiresDeclaredRole:
+            TestTrue(*FString::Printf(TEXT("%s: classified RequiresDeclaredRole -- a target declaring no role is a safe no-op, not an error [Error: %s]"), *KindLabel, *RouteError),
+                bRouteApplied);
+            TestFalse(*FString::Printf(TEXT("%s: classified RequiresDeclaredRole -- a target declaring no role was not mutated"), *KindLabel),
                 bMutationObserved);
+            break;
+        case EGV2ExpectedOperationRoute::RejectsUndeclaredTarget:
+            TestFalse(*FString::Printf(TEXT("%s: classified RejectsUndeclaredTarget -- a target declaring no role is rejected, not absorbed"), *KindLabel),
+                bRouteApplied);
+            TestFalse(*FString::Printf(TEXT("%s: classified RejectsUndeclaredTarget -- the rejection carries a diagnostic"), *KindLabel),
+                RouteError.IsEmpty());
+            TestFalse(*FString::Printf(TEXT("%s: classified RejectsUndeclaredTarget -- nothing was mutated"), *KindLabel),
+                bMutationObserved);
+            break;
         }
     }
 

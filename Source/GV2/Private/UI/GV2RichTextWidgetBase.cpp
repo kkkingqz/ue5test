@@ -124,11 +124,16 @@ void UGV2RichTextWidgetBase::NativeDestruct()
 bool UGV2RichTextWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 {
     CurrentText = InText;
-    if (RichTextBlock == nullptr)
+    // PSC-11: through the accessor, not the bare BindWidget member. The retired adapter
+    // redirected a commit to GetRichTextBlock(), whose name lookup finds the renderer on an
+    // instance whose member was never bound; reading the member directly would have made
+    // this path reject text the previous one applied.
+    UCommonRichTextBlock* Renderer = GetRichTextBlock();
+    if (Renderer == nullptr)
     {
         return false;
     }
-    if (!UGV2TextPipeline::ApplyRichText(RichTextBlock, CurrentText, this))
+    if (!UGV2TextPipeline::ApplyRichText(Renderer, CurrentText, this))
     {
         return false;
     }

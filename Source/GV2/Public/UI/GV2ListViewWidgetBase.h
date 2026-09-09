@@ -20,7 +20,6 @@ UCLASS(Blueprintable)
 class GV2_API UGV2ListViewWidgetBase
     : public UCommonUserWidget
     , public IGV2UiPropertyHost
-    , public IGV2PreparedKeyTarget
     , public IGV2PreparedKeyedCollectionTarget
 {
     GENERATED_BODY()
@@ -28,17 +27,9 @@ class GV2_API UGV2ListViewWidgetBase
 public:
     // PSC-11: value sinks for the prepared keyed-collection operation.
     virtual UPanelWidget* GetPreparedCollectionPanel() const override;
+    virtual void ResetPreparedCollection() override;
     virtual void OnPreparedCollectionSettled(
         const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) override;
-
-    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
-    // same one every property host already performs; a host that routes a NAMED key
-    // capability overrides this and falls back to it.
-    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
-    {
-        GetPropertyHostState().SetKey(Value);
-        return true;
-    }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|ListView")
     EOrientation GetOrientation() const { return Orientation; }

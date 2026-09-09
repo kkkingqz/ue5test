@@ -80,3 +80,8 @@ void UGV2ListViewWidgetBase::OnPreparedCollectionSettled(
     }
     SetActiveWidgetsMap(ActiveWidgetsByKeyValue);
 }
+
+void UGV2ListViewWidgetBase::ResetPreparedCollection()
+{
+    ClearEntries();
+}

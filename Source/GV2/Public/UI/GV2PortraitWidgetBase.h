@@ -19,7 +19,6 @@ class GV2_API UGV2PortraitWidgetBase
     : public UCommonUserWidget
     , public IGV2UiPropertyHost
     , public IGV2ScreenFieldHost
-    , public IGV2PreparedKeyTarget
     , public IGV2PreparedImageHostTarget
 {
     GENERATED_BODY()
@@ -30,15 +29,6 @@ public:
         const GV2PresentationApply::FPreparedResolvedImageValue& Resolved,
         FString& OutError) override;
     virtual void ResetPreparedImageHost() override;
-
-    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
-    // same one every property host already performs; a host that routes a NAMED key
-    // capability overrides this and falls back to it.
-    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
-    {
-        GetPropertyHostState().SetKey(Value);
-        return true;
-    }
 
 
     // STATUS-012: application-phase entry point; the portrait resource arrives

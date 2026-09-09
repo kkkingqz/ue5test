@@ -1,13 +1,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "UObject/Interface.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "GV2UiPropertyHost.generated.h"
 
+// PSC-11: every property host IS a prepared-key target. Deriving the role here rather than
+// declaring it on each host preserves DUC-03 -- a new host that declares a `key` capability
+// still needs no edit anywhere -- while giving the lower Apply module a way to reach the
+// write without naming a GV2 type.
 UINTERFACE(MinimalAPI)
-class UGV2UiPropertyHost : public UInterface
+class UGV2UiPropertyHost : public UGV2PreparedKeyTarget
 {
     GENERATED_BODY()
 };
@@ -125,9 +130,18 @@ private:
 /**
  * Native interface implemented by any widget supporting data-driven UI property binding.
  */
-class GV2_API IGV2UiPropertyHost
+class GV2_API IGV2UiPropertyHost : public IGV2PreparedKeyTarget
 {
     GENERATED_BODY()
+
+public:
+    // PSC-11: the generic identity write, shared by every host. A host that routes a NAMED
+    // key capability of its own overrides this and falls back to it.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
+    {
+        GetPropertyHostState().SetKey(Value);
+        return true;
+    }
 
 public:
     /** Describe the capability tree of this widget */
