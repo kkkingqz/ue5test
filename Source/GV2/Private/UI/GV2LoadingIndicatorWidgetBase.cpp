@@ -21,9 +21,3 @@ void UGV2LoadingIndicatorWidgetBase::ApplyLoadingIndicatorStyleValues(const FSla
         LoadingIndicator->SetRadius(Radius);
     }
 }
-
-bool UGV2LoadingIndicatorWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedLoadingIndicatorStyle, written by ApplyLoadingIndicatorStyleValues.
-    return true;
-}

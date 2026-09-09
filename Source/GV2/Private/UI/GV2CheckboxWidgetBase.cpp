@@ -106,12 +106,6 @@ void UGV2CheckboxWidgetBase::ApplyCheckboxStyleValues(const FCheckBoxStyle& InWi
     }
 }
 
-bool UGV2CheckboxWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedCheckboxStyle, written by ApplyCheckboxStyleValues.
-    return true;
-}
-
 void UGV2CheckboxWidgetBase::HandleCheckStateChanged(bool bInIsChecked)
 {
     SubmitCheckboxState(bInIsChecked);

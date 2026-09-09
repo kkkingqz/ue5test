@@ -67,8 +67,6 @@ public:
     // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
     void ApplyImageTintStyleValue(const FLinearColor& Tint);
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }

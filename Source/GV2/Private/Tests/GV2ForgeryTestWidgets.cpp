@@ -2,8 +2,12 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/Image.h"
+#include "CommonTextBlock.h"
+#include "CommonRichTextBlock.h"
+#include "Components/Border.h"
 #include "Components/ProgressBar.h"
 #include "Components/SizeBox.h"
+#include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2UiCapability.h"
 
 EGV2ForgeryMode& UGV2ForgeryEntryTestWidget::ModeForNextInstance()
@@ -77,4 +81,42 @@ void UGV2ProgressBarBoundTestWidget::BuildBoundSubWidgets()
 FLinearColor UGV2ProgressBarBoundTestWidget::ReadAppliedFillColor() const
 {
     return ProgressBar != nullptr ? ProgressBar->GetFillColorAndOpacity() : FLinearColor::Transparent;
+}
+
+void UGV2RichTextBoundTestWidget::BuildBoundSubWidgets()
+{
+    WidgetTree = NewObject<UWidgetTree>(this);
+    RichTextBlock = WidgetTree->ConstructWidget<UCommonRichTextBlock>(
+        UCommonRichTextBlock::StaticClass(), TEXT("RichTextBlock"));
+    WidgetTree->RootWidget = RichTextBlock;
+}
+
+void UGV2RichTextPopoverBoundTestWidget::BuildBoundSubWidgets()
+{
+    WidgetTree = NewObject<UWidgetTree>(this);
+    PopoverBorder = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PopoverBorder"));
+    PopoverWidth = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass(), TEXT("PopoverWidth"));
+    TitleText = WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TitleText"));
+    UGV2RichTextBoundTestWidget* BoundDescription = WidgetTree->ConstructWidget<UGV2RichTextBoundTestWidget>(
+        UGV2RichTextBoundTestWidget::StaticClass(), TEXT("DescriptionText"));
+    BoundDescription->BuildBoundSubWidgets();
+    DescriptionText = BoundDescription;
+    Icon = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Icon"));
+    PopoverBorder->AddChild(PopoverWidth);
+    WidgetTree->RootWidget = PopoverBorder;
+}
+
+FSlateBrush UGV2RichTextPopoverBoundTestWidget::ReadAppliedBackground() const
+{
+    return PopoverBorder != nullptr ? PopoverBorder->Background : FSlateBrush();
+}
+
+FMargin UGV2RichTextPopoverBoundTestWidget::ReadAppliedPadding() const
+{
+    return PopoverBorder != nullptr ? PopoverBorder->GetPadding() : FMargin();
+}
+
+float UGV2RichTextPopoverBoundTestWidget::ReadAppliedMaxWidth() const
+{
+    return PopoverWidth != nullptr ? PopoverWidth->GetMaxDesiredWidth() : -1.0f;
 }

@@ -16,9 +16,7 @@
 // constructor is instantiated -- e.g. GV2SessionCoordinator.cpp's MakeUnique<...>() -- so T
 // must be a complete type here, not merely forward-declared.
 
-// PSC-04 (ADR-0043 D1): the resolved Screen Registry this session's own candidate built and
-// owns (TStrongObjectPtr) -- not a pointer borrowed from UGV2RuntimeSubsystem's own member
-// or from UGV2ScreenRegistrySettings::GetConfiguredRegistry()'s independent access path.
+// Resolved Screen Registry built and strongly owned by this session's candidate.
 struct FGV2ResolvedScreenRegistry
 {
     TStrongObjectPtr<UGV2ScreenRegistry> Registry;
@@ -35,11 +33,25 @@ struct FGV2ResolvedImageCatalog
     TStrongObjectPtr<UGV2ImageResourceCatalog> Catalog;
 
     bool Resolve(const FString& ResourceId, FGV2ResolvedImageResource& OutResource, FString& OutError) const;
+    TArray<FString> GetResourceIds() const;
 };
 
 struct FGV2ResolvedUiTheme
 {
     TStrongObjectPtr<UGV2UiTheme> Theme;
+
+    // PSC-10B: the UE-native core-minimal Theme, pinned here at snapshot build so a text id
+    // the authored Theme does not carry still resolves during Prepare WITHOUT any runtime
+    // code reaching UGV2UiTheme::GetCoreMinimalTheme() itself. Before this task the fallback
+    // lived inside UGV2TextPipeline::Resolve as a process-global lookup on the Commit-facing
+    // side; the values are the same, the reach is not.
+    TStrongObjectPtr<UGV2UiTheme> FallbackTheme;
+
+    // PSC-10B (ADR-0043 D1): the hover popover renderer class, loaded ONCE here. Prepare and
+    // the hover path both read this already-loaded class, so neither performs a synchronous
+    // load -- previously GV2CentralStylePreparer called LoadSynchronous() for every rich text
+    // widget on every reconcile, and the hover tooltip called it again per popover.
+    TStrongObjectPtr<UClass> RichTextPopoverClass;
 };
 
 // PSC-04 (ADR-0043 D1, BootstrapAndSessionLifecycle.md "Целевое правило"): one immutable,
@@ -47,13 +59,9 @@ struct FGV2ResolvedUiTheme
 // once, entirely, before the Lua VM exists, from the SAME FResolvedPackageSet the
 // repository and Lua sources came from (FGV2SessionContentCandidate::Build below).
 //
-// PSC-04's own scope is that this object exists and is genuinely, independently resolved --
-// not an aggregate of pointers into whichever owner already held these values. Production
-// presentation code does not read this snapshot yet: PSC-05 publishes it atomically with
-// Ready, PSC-06 wires FGV2PresentationPrepareContext to read it and retires the legacy
-// accessors (UGV2RuntimeSubsystem's own ScreenRegistry member, the schema-cache/image-
-// catalog session globals, UGV2UiThemeSettings::GetConfiguredTheme()) -- those remain
-// untouched and keep serving every current production call site until then.
+// It is genuinely, independently resolved rather than borrowing process-global owners.
+// Ready publishes it atomically; every semantic presentation Prepare reads through the
+// context below.
 class FGV2SessionContentSnapshot
 {
 public:
@@ -121,15 +129,9 @@ public:
     static void FinalizeScriptIdentity(FGV2SessionContentSnapshot& Snapshot, const std::string& ScriptSetHash);
 };
 
-// PSC-06 (ADR-0043 D1): the only way production semantic Prepare reaches resolved
-// presentation content -- wraps a session's content snapshot (never owns it, never
-// constructed for a null/absent snapshot: a Prepare call site with no snapshot available
-// simply doesn't construct one and keeps whatever pre-PSC-06 fallback it already had, e.g.
-// UGV2RuntimeSubsystem's own bootstrap-failure recovery path, which runs before any
-// session/snapshot exists at all). Migrating every remaining call site of
-// GetConfiguredTheme()/GetConfiguredRegistry()/the session-scoped schema-cache and
-// image-catalog globals onto this, and deleting those globals, is PSC-10's job, not this
-// one's -- see Snapshot.md's PSC-06 Done bullets.
+// The only production semantic-Prepare path to resolved presentation content. It borrows
+// one immutable session snapshot. Cold-start recovery is a separate native surface and
+// never constructs this context.
 class FGV2PresentationPrepareContext
 {
 public:
@@ -154,6 +156,11 @@ public:
     bool ResolveResource(const FString& ResourceId, FGV2ResolvedImageResource& OutResource, FString& OutError) const
     {
         return Snapshot.GetImageCatalog().Resolve(ResourceId, OutResource, OutError);
+    }
+
+    TArray<FString> GetResourceIds() const
+    {
+        return Snapshot.GetImageCatalog().GetResourceIds();
     }
 
 private:

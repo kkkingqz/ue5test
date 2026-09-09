@@ -5,6 +5,7 @@
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "Application/GV2PackageClosure.h"
 #include "Application/GV2SessionCoordinator.h"
+#include "Application/GV2SessionContentSnapshot.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "Components/Image.h"
 #include "Engine/Engine.h"
@@ -33,7 +34,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
 {
-    UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry();
+    const UGV2ScreenRegistrySettings* RegistrySettings = GetDefault<UGV2ScreenRegistrySettings>();
+    UGV2ScreenRegistry* Registry = RegistrySettings != nullptr && !RegistrySettings->RegistryAsset.IsNull()
+        ? RegistrySettings->RegistryAsset.LoadSynchronous()
+        : nullptr;
     TestNotNull(TEXT("DCA-11: configured Screen Registry is available"), Registry);
     if (Registry == nullptr)
     {
@@ -105,6 +109,13 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
     {
         return false;
     }
+    const FGV2SessionContentSnapshot* SessionSnapshot = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("DCA-11: session publishes presentation snapshot"), SessionSnapshot);
+    if (SessionSnapshot == nullptr)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContext(*SessionSnapshot);
 
     auto DispatchFixtureCommand = [&Coordinator, &CapturedDocument, &DocumentCount, this](
         const FString& CommandId,
@@ -193,7 +204,8 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
     FString ReconcileError;
     TestTrue(
         *FString::Printf(TEXT("DCA-11: baseline document reconciles [Error: %s]"), *ReconcileError),
-        Reconciler.Reconcile(nullptr, ShowDocument, ScreenFactory, ReconcileError));
+        Reconciler.Reconcile(
+            nullptr, ShowDocument, ScreenFactory, ReconcileError, PrepareContext, nullptr));
 
     UGV2ScreenWidgetBase* const RootScreen = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("dca11_inventory"));
     TestNotNull(TEXT("DCA-11: root screen is published after successful reconcile"), RootScreen);
@@ -249,7 +261,8 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
         FGV2LayeredUiReconciler::FPreparedReconciliationPlan FailurePlan;
         TestFalse(
             TEXT("DCA-11: an unresolvable resource_id on a collection item fails Prepare entirely"),
-            Reconciler.PrepareReconcile(nullptr, ItemFailureDocument, ScreenFactory, FailurePlan, ReconcileError));
+            Reconciler.PrepareReconcile(
+                nullptr, ItemFailureDocument, ScreenFactory, FailurePlan, ReconcileError, PrepareContext));
         TestEqual(
             TEXT("DCA-11: Prepare failure retains the published root screen instance"),
             Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("dca11_inventory")),
@@ -288,7 +301,8 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
         FGV2LayeredUiReconciler::FPreparedReconciliationPlan CyclePlan;
         TestFalse(
             TEXT("DCA-11: a tab screen_id equal to its own root screen id is rejected before Ready"),
-            Reconciler.PrepareReconcile(nullptr, CycleDocument, ScreenFactory, CyclePlan, ReconcileError));
+            Reconciler.PrepareReconcile(
+                nullptr, CycleDocument, ScreenFactory, CyclePlan, ReconcileError, PrepareContext));
         TestTrue(
             TEXT("DCA-11: cycle rejection reports DUC-11's diagnostic code"),
             ReconcileError.Contains(TEXT("core:diagnostic.ui_composition.cycle_detected")));

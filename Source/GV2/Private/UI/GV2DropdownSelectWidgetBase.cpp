@@ -218,10 +218,3 @@ void UGV2DropdownSelectWidgetBase::ApplyDropdownStyleValues(
         }
     }
 }
-
-bool UGV2DropdownSelectWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedDropdownStyle, written by ApplyDropdownStyleValues.
-    return true;
-}
-

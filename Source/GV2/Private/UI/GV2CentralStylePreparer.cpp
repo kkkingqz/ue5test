@@ -3,6 +3,7 @@
 #include "Application/GV2SessionContentSnapshot.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
+#include "CommonTextBlock.h"
 #include "Components/PanelWidget.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2ButtonListWidgetBase.h"
@@ -11,9 +12,13 @@
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
+#include "UI/GV2ListViewWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
+#include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiTheme.h"
 
@@ -21,12 +26,50 @@ namespace
 {
 using namespace GV2PresentationApply;
 
+FPreparedRichTextTokenStyle ResolveRichTextTokenStyle(
+    const UGV2UiTheme& Theme,
+    const FName Token,
+    const TSubclassOf<UCommonTextStyle> StyleClass)
+{
+    FPreparedRichTextTokenStyle Result;
+    // Mirrors ResolveStyleCore's own fallback: a declared token whose Style class is unset
+    // resolves against the Theme's own TextStyle rather than producing nothing. Without it
+    // the prepared table would disagree with the resolver it replaced for exactly the tokens
+    // an author left half-filled.
+    const TSubclassOf<UCommonTextStyle> EffectiveClass = StyleClass != nullptr ? StyleClass : Theme.TextStyle;
+    Result.StyleClass = EffectiveClass;
+    Result.UnscaledFontSize = Theme.ResolveUnscaledFontSize(Token);
+    if (const UCommonTextStyle* CommonStyle = EffectiveClass != nullptr
+            ? Cast<UCommonTextStyle>(EffectiveClass->GetDefaultObject())
+            : nullptr)
+    {
+        CommonStyle->ToTextBlockStyle(Result.BaseStyle);
+        Result.bResolved = true;
+    }
+    return Result;
+}
+
+FPreparedRichTextPopoverStyle ResolveRichTextPopoverStyle(const UGV2UiTheme& Theme)
+{
+    FPreparedRichTextPopoverStyle Result;
+    Result.Background = Theme.RichTextPopoverBackground;
+    Result.Padding = Theme.RichTextPopoverPadding;
+    Result.MaxWidth = Theme.RichTextPopoverMaxWidth;
+    Result.MaxHeight = Theme.RichTextPopoverMaxHeight;
+    Result.ImageTint = Theme.ImageTint;
+    Result.Scale.ScaleCurve = Theme.TextScaleCurve;
+    Result.Scale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
+    return Result;
+}
+
 // PSC-10B: the ONLY place a UGV2UiTheme is read on behalf of a styled widget. One `if` per
 // style role, each turning theme fields into a finished value payload. A new styled class
 // without a branch here emits nothing and is therefore visible as an unstyled widget, not as
 // a silent second authority read -- there is no fallback path left for it to take.
-void EmitForWidget(UWidget* Widget, const UGV2UiTheme& Theme, FGV2PreparedPresentationTransaction& OutTransaction)
+void EmitForWidget(UWidget* Widget, const FGV2ResolvedUiTheme& ResolvedTheme, FGV2PreparedPresentationTransaction& OutTransaction)
 {
+    const UGV2UiTheme& Theme = *ResolvedTheme.Theme;
+
     if (UGV2SeparatorWidgetBase* Separator = Cast<UGV2SeparatorWidgetBase>(Widget))
     {
         FPreparedSeparatorStyle Style;
@@ -156,6 +199,58 @@ void EmitForWidget(UWidget* Widget, const UGV2UiTheme& Theme, FGV2PreparedPresen
         Operation.TargetWidget = InputField;
         Operation.Payload.Set<FPreparedInputFieldStyle>(MoveTemp(Style));
         OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
+        return;
+    }
+
+    if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(Widget))
+    {
+        FPreparedRichTextStyle Style;
+        Style.DefaultTokenName = Theme.DefaultTextStyleToken.IsNone()
+            ? FName(TEXT("default"))
+            : Theme.DefaultTextStyleToken;
+        Style.DefaultStyleClass = Theme.RichTextStyle;
+        Style.DefaultToken = ResolveRichTextTokenStyle(
+            Theme,
+            Style.DefaultTokenName,
+            Theme.RichTextStyle);
+        // The legacy default run used RichTextStyle verbatim; only named semantic style
+        // and size tokens participate in viewport scaling. Preserve that distinction.
+        Style.DefaultToken.UnscaledFontSize = 0.0f;
+        for (const TPair<FName, FGV2TextStyleToken>& Pair : Theme.TextStyleTokens)
+        {
+            if (Pair.Key != Style.DefaultTokenName && Pair.Key != FName(TEXT("default")))
+            {
+                Style.StyleByToken.Add(
+                    Pair.Key,
+                    ResolveRichTextTokenStyle(Theme, Pair.Key, Pair.Value.Style));
+            }
+        }
+        Style.ColorByToken = Theme.TextColorTokens;
+        // NOT a copy of TextSizeTokens: UGV2UiTheme::ResolveUnscaledFontSize falls back to a
+        // style token's own font size when the size table has no entry, and a raw copy would
+        // silently collapse such a token to MinReadableFontSize at render time. The table is
+        // built through that function, over every token either table declares.
+        for (const TPair<FName, float>& Pair : Theme.TextSizeTokens)
+        {
+            Style.UnscaledSizeByToken.Add(Pair.Key, Theme.ResolveUnscaledFontSize(Pair.Key));
+        }
+        for (const TPair<FName, FGV2TextStyleToken>& Pair : Theme.TextStyleTokens)
+        {
+            Style.UnscaledSizeByToken.FindOrAdd(Pair.Key) = Theme.ResolveUnscaledFontSize(Pair.Key);
+        }
+        Style.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, Style.DefaultTokenName);
+        Style.InteractiveStyle = Theme.RichTextInteractiveStyle;
+        // PSC-10B (ADR-0043 D1): already loaded once at snapshot build. Prepare performs no
+        // load of its own -- this used to be a LoadSynchronous() per rich text widget per
+        // reconcile, which is a content-resolution capability on a per-frame path.
+        Style.PopoverClass = ResolvedTheme.RichTextPopoverClass.Get();
+        Style.PopoverStyle = ResolveRichTextPopoverStyle(Theme);
+        Style.bIsResolved = true;
+
+        FPreparedCentralStyleOperation Operation;
+        Operation.TargetWidget = RichText;
+        Operation.Payload.Set<FPreparedRichTextStyle>(MoveTemp(Style));
+        OutTransaction.AddCentralStyleOperation(MoveTemp(Operation));
     }
 }
 
@@ -166,12 +261,18 @@ void EmitForWidget(UWidget* Widget, const UGV2UiTheme& Theme, FGV2PreparedPresen
 // the walk, rather than left to the order operations end up in.
 bool OwnsSubtreeStyling(const UWidget* Widget)
 {
-    return Widget->IsA<UGV2DropdownSelectWidgetBase>();
+    // These hosts create/reuse their children off-tree during their own Prepare. Their
+    // consumers prepare those child subtrees with the same context. Stopping here avoids
+    // applying duplicate operations to children still attached from the previous revision.
+    return Widget->IsA<UGV2DropdownSelectWidgetBase>()
+        || Widget->IsA<UGV2ButtonListWidgetBase>()
+        || Widget->IsA<UGV2ListViewWidgetBase>()
+        || Widget->IsA<UGV2TabContainerWidgetBase>();
 }
 
 void WalkWidget(
     UWidget* Widget,
-    const UGV2UiTheme& Theme,
+    const FGV2ResolvedUiTheme& ResolvedTheme,
     TSet<UWidget*>& Visited,
     FGV2PreparedPresentationTransaction& OutTransaction)
 {
@@ -186,7 +287,7 @@ void WalkWidget(
         return;
     }
 
-    EmitForWidget(Widget, Theme, OutTransaction);
+    EmitForWidget(Widget, ResolvedTheme, OutTransaction);
 
     if (OwnsSubtreeStyling(Widget))
     {
@@ -201,9 +302,9 @@ void WalkWidget(
     {
         if (UserWidget->WidgetTree != nullptr)
         {
-            UserWidget->WidgetTree->ForEachWidget([&Theme, &Visited, &OutTransaction](UWidget* Child)
+            UserWidget->WidgetTree->ForEachWidget([&ResolvedTheme, &Visited, &OutTransaction](UWidget* Child)
             {
-                WalkWidget(Child, Theme, Visited, OutTransaction);
+                WalkWidget(Child, ResolvedTheme, Visited, OutTransaction);
             });
         }
         return;
@@ -213,7 +314,7 @@ void WalkWidget(
     {
         for (int32 Index = 0; Index < Panel->GetChildrenCount(); ++Index)
         {
-            WalkWidget(Panel->GetChildAt(Index), Theme, Visited, OutTransaction);
+            WalkWidget(Panel->GetChildAt(Index), ResolvedTheme, Visited, OutTransaction);
         }
     }
 }
@@ -221,18 +322,28 @@ void WalkWidget(
 
 namespace GV2CentralStylePreparer
 {
-void PrepareForSubtree(
+bool PrepareForSubtree(
     UWidget* Root,
     const FGV2PresentationPrepareContext& PrepareContext,
-    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction)
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError)
 {
-    const UGV2UiTheme* Theme = PrepareContext.GetTheme().Theme.Get();
-    if (Root == nullptr || Theme == nullptr)
+    OutError.Reset();
+    if (Root == nullptr)
     {
-        return;
+        return true;
+    }
+    // PSC-10B: a snapshot without a Theme cannot produce style, and since no widget pulls
+    // one any more the result would be a silently unstyled tree. Fail loudly instead: the
+    // whole point of the push model is that missing presentation authority is observable.
+    if (PrepareContext.GetTheme().Theme.Get() == nullptr)
+    {
+        OutError = TEXT("core:diagnostic.ui_central_style.missing_theme: the session snapshot carries no Theme");
+        return false;
     }
 
     TSet<UWidget*> Visited;
-    WalkWidget(Root, *Theme, Visited, OutTransaction);
+    WalkWidget(Root, PrepareContext.GetTheme(), Visited, OutTransaction);
+    return true;
 }
 }

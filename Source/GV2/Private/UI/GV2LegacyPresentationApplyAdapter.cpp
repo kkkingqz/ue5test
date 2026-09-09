@@ -18,6 +18,7 @@
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2PortraitWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
+#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2SeparatorWidgetBase.h"
@@ -54,6 +55,23 @@ EGV2ImageRenderMode FromPreparedRenderMode(GV2PresentationApply::EPreparedImageR
         return EGV2ImageRenderMode::FixedAspect;
     }
     return EGV2ImageRenderMode::FixedAspect;
+}
+
+FGV2TextViewModel InflateTextValue(const GV2PresentationApply::FPreparedTextValue& Value)
+{
+    FGV2TextViewModel Text;
+    Text.Text = Value.Text;
+    Text.StyleToken = Value.StyleToken;
+    Text.NormalizedMarkup = Value.NormalizedMarkup;
+    Text.ResolvedStyleClass = Value.ResolvedStyleClass;
+    Text.ResolvedBaseFontSize = Value.ResolvedBaseFontSize;
+    Text.ResolvedMinReadableFontSize = Value.ResolvedMinReadableFontSize;
+    Text.ResolvedReferenceViewportHeight = Value.ResolvedReferenceViewportHeight;
+    Text.ResolvedFontScaleCurve = Value.ResolvedFontScaleCurve;
+    Text.ResolvedDefaultStyle = Value.ResolvedDefaultStyle;
+    Text.bHasResolvedPresentation = Value.bHasResolvedPresentation;
+    Text.bHasResolvedDefaultStyle = Value.bHasResolvedDefaultStyle;
+    return Text;
 }
 
 // PSC-09B: replicates FGV2TextPropertyConsumer::Commit()/Reset()'s exact original
@@ -372,9 +390,11 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                     FGV2RichTextSpanViewModel Span;
                     Span.SpanId = FlatSpan.SpanId;
                     Span.Key = FlatSpan.Key;
-                    Span.Hover.Title.Text = FlatSpan.Hover.Title;
-                    Span.Hover.Description.Text = FlatSpan.Hover.Description;
+                    Span.Hover.Title = InflateTextValue(FlatSpan.Hover.Title);
+                    Span.Hover.Description = InflateTextValue(FlatSpan.Hover.Description);
                     Span.Hover.ImageResourceId = FlatSpan.Hover.ImageResourceId;
+                    Span.Hover.ResolvedImageBrush = FlatSpan.Hover.ImageBrush;
+                    Span.Hover.bHasResolvedImage = FlatSpan.Hover.bHasResolvedImage;
                     Span.Binding = FGV2UiBindingHandle::FromSerialized(FlatSpan.SerializedBinding);
                     Spans.Add(MoveTemp(Span));
                 }
@@ -388,10 +408,7 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                     return;
                 }
 
-                FGV2TextViewModel Text;
-                Text.Text = Op.Value.Text;
-                Text.StyleToken = Op.Value.StyleToken;
-                Text.NormalizedMarkup = Op.Value.NormalizedMarkup;
+                const FGV2TextViewModel Text = InflateTextValue(Op.Value);
 
                 if (Op.bIsReset)
                 {
@@ -451,22 +468,6 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                     }
                 }
 
-                // Newly added slots have no styling of their own; let the container
-                // reapply its central style (e.g. per-item slot padding) now that the
-                // collection has settled.
-                //
-                // PSC-10B: this is the last surviving PULL of central style from a Commit
-                // path, and it is on the list to go. For a class already converted to the
-                // push model it is already a no-op -- FGV2LayeredUiReconciler applies that
-                // class's prepared central-style operation right after this screen's field
-                // commit, which is after this line has run and the slots exist. It stays
-                // only until the remaining style consumers are converted, at which point
-                // it is deleted rather than left as an alternative route.
-                if (TargetWidget->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
-                {
-                    IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TargetWidget);
-                }
-
                 if (ListView != nullptr)
                 {
                     TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
@@ -515,9 +516,7 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                 {
                     FGV2TabItemEntry Entry;
                     Entry.Key = FlatEntry.Key;
-                    Entry.Title.Text = FlatEntry.Title.Text;
-                    Entry.Title.StyleToken = FlatEntry.Title.StyleToken;
-                    Entry.Title.NormalizedMarkup = FlatEntry.Title.NormalizedMarkup;
+                    Entry.Title = InflateTextValue(FlatEntry.Title);
                     Entry.ScreenId = FlatEntry.ScreenId;
                     Entries.Add(MoveTemp(Entry));
 
@@ -643,6 +642,28 @@ bool Apply(const GV2PresentationApply::FGV2PreparedPresentationTransaction& Tran
                         Dropdown->ApplyDropdownStyleValues(
                             Style.HeaderStyle, Style.PopupBackground, Style.PopupPadding,
                             Style.OptionItemPadding, Style.MaxPopupHeight, Style.PopupScale);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedRichTextPopoverStyle& Style)
+                    {
+                        UGV2RichTextPopoverWidgetBase* Popover = Cast<UGV2RichTextPopoverWidgetBase>(Widget);
+                        if (Popover == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: rich-text popover style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        Popover->ApplyPopoverStyleValues(Style);
+                    },
+                    [Widget, &bFailed, &OutError](const GV2PresentationApply::FPreparedRichTextStyle& Style)
+                    {
+                        UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(Widget);
+                        if (RichText == nullptr)
+                        {
+                            bFailed = true;
+                            OutError = FString::Printf(TEXT("central_style_target_mismatch: rich-text style targets '%s'"), *Widget->GetClass()->GetName());
+                            return;
+                        }
+                        RichText->ApplyRichTextStyleValues(Style);
                     }
                 }, Op.Payload);
             }

@@ -628,12 +628,13 @@ bool PrepareUiHostRollbackPlan(
     const FString& PropertyPathPrefix,
     FGV2UiHostMutationPlan& OutPlan,
     TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
-    const TArray<FString>* ActiveCompositionChain)
+    const TArray<FString>* ActiveCompositionChain,
+    const FGV2PresentationPrepareContext* PrepareContext)
 {
     FGV2UiHostMutationPlan PreviousValuePlan;
     if (!PrepareUiHostProperties(HostWidget, Capabilities, PreviousCommittedProperties, PreviousSchema,
             PreviousSchemaId, PropertyPathPrefix, PreviousCommittedProperties, PreviousValuePlan,
-            OutDiagnostics, ActiveCompositionChain))
+            OutDiagnostics, ActiveCompositionChain, PrepareContext))
     {
         return false;
     }
@@ -644,7 +645,7 @@ bool PrepareUiHostRollbackPlan(
     FGV2UiHostMutationPlan CandidateResetPlan;
     if (!PrepareUiHostProperties(HostWidget, Capabilities, EmptyProperties, CandidateSchema,
             CandidateSchemaId, PropertyPathPrefix, EmptyProperties, CandidateResetPlan,
-            OutDiagnostics, ActiveCompositionChain))
+            OutDiagnostics, ActiveCompositionChain, PrepareContext))
     {
         return false;
     }

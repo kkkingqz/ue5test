@@ -26,8 +26,9 @@ namespace GV2CentralStylePreparer
 // central-style operation per widget whose class declares a style role. Idempotent per widget
 // within a single call. Emits nothing when the snapshot carries no theme -- cold start and
 // core-minimal recovery keep the widgets' serialized values rather than inventing a style.
-GV2_API void PrepareForSubtree(
+[[nodiscard]] GV2_API bool PrepareForSubtree(
     UWidget* Root,
     const FGV2PresentationPrepareContext& PrepareContext,
-    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction);
+    GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
+    FString& OutError);
 }

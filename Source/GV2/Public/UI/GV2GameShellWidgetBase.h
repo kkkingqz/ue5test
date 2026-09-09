@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CommonUserWidget.h"
-#include "UI/GV2UiStyleConsumer.h"
 #include "GV2GameShellWidgetBase.generated.h"
 
 class UPanelWidget;
@@ -20,7 +19,6 @@ class UNamedSlot;
 UCLASS(Blueprintable)
 class GV2_API UGV2GameShellWidgetBase
     : public UCommonUserWidget
-    , public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
@@ -61,11 +59,7 @@ public:
     // calls. C++-only (not a UFUNCTION) -- Blueprint has no use for a raw UPanelWidget*.
     UPanelWidget* GetHostForLayer(FName Layer) const { return FindHostForLayer(Layer); }
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
 protected:
-    virtual void NativePreConstruct() override;
-
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UPanelWidget> BackgroundHost;
 

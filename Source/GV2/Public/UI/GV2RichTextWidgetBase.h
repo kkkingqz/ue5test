@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Bridge/GV2BridgeTypes.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2ScreenFieldHost.h"
@@ -77,7 +78,15 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "GV2|UI|Rich Text")
     FGV2RichTextSpanInvoked OnSpanInvoked;
 
-    virtual bool ApplyCentralStyle_Implementation() override;
+    // PSC-10B: sole physical central-style write for this class. Unlike the other style
+    // roles it also STORES what it receives: a rich-text run is styled by a Slate decorator
+    // synchronously during rendering, so those resolutions cannot happen at Apply time.
+    // What is stored is finished values, never a Theme -- the decorator can no longer reach
+    // an authority even in principle, which is the property that matters.
+    void ApplyRichTextStyleValues(const GV2PresentationApply::FPreparedRichTextStyle& InStyle);
+
+    const GV2PresentationApply::FPreparedRichTextStyle& GetPreparedRichTextStyle() const { return PreparedStyle; }
+    UClass* GetPreparedPopoverClass() const { return PreparedPopoverClass.Get(); }
 
 protected:
     virtual void NativePreConstruct() override;
@@ -92,6 +101,25 @@ protected:
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
+
+    const GV2PresentationApply::FPreparedRichTextTokenStyle& FindPreparedTokenStyle(FName StyleToken) const;
+    TSubclassOf<UCommonTextStyle> ResolvePreparedStyleClass(FName StyleToken) const;
+    FTextBlockStyle ScalePreparedTokenStyle(const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle) const;
+
+    // PSC-10B: values delivered by a prepared central-style operation. bIsResolved false
+    // means no runtime style has arrived; serialized widget defaults remain untouched.
+    GV2PresentationApply::FPreparedRichTextStyle PreparedStyle;
+
+    // FPreparedRichTextStyle is deliberately a non-reflected lower-module value, so nothing
+    // in it is visible to the garbage collector. The widget therefore anchors every UObject
+    // the stored style references -- the popover class, and every style class in the token
+    // tables -- for as long as it holds the style. Anchoring only the popover class (as an
+    // earlier revision did) would have left the token tables' classes unreferenced.
+    UPROPERTY(Transient)
+    TSubclassOf<UUserWidget> PreparedPopoverClass;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UObject>> PreparedStyleAnchors;
 
     UPROPERTY(Transient)
     FGV2TextViewModel CurrentText;

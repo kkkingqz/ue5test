@@ -1,100 +1,21 @@
 #include "UI/GV2RichTextWidgetBase.h"
 
-#include "Bridge/GV2StableIdUE.h"
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
 #include "Blueprint/UserWidget.h"
 #include "Components/ScrollBox.h"
-#include "Framework/Text/RichTextMarkupProcessing.h"
 #include "Styling/CoreStyle.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextSpanDecorator.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2UiInteractionEmitter.h"
-#include "UI/GV2UiTheme.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Widgets/SToolTip.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
 {
-bool IsCanonicalSpanId(const FName SpanId)
-{
-    const FString Value = SpanId.ToString();
-    return GV2StableIdUE::IsValidSegment(Value);
-}
-
-bool ValidateInteractiveContent(const FGV2TextViewModel& Text, const TArray<FGV2RichTextSpanViewModel>& Spans)
-{
-    bool bHasHover = false;
-    TMap<FName, const FGV2RichTextSpanViewModel*> SpansMap;
-    for (const FGV2RichTextSpanViewModel& Span : Spans)
-    {
-        if (!IsCanonicalSpanId(Span.SpanId) || SpansMap.Contains(Span.SpanId)
-            || (Span.Hover.IsEmpty() && !Span.Binding.IsValid()))
-        {
-            return false;
-        }
-        if (!Span.Hover.IsEmpty())
-        {
-            bHasHover = true;
-        }
-        SpansMap.Add(Span.SpanId, &Span);
-    }
-
-    if (bHasHover)
-    {
-        const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-        if (Theme == nullptr || Theme->RichTextPopoverClass.IsNull() || Theme->RichTextPopoverClass.LoadSynchronous() == nullptr)
-        {
-            return false;
-        }
-    }
-
-    const FString SourceMarkup = Text.Text.ToString();
-    if (SourceMarkup.IsEmpty())
-    {
-        return Spans.IsEmpty();
-    }
-
-    FString Markup;
-    FString MarkupError;
-    if (!UGV2TextPipeline::NormalizeMarkup(SourceMarkup, Markup, MarkupError))
-    {
-        return false;
-    }
-    TArray<FTextLineParseResults> Lines;
-    FString Processed;
-    FDefaultRichTextMarkupParser::GetStaticInstance()->Process(Lines, Markup, Processed);
-    TSet<FName> ReferencedSpans;
-    for (const FTextLineParseResults& Line : Lines)
-    {
-        for (const FTextRunParseResults& Run : Line.Runs)
-        {
-            if (Run.Name != TEXT("gv2"))
-            {
-                continue;
-            }
-            const FTextRange* IdRange = Run.MetaData.Find(TEXT("interactive"));
-            if (IdRange == nullptr)
-            {
-                continue;
-            }
-            const FName SpanId(*Processed.Mid(
-                IdRange->BeginIndex,
-                IdRange->EndIndex - IdRange->BeginIndex));
-            if (!SpansMap.Contains(SpanId))
-            {
-                return false;
-            }
-            ReferencedSpans.Add(SpanId);
-        }
-    }
-
-    return ReferencedSpans.Num() == Spans.Num();
-}
-
 class FGV2RichTextSpanToolTip final : public IToolTip
 {
 public:
@@ -132,16 +53,18 @@ public:
             return;
         }
 
-        UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-        UClass* PopoverClass = Theme != nullptr
-            ? Theme->RichTextPopoverClass.LoadSynchronous()
+        const GV2PresentationApply::FPreparedRichTextStyle& PreparedStyle = Widget->GetPreparedRichTextStyle();
+        UClass* PopoverClass = PreparedStyle.bIsResolved
+            ? Widget->GetPreparedPopoverClass()
             : nullptr;
         if (PopoverClass != nullptr && Widget->GetWorld() != nullptr)
         {
             UGV2RichTextPopoverWidgetBase* Popover = CreateWidget<UGV2RichTextPopoverWidgetBase>(
                 Widget->GetWorld(),
                 PopoverClass);
-            if (Popover != nullptr && Popover->InitializePopover(Span->Hover))
+            const bool bPopoverInitialized = Popover != nullptr
+                && Popover->InitializePopover(Span->Hover, PreparedStyle);
+            if (bPopoverInitialized)
             {
                 ActivePopover.Reset(Popover);
                 SlateToolTip->SetContentWidget(Popover->TakeWidget());
@@ -183,7 +106,8 @@ void UGV2RichTextWidgetBase::NativePreConstruct()
         RichTextBlock->SetAutoWrapText(true);
         RichTextBlock->SetWrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping);
     }
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: runtime style arrives as FPreparedRichTextStyle; the decorator set and wrap
+    // policy above are structural, not style, and stay here. See UGV2SeparatorWidgetBase.
 }
 
 void UGV2RichTextWidgetBase::NativeDestruct()
@@ -191,6 +115,9 @@ void UGV2RichTextWidgetBase::NativeDestruct()
     SpanIndexById.Reset();
     CurrentText = {};
     CurrentSpans.Reset();
+    PreparedStyle = {};
+    PreparedPopoverClass = nullptr;
+    PreparedStyleAnchors.Reset();
     Super::NativeDestruct();
 }
 
@@ -201,26 +128,10 @@ bool UGV2RichTextWidgetBase::ApplyText(const FGV2TextViewModel& InText)
     {
         return false;
     }
-    if (const TSubclassOf<UCommonTextStyle> Style =
-            UGV2TextPipeline::ResolveStyleClass(CurrentText.StyleToken))
+    if (!UGV2TextPipeline::ApplyRichText(RichTextBlock, CurrentText, this))
     {
-        RichTextBlock->SetStyle(Style);
+        return false;
     }
-    FTextBlockStyle DefaultStyle;
-    if (UGV2TextPipeline::ResolveStyle(CurrentText.StyleToken, DefaultStyle, this))
-    {
-        RichTextBlock->SetDefaultTextStyle(DefaultStyle);
-    }
-    FString Markup = CurrentText.NormalizedMarkup;
-    if (Markup.IsEmpty() && !CurrentText.Text.IsEmpty())
-    {
-        FString Error;
-        if (!UGV2TextPipeline::NormalizeMarkup(CurrentText.Text.ToString(), Markup, Error))
-        {
-            return false;
-        }
-    }
-    RichTextBlock->SetText(FText::FromString(Markup));
     if (RichTextScrollBox != nullptr)
     {
         RichTextScrollBox->ScrollToStart();
@@ -289,42 +200,114 @@ TSharedRef<IToolTip> UGV2RichTextWidgetBase::CreateSpanToolTip(const FName SpanI
     return MakeShared<FGV2RichTextSpanToolTip>(this, SpanId);
 }
 
+const GV2PresentationApply::FPreparedRichTextTokenStyle& UGV2RichTextWidgetBase::FindPreparedTokenStyle(FName StyleToken) const
+{
+    if (!StyleToken.IsNone()
+        && StyleToken != FName(TEXT("default"))
+        && StyleToken != PreparedStyle.DefaultTokenName)
+    {
+        if (const GV2PresentationApply::FPreparedRichTextTokenStyle* Found = PreparedStyle.StyleByToken.Find(StyleToken))
+        {
+            return *Found;
+        }
+    }
+    return PreparedStyle.DefaultToken;
+}
+
+TSubclassOf<UCommonTextStyle> UGV2RichTextWidgetBase::ResolvePreparedStyleClass(FName StyleToken) const
+{
+    const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle = FindPreparedTokenStyle(StyleToken);
+    return TokenStyle.StyleClass != nullptr ? TokenStyle.StyleClass : PreparedStyle.DefaultStyleClass;
+}
+
+FTextBlockStyle UGV2RichTextWidgetBase::ScalePreparedTokenStyle(
+    const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle) const
+{
+    FTextBlockStyle Result = TokenStyle.BaseStyle;
+    if (TokenStyle.UnscaledFontSize > 0.0f)
+    {
+        GV2PresentationApply::FPreparedTextScalePolicy Policy = PreparedStyle.ScalePolicy;
+        Policy.BaseFontSize = TokenStyle.UnscaledFontSize;
+        Result.SetFontSize(GV2PresentationApply::EvaluatePreparedFontSize(
+            Policy,
+            GV2PresentationApply::ResolveLiveViewportHeight(this, Policy.ReferenceViewportHeight)));
+    }
+    return Result;
+}
+
+void UGV2RichTextWidgetBase::ApplyRichTextStyleValues(const GV2PresentationApply::FPreparedRichTextStyle& InStyle)
+{
+    PreparedStyle = InStyle;
+    PreparedPopoverClass = InStyle.PopoverClass;
+    PreparedStyleAnchors.Reset();
+    auto AnchorClass = [this](const TSubclassOf<UCommonTextStyle>& StyleClass)
+    {
+        if (StyleClass != nullptr)
+        {
+            PreparedStyleAnchors.AddUnique(StyleClass.Get());
+        }
+    };
+    AnchorClass(InStyle.DefaultStyleClass);
+    AnchorClass(InStyle.DefaultToken.StyleClass);
+    for (const TPair<FName, GV2PresentationApply::FPreparedRichTextTokenStyle>& Pair : InStyle.StyleByToken)
+    {
+        AnchorClass(Pair.Value.StyleClass);
+    }
+    if (RichTextBlock == nullptr)
+    {
+        return;
+    }
+    const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle =
+        FindPreparedTokenStyle(CurrentText.StyleToken);
+    if (const TSubclassOf<UCommonTextStyle> Style = ResolvePreparedStyleClass(CurrentText.StyleToken))
+    {
+        RichTextBlock->SetStyle(Style);
+    }
+    if (TokenStyle.bResolved)
+    {
+        RichTextBlock->SetDefaultTextStyle(ScalePreparedTokenStyle(TokenStyle));
+    }
+}
+
 FTextBlockStyle UGV2RichTextWidgetBase::ResolveRunTextStyle(
     FName Style,
     FName Color,
     FName Size) const
 {
-    FTextBlockStyle Result;
-    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    const FName EffectiveStyle = Style.IsNone() ? CurrentText.StyleToken : Style;
-    if (EffectiveStyle == TEXT("default") || EffectiveStyle.IsNone())
+    if (PreparedStyle.bIsResolved)
     {
-        if (Theme != nullptr && Theme->RichTextStyle != nullptr)
+        // PSC-10B: served entirely from prepared tables. This runs inside a Slate decorator
+        // during rendering -- there is no transaction in flight and no authority in reach.
+        const FName EffectiveStyle = Style.IsNone() ? CurrentText.StyleToken : Style;
+        FTextBlockStyle Result;
+        const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle = FindPreparedTokenStyle(EffectiveStyle);
+        if (TokenStyle.bResolved)
         {
-            if (const UCommonTextStyle* RichStyle = Cast<UCommonTextStyle>(Theme->RichTextStyle->GetDefaultObject()))
-            {
-                RichStyle->ToTextBlockStyle(Result);
-            }
+            Result = ScalePreparedTokenStyle(TokenStyle);
         }
         else if (RichTextBlock != nullptr)
         {
             Result = RichTextBlock->GetCurrentDefaultTextStyle();
         }
+        if (const FLinearColor* ResolvedColor = PreparedStyle.ColorByToken.Find(Color))
+        {
+            Result.SetColorAndOpacity(*ResolvedColor);
+        }
+        if (!Size.IsNone())
+        {
+            GV2PresentationApply::FPreparedTextScalePolicy Policy = PreparedStyle.ScalePolicy;
+            Policy.BaseFontSize = PreparedStyle.UnscaledSizeByToken.FindRef(Size);
+            Result.SetFontSize(GV2PresentationApply::EvaluatePreparedFontSize(
+                Policy,
+                GV2PresentationApply::ResolveLiveViewportHeight(this, Policy.ReferenceViewportHeight)));
+        }
+        return Result;
     }
-    else if (!UGV2TextPipeline::ResolveStyle(EffectiveStyle, Result, this) && RichTextBlock != nullptr)
+
+    FTextBlockStyle Result;
+    if (RichTextBlock != nullptr)
     {
         Result = RichTextBlock->GetCurrentDefaultTextStyle();
-        const float EffectiveSize = UGV2TextPipeline::ResolveEffectiveFontSize(EffectiveStyle, this);
-        Result.SetFontSize(EffectiveSize);
-    }
-    if (const FLinearColor* ResolvedColor = Theme != nullptr ? Theme->TextColorTokens.Find(Color) : nullptr)
-    {
-        Result.SetColorAndOpacity(*ResolvedColor);
-    }
-    if (!Size.IsNone())
-    {
-        const float EffectiveFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(Size, this);
-        Result.SetFontSize(EffectiveFontSize);
     }
     return Result;
 }
@@ -334,33 +317,16 @@ FHyperlinkStyle UGV2RichTextWidgetBase::ResolveInteractiveTextStyle(
 {
     FHyperlinkStyle Result = FCoreStyle::Get().GetWidgetStyle<FHyperlinkStyle>(
         TEXT("Hyperlink"));
-    if (const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+    if (PreparedStyle.bIsResolved)
     {
-        Result = Theme->RichTextInteractiveStyle;
+        Result = PreparedStyle.InteractiveStyle;
+        Result.TextStyle = RunStyle;
+        Result.TextStyle.SetColorAndOpacity(FSlateColor::UseForeground());
+        return Result;
     }
     Result.TextStyle = RunStyle;
     Result.TextStyle.SetColorAndOpacity(FSlateColor::UseForeground());
     return Result;
-}
-
-bool UGV2RichTextWidgetBase::ApplyCentralStyle_Implementation()
-{
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || RichTextBlock == nullptr || Theme->RichTextStyle == nullptr)
-    {
-        return false;
-    }
-    const TSubclassOf<UCommonTextStyle> Style = CurrentText.StyleToken.IsNone()
-        ? Theme->RichTextStyle
-        : UGV2TextPipeline::ResolveStyleClass(CurrentText.StyleToken);
-    if (Style == nullptr) return false;
-    RichTextBlock->SetStyle(Style);
-    FTextBlockStyle DefaultStyle;
-    if (UGV2TextPipeline::ResolveStyle(CurrentText.StyleToken, DefaultStyle, this))
-    {
-        RichTextBlock->SetDefaultTextStyle(DefaultStyle);
-    }
-    return true;
 }
 
 void UGV2RichTextWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const

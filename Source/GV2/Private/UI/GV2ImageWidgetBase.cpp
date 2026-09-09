@@ -81,12 +81,6 @@ void UGV2ImageWidgetBase::ApplyImageTintStyleValue(const FLinearColor& Tint)
     }
 }
 
-bool UGV2ImageWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedTintStyle, written by ApplyImageTintStyleValue.
-    return true;
-}
-
 void UGV2ImageWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
     OutBuilder.AddImage(TEXT("resource_id"), FName(TEXT("Image")), TEXT("resource"));

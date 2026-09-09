@@ -2,7 +2,6 @@
 
 #include "CommonUserWidget.h"
 #include "Components/ScrollBox.h"
-#include "UI/GV2UiStyleConsumer.h"
 #include "GV2ScrollAreaWidgetBase.generated.h"
 
 class UNamedSlot;
@@ -16,7 +15,6 @@ class UNamedSlot;
 UCLASS(Blueprintable)
 class GV2_API UGV2ScrollAreaWidgetBase
     : public UCommonUserWidget
-    , public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
@@ -35,8 +33,6 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|ScrollArea")
     EOrientation GetOrientation() const { return Orientation; }
-
-    virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:
     virtual void NativePreConstruct() override;

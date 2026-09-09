@@ -18,8 +18,6 @@ public:
     // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
     void ApplyLoadingIndicatorStyleValues(const FSlateBrush& Brush, float Period, float Radius, int32 Pieces);
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
 protected:
     virtual void NativePreConstruct() override;
 

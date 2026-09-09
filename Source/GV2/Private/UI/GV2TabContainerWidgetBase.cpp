@@ -20,23 +20,6 @@ void UGV2TabContainerWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder&
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
 
-bool UGV2TabContainerWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: this implementation applies nothing from the Theme. The fetch that used
-    // to stand here read the configured Theme only to null-check it and threw the value
-    // away -- a value obtained and discarded, the same family as ResourceIcon /
-    // ApplyOptionalXxx / OnBindingInvoked / bFatal. It also inflated this task's scope,
-    // because the class has no central style payload at all.
-    for (const auto& Pair : TabScreenWidgets)
-    {
-        if (Pair.Value != nullptr && Pair.Value->GetClass()->ImplementsInterface(UGV2UiStyleConsumer::StaticClass()))
-        {
-            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(Pair.Value);
-        }
-    }
-    return true;
-}
-
 void UGV2TabContainerWidgetBase::ApplyDefaultTabKey(FName InKey)
 {
     DefaultTabKey = InKey;

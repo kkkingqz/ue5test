@@ -31,39 +31,10 @@
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
-#include "Application/GV2PackageClosure.h"
-#include "UI/GV2ImageResourceCatalog.h"
-
-namespace
-{
-// PAH-04B: the image resource catalog is session-scoped now
-// (UGV2ImageResourceCatalog::RebuildForSession/ReleaseForSession, called by
-// FGV2SessionCoordinator::StartSession/EndSession in production). These tests probe
-// image-typed capabilities (GetResourceProbeCandidates() reads the session-scoped
-// catalog) via a bare GameInstance::InitializeStandalone() that never broadcasts
-// OnStartGameInstance / calls StartSession(), so they give themselves a real catalog
-// built from the real GameData closure directly.
-struct FGV2CapabilityObservabilityScopedImageCatalog
-{
-    FGV2CapabilityObservabilityScopedImageCatalog()
-    {
-        TArray<FString> PackageIds;
-        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
-        {
-            PackageIds.Add(Entry.PackageId);
-        }
-        FString Error;
-        UGV2ImageResourceCatalog::RebuildForSession(PackageIds, Error);
-    }
-    ~FGV2CapabilityObservabilityScopedImageCatalog()
-    {
-        UGV2ImageResourceCatalog::ReleaseForSession();
-    }
-};
-}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2UiCapabilityObservabilityTest,
@@ -109,7 +80,15 @@ UUserWidget* MakeUnboundHost()
 
 bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 {
-    const FGV2CapabilityObservabilityScopedImageCatalog ScopedImageCatalog;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError), bContextReady);
+    if (!bContextReady || ContextFixture.Get() == nullptr)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext& PrepareContext = *ContextFixture.Get();
 
     // 1. Positive: Boolean/Number/Text all have real UPP-09 consumers with a genuine
     // physical target, so every capability must be provably observable.
@@ -122,7 +101,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
             .Build();
 
         TArray<FGV2UiObservabilityFailure> Failures;
-        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, PrepareContext, Failures);
 
         TestTrue(TEXT("Boolean/Number/Text capabilities are observable"), bObservable);
         TestEqual(TEXT("No failures reported for genuinely observable capabilities"), Failures.Num(), 0);
@@ -140,7 +119,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
             .Build();
 
         TArray<FGV2UiObservabilityFailure> Failures;
-        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, PrepareContext, Failures);
 
         TestFalse(TEXT("Consumer-without-physical-effect capabilities are rejected"), bObservable);
         TestEqual(TEXT("All three no-op capabilities are individually reported"), Failures.Num(), 3);
@@ -163,7 +142,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
             .Build();
 
         TArray<FGV2UiObservabilityFailure> Failures;
-        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, PrepareContext, Failures);
 
         TestFalse(TEXT("Disconnected renderer target capabilities are rejected"), bObservable);
         TestEqual(TEXT("Both capabilities with a missing target are reported"), Failures.Num(), 2);
@@ -187,7 +166,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
             .Build();
 
         TArray<FGV2UiObservabilityFailure> Failures;
-        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, PrepareContext, Failures);
 
         TestFalse(TEXT("Capabilities declared without a working implementation are rejected"), bObservable);
         TestEqual(TEXT("Both unimplemented capabilities are reported, not skipped"), Failures.Num(), 2);
@@ -210,7 +189,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree TextCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> TextFailures;
-        const bool bTextObservable = RunUiCapabilityObservabilityHarness(TextWidget, TextCaps, TextFailures);
+        const bool bTextObservable = RunUiCapabilityObservabilityHarness(TextWidget, TextCaps, PrepareContext, TextFailures);
         TestTrue(TEXT("UGV2TextWidgetBase capabilities are observable"), bTextObservable);
         TestEqual(TEXT("No failures for UGV2TextWidgetBase"), TextFailures.Num(), 0);
 
@@ -218,7 +197,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         UGV2TextWidgetBase* UnboundTextWidget = CreateWidget<UGV2TextWidgetBase>(TestWorld, UGV2TextWidgetBase::StaticClass());
         UnboundTextWidget->WidgetTree = NewObject<UWidgetTree>(UnboundTextWidget);
         TArray<FGV2UiObservabilityFailure> UnboundFailures;
-        const bool bUnboundObservable = RunUiCapabilityObservabilityHarness(UnboundTextWidget, TextCaps, UnboundFailures);
+        const bool bUnboundObservable = RunUiCapabilityObservabilityHarness(UnboundTextWidget, TextCaps, PrepareContext, UnboundFailures);
         TestFalse(TEXT("Unbound UGV2TextWidgetBase fails observability"), bUnboundObservable);
         TestEqual(TEXT("1 failure for unbound UGV2TextWidgetBase"), UnboundFailures.Num(), 1);
     }
@@ -241,7 +220,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree ImageCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> ImageFailures;
-        const bool bImageObservable = RunUiCapabilityObservabilityHarness(ImageWidget, ImageCaps, ImageFailures);
+        const bool bImageObservable = RunUiCapabilityObservabilityHarness(ImageWidget, ImageCaps, PrepareContext, ImageFailures);
         TestTrue(TEXT("UGV2ImageWidgetBase capabilities are observable"), bImageObservable);
         TestEqual(TEXT("No failures for UGV2ImageWidgetBase with PreserveAspect"), ImageFailures.Num(), 0);
 
@@ -253,7 +232,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         // Default scale policy is Unset
 
         TArray<FGV2UiObservabilityFailure> UnsetFailures;
-        const bool bUnsetObservable = RunUiCapabilityObservabilityHarness(UnsetImageWidget, ImageCaps, UnsetFailures);
+        const bool bUnsetObservable = RunUiCapabilityObservabilityHarness(UnsetImageWidget, ImageCaps, PrepareContext, UnsetFailures);
         TestFalse(TEXT("UGV2ImageWidgetBase with Unset scale policy fails observability"), bUnsetObservable);
         TestEqual(TEXT("1 failure for UGV2ImageWidgetBase with Unset policy"), UnsetFailures.Num(), 1);
 
@@ -264,7 +243,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         IconWidget->WidgetTree->RootWidget = InnerIcon;
 
         TArray<FGV2UiObservabilityFailure> IconFailures;
-        const bool bIconObservable = RunUiCapabilityObservabilityHarness(IconWidget, ImageCaps, IconFailures);
+        const bool bIconObservable = RunUiCapabilityObservabilityHarness(IconWidget, ImageCaps, PrepareContext, IconFailures);
         TestTrue(TEXT("UGV2IconWidgetBase capabilities are observable"), bIconObservable);
         TestEqual(TEXT("No failures for UGV2IconWidgetBase"), IconFailures.Num(), 0);
     }
@@ -286,7 +265,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree ButtonCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> ButtonFailures;
-        const bool bButtonObservable = RunUiCapabilityObservabilityHarness(ButtonWidget, ButtonCaps, ButtonFailures);
+        const bool bButtonObservable = RunUiCapabilityObservabilityHarness(ButtonWidget, ButtonCaps, PrepareContext, ButtonFailures);
         TestTrue(TEXT("UGV2ButtonWidgetBase capabilities are observable"), bButtonObservable);
         TestEqual(TEXT("No failures for UGV2ButtonWidgetBase"), ButtonFailures.Num(), 0);
 
@@ -294,7 +273,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         UGV2ButtonWidgetBase* UnboundButton = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
         UnboundButton->WidgetTree = NewObject<UWidgetTree>(UnboundButton);
         TArray<FGV2UiObservabilityFailure> UnboundFailures;
-        const bool bUnboundObservable = RunUiCapabilityObservabilityHarness(UnboundButton, ButtonCaps, UnboundFailures);
+        const bool bUnboundObservable = RunUiCapabilityObservabilityHarness(UnboundButton, ButtonCaps, PrepareContext, UnboundFailures);
         TestFalse(TEXT("Unbound UGV2ButtonWidgetBase fails observability"), bUnboundObservable);
         TestEqual(TEXT("1 failure for unbound UGV2ButtonWidgetBase (missing LabelText target)"), UnboundFailures.Num(), 1);
     }
@@ -320,7 +299,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree CheckboxCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> CheckboxFailures;
-        const bool bCheckboxObservable = RunUiCapabilityObservabilityHarness(CheckboxWidget, CheckboxCaps, CheckboxFailures);
+        const bool bCheckboxObservable = RunUiCapabilityObservabilityHarness(CheckboxWidget, CheckboxCaps, PrepareContext, CheckboxFailures);
         TestTrue(TEXT("UGV2CheckboxWidgetBase capabilities are observable"), bCheckboxObservable);
         TestEqual(TEXT("No failures for UGV2CheckboxWidgetBase"), CheckboxFailures.Num(), 0);
     }
@@ -349,7 +328,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree InputCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> InputFailures;
-        const bool bInputObservable = RunUiCapabilityObservabilityHarness(InputFieldWidget, InputCaps, InputFailures);
+        const bool bInputObservable = RunUiCapabilityObservabilityHarness(InputFieldWidget, InputCaps, PrepareContext, InputFailures);
         TestTrue(TEXT("UGV2InputFieldWidgetBase capabilities are observable"), bInputObservable);
         TestEqual(TEXT("No failures for UGV2InputFieldWidgetBase"), InputFailures.Num(), 0);
     }
@@ -375,7 +354,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree ProgressCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> ProgressFailures;
-        const bool bProgressObservable = RunUiCapabilityObservabilityHarness(ProgressBarWidget, ProgressCaps, ProgressFailures);
+        const bool bProgressObservable = RunUiCapabilityObservabilityHarness(ProgressBarWidget, ProgressCaps, PrepareContext, ProgressFailures);
         TestTrue(TEXT("UGV2ProgressBarWidgetBase capabilities are observable"), bProgressObservable);
         TestEqual(TEXT("No failures for UGV2ProgressBarWidgetBase"), ProgressFailures.Num(), 0);
     }
@@ -401,7 +380,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree PortraitCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> PortraitFailures;
-        const bool bPortraitObservable = RunUiCapabilityObservabilityHarness(PortraitWidget, PortraitCaps, PortraitFailures);
+        const bool bPortraitObservable = RunUiCapabilityObservabilityHarness(PortraitWidget, PortraitCaps, PrepareContext, PortraitFailures);
         TestTrue(TEXT("UGV2PortraitWidgetBase capabilities are observable"), bPortraitObservable);
         TestEqual(TEXT("No failures for UGV2PortraitWidgetBase"), PortraitFailures.Num(), 0);
     }
@@ -425,7 +404,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree RichTextCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> RichTextFailures;
-        const bool bRichTextObservable = RunUiCapabilityObservabilityHarness(RichTextWidget, RichTextCaps, RichTextFailures);
+        const bool bRichTextObservable = RunUiCapabilityObservabilityHarness(RichTextWidget, RichTextCaps, PrepareContext, RichTextFailures);
         TestTrue(TEXT("UGV2RichTextWidgetBase capabilities are observable"), bRichTextObservable);
         TestEqual(TEXT("No failures for UGV2RichTextWidgetBase"), RichTextFailures.Num(), 0);
     }
@@ -456,7 +435,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree PopoverCaps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> PopoverFailures;
-        const bool bPopoverObservable = RunUiCapabilityObservabilityHarness(PopoverWidget, PopoverCaps, PopoverFailures);
+        const bool bPopoverObservable = RunUiCapabilityObservabilityHarness(PopoverWidget, PopoverCaps, PrepareContext, PopoverFailures);
         for (const FGV2UiObservabilityFailure& Failure : PopoverFailures)
         {
             UE_LOG(LogTemp, Error, TEXT("PopoverObservabilityFailure: property '%s': %s"), *Failure.PropertyName, *Failure.Reason);
@@ -569,13 +548,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Parameters)
 {
-    const FGV2CapabilityObservabilityScopedImageCatalog ScopedImageCatalog;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError), bContextReady);
+    if (!bContextReady || ContextFixture.Get() == nullptr)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext& PrepareContext = *ContextFixture.Get();
 
     UWorld* World = MakeSweepWorld();
     const TArray<UClass*> ProductionHostImplementations = CollectProductionUiPropertyHostImplementations();
     TestTrue(TEXT("DUC-04: reflection discovers production IGV2UiPropertyHost implementations"), ProductionHostImplementations.Num() > 0);
 
-    auto SweepClass = [this, World](UClass* WidgetClass, const TCHAR* Label)
+    auto SweepClass = [this, World, &PrepareContext](UClass* WidgetClass, const TCHAR* Label)
     {
         UUserWidget* Host = CreateWidget<UUserWidget>(World, WidgetClass);
         if (Host == nullptr)
@@ -607,7 +594,7 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
         }
 
         TArray<FGV2UiObservabilityFailure> Failures;
-        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, PrepareContext, Failures);
         for (const FGV2UiObservabilityFailure& Failure : Failures)
         {
             AddError(FString::Printf(TEXT("%s: capability '%s' is not observable -- %s"),
@@ -739,7 +726,7 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
         const FGV2UiCapabilityTree Caps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> Failures;
-        const bool bObservable = RunUiCapabilityObservabilityHarness(Modal, Caps, Failures);
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Modal, Caps, PrepareContext, Failures);
         for (const FGV2UiObservabilityFailure& Failure : Failures)
         {
             AddError(FString::Printf(TEXT("UGV2ModalWidgetBase: capability '%s' is not observable -- %s"),
@@ -762,11 +749,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCollectionForgeryTest::RunTest(const FString& Parameters)
 {
-    const FGV2CapabilityObservabilityScopedImageCatalog ScopedImageCatalog;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError), bContextReady);
+    if (!bContextReady || ContextFixture.Get() == nullptr)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext& PrepareContext = *ContextFixture.Get();
 
     UWorld* World = MakeSweepWorld();
 
-    auto RunForgeryScenario = [this, World](EGV2ForgeryMode Mode, const TCHAR* ExpectedCode, const TCHAR* Label)
+    auto RunForgeryScenario = [this, World, &PrepareContext](EGV2ForgeryMode Mode, const TCHAR* ExpectedCode, const TCHAR* Label)
     {
         // The recursion instantiates a *fresh* entry instance via CreateWidget, with no seam
         // for the test to configure that specific instance -- ModeForNextInstance is a
@@ -792,7 +787,7 @@ bool FGV2UiCollectionForgeryTest::RunTest(const FString& Parameters)
         const FGV2UiCapabilityTree Caps = Builder.Build();
 
         TArray<FGV2UiObservabilityFailure> Failures;
-        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, Failures);
+        const bool bObservable = RunUiCapabilityObservabilityHarness(Host, Caps, PrepareContext, Failures);
 
         TestFalse(*FString::Printf(TEXT("%s: harness must reject this forged collection entry"), Label), bObservable);
 

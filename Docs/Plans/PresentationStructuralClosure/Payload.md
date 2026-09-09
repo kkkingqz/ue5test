@@ -258,7 +258,7 @@ depends_on:
     `ADR-0043` D1, но claim «эта ветка red-on-revert-доказана» был бы ложным без этой
     записи; условие закрытия там же).
 
-- [ ] **PSC-10B — Включить central style в transaction и удалить runtime accessors**
+- [x] **PSC-10B — Включить central style в transaction и удалить runtime accessors**
   - Зависимости: PSC-10A.
   - `IGV2UiStyleConsumer::ApplyCentralStyle` — второй путь применения, независимый от существующих видов операций. Его фактическое множество выводится из реализаций интерфейса; текущие прямые и косвенные обращения к Theme внутри этих классов являются scope задачи, а не фиксированным ручным списком.
   - Инвариант: ни один путь, ведущий к физической мутации, не разрешает семантику ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `INV-P5`, `D3`). Предыдущая формулировка `PSC-10` оставляла central style без владельца: под перевод существующих operation kinds он не подпадал, а содержащие его классы `PSC-12` переносит в модуль, где Theme недостижим по построению.
@@ -343,13 +343,37 @@ depends_on:
 
     Верификация: полный `Automation RunTests GV2` — 131/131.
 
-    Остаётся: 2 класса. `RichTextPopover` — не рядовой случай: его `ApplyCentralStyle` вызывается из `ApplyPopover` и делает содержательную работу (`UGV2TextPipeline::Apply(TitleText, …)`, рекурсия в `DescriptionText`), а сам popover создаётся по hover вне цикла prepare/commit экрана — тот же путь, что уже отмечен как недоказанный в [`STATUS-018`](../../Status/ImplementationStatus.md). `RichText` — третий путь: run/interactive style разрешается Slate-декоратором во время рендера. Плюс удаление `ApplyCentralStyle` как runtime API и строки pull'а в adapter, символы accessor'ов, `GetCoreMinimalTheme()`, обновление трёх документов. третий путь `RichTextWidgetBase`'s run/interactive style через Slate-декоратор; удаление `ApplyCentralStyle` как runtime API и строки pull'а в adapter; символы `GetConfiguredTheme()`/`GetConfiguredRegistry()`; ограничение `GetCoreMinimalTheme()` recovery-поверхностью; inventory-гейты; обновление `WidgetRegistry.md`, `UIDocumentAndReconciliation.md` и note к `ADR-0012`.
+    Остаётся: 2 класса. `RichTextPopover` — не рядовой случай: его `ApplyCentralStyle` вызывается из `ApplyPopover` и делает содержательную работу (`UGV2TextPipeline::Apply(TitleText, …)`, рекурсия в `DescriptionText`), а сам popover создаётся по hover вне цикла prepare/commit экрана — тот же путь, что уже отмечен как недоказанный в [`STATUS-018`](../../Status/ImplementationStatus.md). `RichText` — третий путь: run/interactive style разрешается Slate-декоратором во время рендера. Плюс удаление `ApplyCentralStyle` как runtime API и строки pull'а в adapter, символы accessor'ов, `GetCoreMinimalTheme()`, обновление трёх документов.
+
+  - **Реализация (2026-09-09), срез 6 — rich-text поверхность, снятие accessor'ов, закрытие задачи.**
+
+    `RichText` переведён вместе с `RichTextPopover`, потому что это одна поверхность: popover создаёт сам rich text по hover. Решение — **роль, которую виджет сохраняет**. Обычные роли применяются и забываются, но rich-text run стилизует Slate-декоратор синхронно во время рендера, вне любой транзакции; поэтому `FPreparedRichTextStyle` несёт разрешённые таблицы токенов (класс стиля и нескалированный размер на токен, цвета, размеры, interactive style, popover class), а виджет их хранит. Хранится набор готовых значений, а не тема: достать авторитет из декоратора больше нельзя даже в принципе. Размер по-прежнему вычисляется на живом вьюпорте, иначе текст перестал бы перетекать при смене разрешения.
+
+    `RichTextPopover` **намеренно перестал быть `IGV2UiStyleConsumer`**: этот интерфейс — перечислитель виджетов, которые обходит walk экрана, а popover в подготовленном поддереве не бывает никогда. Ветка препарера для него существовала бы только чтобы inventory-гейт считал класс покрытым — проверка не на production path. Его роль (`FPreparedRichTextPopoverStyle`) готовится вместе с ролью владельца и доставляется единственной точкой входа `InitializePopover(Model, Style)`; прежний двухшаговый API, где `InitializePopover` без стиля молча возвращал false, удалён.
+
+    Соответственно у гейта два **разных** перечислителя вместо одного: Prepare сверяется с реализациями интерфейса, а Apply — с альтернативами `FPreparedCentralStylePayload`. Роль без ветки Apply и ветка без роли краснеют по отдельности; оба случая имеют synthetic self-test.
+
+    Символы `GetConfiguredTheme()`/`GetConfiguredRegistry()` удалены. Вместе с ними уехали в снимок и две вещи, которые они делали помимо доступа: guard'ы `IsInAsyncLoadingThread()`/`IsGarbageCollecting()` вокруг синхронной загрузки (это свойство загрузки ассета, не accessor'а) и fallback текстового каталога на core-minimal (теперь `FGV2ResolvedUiTheme::FallbackTheme`, пришпиленный при сборке снимка). А вот подстановка core-minimal **вместо** настроенной темы намеренно не переехала: сессия, чья тема не разрешается, обязана не стартовать и показать cold-start recovery, а не работать на подменной презентации. Это записано тестом `SnapshotThemeResolutionContract`, проверяющим обе стороны.
+
+    `RichTextPopoverClass` тоже разрешается один раз в снимке: до этого препарер звал `LoadSynchronous()` для каждого rich text на каждом реконсайле, и consumer звал её же ещё раз на проверке доступности.
+
+    **Найдено при доводке: катастрофическое восстановление перестраивало дерево без стилей.** `PerformCatastrophicRecovery` звал `PrepareReconcile` без `PrepareContext` — при pull-модели это было безобидно, потому что виджеты тянули тему сами. Теперь это давало физически корректный и полностью нестилизованный UI, молча. `PrepareContext` стал **обязательным** параметром `PrepareReconcile`/`Reconcile` (не указателем со значением по умолчанию), восстановление получает контекст того реконсайла, который его вызвал, а `PrepareForSubtree` при снимке без темы возвращает ошибку вместо тихого пропуска. Проверено в `PresentationCatastrophicRecoveryContract`: разделитель внутри восстанавливаемого экрана сбрасывается на sentinel перед катастрофой и обязан вернуться к значению темы после. Red-on-revert: probe, очищающий `CentralStyleTransaction` перед commit'ом восстановления, даёт «re-applied central style … was -41.500000».
+
+    Гейт `validate_central_style_runtime_boundary` перестроен на производные множества и там, где запрещает загрузку контента: раньше это был список из двух имён файлов — ровно та конструкция, из-за которой `GetConfiguredTheme()` три раунда не попадал в authority set (`PAH-R7`). Теперь участник central style определяется по тому, что файл делает (готовит поддерево, диспетчеризует операцию, определяет value sink), а проверка идёт **по функциям**, а не по файлам: у виджета изображения законно есть и tint-роль, и разрешение image resource, и запрет не должен превращаться в файловый.
+
+    Тестовые сиды тоже свели к одному: две рукописные копии «заполнить resolved presentation» (в фикстуре и в subsystem-тестах) заменены на `UGV2TextPipeline::ResolveLiteralForAutomationTest`, который делит реализацию с production-резолвером; `LoadTheme()` в фикстуре больше не подменяет тему на core-minimal, потому что такую конфигурацию продакшн отвергает. `REV3-09` строит сессию **без** popover-рендерера до сборки снимка (мутировать тему после сборки больше некуда — значение уже разрешено), с RAII-восстановлением общего ассета.
+
+    `STATUS-018` закрыт: `REV3-09` теперь исполняет hover-ветку через настоящий `SetPrepareContext` на снимке, построенном `FGV2SessionContentCandidate::Build`. Строка удалена из реестра по его собственному правилу («полное закрытие удаляет строку»).
+
+    Хранимая роль потребовала GC-якорей: `FPreparedRichTextStyle` — нерефлексируемое значение нижнего модуля, коллектор в него не видит, поэтому и виджет, и popover держат `UPROPERTY(Transient)`-массив всех классов стилей и popover class, а не только popover class.
+
+    Верификация: `Automation RunTests GV2` — 133/133 из машинного отчёта; `ctest` — 96/96; все 14 гейтов и их self-test'ы; `validate_docs` — 185 файлов; **`-run=CompileAllBlueprints` — 0 errors, 0 warnings, 0 failed to load**, включая все 47 `WBP_*` проекта: удаление `UFUNCTION` `GetViewportHeight`/`ResolveEffectiveFontSize`/`ApplyCentralStyle`/`ApplyImageResource` ни один Widget Blueprint не сломало. третий путь `RichTextWidgetBase`'s run/interactive style через Slate-декоратор; удаление `ApplyCentralStyle` как runtime API и строки pull'а в adapter; символы `GetConfiguredTheme()`/`GetConfiguredRegistry()`; ограничение `GetCoreMinimalTheme()` recovery-поверхностью; inventory-гейты; обновление `WidgetRegistry.md`, `UIDocumentAndReconciliation.md` и note к `ADR-0012`.
 
 ## Проверка milestone
 
-- [ ] Верхний слой только разрешает semantics и формирует transaction; lower-facing types не могут вызвать authority.
-- [ ] Все operation kinds перечисляет enum/variant, а не задача или test list.
-- [ ] Ни один payload не требует lookup/load при Apply.
-- [ ] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация.
-- [ ] `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде без исключений; `GetCoreMinimalTheme()` достижим только из UE-native cold-start recovery.
-- [ ] `UCLASS` paths ещё не менялись; production path работает через временный delegating adapter.
+- [x] Верхний слой только разрешает semantics и формирует transaction; lower-facing types не могут вызвать authority.
+- [x] Все operation kinds перечисляет enum/variant, а не задача или test list.
+- [x] Ни один payload не требует lookup/load при Apply.
+- [x] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация.
+- [x] `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде без исключений; `GetCoreMinimalTheme()` достижим только из UE-native cold-start recovery и из bootstrap-разрешения снимка, которое его туда и пришпиливает.
+- [x] `UCLASS` paths ещё не менялись; production path работает через временный delegating adapter.

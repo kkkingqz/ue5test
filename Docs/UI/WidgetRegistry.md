@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.13
-updated: 2026-09-08
+version: 3.14
+updated: 2026-09-09
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -58,9 +58,9 @@ Entry регистрируется до registry freeze. Duplicate ID с нес�
 
 ```text
 UGV2ScreenWidgetBase
-UGV2TextWidgetBase            implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
+UGV2TextWidgetBase            implements IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2RichTextWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
-UGV2RichTextPopoverWidgetBase  implements IGV2UiStyleConsumer
+UGV2RichTextPopoverWidgetBase  implements IGV2UiStyleConsumer; transient value sink for prepared RichText popovers
 UGV2ImageWidgetBase           implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2ButtonWidgetBase          implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
 UGV2CheckboxWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
@@ -68,9 +68,9 @@ UGV2InputFieldWidgetBase      implements IGV2UiStyleConsumer, IGV2UiPropertyHost
 UGV2DropdownSelectWidgetBase  implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget
 UGV2ButtonListWidgetBase      implements IGV2UiStyleConsumer, IGV2UiPropertyHost
 UGV2ProgressBarWidgetBase     implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
-UGV2PortraitWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
-UGV2ModalWidgetBase           implements IGV2UiStyleConsumer, IGV2UiPropertyHost
-UGV2TabContainerWidgetBase    implements IGV2UiStyleConsumer, IGV2UiPropertyHost
+UGV2PortraitWidgetBase        implements IGV2UiPropertyHost, IGV2ScreenFieldHost
+UGV2ModalWidgetBase           implements IGV2UiPropertyHost
+UGV2TabContainerWidgetBase    implements IGV2UiPropertyHost
 UGV2SeparatorWidgetBase       implements IGV2UiStyleConsumer
 UGV2LoadingIndicatorWidgetBase implements IGV2UiStyleConsumer
 ```
@@ -102,7 +102,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 
 - **`Scalar`**: примитивные скалярные значения (`bool`, `int64`, `double`, `FString`).
 - **`Key`**: нормализованный семантический идентификатор (`FName`).
-- **`Text`**: разрешённая модель локализованного текста `FGV2TextViewModel` (`FText` + `StyleToken` + `NormalizedMarkup`).
+- **`Text`**: разрешённая модель локализованного текста `FGV2TextViewModel`: `FText`, нормализованная разметка и готовые style/scale values; Apply не повторяет Theme lookup.
 - **`Ref`**: Stable ID ресурса или сущности (`FString`).
 - **`Binding`**: непрозрачный описатель привязки команды `FGV2UiBindingHandle`.
 - **`Object`**: именованный набор свойств `FGV2PreparedUiObject` (`TMap<FName, FGV2PreparedUiValue>`). Используется как контейнер верхнего уровня экрана; прямое потребление свойствами виджетов запрещено (неприменимый вид в фабрике потребителей; композиты используют плоские маппинги свойств либо `CollectionHost`/`NestedScreen`).
@@ -122,7 +122,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 ### Двухфазный конвейер мутаций
 
 Мутация любого `IGV2UiPropertyHost` разделена на две строгие фазы:
-1. `PrepareUiHostProperties(Value, OutPlan, OutError)`: выполняет полную валидацию, разрешение ресурсов, текста и дочерних коллекций **off-tree**, формируя иммутабельный план `FGV2UiHostMutationPlan`. Ни один физический виджет UMG на этой фазе не модифицируется.
+1. `PrepareUiHostProperties(Value, PrepareContext, OutPlan, OutError)`: выполняет полную валидацию, разрешение ресурсов, текста, central style и дочерних коллекций **off-tree**, формируя иммутабельный план и prepared presentation transaction. Ни один физический виджет UMG на этой фазе не модифицируется.
 2. `CommitUiHostProperties(Plan)`: атомарно применяет подготовленный план ко всем потребителям свойств.
 
 ## Implemented vertical slice API
@@ -174,7 +174,9 @@ Repeated-field items обязаны иметь deterministic `key`. Общий `
 
 ## Central style contract
 
-`DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает identity active theme через UE-only project config, но резолюция происходит один раз — при построении session content snapshot (ADR-0043 D1), не заново на каждый `Commit`. Prepare несёт уже разрешённые typography/style значения; `GetConfiguredTheme()`/`ThemeAsset.LoadSynchronous()` не должны быть достижимы из Apply-фазы (`PAH-R1`, закрывается `PSC-04…06`, `PSC-09B`, `PSC-10A`, `PSC-10B`, `PSC-13`). Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
+`DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает identity active theme через UE-only project config, но резолюция происходит один раз — при построении session content snapshot (ADR-0043 D1), не заново на каждый `Commit`. Prepare получает Theme только через `FGV2PresentationPrepareContext` и переносит в transaction готовые CommonUI/Slate classes, brushes, colors, spacing и scale policies. Theme object, token lookup и configured accessors Apply-фазе недоступны. Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
+
+`IGV2UiStyleConsumer` является marker-интерфейсом фактических runtime style targets. Их множество перечисляет reflection/inventory gate; каждый target обязан иметь ветку в `GV2CentralStylePreparer` и exhaustive Apply visitor. `DropdownSelect` владеет стилем собственного поддерева, поэтому общий обход не стилизует его `HeaderButton` второй раз. Новые collection entries и nested tabs готовят свою central-style transaction до публикации и применяют её после commit дочерних свойств. Hover-popover создаётся позже, но получает сохранённый prepared payload владельца и применяет его новой value-only transaction без повторного Prepare.
 
 Theme обязан задавать:
 
@@ -241,7 +243,7 @@ Canonical localized markup:
 
 Parser преобразует вложенные scopes в flat internal `<gv2 ...>...</>` runs для Slate. Этот internal markup запрещено хранить в localization/content. Interactive run наследует полностью разрешённый font/typeface/size/outline окружающего scope и добавляет только hyperlink interaction state.
 
-**Target rule (`ADR-0043`, `PSC-10B`):** central style runtime-компонента является resolved operation общей `FGV2PreparedPresentationTransaction`. Theme resolution выполняется Prepare-фазой из session snapshot; физическое применение выполняет только transaction façade. No-argument `IGV2UiStyleConsumer.ApplyCentralStyle()` и runtime-вызов стилизации из `NativePreConstruct` не являются частью target API.
+Central style runtime-компонента является resolved operation общей `FGV2PreparedPresentationTransaction`. Theme resolution выполняется Prepare-фазой из session snapshot; физическое применение получает только prepared values. No-argument `IGV2UiStyleConsumer.ApplyCentralStyle()` удалён, а `NativePreConstruct` не применяет runtime style. RichText run/interactive/popover styles тоже разрешаются заранее и входят в prepared RichText style payload; Slate decorator и создаваемый им popover не читают Theme при рендере.
 
 Designer preview не является исключением к runtime authority boundary. При `IsDesignTime()` компонент может применить только сериализованные Widget/Blueprint defaults через pure value-only helper; configured Theme, snapshot, content lookup и loading ему недоступны. Preview остаётся структурной визуальной подсказкой, но не обязан воспроизводить выбранную runtime Theme до запуска Prepare. Отсутствующий required `BindWidget` остаётся failure; silent local fallback для production component запрещён.
 

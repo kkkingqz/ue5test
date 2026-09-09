@@ -3,12 +3,6 @@
 #include "UI/GV2UiTheme.h"
 #include "UI/GV2UiCapability.h"
 
-void UGV2ListViewWidgetBase::NativePreConstruct()
-{
-    Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
-}
-
 void UGV2ListViewWidgetBase::SetOrientation(EOrientation InOrientation)
 {
     Orientation = InOrientation;
@@ -51,16 +45,6 @@ TArray<FName> UGV2ListViewWidgetBase::GetActiveKeys() const
     TArray<FName> Keys;
     ActiveWidgetsByKey.GetKeys(Keys);
     return Keys;
-}
-
-bool UGV2ListViewWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: this implementation applies nothing from the Theme. The fetch that used
-    // to stand here read the configured Theme only to null-check it and threw the value
-    // away -- a value obtained and discarded, the same family as ResourceIcon /
-    // ApplyOptionalXxx / OnBindingInvoked / bFatal. It also inflated this task's scope,
-    // because the class has no central style payload at all.
-    return true;
 }
 
 void UGV2ListViewWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const

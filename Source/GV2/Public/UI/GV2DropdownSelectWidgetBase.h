@@ -77,8 +77,6 @@ public:
         float InMaxPopupHeight,
         const GV2PresentationApply::FPreparedViewportScalePolicy& InPopupScale);
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }

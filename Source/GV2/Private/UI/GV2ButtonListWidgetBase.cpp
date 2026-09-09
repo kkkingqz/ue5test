@@ -77,10 +77,3 @@ void UGV2ButtonListWidgetBase::ApplyItemPaddingStyleValue(const FMargin& Padding
         }
     }
 }
-
-bool UGV2ButtonListWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedItemPaddingStyle, written by ApplyItemPaddingStyleValue.
-    return true;
-}
-

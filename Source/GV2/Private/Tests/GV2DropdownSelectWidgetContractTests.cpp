@@ -6,6 +6,7 @@
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2PropertyConsumers.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "Components/Border.h"
 #include "Components/ScrollBox.h"
 #include "Engine/Engine.h"
@@ -19,6 +20,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2DropdownSelectWidgetContractTests::RunTest(const FString& Parameters)
 {
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
     UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
     TestNotNull(TEXT("TestWorld created"), TestWorld);
     if (TestWorld == nullptr)
@@ -52,9 +65,8 @@ bool FGV2DropdownSelectWidgetContractTests::RunTest(const FString& Parameters)
         TestNotNull(TEXT("Exposes is_open boolean capability"), Tree.FindProperty(TEXT("is_open")));
 
         // 2. Direct property host interface check
-        FGV2TextViewModel PlaceholderText;
-        PlaceholderText.Text = FText::FromString(TEXT("Select item..."));
-        PlaceholderText.StyleToken = TEXT("default");
+        const FGV2TextViewModel PlaceholderText =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("Select item..."), TEXT("default"));
         Dropdown->ApplyPlaceholderText(PlaceholderText);
 
         const FGV2UiBindingHandle TestBinding = FGV2UiBindingHandle::Create(TEXT("core:command.test"));
@@ -70,6 +82,7 @@ bool FGV2DropdownSelectWidgetContractTests::RunTest(const FString& Parameters)
             TSharedPtr<IGV2PropertyConsumer> CollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                 EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
             TestNotNull(TEXT("Collection consumer created"), CollConsumer.Get());
+            CollConsumer->SetPrepareContext(PrepareContext);
 
             auto ItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
             ItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
@@ -78,13 +91,10 @@ bool FGV2DropdownSelectWidgetContractTests::RunTest(const FString& Parameters)
             static_cast<FGV2KeyedCollectionPropertyConsumer*>(CollConsumer.Get())->SetCompiledItemSpec(
                 ItemSpec, TEXT("core:schema.ui_field.dropdown_select.v1"), TEXT("items"));
 
-            FGV2TextViewModel Opt1Text;
-            Opt1Text.Text = FText::FromString(TEXT("Option A"));
-            Opt1Text.StyleToken = TEXT("default");
-
-            FGV2TextViewModel Opt2Text;
-            Opt2Text.Text = FText::FromString(TEXT("Option B"));
-            Opt2Text.StyleToken = TEXT("default");
+            const FGV2TextViewModel Opt1Text =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Option A"), TEXT("default"));
+            const FGV2TextViewModel Opt2Text =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Option B"), TEXT("default"));
 
             TMap<FString, FGV2PreparedUiValue> Item1Map;
             Item1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("option_a")));

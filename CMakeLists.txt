@@ -324,6 +324,23 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_field_inventory.py"
             "--self-test"
     )
+    # PSC-10B (ADR-0043 D3): derive the style-target set from actual interface
+    # implementations, require matching Prepare/Apply branches, and reject all retired
+    # pull-style accessors, late hover resolution, and value-sink calls outside the
+    # transaction façade (except IsDesignTime-only serialized preview writes).
+    add_test(
+        NAME central_style_runtime_boundary_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_central_style_runtime_boundary.py"
+    )
+    add_test(
+        NAME central_style_runtime_boundary_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_central_style_runtime_boundary.py"
+            "--self-test"
+    )
     # PSC-09B (ADR-0043 D2/D3): the set of IGV2PropertyConsumer kinds is derived from
     # GV2PropertyConsumers.h's own class declarations, not a task-authored list; every one
     # of them must route its own Commit through the transaction protocol.

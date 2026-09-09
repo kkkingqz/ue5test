@@ -22,7 +22,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
 {
-    UGV2UiTheme* Theme = const_cast<UGV2UiTheme*>(UGV2UiThemeSettings::GetConfiguredTheme());
+    const UGV2UiThemeSettings* ThemeSettings = GetDefault<UGV2UiThemeSettings>();
+    UGV2UiTheme* Theme = ThemeSettings != nullptr && !ThemeSettings->ThemeAsset.IsNull()
+        ? ThemeSettings->ThemeAsset.LoadSynchronous()
+        : UGV2UiTheme::GetCoreMinimalTheme();
     TestNotNull(TEXT("Configured theme is valid"), Theme);
     if (Theme == nullptr)
     {
@@ -140,6 +143,9 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
     };
 
     TMap<FName, float> MeasuredTextSizes;
+    Theme->TextCatalog.Add(
+        TEXT("core:text.automation.semantic_font_sample"),
+        FText::FromString(TEXT("Sample Text")));
 
     if (TextWidget && TextWidget->GetTextBlock()
         && RichTextWidget && RichTextWidget->GetRichTextBlock()
@@ -164,47 +170,38 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
 
             // 1. Text widget: Apply via production path and read renderer control
             FGV2TextViewModel TextModel;
-            TextModel.Text = FText::FromString(TEXT("Sample Text"));
-            TextModel.StyleToken = Token;
+            FString ResolveError;
+            TestTrue(
+                *FString::Printf(TEXT("[%s][%s] Prepare resolves the semantic text payload"), *HeightTag, *Token.ToString()),
+                UGV2TextPipeline::ResolveForAutomationTest(
+                    Theme,
+                    TEXT("core:text.automation.semantic_font_sample"),
+                    {},
+                    Token,
+                    TextModel,
+                    ResolveError));
             TestTrue(*FString::Printf(TEXT("[%s][%s] ApplyText succeeded"), *HeightTag, *Token.ToString()), TextWidget->ApplyText(TextModel));
-            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(TextWidget);
             const float ActualTextSize = TextWidget->GetTextBlock()->GetFont().Size;
             MeasuredTextSizes.Add(Token, ActualTextSize);
 
             // 2. RichText widget: Apply via production path and read renderer control
-            FGV2TextViewModel RichModel;
-            RichModel.Text = FText::FromString(TEXT("Sample Rich Text"));
-            RichModel.StyleToken = Token;
-            RichTextWidget->ApplyText(RichModel);
-            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(RichTextWidget);
+            TestTrue(TEXT("RichText accepts the prepared text"), RichTextWidget->ApplyText(TextModel));
             const float ActualRichTextSize = RichTextWidget->GetRichTextBlock()->GetCurrentDefaultTextStyle().Font.Size;
 
             // 3. Button widget: Apply via production path and read renderer control
-            FGV2TextViewModel ButtonText;
-            ButtonText.Text = FText::FromString(TEXT("Sample Button"));
-            ButtonText.StyleToken = Token;
             ButtonWidget->SetKey(TEXT("btn_test"));
             ButtonWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("core:command.test")));
-            ButtonWidget->ApplyText(ButtonText);
-            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(ButtonWidget);
+            TestTrue(TEXT("Button accepts the prepared text"), ButtonWidget->ApplyText(TextModel));
             const float ActualButtonSize = ButtonWidget->GetLabelText()->GetFont().Size;
 
             // 4. InputField widget: Apply via production path and read renderer control
-            FGV2TextViewModel InputText;
-            InputText.Text = FText::FromString(TEXT("Sample Input"));
-            InputText.StyleToken = Token;
             InputFieldWidget->SetKey(TEXT("input_test"));
             InputFieldWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("core:command.test")));
-            InputFieldWidget->ApplyText(InputText);
-            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(InputFieldWidget);
+            TestTrue(TEXT("InputField accepts the prepared text"), InputFieldWidget->ApplyText(TextModel));
             const float ActualInputSize = InputFieldWidget->GetEditableTextBox()->WidgetStyle.TextStyle.Font.Size;
 
             // 5. DropdownSelect widget: Apply via production path and read renderer control
-            FGV2TextViewModel DropdownPlaceholder;
-            DropdownPlaceholder.Text = FText::FromString(TEXT("Select item"));
-            DropdownPlaceholder.StyleToken = Token;
-            DropdownWidget->ApplyPlaceholderText(DropdownPlaceholder);
-            IGV2UiStyleConsumer::Execute_ApplyCentralStyle(DropdownWidget);
+            TestTrue(TEXT("Dropdown accepts the prepared text"), DropdownWidget->ApplyPlaceholderText(TextModel));
             const float ActualDropdownSize = DropdownWidget->GetHeaderButton()->GetLabelText()->GetFont().Size;
 
             // Verify actual renderer font size matches ExpectedSize

@@ -17,6 +17,7 @@
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiSchemaCache.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "Misc/Paths.h"
 #include "UObject/UnrealType.h"
 
@@ -937,6 +938,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& Parameters)
 {
     using namespace GV2ContentCore;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("GBH-02B: presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
 
     // GBH-02B: REM-05 closed. DescribeUiCapabilities' CollectionHost case now wires
     // EntryWidgetClass/KeyPropertyName into AddKeyedCollection, and the item's own
@@ -1043,8 +1055,8 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
 
     auto MakeItemValue = [](const TCHAR* Key, const TCHAR* Text) -> FGV2PreparedUiValue
     {
-        FGV2TextViewModel TextModel;
-        TextModel.Text = FText::FromString(Text);
+        const FGV2TextViewModel TextModel =
+            GV2PresentationTestFixtures::MakeResolvedText(Text);
         TMap<FString, FGV2PreparedUiValue> Fields;
         Fields.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(Key));
         Fields.Add(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));
@@ -1064,7 +1076,7 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
         Composite, Builder.Build(), *FirstCandidate, Schema,
         TEXT("test:schema.gbh02b_collection_first_entry.v1"), TEXT(""),
         Composite->GetPropertyHostState().GetLastCommittedProperties(),
-        Plan, Diagnostics);
+        Plan, Diagnostics, nullptr, PrepareContext);
     TestTrue(
         *FString::Printf(TEXT("GBH-02B: Prepare creates the first entry of a genuinely empty collection [Diagnostics: %s]"),
             Diagnostics.Num() > 0 ? *Diagnostics[0].ToString() : TEXT("")),
@@ -1100,7 +1112,7 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
         Composite, Builder.Build(), *SecondCandidate, Schema,
         TEXT("test:schema.gbh02b_collection_first_entry.v1"), TEXT(""),
         Composite->GetPropertyHostState().GetLastCommittedProperties(),
-        SecondPlan, SecondDiagnostics);
+        SecondPlan, SecondDiagnostics, nullptr, PrepareContext);
     TestTrue(TEXT("GBH-02B: Prepare succeeds for a second entry on the now-non-empty collection"), bSecondPrepared);
     FString SecondFailedPath, SecondCommitError;
     const bool bSecondCommitted = bSecondPrepared && CommitUiHostProperties(Composite, SecondPlan, SecondFailedPath, SecondCommitError);

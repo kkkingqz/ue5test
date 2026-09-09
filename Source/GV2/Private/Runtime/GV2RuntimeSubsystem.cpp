@@ -15,7 +15,7 @@
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
-#include "UI/GV2TextPipeline.h"
+#include "UI/GV2UiTheme.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
@@ -30,6 +30,17 @@ TOptional<GV2ContentHostSupport::FResolvedPackageSet> ToTOptional(
         return {};
     }
     return TOptional<GV2ContentHostSupport::FResolvedPackageSet>(MoveTemp(*Set));
+}
+
+FString ResolveRecoveryText(const FString& TextId, const FString& Fallback)
+{
+    const UGV2UiTheme* Theme = UGV2UiTheme::GetCoreMinimalTheme();
+    const FText* Text = Theme != nullptr ? Theme->TextCatalog.Find(TextId) : nullptr;
+    if (Text == nullptr && Theme != nullptr)
+    {
+        Text = Theme->FallbackTextCatalog.Find(TextId);
+    }
+    return Text != nullptr ? Text->ToString() : Fallback;
 }
 
 // TSL-02/PSC-02 (ADR-0043 D1/D5): the SINGLE package-set resolution point for this
@@ -249,15 +260,12 @@ void UGV2RuntimeSubsystem::StartSession()
                 UGV2RecoveryScreenWidget::StaticClass());
             if (RecoveryScreen != nullptr)
             {
-                FGV2TextViewModel ResolvedTitle;
-                FGV2TextViewModel ResolvedDesc;
-                FString Error;
-                const FString TitleText = UGV2TextPipeline::Resolve(TEXT("core:text.screen.recovery.title"), {}, FName("title"), ResolvedTitle, Error)
-                    ? ResolvedTitle.Text.ToString()
-                    : TEXT("Recovery");
-                const FString MessageText = UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.description"), {}, FName("default"), ResolvedDesc, Error)
-                    ? ResolvedDesc.Text.ToString()
-                    : TEXT("Session initialization rejected by host lifecycle");
+                const FString TitleText = ResolveRecoveryText(
+                    TEXT("core:text.screen.recovery.title"),
+                    TEXT("Recovery"));
+                const FString MessageText = ResolveRecoveryText(
+                    TEXT("core:text.screen.error.description"),
+                    TEXT("Session initialization rejected by host lifecycle"));
 
                 if (RecoveryScreen->InitializeRecoveryScreen(TitleText, MessageText))
                 {
@@ -396,19 +404,25 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
     // (before Ready), or the published snapshot for every later document update.
     const FGV2SessionContentSnapshot* SnapshotForPrepare =
         Coordinator ? Coordinator->GetContentSnapshotForPrepare() : nullptr;
-    const TOptional<FGV2PresentationPrepareContext> PrepareContext =
-        SnapshotForPrepare != nullptr
-            ? TOptional<FGV2PresentationPrepareContext>(FGV2PresentationPrepareContext(*SnapshotForPrepare))
-            : TOptional<FGV2PresentationPrepareContext>();
+    // PSC-10B: without a snapshot there is no presentation authority at all, and since no
+    // widget resolves a Theme of its own any more, reconciling anyway would publish an
+    // unstyled document. Refuse the document instead of degrading it silently.
+    if (SnapshotForPrepare == nullptr)
+    {
+        UE_LOG(
+            LogGV2Runtime,
+            Error,
+            TEXT("UI Document reconciliation refused: no session content snapshot is available to prepare against"));
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContext(*SnapshotForPrepare);
 
     if (!Reconciler->Reconcile(
             ActiveGameShell,
             Document,
             ScreenFactory,
             ReconcileError,
-            nullptr,
-            nullptr,
-            PrepareContext.IsSet() ? &PrepareContext.GetValue() : nullptr))
+            PrepareContext))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("UI Document reconciliation failed: %s"), *ReconcileError);
         return false;

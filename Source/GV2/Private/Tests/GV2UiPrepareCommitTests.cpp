@@ -14,6 +14,7 @@
 #include "Components/Button.h"
 #include "CommonTextBlock.h"
 #include "UI/GV2PanelWidgetBase.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "Engine/GameInstance.h"
 
 namespace
@@ -104,8 +105,8 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         Schema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
         Schema.Fields.push_back({ "percent", false, MakeScalarSpec(EScalarFieldKind::Number, 0.0, 1.0) });
 
-        FGV2TextViewModel TextModel;
-        TextModel.Text = FText::FromString(TEXT("PreparedTitle"));
+        const FGV2TextViewModel TextModel =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("PreparedTitle"));
         TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
         Fields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));
         Fields.Emplace(TEXT("percent"), FGV2PreparedUiValue::MakeNumber(0.75));
@@ -204,8 +205,8 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         NewSchema.Kind = EUiFieldKind::Object;
         NewSchema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
 
-        FGV2TextViewModel NewText;
-        NewText.Text = FText::FromString(TEXT("NewText"));
+        const FGV2TextViewModel NewText =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("NewText"));
         TArray<TPair<FString, FGV2PreparedUiValue>> NewFields;
         NewFields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(NewText));
         const TSharedRef<const FGV2PreparedUiObject> NewCandidate = FGV2PreparedUiObject::Create(MoveTemp(NewFields));
@@ -259,8 +260,8 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         Schema.Kind = EUiFieldKind::Object;
         Schema.Fields.push_back({ "text", false, std::make_shared<FCompiledUiFieldSpec>(EUiFieldKind::Text) });
 
-        FGV2TextViewModel TextModel;
-        TextModel.Text = FText::FromString(TEXT("ChildFailure"));
+        const FGV2TextViewModel TextModel =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("ChildFailure"));
         TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
         Fields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));
         const TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(MoveTemp(Fields));
@@ -293,8 +294,8 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         UCommonTextBlock* LabelWidget = Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")));
         UProgressBar* BarWidget = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")));
 
-        FGV2TextViewModel OldText;
-        OldText.Text = FText::FromString(TEXT("OldRollbackText"));
+        const FGV2TextViewModel OldText =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("OldRollbackText"));
 
         FGV2UiHostMutationPlan ForwardPlan;
         FGV2UiHostMutationPlan RollbackPlan;
@@ -302,8 +303,8 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
 
         // Mutation 0: text, new value (will already be committed when percent fails).
         {
-            FGV2TextViewModel NewText;
-            NewText.Text = FText::FromString(TEXT("NewRollbackText"));
+            const FGV2TextViewModel NewText =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("NewRollbackText"));
             const FGV2UiPropertyCapability TextCap;
 
             TSharedPtr<IGV2PropertyConsumer> ForwardConsumer = MakeShared<FGV2TextPropertyConsumer>();
@@ -390,10 +391,10 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         UCommonTextBlock* LabelWidget = Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")));
         UProgressBar* BarWidget = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")));
 
-        FGV2TextViewModel OldText;
-        OldText.Text = FText::FromString(TEXT("OldRollbackText"));
-        FGV2TextViewModel NewText;
-        NewText.Text = FText::FromString(TEXT("NewRollbackText"));
+        const FGV2TextViewModel OldText =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("OldRollbackText"));
+        const FGV2TextViewModel NewText =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("NewRollbackText"));
         const FGV2UiPropertyCapability TextCap;
 
         FGV2UiHostMutationPlan ForwardPlan;

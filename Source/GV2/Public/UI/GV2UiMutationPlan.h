@@ -105,7 +105,8 @@ GV2_API bool PrepareUiHostRollbackPlan(
     const FString& PropertyPathPrefix,
     FGV2UiHostMutationPlan& OutPlan,
     TArray<FGV2UiSchemaCompatibilityDiagnostic>& OutDiagnostics,
-    const TArray<FString>* ActiveCompositionChain = nullptr);
+    const TArray<FString>* ActiveCompositionChain = nullptr,
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr);
 
 /**
  * Prepares all property mutations for a host widget off-tree without mutating physical widget state.

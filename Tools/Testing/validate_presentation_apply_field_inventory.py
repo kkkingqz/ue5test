@@ -91,6 +91,7 @@ ALLOWED_BASE_TYPES = {
     "FProgressBarStyle",
     "FCheckBoxStyle",
     "FEditableTextBoxStyle",
+    "FHyperlinkStyle",
 }
 
 # UObject-derived types a TWeakObjectPtr<...> field may point to. Structurally, this
@@ -114,6 +115,11 @@ ALLOWED_SUBCLASS_TARGETS = {
     "UCommonTextStyle",
     # PSC-10B: CommonUI's own button style class, same category as UCommonTextStyle above.
     "UCommonButtonStyle",
+    # PSC-10B: a widget class ALREADY LOADED during Prepare. A TSubclassOf is a hard
+    # reference to a loaded class -- unlike TSoftClassPtr it cannot trigger a load at Apply
+    # time, which is the property that matters here (the FORBIDDEN_SUBSTRINGS list rejects
+    # the soft forms separately).
+    "UUserWidget",
 }
 
 
@@ -180,6 +186,17 @@ def classify_field(raw_type: str, field_name: str, local_types: set[str]) -> str
             f"TSubclassOf<{inner}> -- '{inner}' is not in the allowed plain "
             "Engine/UMG class target list; classify it explicitly"
         )
+
+    # PSC-10B: a keyed table of classified values. The key must be a plain scalar and the
+    # value must itself classify, so a map cannot smuggle in a type a field could not.
+    map_match = re.fullmatch(r"TMap\s*<\s*(?P<key>[\w:]+)\s*,\s*(?P<value>[\w:]+)\s*>", type_text)
+    if map_match:
+        key, value = map_match.group("key"), map_match.group("value")
+        if key not in ALLOWED_BASE_TYPES:
+            return f"TMap<{key}, {value}> -- key type '{key}' is not a classified plain value"
+        if value not in local_types and value not in ALLOWED_BASE_TYPES:
+            return f"TMap<{key}, {value}> -- value type '{value}' is not itself classified as safe"
+        return None
 
     array_match = re.fullmatch(r"TArray\s*<\s*(?P<inner>[\w:]+)\s*>", type_text)
     if array_match:
@@ -377,6 +394,36 @@ struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticOkOperation
     errors = find_violations(synthetic_variant_ok)
     if errors:
         print(f"FAILED: gate rejected a variant alias whose alternatives are all classified: {errors}")
+        return False
+
+    # PSC-10B: a map must not smuggle in a value type a plain field could not carry.
+    synthetic_map_launder = """
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticMapOperation
+{
+    TMap<FName, FSomeUnclassifiedResolverHandle> Table;
+};
+"""
+    errors = find_violations(synthetic_map_launder)
+    if not any("FSomeUnclassifiedResolverHandle" in error for error in errors):
+        print(f"FAILED: gate accepted a TMap whose value type is unclassified: {errors}")
+        return False
+
+    # A map of classified values must be accepted.
+    synthetic_map_ok = """
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticMapEntry
+{
+    float Amount = 0.0f;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticMapOkOperation
+{
+    TMap<FName, FPreparedSyntheticMapEntry> Table;
+    TMap<FName, float> Scalars;
+};
+"""
+    errors = find_violations(synthetic_map_ok)
+    if errors:
+        print(f"FAILED: gate rejected a TMap of classified values: {errors}")
         return False
 
     # A fully-allowed synthetic struct (plain values, a locally-declared nested struct,

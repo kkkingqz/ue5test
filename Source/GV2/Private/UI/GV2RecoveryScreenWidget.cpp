@@ -6,7 +6,7 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
-#include "UI/GV2TextPipeline.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2UiTheme.h"
 
 bool UGV2RecoveryScreenWidget::InitializeRecoveryScreen(
@@ -54,8 +54,10 @@ bool UGV2RecoveryScreenWidget::InitializeRecoveryScreen(
     // text scale curve), rather than a resolution-720p literal.
     const float ViewportScale = [this]() -> float
     {
-        const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-        return Theme != nullptr ? Theme->EvaluateTextScale(UGV2TextPipeline::GetViewportHeight(this)) : 1.0f;
+        const UGV2UiTheme* Theme = UGV2UiTheme::GetCoreMinimalTheme();
+        return Theme != nullptr
+            ? Theme->EvaluateTextScale(GV2PresentationApply::ResolveLiveViewportHeight(this, Theme->ReferenceViewportHeight))
+            : 1.0f;
     }();
     const float TitleToMessageGap = 20.0f * ViewportScale;
 

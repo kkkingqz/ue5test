@@ -3,7 +3,6 @@
 #include "CommonUserWidget.h"
 #include "Styling/SlateBrush.h"
 #include "UI/GV2ImageResourceCatalog.h"
-#include "UI/GV2UiStyleConsumer.h"
 #include "GV2PanelWidgetBase.generated.h"
 
 class UNamedSlot;
@@ -17,7 +16,6 @@ class UBorder;
 UCLASS(Blueprintable)
 class GV2_API UGV2PanelWidgetBase
     : public UCommonUserWidget
-    , public IGV2UiStyleConsumer
 {
     GENERATED_BODY()
 
@@ -36,8 +34,6 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Panel")
     EGV2PrimitiveScalePolicy GetScalePolicy() const { return ScalePolicy; }
-
-    virtual bool ApplyCentralStyle_Implementation() override;
 
 protected:
     virtual void NativePreConstruct() override;

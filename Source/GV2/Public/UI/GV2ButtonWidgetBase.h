@@ -61,8 +61,6 @@ public:
         TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
         const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale);
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }

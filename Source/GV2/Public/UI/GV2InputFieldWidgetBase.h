@@ -91,8 +91,6 @@ public:
         TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
         const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale);
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
 protected:
     virtual void NativePreConstruct() override;
     virtual void NativeConstruct() override;

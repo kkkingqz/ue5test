@@ -1,5 +1,6 @@
 #include "UI/GV2UiCapabilityObservability.h"
 
+#include "Application/GV2SessionContentSnapshot.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2UiBindingTarget.h"
@@ -37,27 +38,31 @@ using namespace GV2ContentCore;
 // therefore not universally applicable, and a rejected probe must not be read as "the
 // capability is unwired". These candidates are tried until two of them are accepted.
 //
-// DCA-21: this is core-level code (module GV2), so it must not name a higher package's
-// content (ADR-0035 §5) -- candidates come from whatever the loaded UGV2ImageResourceCatalog
-// actually contains, not a hardcoded list of specific package_id-prefixed resource ids. A
-// session with more or fewer image resources than today's core+textsystem set changes what
-// this returns without anyone editing this file.
-// PAH-08: phase=prepare -- observability harness, outside any presentation
-// transaction; it probes capabilities, it does not apply a revision.
-TArray<FString> GetResourceProbeCandidates()
+// DCA-21/PSC-10B: candidates come from the pinned PrepareContext, not a hardcoded package
+// list or process-global catalog. A different session closure changes this set without
+// editing the harness.
+TArray<FString> GetResourceProbeCandidates(const FGV2PresentationPrepareContext& PrepareContext)
 {
-    TArray<FString> Candidates;
-    if (const UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog())
-    {
-        for (const FGV2ImageResourceDefinition& Entry : Catalog->GetEntries())
-        {
-            Candidates.Add(Entry.ResourceId);
-        }
-    }
-    return Candidates;
+    return PrepareContext.GetResourceIds();
 }
 
-TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair(const FGV2UiPropertyCapability& Cap)
+FGV2TextViewModel MakeResolvedTextProbe(const TCHAR* Text)
+{
+    FGV2TextViewModel Result;
+    Result.Text = FText::FromString(Text);
+    Result.StyleToken = TEXT("default");
+    Result.NormalizedMarkup = Text;
+    Result.ResolvedStyleClass = UCommonTextStyle::StaticClass();
+    Result.ResolvedBaseFontSize = 14.0f;
+    Result.ResolvedMinReadableFontSize = 10.0f;
+    Result.ResolvedReferenceViewportHeight = 1080.0f;
+    Result.bHasResolvedPresentation = true;
+    return Result;
+}
+
+TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair(
+    const FGV2UiPropertyCapability& Cap,
+    const FGV2PresentationPrepareContext& PrepareContext)
 {
     switch (Cap.SupportedKind)
     {
@@ -93,12 +98,9 @@ TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair
 
     case EGV2PreparedUiValueKind::Text:
     {
-        FGV2TextViewModel A;
-        A.Text = FText::FromString(TEXT("Probe A"));
-        FGV2TextViewModel B;
-        B.Text = FText::FromString(TEXT("Probe B"));
         return TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>(
-            FGV2PreparedUiValue::MakeText(A), FGV2PreparedUiValue::MakeText(B));
+            FGV2PreparedUiValue::MakeText(MakeResolvedTextProbe(TEXT("Probe A"))),
+            FGV2PreparedUiValue::MakeText(MakeResolvedTextProbe(TEXT("Probe B"))));
     }
 
     case EGV2PreparedUiValueKind::Binding:
@@ -109,7 +111,7 @@ TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> MakeDistinctValuePair
     case EGV2PreparedUiValueKind::StableId:
         if (Cap.TargetKind == TEXT("resource"))
         {
-            const TArray<FString> Candidates = GetResourceProbeCandidates();
+            const TArray<FString> Candidates = GetResourceProbeCandidates(PrepareContext);
             if (Candidates.Num() >= 2)
             {
                 return TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>(
@@ -214,6 +216,7 @@ bool PrepareAndCommitSingleProperty(
     const FGV2UiPropertyCapability& Cap,
     const FCompiledUiFieldSpecPtr& FieldSpec,
     const FGV2PreparedUiValue& Value,
+    const FGV2PresentationPrepareContext& PrepareContext,
     FString& OutState,
     FString& OutFailureDetail)
 {
@@ -233,7 +236,8 @@ bool PrepareAndCommitSingleProperty(
     TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
     if (!PrepareUiHostProperties(
             HostWidget, SingleCap, *Candidate, Schema, TEXT("core:schema.ui_field.observability_probe.v1"),
-            TEXT("observability_probe"), EmptyPrev, Plan, Diagnostics))
+            TEXT("observability_probe"), EmptyPrev, Plan, Diagnostics,
+            nullptr, &PrepareContext))
     {
         TArray<FString> Reasons;
         for (const FGV2UiSchemaCompatibilityDiagnostic& Diag : Diagnostics)
@@ -381,6 +385,7 @@ FString CaptureUiTargetState(const UWidget* TargetWidget)
 bool RunUiCapabilityObservabilityHarness(
     UUserWidget* HostWidget,
     const FGV2UiCapabilityTree& Capabilities,
+    const FGV2PresentationPrepareContext& PrepareContext,
     TArray<FGV2UiObservabilityFailure>& OutFailures)
 {
     using namespace GV2ContentCore;
@@ -424,7 +429,7 @@ bool RunUiCapabilityObservabilityHarness(
             const FGV2UiCapabilityTree EntryCaps = EntryBuilder.Build();
 
             TArray<FGV2UiObservabilityFailure> EntryFailures;
-            if (!RunUiCapabilityObservabilityHarness(EntryWidget, EntryCaps, EntryFailures))
+            if (!RunUiCapabilityObservabilityHarness(EntryWidget, EntryCaps, PrepareContext, EntryFailures))
             {
                 for (const FGV2UiObservabilityFailure& EntryFailure : EntryFailures)
                 {
@@ -444,7 +449,8 @@ bool RunUiCapabilityObservabilityHarness(
             continue;
         }
 
-        const TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> Pair = MakeDistinctValuePair(Cap);
+        const TOptional<TPair<FGV2PreparedUiValue, FGV2PreparedUiValue>> Pair =
+            MakeDistinctValuePair(Cap, PrepareContext);
         if (!Pair.IsSet())
         {
             OutFailures.Add({ PropName,
@@ -465,9 +471,11 @@ bool RunUiCapabilityObservabilityHarness(
         }
 
         FString StateAfterA, StateAfterB, FailureDetail;
-        bool bOkA = PrepareAndCommitSingleProperty(HostWidget, PropName, Cap, FieldSpec, Pair->Key, StateAfterA, FailureDetail);
+        bool bOkA = PrepareAndCommitSingleProperty(
+            HostWidget, PropName, Cap, FieldSpec, Pair->Key, PrepareContext, StateAfterA, FailureDetail);
         bool bOkB = bOkA
-            && PrepareAndCommitSingleProperty(HostWidget, PropName, Cap, FieldSpec, Pair->Value, StateAfterB, FailureDetail);
+            && PrepareAndCommitSingleProperty(
+                HostWidget, PropName, Cap, FieldSpec, Pair->Value, PrepareContext, StateAfterB, FailureDetail);
 
         // Resource capabilities constrain their accepted resources (tile blocks, fixed-aspect
         // blocks). A rejected default probe means the probe is wrong for this target, not that
@@ -476,7 +484,7 @@ bool RunUiCapabilityObservabilityHarness(
             && Cap.SupportedKind == EGV2PreparedUiValueKind::StableId
             && Cap.TargetKind == TEXT("resource"))
         {
-            const TArray<FString> ProbeCandidates = GetResourceProbeCandidates();
+            const TArray<FString> ProbeCandidates = GetResourceProbeCandidates(PrepareContext);
             TArray<FString> Accepted;
             TArray<FString> AcceptedStates;
             for (const FString& Candidate : ProbeCandidates)
@@ -484,7 +492,8 @@ bool RunUiCapabilityObservabilityHarness(
                 FString State, Detail;
                 if (PrepareAndCommitSingleProperty(
                         HostWidget, PropName, Cap, FieldSpec,
-                        FGV2PreparedUiValue::MakeStableId(Candidate, TEXT("resource")), State, Detail))
+                        FGV2PreparedUiValue::MakeStableId(Candidate, TEXT("resource")),
+                        PrepareContext, State, Detail))
                 {
                     if (!AcceptedStates.Contains(State))
                     {

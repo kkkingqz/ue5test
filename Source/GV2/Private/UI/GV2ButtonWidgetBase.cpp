@@ -91,12 +91,6 @@ void UGV2ButtonWidgetBase::ApplyButtonStyleValues(
     }
 }
 
-bool UGV2ButtonWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedButtonStyle, written by ApplyButtonStyleValues.
-    return true;
-}
-
 void UGV2ButtonWidgetBase::NativeOnClicked()
 {
     Super::NativeOnClicked();

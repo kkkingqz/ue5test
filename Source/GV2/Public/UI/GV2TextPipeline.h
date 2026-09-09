@@ -21,34 +21,19 @@ class GV2_API UGV2TextPipeline : public UBlueprintFunctionLibrary
     GENERATED_BODY()
 
 public:
-    // PSC-10A: PrepareContext is optional so every existing call site keeps compiling
-    // unchanged. When given, Theme is read through PrepareContext->GetTheme() (the
-    // session snapshot's own pinned Theme, ADR-0043 D1) instead of the legacy
-    // GetConfiguredTheme() static accessor, and OutText's ResolvedStyleClass/
-    // ResolvedBaseFontSize/etc. are populated so Apply()/ApplyRichText()/ApplyHint() do
-    // not need to touch Theme again at Commit time (see FGV2TextViewModel's own doc
-    // comment). Without one (this function's two non-PrepareContext callers, and any
-    // test/legacy caller), behavior is unchanged from before this task.
+    // Runtime text resolution requires the active session's pinned presentation context.
     static bool Resolve(
         const FString& TextId,
         const TArray<FGV2UiControlValue>& Args,
         FName StyleToken,
         FGV2TextViewModel& OutText,
         FString& OutError,
-        const FGV2PresentationPrepareContext* PrepareContext = nullptr);
+        const FGV2PresentationPrepareContext* PrepareContext);
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Text")
-    static float GetViewportHeight(const UWidget* ContextWidget = nullptr);
+    static float ResolveEffectiveFontSizeForHeight(const UGV2UiTheme* Theme, FName TextSizeToken, float ViewportHeight);
 
-    UFUNCTION(BlueprintPure, Category = "GV2|UI|Text")
-    static float ResolveEffectiveFontSize(FName TextSizeToken, const UWidget* ContextWidget = nullptr);
-
-    UFUNCTION(BlueprintPure, Category = "GV2|UI|Text")
-    static float ResolveEffectiveFontSizeForHeight(FName TextSizeToken, float ViewportHeight);
-
-    static bool ResolveStyle(FName StyleToken, FTextBlockStyle& OutStyle, const UWidget* ContextWidget = nullptr);
-    static bool ResolveStyleForHeight(FName StyleToken, FTextBlockStyle& OutStyle, float ViewportHeight);
-    static TSubclassOf<UCommonTextStyle> ResolveStyleClass(FName StyleToken);
+    static bool ResolveStyleForHeight(const UGV2UiTheme* Theme, FName StyleToken, FTextBlockStyle& OutStyle, float ViewportHeight);
 
     // PSC-10B: the same theme -> style-class / scale-policy resolution Resolve() performs
     // for a text operation, against an explicitly supplied Theme rather than the configured
@@ -61,5 +46,22 @@ public:
     static bool Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text);
     static bool ApplyRichText(UCommonRichTextBlock* Widget, const FGV2TextViewModel& Text, const UWidget* ContextWidget = nullptr);
     static bool ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text);
-    static bool NormalizeMarkup(const FString& Source, FString& OutMarkup, FString& OutError);
+    static bool NormalizeMarkup(const UGV2UiTheme* Theme, const FString& Source, FString& OutMarkup, FString& OutError);
+
+#if WITH_DEV_AUTOMATION_TESTS
+    static bool ResolveForAutomationTest(
+        const UGV2UiTheme* Theme,
+        const FString& TextId,
+        const TArray<FGV2UiControlValue>& Args,
+        FName StyleToken,
+        FGV2TextViewModel& OutText,
+        FString& OutError);
+
+    static bool ResolveLiteralForAutomationTest(
+        const UGV2UiTheme* Theme,
+        const FString& LiteralText,
+        FName StyleToken,
+        FGV2TextViewModel& OutText,
+        FString& OutError);
+#endif
 };

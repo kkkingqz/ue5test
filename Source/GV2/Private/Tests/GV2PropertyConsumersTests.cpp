@@ -24,6 +24,7 @@
 #include "UI/GV2UiMutationPlan.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "Application/GV2PackageClosure.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "UI/GV2ImageResourceCatalog.h"
@@ -83,6 +84,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 {
     const FGV2PropertyConsumersScopedImageCatalog ScopedImageCatalog;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
 
     // 1. Missing target rejection (must NOT be silently ignored)
     {
@@ -91,8 +103,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         TextCap.PropertyName = TEXT("label");
         TextCap.SupportedKind = EGV2PreparedUiValueKind::Text;
 
-        FGV2TextViewModel TextModel;
-        TextModel.Text = FText::FromString(TEXT("Test"));
+        const FGV2TextViewModel TextModel =
+            GV2PresentationTestFixtures::MakeResolvedText(TEXT("Test"));
         const FGV2PreparedUiValue TextVal = FGV2PreparedUiValue::MakeText(TextModel);
 
         FString Error;
@@ -205,6 +217,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             ImageWidget->GetScalePolicy(), EGV2PrimitiveScalePolicy::Unset);
 
         FGV2ImageResourcePropertyConsumer ImageConsumer;
+        ImageConsumer.SetPrepareContext(PrepareContext);
         FGV2UiPropertyCapability ImageCap;
         ImageCap.PropertyName = TEXT("resource_id");
         ImageCap.SupportedKind = EGV2PreparedUiValueKind::StableId;
@@ -573,7 +586,9 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TEXT("incompatible_field"),
             FGV2PreparedUiObject(),
             IncompatPlan,
-            IncompatDiagnostics);
+            IncompatDiagnostics,
+            nullptr,
+            PrepareContext);
 
         TestFalse(TEXT("PrepareUiHostProperties rejects schema requiring unsupported property on Button"), bPreparedIncompat);
         TestTrue(TEXT("At least one diagnostic emitted"), IncompatDiagnostics.Num() > 0);
@@ -632,8 +647,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             HintCap.SupportedKind = EGV2PreparedUiValueKind::Text;
             HintCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
 
-            FGV2TextViewModel ValidHint;
-            ValidHint.Text = FText::FromString(TEXT("Enter query here..."));
+            const FGV2TextViewModel ValidHint =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Enter query here..."));
             FString PrepErr;
             TestTrue(TEXT("Hint Prepare succeeds for plain text"), TextConsumer.Prepare(FGV2PreparedUiValue::MakeText(ValidHint), HintCap, EditableTextBox, PrepErr));
             FString CommitErr;
@@ -641,8 +656,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("HintText matches"), EditableTextBox->GetHintText().ToString(), FString(TEXT("Enter query here...")));
 
             // Red test: markup containing <gv2 is rejected
-            FGV2TextViewModel BadHint;
-            BadHint.Text = FText::FromString(TEXT("Invalid"));
+            FGV2TextViewModel BadHint =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Invalid"));
             BadHint.NormalizedMarkup = TEXT("<gv2 style=\"red\">Invalid</gv2>");
             FString BadHintErr;
             TestFalse(TEXT("Hint Prepare rejects markup containing <gv2"), TextConsumer.Prepare(FGV2PreparedUiValue::MakeText(BadHint), HintCap, EditableTextBox, BadHintErr));
@@ -766,6 +781,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             PortraitWidget->WidgetTree->RootWidget = InnerPortrait;
 
             FGV2ImageResourcePropertyConsumer ImageConsumer;
+            ImageConsumer.SetPrepareContext(PrepareContext);
             FGV2UiPropertyCapability ImageCap;
             ImageCap.PropertyName = TEXT("resource_id");
             ImageCap.SupportedKind = EGV2PreparedUiValueKind::StableId;
@@ -822,8 +838,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TextCap.SupportedKind = EGV2PreparedUiValueKind::Text;
             TextCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
 
-            FGV2TextViewModel FormattedModel;
-            FormattedModel.Text = FText::FromString(TEXT("Hello World"));
+            FGV2TextViewModel FormattedModel =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Hello World"));
             FormattedModel.NormalizedMarkup = TEXT("<gv2:style token=\"heading\">Hello World</>");
 
             FString PrepErr, CommitErr;
@@ -856,8 +872,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TextCap.SupportedKind = EGV2PreparedUiValueKind::Text;
             TextCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
 
-            FGV2TextViewModel TitleModel;
-            TitleModel.Text = FText::FromString(TEXT("Popover Title"));
+            const FGV2TextViewModel TitleModel =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Popover Title"));
 
             FString PrepErr, CommitErr;
             TestTrue(TEXT("Popover Title Prepare succeeds"), TextConsumer.Prepare(
@@ -925,6 +941,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
                 EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
             TestNotNull(TEXT("Factory created FGV2KeyedCollectionPropertyConsumer"), Consumer.Get());
+            Consumer->SetPrepareContext(PrepareContext);
 
             auto BaselineItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
             BaselineItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
@@ -1162,6 +1179,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
                 TSharedPtr<IGV2PropertyConsumer> LuaConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+                LuaConsumer->SetPrepareContext(PrepareContext);
                 FGV2KeyedCollectionPropertyConsumer* LuaKeyedConsumer = static_cast<FGV2KeyedCollectionPropertyConsumer*>(LuaConsumer.Get());
 
                 // Schema declares an extra property 'icon_resource' which UGV2ButtonWidgetBase does not support
@@ -1313,6 +1331,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             {
                 TSharedPtr<IGV2PropertyConsumer> BtnCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+                BtnCollConsumer->SetPrepareContext(PrepareContext);
 
                 auto BtnItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
                 BtnItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
@@ -1322,13 +1341,10 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 static_cast<FGV2KeyedCollectionPropertyConsumer*>(BtnCollConsumer.Get())->SetCompiledItemSpec(
                     BtnItemSpec, TEXT("core:schema.ui_field.button_list.v2"), TEXT("items"));
 
-                FGV2TextViewModel Btn1Text;
-                Btn1Text.Text = FText::FromString(TEXT("Button 1"));
-                Btn1Text.StyleToken = TEXT("default");
-
-                FGV2TextViewModel Btn2Text;
-                Btn2Text.Text = FText::FromString(TEXT("Button 2"));
-                Btn2Text.StyleToken = TEXT("default");
+                const FGV2TextViewModel Btn1Text =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Button 1"), TEXT("default"));
+                const FGV2TextViewModel Btn2Text =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Button 2"), TEXT("default"));
 
                 TMap<FString, FGV2PreparedUiValue> Item1Map;
                 Item1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("btn_1")));
@@ -1394,6 +1410,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 {
                     TSharedPtr<IGV2PropertyConsumer> StyledCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                         EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+                    StyledCollConsumer->SetPrepareContext(PrepareContext);
 
                     auto StyledBtnItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
                     StyledBtnItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
@@ -1403,9 +1420,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                     static_cast<FGV2KeyedCollectionPropertyConsumer*>(StyledCollConsumer.Get())->SetCompiledItemSpec(
                         StyledBtnItemSpec, TEXT("core:schema.ui_field.button_list.v2"), TEXT("items"));
 
-                    FGV2TextViewModel StyledBtnText;
-                    StyledBtnText.Text = FText::FromString(TEXT("Styled Button"));
-                    StyledBtnText.StyleToken = TEXT("default");
+                    const FGV2TextViewModel StyledBtnText =
+                        GV2PresentationTestFixtures::MakeResolvedText(TEXT("Styled Button"), TEXT("default"));
 
                     TMap<FString, FGV2PreparedUiValue> StyledItemMap;
                     StyledItemMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("styled_btn")));
@@ -1494,15 +1510,15 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             const FGV2UiPropertyCapability* DdItemsCap = DdTree.FindProperty(TEXT("items"));
             TestNotNull(TEXT("Dropdown items capability found"), DdItemsCap);
 
-            FGV2TextViewModel DropdownPlaceholder;
-            DropdownPlaceholder.Text = FText::FromString(TEXT("Select..."));
-            DropdownPlaceholder.StyleToken = TEXT("default");
+            const FGV2TextViewModel DropdownPlaceholder =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Select..."), TEXT("default"));
             Dropdown->ApplyPlaceholderText(DropdownPlaceholder);
 
             if (DdItemsCap != nullptr)
             {
                 TSharedPtr<IGV2PropertyConsumer> DdCollConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+                DdCollConsumer->SetPrepareContext(PrepareContext);
 
                 auto DdItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
                 DdItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
@@ -1511,13 +1527,10 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 static_cast<FGV2KeyedCollectionPropertyConsumer*>(DdCollConsumer.Get())->SetCompiledItemSpec(
                     DdItemSpec, TEXT("core:schema.ui_field.dropdown_select.v1"), TEXT("items"));
 
-                FGV2TextViewModel Opt1Text;
-                Opt1Text.Text = FText::FromString(TEXT("Option 1"));
-                Opt1Text.StyleToken = TEXT("default");
-
-                FGV2TextViewModel Opt2Text;
-                Opt2Text.Text = FText::FromString(TEXT("Option 2"));
-                Opt2Text.StyleToken = TEXT("default");
+                const FGV2TextViewModel Opt1Text =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Option 1"), TEXT("default"));
+                const FGV2TextViewModel Opt2Text =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Option 2"), TEXT("default"));
 
                 TMap<FString, FGV2PreparedUiValue> Opt1Map;
                 Opt1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("opt_1")));
@@ -1567,6 +1580,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TSharedPtr<IGV2PropertyConsumer> SpansConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                     EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CustomControl);
                 TestNotNull(TEXT("Factory creates FGV2RichTextSpansPropertyConsumer for CustomControl Array"), SpansConsumer.Get());
+                SpansConsumer->SetPrepareContext(PrepareContext);
 
                 // 10a. Valid spans prepare & commit
                 TMap<FString, FGV2PreparedUiValue> Span1Map;
@@ -1575,8 +1589,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 Span1Map.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(FGV2UiBindingHandle::Create(TEXT("cmd_inspect@1:1"))));
 
                 TMap<FString, FGV2PreparedUiValue> HoverMap;
-                FGV2TextViewModel HoverTitle;
-                HoverTitle.Text = FText::FromString(TEXT("Hover Title"));
+                const FGV2TextViewModel HoverTitle =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Hover Title"));
                 HoverMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(HoverTitle));
                 Span1Map.Add(TEXT("hover"), FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(HoverMap)));
 
@@ -1665,15 +1679,13 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("SubmitBackdropClose with invalid binding returns InvalidBindingHandle"), ModalWidget->SubmitBackdropClose(), EGV2SubmitUiInteractionResult::InvalidBindingHandle);
 
             // Test Title and Content Apply
-            FGV2TextViewModel TitleModel;
-            TitleModel.Text = FText::FromString(TEXT("Confirm Action"));
-            TitleModel.StyleToken = TEXT("title");
+            const FGV2TextViewModel TitleModel =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Confirm Action"), TEXT("title"));
             TestTrue(TEXT("ApplyTitle succeeds"), ModalWidget->ApplyTitle(TitleModel));
             TestEqual(TEXT("GetTitle matches"), ModalWidget->GetTitle().Text.ToString(), TEXT("Confirm Action"));
 
-            FGV2TextViewModel ContentModel;
-            ContentModel.Text = FText::FromString(TEXT("Are you sure?"));
-            ContentModel.StyleToken = TEXT("body");
+            const FGV2TextViewModel ContentModel =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Are you sure?"), TEXT("body"));
             TestTrue(TEXT("ApplyContent succeeds"), ModalWidget->ApplyContent(ContentModel));
             TestEqual(TEXT("GetContent matches"), ModalWidget->GetContent().Text.ToString(), TEXT("Are you sure?"));
         }
@@ -1703,21 +1715,22 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TSharedPtr<IGV2PropertyConsumer> TabsConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                 EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
             TestNotNull(TEXT("Factory created FGV2TabContainerTabsPropertyConsumer"), TabsConsumer.Get());
+            TabsConsumer->SetPrepareContext(PrepareContext);
 
             // 12a. Successful reconciliation
             TArray<FGV2PreparedUiValue> ValidTabs;
             TMap<FString, FGV2PreparedUiValue> Tab1Map;
             Tab1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("inventory")));
-            FGV2TextViewModel T1Title;
-            T1Title.Text = FText::FromString(TEXT("Inventory"));
+            const FGV2TextViewModel T1Title =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Inventory"));
             Tab1Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T1Title));
             Tab1Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab1Map)));
 
             TMap<FString, FGV2PreparedUiValue> Tab2Map;
             Tab2Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("skills")));
-            FGV2TextViewModel T2Title;
-            T2Title.Text = FText::FromString(TEXT("Skills"));
+            const FGV2TextViewModel T2Title =
+                GV2PresentationTestFixtures::MakeResolvedText(TEXT("Skills"));
             Tab2Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(T2Title));
             Tab2Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab2Map)));
@@ -1834,7 +1847,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 
                 const bool bPrepared = PrepareUiHostProperties(
                     Host, Caps, *Candidate, Schema, SchemaId,
-                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics);
+                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics,
+                    nullptr, PrepareContext);
 
                 if (!bPrepared)
                 {
@@ -1876,7 +1890,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
                 PrepareUiHostProperties(
                     Host, Caps, *Candidate, Schema, SchemaId,
-                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics);
+                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics,
+                    nullptr, PrepareContext);
 
                 FString FailedPath, Error;
                 CommitUiHostProperties(Host, Plan, FailedPath, Error);
@@ -1918,9 +1933,12 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TopBarSchema.Fields.push_back({ "primary_resource", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Text) });
                 TopBarSchema.Fields.push_back({ "key", false, MakeKeySpec() });
 
-                FGV2TextViewModel DayVM; DayVM.Text = FText::FromString(TEXT("Day 42"));
-                FGV2TextViewModel LocVM; LocVM.Text = FText::FromString(TEXT("Tavern"));
-                FGV2TextViewModel ResVM; ResVM.Text = FText::FromString(TEXT("Gold: 1000"));
+                const FGV2TextViewModel DayVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Day 42"));
+                const FGV2TextViewModel LocVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Tavern"));
+                const FGV2TextViewModel ResVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Gold: 1000"));
 
                 TArray<TPair<FString, FGV2PreparedUiValue>> TopBarValues;
                 TopBarValues.Emplace(TEXT("day"), FGV2PreparedUiValue::MakeText(DayVM));
@@ -2066,9 +2084,12 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 PlayerStatusSchema.Fields.push_back({ "key", false, MakeKeySpec() });
 
                 // Prepare initial valid values
-                FGV2TextViewModel NameVM; NameVM.Text = FText::FromString(TEXT("Hero"));
-                FGV2TextViewModel HpLabel; HpLabel.Text = FText::FromString(TEXT("80/100"));
-                FGV2TextViewModel StamLabel; StamLabel.Text = FText::FromString(TEXT("50/100"));
+                const FGV2TextViewModel NameVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Hero"));
+                const FGV2TextViewModel HpLabel =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("80/100"));
+                const FGV2TextViewModel StamLabel =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("50/100"));
 
                 // Meters
                 TArray<TPair<FString, FGV2PreparedUiValue>> MeterHpMap;
@@ -2158,12 +2179,13 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 // AppliedResourceId bookkeeping (that only updates when the host itself is
                 // the capability target, e.g. a composite's top-level image field). Verify
                 // by the rendered brush's resource object instead.
-                UGV2ImageResourceCatalog* IconCatalog = UGV2ImageResourceCatalog::GetSessionCatalog();
                 FGV2ResolvedImageResource ResolvedIcon;
                 FString IconResolveErr;
-                const bool bIconResolved = IconCatalog != nullptr
-                    && IconCatalog->Resolve(TEXT("textsystem:resource.ui.missing_icon"), ResolvedIcon, IconResolveErr);
-                TestTrue(TEXT("Icon catalog resolves textsystem:resource.ui.missing_icon"), bIconResolved);
+                const bool bIconResolved = PrepareContext->ResolveResource(
+                    TEXT("textsystem:resource.ui.missing_icon"),
+                    ResolvedIcon,
+                    IconResolveErr);
+                TestTrue(TEXT("Pinned snapshot resolves textsystem:resource.ui.missing_icon"), bIconResolved);
                 UObject* ExpectedIconTexture = bIconResolved ? ResolvedIcon.Brush.GetResourceObject() : nullptr;
                 TestNotNull(TEXT("Expected icon texture is loaded"), ExpectedIconTexture);
 
@@ -2321,8 +2343,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 SceneSchema.Fields.push_back({ "key", false, MakeKeySpec() });
 
                 // Values
-                FGV2TextViewModel ContextVM;
-                ContextVM.Text = FText::FromString(TEXT("Market Square"));
+                const FGV2TextViewModel ContextVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Market Square"));
 
                 TArray<TPair<FString, FGV2PreparedUiValue>> Char1Map;
                 Char1Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("c1")));
@@ -2457,8 +2479,10 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 CmdSchema.Fields.push_back({ "key", false, MakeKeySpec() });
 
                 // Values
-                FGV2TextViewModel TalkVM; TalkVM.Text = FText::FromString(TEXT("Talk"));
-                FGV2TextViewModel LeaveVM; LeaveVM.Text = FText::FromString(TEXT("Leave"));
+                const FGV2TextViewModel TalkVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Talk"));
+                const FGV2TextViewModel LeaveVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Leave"));
 
                 TArray<TPair<FString, FGV2PreparedUiValue>> Btn1Map;
                 Btn1Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("b1")));
@@ -2494,7 +2518,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 }
 
                 // Reorder buttons
-                FGV2TextViewModel AttackVM; AttackVM.Text = FText::FromString(TEXT("Attack"));
+                const FGV2TextViewModel AttackVM =
+                    GV2PresentationTestFixtures::MakeResolvedText(TEXT("Attack"));
 
                 TArray<TPair<FString, FGV2PreparedUiValue>> Btn3Map;
                 Btn3Map.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("b3")));

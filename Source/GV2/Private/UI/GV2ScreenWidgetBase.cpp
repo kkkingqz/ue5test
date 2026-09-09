@@ -216,7 +216,8 @@ bool PrepareScreenFieldPlans(
                 FString(),
                 RollbackPlan,
                 RollbackDiagnostics,
-                ActiveCompositionChain))
+                ActiveCompositionChain,
+                PrepareContext))
         {
             OutError = FString::Printf(
                 TEXT("core:diagnostic.ui_rollback.prepare_failed: screen field '%s' cannot prepare inverse: %s"),
@@ -348,11 +349,13 @@ bool UGV2ScreenWidgetBase::CommitScreenFields(
     return true;
 }
 
-bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields)
+bool UGV2ScreenWidgetBase::ApplyScreenFields(
+    const TArray<FGV2ScreenFieldValue>& ScreenFields,
+    const FGV2PresentationPrepareContext& PrepareContext)
 {
     FGV2ScreenMutationPlan Plan;
     FString Error;
-    if (!PrepareScreenFields(ScreenFields, Plan, Error))
+    if (!PrepareScreenFields(ScreenFields, Plan, Error, nullptr, &PrepareContext))
     {
         UE_LOG(LogGV2ScreenWidget, Error, TEXT("ApplyScreenFields rejected: %s"), *Error);
         return false;
@@ -361,11 +364,13 @@ bool UGV2ScreenWidgetBase::ApplyScreenFields(const TArray<FGV2ScreenFieldValue>&
     return CommitScreenFields(Plan, CommitError);
 }
 
-bool UGV2ScreenWidgetBase::CanApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields) const
+bool UGV2ScreenWidgetBase::CanApplyScreenFields(
+    const TArray<FGV2ScreenFieldValue>& ScreenFields,
+    const FGV2PresentationPrepareContext& PrepareContext) const
 {
     FGV2ScreenMutationPlan Plan;
     FString Error;
-    return PrepareScreenFields(ScreenFields, Plan, Error);
+    return PrepareScreenFields(ScreenFields, Plan, Error, nullptr, &PrepareContext);
 }
 
 TArray<FName> UGV2ScreenWidgetBase::GetScreenFieldIds() const

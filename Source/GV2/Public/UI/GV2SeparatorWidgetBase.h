@@ -26,8 +26,6 @@ public:
     // this widget's own serialized values. Both callers hit this one function.
     void ApplySeparatorStyleValues(const FSlateBrush& Brush, float Thickness, bool bHorizontal);
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
 protected:
     virtual void NativePreConstruct() override;
 

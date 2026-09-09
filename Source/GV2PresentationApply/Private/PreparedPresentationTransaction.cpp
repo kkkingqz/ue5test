@@ -63,11 +63,6 @@ float EvaluatePreparedViewportScale(const FPreparedViewportScalePolicy& Policy, 
 
 float EvaluatePreparedFontSize(const FPreparedTextScalePolicy& Policy, float ViewportHeight)
 {
-    if (Policy.bIsAlreadyScaled)
-    {
-        return Policy.BaseFontSize;
-    }
-
     FPreparedViewportScalePolicy ScalePolicy;
     ScalePolicy.ScaleCurve = Policy.ScaleCurve;
     ScalePolicy.ReferenceViewportHeight = Policy.ReferenceViewportHeight;
@@ -228,10 +223,7 @@ bool Apply(const FGV2PreparedPresentationTransaction& Transaction, FString& OutE
                 }
                 if (Op.bHasDefaultStyle)
                 {
-                    // PSC-10A: pure function of the resolved policy and CURRENT
-                    // geometry; for the legacy (non-PrepareContext) path,
-                    // ScalePolicy.bIsAlreadyScaled makes this a same-value no-op --
-                    // DefaultStyle's own already-baked font size is unchanged.
+                    // Pure function of the resolved policy and current geometry.
                     FTextBlockStyle FinalStyle = Op.DefaultStyle;
                     const float ViewportHeight = ResolveLiveViewportHeight(Widget, Op.ScalePolicy.ReferenceViewportHeight);
                     FinalStyle.SetFontSize(EvaluatePreparedFontSize(Op.ScalePolicy, ViewportHeight));

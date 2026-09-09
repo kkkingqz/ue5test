@@ -102,34 +102,20 @@ FString UGV2InputFieldWidgetBase::GetValue() const
 
 bool UGV2InputFieldWidgetBase::ApplyText(const FGV2TextViewModel& InText)
 {
-    if (InText.NormalizedMarkup.Contains(TEXT("<gv2")))
+    if (!InText.bHasResolvedPresentation || InText.NormalizedMarkup.Contains(TEXT("<gv2")))
     {
         return false;
     }
     AppliedLabelText = InText;
 
-    // PSC-10B: the box's OWN text size follows this field's label style token, so it is
-    // applied where the token actually arrives -- with the text, in the same transaction --
-    // instead of being re-derived from a Theme later inside ApplyCentralStyle. The
-    // resolved-presentation-first split below is UGV2TextPipeline::Apply's own split; the
-    // legacy branch's ResolveEffectiveFontSize is the same fallback that function still
-    // has, and dies with the configured accessor rather than separately.
+    // The box's own text size is part of the same resolved text payload as its label.
     if (EditableTextBox != nullptr)
     {
         GV2PresentationApply::FPreparedTextScalePolicy ScalePolicy;
-        if (InText.bHasResolvedPresentation)
-        {
-            ScalePolicy.BaseFontSize = InText.ResolvedBaseFontSize;
-            ScalePolicy.MinReadableFontSize = InText.ResolvedMinReadableFontSize;
-            ScalePolicy.ReferenceViewportHeight = InText.ResolvedReferenceViewportHeight;
-            ScalePolicy.ScaleCurve = InText.ResolvedFontScaleCurve;
-        }
-        else
-        {
-            ScalePolicy.BaseFontSize = UGV2TextPipeline::ResolveEffectiveFontSize(
-                InText.StyleToken.IsNone() ? FName(TEXT("body")) : InText.StyleToken, this);
-            ScalePolicy.bIsAlreadyScaled = true;
-        }
+        ScalePolicy.BaseFontSize = InText.ResolvedBaseFontSize;
+        ScalePolicy.MinReadableFontSize = InText.ResolvedMinReadableFontSize;
+        ScalePolicy.ReferenceViewportHeight = InText.ResolvedReferenceViewportHeight;
+        ScalePolicy.ScaleCurve = InText.ResolvedFontScaleCurve;
         EditableTextBox->WidgetStyle.TextStyle.Font.Size = GV2PresentationApply::EvaluatePreparedFontSize(
             ScalePolicy,
             GV2PresentationApply::ResolveLiveViewportHeight(this, ScalePolicy.ReferenceViewportHeight));
@@ -187,12 +173,6 @@ void UGV2InputFieldWidgetBase::ApplyInputFieldStyleValues(
             LabelText->SetFont(FontInfo);
         }
     }
-}
-
-bool UGV2InputFieldWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedInputFieldStyle, written by ApplyInputFieldStyleValues.
-    return true;
 }
 
 void UGV2InputFieldWidgetBase::HandleTextCommitted(const FText& Text, ETextCommit::Type CommitMethod)

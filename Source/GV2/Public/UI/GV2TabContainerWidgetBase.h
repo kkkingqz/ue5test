@@ -4,7 +4,6 @@
 #include "CommonUserWidget.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "UI/GV2UiPropertyHost.h"
-#include "UI/GV2UiStyleConsumer.h"
 #include "GV2TabContainerWidgetBase.generated.h"
 
 class UGV2ScreenWidgetBase;
@@ -26,7 +25,7 @@ struct GV2_API FGV2TabItemEntry
 };
 
 UCLASS(BlueprintType, Blueprintable)
-class GV2_API UGV2TabContainerWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost, public IGV2UiStyleConsumer
+class GV2_API UGV2TabContainerWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost
 {
     GENERATED_BODY()
 
@@ -37,9 +36,6 @@ public:
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
-
-    // IGV2UiStyleConsumer
-    virtual bool ApplyCentralStyle_Implementation() override;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Tabs")
     void ApplyDefaultTabKey(FName InKey);

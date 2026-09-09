@@ -9,12 +9,6 @@
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2UiTheme.h"
 
-void UGV2ModalWidgetBase::NativePreConstruct()
-{
-    Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
-}
-
 void UGV2ModalWidgetBase::NativeConstruct()
 {
     Super::NativeConstruct();
@@ -115,22 +109,4 @@ void UGV2ModalWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBui
         ResolvedButtonClass);
     OutBuilder.AddBinding(TEXT("backdrop_close_action"), NAME_None);
     OutBuilder.AddKey(TEXT("key"), NAME_None);
-}
-
-bool UGV2ModalWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: this implementation applies nothing from the Theme. The fetch that used
-    // to stand here read the configured Theme only to null-check it and threw the value
-    // away -- a value obtained and discarded, the same family as ResourceIcon /
-    // ApplyOptionalXxx / OnBindingInvoked / bFatal. It also inflated this task's scope,
-    // because the class has no central style payload at all.
-    if (TitleText != nullptr)
-    {
-        UGV2TextPipeline::Apply(TitleText, CurrentTitle);
-    }
-    if (ContentText != nullptr)
-    {
-        UGV2TextPipeline::Apply(ContentText, CurrentContent);
-    }
-    return true;
 }

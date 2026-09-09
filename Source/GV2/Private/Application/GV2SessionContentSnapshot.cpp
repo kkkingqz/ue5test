@@ -6,6 +6,7 @@
 #include "UI/GV2GameShellWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2ScreenRegistry.h"
+#include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2UiTheme.h"
 
 namespace
@@ -49,6 +50,21 @@ bool FGV2ResolvedImageCatalog::Resolve(
         return false;
     }
     return Catalog->Resolve(ResourceId, OutResource, OutError);
+}
+
+TArray<FString> FGV2ResolvedImageCatalog::GetResourceIds() const
+{
+    TArray<FString> Result;
+    if (!Catalog.IsValid())
+    {
+        return Result;
+    }
+    Result.Reserve(Catalog->GetEntries().Num());
+    for (const FGV2ImageResourceDefinition& Entry : Catalog->GetEntries())
+    {
+        Result.Add(Entry.ResourceId);
+    }
+    return Result;
 }
 
 // PAH-04: pre_ready_discovery -- only called from StartSession() (directly, or via
@@ -188,13 +204,38 @@ bool FGV2SessionContentCandidate::Build(
 
     // Theme -- resolved once here (settings/DataAsset are legitimate bootstrap input per
     // BootstrapAndSessionLifecycle.md's target rule), pinned for this snapshot's lifetime.
-    UGV2UiTheme* ResolvedTheme = UGV2UiThemeSettings::GetConfiguredTheme();
+    //
+    // The already-loaded object is preferred and the synchronous load is refused while the
+    // async loader or GC owns the object graph -- the same two guards the retired
+    // UGV2UiThemeSettings::GetConfiguredTheme() accessor carried. They are a property of
+    // loading an asset, not of that accessor, so they move here with the load itself.
+    //
+    // What deliberately does NOT move here is that accessor's silent
+    // GetCoreMinimalTheme() substitution: a session whose configured Theme cannot be
+    // resolved must fail to start and surface the cold-start recovery screen, not run on a
+    // stand-in Theme that hides the misconfiguration behind a degraded UI (ADR-0043 D1 --
+    // the snapshot carries the authored presentation authority or there is no session).
+    const UGV2UiThemeSettings* ThemeSettings = GetDefault<UGV2UiThemeSettings>();
+    UGV2UiTheme* ResolvedTheme = nullptr;
+    if (ThemeSettings != nullptr && !ThemeSettings->ThemeAsset.IsNull())
+    {
+        ResolvedTheme = ThemeSettings->ThemeAsset.Get();
+        if (ResolvedTheme == nullptr && !IsInAsyncLoadingThread() && !IsGarbageCollecting())
+        {
+            ResolvedTheme = ThemeSettings->ThemeAsset.LoadSynchronous();
+        }
+    }
     if (ResolvedTheme == nullptr)
     {
-        OutFault = {"ThemeNotReady", "No configured or fallback Theme could be resolved."};
+        OutFault = {"ThemeNotReady", "The configured session Theme could not be resolved."};
         return false;
     }
     OutSnapshot.Theme.Theme = TStrongObjectPtr<UGV2UiTheme>(ResolvedTheme);
+    OutSnapshot.Theme.FallbackTheme = TStrongObjectPtr<UGV2UiTheme>(UGV2UiTheme::GetCoreMinimalTheme());
+    OutSnapshot.Theme.RichTextPopoverClass = TStrongObjectPtr<UClass>(
+        !ResolvedTheme->RichTextPopoverClass.IsNull() && !IsInAsyncLoadingThread() && !IsGarbageCollecting()
+            ? ResolvedTheme->RichTextPopoverClass.LoadSynchronous()
+            : ResolvedTheme->RichTextPopoverClass.Get());
 
     UClass* GameShellClass = RegistrySettings != nullptr
         ? RegistrySettings->GameShellClass.LoadSynchronous()

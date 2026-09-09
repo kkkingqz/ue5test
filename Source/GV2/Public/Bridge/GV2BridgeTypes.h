@@ -144,16 +144,9 @@ struct GV2_API FGV2TextViewModel
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
     FString NormalizedMarkup;
 
-    // PSC-10A (ADR-0043 D3, PAH-R1): resolved presentation cache -- populated only when
-    // UGV2TextPipeline::Resolve() is given a PrepareContext, which resolves Theme through
-    // the session snapshot instead of the legacy GetConfiguredTheme() static accessor.
-    // When bHasResolvedPresentation is true, Apply()/ApplyRichText() use these fields
-    // directly and touch no Theme accessor of their own; when false (Resolve()'s two
-    // non-PrepareContext callers -- UGV2RuntimeSubsystem's cold-start recovery screen,
-    // which legitimately has no session/snapshot yet -- or any hand-built ViewModel),
-    // Apply()/ApplyRichText()/ApplyHint() fall back to the unchanged, Theme-touching
-    // resolution, exactly as before this task. A derived resolution cache, not part of
-    // this value's own identity -- deliberately excluded from operator==.
+    // Resolved presentation populated during semantic Prepare from the pinned session
+    // snapshot. Apply()/ApplyRichText() reject a value without it and perform no Theme or
+    // token lookup. This is derived presentation data and is excluded from operator==.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
     bool bHasResolvedPresentation = false;
 
@@ -209,6 +202,14 @@ struct GV2_API FGV2RichTextHoverViewModel
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|UI|Rich Text")
     FString ImageResourceId;
+
+    // PSC-10B: transient value prepared from ImageResourceId through the session
+    // snapshot. Tooltip opening applies this brush directly and never reaches a catalog.
+    UPROPERTY(Transient)
+    FSlateBrush ResolvedImageBrush;
+
+    UPROPERTY(Transient)
+    bool bHasResolvedImage = false;
 
     bool IsEmpty() const
     {

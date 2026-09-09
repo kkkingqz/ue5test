@@ -5,6 +5,7 @@
 
 class UUserWidget;
 class UWidget;
+class FGV2PresentationPrepareContext;
 
 /**
  * Harness for ADR-0040 Decision 4's observability requirement: a declared capability
@@ -36,6 +37,8 @@ GV2_API FString CaptureUiTargetState(const UWidget* TargetWidget);
  * Commit itself fails, or whose captured state does not change between A and B, is
  * reported as a failure in OutFailures -- never silently skipped. Returns true only if
  * every RendererControl capability in the tree is observable.
+ * PrepareContext is the same pinned authority used by production Prepare; the harness
+ * does not revive global resource/theme access for its synthetic values.
  *
  * PCC-10: a CollectionHost capability instantiates one fresh EntryWidgetClass instance and
  * recurses this same rule into its own capability tree -- UPP-R1 found this was the sweep's
@@ -53,4 +56,5 @@ GV2_API FString CaptureUiTargetState(const UWidget* TargetWidget);
 GV2_API bool RunUiCapabilityObservabilityHarness(
     UUserWidget* HostWidget,
     const FGV2UiCapabilityTree& Capabilities,
+    const FGV2PresentationPrepareContext& PrepareContext,
     TArray<FGV2UiObservabilityFailure>& OutFailures);

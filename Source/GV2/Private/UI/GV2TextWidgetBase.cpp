@@ -5,12 +5,6 @@
 #include "UI/GV2UiTheme.h"
 #include "UI/GV2UiCapability.h"
 
-void UGV2TextWidgetBase::NativePreConstruct()
-{
-    Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
-}
-
 bool UGV2TextWidgetBase::ApplyText(const FGV2TextViewModel& Content)
 {
     if (Content.NormalizedMarkup.Contains(TEXT("<gv2")))
@@ -33,11 +27,6 @@ FText UGV2TextWidgetBase::GetTextContent() const
 UCommonTextBlock* UGV2TextWidgetBase::GetTextBlock() const
 {
     return TextBlock != nullptr ? TextBlock.Get() : Cast<UCommonTextBlock>(GetWidgetFromName(TEXT("TextBlock")));
-}
-
-bool UGV2TextWidgetBase::ApplyCentralStyle_Implementation()
-{
-    return TextBlock != nullptr && UGV2TextPipeline::Apply(TextBlock, CurrentContent);
 }
 
 void UGV2TextWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const

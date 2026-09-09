@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Blueprint/UserWidget.h"
 #include "CommonButtonBase.h"
 #include "CommonTextBlock.h"
 #include "CoreMinimal.h"
@@ -160,19 +161,42 @@ struct GV2PRESENTATIONAPPLY_API FPreparedBindingOperation
     FString SerializedHandle;
 };
 
-// PSC-09B: canonical lower replacement for GV2's own FGV2RichTextHoverViewModel/
-// FGV2RichTextSpanViewModel USTRUCTs (Bridge/GV2BridgeTypes.h) -- not a copy of them or
-// a compatibility alias, a distinct type this module owns, built from the same resolved
-// fields via plain Core types only. UGV2RichTextWidgetBase::ApplySpans is entirely
-// GV2-owned, so GV2LegacyPresentationApplyAdapter reconstructs the USTRUCT array from
-// this before calling it; GV2PresentationApply::Apply() has nothing to do for this
-// operation, same as Key/Binding. SerializedBinding mirrors FPreparedBindingOperation's
-// own flattening of FGV2UiBindingHandle.
+// PSC-09B: canonical lower replacement for GV2's own FGV2TextViewModel
+// (Bridge/GV2BridgeTypes.h, USTRUCT(BlueprintType)) -- built from the same resolved
+// fields via plain Core types only. Every real Text target is either a GV2-owned widget
+// wrapper (UGV2TextWidgetBase, UGV2ButtonWidgetBase, UGV2DropdownSelectWidgetBase,
+// UGV2RichTextWidgetBase -- each with its own bookkeeping, e.g. CurrentContent, that a
+// direct SetText would leave stale) or reached only via GV2's own UGV2TextPipeline UCLASS
+// (a GV2-owned type, however plain the widgets it ultimately touches are) --
+// GV2LegacyPresentationApplyAdapter reconstructs the USTRUCT and replicates the exact
+// per-target dispatch FGV2TextPropertyConsumer::Commit() used to perform directly.
+// The adapter reconstructs this USTRUCT-compatible value, while the downstream text
+// pipeline accepts only these resolved fields and performs no Theme/token lookup.
+struct GV2PRESENTATIONAPPLY_API FPreparedTextValue
+{
+    FText Text;
+    FName StyleToken;
+    FString NormalizedMarkup;
+    TSubclassOf<UCommonTextStyle> ResolvedStyleClass;
+    float ResolvedBaseFontSize = 0.0f;
+    float ResolvedMinReadableFontSize = 0.0f;
+    float ResolvedReferenceViewportHeight = 0.0f;
+    FRuntimeFloatCurve ResolvedFontScaleCurve;
+    FTextBlockStyle ResolvedDefaultStyle;
+    bool bHasResolvedPresentation = false;
+    bool bHasResolvedDefaultStyle = false;
+};
+
+// PSC-09B/10B: canonical lower replacement for hover/span USTRUCTs. Hover text keeps
+// its prepared presentation and the optional image is a finished brush resolved in
+// Prepare; opening a tooltip performs no catalog lookup or synchronous load.
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextHover
 {
-    FText Title;
-    FText Description;
+    FPreparedTextValue Title;
+    FPreparedTextValue Description;
     FString ImageResourceId;
+    FSlateBrush ImageBrush;
+    bool bHasResolvedImage = false;
 };
 
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpan
@@ -189,30 +213,9 @@ struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpansOperation
     TArray<FPreparedRichTextSpan> Spans;
 };
 
-// PSC-09B: canonical lower replacement for GV2's own FGV2TextViewModel
-// (Bridge/GV2BridgeTypes.h, USTRUCT(BlueprintType)) -- built from the same resolved
-// fields via plain Core types only. Every real Text target is either a GV2-owned widget
-// wrapper (UGV2TextWidgetBase, UGV2ButtonWidgetBase, UGV2DropdownSelectWidgetBase,
-// UGV2RichTextWidgetBase -- each with its own bookkeeping, e.g. CurrentContent, that a
-// direct SetText would leave stale) or reached only via GV2's own UGV2TextPipeline UCLASS
-// (a GV2-owned type, however plain the widgets it ultimately touches are) --
-// GV2LegacyPresentationApplyAdapter reconstructs the USTRUCT and replicates the exact
-// per-target dispatch FGV2TextPropertyConsumer::Commit() used to perform directly.
-// Removing the Theme lookup still nested inside that dispatch (UGV2TextPipeline::Apply/
-// ApplyRichText/ApplyHint's own ResolveStyleClass/ResolveStyle calls) is PSC-10's job,
-// named there explicitly ("legacy runtime GetConfiguredTheme()... удалены после перевода
-// всех operation kinds") -- PSC-09B's own scope is the call SHAPE (transaction protocol,
-// not a direct Commit-time call), not yet eliminating every Theme access it still wraps.
-struct GV2PRESENTATIONAPPLY_API FPreparedTextValue
-{
-    FText Text;
-    FName StyleToken;
-    FString NormalizedMarkup;
-};
-
 // PSC-09B: the widget-touching tail of FGV2KeyedCollectionPropertyConsumer::
 // CommitWithFailureInjector()/Reset() -- panel child-list reconciliation, active-widget
-// map publication, central style refresh, and (for a Dropdown-owned collection) header
+// map publication and (for a Dropdown-owned collection) header
 // label refresh. The recursive per-item CommitUiHostProperties() calls that precede this
 // (each item's OWN capabilities, applied through their own already-migrated leaf
 // consumers) and the pure bookkeeping SetLastCommittedSnapshot() calls that follow it
@@ -220,9 +223,9 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextValue
 // -- neither reaches a content/authority type, and neither is itself a widget mutation
 // this module could apply; UPanelWidget::ClearChildren/AddChild is the one genuinely
 // shared, plain-UMG step, but UGV2ListViewWidgetBase::GetContainerPanel/
-// SetActiveWidgetsMap, UGV2ButtonListWidgetBase::GetButtonContainer,
-// IGV2UiStyleConsumer::Execute_ApplyCentralStyle and UGV2DropdownSelectWidgetBase::
-// UpdateHeaderLabel are all GV2-owned, so GV2LegacyPresentationApplyAdapter performs the
+// SetActiveWidgetsMap, UGV2ButtonListWidgetBase::GetButtonContainer and
+// UGV2DropdownSelectWidgetBase::UpdateHeaderLabel are all GV2-owned, so
+// GV2LegacyPresentationApplyAdapter performs the
 // whole tail, reproducing the original Commit()/Reset() dispatch.
 struct GV2PRESENTATIONAPPLY_API FPreparedKeyedCollectionEntry
 {
@@ -283,13 +286,6 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextScalePolicy
     float ReferenceViewportHeight = 1080.0f;
     FRuntimeFloatCurve ScaleCurve;
 
-    // PSC-10A legacy-fallback escape hatch: true only for callers outside the
-    // operation-kind pipeline (widget NativePreConstruct self-styling and similar --
-    // PSC-10B's own scope, not yet converted), where BaseFontSize is already the final,
-    // fully-scaled value the legacy Theme-touching resolver computed at the moment this
-    // operation was built. EvaluatePreparedFontSize returns it verbatim instead of
-    // re-applying scale math on top of an already-scaled number.
-    bool bIsAlreadyScaled = false;
 };
 
 // Mirrors UGV2UiTheme::EvaluateTextScale + GetEffectiveFontSize's own math exactly, as a
@@ -330,10 +326,7 @@ struct GV2PRESENTATIONAPPLY_API FPreparedPlainTextOperation
 };
 
 // PSC-09B/10A: UGV2TextPipeline::ApplyRichText's own widget mutation, split the same
-// way. ScalePolicy.bIsAlreadyScaled covers the legacy (non-PrepareContext) resolution
-// path -- DefaultStyle there already carries a font size baked in by the caller, and
-// EvaluatePreparedFontSize returns BaseFontSize verbatim instead of re-deriving it, so
-// re-applying it via SetFontSize is a same-value no-op, not a second scaling pass.
+// way. ScalePolicy always contains unscaled values prepared from the session Theme.
 struct GV2PRESENTATIONAPPLY_API FPreparedRichTextRenderOperation
 {
     TWeakObjectPtr<UCommonRichTextBlock> TargetWidget;
@@ -426,6 +419,53 @@ struct GV2PRESENTATIONAPPLY_API FPreparedButtonStyle
     FPreparedTextScalePolicy DefaultLabelScale;
 };
 
+// PSC-10B: one style token resolved to finished values. BaseStyle is the token's style
+// WITHOUT its final size; UnscaledFontSize is scaled against the LIVE viewport at use time,
+// because a rich-text run is styled by a Slate decorator during rendering, long after Apply
+// -- baking the size here would stop the text reflowing when the window is resized, which
+// the pull path did not do either.
+struct GV2PRESENTATIONAPPLY_API FPreparedRichTextTokenStyle
+{
+    TSubclassOf<UCommonTextStyle> StyleClass;
+    FTextBlockStyle BaseStyle;
+    float UnscaledFontSize = 0.0f;
+    bool bResolved = false;
+};
+
+// PSC-10B: finished values for a RichText hover popover. The popover instance is created
+// after the screen transaction, but it still applies this role through the same transaction
+// facade: the creating RichText widget retains the value prepared for it, not a Theme.
+struct GV2PRESENTATIONAPPLY_API FPreparedRichTextPopoverStyle
+{
+    FSlateBrush Background;
+    FMargin Padding;
+    float MaxWidth = 0.0f;
+    float MaxHeight = 0.0f;
+    FLinearColor ImageTint = FLinearColor::White;
+    FPreparedViewportScalePolicy Scale;
+};
+
+// PSC-10B: everything UGV2RichTextWidgetBase and the hover popover it creates need, resolved
+// once in Prepare. The decorator's own resolution (run style, interactive style) reads THIS,
+// not a Theme: the token tables are finished values, so a synchronous Slate callback during
+// rendering can be served without any authority being reachable from it.
+struct GV2PRESENTATIONAPPLY_API FPreparedRichTextStyle
+{
+    FName DefaultTokenName;
+    TSubclassOf<UCommonTextStyle> DefaultStyleClass;
+    FPreparedRichTextTokenStyle DefaultToken;
+    TMap<FName, FPreparedRichTextTokenStyle> StyleByToken;
+    TMap<FName, FLinearColor> ColorByToken;
+    TMap<FName, float> UnscaledSizeByToken;
+    FPreparedTextScalePolicy ScalePolicy;
+    FHyperlinkStyle InteractiveStyle;
+
+    // Already loaded during Prepare: the hover path must not perform a synchronous load.
+    TSubclassOf<UUserWidget> PopoverClass;
+    FPreparedRichTextPopoverStyle PopoverStyle;
+    bool bIsResolved = false;
+};
+
 struct GV2PRESENTATIONAPPLY_API FPreparedDropdownStyle
 {
     TSubclassOf<UCommonButtonStyle> HeaderStyle;
@@ -466,7 +506,9 @@ using FPreparedCentralStylePayload = TVariant<
     FPreparedButtonStyle,
     FPreparedCheckboxStyle,
     FPreparedInputFieldStyle,
-    FPreparedDropdownStyle
+    FPreparedDropdownStyle,
+    FPreparedRichTextPopoverStyle,
+    FPreparedRichTextStyle
 >;
 
 // TargetWidget is a GV2-owned widget base for every role that exists today, so the

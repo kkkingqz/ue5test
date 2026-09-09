@@ -34,6 +34,7 @@
 #include "UI/GV2RecoveryScreenWidget.h"
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
+#include "Tests/GV2ForgeryTestWidgets.h"
 #include "UI/GV2SeparatorWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2TextPipeline.h"
@@ -55,6 +56,7 @@
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2ScreenFieldHost.h"
 #include "UI/GV2UiMutationPlan.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "Components/VerticalBox.h"
 #include "Components/HorizontalBox.h"
@@ -84,6 +86,71 @@
 
 namespace
 {
+UGV2UiTheme* LoadConfiguredThemeForTest()
+{
+    const UGV2UiThemeSettings* Settings = GetDefault<UGV2UiThemeSettings>();
+    UGV2UiTheme* Theme = Settings != nullptr && !Settings->ThemeAsset.IsNull()
+        ? Settings->ThemeAsset.LoadSynchronous()
+        : nullptr;
+    return Theme != nullptr ? Theme : UGV2UiTheme::GetCoreMinimalTheme();
+}
+
+UGV2ScreenRegistry* LoadConfiguredRegistryForTest()
+{
+    const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
+    return Settings != nullptr && !Settings->RegistryAsset.IsNull()
+        ? Settings->RegistryAsset.LoadSynchronous()
+        : nullptr;
+}
+
+// PSC-10B: one literal-resolution seam, shared with GV2PresentationTestFixtures. Two
+// hand-rolled copies of "fill the resolved presentation fields" existed here and in that
+// header; both could drift from what production Resolve() actually produces, so both now
+// delegate to the pipeline's own implementation.
+FGV2TextViewModel MakeResolvedLiteralTextForTest(
+    const UGV2UiTheme& Theme,
+    const FString& Text,
+    FName StyleToken = NAME_None)
+{
+    FGV2TextViewModel Result;
+    FString Error;
+    UGV2TextPipeline::ResolveLiteralForAutomationTest(&Theme, Text, StyleToken, Result, Error);
+    return Result;
+}
+
+GV2PresentationApply::FPreparedRichTextStyle MakePreparedRichTextStyleForTest(
+    const UGV2UiTheme& Theme)
+{
+    GV2PresentationApply::FPreparedRichTextStyle Result;
+    Result.DefaultTokenName = Theme.DefaultTextStyleToken.IsNone()
+        ? FName(TEXT("default"))
+        : Theme.DefaultTextStyleToken;
+    Result.DefaultStyleClass = Theme.RichTextStyle;
+    Result.DefaultToken.StyleClass = Theme.RichTextStyle;
+    Result.DefaultToken.UnscaledFontSize = 0.0f;
+    if (const UCommonTextStyle* Style = Theme.RichTextStyle != nullptr
+            ? Cast<UCommonTextStyle>(Theme.RichTextStyle->GetDefaultObject())
+            : nullptr)
+    {
+        Style->ToTextBlockStyle(Result.DefaultToken.BaseStyle);
+        Result.DefaultToken.bResolved = true;
+    }
+    Result.ColorByToken = Theme.TextColorTokens;
+    Result.UnscaledSizeByToken = Theme.TextSizeTokens;
+    Result.ScalePolicy = UGV2TextPipeline::ResolveScalePolicyForTheme(&Theme, Result.DefaultTokenName);
+    Result.InteractiveStyle = Theme.RichTextInteractiveStyle;
+    Result.PopoverClass = Theme.RichTextPopoverClass.LoadSynchronous();
+    Result.PopoverStyle.Background = Theme.RichTextPopoverBackground;
+    Result.PopoverStyle.Padding = Theme.RichTextPopoverPadding;
+    Result.PopoverStyle.MaxWidth = Theme.RichTextPopoverMaxWidth;
+    Result.PopoverStyle.MaxHeight = Theme.RichTextPopoverMaxHeight;
+    Result.PopoverStyle.ImageTint = Theme.ImageTint;
+    Result.PopoverStyle.Scale.ScaleCurve = Theme.TextScaleCurve;
+    Result.PopoverStyle.Scale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
+    Result.bIsResolved = true;
+    return Result;
+}
+
 // CBM-03: GameData/sample carries the WBP_Testscreen demo/debug-start screen
 // but is deliberately excluded from the default package set (mods.lock.json5),
 // since it and GameData/rh both bind the shared
@@ -815,7 +882,7 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
 {
     const FGV2ScopedRealSchemaCache ScopedSchemaCache;
 
-    if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+    if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
     {
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.progress.health"), FText::FromString(TEXT("Health")));
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.modal.title"), FText::FromString(TEXT("Title")));
@@ -999,7 +1066,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
 {
     const FGV2ScopedRealImageCatalog ScopedImageCatalog;
 
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
     TestNotNull(TEXT("Configured central UI theme is loadable"), Theme);
     if (Theme == nullptr)
     {
@@ -1066,6 +1133,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     TestTrue(
         TEXT("Text pipeline accepts nested data-driven tokens"),
         UGV2TextPipeline::NormalizeMarkup(
+            Theme,
             TEXT("A <color=blue>blue <size=huge>large</size></color><br/>line"),
             NormalizedMarkup,
             MarkupError));
@@ -1075,6 +1143,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     TestFalse(
         TEXT("Text pipeline rejects unknown token values"),
         UGV2TextPipeline::NormalizeMarkup(
+            Theme,
             TEXT("<color=not_registered>invalid</color>"),
             NormalizedMarkup,
             MarkupError));
@@ -1087,7 +1156,8 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     FString ResolveError;
     TestTrue(
         TEXT("Text pipeline resolves text_id, arguments and optional style"),
-        UGV2TextPipeline::Resolve(
+        UGV2TextPipeline::ResolveForAutomationTest(
+            Theme,
             TEXT("core:text.screen.test.description"),
             {PlayerName},
             TEXT("inventory"),
@@ -1098,7 +1168,7 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     TestTrue(TEXT("String arguments cannot inject markup"), ResolvedText.Text.ToString().Contains(TEXT("&lt;size=huge&gt;")));
     TestTrue(
         TEXT("Escaped arguments remain single-escaped during markup normalization"),
-        UGV2TextPipeline::NormalizeMarkup(ResolvedText.Text.ToString(), NormalizedMarkup, MarkupError));
+        UGV2TextPipeline::NormalizeMarkup(Theme, ResolvedText.Text.ToString(), NormalizedMarkup, MarkupError));
     TestEqual(TEXT("Resolved renderer markup is the canonical normalized output"), ResolvedText.NormalizedMarkup, NormalizedMarkup);
     TestTrue(TEXT("Escaped argument is preserved for the renderer"), NormalizedMarkup.Contains(TEXT("&lt;size=huge&gt;")));
     TestFalse(TEXT("Escaped argument is not double-escaped"), NormalizedMarkup.Contains(TEXT("&amp;lt;size=huge")));
@@ -1109,7 +1179,8 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     FString FallbackResolveError;
     TestTrue(
         TEXT("Text pipeline falls back to FallbackTextCatalog when key is missing from TextCatalog"),
-        UGV2TextPipeline::Resolve(
+        UGV2TextPipeline::ResolveForAutomationTest(
+            Theme,
             TEXT("core:text.untranslated.item"),
             {},
             TEXT("inventory"),
@@ -1121,7 +1192,8 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
     FString MissingResolveError;
     TestFalse(
         TEXT("Text pipeline rejects completely unknown text_id without fault or crash"),
-        UGV2TextPipeline::Resolve(
+        UGV2TextPipeline::ResolveForAutomationTest(
+            Theme,
             TEXT("core:text.unknown.nonexistent"),
             {},
             TEXT("inventory"),
@@ -1588,15 +1660,11 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
         TestNotNull(*FString::Printf(TEXT("UI component instantiates: %s"), Component.ClassPath), Widget);
         if (Widget != nullptr)
         {
-            TestTrue(
-                *FString::Printf(TEXT("UI component implements central style consumer: %s"), Component.ClassPath),
-                Widget->Implements<UGV2UiStyleConsumer>());
-            TestTrue(
-                *FString::Printf(TEXT("UI component applies central theme: %s"), Component.ClassPath),
-                IGV2UiStyleConsumer::Execute_ApplyCentralStyle(Widget));
-
             if (UGV2RichTextWidgetBase* RichText = Cast<UGV2RichTextWidgetBase>(Widget))
             {
+                const GV2PresentationApply::FPreparedRichTextStyle PreparedRichTextStyle =
+                    MakePreparedRichTextStyleForTest(*Theme);
+                RichText->ApplyRichTextStyleValues(PreparedRichTextStyle);
                 UCommonRichTextBlock* RichTextBlock = Cast<UCommonRichTextBlock>(
                     RichText->GetWidgetFromName(TEXT("RichTextBlock")));
                 UScrollBox* RichTextScrollBox = Cast<UScrollBox>(
@@ -1616,9 +1684,9 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                         RichTextScrollBox->GetOrientation(),
                         EOrientation::Orient_Vertical);
                     RichTextScrollBox->SetScrollOffset(42.0f);
-                    FGV2TextViewModel ReplacementText;
-                    ReplacementText.Text = FText::FromString(TEXT("Replacement text"));
-                    RichText->ApplyText(ReplacementText);
+                    const FGV2TextViewModel ReplacementText =
+                        MakeResolvedLiteralTextForTest(*Theme, TEXT("Replacement text"));
+                    TestTrue(TEXT("Prepared replacement RichText applies"), RichText->ApplyText(ReplacementText));
                     TestEqual(
                         TEXT("Applying replacement RichText resets scroll to the start"),
                         RichTextScrollBox->GetScrollOffset(),
@@ -1659,13 +1727,15 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                     PopoverDescription);
                 FGV2RichTextHoverViewModel HoverModel;
                 HoverModel.Title.Text = FText::FromString(TEXT("Title"));
-                HoverModel.Title.StyleToken = TEXT("default");
-                HoverModel.Description.Text = FText::FromString(
+                HoverModel.Title = MakeResolvedLiteralTextForTest(*Theme, TEXT("Title"));
+                HoverModel.Description = MakeResolvedLiteralTextForTest(
+                    *Theme,
                     TEXT("A long popover description that must use the shared wrapping and scrolling behavior."));
-                HoverModel.Description.StyleToken = TEXT("default");
                 TestTrue(
                     TEXT("RichText popover initializes through the reusable component"),
-                    Popover->InitializePopover(HoverModel));
+                    Popover->InitializePopover(
+                        HoverModel,
+                        MakePreparedRichTextStyleForTest(*Theme)));
                 if (PopoverDescription != nullptr)
                 {
                     UCommonRichTextBlock* PopoverRichText =
@@ -2140,7 +2210,6 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.TargetWidget = Widget;
             Op.Text = FText::FromString(TEXT("kind-walk"));
             Op.ScalePolicy.BaseFontSize = 14.0f;
-            Op.ScalePolicy.bIsAlreadyScaled = true;
             Transaction.AddPlainTextOperation(Op);
             FString Error;
             TestTrue(TEXT("PlainText: Apply succeeds"), GV2PresentationApply::Apply(Transaction, Error));
@@ -3128,6 +3197,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
 {
+    const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
+    TestNotNull(TEXT("Configured theme is available for prepared text fixtures"), Theme);
+
     UClass* WidgetClass = LoadClass<UUserWidget>(
         nullptr,
         TEXT("/Game/UI/Widgets/WBP_InputField.WBP_InputField_C"));
@@ -3165,13 +3237,13 @@ bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
         InputFieldWidget->SetMaxLength(20);
         InputFieldWidget->SetIsReadOnly(false);
 
-        FGV2TextViewModel TextModel;
-        TextModel.Text = FText::FromString(TEXT("Player Name"));
-        InputFieldWidget->ApplyText(TextModel);
-
-        FGV2TextViewModel PlaceholderModel;
-        PlaceholderModel.Text = FText::FromString(TEXT("Enter name..."));
-        InputFieldWidget->ApplyPlaceholderText(PlaceholderModel);
+        if (Theme != nullptr)
+        {
+            InputFieldWidget->ApplyText(
+                MakeResolvedLiteralTextForTest(*Theme, TEXT("Player Name")));
+            InputFieldWidget->ApplyPlaceholderText(
+                MakeResolvedLiteralTextForTest(*Theme, TEXT("Enter name...")));
+        }
 
         TestEqual(TEXT("Key matches"), InputFieldWidget->GetKey(), FName(TEXT("user_name")));
         TestEqual(TEXT("Value matches"), InputFieldWidget->GetValue(), FString(TEXT("King")));
@@ -3202,6 +3274,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 {
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
     // GBF-06: enumerate every asset package actually present under Content, then inspect
     // every screen Blueprint generated class. A new .uasset cannot evade this audit by
     // being absent from a hand-maintained list of known screens.
@@ -3400,7 +3483,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         Doc1.Route.ScreenId = TEXT("core:screen.main");
 
         FString ReconcileError;
-        TestTrue(TEXT("Reconcile initial Doc1 succeeds"), Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError));
+        TestTrue(TEXT("Reconcile initial Doc1 succeeds"), Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError, *PrepareContext));
         TestEqual(TEXT("Factory instantiated 1 screen widget"), FactoryInstantiations, 1);
 
         UGV2ScreenWidgetBase* RouteWidget1 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
@@ -3415,7 +3498,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         Doc2.Route.InstanceKey = TEXT("main");
         Doc2.Route.ScreenId = TEXT("core:screen.main");
 
-        TestTrue(TEXT("Reconcile Doc2 succeeds"), Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError));
+        TestTrue(TEXT("Reconcile Doc2 succeeds"), Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError, *PrepareContext));
         TestEqual(TEXT("Widget reused without new instantiation"), FactoryInstantiations, 1);
         UGV2ScreenWidgetBase* RouteWidget2 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
         TestEqual(TEXT("Widget instance pointer is preserved across revisions"), RouteWidget2, RouteWidget1);
@@ -3429,7 +3512,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         Doc3.Route.InstanceKey = TEXT("main");
         Doc3.Route.ScreenId = TEXT("core:screen.alt");
 
-        TestTrue(TEXT("Reconcile Doc3 succeeds"), Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError));
+        TestTrue(TEXT("Reconcile Doc3 succeeds"), Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError, *PrepareContext));
         TestEqual(TEXT("Factory called to instantiate new screen class"), FactoryInstantiations, 2);
         UGV2ScreenWidgetBase* RouteWidget3 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
         TestNotNull(TEXT("New route widget exists"), RouteWidget3);
@@ -3444,7 +3527,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         ModalInst.ScreenId = TEXT("core:screen.modal_confirm");
         Doc4.Modals.Add(ModalInst);
 
-        TestTrue(TEXT("Reconcile Doc4 with modal succeeds"), Reconciler.Reconcile(Shell, Doc4, MockFactory, ReconcileError));
+        TestTrue(TEXT("Reconcile Doc4 with modal succeeds"), Reconciler.Reconcile(Shell, Doc4, MockFactory, ReconcileError, *PrepareContext));
         TestEqual(TEXT("Factory instantiated modal widget"), FactoryInstantiations, 3);
         if (Shell != nullptr)
         {
@@ -3459,7 +3542,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         Doc5.Revision = 5;
         Doc5.Modals.Empty();
 
-        TestTrue(TEXT("Reconcile Doc5 (modal closed) succeeds"), Reconciler.Reconcile(Shell, Doc5, MockFactory, ReconcileError));
+        TestTrue(TEXT("Reconcile Doc5 (modal closed) succeeds"), Reconciler.Reconcile(Shell, Doc5, MockFactory, ReconcileError, *PrepareContext));
         if (Shell != nullptr)
         {
             TestTrue(TEXT("Location content layer is unblocked"), Shell->IsLayerInteractive(TEXT("location_content")));
@@ -3475,7 +3558,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         BadDoc.Route.InstanceKey = TEXT("main");
         BadDoc.Route.ScreenId = TEXT("invalid:screen.does_not_exist");
 
-        TestFalse(TEXT("Reconcile BadDoc fails"), Reconciler.Reconcile(Shell, BadDoc, MockFactory, ReconcileError));
+        TestFalse(TEXT("Reconcile BadDoc fails"), Reconciler.Reconcile(Shell, BadDoc, MockFactory, ReconcileError, *PrepareContext));
         TestEqual(
             TEXT("Previous active screen remains intact after rejected candidate"),
             Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")),
@@ -3506,7 +3589,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         ModalInst1.ScreenId = TEXT("core:screen.modal_confirm");
         MultiDoc1.Modals.Add(ModalInst1);
 
-        const bool bMulti1Success = Reconciler.Reconcile(Shell, MultiDoc1, MockFactory, ReconcileError);
+        const bool bMulti1Success = Reconciler.Reconcile(Shell, MultiDoc1, MockFactory, ReconcileError, *PrepareContext);
         TestTrue(*FString::Printf(TEXT("Reconcile MultiDoc1 succeeds [Error: %s]"), *ReconcileError), bMulti1Success);
         UGV2ScreenWidgetBase* RouteWidgetMulti = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
         UGV2ScreenWidgetBase* OverlayWidgetMulti = Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("hud"));
@@ -3549,7 +3632,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         FailingModalInst.Fields.Add(BadField);
         MultiDoc2.Modals.Add(FailingModalInst);
 
-        const bool bMulti2Success = Reconciler.Reconcile(Shell, MultiDoc2, MockFactory, ReconcileError);
+        const bool bMulti2Success = Reconciler.Reconcile(Shell, MultiDoc2, MockFactory, ReconcileError, *PrepareContext);
         TestFalse(TEXT("Reconcile MultiDoc2 fails due to failing modal field"), bMulti2Success);
         TestFalse(TEXT("ReconcileError is populated"), ReconcileError.IsEmpty());
 
@@ -3589,7 +3672,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         MultiDoc3.Route.InstanceKey = TEXT("main");
         MultiDoc3.Route.ScreenId = TEXT("core:screen.main"); // Reuses RouteWidgetMulti
 
-        const bool bMulti3Success = Reconciler.Reconcile(Shell, MultiDoc3, MockFactory, ReconcileError);
+        const bool bMulti3Success = Reconciler.Reconcile(Shell, MultiDoc3, MockFactory, ReconcileError, *PrepareContext);
         TestTrue(*FString::Printf(TEXT("Reconcile MultiDoc3 succeeds [Error: %s]"), *ReconcileError), bMulti3Success);
         UGV2ScreenWidgetBase* RouteWidgetReused = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
         TestEqual(TEXT("Route widget instance was reused preserving UI-local state"), RouteWidgetReused, RouteWidgetMulti);
@@ -3665,7 +3748,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TestNotNull(TEXT("PCC-06: TopBar is an IGV2UiPropertyHost"), TopBarHost);
 
             FString FaultReconcileError;
-            const bool bBaseline = Reconciler.Reconcile(Shell, MakeFaultDoc(TEXT("Monday")), FaultFactory, FaultReconcileError);
+            const bool bBaseline = Reconciler.Reconcile(Shell, MakeFaultDoc(TEXT("Monday")), FaultFactory, FaultReconcileError, *PrepareContext);
             TestTrue(*FString::Printf(TEXT("PCC-06: baseline reconcile of fault screen succeeds [Error: %s]"), *FaultReconcileError), bBaseline);
             if (TopBarHost != nullptr)
             {
@@ -3681,7 +3764,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             {
                 return ScreenId == TEXT("core:screen.pcc06_fault_target");
             };
-            const bool bFaultResult = Reconciler.Reconcile(Shell, MakeFaultDoc(TEXT("Tuesday")), FaultFactory, FaultReconcileError, FailInjector);
+            const bool bFaultResult = Reconciler.Reconcile(Shell, MakeFaultDoc(TEXT("Tuesday")), FaultFactory, FaultReconcileError, *PrepareContext, FailInjector);
 
             TestFalse(TEXT("PCC-06: Reconcile fails when injected Commit failure occurs"), bFaultResult);
             TestTrue(TEXT("PCC-06: ReconcileError names the commit-phase diagnostic"),
@@ -3792,7 +3875,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             };
 
             FString MultiLayerError;
-            const bool bMultiBaseline = Reconciler.Reconcile(Shell, MakeMultiLayerDoc(TEXT("v1"), TEXT("Monday")), MultiLayerFactory, MultiLayerError);
+            const bool bMultiBaseline = Reconciler.Reconcile(Shell, MakeMultiLayerDoc(TEXT("v1"), TEXT("Monday")), MultiLayerFactory, MultiLayerError, *PrepareContext);
             TestTrue(*FString::Printf(TEXT("PCC-07: baseline multi-layer reconcile succeeds [Error: %s]"), *MultiLayerError), bMultiBaseline);
             TestEqual(TEXT("PCC-07: layer A baseline widget is TopBarScreenV1"), Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("pcc07_a")), TopBarScreenV1);
             TestEqual(TEXT("PCC-07: layer B baseline widget is PlainScreenV1"), Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("pcc07_b")), PlainScreenV1);
@@ -3801,7 +3884,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             {
                 return ScreenId == TEXT("core:screen.pcc07_a_v2");
             };
-            const bool bMultiFault = Reconciler.Reconcile(Shell, MakeMultiLayerDoc(TEXT("v2"), TEXT("Tuesday")), MultiLayerFactory, MultiLayerError, MultiLayerFailInjector);
+            const bool bMultiFault = Reconciler.Reconcile(Shell, MakeMultiLayerDoc(TEXT("v2"), TEXT("Tuesday")), MultiLayerFactory, MultiLayerError, *PrepareContext, MultiLayerFailInjector);
 
             TestFalse(TEXT("PCC-07: Reconcile fails when layer A's Commit is injected to fail"), bMultiFault);
             TestTrue(TEXT("PCC-07: error names layer A's screen_id"), MultiLayerError.Contains(TEXT("core:screen.pcc07_a_v2")));
@@ -3831,7 +3914,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             CleanupDoc.bHasRoute = false;
             FString CleanupError;
             TestTrue(*FString::Printf(TEXT("PCC-07: cleanup reconcile succeeds [Error: %s]"), *CleanupError),
-                Reconciler.Reconcile(Shell, CleanupDoc, MultiLayerFactory, CleanupError));
+                Reconciler.Reconcile(Shell, CleanupDoc, MultiLayerFactory, CleanupError, *PrepareContext));
         }
 
         // GBH-01: a document naming a layer with no authored Shell host is rejected
@@ -3887,7 +3970,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
                 FGV2LayeredUiReconciler::FPreparedReconciliationPlan GbhPlan;
                 FString GbhError;
-                const bool bGbhPrepared = GbhReconciler.PrepareReconcile(PartialShell, GbhDoc, GbhFactory, GbhPlan, GbhError);
+                const bool bGbhPrepared = GbhReconciler.PrepareReconcile(PartialShell, GbhDoc, GbhFactory, GbhPlan, GbhError, *PrepareContext);
                 TestFalse(*FString::Printf(TEXT("GBH-01: missing layer host is rejected in Prepare [Error: %s]"), *GbhError), bGbhPrepared);
                 TestTrue(*FString::Printf(TEXT("GBH-01: rejection names the missing-host diagnostic [Error: %s]"), *GbhError),
                     GbhError.Contains(TEXT("core:diagnostic.ui_reconcile.missing_layer_host")));
@@ -3901,7 +3984,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 // Full Reconcile() (Prepare + Commit) also fails wholesale and never
                 // reaches Commit -- the plan it would have committed is simply discarded.
                 FString GbhReconcileError;
-                const bool bGbhReconciled = GbhReconciler.Reconcile(PartialShell, GbhDoc, GbhFactory, GbhReconcileError);
+                const bool bGbhReconciled = GbhReconciler.Reconcile(PartialShell, GbhDoc, GbhFactory, GbhReconcileError, *PrepareContext);
                 TestFalse(TEXT("GBH-01: full Reconcile() also rejects the document wholesale"), bGbhReconciled);
 
                 // Positive control: the same partial-host Shell accepts a document that
@@ -3914,7 +3997,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 GbhPositiveDoc.Route = GbhDoc.Route;
                 FString GbhPositiveError;
                 TestTrue(*FString::Printf(TEXT("GBH-01: a document naming only the authored layer still succeeds [Error: %s]"), *GbhPositiveError),
-                    GbhReconciler.Reconcile(PartialShell, GbhPositiveDoc, GbhFactory, GbhPositiveError));
+                    GbhReconciler.Reconcile(PartialShell, GbhPositiveDoc, GbhFactory, GbhPositiveError, *PrepareContext));
                 TestEqual(TEXT("GBH-01: positive control actually attached to the authored host"),
                     LocationHostPanel->GetChildrenCount(), 1);
 
@@ -3986,7 +4069,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 BaselineDoc.Route.InstanceKey = TEXT("gbf01_route");
                 BaselineDoc.Route.ScreenId = TEXT("core:screen.gbf01_route_v1");
 
-                const bool bBaselineCommitted = AttachFailureReconciler.Reconcile(AttachFailureShell, BaselineDoc, AttachFailureFactory, AttachFailureError);
+                const bool bBaselineCommitted = AttachFailureReconciler.Reconcile(AttachFailureShell, BaselineDoc, AttachFailureFactory, AttachFailureError, *PrepareContext);
                 TestTrue(*FString::Printf(TEXT("GBF-01: baseline route commits [Error: %s]"), *AttachFailureError), bBaselineCommitted);
                 TestEqual(TEXT("GBF-01: baseline active route is v1"),
                     AttachFailureReconciler.GetActiveScreen(TEXT("location_content"), TEXT("gbf01_route")), RouteV1);
@@ -4020,7 +4103,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 RejectedOverlayInst.ScreenId = TEXT("core:screen.gbf01_overlay_rejected");
                 CandidateDoc.Overlays.Add(RejectedOverlayInst);
 
-                const bool bRejectedCommit = AttachFailureReconciler.Reconcile(AttachFailureShell, CandidateDoc, AttachFailureFactory, AttachFailureError);
+                const bool bRejectedCommit = AttachFailureReconciler.Reconcile(AttachFailureShell, CandidateDoc, AttachFailureFactory, AttachFailureError, *PrepareContext);
 
                 TestFalse(TEXT("GBF-01: single-child overlay host with 2 desired screens rejects document Commit"), bRejectedCommit);
                 TestTrue(*FString::Printf(TEXT("GBF-01: failure reports the layer-reconcile diagnostic [Error: %s]"), *AttachFailureError),
@@ -4156,7 +4239,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
             FString ReusedError;
             TestTrue(*FString::Printf(TEXT("GBH-11: baseline reconcile of the reused screen succeeds [Error: %s]"), *ReusedError),
-                Reconciler.Reconcile(Shell, MakeReusedDoc(TEXT("OldA"), TEXT("OldB")), ReusedFactory, ReusedError));
+                Reconciler.Reconcile(Shell, MakeReusedDoc(TEXT("OldA"), TEXT("OldB")), ReusedFactory, ReusedError, *PrepareContext));
             TestEqual(TEXT("GBH-11: baseline widget is ReusedScreen"), Reconciler.GetActiveScreen(TEXT("overlay_stack"), TEXT("gbh11_reused")), ReusedScreen);
             TestEqual(TEXT("GBH-11: baseline TextA reads OldA"), TextA->GetTextContent().ToString(), TEXT("OldA"));
             TestEqual(TEXT("GBH-11: baseline TextB reads OldB"), TextB->GetTextContent().ToString(), TEXT("OldB"));
@@ -4167,7 +4250,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             {
                 return ScreenId == TEXT("core:screen.gbh11_reused") && PropertyPath == TEXT("value_b");
             };
-            const bool bReusedFault = Reconciler.Reconcile(Shell, MakeReusedDoc(TEXT("NewA"), TEXT("NewB")), ReusedFactory, ReusedError, ReusedFailInjector);
+            const bool bReusedFault = Reconciler.Reconcile(Shell, MakeReusedDoc(TEXT("NewA"), TEXT("NewB")), ReusedFactory, ReusedError, *PrepareContext, ReusedFailInjector);
             TestFalse(TEXT("GBH-11: Reconcile fails when the reused screen's field_b Commit is injected"), bReusedFault);
 
             TestEqual(TEXT("GBH-11: same reused widget is STILL the active screen (never replaced)"),
@@ -4208,7 +4291,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 return ScreenId == TEXT("core:screen.gbf05_sibling_failure") && PropertyPath == TEXT("value_s");
             };
             const bool bOuterScreenFault = Reconciler.Reconcile(
-                Shell, MakeReusedDoc(TEXT("OuterA"), TEXT("OuterB")), ReusedFactory, ReusedError, OuterScreenFailureInjector);
+                Shell, MakeReusedDoc(TEXT("OuterA"), TEXT("OuterB")), ReusedFactory, ReusedError, *PrepareContext, OuterScreenFailureInjector);
             TestFalse(TEXT("GBF-05: later sibling screen fault rejects the document transaction"), bOuterScreenFault);
             TestEqual(TEXT("GBF-05: document rollback physically restores the earlier reused screen"),
                 TextA->GetTextContent().ToString(), TEXT("OldA"));
@@ -4230,7 +4313,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             ReusedCleanupDoc.bHasRoute = false;
             FString ReusedCleanupError;
             TestTrue(*FString::Printf(TEXT("GBH-11: cleanup reconcile succeeds [Error: %s]"), *ReusedCleanupError),
-                Reconciler.Reconcile(Shell, ReusedCleanupDoc, ReusedFactory, ReusedCleanupError));
+                Reconciler.Reconcile(Shell, ReusedCleanupDoc, ReusedFactory, ReusedCleanupError, *PrepareContext));
         }
 
         // GBF-04 (GBH-R2, ADR-0041): the inverse of a reused field host is defined by
@@ -4305,14 +4388,19 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             };
 
             TestTrue(TEXT("GBF-04: baseline schema A commits"),
-                SchemaSwitchScreen->ApplyScreenFields({ MakeSchemaSwitchValue(true) }));
+                SchemaSwitchScreen->ApplyScreenFields({ MakeSchemaSwitchValue(true) }, *PrepareContext));
             TestEqual(TEXT("GBF-04: baseline first meter is materialized"), FirstMeter->GetProgress(), 0.25f);
             TestEqual(TEXT("GBF-04: baseline second meter is materialized"), SecondMeter->GetProgress(), 0.75f);
 
             FGV2ScreenMutationPlan SchemaSwitchPlan;
             FString SchemaSwitchPrepareError;
             TestTrue(*FString::Printf(TEXT("GBF-04: candidate schema B prepares [Error: %s]"), *SchemaSwitchPrepareError),
-                SchemaSwitchScreen->PrepareScreenFields({ MakeSchemaSwitchValue(false) }, SchemaSwitchPlan, SchemaSwitchPrepareError));
+                SchemaSwitchScreen->PrepareScreenFields(
+                    { MakeSchemaSwitchValue(false) },
+                    SchemaSwitchPlan,
+                    SchemaSwitchPrepareError,
+                    nullptr,
+                    PrepareContext));
             TestEqual(TEXT("GBF-04: candidate has one field plan"), SchemaSwitchPlan.FieldPlans.Num(), 1);
             if (SchemaSwitchPlan.FieldPlans.Num() == 1)
             {
@@ -4428,6 +4516,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 // bool. The remaining five layers are untouched -- this is scoped to modal_stack alone.
 bool FGV2ModalStackKeyedCollectionOrderingContract::RunTest(const FString& Parameters)
 {
+    // PSC-10B: reconciliation requires the session snapshot -- central style is prepared
+    // from it, and no widget resolves a Theme of its own any more.
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();
     GameInstance->InitializeStandalone();
@@ -4470,7 +4569,7 @@ bool FGV2ModalStackKeyedCollectionOrderingContract::RunTest(const FString& Param
             Doc1.Modals.Add(MakeModalInstance(TEXT("modal_b")));
             Doc1.Modals.Add(MakeModalInstance(TEXT("modal_c")));
             TestTrue(*FString::Printf(TEXT("PAH-06A: reconcile [A,B,C] succeeds [Error: %s]"), *ReconcileError),
-                Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError));
+                Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError, *PrepareContext));
 
             UGV2ScreenWidgetBase* WidgetA = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_a"));
             UGV2ScreenWidgetBase* WidgetB = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_b"));
@@ -4497,7 +4596,7 @@ bool FGV2ModalStackKeyedCollectionOrderingContract::RunTest(const FString& Param
             Doc2.Modals.Add(MakeModalInstance(TEXT("modal_a")));
             Doc2.Modals.Add(MakeModalInstance(TEXT("modal_d")));
             TestTrue(*FString::Printf(TEXT("PAH-06A: reconcile [C,A,D] succeeds [Error: %s]"), *ReconcileError),
-                Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError));
+                Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError, *PrepareContext));
 
             TestEqual(TEXT("PAH-06A: A is the same reused instance"),
                 Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerModalStack, TEXT("modal_a")), WidgetA);
@@ -4636,6 +4735,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 // panel child order (Shell::GetScreensInLayer), not a returned bool.
 bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Parameters)
 {
+    // PSC-10B: reconciliation requires the session snapshot -- central style is prepared
+    // from it, and no widget resolves a Theme of its own any more.
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();
     GameInstance->InitializeStandalone();
@@ -4678,7 +4788,7 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
             Doc1.Overlays.Add(MakeOverlayInstance(TEXT("overlay_a"), TEXT("core:screen.overlay_probe")));
             Doc1.Overlays.Add(MakeOverlayInstance(TEXT("overlay_b"), TEXT("core:screen.overlay_probe")));
             TestTrue(*FString::Printf(TEXT("PAH-06B: reconcile [A,B] succeeds [Error: %s]"), *ReconcileError),
-                Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError));
+                Reconciler.Reconcile(Shell, Doc1, MockFactory, ReconcileError, *PrepareContext));
 
             UGV2ScreenWidgetBase* WidgetA = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_a"));
             UGV2ScreenWidgetBase* WidgetB = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_b"));
@@ -4699,7 +4809,7 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
             Doc2.Overlays.Add(MakeOverlayInstance(TEXT("overlay_b"), TEXT("core:screen.overlay_probe")));
             Doc2.Overlays.Add(MakeOverlayInstance(TEXT("overlay_a"), TEXT("core:screen.overlay_probe")));
             TestTrue(*FString::Printf(TEXT("PAH-06B: reconcile [B,A] succeeds [Error: %s]"), *ReconcileError),
-                Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError));
+                Reconciler.Reconcile(Shell, Doc2, MockFactory, ReconcileError, *PrepareContext));
 
             TestEqual(TEXT("PAH-06B: A is the same reused instance after reorder"),
                 Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_a")), WidgetA);
@@ -4721,7 +4831,7 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
             Doc3.Overlays.Add(MakeOverlayInstance(TEXT("overlay_b"), TEXT("core:screen.overlay_probe_v2")));
             Doc3.Overlays.Add(MakeOverlayInstance(TEXT("overlay_a"), TEXT("core:screen.overlay_probe")));
             TestTrue(*FString::Printf(TEXT("PAH-06B: reconcile replace-B succeeds [Error: %s]"), *ReconcileError),
-                Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError));
+                Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError, *PrepareContext));
 
             UGV2ScreenWidgetBase* WidgetB2 = Reconciler.GetActiveScreen(UGV2GameShellWidgetBase::LayerOverlayStack, TEXT("overlay_b"));
             TestNotNull(TEXT("PAH-06B: B2 was created"), WidgetB2);
@@ -4778,6 +4888,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 // a caveat; one that is only written down is an excuse waiting to be used.
 bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
 {
+    // PSC-10B: reconciliation requires the session snapshot -- central style is prepared
+    // from it, and no widget resolves a Theme of its own any more.
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();
     GameInstance->InitializeStandalone();
@@ -4796,9 +4917,7 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
         // The factory is registry-backed on purpose: GV2LayeredUiReconciler.h documents
         // FScreenFactory as "an implementation backed by UGV2ScreenRegistry::Resolve", so
         // this is the production shape, not an authority call invented for the test.
-        UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry() != nullptr
-            ? const_cast<UGV2ScreenRegistry*>(UGV2ScreenRegistrySettings::GetConfiguredRegistry())
-            : nullptr;
+        UGV2ScreenRegistry* Registry = LoadConfiguredRegistryForTest();
         TestNotNull(TEXT("PAH-08: a configured Screen Registry is available"), Registry);
 
         UGV2ScreenWidgetBase* Fixture = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
@@ -4831,7 +4950,7 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
             FString Error;
 
             const uint64 BeforePrepare = GV2PresentationAuthorityProbe::GetResolveCount();
-            const bool bPrepared = Reconciler.PrepareReconcile(Shell, Doc, Factory, Plan, Error);
+            const bool bPrepared = Reconciler.PrepareReconcile(Shell, Doc, Factory, Plan, Error, *PrepareContext);
             const uint64 AfterPrepare = GV2PresentationAuthorityProbe::GetResolveCount();
             TestTrue(*FString::Printf(TEXT("PAH-08: candidate prepares [Error: %s]"), *Error), bPrepared);
             TestTrue(
@@ -4864,7 +4983,7 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
             NextDoc.Route.ScreenId = TEXT("core:screen.pah08_probe_second");
             const uint64 BeforeWhole = GV2PresentationAuthorityProbe::GetResolveCount();
             FString WholeError;
-            const bool bWhole = Reconciler.Reconcile(Shell, NextDoc, Factory, WholeError);
+            const bool bWhole = Reconciler.Reconcile(Shell, NextDoc, Factory, WholeError, *PrepareContext);
             const uint64 AfterWhole = GV2PresentationAuthorityProbe::GetResolveCount();
             TestTrue(*FString::Printf(TEXT("PAH-08: whole reconcile succeeds [Error: %s]"), *WholeError), bWhole);
             TestTrue(
@@ -4905,6 +5024,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 // synthetic health flag flipped by hand.
 bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parameters)
 {
+    // PSC-10B: reconciliation requires the session snapshot -- central style is prepared
+    // from it, and no widget resolves a Theme of its own any more.
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
     GameInstance->AddToRoot();
     GameInstance->InitializeStandalone();
@@ -4942,6 +5072,20 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
             ReusedScreen->WidgetTree = NewObject<UWidgetTree>(ReusedScreen);
             UVerticalBox* ReusedScreenRoot = ReusedScreen->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
             ReusedScreen->WidgetTree->RootWidget = ReusedScreenRoot;
+
+            // PSC-10B: a styled widget inside the recovered screen. Catastrophic recovery is
+            // an ordinary fresh Prepare/Apply, so it must produce central style like any
+            // other -- and since no widget pulls a Theme of its own any more, a recovery
+            // that reconciled without the session snapshot would rebuild this tree
+            // physically correct and entirely unstyled.
+            UGV2SeparatorBoundTestWidget* RecoveredSeparator =
+                ReusedScreen->WidgetTree->ConstructWidget<UGV2SeparatorBoundTestWidget>(
+                    UGV2SeparatorBoundTestWidget::StaticClass(), TEXT("RecoveredSeparator"));
+            RecoveredSeparator->BuildBoundSubWidgets();
+            RecoveredSeparator->SetTestOrientation(Orient_Horizontal);
+            ReusedScreenRoot->AddChildToVerticalBox(RecoveredSeparator);
+            const float ThemeSeparatorThickness = PrepareContext->GetTheme().Theme->SeparatorThickness;
+            constexpr float UnstyledSentinel = -41.5f;
 
             UGV2DeclaredCompositeWidgetBase* FieldA = ReusedScreen->WidgetTree->ConstructWidget<UGV2DeclaredCompositeWidgetBase>(
                 UGV2DeclaredCompositeWidgetBase::StaticClass(), TEXT("FieldA"));
@@ -5021,11 +5165,15 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
             // D1: baseline commit. This becomes LastCommittedDocument -- what catastrophic
             // recovery replays.
             TestTrue(*FString::Printf(TEXT("PAH-07: baseline D1 commits [Error: %s]"), *ReconcileError),
-                Reconciler.Reconcile(Shell, MakeDoc(1, TEXT("core:screen.pah07_route"), TEXT("OldA"), TEXT("OldB")), Factory, ReconcileError));
+                Reconciler.Reconcile(Shell, MakeDoc(1, TEXT("core:screen.pah07_route"), TEXT("OldA"), TEXT("OldB")), Factory, ReconcileError, *PrepareContext));
             TestEqual(TEXT("PAH-07: baseline health is Nominal"), Reconciler.GetHealth(), EGV2PresentationHealth::Nominal);
             TestEqual(TEXT("PAH-07: baseline route is RouteWidget"), Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main")), RouteWidget);
             TestEqual(TEXT("PAH-07: baseline TextA reads OldA"), TextA->GetTextContent().ToString(), TEXT("OldA"));
             TestEqual(TEXT("PAH-07: baseline TextB reads OldB"), TextB->GetTextContent().ToString(), TEXT("OldB"));
+            TestNotEqual(TEXT("PSC-10B: the sentinel differs from the theme's own separator thickness"),
+                ThemeSeparatorThickness, UnstyledSentinel);
+            TestEqual(TEXT("PSC-10B: baseline commit styled the screen's separator from the snapshot Theme"),
+                RecoveredSeparator->ReadAppliedThickness(), ThemeSeparatorThickness);
             {
                 const TArray<UUserWidget*> BaselineOverlayOrder = Shell->GetScreensInLayer(TEXT("overlay_stack"));
                 TestEqual(TEXT("PAH-07: baseline overlay_stack has 2 physical children"), BaselineOverlayOrder.Num(), 2);
@@ -5046,7 +5194,7 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
             AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
             AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
             const bool bOrdinaryFault = Reconciler.Reconcile(
-                Shell, MakeDoc(2, TEXT("core:screen.pah07_route_v2"), TEXT("NewA"), TEXT("NewB")), Factory, ReconcileError, OrdinaryCommitInjector);
+                Shell, MakeDoc(2, TEXT("core:screen.pah07_route_v2"), TEXT("NewA"), TEXT("NewB")), Factory, ReconcileError, *PrepareContext, OrdinaryCommitInjector);
             TestFalse(TEXT("PAH-07: D2 (ordinary rollback) fails Reconcile"), bOrdinaryFault);
             TestFalse(TEXT("PAH-07: D2's OutError does NOT carry the rollback-failed marker"),
                 ReconcileError.Contains(GGV2UiRollbackFailedDiagnosticCode));
@@ -5068,11 +5216,16 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
             {
                 return ScreenId == TEXT("core:screen.pah07_reused") && PropertyPath == TEXT("value_a");
             };
+            // Wipe the style so "still styled after recovery" cannot pass by the value
+            // simply never having been touched.
+            RecoveredSeparator->ApplySeparatorStyleValues(FSlateBrush(), UnstyledSentinel, /*bHorizontal=*/true);
+            TestEqual(TEXT("PSC-10B: separator is on the sentinel immediately before the catastrophic round"),
+                RecoveredSeparator->ReadAppliedThickness(), UnstyledSentinel);
             AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed"), EAutomationExpectedErrorFlags::Contains, 1);
             AddExpectedErrorPlain(TEXT("GBH-10: rollback failed restoring host 'FieldA' property 'value_a'"), EAutomationExpectedErrorFlags::Contains, 1);
             AddExpectedErrorPlain(TEXT("CommitReconcile: core:diagnostic.ui_reconcile.commit_failed"), EAutomationExpectedErrorFlags::Contains, 1);
             const bool bCatastrophicFault = Reconciler.Reconcile(
-                Shell, MakeDoc(3, TEXT("core:screen.pah07_route_v2"), TEXT("CatA"), TEXT("CatB")), Factory, ReconcileError,
+                Shell, MakeDoc(3, TEXT("core:screen.pah07_route_v2"), TEXT("CatA"), TEXT("CatB")), Factory, ReconcileError, *PrepareContext,
                 CatastrophicCommitInjector, CatastrophicRollbackInjector);
             TestFalse(TEXT("PAH-07: D3 (catastrophic) fails Reconcile"), bCatastrophicFault);
             TestTrue(*FString::Printf(TEXT("PAH-07: D3's OutError carries the rollback-failed marker [Error: %s]"), *ReconcileError),
@@ -5089,6 +5242,8 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
                 Shell->GetScreensInLayer(TEXT("location_content")).Contains(RouteWidget));
             TestFalse(TEXT("PAH-07: after recovery, the rejected D3 route replacement is NOT attached"),
                 Shell->GetScreensInLayer(TEXT("location_content")).Contains(ReplacementRouteWidget));
+            TestEqual(TEXT("PSC-10B: catastrophic recovery re-applied central style from the same snapshot"),
+                RecoveredSeparator->ReadAppliedThickness(), ThemeSeparatorThickness);
             TestEqual(TEXT("PAH-07: after recovery, TextA reads D1's OldA, not D3's CatA"), TextA->GetTextContent().ToString(), TEXT("OldA"));
             TestEqual(TEXT("PAH-07: after recovery, TextB reads D1's OldB, not D3's CatB"), TextB->GetTextContent().ToString(), TEXT("OldB"));
             {
@@ -5104,7 +5259,7 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
             // A later, ordinary successful apply clears the recovery marker -- Health
             // reports the CURRENT state, not a permanent scar from a past incident.
             TestTrue(*FString::Printf(TEXT("PAH-07: D4 (ordinary, post-recovery) commits [Error: %s]"), *ReconcileError),
-                Reconciler.Reconcile(Shell, MakeDoc(4, TEXT("core:screen.pah07_route"), TEXT("FinalA"), TEXT("FinalB")), Factory, ReconcileError));
+                Reconciler.Reconcile(Shell, MakeDoc(4, TEXT("core:screen.pah07_route"), TEXT("FinalA"), TEXT("FinalB")), Factory, ReconcileError, *PrepareContext));
             TestEqual(TEXT("PAH-07: health returns to Nominal after the next successful commit"),
                 Reconciler.GetHealth(), EGV2PresentationHealth::Nominal);
 
@@ -5131,7 +5286,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 {
     const FGV2ScopedRealSchemaCache ScopedSchemaCache;
 
-    if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+    if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
     {
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inventory"), FText::FromString(TEXT("Inventory")));
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_use"), FText::FromString(TEXT("Use Potion")));
@@ -5141,6 +5296,19 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_a"), FText::FromString(TEXT("Title A")));
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_b"), FText::FromString(TEXT("Title B")));
     }
+
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
 
     // =========================================================================
     // UIF-22: Registry Layer 'embedded' and placement rules
@@ -5160,6 +5328,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
             EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
         TestNotNull(TEXT("TabContainer consumer created"), Consumer.Get());
+        Consumer->SetPrepareContext(PrepareContext);
 
         FGV2UiPropertyCapability TabCap;
         TabCap.TargetType = EGV2UiCapabilityTargetType::NestedScreen;
@@ -5173,13 +5342,13 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         TArray<FGV2PreparedUiValue> DupTabs;
         TMap<FString, FGV2PreparedUiValue> T1;
         T1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("tab_a")));
-        T1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Tab A")) }));
+        T1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Tab A"))));
         T1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.tab_a"), TEXT("screen")));
         DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(T1)));
 
         TMap<FString, FGV2PreparedUiValue> T2;
         T2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("tab_a"))); // duplicate key
-        T2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Tab B")) }));
+        T2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Tab B"))));
         T2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.tab_b"), TEXT("screen")));
         DupTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(T2)));
 
@@ -5189,13 +5358,13 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         TArray<FGV2PreparedUiValue> ValidTabs;
         TMap<FString, FGV2PreparedUiValue> V1;
         V1.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("inventory")));
-        V1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Inventory")) }));
+        V1.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Inventory"))));
         V1.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
         ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V1)));
 
         TMap<FString, FGV2PreparedUiValue> V2;
         V2.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("skills")));
-        V2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Skills")) }));
+        V2.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Skills"))));
         V2.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
         ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(V2)));
 
@@ -5212,9 +5381,11 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         // pair a top-level screen field uses -- no schema synthesized from a
         // widget's capability, no separate protocol.
         {
-            if (UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme())
+            if (UGV2UiTheme* MutableConfiguredTheme = LoadConfiguredThemeForTest())
             {
-                Theme->TextCatalog.FindOrAdd(TEXT("core:text.duc09_day"), FText::FromString(TEXT("Monday")));
+                MutableConfiguredTheme->TextCatalog.FindOrAdd(
+                    TEXT("core:text.duc09_day"),
+                    FText::FromString(TEXT("Monday")));
             }
 
             using FContentObject = GV2ContentCore::FValue::FObject;
@@ -5254,6 +5425,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             int32 HandleCursor = 0;
             MatCtx.Handles = &NoHandles;
             MatCtx.HandleCursor = &HandleCursor;
+            MatCtx.PrepareContext = PrepareContext;
 
             FGV2PreparedUiValue ProjectedOuter;
             const bool bProjected = bOuterValidated && GV2ScreenFieldMaterializer::ProjectMaterializedValue(
@@ -5399,12 +5571,13 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TSharedPtr<IGV2PropertyConsumer> NestedConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
                 EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
             TestNotNull(TEXT("DUC-09: tab container consumer created"), NestedConsumer.Get());
+            NestedConsumer->SetPrepareContext(PrepareContext);
 
             FGV2UiPropertyCapability NestedTabCap;
             NestedTabCap.TargetType = EGV2UiCapabilityTargetType::NestedScreen;
 
-            FGV2TextViewModel DayVM;
-            DayVM.Text = FText::FromString(TEXT("Tuesday"));
+            const FGV2TextViewModel DayVM =
+                MakeResolvedLiteralTextForTest(*Theme, TEXT("Tuesday"));
             TMap<FString, FGV2PreparedUiValue> InnerFields;
             InnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(DayVM));
             InnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.7));
@@ -5418,7 +5591,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
             TMap<FString, FGV2PreparedUiValue> TabMap;
             TabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("info")));
-            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Info")) }));
+            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Info"))));
             TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
             TabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FieldsArray)));
 
@@ -5433,7 +5606,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             // rightly rejected. Publishing both tabs keeps both widgets reused,
             // which is what this scenario is about.
             TMap<FString, FGV2PreparedUiValue> BaselineFailureInner;
-            BaselineFailureInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Baseline")) }));
+            BaselineFailureInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Baseline"))));
             BaselineFailureInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.5));
             TArray<TPair<FString, FGV2PreparedUiValue>> BaselineFailureEnvelope;
             BaselineFailureEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
@@ -5443,7 +5616,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             BaselineFailureFields.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(BaselineFailureEnvelope)));
             TMap<FString, FGV2PreparedUiValue> BaselineFailureTabMap = TabMap;
             BaselineFailureTabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("failure")));
-            BaselineFailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Failure")) }));
+            BaselineFailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Failure"))));
             BaselineFailureTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineFailureFields)));
 
             TArray<FGV2PreparedUiValue> Tabs;
@@ -5466,8 +5639,8 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TestEqual(TEXT("GBF-05: both published tabs survive ApplyTabEntries as reused widgets"),
                 NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("failure"))), FailureScreen);
 
-            FGV2TextViewModel UpdatedDayVM;
-            UpdatedDayVM.Text = FText::FromString(TEXT("Wednesday"));
+            const FGV2TextViewModel UpdatedDayVM =
+                MakeResolvedLiteralTextForTest(*Theme, TEXT("Wednesday"));
             TMap<FString, FGV2PreparedUiValue> UpdatedInnerFields;
             UpdatedInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(UpdatedDayVM));
             UpdatedInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.2));
@@ -5481,7 +5654,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             UpdatedInfoTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UpdatedFieldsArray)));
 
             TMap<FString, FGV2PreparedUiValue> FailureInnerFields;
-            FailureInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Never committed")) }));
+            FailureInnerFields.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Never committed"))));
             FailureInnerFields.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.1));
             TArray<TPair<FString, FGV2PreparedUiValue>> FailureEnvelopeFields;
             FailureEnvelopeFields.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
@@ -5491,7 +5664,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             FailureFieldsArray.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureEnvelopeFields)));
             TMap<FString, FGV2PreparedUiValue> FailureTabMap = TabMap;
             FailureTabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("failure")));
-            FailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Failure")) }));
+            FailureTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Failure"))));
             FailureTabMap.Add(TEXT("fields"), FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(FailureFieldsArray)));
             TArray<FGV2PreparedUiValue> NestedFailureTabs;
             NestedFailureTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(UpdatedInfoTabMap)));
@@ -5550,7 +5723,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             // FGV2TabContainerTabsPropertyConsumer::Prepare turns DayText into
             // "Thursday" here and makes this assertion red.
             TMap<FString, FGV2PreparedUiValue> ThursdayInner;
-            ThursdayInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Thursday")) }));
+            ThursdayInner.Add(TEXT("day"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Thursday"))));
             ThursdayInner.Add(TEXT("value"), FGV2PreparedUiValue::MakeNumber(0.9));
             TArray<TPair<FString, FGV2PreparedUiValue>> ThursdayEnvelope;
             ThursdayEnvelope.Emplace(TEXT("field_id"), FGV2PreparedUiValue::MakeKey(TEXT("day_block")));
@@ -5645,11 +5818,11 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         // tab (no nested "fields" of its own -- irrelevant here, since the
         // cycle check runs before any recursion into a child screen) whose
         // screen_id is TargetScreenId.
-        auto MakeTabsFieldValue = [](const FString& TargetScreenId) -> FGV2ScreenFieldValue
+        auto MakeTabsFieldValue = [Theme](const FString& TargetScreenId) -> FGV2ScreenFieldValue
         {
             TMap<FString, FGV2PreparedUiValue> TabMap;
             TabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("back")));
-            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(FGV2TextViewModel{ FText::FromString(TEXT("Back")) }));
+            TabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(MakeResolvedLiteralTextForTest(*Theme, TEXT("Back"))));
             TabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TargetScreenId, TEXT("screen")));
             TArray<FGV2PreparedUiValue> Tabs;
             Tabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
@@ -5680,7 +5853,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             const TArray<FString> Chain{ TEXT("core:screen.duc11_a") };
             FGV2ScreenMutationPlan Plan;
             FString Error;
-            const bool bPrepared = ScreenA->PrepareScreenFields(Fields, Plan, Error, &Chain);
+            const bool bPrepared = ScreenA->PrepareScreenFields(Fields, Plan, Error, &Chain, PrepareContext);
             TestFalse(*FString::Printf(TEXT("DUC-11: direct self-reference is rejected [Error: %s]"), *Error), bPrepared);
             TestTrue(*FString::Printf(TEXT("DUC-11: direct cycle diagnostic code [Error: %s]"), *Error), Error.Contains(TEXT("core:diagnostic.ui_composition.cycle_detected")));
             TestTrue(*FString::Printf(TEXT("DUC-11: direct cycle renders A -> A [Error: %s]"), *Error), Error.Contains(TEXT("core:screen.duc11_a -> core:screen.duc11_a")));
@@ -5694,7 +5867,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             const TArray<FString> Chain{ TEXT("core:screen.duc11_a"), TEXT("core:screen.duc11_b") };
             FGV2ScreenMutationPlan Plan;
             FString Error;
-            const bool bPrepared = ScreenB->PrepareScreenFields(Fields, Plan, Error, &Chain);
+            const bool bPrepared = ScreenB->PrepareScreenFields(Fields, Plan, Error, &Chain, PrepareContext);
             TestFalse(*FString::Printf(TEXT("DUC-11: indirect cycle through an ancestor is rejected [Error: %s]"), *Error), bPrepared);
             TestTrue(*FString::Printf(TEXT("DUC-11: indirect cycle diagnostic code [Error: %s]"), *Error), Error.Contains(TEXT("core:diagnostic.ui_composition.cycle_detected")));
             TestTrue(*FString::Printf(TEXT("DUC-11: indirect cycle renders full A -> B -> A chain [Error: %s]"), *Error), Error.Contains(TEXT("core:screen.duc11_a -> core:screen.duc11_b -> core:screen.duc11_a")));
@@ -5709,7 +5882,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             const TArray<FString> Chain{ TEXT("core:screen.duc11_a"), TEXT("core:screen.duc11_b") };
             FGV2ScreenMutationPlan Plan;
             FString Error;
-            const bool bPreparedC = ScreenC->PrepareScreenFields(Fields, Plan, Error, &Chain);
+            const bool bPreparedC = ScreenC->PrepareScreenFields(Fields, Plan, Error, &Chain, PrepareContext);
             (void)bPreparedC;
             TestFalse(*FString::Printf(TEXT("DUC-11: unrelated screen_id is not rejected as a cycle [Error: %s]"), *Error), Error.Contains(TEXT("cycle_detected")));
         }
@@ -6116,12 +6289,12 @@ bool FGV2UiThemeOwnershipAndTextLengthContract::RunTest(const FString& Parameter
             FString Error;
             TestTrue(
                 TEXT("Resolve emergency recovery title via MinimalTheme"),
-                UGV2TextPipeline::Resolve(TEXT("core:text.screen.recovery.title"), {}, FName("title"), ResolvedTitle, Error));
+                UGV2TextPipeline::ResolveForAutomationTest(MinimalTheme, TEXT("core:text.screen.recovery.title"), {}, FName("title"), ResolvedTitle, Error));
             TestEqual(TEXT("Recovery title text matches"), ResolvedTitle.Text.ToString(), TEXT("Recovery"));
 
             TestTrue(
                 TEXT("Resolve emergency error description via MinimalTheme"),
-                UGV2TextPipeline::Resolve(TEXT("core:text.screen.error.description"), {}, FName("default"), ResolvedDesc, Error));
+                UGV2TextPipeline::ResolveForAutomationTest(MinimalTheme, TEXT("core:text.screen.error.description"), {}, FName("default"), ResolvedDesc, Error));
             TestEqual(TEXT("Error description text matches"), ResolvedDesc.Text.ToString(), TEXT("An unexpected error has occurred."));
 
             // Verify UE-native recovery screen widget initialization using resolved fallback strings
@@ -6270,6 +6443,8 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
     GameInstance->AddToRoot();
     GameInstance->InitializeStandalone();
     UWorld* TestWorld = GameInstance->GetWorld();
+    const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
+    TestNotNull(TEXT("Configured theme is available for prepared text fixtures"), Theme);
 
     // 1. UIH-01: Test UGV2ListViewWidgetBase directly
     {
@@ -6649,17 +6824,26 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
 
         FTestButtonModel BtnA;
         BtnA.Key = FName(TEXT("btn_a"));
-        BtnA.Text.Text = FText::FromString(TEXT("Action A"));
+        if (Theme != nullptr)
+        {
+            BtnA.Text = MakeResolvedLiteralTextForTest(*Theme, TEXT("Action A"));
+        }
         BtnA.Binding = FGV2UiBindingHandle::Create(TEXT("binding_a"));
 
         FTestButtonModel BtnB;
         BtnB.Key = FName(TEXT("btn_b"));
-        BtnB.Text.Text = FText::FromString(TEXT("Action B"));
+        if (Theme != nullptr)
+        {
+            BtnB.Text = MakeResolvedLiteralTextForTest(*Theme, TEXT("Action B"));
+        }
         BtnB.Binding = FGV2UiBindingHandle::Create(TEXT("binding_b"));
 
         FTestButtonModel BtnC;
         BtnC.Key = FName(TEXT("btn_c"));
-        BtnC.Text.Text = FText::FromString(TEXT("Action C"));
+        if (Theme != nullptr)
+        {
+            BtnC.Text = MakeResolvedLiteralTextForTest(*Theme, TEXT("Action C"));
+        }
         BtnC.Binding = FGV2UiBindingHandle::Create(TEXT("binding_c"));
 
         UGV2ListViewWidgetBase* Repeater = Cast<UGV2ListViewWidgetBase>(CmdPanel->GetWidgetFromName(TEXT("ButtonRepeater")));
@@ -6690,7 +6874,10 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             // Reorder & update: { BtnB, BtnD, BtnA } -> BtnB & BtnA must be reused
             FTestButtonModel BtnD;
             BtnD.Key = FName(TEXT("btn_d"));
-            BtnD.Text.Text = FText::FromString(TEXT("Action D"));
+            if (Theme != nullptr)
+            {
+                BtnD.Text = MakeResolvedLiteralTextForTest(*Theme, TEXT("Action D"));
+            }
             BtnD.Binding = FGV2UiBindingHandle::Create(TEXT("binding_d"));
 
             const TArray<FTestButtonModel> UpdatedButtons = { BtnB, BtnD, BtnA };
@@ -6987,7 +7174,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2TextPipelineDpiScalingTest::RunTest(const FString& Parameters)
 {
-    const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+    const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
     TestNotNull(TEXT("Configured UI theme is valid"), Theme);
     if (Theme == nullptr) return false;
 
@@ -7003,18 +7190,18 @@ bool FGV2TextPipelineDpiScalingTest::RunTest(const FString& Parameters)
     TestNearlyEqual(TEXT("Scale at 2160p is ~1.60"), Scale2160p, 1.60f, 0.01f);
 
     // Check effective font size calculation and MinReadableFontSize clamp
-    const float SmallSize720p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("small")), 720.0f);
+    const float SmallSize720p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Theme, FName(TEXT("small")), 720.0f);
     TestTrue(TEXT("Small text size at 720p is >= MinReadableFontSize (10pt)"), SmallSize720p >= Theme->MinReadableFontSize);
 
-    const float TitleSize1080p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), 1080.0f);
+    const float TitleSize1080p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Theme, FName(TEXT("title")), 1080.0f);
     TestNearlyEqual(TEXT("Title text size at 1080p is ~20pt"), TitleSize1080p, 20.0f, 0.1f);
 
-    const float TitleSize2160p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), 2160.0f);
+    const float TitleSize2160p = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Theme, FName(TEXT("title")), 2160.0f);
     TestNearlyEqual(TEXT("Title text size at 2160p is ~32pt"), TitleSize2160p, 32.0f, 0.5f);
 
     // Verify plain text and rich text get the exact same effective font size
     FTextBlockStyle PlainStyle;
-    const bool bResolved = UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("title")), PlainStyle, 1080.0f);
+    const bool bResolved = UGV2TextPipeline::ResolveStyleForHeight(Theme, FName(TEXT("title")), PlainStyle, 1080.0f);
     if (bResolved)
     {
         TestNearlyEqual(TEXT("Plain text style font size matches TitleSize1080p"), (float)PlainStyle.Font.Size, TitleSize1080p, 0.1f);
@@ -7024,9 +7211,9 @@ bool FGV2TextPipelineDpiScalingTest::RunTest(const FString& Parameters)
     const float Heights[] = { 720.0f, 1080.0f, 1440.0f, 2160.0f };
     for (float H : Heights)
     {
-        const float ExpectedBodySize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), H);
+        const float ExpectedBodySize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Theme, FName(TEXT("body")), H);
         FTextBlockStyle StyleForHeight;
-        TestTrue(*FString::Printf(TEXT("CCF-19: Body style resolves for height %f"), H), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("body")), StyleForHeight, H));
+        TestTrue(*FString::Printf(TEXT("CCF-19: Body style resolves for height %f"), H), UGV2TextPipeline::ResolveStyleForHeight(Theme, FName(TEXT("body")), StyleForHeight, H));
         TestNearlyEqual(*FString::Printf(TEXT("CCF-19: Style font size matches expected at height %f"), H), (float)StyleForHeight.Font.Size, ExpectedBodySize, 0.1f);
         TestTrue(*FString::Printf(TEXT("CCF-19: Font size at height %f is >= MinReadableFontSize"), H), (float)StyleForHeight.Font.Size >= Theme->MinReadableFontSize);
     }
@@ -7226,6 +7413,8 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
         FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
         WorldContext.SetCurrentWorld(TestWorld);
         GameInstance->Init();
+        const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
+        TestNotNull(TEXT("Configured theme is available for prepared text fixtures"), Theme);
 
         // 1. Load actual registered WBP_LocationScreen
         UClass* ScreenClass = LoadClass<UGV2ScreenWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"));
@@ -7290,11 +7479,13 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
                                 {
                                     return CmdButtonClass ? CreateWidget<UGV2ButtonWidgetBase>(TestWorld, CmdButtonClass) : NewObject<UGV2ButtonWidgetBase>(TestWorld);
                                 },
-                                [](UGV2ButtonWidgetBase& Btn, const FTestCmdEntry& Entry)
+                                [Theme](UGV2ButtonWidgetBase& Btn, const FTestCmdEntry& Entry)
                                 {
                                     Btn.SetKey(Entry.Key);
-                                    FGV2TextViewModel VM; VM.Text = Entry.Text;
-                                    return Btn.ApplyText(VM);
+                                    return Theme != nullptr
+                                        && Btn.ApplyText(MakeResolvedLiteralTextForTest(
+                                            *Theme,
+                                            Entry.Text.ToString()));
                                 });
                         }
                     }
@@ -7625,16 +7816,16 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
         WorldContext.SetCurrentWorld(TestWorld);
         GameInstance->Init();
 
-        const UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
+        const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
         TestNotNull(TEXT("Configured theme is valid"), Theme);
 
         // 1. Text, RichText, Button, Input, Dropdown sizing conformance across resolutions
         const float Heights[] = { 720.0f, 1080.0f, 1440.0f, 2160.0f };
         for (const float H : Heights)
         {
-            const float ExpectedTitleSize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("title")), H);
-            const float ExpectedBodySize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("body")), H);
-            const float ExpectedSmallSize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(FName(TEXT("small")), H);
+            const float ExpectedTitleSize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Theme, FName(TEXT("title")), H);
+            const float ExpectedBodySize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Theme, FName(TEXT("body")), H);
+            const float ExpectedSmallSize = UGV2TextPipeline::ResolveEffectiveFontSizeForHeight(Theme, FName(TEXT("small")), H);
 
             if (H <= 720.0f)
             {
@@ -7644,9 +7835,9 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
             FTextBlockStyle TitleStyle;
             FTextBlockStyle BodyStyle;
             FTextBlockStyle SmallStyle;
-            TestTrue(TEXT("ResolveStyleForHeight title succeeds"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("title")), TitleStyle, H));
-            TestTrue(TEXT("ResolveStyleForHeight body succeeds"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("body")), BodyStyle, H));
-            TestTrue(TEXT("ResolveStyleForHeight small succeeds"), UGV2TextPipeline::ResolveStyleForHeight(FName(TEXT("small")), SmallStyle, H));
+            TestTrue(TEXT("ResolveStyleForHeight title succeeds"), UGV2TextPipeline::ResolveStyleForHeight(Theme, FName(TEXT("title")), TitleStyle, H));
+            TestTrue(TEXT("ResolveStyleForHeight body succeeds"), UGV2TextPipeline::ResolveStyleForHeight(Theme, FName(TEXT("body")), BodyStyle, H));
+            TestTrue(TEXT("ResolveStyleForHeight small succeeds"), UGV2TextPipeline::ResolveStyleForHeight(Theme, FName(TEXT("small")), SmallStyle, H));
 
             TestEqual(*FString::Printf(TEXT("[%.0fp] Title effective font size"), H), TitleStyle.Font.Size, ExpectedTitleSize);
             TestEqual(*FString::Printf(TEXT("[%.0fp] Body effective font size"), H), BodyStyle.Font.Size, ExpectedBodySize);
@@ -7672,26 +7863,29 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
             TestNotNull(TEXT("DropdownWidget created"), DropdownWidget);
 
             // Apply models with default style
-            FGV2TextViewModel TextModel;
-            TextModel.Text = FText::FromString(TEXT("Sample Body Text"));
-            TextModel.StyleToken = FName(TEXT("default"));
+            const FGV2TextViewModel TextModel = MakeResolvedLiteralTextForTest(
+                *Theme,
+                TEXT("Sample Body Text"),
+                FName(TEXT("default")));
             if (TextWidget)
             {
                 TestTrue(TEXT("ApplyText succeeds"), TextWidget->ApplyText(TextModel));
                 TestTrue(TEXT("TextContent matches"), TextWidget->GetTextContent().EqualTo(TextModel.Text));
             }
 
-            FGV2TextViewModel RichModel;
-            RichModel.Text = FText::FromString(TEXT("Sample Rich Body"));
-            RichModel.StyleToken = FName(TEXT("body"));
+            const FGV2TextViewModel RichModel = MakeResolvedLiteralTextForTest(
+                *Theme,
+                TEXT("Sample Rich Body"),
+                FName(TEXT("body")));
             if (RichTextWidget)
             {
                 RichTextWidget->ApplyText(RichModel);
             }
 
-            FGV2TextViewModel BtnText;
-            BtnText.Text = FText::FromString(TEXT("Button"));
-            BtnText.StyleToken = FName(TEXT("body"));
+            const FGV2TextViewModel BtnText = MakeResolvedLiteralTextForTest(
+                *Theme,
+                TEXT("Button"),
+                FName(TEXT("body")));
             const FName BtnKey = FName(TEXT("ok"));
             const FGV2UiBindingHandle BtnBinding = FGV2UiBindingHandle::Create(TEXT("btn_ok"));
             if (ButtonWidget)
@@ -7705,9 +7899,10 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
 
             if (InputWidget)
             {
-                FGV2TextViewModel InputText;
-                InputText.Text = FText::FromString(TEXT("Input Label"));
-                InputText.StyleToken = FName(TEXT("body"));
+                const FGV2TextViewModel InputText = MakeResolvedLiteralTextForTest(
+                    *Theme,
+                    TEXT("Input Label"),
+                    FName(TEXT("body")));
                 InputWidget->SetKey(FName(TEXT("input_key")));
                 InputWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("input_bind")));
                 InputWidget->ApplyText(InputText);
@@ -7715,8 +7910,8 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
 
             if (DropdownWidget)
             {
-                FGV2TextViewModel DropdownPlaceholder;
-                DropdownPlaceholder.Text = FText::FromString(TEXT("Select Option"));
+                const FGV2TextViewModel DropdownPlaceholder =
+                    MakeResolvedLiteralTextForTest(*Theme, TEXT("Select Option"));
                 DropdownWidget->ApplyPlaceholderText(DropdownPlaceholder);
                 DropdownWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("dd_bind")));
             }
@@ -7914,6 +8109,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Parameters)
 {
     using namespace GV2ContentCore;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
 
     // Before Prepare/Commit, CanApplyScreenField only checked field_id/schema_id and
     // never opened a keyed collection, so "schema passes, a deep child fails at
@@ -7995,10 +8202,10 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
         return Schema;
     };
 
-    auto MakeItem = [](const TCHAR* Key, const TCHAR* DisplayText) -> FGV2PreparedUiValue
+    auto MakeItem = [Theme](const TCHAR* Key, const TCHAR* DisplayText) -> FGV2PreparedUiValue
     {
-        FGV2TextViewModel TextModel;
-        TextModel.Text = FText::FromString(DisplayText);
+        const FGV2TextViewModel TextModel =
+            MakeResolvedLiteralTextForTest(*Theme, DisplayText);
         TArray<TPair<FString, FGV2PreparedUiValue>> Fields;
         Fields.Emplace(TEXT("key"), FGV2PreparedUiValue::MakeKey(Key));
         Fields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(TextModel));
@@ -8022,7 +8229,7 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     ValidField.CompiledSchema = Schema;
     ValidField.PreparedValue = MakeCommandsValue({MakeItem(TEXT("btn_ok"), TEXT("OK"))});
 
-    TestTrue(TEXT("Valid commands field applies"), Screen->ApplyScreenFields({ValidField}));
+    TestTrue(TEXT("Valid commands field applies"), Screen->ApplyScreenFields({ValidField}, *PrepareContext));
     TestEqual(TEXT("Button created for the valid apply"), ButtonBox->GetChildrenCount(), 1);
     UGV2ButtonWidgetBase* OriginalButton = Cast<UGV2ButtonWidgetBase>(ButtonBox->GetChildAt(0));
     TestNotNull(TEXT("Original button resolved"), OriginalButton);
@@ -8037,8 +8244,8 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
         MakeItem(TEXT("dup_key"), TEXT("Second")),
     });
 
-    TestFalse(TEXT("Public preflight predicts the deep duplicate-key failure"), Screen->CanApplyScreenFields({InvalidField}));
-    TestFalse(TEXT("ApplyScreenFields also rejects it (Prepare fails before any Commit)"), Screen->ApplyScreenFields({InvalidField}));
+    TestFalse(TEXT("Public preflight predicts the deep duplicate-key failure"), Screen->CanApplyScreenFields({InvalidField}, *PrepareContext));
+    TestFalse(TEXT("ApplyScreenFields also rejects it (Prepare fails before any Commit)"), Screen->ApplyScreenFields({InvalidField}, *PrepareContext));
 
     // 3. No partial mutation: the screen is exactly as the valid apply left it.
     TestEqual(TEXT("Button count is unchanged after the rejected apply"), ButtonBox->GetChildrenCount(), 1);
@@ -8056,7 +8263,7 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
     // rejected, not silently skipped as an optional field.
     TestFalse(
         TEXT("GBH-04: a configured host with no incoming envelope is rejected, not treated as optional"),
-        Screen->ApplyScreenFields({}));
+        Screen->ApplyScreenFields({}, *PrepareContext));
     TestEqual(TEXT("GBH-04: no mutation from the missing-envelope rejection"), ButtonBox->GetChildrenCount(), 1);
     TestEqual(
         TEXT("GBH-04: the original button instance survives the missing-envelope rejection"),
@@ -8073,7 +8280,7 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
 
     TestFalse(
         TEXT("GBH-04: an incoming envelope with no matching configured host is rejected"),
-        Screen->ApplyScreenFields({ValidField, UnknownField}));
+        Screen->ApplyScreenFields({ValidField, UnknownField}, *PrepareContext));
     TestEqual(TEXT("GBH-04: no mutation from the unknown-field rejection"), ButtonBox->GetChildrenCount(), 1);
     TestEqual(
         TEXT("GBH-04: the original button instance survives the unknown-field rejection"),
@@ -8185,6 +8392,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
 {
+    const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
+    TestNotNull(TEXT("Configured theme is available for prepared text fixtures"), Theme);
+
     // Transactional ReconcileEntries failure and rollback in ListView
     {
         UVerticalBox* Container = NewObject<UVerticalBox>();
@@ -8208,14 +8418,13 @@ bool FGV2CompositeRollbackContract::RunTest(const FString& Parameters)
             return NewObject<UGV2TextWidgetBase>();
         };
 
-        auto ApplyTestItem = [](UGV2TextWidgetBase& Widget, const FTestItemModel& Model) -> bool
+        auto ApplyTestItem = [Theme](UGV2TextWidgetBase& Widget, const FTestItemModel& Model) -> bool
         {
-            if (Model.bShouldFailApply)
+            if (Model.bShouldFailApply || Theme == nullptr)
             {
                 return false;
             }
-            Widget.ApplyText({FText::FromString(Model.Text)});
-            return true;
+            return Widget.ApplyText(MakeResolvedLiteralTextForTest(*Theme, Model.Text));
         };
 
         const bool bInitialReconcile = ListView->ReconcileEntries<UGV2TextWidgetBase, FTestItemModel>(
@@ -8673,6 +8882,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 {
     const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
 
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
@@ -8681,12 +8901,11 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 
     // A text model the central pipeline must reject: authoring markup may never reach
     // a plain renderer. Used throughout as the failure injector.
-    FGV2TextViewModel PoisonText;
-    PoisonText.Text = FText::FromString(TEXT("Poison"));
+    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
+    FGV2TextViewModel PoisonText = MakeResolvedLiteralTextForTest(*Theme, TEXT("Poison"));
     PoisonText.NormalizedMarkup = TEXT("<gv2:action id=\"x\">y</>");
 
-    FGV2TextViewModel GoodText;
-    GoodText.Text = FText::FromString(TEXT("Fine"));
+    const FGV2TextViewModel GoodText = MakeResolvedLiteralTextForTest(*Theme, TEXT("Fine"));
 
     UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
     TestNotNull(TEXT("Test world created"), TestWorld);
@@ -8752,7 +8971,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             FGV2UiHostMutationPlan GoodPlan;
             TArray<FGV2UiSchemaCompatibilityDiagnostic> GoodDiagnostics;
             TestTrue(TEXT("REV3-01: a renderable label prepares"),
-                PrepareUiHostProperties(Bar, Caps, *GoodCandidate, Schema, TEXT("test:schema.progress_bar"), TEXT(""), EmptyPrev, GoodPlan, GoodDiagnostics));
+                PrepareUiHostProperties(Bar, Caps, *GoodCandidate, Schema, TEXT("test:schema.progress_bar"), TEXT(""), EmptyPrev, GoodPlan, GoodDiagnostics, nullptr, PrepareContext));
             FString FailedPath, CommitError;
             TestTrue(TEXT("REV3-01: prepared plan commits"), CommitUiHostProperties(Bar, GoodPlan, FailedPath, CommitError));
             TestEqual(TEXT("REV3-01: Progress updated to 0.5"), Bar->GetProgress(), 0.5f);
@@ -8765,7 +8984,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             FGV2UiHostMutationPlan PoisonPlan;
             TArray<FGV2UiSchemaCompatibilityDiagnostic> PoisonDiagnostics;
             TestFalse(TEXT("REV3-02: Label that the text pipeline rejects fails Prepare"),
-                PrepareUiHostProperties(Bar, Caps, *PoisonCandidate, Schema, TEXT("test:schema.progress_bar"), TEXT(""), EmptyPrev, PoisonPlan, PoisonDiagnostics));
+                PrepareUiHostProperties(Bar, Caps, *PoisonCandidate, Schema, TEXT("test:schema.progress_bar"), TEXT(""), EmptyPrev, PoisonPlan, PoisonDiagnostics, nullptr, PrepareContext));
         }
     }
 
@@ -8828,7 +9047,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
                 FGV2UiHostMutationPlan Plan;
                 TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
                 TestFalse(TEXT("REV3-05: ButtonList reports failure when a child button cannot render its text"),
-                    PrepareUiHostProperties(List, Builder.Build(), *Candidate, Schema, TEXT("test:schema.button_list"), TEXT(""), EmptyPrev, Plan, Diagnostics));
+                    PrepareUiHostProperties(List, Builder.Build(), *Candidate, Schema, TEXT("test:schema.button_list"), TEXT(""), EmptyPrev, Plan, Diagnostics, nullptr, PrepareContext));
             }
         }
     }
@@ -8852,15 +9071,26 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 
     // 3b. REV3-09: RichText with hover spans fails validation when RichTextPopoverClass is unavailable
     {
-        UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-        if (Theme != nullptr)
+        UGV2UiTheme* MutableTheme = const_cast<UGV2UiTheme*>(Theme);
+        if (MutableTheme != nullptr)
         {
-            TSoftClassPtr<UGV2RichTextPopoverWidgetBase> SavedPopoverClass = Theme->RichTextPopoverClass;
-            Theme->RichTextPopoverClass = nullptr;
+            // PSC-10B: the renderer class is resolved once at snapshot build, so the session
+            // under test must be built WITHOUT one -- clearing it on the Theme afterwards no
+            // longer reaches the value Prepare checks. The guard restores the shared asset on
+            // every exit path, not only the successful one.
+            GV2PresentationTestFixtures::FPrepareContextFixture::FWithoutRichTextPopoverRenderer
+                NoRenderer(MutableTheme);
+            GV2PresentationTestFixtures::FPrepareContextFixture RendererlessFixture;
+            FString RendererlessError;
+            const bool bRendererlessReady = RendererlessFixture.Initialize(RendererlessError);
+            TestTrue(
+                *FString::Printf(TEXT("REV3-09: rendererless session snapshot builds: %s"), *RendererlessError),
+                bRendererlessReady);
+            const FGV2PresentationPrepareContext* RendererlessContext = RendererlessFixture.Get();
 
             TMap<FString, FGV2PreparedUiValue> HoverMap;
-            FGV2TextViewModel TitleModel;
-            TitleModel.Text = FText::FromString(TEXT("Definition"));
+            const FGV2TextViewModel TitleModel =
+                MakeResolvedLiteralTextForTest(*Theme, TEXT("Definition"));
             HoverMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(TitleModel));
 
             TMap<FString, FGV2PreparedUiValue> SpanMap;
@@ -8879,10 +9109,12 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             Cap.SupportedKind = EGV2PreparedUiValueKind::Array;
 
             FString PrepError;
+            Consumer.SetPrepareContext(RendererlessContext);
             TestFalse(TEXT("REV3-09: RichText with hover spans rejects application when popover class is unavailable"),
                 Consumer.Prepare(SpansVal, Cap, RichTextWidget, PrepError));
-
-            Theme->RichTextPopoverClass = SavedPopoverClass;
+            TestTrue(
+                *FString::Printf(TEXT("REV3-09: rejection identifies the unavailable popover class [Error: %s]"), *PrepError),
+                PrepError.Contains(TEXT("popover"), ESearchCase::IgnoreCase));
         }
     }
 
@@ -8937,6 +9169,23 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters)
 {
     const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("PCC-04: presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+    if (UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get())
+    {
+        Theme->TextCatalog.FindOrAdd(
+            TEXT("textsystem:text.pcc04.player_name"),
+            FText::FromString(TEXT("Player")));
+    }
 
     auto ReadSource = [this](const TCHAR* RelativePath, FString& OutSource)
     {
@@ -8964,7 +9213,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
 
-    auto RunBuildFields = [](const std::string& SchemaId, const std::string& FieldId, GV2RuntimeCore::FValue Value) -> bool
+    auto RunBuildFields = [PrepareContext](const std::string& SchemaId, const std::string& FieldId, GV2RuntimeCore::FValue Value) -> bool
     {
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = "textsystem:screen.location";
@@ -8975,14 +9224,14 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2ScreenFieldValue> Fields;
-        return GV2ScreenFieldMaterializer::BuildFields(Request, {}, Fields);
+        return GV2ScreenFieldMaterializer::BuildFields(Request, {}, Fields, PrepareContext);
     };
 
     // Valid meters percent within [0.0, 1.0] succeeds
     {
         FObject StatusObj;
         FObject NameObj;
-        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("textsystem:text.pcc04.player_name"));
         StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
         
         FObject MeterObj;
@@ -9000,7 +9249,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
     {
         FObject StatusObj;
         FObject NameObj;
-        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("textsystem:text.pcc04.player_name"));
         StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
         
         FObject MeterObj;
@@ -9018,7 +9267,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
     {
         FObject StatusObj;
         FObject NameObj;
-        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+        NameObj["text_id"] = GV2RuntimeCore::FValue(std::string("textsystem:text.pcc04.player_name"));
         StatusObj["name"] = GV2RuntimeCore::FValue(NameObj);
         
         FObject MeterObj;

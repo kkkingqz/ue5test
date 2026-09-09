@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.23
-updated: 2026-09-08
+version: 1.24
+updated: 2026-09-09
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -265,7 +265,7 @@ Publication является atomic: registry сначала валидируе�
 - **`GV2` (semantic Prepare)** разрешает `screen_id` → Widget class, ресурсы, стиль/тему, порядок слоя и вложенные экраны через один `FGV2PresentationPrepareContext`, построенный из session content snapshot ([Bootstrap and Session Lifecycle § Cold start](../Architecture/BootstrapAndSessionLifecycle.md#cold-start)). Результат — самодостаточная `FGV2PreparedPresentationTransaction`, несущая уже разрешённые значения (ресурс, класс стиля, дескриптор экрана), а не Stable ID или ссылку, по которой их можно получить заново; Stable ID в ней допустим только как identity/diagnostic metadata, не как lookup key для Apply.
 - **`GV2PresentationApply` (физическое применение)** получает только эту транзакцию и выполняет Commit, откат, keyed-реконсиляцию слоёв и восстановление проекции — той же `FGV2KeyedCollection::ReconcilePrepared` формой, что уже описана выше, и тем же двухуровневым восстановлением, что описано в «Presentation health and catastrophic recovery». Единственная public entry point — `GV2PresentationApply::Apply(transaction)`; второго пути, минующего её, не существует. Модулю недоступны типы snapshot, repository, package set, Screen Registry или Theme source — ему нечем их прочитать, даже если Prepare что-то упустит.
 
-Каждый вид операции (route/overlay/modal attach, keyed collection item, nested tab, resource, text/style и central style) проходит через транзакцию одного вида; второго runtime-пути для того же вида операции, минующего транзакцию, не остаётся. `NativePreConstruct` не применяет runtime central style; design-time preview ограничен сериализованными value defaults и не получает authority. Это не меняет наблюдаемое поведение Prepare/Commit, описанное выше в этом документе, — меняется, какой модуль физически способен выполнить какую часть, и это выражено графом сборки, а не соглашением.
+Каждый вид операции (route/overlay/modal attach, keyed collection item, nested tab, resource, text/style и central style) представлен variant той же transaction. Central style готовится из `FGV2PresentationPrepareContext`; off-tree collection entries и nested screens получают тот же контекст и собственную prepared transaction до публикации. `NativePreConstruct` не применяет runtime central style; design-time preview ограничен сериализованными value defaults и не получает authority. RichText decorator читает только заранее разрешённые run/interactive/popover values; создаваемый при hover popover применяет сохранённую роль отдельной value-only transaction, не выполняя повторный Prepare. Физический перенос всех операций за единственную lower-module façade завершает `PSC-11`; semantic lookup в Apply уже запрещён.
 
 ## Full update policy
 

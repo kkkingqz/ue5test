@@ -3,7 +3,6 @@
 #include "CommonUserWidget.h"
 #include "Components/PanelWidget.h"
 #include "UI/GV2KeyedCollection.h"
-#include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "GV2ListViewWidgetBase.generated.h"
 
@@ -19,7 +18,6 @@ class UPanelWidget;
 UCLASS(Blueprintable)
 class GV2_API UGV2ListViewWidgetBase
     : public UCommonUserWidget
-    , public IGV2UiStyleConsumer
     , public IGV2UiPropertyHost
 {
     GENERATED_BODY()
@@ -60,8 +58,6 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|ListView")
     void ClearEntries();
-
-    virtual bool ApplyCentralStyle_Implementation() override;
 
     // IGV2UiPropertyHost
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
@@ -174,8 +170,6 @@ public:
     }
 
 protected:
-    virtual void NativePreConstruct() override;
-
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))
     TObjectPtr<UPanelWidget> ContainerPanel;
 

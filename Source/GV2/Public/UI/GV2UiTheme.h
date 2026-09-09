@@ -166,9 +166,6 @@ class GV2_API UGV2UiThemeSettings : public UDeveloperSettings
 public:
     virtual FName GetCategoryName() const override;
 
-    UFUNCTION(BlueprintPure, Category = "GV2|UI|Style")
-    static UGV2UiTheme* GetConfiguredTheme();
-
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Theme", meta = (AllowedClasses = "/Script/GV2.GV2UiTheme"))
     TSoftObjectPtr<UGV2UiTheme> ThemeAsset;
 };

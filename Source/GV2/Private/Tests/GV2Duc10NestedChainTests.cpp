@@ -5,6 +5,7 @@
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "Application/GV2PackageClosure.h"
 #include "Application/GV2SessionCoordinator.h"
+#include "Application/GV2SessionContentSnapshot.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "Components/ProgressBar.h"
 #include "Engine/Engine.h"
@@ -25,7 +26,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
 {
-    UGV2ScreenRegistry* Registry = UGV2ScreenRegistrySettings::GetConfiguredRegistry();
+    const UGV2ScreenRegistrySettings* RegistrySettings = GetDefault<UGV2ScreenRegistrySettings>();
+    UGV2ScreenRegistry* Registry = RegistrySettings != nullptr && !RegistrySettings->RegistryAsset.IsNull()
+        ? RegistrySettings->RegistryAsset.LoadSynchronous()
+        : nullptr;
     TestNotNull(TEXT("DUC-10: configured Screen Registry is available"), Registry);
     if (Registry == nullptr)
     {
@@ -111,6 +115,13 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
     {
         return false;
     }
+    const FGV2SessionContentSnapshot* SessionSnapshot = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("DUC-10: session publishes presentation snapshot"), SessionSnapshot);
+    if (SessionSnapshot == nullptr)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContext(*SessionSnapshot);
 
     FGV2UiBindingDefinition ShowDefinition;
     ShowDefinition.ElementId = TEXT("duc10_show");
@@ -218,7 +229,8 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
     FString ReconcileError;
     TestTrue(
         *FString::Printf(TEXT("DUC-10: Lua nested-chain document reconciles [Error: %s]"), *ReconcileError),
-        Reconciler.Reconcile(nullptr, CapturedDocument, ScreenFactory, ReconcileError));
+        Reconciler.Reconcile(
+            nullptr, CapturedDocument, ScreenFactory, ReconcileError, PrepareContext, nullptr));
 
     UGV2ScreenWidgetBase* const RootScreen = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("duc10"));
     TestNotNull(TEXT("DUC-10: root screen is published after successful reconcile"), RootScreen);
@@ -257,7 +269,8 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
         FGV2LayeredUiReconciler::FPreparedReconciliationPlan PrepareFailurePlan;
         TestFalse(
             TEXT("DUC-10: invalid third-level field fails entirely during Prepare"),
-            Reconciler.PrepareReconcile(nullptr, PrepareFailureDocument, ScreenFactory, PrepareFailurePlan, ReconcileError));
+            Reconciler.PrepareReconcile(
+                nullptr, PrepareFailureDocument, ScreenFactory, PrepareFailurePlan, ReconcileError, PrepareContext));
         TestEqual(
             TEXT("DUC-10: Prepare failure retains the published root screen instance"),
             Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("duc10")),
@@ -283,7 +296,8 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
         FGV2LayeredUiReconciler::FPreparedReconciliationPlan CommitFailurePlan;
         TestTrue(
             *FString::Printf(TEXT("DUC-10: third-level update prepares [Error: %s]"), *ReconcileError),
-            Reconciler.PrepareReconcile(nullptr, CommitFailureDocument, ScreenFactory, CommitFailurePlan, ReconcileError));
+            Reconciler.PrepareReconcile(
+                nullptr, CommitFailureDocument, ScreenFactory, CommitFailurePlan, ReconcileError, PrepareContext));
 
         AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed on 'day'"), EAutomationExpectedErrorFlags::Contains, 1);
         AddExpectedErrorPlain(TEXT("ApplyScreenFields commit failed on 'tabs'"), EAutomationExpectedErrorFlags::Contains, 1);

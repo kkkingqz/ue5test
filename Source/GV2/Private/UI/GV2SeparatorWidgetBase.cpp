@@ -44,11 +44,3 @@ void UGV2SeparatorWidgetBase::ApplySeparatorStyleValues(const FSlateBrush& Brush
         SeparatorSizeBox->ClearHeightOverride();
     }
 }
-
-bool UGV2SeparatorWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: this class's central style is carried by FPreparedSeparatorStyle and written
-    // by ApplySeparatorStyleValues. The interface method survives only until PSC-11 removes
-    // it as a runtime API; it deliberately does nothing rather than resolving a second time.
-    return true;
-}

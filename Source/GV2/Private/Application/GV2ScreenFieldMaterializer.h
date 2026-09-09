@@ -45,12 +45,9 @@ bool PrepareBindingDefinitions(
 // PrepareBindingDefinitions() + FGV2UiBindingRegistry::PrepareBindings() pass --
 // Handles must be in the same order PrepareBindingDefinitions produced them in,
 // since both passes walk the same schema/value tree in the same deterministic order.
-// PSC-10A: PrepareContext is optional so the one existing production call site (and
-// every test call site) keeps compiling unchanged; passing one routes Text field
-// resolution through PrepareContext->GetTheme() instead of the legacy
-// GetConfiguredTheme() static accessor (see UGV2TextPipeline::Resolve()'s own doc
-// comment) and populates the resolved presentation UGV2TextPipeline::Apply() then
-// reads without touching Theme again.
+// PrepareContext routes semantic values through the pinned session snapshot and populates
+// the resolved presentation consumed by Apply. A null context remains useful only for
+// context-free schemas/tests; any value requiring session content fails closed.
 bool BuildFields(
     const GV2RuntimeCore::FScreenRequest& Request,
     const TArray<FGV2UiBindingHandle>& Handles,

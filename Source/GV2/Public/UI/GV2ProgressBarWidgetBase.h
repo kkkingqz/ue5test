@@ -47,8 +47,6 @@ public:
     // UGV2SeparatorWidgetBase::ApplySeparatorStyleValues for why this shape.
     void ApplyProgressBarStyleValues(const FProgressBarStyle& WidgetStyle, const FLinearColor& FillColor);
 
-    virtual bool ApplyCentralStyle_Implementation() override;
-
 protected:
     virtual void NativePreConstruct() override;
 

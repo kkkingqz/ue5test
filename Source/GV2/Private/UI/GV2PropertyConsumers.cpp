@@ -15,6 +15,7 @@
 #include "UI/GV2UiBindingTarget.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2ButtonListWidgetBase.h"
+#include "UI/GV2CentralStylePreparer.h"
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2CheckboxWidgetBase.h"
 #include "UI/GV2InputFieldWidgetBase.h"
@@ -37,6 +38,26 @@
 #include "Components/PanelWidget.h"
 #include "Components/VerticalBox.h"
 #include "Blueprint/UserWidget.h"
+
+namespace
+{
+GV2PresentationApply::FPreparedTextValue FlattenTextValue(const FGV2TextViewModel& Text)
+{
+    GV2PresentationApply::FPreparedTextValue Flat;
+    Flat.Text = Text.Text;
+    Flat.StyleToken = Text.StyleToken;
+    Flat.NormalizedMarkup = Text.NormalizedMarkup;
+    Flat.ResolvedStyleClass = Text.ResolvedStyleClass;
+    Flat.ResolvedBaseFontSize = Text.ResolvedBaseFontSize;
+    Flat.ResolvedMinReadableFontSize = Text.ResolvedMinReadableFontSize;
+    Flat.ResolvedReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
+    Flat.ResolvedFontScaleCurve = Text.ResolvedFontScaleCurve;
+    Flat.ResolvedDefaultStyle = Text.ResolvedDefaultStyle;
+    Flat.bHasResolvedPresentation = Text.bHasResolvedPresentation;
+    Flat.bHasResolvedDefaultStyle = Text.bHasResolvedDefaultStyle;
+    return Flat;
+}
+}
 
 // --- FGV2TextPropertyConsumer ---
 
@@ -111,9 +132,7 @@ bool FGV2TextPropertyConsumer::BuildPreparedOperation(
 {
     GV2PresentationApply::FPreparedTextOperation Operation;
     Operation.TargetWidget = TargetWidget;
-    Operation.Value.Text = PreparedText.Text;
-    Operation.Value.StyleToken = PreparedText.StyleToken;
-    Operation.Value.NormalizedMarkup = PreparedText.NormalizedMarkup;
+    Operation.Value = FlattenTextValue(PreparedText);
     OutTransaction.AddTextOperation(MoveTemp(Operation));
     OutError.Reset();
     return true;
@@ -250,29 +269,18 @@ bool FGV2ImageResourcePropertyConsumer::Prepare(
     PreparedScalePolicy = Policy;
     PreparedFixedAspectRatio = FixedAspect;
 
-    // PSC-06 (ADR-0043 D1): resolve through this session's own snapshot when available;
-    // GetSessionCatalog()'s independent session-scoped global remains the fallback for a
-    // caller with no PrepareContext -- PSC-10 retires this fallback.
+    // PSC-10B (ADR-0043 D1): resource authority is the pinned session snapshot. A
+    // missing context is a typed Prepare failure, never permission to consult a second
+    // process-global catalog.
     FGV2ResolvedImageResource Candidate;
-    if (PrepareContext != nullptr)
+    if (PrepareContext == nullptr)
     {
-        if (!PrepareContext->ResolveResource(PreparedResourceId, Candidate, OutError))
-        {
-            return false;
-        }
+        OutError = TEXT("core:diagnostic.ui_consumer.missing_prepare_context: session image catalog is unavailable");
+        return false;
     }
-    else
+    if (!PrepareContext->ResolveResource(PreparedResourceId, Candidate, OutError))
     {
-        UGV2ImageResourceCatalog* Catalog = UGV2ImageResourceCatalog::GetSessionCatalog();
-        if (Catalog == nullptr)
-        {
-            OutError = TEXT("core:diagnostic.ui_consumer.missing_catalog: Configured Image Resource Catalog is unavailable");
-            return false;
-        }
-        if (!Catalog->Resolve(PreparedResourceId, Candidate, OutError))
-        {
-            return false;
-        }
+        return false;
     }
     // STATUS-012: keep the resolution, not just the id it came from.
     PreparedResource = Candidate;
@@ -1315,7 +1323,9 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                     FullItemPrefix,
                     PreviousItemValue,
                     *ItemPlan,
-                    Diagnostics))
+                    Diagnostics,
+                    nullptr,
+                    PrepareContext))
             {
                 for (const FGV2UiSchemaCompatibilityDiagnostic& Diag : Diagnostics)
                 {
@@ -1373,7 +1383,9 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                     ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId,
                     FullItemPrefix,
                     *ItemRollbackPlan,
-                    RollbackDiagnostics))
+                    RollbackDiagnostics,
+                    nullptr,
+                    PrepareContext))
             {
                 OutError = RollbackDiagnostics.Num() > 0
                     ? FString::Printf(TEXT("core:diagnostic.ui_rollback.prepare_failed: collection item '%s' cannot prepare inverse: %s"), *ItemKey.ToString(), *RollbackDiagnostics[0].ToString())
@@ -1389,6 +1401,25 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                 return false;
             }
             PreparedItem.RollbackPlan = MoveTemp(ItemRollbackPlan);
+
+            // PSC-10B: a collection item is created here, during Prepare, so its central
+            // style is prepared here too. No context means no style for a widget that
+            // resolves none of its own -- an error, not a silent skip.
+            if (PrepareContext == nullptr)
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_central_style.missing_prepare_context: collection item '%s'"),
+                    *ItemKey.ToString());
+                return false;
+            }
+            if (!GV2CentralStylePreparer::PrepareForSubtree(
+                    ItemWidget,
+                    *PrepareContext,
+                    PreparedItem.CentralStyleTransaction,
+                    OutError))
+            {
+                return false;
+            }
 
             PreparedItems.Add(MoveTemp(PreparedItem));
         }
@@ -1482,8 +1513,48 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
             const FGV2UiHostMutationPlan* ItemRollbackPlan = Item.RollbackPlan.IsValid()
                 ? Item.RollbackPlan.Get()
                 : nullptr;
-            if (!CommitUiHostProperties(Cast<UUserWidget>(Item.Widget), *Item.Plan, FailedPath, CommitError, ItemFailureInjector, ItemRollbackPlan))
+            const bool bPropertiesCommitted = CommitUiHostProperties(
+                Cast<UUserWidget>(Item.Widget),
+                *Item.Plan,
+                FailedPath,
+                CommitError,
+                ItemFailureInjector,
+                ItemRollbackPlan);
+            bool bItemCommitted = bPropertiesCommitted;
+            if (bItemCommitted)
             {
+                bItemCommitted = GV2PresentationApply::Apply(
+                        Item.CentralStyleTransaction,
+                        CommitError)
+                    && GV2LegacyPresentationApplyAdapter::Apply(
+                        Item.CentralStyleTransaction,
+                        CommitError);
+            }
+            if (!bItemCommitted)
+            {
+                // A style failure happens after this item's fields committed. Restore the
+                // item's logical value before rolling back already committed siblings.
+                if (bPropertiesCommitted && ItemRollbackPlan != nullptr)
+                {
+                    FString RollbackFailedPath, RollbackError;
+                    if (!CommitUiHostProperties(
+                            Cast<UUserWidget>(Item.Widget),
+                            *ItemRollbackPlan,
+                            RollbackFailedPath,
+                            RollbackError))
+                    {
+                        CommitError = FString::Printf(
+                            TEXT("%s: central style failed and item rollback failed on '%s': %s"),
+                            GGV2UiRollbackFailedDiagnosticCode,
+                            *RollbackFailedPath,
+                            *RollbackError);
+                    }
+                    else if (IGV2UiPropertyHost* ItemHost = Cast<IGV2UiPropertyHost>(Item.Widget))
+                    {
+                        ItemHost->GetPropertyHostState().RestoreCommittedSnapshot(
+                            Item.PreviousCommittedSnapshot);
+                    }
+                }
                 // GBH-10 (ADR-0041): this item's own properties already self-healed via
                 // ItemRollbackPlan if it had one. Items committed earlier in this same call may be
                 // reused entries already visible with their new value -- Panel/
@@ -1518,10 +1589,8 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
         }
     }
 
-    // PSC-09B (ADR-0043 D2/D3): the widget-touching tail (panel reconciliation, active-
-    // widget map, central style, Dropdown header) now flows through a transaction;
-    // GetContainerPanel/GetButtonContainer/SetActiveWidgetsMap/Execute_ApplyCentralStyle/
-    // UpdateHeaderLabel are all GV2-owned, so GV2LegacyPresentationApplyAdapter performs
+    // The widget-touching tail (panel reconciliation, active-widget map and Dropdown
+    // header) flows through a transaction. The relevant APIs are GV2-owned, so the adapter performs
     // the actual dispatch this used to perform directly. GBH-10's bookkeeping loop
     // (SetLastCommittedSnapshot) stays here unchanged -- it updates only
     // FGV2UiPropertyHostState accounting on each item host, never a widget.
@@ -1604,12 +1673,6 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
     {
         OutError = TEXT("core:diagnostic.ui_consumer.kind_mismatch: Expected Array kind for RichText spans");
         return false;
-    }
-
-    UGV2RichTextWidgetBase* RichTextWidget = Cast<UGV2RichTextWidgetBase>(TargetWidget);
-    if (!RichTextWidget && TargetWidget)
-    {
-        RichTextWidget = TargetWidget->GetTypedOuter<UGV2RichTextWidgetBase>();
     }
 
     bool bHasHover = false;
@@ -1717,17 +1780,43 @@ bool FGV2RichTextSpansPropertyConsumer::Prepare(
 
     if (bHasHover)
     {
-        // PSC-10A (ADR-0043 D1): PrepareContext->GetTheme() when set (the operation-kind
-        // production path always sets one, PrepareUiHostProperties injects it
-        // unconditionally); GetConfiguredTheme() remains only for callers with none
-        // (tests, and the test-only observability harness).
+        // PSC-10B (ADR-0043 D1): the popover renderer class was loaded ONCE at snapshot
+        // build. Checking availability here must not be a synchronous load of its own --
+        // this check runs during Prepare for every rich text field carrying a hover span.
         const UGV2UiTheme* Theme = PrepareContext != nullptr
             ? PrepareContext->GetTheme().Theme.Get()
-            : UGV2UiThemeSettings::GetConfiguredTheme();
-        if (Theme == nullptr || Theme->RichTextPopoverClass.IsNull() || Theme->RichTextPopoverClass.LoadSynchronous() == nullptr)
+            : nullptr;
+        if (Theme == nullptr || PrepareContext->GetTheme().RichTextPopoverClass.Get() == nullptr)
         {
-            OutError = TEXT("core:diagnostic.ui_consumer.missing_popover_renderer: RichText popover renderer unavailable in theme");
+            OutError = TEXT("core:diagnostic.ui_consumer.missing_popover_renderer: RichText popover renderer unavailable in prepared session theme");
             return false;
+        }
+
+        for (FGV2RichTextSpanViewModel& Span : PreparedSpans)
+        {
+            if (Span.Hover.ImageResourceId.IsEmpty())
+            {
+                continue;
+            }
+
+            FGV2ResolvedImageResource Resolved;
+            FString ResourceError;
+            if (!PrepareContext->ResolveResource(Span.Hover.ImageResourceId, Resolved, ResourceError))
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_consumer.rich_text_hover_image_failed: %s"),
+                    *ResourceError);
+                return false;
+            }
+            if (!IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::PreserveAspect, Resolved.RenderMode))
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_consumer.scale_policy_mismatch: RichText hover image '%s' must use fixed_aspect rendering"),
+                    *Span.Hover.ImageResourceId);
+                return false;
+            }
+            Span.Hover.ResolvedImageBrush = Resolved.Brush;
+            Span.Hover.bHasResolvedImage = true;
         }
     }
 
@@ -1741,9 +1830,11 @@ GV2PresentationApply::FPreparedRichTextSpan FlattenRichTextSpan(const FGV2RichTe
     GV2PresentationApply::FPreparedRichTextSpan Flattened;
     Flattened.SpanId = Span.SpanId;
     Flattened.Key = Span.Key;
-    Flattened.Hover.Title = Span.Hover.Title.Text;
-    Flattened.Hover.Description = Span.Hover.Description.Text;
+    Flattened.Hover.Title = FlattenTextValue(Span.Hover.Title);
+    Flattened.Hover.Description = FlattenTextValue(Span.Hover.Description);
     Flattened.Hover.ImageResourceId = Span.Hover.ImageResourceId;
+    Flattened.Hover.ImageBrush = Span.Hover.ResolvedImageBrush;
+    Flattened.Hover.bHasResolvedImage = Span.Hover.bHasResolvedImage;
     Flattened.SerializedBinding = Span.Binding.ToString();
     return Flattened;
 }
@@ -1845,18 +1936,6 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         TabContainer = TargetWidget->GetTypedOuter<UGV2TabContainerWidgetBase>();
     }
 
-    // PSC-06/10A (ADR-0043 D1): resolve through this session's own snapshot when
-    // available. PSC-10A verified every production operation-kind call site now threads
-    // a real PrepareContext here (PrepareUiHostProperties injects it unconditionally,
-    // and its own callers -- PrepareDocumentRequest, PrepareScreenFields -- always have
-    // one for an active session); GetConfiguredRegistry()'s independent access path is
-    // therefore reached only by tests (GV2PropertyConsumersTests.cpp's own consumer-level
-    // unit tests, and the test-only RunUiCapabilityObservabilityHarness) that construct a
-    // consumer directly without wiring one. PSC-10B removes the function itself once
-    // central style also no longer needs it.
-    const UGV2ScreenRegistry* ScreenRegistry =
-        PrepareContext == nullptr ? UGV2ScreenRegistrySettings::GetConfiguredRegistry() : nullptr;
-
     TSet<FName> SeenKeys;
 
     for (const FGV2PreparedUiValue& TabVal : TabsArray)
@@ -1944,18 +2023,14 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         FGV2ResolvedScreenDescriptor Descriptor;
         FGV2ScreenResolutionRejection Rejection;
         bool bScreenResolved = false;
-        if (PrepareContext != nullptr)
+        if (PrepareContext == nullptr)
         {
-            bScreenResolved = PrepareContext->ResolveScreen(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection);
-        }
-        else if (ScreenRegistry != nullptr)
-        {
-            bScreenResolved = ScreenRegistry->Resolve(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection);
+            Rejection.Code = EGV2ScreenResolutionError::UnknownScreenId;
+            Rejection.Message = TEXT("core:diagnostic.ui_screen_registry.no_resolver_available: no PrepareContext is available");
         }
         else
         {
-            Rejection.Code = EGV2ScreenResolutionError::UnknownScreenId;
-            Rejection.Message = TEXT("core:diagnostic.ui_screen_registry.no_resolver_available: no PrepareContext or configured Screen Registry is available");
+            bScreenResolved = PrepareContext->ResolveScreen(TabScreenId, FGV2ScreenPlacement::Embedded(), Descriptor, Rejection);
         }
 
         if (!bScreenResolved)
@@ -2062,12 +2137,36 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
 
             PreparedItem.ChildScreenPlan = MakeShared<FGV2ScreenMutationPlan>();
             FString ChildPrepareError;
-            if (!ChildWidget->PrepareScreenFields(NestedFields, *PreparedItem.ChildScreenPlan, ChildPrepareError, &ChildCompositionChain))
+            if (!ChildWidget->PrepareScreenFields(
+                    NestedFields,
+                    *PreparedItem.ChildScreenPlan,
+                    ChildPrepareError,
+                    &ChildCompositionChain,
+                    PrepareContext))
             {
                 OutError = FString::Printf(TEXT("core:diagnostic.ui_mutation.prepare_failed: Tab '%s' nested screen fields failed to prepare: %s"), *TabKey.ToString(), *ChildPrepareError);
                 return false;
             }
             PreparedItem.bHasChildPlan = true;
+        }
+
+        if (ChildWidget != nullptr)
+        {
+            if (PrepareContext == nullptr)
+            {
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_central_style.missing_prepare_context: tab '%s'"),
+                    *TabKey.ToString());
+                return false;
+            }
+            if (!GV2CentralStylePreparer::PrepareForSubtree(
+                    ChildWidget,
+                    *PrepareContext,
+                    PreparedItem.CentralStyleTransaction,
+                    OutError))
+            {
+                return false;
+            }
         }
 
         if (ChildWidget != nullptr)
@@ -2161,6 +2260,49 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
                 return false;
             }
         }
+
+        if (Item.ScreenWidget != nullptr)
+        {
+            FString StyleError;
+            const bool bStyleApplied = GV2PresentationApply::Apply(
+                    Item.CentralStyleTransaction,
+                    StyleError)
+                && GV2LegacyPresentationApplyAdapter::Apply(
+                    Item.CentralStyleTransaction,
+                    StyleError);
+            if (!bStyleApplied)
+            {
+                bool bRollbackFailed = false;
+                if (Item.bHasChildPlan && Item.ChildScreenPlan.IsValid())
+                {
+                    const FGV2UiRollbackResult CurrentRollback =
+                        RollbackFieldPlans(Item.ChildScreenPlan->FieldPlans);
+                    bRollbackFailed |= !CurrentRollback.bRestored;
+                }
+                for (int32 RollbackIndex = TabIndex - 1; RollbackIndex >= 0; --RollbackIndex)
+                {
+                    const FPreparedTabItem& CommittedItem = PreparedTabs[RollbackIndex];
+                    if (CommittedItem.bHasChildPlan && CommittedItem.ChildScreenPlan.IsValid())
+                    {
+                        const FGV2UiRollbackResult SiblingRollback =
+                            RollbackFieldPlans(CommittedItem.ChildScreenPlan->FieldPlans);
+                        bRollbackFailed |= !SiblingRollback.bRestored;
+                    }
+                }
+                OutError = FString::Printf(
+                    TEXT("nested screen central style commit failed for tab '%s': %s"),
+                    *Item.Key.ToString(),
+                    *StyleError);
+                if (bRollbackFailed && !OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
+                {
+                    OutError = FString::Printf(
+                        TEXT("%s: %s"),
+                        GGV2UiRollbackFailedDiagnosticCode,
+                        *OutError);
+                }
+                return false;
+            }
+        }
     }
 
     // PSC-09B (ADR-0043 D2/D3): the sole physical mutation this Commit performs directly
@@ -2176,9 +2318,7 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
         {
             GV2PresentationApply::FPreparedTabEntry Entry;
             Entry.Key = Item.Key;
-            Entry.Title.Text = Item.Title.Text;
-            Entry.Title.StyleToken = Item.Title.StyleToken;
-            Entry.Title.NormalizedMarkup = Item.Title.NormalizedMarkup;
+            Entry.Title = FlattenTextValue(Item.Title);
             Entry.ScreenId = Item.ScreenId;
             Entry.ScreenWidget = Item.ScreenWidget.Get();
             Operation.Entries.Add(MoveTemp(Entry));

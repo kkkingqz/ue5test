@@ -93,17 +93,20 @@ public:
     // this returns false, leaving all active screens, widgets, and shell untouched.
     // PCC-06: [[nodiscard]] -- a discarded result here is the exact swallowed-failure
     // shape this task exists to make impossible.
-    // PSC-06 (ADR-0043 D1): PrepareContext (default nullptr) is forwarded unchanged, down
-    // to PrepareUiHostProperties -- see its own doc comment. nullptr is legitimate for the
-    // catastrophic-recovery replay call site (GetHealth()), which has no session snapshot
-    // reference of its own to forward.
+    // PSC-06 (ADR-0043 D1): PrepareContext is forwarded unchanged, down to
+    // PrepareUiHostProperties -- see its own doc comment.
+    // PSC-10B: it is REQUIRED, not an optional pointer. Since no widget resolves a Theme of
+    // its own any more, a Prepare without the session snapshot produces a physically correct
+    // and entirely unstyled tree; making the parameter mandatory is what stops that being
+    // expressible. The catastrophic-recovery replay -- the call site the old default existed
+    // for -- now forwards the context of the reconcile that triggered it.
     [[nodiscard]] bool PrepareReconcile(
         UGV2GameShellWidgetBase* Shell,
         const FGV2UiDocumentViewModel& Document,
         FScreenFactory ScreenFactory,
         FPreparedReconciliationPlan& OutPlan,
         FString& OutError,
-        const FGV2PresentationPrepareContext* PrepareContext = nullptr) const;
+        const FGV2PresentationPrepareContext& PrepareContext) const;
 
     // UPP-28 / PCC-06: Commits a cleanly prepared reconciliation plan to the Game Shell
     // and active widgets. Attach/Commit are checked per screen; the first failure stops
@@ -135,9 +138,9 @@ public:
         const FGV2UiDocumentViewModel& Document,
         FScreenFactory ScreenFactory,
         FString& OutError,
+        const FGV2PresentationPrepareContext& PrepareContext,
         TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector = nullptr,
-        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector = nullptr,
-        const FGV2PresentationPrepareContext* PrepareContext = nullptr);
+        TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector = nullptr);
 
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }
@@ -157,7 +160,10 @@ private:
     // and rebuilds it from LastCommittedDocument via a fresh, uninjected Prepare/Commit --
     // "обычный свежий Prepare/Apply против пустого GameShell", not a replay of physical
     // widget state. Sets Health to the outcome; never recurses into Reconcile().
-    void PerformCatastrophicRecovery(UGV2GameShellWidgetBase* Shell, FScreenFactory ScreenFactory);
+    void PerformCatastrophicRecovery(
+        UGV2GameShellWidgetBase* Shell,
+        FScreenFactory ScreenFactory,
+        const FGV2PresentationPrepareContext& PrepareContext);
 
     TMap<FScreenSlotKey, FActiveScreenEntry> ActiveScreens;
     EGV2PresentationHealth Health = EGV2PresentationHealth::Nominal;

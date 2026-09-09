@@ -233,16 +233,4 @@ public:
     UPROPERTY(Config, EditAnywhere, Category = "GV2|UI|Screen Registry")
     TSoftClassPtr<UGV2GameShellWidgetBase> GameShellClass;
 
-    // Non-const: callers need to invoke the registry's own Build() (e.g. a standalone
-    // test that loads the DataAsset directly, without going through the runtime
-    // subsystem's own LoadScreenRegistry()) before Resolve() will return anything.
-    static UGV2ScreenRegistry* GetConfiguredRegistry()
-    {
-        const UGV2ScreenRegistrySettings* Settings = GetDefault<UGV2ScreenRegistrySettings>();
-        if (Settings != nullptr && !Settings->RegistryAsset.IsNull())
-        {
-            return Settings->RegistryAsset.LoadSynchronous();
-        }
-        return nullptr;
-    }
 };

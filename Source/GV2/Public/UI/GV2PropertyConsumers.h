@@ -38,8 +38,8 @@ public:
     // after this consumer is created, for every consumer kind -- default no-op, since
     // most consumers resolve nothing session-scoped. A consumer that does (NestedScreen,
     // resource ids) overrides this and stores the pointer for its own Prepare() to use;
-    // null is legitimate (no session snapshot available to this caller yet) and each such
-    // override falls back to its pre-PSC-06 behavior in that case.
+    // null is accepted only by context-free test/standalone paths whose value kinds need no
+    // session authority. Consumers that resolve content fail Prepare when it is absent.
     virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) {}
 
     // PSC-09A (ADR-0043 D2/D3, Payload.md M3): default no-op -- returning false means
@@ -132,22 +132,16 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    // PSC-09A (ADR-0043 D2/D3): the one migrated target shape -- a plain UImage. Prepare
-    // has already validated scale-policy compatibility and the aspect-ratio constraint
-    // (see Prepare()'s own body); this only bakes the final Slate brush for
-    // PreparedScalePolicy and hands it to GV2PresentationApply, which performs no
-    // validation of its own. UGV2ImageWidgetBase/UGV2PortraitWidgetBase targets are
-    // unmigrated -- Commit() still calls their own ApplyResolvedImageResource/
-    // ApplyResolvedPortrait UFUNCTIONs directly for those.
+    // PSC-09B/10B (ADR-0043 D2/D3): Prepare has already validated the resource and
+    // scaling constraints. This emits the finished value-only operation for every
+    // supported target shape; Commit never re-resolves Theme or catalog state.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
         FString& OutError) const override;
 
-    // PSC-06 (ADR-0043 D1): when set, Prepare() resolves the resource id through this
-    // session's own snapshot instead of UGV2ImageResourceCatalog::GetSessionCatalog()'s
-    // independent session-scoped global. Null falls back to that legacy accessor;
-    // PSC-10 retires the fallback.
+    // PSC-10B (ADR-0043 D1): Prepare resolves through the pinned session snapshot;
+    // missing context is a typed failure rather than a global-catalog fallback.
     virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
 
 private:
@@ -388,6 +382,10 @@ public:
         ContextFieldId = InFieldId;
     }
 
+    // Required by recursively prepared item hosts: their resource, RichText and nested
+    // screen consumers must see the same immutable session snapshot as the collection.
+    virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
+
     const TArray<FGV2CollectionItemDiscrepancy>& GetDiscrepancies() const { return Discrepancies; }
 
     static const TArray<FGV2CollectionItemDiscrepancy>& GetAllRecordedDiscrepancies();
@@ -419,6 +417,7 @@ private:
         // nothing but an empty object to prepare against (an all-Reset plan, not an
         // actual restore).
         TSharedPtr<const FGV2PreparedUiObject> CommittedValue;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction CentralStyleTransaction;
     };
 
     FString KeyPropertyName = TEXT("key");
@@ -431,6 +430,7 @@ private:
     FString ContextPropertyPath;
     FString ContextScreenId;
     FString ContextFieldId;
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr;
     TArray<FGV2CollectionItemDiscrepancy> Discrepancies;
 };
 
@@ -458,9 +458,8 @@ public:
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
         FString& OutError) const override;
 
-    // PSC-10A (ADR-0043 D1): Prepare's hover-popover-availability check needs Theme
-    // (RichTextPopoverClass) -- resolved through PrepareContext->GetTheme() when set,
-    // instead of the legacy GetConfiguredTheme() static accessor.
+    // Prepare resolves hover presentation from the immutable session snapshot. Missing
+    // context is a typed failure when hover data is present.
     virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
 
 private:
@@ -490,6 +489,7 @@ public:
         // same public two-phase API a top-level screen uses -- not a hand-rolled
         // mutation plan built against a schema synthesized from its capability.
         TSharedPtr<FGV2ScreenMutationPlan> ChildScreenPlan;
+        GV2PresentationApply::FGV2PreparedPresentationTransaction CentralStyleTransaction;
         bool bHasChildPlan = false;
     };
 
@@ -511,12 +511,8 @@ public:
     // SetCompiledItemSpec. Non-owning; the caller's array outlives this Prepare() call.
     void SetActiveCompositionChain(const TArray<FString>* InChain) { ActiveCompositionChain = InChain; }
 
-    // PSC-06 (ADR-0043 D1): when set, Prepare() resolves each tab's embedded screen
-    // through this session's own snapshot instead of
-    // UGV2ScreenRegistrySettings::GetConfiguredRegistry()'s independent access path. Null
-    // is a legitimate value for a caller with no snapshot available yet (see
-    // GV2SessionCoordinator.h's GetContentSnapshotForPrepare doc comment) -- Prepare()
-    // falls back to the legacy accessor in that case; PSC-10 retires that fallback.
+    // Prepare resolves every embedded screen through the immutable session snapshot.
+    // Missing context is a typed failure; no configured/global resolver exists.
     virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }
 
 private:

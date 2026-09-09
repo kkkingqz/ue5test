@@ -3,7 +3,6 @@
 #include "CommonUserWidget.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "UI/GV2UiBindingTarget.h"
-#include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2TextPipelineHost.h"
 #include "GV2ModalWidgetBase.generated.h"
 
@@ -22,7 +21,6 @@ class GV2_API UGV2ModalWidgetBase
     : public UCommonUserWidget
     , public IGV2UiPropertyHost
     , public IGV2UiBindingTarget
-    , public IGV2UiStyleConsumer
     , public IGV2TextPipelineHost
 {
     GENERATED_BODY()
@@ -36,9 +34,6 @@ public:
     // IGV2UiBindingTarget
     virtual void SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle) override;
     virtual FGV2UiBindingHandle GetBindingHandle() const override;
-
-    // IGV2UiStyleConsumer
-    virtual bool ApplyCentralStyle_Implementation() override;
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Modal")
     bool ApplyTitle(const FGV2TextViewModel& InTitle);
@@ -74,7 +69,6 @@ public:
     FName GetKey() const { return GetPropertyHostState().GetKey(); }
 
 protected:
-    virtual void NativePreConstruct() override;
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
 

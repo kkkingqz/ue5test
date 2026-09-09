@@ -25,22 +25,36 @@ FORWARD_DECLARATION_PATTERN = re.compile(r"^\s*class\s+" + TYPE_NAME + r"\s*;\s*
 CLASSIFIED_SITES = {
     ("UI/GV2ScreenWidgetBase.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr) const;"):
         "UGV2ScreenWidgetBase::PrepareScreenFields parameter",
-    ("UI/GV2LayeredUiReconciler.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr) const;"):
-        "FGV2LayeredUiReconciler::PrepareReconcile parameter",
-    ("UI/GV2LayeredUiReconciler.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):
-        "FGV2LayeredUiReconciler::Reconcile parameter",
+    ("UI/GV2ScreenWidgetBase.h", "const FGV2PresentationPrepareContext& PrepareContext);"):
+        "UGV2ScreenWidgetBase::ApplyScreenFields requires explicit pinned authority for its one-shot Prepare+Commit path",
+    ("UI/GV2ScreenWidgetBase.h", "const FGV2PresentationPrepareContext& PrepareContext) const;"):
+        "UGV2ScreenWidgetBase::CanApplyScreenFields requires explicit pinned authority for preflight",
+    ("UI/GV2LayeredUiReconciler.h", "const FGV2PresentationPrepareContext& PrepareContext) const;"):
+        "PSC-10B: FGV2LayeredUiReconciler::PrepareReconcile parameter -- REQUIRED, by reference. "
+        "Since no widget resolves a Theme of its own, a Prepare without the session snapshot "
+        "would publish a physically correct but entirely unstyled tree, so the optional "
+        "pointer form is deliberately no longer expressible",
+    ("UI/GV2LayeredUiReconciler.h", "const FGV2PresentationPrepareContext& PrepareContext,"):
+        "PSC-10B: FGV2LayeredUiReconciler::Reconcile parameter -- same requirement as "
+        "PrepareReconcile above; it precedes the optional test-only failure injectors",
+    ("UI/GV2LayeredUiReconciler.h", "const FGV2PresentationPrepareContext& PrepareContext);"):
+        "PSC-10B: FGV2LayeredUiReconciler::PerformCatastrophicRecovery parameter -- recovery "
+        "replays an ordinary fresh Prepare/Apply and therefore needs the SAME context as the "
+        "reconcile that triggered it; the old nullptr default here left the rebuilt tree unstyled",
     ("UI/GV2PropertyConsumers.h", "virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) {}"):
         "IGV2PropertyConsumer::SetPrepareContext base (no-op default)",
     ("UI/GV2PropertyConsumers.h", "virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) override { PrepareContext = InContext; }"):
-        "consumer override storing the context for its own Prepare() to use (three classes share this exact line: FGV2TabContainerTabsPropertyConsumer, FGV2ImageResourcePropertyConsumer, FGV2RichTextSpansPropertyConsumer -- PSC-10A)",
+        "consumer override storing the context for recursive/session-owned resolution (four classes share this line: image resource, keyed collection, RichText spans and nested tabs)",
     ("UI/GV2PropertyConsumers.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr;"):
-        "consumer's stored context field (three classes share this exact line: FGV2TabContainerTabsPropertyConsumer, FGV2ImageResourcePropertyConsumer, FGV2RichTextSpansPropertyConsumer -- PSC-10A)",
+        "consumer's stored context field (four classes share this line: image resource, keyed collection, RichText spans and nested tabs)",
     ("UI/GV2UiMutationPlan.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):
-        "PrepareUiHostProperties parameter",
-    ("UI/GV2TextPipeline.h", "const FGV2PresentationPrepareContext* PrepareContext = nullptr);"):
-        "PSC-10A: UGV2TextPipeline::Resolve parameter -- routes Theme through the session snapshot instead of GetConfiguredTheme() and populates FGV2TextViewModel's resolved-presentation fields",
+        "PrepareUiHostProperties and PrepareUiHostRollbackPlan parameters",
+    ("UI/GV2TextPipeline.h", "const FGV2PresentationPrepareContext* PrepareContext);"):
+        "PSC-10B: UGV2TextPipeline::Resolve requires the session context and has no context-free runtime fallback",
     ("UI/GV2CentralStylePreparer.h", "const FGV2PresentationPrepareContext& PrepareContext,"):
         "PSC-10B: GV2CentralStylePreparer::PrepareForSubtree parameter -- the only place a Theme is read on behalf of a styled widget; turns it into central-style operations on the caller's transaction. By reference, not pointer: unlike the Prepare paths above there is no legacy no-context call site to keep working, so a caller without a snapshot cannot reach this function at all",
+    ("UI/GV2UiCapabilityObservability.h", "const FGV2PresentationPrepareContext& PrepareContext,"):
+        "PSC-10B: observability probes execute the real property Prepare path against the caller's pinned snapshot instead of a global test catalog",
 }
 
 

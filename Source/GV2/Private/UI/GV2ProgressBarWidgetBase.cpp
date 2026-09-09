@@ -60,10 +60,3 @@ void UGV2ProgressBarWidgetBase::ApplyProgressBarStyleValues(const FProgressBarSt
         ProgressBar->SetFillColorAndOpacity(FillColor);
     }
 }
-
-bool UGV2ProgressBarWidgetBase::ApplyCentralStyle_Implementation()
-{
-    // PSC-10B: carried by FPreparedProgressBarStyle, written by ApplyProgressBarStyleValues.
-    return true;
-}
-

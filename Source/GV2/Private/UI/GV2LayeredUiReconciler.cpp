@@ -28,7 +28,7 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
     FScreenFactory ScreenFactory,
     FPreparedReconciliationPlan& OutPlan,
     FString& OutError,
-    const FGV2PresentationPrepareContext* PrepareContext) const
+    const FGV2PresentationPrepareContext& PrepareContext) const
 {
     OutPlan = {};
     OutError.Reset();
@@ -115,7 +115,7 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         // an intermediate screen -- is caught as a cycle rather than silently
         // accepted; see FGV2TabContainerTabsPropertyConsumer's own guard.
         const TArray<FString> RootCompositionChain{Instance.ScreenId};
-        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError, &RootCompositionChain, PrepareContext))
+        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError, &RootCompositionChain, &PrepareContext))
         {
             if (OutError.IsEmpty())
             {
@@ -126,10 +126,10 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
 
         // PSC-10B: the theme is read HERE, in Prepare, holding the session snapshot -- and
         // nowhere below. What reaches Commit is finished values.
-        if (PrepareContext != nullptr)
+        if (!GV2CentralStylePreparer::PrepareForSubtree(
+                PreparedInst.TargetWidget, PrepareContext, PreparedInst.CentralStyleTransaction, OutError))
         {
-            GV2CentralStylePreparer::PrepareForSubtree(
-                PreparedInst.TargetWidget, *PrepareContext, PreparedInst.CentralStyleTransaction);
+            return false;
         }
 
         OutPlan.NewActiveScreens.Add(Key, {Instance.ScreenId, PreparedInst.TargetWidget});
@@ -421,9 +421,9 @@ bool FGV2LayeredUiReconciler::Reconcile(
     const FGV2UiDocumentViewModel& Document,
     FScreenFactory ScreenFactory,
     FString& OutError,
+    const FGV2PresentationPrepareContext& PrepareContext,
     TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenCommitFailureInjector,
-    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector,
-    const FGV2PresentationPrepareContext* PrepareContext)
+    TFunction<bool(const FString& ScreenId, const FString& PropertyPath)> ScreenRollbackFailureInjector)
 {
     FPreparedReconciliationPlan Plan;
     if (!PrepareReconcile(Shell, Document, ScreenFactory, Plan, OutError, PrepareContext))
@@ -449,12 +449,15 @@ bool FGV2LayeredUiReconciler::Reconcile(
     // and accounting-wise untouched".
     if (OutError.Contains(GGV2UiRollbackFailedDiagnosticCode))
     {
-        PerformCatastrophicRecovery(Shell, ScreenFactory);
+        PerformCatastrophicRecovery(Shell, ScreenFactory, PrepareContext);
     }
     return false;
 }
 
-void FGV2LayeredUiReconciler::PerformCatastrophicRecovery(UGV2GameShellWidgetBase* Shell, FScreenFactory ScreenFactory)
+void FGV2LayeredUiReconciler::PerformCatastrophicRecovery(
+    UGV2GameShellWidgetBase* Shell,
+    FScreenFactory ScreenFactory,
+    const FGV2PresentationPrepareContext& PrepareContext)
 {
     if (Shell != nullptr)
     {
@@ -478,7 +481,11 @@ void FGV2LayeredUiReconciler::PerformCatastrophicRecovery(UGV2GameShellWidgetBas
     // risk re-entering this same recovery path if the replay somehow failed the same way.
     FString RecoveryError;
     FPreparedReconciliationPlan RecoveryPlan;
-    if (!PrepareReconcile(Shell, *LastCommittedDocument, ScreenFactory, RecoveryPlan, RecoveryError)
+    // PSC-10B: the SAME PrepareContext this reconcile ran under. Recovery is an ordinary
+    // fresh Prepare/Apply against an empty GameShell, so it must produce central style like
+    // any other -- without the context the rebuilt tree would be physically correct and
+    // entirely unstyled, because no widget pulls a Theme of its own any more.
+    if (!PrepareReconcile(Shell, *LastCommittedDocument, ScreenFactory, RecoveryPlan, RecoveryError, PrepareContext)
         || !CommitReconcile(Shell, RecoveryPlan, RecoveryError))
     {
         UE_LOG(LogTemp, Error,

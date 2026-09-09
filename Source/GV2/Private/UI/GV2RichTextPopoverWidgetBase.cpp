@@ -4,44 +4,88 @@
 #include "Components/Border.h"
 #include "Components/Image.h"
 #include "Components/SizeBox.h"
-#include "UI/GV2UiTheme.h"
-#include "UI/GV2ImagePresentation.h"
 #include "UI/GV2RichTextWidgetBase.h"
+#include "UI/GV2LegacyPresentationApplyAdapter.h"
 #include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiCapability.h"
 
 void UGV2RichTextPopoverWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
-    ApplyCentralStyle_Implementation();
+    // PSC-10B: style arrives with the content through InitializePopover.
 }
 
 bool UGV2RichTextPopoverWidgetBase::InitializePopover(
-    const FGV2RichTextHoverViewModel& InModel)
+    const FGV2RichTextHoverViewModel& InModel,
+    const GV2PresentationApply::FPreparedRichTextStyle& InStyle)
 {
     if (PopoverBorder == nullptr || PopoverWidth == nullptr
-        || TitleText == nullptr || DescriptionText == nullptr)
+        || TitleText == nullptr || DescriptionText == nullptr
+        || !InStyle.bIsResolved)
+    {
+        return false;
+    }
+
+    // Style before content: both this ephemeral target and its nested rich text receive
+    // roles already prepared for the owner. Creating a transaction here performs no Prepare
+    // and no lookup; it keeps every physical style write behind the same exhaustive facade.
+    PreparedStyle = InStyle;
+    PreparedStyleAnchors.Reset();
+    if (InStyle.PopoverClass != nullptr)
+    {
+        PreparedStyleAnchors.AddUnique(InStyle.PopoverClass.Get());
+    }
+    if (InStyle.DefaultStyleClass != nullptr)
+    {
+        PreparedStyleAnchors.AddUnique(InStyle.DefaultStyleClass.Get());
+    }
+    for (const TPair<FName, GV2PresentationApply::FPreparedRichTextTokenStyle>& Pair : InStyle.StyleByToken)
+    {
+        if (Pair.Value.StyleClass != nullptr)
+        {
+            PreparedStyleAnchors.AddUnique(Pair.Value.StyleClass.Get());
+        }
+    }
+    GV2PresentationApply::FGV2PreparedPresentationTransaction StyleTransaction;
+    GV2PresentationApply::FPreparedCentralStyleOperation PopoverOperation;
+    PopoverOperation.TargetWidget = this;
+    PopoverOperation.Payload.Set<GV2PresentationApply::FPreparedRichTextPopoverStyle>(InStyle.PopoverStyle);
+    StyleTransaction.AddCentralStyleOperation(MoveTemp(PopoverOperation));
+    GV2PresentationApply::FPreparedCentralStyleOperation DescriptionOperation;
+    DescriptionOperation.TargetWidget = DescriptionText;
+    DescriptionOperation.Payload.Set<GV2PresentationApply::FPreparedRichTextStyle>(InStyle);
+    StyleTransaction.AddCentralStyleOperation(MoveTemp(DescriptionOperation));
+    FString StyleError;
+    if (!GV2PresentationApply::Apply(StyleTransaction, StyleError)
+        || !GV2LegacyPresentationApplyAdapter::Apply(StyleTransaction, StyleError))
     {
         return false;
     }
 
     Model = InModel;
-    if (!ApplyCentralStyle_Implementation())
-    {
-        return false;
-    }
     TitleText->SetVisibility(Model.Title.Text.IsEmpty()
         ? ESlateVisibility::Collapsed
         : ESlateVisibility::SelfHitTestInvisible);
-    DescriptionText->ApplyText(Model.Description);
+    if (!UGV2TextPipeline::Apply(TitleText, Model.Title))
+    {
+        return false;
+    }
+    if (!DescriptionText->ApplyText(Model.Description))
+    {
+        return false;
+    }
     DescriptionText->SetVisibility(Model.Description.Text.IsEmpty()
         ? ESlateVisibility::Collapsed
         : ESlateVisibility::SelfHitTestInvisible);
 
     if (Icon != nullptr)
     {
-        const bool bImageApplied = !Model.ImageResourceId.IsEmpty()
-            && ApplyImageResource(Model.ImageResourceId);
+        const bool bImageApplied = Model.bHasResolvedImage;
+        if (bImageApplied)
+        {
+            Icon->SetBrush(Model.ResolvedImageBrush);
+            Icon->SetDesiredSizeOverride(Model.ResolvedImageBrush.ImageSize);
+        }
         Icon->SetVisibility(bImageApplied
             ? ESlateVisibility::SelfHitTestInvisible
             : ESlateVisibility::Collapsed);
@@ -55,48 +99,30 @@ const FGV2RichTextHoverViewModel& UGV2RichTextPopoverWidgetBase::GetPopoverModel
     return Model;
 }
 
-bool UGV2RichTextPopoverWidgetBase::ApplyCentralStyle_Implementation()
+void UGV2RichTextPopoverWidgetBase::ApplyPopoverStyleValues(
+    const GV2PresentationApply::FPreparedRichTextPopoverStyle& InStyle)
 {
-    UGV2UiTheme* Theme = UGV2UiThemeSettings::GetConfiguredTheme();
-    if (Theme == nullptr || PopoverBorder == nullptr || PopoverWidth == nullptr
+    if (PopoverBorder == nullptr || PopoverWidth == nullptr
         || TitleText == nullptr || DescriptionText == nullptr)
     {
-        return false;
+        return;
     }
 
-    PopoverBorder->SetBrush(Theme->RichTextPopoverBackground);
-    PopoverBorder->SetPadding(Theme->RichTextPopoverPadding);
     // DCA-15 (ADR-0035): the popover's own box follows the same viewport-derived
     // scale as the text it contains -- a fixed max width/height (the Theme
     // default, unscaled) would cap the box at its 1080p footprint even where the
     // text inside is rendering ~60% larger (2160p) or ~15% smaller (720p).
-    const float ViewportScale = Theme->EvaluateTextScale(UGV2TextPipeline::GetViewportHeight(this));
-    PopoverWidth->SetMaxDesiredWidth(Theme->RichTextPopoverMaxWidth * ViewportScale);
-    PopoverWidth->SetMaxDesiredHeight(Theme->RichTextPopoverMaxHeight * ViewportScale);
-    if (!UGV2TextPipeline::Apply(TitleText, Model.Title)
-        || !IGV2UiStyleConsumer::Execute_ApplyCentralStyle(DescriptionText))
-    {
-        return false;
-    }
+    PopoverBorder->SetBrush(InStyle.Background);
+    PopoverBorder->SetPadding(InStyle.Padding);
+    const float ViewportScale = GV2PresentationApply::EvaluatePreparedViewportScale(
+        InStyle.Scale,
+        GV2PresentationApply::ResolveLiveViewportHeight(this, InStyle.Scale.ReferenceViewportHeight));
+    PopoverWidth->SetMaxDesiredWidth(InStyle.MaxWidth * ViewportScale);
+    PopoverWidth->SetMaxDesiredHeight(InStyle.MaxHeight * ViewportScale);
     if (Icon != nullptr)
     {
-        Icon->SetColorAndOpacity(Theme->ImageTint);
+        Icon->SetColorAndOpacity(InStyle.ImageTint);
     }
-    return true;
-}
-
-bool UGV2RichTextPopoverWidgetBase::ApplyImageResource_Implementation(
-    const FString& ResourceId)
-{
-    FGV2ResolvedImageResource Resolved;
-    FString Error;
-    return FGV2ImagePresentation::ResolveAndApply(
-        Icon,
-        ResourceId,
-        EGV2PrimitiveScalePolicy::PreserveAspect,
-        {},
-        Resolved,
-        Error);
 }
 
 void UGV2RichTextPopoverWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const

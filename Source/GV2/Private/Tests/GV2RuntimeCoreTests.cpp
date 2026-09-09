@@ -12,9 +12,15 @@
 #include "Blueprint/WidgetTree.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "UI/GV2CentralStylePreparer.h"
+#include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2RichTextWidgetBase.h"
+#include "UI/GV2TextPipeline.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2LegacyPresentationApplyAdapter.h"
+#include "UI/GV2PresentationAuthorityProbe.h"
+#include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "UI/GV2UiTheme.h"
 #include "Bridge/GV2UiBindingRegistry.h"
@@ -2075,11 +2081,9 @@ bool FGV2SessionContentSnapshotContract::RunTest(const FString& Parameters)
 // goes through. The widget itself is a plain UGV2SeparatorWidgetBase (the test subclass only
 // populates the BindWidget members a Widget Blueprint would have populated).
 //
-// The independent oracle is the second half: after resetting the widget to a sentinel, the
-// widget's OWN IGV2UiStyleConsumer entry point must leave it on that sentinel. Before
-// PSC-10B that call resolved UGV2UiThemeSettings::GetConfiguredTheme() and styled the
-// widget; a regression that restores the pull path makes that half fail even if the push
-// path still works, so the two halves cannot both pass by accident.
+// The source-derived boundary gate separately proves that no widget-local style entry point
+// exists; this production-path test proves that the replacement transaction performs the
+// physical write.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2CentralStyleThroughPreparedTransactionTest,
     "GV2.Runtime.Presentation.CentralStyleThroughPreparedTransaction",
@@ -2140,12 +2144,20 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     ProgressBar->ApplyProgressBarStyleValues(FProgressBarStyle(), FLinearColor::Transparent);
     RootBox->AddChild(ProgressBar);
 
+    // RichText is the structurally different third path: its Slate decorator asks for
+    // run/interactive styles later, during rendering. The widget must retain only the
+    // prepared values delivered here, never a Theme or a resolver callback.
+    UGV2RichTextWidgetBase* RichText = NewObject<UGV2RichTextWidgetBase>();
+    RootBox->AddChild(RichText);
+
     const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
     GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
-    GV2CentralStylePreparer::PrepareForSubtree(Root, PrepareContext, Transaction);
+    FString StyleError;
+    TestTrue(TEXT("Subtree walk succeeds against a snapshot that carries a Theme"),
+        GV2CentralStylePreparer::PrepareForSubtree(Root, PrepareContext, Transaction, StyleError));
 
-    TestEqual(TEXT("Subtree walk emitted one central-style operation per styled widget"), Transaction.GetOperations().Num(), 2);
-    if (Transaction.GetOperations().Num() != 2)
+    TestEqual(TEXT("Subtree walk emitted one central-style operation per styled widget"), Transaction.GetOperations().Num(), 3);
+    if (Transaction.GetOperations().Num() != 3)
     {
         Coordinator.EndSession();
         return false;
@@ -2160,6 +2172,7 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     // Prepare resolved the theme; nothing has been written yet.
     TestEqual(TEXT("Preparing does not mutate the widget"), Separator->ReadAppliedThickness(), Sentinel);
 
+    const uint64 ResolveCountBeforeApply = GV2PresentationAuthorityProbe::GetResolveCount();
     FString ApplyError;
     TestTrue(TEXT("Lower module's Apply accepts the central-style operation"),
         GV2PresentationApply::Apply(Transaction, ApplyError));
@@ -2167,12 +2180,33 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
 
     TestTrue(TEXT("Adapter Apply completes the central-style operation"),
         GV2LegacyPresentationApplyAdapter::Apply(Transaction, ApplyError));
+    const uint64 ResolveCountAfterApply = GV2PresentationAuthorityProbe::GetResolveCount();
+    TestEqual(
+        TEXT("Applying prepared central style resolves no presentation authority"),
+        static_cast<int64>(ResolveCountAfterApply - ResolveCountBeforeApply),
+        static_cast<int64>(0));
     TestEqual(TEXT("Applied thickness is the snapshot theme's own SeparatorThickness"),
         Separator->ReadAppliedThickness(), SnapshotTheme->SeparatorThickness);
     TestEqual(TEXT("Applied brush is the snapshot theme's own SeparatorBrush"),
         Separator->ReadAppliedBrush().GetResourceName(), SnapshotTheme->SeparatorBrush.GetResourceName());
     TestEqual(TEXT("The second role reached its own target: fill colour is the theme's ProgressFillColor"),
         ProgressBar->ReadAppliedFillColor(), SnapshotTheme->ProgressFillColor);
+    TestTrue(TEXT("RichText retained a fully resolved style payload"),
+        RichText->GetPreparedRichTextStyle().bIsResolved);
+    const FTextBlockStyle ResolvedRun = RichText->ResolveRunTextStyle(
+        RichText->GetPreparedRichTextStyle().DefaultTokenName,
+        NAME_None,
+        NAME_None);
+    TestEqual(TEXT("RichText run style uses the prepared default font object"),
+        ResolvedRun.Font.FontObject,
+        RichText->GetPreparedRichTextStyle().DefaultToken.BaseStyle.Font.FontObject);
+    TestEqual(TEXT("RichText run style uses the prepared default typeface"),
+        ResolvedRun.Font.TypefaceFontName,
+        RichText->GetPreparedRichTextStyle().DefaultToken.BaseStyle.Font.TypefaceFontName);
+    const FHyperlinkStyle ResolvedInteractive = RichText->ResolveInteractiveTextStyle(ResolvedRun);
+    TestEqual(TEXT("RichText interactive style uses the prepared underline brush"),
+        ResolvedInteractive.UnderlineStyle.Normal.GetResourceName(),
+        SnapshotTheme->RichTextInteractiveStyle.UnderlineStyle.Normal.GetResourceName());
 
     // A role delivered to the wrong class is rejected, not applied to whatever the widget
     // happens to be. This is what the closed variant buys: the mismatch is impossible to
@@ -2191,27 +2225,14 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
             MismatchError.Contains(TEXT("central_style_target_mismatch")));
     }
 
-    // Independent oracle: the pull path is gone.
-    Separator->ApplySeparatorStyleValues(FSlateBrush(), Sentinel, /*bHorizontal=*/true);
-    TestTrue(TEXT("Separator still implements IGV2UiStyleConsumer"), Separator->Implements<UGV2UiStyleConsumer>());
-    IGV2UiStyleConsumer::Execute_ApplyCentralStyle(Separator);
-    TestEqual(TEXT("The widget's own style entry point resolves NOTHING and leaves the sentinel in place"),
-        Separator->ReadAppliedThickness(), Sentinel);
-
     Coordinator.EndSession();
     return true;
 }
 
 // PSC-10B: the actual set of central-style targets is the set of classes implementing
 // IGV2UiStyleConsumer -- enumerated from the reflection system here, never typed into this
-// test. Each is instantiated and offered to the real preparer; a class that emits no
-// central-style operation is not yet on the push model and must be named in
-// NOT_YET_CONVERTED below, with the entry removed as soon as it converts.
-//
-// This is the gate that makes the remaining work impossible to lose: a NEW style consumer
-// added without a prepared role fails here rather than silently pulling a Theme, and a
-// converted class left on the list fails here too, so the list cannot rot into a
-// permanent exemption.
+// test. Each is instantiated and offered to the real preparer. A new style consumer with
+// no prepared role fails immediately; there is no hand-maintained exemption list.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2CentralStyleImplementationInventoryTest,
     "GV2.Runtime.Presentation.CentralStyleImplementationInventory",
@@ -2219,25 +2240,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2CentralStyleImplementationInventoryTest::RunTest(const FString& Parameters)
 {
-    // Classes still reading a Theme inside their own ApplyCentralStyle. Each is blocked on
-    // the same open question, not on volume: their style depends on a text style token
-    // committed in the SAME transaction, so a role resolved before that commit would carry
-    // a stale token. See PSC-10B's implementation record.
-    const TSet<FString> NotYetConverted = {
-        TEXT("GV2RichTextPopoverWidgetBase"),
-        TEXT("GV2RichTextWidgetBase"),
-        // Style consumers whose ApplyCentralStyle body carries no Theme read at all
-        // (PSC-10B slice 1 removed the dead null-check). They need no role.
-        TEXT("GV2GameShellWidgetBase"),
-        TEXT("GV2ListViewWidgetBase"),
-        TEXT("GV2ModalWidgetBase"),
-        TEXT("GV2PanelWidgetBase"),
-        TEXT("GV2PortraitWidgetBase"),
-        TEXT("GV2ScrollAreaWidgetBase"),
-        TEXT("GV2TabContainerWidgetBase"),
-        TEXT("GV2TextWidgetBase"),
-    };
-
     struct FSampleOverrideScope
     {
         FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
@@ -2255,7 +2257,6 @@ bool FGV2CentralStyleImplementationInventoryTest::RunTest(const FString& Paramet
     }
     const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
 
-    TSet<FString> ObservedUnconverted;
     int32 InspectedCount = 0;
     for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
     {
@@ -2282,36 +2283,233 @@ bool FGV2CentralStyleImplementationInventoryTest::RunTest(const FString& Paramet
         ++InspectedCount;
         UWidget* Instance = NewObject<UWidget>(GetTransientPackage(), Class);
         GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
-        GV2CentralStylePreparer::PrepareForSubtree(Instance, PrepareContext, Transaction);
-        if (Transaction.GetOperations().Num() == 0)
+        FString StyleError;
+        TestTrue(
+            *FString::Printf(TEXT("'%s' subtree walk succeeds"), *Class->GetName()),
+            GV2CentralStylePreparer::PrepareForSubtree(Instance, PrepareContext, Transaction, StyleError));
+        TestEqual(
+            *FString::Printf(
+                TEXT("'%s' implements IGV2UiStyleConsumer and emits exactly one prepared central-style operation"),
+                *Class->GetName()),
+            Transaction.GetOperations().Num(),
+            1);
+        if (Transaction.GetOperations().Num() == 1)
         {
-            ObservedUnconverted.Add(Class->GetName());
+            const GV2PresentationApply::FGV2PreparedOperationVariant& Operation =
+                Transaction.GetOperations()[0];
+            TestEqual(
+                *FString::Printf(TEXT("'%s' emits CentralStyle kind"), *Class->GetName()),
+                static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Operation)),
+                static_cast<uint8>(GV2PresentationApply::EGV2PreparedOperationKind::CentralStyle));
+            TestTrue(
+                *FString::Printf(TEXT("'%s' central-style operation uses the inspected instance as target"), *Class->GetName()),
+                Operation.Get<GV2PresentationApply::FPreparedCentralStyleOperation>().TargetWidget.Get() == Instance);
         }
     }
 
     TestTrue(TEXT("The reflection walk actually found style consumers to inspect"), InspectedCount > 0);
 
-    for (const FString& ClassName : ObservedUnconverted)
+    Coordinator.EndSession();
+    return true;
+}
+
+// PSC-10B: the hover popover is the one styled surface created OUTSIDE a screen's
+// prepare/commit cycle. It must still receive finished values only -- resolved with its
+// owner during Prepare, delivered on creation, and written through the same Apply facade.
+// This drives the production entry point (UGV2RichTextPopoverWidgetBase::InitializePopover)
+// against a real session snapshot and reads back the physical result.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2HoverPopoverStyledFromPreparedValuesTest,
+    "GV2.Runtime.Presentation.HoverPopoverStyledFromPreparedValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2HoverPopoverStyledFromPreparedValuesTest::RunTest(const FString& Parameters)
+{
+    struct FSampleOverrideScope
     {
-        TestTrue(
-            *FString::Printf(
-                TEXT("'%s' implements IGV2UiStyleConsumer but the preparer emits no central-style "
-                     "operation for it -- give it a prepared role, or classify it in NOT_YET_CONVERTED"),
-                *ClassName),
-            NotYetConverted.Contains(ClassName));
+        FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
+        ~FSampleOverrideScope() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    } Scope;
+
+    FGV2SessionCoordinator Coordinator;
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
+    const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("Session publishes a content snapshot"), Snapshot);
+    if (Snapshot == nullptr)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
+    const UGV2UiTheme* Theme = PrepareContext.GetTheme().Theme.Get();
+    TestNotNull(TEXT("Snapshot owns a resolved Theme"), Theme);
+    if (Theme == nullptr)
+    {
+        Coordinator.EndSession();
+        return false;
     }
 
-    for (const FString& ClassName : NotYetConverted)
+    // The owner's role, prepared exactly the way a screen's subtree walk prepares it.
+    UGV2RichTextWidgetBase* Owner = NewObject<UGV2RichTextWidgetBase>();
+    GV2PresentationApply::FGV2PreparedPresentationTransaction OwnerTransaction;
+    FString StyleError;
+    TestTrue(TEXT("Owner rich text subtree prepares"),
+        GV2CentralStylePreparer::PrepareForSubtree(Owner, PrepareContext, OwnerTransaction, StyleError));
+    TestEqual(TEXT("Owner rich text emits one central-style operation"), OwnerTransaction.GetOperations().Num(), 1);
+    if (OwnerTransaction.GetOperations().Num() != 1)
     {
-        TestTrue(
-            *FString::Printf(
-                TEXT("NOT_YET_CONVERTED names '%s', which now emits a central-style operation (or no "
-                     "longer exists) -- remove the stale entry"),
-                *ClassName),
-            ObservedUnconverted.Contains(ClassName));
+        Coordinator.EndSession();
+        return false;
     }
+    const GV2PresentationApply::FPreparedCentralStyleOperation& OwnerOperation =
+        OwnerTransaction.GetOperations()[0].Get<GV2PresentationApply::FPreparedCentralStyleOperation>();
+    const GV2PresentationApply::FPreparedRichTextStyle& OwnerStyle =
+        OwnerOperation.Payload.Get<GV2PresentationApply::FPreparedRichTextStyle>();
+
+    // The popover renderer class is a value the SNAPSHOT resolved, not something the hover
+    // path loads: an unloaded soft reference here would mean a synchronous load at hover.
+    TestEqual(TEXT("The prepared popover class is the one the snapshot resolved"),
+        OwnerStyle.PopoverClass.Get(), PrepareContext.GetTheme().RichTextPopoverClass.Get());
+
+    UGV2RichTextPopoverBoundTestWidget* Popover = NewObject<UGV2RichTextPopoverBoundTestWidget>();
+    Popover->BuildBoundSubWidgets();
+
+    FGV2RichTextHoverViewModel Model;
+    FString TextError;
+    TestTrue(TEXT("Hover title resolves through the pipeline"),
+        UGV2TextPipeline::ResolveLiteralForAutomationTest(Theme, TEXT("Hover title"), NAME_None, Model.Title, TextError));
+    TestTrue(TEXT("Hover description resolves through the pipeline"),
+        UGV2TextPipeline::ResolveLiteralForAutomationTest(Theme, TEXT("Hover description"), NAME_None, Model.Description, TextError));
+
+    TestTrue(TEXT("InitializePopover accepts a model plus its owner's prepared style"),
+        Popover->InitializePopover(Model, OwnerStyle));
+
+    TestEqual(TEXT("Popover background comes from the snapshot Theme"),
+        Popover->ReadAppliedBackground().GetResourceName(), Theme->RichTextPopoverBackground.GetResourceName());
+    TestEqual(TEXT("Popover padding comes from the snapshot Theme"),
+        Popover->ReadAppliedPadding().Left, Theme->RichTextPopoverPadding.Left);
+    const float ExpectedScale = Theme->EvaluateTextScale(Theme->ReferenceViewportHeight);
+    TestEqual(TEXT("Popover max width follows the same viewport-derived scale as its text"),
+        Popover->ReadAppliedMaxWidth(), Theme->RichTextPopoverMaxWidth * ExpectedScale);
+
+    // A popover offered no prepared style must refuse rather than render unstyled.
+    UGV2RichTextPopoverBoundTestWidget* Unstyled = NewObject<UGV2RichTextPopoverBoundTestWidget>();
+    Unstyled->BuildBoundSubWidgets();
+    TestFalse(TEXT("A popover with no prepared style refuses to initialize"),
+        Unstyled->InitializePopover(Model, GV2PresentationApply::FPreparedRichTextStyle()));
 
     Coordinator.EndSession();
+    return true;
+}
+
+// PSC-10B: the snapshot's Theme contract, in both directions.
+//
+// (a) A session whose configured Theme cannot be resolved must FAIL to build. The retired
+//     UGV2UiThemeSettings::GetConfiguredTheme() silently substituted the core-minimal Theme,
+//     which turned a misconfiguration into a session that runs on stand-in presentation.
+//     ADR-0043 D1: the snapshot carries the authored authority or there is no session, and
+//     the cold-start recovery screen is what the player sees instead.
+//
+// (b) The core-minimal Theme is still the TEXT fallback -- but as a value the snapshot
+//     resolved and pinned, reachable only through FGV2PresentationPrepareContext. A text id
+//     the authored Theme does not carry still resolves; nothing on the Commit-facing side
+//     reaches UGV2UiTheme::GetCoreMinimalTheme() to make that happen.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SnapshotThemeResolutionContractTest,
+    "GV2.Runtime.Presentation.SnapshotThemeResolutionContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SnapshotThemeResolutionContractTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    const UGV2UiTheme* SessionTheme = PrepareContext->GetTheme().Theme.Get();
+    const UGV2UiTheme* FallbackTheme = PrepareContext->GetTheme().FallbackTheme.Get();
+    TestNotNull(TEXT("The snapshot pins the authored session Theme"), SessionTheme);
+    TestNotNull(TEXT("The snapshot pins the core-minimal Theme as the text fallback"), FallbackTheme);
+    if (SessionTheme == nullptr || FallbackTheme == nullptr)
+    {
+        return false;
+    }
+
+    // (b) An id the authored Theme genuinely does not carry -- asserted, not assumed, so
+    // this cannot pass vacuously against a Theme that happens to define everything.
+    FString FallbackOnlyId;
+    for (const TPair<FString, FText>& Entry : FallbackTheme->TextCatalog)
+    {
+        if (!SessionTheme->TextCatalog.Contains(Entry.Key) && !SessionTheme->FallbackTextCatalog.Contains(Entry.Key))
+        {
+            FallbackOnlyId = Entry.Key;
+            break;
+        }
+    }
+    TestTrue(TEXT("The core-minimal Theme carries at least one text id the authored Theme does not"),
+        !FallbackOnlyId.IsEmpty());
+    if (!FallbackOnlyId.IsEmpty())
+    {
+        FGV2TextViewModel Resolved;
+        FString ResolveError;
+        TestTrue(
+            *FString::Printf(TEXT("'%s' resolves through the snapshot's pinned fallback [Error: %s]"), *FallbackOnlyId, *ResolveError),
+            UGV2TextPipeline::Resolve(FallbackOnlyId, {}, NAME_None, Resolved, ResolveError, PrepareContext));
+        TestEqual(TEXT("The resolved text is the core-minimal entry"),
+            Resolved.Text.ToString(), FallbackTheme->TextCatalog[FallbackOnlyId].ToString());
+        TestTrue(TEXT("The fallback-resolved value still carries a full resolved presentation"),
+            Resolved.bHasResolvedPresentation);
+    }
+
+    // Resolving without a context is refused outright -- there is no process-global Theme to
+    // fall back to any more.
+    {
+        FGV2TextViewModel Unresolved;
+        FString ResolveError;
+        TestFalse(TEXT("Resolve without a prepare context is refused"),
+            UGV2TextPipeline::Resolve(TEXT("core:text.common.ok"), {}, NAME_None, Unresolved, ResolveError, nullptr));
+        TestTrue(*FString::Printf(TEXT("The refusal names the missing context [Error: %s]"), *ResolveError),
+            ResolveError.Contains(TEXT("missing_prepare_context")));
+    }
+
+    // (a) No configured Theme -> no session. Restores the setting on every exit path.
+    {
+        struct FWithoutConfiguredTheme
+        {
+            FWithoutConfiguredTheme()
+                : Settings(GetMutableDefault<UGV2UiThemeSettings>())
+            {
+                if (Settings != nullptr)
+                {
+                    Saved = Settings->ThemeAsset;
+                    Settings->ThemeAsset = nullptr;
+                }
+            }
+            ~FWithoutConfiguredTheme()
+            {
+                if (Settings != nullptr)
+                {
+                    Settings->ThemeAsset = Saved;
+                }
+            }
+            UGV2UiThemeSettings* Settings = nullptr;
+            TSoftObjectPtr<UGV2UiTheme> Saved;
+        } NoTheme;
+
+        GV2PresentationTestFixtures::FPrepareContextFixture ThemelessFixture;
+        FString ThemelessError;
+        TestFalse(TEXT("A session whose configured Theme is unset does not build"),
+            ThemelessFixture.Initialize(ThemelessError));
+        TestTrue(
+            *FString::Printf(TEXT("The build fault is ThemeNotReady, not a core-minimal substitution [Error: %s]"), *ThemelessError),
+            ThemelessError.Contains(TEXT("ThemeNotReady")));
+    }
+
     return true;
 }
 

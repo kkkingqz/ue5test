@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.25
-updated: 2026-09-07
+version: 1.26
+updated: 2026-09-09
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -265,11 +265,13 @@ Composite указывает **какую именно** capability ребёнк
 `UGV2ScreenWidgetBase` управляет двухфазным жизненным циклом применения полей:
 
 ```text
-PrepareScreenFields(ScreenFields, OutPlan, OutError) -> bool
+PrepareScreenFields(ScreenFields, OutPlan, OutError, ActiveCompositionChain?, PrepareContext?) -> bool
 CommitScreenFields(Plan) -> bool
-CanApplyScreenFields(ScreenFields) -> bool (preflight: Prepare и отбрасывание плана)
-ApplyScreenFields(ScreenFields) -> bool (one-shot Prepare + Commit)
+CanApplyScreenFields(ScreenFields, PrepareContext) -> bool (C++ preflight)
+ApplyScreenFields(ScreenFields, PrepareContext) -> bool (C++ one-shot Prepare + Commit)
 ```
+
+Production Prepare обязан получать `FGV2PresentationPrepareContext` текущего pinned session snapshot. Параметр может быть `nullptr` только для context-free schema/test path; текст, ресурсы, nested screens и central style в этом случае отклоняются. One-shot helpers требуют контекст ссылкой и не экспортируются в Blueprint: no-context Blueprint API не может восстанавливать authority через settings или process-global registry.
 
 Value-only Screen Field имеет форму:
 

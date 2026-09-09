@@ -84,13 +84,18 @@ public:
         TFunction<bool(const FString& PropertyPath)> FailureInjector = nullptr,
         TFunction<bool(const FString& PropertyPath)> RollbackFailureInjector = nullptr);
 
-    // One-shot Prepare + Commit for standalone screen usage.
-    UFUNCTION(BlueprintCallable, Category = "GV2|UI|Screen")
-    [[nodiscard]] bool ApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields);
+    // One-shot Prepare + Commit for C++ orchestration/tests. Presentation authority is
+    // explicit: there is no Blueprint/no-context overload that could reconstruct style
+    // by reaching back into process-global settings.
+    [[nodiscard]] bool ApplyScreenFields(
+        const TArray<FGV2ScreenFieldValue>& ScreenFields,
+        const FGV2PresentationPrepareContext& PrepareContext);
 
-    // Public preflight: runs Prepare pass and discards the plan.
-    UFUNCTION(BlueprintPure, Category = "GV2|UI|Screen")
-    [[nodiscard]] bool CanApplyScreenFields(const TArray<FGV2ScreenFieldValue>& ScreenFields) const;
+    // Public C++ preflight: runs Prepare with the supplied immutable session snapshot
+    // context and discards the plan.
+    [[nodiscard]] bool CanApplyScreenFields(
+        const TArray<FGV2ScreenFieldValue>& ScreenFields,
+        const FGV2PresentationPrepareContext& PrepareContext) const;
 
     // Screen Field ids this screen's tree currently declares (via
     // IGV2ScreenFieldHost), for contract introspection/tests.
