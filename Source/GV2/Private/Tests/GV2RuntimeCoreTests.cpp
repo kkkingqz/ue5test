@@ -2510,4 +2510,69 @@ bool FGV2SnapshotThemeResolutionContractTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// PSC-11 (ADR-0043 D2/D4): the direction of authority reads, measured on the production
+// path rather than argued. Prepare reads the session snapshot; the window around the single
+// Apply facade reads it zero times, for every operation kind a real screen produces --
+// central style, image host, text, keyed collection and tabs alike.
+//
+// This is SECONDARY evidence and says so: the module graph is what makes an authority type
+// unnameable inside GV2PresentationApply, and no counter can prove absence of a capability
+// the module cannot link in the first place. What it adds is that the runtime agrees with
+// the graph on a real document, not just on a synthetic transaction.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2ApplyReadsNoAuthorityTest,
+    "GV2.Runtime.Presentation.ApplyReadsNoAuthority",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2ApplyReadsNoAuthorityTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    // A subtree with a styled widget and a widget-default content reference, so Prepare has
+    // both a Theme read and a catalog read to perform.
+    UGV2NewHostAddedOnlyInTestWidget* Root = NewObject<UGV2NewHostAddedOnlyInTestWidget>();
+    Root->WidgetTree = NewObject<UWidgetTree>(Root);
+    UVerticalBox* RootBox = Root->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("RootBox"));
+    Root->WidgetTree->RootWidget = RootBox;
+    UGV2SeparatorBoundTestWidget* Separator = NewObject<UGV2SeparatorBoundTestWidget>();
+    Separator->BuildBoundSubWidgets();
+    RootBox->AddChild(Separator);
+    UGV2ProgressBarBoundTestWidget* ProgressBar = NewObject<UGV2ProgressBarBoundTestWidget>();
+    ProgressBar->BuildBoundSubWidgets();
+    RootBox->AddChild(ProgressBar);
+
+    FGV2PresentationPrepareContext::ConsumeAuthorityAccessCount();
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    FString PrepareError;
+    TestTrue(*FString::Printf(TEXT("The subtree prepares [Error: %s]"), *PrepareError),
+        GV2CentralStylePreparer::PrepareForSubtree(Root, *PrepareContext, Transaction, PrepareError));
+
+    const int32 PrepareAccesses = FGV2PresentationPrepareContext::ConsumeAuthorityAccessCount();
+    TestTrue(
+        *FString::Printf(TEXT("Prepare reads the session snapshot (%d accesses)"), PrepareAccesses),
+        PrepareAccesses > 0);
+    TestTrue(TEXT("Prepare produced operations to apply"), !Transaction.IsEmpty());
+
+    // The measured window: nothing but the facade runs between the two reads of the counter.
+    FGV2PresentationApplyResult ApplyResult;
+    const bool bApplied = FGV2PresentationApply::Apply(Transaction, ApplyResult);
+    const int32 ApplyAccesses = FGV2PresentationPrepareContext::ConsumeAuthorityAccessCount();
+
+    TestTrue(*FString::Printf(TEXT("The facade applies the transaction [Error: %s]"), *ApplyResult.Error), bApplied);
+    TestEqual(TEXT("Applying reads the session snapshot zero times"), ApplyAccesses, 0);
+    TestEqual(TEXT("Every prepared operation was applied"),
+        ApplyResult.AppliedOperationCount, Transaction.GetOperations().Num());
+
+    return true;
+}
+
 #endif

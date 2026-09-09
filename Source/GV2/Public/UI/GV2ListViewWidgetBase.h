@@ -3,7 +3,7 @@
 #include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "CommonUserWidget.h"
 #include "Components/PanelWidget.h"
-#include "UI/GV2KeyedCollection.h"
+#include "GV2PresentationApply/PreparedKeyedCollection.h"
 #include "UI/GV2UiPropertyHost.h"
 #include "GV2ListViewWidgetBase.generated.h"
 

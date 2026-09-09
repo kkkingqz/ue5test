@@ -6,7 +6,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/Widget.h"
 #include "UI/GV2GameShellWidgetBase.h"
-#include "UI/GV2KeyedCollection.h"
+#include "GV2PresentationApply/PreparedKeyedCollection.h"
 #include "UI/GV2ScreenWidgetBase.h"
 
 namespace

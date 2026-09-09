@@ -14,6 +14,11 @@ struct FGV2ContainerReuseStats
 
 /**
  * FGV2KeyedCollection
+ *
+ * PSC-11 (ADR-0043 D2): moved into GV2PresentationApply. Keyed reconciliation is physical
+ * application -- it matches existing child widgets to incoming keys and rebuilds a
+ * UPanelWidget's children -- and it never depended on a GV2 type to do it. Living above the
+ * boundary only meant the upper module still owned a piece of the physical layer.
  * Reconciles collection elements into a UPanelWidget container matching elements by stable FName keys.
  *
  * Atomicity and rollback guarantees:

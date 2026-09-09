@@ -140,9 +140,21 @@ public:
     {
     }
 
-    const FGV2ResolvedUiTheme& GetTheme() const { return Snapshot.GetTheme(); }
-    UClass* GetGameShellClass() const { return Snapshot.GetGameShellClass(); }
-    const FGV2UiSchemaCache& GetSchemaCache() const { return Snapshot.GetSchemaCache(); }
+    // PSC-11 (ADR-0043 D4): every authority read goes through one of these accessors, so
+    // counting here counts them all. The claim it supports is directional and measurable --
+    // Prepare reads the snapshot, and the window around the single Apply facade reads it
+    // zero times -- and it stays SECONDARY evidence: the module graph is what makes an
+    // authority unreachable from Apply, this only shows the runtime agrees.
+    static int32 ConsumeAuthorityAccessCount()
+    {
+        const int32 Count = AuthorityAccessCount;
+        AuthorityAccessCount = 0;
+        return Count;
+    }
+
+    const FGV2ResolvedUiTheme& GetTheme() const { ++AuthorityAccessCount; return Snapshot.GetTheme(); }
+    UClass* GetGameShellClass() const { ++AuthorityAccessCount; return Snapshot.GetGameShellClass(); }
+    const FGV2UiSchemaCache& GetSchemaCache() const { ++AuthorityAccessCount; return Snapshot.GetSchemaCache(); }
 
     bool ResolveScreen(
         const FString& ScreenId,
@@ -150,19 +162,24 @@ public:
         FGV2ResolvedScreenDescriptor& OutDescriptor,
         FGV2ScreenResolutionRejection& OutRejection) const
     {
+        ++AuthorityAccessCount;
         return Snapshot.GetScreenRegistry().Resolve(ScreenId, Placement, OutDescriptor, OutRejection);
     }
 
     bool ResolveResource(const FString& ResourceId, FGV2ResolvedImageResource& OutResource, FString& OutError) const
     {
+        ++AuthorityAccessCount;
         return Snapshot.GetImageCatalog().Resolve(ResourceId, OutResource, OutError);
     }
 
     TArray<FString> GetResourceIds() const
     {
+        ++AuthorityAccessCount;
         return Snapshot.GetImageCatalog().GetResourceIds();
     }
 
 private:
+    static inline int32 AuthorityAccessCount = 0;
+
     const FGV2SessionContentSnapshot& Snapshot;
 };
