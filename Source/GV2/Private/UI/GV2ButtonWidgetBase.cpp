@@ -113,3 +113,16 @@ void UGV2ButtonWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBu
     OutBuilder.AddBinding(TEXT("binding"), NAME_None);
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
+
+bool UGV2ButtonWidgetBase::ApplyPreparedText(
+    const GV2PresentationApply::FPreparedTextValue& Value,
+    bool /*bIsReset*/,
+    FString& OutError)
+{
+    if (!ApplyText(FGV2TextViewModel::FromPrepared(Value)))
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2ButtonWidgetBase::ApplyText rejected the resolved text");
+        return false;
+    }
+    return true;
+}

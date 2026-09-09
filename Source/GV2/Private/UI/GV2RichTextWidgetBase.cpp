@@ -335,3 +335,37 @@ void UGV2RichTextWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& Out
     OutBuilder.AddCustom(TEXT("spans"), EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CustomControl, NAME_None);
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
+
+bool UGV2RichTextWidgetBase::ApplyPreparedText(
+    const GV2PresentationApply::FPreparedTextValue& Value,
+    bool /*bIsReset*/,
+    FString& OutError)
+{
+    if (!ApplyText(FGV2TextViewModel::FromPrepared(Value)))
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2RichTextWidgetBase::ApplyText rejected the resolved text");
+        return false;
+    }
+    return true;
+}
+
+void UGV2RichTextWidgetBase::ApplyPreparedRichTextSpans(
+    const TArray<GV2PresentationApply::FPreparedRichTextSpan>& PreparedSpans)
+{
+    TArray<FGV2RichTextSpanViewModel> Spans;
+    Spans.Reserve(PreparedSpans.Num());
+    for (const GV2PresentationApply::FPreparedRichTextSpan& FlatSpan : PreparedSpans)
+    {
+        FGV2RichTextSpanViewModel Span;
+        Span.SpanId = FlatSpan.SpanId;
+        Span.Key = FlatSpan.Key;
+        Span.Hover.Title = FGV2TextViewModel::FromPrepared(FlatSpan.Hover.Title);
+        Span.Hover.Description = FGV2TextViewModel::FromPrepared(FlatSpan.Hover.Description);
+        Span.Hover.ImageResourceId = FlatSpan.Hover.ImageResourceId;
+        Span.Hover.ResolvedImageBrush = FlatSpan.Hover.ImageBrush;
+        Span.Hover.bHasResolvedImage = FlatSpan.Hover.bHasResolvedImage;
+        Span.Binding = FGV2UiBindingHandle::FromSerialized(FlatSpan.SerializedBinding);
+        Spans.Add(MoveTemp(Span));
+    }
+    ApplySpans(Spans);
+}

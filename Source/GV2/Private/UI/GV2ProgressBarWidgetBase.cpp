@@ -60,3 +60,8 @@ void UGV2ProgressBarWidgetBase::ApplyProgressBarStyleValues(const FProgressBarSt
         ProgressBar->SetFillColorAndOpacity(FillColor);
     }
 }
+
+void UGV2ProgressBarWidgetBase::ApplyPreparedNumber(double Value)
+{
+    ApplyProgress(static_cast<float>(Value));
+}

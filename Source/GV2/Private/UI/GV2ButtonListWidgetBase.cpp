@@ -77,3 +77,13 @@ void UGV2ButtonListWidgetBase::ApplyItemPaddingStyleValue(const FMargin& Padding
         }
     }
 }
+
+UPanelWidget* UGV2ButtonListWidgetBase::GetPreparedCollectionPanel() const
+{
+    return ButtonContainer;
+}
+
+void UGV2ButtonListWidgetBase::OnPreparedCollectionSettled(
+    const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& /*Entries*/)
+{
+}

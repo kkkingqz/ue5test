@@ -218,3 +218,47 @@ void UGV2DropdownSelectWidgetBase::ApplyDropdownStyleValues(
         }
     }
 }
+
+bool UGV2DropdownSelectWidgetBase::ApplyPreparedText(
+    const GV2PresentationApply::FPreparedTextValue& Value,
+    bool /*bIsReset*/,
+    FString& OutError)
+{
+    if (!ApplyPlaceholderText(FGV2TextViewModel::FromPrepared(Value)))
+    {
+        OutError = TEXT("core:diagnostic.ui_consumer.text_apply_failed: UGV2DropdownSelectWidgetBase::ApplyPlaceholderText rejected the resolved text");
+        return false;
+    }
+    return true;
+}
+
+void UGV2DropdownSelectWidgetBase::ApplyPreparedBoolean(FName PropertyName, bool bValue)
+{
+    if (PropertyName == TEXT("is_open"))
+    {
+        SetDropdownOpen(bValue);
+    }
+}
+
+bool UGV2DropdownSelectWidgetBase::ApplyPreparedKey(FName PropertyName, FName Value)
+{
+    // DUC-03: `selected_key` is its own capability, not the generic `key` identity, so it is
+    // routed by name and can neither shadow nor be shadowed by this host's own key.
+    if (PropertyName == TEXT("selected_key"))
+    {
+        SetSelectedKey(Value);
+        return true;
+    }
+    GetPropertyHostState().SetKey(Value);
+    return true;
+}
+
+UPanelWidget* UGV2DropdownSelectWidgetBase::GetPreparedCollectionPanel() const
+{
+    return OptionsScrollBox;
+}
+
+void UGV2DropdownSelectWidgetBase::OnPreparedCollectionSettled(
+    const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& /*Entries*/)
+{
+}

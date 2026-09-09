@@ -202,3 +202,45 @@ void UGV2TabContainerWidgetBase::UpdateActiveTabDisplay()
         }
     }
 }
+
+bool UGV2TabContainerWidgetBase::ApplyPreparedKey(FName PropertyName, FName Value)
+{
+    // DUC-03: `default_tab_key` is its own capability, routed by name so it can never be
+    // confused with this host's own `key` identity.
+    if (PropertyName == TEXT("default_tab_key"))
+    {
+        ApplyDefaultTabKey(Value);
+        return true;
+    }
+    GetPropertyHostState().SetKey(Value);
+    return true;
+}
+
+void UGV2TabContainerWidgetBase::ApplyPreparedTabs(
+    const TArray<GV2PresentationApply::FPreparedTabEntry>& PreparedEntries)
+{
+    TArray<FGV2TabItemEntry> Entries;
+    TMap<FName, UGV2ScreenWidgetBase*> Widgets;
+    Entries.Reserve(PreparedEntries.Num());
+    for (const GV2PresentationApply::FPreparedTabEntry& FlatEntry : PreparedEntries)
+    {
+        FGV2TabItemEntry Entry;
+        Entry.Key = FlatEntry.Key;
+        Entry.Title.Text = FlatEntry.Title.Text;
+        Entry.Title.StyleToken = FlatEntry.Title.StyleToken;
+        Entry.Title.NormalizedMarkup = FlatEntry.Title.NormalizedMarkup;
+        Entry.ScreenId = FlatEntry.ScreenId;
+        Entries.Add(MoveTemp(Entry));
+
+        if (UGV2ScreenWidgetBase* ScreenWidget = Cast<UGV2ScreenWidgetBase>(FlatEntry.ScreenWidget.Get()))
+        {
+            Widgets.Add(FlatEntry.Key, ScreenWidget);
+        }
+    }
+    ApplyTabEntries(Entries, Widgets);
+}
+
+void UGV2TabContainerWidgetBase::ResetPreparedTabs()
+{
+    ResetTabContainerModel();
+}

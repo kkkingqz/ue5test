@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "CommonUserWidget.h"
 #include "UI/GV2PropertyConsumers.h"
 #include "UI/GV2UiPropertyHost.h"
@@ -18,10 +19,32 @@ class GV2_API UGV2ProgressBarWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2ScreenFieldHost
     , public IGV2TextPipelineHost
+    , public IGV2PreparedKeyTarget
+    , public IGV2PreparedNumberTarget
+    , public IGV2PreparedProgressBarStyleTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sink for this class's central-style role. It only forwards finished
+    // values into the physical write that already existed; no decision happens here.
+    virtual void ApplyPreparedProgressBarStyle(const GV2PresentationApply::FPreparedProgressBarStyle& Style) override
+    {
+        ApplyProgressBarStyleValues(Style.WidgetStyle, Style.FillColor);
+    }
+
+    // PSC-11: value sink for the prepared number operation.
+    virtual void ApplyPreparedNumber(double Value) override;
+
+    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
+    // same one every property host already performs; a host that routes a NAMED key
+    // capability overrides this and falls back to it.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
+    {
+        GetPropertyHostState().SetKey(Value);
+        return true;
+    }
+
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void ApplyProgress(float Percent);
 

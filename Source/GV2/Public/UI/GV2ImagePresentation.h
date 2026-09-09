@@ -32,5 +32,6 @@ public:
     // One implementation of the render-mode projection, shared by every builder of an
     // image-host operation instead of a per-file copy.
     static GV2PresentationApply::EPreparedImageRenderMode ToPreparedRenderMode(EGV2ImageRenderMode RenderMode);
+    static EGV2ImageRenderMode FromPreparedRenderMode(GV2PresentationApply::EPreparedImageRenderMode RenderMode);
 
 };

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonButtonBase.h"
@@ -29,10 +30,42 @@ class GV2_API UGV2ButtonWidgetBase
     , public IGV2UiBindingTarget
     , public IGV2ScreenFieldHost
     , public IGV2TextPipelineHost
+    , public IGV2PreparedKeyTarget
+    , public IGV2PreparedBindingTarget
+    , public IGV2PreparedTextTarget
+    , public IGV2PreparedButtonStyleTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sink for this class's central-style role. It only forwards finished
+    // values into the physical write that already existed; no decision happens here.
+    virtual void ApplyPreparedButtonStyle(const GV2PresentationApply::FPreparedButtonStyle& Style) override
+    {
+        ApplyButtonStyleValues(Style.ButtonStyle, Style.DefaultLabelStyle, Style.DefaultLabelScale);
+    }
+
+    // PSC-11: value sink for the prepared text operation.
+    virtual bool ApplyPreparedText(
+        const GV2PresentationApply::FPreparedTextValue& Value,
+        bool bIsReset,
+        FString& OutError) override;
+
+    // PSC-11: value sink for the prepared binding operation.
+    virtual void ApplyPreparedBinding(const FString& SerializedHandle) override
+    {
+        SetBindingHandle(FGV2UiBindingHandle::FromSerialized(SerializedHandle));
+    }
+
+    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
+    // same one every property host already performs; a host that routes a NAMED key
+    // capability overrides this and falls back to it.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
+    {
+        GetPropertyHostState().SetKey(Value);
+        return true;
+    }
+
     UFUNCTION(BlueprintCallable, Category = "GV2|UI|Button")
     bool ApplyText(const FGV2TextViewModel& InText);
 

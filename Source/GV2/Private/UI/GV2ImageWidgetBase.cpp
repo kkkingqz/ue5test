@@ -68,3 +68,26 @@ void UGV2ImageWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBui
     OutBuilder.AddImage(TEXT("resource_id"), FName(TEXT("Image")), TEXT("resource"));
     OutBuilder.AddKey(TEXT("key"), NAME_None);
 }
+
+bool UGV2ImageWidgetBase::ApplyPreparedImageHost(
+    const GV2PresentationApply::FPreparedResolvedImageValue& Resolved,
+    FString& OutError)
+{
+    FGV2ResolvedImageResource Inflated;
+    Inflated.ResourceId = Resolved.ResourceId;
+    Inflated.RenderMode = FGV2ImagePresentation::FromPreparedRenderMode(Resolved.RenderMode);
+    Inflated.FixedAspectRatio = Resolved.FixedAspectRatio;
+    Inflated.Brush = Resolved.Brush;
+    return ApplyResolvedImageResource(Inflated, OutError);
+}
+
+void UGV2ImageWidgetBase::ResetPreparedImageHost()
+{
+    // Reaches past the resolved-apply path straight into the inner UImage, exactly as Reset
+    // always did: a reset clears the physical brush without the bookkeeping a resolved
+    // commit performs.
+    if (Image != nullptr)
+    {
+        Image->SetBrush(FSlateBrush());
+    }
+}

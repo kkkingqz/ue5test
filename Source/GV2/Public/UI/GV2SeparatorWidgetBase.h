@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "CommonUserWidget.h"
 #include "UI/GV2UiStyleConsumer.h"
 #include "GV2SeparatorWidgetBase.generated.h"
@@ -11,10 +12,18 @@ UCLASS(Blueprintable)
 class GV2_API UGV2SeparatorWidgetBase
     : public UCommonUserWidget
     , public IGV2UiStyleConsumer
+    , public IGV2PreparedSeparatorStyleTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sink for this class's central-style role. It only forwards finished
+    // values into the physical write that already existed; no decision happens here.
+    virtual void ApplyPreparedSeparatorStyle(const GV2PresentationApply::FPreparedSeparatorStyle& Style) override
+    {
+        ApplySeparatorStyleValues(Style.Brush, Style.Thickness, Style.bHorizontal);
+    }
+
     // PSC-10B: read by the preparer to pick the axis; the widget itself no longer decides
     // anything about its style, only which of two prepared values the axis field carries.
     bool IsHorizontal() const { return Orientation == Orient_Horizontal; }

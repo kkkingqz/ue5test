@@ -73,6 +73,20 @@ void FGV2ImagePresentation::AppendPreparedImageHostOperation(
     OutTransaction.AddImageHostOperation(MoveTemp(Operation));
 }
 
+EGV2ImageRenderMode FGV2ImagePresentation::FromPreparedRenderMode(GV2PresentationApply::EPreparedImageRenderMode RenderMode)
+{
+    switch (RenderMode)
+    {
+    case GV2PresentationApply::EPreparedImageRenderMode::NineSlice:
+        return EGV2ImageRenderMode::NineSlice;
+    case GV2PresentationApply::EPreparedImageRenderMode::Tile:
+        return EGV2ImageRenderMode::Tile;
+    case GV2PresentationApply::EPreparedImageRenderMode::FixedAspect:
+        return EGV2ImageRenderMode::FixedAspect;
+    }
+    return EGV2ImageRenderMode::FixedAspect;
+}
+
 GV2PresentationApply::EPreparedImageRenderMode FGV2ImagePresentation::ToPreparedRenderMode(EGV2ImageRenderMode RenderMode)
 {
     switch (RenderMode)

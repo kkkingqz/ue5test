@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "CommonUserWidget.h"
@@ -24,10 +25,47 @@ class GV2_API UGV2DropdownSelectWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2UiBindingTarget
     , public IGV2UiStyleConsumer
+    , public IGV2PreparedKeyTarget
+    , public IGV2PreparedBindingTarget
+    , public IGV2PreparedTextTarget
+    , public IGV2PreparedKeyedCollectionTarget
+    , public IGV2PreparedBooleanTarget
+    , public IGV2PreparedDropdownStyleTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sink for this class's central-style role. It only forwards finished
+    // values into the physical write that already existed; no decision happens here.
+    virtual void ApplyPreparedDropdownStyle(const GV2PresentationApply::FPreparedDropdownStyle& Style) override
+    {
+        ApplyDropdownStyleValues(Style.HeaderStyle, Style.PopupBackground, Style.PopupPadding, Style.OptionItemPadding, Style.MaxPopupHeight, Style.PopupScale);
+    }
+
+    // PSC-11: value sink for the prepared boolean operation.
+    virtual void ApplyPreparedBoolean(FName PropertyName, bool bValue) override;
+
+    // PSC-11: value sinks for the prepared keyed-collection operation.
+    virtual UPanelWidget* GetPreparedCollectionPanel() const override;
+    virtual void OnPreparedCollectionSettled(
+        const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries) override;
+
+    // PSC-11: value sink for the prepared text operation.
+    virtual bool ApplyPreparedText(
+        const GV2PresentationApply::FPreparedTextValue& Value,
+        bool bIsReset,
+        FString& OutError) override;
+
+    // PSC-11: value sink for the prepared binding operation.
+    virtual void ApplyPreparedBinding(const FString& SerializedHandle) override
+    {
+        SetBindingHandle(FGV2UiBindingHandle::FromSerialized(SerializedHandle));
+    }
+
+    // PSC-11: this host routes a NAMED key capability of its own before the generic
+    // identity write; see the implementation.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override;
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     bool IsDropdownOpen() const { return bIsOpen; }
 

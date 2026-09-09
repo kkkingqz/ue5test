@@ -207,3 +207,8 @@ EGV2SubmitUiInteractionResult UGV2InputFieldWidgetBase::SubmitTextValue(const FS
     OnBindingInvoked.Broadcast(BindingHandle, NewTextValue, Result);
     return Result;
 }
+
+void UGV2InputFieldWidgetBase::ApplyPreparedInteger(int64 Value)
+{
+    SetMaxLength(Value);
+}

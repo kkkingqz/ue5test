@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Curves/CurveFloat.h"
 #include "Styling/SlateTypes.h"
 
@@ -149,6 +150,12 @@ struct GV2_API FGV2TextViewModel
     // token lookup. This is derived presentation data and is excluded from operator==.
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
     bool bHasResolvedPresentation = false;
+
+    // PSC-11: the single inflation of a prepared text value into this view model. It lived
+    // in GV2LegacyPresentationApplyAdapter while that file was the second apply entry point;
+    // with the dispatch moved below the boundary, each value sink needs it, and one
+    // implementation is what keeps them from drifting.
+    static FGV2TextViewModel FromPrepared(const GV2PresentationApply::FPreparedTextValue& Value);
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GV2|UI|Text")
     TSubclassOf<UCommonTextStyle> ResolvedStyleClass;

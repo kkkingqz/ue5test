@@ -38,3 +38,27 @@ bool UGV2PortraitWidgetBase::ApplyResolvedPortrait(const FGV2ResolvedImageResour
     SetVisibility(ESlateVisibility::Visible);
     return true;
 }
+
+bool UGV2PortraitWidgetBase::ApplyPreparedImageHost(
+    const GV2PresentationApply::FPreparedResolvedImageValue& Resolved,
+    FString& OutError)
+{
+    FGV2ResolvedImageResource Inflated;
+    Inflated.ResourceId = Resolved.ResourceId;
+    Inflated.RenderMode = FGV2ImagePresentation::FromPreparedRenderMode(Resolved.RenderMode);
+    Inflated.FixedAspectRatio = Resolved.FixedAspectRatio;
+    Inflated.Brush = Resolved.Brush;
+    return ApplyResolvedPortrait(Inflated, OutError);
+}
+
+void UGV2PortraitWidgetBase::ResetPreparedImageHost()
+{
+    // Reaches past the resolved-apply path straight into the inner UImage, exactly as Reset
+    // always did: a reset clears the physical brush without the bookkeeping a resolved
+    // commit performs.
+    SetVisibility(ESlateVisibility::Collapsed);
+    if (PortraitImage != nullptr)
+    {
+        PortraitImage->SetBrush(FSlateBrush());
+    }
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "CommonUserWidget.h"
 #include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2PropertyConsumers.h"
@@ -18,10 +19,27 @@ class GV2_API UGV2PortraitWidgetBase
     : public UCommonUserWidget
     , public IGV2UiPropertyHost
     , public IGV2ScreenFieldHost
+    , public IGV2PreparedKeyTarget
+    , public IGV2PreparedImageHostTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sinks for the prepared image-host operation.
+    virtual bool ApplyPreparedImageHost(
+        const GV2PresentationApply::FPreparedResolvedImageValue& Resolved,
+        FString& OutError) override;
+    virtual void ResetPreparedImageHost() override;
+
+    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
+    // same one every property host already performs; a host that routes a NAMED key
+    // capability overrides this and falls back to it.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
+    {
+        GetPropertyHostState().SetKey(Value);
+        return true;
+    }
+
 
     // STATUS-012: application-phase entry point; the portrait resource arrives
     // already resolved. Frame is not part of the prepared value today (no consumer

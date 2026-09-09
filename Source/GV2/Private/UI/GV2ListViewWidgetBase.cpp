@@ -61,3 +61,22 @@ void UGV2ListViewWidgetBase::DescribeUiCapabilities(FGV2UiCapabilityBuilder& Out
     // for what it repeats.
     (void)OutBuilder;
 }
+
+UPanelWidget* UGV2ListViewWidgetBase::GetPreparedCollectionPanel() const
+{
+    return ContainerPanel;
+}
+
+void UGV2ListViewWidgetBase::OnPreparedCollectionSettled(
+    const TArray<GV2PresentationApply::FPreparedKeyedCollectionEntry>& Entries)
+{
+    TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKeyValue;
+    for (const GV2PresentationApply::FPreparedKeyedCollectionEntry& Entry : Entries)
+    {
+        if (UWidget* Child = Entry.Widget.Get())
+        {
+            ActiveWidgetsByKeyValue.Add(Entry.Key, Child);
+        }
+    }
+    SetActiveWidgetsMap(ActiveWidgetsByKeyValue);
+}

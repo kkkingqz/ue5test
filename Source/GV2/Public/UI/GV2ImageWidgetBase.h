@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "CommonUserWidget.h"
 #include "Styling/SlateBrush.h"
 #include "UI/GV2ImageResourceCatalog.h"
@@ -16,10 +17,35 @@ class GV2_API UGV2ImageWidgetBase
     , public IGV2UiStyleConsumer
     , public IGV2UiPropertyHost
     , public IGV2ScreenFieldHost
+    , public IGV2PreparedKeyTarget
+    , public IGV2PreparedImageHostTarget
+    , public IGV2PreparedTintStyleTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sink for this class's central-style role. It only forwards finished
+    // values into the physical write that already existed; no decision happens here.
+    virtual void ApplyPreparedTintStyle(const GV2PresentationApply::FPreparedTintStyle& Style) override
+    {
+        ApplyImageTintStyleValue(Style.Tint);
+    }
+
+    // PSC-11: value sinks for the prepared image-host operation.
+    virtual bool ApplyPreparedImageHost(
+        const GV2PresentationApply::FPreparedResolvedImageValue& Resolved,
+        FString& OutError) override;
+    virtual void ResetPreparedImageHost() override;
+
+    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
+    // same one every property host already performs; a host that routes a NAMED key
+    // capability overrides this and falls back to it.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
+    {
+        GetPropertyHostState().SetKey(Value);
+        return true;
+    }
+
 
     // STATUS-012: application-phase entry point. Takes what preparation already
     // resolved instead of re-deriving it from the id.

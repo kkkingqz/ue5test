@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2UiPropertyHost.h"
@@ -27,10 +28,40 @@ class GV2_API UGV2RichTextWidgetBase
     , public IGV2UiStyleConsumer
     , public IGV2ScreenFieldHost
     , public IGV2TextPipelineHost
+    , public IGV2PreparedKeyTarget
+    , public IGV2PreparedTextTarget
+    , public IGV2PreparedRichTextSpansTarget
+    , public IGV2PreparedRichTextStyleTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sink for this class's central-style role. It only forwards finished
+    // values into the physical write that already existed; no decision happens here.
+    virtual void ApplyPreparedRichTextStyle(const GV2PresentationApply::FPreparedRichTextStyle& Style) override
+    {
+        ApplyRichTextStyleValues(Style);
+    }
+
+    // PSC-11: value sink for the prepared rich-text spans operation.
+    virtual void ApplyPreparedRichTextSpans(
+        const TArray<GV2PresentationApply::FPreparedRichTextSpan>& Spans) override;
+
+    // PSC-11: value sink for the prepared text operation.
+    virtual bool ApplyPreparedText(
+        const GV2PresentationApply::FPreparedTextValue& Value,
+        bool bIsReset,
+        FString& OutError) override;
+
+    // PSC-11: value sink for the prepared `key` operation. The generic identity write is the
+    // same one every property host already performs; a host that routes a NAMED key
+    // capability overrides this and falls back to it.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
+    {
+        GetPropertyHostState().SetKey(Value);
+        return true;
+    }
+
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }

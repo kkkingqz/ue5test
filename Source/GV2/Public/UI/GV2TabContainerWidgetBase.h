@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GV2PresentationApply/PreparedApplyTargets.h"
 #include "CoreMinimal.h"
 #include "CommonUserWidget.h"
 #include "Bridge/GV2BridgeTypes.h"
@@ -26,10 +27,20 @@ struct GV2_API FGV2TabItemEntry
 
 UCLASS(BlueprintType, Blueprintable)
 class GV2_API UGV2TabContainerWidgetBase : public UCommonUserWidget, public IGV2UiPropertyHost
+    , public IGV2PreparedKeyTarget
+    , public IGV2PreparedTabContainerTarget
 {
     GENERATED_BODY()
 
 public:
+    // PSC-11: value sinks for the prepared tab-container operation.
+    virtual void ApplyPreparedTabs(const TArray<GV2PresentationApply::FPreparedTabEntry>& Entries) override;
+    virtual void ResetPreparedTabs() override;
+
+    // PSC-11: this host routes a NAMED key capability of its own before the generic
+    // identity write; see the implementation.
+    virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override;
+
     UGV2TabContainerWidgetBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
     // IGV2UiPropertyHost
