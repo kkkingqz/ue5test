@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.14
+version: 3.15
 updated: 2026-09-09
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -60,7 +60,7 @@ Entry регистрируется до registry freeze. Duplicate ID с нес�
 UGV2ScreenWidgetBase
 UGV2TextWidgetBase            implements IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2RichTextWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
-UGV2RichTextPopoverWidgetBase  implements IGV2UiStyleConsumer; transient value sink for prepared RichText popovers
+UGV2RichTextPopoverWidgetBase  transient value sink for prepared RichText popovers; deliberately NOT IGV2UiStyleConsumer
 UGV2ImageWidgetBase           implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2ScreenFieldHost
 UGV2ButtonWidgetBase          implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
 UGV2CheckboxWidgetBase        implements IGV2UiStyleConsumer, IGV2UiPropertyHost, IGV2UiBindingTarget, IGV2ScreenFieldHost
@@ -132,7 +132,7 @@ Blueprint отвечает за layout/composition/animation. Central theme за
 | `UGV2ScreenWidgetBase` | Screen orchestrator (`PrepareScreenFields`, `CommitScreenFields`, `CanApplyScreenFields`, `ApplyScreenFields`) | Aggregate contract | Dynamic hosts находятся через Widget tree по `IGV2ScreenFieldHost` |
 | `UGV2TextWidgetBase` | Property host: `text` (Text) | `core:schema.ui_field.text.v1` — addressable (DUC-02) | `TextBlock: UCommonTextBlock` |
 | `UGV2RichTextWidgetBase` | Property host: `text` (Text), `spans` (RichTextSpans) | `core:schema.ui_field.rich_text.v3` — addressable (DUC-02) | `RichTextScrollBox: UScrollBox`, `RichTextBlock: UCommonRichTextBlock` |
-| `UGV2RichTextPopoverWidgetBase` | Presentation popover: `InitializePopover(FGV2RichTextHoverViewModel)` | Transient tooltip projection | `PopoverBorder: UBorder`, `PopoverWidth: USizeBox`, `TitleText: UCommonTextBlock`, `DescriptionText: WBP_RichText`; optional `Icon` |
+| `UGV2RichTextPopoverWidgetBase` | Presentation popover: `InitializePopover(FGV2RichTextHoverViewModel, FPreparedRichTextStyle)` — единственная точка входа, стиль обязателен | Transient tooltip projection | `PopoverBorder: UBorder`, `PopoverWidth: USizeBox`, `TitleText: UCommonTextBlock`, `DescriptionText: WBP_RichText`; optional `Icon` |
 | `UGV2ImageWidgetBase` | Property host: `resource_id` (Ref), `key` (Key); `ApplyImageResource` | `core:schema.ui_field.image.v1` — addressable (DUC-02) | `Image: UImage` |
 | `UGV2ButtonWidgetBase` | Property host: `text` (Text), `binding` (Binding), `key` (Key); implements `IGV2UiBindingTarget` | Leaf interaction element — addressable (DUC-02), no dedicated top-level schema yet | `LabelText: UCommonTextBlock` |
 | `UGV2CheckboxWidgetBase` | Property host: `key` (Key), `text` (Text), `is_checked` (Scalar), `binding` (Binding); `SubmitCheckboxState(bool)` | `core:schema.ui_field.checkbox.v1` — addressable (DUC-02) | `Checkbox: UCheckBox`, `LabelText: UCommonTextBlock` |
@@ -271,7 +271,15 @@ Input schema: `core:schema.ui_input.dropdown_selected.v1` — required string fi
 
 Каждый `span_id` обязан быть unique lowercase `snake_case`, присутствовать в markup минимум один раз и иметь declarative `hover` content либо opaque click binding. Unknown tag, dangling descriptor, duplicate ID, дополнительный tag attribute и malformed interactive markup отклоняют Screen Field до apply. Один span может встречаться в localized message несколько раз и использует один semantic binding item.
 
-Hover title/description и optional `image_resource_id` являются value-only presentation data. Decorator создаёт tooltip лениво при открытии, а закрытие уничтожает transient popover. Hover/unhover не пересекают Lua boundary. Не разрешённый optional image скрывается без подмены raw asset path. Popover является composite: title/description используют approved Text Pipeline adapters, а optional icon делегирует resolution/mutation общему `FGV2ImagePresentation`. Собственный Blueprint resolver или direct brush mutation для runtime `resource_id` запрещены.
+Hover title/description и optional `image_resource_id` являются value-only presentation data. Decorator создаёт tooltip лениво при открытии, а закрытие уничтожает transient popover. Hover/unhover не пересекают Lua boundary. Не разрешённый optional image скрывается без подмены raw asset path.
+
+Popover **ничего не разрешает сам** (`PSC-10B`). Он создаётся по hover, то есть вне цикла prepare/commit экрана, и поэтому не может быть target собственной подготовленной операции — все значения ему передаёт создающий его RichText-виджет, который получил их из Prepare:
+
+- title/description приходят уже resolved (`bHasResolvedPresentation`) и применяются approved Text Pipeline adapters;
+- optional icon применяется из `FGV2RichTextHoverViewModel::ResolvedImageBrush`, разрешённого в Prepare через snapshot's image catalog; во время открытия tooltip никакой catalog не консультируется;
+- собственный стиль (`FPreparedRichTextPopoverStyle`) и стиль вложенного описания приходят единственным аргументом `InitializePopover(Model, Style)` и записываются через ту же exhaustive Apply façade.
+
+Собственный Blueprint resolver, direct brush mutation для runtime `resource_id`, а также инициализация popover без подготовленного стиля запрещены: `InitializePopover` отвергает вызов, у которого стиль не разрешён, вместо того чтобы отрисоваться нестилизованным.
 
 Click span получает только `FGV2UiBindingHandle`. `SubmitSpanInteraction(span_id)` использует общий `SubmitUiInteraction(handle, {})`; decorator не хранит `command_id`, bound args или Lua callback. Reapply/reset/destruct RichText удаляет local span lookup, а смена UI revision инвалидирует handles через общий binding registry.
 

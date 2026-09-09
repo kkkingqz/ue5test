@@ -1,8 +1,8 @@
 ---
 title: UI Documentation Index
 status: normative
-version: 1.9
-updated: 2026-09-07
+version: 2.0
+updated: 2026-09-09
 ---
 
 # UI Documentation
@@ -70,4 +70,11 @@ UI является перестраиваемой presentation projection. Lua 
 
 Правило проверяется реестром экранов (`UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace`, `Validate`): экран нижнего слоя не может ссылаться на ассет из верхнего слоя.
 
-Активная тема выбирается конфигом `Config/DefaultGame.ini` (`UGV2UiThemeSettings.ThemeAsset`), но резолюция принадлежит построению session content snapshot (`ADR-0043` D1) и происходит один раз за сессию, не заново на каждый Apply — целевое правило, закрывающее `PAH-R1`. Единственное исключение — нативный экран восстановления `UGV2RecoveryScreenWidget`: он показывается именно тогда, когда у сессии нет snapshot вовсе (bootstrap ещё не дошёл до `Ready` либо сессия уже `Failed`), поэтому использует программно собранную в C++ минимальную тему ядра (`UGV2UiTheme::GetCoreMinimalTheme()`, не отдельный ассет) с базовой типографикой и аварийными строками каталога (`core:text.screen.recovery.title`, `core:text.screen.error.*`) — это bootstrap/failure-time fallback без snapshot, а не повторное разрешение snapshot-owned Theme.
+Активная тема выбирается конфигом `Config/DefaultGame.ini` (`UGV2UiThemeSettings.ThemeAsset`), но резолюция принадлежит построению session content snapshot (`ADR-0043` D1) и происходит один раз за сессию, не заново на каждый Apply — целевое правило, закрывающее `PAH-R1`. Сессия, чья настроенная тема не разрешается, **не стартует** (`ThemeNotReady`) и показывает экран восстановления: подмена настроенной темы минимальной запрещена, потому что она превращает ошибку конфигурации в тихо работающую подменную презентацию.
+
+Программно собранная в C++ минимальная тема ядра (`UGV2UiTheme::GetCoreMinimalTheme()`, не отдельный ассет) допускается ровно в двух structurally различных ролях:
+
+1. **Нативный экран восстановления `UGV2RecoveryScreenWidget`** — он показывается именно тогда, когда у сессии нет snapshot вовсе (bootstrap ещё не дошёл до `Ready` либо сессия уже `Failed`), и берёт из минимальной темы базовую типографику и аварийные строки каталога (`core:text.screen.recovery.title`, `core:text.screen.error.*`). Это bootstrap/failure-time fallback без snapshot, а не повторное разрешение snapshot-owned Theme.
+2. **Построение самого snapshot** — candidate builder один раз резолвит минимальную тему и пришпиливает её в `FGV2ResolvedUiTheme::FallbackTheme` как текстовый fallback сессии: `text_id`, которого нет ни в `TextCatalog`, ни в `FallbackTextCatalog` настроенной темы, разрешается из неё. Это не второй authority и не runtime pull — значение разрешается там же, где и остальные поля snapshot, и downstream видит его исключительно как обычное prepared value через `FGV2PresentationPrepareContext`; ни один Commit-facing путь к `GetCoreMinimalTheme()` не обращается.
+
+Обе роли — и только они — допускаются production call-site inventory (`Tools/Testing/validate_central_style_runtime_boundary.py`).

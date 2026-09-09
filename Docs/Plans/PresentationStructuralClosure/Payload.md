@@ -1,7 +1,7 @@
 ---
 title: Self-Contained Payload Tasks
 status: active
-version: 1.9
+version: 2.0
 updated: 2026-09-09
 depends_on:
   - README.md
@@ -13,8 +13,8 @@ depends_on:
 # M3 — Self-Contained Payload
 
 > **Материализует:** `PAH-R1`, `D3/D4` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и необходимую перед module extraction типовую границу.
-> **Задачи:** PSC-09A…09B, PSC-10A…10B.
-> **Результат:** Prepare и Apply больше не являются методами одного authority-aware объекта; нижний DTO содержит всё необходимое физическому применению — и для видов операций, и для центральной стилизации.
+> **Задачи:** PSC-09A…09B, PSC-10A…10C.
+> **Результат:** Prepare и Apply больше не являются методами одного authority-aware объекта; нижний DTO содержит всё необходимое физическому применению — для видов операций, для центральной стилизации и для image resource.
 
 ## Почему этап идёт до module extraction
 
@@ -272,7 +272,10 @@ depends_on:
     - runtime-ветка `NativePreConstruct` не применяет central style и не читает Theme/settings. Design-time preview может применять только сериализованные Widget/Blueprint defaults через pure value-only helper при `IsDesignTime()`; он не читает configured Theme, не загружает content и не является runtime entry point;
     - `RichTextWidgetBase`'s разрешение run style и interactive style входит в тот же Prepare → prepared operation → transaction Apply path, хотя сейчас не является `ApplyCentralStyle`;
     - **после закрытия `PSC-10A` и этой задачи** символы `GetConfiguredTheme()`/`GetConfiguredRegistry()` физически удалены из production declarations, definitions и call sites; candidate builder читает settings/DataAssets только как explicit bootstrap inputs и публикует их результат исключительно через snapshot;
-    - `UGV2UiTheme::GetCoreMinimalTheme()` сохраняется только для UE-native cold-start recovery. Это не исключение к предыдущему пункту: метод не читает configured content, а production call-site inventory допускает его только внутри recovery surface;
+    - `UGV2UiTheme::GetCoreMinimalTheme()` допускается ровно в двух structurally различных ролях, и обе перечислены здесь, а не выведены из кода постфактум:
+      1. **UE-native cold-start recovery** — путь, у которого snapshot отсутствует по определению (bootstrap ещё не дошёл до `Ready` либо сессия `Failed`);
+      2. **bootstrap-разрешение самого snapshot** — candidate builder один раз резолвит минимальную тему и пришпиливает её в `FGV2ResolvedUiTheme::FallbackTheme` как текстовый fallback сессии.
+      Вторая роль — не runtime pull и не второй authority: значение разрешается там же, где и остальные поля snapshot, и любой downstream-читатель видит его исключительно как обычное prepared value через `FGV2PresentationPrepareContext`. Метод не читает configured content ни в одной из ролей; production call-site inventory допускает его **только** внутри recovery surface и внутри candidate builder, и отвергает где угодно ещё;
     - authority counter даёт ноль вокруг central-style Prepare result application и остаётся secondary evidence к transaction/module boundary;
     - implementation inventory и production call-site inventory отвергают синтетическое обращение к Theme, runtime `NativePreConstruct → style`, вызов target-helper вне transaction façade и `GetCoreMinimalTheme()` вне recovery;
     - в том же change set обновлены [Widget Registry](../../UI/WidgetRegistry.md), [UI Document](../../UI/UIDocumentAndReconciliation.md) и partial-supersession note [ADR-0012](../../ADR/0012-centralized-ui-theme.md): runtime reconstruction и editor preview больше не описываются одним authority-aware путём.
@@ -367,13 +370,28 @@ depends_on:
 
     Хранимая роль потребовала GC-якорей: `FPreparedRichTextStyle` — нерефлексируемое значение нижнего модуля, коллектор в него не видит, поэтому и виджет, и popover держат `UPROPERTY(Transient)`-массив всех классов стилей и popover class, а не только popover class.
 
-    Верификация: `Automation RunTests GV2` — 133/133 из машинного отчёта; `ctest` — 96/96; все 14 гейтов и их self-test'ы; `validate_docs` — 185 файлов; **`-run=CompileAllBlueprints` — 0 errors, 0 warnings, 0 failed to load**, включая все 47 `WBP_*` проекта: удаление `UFUNCTION` `GetViewportHeight`/`ResolveEffectiveFontSize`/`ApplyCentralStyle`/`ApplyImageResource` ни один Widget Blueprint не сломало. третий путь `RichTextWidgetBase`'s run/interactive style через Slate-декоратор; удаление `ApplyCentralStyle` как runtime API и строки pull'а в adapter; символы `GetConfiguredTheme()`/`GetConfiguredRegistry()`; ограничение `GetCoreMinimalTheme()` recovery-поверхностью; inventory-гейты; обновление `WidgetRegistry.md`, `UIDocumentAndReconciliation.md` и note к `ADR-0012`.
+    Верификация: `Automation RunTests GV2` — 133/133 из машинного отчёта; `ctest` — 96/96; все 14 гейтов и их self-test'ы; `validate_docs` — 185 файлов; **`-run=CompileAllBlueprints` — 0 errors, 0 warnings, 0 failed to load**, включая все 47 `WBP_*` проекта: удаление `UFUNCTION` `GetViewportHeight`/`ResolveEffectiveFontSize`/`ApplyCentralStyle`/`ApplyImageResource` ни один Widget Blueprint не сломало.
+
+- [ ] **PSC-10C — Разделить static image resolution и физическое Apply**
+  - Зависимости: PSC-10B.
+  - `UGV2ImageWidgetBase::NativePreConstruct()` применяет `InitialResourceId` через `ApplyImageResource` → `FGV2ImagePresentation::ResolveAndApply` → `UGV2ImageResourceCatalog::GetSessionCatalog()` + `SetBrush()`. Это та же форма, что `PSC-10B` убрал для Theme, но для image catalog: lifecycle-колбэк разрешает семантику по process-global authority и тут же физически мутирует виджет. Обнаружено при ревью закрытия `PSC-10B`; к central style дефект отношения не имеет, но делает универсальное утверждение `M3` ложным и нарушает предпосылку `PSC-11`, поэтому закрывается отдельно и до него.
+  - Инвариант: ни один путь к физической мутации не разрешает семантику — включая image resource ([ADR-0043](../../ADR/0043-presentation-apply-boundary.md), `INV-P5`, `D3`). `NativePreConstruct` не является исключением из этого правила ни для Theme, ни для catalog.
+  - Не считается закрытием: удаление `InitialResourceId` вместо разделения путей; перенос `GetSessionCatalog()` в другой lifecycle-колбэк; `IsDesignTime()`-ветка, которая всё ещё консультирует catalog; расширение allowlist гейта вместо устранения вызова; закрытие только `UGV2ImageWidgetBase` без проверки фактического множества call sites `ResolveAndApply`/`GetSessionCatalog`.
+  - Done:
+    - фактическое множество production call sites `FGV2ImagePresentation::ResolveAndApply` и `UGV2ImageResourceCatalog::GetSessionCatalog()` выводится обходом source tree, а не списком в задаче; каждый классифицирован как Prepare-side либо устранён;
+    - runtime-ветка `NativePreConstruct` не консультирует catalog и не мутирует brush по `resource_id`; `InitialResourceId` остаётся authoring-time значением, чей физический эффект приходит prepared-операцией существующего `ImageResource` kind;
+    - design-time preview применяет только сериализованный brush самого виджета через pure value-only helper при `IsDesignTime()` — тот же контракт, что `PSC-10B` зафиксировал для стиля;
+    - `GetSessionCatalog()` либо удалён как process-global accessor, либо его production call-site inventory допускает ровно те роли, которые перечислены в owner contract (по образцу двух ролей `GetCoreMinimalTheme()`), и гейт отвергает любую другую;
+    - structural gate отвергает вызов catalog/resolution из любого widget lifecycle-колбэка, а его actual-set выводится из фактического дерева исходников; есть synthetic negative self-test в обе стороны;
+    - production-тест доказывает, что виджет с непустым `InitialResourceId` вне подготовленной транзакции остаётся без brush, а внутри неё получает его из snapshot-resolved операции; red-on-revert записан;
+    - [Widget Registry](../../UI/WidgetRegistry.md) и [UI README](../README.md) описывают image resolution как Prepare-side, а `NativePreConstruct` — как чисто value-only design-time surface.
+  - Evidence: `Source/GV2/Private/UI/GV2ImageWidgetBase.cpp`, `Source/GV2/Private/UI/GV2ImagePresentation.cpp`, `Source/GV2/Private/UI/GV2ImageResourceCatalog.cpp`, call-site inventory gate, production tests и обновлённые owner contracts.
 
 ## Проверка milestone
 
 - [x] Верхний слой только разрешает semantics и формирует transaction; lower-facing types не могут вызвать authority.
 - [x] Все operation kinds перечисляет enum/variant, а не задача или test list.
 - [x] Ни один payload не требует lookup/load при Apply.
-- [x] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация.
+- [ ] Ни один путь к физической мутации не разрешает семантику — ни виды операций, ни центральная стилизация, ни image resource. Виды операций и central style закрыты (`PSC-09B`, `PSC-10A`, `PSC-10B`); `UGV2ImageWidgetBase::NativePreConstruct()` всё ещё разрешает `InitialResourceId` через `GetSessionCatalog()` и мутирует brush — закрывается `PSC-10C`.
 - [x] `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют в production-коде без исключений; `GetCoreMinimalTheme()` достижим только из UE-native cold-start recovery и из bootstrap-разрешения снимка, которое его туда и пришпиливает.
 - [x] `UCLASS` paths ещё не менялись; production path работает через временный delegating adapter.

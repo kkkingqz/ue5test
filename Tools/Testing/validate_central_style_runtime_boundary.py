@@ -27,10 +27,12 @@ RECOVERY_CALL = re.compile(r"\bGetCoreMinimalTheme\s*\(")
 RECOVERY_CALL_FILES = {
     "Private/Runtime/GV2RuntimeSubsystem.cpp",
     "Private/UI/GV2RecoveryScreenWidget.cpp",
-    # PSC-10B: the snapshot RESOLVES the core-minimal Theme once at build time and pins it as
-    # the session's text fallback. That is bootstrap resolution into the snapshot, the
-    # opposite of the runtime pull this gate exists to forbid -- every reader downstream sees
-    # it as an ordinary prepared value through FGV2PresentationPrepareContext.
+    # PSC-10B: the SECOND of the two roles Docs/UI/README.md's owner contract allows -- the
+    # candidate builder resolves the core-minimal Theme once at build time and pins it in
+    # FGV2ResolvedUiTheme::FallbackTheme as the session's text fallback. That is bootstrap
+    # resolution INTO the snapshot, the opposite of the runtime pull this gate forbids: every
+    # downstream reader sees it as an ordinary prepared value through
+    # FGV2PresentationPrepareContext, and no Commit-facing path reaches the accessor.
     "Private/Application/GV2SessionContentSnapshot.cpp",
 }
 RECOVERY_DECLARATION_FILES = {
