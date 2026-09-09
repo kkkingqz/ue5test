@@ -331,6 +331,21 @@ if(BUILD_TESTING)
     # PSC-11 (ADR-0043 D2): what the Apply module exports and what it may do. The exported
     # surface is derived from its own Public/ declarations, and the capability scan walks its
     # whole source tree -- secondary to the module graph, as ADR-0043 D4 states.
+    # PSC-11: the include closure PSC-12 will have to carry, classified before the move and
+    # ratcheted so it can shrink but not grow.
+    add_test(
+        NAME apply_move_closure_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_apply_move_closure.py"
+    )
+    add_test(
+        NAME apply_move_closure_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_apply_move_closure.py"
+            "--self-test"
+    )
     add_test(
         NAME presentation_apply_surface_contract
         COMMAND
