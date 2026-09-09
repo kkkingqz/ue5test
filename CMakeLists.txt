@@ -328,6 +328,22 @@ if(BUILD_TESTING)
     # implementations, require matching Prepare/Apply branches, and reject all retired
     # pull-style accessors, late hover resolution, and value-sink calls outside the
     # transaction façade (except IsDesignTime-only serialized preview writes).
+    # PSC-11 (ADR-0043 D2): what the Apply module exports and what it may do. The exported
+    # surface is derived from its own Public/ declarations, and the capability scan walks its
+    # whole source tree -- secondary to the module graph, as ADR-0043 D4 states.
+    add_test(
+        NAME presentation_apply_surface_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_surface.py"
+    )
+    add_test(
+        NAME presentation_apply_surface_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_surface.py"
+            "--self-test"
+    )
     add_test(
         NAME central_style_runtime_boundary_contract
         COMMAND

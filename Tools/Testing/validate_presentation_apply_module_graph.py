@@ -24,8 +24,20 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-APPLY_BUILD_CS = REPO_ROOT / "Source" / "GV2PresentationApply" / "GV2PresentationApply.Build.cs"
-GV2_BUILD_CS = REPO_ROOT / "Source" / "GV2" / "GV2.Build.cs"
+SOURCE_ROOT = REPO_ROOT / "Source"
+APPLY_BUILD_CS = SOURCE_ROOT / "GV2PresentationApply" / "GV2PresentationApply.Build.cs"
+GV2_BUILD_CS = SOURCE_ROOT / "GV2" / "GV2.Build.cs"
+APPLY_MODULE = "GV2PresentationApply"
+
+# PSC-11: the CMake side of the same claim. The portable/Headless build must neither compile
+# nor link this module -- it is a UE-only physical layer, and a portable target that pulled
+# it in would make the Headless run depend on UMG.
+CMAKE_FILES = [
+    REPO_ROOT / "CMakeLists.txt",
+    SOURCE_ROOT / "CMakeLists.txt",
+    REPO_ROOT / "Headless" / "CMakeLists.txt",
+    REPO_ROOT / "Tools" / "Content" / "CMakeLists.txt",
+]
 
 # ADR-0043 D2: "Разрешённый allowlist зависимостей -- ровно Core, CoreUObject, Engine,
 # UMG, CommonUI, Slate, SlateCore".
@@ -100,6 +112,75 @@ def find_forward_edge_violation(gv2_build_cs_text: str) -> list[str]:
     return []
 
 
+def all_build_cs() -> dict[str, str]:
+    """Every module declaration in the tree, by directory walk -- the actual UBT graph, not
+    a list of the two files this gate used to read."""
+    return {
+        path.name[: -len(".Build.cs")]: path.read_text(encoding="utf-8")
+        for path in sorted(SOURCE_ROOT.rglob("*.Build.cs"))
+    }
+
+
+def find_conditional_dependency_violations(source: str, label: str) -> list[str]:
+    """A dependency added inside a conditional is a dependency the graph does not state.
+
+    ADR-0043 D2's guarantee is that UBT CANNOT link an authority type here. An edge added
+    only for Editor targets, or behind any other condition, turns that into a claim about
+    which configuration was inspected.
+    """
+    errors: list[str] = []
+    stripped = strip_comments(source)
+    for match in re.finditer(r"\b(?:if|else|switch|\?)\b", stripped):
+        tail = stripped[match.start():]
+        block_end = tail.find("\n        }")
+        block = tail[: block_end if block_end > 0 else 400]
+        if "DependencyModuleNames" in block:
+            line = stripped.count("\n", 0, match.start()) + 1
+            errors.append(f"{label}:{line}: conditional dependency edge -- the graph must be unconditional")
+    return errors
+
+
+def find_cmake_violations() -> list[str]:
+    """The portable/CMake graph must not name the Apply module as a target or a source."""
+    errors: list[str] = []
+    for path in CMAKE_FILES:
+        if not path.exists():
+            continue
+        source = path.read_text(encoding="utf-8")
+        text = re.sub(r"#[^\n]*", "", source)
+        for match in re.finditer(re.escape(APPLY_MODULE), text):
+            line = text.count("\n", 0, match.start()) + 1
+            errors.append(
+                f"{path.relative_to(REPO_ROOT)}:{line}: the portable/Headless CMake graph names "
+                f"{APPLY_MODULE}; it must neither compile nor link it"
+            )
+    return errors
+
+
+def strip_comments(source: str) -> str:
+    def blank(match: re.Match[str]) -> str:
+        return "".join("\n" if c == "\n" else " " for c in match.group(0))
+
+    source = re.sub(r"/\*.*?\*/", blank, source, flags=re.DOTALL)
+    return re.sub(r"//[^\n]*", blank, source)
+
+
+def find_reverse_edge_violations(modules: dict[str, str]) -> list[str]:
+    """No module the Apply module is forbidden to depend on may be reachable FROM it, and
+    the Apply module itself must be depended on by GV2 alone -- a second consumer would be
+    a second place the boundary has to hold."""
+    errors: list[str] = []
+    consumers = [
+        name for name, source in modules.items()
+        if name != APPLY_MODULE and APPLY_MODULE in extract_dependency_modules(source)
+    ]
+    if consumers != ["GV2"]:
+        errors.append(
+            f"{APPLY_MODULE} must be consumed by GV2 alone; actual consumers: {sorted(consumers)}"
+        )
+    return errors
+
+
 def validate_repository() -> list[str]:
     violations: list[str] = []
     if not APPLY_BUILD_CS.exists():
@@ -110,6 +191,14 @@ def validate_repository() -> list[str]:
         violations.append(f"{GV2_BUILD_CS}: not found")
     else:
         violations.extend(find_forward_edge_violation(GV2_BUILD_CS.read_text(encoding="utf-8")))
+
+    # PSC-11: the actual graph, derived from every module declaration in the tree.
+    modules = all_build_cs()
+    if not modules:
+        return violations + ["the module enumerator produced an empty set; the derivation is broken"]
+    violations.extend(find_conditional_dependency_violations(modules[APPLY_MODULE], str(APPLY_BUILD_CS)))
+    violations.extend(find_reverse_edge_violations(modules))
+    violations.extend(find_cmake_violations())
     return violations
 
 
@@ -186,6 +275,42 @@ def run_self_test() -> bool:
         if errors:
             print(f"FAILED: gate rejected a GV2.Build.cs that does declare the forward edge: {errors}")
             return False
+
+    # PSC-11: a dependency added behind a condition is a dependency the graph does not
+    # state -- the guarantee has to hold for every target, not the one that was inspected.
+    conditional = (
+        "public class GV2PresentationApply : ModuleRules\n{\n"
+        "    public GV2PresentationApply(ReadOnlyTargetRules Target) : base(Target)\n    {\n"
+        "        PublicDependencyModuleNames.AddRange(new string[] { \"Core\" });\n"
+        "        if (Target.Type == TargetType.Editor)\n        {\n"
+        "            PublicDependencyModuleNames.Add(\"AssetRegistry\");\n        }\n    }\n}\n"
+    )
+    if not find_conditional_dependency_violations(conditional, "synthetic"):
+        print("FAILED: gate accepted a conditional dependency edge")
+        return False
+    unconditional = (
+        "public class GV2PresentationApply : ModuleRules\n{\n"
+        "    public GV2PresentationApply(ReadOnlyTargetRules Target) : base(Target)\n    {\n"
+        "        PublicDependencyModuleNames.AddRange(new string[] { \"Core\" });\n    }\n}\n"
+    )
+    if find_conditional_dependency_violations(unconditional, "synthetic"):
+        print("FAILED: gate flagged an unconditional dependency list")
+        return False
+
+    # A second consumer is a second place the boundary has to hold.
+    two_consumers = {
+        "GV2PresentationApply": unconditional,
+        "GV2": 'PublicDependencyModuleNames.AddRange(new string[] { "GV2PresentationApply" });',
+        "GV2ContentEditor": 'PublicDependencyModuleNames.AddRange(new string[] { "GV2PresentationApply" });',
+    }
+    if not find_reverse_edge_violations(two_consumers):
+        print("FAILED: gate accepted a second consumer of the Apply module")
+        return False
+    one_consumer = dict(two_consumers)
+    del one_consumer["GV2ContentEditor"]
+    if find_reverse_edge_violations(one_consumer):
+        print("FAILED: gate flagged the single allowed consumer")
+        return False
 
     print("SUCCESS: GV2PresentationApply's dependency list stays within the ADR-0043 D2 allowlist")
     return True
