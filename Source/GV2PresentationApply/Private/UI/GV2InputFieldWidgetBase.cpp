@@ -2,7 +2,7 @@
 
 #include "CommonTextBlock.h"
 #include "Components/EditableTextBox.h"
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
+#include "GV2WidgetTextApply.h"
 
 void UGV2InputFieldWidgetBase::NativePreConstruct()
 {

@@ -9,6 +9,7 @@
 #include "Blueprint/UserWidget.h"
 #include "UObject/UObjectIterator.h"
 #include "Components/VerticalBox.h"
+#include "Components/SizeBox.h"
 #include "Blueprint/WidgetTree.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Tests/GV2ForgeryTestWidgets.h"
@@ -1364,7 +1365,7 @@ bool FGV2SessionReplacementContentBuilderFailurePreservesActiveSessionTest::RunT
         1);
     TestFalse(
         TEXT("Replacement attempt with an empty package set fails at the content candidate stage"),
-        Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 2, &EmptyResolvedSet));
+        Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 2, EmptyResolvedSet));
 
     TestTrue(TEXT("Active VM keeps running"), Coordinator.IsLuaVmStarted());
     TestTrue(TEXT("Coordinator remains ready"), Coordinator.GetStatus().bIsReady);
@@ -1546,7 +1547,7 @@ bool FGV2SequentialSessionsDoNotShareAuthoritiesTest::RunTest(const FString& Par
         TEXT("A differently-composed candidate builds successfully alongside session 1's active snapshot"),
         FGV2SessionContentCandidate::Build(
             MakeFrozenCoreFixturePinnedRepository(*this),
-            &*RhSet,
+            *RhSet,
             SchemaPackageRoots,
             {},
             RhCandidate,
@@ -2572,6 +2573,39 @@ bool FGV2ApplyReadsNoAuthorityTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Every prepared operation was applied"),
         ApplyResult.AppliedOperationCount, Transaction.GetOperations().Num());
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2DesignTimePreviewNoRuntimeAuthorityTest,
+    "GV2.Runtime.Presentation.DesignTimePreviewNoRuntimeAuthority",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2DesignTimePreviewNoRuntimeAuthorityTest::RunTest(const FString& Parameters)
+{
+    UGV2SeparatorBoundTestWidget* Widget = NewObject<UGV2SeparatorBoundTestWidget>();
+    Widget->BuildBoundSubWidgets();
+    USizeBox* SizeBox = Cast<USizeBox>(Widget->WidgetTree->RootWidget);
+    TestNotNull(TEXT("Design-time fixture has its real separator size box"), SizeBox);
+    if (SizeBox == nullptr)
+    {
+        return false;
+    }
+
+    constexpr float SerializedThickness = 23.0f;
+    SizeBox->SetHeightOverride(SerializedThickness);
+    Widget->SetDesignerFlags(EWidgetDesignFlags::Designing | EWidgetDesignFlags::ExecutePreConstruct);
+    TestTrue(TEXT("Fixture is executing as a UMG design-time preview"), Widget->IsDesignTime());
+
+    FGV2PresentationPrepareContext::ConsumeAuthorityAccessCount();
+    Widget->TakeWidget(); // real UUserWidget rebuild -> NativePreConstruct design-time branch
+    const int32 AuthorityAccesses = FGV2PresentationPrepareContext::ConsumeAuthorityAccessCount();
+
+    TestEqual(TEXT("Design-time NativePreConstruct reads no session authority"), AuthorityAccesses, 0);
+    TestEqual(
+        TEXT("Design-time preview keeps the widget's serialized physical value"),
+        Widget->ReadAppliedThickness(),
+        SerializedThickness);
     return true;
 }
 

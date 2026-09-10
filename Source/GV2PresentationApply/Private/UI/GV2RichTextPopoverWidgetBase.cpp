@@ -5,7 +5,7 @@
 #include "Components/Image.h"
 #include "Components/SizeBox.h"
 #include "UI/GV2RichTextWidgetBase.h"
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
+#include "GV2WidgetTextApply.h"
 #include "UI/GV2UiCapability.h"
 
 void UGV2RichTextPopoverWidgetBase::NativePreConstruct()

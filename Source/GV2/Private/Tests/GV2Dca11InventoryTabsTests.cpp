@@ -104,7 +104,7 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
     });
     TestTrue(
         TEXT("DCA-11: fixture session starts"),
-        Coordinator.StartSession(RepositoryBuild.GetCandidate().GetReadHandle(), 1, &*ResolvedSet));
+        Coordinator.StartSession(RepositoryBuild.GetCandidate().GetReadHandle(), 1, *ResolvedSet));
     if (!Coordinator.GetStatus().bIsReady)
     {
         return false;

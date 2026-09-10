@@ -7,7 +7,10 @@ class UCommonTextBlock;
 class UEditableTextBox;
 class UWidget;
 
-class GV2PRESENTATIONAPPLY_API FGV2WidgetTextApply
+// Internal adapter used by physical widget bases already inside this module. It is not an
+// exported Apply surface; every method builds one prepared operation and invokes the
+// single FGV2PresentationApply transaction facade.
+class FGV2WidgetTextApply
 {
 public:
     static bool Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text);

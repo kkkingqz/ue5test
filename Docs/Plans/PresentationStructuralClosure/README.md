@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 2.3
+version: 2.4
 updated: 2026-09-10
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -98,7 +98,7 @@ GV2 semantic Prepare
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
        → PSC-07✔ → PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10A✔
-       → PSC-10B✔ → PSC-10C✔ → PSC-11✔ → PSC-12✔ → PSC-13 → PSC-14
+       → PSC-10B✔ → PSC-10C✔ → PSC-11✔ → PSC-12✔ → PSC-13✔ → PSC-14
 ```
 
 - `PSC-04` начинается только после exact package set и manifest identity: snapshot нельзя строить из старого canonical rediscovery.
@@ -153,5 +153,5 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] Image resource разрешается только на стороне Prepare; widget lifecycle не консультирует catalog и не мутирует brush по `resource_id`. (`PSC-10C`, 2026-09-09 — process-global каталог сессии удалён, безусловное правило гейта на lifecycle-колбэки, red-on-revert двумя детекторами)
 - [x] `GV2PresentationApply` содержит единственную public transaction Apply entry point, всю физическую часть Commit/rollback/reconciliation и восстановление проекции; решение, что писать и что откатывать, остаётся выше, потому что читает `FGV2PreparedUiObject` и compiled schema — типы, запрещённые нижнему модулю графом сборки. Dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`, 2026-09-09)
 - [x] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`, 2026-09-10 — 46/46 clean compile, 17 affected assets в migration commit)
-- [ ] Compiler/type/module/source enumerators и production scenarios закрывают `PAH-R1…R7`; Headless link graph остаётся UE-free. (`PSC-13`)
+- [x] Compiler/type/module/source enumerators и production scenarios закрывают `PAH-R1…R7`; Headless link graph остаётся UE-free. (`PSC-13`, 2026-09-10)
 - [ ] Полная verification зелёная, каждый finding имеет исход, active audit и plan готовы к обязательной post-completion архивации. (`PSC-14`)

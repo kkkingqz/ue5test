@@ -20,16 +20,14 @@ std::string SessionCoordinatorToUtf8(const FString& Value)
 // PAH-04: pre_ready_discovery -- only called from StartSession(), before this
 // session's Status.bIsReady is ever set true.
 // PSC-02 (ADR-0043 D1/D5): ResolvedPackageSet is the caller's single already-resolved
-// package set. When given, this function reads PackageId/Root straight from it -- no
+// package set. This function reads PackageId/Root straight from it -- no
 // second discovery of the package set, not even a per-root re-parse of package.json5
 // (the old code called DiscoverPackageFromDirectory again here, after the caller had
-// already discovered the same roots to build RuntimePackageRoots). nullptr falls back to
-// this function's own discovery, for callers -- mostly tests -- with no resolved set of
-// their own.
+// already discovered the same roots to build RuntimePackageRoots).
 bool LoadPortableRuntimeSources(
     std::vector<GV2RuntimeCore::FRuntimeSource>& OutSources,
     GV2RuntimeCore::FRuntimeFault& OutFault,
-    const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet,
+    const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet,
     TArray<FGV2SchemaPackageRoot>& OutSchemaPackageRoots)
 {
     OutSources.clear();
@@ -91,96 +89,28 @@ bool LoadPortableRuntimeSources(
             static_cast<std::size_t>(Bytes.Num() - Offset));
     }
 
-    if (ResolvedPackageSet != nullptr)
+    OutSchemaPackageRoots.Reserve(static_cast<int32>(ResolvedPackageSet.OrderedSources.size()));
+    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet.OrderedSources)
     {
-        OutSchemaPackageRoots.Reserve(static_cast<int32>(ResolvedPackageSet->OrderedSources.size()));
-        for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet->OrderedSources)
-        {
-            // PAH-04A: schemas reuse this exact resolved root/package_id pairing --
-            // the same set this session's Lua sources load from, not a second
-            // independent discovery pass. Unlike Lua sources, core's schemas (unlike
-            // its scripts, which come from Scripts/ above) live under GameData/core/
-            // like any other package's, so core is not skipped here.
-            OutSchemaPackageRoots.Add(FGV2SchemaPackageRoot{
-                UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
-                UTF8_TO_TCHAR(Source.Root.string().c_str())});
-
-            if (Source.Descriptor.GetPackageId() == "core")
-            {
-                continue;
-            }
-            auto PkgSources = GV2ContentHostSupport::DiscoverPackageScripts(Source.Root, Source.Descriptor.GetPackageId());
-            for (auto& Src : PkgSources)
-            {
-                GV2RuntimeCore::FRuntimeSource& RuntimeSrc = OutSources.emplace_back();
-                RuntimeSrc.Name = std::move(Src.Name);
-                RuntimeSrc.Text = std::move(Src.Text);
-            }
-        }
-        return true;
-    }
-
-    // Fallback discovery for a caller with no resolved package set of its own (mostly
-    // tests) -- unchanged from before PSC-02, just no longer the production path.
-    const FString GameDataDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
-    const std::string GameDataDirUtf8 = SessionCoordinatorToUtf8(GameDataDirectory);
-    std::vector<GV2ContentCore::FDiagnostic> Diags;
-    std::vector<std::filesystem::path> OrderedRoots;
-
-    bool bUseSampleOverride = false;
-#if WITH_DEV_AUTOMATION_TESTS
-    bUseSampleOverride = FGV2SessionCoordinator::bTestForceIncludeSamplePackage;
-#endif
-
-    if (bUseSampleOverride)
-    {
-        // CBM-03 override: GameData/sample and GameData/rh both bind the shared
-        // "textsystem:action.location.travel" action, so they cannot load
-        // together. Tests that opt in via bTestForceIncludeSamplePackage want
-        // the sample demo/debug-start screen, not rh's gameplay content, so
-        // this substitutes rh for sample instead of following mods.lock.json5.
-        // core is listed too (PAH-04A) -- omitting it here only ever happened to
-        // be safe for the Lua-sources loop below, which always skips core (its
-        // scripts already loaded from Scripts/ above); mirrors
-        // GV2RuntimeSubsystem.cpp's own equivalent override list.
-        OrderedRoots = {
-            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("core")))),
-            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("textsystem")))),
-            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("sample")))),
-        };
-    }
-    else if (!GV2ContentHostSupport::DiscoverPackagesFromContainer(
-            std::filesystem::path(GameDataDirUtf8),
-            Diags,
-            &OrderedRoots))
-    {
-        return true;
-    }
-
-    OutSchemaPackageRoots.Reserve(static_cast<int32>(OrderedRoots.size()));
-    for (const auto& Root : OrderedRoots)
-    {
-        std::vector<GV2ContentCore::FDiagnostic> PkgDiags;
-        auto Descriptor = GV2ContentHostSupport::DiscoverPackageFromDirectory(Root, PkgDiags);
-        if (!Descriptor)
-        {
-            continue;
-        }
-
+        // PAH-04A: schemas reuse this exact resolved root/package_id pairing --
+        // the same set this session's Lua sources load from, not a second
+        // independent discovery pass. Unlike Lua sources, core's schemas (unlike
+        // its scripts, which come from Scripts/ above) live under GameData/core/
+        // like any other package's, so core is not skipped here.
         OutSchemaPackageRoots.Add(FGV2SchemaPackageRoot{
-            UTF8_TO_TCHAR(Descriptor->GetPackageId().c_str()),
-            UTF8_TO_TCHAR(Root.string().c_str())});
+            UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
+            UTF8_TO_TCHAR(Source.Root.string().c_str())});
 
-        if (Descriptor->GetPackageId() == "core")
+        if (Source.Descriptor.GetPackageId() == "core")
         {
             continue;
         }
-        auto PkgSources = GV2ContentHostSupport::DiscoverPackageScripts(Root, Descriptor->GetPackageId());
+        auto PkgSources = GV2ContentHostSupport::DiscoverPackageScripts(Source.Root, Source.Descriptor.GetPackageId());
         for (auto& Src : PkgSources)
         {
-            GV2RuntimeCore::FRuntimeSource& Source = OutSources.emplace_back();
-            Source.Name = std::move(Src.Name);
-            Source.Text = std::move(Src.Text);
+            GV2RuntimeCore::FRuntimeSource& RuntimeSrc = OutSources.emplace_back();
+            RuntimeSrc.Name = std::move(Src.Name);
+            RuntimeSrc.Text = std::move(Src.Text);
         }
     }
     return true;
@@ -262,10 +192,38 @@ void FGV2SessionCoordinator::ClearDocumentSink()
     DocumentSink = nullptr;
 }
 
+#if WITH_DEV_AUTOMATION_TESTS
+// PAH-04: pre_ready_discovery -- this test-only overload resolves its fixture set before
+// delegating to the production StartSession overload; Status cannot yet be Ready.
+bool FGV2SessionCoordinator::StartSession(
+    const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+    const int64 InRepositoryVersion)
+{
+    const FString GameDataDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+    std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
+    std::optional<GV2ContentHostSupport::FResolvedPackageSet> Resolved;
+    if (bTestForceIncludeSamplePackage)
+    {
+        const std::vector<std::filesystem::path> Roots = {
+            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("core")))),
+            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("textsystem")))),
+            std::filesystem::path(SessionCoordinatorToUtf8(FPaths::Combine(GameDataDirectory, TEXT("sample")))),
+        };
+        Resolved = GV2ContentHostSupport::ResolvePackageSetFromDirectories(Roots, Diagnostics);
+    }
+    else
+    {
+        Resolved = GV2ContentHostSupport::ResolvePackageSetFromContainer(
+            std::filesystem::path(SessionCoordinatorToUtf8(GameDataDirectory)), Diagnostics);
+    }
+    return Resolved.has_value() && StartSession(InPinnedRepository, InRepositoryVersion, *Resolved);
+}
+#endif
+
 bool FGV2SessionCoordinator::StartSession(
     const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
     const int64 InRepositoryVersion,
-    const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet)
+    const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)
 {
     check(IsInGameThread());
 

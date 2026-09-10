@@ -1,7 +1,7 @@
 #include "UI/GV2ButtonWidgetBase.h"
 
 #include "CommonTextBlock.h"
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
+#include "GV2WidgetTextApply.h"
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2UiCapability.h"
 

@@ -79,12 +79,14 @@
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
+#include "Engine/Blueprint.h"
 #include "Engine/Engine.h"
 #include "Engine/Texture2D.h"
 #include "HAL/FileManager.h"
 #include "ImageUtils.h"
 #include "Engine/World.h"
 #include "Subsystems/SubsystemCollection.h"
+#include "UObject/UObjectIterator.h"
 
 namespace
 {
@@ -2338,8 +2340,14 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
         TestEqual(*FString::Printf(TEXT("%s: variant index matches its own enum value"), *KindLabel),
             static_cast<uint8>(GV2PresentationApply::GetPreparedOperationKind(Transaction.GetOperations()[0])), static_cast<uint8>(Kind));
 
+        FGV2PresentationPrepareContext::ConsumeAuthorityAccessCount();
         FString RouteError;
         const bool bRouteApplied = GV2PresentationTestFixtures::ApplyPreparedTransaction(Transaction, RouteError);
+        const int32 ApplyAuthorityAccesses = FGV2PresentationPrepareContext::ConsumeAuthorityAccessCount();
+        TestEqual(
+            *FString::Printf(TEXT("%s: Apply performs zero snapshot-authority reads"), *KindLabel),
+            ApplyAuthorityAccesses,
+            0);
         switch (ExpectedRoute)
         {
         case EGV2ExpectedOperationRoute::MutatesPlainTarget:
@@ -3194,16 +3202,57 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                     TestTrue(TEXT("Active test screen is attached to the location layer"), LayerScreens[0] == Screen);
                 }
             }
-            const UGV2ScreenRegistrySettings* RegistrySettings = GetDefault<UGV2ScreenRegistrySettings>();
-            UGV2ScreenRegistry* Registry = RegistrySettings != nullptr
-                ? RegistrySettings->RegistryAsset.LoadSynchronous()
-                : nullptr;
-            FString RegistryBuildError;
-            const bool bRegistryBuilt = Registry != nullptr && Registry->Build(GV2PackageClosure::DiscoverFromGameData(), RegistryBuildError);
+            // PSC-13: compare against the active session's pinned registry authority, not
+            // a separately loaded/configured registry rebuilt from GameData. Otherwise the
+            // test itself would reproduce PAH-R3 while claiming to prove the opposite.
+            const FGV2SessionContentSnapshot* ActiveSnapshot = Runtime->GetContentSnapshotForAutomationTest();
+            TestNotNull(TEXT("Active session exposes its pinned content snapshot"), ActiveSnapshot);
+            if (ActiveSnapshot != nullptr)
+            {
+                const TArray<FString> ExpectedEditorPackageIds = {
+                    TEXT("core"), TEXT("textsystem"), TEXT("sample")};
+                TestEqual(
+                    TEXT("Editor sample profile is the snapshot's exact ordered package set"),
+                    FString::Join(ActiveSnapshot->GetOrderedPackageIds(), TEXT(",")),
+                    FString::Join(ExpectedEditorPackageIds, TEXT(",")));
+
+                // Enumerate the pinned repository instead of hard-coding a definition ID
+                // owned by the optional game package. This proves that the repository
+                // consumed the selected profile while preserving the core-decoupling rule:
+                // engine tests may select a package fixture, but must not depend on one of
+                // its published Stable IDs.
+                const FString ProfilePackageId = ExpectedEditorPackageIds.Last();
+                bool bHasScreenFromProfilePackage = false;
+                for (const GV2ContentCore::FDefinitionId& ScreenId
+                    : ActiveSnapshot->GetRepository().List("screen"))
+                {
+                    const GV2ContentCore::FDefinitionProvenance* Provenance =
+                        ActiveSnapshot->GetRepository().GetProvenance(ScreenId);
+                    if (Provenance != nullptr
+                        && FString(UTF8_TO_TCHAR(Provenance->Winner.PackageId.c_str())) == ProfilePackageId)
+                    {
+                        bHasScreenFromProfilePackage = true;
+                        break;
+                    }
+                }
+                TestTrue(
+                    TEXT("Pinned repository contains a screen supplied by the selected profile package"),
+                    bHasScreenFromProfilePackage);
+
+                bool bHasSampleLuaSource = false;
+                bool bHasRhLuaSource = false;
+                for (const GV2RuntimeCore::FRuntimeSource& Source : ActiveSnapshot->GetLuaSources())
+                {
+                    bHasSampleLuaSource |= Source.Name.starts_with("@sample/");
+                    bHasRhLuaSource |= Source.Name.starts_with("@rh/");
+                }
+                TestTrue(TEXT("Lua source loader consumed the sample profile"), bHasSampleLuaSource);
+                TestFalse(TEXT("Lua source loader did not rediscover canonical rh"), bHasRhLuaSource);
+            }
             FGV2ResolvedScreenDescriptor RegisteredDescriptor;
             FGV2ScreenResolutionRejection RegisteredRejection;
-            UClass* RegisteredClass = bRegistryBuilt
-                    && Registry->Resolve(
+            UClass* RegisteredClass = ActiveSnapshot != nullptr
+                    && ActiveSnapshot->GetScreenRegistry().Resolve(
                         TEXT("core:screen.test"),
                         FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
                         RegisteredDescriptor,
@@ -3211,7 +3260,7 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
                 ? RegisteredDescriptor.WidgetClass
                 : nullptr;
             TestEqual(
-                TEXT("Created screen class comes from the configured registry entry"),
+                TEXT("Created initial screen class comes from the active snapshot registry"),
                 Screen->GetClass(),
                 RegisteredClass);
 
@@ -9544,6 +9593,126 @@ bool FGV2PackageSetSingleResolutionAcrossConsumersContract::RunTest(const FStrin
         TEXT("Screen Registry's resolved order for SetA differs from SetB -- not collapsed to one shared closure"),
         RegistryOrderForA != RegistryOrderForB);
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2WidgetBlueprintApplyMigrationInventoryTest,
+    "GV2.Runtime.Presentation.WidgetBlueprintApplyMigrationInventory",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2WidgetBlueprintApplyMigrationInventoryTest::RunTest(const FString& Parameters)
+{
+    // Actual moved-class set: every native UUserWidget class physically owned by the lower
+    // module. No migrated class name or WBP path is listed here.
+    TSet<UClass*> ApplyWidgetClasses;
+    TSet<FString> RetiredClassPaths;
+    for (TObjectIterator<UClass> It; It; ++It)
+    {
+        UClass* Class = *It;
+        if (Class != nullptr
+            && Class->IsChildOf(UUserWidget::StaticClass())
+            && Class->GetOutermost()->GetName() == TEXT("/Script/GV2PresentationApply"))
+        {
+            ApplyWidgetClasses.Add(Class);
+            RetiredClassPaths.Add(FString::Printf(TEXT("/Script/GV2.%s"), *Class->GetName()));
+        }
+    }
+    TestTrue(TEXT("Moved-widget class enumerator produced a non-empty actual set"), !ApplyWidgetClasses.IsEmpty());
+
+    auto ContainsRetiredClassPath = [&RetiredClassPaths](const FString& Value) -> bool
+    {
+        for (const FString& RetiredPath : RetiredClassPaths)
+        {
+            if (Value.Contains(RetiredPath, ESearchCase::CaseSensitive))
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (!RetiredClassPaths.IsEmpty())
+    {
+        const FString FirstRetiredPath = *RetiredClassPaths.CreateConstIterator();
+        TestTrue(
+            TEXT("Synthetic negative: old native-parent metadata is rejected"),
+            ContainsRetiredClassPath(FString::Printf(TEXT("Class'%s'"), *FirstRetiredPath)));
+    }
+
+    FAssetRegistryModule& AssetRegistryModule =
+        FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+    FARFilter Filter;
+    Filter.PackagePaths.Add(TEXT("/Game"));
+    Filter.bRecursivePaths = true;
+    TArray<FAssetData> Assets;
+    AssetRegistryModule.Get().GetAssets(Filter, Assets);
+
+    int32 WidgetBlueprintCount = 0;
+    int32 AffectedClosureCount = 0;
+    for (const FAssetData& Asset : Assets)
+    {
+        if (Asset.AssetClassPath.GetAssetName() != TEXT("WidgetBlueprint"))
+        {
+            continue;
+        }
+        ++WidgetBlueprintCount;
+
+        // Asset Registry metadata is checked before loading, so a stale native-parent or
+        // inherited-parent reference cannot be hidden by an already loaded generated class.
+        for (const FName Tag : {
+                 FBlueprintTags::NativeParentClassPath,
+                 FBlueprintTags::ParentClassPath,
+                 FBlueprintTags::ImplementedInterfaces})
+        {
+            FString Value;
+            if (Asset.GetTagValue(Tag, Value))
+            {
+                TestFalse(
+                    *FString::Printf(TEXT("%s tag '%s' contains no retired /Script/GV2 class path"),
+                        *Asset.PackageName.ToString(), *Tag.ToString()),
+                    ContainsRetiredClassPath(Value));
+            }
+        }
+
+        UObject* BlueprintAsset = Asset.GetAsset();
+        TestNotNull(
+            *FString::Printf(TEXT("Widget Blueprint asset loads after class migration: %s"), *Asset.PackageName.ToString()),
+            BlueprintAsset);
+        const FString GeneratedClassPath = FString::Printf(
+            TEXT("%s.%s_C"), *Asset.PackageName.ToString(), *Asset.AssetName.ToString());
+        UClass* GeneratedClass = LoadClass<UUserWidget>(nullptr, *GeneratedClassPath);
+        TestNotNull(
+            *FString::Printf(TEXT("Widget Blueprint generated class loads after class migration: %s"), *GeneratedClassPath),
+            GeneratedClass);
+        if (GeneratedClass == nullptr)
+        {
+            continue;
+        }
+
+        bool bReferencesMovedClass = false;
+        for (UClass* SuperClass = GeneratedClass->GetSuperClass(); SuperClass != nullptr; SuperClass = SuperClass->GetSuperClass())
+        {
+            if (ApplyWidgetClasses.Contains(SuperClass))
+            {
+                bReferencesMovedClass = true;
+                TestEqual(
+                    *FString::Printf(TEXT("%s resolves moved native ancestry to the lower module"), *GeneratedClassPath),
+                    SuperClass->GetOutermost()->GetName(),
+                    FString(TEXT("/Script/GV2PresentationApply")));
+            }
+        }
+        AffectedClosureCount += bReferencesMovedClass ? 1 : 0;
+    }
+
+    TestTrue(TEXT("Asset Registry enumerated Widget Blueprints"), WidgetBlueprintCount > 0);
+    TestTrue(TEXT("Asset Registry inheritance closure reaches migrated widget bases"), AffectedClosureCount > 0);
+    for (const FString& RetiredPath : RetiredClassPaths)
+    {
+        TestNull(
+            *FString::Printf(TEXT("Retired class object is absent after clean reload: %s"), *RetiredPath),
+            FindObject<UClass>(nullptr, *RetiredPath));
+    }
     return true;
 }
 

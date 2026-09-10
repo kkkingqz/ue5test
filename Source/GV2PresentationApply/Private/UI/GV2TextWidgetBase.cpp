@@ -1,7 +1,7 @@
 #include "UI/GV2TextWidgetBase.h"
 
 #include "CommonTextBlock.h"
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
+#include "GV2WidgetTextApply.h"
 #include "UI/GV2UiCapability.h"
 
 bool UGV2TextWidgetBase::ApplyText(const FGV2TextViewModel& Content)

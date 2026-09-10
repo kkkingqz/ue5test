@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.2
-updated: 2026-09-02
+version: 3.3
+updated: 2026-09-10
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -26,7 +26,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `ctest_expected_failure_contract`, `ctest_process_contract_self_test`, `ctest_headless_json_contract_self_test`, `pcc_shared_fixture_contract`, `host_conformance_parity_contract`, `core_decoupling_gate_contract`, `core_boundary_gate_contract`, `authoring_metadata_gate_contract`, `authoring_metadata_gate_negative_contract`, `content_cli_router_gate_contract`, `content_cli_router_gate_negative_contract`, `ui_capability_member_inventory_contract`, `ui_capability_member_inventory_negative_contract`, `gv2_content_*`.
+> **Проверки:** `ctest_expected_failure_contract`, `host_conformance_parity_contract`, `presentation_apply_*`, `central_style_runtime_boundary_*`, `package_set_factory_inventory_*`, `core_*_gate_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -323,6 +323,36 @@ GV2_PORTABLE_API std::string Run<Area>Conformance();
 | `RunRunReplayConformance()` | `ReplayRunManifest` выполнение команд, отказ при несовпадении Lua release или repository hash |
 | `RunLuaSpecRunnerConformance()` | Механизм `FRuntimeSession::RunLuaSpec` (TAS-02): пропуск непровалившихся кейсов, детерминированный порядок, `require()` уже загруженного модуля, отказ на невалидном формате спеки. Проверяет C++-механизм, не Lua-правило (ADR-0024) |
 | `RunAuthoringMetadataConformance()` | Метаданные авторинга схем `*.ui.json5` (CEP-08): парсинг, резолв полей схемы, order, неизвестные свойства и проверка типов |
+
+## Presentation structural gates
+
+Гейты ниже защищают множества через фактические declarations/graph/reflection, а не через список известных файлов или helper names. Каждый source gate имеет synthetic negative self-test; runtime-утверждение дополнительно проверяется production-path automation.
+
+| Гейт | Actual-set enumerator | Независимый oracle | Граница доказательства |
+|---|---|---|---|
+| Package set | declarations, возвращающие `FResolvedPackageSet` или optional `FPackageDescriptor`, и их production call sites | создавать набор может host bootstrap; downstream только получает готовое значение | parser видит C++ declarations/calls известных return shapes, но не доказывает семантику произвольной фабрики с другим типом результата |
+| Snapshot/Prepare context | public fields/accessors фактических declarations | обязательные authority categories и единственный snapshot-backed context | source inventory проверяет форму и полноту классификации; lifetime/publication подтверждают session automation |
+| UBT/CMake graph | все `*.Build.cs` и canonical `CMakeLists.txt` | Apply allowlist; единственный consumer — `GV2`; portable targets не принимают UE source/link edge | CMake scan разбирает graph-команды, но не исполняет произвольные custom macros; итог подтверждает реальная portable-сборка |
+| Apply surface | все exported declarations в `GV2PresentationApply/Public` и весь source tree модуля | одна transaction façade; DTO/result, widget/lifecycle roles и pure calculations | forbidden-capability scan (`load`, settings, filesystem, soft refs) является secondary: множество будущих UE API открыто и при добавлении capability требует классификации |
+| Operation/payload | alternatives `FGV2PreparedOperationVariant` и recursive fields всех exported operation structs | exhaustive `Visit(TOverloaded)` без generic/default branch; allowlist value types и запрет resolver/context/callback/service/soft reference | compiler доказывает полноту dispatch; field scanner — допустимую форму declaration, но не runtime-смысл скаляра |
+| Central style | реализации `IGV2UiStyleConsumer`, prepared role interfaces, variant roles и все physical role/helper call sites | равенство Prepare/role/Apply sets; вызов prepared role только из façade; `NativePreConstruct` только design-time values | function-level source scan вторичен; production subtree, late RichText и design-time branch проверяются automation |
+| Widget Blueprint migration | все native `UUserWidget` classes модуля Apply и Asset Registry closure всех `/Game` Widget Blueprints | ноль retired `/Script/GV2.<Class>` metadata/object paths; ancestry указывает на `/Script/GV2PresentationApply` | исполняется только в Editor automation после clean load; мутацию ассетов не выполняет |
+
+`GetConfiguredTheme()` и `GetConfiguredRegistry()` запрещены по symbol declaration/definition/call-site во всём production tree. `GetCoreMinimalTheme()` разрешён только bootstrap построению fallback внутри snapshot и UE-native cold-start recovery, у которого snapshot отсутствует по определению.
+
+### Red-on-revert mapping
+
+| Finding | Что краснеет при возврате дефекта | Production evidence |
+|---|---|---|
+| `PAH-R1` | module/surface/central-style/payload gates либо exhaustive compiler dispatch | `SnapshotThemeResolutionContract`, `CentralStyleThroughPreparedTransaction`, `ApplyReadsNoAuthority`, `ExhaustiveOperationKindWalk`, `DesignTimePreviewNoRuntimeAuthority` |
+| `PAH-R2` | package-set call inventory, snapshot/context inventories и обязательный `StartSession(..., FResolvedPackageSet)` | `ContentSnapshotContract`, `ContentSnapshotImageCatalogGcLifetime`, `SequentialSessionsDoNotShareAuthorities`, `ReplacementContentBuilderFailurePreservesActiveSession` |
+| `PAH-R3` | package producer/call inventory независимо от имени нового helper | `PackageSetSingleResolutionAcrossConsumers`, `LuaCreatesRegisteredScreen` |
+| `PAH-R4` | configured-accessor/central-style gate | `NestedTabRejectedScreenLeavesNoPhysicalMutation`, `Duc10NestedChain` |
+| `PAH-R5` | package-set scoping contract и resource tests | `ImageCatalogScopedRootsNeverOpenExcludedDirectory`, `ImageCatalogDisabledPackageCorruptFileDoesNotBlockBootstrap` |
+| `PAH-R6` | portable package-discovery conformance | `PackageDiscoveryAndOrderConformance` case `ue_content_roots` |
+| `PAH-R7` | synthetic negative self-tests каждого source gate, compiler exhaustiveness и Asset Registry synthetic retired-path check | полный CTest плюс `WidgetBlueprintApplyMigrationInventory` |
+
+Cold-start использует только core-minimal values (`ImageCatalogFailureBlocksReady`, `ThemeOwnershipAndTextLengthContract`); catastrophic recovery повторяет normal Prepare/Apply против pinned snapshot (`PresentationCatastrophicRecoveryContract`). Эти сценарии не заменяются source scan: они проверяют, что структурный механизм подключён к пути продукта.
 
 ## Integration gate
 

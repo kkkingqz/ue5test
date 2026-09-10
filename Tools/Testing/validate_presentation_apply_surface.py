@@ -115,6 +115,40 @@ def classify(declaration: str) -> str:
     return "unclassified"
 
 
+def has_mutable_uobject_parameter(declaration: str) -> bool:
+    """Whether any function in an exported construct can receive a mutable UObject.
+
+    DTO fields are intentionally excluded: prepared operations carry weak widget targets.
+    The prohibited surface is a callable entry point outside U/I widget-role constructs.
+    """
+    without_const = re.sub(
+        r"\bconst\s+(U[A-Za-z_]\w*)\s*([*&])",
+        r"const_\1_\2",
+        declaration,
+    )
+    return re.search(
+        r"\([^)]*(?:\bU[A-Za-z_]\w*\s*[*&]|\bTWeakObjectPtr\s*<\s*U[A-Za-z_]\w*\s*>)",
+        without_const,
+    ) is not None
+
+
+def is_physical_role_construct(name: str, declaration: str) -> bool:
+    """Recognize actual generated role interfaces and widget lifecycle classes.
+
+    A leading U/I alone is not evidence: ordinary exported helpers can use either letter.
+    Widget roles are recognized by their generated UObject body and physical UE base;
+    role interfaces are generated Unreal interfaces.
+    """
+    if "GENERATED_BODY" not in declaration:
+        return False
+    if name.startswith("I"):
+        return True
+    return name.startswith("U") and re.search(
+        r":\s*public\s+U[A-Za-z0-9_]*(?:Widget|ButtonBase|Decorator)\b",
+        declaration,
+    ) is not None
+
+
 def find_violations(sources: dict[str, str]) -> list[str]:
     errors: list[str] = []
 
@@ -131,6 +165,17 @@ def find_violations(sources: dict[str, str]) -> list[str]:
     for rel, declaration in declarations:
         if classify(declaration) == "unclassified":
             errors.append(f"{rel}: exported declaration is unclassified: {declaration}")
+        # U-prefixed UCLASSes are the physical widget/lifecycle roles, and I-prefixed
+        # interfaces are their value-only role contracts. Any OTHER exported construct
+        # receiving a mutable UObject is a second physical entry surface. Const UObject
+        # context (for example the interaction sink's world context) is not mutation.
+        name_match = re.search(r"\b(?:struct|class)\s+" + EXPORT_MACRO + r"\s+([A-Za-z_]\w*)", declaration)
+        name = name_match.group(1) if name_match else ""
+        if has_mutable_uobject_parameter(declaration) and not is_physical_role_construct(name, declaration):
+            errors.append(
+                f"{rel}: exported physical mutation entry outside a widget/lifecycle role: "
+                f"{name or declaration.split('(', 1)[0]}"
+            )
 
     for rel, source in sources.items():
         stripped = strip_comments(source)
@@ -181,6 +226,35 @@ def run_self_test() -> bool:
     errors = find_violations(duplicate)
     if not any("exactly one transaction apply entry point" in e for e in errors):
         print(f"FAILED: gate accepted a second transaction apply facade: {errors}")
+        return False
+
+    physical_helper = dict(clean)
+    physical_helper["Public/GV2PresentationApply/PhysicalHelper.h"] = (
+        "class GV2PRESENTATIONAPPLY_API FPhysicalHelper { public:\n"
+        "    static void Paint(UWidget* Widget, const FSlateBrush& Brush);\n};\n"
+    )
+    errors = find_violations(physical_helper)
+    if not any("physical mutation entry" in e for e in errors):
+        print(f"FAILED: gate accepted an exported physical helper outside a widget/lifecycle role: {errors}")
+        return False
+
+    weak_physical_helper = dict(clean)
+    weak_physical_helper["Public/GV2PresentationApply/WeakPhysicalHelper.h"] = (
+        "GV2PRESENTATIONAPPLY_API void PaintLater(TWeakObjectPtr<UWidget> Widget);\n"
+    )
+    errors = find_violations(weak_physical_helper)
+    if not any("physical mutation entry" in e for e in errors):
+        print(f"FAILED: gate accepted a free exported weak-widget mutation entry: {errors}")
+        return False
+
+    u_prefixed_helper = dict(clean)
+    u_prefixed_helper["Public/GV2PresentationApply/UnsafeHelper.h"] = (
+        "class GV2PRESENTATIONAPPLY_API UnsafePhysicalHelper { public:\n"
+        "    static void Paint(UWidget* Widget);\n};\n"
+    )
+    errors = find_violations(u_prefixed_helper)
+    if not any("physical mutation entry" in e for e in errors):
+        print(f"FAILED: a U-prefixed helper bypassed the exported physical-entry gate: {errors}")
         return False
 
     for label, snippet in (

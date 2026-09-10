@@ -17,9 +17,11 @@ std::string ToUtf8(const FString& Value)
 }
 }
 
-// PAH-04: pre_ready_discovery -- only called from Initialize() (directly, and via
-// BuildGV2RepositoryFromDirectory, itself a production-unused convenience wrapper),
-// before any session exists.
+#if WITH_DEV_AUTOMATION_TESTS
+// Test-only repository-fixture conveniences. The production host resolves one
+// FResolvedPackageSet in UGV2RuntimeSubsystem and calls the value-taking overload below.
+// PAH-04: pre_ready_discovery -- automation fixtures call this before constructing or
+// starting their session; the function is absent from non-automation builds.
 GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectories(const TArray<FString>& PackageRootDirs)
 {
     std::vector<std::filesystem::path> Roots;
@@ -55,6 +57,7 @@ GV2ContentCore::FBuildResult BuildGV2RepositoryFromDirectory(const FString& Pack
 {
     return BuildGV2RepositoryFromDirectories({PackageRootDir});
 }
+#endif
 
 GV2ContentCore::FBuildResult BuildGV2RepositoryFromResolvedPackageSet(
     const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)

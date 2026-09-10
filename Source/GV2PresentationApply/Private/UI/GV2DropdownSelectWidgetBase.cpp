@@ -8,7 +8,7 @@
 #include "Components/SizeBox.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2UiCapability.h"
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
+#include "GV2WidgetTextApply.h"
 #include "UI/GV2UiInteractionEmitter.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2DropdownSelectWidget, Log, All);

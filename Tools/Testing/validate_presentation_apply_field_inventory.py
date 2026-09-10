@@ -57,6 +57,13 @@ FIELD_PATTERN = re.compile(
 # names the actual rule broken.
 FORBIDDEN_SUBSTRINGS = (
     "TFunction",
+    "TDelegate",
+    "TSoftObjectPtr",
+    "TSoftClassPtr",
+    "TSharedPtr",
+    "TWeakPtr",
+    "TUniquePtr",
+    "TScriptInterface",
     "PrepareContext",
     "Repository",
     "PackageSet",
@@ -232,10 +239,74 @@ def find_violations(source: str) -> list[str]:
     return violations
 
 
+def find_operation_alignment_violations(source: str) -> list[str]:
+    """Require enum entries and operation-variant alternatives to match in exact order.
+
+    The compiler remains the primary exhaustiveness gate: every Visit(TOverloaded) must
+    handle every variant alternative. This source-level check protects the separate
+    index-to-enum conversion used by GetPreparedOperationKind, and its synthetic mutation
+    proves that a new variant alternative cannot silently inherit the wrong enum value.
+    """
+    stripped = re.sub(r"//[^\n]*", "", source)
+    stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
+    enum_match = re.search(
+        r"enum\s+class\s+EGV2PreparedOperationKind\s*:\s*\w+\s*\{(?P<body>.*?)\}\s*;",
+        stripped,
+        re.DOTALL,
+    )
+    variant_match = re.search(
+        r"using\s+FGV2PreparedOperationVariant\s*=\s*TVariant<(?P<body>.*?)>\s*;",
+        stripped,
+        re.DOTALL,
+    )
+    if enum_match is None or variant_match is None:
+        missing = []
+        if enum_match is None:
+            missing.append("EGV2PreparedOperationKind")
+        if variant_match is None:
+            missing.append("FGV2PreparedOperationVariant")
+        return ["operation enumerator cannot find " + " and ".join(missing)]
+
+    enum_values = [
+        item.split("=", 1)[0].strip()
+        for item in enum_match.group("body").split(",")
+        if item.strip()
+    ]
+    variant_types = [
+        item.strip()
+        for item in variant_match.group("body").split(",")
+        if item.strip()
+    ]
+    expected_values: list[str] = []
+    malformed_types: list[str] = []
+    for variant_type in variant_types:
+        match = re.fullmatch(r"FPrepared(?P<kind>[A-Za-z0-9_]+)Operation", variant_type)
+        if match is None:
+            malformed_types.append(variant_type)
+        else:
+            expected_values.append(match.group("kind"))
+
+    errors: list[str] = []
+    if not enum_values or not variant_types:
+        errors.append("operation enum/variant enumerator produced an empty set")
+    if malformed_types:
+        errors.append(
+            "operation variant alternatives do not follow FPrepared<Kind>Operation: "
+            + ", ".join(malformed_types)
+        )
+    if enum_values != expected_values:
+        errors.append(
+            "EGV2PreparedOperationKind values differ from operation-variant alternatives; "
+            f"enum={enum_values}, variant-derived={expected_values}"
+        )
+    return errors
+
+
 def validate_repository() -> list[str]:
     if not TRANSACTION_HEADER.exists():
         return [f"{TRANSACTION_HEADER}: not found"]
-    return find_violations(TRANSACTION_HEADER.read_text(encoding="utf-8"))
+    source = TRANSACTION_HEADER.read_text(encoding="utf-8")
+    return find_violations(source) + find_operation_alignment_violations(source)
 
 
 def run_self_test() -> bool:
@@ -254,6 +325,33 @@ struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticOperation
     errors = find_violations(synthetic_callback)
     if not any("TFunction" in error for error in errors):
         print(f"FAILED: gate did not reject a TFunction callback field: {errors}")
+        return False
+
+    synthetic_soft_reference = """
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticNestedSoftReference
+{
+    TSoftObjectPtr<UTexture2D> DeferredTexture;
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticSoftReferenceOperation
+{
+    FPreparedSyntheticNestedSoftReference Nested;
+};
+"""
+    errors = find_violations(synthetic_soft_reference)
+    if not any("TSoftObjectPtr" in error and "NestedSoftReference" in error for error in errors):
+        print(f"FAILED: gate did not reject a nested soft reference: {errors}")
+        return False
+
+    synthetic_service_handle = """
+struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticServiceOperation
+{
+    TSharedPtr<FSomeService> ServiceHandle;
+};
+"""
+    errors = find_violations(synthetic_service_handle)
+    if not any("TSharedPtr" in error for error in errors):
+        print(f"FAILED: gate did not reject a shared service handle: {errors}")
         return False
 
     # A PrepareContext pointer must be rejected.
@@ -394,6 +492,24 @@ struct GV2PRESENTATIONAPPLY_API FPreparedSyntheticOkOperation
     errors = find_violations(synthetic_variant_ok)
     if errors:
         print(f"FAILED: gate rejected a variant alias whose alternatives are all classified: {errors}")
+        return False
+
+    synthetic_operation_mismatch = """
+enum class EGV2PreparedOperationKind : uint8
+{
+    First,
+};
+
+struct GV2PRESENTATIONAPPLY_API FPreparedFirstOperation { FString Value; };
+struct GV2PRESENTATIONAPPLY_API FPreparedSecondOperation { FString Value; };
+using FGV2PreparedOperationVariant = TVariant<
+    FPreparedFirstOperation,
+    FPreparedSecondOperation
+>;
+"""
+    errors = find_operation_alignment_violations(synthetic_operation_mismatch)
+    if not errors:
+        print("FAILED: operation enumerator accepted a variant alternative with no enum kind")
         return False
 
     # PSC-10B: a map must not smuggle in a value type a plain field could not carry.

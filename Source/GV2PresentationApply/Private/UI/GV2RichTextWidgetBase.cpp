@@ -7,7 +7,7 @@
 #include "Styling/CoreStyle.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2RichTextSpanDecorator.h"
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
+#include "GV2WidgetTextApply.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UObject/StrongObjectPtr.h"

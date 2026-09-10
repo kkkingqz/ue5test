@@ -18,6 +18,7 @@ allowlist itself.
 from __future__ import annotations
 
 import re
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -29,16 +30,20 @@ APPLY_BUILD_CS = SOURCE_ROOT / "GV2PresentationApply" / "GV2PresentationApply.Bu
 GV2_BUILD_CS = SOURCE_ROOT / "GV2" / "GV2.Build.cs"
 APPLY_MODULE = "GV2PresentationApply"
 
+CMAKE_IGNORED_ROOTS = {
+    ".git", ".claude", ".idea", ".vscode", "Binaries", "Build", "DerivedDataCache",
+    "Intermediate", "Saved", "build", "cmake-build-debug", "cmake-build-release",
+}
+CMAKE_GRAPH_COMMANDS = {
+    "add_executable", "add_library", "add_subdirectory", "target_link_libraries", "target_sources",
+}
+FORBIDDEN_CMAKE_LINK_ITEMS = {
+    "commonui", "coreuobject", "engine", "gv2", "gv2presentationapply", "slate", "slatecore", "ue", "umg", "unreal",
+}
+
 # PSC-11: the CMake side of the same claim. The portable/Headless build must neither compile
 # nor link this module -- it is a UE-only physical layer, and a portable target that pulled
 # it in would make the Headless run depend on UMG.
-CMAKE_FILES = [
-    REPO_ROOT / "CMakeLists.txt",
-    SOURCE_ROOT / "CMakeLists.txt",
-    REPO_ROOT / "Headless" / "CMakeLists.txt",
-    REPO_ROOT / "Tools" / "Content" / "CMakeLists.txt",
-]
-
 # ADR-0043 D2: "Разрешённый allowlist зависимостей -- ровно Core, CoreUObject, Engine,
 # UMG, CommonUI, Slate, SlateCore".
 ALLOWED_MODULES = {
@@ -140,20 +145,100 @@ def find_conditional_dependency_violations(source: str, label: str) -> list[str]
     return errors
 
 
-def find_cmake_violations() -> list[str]:
-    """The portable/CMake graph must not name the Apply module as a target or a source."""
-    errors: list[str] = []
-    for path in CMAKE_FILES:
-        if not path.exists():
+def canonical_cmake_sources() -> dict[Path, str]:
+    """Every canonical CMake declaration in the repository, excluding generated/copy trees."""
+    result: dict[Path, str] = {}
+    for path in sorted(REPO_ROOT.rglob("CMakeLists.txt")):
+        relative = path.relative_to(REPO_ROOT)
+        if any(
+            part in CMAKE_IGNORED_ROOTS
+            or part.startswith("cmake-build-")
+            or part == "CMakeFiles"
+            for part in relative.parts
+        ):
             continue
-        source = path.read_text(encoding="utf-8")
-        text = re.sub(r"#[^\n]*", "", source)
-        for match in re.finditer(re.escape(APPLY_MODULE), text):
-            line = text.count("\n", 0, match.start()) + 1
-            errors.append(
-                f"{path.relative_to(REPO_ROOT)}:{line}: the portable/Headless CMake graph names "
-                f"{APPLY_MODULE}; it must neither compile nor link it"
-            )
+        result[path] = path.read_text(encoding="utf-8")
+    return result
+
+
+def cmake_commands(source: str) -> list[tuple[str, str, int]]:
+    """Return canonical graph command name, argument body and source line."""
+    stripped = re.sub(r"#[^\n]*", "", source)
+    commands: list[tuple[str, str, int]] = []
+    pattern = re.compile(r"\b(" + "|".join(sorted(CMAKE_GRAPH_COMMANDS)) + r")\s*\(", re.IGNORECASE)
+    for match in pattern.finditer(stripped):
+        depth = 1
+        index = match.end()
+        quote: str | None = None
+        while index < len(stripped) and depth:
+            char = stripped[index]
+            if quote is not None:
+                if char == "\\":
+                    index += 2
+                    continue
+                if char == quote:
+                    quote = None
+            elif char in {'"', "'"}:
+                quote = char
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            index += 1
+        if depth == 0:
+            commands.append((match.group(1).lower(), stripped[match.end():index - 1], stripped.count("\n", 0, match.start()) + 1))
+    return commands
+
+
+def cmake_arguments(body: str) -> list[str]:
+    try:
+        return shlex.split(body, comments=False, posix=True)
+    except ValueError:
+        return re.findall(r'"[^"]*"|\S+', body)
+
+
+def forbidden_cmake_link_item(item: str) -> bool:
+    """Classify plain, imported-target and generator-expression spellings."""
+    normalized = item.strip('"').lower()
+    candidates = {
+        normalized,
+        normalized.rsplit("::", 1)[-1],
+        *re.findall(r"[a-z][a-z0-9_]*", normalized),
+    }
+    return bool(candidates & FORBIDDEN_CMAKE_LINK_ITEMS) or "gv2presentationapply" in normalized
+
+
+def find_cmake_violations(cmake_sources: dict[Path, str] | None = None) -> list[str]:
+    """Reject Unreal sources or link items in the complete portable CMake graph."""
+    errors: list[str] = []
+    if cmake_sources is None:
+        cmake_sources = canonical_cmake_sources()
+    if not cmake_sources:
+        return ["the canonical CMake-file enumerator produced an empty set; the derivation is broken"]
+    for path, source in cmake_sources.items():
+        try:
+            label = path.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            label = path.as_posix()
+        for command, body, line in cmake_commands(source):
+            args = cmake_arguments(body)
+            if command == "target_link_libraries":
+                for arg in args[1:]:
+                    if forbidden_cmake_link_item(arg):
+                        errors.append(
+                            f"{label}:{line}: portable CMake target links Unreal item '{arg}'"
+                        )
+            if command in {"add_executable", "add_library", "add_subdirectory", "target_sources"}:
+                for arg in args:
+                    normalized = arg.strip('"').replace("\\", "/")
+                    lower = normalized.lower()
+                    if ("gv2presentationapply" in lower
+                            or re.search(r"(?:^|/)source/gv2/", lower)
+                            or re.search(r"(?:^|/)gv2/private/", lower)
+                            or lower.endswith((".build.cs", ".target.cs"))):
+                        errors.append(
+                            f"{label}:{line}: portable CMake graph compiles/includes UE source '{normalized}'"
+                        )
     return errors
 
 
@@ -310,6 +395,29 @@ def run_self_test() -> bool:
     del one_consumer["GV2ContentEditor"]
     if find_reverse_edge_violations(one_consumer):
         print("FAILED: gate flagged the single allowed consumer")
+        return False
+
+    # PSC-13: the CMake oracle is about the portable graph, not just the Apply module's
+    # spelling. A new canonical CMake file linking UMG, or compiling an ordinary GV2 UE
+    # source, must fail without adding that file to a remembered list first.
+    synthetic_cmake = {
+        Path("Headless/CMakeLists.txt"): (
+            "add_executable(gv2-headless Source/main.cpp)\n"
+            "target_link_libraries(gv2-headless PRIVATE gv2_runtime_core UMG Unreal::CommonUI)\n"
+        ),
+        Path("FutureHost/CMakeLists.txt"): (
+            "target_sources(gv2-headless PRIVATE ../Source/GV2/Private/UI/Future.cpp)\n"
+        ),
+    }
+    cmake_errors = find_cmake_violations(synthetic_cmake)
+    if not any("UMG" in error for error in cmake_errors):
+        print(f"FAILED: CMake graph gate accepted an Unreal/UMG link edge: {cmake_errors}")
+        return False
+    if not any("Unreal::CommonUI" in error for error in cmake_errors):
+        print(f"FAILED: CMake graph gate accepted a namespaced Unreal/CommonUI link edge: {cmake_errors}")
+        return False
+    if not any("Source/GV2/" in error for error in cmake_errors):
+        print(f"FAILED: CMake graph gate accepted a UE source edge: {cmake_errors}")
         return False
 
     print("SUCCESS: GV2PresentationApply's dependency list stays within the ADR-0043 D2 allowlist")

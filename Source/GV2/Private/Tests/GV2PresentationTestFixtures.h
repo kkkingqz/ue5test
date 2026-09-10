@@ -111,7 +111,7 @@ public:
         GV2RuntimeCore::FRuntimeFault Fault;
         if (!FGV2SessionContentCandidate::Build(
                 RepositoryBuild.GetCandidate().GetReadHandle(),
-                &*ResolvedSet,
+                *ResolvedSet,
                 SchemaRoots,
                 {},
                 Snapshot,

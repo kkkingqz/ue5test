@@ -1,4 +1,4 @@
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
+#include "GV2WidgetTextApply.h"
 
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"

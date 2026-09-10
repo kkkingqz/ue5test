@@ -249,7 +249,7 @@ void UGV2RuntimeSubsystem::StartSession()
     if (!Coordinator->StartSession(
             RepositoryPublisher->GetCurrent(),
             RepositoryPublisher->GetVersion(),
-            ResolvedPackageSet.GetPtrOrNull()))
+            *ResolvedPackageSet))
     {
         UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
         if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed && GetGameInstance() != nullptr)

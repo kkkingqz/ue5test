@@ -26,7 +26,9 @@ struct FEntry
 // PSC-02: retained as a general-purpose convenience (e.g. a test building its own,
 // genuinely independent oracle) -- the production registry-build path no longer calls
 // this itself (see FromResolvedPackageSet below).
+#if WITH_DEV_AUTOMATION_TESTS
 TArray<FEntry> DiscoverFromGameData();
+#endif
 
 // PSC-02 (ADR-0043 D1/D5): pure projection of an already-resolved package set into this
 // UE-friendly (PackageId, RootDirectory) shape -- no discovery of its own. This is what

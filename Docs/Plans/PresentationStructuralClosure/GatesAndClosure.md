@@ -1,8 +1,8 @@
 ---
 title: Structural Gates and Closure Tasks
 status: active
-version: 1.2
-updated: 2026-09-08
+version: 1.3
+updated: 2026-09-10
 depends_on:
   - README.md
   - ApplyBoundary.md
@@ -31,7 +31,7 @@ depends_on:
 
 ## Задачи
 
-- [ ] **PSC-13 — Собрать structural gates и adversarial production scenarios**
+- [x] **PSC-13 — Собрать structural gates и adversarial production scenarios**
   - Зависимости: PSC-12.
   - Инвариант: универсальное утверждение закрывается только enumerator-ом фактического множества и независимым expected oracle; новый элемент не требует помнить имя в старом тесте.
   - Не считается закрытием: расширение regex-list; `Commit*` prefix как actual set; ручной список source files; self-test без production-path test; UBT graph без CMake/Headless graph.
@@ -45,7 +45,7 @@ depends_on:
     - recursive payload inventory отвергает soft reference, resolver/context/callback/service handle, включая nested members;
     - forbidden-capability scan перечисляет actual module source tree автоматически и отвергает synchronous load/settings/filesystem imports/calls; документирована граница, что он не является полной классификацией всех будущих UE API;
     - package-set factory/call inventory отвергает downstream rediscovery независимо от имени helper;
-    - configured-accessor symbol gate отвергает declaration, definition или call site `GetConfiguredTheme()`/`GetConfiguredRegistry()`; отдельный production call-site inventory разрешает `GetCoreMinimalTheme()` только recovery surface;
+    - configured-accessor symbol gate отвергает declaration, definition или call site `GetConfiguredTheme()`/`GetConfiguredRegistry()`; отдельный production call-site inventory разрешает `GetCoreMinimalTheme()` только построению snapshot fallback и UE-native cold-start recovery;
     - mandatory production scenarios проходят: Theme resolve only in Prepare; central style applied as prepared transaction operation; design-time preview does not read runtime authority; nested Tab resolution failure; different Editor set shared by all consumers; corrupt disabled resource unopened; snapshot replacement lifetime; failed candidate preserves active before teardown; cold-start recovery uses only core-minimal values; catastrophic recovery uses the pinned snapshot through normal Prepare/Apply; `ue_content_roots` fingerprint separation; initial screen from snapshot;
     - runtime authority counter показывает Prepare accesses и ноль accesses вокруг Apply для каждого operation kind, включая central style;
     - для каждого `PAH-R1…R7` записано, какой gate краснеет при revert, и revert/synthetic mutation действительно демонстрирует failure;

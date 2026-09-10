@@ -110,7 +110,7 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
     });
     TestTrue(
         TEXT("DUC-10: fixture session starts"),
-        Coordinator.StartSession(RepositoryBuild.GetCandidate().GetReadHandle(), 1, &*ResolvedSet));
+        Coordinator.StartSession(RepositoryBuild.GetCandidate().GetReadHandle(), 1, *ResolvedSet));
     if (!Coordinator.GetStatus().bIsReady)
     {
         return false;

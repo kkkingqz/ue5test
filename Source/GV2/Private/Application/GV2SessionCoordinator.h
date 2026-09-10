@@ -27,13 +27,19 @@ public:
     // "Active session никогда не переключает pinned handle").
     // PSC-02 (ADR-0043 D1/D5): ResolvedPackageSet is the caller's single already-resolved
     // package set (UGV2RuntimeSubsystem::Initialize) -- when given, Lua/schema source
-    // loading reads it directly instead of re-discovering the package closure. nullptr
-    // (the default) falls back to this function's own discovery, for callers -- mostly
-    // tests -- that have no resolved set of their own to hand in.
+    // loading reads it directly instead of re-discovering the package closure. It is
+    // required: an Application-layer fallback would be a second package authority.
     bool StartSession(
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
         int64 RepositoryVersion,
-        const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet = nullptr);
+        const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet);
+#if WITH_DEV_AUTOMATION_TESTS
+    // Test convenience only. Resolves the shipped fixture closure and delegates to the
+    // production overload above; this declaration is absent from non-test builds.
+    bool StartSession(
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        int64 RepositoryVersion);
+#endif
     void FailBootstrap(const FString& Code, const FString& Message);
     void EndSession(EGV2SessionState FinalState = EGV2SessionState::Destroyed);
 

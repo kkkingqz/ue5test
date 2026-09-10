@@ -56,8 +56,8 @@ CONTENT_RESOLUTION = (
     re.compile(r"\bStaticLoadObject\s*\("),
 )
 
-RECOVERY_CALL = re.compile(r"\bGetCoreMinimalTheme\s*\(")
-RECOVERY_CALL_FILES = {
+CORE_MINIMAL_CALL = re.compile(r"\bGetCoreMinimalTheme\s*\(")
+CORE_MINIMAL_CALL_FILES = {
     # The cold-start recovery surface, which is TWO files rather than one class: the widget
     # itself, and the subsystem code that builds its diagnostic strings when session
     # bootstrap failed. Both run when there is no snapshot to read at all.
@@ -71,7 +71,7 @@ RECOVERY_CALL_FILES = {
     # FGV2PresentationPrepareContext, and no Commit-facing path reaches the accessor.
     "Private/Application/GV2SessionContentSnapshot.cpp",
 }
-RECOVERY_DECLARATION_FILES = {
+CORE_MINIMAL_DECLARATION_FILES = {
     "Private/UI/GV2UiTheme.cpp",
     "Public/UI/GV2UiTheme.h",
 }
@@ -237,11 +237,12 @@ def find_violations(
             for match in pattern.finditer(stripped):
                 errors.append(f"{rel}:{line_of(source, match.start())}: retired runtime symbol {name}")
 
-        if rel not in RECOVERY_DECLARATION_FILES:
-            for match in RECOVERY_CALL.finditer(stripped):
-                if rel not in RECOVERY_CALL_FILES:
+        if rel not in CORE_MINIMAL_DECLARATION_FILES:
+            for match in CORE_MINIMAL_CALL.finditer(stripped):
+                if rel not in CORE_MINIMAL_CALL_FILES:
                     errors.append(
-                        f"{rel}:{line_of(source, match.start())}: GetCoreMinimalTheme is only allowed in cold-start recovery"
+                        f"{rel}:{line_of(source, match.start())}: GetCoreMinimalTheme is only allowed "
+                        "while building the snapshot fallback or cold-start recovery"
                     )
 
         for block_start, block in top_level_blocks(stripped):
@@ -322,6 +323,19 @@ def find_violations(
                 errors.append(
                     f"{rel}:{line_of(source, match.start())}: NativePreConstruct style sink is not guarded by IsDesignTime"
                 )
+
+    # The target-role call set is derived from call syntax, not names of known targets.
+    # Only the transaction facade may invoke a physical prepared-style role. Widget role
+    # implementations may call their private value sinks, but cannot call a peer role.
+    role_call = re.compile(r"(?:->|\.)\s*ApplyPrepared[A-Za-z0-9_]*Style\s*\(")
+    for rel, source in sources.items():
+        if rel == "GV2PresentationApply/Private/PresentationApplyFacade.cpp":
+            continue
+        stripped = strip_comments(source)
+        for match in role_call.finditer(stripped):
+            errors.append(
+                f"{rel}:{line_of(source, match.start())}: central-style role called outside the transaction facade"
+            )
 
     return errors
 
@@ -408,6 +422,14 @@ def run_self_test() -> bool:
         if not find_violations(mutated, synthetic_roles, synthetic_roles, synthetic_interfaces):
             print(f"FAILED: gate accepted synthetic violation: {label}")
             return False
+
+    direct_role_call = dict(clean)
+    direct_role_call["Private/UI/Synthetic.cpp"] = (
+        "void Bypass() { Target->ApplyPreparedSyntheticRoleStyle(Style); }\n"
+    )
+    if not find_violations(direct_role_call, synthetic_roles, synthetic_roles, synthetic_interfaces):
+        print("FAILED: gate accepted a direct central-style role call outside the transaction facade")
+        return False
 
     # PSC-10B: the payload variant -- not the interface -- enumerates Apply. A role without a
     # branch, and a branch without a role, must both fail.

@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.24
-updated: 2026-09-09
+version: 1.25
+updated: 2026-09-10
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -258,16 +258,16 @@ Publication является atomic: registry сначала валидируе�
 
 Катастрофическое восстановление (`PerformCatastrophicRecovery`): `Shell->ClearAllLayers()` (уже существующий метод `UGV2GameShellWidgetBase`) отбрасывает физическое дерево целиком; `ActiveScreens` очищается; затем `LastCommittedDocument` реконсилируется заново обычным Prepare/Commit **без** test-инжекторов (production-поведение, даже когда восстановление вызвано инжектированным тестовым отказом) — «обычный свежий Prepare/Apply против пустого GameShell», не восстановление сериализованного физического состояния. Каждый экран создаётся заново через тот же production `ScreenFactory`; `UI-local` состояние (фокус, наведение, прогресс анимации — то, что [ADR-0035](../ADR/0035-ui-foundation-and-composition.md) уже относит к переходному) теряется, как и при обычном создании нового экрана; состав, порядок в каждом слое, значения полей и активная вкладка, заданная документом, восстанавливаются — это ровно тот канонический набор, который раздел «Route/layer rules» ниже и `FGV2KeyedCollection::ReconcilePrepared` (раздел «Reconciliation» выше) уже гарантируют для любого обычного `Reconcile`.
 
-## Apply boundary (ADR-0043 — target rule, PSC-09A/09B/10A/10B/11)
+## Apply boundary (ADR-0043)
 
-Реконсиляция выше описывает текущую реализацию: `FGV2LayeredUiReconciler` живёт в `GV2` и выполняет и semantic resolution, и физическое применение в одних и тех же `PrepareReconcile`/`CommitReconcile`. Целевое правило `ADR-0043` разделяет это на две стороны структурной границы, которую `PSC-01…14` вводит поэтапно:
+Текущая реализация разделена на две стороны структурной границы:
 
 - **`GV2` (semantic Prepare)** разрешает `screen_id` → Widget class, ресурсы, стиль/тему, порядок слоя и вложенные экраны через один `FGV2PresentationPrepareContext`, построенный из session content snapshot ([Bootstrap and Session Lifecycle § Cold start](../Architecture/BootstrapAndSessionLifecycle.md#cold-start)). Результат — самодостаточная `FGV2PreparedPresentationTransaction`, несущая уже разрешённые значения (ресурс, класс стиля, дескриптор экрана), а не Stable ID или ссылку, по которой их можно получить заново; Stable ID в ней допустим только как identity/diagnostic metadata, не как lookup key для Apply.
-- **`GV2PresentationApply` (физическое применение)** получает только эту транзакцию и выполняет Commit, откат, keyed-реконсиляцию слоёв и восстановление проекции — той же `FGV2KeyedCollection::ReconcilePrepared` формой, что уже описана выше, и тем же двухуровневым восстановлением, что описано в «Presentation health and catastrophic recovery». Единственная public entry point — `FGV2PresentationApply::Apply(transaction, result)`; второго пути, минующего её, не существует, и это проверяется по сигнатуре, а не по имени (`PSC-11`): любое экспортируемое объявление, принимающее целую транзакцию, — второй вход, как бы оно ни называлось.
+- **`GV2PresentationApply` (физическое применение)** получает только эту транзакцию и выполняет физические операции Commit/rollback, keyed-реконсиляции и восстановления проекции. Решение, какие записи применять или откатывать и в каком порядке, остаётся в `GV2`; сами записи проходят через `FGV2KeyedCollection::ReconcilePrepared` и единственную public entry point `FGV2PresentationApply::Apply(transaction, result)`. Второй путь, минующий façade, запрещён и проверяется по сигнатуре, а не по имени: любое экспортируемое объявление, принимающее целую транзакцию, — второй вход, как бы оно ни называлось.
 
 GV2-owned цели достаются через value-only ролевые интерфейсы модуля (`IGV2Prepared*Target`), а не через приведение к конкретному классу: виджет объявляет, какое физическое действие он умеет, и получает готовые значения. Роль на каждый вид операции отдельная — интерфейс с no-op методами позволил бы виджету объявить участие, забыть override и отчитаться об успешном commit'е, ничего не записав; отсутствие нужной роли у цели диагностируется как mismatch. Модулю недоступны типы snapshot, repository, package set, Screen Registry или Theme source — ему нечем их прочитать, даже если Prepare что-то упустит.
 
-Каждый вид операции (route/overlay/modal attach, keyed collection item, nested tab, resource, text/style и central style) представлен variant той же transaction. Central style готовится из `FGV2PresentationPrepareContext`; off-tree collection entries и nested screens получают тот же контекст и собственную prepared transaction до публикации. `NativePreConstruct` не применяет runtime central style; design-time preview ограничен сериализованными value defaults и не получает authority. RichText decorator читает только заранее разрешённые run/interactive/popover values; создаваемый при hover popover применяет сохранённую роль отдельной value-only transaction, не выполняя повторный Prepare. Физический перенос всех операций за единственную lower-module façade завершает `PSC-11`; semantic lookup в Apply уже запрещён.
+Каждый вид операции (route/overlay/modal attach, keyed collection item, nested tab, resource, text/style и central style) представлен variant той же transaction. Central style готовится из `FGV2PresentationPrepareContext`; off-tree collection entries и nested screens получают тот же контекст и собственную prepared transaction до публикации. `NativePreConstruct` не применяет runtime central style; design-time preview ограничен сериализованными value defaults и не получает authority. RichText decorator читает только заранее разрешённые run/interactive/popover values; создаваемый при hover popover применяет сохранённую роль отдельной value-only transaction, не выполняя повторный Prepare. Все физические операции проходят через единственную lower-module façade; semantic lookup в Apply запрещён module graph и source inventories.
 
 ## Full update policy
 

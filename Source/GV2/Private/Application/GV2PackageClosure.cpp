@@ -9,10 +9,10 @@
 
 namespace GV2PackageClosure
 {
-// PAH-04: pre_ready_discovery -- today's production callers,
-// UGV2ScreenRegistry::GetPackageLoadOrderFromGameData() and (PAH-05)
-// ResolveContentRootOwnershipFromGameData(), only ever run from Build(), from
-// LoadScreenRegistry(), from Initialize(), before any session exists.
+#if WITH_DEV_AUTOMATION_TESTS
+// Test-only projection fixture. Production receives FResolvedPackageSet from its host.
+// PAH-04: pre_ready_discovery -- automation uses the projection only while arranging
+// content before StartSession; the function is absent from non-automation builds.
 TArray<FEntry> DiscoverFromGameData()
 {
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
@@ -47,6 +47,7 @@ TArray<FEntry> DiscoverFromGameData()
     }
     return Result;
 }
+#endif
 
 TArray<FEntry> FromResolvedPackageSet(const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)
 {

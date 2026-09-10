@@ -5,7 +5,6 @@
 #include "CommonTextBlock.h"
 #include "Components/EditableTextBox.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
-#include "GV2PresentationApply/GV2WidgetTextApply.h"
 #include "UI/GV2UiTheme.h"
 
 namespace
@@ -368,20 +367,65 @@ bool UGV2TextPipeline::ResolveStyleForHeight(
 // lower module own the one physical text-transaction implementation.
 bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text)
 {
-    return FGV2WidgetTextApply::Apply(Widget, Text);
+    if (Widget == nullptr || !Text.bHasResolvedPresentation
+        || Text.ResolvedStyleClass == nullptr
+        || Text.NormalizedMarkup.Contains(TEXT("<gv2")))
+    {
+        return false;
+    }
+    GV2PresentationApply::FPreparedPlainTextOperation Operation;
+    Operation.TargetWidget = Widget;
+    Operation.Style = Text.ResolvedStyleClass;
+    Operation.Text = Text.Text;
+    Operation.ScalePolicy.BaseFontSize = Text.ResolvedBaseFontSize;
+    Operation.ScalePolicy.MinReadableFontSize = Text.ResolvedMinReadableFontSize;
+    Operation.ScalePolicy.ReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
+    Operation.ScalePolicy.ScaleCurve = Text.ResolvedFontScaleCurve;
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddPlainTextOperation(MoveTemp(Operation));
+    FGV2PresentationApplyResult Result;
+    return FGV2PresentationApply::Apply(Transaction, Result);
 }
 
 bool UGV2TextPipeline::ApplyRichText(
     UCommonRichTextBlock* Widget,
     const FGV2TextViewModel& Text,
-    const UWidget* ContextWidget)
+    const UWidget* /*ContextWidget*/)
 {
-    return FGV2WidgetTextApply::ApplyRichText(Widget, Text, ContextWidget);
+    if (Widget == nullptr || !Text.bHasResolvedPresentation
+        || (Text.NormalizedMarkup.IsEmpty() && !Text.Text.IsEmpty()))
+    {
+        return false;
+    }
+    GV2PresentationApply::FPreparedRichTextRenderOperation Operation;
+    Operation.TargetWidget = Widget;
+    Operation.Style = Text.ResolvedStyleClass;
+    Operation.DefaultStyle = Text.ResolvedDefaultStyle;
+    Operation.bHasDefaultStyle = Text.bHasResolvedDefaultStyle;
+    Operation.Markup = Text.NormalizedMarkup;
+    Operation.ScalePolicy.BaseFontSize = Text.ResolvedBaseFontSize;
+    Operation.ScalePolicy.MinReadableFontSize = Text.ResolvedMinReadableFontSize;
+    Operation.ScalePolicy.ReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
+    Operation.ScalePolicy.ScaleCurve = Text.ResolvedFontScaleCurve;
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddRichTextRenderOperation(MoveTemp(Operation));
+    FGV2PresentationApplyResult Result;
+    return FGV2PresentationApply::Apply(Transaction, Result);
 }
 
 bool UGV2TextPipeline::ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text)
 {
-    return FGV2WidgetTextApply::ApplyHint(Widget, Text);
+    if (Widget == nullptr || Text.NormalizedMarkup.Contains(TEXT("<gv2")))
+    {
+        return false;
+    }
+    GV2PresentationApply::FPreparedTextHintOperation Operation;
+    Operation.TargetWidget = Widget;
+    Operation.Text = Text.Text;
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    Transaction.AddTextHintOperation(MoveTemp(Operation));
+    FGV2PresentationApplyResult Result;
+    return FGV2PresentationApply::Apply(Transaction, Result);
 }
 
 bool UGV2TextPipeline::NormalizeMarkup(

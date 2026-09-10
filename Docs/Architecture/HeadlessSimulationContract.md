@@ -1,8 +1,8 @@
 ---
 title: Headless Simulation Contract
 status: normative
-version: 2.8
-updated: 2026-09-07
+version: 2.9
+updated: 2026-09-10
 depends_on:
   - LuaRuntimeContract.md
   - CommandsAndEvents.md
@@ -42,6 +42,7 @@ Host выполняет ровно две зафиксированные рол�
 - Валидация контента принадлежит `gv2-content`. Headless не содержит собственных assertions о schema/envelope/reference-правилах и не является вторым content validator.
 - Флаг `--check-scripts` является изолированным авторским tooling-режимом быстрой проверки корректности дерева `Scripts/` (манифест, граф зависимостей, синтаксис и экспорт модулей); он не относится ни к parity gate, ни к deterministic replay, не запускает геймплей и не расширяет runtime-ролей host-а.
 - Presentation, localization и media остаются выключенными; host не приобретает UI-обязанностей.
+- `Tools/Testing/validate_presentation_apply_module_graph.py` перечисляет все canonical `CMakeLists.txt` и запрещает portable target-ам source/link edge на UE, UMG, CommonUI или `GV2PresentationApply`. Scan охватывает стандартные CMake graph-команды; фактическую UE-free замкнутость подтверждает отдельная configure/build Headless, а не один regex.
 - Числовые бюджеты производительности контрактом не задаются: измеримой нагрузки пока нет, а фиксировать пороги по заглушке запрещено.
 
 ### Направление

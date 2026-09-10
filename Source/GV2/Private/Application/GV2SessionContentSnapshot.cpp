@@ -67,14 +67,11 @@ TArray<FString> FGV2ResolvedImageCatalog::GetResourceIds() const
     return Result;
 }
 
-// PAH-04: pre_ready_discovery -- only called from StartSession() (directly, or via
-// FGV2SessionCoordinator::StartSession before this session's Status.bIsReady is ever set
-// true. The fallback ResolvePackageSetFromDirectories call inside mirrors
-// LoadPortableRuntimeSources's own pre-Ready fallback discovery for a caller with no
-// ResolvedPackageSet of its own.
+// Called only from FGV2SessionCoordinator::StartSession before Ready. The package set is
+// mandatory and already resolved by the host bootstrap layer.
 bool FGV2SessionContentCandidate::Build(
     const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
-    const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet,
+    const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet,
     const TArray<FGV2SchemaPackageRoot>& SchemaPackageRoots,
     std::vector<GV2RuntimeCore::FRuntimeSource> LuaSources,
     FGV2SessionContentSnapshot& OutSnapshot,
@@ -85,57 +82,25 @@ bool FGV2SessionContentCandidate::Build(
     OutSnapshot.Repository = PinnedRepository;
     OutSnapshot.RepositoryContentHash = UTF8_TO_TCHAR(PinnedRepository.GetContentHash().c_str());
 
-    // A caller with no ResolvedPackageSet of its own (mostly tests -- mirrors
-    // LoadPortableRuntimeSources's own fallback) still gets a genuine one here, resolved
-    // from the same SchemaPackageRoots LoadPortableRuntimeSources already derived --
-    // OrderedPackageIds/package_set_fingerprint/Screen Registry closure below all read from
-    // this ONE local, never an empty/partial fallback for a reason unrelated to the
-    // caller's actual package set.
-    std::optional<GV2ContentHostSupport::FResolvedPackageSet> FallbackResolvedSet;
-    if (ResolvedPackageSet == nullptr)
-    {
-        std::vector<std::filesystem::path> FallbackRoots;
-        FallbackRoots.reserve(SchemaPackageRoots.Num());
-        for (const FGV2SchemaPackageRoot& Root : SchemaPackageRoots)
-        {
-            FallbackRoots.emplace_back(TCHAR_TO_UTF8(*Root.RootDirectory));
-        }
-        std::vector<GV2ContentCore::FDiagnostic> FallbackDiagnostics;
-        FallbackResolvedSet = GV2ContentHostSupport::ResolvePackageSetFromDirectories(FallbackRoots, FallbackDiagnostics);
-    }
-    const GV2ContentHostSupport::FResolvedPackageSet* EffectiveSet = ResolvedPackageSet != nullptr
-        ? ResolvedPackageSet
-        : (FallbackResolvedSet.has_value() ? &*FallbackResolvedSet : nullptr);
-
     OutSnapshot.OrderedPackageIds.Reset();
-    if (EffectiveSet != nullptr)
+    OutSnapshot.OrderedPackageIds.Reserve(static_cast<int32>(ResolvedPackageSet.OrderedSources.size()));
+    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet.OrderedSources)
     {
-        OutSnapshot.OrderedPackageIds.Reserve(static_cast<int32>(EffectiveSet->OrderedSources.size()));
-        for (const GV2ContentHostSupport::FResolvedPackageSource& Source : EffectiveSet->OrderedSources)
-        {
-            OutSnapshot.OrderedPackageIds.Add(UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()));
-        }
+        OutSnapshot.OrderedPackageIds.Add(UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()));
+    }
 
-        // package_set_fingerprint: ordered {package_id, fingerprint} -- reuses PSC-03's
-        // per-package ComputePackageFingerprint, so any semantic manifest field change (any
-        // package, known or not to FPackageDescriptor) changes this too.
-        std::vector<std::pair<std::string, GV2ContentCore::FValue>> Fields;
-        for (const GV2ContentHostSupport::FResolvedPackageSource& Source : EffectiveSet->OrderedSources)
-        {
-            const std::string Fingerprint = GV2ContentHostSupport::ComputePackageFingerprint(
-                Source.Descriptor, Source.CanonicalManifestHash);
-            Fields.emplace_back(Source.Descriptor.GetPackageId(), GV2ContentCore::FValue::MakeString(Fingerprint));
-        }
-        OutSnapshot.PackageSetFingerprint = UTF8_TO_TCHAR(
-            GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue::MakeObject(std::move(Fields))).c_str());
-    }
-    else
+    // package_set_fingerprint: ordered {package_id, fingerprint} -- reuses PSC-03's
+    // per-package ComputePackageFingerprint, so any semantic manifest field change (any
+    // package, known or not to FPackageDescriptor) changes this too.
+    std::vector<std::pair<std::string, GV2ContentCore::FValue>> Fields;
+    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedPackageSet.OrderedSources)
     {
-        for (const FGV2SchemaPackageRoot& Root : SchemaPackageRoots)
-        {
-            OutSnapshot.OrderedPackageIds.Add(Root.PackageId);
-        }
+        const std::string Fingerprint = GV2ContentHostSupport::ComputePackageFingerprint(
+            Source.Descriptor, Source.CanonicalManifestHash);
+        Fields.emplace_back(Source.Descriptor.GetPackageId(), GV2ContentCore::FValue::MakeString(Fingerprint));
     }
+    OutSnapshot.PackageSetFingerprint = UTF8_TO_TCHAR(
+        GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue::MakeObject(std::move(Fields))).c_str());
 
     OutSnapshot.LuaSources = std::move(LuaSources);
 
@@ -165,23 +130,9 @@ bool FGV2SessionContentCandidate::Build(
         OutFault = {"ScreenRegistryNotReady", "UGV2ScreenRegistrySettings has no configured RegistryAsset."};
         return false;
     }
-    // ClosureEntries is a pure projection (PSC-02) of the same EffectiveSet used above --
-    // when the caller supplied one, or the fallback resolved from SchemaPackageRoots
-    // otherwise; falls back to the raw SchemaPackageRoots directly only if that fallback
-    // resolution itself failed, so Build() below still has a real closure to work with.
-    TArray<GV2PackageClosure::FEntry> ClosureEntries;
-    if (EffectiveSet != nullptr)
-    {
-        ClosureEntries = GV2PackageClosure::FromResolvedPackageSet(*EffectiveSet);
-    }
-    else
-    {
-        ClosureEntries.Reserve(SchemaPackageRoots.Num());
-        for (const FGV2SchemaPackageRoot& SchemaRoot : SchemaPackageRoots)
-        {
-            ClosureEntries.Add(GV2PackageClosure::FEntry{SchemaRoot.PackageId, SchemaRoot.RootDirectory});
-        }
-    }
+    // ClosureEntries is a pure projection of the same mandatory package set used above.
+    const TArray<GV2PackageClosure::FEntry> ClosureEntries =
+        GV2PackageClosure::FromResolvedPackageSet(ResolvedPackageSet);
     FString RegistryError;
     if (!RegistryAsset->Build(ClosureEntries, RegistryError))
     {

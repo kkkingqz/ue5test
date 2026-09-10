@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 3.3
-updated: 2026-09-07
+version: 3.4
+updated: 2026-09-10
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -82,6 +82,8 @@ Public readiness — один bool `is_ready`. Он становится true т
 Start sequence: `GameInstance` start → Screen Registry ready → package modules register and freeze registries → package-owned `start` hook may create its initial gameplay state exclusively through a registered Command Dispatcher command → presentation source resolves the resulting state and publishes an initial Screen request → coordinator забирает pending screen → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit → активный экран отображается во viewport. Screen replacement выполняется после выхода из Lua. C++ не знает ни стартовой команды пакета, ни `screen_id`, ни Widget class.
 
 Интерактивный Editor использует data-driven development profile `UGV2RuntimeSettings.EditorPackageRoots` из `DefaultGame.ini`: production profile `core + textsystem + rh` открывает `textsystem:screen.location` из начального RH gameplay-state. Один и тот же resolved package set (`FResolvedPackageSet`, ADR-0043 D1) обязан использоваться для repository build, для загрузки package Lua sources, для обнаружения `ui_field`/`ui_value` схем и для построения Screen Registry/Image Catalog/Theme candidate snapshot; расхождение этих наборов, включая повторное самостоятельное discovery канонического замыкания любым из них, запрещено (`PAH-R3`) — второй вывод того же факта является вторым авторитетом, даже когда сегодня совпадает с первым. Обнаружение схем и остальных частей snapshot происходит один раз за сессию, синхронно внутри `StartSession()`, до перехода в `Ready` — сессия владеет своим snapshot так же, как `PinnedRepository` (его частью), и он не переживает `EndSession()`. Commandlet, unattended automation, Headless и Shipping игнорируют Editor profile и используют обычный package set; automation, которой нужен fixture, подключает `sample` явно. Automatic debug fixture запрещён в Shipping и не добавляет отдельный test API.
+
+Production-вход coordinator — только `StartSession(PinnedRepository, RepositoryVersion, const FResolvedPackageSet&)`. Отсутствующий set является ошибкой host bootstrap: coordinator/candidate не выполняют fallback discovery и не могут заменить переданное множество каноническим каталогом. Упрощённый overload без set существует только под `WITH_DEV_AUTOMATION_TESTS` как test fixture и не входит в production call inventory.
 
 `FGV2SessionCoordinator` является private UE owner active/candidate session. Он создаёт для каждой generation отдельную portable runtime session, Bridge context, ingress queue, UI binding registry и operation registry. Ни один из этих объектов не переживает уничтожение owning session. `GV2RuntimeCore` не зависит от UObject/UMG и назначает вызывающий Game Thread owner thread-ом VM; standalone host использует тот же lifecycle на своём worker thread.
 

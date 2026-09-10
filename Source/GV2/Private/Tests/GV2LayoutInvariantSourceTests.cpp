@@ -93,6 +93,11 @@ const TArray<FGV2LayoutSourceException>& GetLayoutSourceExceptions()
             TEXT("SetWidthOverride"),
             TEXT("Hairline divider thickness: same reasoning as SetHeightOverride above (vertical-orientation separators use the width axis instead)."),
         },
+        {
+            TEXT("GV2RuntimeCoreTests.cpp"),
+            TEXT("SetHeightOverride"),
+            TEXT("PSC-13 design-time negative fixture deliberately writes a sentinel physical value before NativePreConstruct, then proves preview keeps it without consulting runtime authority; it is not production layout."),
+        },
     };
     return Exceptions;
 }

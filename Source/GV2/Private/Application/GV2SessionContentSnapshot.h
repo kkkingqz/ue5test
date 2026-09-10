@@ -117,7 +117,7 @@ public:
     // caller must not create the Lua VM when this returns false.
     static bool Build(
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
-        const GV2ContentHostSupport::FResolvedPackageSet* ResolvedPackageSet,
+        const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet,
         const TArray<FGV2SchemaPackageRoot>& SchemaPackageRoots,
         std::vector<GV2RuntimeCore::FRuntimeSource> LuaSources,
         FGV2SessionContentSnapshot& OutSnapshot,
