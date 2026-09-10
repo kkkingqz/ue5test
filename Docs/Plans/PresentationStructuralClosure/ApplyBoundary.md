@@ -1,8 +1,8 @@
 ---
 title: Apply Boundary Tasks
 status: active
-version: 1.7
-updated: 2026-09-09
+version: 1.8
+updated: 2026-09-10
 depends_on:
   - README.md
   - Payload.md
@@ -91,7 +91,7 @@ Build graph доказывает отсутствие project authority types. �
 
     Там же исправлены утверждения, ставшие ложными: ~20 комментариев описывали удалённый adapter как действующий механизм; гейт `validate_central_style_runtime_boundary` держал исключение, ключом которого было имя удалённого файла — то есть готовую лазейку; `Docs/UI/README.md` называл поверхность холодного восстановления одним классом, тогда как фактических файлов в этой роли два.
 
-- [ ] **PSC-12 — Атомарно мигрировать Widget `UCLASS` paths и ассеты**
+- [x] **PSC-12 — Атомарно мигрировать Widget `UCLASS` paths и ассеты**
   - Зависимости: PSC-11.
   - Инвариант: до task дерево целиком использует `/Script/GV2`; после task — `/Script/GV2PresentationApply`; ни один commit не содержит смешанную или неразрешимую модель.
   - Не считается закрытием: перенос classes в `PSC-11`; постоянные redirects; известный список ассетов; пересохранение только `/Game/UI`; source-only проверка без загрузки Blueprint; попытка довести прерванную миграцию вручную вместо возврата к точке отката.
@@ -106,11 +106,16 @@ Build graph доказывает отсутствие project authority types. �
     - commit содержит C++ path move и все affected UAssets вместе; промежуточное состояние не фиксируется;
     - **точка возврата названа явно и проверена до начала**: ею является `HEAD` на момент начала миграции — тот коммит, с которого стартует единственный change set задачи; его hash фиксируется в записи о реализации, а не заранее в этом пункте, потому что записанный заранее hash перестаёт указывать на нужное дерево при любом коммите между записью и стартом. Проверяемое свойство точки возврата одно: дерево на ней целиком использует прежние пути `/Script/GV2`; при обрыве миграции на любом шаге — включая частично пересохранённые ассеты и неснятые редиректы — восстановление выполняется возвратом рабочего дерева к этому коммиту целиком, а не доведением наполовину мигрированного состояния.
   - Evidence: `Source/GV2PresentationApply/`, удалённые/перенесённые `Source/GV2/Public|Private/UI` classes, `Content/`, временный diff `Config/DefaultEngine.ini`, Asset Registry reports и Unreal MCP results.
+  - **Реализация (2026-09-10):** точка возврата — `4c5c30e28b50237150c0ba1ccf35c377461c2bb7`; на ней старый header существует только в `Source/GV2`, а новый path отсутствует. `validate_apply_move_closure` выводит из prepared-ролей 15 Widget `UCLASS` и исключает role-интерфейсы; зависимые value/physical types перенесены вместе с ними, authority-aware часть осталась в `GV2` за DTO boundary.
+
+    Baseline и итоговый Asset Registry inventory содержат по 46 Widget Blueprint; фактический affected set — 17 assets. Во время единственной миграции временные redirects покрывали переносимые reflected classes/types; Unreal MCP загрузил и скомпилировал все 46 Blueprint, пересохранил 17 affected assets, после чего redirects удалены. После чистого запуска без redirects повторный MCP sweep дал `requested=46`, `compiled=46`, `failures=[]`, `dirty=[]`; у всех 17 affected assets `NativeParentClass` указывает в `/Script/GV2PresentationApply`. Бинарный sweep не нашёл старых ссылок на перенесённые symbols. Component contract и полный UE Automation run прошли (`136/136`); Editor build, 16 structural gates и Headless/CMake `100/100` также зелёные.
+
+    Атомарный migration commit `543dd420a117d90b3366a0ade972e515f4a04f91` содержит C++ path move и все 17 UAssets; `Config/` в commit отсутствует. Попутно базовый тест `GV2.UI.DeclaredComposite` переименован в `GV2.UI.DeclaredComposite.BaseContract`: прежнее имя было родителем семи соседних тестов и оставляло все восемь `Not Run`; итоговые `136/136` подтверждают их фактическое выполнение.
 
 ## Проверка milestone
 
-- [ ] Project authority type не может попасть в Apply module через UBT edge.
-- [ ] UE loading/settings/filesystem capability отвергается отдельным full-source-tree gate.
-- [ ] Headless/CMake graph не содержит Apply module или его sources.
-- [ ] До `PSC-12` class paths не меняются; после него старые paths и redirects отсутствуют.
-- [ ] Все найденные Widget Blueprint загружаются и компилируются после чистого reload.
+- [x] Project authority type не может попасть в Apply module через UBT edge.
+- [x] UE loading/settings/filesystem capability отвергается отдельным full-source-tree gate.
+- [x] Headless/CMake graph не содержит Apply module или его sources.
+- [x] До `PSC-12` class paths не меняются; после него старые paths и redirects отсутствуют.
+- [x] Все найденные Widget Blueprint загружаются и компилируются после чистого reload.
