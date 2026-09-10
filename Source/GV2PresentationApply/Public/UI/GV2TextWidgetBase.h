@@ -17,10 +17,13 @@ class GV2PRESENTATIONAPPLY_API UGV2TextWidgetBase
     , public IGV2ScreenFieldHost
     , public IGV2TextPipelineHost
     , public IGV2PreparedTextTarget
+    , public IGV2PreparedViewportRefreshTarget
 {
     GENERATED_BODY()
 
 public:
+    virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;
+
     // PSC-11: value sink for the prepared text operation.
     virtual bool ApplyPreparedText(
         const GV2PresentationApply::FPreparedTextValue& Value,

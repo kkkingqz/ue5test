@@ -28,10 +28,13 @@ class GV2PRESENTATIONAPPLY_API UGV2CheckboxWidgetBase
     , public IGV2ScreenFieldHost
     , public IGV2TextPipelineHost
     , public IGV2PreparedCheckboxStyleTarget
+    , public IGV2PreparedViewportRefreshTarget
 {
     GENERATED_BODY()
 
 public:
+    virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;
+
     // PSC-11: value sink for this class's central-style role. It only forwards finished
     // values into the physical write that already existed; no decision happens here.
     virtual void ApplyPreparedCheckboxStyle(const GV2PresentationApply::FPreparedCheckboxStyle& Style) override

@@ -29,10 +29,13 @@ class GV2PRESENTATIONAPPLY_API UGV2DropdownSelectWidgetBase
     , public IGV2PreparedKeyedCollectionTarget
     , public IGV2PreparedBooleanTarget
     , public IGV2PreparedDropdownStyleTarget
+    , public IGV2PreparedViewportRefreshTarget
 {
     GENERATED_BODY()
 
 public:
+    virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;
+
     // PSC-11: value sink for this class's central-style role. It only forwards finished
     // values into the physical write that already existed; no decision happens here.
     virtual void ApplyPreparedDropdownStyle(const GV2PresentationApply::FPreparedDropdownStyle& Style) override
@@ -158,6 +161,10 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "GV2|UI|Identity", meta = (ShowOnlyInnerProperties))
     FGV2UiPropertyHostState PropertyHostState;
+
+    GV2PresentationApply::FPreparedViewportScalePolicy PreparedPopupScale;
+    float PreparedMaxPopupHeight = 0.0f;
+    bool bHasPreparedPopupScale = false;
 
     bool bIsOpen = false;
 };

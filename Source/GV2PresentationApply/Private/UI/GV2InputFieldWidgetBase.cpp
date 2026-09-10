@@ -4,6 +4,52 @@
 #include "Components/EditableTextBox.h"
 #include "GV2WidgetTextApply.h"
 
+void UGV2InputFieldWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    if (ViewportHeight <= 0.0f)
+    {
+        return;
+    }
+
+    GV2PresentationApply::FPreparedTextScalePolicy Policy;
+    bool bHasPolicy = false;
+    if (!AppliedLabelText.StyleToken.IsNone() && AppliedLabelText.bHasResolvedPresentation)
+    {
+        Policy.BaseFontSize = AppliedLabelText.ResolvedBaseFontSize;
+        Policy.MinReadableFontSize = AppliedLabelText.ResolvedMinReadableFontSize;
+        Policy.ReferenceViewportHeight = AppliedLabelText.ResolvedReferenceViewportHeight;
+        Policy.ScaleCurve = AppliedLabelText.ResolvedFontScaleCurve;
+        bHasPolicy = true;
+    }
+    else if (bHasPreparedDefaultLabelScale)
+    {
+        Policy = PreparedDefaultLabelScale;
+        bHasPolicy = true;
+    }
+    else if (AppliedLabelText.bHasResolvedPresentation)
+    {
+        Policy.BaseFontSize = AppliedLabelText.ResolvedBaseFontSize;
+        Policy.MinReadableFontSize = AppliedLabelText.ResolvedMinReadableFontSize;
+        Policy.ReferenceViewportHeight = AppliedLabelText.ResolvedReferenceViewportHeight;
+        Policy.ScaleCurve = AppliedLabelText.ResolvedFontScaleCurve;
+        bHasPolicy = true;
+    }
+
+    if (!bHasPolicy)
+    {
+        return;
+    }
+
+    const float FontSize = GV2PresentationApply::EvaluatePreparedFontSize(Policy, ViewportHeight);
+    if (EditableTextBox != nullptr)
+    {
+        FEditableTextBoxStyle Style = EditableTextBox->WidgetStyle;
+        Style.TextStyle.Font.Size = FontSize;
+        EditableTextBox->SetWidgetStyle(Style);
+    }
+    FGV2WidgetTextApply::RefreshFont(LabelText, Policy, ViewportHeight);
+}
+
 void UGV2InputFieldWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
@@ -142,6 +188,8 @@ void UGV2InputFieldWidgetBase::ApplyInputFieldStyleValues(
     TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
     const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale)
 {
+    PreparedDefaultLabelScale = InDefaultLabelScale;
+    bHasPreparedDefaultLabelScale = true;
     if (EditableTextBox == nullptr)
     {
         return;

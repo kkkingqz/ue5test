@@ -277,3 +277,20 @@ class GV2PRESENTATIONAPPLY_API IGV2PreparedRichTextPopoverStyleTarget
 public:
     virtual void ApplyPreparedRichTextPopoverStyle(const GV2PresentationApply::FPreparedRichTextPopoverStyle& Style) = 0;
 };
+
+// PSC-14: the role implemented by widgets whose already-prepared physical presentation
+// depends on viewport height. It receives geometry only and must use values retained from
+// the accepted transaction; reaching a Theme, snapshot or other authority is forbidden.
+// The Apply facade discovers this role while recursively walking an already-committed
+// screen, so adding a viewport-dependent widget without the role is caught by the
+// source-derived coverage gate and not hidden behind a default no-op.
+UINTERFACE(MinimalAPI, meta = (CannotImplementInterfaceInBlueprint))
+class UGV2PreparedViewportRefreshTarget : public UInterface { GENERATED_BODY() };
+
+class GV2PRESENTATIONAPPLY_API IGV2PreparedViewportRefreshTarget
+{
+    GENERATED_BODY()
+
+public:
+    virtual void RefreshPreparedViewportPresentation(float ViewportHeight) = 0;
+};

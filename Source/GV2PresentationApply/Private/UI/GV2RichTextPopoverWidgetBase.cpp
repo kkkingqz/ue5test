@@ -8,6 +8,28 @@
 #include "GV2WidgetTextApply.h"
 #include "UI/GV2UiCapability.h"
 
+void UGV2RichTextPopoverWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    if (!PreparedStyle.bIsResolved || ViewportHeight <= 0.0f)
+    {
+        return;
+    }
+    const GV2PresentationApply::FPreparedRichTextPopoverStyle& Style = PreparedStyle.PopoverStyle;
+    if (PopoverWidth != nullptr)
+    {
+        const float ViewportScale = GV2PresentationApply::EvaluatePreparedViewportScale(
+            Style.Scale,
+            ViewportHeight);
+        PopoverWidth->SetMaxDesiredWidth(Style.MaxWidth * ViewportScale);
+        PopoverWidth->SetMaxDesiredHeight(Style.MaxHeight * ViewportScale);
+    }
+    FGV2WidgetTextApply::RefreshFont(TitleText, Model.Title, ViewportHeight);
+    if (DescriptionText != nullptr)
+    {
+        DescriptionText->RefreshPreparedViewportPresentation(ViewportHeight);
+    }
+}
+
 void UGV2RichTextPopoverWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();

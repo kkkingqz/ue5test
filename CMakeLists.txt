@@ -372,6 +372,22 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_central_style_runtime_boundary.py"
             "--self-test"
     )
+    # PSC-14: derive the viewport-dependent widget set from canonical production scaling
+    # calls and require each class to implement the prepared geometry-refresh role. The
+    # matching Unreal automation test exercises the actual process-wide viewport event.
+    add_test(
+        NAME viewport_refresh_coverage_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_viewport_refresh_coverage.py"
+    )
+    add_test(
+        NAME viewport_refresh_coverage_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_viewport_refresh_coverage.py"
+            "--self-test"
+    )
     # PSC-09B (ADR-0043 D2/D3): the set of IGV2PropertyConsumer kinds is derived from
     # GV2PropertyConsumers.h's own class declarations, not a task-authored list; every one
     # of them must route its own Commit through the transaction protocol.

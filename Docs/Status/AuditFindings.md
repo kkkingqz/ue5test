@@ -1,8 +1,8 @@
 ---
 title: "GV2 Presentation Authority — повторное архитектурное ревью"
 status: informative
-version: 1.1
-updated: 2026-09-07
+version: 1.2
+updated: 2026-09-10
 depends_on:
   - ImplementationStatus.md
   - ../ADR/0042-presentation-authority-and-publication.md
@@ -27,6 +27,9 @@ Reviewed HEAD:
 ```text
 036e16d113a5d446cb5575964907de2b86a3788d
 ```
+
+Состояние этого commit является входом ревью, а не текущим выводом. Ниже у каждой
+находки записан итог после выполнения плана `PresentationStructuralClosure`.
 
 ## 2. Общий вывод
 
@@ -79,6 +82,7 @@ global settings / DataAsset
 | `PAH-R5` | **P1/P2** | package isolation | Image catalog валидирует disabled packages до closure filtering |
 | `PAH-R6` | **P2** | package identity | `ue_content_roots` влияет на runtime authorization, но не входит в package fingerprint |
 | `PAH-R7` | **P1/P2** | verification architecture | INV-P1/INV-P5 gates перечисляют authorities вручную и дали false green |
+| `PSC-AF-01` | **P1** | viewport lifecycle | Committed presentation не обновляла viewport-derived значения после resize |
 
 ---
 
@@ -87,6 +91,8 @@ global settings / DataAsset
 Находки `PAH-R1…R7` закрывает план [PresentationStructuralClosure](../Plans/PresentationStructuralClosure/README.md) (`PSC-01…14`) на основании [ADR-0043](../ADR/0043-presentation-apply-boundary.md). Соответствие находка → задача приведено в его README.
 
 ## PAH-R1 — P1 — Theme повторяет defect класса `STATUS-012`
+
+*(Закрыто задачами PSC-10A и PSC-10B)* Theme разрешается только в Prepare, concrete style/scale payload проходит через общую транзакцию, а runtime-accessors удалены и запрещены structural gates.
 
 ### Проблема
 
@@ -229,6 +235,8 @@ Commit должен только применять подготовленные
 
 ## PAH-R2 — P1 — принятого `FSessionContentSnapshot` фактически нет
 
+*(Закрыто задачами PSC-04, PSC-05 и PSC-06)* Coordinator публикует один immutable `FGV2SessionContentSnapshot`; candidate остаётся private до успешного initial Commit, а прежний snapshot живёт независимо до controlled replacement.
+
 ### Принятое решение
 
 Proposal/ADR определяли:
@@ -328,6 +336,8 @@ Runtime consumers получают authority только через snapshot/co
 
 ## PAH-R3 — P1 — Screen Registry использует другой package authority
 
+*(Закрыто задачами PSC-02, PSC-04 и PSC-08)* Repository, Lua и presentation builders получают один `FResolvedPackageSet`, а top-level и nested screen resolution читают registry только из snapshot-backed PrepareContext.
+
 ### Проблема
 
 `UGV2RuntimeSubsystem::Initialize()` делает:
@@ -405,6 +415,8 @@ ResolveContentRootOwnershipFromGameData()
 
 ## PAH-R4 — P1/P2 — nested Tabs обходят session Registry authority
 
+*(Закрыто задачей PSC-08)* Embedded screen обязан пройти через `PrepareContext.ResolveScreen`; configured Registry и generic class fallback из production-пути удалены.
+
 ### Проблема
 
 Top-level screen resolution теперь идёт через:
@@ -479,6 +491,8 @@ Prepare failure
 
 ## PAH-R5 — P1/P2 — disabled resource package влияет на session bootstrap
 
+*(Закрыто задачей PSC-07)* Resource builder сначала перечисляет roots exact enabled package set и не открывает файлы отключённых пакетов; corrupt-disabled-package scenario проходит через production bootstrap.
+
 ### Проблема
 
 `UGV2ImageResourceCatalog::BuildFromPackageClosure()` делает:
@@ -549,6 +563,8 @@ then filter
 
 ## PAH-R6 — P2 — `ue_content_roots` отсутствует в package fingerprint
 
+*(Закрыто задачей PSC-03)* Canonical hash полного manifest входит в package fingerprint, поэтому host-specific fields меняют package identity без переноса UE-семантики в portable descriptor или Headless run digest.
+
 ### Наблюдение
 
 `ue_content_roots` теперь влияет на runtime authorization Screen assets:
@@ -602,6 +618,8 @@ Fingerprint означает identity всего package.
 ---
 
 ## PAH-R7 — P1/P2 — verification gates перечисляют authorities вручную
+
+*(Закрыто задачей PSC-13)* Первичные гарантии перенесены на compiler-exhaustive enum/variant, declaration/field inventories и автоматически выведенные UBT/CMake/module/source graphs; scans конкретных имён оставлены только secondary checks.
 
 ### Что сделано хорошо
 
@@ -680,6 +698,38 @@ Commit roots cannot reach authority interface
 ```
 
 вместо перечисления всех возможных authority implementations.
+
+---
+
+## PSC-AF-01 — P1 — committed presentation не реагировала на resize viewport
+
+*(Закрыто задачей PSC-14)* Runtime подписан на production `FViewport::ViewportResizedEvent` и через единственную Apply façade обновляет только viewport-derived значения из уже prepared policies, сохраняя Widget identity и UI-local state.
+
+### Проблема
+
+После PSC-10B widget lifecycle перестал читать Theme, но font/scale policy применялась только
+при document Commit. Изменение размеров уже показанного viewport не создавало операции и
+оставляло физический размер текста прежним.
+
+### Причина false green
+
+Прежние layout/style tests создавали либо повторно применяли presentation отдельно для
+каждого размера. Они проверяли pure calculation и состояние после Apply, но не выполняли
+переход `resize` на том же committed Widget через production Engine event.
+
+### Исправление и защита
+
+`ViewportRefresh` проходит через существующую prepared transaction façade и рекурсивно
+вызывает value-only role только у source-derived множества viewport-dependent Widgets.
+Операция получает текущую геометрию и использует сохранённые resolved policies; Theme,
+snapshot и document Reconcile недоступны. Source gate имеет negative fixtures для
+отсутствующей роли и реализации. UE Automation меняет реальный `FSceneViewport` с 720p на
+2160p и доказывает рост шрифта у того же экземпляра экрана и текста без новой публикации
+документа.
+
+Ограничение гейта явно сохранено: новый параллельный scaling API может не совпасть с
+canonical markers, поэтому source inventory является secondary defense, а layout audit
+обязан отклонять второй механизм.
 
 ---
 
@@ -766,7 +816,9 @@ STATUS-003
 STATUS-011
 ```
 
-Новые findings этого ревью в `ImplementationStatus.md` пока не зарегистрированы.
+На reviewed HEAD новые findings ещё не были зарегистрированы в `ImplementationStatus.md`.
+После выполнения `PresentationStructuralClosure` все они закрыты, поэтому новых status gaps
+не создавалось; `STATUS-001…003` и `STATUS-011` не относятся к этому плану и не изменялись.
 
 ---
 
@@ -875,7 +927,8 @@ No presentation runtime function reachable after Ready can reach filesystem/conf
 
 # 8. Suggested status entries
 
-Если используется `ImplementationStatus.md`, новые подтверждённые gaps можно оформить как:
+Этот раздел фиксирует варианты, предложенные на reviewed HEAD. После закрытия всех findings
+они не переносятся в `ImplementationStatus.md`:
 
 ```text
 STATUS-013
@@ -901,7 +954,7 @@ Image resource catalog validates excluded packages before package-closure filter
 
 # 9. Final assessment
 
-Текущий код значительно сильнее состояния до `PresentationAuthorityHardening`.
+Код reviewed HEAD значительно сильнее состояния до `PresentationAuthorityHardening`.
 
 Особенно удачны:
 
@@ -945,3 +998,8 @@ one session-owned immutable authority
 При этом вводить Compiler/Executor немедленно всё ещё не требуется.
 
 Сначала следует реализовать настоящий `FSessionContentSnapshot` и удалить parallel authority surfaces. После этого повторная проверка Prepare/Commit boundary даст уже достоверный ответ, нужен ли дополнительный compiler/executor layer.
+
+Итог закрытия 2026-09-10: `PresentationStructuralClosure` реализовал snapshot, exact package
+set, self-contained Prepare/Apply boundary и structural enumerators. Дополнительный
+Compiler/Executor не потребовался. Обнаруженный при финальной проверке resize regression
+зафиксирован как `PSC-AF-01` и закрыт production-path тестом; выживших gaps этого раунда нет.

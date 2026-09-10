@@ -67,6 +67,7 @@ public:
             if (bPopoverInitialized)
             {
                 ActivePopover.Reset(Popover);
+                Widget->SetActivePopoverForViewportRefresh(Popover);
                 SlateToolTip->SetContentWidget(Popover->TakeWidget());
                 return;
             }
@@ -81,6 +82,10 @@ public:
     }
     virtual void OnClosed() override
     {
+        if (UGV2RichTextWidgetBase* Widget = Owner.Get())
+        {
+            Widget->ClearActivePopoverForViewportRefresh(ActivePopover.Get());
+        }
         SlateToolTip->ResetContentWidget();
         ActivePopover.Reset();
     }
@@ -95,6 +100,36 @@ private:
     TSharedRef<SToolTip> SlateToolTip;
     TStrongObjectPtr<UGV2RichTextPopoverWidgetBase> ActivePopover;
 };
+}
+
+void UGV2RichTextWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    if (UCommonRichTextBlock* Renderer = GetRichTextBlock(); PreparedStyle.bIsResolved && Renderer != nullptr)
+    {
+        const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle =
+            FindPreparedTokenStyle(CurrentText.StyleToken);
+        if (TokenStyle.bResolved)
+        {
+            Renderer->SetDefaultTextStyle(ScalePreparedTokenStyleAtHeight(TokenStyle, ViewportHeight));
+        }
+    }
+    if (UGV2RichTextPopoverWidgetBase* Popover = ActivePopoverForViewportRefresh.Get())
+    {
+        Popover->RefreshPreparedViewportPresentation(ViewportHeight);
+    }
+}
+
+void UGV2RichTextWidgetBase::SetActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover)
+{
+    ActivePopoverForViewportRefresh = Popover;
+}
+
+void UGV2RichTextWidgetBase::ClearActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover)
+{
+    if (ActivePopoverForViewportRefresh.Get() == Popover)
+    {
+        ActivePopoverForViewportRefresh.Reset();
+    }
 }
 
 void UGV2RichTextWidgetBase::NativePreConstruct()
@@ -118,6 +153,7 @@ void UGV2RichTextWidgetBase::NativeDestruct()
     PreparedStyle = {};
     PreparedPopoverClass = nullptr;
     PreparedStyleAnchors.Reset();
+    ActivePopoverForViewportRefresh.Reset();
     Super::NativeDestruct();
 }
 
@@ -228,14 +264,23 @@ TSubclassOf<UCommonTextStyle> UGV2RichTextWidgetBase::ResolvePreparedStyleClass(
 FTextBlockStyle UGV2RichTextWidgetBase::ScalePreparedTokenStyle(
     const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle) const
 {
+    return ScalePreparedTokenStyleAtHeight(
+        TokenStyle,
+        GV2PresentationApply::ResolveLiveViewportHeight(
+            this,
+            PreparedStyle.ScalePolicy.ReferenceViewportHeight));
+}
+
+FTextBlockStyle UGV2RichTextWidgetBase::ScalePreparedTokenStyleAtHeight(
+    const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle,
+    float ViewportHeight) const
+{
     FTextBlockStyle Result = TokenStyle.BaseStyle;
     if (TokenStyle.UnscaledFontSize > 0.0f)
     {
         GV2PresentationApply::FPreparedTextScalePolicy Policy = PreparedStyle.ScalePolicy;
         Policy.BaseFontSize = TokenStyle.UnscaledFontSize;
-        Result.SetFontSize(GV2PresentationApply::EvaluatePreparedFontSize(
-            Policy,
-            GV2PresentationApply::ResolveLiveViewportHeight(this, Policy.ReferenceViewportHeight)));
+        Result.SetFontSize(GV2PresentationApply::EvaluatePreparedFontSize(Policy, ViewportHeight));
     }
     return Result;
 }

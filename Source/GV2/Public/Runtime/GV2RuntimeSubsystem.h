@@ -14,6 +14,7 @@ class FGV2RepositoryPublisher;
 class FGV2ScreenPlacement;
 class FGV2SessionContentSnapshot;
 class FGV2SessionCoordinator;
+class FViewport;
 class UGV2GameShellWidgetBase;
 class UGV2ScreenWidgetBase;
 class UUserWidget;
@@ -92,6 +93,7 @@ private:
     UClass* ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const;
     UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
+    void HandleViewportResized(FViewport* Viewport, uint32 Unused);
     bool HandleDocumentRequested(const FGV2UiDocumentViewModel& Document);
     void ReplaceActiveScreen(UUserWidget* NewScreen);
 
@@ -118,6 +120,7 @@ private:
     TPimplPtr<FGV2LayeredUiReconciler> Reconciler;
 
     FDelegateHandle StartGameInstanceHandle;
+    FDelegateHandle ViewportResizedHandle;
     FString RepositoryBuildError;
 
     // PSC-02 (ADR-0043 D1/D5): resolved exactly once in Initialize() -- repository build,

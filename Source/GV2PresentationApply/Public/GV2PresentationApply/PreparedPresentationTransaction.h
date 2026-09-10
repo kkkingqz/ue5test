@@ -372,6 +372,7 @@ enum class EGV2PreparedOperationKind : uint8
     RichTextRender,
     TextHint,
     CentralStyle,
+    ViewportRefresh,
 };
 
 // PSC-10B (ADR-0043 D3): central style as prepared operations. The payload is a VARIANT
@@ -520,6 +521,17 @@ struct GV2PRESENTATIONAPPLY_API FPreparedCentralStyleOperation
     FPreparedCentralStylePayload Payload;
 };
 
+// PSC-14: a presentation-only reaction to an Engine viewport resize. RootWidget is an
+// already-committed screen and ViewportHeight is current physical geometry, not content or
+// presentation authority. Apply walks the existing widget tree and asks only declared
+// value-sink roles to recompute viewport-derived physical values from data cached during
+// the original Prepare. No document replay, Theme lookup or widget replacement is involved.
+struct GV2PRESENTATIONAPPLY_API FPreparedViewportRefreshOperation
+{
+    TWeakObjectPtr<UWidget> RootWidget;
+    float ViewportHeight = 0.0f;
+};
+
 using FGV2PreparedOperationVariant = TVariant<
     FPreparedImageResourceOperation,
     FPreparedImageHostOperation,
@@ -538,7 +550,8 @@ using FGV2PreparedOperationVariant = TVariant<
     FPreparedPlainTextOperation,
     FPreparedRichTextRenderOperation,
     FPreparedTextHintOperation,
-    FPreparedCentralStyleOperation
+    FPreparedCentralStyleOperation,
+    FPreparedViewportRefreshOperation
 >;
 
 GV2PRESENTATIONAPPLY_API EGV2PreparedOperationKind GetPreparedOperationKind(const FGV2PreparedOperationVariant& Operation);
@@ -633,6 +646,11 @@ public:
         AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedCentralStyleOperation>(), MoveTemp(Operation)));
     }
 
+    void AddViewportRefreshOperation(FPreparedViewportRefreshOperation Operation)
+    {
+        AddOperation(FGV2PreparedOperationVariant(TInPlaceType<FPreparedViewportRefreshOperation>(), MoveTemp(Operation)));
+    }
+
     const TArray<FGV2PreparedOperationVariant>& GetOperations() const { return Operations; }
 
     bool IsEmpty() const { return Operations.IsEmpty(); }
@@ -666,4 +684,3 @@ public:
         const GV2PresentationApply::FGV2PreparedPresentationTransaction& Transaction,
         FGV2PresentationApplyResult& OutResult);
 };
-

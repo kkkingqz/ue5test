@@ -13,6 +13,18 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2DropdownSelectWidget, Log, All);
 
+void UGV2DropdownSelectWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    if (PopupSizeBox == nullptr || !bHasPreparedPopupScale || ViewportHeight <= 0.0f)
+    {
+        return;
+    }
+    const float ViewportScale = GV2PresentationApply::EvaluatePreparedViewportScale(
+        PreparedPopupScale,
+        ViewportHeight);
+    PopupSizeBox->SetMaxDesiredHeight(PreparedMaxPopupHeight * ViewportScale);
+}
+
 void UGV2DropdownSelectWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
@@ -185,6 +197,9 @@ void UGV2DropdownSelectWidgetBase::ApplyDropdownStyleValues(
     float InMaxPopupHeight,
     const GV2PresentationApply::FPreparedViewportScalePolicy& InPopupScale)
 {
+    PreparedPopupScale = InPopupScale;
+    PreparedMaxPopupHeight = InMaxPopupHeight;
+    bHasPreparedPopupScale = true;
     if (HeaderButton != nullptr && InHeaderStyle != nullptr)
     {
         HeaderButton->SetStyle(InHeaderStyle);

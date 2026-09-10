@@ -81,3 +81,38 @@ bool FGV2WidgetTextApply::ApplyHint(
     Transaction.AddTextHintOperation(MoveTemp(Operation));
     return ApplyTransaction(Transaction);
 }
+
+void FGV2WidgetTextApply::RefreshFont(
+    UCommonTextBlock* Widget,
+    const FGV2TextViewModel& Text,
+    float ViewportHeight)
+{
+    if (Widget == nullptr || !Text.bHasResolvedPresentation)
+    {
+        return;
+    }
+    GV2PresentationApply::FPreparedTextScalePolicy Policy;
+    Policy.BaseFontSize = Text.ResolvedBaseFontSize;
+    Policy.MinReadableFontSize = Text.ResolvedMinReadableFontSize;
+    Policy.ReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
+    Policy.ScaleCurve = Text.ResolvedFontScaleCurve;
+    RefreshFont(Widget, Policy, ViewportHeight);
+}
+
+void FGV2WidgetTextApply::RefreshFont(
+    UCommonTextBlock* Widget,
+    const GV2PresentationApply::FPreparedTextScalePolicy& Policy,
+    float ViewportHeight)
+{
+    if (Widget == nullptr || ViewportHeight <= 0.0f)
+    {
+        return;
+    }
+    FSlateFontInfo FontInfo = Widget->GetFont();
+    const float ScaledFontSize = GV2PresentationApply::EvaluatePreparedFontSize(Policy, ViewportHeight);
+    if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
+    {
+        FontInfo.Size = ScaledFontSize;
+        Widget->SetFont(FontInfo);
+    }
+}

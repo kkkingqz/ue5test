@@ -3,6 +3,8 @@
 
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Components/Image.h"
@@ -210,6 +212,36 @@ void ApplyCentralStyleRole(UWidget* Widget, const FPreparedCentralStylePayload& 
             { Role->ApplyPreparedRichTextPopoverStyle(Style); } else { Mismatch(TEXT("rich text popover")); }
         }
     }, Payload);
+}
+
+void RefreshViewportSubtree(UWidget* Widget, float ViewportHeight, TSet<UWidget*>& Visited)
+{
+    if (Widget == nullptr || Visited.Contains(Widget))
+    {
+        return;
+    }
+    Visited.Add(Widget);
+
+    if (IGV2PreparedViewportRefreshTarget* Role = Cast<IGV2PreparedViewportRefreshTarget>(Widget))
+    {
+        Role->RefreshPreparedViewportPresentation(ViewportHeight);
+    }
+
+    // UWidgetTree::GetAllWidgets enumerates one UserWidget's authored tree. Nested
+    // UserWidgets own independent trees, so recurse through every discovered UserWidget;
+    // Visited makes the combined walk unique even when the outer tree reports a node too.
+    if (UUserWidget* UserWidget = Cast<UUserWidget>(Widget))
+    {
+        if (UserWidget->WidgetTree != nullptr)
+        {
+            TArray<UWidget*> Descendants;
+            UserWidget->WidgetTree->GetAllWidgets(Descendants);
+            for (UWidget* Descendant : Descendants)
+            {
+                RefreshViewportSubtree(Descendant, ViewportHeight, Visited);
+            }
+        }
+    }
 }
 }
 }
@@ -522,6 +554,17 @@ bool FGV2PresentationApply::Apply(
                     return;
                 }
                 ApplyCentralStyleRole(Widget, Op.Payload, bFailed, OutResult.Error);
+            },
+            [&](const FPreparedViewportRefreshOperation& Op)
+            {
+                if (Op.ViewportHeight <= 0.0f)
+                {
+                    OutResult.Error = TEXT("Viewport refresh requires a positive viewport height.");
+                    bFailed = true;
+                    return;
+                }
+                TSet<UWidget*> Visited;
+                RefreshViewportSubtree(Op.RootWidget.Get(), Op.ViewportHeight, Visited);
             }
         }, Operation);
 

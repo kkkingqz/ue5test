@@ -4,6 +4,11 @@
 #include "Components/CheckBox.h"
 #include "GV2WidgetTextApply.h"
 
+void UGV2CheckboxWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    FGV2WidgetTextApply::RefreshFont(LabelText, AppliedText, ViewportHeight);
+}
+
 void UGV2CheckboxWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();

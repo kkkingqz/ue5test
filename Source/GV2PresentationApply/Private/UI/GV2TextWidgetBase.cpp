@@ -4,6 +4,11 @@
 #include "GV2WidgetTextApply.h"
 #include "UI/GV2UiCapability.h"
 
+void UGV2TextWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    FGV2WidgetTextApply::RefreshFont(GetTextBlock(), CurrentContent, ViewportHeight);
+}
+
 bool UGV2TextWidgetBase::ApplyText(const FGV2TextViewModel& Content)
 {
     if (Content.NormalizedMarkup.Contains(TEXT("<gv2")))

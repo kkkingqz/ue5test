@@ -145,6 +145,11 @@ public:
     UGV2ScreenWidgetBase* GetActiveScreen(FName Layer, FName InstanceKey) const;
     const TMap<FScreenSlotKey, FActiveScreenEntry>& GetActiveScreens() const { return ActiveScreens; }
 
+    // PSC-14: refreshes only viewport-derived physical values on the already-committed
+    // screen instances. It does not Prepare/reconcile a document and therefore preserves
+    // widget identity and UI-local state.
+    [[nodiscard]] bool RefreshViewportPresentation(float ViewportHeight, FString& OutError) const;
+
     // PAH-07 (ADR-0042, INV-P4).
     EGV2PresentationHealth GetHealth() const { return Health; }
     const FGV2UiDocumentViewModel* GetLastCommittedDocument() const { return LastCommittedDocument.GetPtrOrNull(); }

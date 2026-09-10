@@ -11,6 +11,7 @@
 #include "GV2RichTextWidgetBase.generated.h"
 
 class UCommonRichTextBlock;
+class UGV2RichTextPopoverWidgetBase;
 class UScrollBox;
 class IToolTip;
 struct FHyperlinkStyle;
@@ -31,10 +32,13 @@ class GV2PRESENTATIONAPPLY_API UGV2RichTextWidgetBase
     , public IGV2PreparedTextTarget
     , public IGV2PreparedRichTextSpansTarget
     , public IGV2PreparedRichTextStyleTarget
+    , public IGV2PreparedViewportRefreshTarget
 {
     GENERATED_BODY()
 
 public:
+    virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;
+
     // PSC-11: value sink for this class's central-style role. It only forwards finished
     // values into the physical write that already existed; no decision happens here.
     virtual void ApplyPreparedRichTextStyle(const GV2PresentationApply::FPreparedRichTextStyle& Style) override
@@ -108,6 +112,8 @@ public:
 
     const GV2PresentationApply::FPreparedRichTextStyle& GetPreparedRichTextStyle() const { return PreparedStyle; }
     UClass* GetPreparedPopoverClass() const { return PreparedPopoverClass.Get(); }
+    void SetActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover);
+    void ClearActivePopoverForViewportRefresh(UGV2RichTextPopoverWidgetBase* Popover);
 
 protected:
     virtual void NativePreConstruct() override;
@@ -126,6 +132,9 @@ protected:
     const GV2PresentationApply::FPreparedRichTextTokenStyle& FindPreparedTokenStyle(FName StyleToken) const;
     TSubclassOf<UCommonTextStyle> ResolvePreparedStyleClass(FName StyleToken) const;
     FTextBlockStyle ScalePreparedTokenStyle(const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle) const;
+    FTextBlockStyle ScalePreparedTokenStyleAtHeight(
+        const GV2PresentationApply::FPreparedRichTextTokenStyle& TokenStyle,
+        float ViewportHeight) const;
 
     // PSC-10B: values delivered by a prepared central-style operation. bIsResolved false
     // means no runtime style has arrived; serialized widget defaults remain untouched.
@@ -147,6 +156,9 @@ protected:
 
     UPROPERTY(Transient)
     TArray<FGV2RichTextSpanViewModel> CurrentSpans;
+
+    UPROPERTY(Transient)
+    TWeakObjectPtr<UGV2RichTextPopoverWidgetBase> ActivePopoverForViewportRefresh;
 
     TMap<FName, int32> SpanIndexById;
 };

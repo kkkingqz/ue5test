@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.26
-updated: 2026-09-09
+version: 1.27
+updated: 2026-09-10
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -86,12 +86,18 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 
 В отличие от растра, текст не масштабируется линейно пропорционально высоте экрана, чтобы избежать нечитаемости на малых экранах и чрезмерно гигантского шрифта на 4K:
 
-- Применяется `UGV2UiTheme::EvaluateTextScale(ViewportHeight)` на основе настраиваемой кривой `TextScaleCurve`.
+- При Prepare тема передаёт в resolved payload базовый размер, минимум, reference height и `TextScaleCurve`; Apply вычисляет размер чистой `EvaluatePreparedFontSize(Policy, ViewportHeight)` без обращения к Theme.
 - На 720p масштаб составляет ~0.85 (вместо линейного 0.66), гарантируя читаемость.
 - На 1080p масштаб составляет 1.0 (базовый).
 - На 1440p масштаб составляет ~1.25.
 - На 4K (2160p) масштаб составляет ~1.60 (вместо линейного 2.0).
-- Итоговый физический размер шрифта ограничен снизу порогом `MinReadableFontSize` (10 pt) через `UGV2UiTheme::GetEffectiveFontSize`.
+- Итоговый физический размер шрифта ограничен снизу подготовленным порогом `MinReadableFontSize` (10 pt); Apply не вызывает Theme API.
+
+### Resize lifecycle
+
+Изменение размера активного game viewport не является новой desired presentation. `UGV2RuntimeSubsystem` обязан обработать `FViewport::ViewportResizedEvent` только своего viewport и отправить одну `ViewportRefresh` operation на каждый уникальный committed Screen root. Единственный `FGV2PresentationApply::Apply` рекурсивно обходит существующее Widget tree и вызывает `IGV2PreparedViewportRefreshTarget`.
+
+Refresh получает только текущую высоту viewport и использует значения, сохранённые исходным Prepare. Ему запрещено повторно разрешать Theme, читать snapshot, публиковать/реконсилировать UI document, заменять Widget instances или сбрасывать UI-local state. Активный hover-popover обновляется через владеющий `RichText`; Headless этого UE-only lifecycle не имеет.
 
 ### Матрица целевых разрешений
 

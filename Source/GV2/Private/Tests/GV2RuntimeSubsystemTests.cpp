@@ -79,12 +79,14 @@
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/GameInstance.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/Blueprint.h"
 #include "Engine/Engine.h"
 #include "Engine/Texture2D.h"
 #include "HAL/FileManager.h"
 #include "ImageUtils.h"
 #include "Engine/World.h"
+#include "Slate/SceneViewport.h"
 #include "Subsystems/SubsystemCollection.h"
 #include "UObject/UObjectIterator.h"
 
@@ -2103,6 +2105,7 @@ EGV2ExpectedOperationRoute ExpectedRouteFor(EGV2PreparedOperationKind Kind)
     case EGV2PreparedOperationKind::RichTextSpans:      return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
     case EGV2PreparedOperationKind::KeyedCollection:    return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
     case EGV2PreparedOperationKind::TabContainer:       return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
+    case EGV2PreparedOperationKind::ViewportRefresh:    return EGV2ExpectedOperationRoute::RequiresDeclaredRole;
 
     // A declared `key` capability with no route, a text operation on something that renders
     // no text, and a style role delivered to a class that does not perform it are each a
@@ -2130,7 +2133,7 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
 {
     using GV2PresentationApply::EGV2PreparedOperationKind;
 
-    static_assert(TVariantSize_V<GV2PresentationApply::FGV2PreparedOperationVariant> == 18,
+    static_assert(TVariantSize_V<GV2PresentationApply::FGV2PreparedOperationVariant> == 19,
         "A kind was added to or removed from FGV2PreparedOperationVariant -- update this "
         "literal AND the construction switch AND ExpectedRouteFor's switch below before "
         "trusting this test again.");
@@ -2333,6 +2336,15 @@ bool FGV2ExhaustiveOperationKindWalkTest::RunTest(const FString& Parameters)
             Op.TargetWidget = NewObject<UImage>();
             Op.Payload.Set<GV2PresentationApply::FPreparedSeparatorStyle>(Style);
             Transaction.AddCentralStyleOperation(Op);
+            break;
+        }
+        case EGV2PreparedOperationKind::ViewportRefresh:
+        {
+            KindLabel = TEXT("ViewportRefresh");
+            GV2PresentationApply::FPreparedViewportRefreshOperation Op;
+            Op.RootWidget = NewObject<UImage>();
+            Op.ViewportHeight = 720.0f;
+            Transaction.AddViewportRefreshOperation(Op);
             break;
         }
         }
@@ -3334,6 +3346,116 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
         TestWorld->DestroyWorld(false);
         GEngine->DestroyWorldContext(TestWorld);
     }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CommittedPresentationViewportResizeTest,
+    "GV2.Runtime.Presentation.CommittedPresentationRespondsToViewportResize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PSC-14 regression: exercise a real session-owned screen through the production
+// FViewport::ViewportResizedEvent path. The same already-committed widget must update its
+// prepared font scale when the active game viewport changes size; publishing another Lua
+// document is deliberately absent from this transition. This is the action the earlier
+// per-height tests did not perform.
+bool FGV2CommittedPresentationViewportResizeTest::RunTest(const FString& Parameters)
+{
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+    if (TestWorld == nullptr)
+    {
+        AddError(TEXT("Standalone GameInstance did not create a world"));
+        GameInstance->RemoveFromRoot();
+        return false;
+    }
+
+    FWorldContext& WorldContext = GEngine->GetWorldContextFromWorldChecked(TestWorld);
+    UGameViewportClient* const PreviousEngineViewport = GEngine->GameViewport;
+    UGameViewportClient* const PreviousWorldViewport = WorldContext.GameViewport;
+
+    UGameViewportClient* TestViewportClient = NewObject<UGameViewportClient>(GEngine);
+    TSharedRef<FSceneViewport> TestViewport = MakeShared<FSceneViewport>(TSharedPtr<SViewport>());
+    TestViewportClient->AddAssociation(*TestViewport);
+    GEngine->GameViewport = TestViewportClient;
+    WorldContext.GameViewport = TestViewportClient;
+    TestViewport->SetInitialSize(FIntPoint(1280, 720));
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Viewport-resize scenario has the production runtime subsystem"), Runtime);
+
+    UGV2ScreenWidgetBase* ScreenBeforeResize = nullptr;
+    UGV2TextWidgetBase* GreetingBeforeResize = nullptr;
+    int32 FontSizeAt720 = 0;
+    if (Runtime != nullptr)
+    {
+        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+        ScreenBeforeResize = Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
+        TestNotNull(TEXT("Session publishes its initial screen before resize"), ScreenBeforeResize);
+        GreetingBeforeResize = ScreenBeforeResize != nullptr
+            ? Cast<UGV2TextWidgetBase>(ScreenBeforeResize->GetWidgetFromName(TEXT("GreetingText")))
+            : nullptr;
+        TestNotNull(TEXT("Initial screen exposes the prepared text consumer"), GreetingBeforeResize);
+        if (GreetingBeforeResize != nullptr && GreetingBeforeResize->GetTextBlock() != nullptr)
+        {
+            // SetInitialSize has no RHI-backed viewport yet and the first document may have
+            // used its prepared reference-height fallback. Establish the 720p baseline by
+            // sending the same real resize event the product receives; without the
+            // production subscription this and the following resize would both leave the
+            // committed font unchanged.
+            TestViewport->UpdateViewportRHI(
+                false,
+                1280,
+                720,
+                EWindowMode::Windowed,
+                PF_Unknown);
+            FontSizeAt720 = GreetingBeforeResize->GetTextBlock()->GetFont().Size;
+            TestTrue(TEXT("Initial 720p font size is positive"), FontSizeAt720 > 0);
+
+            // This call changes the real FViewport size and broadcasts the engine's
+            // production resize event. No document, command or test-only refresh seam is
+            // invoked around it.
+            TestViewport->UpdateViewportRHI(
+                false,
+                3840,
+                2160,
+                EWindowMode::Windowed,
+                PF_Unknown);
+
+            UGV2ScreenWidgetBase* const ScreenAfterResize =
+                Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
+            UGV2TextWidgetBase* const GreetingAfterResize = ScreenAfterResize != nullptr
+                ? Cast<UGV2TextWidgetBase>(ScreenAfterResize->GetWidgetFromName(TEXT("GreetingText")))
+                : nullptr;
+            TestTrue(
+                TEXT("Viewport refresh preserves the committed screen/widget instance"),
+                ScreenAfterResize == ScreenBeforeResize && GreetingAfterResize == GreetingBeforeResize);
+            if (GreetingAfterResize != nullptr && GreetingAfterResize->GetTextBlock() != nullptr)
+            {
+                const int32 FontSizeAt2160 = GreetingAfterResize->GetTextBlock()->GetFont().Size;
+                TestTrue(
+                    *FString::Printf(
+                        TEXT("Same committed text responds to 720p -> 2160p resize (%d -> %d)"),
+                        FontSizeAt720,
+                        FontSizeAt2160),
+                    FontSizeAt2160 > FontSizeAt720);
+            }
+        }
+        Runtime->EndSession();
+    }
+
+    GEngine->GameViewport = PreviousEngineViewport;
+    WorldContext.GameViewport = PreviousWorldViewport;
+    TestViewportClient->RemoveAssociation(*TestViewport);
+
+    GameInstance->Shutdown();
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
     GameInstance->RemoveFromRoot();
     return true;
 }

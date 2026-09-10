@@ -6,6 +6,7 @@
 #include "Application/GV2SessionCoordinator.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
+#include "Engine/GameViewportClient.h"
 #include "Logging/LogMacros.h"
 #include "Misc/App.h"
 #include "Misc/Paths.h"
@@ -17,6 +18,7 @@
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiTheme.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "UnrealClient.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
 
@@ -130,6 +132,12 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
     Reconciler = MakePimpl<FGV2LayeredUiReconciler>();
 
+    // PSC-14: physical geometry changes are not Lua document publications. Route the
+    // engine event into one prepared viewport-refresh transaction over the committed tree.
+    ViewportResizedHandle = FViewport::ViewportResizedEvent.AddUObject(
+        this,
+        &ThisClass::HandleViewportResized);
+
     Coordinator = MakePimpl<FGV2SessionCoordinator>();
     Coordinator->SetInteractionSink([this](const FGV2UiIngressItem& Item)
     {
@@ -155,6 +163,11 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UGV2RuntimeSubsystem::Deinitialize()
 {
+    if (ViewportResizedHandle.IsValid())
+    {
+        FViewport::ViewportResizedEvent.Remove(ViewportResizedHandle);
+        ViewportResizedHandle.Reset();
+    }
     if (StartGameInstanceHandle.IsValid())
     {
         FWorldDelegates::OnStartGameInstance.Remove(StartGameInstanceHandle);
@@ -387,6 +400,35 @@ void UGV2RuntimeSubsystem::HandleStartGameInstance(UGameInstance* StartedGameIns
     {
         bActiveScreenAddedToViewport = true;
         StartSession();
+    }
+}
+
+void UGV2RuntimeSubsystem::HandleViewportResized(FViewport* Viewport, uint32 /*Unused*/)
+{
+    check(IsInGameThread());
+    if (Viewport == nullptr || !Reconciler.IsValid() || GetWorld() == nullptr)
+    {
+        return;
+    }
+
+    UGameViewportClient* GameViewport = GetWorld()->GetGameViewport();
+    if (GameViewport == nullptr || GameViewport->Viewport != Viewport)
+    {
+        // The delegate is process-wide and also reports editor/other PIE viewports. A
+        // GameInstance may refresh only the viewport that owns its committed presentation.
+        return;
+    }
+
+    const float ViewportHeight = static_cast<float>(Viewport->GetSizeXY().Y);
+    if (ViewportHeight <= 0.0f)
+    {
+        return;
+    }
+
+    FString RefreshError;
+    if (!Reconciler->RefreshViewportPresentation(ViewportHeight, RefreshError))
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Viewport presentation refresh failed: %s"), *RefreshError);
     }
 }
 

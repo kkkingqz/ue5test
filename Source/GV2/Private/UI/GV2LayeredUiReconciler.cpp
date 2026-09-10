@@ -505,6 +505,27 @@ UGV2ScreenWidgetBase* FGV2LayeredUiReconciler::GetActiveScreen(FName Layer, FNam
     return Found != nullptr ? Found->Widget.Get() : nullptr;
 }
 
+bool FGV2LayeredUiReconciler::RefreshViewportPresentation(float ViewportHeight, FString& OutError) const
+{
+    OutError.Reset();
+    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
+    TSet<UGV2ScreenWidgetBase*> AddedRoots;
+    for (const TPair<FScreenSlotKey, FActiveScreenEntry>& Pair : ActiveScreens)
+    {
+        UGV2ScreenWidgetBase* Root = Pair.Value.Widget.Get();
+        if (Root == nullptr || AddedRoots.Contains(Root))
+        {
+            continue;
+        }
+        AddedRoots.Add(Root);
+        GV2PresentationApply::FPreparedViewportRefreshOperation Operation;
+        Operation.RootWidget = Root;
+        Operation.ViewportHeight = ViewportHeight;
+        Transaction.AddViewportRefreshOperation(MoveTemp(Operation));
+    }
+    return GV2ApplyTransaction(Transaction, OutError);
+}
+
 void FGV2LayeredUiReconciler::Reset()
 {
     ActiveScreens.Reset();

@@ -5,6 +5,16 @@
 #include "UI/GV2UiInteractionEmitter.h"
 #include "UI/GV2UiCapability.h"
 
+void UGV2ButtonWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    if (CurrentTextStyleToken.IsNone() && bHasPreparedDefaultLabelScale)
+    {
+        FGV2WidgetTextApply::RefreshFont(LabelText, PreparedDefaultLabelScale, ViewportHeight);
+        return;
+    }
+    FGV2WidgetTextApply::RefreshFont(LabelText, CurrentTextViewModel, ViewportHeight);
+}
+
 void UGV2ButtonWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
@@ -59,6 +69,8 @@ void UGV2ButtonWidgetBase::ApplyButtonStyleValues(
     TSubclassOf<UCommonTextStyle> InDefaultLabelStyle,
     const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale)
 {
+    PreparedDefaultLabelScale = InDefaultLabelScale;
+    bHasPreparedDefaultLabelScale = true;
     if (InButtonStyle != nullptr)
     {
         SetStyle(InButtonStyle);

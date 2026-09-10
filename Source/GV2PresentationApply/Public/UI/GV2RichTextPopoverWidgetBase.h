@@ -26,10 +26,13 @@ class GV2PRESENTATIONAPPLY_API UGV2RichTextPopoverWidgetBase
     , public IGV2UiPropertyHost
     , public IGV2TextPipelineHost
     , public IGV2PreparedRichTextPopoverStyleTarget
+    , public IGV2PreparedViewportRefreshTarget
 {
     GENERATED_BODY()
 
 public:
+    virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;
+
     // PSC-11: value sink for this class's central-style role. It only forwards finished
     // values into the physical write that already existed; no decision happens here.
     virtual void ApplyPreparedRichTextPopoverStyle(const GV2PresentationApply::FPreparedRichTextPopoverStyle& Style) override

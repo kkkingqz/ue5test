@@ -1,7 +1,7 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.17
+version: 3.18
 updated: 2026-09-10
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -179,6 +179,8 @@ Repeated-field items обязаны иметь deterministic `key`. Общий `
 `DA_UITheme_Default : UGV2UiTheme` является source of truth default visual values UI-kit. `UGV2UiThemeSettings.ThemeAsset` выбирает identity active theme через UE-only project config, но резолюция происходит один раз — при построении session content snapshot (ADR-0043 D1), не заново на каждый `Commit`. Prepare получает Theme только через `FGV2PresentationPrepareContext` и переносит в transaction готовые CommonUI/Slate classes, brushes, colors, spacing и scale policies. Theme object, token lookup и configured accessors Apply-фазе недоступны. Lua, headless runtime и Screen Field DTO не получают asset locator или theme UObject.
 
 `IGV2UiStyleConsumer` является marker-интерфейсом фактических runtime style targets. Их множество перечисляет reflection/inventory gate; каждый target обязан иметь ветку в `GV2CentralStylePreparer` и exhaustive Apply visitor. `DropdownSelect` владеет стилем собственного поддерева, поэтому общий обход не стилизует его `HeaderButton` второй раз. Новые collection entries и nested tabs готовят свою central-style transaction до публикации и применяют её после commit дочерних свойств. Hover-popover создаётся позже, но получает сохранённый prepared payload владельца и применяет его новой value-only transaction без повторного Prepare.
+
+Viewport-зависимые физические значения обязаны обновляться через `ViewportRefresh` той же transaction façade. Фактическое множество таких Widget-классов выводится из canonical text/scale call sites (`validate_viewport_refresh_coverage.py`); каждый реализует `IGV2PreparedViewportRefreshTarget` и пересчитывает только font/popup geometry из сохранённых prepared values. Повторный central-style Prepare или document reconcile при resize запрещён: он заново принял бы semantic decisions и сбросил бы UI-local state. Production test `GV2.Runtime.Presentation.CommittedPresentationRespondsToViewportResize` выполняет реальный engine resize и проверяет изменение шрифта без замены committed Widget.
 
 Theme обязан задавать:
 

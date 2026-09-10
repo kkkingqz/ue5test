@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.3
+version: 3.4
 updated: 2026-09-10
 depends_on:
   - SystemContextAndComponents.md
@@ -26,7 +26,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `ctest_expected_failure_contract`, `host_conformance_parity_contract`, `presentation_apply_*`, `central_style_runtime_boundary_*`, `package_set_factory_inventory_*`, `core_*_gate_contract`, `gv2_content_*`.
+> **Проверки:** `ctest_expected_failure_contract`, `host_conformance_parity_contract`, `presentation_apply_*`, `central_style_runtime_boundary_*`, `viewport_refresh_coverage_*`, `package_set_factory_inventory_*`, `core_*_gate_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -336,6 +336,7 @@ GV2_PORTABLE_API std::string Run<Area>Conformance();
 | Apply surface | все exported declarations в `GV2PresentationApply/Public` и весь source tree модуля | одна transaction façade; DTO/result, widget/lifecycle roles и pure calculations | forbidden-capability scan (`load`, settings, filesystem, soft refs) является secondary: множество будущих UE API открыто и при добавлении capability требует классификации |
 | Operation/payload | alternatives `FGV2PreparedOperationVariant` и recursive fields всех exported operation structs | exhaustive `Visit(TOverloaded)` без generic/default branch; allowlist value types и запрет resolver/context/callback/service/soft reference | compiler доказывает полноту dispatch; field scanner — допустимую форму declaration, но не runtime-смысл скаляра |
 | Central style | реализации `IGV2UiStyleConsumer`, prepared role interfaces, variant roles и все physical role/helper call sites | равенство Prepare/role/Apply sets; вызов prepared role только из façade; `NativePreConstruct` только design-time values | function-level source scan вторичен; production subtree, late RichText и design-time branch проверяются automation |
+| Viewport refresh | production Widget sources с canonical text-apply/scale call sites | каждый выведенный класс реализует конкретный `IGV2PreparedViewportRefreshTarget`; actual engine event проверяет automation | source markers не моделируют все будущие UE scaling API; новый параллельный механизм обязан быть отклонён layout audit/code review |
 | Widget Blueprint migration | все native `UUserWidget` classes модуля Apply и Asset Registry closure всех `/Game` Widget Blueprints | ноль retired `/Script/GV2.<Class>` metadata/object paths; ancestry указывает на `/Script/GV2PresentationApply` | исполняется только в Editor automation после clean load; мутацию ассетов не выполняет |
 
 `GetConfiguredTheme()` и `GetConfiguredRegistry()` запрещены по symbol declaration/definition/call-site во всём production tree. `GetCoreMinimalTheme()` разрешён только bootstrap построению fallback внутри snapshot и UE-native cold-start recovery, у которого snapshot отсутствует по определению.
