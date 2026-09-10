@@ -216,9 +216,11 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
         ? Cast<UGV2TabContainerWidgetBase>(InventoryTabs->GetWidgetFromName(TEXT("Tabs"))) : nullptr;
     TestNotNull(TEXT("DCA-11: InventoryTabs reaches the reusable tab container"), Tabs);
 
-    UGV2ScreenWidgetBase* const WeaponsScreen = Tabs != nullptr ? Tabs->GetScreenWidgetForTab(TEXT("weapons")) : nullptr;
+    UGV2ScreenWidgetBase* const WeaponsScreen = Tabs != nullptr
+        ? Cast<UGV2ScreenWidgetBase>(Tabs->GetScreenWidgetForTab(TEXT("weapons"))) : nullptr;
     TestNotNull(TEXT("DCA-11: weapons tab resolves its registered nested Screen Template"), WeaponsScreen);
-    UGV2ScreenWidgetBase* const ConsumablesScreen = Tabs != nullptr ? Tabs->GetScreenWidgetForTab(TEXT("consumables")) : nullptr;
+    UGV2ScreenWidgetBase* const ConsumablesScreen = Tabs != nullptr
+        ? Cast<UGV2ScreenWidgetBase>(Tabs->GetScreenWidgetForTab(TEXT("consumables"))) : nullptr;
     TestNotNull(TEXT("DCA-11: consumables tab resolves its registered nested Screen Template"), ConsumablesScreen);
 
     UGV2DeclaredCompositeWidgetBase* const WeaponsBlock = WeaponsScreen != nullptr
@@ -269,11 +271,11 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
             RootScreen);
         TestEqual(
             TEXT("DCA-11: Prepare failure retains the same weapons nested screen instance"),
-            Tabs != nullptr ? Tabs->GetScreenWidgetForTab(TEXT("weapons")) : nullptr,
+            Tabs != nullptr ? Cast<UGV2ScreenWidgetBase>(Tabs->GetScreenWidgetForTab(TEXT("weapons"))) : nullptr,
             WeaponsScreen);
         TestEqual(
             TEXT("DCA-11: Prepare failure retains the same consumables nested screen instance"),
-            Tabs != nullptr ? Tabs->GetScreenWidgetForTab(TEXT("consumables")) : nullptr,
+            Tabs != nullptr ? Cast<UGV2ScreenWidgetBase>(Tabs->GetScreenWidgetForTab(TEXT("consumables"))) : nullptr,
             ConsumablesScreen);
         if (WeaponsRepeater != nullptr)
         {

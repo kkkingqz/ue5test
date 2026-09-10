@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Bridge/GV2BridgeTypes.h"
+#include "GV2PresentationApply/GV2PresentationInteractionSink.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Templates/PimplPtr.h"
@@ -31,7 +32,7 @@ public:
 };
 
 UCLASS()
-class GV2_API UGV2RuntimeSubsystem : public UGameInstanceSubsystem
+class GV2_API UGV2RuntimeSubsystem : public UGV2PresentationInteractionSink
 {
     GENERATED_BODY()
 
@@ -50,6 +51,13 @@ public:
         FGV2UiBindingHandle BindingHandle,
         const TArray<FGV2UiControlValue>& InputValues);
 
+    virtual EGV2SubmitUiInteractionResult SubmitPresentationInteraction(
+        FGV2UiBindingHandle BindingHandle,
+        const TArray<FGV2UiControlValue>& InputValues) override
+    {
+        return SubmitUiInteraction(MoveTemp(BindingHandle), InputValues);
+    }
+
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
     void StartSession();
 
@@ -66,6 +74,11 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "GV2|UI")
     void SetActiveTab(const FString& ContainerPath, const FString& TabKey);
+
+    virtual void NotifyActiveTab(const FString& ContainerPath, const FString& TabKey) override
+    {
+        SetActiveTab(ContainerPath, TabKey);
+    }
 
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     FString GetActiveTab(const FString& ContainerPath) const;

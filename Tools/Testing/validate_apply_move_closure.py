@@ -29,9 +29,14 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-PUBLIC_UI = REPO_ROOT / "Source" / "GV2" / "Public" / "UI"
+PUBLIC_UI = REPO_ROOT / "Source" / "GV2PresentationApply" / "Public" / "UI"
 
 ROLE_INTERFACE = re.compile(r"public\s+(IGV2Prepared\w+Target)\b")
+WIDGET_UCLASS = re.compile(
+    r"\bUCLASS\s*(?:\([^)]*\))?\s*"
+    r"class\s+GV2PRESENTATIONAPPLY_API\s+U[A-Za-z0-9_]+\s*:\s*(?P<bases>[^\{]+)\{",
+    re.DOTALL,
+)
 INCLUDE = re.compile(r'#include\s+"([^"]+)"')
 GV2_PREFIXES = ("UI/", "Bridge/", "Application/", "Runtime/", "Tests/")
 
@@ -44,6 +49,8 @@ VALUE_OR_PHYSICAL_HEADERS = {
     "UI/GV2UiStyleConsumer.h",
     "UI/GV2ScreenFieldHost.h",
     "UI/GV2TextPipelineHost.h",
+    "UI/GV2RichTextSpanDecorator.h",
+    "UI/GV2UiInteractionEmitter.h",
     "UI/GV2UiBindingTarget.h",
     "UI/GV2UiPropertyHost.h",
 }
@@ -58,12 +65,25 @@ AUTHORITY_AWARE_BASELINE = {
 
 
 def movable_widget_bases() -> dict[str, str]:
-    """Header name -> source, for every widget base that performs a prepared role."""
+    """Header name -> complete class source, for every Widget UCLASS with a prepared role.
+
+    A module move carries both halves of a class. Looking only at its public header gave
+    PSC-12 a false-green closure while implementations still reached RuntimeSubsystem,
+    TextPipeline and other GV2-owned services.
+    """
     result: dict[str, str] = {}
     for path in sorted(PUBLIC_UI.glob("*.h")):
-        source = path.read_text(encoding="utf-8")
-        if ROLE_INTERFACE.search(source):
-            result[path.name] = source
+        header_source = path.read_text(encoding="utf-8")
+        declaration_source = re.sub(r"/\*.*?\*/|//[^\n]*", "", header_source, flags=re.DOTALL)
+        widget_declarations = WIDGET_UCLASS.finditer(declaration_source)
+        if any(ROLE_INTERFACE.search(match.group("bases")) for match in widget_declarations):
+            implementation = (
+                REPO_ROOT / "Source" / "GV2PresentationApply" / "Private" / "UI" / f"{path.stem}.cpp"
+            )
+            implementation_source = (
+                implementation.read_text(encoding="utf-8") if implementation.exists() else ""
+            )
+            result[path.name] = header_source + "\n" + implementation_source
     return result
 
 
@@ -78,6 +98,10 @@ def authority_aware_closure(bases: dict[str, str]) -> dict[str, set[str]]:
             continue
         for include in INCLUDE.findall(source):
             if not include.startswith(GV2_PREFIXES):
+                continue
+            # An edge between two members of the derived move set is internal to the move,
+            # not an upper-module dependency.
+            if Path(include).name in bases:
                 continue
             if include in VALUE_OR_PHYSICAL_HEADERS:
                 continue
@@ -102,8 +126,12 @@ def find_violations(bases: dict[str, str], baseline: set[str] | None = None) -> 
     # A header classified as value/physical must actually stay free of the authority types
     # the Apply module may not name; otherwise the classification is a label, not a fact.
     for header in sorted(VALUE_OR_PHYSICAL_HEADERS):
-        path = REPO_ROOT / "Source" / "GV2" / "Public" / header
-        if not path.exists():
+        candidates = (
+            REPO_ROOT / "Source" / "GV2PresentationApply" / "Public" / header,
+            REPO_ROOT / "Source" / "GV2" / "Public" / header,
+        )
+        path = next((candidate for candidate in candidates if candidate.exists()), None)
+        if path is None:
             errors.append(f"{header}: classified as value/physical but does not exist")
             continue
         text = path.read_text(encoding="utf-8")
@@ -120,8 +148,29 @@ def find_violations(bases: dict[str, str], baseline: set[str] | None = None) -> 
 def run_self_test() -> bool:
     print("[*] Running validate_apply_move_closure self-test...")
     bases = movable_widget_bases()
-    if errors := find_violations(bases):
-        print("FAILED: the repository already violates the gate:\n" + "\n".join(errors))
+
+    # A prepared role implemented by an interface is not a physical Widget UCLASS and must
+    # not enter PSC-12's move set.  This assertion intentionally checks the enumerator's
+    # OUTPUT against the declaration grammar instead of naming today's two interface files.
+    non_widget_entries = sorted(
+        name
+        for name, source in bases.items()
+        if re.search(r"\bUCLASS\s*\(", source) is None
+        or re.search(r"\bclass\s+GV2PRESENTATIONAPPLY_API\s+U[A-Za-z0-9_]+\s*:", source) is None
+    )
+    if non_widget_entries:
+        print(
+            "FAILED: movable-set enumerator included prepared-role interfaces instead of "
+            f"physical Widget UCLASSes: {non_widget_entries}"
+        )
+        return False
+
+    # Self-test verifies the mechanism independently from PSC-12's current work queue.
+    # The ordinary invocation below is the one that compares the repository with the
+    # recorded ratchet and stays red until the newly exposed implementation edges are cut.
+    current_closure = set(authority_aware_closure(bases))
+    if errors := find_violations(bases, current_closure):
+        print("FAILED: gate rejected its own measured implementation closure:\n" + "\n".join(errors))
         return False
 
     # A movable base that reaches a new authority-aware header must be rejected.
@@ -130,12 +179,12 @@ def run_self_test() -> bool:
         '#include "Application/GV2SessionContentSnapshot.h"\n'
         "class GV2_API UGV2SyntheticWidgetBase : public UWidget, public IGV2PreparedTintStyleTarget {};\n"
     )
-    if not find_violations(grown):
+    if not find_violations(grown, current_closure):
         print("FAILED: gate accepted a movable widget base reaching a new authority-aware header")
         return False
 
     # A shrinking closure must NOT be rejected: PSC-12 removing an include is progress.
-    if find_violations(bases, AUTHORITY_AWARE_BASELINE | {"UI/GV2NoLongerIncluded.h"}):
+    if find_violations(bases, current_closure | {"UI/GV2NoLongerIncluded.h"}):
         print("FAILED: gate rejected a closure that shrank")
         return False
 
@@ -145,7 +194,7 @@ def run_self_test() -> bool:
         '#include "Application/GV2SessionContentSnapshot.h"\n'
         "class GV2_API UGV2UnrelatedWidgetBase : public UWidget {};\n"
     )
-    if find_violations(unrelated):
+    if find_violations(unrelated, current_closure):
         print("FAILED: gate flagged a class that performs no prepared role")
         return False
 

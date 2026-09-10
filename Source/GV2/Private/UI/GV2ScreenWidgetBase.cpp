@@ -153,8 +153,9 @@ bool PrepareScreenFieldPlans(
         FGV2UiCapabilityBuilder Builder;
         PropertyHost->DescribeUiCapabilities(Builder);
         const FGV2UiCapabilityTree CapabilityTree = Builder.Build();
-        const FGV2UiPropertyHostState& HostState = PropertyHost->GetPropertyHostState();
-		FGV2UiPropertyHostState::FCommittedSnapshot PreviousCommittedSnapshot = HostState.GetCommittedSnapshot();
+        const FGV2UiHostSemanticState& HostState =
+            GetUiHostSemanticState(PropertyHost->GetPropertyHostState());
+		FGV2UiHostCommittedSnapshot PreviousCommittedSnapshot = HostState.GetCommittedSnapshot();
         const FGV2PreparedUiObject PreviousCommittedValue = HostState.GetLastCommittedProperties();
 
         FGV2UiHostMutationPlan MutationPlan;
@@ -272,7 +273,8 @@ FGV2UiRollbackResult RollbackFieldPlans(
         }
         else if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(FieldPlan.HostWidget.Get()))
         {
-            PropertyHost->GetPropertyHostState().RestoreCommittedSnapshot(FieldPlan.PreviousCommittedSnapshot);
+            GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).RestoreCommittedSnapshot(
+                FieldPlan.PreviousCommittedSnapshot);
         }
     }
     return Result;
@@ -339,7 +341,7 @@ bool UGV2ScreenWidgetBase::CommitScreenFields(
     {
         if (IGV2UiPropertyHost* PropertyHost = Cast<IGV2UiPropertyHost>(FieldPlan.HostWidget.Get()))
         {
-            PropertyHost->GetPropertyHostState().SetLastCommittedSnapshot(
+            GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).SetLastCommittedSnapshot(
                 *FieldPlan.CommittedValue,
                 FieldPlan.CommittedSchema,
                 FieldPlan.CommittedSchemaId);

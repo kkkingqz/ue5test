@@ -22,6 +22,7 @@
 #include "UI/GV2DropdownSelectWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
+#include "UI/GV2ImagePresentation.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
@@ -116,6 +117,17 @@ FGV2TextViewModel MakeResolvedLiteralTextForTest(
     FGV2TextViewModel Result;
     FString Error;
     UGV2TextPipeline::ResolveLiteralForAutomationTest(&Theme, Text, StyleToken, Result, Error);
+    return Result;
+}
+
+GV2PresentationApply::FPreparedResolvedImageValue MakePreparedResolvedImageForTest(
+    const FGV2ResolvedImageResource& Resolved)
+{
+    GV2PresentationApply::FPreparedResolvedImageValue Result;
+    Result.ResourceId = Resolved.ResourceId;
+    Result.RenderMode = FGV2ImagePresentation::ToPreparedRenderMode(Resolved.RenderMode);
+    Result.FixedAspectRatio = Resolved.FixedAspectRatio;
+    Result.Brush = Resolved.Brush;
     return Result;
 }
 
@@ -369,23 +381,26 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         return bLoaded;
     };
 
-    const TCHAR* InputComponents[] = {
-        TEXT("Source/GV2/Private/UI/GV2ButtonWidgetBase.cpp"),
-        TEXT("Source/GV2/Private/UI/GV2CheckboxWidgetBase.cpp"),
-        TEXT("Source/GV2/Private/UI/GV2InputFieldWidgetBase.cpp"),
-        TEXT("Source/GV2/Private/UI/GV2DropdownSelectWidgetBase.cpp"),
-        TEXT("Source/GV2/Private/UI/GV2RichTextWidgetBase.cpp")
-    };
-    for (const TCHAR* RelativePath : InputComponents)
+    TArray<FString> InputComponents;
+    IFileManager::Get().FindFilesRecursive(
+        InputComponents,
+        *FPaths::Combine(FPaths::ProjectDir(), TEXT("Source/GV2PresentationApply/Private/UI")),
+        TEXT("*.cpp"),
+        true,
+        false);
+    TestTrue(TEXT("Source audit enumerates the physical UI implementation set"), !InputComponents.IsEmpty());
+    for (FString FullPath : InputComponents)
     {
+        FString RelativePath = FullPath;
+        FPaths::MakePathRelativeTo(RelativePath, *FPaths::ProjectDir());
         FString Source;
-        if (ReadSource(RelativePath, Source))
+        if (ReadSource(*RelativePath, Source))
         {
             TestFalse(
-                *FString::Printf(TEXT("Component delegates runtime lookup to the common emitter: %s"), RelativePath),
+                *FString::Printf(TEXT("Component delegates runtime lookup to the narrow interaction sink: %s"), *RelativePath),
                 Source.Contains(TEXT("GetSubsystem<UGV2RuntimeSubsystem>")));
             TestFalse(
-                *FString::Printf(TEXT("Component does not call Runtime SubmitUiInteraction directly: %s"), RelativePath),
+                *FString::Printf(TEXT("Component does not call Runtime SubmitUiInteraction directly: %s"), *RelativePath),
                 Source.Contains(TEXT("Runtime->SubmitUiInteraction")));
         }
     }
@@ -1912,16 +1927,16 @@ bool FGV2NestedTabRejectedScreenLeavesNoPhysicalMutationTest::RunTest(const FStr
     SeedEntry.Key = FName(TEXT("info"));
     SeedEntry.ScreenId = TEXT("core:screen.test_embedded");
     SeedEntries.Add(SeedEntry);
-    TMap<FName, UGV2ScreenWidgetBase*> SeedWidgets;
+    TMap<FName, UUserWidget*> SeedWidgets;
     SeedWidgets.Add(FName(TEXT("info")), SeededScreen);
     TabContainer->ApplyTabEntries(SeedEntries, SeedWidgets);
     TabContainer->SelectTabByKey(FName(TEXT("info")));
 
     const int32 EntryCountBefore = TabContainer->GetTabEntries().Num();
     const FName ActiveTabBefore = TabContainer->GetActiveTabKey();
-    UGV2ScreenWidgetBase* const WidgetBefore = TabContainer->GetScreenWidgetForTab(FName(TEXT("info")));
+    UUserWidget* const WidgetBefore = TabContainer->GetScreenWidgetForTab(FName(TEXT("info")));
     TestEqual(TEXT("Seeded baseline has one tab"), EntryCountBefore, 1);
-    TestEqual(TEXT("Seeded baseline's widget is the one just created"), WidgetBefore, SeededScreen);
+    TestTrue(TEXT("Seeded baseline's widget is the one just created"), WidgetBefore == SeededScreen);
 
     TSharedPtr<IGV2PropertyConsumer> TabsConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
         EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
@@ -2659,8 +2674,8 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                 {
                     return 0;
                 }
-                const FGV2UiPropertyHostState::FCommittedSnapshot Snapshot =
-                    Composite->GetPropertyHostState().GetCommittedSnapshot();
+                const FGV2UiHostCommittedSnapshot Snapshot =
+                    GetUiHostSemanticState(Composite->GetPropertyHostState()).GetCommittedSnapshot();
                 if (!Snapshot.Schema)
                 {
                     TestTrue(
@@ -3836,7 +3851,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TestTrue(*FString::Printf(TEXT("PCC-06: baseline reconcile of fault screen succeeds [Error: %s]"), *FaultReconcileError), bBaseline);
             if (TopBarHost != nullptr)
             {
-                const FGV2PreparedUiValue* BaselineDay = TopBarHost->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("day"));
+                const FGV2PreparedUiValue* BaselineDay =
+                    GetUiHostSemanticState(TopBarHost->GetPropertyHostState()).GetLastCommittedProperties().FindField(TEXT("day"));
                 TestNotNull(TEXT("PCC-06: baseline commit recorded a 'day' property"), BaselineDay);
                 if (BaselineDay != nullptr)
                 {
@@ -3857,7 +3873,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 FaultReconcileError.Contains(TEXT("core:screen.pcc06_fault_target")));
             if (TopBarHost != nullptr)
             {
-                const FGV2PreparedUiValue* DayAfterFault = TopBarHost->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("day"));
+                const FGV2PreparedUiValue* DayAfterFault =
+                    GetUiHostSemanticState(TopBarHost->GetPropertyHostState()).GetLastCommittedProperties().FindField(TEXT("day"));
                 TestNotNull(TEXT("PCC-06: 'day' property still tracked after failed commit"), DayAfterFault);
                 if (DayAfterFault != nullptr)
                 {
@@ -4351,7 +4368,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TestEqual(TEXT("GBH-11: TextB still reads OldB (its own Commit was never reached)"),
                 TextB->GetTextContent().ToString(), TEXT("OldB"));
 
-            const FGV2PreparedUiObject& FieldALastCommitted = FieldA->GetPropertyHostState().GetLastCommittedProperties();
+            const FGV2PreparedUiObject& FieldALastCommitted =
+                GetUiHostSemanticState(FieldA->GetPropertyHostState()).GetLastCommittedProperties();
             const FGV2PreparedUiValue* FieldALastValueA = FieldALastCommitted.FindField(TEXT("value_a"));
             TestTrue(TEXT("GBH-11: FieldA's LastCommittedProperties has value_a"), FieldALastValueA != nullptr);
             if (FieldALastValueA != nullptr)
@@ -4379,7 +4397,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TestFalse(TEXT("GBF-05: later sibling screen fault rejects the document transaction"), bOuterScreenFault);
             TestEqual(TEXT("GBF-05: document rollback physically restores the earlier reused screen"),
                 TextA->GetTextContent().ToString(), TEXT("OldA"));
-            const FGV2PreparedUiValue* FieldAAfterOuterScreenFault = FieldA->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("value_a"));
+            const FGV2PreparedUiValue* FieldAAfterOuterScreenFault =
+                GetUiHostSemanticState(FieldA->GetPropertyHostState()).GetLastCommittedProperties().FindField(TEXT("value_a"));
             TestNotNull(TEXT("GBF-05: document rollback restores earlier screen accounting"), FieldAAfterOuterScreenFault);
             if (FieldAAfterOuterScreenFault != nullptr)
             {
@@ -4387,7 +4406,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                     FieldAAfterOuterScreenFault->AsText().Text.ToString(), TEXT("OldA"));
             }
             TestEqual(TEXT("GBF-05: document rollback restores earlier screen schema id"),
-                FieldA->GetPropertyHostState().GetLastCommittedSchemaId(), TEXT("test:schema.gbh11_reused_field.v1"));
+                GetUiHostSemanticState(FieldA->GetPropertyHostState()).GetLastCommittedSchemaId(), TEXT("test:schema.gbh11_reused_field.v1"));
 
             // Clean up this scenario's overlay so later shared-Shell assertions in this
             // test function see the state they expect (no GBH-11-specific residue).
@@ -4525,7 +4544,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             const FGV2UiRollbackResult OuterRollbackResult = RollbackFieldPlans(ExpansionPlan.FieldPlans);
             TestTrue(TEXT("GBF-05: outer rollback of a cleanly-prepared plan restores successfully"), OuterRollbackResult.bRestored);
             TestEqual(TEXT("GBF-05: rollback physically resets candidate-only meter"), ThirdMeter->GetProgress(), 0.0f);
-            const FGV2UiPropertyHostState& StateAfterOuterRollback = SchemaSwitchField->GetPropertyHostState();
+            const FGV2UiHostSemanticState& StateAfterOuterRollback =
+                GetUiHostSemanticState(SchemaSwitchField->GetPropertyHostState());
             TestEqual(TEXT("GBF-05: outer rollback restores prior schema id"),
                 StateAfterOuterRollback.GetLastCommittedSchemaId(), TEXT("test:schema.gbf04_meter_pair.v1"));
             TestNull(TEXT("GBF-05: outer rollback removes candidate-only property from committed state"),
@@ -4548,8 +4568,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
             // A value-only legacy snapshot is deliberately not accepted as an inverse
             // source: guessing schema B here would recreate the original defect.
-            SchemaSwitchField->GetPropertyHostState().SetLastCommittedProperties(
-                SchemaSwitchField->GetPropertyHostState().GetLastCommittedProperties());
+            GetUiHostSemanticState(SchemaSwitchField->GetPropertyHostState()).SetLastCommittedProperties(
+                GetUiHostSemanticState(SchemaSwitchField->GetPropertyHostState()).GetLastCommittedProperties());
             FGV2ScreenMutationPlan MissingSchemaPlan;
             FString MissingSchemaError;
             TestFalse(TEXT("GBF-04: previous value without committed schema rejects Prepare"),
@@ -5647,7 +5667,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             FailureSeedEntry.Key = FName(TEXT("failure"));
             FailureSeedEntry.ScreenId = TEXT("core:screen.test_embedded");
             SeedEntries.Add(FailureSeedEntry);
-            TMap<FName, UGV2ScreenWidgetBase*> SeedWidgets;
+            TMap<FName, UUserWidget*> SeedWidgets;
             SeedWidgets.Add(FName(TEXT("info")), ChildScreen);
             SeedWidgets.Add(FName(TEXT("failure")), FailureScreen);
             NestedTabContainer->ApplyTabEntries(SeedEntries, SeedWidgets);
@@ -5721,7 +5741,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TestEqual(TEXT("GBF-05: seeded failure tab widget is the one that received the baseline revision"),
                 FailureDayText->GetTextContent().ToString(), TEXT("Baseline"));
             TestEqual(TEXT("GBF-05: both published tabs survive ApplyTabEntries as reused widgets"),
-                NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("failure"))), FailureScreen);
+                Cast<UGV2ScreenWidgetBase>(NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("failure")))), FailureScreen);
 
             const FGV2TextViewModel UpdatedDayVM =
                 MakeResolvedLiteralTextForTest(*Theme, TEXT("Wednesday"));
@@ -5776,7 +5796,8 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                 bNestedRollbackCommitted);
             TestEqual(TEXT("GBF-05: nested reused child physically rolls back its text"), DayText->GetTextContent().ToString(), TEXT("Tuesday"));
             TestEqual(TEXT("GBF-05: nested reused child physically rolls back its number"), ValueBar->GetProgress(), 0.7f);
-            const FGV2PreparedUiValue* NestedCommittedDay = DayBlock->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("day"));
+            const FGV2PreparedUiValue* NestedCommittedDay =
+                GetUiHostSemanticState(DayBlock->GetPropertyHostState()).GetLastCommittedProperties().FindField(TEXT("day"));
             TestNotNull(TEXT("GBF-05: nested reused child restores committed day metadata"), NestedCommittedDay);
             if (NestedCommittedDay != nullptr)
             {
@@ -5784,7 +5805,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                     NestedCommittedDay->AsText().Text.ToString(), TEXT("Tuesday"));
             }
             TestEqual(TEXT("GBF-05: nested reused child restores prior schema id"),
-                DayBlock->GetPropertyHostState().GetLastCommittedSchemaId(), TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1"));
+                GetUiHostSemanticState(DayBlock->GetPropertyHostState()).GetLastCommittedSchemaId(), TEXT("textsystem:schema.ui_field.declared_composite_fixture.v1"));
             TArray<FGV2PreparedUiValue> NestedRetryTabs;
             NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(TabMap)));
             NestedRetryTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(FailureTabMap)));
@@ -5838,7 +5859,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             TestEqual(TEXT("GBF-05: Commit after a rejected Prepare leaves the number alone"),
                 ValueBar->GetProgress(), 0.7f);
             TestEqual(TEXT("GBF-05: Commit after a rejected Prepare does not publish an empty tab list"),
-                NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("info"))), ChildScreen);
+                Cast<UGV2ScreenWidgetBase>(NestedTabContainer->GetScreenWidgetForTab(FName(TEXT("info")))), ChildScreen);
 
             // Negative: an *extra* field_id the child screen has no host for is
             // rejected, not silently ignored (DUC-09's own Done criterion) --
@@ -5992,7 +6013,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         E2.ScreenId = TEXT("core:screen.tab_skills");
         Entries.Add(E2);
 
-        TMap<FName, UGV2ScreenWidgetBase*> Widgets;
+        TMap<FName, UUserWidget*> Widgets;
         TabWidget->ApplyTabEntries(Entries, Widgets);
 
         TestEqual(TEXT("Initial active tab is DefaultTabKey (skills)"), TabWidget->GetActiveTabKey(), FName("skills"));
@@ -6127,7 +6148,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                     E2.ScreenId = TEXT("core:screen.tab_skills");
                     Entries.Add(E2);
 
-                    TMap<FName, UGV2ScreenWidgetBase*> Widgets;
+                    TMap<FName, UUserWidget*> Widgets;
                     IntegrationTabWidget->ApplyTabEntries(Entries, Widgets);
 
                     TestEqual(TEXT("Runtime subsystem synced initial active tab (inventory)"), Runtime->GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
@@ -7025,7 +7046,7 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             FString Err;
             return IconCatalog != nullptr
                 && IconCatalog->Resolve(Entry.ResourceId, Resolved, Err)
-                && Img.ApplyResolvedImageResource(Resolved, Err);
+                && Img.ApplyResolvedImageResource(MakePreparedResolvedImageForTest(Resolved), Err);
         };
         auto GetIconKey = [](const FTestIconEntry& Entry) -> FName { return Entry.Key; };
 
@@ -7129,7 +7150,7 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
                 FString Err;
                 return CharCatalog != nullptr
                     && CharCatalog->Resolve(Entry.ResourceId, Resolved, Err)
-                    && Widget.ApplyResolvedImageResource(Resolved, Err);
+                    && Widget.ApplyResolvedImageResource(MakePreparedResolvedImageForTest(Resolved), Err);
             };
 
             // Positive single character with key identity
@@ -7352,7 +7373,7 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
         return Catalog != nullptr
             && Widget != nullptr
             && Catalog->Resolve(ResourceId, Resolved, OutError)
-            && Widget->ApplyResolvedImageResource(Resolved, OutError);
+            && Widget->ApplyResolvedImageResource(MakePreparedResolvedImageForTest(Resolved), OutError);
     };
 
     // 1. Test ScalePolicy compatibility matrix
@@ -7940,7 +7961,7 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
         return RenderingCatalog != nullptr
             && Widget != nullptr
             && RenderingCatalog->Resolve(ResourceId, Resolved, OutError)
-            && Widget->ApplyResolvedImageResource(Resolved, OutError);
+            && Widget->ApplyResolvedImageResource(MakePreparedResolvedImageForTest(Resolved), OutError);
     };
 
     UGameInstance* GameInstance = NewObject<UGameInstance>();
@@ -8495,7 +8516,7 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
                     FGV2ResolvedImageResource BgResolved;
                     if (Catalog->Resolve(MarketResourceId, BgResolved, Error))
                     {
-                        Bg->ApplyResolvedImageResource(BgResolved, Error);
+                        Bg->ApplyResolvedImageResource(MakePreparedResolvedImageForTest(BgResolved), Error);
                     }
                     AddInfo(FString::Printf(TEXT("Background: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
                         *Bg->GetAppliedResourceId(),
@@ -8508,7 +8529,7 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
                     FGV2ResolvedImageResource TileResolved;
                     if (Catalog->Resolve(TEXT("core:resource.ui.old_paper_tile_256"), TileResolved, Error))
                     {
-                        BgTile->ApplyResolvedImageResource(TileResolved, Error);
+                        BgTile->ApplyResolvedImageResource(MakePreparedResolvedImageForTest(TileResolved), Error);
                     }
                     AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
                         *BgTile->GetAppliedResourceId(),
@@ -9209,7 +9230,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             FGV2ResolvedImageResource ResolvedPortrait;
             ResolvedPortrait.ResourceId = TEXT("core:resource.ui.missing_portrait");
             TestFalse(TEXT("REV3-10: Portrait with unbound renderer rejects a supplied resource"),
-                Portrait->ApplyResolvedPortrait(ResolvedPortrait, Error));
+                Portrait->ApplyResolvedPortrait(MakePreparedResolvedImageForTest(ResolvedPortrait), Error));
             TestTrue(TEXT("REV3-10: Rejection names the unbound renderer"), Error.Contains(TEXT("PortraitImage")));
         }
     }

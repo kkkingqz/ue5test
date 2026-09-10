@@ -15,9 +15,12 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-CAPABILITY_HEADER_PATH = REPO_ROOT / "Source" / "GV2" / "Public" / "UI" / "GV2UiCapability.h"
-CAPABILITY_SOURCE_PATH = REPO_ROOT / "Source" / "GV2" / "Private" / "UI" / "GV2UiCapability.cpp"
-STRUCT_SIGNATURE = "struct GV2_API FGV2UiPropertyCapability"
+CAPABILITY_HEADER_PATH = REPO_ROOT / "Source" / "GV2PresentationApply" / "Public" / "UI" / "GV2UiCapability.h"
+CAPABILITY_SOURCE_PATHS = (
+    REPO_ROOT / "Source" / "GV2PresentationApply" / "Private" / "UI" / "GV2UiCapability.cpp",
+    REPO_ROOT / "Source" / "GV2" / "Private" / "UI" / "GV2UiCapability.cpp",
+)
+STRUCT_SIGNATURE = "struct GV2PRESENTATIONAPPLY_API FGV2UiPropertyCapability"
 
 # This is the independent, explicit classification table.  Its values record why
 # each member participates in the capability contract, or why it does not belong
@@ -123,15 +126,16 @@ def validate_header(path: Path) -> list[str]:
 
 def validate_repository() -> list[str]:
     errors = validate_header(CAPABILITY_HEADER_PATH)
-    if not CAPABILITY_SOURCE_PATH.exists():
-        return errors + [f"{CAPABILITY_SOURCE_PATH}: capability source not found"]
-
-    source = strip_comments(CAPABILITY_SOURCE_PATH.read_text(encoding="utf-8"))
-    if re.search(r"\bsizeof\s*\(\s*FGV2UiPropertyCapability\s*\)", source):
-        errors.append(
-            f"{CAPABILITY_SOURCE_PATH}: sizeof(FGV2UiPropertyCapability) is not a completeness gate; "
-            "use the source member inventory"
-        )
+    for source_path in CAPABILITY_SOURCE_PATHS:
+        if not source_path.exists():
+            errors.append(f"{source_path}: capability source not found")
+            continue
+        source = strip_comments(source_path.read_text(encoding="utf-8"))
+        if re.search(r"\bsizeof\s*\(\s*FGV2UiPropertyCapability\s*\)", source):
+            errors.append(
+                f"{source_path}: sizeof(FGV2UiPropertyCapability) is not a completeness gate; "
+                "use the source member inventory"
+            )
     return errors
 
 

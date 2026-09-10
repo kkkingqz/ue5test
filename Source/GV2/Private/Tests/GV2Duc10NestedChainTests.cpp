@@ -239,7 +239,8 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
     UGV2TabContainerWidgetBase* const Tabs = TabsHost != nullptr
         ? Cast<UGV2TabContainerWidgetBase>(TabsHost->GetWidgetFromName(TEXT("Tabs"))) : nullptr;
     TestNotNull(TEXT("DUC-10: generic root host reaches reusable tab container"), Tabs);
-    UGV2ScreenWidgetBase* const BlockScreen = Tabs != nullptr ? Tabs->GetScreenWidgetForTab(TEXT("info")) : nullptr;
+    UGV2ScreenWidgetBase* const BlockScreen = Tabs != nullptr
+        ? Cast<UGV2ScreenWidgetBase>(Tabs->GetScreenWidgetForTab(TEXT("info"))) : nullptr;
     TestNotNull(TEXT("DUC-10: tab resolves the registered nested Screen Template"), BlockScreen);
     UGV2DeclaredCompositeWidgetBase* const DayBlock = BlockScreen != nullptr
         ? Cast<UGV2DeclaredCompositeWidgetBase>(BlockScreen->GetWidgetFromName(TEXT("DayBlock"))) : nullptr;
@@ -278,7 +279,7 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("DUC-10: Prepare failure retains the same tab container instance"),
             (TabsHost != nullptr ? TabsHost->GetWidgetFromName(TEXT("Tabs")) : nullptr) == Tabs);
         TestEqual(TEXT("DUC-10: Prepare failure retains the same nested block screen"),
-            Tabs != nullptr ? Tabs->GetScreenWidgetForTab(TEXT("info")) : nullptr,
+            Tabs != nullptr ? Cast<UGV2ScreenWidgetBase>(Tabs->GetScreenWidgetForTab(TEXT("info"))) : nullptr,
             BlockScreen);
         if (DayText != nullptr)
         {
@@ -320,7 +321,7 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("DUC-10: commit failure retains root tab-container state"),
             (TabsHost != nullptr ? TabsHost->GetWidgetFromName(TEXT("Tabs")) : nullptr) == Tabs);
         TestEqual(TEXT("DUC-10: commit failure retains nested Screen Template state"),
-            Tabs != nullptr ? Tabs->GetScreenWidgetForTab(TEXT("info")) : nullptr,
+            Tabs != nullptr ? Cast<UGV2ScreenWidgetBase>(Tabs->GetScreenWidgetForTab(TEXT("info"))) : nullptr,
             BlockScreen);
         if (DayText != nullptr)
         {

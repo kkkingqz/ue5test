@@ -1,0 +1,17 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "UObject/Interface.h"
+#include "GV2UiStyleConsumer.generated.h"
+
+UINTERFACE(BlueprintType)
+class GV2PRESENTATIONAPPLY_API UGV2UiStyleConsumer : public UInterface
+{
+    GENERATED_BODY()
+};
+
+class GV2PRESENTATIONAPPLY_API IGV2UiStyleConsumer
+{
+    GENERATED_BODY()
+
+};

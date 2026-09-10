@@ -1,8 +1,8 @@
 ---
 title: System Context and Components
 status: normative
-version: 2.8
-updated: 2026-09-07
+version: 2.9
+updated: 2026-09-10
 depends_on:
   - Overview.md
   - GlossaryAndNaming.md
@@ -84,7 +84,7 @@ Physical mapping использует runtime modules `GV2`, `GV2PresentationApp
 Source/GV2/
   Public/
     Runtime/        UGV2RuntimeSubsystem и Blueprint-safe DTO
-    UI/             native Widget base classes и presentation DTO
+    UI/             semantic Prepare, registries и authority-aware/composition Widget bases
   Private/
     Application/    FGV2SessionCoordinator, stateless Screen Field Adapter Registry, FGV2RepositoryPublisher (Application-scope current repository/version) и FGV2FilesystemContentSourceProvider (UE-filesystem package source acquisition)
     Bridge/         ingress queue, operation и UI binding registries
@@ -99,10 +99,11 @@ Source/GV2ContentHostSupport/
   Public/            DiscoverPackageFromDirectory(), FResolvedPackageSet и другие filesystem-based
                      discovery helpers (ADR-0019); portable, не знает про UE
   Private/           std::filesystem-based implementation; depends on GV2ContentCore, not vice versa
-Source/GV2PresentationApply/   (ADR-0043 D2 -- DTO-only skeleton введён PSC-09A; полная физическая реализация Apply/Commit/rollback переезжает PSC-11)
-  Public/            единственная public transaction Apply entry point и её DTO
-  Private/           Commit, откат, keyed-реконсиляция, восстановление проекции, чистые расчёты
-                     раскладки; allowlist -- Core/CoreUObject/Engine/UMG/CommonUI/Slate/SlateCore,
+Source/GV2PresentationApply/   (ADR-0043 D2)
+  Public/            единственная transaction Apply entry point, prepared DTO/value-only roles
+                     и prepared-effect Widget bases
+  Private/           Widget effects, Commit/откат, keyed-реконсиляция, восстановление проекции
+                     и layout calculations; только Core/CoreUObject/Engine/UMG/CommonUI/Slate/SlateCore,
                      без GV2/content/authority modules
 Source/GV2ContentAuthoring/
   Public/            authoring operations, typed outcomes и file-state stamp

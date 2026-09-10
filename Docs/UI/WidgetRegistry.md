@@ -1,8 +1,8 @@
 ---
 title: Widget Registry Contract
 status: normative
-version: 3.16
-updated: 2026-09-09
+version: 3.17
+updated: 2026-09-10
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ImageResources.md
@@ -22,7 +22,7 @@ decisions:
 > **Владеет:** базовым набором виджетов, универсальным конвейером свойств (`IGV2UiPropertyHost`), централизованной темой и правилами их использования.
 > **Не владеет:** раскладкой конкретного экрана и игровыми данными в нём.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
-> **Реализация:** `Source/GV2/Public/UI/`, `Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp`, `Source/GV2/Private/UI/GV2PropertyConsumers.cpp`.
+> **Реализация:** prepared-effect bases и value-only roles — `Source/GV2PresentationApply/`; semantic Prepare, registries и composition bases — `Source/GV2/Public|Private/UI/`; материализация — `Source/GV2/Private/Application/GV2ScreenFieldMaterializer.cpp`.
 > **Проверки:** `GV2.Runtime.Presentation.*`, `GV2.UI.StandardPropertyConsumers`, `GV2.UI.CapabilityObservabilityHarness`, `GV2.UI.CapabilityObservabilityCompositeSweep`, `GV2.Runtime.UI.ScreenPreflightPredictsDeepChildFailure`, инвентарь `/Game/UI` в automation.
 
 Widget Registry описывает reusable UI elements, их trusted C++/UMG adapters, capabilities и field schemas. Concrete root screens принадлежат отдельному [Screen Template contract](ScreenTemplates.md) и разрешаются Screen Registry, а не `widget_id` из Lua-authored tree.
@@ -75,7 +75,7 @@ UGV2SeparatorWidgetBase       implements IGV2UiStyleConsumer
 UGV2LoadingIndicatorWidgetBase implements IGV2UiStyleConsumer
 ```
 
-Перечисленные интерфейсы описывают, что виджет **объявляет** (capability tree, стиль, Screen Field identity). Отдельно от них виджет объявляет, какое **физическое действие** он умеет выполнять — ролевыми интерфейсами `IGV2Prepared*Target` нижнего модуля `GV2PresentationApply` (`PreparedApplyTargets.h`). Именно через роль, а не через конкретный тип, единственный `FGV2PresentationApply::Apply` достаёт GV2-виджет, класс которого нижнему модулю называть нельзя. Каждая роль — отдельный интерфейс: один интерфейс с no-op-методами позволил бы объявить участие, забыть override и отчитаться об успешном commit, ничего не записав. Отсутствие роли у цели — диагностируемое несоответствие, а не тихий no-op; множество объявленных ролей сверяется с множеством реализованных (`Tools/Testing/validate_central_style_runtime_boundary.py`). `IGV2UiPropertyHost` и `IGV2UiBindingTarget` **выведены** из `IGV2PreparedKeyTarget`/`IGV2PreparedBindingTarget`, поэтому новому хосту, объявляющему `key` или `binding`, правки не нужны нигде (DUC-03).
+Prepared-effect Widget bases, capability descriptors и value-only interfaces находятся в `GV2PresentationApply`; schema validation, semantic Prepare, composition bases и authority-aware registries остаются в `GV2`. Виджет сообщает поддерживаемое **физическое действие** отдельной ролью `IGV2Prepared*Target` (`PreparedApplyTargets.h`). Единственный `FGV2PresentationApply::Apply` маршрутизирует операцию по роли, а не по списку concrete classes: так derived/custom Widget получает тот же путь без новой ветки. Отсутствие роли — диагностируемое несоответствие, а не тихий no-op; множество объявленных ролей сверяется с множеством реализаций (`Tools/Testing/validate_central_style_runtime_boundary.py`). `IGV2UiPropertyHost` и `IGV2UiBindingTarget` наследуют `IGV2PreparedKeyTarget`/`IGV2PreparedBindingTarget`, поэтому новый host с `key` или `binding` не требует правки диспетчера (DUC-03).
 
 DUC-02 made eight base elements addressable as a top-level Screen Field the same way the four Location composites already were: `UGV2TextWidgetBase`, `UGV2RichTextWidgetBase`, `UGV2ImageWidgetBase`, `UGV2ButtonWidgetBase`, `UGV2CheckboxWidgetBase`, `UGV2InputFieldWidgetBase`, `UGV2ProgressBarWidgetBase`, `UGV2PortraitWidgetBase` now implement `IGV2ScreenFieldHost` too, delegating `GetScreenFieldId()` to the same shared `HostIdentity` every `IGV2UiPropertyHost` carries (DUC-01) — no separate per-class field, no dedicated C++ subclass. The remaining reusable widgets (`UGV2DropdownSelectWidgetBase`, `UGV2ButtonListWidgetBase`, `UGV2ModalWidgetBase`, `UGV2TabContainerWidgetBase`, `UGV2RichTextPopoverWidgetBase`, `UGV2ListViewWidgetBase`) are collection/composite-ish or transient-projection widgets outside DUC-02's scope and remain addressable only as a nested property host (inside a `CollectionHost` composite or a parent's capability tree), not as an independent top-level Screen Field — см. [Screen Templates § Screen Field Host and Property Host contract](ScreenTemplates.md#screen-field-host-and-property-host-contract).
 

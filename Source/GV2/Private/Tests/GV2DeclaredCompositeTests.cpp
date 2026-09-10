@@ -83,7 +83,7 @@ bool SetDeclaredCapabilityEntry(
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2DeclaredCompositeTest,
-    "GV2.UI.DeclaredComposite",
+    "GV2.UI.DeclaredComposite.BaseContract",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FGV2DeclaredCompositeTest::RunTest(const FString& Parameters)
@@ -201,7 +201,7 @@ bool FGV2DeclaredCompositeTest::RunTest(const FString& Parameters)
         Schema,
         TEXT("core:schema.ui_field.declared_composite_probe.v1"),
         TEXT("declared_composite"),
-        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).GetLastCommittedProperties(),
         Plan,
         Diagnostics);
     TestFalse(TEXT("DUC-05: missing declared child is rejected in preflight"), bPrepared);
@@ -408,7 +408,7 @@ bool FGV2DeclaredCompositeChildKindCompatibilityTest::RunTest(const FString& Par
         NumberSchema,
         TEXT("core:schema.ui_field.declared_composite_kind_probe.v1"),
         TEXT(""),
-        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).GetLastCommittedProperties(),
         BadPlan,
         BadDiagnostics);
     TestFalse(TEXT("DUC-07: declaring Number against a Text-only child is rejected"), bBadPrepared);
@@ -453,7 +453,7 @@ bool FGV2DeclaredCompositeChildKindCompatibilityTest::RunTest(const FString& Par
         TextSchema,
         TEXT("core:schema.ui_field.declared_composite_kind_probe.v1"),
         TEXT(""),
-        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).GetLastCommittedProperties(),
         GoodPlan,
         GoodDiagnostics);
     TestTrue(TEXT("DUC-07: declaring Text against the same Text-only child is accepted"), bGoodPrepared);
@@ -549,7 +549,7 @@ bool FGV2DeclaredCompositeOptionalDeclarationTest::RunTest(const FString& Parame
         EmptySchema,
         TEXT("core:schema.ui_field.declared_composite_optional_probe.v1"),
         TEXT(""),
-        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).GetLastCommittedProperties(),
         EmptyPlan,
         EmptyDiagnostics);
     TestTrue(TEXT("DCA-01: optional+unbound entry does not block an otherwise-empty schema"), bEmptyPrepared);
@@ -588,7 +588,7 @@ bool FGV2DeclaredCompositeOptionalDeclarationTest::RunTest(const FString& Parame
         SubtitleSchema,
         TEXT("core:schema.ui_field.declared_composite_optional_probe.v1"),
         TEXT(""),
-        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).GetLastCommittedProperties(),
         RequiredPlan,
         RequiredDiagnostics);
     TestFalse(TEXT("DCA-01: required entry with an unbound child is still rejected"), bRequiredPrepared);
@@ -632,7 +632,7 @@ bool FGV2DeclaredCompositeOptionalDeclarationTest::RunTest(const FString& Parame
         SubtitleSchema,
         TEXT("core:schema.ui_field.declared_composite_optional_probe.v1"),
         TEXT(""),
-        PropertyHost->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(PropertyHost->GetPropertyHostState()).GetLastCommittedProperties(),
         BoundPlan,
         BoundDiagnostics);
     TestTrue(TEXT("DCA-01: optional+bound entry prepares normally"), bBoundPrepared);
@@ -781,7 +781,7 @@ bool FGV2DeclaredCompositeConstraintsAndSelectorTest::RunTest(const FString& Par
             const bool bWidePrepared = PrepareUiHostProperties(
                 WideComposite, WideBuilder.Build(), *WideCandidate, MatchingWideSchema,
                 TEXT("test:schema.gbh08_declaration_vs_child_probe.v1"), TEXT(""),
-                WideComposite->GetPropertyHostState().GetLastCommittedProperties(),
+                GetUiHostSemanticState(WideComposite->GetPropertyHostState()).GetLastCommittedProperties(),
                 WidePlan, WidePrepareDiagnostics);
             TestFalse(
                 TEXT("GBH-08: declaration [0..100] against real child ProgressBar[0..1] is rejected, not just kind-checked"),
@@ -831,7 +831,7 @@ bool FGV2DeclaredCompositeConstraintsAndSelectorTest::RunTest(const FString& Par
         const bool bAmbiguousPrepared = PrepareUiHostProperties(
             Composite, Builder.Build(), *KeyCandidate, KeySchema,
             TEXT("test:schema.gbh06_ambiguous_probe.v1"), TEXT(""),
-            Composite->GetPropertyHostState().GetLastCommittedProperties(),
+            GetUiHostSemanticState(Composite->GetPropertyHostState()).GetLastCommittedProperties(),
             AmbiguousPlan, AmbiguousDiagnostics);
         TestFalse(TEXT("GBH-06: ambiguous child capability (no selector, no name match) is rejected"), bAmbiguousPrepared);
         TestTrue(
@@ -852,7 +852,7 @@ bool FGV2DeclaredCompositeConstraintsAndSelectorTest::RunTest(const FString& Par
         const bool bResolvedPrepared = PrepareUiHostProperties(
             Composite, ResolvedBuilder.Build(), *KeyCandidate, KeySchema,
             TEXT("test:schema.gbh06_ambiguous_probe.v1"), TEXT(""),
-            Composite->GetPropertyHostState().GetLastCommittedProperties(),
+            GetUiHostSemanticState(Composite->GetPropertyHostState()).GetLastCommittedProperties(),
             ResolvedPlan, ResolvedDiagnostics);
         TestTrue(
             *FString::Printf(TEXT("GBH-06: explicit ChildCapabilityName resolves the same ambiguity [Diagnostics: %s]"),
@@ -1075,7 +1075,7 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
     const bool bPrepared = PrepareUiHostProperties(
         Composite, Builder.Build(), *FirstCandidate, Schema,
         TEXT("test:schema.gbh02b_collection_first_entry.v1"), TEXT(""),
-        Composite->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(Composite->GetPropertyHostState()).GetLastCommittedProperties(),
         Plan, Diagnostics, nullptr, PrepareContext);
     TestTrue(
         *FString::Printf(TEXT("GBH-02B: Prepare creates the first entry of a genuinely empty collection [Diagnostics: %s]"),
@@ -1111,7 +1111,7 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
     const bool bSecondPrepared = PrepareUiHostProperties(
         Composite, Builder.Build(), *SecondCandidate, Schema,
         TEXT("test:schema.gbh02b_collection_first_entry.v1"), TEXT(""),
-        Composite->GetPropertyHostState().GetLastCommittedProperties(),
+        GetUiHostSemanticState(Composite->GetPropertyHostState()).GetLastCommittedProperties(),
         SecondPlan, SecondDiagnostics, nullptr, PrepareContext);
     TestTrue(TEXT("GBH-02B: Prepare succeeds for a second entry on the now-non-empty collection"), bSecondPrepared);
     FString SecondFailedPath, SecondCommitError;

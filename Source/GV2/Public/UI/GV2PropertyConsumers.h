@@ -5,6 +5,7 @@
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2UiCapability.h"
 #include "UI/GV2UiPropertyHost.h"
+#include "UI/GV2UiHostSemanticState.h"
 
 class UWidget;
 class FGV2PresentationPrepareContext;
@@ -399,7 +400,7 @@ private:
         // the paired physical inverse succeeds. Collection commit publishes item
         // snapshots as a batch, but keeping the prior tuple with the item makes
         // the invariant explicit at this nested transaction boundary.
-        FGV2UiPropertyHostState::FCommittedSnapshot PreviousCommittedSnapshot;
+        FGV2UiHostCommittedSnapshot PreviousCommittedSnapshot;
         // GBH-10 (ADR-0041): set only when Widget is a REUSED entry (found in
         // ExistingWidgets during Prepare, not freshly created). RollbackPlan restores it
         // to its own previous committed value if Commit fails on a later item in the

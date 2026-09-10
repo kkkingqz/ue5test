@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Bridge/GV2BridgeTypes.h"
+#include "GV2PresentationApply/GV2WidgetTypes.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Styling/SlateTypes.h"

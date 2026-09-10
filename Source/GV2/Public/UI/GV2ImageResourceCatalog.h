@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
 #include "Engine/Texture2D.h"
+#include "GV2PresentationApply/GV2ImageTypes.h"
 #include "Styling/SlateBrush.h"
 #include "GV2ImageResourceCatalog.generated.h"
 
@@ -12,16 +13,6 @@ enum class EGV2ImageRenderMode : uint8
     FixedAspect,
     NineSlice,
     Tile
-};
-
-UENUM(BlueprintType)
-enum class EGV2PrimitiveScalePolicy : uint8
-{
-    Unset = 0,
-    FreeStretch,
-    Tile,
-    NineSlice,
-    PreserveAspect
 };
 
 inline bool IsScalePolicyCompatible(EGV2PrimitiveScalePolicy Policy, EGV2ImageRenderMode RenderMode)

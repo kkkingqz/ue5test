@@ -2,23 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "Misc/TVariant.h"
-#include "Bridge/GV2BridgeTypes.h"
-
-enum class EGV2PreparedUiValueKind : uint8
-{
-    Null,
-    Boolean,
-    Integer,
-    Number,
-    String,
-    Key,
-    Text,
-    StableId,
-    Binding,
-    Object,
-    Array,
-    Count
-};
+#include "GV2PresentationApply/GV2WidgetTypes.h"
+#include "UI/GV2UiCapability.h"
 
 struct GV2_API FGV2PreparedUiKey
 {

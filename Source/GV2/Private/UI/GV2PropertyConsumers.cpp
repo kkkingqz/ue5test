@@ -1301,10 +1301,11 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
                 : FString::Printf(TEXT("%s[%s]"), *ContextPropertyPath, *ItemKey.ToString());
 
             IGV2UiPropertyHost* const ItemHost = Cast<IGV2UiPropertyHost>(ItemWidget);
-            FGV2UiPropertyHostState::FCommittedSnapshot PreviousItemSnapshot = ItemHost->GetPropertyHostState().GetCommittedSnapshot();
-            const FGV2PreparedUiObject PreviousItemValue = ItemHost->GetPropertyHostState().GetLastCommittedProperties();
-            const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& PreviousItemSchema = ItemHost->GetPropertyHostState().GetLastCommittedSchema();
-            const FString& PreviousItemSchemaId = ItemHost->GetPropertyHostState().GetLastCommittedSchemaId();
+            FGV2UiHostSemanticState& ItemState = GetUiHostSemanticState(ItemHost->GetPropertyHostState());
+            FGV2UiHostCommittedSnapshot PreviousItemSnapshot = ItemState.GetCommittedSnapshot();
+            const FGV2PreparedUiObject PreviousItemValue = ItemState.GetLastCommittedProperties();
+            const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& PreviousItemSchema = ItemState.GetLastCommittedSchema();
+            const FString& PreviousItemSchemaId = ItemState.GetLastCommittedSchemaId();
             const bool bHasPreviousItemSnapshot = PreviousItemSchema && !PreviousItemSchemaId.IsEmpty();
             if (!PreviousItemValue.IsEmpty() && !bHasPreviousItemSnapshot)
             {
@@ -1550,7 +1551,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                     }
                     else if (IGV2UiPropertyHost* ItemHost = Cast<IGV2UiPropertyHost>(Item.Widget))
                     {
-                        ItemHost->GetPropertyHostState().RestoreCommittedSnapshot(
+                        GetUiHostSemanticState(ItemHost->GetPropertyHostState()).RestoreCommittedSnapshot(
                             Item.PreviousCommittedSnapshot);
                     }
                 }
@@ -1576,7 +1577,8 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
                         }
                         else if (IGV2UiPropertyHost* CommittedItemHost = Cast<IGV2UiPropertyHost>(CommittedItem.Widget))
                         {
-                            CommittedItemHost->GetPropertyHostState().RestoreCommittedSnapshot(CommittedItem.PreviousCommittedSnapshot);
+                            GetUiHostSemanticState(CommittedItemHost->GetPropertyHostState()).RestoreCommittedSnapshot(
+                                CommittedItem.PreviousCommittedSnapshot);
                         }
                     }
                 }
@@ -1620,7 +1622,7 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
         {
             if (IGV2UiPropertyHost* ItemHost = Cast<IGV2UiPropertyHost>(Item.Widget))
             {
-                ItemHost->GetPropertyHostState().SetLastCommittedSnapshot(
+                GetUiHostSemanticState(ItemHost->GetPropertyHostState()).SetLastCommittedSnapshot(
                     *Item.CommittedValue,
                     CompiledItemSpec,
                     ContextSchemaId.IsEmpty() ? TEXT("core:schema.ui_value.collection_item.v1") : ContextSchemaId);
@@ -2042,7 +2044,7 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
         TObjectPtr<UGV2ScreenWidgetBase> ChildWidget = nullptr;
         if (TabContainer != nullptr)
         {
-            ChildWidget = TabContainer->GetScreenWidgetForTab(TabKey);
+            ChildWidget = Cast<UGV2ScreenWidgetBase>(TabContainer->GetScreenWidgetForTab(TabKey));
         }
 
         if (!ChildWidget && TargetWidget != nullptr)

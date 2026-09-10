@@ -1039,7 +1039,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             // GBF-05: the reused item must restore accounting together with its
             // visible binding. The next Prepare reads this snapshot to build its
             // inverse, so checking only BtnA would miss the delayed divergence.
-            const FGV2PreparedUiValue* ItemACommittedBinding = BtnA->GetPropertyHostState().GetLastCommittedProperties().FindField(TEXT("binding"));
+            const FGV2PreparedUiValue* ItemACommittedBinding =
+                GetUiHostSemanticState(BtnA->GetPropertyHostState()).GetLastCommittedProperties().FindField(TEXT("binding"));
             TestNotNull(TEXT("GBF-05: reused item retains a committed binding after rollback"), ItemACommittedBinding);
             if (ItemACommittedBinding != nullptr)
             {
@@ -1047,7 +1048,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                     ItemACommittedBinding->AsBinding(), TestHandleA);
             }
             TestEqual(TEXT("GBF-05: reused item accounting restores its prior schema id"),
-                BtnA->GetPropertyHostState().GetLastCommittedSchemaId(), TEXT("test:schema.button_item"));
+                GetUiHostSemanticState(BtnA->GetPropertyHostState()).GetLastCommittedSchemaId(), TEXT("test:schema.button_item"));
             FString CollectionNextPrepareError;
             TestTrue(*FString::Printf(TEXT("GBF-05: next collection Prepare reads the restored revision [Error: %s]"), *CollectionNextPrepareError),
                 Consumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineElements)), *CollCap, ListView, CollectionNextPrepareError));
@@ -1827,7 +1828,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 
                 const bool bPrepared = PrepareUiHostProperties(
                     Host, Caps, *Candidate, Schema, SchemaId,
-                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics,
+                    SchemaId, GetUiHostSemanticState(PropHost->GetPropertyHostState()).GetLastCommittedProperties(), Plan, Diagnostics,
                     nullptr, PrepareContext);
 
                 if (!bPrepared)
@@ -1845,7 +1846,7 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 }
                 else
                 {
-                    PropHost->GetPropertyHostState().SetLastCommittedProperties(*Candidate);
+                    GetUiHostSemanticState(PropHost->GetPropertyHostState()).SetLastCommittedProperties(*Candidate);
                 }
                 return bCommitted;
             };
@@ -1870,12 +1871,12 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
                 PrepareUiHostProperties(
                     Host, Caps, *Candidate, Schema, SchemaId,
-                    SchemaId, PropHost->GetPropertyHostState().GetLastCommittedProperties(), Plan, Diagnostics,
+                    SchemaId, GetUiHostSemanticState(PropHost->GetPropertyHostState()).GetLastCommittedProperties(), Plan, Diagnostics,
                     nullptr, PrepareContext);
 
                 FString FailedPath, Error;
                 CommitUiHostProperties(Host, Plan, FailedPath, Error);
-                PropHost->GetPropertyHostState().SetLastCommittedProperties(FGV2PreparedUiObject());
+                GetUiHostSemanticState(PropHost->GetPropertyHostState()).SetLastCommittedProperties(FGV2PreparedUiObject());
             };
 
             // 13a. TopBar (DUC-08: generic declared composite) Property Host Reconciliation

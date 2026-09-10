@@ -1,11 +1,11 @@
 #include "UI/GV2TextPipeline.h"
 
-#include "UI/GV2ApplyTransaction.h"
 #include "Application/GV2SessionContentSnapshot.h"
 #include "CommonRichTextBlock.h"
 #include "CommonTextBlock.h"
 #include "Components/EditableTextBox.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
+#include "GV2PresentationApply/GV2WidgetTextApply.h"
 #include "UI/GV2UiTheme.h"
 
 namespace
@@ -364,94 +364,24 @@ bool UGV2TextPipeline::ResolveStyleForHeight(
     return true;
 }
 
-// Apply accepts only a presentation resolved during Prepare and translates it to a lower
-// module value-only transaction. It performs no Theme or token lookup.
+// Keep the semantic API as a compatibility surface for GV2-owned widgets, but let the
+// lower module own the one physical text-transaction implementation.
 bool UGV2TextPipeline::Apply(UCommonTextBlock* Widget, const FGV2TextViewModel& Text)
 {
-    const TSubclassOf<UCommonTextStyle> Style = Text.ResolvedStyleClass;
-    // Plain renderer deliberately rejects semantic styled/interactive runs instead of
-    // leaking authoring markup to the player. Such content must use the RichText leaf.
-    if (Widget == nullptr || !Text.bHasResolvedPresentation || Style == nullptr
-        || Text.NormalizedMarkup.Contains(TEXT("<gv2"))) return false;
-
-    GV2PresentationApply::FPreparedTextScalePolicy ScalePolicy;
-    ScalePolicy.BaseFontSize = Text.ResolvedBaseFontSize;
-    ScalePolicy.MinReadableFontSize = Text.ResolvedMinReadableFontSize;
-    ScalePolicy.ReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
-    ScalePolicy.ScaleCurve = Text.ResolvedFontScaleCurve;
-
-    GV2PresentationApply::FPreparedPlainTextOperation Operation;
-    Operation.TargetWidget = Widget;
-    Operation.Style = Style;
-    Operation.Text = Text.Text;
-    Operation.ScalePolicy = ScalePolicy;
-
-    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
-    Transaction.AddPlainTextOperation(MoveTemp(Operation));
-    FString ApplyError;
-    return GV2ApplyTransaction(Transaction, ApplyError);
+    return FGV2WidgetTextApply::Apply(Widget, Text);
 }
 
-// RichText follows the same resolved-only boundary. Markup, style and live-geometry scale
-// policy are all values prepared before this physical-effect path is entered.
 bool UGV2TextPipeline::ApplyRichText(
     UCommonRichTextBlock* Widget,
     const FGV2TextViewModel& Text,
-    const UWidget* /*ContextWidget*/)
+    const UWidget* ContextWidget)
 {
-    if (Widget == nullptr || !Text.bHasResolvedPresentation)
-    {
-        return false;
-    }
-
-    TSubclassOf<UCommonTextStyle> Style;
-    FTextBlockStyle DefaultStyle;
-    bool bHasDefaultStyle = false;
-    GV2PresentationApply::FPreparedTextScalePolicy ScalePolicy;
-
-    Style = Text.ResolvedStyleClass;
-    bHasDefaultStyle = Text.bHasResolvedDefaultStyle;
-    DefaultStyle = Text.ResolvedDefaultStyle;
-    ScalePolicy.BaseFontSize = Text.ResolvedBaseFontSize;
-    ScalePolicy.MinReadableFontSize = Text.ResolvedMinReadableFontSize;
-    ScalePolicy.ReferenceViewportHeight = Text.ResolvedReferenceViewportHeight;
-    ScalePolicy.ScaleCurve = Text.ResolvedFontScaleCurve;
-
-    FString Markup = Text.NormalizedMarkup;
-    if (Markup.IsEmpty() && !Text.Text.IsEmpty()) return false;
-
-    GV2PresentationApply::FPreparedRichTextRenderOperation Operation;
-    Operation.TargetWidget = Widget;
-    Operation.Style = Style;
-    Operation.DefaultStyle = DefaultStyle;
-    Operation.bHasDefaultStyle = bHasDefaultStyle;
-    Operation.Markup = MoveTemp(Markup);
-    Operation.ScalePolicy = ScalePolicy;
-
-    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
-    Transaction.AddRichTextRenderOperation(MoveTemp(Operation));
-    FString ApplyError;
-    return GV2ApplyTransaction(Transaction, ApplyError);
+    return FGV2WidgetTextApply::ApplyRichText(Widget, Text, ContextWidget);
 }
 
-// PSC-09B: same split -- no Theme lookup needed here beyond the guard already checked,
-// so this is the smallest of the three, but still goes through the same protocol as the
-// other two, not a direct SetHintText call.
 bool UGV2TextPipeline::ApplyHint(UEditableTextBox* Widget, const FGV2TextViewModel& Text)
 {
-    if (Widget == nullptr || Text.NormalizedMarkup.Contains(TEXT("<gv2")))
-    {
-        return false;
-    }
-
-    GV2PresentationApply::FPreparedTextHintOperation Operation;
-    Operation.TargetWidget = Widget;
-    Operation.Text = Text.Text;
-
-    GV2PresentationApply::FGV2PreparedPresentationTransaction Transaction;
-    Transaction.AddTextHintOperation(MoveTemp(Operation));
-    FString ApplyError;
-    return GV2ApplyTransaction(Transaction, ApplyError);
+    return FGV2WidgetTextApply::ApplyHint(Widget, Text);
 }
 
 bool UGV2TextPipeline::NormalizeMarkup(

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """PSC-10B structural gate for the retired pull-style/runtime-authority surface.
 
-The actual set is every production C++ source/header under Source/GV2. Tests are
-excluded because they may inspect bootstrap fixtures directly. The gate deliberately
-matches symbols, not a list of known call sites: adding the old API anywhere fails.
+The actual set is every production C++ source/header under Source/GV2 and
+Source/GV2PresentationApply. Tests are excluded because they may inspect bootstrap
+fixtures directly. The gate deliberately matches symbols, not a list of known call sites:
+adding the old API anywhere fails.
 """
 
 from __future__ import annotations
@@ -14,7 +15,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SOURCE_ROOT = REPO_ROOT / "Source" / "GV2"
+SOURCE_ROOTS = (
+    REPO_ROOT / "Source" / "GV2",
+    REPO_ROOT / "Source" / "GV2PresentationApply",
+)
 
 FORBIDDEN_SYMBOLS = {
     "GetConfiguredTheme": re.compile(r"\bGetConfiguredTheme\s*\("),
@@ -101,11 +105,13 @@ APPLY_FACADE = APPLY_MODULE_ROOT / "Private" / "PresentationApplyFacade.cpp"
 
 def production_sources() -> dict[str, str]:
     result: dict[str, str] = {}
-    for path in sorted(SOURCE_ROOT.rglob("*")):
-        if path.suffix not in {".h", ".cpp"} or "Tests" in path.parts:
-            continue
-        rel = path.relative_to(SOURCE_ROOT).as_posix()
-        result[rel] = path.read_text(encoding="utf-8")
+    for source_root in SOURCE_ROOTS:
+        for path in sorted(source_root.rglob("*")):
+            if path.suffix not in {".h", ".cpp"} or "Tests" in path.parts:
+                continue
+            rel = path.relative_to(source_root).as_posix()
+            key = rel if source_root.name == "GV2" else f"{source_root.name}/{rel}"
+            result[key] = path.read_text(encoding="utf-8")
     return result
 
 
@@ -124,14 +130,14 @@ def strip_comments(source: str) -> str:
 
 def style_consumer_classes(sources: dict[str, str]) -> set[str]:
     pattern = re.compile(
-        r"class\s+GV2_API\s+(U[A-Za-z0-9_]+)\s*:[^{]*"
+        r"class\s+[A-Z0-9_]+_API\s+(U[A-Za-z0-9_]+)\s*:[^{]*"
         r"public\s+IGV2UiStyleConsumer[^{]*\{",
         re.DOTALL,
     )
     return {
         match.group(1)
         for rel, source in sources.items()
-        if rel.startswith("Public/")
+        if rel.startswith("Public/") or "/Public/" in rel
         for match in pattern.finditer(strip_comments(source))
     }
 
@@ -204,7 +210,7 @@ def implemented_role_interfaces(sources: dict[str, str]) -> set[str]:
     """Every central-style role interface a GV2 widget declares it performs."""
     found: set[str] = set()
     for rel, source in sources.items():
-        if not rel.startswith("Public/"):
+        if not (rel.startswith("Public/") or "/Public/" in rel):
             continue
         found |= set(re.findall(r"public (IGV2Prepared\w+StyleTarget)\b", strip_comments(source)))
     return found
