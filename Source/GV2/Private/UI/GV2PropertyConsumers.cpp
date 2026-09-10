@@ -340,10 +340,10 @@ bool FGV2ImageResourcePropertyConsumer::BuildPreparedOperation(
         Operation.Brush = FinalBrush;
         OutTransaction.AddImageResourceOperation(MoveTemp(Operation));
     }
-    // PSC-09B: UGV2ImageWidgetBase/UGV2PortraitWidgetBase route through their own
-    // ApplyResolvedImageResource/ApplyResolvedPortrait UFUNCTIONs (via
-    // GV2LegacyPresentationApplyAdapter, not GV2PresentationApply::Apply) rather than
-    // reaching past them to their inner UImage: those UFUNCTIONs also update bookkeeping
+    // PSC-09B/11: UGV2ImageWidgetBase/UGV2PortraitWidgetBase route through their own
+    // IGV2PreparedImageHostTarget sink -- which calls ApplyResolvedImageResource/
+    // ApplyResolvedPortrait -- rather than reaching past them to their inner UImage as the
+    // plain-UImage branch above does: those methods also update bookkeeping
     // (AppliedResourceId/ResolvedAspectRatio, GetPortraitResourceId/GetFrameResourceId)
     // that a direct SetBrush would leave frozen at whatever NativePreConstruct set.
     else if (Cast<UGV2ImageWidgetBase>(TargetWidget) != nullptr || Cast<UGV2PortraitWidgetBase>(TargetWidget) != nullptr)
@@ -888,7 +888,9 @@ bool FGV2KeyPropertyConsumer::Prepare(
 // generic `key` identity, and are routed by name so they can never be shadowed by (or
 // shadow) a host's real `key` -- see UGV2TabContainerWidgetBase, which declares both
 // "key" (its own identity) and "default_tab_key" (its own concept) on itself. Actual
-// dispatch lives in GV2LegacyPresentationApplyAdapter (every real target is GV2-owned).
+// dispatch is the target's own IGV2PreparedKeyTarget routing; a host that does not own the
+// name refuses it (IsHostClaimedKeyCapability, GV2UiPropertyHost.h) and the facade reports
+// core:diagnostic.ui_consumer.unhandled_target.
 bool FGV2KeyPropertyConsumer::BuildPreparedOperation(
     UWidget* TargetWidget,
     GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -2295,10 +2297,9 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
         }
     }
 
-    // PSC-09B (ADR-0043 D2/D3): the sole physical mutation this Commit performs directly
-    // -- ApplyTabEntries is GV2-owned (UGV2TabContainerWidgetBase), so
-    // GV2LegacyPresentationApplyAdapter performs the actual call, reconstructing the
-    // USTRUCT array/TMap from this flattened operation.
+    // PSC-09B/11 (ADR-0043 D2/D3): the sole physical mutation this Commit publishes --
+    // the host receives it through IGV2PreparedTabContainerTarget and reconstructs the
+    // USTRUCT array/TMap from this flattened operation in its own sink.
     if (TabContainer != nullptr)
     {
         GV2PresentationApply::FPreparedTabContainerOperation Operation;

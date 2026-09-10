@@ -54,6 +54,9 @@ CONTENT_RESOLUTION = (
 
 RECOVERY_CALL = re.compile(r"\bGetCoreMinimalTheme\s*\(")
 RECOVERY_CALL_FILES = {
+    # The cold-start recovery surface, which is TWO files rather than one class: the widget
+    # itself, and the subsystem code that builds its diagnostic strings when session
+    # bootstrap failed. Both run when there is no snapshot to read at all.
     "Private/Runtime/GV2RuntimeSubsystem.cpp",
     "Private/UI/GV2RecoveryScreenWidget.cpp",
     # PSC-10B: the SECOND of the two roles Docs/UI/README.md's owner contract allows -- the
@@ -299,15 +302,13 @@ def find_violations(
     for rel, source in sources.items():
         if not rel.endswith(".cpp"):
             continue
-        if rel == "Private/UI/GV2LegacyPresentationApplyAdapter.cpp":
-            continue
         stripped = strip_comments(source)
         for match in helper_call.finditer(stripped):
             function_start = stripped.rfind("NativePreConstruct", 0, match.start())
             prior_close = stripped.rfind("}", 0, match.start())
             if function_start < 0 or function_start < prior_close:
                 errors.append(
-                    f"{rel}:{line_of(source, match.start())}: style value sink called outside transaction adapter"
+                    f"{rel}:{line_of(source, match.start())}: style value sink called outside the prepared transaction"
                 )
                 continue
             function_prefix = stripped[function_start:match.start()]
@@ -335,7 +336,7 @@ def run_self_test() -> bool:
             "bool EmitForWidget() { Cast<UGV2StyledWidget>(Widget); } "
             "bool OwnsSubtreeStyling() {}\n"
         ),
-        "Private/UI/GV2LegacyPresentationApplyAdapter.cpp": (
+        "Private/UI/GV2SyntheticApplySite.cpp": (
             "FPreparedCentralStyleOperation& Op; Cast<UGV2StyledWidget>(Widget); "
             "const GV2PresentationApply::FPreparedSyntheticRoleStyle& S; }, Operation);\n"
         ),
@@ -359,7 +360,7 @@ def run_self_test() -> bool:
             "void UGV2RichTextPopoverWidgetBase::ApplyPopoverStyleValues()\n{\n"
             "    FGV2ImagePresentation::ResolveAndApply();\n}\n",
         ),
-        "style helper outside adapter": (
+        "style helper outside the transaction": (
             "Private/UI/Synthetic.cpp",
             "void Commit() { ApplyButtonStyleValues(); }\n",
         ),
@@ -405,7 +406,7 @@ def run_self_test() -> bool:
     # PSC-10B: the payload variant -- not the interface -- enumerates Apply. A role without a
     # branch, and a branch without a role, must both fail.
     unhandled = dict(clean)
-    unhandled["Private/UI/GV2LegacyPresentationApplyAdapter.cpp"] = (
+    unhandled["Private/UI/GV2SyntheticApplySite.cpp"] = (
         "FPreparedCentralStyleOperation& Op; Cast<UGV2StyledWidget>(Widget); }, Operation);\n"
     )
     if not find_violations(unhandled, synthetic_roles, set(), synthetic_interfaces):

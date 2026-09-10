@@ -2554,4 +2554,134 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PreparedKeyCapabilityRoutingTest,
+    "GV2.UI.PreparedKeyCapabilityRouting",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// DUC-03: a key capability declared under a name OTHER than the generic `key` identity
+// belongs to the class that declares it, and only that class may write it. This test asserts
+// two things about that rule.
+//
+// First, that the claimed set is the ACTUAL set: it is derived here by reflection over every
+// native IGV2UiPropertyHost's own DescribeUiCapabilities, not read from a list in the test,
+// so declaring a new named key capability without either routing it or claiming it turns
+// this red. IsHostClaimedKeyCapability is the expected side and lives in production code;
+// the actual side is the capability declarations themselves.
+//
+// Second, that refusing is what actually happens on the production path: a claimed name
+// handed to a host that does not route it must produce the unhandled_target diagnostic
+// rather than a successful commit that quietly overwrote the host's own identity.
+bool FGV2PreparedKeyCapabilityRoutingTest::RunTest(const FString& Parameters)
+{
+    TSet<FName> DeclaredNamedKeyCapabilities;
+    int32 InspectedHosts = 0;
+    for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+    {
+        UClass* Class = *ClassIt;
+        if (!Class->ImplementsInterface(UGV2UiPropertyHost::StaticClass())
+            || Class->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists)
+            || !Class->HasAnyClassFlags(CLASS_Native)
+            || Class->HasMetaData(TEXT("GV2TestOnly"))
+            || !Class->IsChildOf(UWidget::StaticClass()))
+        {
+            continue;
+        }
+        UWidget* Instance = NewObject<UWidget>(GetTransientPackage(), Class);
+        IGV2UiPropertyHost* Host = Cast<IGV2UiPropertyHost>(Instance);
+        if (Host == nullptr)
+        {
+            continue;
+        }
+        ++InspectedHosts;
+        FGV2UiCapabilityBuilder Builder;
+        Host->DescribeUiCapabilities(Builder);
+        // Bound to a named local: Build() returns by value, and iterating a member of the
+        // temporary directly would leave the range referring to a destroyed object.
+        const FGV2UiCapabilityTree DeclaredTree = Builder.Build();
+        for (const TPair<FString, FGV2UiPropertyCapability>& Pair : DeclaredTree.Properties)
+        {
+            if (Pair.Value.SupportedKind == EGV2PreparedUiValueKind::Key && Pair.Key != TEXT("key"))
+            {
+                DeclaredNamedKeyCapabilities.Add(FName(*Pair.Key));
+            }
+        }
+    }
+    TestTrue(TEXT("reflection found production property hosts"), InspectedHosts > 0);
+    TestTrue(TEXT("at least one named key capability exists to check"), DeclaredNamedKeyCapabilities.Num() > 0);
+
+    for (const FName& Declared : DeclaredNamedKeyCapabilities)
+    {
+        TestTrue(
+            *FString::Printf(TEXT("declared named key capability '%s' is claimed"), *Declared.ToString()),
+            IsHostClaimedKeyCapability(Declared));
+    }
+    // ...and nothing is claimed that nobody declares, so the set cannot drift the other way.
+    for (const FName& Claimed : {FName(TEXT("selected_key")), FName(TEXT("default_tab_key"))})
+    {
+        TestTrue(
+            *FString::Printf(TEXT("claimed name '%s' is actually declared by a host"), *Claimed.ToString()),
+            DeclaredNamedKeyCapabilities.Contains(Claimed));
+    }
+    TestEqual(
+        TEXT("the claimed set has exactly as many names as reflection declares"),
+        DeclaredNamedKeyCapabilities.Num(),
+        2);
+    TestFalse(TEXT("the generic identity name is not claimed"), IsHostClaimedKeyCapability(FName(TEXT("key"))));
+    TestFalse(TEXT("an unnamed reset routing is not claimed"), IsHostClaimedKeyCapability(NAME_None));
+
+    // Same standalone-world setup every other case in this file uses: outered to GEngine and
+    // rooted, so the instance and its world survive a GC between the widgets created below.
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    // A host that does NOT own the name must refuse it, through the real consumer.
+    UGV2ButtonWidgetBase* Button = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
+    Button->SetKey(FName(TEXT("own_identity")));
+
+    FGV2KeyPropertyConsumer Consumer;
+    FGV2UiPropertyCapability ClaimedCap;
+    ClaimedCap.PropertyName = TEXT("selected_key");
+    ClaimedCap.SupportedKind = EGV2PreparedUiValueKind::Key;
+    ClaimedCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+
+    FString PrepErr, CommitErr;
+    TestTrue(
+        TEXT("Prepare accepts the value; routing is an Apply-side decision"),
+        Consumer.Prepare(FGV2PreparedUiValue::MakeKey(TEXT("hijacked")), ClaimedCap, Button, PrepErr));
+    TestFalse(
+        TEXT("a claimed key capability is refused by a host that does not route it"),
+        Consumer.Commit(Button, CommitErr));
+    TestTrue(TEXT("the refusal names unhandled_target"), CommitErr.Contains(TEXT("unhandled_target")));
+    TestEqual(TEXT("the host's own identity was not overwritten"), Button->GetKey(), FName(TEXT("own_identity")));
+
+    // The owner routes it, and routing it does not touch its own identity.
+    UGV2DropdownSelectWidgetBase* Dropdown =
+        CreateWidget<UGV2DropdownSelectWidgetBase>(TestWorld, UGV2DropdownSelectWidgetBase::StaticClass());
+    IGV2UiPropertyHost* DropdownHost = Cast<IGV2UiPropertyHost>(Dropdown);
+    DropdownHost->SetKey(FName(TEXT("dropdown_identity")));
+    TestTrue(
+        TEXT("owner Prepare succeeds"),
+        Consumer.Prepare(FGV2PreparedUiValue::MakeKey(TEXT("opt_b")), ClaimedCap, Dropdown, PrepErr));
+    TestTrue(TEXT("owner Commit succeeds"), Consumer.Commit(Dropdown, CommitErr));
+    TestEqual(TEXT("owner applied the named capability"), Dropdown->GetSelectedKey(), FName(TEXT("opt_b")));
+    TestEqual(TEXT("owner identity untouched"), DropdownHost->GetKey(), FName(TEXT("dropdown_identity")));
+
+    // The other owner's name is refused by this owner too -- an override must not become a
+    // catch-all just because the class routes SOME named capability.
+    FGV2UiPropertyCapability ForeignCap = ClaimedCap;
+    ForeignCap.PropertyName = TEXT("default_tab_key");
+    TestTrue(
+        TEXT("foreign-name Prepare succeeds"),
+        Consumer.Prepare(FGV2PreparedUiValue::MakeKey(TEXT("tab_a")), ForeignCap, Dropdown, PrepErr));
+    TestFalse(TEXT("a dropdown refuses the tab container's own capability"), Consumer.Commit(Dropdown, CommitErr));
+    TestEqual(TEXT("owner identity still untouched"), DropdownHost->GetKey(), FName(TEXT("dropdown_identity")));
+
+    GameInstance->Shutdown();
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
 #endif

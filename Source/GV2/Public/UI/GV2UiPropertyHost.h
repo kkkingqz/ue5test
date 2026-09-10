@@ -128,6 +128,23 @@ private:
 };
 
 /**
+ * DUC-03: key capability names that belong to one specific host class rather than to the
+ * generic `key` identity -- `selected_key` is UGV2DropdownSelectWidgetBase's own capability
+ * and `default_tab_key` is UGV2TabContainerWidgetBase's. Each owner routes its own name in
+ * its ApplyPreparedKey override; every other host must REFUSE such a name, so the caller
+ * reports core:diagnostic.ui_consumer.unhandled_target instead of quietly storing a named
+ * capability's value in the host's own identity slot. A commit that succeeds while writing
+ * the wrong field is the failure shape this pipeline exists to prevent.
+ *
+ * This is a list, and a list is the weak form of the rule. It is held to the actual set by
+ * GV2.UI.PreparedKeyCapabilityRouting, which derives every non-generic key capability name
+ * from the DescribeUiCapabilities of every native IGV2UiPropertyHost by reflection and fails
+ * if the two differ -- so a new named key capability cannot be declared without either
+ * routing it or appearing here.
+ */
+GV2_API bool IsHostClaimedKeyCapability(FName PropertyName);
+
+/**
  * Native interface implemented by any widget supporting data-driven UI property binding.
  */
 class GV2_API IGV2UiPropertyHost : public IGV2PreparedKeyTarget
@@ -136,9 +153,13 @@ class GV2_API IGV2UiPropertyHost : public IGV2PreparedKeyTarget
 
 public:
     // PSC-11: the generic identity write, shared by every host. A host that routes a NAMED
-    // key capability of its own overrides this and falls back to it.
+    // key capability of its own overrides this and falls back to it for every other name.
     virtual bool ApplyPreparedKey(FName PropertyName, FName Value) override
     {
+        if (IsHostClaimedKeyCapability(PropertyName))
+        {
+            return false;
+        }
         GetPropertyHostState().SetKey(Value);
         return true;
     }

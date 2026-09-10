@@ -42,23 +42,20 @@ public:
     // session authority. Consumers that resolve content fail Prepare when it is absent.
     virtual void SetPrepareContext(const FGV2PresentationPrepareContext* InContext) {}
 
-    // PSC-09A (ADR-0043 D2/D3, Payload.md M3): default no-op -- returning false means
-    // this consumer has not been migrated to the GV2PresentationApply transaction
-    // protocol yet, and its own Commit() below still performs physical mutation
-    // directly. Only FGV2ImageResourcePropertyConsumer overrides this so far, and only
-    // for a plain UImage target (its UGV2ImageWidgetBase/UGV2PortraitWidgetBase target
-    // branches are unmigrated too -- moving THEIR own Apply-adjacent UFUNCTIONs is a
-    // separate concern from this consumer's own split). Every other kind (Text,
-    // Boolean, Integer, Number, String, Key, Binding, KeyedCollection, RichTextSpans,
-    // TabContainer) is unmigrated at the end of PSC-09A -- naming this list here,
-    // rather than leaving it implied, is PSC-09A's own Done bullet
-    // ("явно записано, какие виды операций ещё не проходят через транзакцию"); closing
-    // it for the rest is PSC-09B's job, not a silent gap.
+    // PSC-09A/09B (ADR-0043 D2/D3, Payload.md M3): builds this consumer's whole physical
+    // effect as prepared operations, appended to OutTransaction. A consumer that overrides
+    // this and returns true performs NO physical mutation of its own -- the reverse (a lower
+    // operation calling back up into this consumer, or into any GV2 resolver) is exactly the
+    // shape ADR-0043 D2 forbids and is never a valid override.
     //
-    // A consumer that overrides this and returns true has appended everything Apply
-    // needs to OutTransaction and performs NO physical mutation itself anymore -- the
-    // reverse (a lower operation calling back up into this consumer, or into any GV2
-    // resolver) is exactly the shape ADR-0043 D2 forbids and is never a valid override.
+    // The default returns false, which now means only that the consumer's effect is not
+    // expressible from (target, prepared value) alone: the two recursive consumers
+    // (FGV2KeyedCollectionPropertyConsumer, FGV2TabContainerTabsPropertyConsumer) commit
+    // their children first and build their own transaction inside Commit() from the result.
+    // Both still apply it through the same single facade, which is what
+    // Tools/Testing/validate_property_consumer_transaction_coverage.py checks for the
+    // consumer set derived from this header's own declarations -- so `false` here is never
+    // "still applies physically by itself".
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -104,10 +101,10 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    // PSC-09B (ADR-0043 D2/D3): carries the resolved text/style/markup only -- every real
-    // target is either a GV2-owned widget wrapper or reached only via GV2's own
-    // UGV2TextPipeline UCLASS, so GV2LegacyPresentationApplyAdapter performs the actual
-    // per-target dispatch this operation used to perform directly in Commit().
+    // PSC-09B/11 (ADR-0043 D2/D3): carries the resolved text/style/markup only. The
+    // per-target dispatch this operation used to perform directly in Commit() is now the
+    // Apply facade's, which reaches a GV2-owned text host through IGV2PreparedTextTarget
+    // and writes a plain CommonUI renderer itself.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -194,9 +191,9 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    // PSC-09B (ADR-0043 D2/D3): carries the resolved value only -- every real target
-    // (UGV2InputFieldWidgetBase) is GV2-owned, so GV2LegacyPresentationApplyAdapter
-    // performs the actual mutation from this same operation.
+    // PSC-09B/11 (ADR-0043 D2/D3): carries the resolved value only -- the target host
+    // (UGV2InputFieldWidgetBase) receives it through IGV2PreparedIntegerTarget, so the
+    // Apply facade performs the mutation without naming that class.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -219,10 +216,10 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    // PSC-09B (ADR-0043 D2/D3): UProgressBar is a plain UMG target -- GV2PresentationApply
+    // PSC-09B/11 (ADR-0043 D2/D3): UProgressBar is a plain UMG target -- GV2PresentationApply
     // applies a FPreparedProgressBarOperation for it directly. UGV2ProgressBarWidgetBase
-    // is GV2-owned, so that case builds a FPreparedNumberOperation instead, applied by
-    // GV2LegacyPresentationApplyAdapter.
+    // is GV2-owned, so that case builds a FPreparedNumberOperation instead, delivered
+    // through IGV2PreparedNumberTarget.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -244,9 +241,9 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    // PSC-09B (ADR-0043 D2/D3): carries the resolved value only -- the truncation-against-
-    // max-length behavior is UGV2InputFieldWidgetBase-owned, so
-    // GV2LegacyPresentationApplyAdapter performs the actual mutation from this operation.
+    // PSC-09B/11 (ADR-0043 D2/D3): carries the resolved value only. The truncation limit is
+    // read back from the host through IGV2PreparedIntegerTarget::GetPreparedMaxLength, so
+    // the facade applies it without naming UGV2InputFieldWidgetBase.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -285,9 +282,9 @@ public:
      */
     void SetPropertyNameForRouting(const FString& InPropertyName) { PropertyName = InPropertyName; }
 
-    // PSC-09B (ADR-0043 D2/D3): carries the resolved value only -- every real target
-    // is GV2-owned (or a GV2-owned interface), so GV2LegacyPresentationApplyAdapter
-    // performs the actual mutation, including the "no branch matched" typed failure.
+    // PSC-09B/11 (ADR-0043 D2/D3): carries the resolved value and the capability's own
+    // name only. The target routes it through IGV2PreparedKeyTarget, and a target that
+    // refuses the name produces the "no branch matched" typed failure in the facade.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -311,9 +308,9 @@ public:
     virtual bool Commit(UWidget* TargetWidget, FString& OutError) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    // PSC-09B (ADR-0043 D2/D3): carries the resolved handle's serialized value only --
-    // IGV2UiBindingTarget is a GV2-owned interface, so GV2LegacyPresentationApplyAdapter
-    // performs the actual mutation from this operation.
+    // PSC-09B/11 (ADR-0043 D2/D3): carries the resolved handle's serialized value only.
+    // IGV2UiBindingTarget derives from the lower module's IGV2PreparedBindingTarget, so the
+    // facade delivers the value without naming a GV2 type.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,
@@ -449,10 +446,9 @@ public:
 
     const TArray<FGV2RichTextSpanViewModel>& GetPreparedSpans() const { return PreparedSpans; }
 
-    // PSC-09B (ADR-0043 D2/D3): flattens PreparedSpans into the lower module's own
-    // canonical FPreparedRichTextSpan (plain Core types only) -- UGV2RichTextWidgetBase::
-    // ApplySpans is GV2-owned, so GV2LegacyPresentationApplyAdapter reconstructs the
-    // USTRUCT array from this before calling it.
+    // PSC-09B/11 (ADR-0043 D2/D3): flattens PreparedSpans into the lower module's own
+    // canonical FPreparedRichTextSpan (plain Core types only). The host reconstructs the
+    // USTRUCT array in its own IGV2PreparedRichTextSpansTarget sink.
     virtual bool BuildPreparedOperation(
         UWidget* TargetWidget,
         GV2PresentationApply::FGV2PreparedPresentationTransaction& OutTransaction,

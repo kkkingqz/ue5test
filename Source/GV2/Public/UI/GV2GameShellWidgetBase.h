@@ -45,6 +45,13 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|GameShell")
     bool IsLayerInteractive(FName Layer) const;
 
+    // UIF-20: only the topmost modal in the stack is interactive. The Shell owns this write
+    // for the same reason it owns SetLayerInteractive -- it is a physical projection of a
+    // layer rule, and performing it from the reconciler left one direct widget mutation
+    // outside every widget base, in a class PSC-12 does not move (PSC-11).
+    UFUNCTION(BlueprintCallable, Category = "GV2|UI|GameShell")
+    void SetTopModalInteractive(const TArray<UUserWidget*>& OrderedModals);
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI|GameShell")
     TArray<UUserWidget*> GetScreensInLayer(FName Layer) const;
 

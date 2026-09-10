@@ -111,6 +111,17 @@ void UGV2GameShellWidgetBase::SetLayerInteractive(FName Layer, bool bInteractive
     }
 }
 
+void UGV2GameShellWidgetBase::SetTopModalInteractive(const TArray<UUserWidget*>& OrderedModals)
+{
+    for (int32 Index = 0; Index < OrderedModals.Num(); ++Index)
+    {
+        if (OrderedModals[Index] != nullptr)
+        {
+            OrderedModals[Index]->SetIsEnabled(Index == OrderedModals.Num() - 1);
+        }
+    }
+}
+
 bool UGV2GameShellWidgetBase::IsLayerInteractive(FName Layer) const
 {
     const bool* Found = LayerInteractivity.Find(Layer);

@@ -1,7 +1,7 @@
 ---
 title: Apply Boundary Tasks
 status: active
-version: 1.6
+version: 1.7
 updated: 2026-09-09
 depends_on:
   - README.md
@@ -17,7 +17,9 @@ depends_on:
 
 ## Физическая граница
 
-`GV2PresentationApply` содержит resolved DTO, prepared operations, Commit/Reset/Rollback, keyed reconciliation, projection recovery, physical widget bases и pure layout/viewport calculations.
+`GV2PresentationApply` содержит resolved DTO, prepared operations, **физическую часть** Commit/Reset/Rollback — то есть каждую запись в виджет, — keyed reconciliation, восстановление проекции, physical widget bases и pure layout/viewport calculations. Это формулировка `D2` [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) («физическое применение — Commit, откат, keyed-реконсиляция, восстановление проекции…»), а не её ослабление: квалификатор «физическое» относится ко всему перечню.
+
+Наверху остаётся **решение**, какие записи выполнить и какие откатить. Это не выбор удобства: rollback plan строится из `FGV2PreparedUiObject` и compiled schema (`GV2ContentCore::FCompiledUiFieldSpec`), а `GV2ContentCore` нижнему модулю запрещён графом сборки — перенести решение вниз означало бы затащить туда авторитетные типы, ради недостижимости которых граница и существует. Проверяемое следствие: ни один consumer и ни один reconciler не выполняет запись в виджет сам, всё уходит в единственный façade; для фактического множества consumer kinds это проверяет `validate_property_consumer_transaction_coverage`.
 
 Разрешённые module dependencies:
 
@@ -43,7 +45,7 @@ Build graph доказывает отсутствие project authority types. �
   - Done:
     - `Source/GV2PresentationApply/GV2PresentationApply.Build.cs` использует точный allowlist выше и не имеет conditional authority/editor dependencies;
     - одна public façade `FGV2PresentationApply::Apply(FGV2PreparedPresentationTransaction&, FGV2PresentationApplyResult&)` является единственной production entry point применения целой transaction;
-    - Commit, Reset, rollback, keyed reconciliation, physical projection recovery и pure viewport/layout calculations реализованы ниже façade;
+    - физическая часть Commit, Reset и rollback — каждая запись в виджет, — а также keyed reconciliation, восстановление проекции и pure viewport/layout calculations реализованы ниже façade; решение, какие записи выполнить и какие откатить, остаётся выше по причине, названной в «Физической границе»;
     - верхний `GV2` выполняет semantic Prepare и одним вызовом передаёт готовую transaction; временные методы существующих `UCLASS` только делегируют и не содержат mutation/lookup logic;
     - transitive include closure будущих moved widget bases классифицировано механически: authority-free value/physical interfaces принадлежат lower module, authority-aware types остаются в `GV2` за DTO boundary, duplicate bridge types отсутствуют;
     - exported-public inventory модуля выводится из его `Public/` declarations и классифицирует façade, DTO/results и локальные widget/lifecycle methods; вторая transaction apply entry point запрещена;
@@ -80,6 +82,14 @@ Build graph доказывает отсутствие project authority types. �
     Ни один Widget `UCLASS` не сменил модуль или путь.
 
     Верификация: `Automation RunTests GV2` — 134/134; `ctest` — 100/100; 16 гейтов и их self-test'ы; `validate_docs` — 185 файлов; `CompileAllBlueprints` — 0 errors, 0 warnings.
+
+  - **Сверка после закрытия (2026-09-09).** Отдельный проход по `PSC-01…11` против исходной цели плана нашёл три расхождения; все исправлены здесь, а не перенесены.
+
+    1. **Регрессия `DUC-03`, внесённая этой задачей.** Снятый adapter маршрутизировал `selected_key`/`default_tab_key` по имени и отвечал `core:diagnostic.ui_consumer.unhandled_target`, когда цель не была классом-владельцем. Новый общий `IGV2UiPropertyHost::ApplyPreparedKey` принимал **любое** имя и писал значение в собственный `key` хоста — успешный commit, записавший не в то поле, то есть ровно та форма отказа, ради устранения которой существует конвейер. Существующий тест закрывал только «цель вообще не property host», поэтому регрессия прошла зелёной. Правило восстановлено (`IsHostClaimedKeyCapability`), а множество имён теперь сверяется с фактически объявленными capability рефлексией по всем native `IGV2UiPropertyHost` (`GV2.UI.PreparedKeyCapabilityRouting`) — объявить новое именованное key-capability, не маршрутизировав его, теперь нельзя молча.
+    2. **Мёртвая цель central style стала отказом транзакции.** Adapter возвращался из операции, если `TargetWidget` уже собран GC; façade вместо этого сообщал `central_style_target_mismatch … '<null>'` и валил всю транзакцию. Ранний возврат восстановлен: мёртвый weak pointer — это «писать больше некуда», а не несоответствие роли, и так же трактуется каждой другой операцией.
+    3. **Восстановление проекции оставалось выше границы.** `FGV2LayeredUiReconciler::CommitReconcile` откатывал порядок детей слоя собственным `ClearChildren`/`AddChild`, а модальную интерактивность писал прямо в виджет. И то и другое — физическое применение, названное в `D2`. Первое сведено к `FGV2KeyedCollection::RestoreOrder` в нижнем модуле (тот же перестроительный цикл, который примитив уже выполнял внутри себя), второе — к `UGV2GameShellWidgetBase::SetTopModalInteractive`, то есть к методу виджет-базы, который уезжает вниз в `PSC-12`. Реконсилятор больше не пишет в виджеты сам.
+
+    Там же исправлены утверждения, ставшие ложными: ~20 комментариев описывали удалённый adapter как действующий механизм; гейт `validate_central_style_runtime_boundary` держал исключение, ключом которого было имя удалённого файла — то есть готовую лазейку; `Docs/UI/README.md` называл поверхность холодного восстановления одним классом, тогда как фактических файлов в этой роли два.
 
 - [ ] **PSC-12 — Атомарно мигрировать Widget `UCLASS` paths и ассеты**
   - Зависимости: PSC-11.

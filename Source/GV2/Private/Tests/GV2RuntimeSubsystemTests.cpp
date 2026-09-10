@@ -2009,6 +2009,39 @@ bool FGV2PresentationApplyImageOperationTest::RunTest(const FString& Parameters)
         GV2PresentationTestFixtures::ApplyPreparedTransaction(StaleTransaction, StaleError));
     TestFalse(TEXT("Rejection carries a diagnostic message"), StaleError.IsEmpty());
 
+    // PSC-11 (post-closure correction): the two distinguishable central-style outcomes.
+    // A target that no longer exists is nothing left to write -- the same "collected between
+    // Prepare and Apply" shape as above -- and must not fail the whole transaction, because a
+    // transaction carries every screen's operations and one dead widget would take the rest
+    // with it. A target that DOES exist but performs no such role is the opposite: a preparer
+    // that paired a role with the wrong class, which must be diagnosable rather than a silent
+    // no-op. Both are asserted here so neither can be turned into the other unnoticed.
+    GV2PresentationApply::FGV2PreparedPresentationTransaction CollectedStyleTransaction;
+    GV2PresentationApply::FPreparedCentralStyleOperation CollectedStyleOperation;
+    CollectedStyleOperation.Payload.Set<GV2PresentationApply::FPreparedSeparatorStyle>(
+        GV2PresentationApply::FPreparedSeparatorStyle());
+    CollectedStyleTransaction.AddCentralStyleOperation(MoveTemp(CollectedStyleOperation));
+
+    FString CollectedStyleError;
+    TestTrue(
+        TEXT("Apply skips a central-style operation whose target was collected"),
+        GV2PresentationTestFixtures::ApplyPreparedTransaction(CollectedStyleTransaction, CollectedStyleError));
+
+    GV2PresentationApply::FGV2PreparedPresentationTransaction MismatchedStyleTransaction;
+    GV2PresentationApply::FPreparedCentralStyleOperation MismatchedStyleOperation;
+    MismatchedStyleOperation.TargetWidget = Widget;
+    MismatchedStyleOperation.Payload.Set<GV2PresentationApply::FPreparedSeparatorStyle>(
+        GV2PresentationApply::FPreparedSeparatorStyle());
+    MismatchedStyleTransaction.AddCentralStyleOperation(MoveTemp(MismatchedStyleOperation));
+
+    FString MismatchedStyleError;
+    TestFalse(
+        TEXT("Apply rejects a central-style role its live target does not perform"),
+        GV2PresentationTestFixtures::ApplyPreparedTransaction(MismatchedStyleTransaction, MismatchedStyleError));
+    TestTrue(
+        TEXT("The rejection names the role/target mismatch"),
+        MismatchedStyleError.Contains(TEXT("central_style_target_mismatch")));
+
     return true;
 }
 

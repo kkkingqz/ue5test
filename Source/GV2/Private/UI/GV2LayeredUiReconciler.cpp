@@ -341,16 +341,16 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                     {
                         continue;
                     }
-                    CommittedLayer.Host->ClearChildren();
-                    for (UGV2ScreenWidgetBase* PrevWidget : CommittedLayer.PreviousOrder)
+                    // PSC-11 (ADR-0043 D2): the physical rebuild belongs below the boundary,
+                    // the decision of WHICH order to restore belongs here. This loop used to
+                    // perform its own ClearChildren/AddChild, which left projection recovery
+                    // -- a named part of physical application -- in the upper module.
+                    if (!FGV2KeyedCollection::RestoreOrder(CommittedLayer.Host, CommittedLayer.PreviousOrder))
                     {
-                        if (PrevWidget != nullptr && CommittedLayer.Host->AddChild(PrevWidget) == nullptr)
-                        {
-                            bStructureRestoreFailed = true;
-                            UE_LOG(LogTemp, Error,
-                                TEXT("GBH-10: rollback failed restoring layer '%s' order after layer '%s' reconcile failure -- invariant violation"),
-                                *CommittedLayer.Layer.ToString(), *Layer.ToString());
-                        }
+                        bStructureRestoreFailed = true;
+                        UE_LOG(LogTemp, Error,
+                            TEXT("GBH-10: rollback failed restoring layer '%s' order after layer '%s' reconcile failure -- invariant violation"),
+                            *CommittedLayer.Layer.ToString(), *Layer.ToString());
                     }
                 }
                 for (const FPreparedScreenInstance& CommittedInst : Plan.ScreensToUpdateOrAttach)
@@ -393,15 +393,16 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             Shell->SetLayerInteractive(UGV2GameShellWidgetBase::LayerOverlayStack, false);
             Shell->SetLayerInteractive(UGV2GameShellWidgetBase::LayerModalStack, true);
 
-            // Only top modal in modal stack is interactive
-            for (int32 i = 0; i < Plan.Modals.Num(); ++i)
+            // Only top modal in modal stack is interactive. Decided here, written by the
+            // Shell -- the reconciler names WHICH modals are in the stack and in what order,
+            // and performs no widget mutation of its own.
+            TArray<UUserWidget*> OrderedModals;
+            OrderedModals.Reserve(Plan.Modals.Num());
+            for (const TObjectPtr<UGV2ScreenWidgetBase>& Modal : Plan.Modals)
             {
-                const bool bIsTopModal = (i == Plan.Modals.Num() - 1);
-                if (Plan.Modals[i] != nullptr)
-                {
-                    Plan.Modals[i]->SetIsEnabled(bIsTopModal);
-                }
+                OrderedModals.Add(Modal.Get());
             }
+            Shell->SetTopModalInteractive(OrderedModals);
         }
         else
         {

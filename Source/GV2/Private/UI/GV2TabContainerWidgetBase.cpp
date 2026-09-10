@@ -212,8 +212,9 @@ bool UGV2TabContainerWidgetBase::ApplyPreparedKey(FName PropertyName, FName Valu
         ApplyDefaultTabKey(Value);
         return true;
     }
-    GetPropertyHostState().SetKey(Value);
-    return true;
+    // Every other name goes to the shared rule, including a name claimed by SOME OTHER host
+    // -- `selected_key` is not this class's to write, and the base refuses it.
+    return IGV2UiPropertyHost::ApplyPreparedKey(PropertyName, Value);
 }
 
 void UGV2TabContainerWidgetBase::ApplyPreparedTabs(

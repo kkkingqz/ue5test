@@ -32,6 +32,36 @@ struct FGV2ContainerReuseStats
 class FGV2KeyedCollection
 {
 public:
+    /**
+     * PSC-11 (ADR-0043 D2): physical projection recovery -- put a panel's children back into
+     * a known order. It is the same rebuild the container swap below performs for itself when
+     * an AddChild fails inside one call; a caller whose wider transaction spans SEVERAL
+     * ReconcilePrepared calls (one per Game Shell layer) has to undo an already-committed
+     * call when a later sibling fails, and doing that with its own ClearChildren/AddChild
+     * loop would leave one piece of physical projection in the upper module.
+     *
+     * Returns false if any child could not be re-attached -- an invariant violation the
+     * caller reports; there is nothing further this level can do about it.
+     */
+    template <typename WidgetType>
+    static bool RestoreOrder(UPanelWidget* Container, const TArray<WidgetType*>& OrderedChildren)
+    {
+        if (Container == nullptr)
+        {
+            return false;
+        }
+        Container->ClearChildren();
+        bool bRestored = true;
+        for (WidgetType* Child : OrderedChildren)
+        {
+            if (Child != nullptr && Container->AddChild(Child) == nullptr)
+            {
+                bRestored = false;
+            }
+        }
+        return bRestored;
+    }
+
     template <typename WidgetType, typename ModelType, typename PreparedType>
     static bool ReconcilePrepared(
         UPanelWidget* Container,
@@ -131,11 +161,7 @@ public:
         {
             if (Container->AddChild(Widget) == nullptr)
             {
-                Container->ClearChildren();
-                for (UWidget* Prev : PreviousChildren)
-                {
-                    Container->AddChild(Prev);
-                }
+                RestoreOrder(Container, PreviousChildren);
                 return false;
             }
         }
@@ -243,11 +269,7 @@ public:
         {
             if (Container->AddChild(Widget) == nullptr)
             {
-                Container->ClearChildren();
-                for (UWidget* Prev : PreviousChildren)
-                {
-                    Container->AddChild(Prev);
-                }
+                RestoreOrder(Container, PreviousChildren);
                 return false;
             }
         }

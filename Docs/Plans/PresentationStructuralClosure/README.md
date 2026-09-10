@@ -1,7 +1,7 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 2.1
+version: 2.2
 updated: 2026-09-09
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
@@ -18,7 +18,7 @@ decisions:
 # План структурного замыкания презентации
 
 > **Материализует:** [ADR-0043](../../ADR/0043-presentation-apply-boundary.md) и [предложение о структурном замыкании](../../Proposals/PresentationAuthorityStructuralClosureProposal.md), через них — семь находок `PAH-R1…R7` [аудита](../../Status/AuditFindings.md).
-> **Задачи:** PSC-01…14; `PSC-09` разделена на `09A`/`09B`, `PSC-10` — на `10A`/`10B`.
+> **Задачи:** PSC-01…14; `PSC-09` разделена на `09A`/`09B`, `PSC-10` — на `10A`/`10B`/`10C`.
 > **Результат:** применение получает только самодостаточную подготовленную транзакцию; обращение к content/settings authority из Apply невозможно по dependency direction, а не по соглашению.
 > **Исполнение:** задачи выполняются последовательно по критическому пути; перед реализацией использовать `superpowers:executing-plans`. Параллельная правка общей C++/UAsset surface запрещена.
 
@@ -98,14 +98,14 @@ GV2 semantic Prepare
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
        → PSC-07✔ → PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10A✔
-       → PSC-10B✔ → PSC-10C✔ → PSC-11 → PSC-12 → PSC-13 → PSC-14
+       → PSC-10B✔ → PSC-10C✔ → PSC-11✔ → PSC-12 → PSC-13 → PSC-14
 ```
 
 - `PSC-04` начинается только после exact package set и manifest identity: snapshot нельзя строить из старого canonical rediscovery.
 - `PSC-09A` зависит от `PSC-06` (контекст подготовки) и `PSC-08` (разрешение экрана), но не от `PSC-07`: фильтрация ресурсов отключённых пакетов не влияет на разделение Prepare/Apply. Порядок исполнения последователен по общему ограничению плана, а не по этой связи.
 - `PSC-09A`/`PSC-09B`/`PSC-10A`/`PSC-10B`/`PSC-10C` предшествуют физическому переносу: текущие `IGV2PropertyConsumer`, `UGV2TextPipeline`, central style path и image resource path смешивают Prepare и Commit, поэтому нижний модуль без предварительного DTO boundary не может быть независимым.
 - `PSC-10C` стоит между `PSC-10B` и `PSC-11` не по объёму, а по предпосылке: `PSC-11` требует, чтобы ни один переносимый класс не достигал авторитета, а `UGV2ImageWidgetBase::NativePreConstruct()` достигает его через `GetSessionCatalog()`. Пока это так, переносить класс в модуль, где catalog недостижим по построению, нельзя.
-- `PSC-11` не меняет ни одного `/Script/GV2` path. До его commit все Widget Blueprint продолжают ссылаться на прежние классы; верхние `UCLASS` временно являются тонкими adapters к нижнему Apply.
+- `PSC-11` не меняет ни одного `/Script/GV2` path. Все Widget Blueprint продолжают ссылаться на прежние классы; верхние `UCLASS` объявляют value-only ролевые интерфейсы нижнего модуля, через которые единственный façade достаёт их, не называя их типов.
 - `PSC-12` одним change set переносит `UCLASS`, мигрирует все найденные Asset Registry ассеты и удаляет временные redirects. Промежуточное сломанное дерево не фиксируется.
 
 ## Владение файлами
@@ -151,7 +151,7 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] Каждый operation kind несёт resolved payload; viewport calculation использует prepared policy, а не Theme lookup. (`PSC-10A`, 2026-09-08 — единый enum/variant, font/scale policy как pure function, PrepareContext прокинут до BuildFields, exhaustive kind-walk test)
 - [x] Центральная стилизация входит в ту же prepared transaction и не читает тему в рантайме; `GetConfiguredTheme()`/`GetConfiguredRegistry()` отсутствуют без исключений. `GetCoreMinimalTheme()` разрешён двум structurally различным ролям — UE-native cold-start recovery (у которого snapshot отсутствует по определению) и bootstrap-разрешению самого snapshot, пришпиливающему минимальную тему как текстовый fallback сессии, — и запрещён остальным production paths. (`PSC-10B`, 2026-09-09 — role/variant central style, обязательный PrepareContext, derived-set boundary gate)
 - [x] Image resource разрешается только на стороне Prepare; widget lifecycle не консультирует catalog и не мутирует brush по `resource_id`. (`PSC-10C`, 2026-09-09 — process-global каталог сессии удалён, безусловное правило гейта на lifecycle-колбэки, red-on-revert двумя детекторами)
-- [ ] `GV2PresentationApply` содержит единственную public transaction Apply entry point и весь Commit/rollback/reconciliation; dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`)
+- [x] `GV2PresentationApply` содержит единственную public transaction Apply entry point, всю физическую часть Commit/rollback/reconciliation и восстановление проекции; решение, что писать и что откатывать, остаётся выше, потому что читает `FGV2PreparedUiObject` и compiled schema — типы, запрещённые нижнему модулю графом сборки. Dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`, 2026-09-09)
 - [ ] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`)
 - [ ] Compiler/type/module/source enumerators и production scenarios закрывают `PAH-R1…R7`; Headless link graph остаётся UE-free. (`PSC-13`)
 - [ ] Полная verification зелёная, каждый finding имеет исход, active audit и plan готовы к обязательной post-completion архивации. (`PSC-14`)

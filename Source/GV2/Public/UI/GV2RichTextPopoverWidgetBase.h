@@ -64,9 +64,9 @@ public:
     UFUNCTION(BlueprintPure, Category = "GV2|UI|Rich Text")
     const FGV2RichTextHoverViewModel& GetPopoverModel() const;
 
-    // PSC-10B: sole physical central-style write for this class. The ephemeral popover is
-    // created after its owner's screen transaction, but its already-prepared role is still
-    // applied by GV2LegacyPresentationApplyAdapter through the ordinary facade.
+    // PSC-10B/11: sole physical central-style write for this class. The ephemeral popover is
+    // created after its owner's screen transaction, but its already-prepared role still
+    // arrives through the ordinary facade, via IGV2PreparedRichTextPopoverStyleTarget.
     void ApplyPopoverStyleValues(
         const GV2PresentationApply::FPreparedRichTextPopoverStyle& InStyle);
 

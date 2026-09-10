@@ -70,8 +70,8 @@ struct GV2PRESENTATIONAPPLY_API FPreparedImageHostOperation
 // decision, only the cast+call for the setter it recognizes. HostDeclaredBoolean marks
 // an operation whose real target needs a GV2-owned widget/interface type (e.g.
 // UGV2DropdownSelectWidgetBase::SetDropdownOpen) that this module cannot Cast to by
-// construction (Build.cs denylist) -- GV2's own temporary GV2LegacyPresentationApplyAdapter
-// finishes those, reading the exact same operation, not a second resolution.
+// construction (Build.cs denylist) -- PSC-11 reaches those through the value-only role
+// IGV2PreparedBooleanTarget, from this same operation, not a second resolution.
 enum class EPreparedBooleanTarget : uint8
 {
     WidgetEnabled,
@@ -167,11 +167,10 @@ struct GV2PRESENTATIONAPPLY_API FPreparedBindingOperation
 // wrapper (UGV2TextWidgetBase, UGV2ButtonWidgetBase, UGV2DropdownSelectWidgetBase,
 // UGV2RichTextWidgetBase -- each with its own bookkeeping, e.g. CurrentContent, that a
 // direct SetText would leave stale) or reached only via GV2's own UGV2TextPipeline UCLASS
-// (a GV2-owned type, however plain the widgets it ultimately touches are) --
-// GV2LegacyPresentationApplyAdapter reconstructs the USTRUCT and replicates the exact
-// per-target dispatch FGV2TextPropertyConsumer::Commit() used to perform directly.
-// The adapter reconstructs this USTRUCT-compatible value, while the downstream text
-// pipeline accepts only these resolved fields and performs no Theme/token lookup.
+// (a GV2-owned type, however plain the widgets it ultimately touches are). PSC-11 reaches
+// each of those through IGV2PreparedTextTarget, whose implementation reconstructs the
+// USTRUCT from this value (FGV2TextViewModel::FromPrepared, one implementation) and
+// performs no Theme/token lookup; a plain CommonUI renderer is written here directly.
 struct GV2PRESENTATIONAPPLY_API FPreparedTextValue
 {
     FText Text;
@@ -222,11 +221,10 @@ struct GV2PRESENTATIONAPPLY_API FPreparedRichTextSpansOperation
 // (FGV2UiPropertyHostState accounting, no widget touched) are NOT part of this operation
 // -- neither reaches a content/authority type, and neither is itself a widget mutation
 // this module could apply; UPanelWidget::ClearChildren/AddChild is the one genuinely
-// shared, plain-UMG step, but UGV2ListViewWidgetBase::GetContainerPanel/
-// SetActiveWidgetsMap, UGV2ButtonListWidgetBase::GetButtonContainer and
-// UGV2DropdownSelectWidgetBase::UpdateHeaderLabel are all GV2-owned, so
-// GV2LegacyPresentationApplyAdapter performs the
-// whole tail, reproducing the original Commit()/Reset() dispatch.
+// shared, plain-UMG step, and PSC-11 performs it here. The parts that are GV2-owned --
+// which panel holds the children, and what bookkeeping settles afterwards -- are asked for
+// through IGV2PreparedKeyedCollectionTarget, so the target says WHERE and WHAT SETTLES
+// while the rebuild itself stays below the boundary.
 struct GV2PRESENTATIONAPPLY_API FPreparedKeyedCollectionEntry
 {
     FName Key;
@@ -242,8 +240,9 @@ struct GV2PRESENTATIONAPPLY_API FPreparedKeyedCollectionOperation
 
 // PSC-09B: canonical lower replacement for GV2's own FGV2TabItemEntry
 // (GV2TabContainerWidgetBase.h, USTRUCT(BlueprintType)) -- UGV2TabContainerWidgetBase::
-// ApplyTabEntries/ResetTabContainerModel are GV2-owned, so GV2LegacyPresentationApplyAdapter
-// reconstructs the USTRUCT array and TMap before calling them; this is the sole physical
+// ApplyTabEntries/ResetTabContainerModel are GV2-owned, so PSC-11 delivers this flattened
+// form through IGV2PreparedTabContainerTarget and the host reconstructs the USTRUCT array
+// and TMap in its own sink; this is the sole physical
 // mutation FGV2TabContainerTabsPropertyConsumer's own Commit()/Reset() performs directly
 // -- per-tab nested-screen field commits (CommitScreenFields, DUC-09) are unchanged,
 // applied through each tab's own screen the same way a top-level screen is, and neither
@@ -269,8 +268,8 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextOperation
     FPreparedTextValue Value;
     // Selects between two ORIGINALLY DIFFERENT UGV2RichTextWidgetBase redirect rules the
     // pre-transaction Commit()/Reset() each had (Commit redirected to the inner
-    // RichTextBlock when present; Reset did not) -- not a general-purpose flag, only
-    // GV2LegacyPresentationApplyAdapter reads it, to reproduce that exact asymmetry.
+    // RichTextBlock when present; Reset did not) -- not a general-purpose flag, only the
+    // text dispatch in the Apply facade reads it, to reproduce that exact asymmetry.
     bool bIsReset = false;
 };
 
@@ -346,8 +345,8 @@ struct GV2PRESENTATIONAPPLY_API FPreparedTextHintOperation
 
 // PSC-10A (ADR-0043 D3): the whole family of operation kinds as ONE enum/variant, not
 // parallel per-kind arrays -- Visit() over FGV2PreparedOperationVariant is the only
-// dispatch mechanism Apply() (both this module's and GV2LegacyPresentationApplyAdapter's)
-// is allowed to use; a lambda-overload-set missing a case for one of these alternatives
+// dispatch mechanism Apply() is allowed to use;
+// a lambda-overload-set missing a case for one of these alternatives
 // is a COMPILE ERROR (see PreparedPresentationTransaction.cpp's TOverloaded<...> uses),
 // not a silently-skipped `default:` branch. Declaration order here MUST match
 // FGV2PreparedOperationVariant's template argument order below -- GetPreparedOperationKind()
@@ -511,10 +510,10 @@ using FPreparedCentralStylePayload = TVariant<
     FPreparedRichTextStyle
 >;
 
-// TargetWidget is a GV2-owned widget base for every role that exists today, so the
-// physical write lands in GV2LegacyPresentationApplyAdapter until PSC-12 moves those
-// UCLASSes down -- the same split PSC-09B established for image hosts. The operation
-// itself, and every value in it, already lives here.
+// TargetWidget is a GV2-owned widget base for every role that exists today. PSC-11 reaches
+// each through its own value-only role interface (PreparedApplyTargets.h) rather than
+// through its concrete type, which this module may not name; PSC-12 moves the UCLASSes
+// themselves down. The operation, and every value in it, already lives here.
 struct GV2PRESENTATIONAPPLY_API FPreparedCentralStyleOperation
 {
     TWeakObjectPtr<UWidget> TargetWidget;
@@ -642,16 +641,6 @@ private:
     TArray<FGV2PreparedOperationVariant> Operations;
 };
 
-// PSC-09A (ADR-0043 D2): the only public entry point physical Apply exposes -- there is
-// no second path into this module's mutation logic. Performs every operation this
-// module recognizes (plain Engine/UMG target types) and nothing else: no lookup, no
-// resolution, no fallback to a value this transaction didn't already carry. An operation
-// whose real target needs a GV2-owned type (EPreparedBooleanTarget::HostDeclaredBoolean,
-// or any Integer/String/Key/Binding operation, all of which are GV2-interface-only by
-// construction) is silently left for GV2's own temporary
-// GV2LegacyPresentationApplyAdapter -- not an error here, since this module has no way
-// to tell "a GV2-owned target" apart from "a genuinely unsupported one" without the type
-// it is explicitly denied from ever depending on.
 }
 
 // PSC-11 (ADR-0043 D2): the outcome of applying one whole transaction. A struct rather than

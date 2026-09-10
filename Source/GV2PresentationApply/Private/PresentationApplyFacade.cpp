@@ -511,7 +511,17 @@ bool FGV2PresentationApply::Apply(
             },
             [&](const FPreparedCentralStyleOperation& Op)
             {
-                ApplyCentralStyleRole(Op.TargetWidget.Get(), Op.Payload, bFailed, OutResult.Error);
+                UWidget* Widget = Op.TargetWidget.Get();
+                if (Widget == nullptr)
+                {
+                    // A target that no longer exists is nothing left to write, not a role
+                    // mismatch: every other operation here treats a dead weak pointer that
+                    // way, and so did the dispatch this replaced, which returned before it
+                    // looked at the payload at all. Reporting a mismatch instead would fail
+                    // the whole transaction for a widget that was legitimately collected.
+                    return;
+                }
+                ApplyCentralStyleRole(Widget, Op.Payload, bFailed, OutResult.Error);
             }
         }, Operation);
 
