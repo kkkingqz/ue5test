@@ -44,7 +44,10 @@ public:
      * caller reports; there is nothing further this level can do about it.
      */
     template <typename WidgetType>
-    static bool RestoreOrder(UPanelWidget* Container, const TArray<WidgetType*>& OrderedChildren)
+    static bool RestoreOrder(
+        UPanelWidget* Container,
+        const TArray<WidgetType*>& OrderedChildren,
+        TFunction<void(UPanelSlot&)> ConfigureSlot = nullptr)
     {
         if (Container == nullptr)
         {
@@ -54,9 +57,18 @@ public:
         bool bRestored = true;
         for (WidgetType* Child : OrderedChildren)
         {
-            if (Child != nullptr && Container->AddChild(Child) == nullptr)
+            if (Child == nullptr)
+            {
+                continue;
+            }
+            UPanelSlot* RestoredSlot = Container->AddChild(Child);
+            if (RestoredSlot == nullptr)
             {
                 bRestored = false;
+            }
+            else if (ConfigureSlot)
+            {
+                ConfigureSlot(*RestoredSlot);
             }
         }
         return bRestored;
@@ -81,7 +93,13 @@ public:
         // undo THIS call's already-committed reorder because a LATER, sibling call in
         // that same transaction failed has no way to recover what this call replaced.
         // Optional and additive: every existing call site is unaffected.
-        TArray<WidgetType*>* OutPreviousOrderedWidgets = nullptr)
+        TArray<WidgetType*>* OutPreviousOrderedWidgets = nullptr,
+        // PSC-14 / PSC-AF-02: AddChild creates a fresh panel slot. A keyed container
+        // rebuild must reapply caller-owned layout policy to that new slot in the same
+        // physical commit; otherwise an Overlay silently falls back to Left/Top even
+        // when the widget was Fill before ClearChildren. The callback is also used by
+        // rollback restoration below, so success and recovery have the same projection.
+        TFunction<void(UPanelSlot&)> ConfigureSlot = nullptr)
     {
         if (Container == nullptr) return false;
 
@@ -159,10 +177,15 @@ public:
         Container->ClearChildren();
         for (WidgetType* Widget : TempOrderedWidgets)
         {
-            if (Container->AddChild(Widget) == nullptr)
+            UPanelSlot* NewSlot = Container->AddChild(Widget);
+            if (NewSlot == nullptr)
             {
-                RestoreOrder(Container, PreviousChildren);
+                RestoreOrder(Container, PreviousChildren, ConfigureSlot);
                 return false;
+            }
+            if (ConfigureSlot)
+            {
+                ConfigureSlot(*NewSlot);
             }
         }
         InOutWidgetsByKey = MoveTemp(CandidateByKey);
@@ -208,7 +231,8 @@ public:
         TFunctionRef<WidgetType*()> CreateItem,
         TFunctionRef<bool(WidgetType&, const ModelType&)> ApplyItem,
         TArray<WidgetType*>& OutOrderedWidgets,
-        TFunction<bool(const ModelType&)> CanApplyItem = nullptr)
+        TFunction<bool(const ModelType&)> CanApplyItem = nullptr,
+        TFunction<void(UPanelSlot&)> ConfigureSlot = nullptr)
     {
         if (Container == nullptr) return false;
 
@@ -267,10 +291,15 @@ public:
         Container->ClearChildren();
         for (WidgetType* Widget : TempOrderedWidgets)
         {
-            if (Container->AddChild(Widget) == nullptr)
+            UPanelSlot* NewSlot = Container->AddChild(Widget);
+            if (NewSlot == nullptr)
             {
-                RestoreOrder(Container, PreviousChildren);
+                RestoreOrder(Container, PreviousChildren, ConfigureSlot);
                 return false;
+            }
+            if (ConfigureSlot)
+            {
+                ConfigureSlot(*NewSlot);
             }
         }
         InOutWidgetsByKey = MoveTemp(CandidateByKey);

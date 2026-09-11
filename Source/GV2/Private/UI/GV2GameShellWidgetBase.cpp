@@ -47,6 +47,15 @@ bool UGV2GameShellWidgetBase::HasHostForLayer(FName Layer) const
     return FindHostForLayer(Layer) != nullptr;
 }
 
+void UGV2GameShellWidgetBase::ApplyScreenSlotLayout(UPanelSlot& Slot)
+{
+    if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(&Slot))
+    {
+        OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
+        OverlaySlot->SetVerticalAlignment(VAlign_Fill);
+    }
+}
+
 // GBF-07: rollback_boundary=ShellAttach
 bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* ScreenWidget)
 {
@@ -72,16 +81,11 @@ bool UGV2GameShellWidgetBase::AttachScreenToLayer(FName Layer, UUserWidget* Scre
         {
             return false;
         }
-        if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(NewSlot))
-        {
-            OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
-            OverlaySlot->SetVerticalAlignment(VAlign_Fill);
-        }
+        UGV2GameShellWidgetBase::ApplyScreenSlotLayout(*NewSlot);
     }
-    else if (UOverlaySlot* OverlaySlot = Cast<UOverlaySlot>(ScreenWidget->Slot))
+    else if (ScreenWidget->Slot != nullptr)
     {
-        OverlaySlot->SetHorizontalAlignment(HAlign_Fill);
-        OverlaySlot->SetVerticalAlignment(VAlign_Fill);
+        UGV2GameShellWidgetBase::ApplyScreenSlotLayout(*ScreenWidget->Slot);
     }
     return true;
 }

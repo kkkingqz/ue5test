@@ -4,6 +4,7 @@
 #include "GV2GameShellWidgetBase.generated.h"
 
 class UPanelWidget;
+class UPanelSlot;
 class UNamedSlot;
 
 /**
@@ -65,6 +66,11 @@ public:
     // FGV2KeyedCollection::ReconcilePrepared instead of per-widget AttachScreenToLayer
     // calls. C++-only (not a UFUNCTION) -- Blueprint has no use for a raw UPanelWidget*.
     UPanelWidget* GetHostForLayer(FName Layer) const { return FindHostForLayer(Layer); }
+
+    // PSC-14 / PSC-AF-02: every AddChild during keyed layer reconciliation creates a
+    // fresh slot. Reapply the same Shell-owned projection policy used by the direct
+    // attach API; callers must not duplicate these layout values.
+    static void ApplyScreenSlotLayout(UPanelSlot& Slot);
 
 protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidgetOptional))

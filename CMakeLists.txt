@@ -146,6 +146,22 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_shell_attach_failure_consumption.py"
             "--self-test"
     )
+    # PSC-14 / PSC-AF-02: keyed GameShell rebuilds create fresh panel slots.
+    # Derive every reconcile/restore call from production and require the shared
+    # shell-owned layout policy on both the success and rollback paths.
+    add_test(
+        NAME game_shell_slot_policy_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_game_shell_slot_policy.py"
+    )
+    add_test(
+        NAME game_shell_slot_policy_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_game_shell_slot_policy.py"
+            "--self-test"
+    )
     # GBF-03: enumerate capability struct members from the source declaration and
     # compare them with the independent classification table; do not use ABI layout
     # as a surrogate for semantic completeness.

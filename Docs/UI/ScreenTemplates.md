@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.27
-updated: 2026-09-10
+version: 1.28
+updated: 2026-09-11
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -81,6 +81,8 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 
 - **Layout Policy (внешнее)**: правила контейнеров UMG (anchors, margins, safe zone offsets, Auto/Fill, Min/Max dimensions, Grid/Box slots). Контейнер распределяет доступный прямоугольник viewport.
 - **Content Scaling Policy (внутреннее)**: режим заполнения слота примитивом (`EGV2PrimitiveScalePolicy`: `FreeStretch`, `Tile`, `NineSlice`, `PreserveAspect`). Примитив обязан быть совместим с режимом ресурса.
+
+Game Shell владеет внешним slot layout для Screen roots: каждый Screen в authored `Overlay` layer получает `HAlign_Fill`/`VAlign_Fill`. Keyed rebuild и rollback обязаны повторно применить эту policy к новому `UPanelSlot`; Screen Template не компенсирует ошибочный `Left/Top` собственным размером или масштабом.
 
 ### Нелинейная кривая масштаба текста (Non-linear Text Scaling)
 
@@ -472,6 +474,7 @@ Lua presenter (`GameData/textsystem/scripts/presentation/location_presenter.lua`
 ## Verification
 
 - `WBP_GameShell` имеет native parent `UGV2GameShellWidgetBase`; все шесть layer hosts существуют в его отображаемом Widget tree. Отсутствующий host не заменяется runtime fallback-контейнером.
+- `GV2.Runtime.UI.GameShellViewportFill` проверяет через production reconciler, что Screen roots во всех canonical layers получают Fill-slot и фактически занимают геометрию viewport; `GV2.Runtime.Presentation.CommittedPresentationRespondsToViewportResize` повторяет slot-проверку на реальном session-published Screen.
 - `WBP_ScreenBase` загружается как abstract Blueprint class и имеет native parent `UGV2ScreenWidgetBase`.
 - `WBP_Testscreen` является его child class и компилируется без test-specific native parent.
 - `DA_ScreenRegistry` загружается через config, содержит `core:screen.test` и разрешает concrete non-abstract child `WBP_ScreenBase`.

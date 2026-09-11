@@ -1,8 +1,8 @@
 ---
 title: "GV2 Presentation Authority — повторное архитектурное ревью"
 status: informative
-version: 1.2
-updated: 2026-09-10
+version: 1.4
+updated: 2026-09-11
 depends_on:
   - ImplementationStatus.md
   - ../ADR/0042-presentation-authority-and-publication.md
@@ -83,6 +83,7 @@ global settings / DataAsset
 | `PAH-R6` | **P2** | package identity | `ue_content_roots` влияет на runtime authorization, но не входит в package fingerprint |
 | `PAH-R7` | **P1/P2** | verification architecture | INV-P1/INV-P5 gates перечисляют authorities вручную и дали false green |
 | `PSC-AF-01` | **P1** | viewport lifecycle | Committed presentation не обновляла viewport-derived значения после resize |
+| `PSC-AF-02` | **P1** | viewport geometry | `GameShell`/активный Screen не заполняют доступную область PIE viewport |
 
 ---
 
@@ -730,6 +731,42 @@ snapshot и document Reconcile недоступны. Source gate имеет nega
 Ограничение гейта явно сохранено: новый параллельный scaling API может не совпасть с
 canonical markers, поэтому source inventory является secondary defense, а layout audit
 обязан отклонять второй механизм.
+
+## PSC-AF-02 — P1 — presentation root не заполняет PIE viewport
+
+*(Закрыто задачей PSC-14)* Keyed layer rebuild и rollback повторно применяют shell-owned Fill policy к каждому свежему `UPanelSlot`; production session и все canonical layers покрыты независимыми runtime-проверками.
+
+### Проблема
+
+При запуске игры в редакторе интерфейс занимает только часть доступной области viewport.
+Зелёный `CommittedPresentationRespondsToViewportResize` проверяет изменение font scale у
+того же Widget, но не создаёт полноценный Slate viewport layout и не сравнивает геометрию
+`GameShell`, layer host и активного Screen с фактической геометрией game viewport.
+
+### Первопричина
+
+`PSC-11` перевёл слои с `UGV2GameShellWidgetBase::AttachScreenToLayer` на
+`FGV2KeyedCollection::ReconcilePrepared`. Общий примитив выполнял `ClearChildren` +
+`AddChild`, создавая новый `UOverlaySlot` с Engine default `HAlign_Left/VAlign_Top`, но не
+переносил GameShell policy. Поэтому Screen сохранял только desired size. Live PIE inspection
+подтвердил `Left/Top` до исправления и `Fill/Fill` после него.
+
+### Исправление и защита
+
+GameShell предоставляет одну `ApplyScreenSlotLayout`; keyed primitive принимает callback
+настройки свежего slot и вызывает его как при Commit, так и при `RestoreOrder`. Reconciler
+передаёт эту policy во все layer rebuild/recovery paths; direct attach использует её же.
+Uniform frame scaling не добавлялся.
+
+`GV2.Runtime.Presentation.CommittedPresentationRespondsToViewportResize` запускает реальную
+сессию с `FSceneViewport` и проверяет Fill-slot опубликованного Screen вместе с resize
+lifecycle. `GV2.Runtime.UI.GameShellViewportFill` выводит слои из `GetApprovedLayers()`,
+публикует Screen в каждый через production reconciler и сравнивает геометрию Shell, host и
+Screen с независимыми viewport bounds. `GV2.UI.LayeredReconciliationContract` вызывает
+реальный cross-layer rollback и проверяет Fill у восстановленного свежего slot. Первые два
+теста были красными до slot-policy fix и зелёные после. `validate_game_shell_slot_policy.py`
+механически выводит все keyed reconcile/restore call sites и synthetic self-test отдельно
+удаляет policy из success, rollback и direct attach.
 
 ---
 

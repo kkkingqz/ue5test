@@ -1,8 +1,8 @@
 ---
 title: Presentation Structural Closure Plan
 status: active
-version: 2.5
-updated: 2026-09-10
+version: 2.7
+updated: 2026-09-11
 depends_on:
   - ../../Proposals/PresentationAuthorityStructuralClosureProposal.md
   - ../../Status/AuditFindings.md
@@ -91,14 +91,14 @@ GV2 semantic Prepare
 - [x] M2 — [Snapshot](Snapshot.md): полный candidate/snapshot, atomic publication, recovery и snapshot-backed PrepareContext. PSC-04…08. (2026-09-08)
 - [x] M3 — [Self-Contained Payload](Payload.md): установлена типовая граница, весь путь заведён через транзакцию, замкнут resolved payload видов операций, центральной стилизации и image resource. PSC-09A…09B, PSC-10A…10C. (2026-09-09)
 - [x] M4 — [Apply Boundary](ApplyBoundary.md): физическое применение вынесено в нижний модуль, затем атомарно мигрированы `UCLASS` paths. PSC-11…12. (2026-09-10)
-- [x] M5 — [Structural Gates and Closure](GatesAndClosure.md): механические перечислители, cross-host verification и подготовка двухкоммитной архивации. PSC-13…14. (2026-09-10)
+- [x] M5 — [Structural Gates and Closure](GatesAndClosure.md): механические перечислители, cross-host verification и подготовка двухкоммитной архивации. PSC-13…14. (2026-09-11)
 
 ## Критический путь
 
 ```text
 PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
        → PSC-07✔ → PSC-08✔ → PSC-09A✔ → PSC-09B✔ → PSC-10A✔
-       → PSC-10B✔ → PSC-10C✔ → PSC-11✔ → PSC-12✔ → PSC-13✔ → PSC-14
+       → PSC-10B✔ → PSC-10C✔ → PSC-11✔ → PSC-12✔ → PSC-13✔ → PSC-14✔
 ```
 
 - `PSC-04` начинается только после exact package set и manifest identity: snapshot нельзя строить из старого canonical rediscovery.
@@ -154,4 +154,4 @@ PSC-01✔ → PSC-02✔ → PSC-03✔ → PSC-04✔ → PSC-05✔ → PSC-06✔
 - [x] `GV2PresentationApply` содержит единственную public transaction Apply entry point, всю физическую часть Commit/rollback/reconciliation и восстановление проекции; решение, что писать и что откатывать, остаётся выше, потому что читает `FGV2PreparedUiObject` и compiled schema — типы, запрещённые нижнему модулю графом сборки. Dependency и forbidden-capability gates отвергают нарушения. (`PSC-11`, 2026-09-09)
 - [x] Все Widget Blueprint загружены, скомпилированы и пересохранены после class-path migration; старые paths и временные redirects отсутствуют. (`PSC-12`, 2026-09-10 — 46/46 clean compile, 17 affected assets в migration commit)
 - [x] Compiler/type/module/source enumerators и production scenarios закрывают `PAH-R1…R7`; Headless link graph остаётся UE-free. (`PSC-13`, 2026-09-10)
-- [x] Полная verification зелёная, каждый finding имеет исход, active audit и plan готовы к обязательной post-completion архивации. (`PSC-14`, 2026-09-10)
+- [x] Полная verification зелёная, каждый finding имеет исход, active audit и plan готовы к обязательной post-completion архивации. (`PSC-14`, 2026-09-11 — fresh CMake/CTest `104/104`, full UE Automation `140/140`, viewport Fill regression и source-derived slot-policy gate)

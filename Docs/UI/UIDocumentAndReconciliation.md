@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.25
-updated: 2026-09-10
+version: 1.26
+updated: 2026-09-11
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -24,7 +24,7 @@ decisions:
 > **Не владеет:** физическим деревом виджетов и локальным визуальным состоянием.
 > **Инварианты:** [INV-014](../Architecture/Invariants.md)
 > **Реализация:** двухфазная многослойная реконсиляция через `FGV2LayeredUiReconciler` (`PrepareReconcile`/`CommitReconcile`) и `UGV2GameShellWidgetBase` (слои `background`, `location_content`, `character_presentation`, `core_interface`, `overlay_stack`, `modal_stack`); см. [Implementation Status](../Status/ImplementationStatus.md).
-> **Проверки:** `GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Session.PreparedCommitAndFailureInjection`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`.
+> **Проверки:** `GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Session.PreparedCommitAndFailureInjection`, `GV2.Runtime.Presentation.*`, `GV2.Runtime.UI.GameShellViewportFill`, `gv2-headless --self-test`.
 
 UI-document — полная декларативная desired model Screen instances для одной revision. Lua строит его из canonical state и pinned repository; Presentation разрешает `screen_id` через Screen Registry и reconciles document с UMG instances.
 
@@ -44,6 +44,8 @@ modal_stack
 Screen Template помещается только в разрешённый registry layer и не копирует Game Shell. Core UI и mod extensions используют explicit slots/extension points.
 
 Configured `WBP_GameShell` обязан наследовать native `UGV2GameShellWidgetBase` и содержать authored panel hosts `BackgroundHost`, `LocationContentHost`, `CharacterPresentationHost`, `CoreInterfaceHost`, `OverlayStackHost` и `ModalStackHost`. Каждый host обязан быть частью отображаемого Widget tree. Runtime запрещено создавать отсутствующий host как unattached fallback: отсутствие или несовместимость host отклоняет apply документа, чтобы session bootstrap не публиковал невидимый экран как успешный.
+
+Каждый Screen, динамически добавленный в authored `Overlay` host, обязан получить `HAlign_Fill` и `VAlign_Fill`. Политикой владеет Game Shell, а не Screen Template и не общий keyed primitive. Поскольку `ClearChildren` + `AddChild` создаёт новый `UPanelSlot`, любой rebuild и rollback обязан применить эту политику к свежему slot в том же Commit; default `Left/Top` или сохранение только desired size запрещены.
 
 ## Document envelope
 
@@ -236,7 +238,7 @@ Publication является atomic: registry сначала валидируе�
    - Если подготовка хотя бы одного экрана в любом слое не удалась (включая несовпадение схемы, дублирующийся ключ глубокого ребёнка или незамкнутое поле), вся фаза Prepare отвергается: ни один старый экран не отсоединяется, ни один новый не присоединяется, и активный набор экранов остаётся неизменным.
 2. **Фаза Commit (`CommitReconcile`)** — порядок шагов подряд после PCC-07, потому что именно эта последовательность делает коммит документа атомарным на уровне ВСЕХ экранов, а не только каждого по отдельности:
    1. Закоммитить мутационные планы **всех** экранов, ничего ещё не отсоединяя и не присоединяя (`UGV2ScreenWidgetBase::CommitScreenFields`). `Commit` мутирует только собственные bound sub-widgets экрана по имени — это не требует, чтобы экран уже был присоединён к родительской панели, поэтому commit до attach/detach безопасен. `OnScreenFieldsApplied` и tab callbacks (`OnTabModelApplied`, `OnTabSelectionUpdated`, `OnTabChanged`) удалены: полный Asset Registry audit всех `.uasset` не нашёл Blueprint implementation, а callback внутри этой отменяемой фазы нарушал бы атомарность публикации. Test-only failure injector рекурсивно доходит до child Screen в tab container и получает путь `tabs.<tab_key>.<child_property>`; production в этот hook не передаёт callback. Отказ commit любого экрана здесь — нарушение инварианта: он не публикуется, а поскольку ничего ниже (per-layer reconcile/`ActiveScreens`/layer interactivity) ещё не выполнялось, все остальные слои, их виджеты, биндинги и предыдущая ревизия `ActiveScreens` остаются буквально нетронутыми в смысле "их Commit не вызывался". Экраны, уже успешно закоммиченные РАНЬШЕ в этом же цикле (до отказавшего), этим предложением не покрыты сами по себе — `FGV2LayeredUiReconciler::CommitReconcile` откатывает их отдельно (см. п. 2 ниже, [ADR-0041](../ADR/0041-ui-commit-rollback-model.md), `GBH-10`), восстанавливая их через `RollbackFieldPlans` (`GV2ScreenWidgetBase.cpp`) прежде чем шаг 1 возвращает failure.
-   2. **(PAH-06B, [ADR-0042](../ADR/0042-presentation-authority-and-publication.md) `INV-P3`)** Реконсилировать каждый из шести слоёв атомарно через `FGV2KeyedCollection::ReconcilePrepared` — тот же общий примитив, что уже обслуживает коллекции локации, вкладки и списки, в форме, доказанной `PAH-06A` на `modal_stack` и распространённой здесь на остальные пять. Желаемый порядок слоя — это порядок его собственных screen instances во входящем документе (`FGV2ScreenInstanceViewModel.Layer`, порядок Route → Overlays → Modals), не порядок обхода всего многослойного плана. Каждый виджет к этому шагу уже существует и его поля уже закоммичены шагом 1, поэтому единственная задача вызова — атомарно пересобрать состав и порядок детей host-панели слоя (`ClearChildren` + пересоздание из желаемого набора): переиспользованный экран физически перемещается на новую позицию, замененный слот получает новый виджет на месте старого, отсутствующий в этом раунде экран пропадает — всё одним `ClearChildren`-свопом, без отдельных шагов attach/detach. Порядок в слое — часть состояния, публикуемого этим коммитом, а не производная от порядка обхода плана: слой, чьи screen instances в документе не изменили относительный порядок между ревизиями, физически не переставляется; слой, чьи instances переставлены, физически переставляется тем же коммитом. Отказ реконсиляции одного слоя (для реальных многодетных host-панелей структурно недостижим — единственный отказ `UPanelWidget::AddChild` за пределами null-виджета это гейт единственного ребёнка, а `AddChild` не виртуален — но достижим при неверно сконфигурированном Blueprint-хосте) откатывает: свою собственную панель — атомарно, средствами `ReconcilePrepared` самого; каждый УЖЕ закоммиченный в этом же цикле слой — до его собственного `PreviousOrder`, захваченного тем же вызовом; и Commit-мутации шага 1 для **всех** экранов плана (`RollbackFieldPlans`) — прежде чем `CommitReconcile` возвращает failure с деревом Shell, `ActiveScreens` (ещё не тронутым) и порядком каждого слоя точно на предыдущей ревизии.
+   2. **(PAH-06B, [ADR-0042](../ADR/0042-presentation-authority-and-publication.md) `INV-P3`)** Реконсилировать каждый из шести слоёв атомарно через `FGV2KeyedCollection::ReconcilePrepared` — тот же общий примитив, что уже обслуживает коллекции локации, вкладки и списки. Желаемый порядок слоя — порядок его screen instances во входящем документе (`Route → Overlays → Modals`), а не порядок обхода всего плана. Вызов одним rebuild (`ClearChildren` + `AddChild`) публикует состав и порядок детей; даже при неизменном логическом порядке он создаёт свежие panel slots. Поэтому reconciler передаёт shell-owned `ApplyScreenSlotLayout` как slot policy, а rollback через `RestoreOrder` передаёт ту же policy. Отказ слоя восстанавливает его панель, уже закоммиченные слои и Commit-мутации экранов прежде, чем вернуть failure; `ActiveScreens` остаётся предыдущей ревизией.
    3. Закоммитить `ActiveScreens` — достигается только если каждый слой выше успешно реконсилирован.
    4. Layer Rules & Modal Interactivity (UIF-20): применить `SetLayerInteractive` по approved layers, либо (если есть модали) заблокировать все нижние слои и оставить интерактивным только верхний модальный.
 
@@ -321,17 +323,19 @@ LocationScreen — один route instance. Его `screen_id` всегда `tex
 
 ## Verification status
 
-Automation-тесты (`GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Presentation.*`, `gv2-headless --self-test`) проверяют:
+Automation-тесты (`GV2.UI.LayeredReconciliationContract`, `GV2.Runtime.Presentation.*`, `GV2.Runtime.UI.GameShellViewportFill`, `gv2-headless --self-test`) проверяют:
 
 - Валидацию слоёв Game Shell и отклонение неразрешённых слоёв;
 - Наследование `WBP_GameShell` от `UGV2GameShellWidgetBase`, наличие шести authored hosts в отображаемом Widget tree и фактическое присоединение Screen к требуемому host;
+- `GameShellViewportFill` выводит множество слоёв из `GetApprovedLayers()`, публикует Screen в каждый слой через production reconciler и проверяет Fill-slot и геометрию Shell/host/Screen на независимой матрице viewport sizes; session-тест проверяет Fill-slot реального опубликованного Screen;
 - Валидацию Screen Registry и сопоставление классов экранов;
 - Сопоставление Screen Instances по `layer + instance_key`;
 - Переиспользование существующего виджета без пересоздания при неизменном `screen_id`;
 - Замену класса виджета при смене `screen_id`;
 - Блокировку интерактивности нижних слоёв при открытии модального окна и её восстановление при закрытии;
 - Атомарность публикации: отказ кандидата не разрушает и не мутирует активный набор экранов и биндингов;
-- Реальный отказ `UPanelWidget::AddChild()` в production `CommitReconcile`: Shell tree, `ActiveScreens` и metadata остаются на предыдущей ревизии; CTest source gate перечисляет все `->AddChild(...)` в `AttachScreenToLayer` и требует propagation `nullptr` как failure;
+- Реальный отказ `UPanelWidget::AddChild()` в production `CommitReconcile`: Shell tree, `ActiveScreens` и metadata остаются на предыдущей ревизии, а восстановленный свежий `OverlaySlot` снова имеет Fill; CTest source gate перечисляет все `->AddChild(...)` в `AttachScreenToLayer` и требует propagation `nullptr` как failure;
+- `validate_game_shell_slot_policy.py` выводит все keyed reconcile/restore call sites из production layered reconciler и запрещает rebuild или rollback без shell-owned slot policy; self-test удаляет policy отдельно из success, recovery и direct attach paths;
 - Сохранение UI-local состояния между ревизиями при переиспользовании экземпляра.
 - Editor startup profile создаёт `WBP_Testscreen` через полный repository → Lua presentation → UI document → reconciliation pipeline и присоединяет его к `LocationContentHost` активной Game Shell.
 - `GV2.Runtime.UI.PresentationCatastrophicRecoveryContract` (`PAH-07`): два различимых наблюдаемых исхода отказа Commit через инъекцию отказа на production-пути (`ScreenCommitFailureInjector`/`ScreenRollbackFailureInjector`) — обычный (health остаётся `Nominal`) и катастрофический (компенсирующий откат тоже отказывает, health переходит в `RecoveredFromCatastrophicFailure`); после катастрофического восстановления канонические состав, значения полей и физический порядок в каждом слое (включая нетронутый соседний слой) совпадают с последним успешно закоммиченным документом, а не с отклонённым кандидатом — проверено чтением фактических виджетов, а не только возвращаемого значения.

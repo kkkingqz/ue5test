@@ -27,6 +27,8 @@
 #include "Components/CheckBox.h"
 #include "Components/EditableTextBox.h"
 #include "Components/Image.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "UI/GV2InputFieldWidgetBase.h"
 #include "UI/GV2LoadingIndicatorWidgetBase.h"
 #include "UI/GV2ProgressBarWidgetBase.h"
@@ -3397,6 +3399,21 @@ bool FGV2CommittedPresentationViewportResizeTest::RunTest(const FString& Paramet
         FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
         ScreenBeforeResize = Cast<UGV2ScreenWidgetBase>(Runtime->GetActiveScreen());
         TestNotNull(TEXT("Session publishes its initial screen before resize"), ScreenBeforeResize);
+        UOverlaySlot* const ProductionLayerSlot = ScreenBeforeResize != nullptr
+            ? Cast<UOverlaySlot>(ScreenBeforeResize->Slot)
+            : nullptr;
+        TestNotNull(TEXT("Session-published screen is attached to a GameShell Overlay layer"), ProductionLayerSlot);
+        if (ProductionLayerSlot != nullptr)
+        {
+            TestEqual(
+                TEXT("Production reconcile preserves horizontal viewport fill"),
+                ProductionLayerSlot->GetHorizontalAlignment(),
+                HAlign_Fill);
+            TestEqual(
+                TEXT("Production reconcile preserves vertical viewport fill"),
+                ProductionLayerSlot->GetVerticalAlignment(),
+                VAlign_Fill);
+        }
         GreetingBeforeResize = ScreenBeforeResize != nullptr
             ? Cast<UGV2TextWidgetBase>(ScreenBeforeResize->GetWidgetFromName(TEXT("GreetingText")))
             : nullptr;
@@ -3452,6 +3469,218 @@ bool FGV2CommittedPresentationViewportResizeTest::RunTest(const FString& Paramet
     GEngine->GameViewport = PreviousEngineViewport;
     WorldContext.GameViewport = PreviousWorldViewport;
     TestViewportClient->RemoveAssociation(*TestViewport);
+
+    GameInstance->Shutdown();
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2GameShellViewportFillTest,
+    "GV2.Runtime.UI.GameShellViewportFill",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// PSC-AF-02: the old viewport matrix put WBP_LocationScreen directly in an
+// SVirtualWindow, while the first version of this test attached it through
+// GameShell::AttachScreenToLayer. Both bypassed the keyed collection rebuild used by
+// production reconciliation, which can replace a configured panel slot with a new slot.
+// Drive the REAL reconciler here, keep expected bounds outside the widget tree, and
+// enumerate every layer through GameShell's canonical layer set.
+bool FGV2GameShellViewportFillTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(*FString::Printf(TEXT("Prepare context fixture is available: %s"), *ContextError), bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>();
+    GameInstance->AddToRoot();
+    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    if (TestWorld == nullptr)
+    {
+        AddError(TEXT("GameShell viewport-fill scenario could not create a game world"));
+        GameInstance->RemoveFromRoot();
+        return false;
+    }
+
+    GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(TestWorld);
+    GameInstance->Init();
+
+    UClass* ShellClass = LoadClass<UGV2GameShellWidgetBase>(
+        nullptr,
+        TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+    TestNotNull(TEXT("Production WBP_GameShell is loadable"), ShellClass);
+
+    UGV2GameShellWidgetBase* Shell = ShellClass != nullptr
+        ? CreateWidget<UGV2GameShellWidgetBase>(TestWorld, ShellClass)
+        : nullptr;
+    TestNotNull(TEXT("Production GameShell is instantiated"), Shell);
+
+    if (Shell != nullptr)
+    {
+        FGV2UiDocumentViewModel Document;
+        Document.UiInstanceId = TEXT("ui@psc14_viewport_fill");
+        Document.Revision = 1;
+
+        TMap<FName, FName> InstanceKeyByLayer;
+        for (const FName Layer : UGV2GameShellWidgetBase::GetApprovedLayers())
+        {
+            FGV2ScreenInstanceViewModel Instance;
+            Instance.Layer = Layer;
+            Instance.InstanceKey = FName(*FString::Printf(TEXT("psc14_%s"), *Layer.ToString()));
+            Instance.ScreenId = Layer == UGV2GameShellWidgetBase::LayerLocationContent
+                ? TEXT("textsystem:screen.location")
+                : FString::Printf(TEXT("core:screen.psc14_%s_probe"), *Layer.ToString());
+            InstanceKeyByLayer.Add(Layer, Instance.InstanceKey);
+
+            if (Layer == UGV2GameShellWidgetBase::LayerLocationContent)
+            {
+                Document.bHasRoute = true;
+                Document.Route = Instance;
+            }
+            else if (Layer == UGV2GameShellWidgetBase::LayerModalStack)
+            {
+                Document.Modals.Add(Instance);
+            }
+            else
+            {
+                Document.Overlays.Add(Instance);
+            }
+        }
+
+        FGV2LayeredUiReconciler Reconciler;
+        auto ScreenFactory = [&](const FString&, FName) -> UGV2ScreenWidgetBase*
+        {
+            return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
+        };
+        FString ReconcileError;
+        const bool bReconciled = Reconciler.Reconcile(
+            Shell,
+            Document,
+            ScreenFactory,
+            ReconcileError,
+            *PrepareContext);
+        TestTrue(
+            *FString::Printf(TEXT("Production layered reconciliation succeeds: %s"), *ReconcileError),
+            bReconciled);
+        if (!bReconciled)
+        {
+            GameInstance->Shutdown();
+            TestWorld->DestroyWorld(false);
+            GEngine->DestroyWorldContext(TestWorld);
+            GameInstance->RemoveFromRoot();
+            return false;
+        }
+
+        int32 VerifiedLayerSlots = 0;
+        for (const FName Layer : UGV2GameShellWidgetBase::GetApprovedLayers())
+        {
+            UGV2ScreenWidgetBase* LayerScreen = Reconciler.GetActiveScreen(Layer, InstanceKeyByLayer.FindRef(Layer));
+            TestNotNull(
+                *FString::Printf(TEXT("Reconciler publishes a screen in layer '%s'"), *Layer.ToString()),
+                LayerScreen);
+            UOverlaySlot* LayerSlot = LayerScreen != nullptr ? Cast<UOverlaySlot>(LayerScreen->Slot) : nullptr;
+            TestNotNull(
+                *FString::Printf(TEXT("Layer '%s' screen uses the authored Overlay host"), *Layer.ToString()),
+                LayerSlot);
+            if (LayerSlot != nullptr)
+            {
+                TestEqual(
+                    *FString::Printf(TEXT("Layer '%s' reconciled slot fills horizontally"), *Layer.ToString()),
+                    LayerSlot->GetHorizontalAlignment(),
+                    HAlign_Fill);
+                TestEqual(
+                    *FString::Printf(TEXT("Layer '%s' reconciled slot fills vertically"), *Layer.ToString()),
+                    LayerSlot->GetVerticalAlignment(),
+                    VAlign_Fill);
+                ++VerifiedLayerSlots;
+            }
+        }
+        TestEqual(
+            TEXT("Every canonical GameShell layer has an inspected production slot"),
+            VerifiedLayerSlots,
+            UGV2GameShellWidgetBase::GetApprovedLayers().Num());
+
+        TSharedPtr<SWidget> ShellSlate = Shell->TakeWidget();
+        TestTrue(TEXT("Production GameShell produces a Slate widget"), ShellSlate.IsValid());
+        if (ShellSlate.IsValid())
+        {
+            TSharedRef<SVirtualWindow> VirtualWindow =
+                SNew(SVirtualWindow).Size(FVector2D(1280.0f, 720.0f));
+            VirtualWindow->SetContent(ShellSlate.ToSharedRef());
+
+            const FVector2D Resolutions[] = {
+                FVector2D(1280.0f, 720.0f),
+                FVector2D(1920.0f, 1080.0f),
+                FVector2D(2560.0f, 1080.0f),
+            };
+            int32 VerifiedLayerGeometries = 0;
+            for (const FVector2D& Resolution : Resolutions)
+            {
+                Shell->InvalidateLayoutAndVolatility();
+                GV2SimulateResponsiveFrame(VirtualWindow, Resolution);
+
+                const FVector2D ShellSize =
+                    Shell->GetCachedWidget()->GetTickSpaceGeometry().GetLocalSize();
+                TestTrue(
+                    *FString::Printf(
+                        TEXT("GameShell fills independent viewport bounds %s (actual %s)"),
+                        *Resolution.ToString(),
+                        *ShellSize.ToString()),
+                    ShellSize.Equals(Resolution, 1.0f));
+
+                for (const FName Layer : UGV2GameShellWidgetBase::GetApprovedLayers())
+                {
+                    UPanelWidget* Host = Shell->GetHostForLayer(Layer);
+                    TestNotNull(
+                        *FString::Printf(TEXT("GameShell exposes authored host for layer '%s'"), *Layer.ToString()),
+                        Host);
+                    if (Host != nullptr && Host->GetCachedWidget().IsValid())
+                    {
+                        const FVector2D HostSize =
+                            Host->GetCachedWidget()->GetTickSpaceGeometry().GetLocalSize();
+                        TestTrue(
+                            *FString::Printf(
+                                TEXT("Layer '%s' fills independent viewport bounds %s (actual %s)"),
+                                *Layer.ToString(),
+                                *Resolution.ToString(),
+                                *HostSize.ToString()),
+                            HostSize.Equals(Resolution, 1.0f));
+                        ++VerifiedLayerGeometries;
+                    }
+
+                    UGV2ScreenWidgetBase* LayerScreen = Reconciler.GetActiveScreen(
+                        Layer,
+                        InstanceKeyByLayer.FindRef(Layer));
+                    if (LayerScreen != nullptr && LayerScreen->GetCachedWidget().IsValid())
+                    {
+                        const FVector2D ScreenSize =
+                            LayerScreen->GetCachedWidget()->GetTickSpaceGeometry().GetLocalSize();
+                        TestTrue(
+                            *FString::Printf(
+                                TEXT("Reconciled screen in layer '%s' fills independent viewport bounds %s (actual %s)"),
+                                *Layer.ToString(),
+                                *Resolution.ToString(),
+                                *ScreenSize.ToString()),
+                            ScreenSize.Equals(Resolution, 1.0f));
+                    }
+                }
+            }
+
+            TestEqual(
+                TEXT("Every canonical GameShell layer is geometry-checked at every resolution"),
+                VerifiedLayerGeometries,
+                static_cast<int32>(UE_ARRAY_COUNT(Resolutions))
+                    * UGV2GameShellWidgetBase::GetApprovedLayers().Num());
+        }
+    }
 
     GameInstance->Shutdown();
     TestWorld->DestroyWorld(false);
@@ -4298,7 +4527,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             {
                 AttachFailureShell->AddToRoot();
 
-                UVerticalBox* LocationHostPanel = NewObject<UVerticalBox>(AttachFailureShell);
+                UOverlay* LocationHostPanel = NewObject<UOverlay>(AttachFailureShell);
                 USizeBox* SingleChildOverlayHost = NewObject<USizeBox>(AttachFailureShell);
                 auto SetShellHost = [](UGV2GameShellWidgetBase* TargetShell, const FName PropertyName, UPanelWidget* Host)
                 {
@@ -4398,6 +4627,19 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 }
                 TestTrue(TEXT("GBF-01: prior route is reattached to the Shell tree (cross-layer rollback)"),
                     AttachFailureShell->GetScreensInLayer(TEXT("location_content")).Contains(RouteV1));
+                UOverlaySlot* const RestoredRouteSlot = Cast<UOverlaySlot>(RouteV1->Slot);
+                TestNotNull(TEXT("PSC-AF-02: cross-layer rollback recreates the route OverlaySlot"), RestoredRouteSlot);
+                if (RestoredRouteSlot != nullptr)
+                {
+                    TestEqual(
+                        TEXT("PSC-AF-02: rollback reapplies horizontal Fill to the fresh route slot"),
+                        RestoredRouteSlot->GetHorizontalAlignment(),
+                        HAlign_Fill);
+                    TestEqual(
+                        TEXT("PSC-AF-02: rollback reapplies vertical Fill to the fresh route slot"),
+                        RestoredRouteSlot->GetVerticalAlignment(),
+                        VAlign_Fill);
+                }
                 TestFalse(TEXT("GBF-01: replacement route is removed by recovery"),
                     AttachFailureShell->GetScreensInLayer(TEXT("location_content")).Contains(RouteV2));
                 TestEqual(TEXT("GBF-01: overlay_stack host is restored to its exact prior (empty) state"),

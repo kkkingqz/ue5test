@@ -322,7 +322,11 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                 [](UGV2ScreenWidgetBase&, const FGV2LayerReconcilePrepared&) {},
                 OrderedOut,
                 nullptr,
-                &State.PreviousOrder);
+                &State.PreviousOrder,
+                [](UPanelSlot& Slot)
+                {
+                    UGV2GameShellWidgetBase::ApplyScreenSlotLayout(Slot);
+                });
 
             if (!bLayerReconciled)
             {
@@ -345,7 +349,13 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
                     // the decision of WHICH order to restore belongs here. This loop used to
                     // perform its own ClearChildren/AddChild, which left projection recovery
                     // -- a named part of physical application -- in the upper module.
-                    if (!FGV2KeyedCollection::RestoreOrder(CommittedLayer.Host, CommittedLayer.PreviousOrder))
+                    if (!FGV2KeyedCollection::RestoreOrder(
+                            CommittedLayer.Host,
+                            CommittedLayer.PreviousOrder,
+                            [](UPanelSlot& Slot)
+                            {
+                                UGV2GameShellWidgetBase::ApplyScreenSlotLayout(Slot);
+                            }))
                     {
                         bStructureRestoreFailed = true;
                         UE_LOG(LogTemp, Error,

@@ -1,8 +1,8 @@
 ---
 title: Structural Gates and Closure Tasks
 status: active
-version: 1.4
-updated: 2026-09-10
+version: 1.6
+updated: 2026-09-11
 depends_on:
   - README.md
   - ApplyBoundary.md
@@ -69,19 +69,25 @@ depends_on:
     - `STATUS-001…003` и `STATUS-011` не меняются без отдельного evidence: они вне scope этого плана.
   - Evidence: machine reports, resolved `AuditFindings.md`, полностью отмеченный active plan и итоговое сопоставление Proposal → implementation.
 
-  Сверка 2026-09-10: `PAH-R1…R7` закрыты задачами `PSC-02…13`, а найденный при
-  финальной проверке resize regression записан как `PSC-AF-01` и закрыт этой задачей.
+  Итоговая сверка 2026-09-11: `PAH-R1…R7` и найденные в ходе закрытия `PSC-AF-01/02`
+  имеют допустимый исход. `PSC-AF-02` вызван потерей GameShell Fill policy при переходе на
+  keyed `ClearChildren` + `AddChild`: свежий `UOverlaySlot` получал default `Left/Top`.
+  Keyed primitive теперь применяет caller-owned slot policy на Commit и rollback, а
+  production reconciler передаёт единую policy GameShell. Runtime regression выводит все
+  шесть слоёв из `GetApprovedLayers()`; source-derived gate перечисляет все reconcile/restore
+  call sites и имеет отдельные synthetic mutations для success, recovery и direct attach.
   Proposal сопоставлен целиком: exact package set (`PSC-02…03`), immutable snapshot и
   atomic publication (`PSC-04…06`), package/screen isolation (`PSC-07…08`), единая
   self-contained transaction (`PSC-09A…10C`), физический module boundary и class migration
   (`PSC-11…12`), structural gates и cross-host verification (`PSC-13…14`).
 
-  Финальные machine results: fresh CMake tree — `102/102` CTest; `gv2-headless
-  --self-test`, `--check-scripts`, content validation и docs validation — success; golden
+  Финальные machine results: fresh CMake tree configured/built, `104/104` CTest;
+  `gv2-headless --self-test`, `--check-scripts`, content validation и docs validation — success; golden
   manifest `golden_headless_10_seed_42.manifest.json5` воспроизвёл digest
   `44eac77b01d8cf0fcbd4fa68264bc3dcbf6c66386bf85c0d3af55510f5892f23` без изменения
-  golden; UBT — success; полный `Automation RunTests GV2` — `139/139`, fail/skip/error
-  `0/0/0`. `ImplementationStatus.md` не изменён: выживших gaps этого раунда нет, а
+  golden; UBT — success; полный `Automation RunTests GV2` по machine report — executed/pass
+  `140/140`, fail/not-run/in-process/test-errors `0/0/0/0`. Оба viewport regression tests
+  имеют `Success`. `ImplementationStatus.md` не изменён: выживших gaps этого раунда нет, а
   `STATUS-001…003` и `STATUS-011` вне scope.
 
 ## Архивация после выполнения PSC-14
