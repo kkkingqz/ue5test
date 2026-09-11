@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Plans
 status: archived
-version: 2.12
-updated: 2026-09-07
+version: 2.13
+updated: 2026-09-11
 depends_on:
   - ../README.md
 ---
@@ -21,6 +21,7 @@ depends_on:
 | [GenericUiTransactionFollowUp](GenericUiTransactionFollowUp.md) | 2026-09-03 | Доведение транзакционной модели UI после follow-up review: отказ attach доходит до восстановления, `keyed_by` проецируется в capability, полнота полей — инвентарь членов вместо `sizeof`, обратная мутация обязательна и строится от прежней схемы, учётное состояние восстанавливается вместе с физическим, Blueprint-callback вне отменяемой транзакции, границы отката перечисляет сканер по исходнику |
 | [DeclaredCompositeAdoption](DeclaredCompositeAdoption.md) | 2026-09-06 | Композиты локации переведены на объявление, три композиционных C++-класса и специальный мостик планировщика удалены, три полностью новых композита собраны без C++; плюс перечислители там, где сплошная проверка нашла рукописные списки: отзывчивость раскладки (первый гейт, читающий `Content/`), аудит UI-компонентов, порядок слоёв и владелец схемы из `mods.lock.json5` |
 | [PresentationAuthorityHardening](PresentationAuthorityHardening.md) | 2026-09-07 | Пять находок ревью архитектуры презентации: порядок в слое как реконсилируемое состояние на общем keyed-примитиве, разрешение экрана только по сильному `Placement`, схемы и каталог ресурсов внутри пиннингованной сессии, владение UE-корнями данными пакета с отказом по умолчанию, наблюдаемый отказ восстановления с пересборкой из зафиксированного документа; двухчастный гейт `INV-P5` и закрытие разделения на компилятор и исполнитель как ненужного |
+| [PresentationStructuralClosure](PresentationStructuralClosure.md) | 2026-09-11 | Один exact package set и immutable session snapshot, self-contained Prepare/Apply transaction, отдельный `GV2PresentationApply`, механические enumerators и восстановленное заполнение GameShell всей геометрии viewport |
 | [CanonicalGameplayState](CanonicalGameplayState.md) | 2026-08-15 | Canonical state, module lifecycle hooks, instance identity, state hash в run digest, ActorRegistry и mutation window |
 | [CommandHandlerRegistry](CommandHandlerRegistry.md) | 2026-08-16 | Реестр обработчиков по `command_id` вместо цепочки, отказ на неизвестную команду, развязка `ingress` от игровых модулей, команды из пакета без C++ |
 | [CommandValidators](CommandValidators.md) | 2026-08-19 | Авторский `validate()` для независимых policy поверх чужих команд, единое декодирование аргументов, охранники побочных эффектов и явная заменяемость обработчика |

@@ -14,7 +14,7 @@ date: 2026-09-07
 
 Гейт работал: он нашёл `STATUS-012` — утечку через две ссылки (`Commit → ResolveAndApply → Catalog->Resolve`), которую прямой осмотр тел `Commit*` не видел.
 
-**И он же дал ложное зелёное.** Проверка кода при разборе [нового ревью](../Status/AuditFindings.md) даёт цепочку, которую тот же гейт пропускает:
+**И он же дал ложное зелёное.** Проверка кода при разборе [повторного ревью](../Status/Archive/PresentationAuthorityStructuralClosureAudit.md) дала цепочку, которую тот же гейт пропускал:
 
 ```text
 FGV2TextPropertyConsumer::Commit
@@ -95,6 +95,6 @@ FGV2TextPropertyConsumer::Commit
 
 Перенос классов виджетов в новый модуль меняет пути `/Script/GV2` и затрагивает существующие Widget Blueprint. Миграция обязана быть контролируемой: временные редиректы, загрузка, компиляция и пересохранение затронутых ассетов, проверка отсутствия ссылок на прежние пути, удаление редиректов. Постоянный слой совместимости не сохраняется.
 
-До реализации настоящий ADR описывает целевое правило, а не текущее поведение: семь подтверждённых расхождений перечислены в [AuditFindings](../Status/AuditFindings.md) и закрываются планом, материализующим [это предложение](../Proposals/PresentationAuthorityStructuralClosureProposal.md).
+Решение реализовано и независимо сверено: [архив плана](../Plans/Archive/PresentationStructuralClosure.md) содержит этапы и machine evidence, [архив аудита](../Status/Archive/PresentationAuthorityStructuralClosureAudit.md) — исходы находок, а [реализованное предложение](../Proposals/Archive/PresentationAuthorityStructuralClosureProposal.md) сохраняет rationale.
 
 Universal UI Property Pipeline ([ADR-0040](0040-universal-ui-property-pipeline.md)) остаётся единственным конвейером. Меняются расположение границы и полнота подготовленной нагрузки, а не грамматика авторинга и не модель capability.

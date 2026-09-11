@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 3.6
-updated: 2026-09-07
+version: 3.7
+updated: 2026-09-11
 depends_on:
   - ../README.md
 ---
@@ -29,9 +29,7 @@ depends_on:
 
 ## Активные планы
 
-- [Presentation Structural Closure](PresentationStructuralClosure/README.md) — семь находок аудита презентации: синхронизация owner contracts, один portable package set, полный session snapshot, self-contained Prepare/Apply DTO boundary, отдельный Unreal Apply module, атомарная миграция `UCLASS` и structural cross-host gates. PSC-01…14 (`09` и `10` разделены на `A`/`B`).
-
-
+Активных планов нет.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 

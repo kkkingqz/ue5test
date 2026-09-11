@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Proposals Index
 status: informative
-version: 4.8
-updated: 2026-09-07
+version: 4.9
+updated: 2026-09-11
 ---
 
 # Индекс предложений по реализации (Proposals)
@@ -36,7 +36,6 @@ Proposal не изменяет нормативную архитектуру с�
 
 | Документ | Статус | Затронутые подсистемы | Описание |
 |---|---|---|---|
-| [PresentationAuthorityStructuralClosureProposal](PresentationAuthorityStructuralClosureProposal.md) | accepted for planning | Application, Presentation, Packages, Headless | Один exact package set, coordinator-owned immutable snapshot и физическая граница `Prepare → GV2PresentationApply` вместо globals и ручных authority lists |
 | [ExternalProjectAdoptionProposal](ExternalProjectAdoptionProposal.md) | accepted for planning | Architecture, Dependencies | Матрица прямого использования, reference-only и отложенных внешних решений |
 | [ContentDiagnosticsAndToolingProposal](ContentDiagnosticsAndToolingProposal.md) | accepted for planning | Content, CI, Tooling | Source spans, deterministic diagnostics, CLI validation, fuzzing и будущий LSP |
 | [ModPackageLifecycleProposal](ModPackageLifecycleProposal.md) | accepted for planning | Modding, Application, Save | Discovery, explicit load order, lock file, validation и controlled restart UX |
@@ -51,8 +50,6 @@ Proposal не изменяет нормативную архитектуру с�
 Реализованные предложения: [Archive](Archive/README.md). Отклонённые: [Rejected](Rejected/README.md).
 
 ## Рекомендуемый порядок
-
-`PresentationAuthorityStructuralClosureProposal` выполняется до новых UI extensions: текущий production-код подтверждённо нарушает `INV-P1`, `INV-P2` и `INV-P5`, а существующие gates дают false green.
 
 1. `ContentDiagnosticsAndToolingProposal` — реализованы CLI (`validate` с `--watch`, `inspect`, `describe`, `new`, `refs`, `rename`, `index`, `hash`), быстрая проверка Lua-модулей и интеграция с редактором; fuzzing, diff-отчёты и полноценный LSP остаются.
 2. `LuaModuleOverrideProposal` — этап M1 (заморозка таблиц экспорта и разметка замещаемости) не зависит от пакетов и выполняется независимо; M2–M4 идут после `ModPackageLifecycleProposal`.

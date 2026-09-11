@@ -1,8 +1,8 @@
 ---
 title: Archived Implementation Proposals
 status: archived
-version: 1.4
-updated: 2026-09-07
+version: 1.5
+updated: 2026-09-11
 depends_on:
   - ../README.md
 ---
@@ -28,3 +28,4 @@ depends_on:
 | [ContentEditorPluginProposal](ContentEditorPluginProposal.md) | [ContentEditor](../../Plans/Archive/ContentEditor.md) | Unreal Editor frontend поверх общей atomic authoring library и канонических JSON5 definitions |
 | [UniversalDataDrivenUIPropertyPipelineProposal](UniversalDataDrivenUIPropertyPipelineProposal.md) | [UniversalUiPropertyPipeline](../../Plans/Archive/UniversalUiPropertyPipeline.md) | Один универсальный property pipeline вместо schema-specific DTO и адаптеров: data-driven UI-схемы, наблюдаемые capability, Prepare/Commit вместо fallible Apply |
 | [PresentationAuthorityConsolidationProposal](PresentationAuthorityConsolidationProposal.md) | [PresentationAuthorityHardening](../../Plans/Archive/PresentationAuthorityHardening.md) | Пять источников контентного факта сведены к одному пиннингованному снимку; разрешение экрана и владение ассетами недостижимы в обход проверки; слои GameShell — на общем keyed-примитиве. Разделение на компилятор и исполнитель отклонено по результату двухчастного гейта `INV-P5`, а не по рассуждению |
+| [PresentationAuthorityStructuralClosureProposal](PresentationAuthorityStructuralClosureProposal.md) | [PresentationStructuralClosure](../../Plans/Archive/PresentationStructuralClosure.md) | Один exact package set и coordinator-owned immutable snapshot; semantic Prepare отделён от физического Commit/rollback границей `GV2PresentationApply`, полнота защищена structural enumerators |

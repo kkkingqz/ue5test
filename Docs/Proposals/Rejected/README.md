@@ -1,8 +1,8 @@
 ---
 title: Rejected Implementation Proposals
 status: archived
-version: 1.1
-updated: 2026-08-20
+version: 1.2
+updated: 2026-09-11
 depends_on:
   - ../README.md
 ---

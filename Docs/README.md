@@ -1,8 +1,8 @@
 ---
 title: GV2 Documentation Index
 status: informative
-version: 4.4
-updated: 2026-08-20
+version: 4.5
+updated: 2026-09-11
 language: ru
 ---
 
@@ -21,7 +21,6 @@ language: ru
 | Выполнить запланированную работу | [Plans](Plans/README.md) |
 | Изучить открытые идеи | [Proposals](Proposals/README.md) |
 | Сверить contract и реализацию | [Implementation Status](Status/ImplementationStatus.md) |
-| Прочитать findings текущего раунда | [Audit Findings](Status/AuditFindings.md) |
 | Узнать результат проверок выполненных планов | [Archived Audit Rounds](Status/Archive/README.md) |
 
 ## Authority и lifecycle
