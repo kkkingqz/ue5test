@@ -1,8 +1,8 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.0
-updated: 2026-09-11
+version: 1.1
+updated: 2026-09-12
 depends_on:
   - ImplementationStatus.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -209,3 +209,5 @@ exit=0
 5. После этого фиксировать конкретную поддержанную поверхность C++/Lua и evidence baseline. Расширение capabilities, зависимостей и lifecycle впоследствии проходит тот же gate. Обещания «C++ больше никогда не меняется» и абсолютного отсутствия дефектов проверками не подтверждаются.
 
 Аудит завершён как обследование указанного состояния. Исправление находок не выполнялось, готовность C++ не отмечалась, планы и архивы не закрывались.
+
+Исполняемая декомпозиция устранения причин и приёмки Lua gameplay baseline: [C++ Foundation Closure](../Plans/CppFoundationClosure/README.md). Создание плана не меняет исходы находок и не подтверждает их исправление.
