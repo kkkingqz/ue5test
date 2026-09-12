@@ -95,12 +95,15 @@ public:
 
 protected:
     virtual void NativePreConstruct() override;
+    virtual void NativeOnCurrentTextStyleChanged() override;
     virtual void NativeOnClicked() override;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget))
     TObjectPtr<UCommonTextBlock> LabelText;
 
 private:
+    void RestorePreparedLabelPresentation();
+
     UPROPERTY(Transient)
     FGV2UiBindingHandle BindingHandle;
 
@@ -114,6 +117,9 @@ private:
     FGV2UiPropertyHostState PropertyHostState;
 
     GV2PresentationApply::FPreparedTextScalePolicy PreparedDefaultLabelScale;
+
+    UPROPERTY(Transient)
+    TSubclassOf<UCommonTextStyle> PreparedDefaultLabelStyle;
     bool bHasPreparedDefaultLabelScale = false;
 
     bool bAutomaticInteractionSubmission = true;

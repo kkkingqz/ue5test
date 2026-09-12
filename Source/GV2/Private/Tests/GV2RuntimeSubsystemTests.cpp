@@ -3478,6 +3478,175 @@ bool FGV2CommittedPresentationViewportResizeTest::RunTest(const FString& Paramet
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CommandReconcilePreservesPreparedTypographyTest,
+    "GV2.Runtime.Presentation.CommandReconcilePreservesPreparedTypography",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// A process can own more than one game viewport in PIE. Establish a 720p baseline through
+// the production resize path while a deliberately different process-global viewport reports
+// 2160p, then execute the real RH work command. Every command button comes from the actual
+// keyed collection; no hand-maintained list can hide a newly added entry from the comparison.
+// Removing the context-world preference from ResolveLiveViewportHeight makes the post-command
+// Apply rescale these labels against the foreign viewport, or allowing a later CommonUI
+// style pass to erase prepared typography, makes this test fail.
+bool FGV2CommandReconcilePreservesPreparedTypographyTest::RunTest(const FString& Parameters)
+{
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+    if (TestWorld == nullptr)
+    {
+        AddError(TEXT("Standalone GameInstance did not create a world"));
+        GameInstance->RemoveFromRoot();
+        return false;
+    }
+
+    FWorldContext& WorldContext = GEngine->GetWorldContextFromWorldChecked(TestWorld);
+    UGameViewportClient* const PreviousEngineViewport = GEngine->GameViewport;
+    UGameViewportClient* const PreviousWorldViewport = WorldContext.GameViewport;
+
+    UGameViewportClient* OwningViewportClient = NewObject<UGameViewportClient>(GEngine);
+    UGameViewportClient* ForeignViewportClient = NewObject<UGameViewportClient>(GEngine);
+    TSharedRef<FSceneViewport> OwningViewport = MakeShared<FSceneViewport>(TSharedPtr<SViewport>());
+    TSharedRef<FSceneViewport> ForeignViewport = MakeShared<FSceneViewport>(TSharedPtr<SViewport>());
+    OwningViewportClient->AddAssociation(*OwningViewport);
+    ForeignViewportClient->AddAssociation(*ForeignViewport);
+    OwningViewport->SetInitialSize(FIntPoint(1280, 720));
+    ForeignViewport->SetInitialSize(FIntPoint(3840, 2160));
+    WorldContext.GameViewport = OwningViewportClient;
+    GEngine->GameViewport = ForeignViewportClient;
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Owning-viewport scenario has the production runtime subsystem"), Runtime);
+
+    auto FindCommandRepeater = [](UGV2ScreenWidgetBase* Screen) -> UGV2ListViewWidgetBase*
+    {
+        if (Screen == nullptr || Screen->WidgetTree == nullptr)
+        {
+            return nullptr;
+        }
+        UGV2ListViewWidgetBase* Result = nullptr;
+        Screen->WidgetTree->ForEachWidget([&Result](UWidget* Widget)
+        {
+            if (Result != nullptr)
+            {
+                return;
+            }
+            if (UGV2DeclaredCompositeWidgetBase* Composite = Cast<UGV2DeclaredCompositeWidgetBase>(Widget);
+                Composite != nullptr && Composite->GetHostIdentity() == FName(TEXT("commands")))
+            {
+                Result = Cast<UGV2ListViewWidgetBase>(Composite->GetWidgetFromName(TEXT("ButtonRepeater")));
+            }
+        });
+        return Result;
+    };
+
+    TMap<FName, float> BaselineFontSizes;
+    if (Runtime != nullptr)
+    {
+        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+
+        // The real resize delegate supplies the owning viewport's height and normalizes the
+        // already committed tree before the command. Expected values therefore come from
+        // observed product state, independently of the resolver under test.
+        OwningViewport->UpdateViewportRHI(
+            false,
+            1280,
+            720,
+            EWindowMode::Windowed,
+            PF_Unknown);
+
+        UGV2ScreenWidgetBase* ScreenBeforeCommand = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        UGV2ListViewWidgetBase* RepeaterBeforeCommand = FindCommandRepeater(ScreenBeforeCommand);
+        TestNotNull(TEXT("RH LocationScreen exposes its production command repeater"), RepeaterBeforeCommand);
+
+        if (RepeaterBeforeCommand != nullptr)
+        {
+            for (const TPair<FName, TObjectPtr<UWidget>>& Pair : RepeaterBeforeCommand->GetActiveWidgetsMap())
+            {
+                const UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(Pair.Value.Get());
+                const UCommonTextBlock* Label = Button != nullptr ? Button->GetLabelText() : nullptr;
+                TestNotNull(
+                    *FString::Printf(TEXT("Command entry '%s' is a button with a label"), *Pair.Key.ToString()),
+                    Label);
+                if (Label != nullptr)
+                {
+                    BaselineFontSizes.Add(Pair.Key, Label->GetFont().Size);
+                }
+            }
+        }
+        TestTrue(TEXT("The production command collection supplies multiple enumerated entries"), BaselineFontSizes.Num() > 1);
+
+        UGV2ButtonWidgetBase* WorkButton = RepeaterBeforeCommand != nullptr
+            ? Cast<UGV2ButtonWidgetBase>(RepeaterBeforeCommand->GetEntryWidget(FName(TEXT("do_work"))))
+            : nullptr;
+        TestNotNull(TEXT("RH command collection exposes do_work"), WorkButton);
+        if (WorkButton != nullptr)
+        {
+            TestEqual(TEXT("Command button belongs to the session world"), WorkButton->GetWorld(), TestWorld);
+            TestEqual(
+                TEXT("Command button world identifies the owning viewport"),
+                WorkButton->GetWorld() != nullptr ? WorkButton->GetWorld()->GetGameViewport() : nullptr,
+                OwningViewportClient);
+            TestEqual(
+                TEXT("Shared viewport resolver prefers the command button's owning viewport"),
+                GV2PresentationApply::ResolveLiveViewportHeight(WorkButton, 1080.0f),
+                720.0f);
+            const EGV2SubmitUiInteractionResult SubmitResult =
+                Runtime->SubmitUiInteraction(WorkButton->GetBindingHandle(), {});
+            TestEqual(TEXT("The production work command is accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+        }
+
+        UGV2ScreenWidgetBase* ScreenAfterCommand = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        UGV2ListViewWidgetBase* RepeaterAfterCommand = FindCommandRepeater(ScreenAfterCommand);
+        TestNotNull(TEXT("Command reconcile republishes the command repeater"), RepeaterAfterCommand);
+        if (RepeaterAfterCommand != nullptr)
+        {
+            TestEqual(
+                TEXT("Command reconcile preserves the enumerated command set"),
+                RepeaterAfterCommand->GetEntryCount(),
+                BaselineFontSizes.Num());
+            for (const TPair<FName, float>& Pair : BaselineFontSizes)
+            {
+                const UGV2ButtonWidgetBase* Button = Cast<UGV2ButtonWidgetBase>(
+                    RepeaterAfterCommand->GetEntryWidget(Pair.Key));
+                const UCommonTextBlock* Label = Button != nullptr ? Button->GetLabelText() : nullptr;
+                TestNotNull(
+                    *FString::Printf(TEXT("Command entry '%s' survives reconcile"), *Pair.Key.ToString()),
+                    Label);
+                if (Label != nullptr)
+                {
+                    TestEqual(
+                        *FString::Printf(
+                            TEXT("Command entry '%s' keeps the owning-viewport font size"),
+                            *Pair.Key.ToString()),
+                        Label->GetFont().Size,
+                        Pair.Value);
+                }
+            }
+        }
+
+        Runtime->EndSession();
+    }
+
+    GEngine->GameViewport = PreviousEngineViewport;
+    WorldContext.GameViewport = PreviousWorldViewport;
+    OwningViewportClient->RemoveAssociation(*OwningViewport);
+    ForeignViewportClient->RemoveAssociation(*ForeignViewport);
+
+    GameInstance->Shutdown();
+    TestWorld->DestroyWorld(false);
+    GEngine->DestroyWorldContext(TestWorld);
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2GameShellViewportFillTest,
     "GV2.Runtime.UI.GameShellViewportFill",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

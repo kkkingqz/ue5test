@@ -192,7 +192,34 @@ bool FGV2WidgetSemanticFontSizeContractTests::RunTest(const FString& Parameters)
             ButtonWidget->SetKey(TEXT("btn_test"));
             ButtonWidget->SetBindingHandle(FGV2UiBindingHandle::Create(TEXT("core:command.test")));
             TestTrue(TEXT("Button accepts the prepared text"), ButtonWidget->ApplyText(TextModel));
+            const FSlateFontInfo ButtonFontBeforeState = ButtonWidget->GetLabelText()->GetFont();
             const float ActualButtonSize = ButtonWidget->GetLabelText()->GetFont().Size;
+            ButtonWidget->SetIsEnabled(false);
+            TestEqual(
+                *FString::Printf(TEXT("[%s][%s] Disabled state preserves prepared button typography"), *HeightTag, *Token.ToString()),
+                static_cast<float>(ButtonWidget->GetLabelText()->GetFont().Size),
+                ActualButtonSize);
+            TestEqual(
+                *FString::Printf(TEXT("[%s][%s] Disabled state preserves prepared button font"), *HeightTag, *Token.ToString()),
+                ButtonWidget->GetLabelText()->GetFont().FontObject,
+                ButtonFontBeforeState.FontObject);
+            TestEqual(
+                *FString::Printf(TEXT("[%s][%s] Disabled state preserves prepared button typeface"), *HeightTag, *Token.ToString()),
+                ButtonWidget->GetLabelText()->GetFont().TypefaceFontName,
+                ButtonFontBeforeState.TypefaceFontName);
+            ButtonWidget->SetIsEnabled(true);
+            TestEqual(
+                *FString::Printf(TEXT("[%s][%s] Re-enabled state preserves prepared button typography"), *HeightTag, *Token.ToString()),
+                static_cast<float>(ButtonWidget->GetLabelText()->GetFont().Size),
+                ActualButtonSize);
+            TestEqual(
+                *FString::Printf(TEXT("[%s][%s] Re-enabled state preserves prepared button font"), *HeightTag, *Token.ToString()),
+                ButtonWidget->GetLabelText()->GetFont().FontObject,
+                ButtonFontBeforeState.FontObject);
+            TestEqual(
+                *FString::Printf(TEXT("[%s][%s] Re-enabled state preserves prepared button typeface"), *HeightTag, *Token.ToString()),
+                ButtonWidget->GetLabelText()->GetFont().TypefaceFontName,
+                ButtonFontBeforeState.TypefaceFontName);
 
             // 4. InputField widget: Apply via production path and read renderer control
             InputFieldWidget->SetKey(TEXT("input_test"));

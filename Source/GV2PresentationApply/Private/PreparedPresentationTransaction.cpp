@@ -74,16 +74,10 @@ float EvaluatePreparedFontSize(const FPreparedTextScalePolicy& Policy, float Vie
 // minus the Theme-sourced fallback (now a parameter, itself already resolved in Prepare).
 float ResolveLiveViewportHeight(const UWidget* ContextWidget, float FallbackHeight)
 {
-    if (GEngine != nullptr && GEngine->GameViewport != nullptr)
-    {
-        FVector2D ViewportSize;
-        GEngine->GameViewport->GetViewportSize(ViewportSize);
-        if (ViewportSize.Y > 0.0f)
-        {
-            return ViewportSize.Y;
-        }
-    }
-
+    // A process can host multiple game viewports in PIE. The widget's World identifies
+    // which one owns this presentation; consulting the process-global viewport first can
+    // therefore apply another PIE/editor window's scale during a document Commit. Keep the
+    // global client only as a fallback for context-free or not-yet-world-bound widgets.
     if (ContextWidget != nullptr)
     {
         if (const UWorld* World = ContextWidget->GetWorld())
@@ -97,6 +91,16 @@ float ResolveLiveViewportHeight(const UWidget* ContextWidget, float FallbackHeig
                     return ViewportSize.Y;
                 }
             }
+        }
+    }
+
+    if (GEngine != nullptr && GEngine->GameViewport != nullptr)
+    {
+        FVector2D ViewportSize;
+        GEngine->GameViewport->GetViewportSize(ViewportSize);
+        if (ViewportSize.Y > 0.0f)
+        {
+            return ViewportSize.Y;
         }
     }
 

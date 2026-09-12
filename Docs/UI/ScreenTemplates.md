@@ -1,7 +1,7 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.28
+version: 1.29
 updated: 2026-09-11
 depends_on:
   - ../Architecture/StableIDSpecification.md
@@ -94,12 +94,16 @@ Game Shell владеет внешним slot layout для Screen roots: каж
 - На 1440p масштаб составляет ~1.25.
 - На 4K (2160p) масштаб составляет ~1.60 (вместо линейного 2.0).
 - Итоговый физический размер шрифта ограничен снизу подготовленным порогом `MinReadableFontSize` (10 pt); Apply не вызывает Theme API.
+- При наличии Widget context текущая высота берётся из game viewport его `World`; process-global viewport допустим только как fallback для ещё не привязанного к миру Widget. Это исключает перенос масштаба между несколькими PIE viewport.
+- Central/control style не может стереть уже применённую semantic text presentation. После смены `normal`, `hovered`, `pressed`, `selected`, `disabled` или полной замены CommonUI style контрол обязан восстановить сохранённые prepared style class и font metrics; новый размер появляется только из новой desired presentation либо `ViewportRefresh`.
 
 ### Resize lifecycle
 
 Изменение размера активного game viewport не является новой desired presentation. `UGV2RuntimeSubsystem` обязан обработать `FViewport::ViewportResizedEvent` только своего viewport и отправить одну `ViewportRefresh` operation на каждый уникальный committed Screen root. Единственный `FGV2PresentationApply::Apply` рекурсивно обходит существующее Widget tree и вызывает `IGV2PreparedViewportRefreshTarget`.
 
 Refresh получает только текущую высоту viewport и использует значения, сохранённые исходным Prepare. Ему запрещено повторно разрешать Theme, читать snapshot, публиковать/реконсилировать UI document, заменять Widget instances или сбрасывать UI-local state. Активный hover-popover обновляется через владеющий `RichText`; Headless этого UE-only lifecycle не имеет.
+
+Source-derived gate обязан перечислять все Widget bases, выполняющие viewport-dependent presentation, и требовать `IGV2PreparedViewportRefreshTarget`. Для stateful CommonUI-контрола тот же gate обязан проверять единый native state-style hook; production-path тест выполняет настоящую command reconciliation и сравнивает все фактически материализованные command entries до и после commit.
 
 ### Матрица целевых разрешений
 

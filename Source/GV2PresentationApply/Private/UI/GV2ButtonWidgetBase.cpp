@@ -15,12 +15,46 @@ void UGV2ButtonWidgetBase::RefreshPreparedViewportPresentation(float ViewportHei
     FGV2WidgetTextApply::RefreshFont(LabelText, CurrentTextViewModel, ViewportHeight);
 }
 
+void UGV2ButtonWidgetBase::RestorePreparedLabelPresentation()
+{
+    if (LabelText == nullptr)
+    {
+        return;
+    }
+
+    if (!CurrentTextStyleToken.IsNone() && CurrentTextViewModel.bHasResolvedPresentation)
+    {
+        // CommonUI changes its current text style for every control-state transition and
+        // while SetStyle rebuilds the Slate styles. Desired presentation remains the owner
+        // of semantic typography, so restore the complete prepared text payload afterwards.
+        FGV2WidgetTextApply::Apply(LabelText, CurrentTextViewModel);
+        return;
+    }
+
+    if (PreparedDefaultLabelStyle != nullptr && bHasPreparedDefaultLabelScale)
+    {
+        LabelText->SetStyle(PreparedDefaultLabelStyle);
+        FGV2WidgetTextApply::RefreshFont(
+            LabelText,
+            PreparedDefaultLabelScale,
+            GV2PresentationApply::ResolveLiveViewportHeight(
+                this,
+                PreparedDefaultLabelScale.ReferenceViewportHeight));
+    }
+}
+
 void UGV2ButtonWidgetBase::NativePreConstruct()
 {
     Super::NativePreConstruct();
     // PSC-10B: runtime style arrives as FPreparedButtonStyle. Nothing here re-applies it at
     // design time: a button's serialized CommonUI style and its label's serialized style
     // already render on their own. See UGV2SeparatorWidgetBase::NativePreConstruct.
+}
+
+void UGV2ButtonWidgetBase::NativeOnCurrentTextStyleChanged()
+{
+    Super::NativeOnCurrentTextStyleChanged();
+    RestorePreparedLabelPresentation();
 }
 
 bool UGV2ButtonWidgetBase::ApplyText(const FGV2TextViewModel& InText)
@@ -70,36 +104,15 @@ void UGV2ButtonWidgetBase::ApplyButtonStyleValues(
     const GV2PresentationApply::FPreparedTextScalePolicy& InDefaultLabelScale)
 {
     PreparedDefaultLabelScale = InDefaultLabelScale;
+    PreparedDefaultLabelStyle = InDefaultLabelStyle;
     bHasPreparedDefaultLabelScale = true;
     if (InButtonStyle != nullptr)
     {
         SetStyle(InButtonStyle);
     }
-    if (LabelText == nullptr || InDefaultLabelStyle == nullptr)
-    {
-        return;
-    }
-
-    // A label carrying a style token was already styled -- class AND font size -- by that
-    // token's own text operation, which ran earlier in this same transaction. Restyling it
-    // here is what the old implementation did, resolving the token a second time through
-    // the Theme; central style now supplies only the default a token-less label would
-    // otherwise have nothing at all from.
-    if (!CurrentTextStyleToken.IsNone())
-    {
-        return;
-    }
-
-    LabelText->SetStyle(InDefaultLabelStyle);
-    const float ScaledFontSize = GV2PresentationApply::EvaluatePreparedFontSize(
-        InDefaultLabelScale,
-        GV2PresentationApply::ResolveLiveViewportHeight(this, InDefaultLabelScale.ReferenceViewportHeight));
-    FSlateFontInfo FontInfo = LabelText->GetFont();
-    if (!FMath::IsNearlyEqual(FontInfo.Size, ScaledFontSize, 0.01f))
-    {
-        FontInfo.Size = ScaledFontSize;
-        LabelText->SetFont(FontInfo);
-    }
+    // SetStyle can synchronously publish a CommonUI text-style change. Repeat the restore
+    // even when the style class was already current and CommonUI therefore emitted nothing.
+    RestorePreparedLabelPresentation();
 }
 
 void UGV2ButtonWidgetBase::NativeOnClicked()

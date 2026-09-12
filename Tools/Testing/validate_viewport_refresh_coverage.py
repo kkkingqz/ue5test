@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """PSC-14: every widget source that performs canonical viewport-dependent presentation
-must implement the prepared viewport-refresh role.
+must implement the prepared viewport-refresh role. A stateful CommonUI button must also
+restore its prepared presentation from the one native state-style callback.
 
 The set is derived from production .cpp files, not maintained as a class list. A class is
 in scope when one of its member functions uses the shared text-apply helper or one of the
@@ -90,6 +91,25 @@ def find_violations(private_sources: dict[str, str], public_headers: dict[str, s
                 f"{source_name}: {class_name} declares viewport-dependent presentation but "
                 "has no concrete RefreshPreparedViewportPresentation implementation"
             )
+
+        if re.search(r":\s*public\s+UCommonButtonBase\b", class_body):
+            if "NativeOnCurrentTextStyleChanged() override" not in class_body:
+                errors.append(
+                    f"{header_name}: {class_name} is a viewport-scaled CommonUI button but "
+                    "does not override NativeOnCurrentTextStyleChanged"
+                )
+            source = strip_comments(private_sources[source_name])
+            callback = re.search(
+                rf"\b{re.escape(class_name)}::NativeOnCurrentTextStyleChanged\s*\(\s*\)\s*"
+                rf"\{{(?P<body>.*?)\n\}}",
+                source,
+                flags=re.DOTALL,
+            )
+            if callback is None or "RestorePreparedLabelPresentation()" not in callback.group("body"):
+                errors.append(
+                    f"{source_name}: {class_name} does not restore prepared presentation "
+                    "from the CommonUI state-style callback"
+                )
     return errors
 
 
@@ -142,6 +162,45 @@ class GV2PRESENTATIONAPPLY_API UGV2FutureWidgetBase
     errors = find_violations(synthetic_private, synthetic_public)
     if not any("no concrete RefreshPreparedViewportPresentation" in error for error in errors):
         print(f"FAILED: gate accepted a refresh role with no implementation: {errors}")
+        return False
+
+    synthetic_private["GV2FutureWidgetBase.cpp"] = """
+void UGV2FutureWidgetBase::ApplyText()
+{
+    FGV2WidgetTextApply::Apply(Label, Text);
+}
+void UGV2FutureWidgetBase::RefreshPreparedViewportPresentation(float ViewportHeight)
+{
+    FGV2WidgetTextApply::RefreshFont(Label, Text, ViewportHeight);
+}
+"""
+    synthetic_public["GV2FutureWidgetBase.h"] = """
+class GV2PRESENTATIONAPPLY_API UGV2FutureWidgetBase
+    : public UCommonButtonBase
+    , public IGV2PreparedViewportRefreshTarget
+{
+    virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;
+};
+"""
+    errors = find_violations(synthetic_private, synthetic_public)
+    if not any("does not override NativeOnCurrentTextStyleChanged" in error for error in errors):
+        print(f"FAILED: gate accepted a scaled CommonUI button without the state-style hook: {errors}")
+        return False
+
+    synthetic_private["GV2FutureWidgetBase.cpp"] += """
+void UGV2FutureWidgetBase::NativeOnCurrentTextStyleChanged()
+{
+    Super::NativeOnCurrentTextStyleChanged();
+}
+"""
+    synthetic_public["GV2FutureWidgetBase.h"] = synthetic_public["GV2FutureWidgetBase.h"].replace(
+        "virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;",
+        "virtual void RefreshPreparedViewportPresentation(float ViewportHeight) override;\n"
+        "    virtual void NativeOnCurrentTextStyleChanged() override;",
+    )
+    errors = find_violations(synthetic_private, synthetic_public)
+    if not any("does not restore prepared presentation" in error for error in errors):
+        print(f"FAILED: gate accepted a state-style hook that discards prepared presentation: {errors}")
         return False
 
     print("SUCCESS: negative fixtures are rejected and repository coverage is complete")
