@@ -18,6 +18,7 @@
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2Duc10NestedChainFixtureTest,
@@ -197,20 +198,11 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
         return true;
     };
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    TestNotNull(TEXT("DUC-10: standalone GameInstance is created"), GameInstance);
-    if (GameInstance == nullptr)
-    {
-        return false;
-    }
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* const TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* const TestWorld = WorldContext.GetWorld();
     TestNotNull(TEXT("DUC-10: standalone world is available"), TestWorld);
     if (TestWorld == nullptr)
     {
-        GameInstance->Shutdown();
-        GameInstance->RemoveFromRoot();
         return false;
     }
 
@@ -332,9 +324,6 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("DUC-10: commit failure leaves third-level number unmodified"), ValueBar->GetProgress(), BaselineProgress);
         }
     }
-
-    GameInstance->Shutdown();
-    GameInstance->RemoveFromRoot();
 
     return true;
 }

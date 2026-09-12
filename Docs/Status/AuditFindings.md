@@ -127,9 +127,7 @@ PrivateDependencyModuleNames.AddRange(new[] { "GV2ContentCore" });        // vio
 
 Baseline и штатный self-test зелёные. Парсер `extract_dependency_modules`, строки 71–84, распознаёт ограниченную форму и не сигнализирует о пропущенном dependency statement. Запрещённой зависимости в текущем Apply-модуле нет; это подтверждённая неполнота гейта, а не заявление о существующей обратной ссылке или выполненная компиляция synthetic Build.cs.
 
-**Проверка для закрытия:** actual side — вычисленный граф UBT либо grammar с отказом на любом нераспознанном изменении dependency surface; отдельные negative fixtures для альтернативной формы, вычисляемого аргумента и нового dependency statement. Добавить только `new[]` в regex недостаточно для универсального утверждения.
-
-**Исход:** подтверждено как contract gap, [STATUS-016](ImplementationStatus.md).
+**Исход:** *(Закрыто задачей CFC-03)* Статический regex заменён на fail-closed парсер C# для `GV2PresentationApply.Build.cs`, проверяющий 100% токенов/выражений, отвергающий любые вспомогательные методы, циклы, ветвления, сторонние include paths и custom base classes, поддерживающий `new string[]`, `new[]` и `.Add()`, проверяющий forward edge `GV2 -> GV2PresentationApply` и единственный consumer, а также вычисленный CMake File API codemodel и изоляцию authority в UBT.
 
 ### Runtime foundation
 
@@ -191,7 +189,7 @@ end
 
 Это повторно подтверждённый риск приёмки, но **не** расхождение workflow с нынешним Integration gate contract: [BuildAndTooling](../Architecture/BuildAndTooling.md#integration-gate) сам требует узкий `GV2.Runtime`. Поэтому запись не добавляется в таблицу contract ↔ code gaps.
 
-**Открыто.** Для фиксации C++ нужен согласованный contract и runner полного `GV2`, со сверкой discovery/report sets, отсутствием skipped/not-run/in-process/error records, привязкой результата к проверенным исходникам. Ручное ожидаемое число `141` будет устаревать и перечислитель не заменяет.
+*(Закрыто задачей CFC-02)* CI и local acceptance переведены на запуск всего набора `GV2` (включая UI и Editor) через fresh-process runner `run_ue_acceptance.py` со строгой сверкой discovery inventory и report records.
 
 #### VERIFY-AF-02 — P2 — локальный UE-runner сообщает успех при NotRun
 
@@ -205,7 +203,7 @@ exit=0
 
 Это synthetic test самого runner, не результат реального UE automation текущего аудита. Реальные отчёты разобраны и сопоставлены отдельно. Дополнительно текущий `mcp_client.py` с default `requests.Response.iter_lines()` задерживал короткий SSE-ответ до timeout; в audit-process использован `chunk_size=1`, исходник клиента не менялся.
 
-**Открыто.** Для закрытия runner должен отвергать любой незавершённый/non-success record, несогласованность счётчиков, неполный/пустой report и несовпадение с discovery; нужны отрицательные fixtures его собственного протокола. SSE transport и завершение server task проверяются отдельно от успешности тестов.
+*(Закрыто задачей CFC-02)* В `ue_test_report.py` реализована fail-closed валидация `validate_run`, подключённая к `run_ue_tests.py` и `run_ue_acceptance.py`, исключающая пропуск non-success состояний (NotRun, InProcess, Fail) и расхождений счётчиков.
 
 ### CppFullCodeReview — проверка REVIEW-01…15
 
@@ -221,9 +219,7 @@ exit=0
 
 #### CFC-AF-02 — REVIEW-02 — P2 — fixtures оставляют rooted GameInstance
 
-**Подтверждено:** `GV2UiPrepareCommitTests.cpp:44–61` возвращает widget, потеряв owner созданного и rooted GameInstance; RemoveFromRoot/Shutdown отсутствуют. `GV2UiCapabilityObservabilityTests.cpp` повторяет AddToRoot в helpers и отдельных tests без cleanup. Накопление rooted objects следует из кода; OOM и нестабильный CI run не измерены, поэтому исходный P1 с такими последствиями сужен до test-hygiene P2.
-
-**Открыто:** CFC-02A исправляет scoped ownership, world teardown и early-return cleanup; enumerator — actual root-mutator sites, проверка — repeated actual suite + collectible weak refs. В ImplementationStatus не добавляется как доказанное прежнее runtime contract нарушение.
+*(Закрыто задачей CFC-02A)* Введён RAII-владелец `FScopedTestWorldContext`, гарантирующий вызов `Shutdown()`, удаление из root и уничтожение `UWorld`/`FWorldContext` в `GEngine`, тестовые вызовы `AddToRoot` переведены на scoped context и защищены статическим гейтом `validate_test_fixture_ownership.py`.
 
 #### CFC-AF-03 — REVIEW-03 — P1 — off-tree candidates без traced owner
 
@@ -271,9 +267,7 @@ exit=0
 
 #### CFC-AF-10 — REVIEW-10 — P2 — forgery mode не восстанавливается
 
-**Подтверждено:** `GV2ForgeryTestWidgets.cpp:13–16` возвращает mutable static mode; test `GV2UiCapabilityObservabilityTests.cpp:769` присваивает его и после последнего сценария оставляет UnimplementableKind. Следующий test не получает прежнее environment. Настоящий flaky test run не воспроизведён.
-
-**Открыто:** CFC-02A — scoped restore прежнего значения, instance-local snapshot mode при необходимости, actual global writer inventory и тест двух порядков исполнения. Не требуется новый runtime subsystem или отдельный план.
+*(Закрыто задачей CFC-02A)* Введён RAII-класс `FScopedForgeryMode`, сохраняющий и восстанавливающий прежнее состояние режима, прямой вызов мутации закрыт статическим гейтом, а созданный виджет фиксирует режим при конструировании.
 
 #### CFC-AF-11 — REVIEW-11 — смешение shared pointer families
 

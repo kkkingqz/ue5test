@@ -18,6 +18,7 @@
 #include "UI/GV2ScreenRegistry.h"
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2TabContainerWidgetBase.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 
 // DCA-11: proves the deepest chain the plan promises -- screen -> tabs ->
 // nested screen -> declared block -> keyed item collection -- entirely from
@@ -172,20 +173,11 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
             FString(TEXT("textsystem:screen.dca11_inventory_fixture")));
     }
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    TestNotNull(TEXT("DCA-11: standalone GameInstance is created"), GameInstance);
-    if (GameInstance == nullptr)
-    {
-        return false;
-    }
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* const TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* const TestWorld = WorldContext.GetWorld();
     TestNotNull(TEXT("DCA-11: standalone world is available"), TestWorld);
     if (TestWorld == nullptr)
     {
-        GameInstance->Shutdown();
-        GameInstance->RemoveFromRoot();
         return false;
     }
 
@@ -315,9 +307,6 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
     }
 
     DispatchFixtureCommand(TEXT("textsystem:command.debug.dca11_clear"), CapturedDocument);
-
-    GameInstance->Shutdown();
-    GameInstance->RemoveFromRoot();
 
     return true;
 }

@@ -16,6 +16,7 @@
 #include "UI/GV2PanelWidgetBase.h"
 #include "Tests/GV2PresentationTestFixtures.h"
 #include "Engine/GameInstance.h"
+#include "UObject/GarbageCollection.h"
 
 namespace
 {
@@ -41,14 +42,10 @@ FCompiledUiFieldSpecPtr MakeScalarSpec(
 // UUserWidget (a concrete, non-abstract subclass; UUserWidget itself is Abstract)
 // whose WidgetTree carries named children matching the test capability tree
 // (Label: text, Bar: percent, Root: enabled).
-UUserWidget* MakeTestHostWidget()
+UUserWidget* MakeTestHostWidget(UWorld* World)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
-
-    UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
+    check(World != nullptr);
+    UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(World, UGV2PanelWidgetBase::StaticClass());
     Host->WidgetTree = NewObject<UWidgetTree>(Host);
     UVerticalBox* Root = Host->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
     Host->WidgetTree->RootWidget = Root;
@@ -96,9 +93,12 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         .AddBoolean(TEXT("enabled"), FName(TEXT("Root")))
         .Build();
 
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+
     // 1. Prepare Purity Check: Prepare does NOT modify live state
     {
-        UUserWidget* Host = MakeTestHostWidget();
+        UUserWidget* Host = MakeTestHostWidget(TestWorld);
 
         FCompiledUiFieldSpec Schema;
         Schema.Kind = EUiFieldKind::Object;
@@ -211,7 +211,7 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         NewFields.Emplace(TEXT("text"), FGV2PreparedUiValue::MakeText(NewText));
         const TSharedRef<const FGV2PreparedUiObject> NewCandidate = FGV2PreparedUiObject::Create(MoveTemp(NewFields));
 
-        UUserWidget* Host2 = MakeTestHostWidget();
+        UUserWidget* Host2 = MakeTestHostWidget(TestWorld);
         FGV2UiHostMutationPlan Plan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bPrepared = PrepareUiHostProperties(
@@ -251,7 +251,7 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
     // bearing, not just present -- verified by rollback: silencing the child failure check
     // in PrepareUiHostProperties (GV2UiMutationPlan.cpp) leaves this scenario green.
     {
-        UUserWidget* Host = MakeTestHostWidget();
+        UUserWidget* Host = MakeTestHostWidget(TestWorld);
         const FGV2UiCapabilityTree MisboundCaps = FGV2UiCapabilityBuilder()
             .AddText(TEXT("text"), FName(TEXT("Bar"))) // wrong target type on purpose
             .Build();
@@ -290,7 +290,7 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
     // test does not depend on the same ordering the production forward/rollback plan
     // pair relies on structurally (both built from the same FGV2UiCapabilityTree).
     {
-        UUserWidget* Host = MakeTestHostWidget();
+        UUserWidget* Host = MakeTestHostWidget(TestWorld);
         UCommonTextBlock* LabelWidget = Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")));
         UProgressBar* BarWidget = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")));
 
@@ -387,7 +387,7 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
     // PropertyMutation) is a production path, and this is a real fault injected on it,
     // not a synthetic struct built by hand.
     {
-        UUserWidget* Host = MakeTestHostWidget();
+        UUserWidget* Host = MakeTestHostWidget(TestWorld);
         UCommonTextBlock* LabelWidget = Cast<UCommonTextBlock>(Host->GetWidgetFromName(TEXT("Label")));
         UProgressBar* BarWidget = Cast<UProgressBar>(Host->GetWidgetFromName(TEXT("Bar")));
 
@@ -501,6 +501,48 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
                 ValidateUiRollbackPlan(ForwardPlan, MissingInverse, MissingError));
             TestTrue(*FString::Printf(TEXT("GBF-04: kind %d emits typed inverse diagnostic"), static_cast<int32>(Kind)),
                 MissingError.Contains(TEXT("core:diagnostic.ui_rollback.plan_mismatch")));
+        }
+    }
+
+    // 7. CFC-02A: Fixture lifetime isolation, 20x repetition, and collectibility through weak references after teardown.
+    {
+        const int32 BaselineContexts = GEngine != nullptr ? GEngine->GetWorldContexts().Num() : 0;
+
+        for (int32 Iter = 0; Iter < 20; ++Iter)
+        {
+            TWeakObjectPtr<UGameInstance> WeakGameInstance;
+            TWeakObjectPtr<UUserWidget> WeakHostWidget;
+            {
+                GV2PresentationTestFixtures::FScopedTestWorldContext InnerContext;
+                UGameInstance* GI = InnerContext.GetGameInstance();
+                UWorld* W = InnerContext.GetWorld();
+                TestNotNull(*FString::Printf(TEXT("CFC-02A [%d]: GameInstance created"), Iter), GI);
+                TestNotNull(*FString::Printf(TEXT("CFC-02A [%d]: World created"), Iter), W);
+
+                UUserWidget* HostWidget = MakeTestHostWidget(W);
+                TestNotNull(*FString::Printf(TEXT("CFC-02A [%d]: HostWidget created"), Iter), HostWidget);
+
+                WeakGameInstance = GI;
+                WeakHostWidget = HostWidget;
+
+                TestTrue(*FString::Printf(TEXT("CFC-02A [%d]: GameInstance is alive inside scope"), Iter), WeakGameInstance.IsValid());
+                TestTrue(*FString::Printf(TEXT("CFC-02A [%d]: HostWidget is alive inside scope"), Iter), WeakHostWidget.IsValid());
+
+                // Test early teardown idempotence
+                InnerContext.Teardown();
+                TestNull(*FString::Printf(TEXT("CFC-02A [%d]: Teardown clears GameInstance"), Iter), InnerContext.GetGameInstance());
+                TestNull(*FString::Printf(TEXT("CFC-02A [%d]: Teardown clears World"), Iter), InnerContext.GetWorld());
+                InnerContext.Teardown(); // second teardown must be safe and no-op
+            }
+
+            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+            TestFalse(*FString::Printf(TEXT("CFC-02A [%d]: GameInstance collected after teardown"), Iter), WeakGameInstance.IsValid());
+            TestFalse(*FString::Printf(TEXT("CFC-02A [%d]: HostWidget collected after teardown"), Iter), WeakHostWidget.IsValid());
+            if (GEngine != nullptr)
+            {
+                TestEqual(*FString::Printf(TEXT("CFC-02A [%d]: WorldContexts returns to baseline"), Iter), GEngine->GetWorldContexts().Num(), BaselineContexts);
+            }
         }
     }
 

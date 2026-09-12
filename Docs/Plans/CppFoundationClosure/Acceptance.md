@@ -10,7 +10,7 @@ depends_on:
 
 # Приёмка C++-основы
 
-> **Материализует:** M0 и финальную приёмку M3 [плана](README.md). Сначала исправляется достоверность evidence, затем она используется для закрытия runtime-задач.
+> **Материализует:** M0 [плана](README.md): строгий runner, изоляция fixtures и закрытый dependency gate. Сначала исправляется достоверность evidence, затем она используется для закрытия runtime-задач.
 
 ## CFC-01 — Согласовать границы и проверяемые outcomes
 
@@ -44,7 +44,7 @@ Compile-to-value API CFC-04A синхронизировать с owner contracts
 
 ## CFC-02 — Сделать UE-приёмку единой и fail-closed
 
-- [ ] CFC-02 — Сделать UE-приёмку единой и fail-closed
+- [x] CFC-02 — Сделать UE-приёмку единой и fail-closed
 
 **Файлы:** изменить `Tools/MCP/run_ue_tests.py`, `Tools/MCP/mcp_client.py`, `.github/workflows/linux-ci.yml`, `Source/CMakeLists.txt`, `Docs/Architecture/BuildAndTooling.md`; создать `Tools/Testing/ue_test_report.py`, `Tools/Testing/test_ue_test_report.py`, `Tools/Testing/run_ue_acceptance.py`, `Tools/Testing/test_mcp_transport.py`. Report module только валидирует normalised evidence; runners отвечают за transport/process/discovery.
 
@@ -82,7 +82,7 @@ Fixtures содержат явные counters и records, а не результ
 
 ## CFC-02A — Изолировать lifetime и mutable настройки automation fixtures
 
-- [ ] CFC-02A — Изолировать lifetime и mutable настройки automation fixtures
+- [x] CFC-02A — Изолировать lifetime и mutable настройки automation fixtures
 
 **Зависимость:** CFC-02. **Файлы:** `Source/GV2/Private/Tests/GV2UiPrepareCommitTests.cpp`, `GV2UiCapabilityObservabilityTests.cpp`, `GV2ForgeryTestWidgets.h/.cpp`, `GV2PresentationTestFixtures.h` в том же каталоге; actual остальные test root/settings mutators вывести из `Source/**/Tests` и test support. Создать `Tools/Testing/validate_test_fixture_ownership.py` с negative self-tests и включить в CTest; обновить `Docs/Architecture/BuildAndTooling.md`.
 
@@ -110,7 +110,7 @@ Fixtures содержат явные counters и records, а не результ
 
 ## CFC-03 — Закрыть неполный inventory графа сборки
 
-- [ ] CFC-03 — Закрыть неполный inventory графа сборки
+- [x] CFC-03 — Закрыть неполный inventory графа сборки
 
 **Файлы:** `Tools/Testing/validate_presentation_apply_module_graph.py`, `Source/GV2PresentationApply/GV2PresentationApply.Build.cs`, `Source/GV2/GV2.Build.cs`, `Source/CMakeLists.txt`, `Docs/Architecture/BuildAndTooling.md`; новые fixtures/self-tests размещать рядом с существующим gate.
 
@@ -134,46 +134,3 @@ Fixtures содержат явные counters и records, а не результ
 - Portable actual build graph не содержит UE presentation; ограничение проверенных configurations записано явно.
 
 **Evidence:** self-tests, temporary mutation diagnostics, compiler negative/positive outputs, CTest, UBT. `STATUS-016` удалить только после всех проверок.
-
-## CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
-
-- [ ] CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
-
-**Зависимость:** CFC-01…12, включая CFC-02A, CFC-03A, CFC-04A/04B, CFC-05A, CFC-07A. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Guides/WhenToWriteCpp.md`, `Docs/Guides/AddLuaSpec.md`, `Docs/Authoring/README.md`, `Docs/Status/AuditFindings.md`, `Docs/Status/ImplementationStatus.md`; CI artifacts и локальный `Saved/Audit/` для полных отчётов.
-
-**Инвариант:** [scope](../../Architecture/Overview.md), [совместимость](../../Architecture/CompatibilityPolicy.md). Готовность относится к зафиксированной поверхности и ревизии, а не к абстрактному «всему C++».
-
-**Не считается закрытием:** повтор старых 104/141 результатов; review только helper tests; удаление известных STATUS-002/003; план со всеми checkbox без red-on-revert evidence.
-
-**Шаги:**
-1. Сверить каждый Done с именем проверки, actual enumerator и независимым oracle. Проверить новые public native entry points по исходникам `Public/` и bindings; новые enum values обязаны попадать в exhaustive dispatch/test inventory.
-2. Выполнить targeted negative mutations каждой устранённой причины: второй schema source, shared mutable Screen Registry между A/B, старый candidate, ранний host teardown, игнорируемый freeze result, неподключённый storage, потерянная previous copy, запрещённый dependency statement, NotRun и missing UE record. Дополнительно вернуть untraced owning widget/class pointer, leaked test root/global mode, native semantic state merge, ignored seed, signed-zero mismatch и len-only hash validation; штатные tests/gates обязаны обнаружить каждый. Для registry повторить failed B и successful B с отличающимися inputs/package closure, проверяя exact Resolve A, а не только snapshot pointer/hash. Мутации живут в временных checkout и обязаны краснеть в штатном pipeline.
-3. На чистой ревизии выполнить приведённый ниже runbook, full UE test inventory и CFC-12. Зафиксировать revision, build fingerprints, package/script hashes, environment, warnings и ограничения.
-4. Выполнить portable ASan/UBSan build и CTest/shared conformance для Lua/native marshalling и storage; документировать unsupported toolchain отдельным препятствием для этой задачи. Это проверка памяти на исполненных сценариях, не доказательство всего возможного ввода.
-5. Удалить только полностью закрытые status rows; записать исход каждой audit-находки и task ID. Обновить Guide: новое native API требует scope reason, production consumer, negative fixture и enumerator в одном change set; обычные Lua commands/services/presentation не требуют нового C++.
-6. Зафиксировать supported Linux Development baseline и открытые effects/animations/Shipping/platform limits; выполнить docs validator, закоммитить завершённую приёмку. Архивировать план/аудит затем по отдельной двухкоммитной процедуре, без фиктивных исходов.
-
-**Runbook:**
-```bash
-cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
-cmake --build cmake-build-ci --parallel 2
-ctest --test-dir cmake-build-ci --output-on-failure
-./cmake-build-ci/Headless/gv2-headless --self-test
-./cmake-build-ci/Headless/gv2-headless --check-scripts
-./cmake-build-ci/Tools/Content/gv2-content validate GameData/core
-./cmake-build-ci/Tools/Content/gv2-content coverage GameData/core
-/opt/unreal-engine/Engine/Build/BatchFiles/Linux/Build.sh GV2Editor Linux Development /home/king/ue5/GV2/GV2.uproject -WaitMutex -NoHotReloadFromIDE
-python3 Tools/Testing/run_ue_acceptance.py --filter GV2 --fresh-process
-python3 Tools/Documentation/validate_docs.py
-git diff --check
-```
-`run_ue_acceptance.py` и его CLI создаются CFC-02; до её выполнения команда не существует. UE root может быть задан текущим environment; пользовательский Editor не завершать ради fresh-process run. Sanitizer configuration CFC-13 использует отдельный build directory, чтобы не подменить release evidence.
-
-**Done:**
-- Каждый checkbox плана сопоставлен с выполненным evidence; enumerator — actual task headings, а не ручная сводка выполненного.
-- Все targeted mutations отвергнуты pipeline; ожидаемые причины отказа проверены, не только nonzero exit.
-- Fresh portable, full UE, sanitizer и вертикальные проверки прошли на зафиксированных inputs.
-- Реальные remote CI результаты отделены от local equivalent; если remote запуск недоступен, он не объявлен выполненным.
-- Поддержанная поверхность и оставшиеся gaps описаны без обещания абсолютной корректности.
-
-**Evidence:** итоговый отчёт с командами/exits, именами тестов, artifact identity, результатами mutations и ссылкой на ревизию. Находки после проверки вне проверенной поверхности создают новый конкретный gap; не устраняются общим заявлением «архитектура чистая».

@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 project(GV2Headless LANGUAGES C CXX)
 
+# CFC-03: Ensure CMake File API codemodel query exists so evaluation details are exported on configure
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/.cmake/api/v1/query")
+file(TOUCH "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/codemodel-v2")
+
 include(CTest)
 include("${CMAKE_CURRENT_SOURCE_DIR}/Tools/Testing/GV2CliContractTests.cmake")
 
@@ -418,6 +422,40 @@ if(BUILD_TESTING)
         COMMAND
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_property_consumer_transaction_coverage.py"
+            "--self-test"
+    )
+    # CFC-02: fail-closed UE test report validator, transport, and runner contracts
+    add_test(
+        NAME ue_test_report_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/test_ue_test_report.py"
+    )
+    add_test(
+        NAME mcp_transport_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/test_mcp_transport.py"
+    )
+    add_test(
+        NAME ue_acceptance_runner_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/run_ue_acceptance.py"
+            "--self-test"
+    )
+    # CFC-02A: automation fixture lifetime isolation and test ownership contract
+    add_test(
+        NAME test_fixture_ownership_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_test_fixture_ownership.py"
+    )
+    add_test(
+        NAME test_fixture_ownership_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_test_fixture_ownership.py"
             "--self-test"
     )
 endif()

@@ -48,8 +48,8 @@ jobs:
       - name: Validate links, front matter and dependency graph
         run: python3 Tools/Documentation/validate_docs.py
 
-  unreal-runtime:
-    name: Unreal GV2.Runtime
+  unreal-acceptance:
+    name: Unreal GV2 Acceptance
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 45
@@ -66,25 +66,22 @@ jobs:
           "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh"
           GV2Editor Linux Development "$GITHUB_WORKSPACE/GV2.uproject"
           -WaitMutex -NoHotReloadFromIDE
-      - name: Run GV2.Runtime automation
+      - name: Run GV2 acceptance automation
         run: |
-          automation_log="$RUNNER_TEMP/GV2RuntimeAutomation.log"
-          "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd" \
-            "$GITHUB_WORKSPACE/GV2.uproject" \
-            -unattended -nop4 -nosound -nullrhi \
-            -abslog="$automation_log" \
-            '-ExecCmds=Automation RunTests GV2.Runtime; Quit' \
-            '-TestExit=Automation Test Queue Empty'
-          grep -Fq '**** TEST COMPLETE. EXIT CODE: 0 ****' "$automation_log"
-          if grep -Fq 'Result={Fail}' "$automation_log"; then
-            echo 'One or more GV2.Runtime automation tests failed.' >&2
-            exit 1
-          fi
-      - name: Upload Unreal automation log
+          python3 Tools/Testing/run_ue_acceptance.py \
+            --filter GV2 \
+            --fresh-process \
+            --ue-root "$UE_ROOT" \
+            --project "$GITHUB_WORKSPACE/GV2.uproject" \
+            --log-path "$RUNNER_TEMP/GV2Automation.log" \
+            --report-dir "$RUNNER_TEMP/GV2AutomationReport"
+      - name: Upload Unreal automation artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gv2-runtime-automation-log
-          path: ${{ runner.temp }}/GV2RuntimeAutomation.log
+          name: gv2-acceptance-automation-artifacts
+          path: |
+            ${{ runner.temp }}/GV2Automation.log
+            ${{ runner.temp }}/GV2AutomationReport
           if-no-files-found: warn
           retention-days: 14

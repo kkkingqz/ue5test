@@ -167,3 +167,5 @@ add_executable(gv2_content_editor_conformance
 target_compile_features(gv2_content_editor_conformance PRIVATE cxx_std_20)
 target_link_libraries(gv2_content_editor_conformance PRIVATE gv2_content_editor)
 add_test(NAME content_editor_conformance COMMAND gv2_content_editor_conformance)
+
+# CFC-02: UE acceptance runner and report validator contracts are registered in root CMakeLists.txt.

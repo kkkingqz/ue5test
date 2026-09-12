@@ -10,15 +10,49 @@
 #include "UI/GV2RichTextWidgetBase.h"
 #include "UI/GV2UiCapability.h"
 
-EGV2ForgeryMode& UGV2ForgeryEntryTestWidget::ModeForNextInstance()
+namespace
 {
-    static EGV2ForgeryMode Mode = EGV2ForgeryMode::NoOpConsumer;
-    return Mode;
+static EGV2ForgeryMode GForgeryModeForNextInstance = EGV2ForgeryMode::NoOpConsumer;
+}
+
+FScopedForgeryMode::FScopedForgeryMode(EGV2ForgeryMode InMode)
+    : PreviousMode(UGV2ForgeryEntryTestWidget::GetModeForNextInstance())
+{
+    UGV2ForgeryEntryTestWidget::SetModeForNextInstance(InMode);
+}
+
+FScopedForgeryMode::~FScopedForgeryMode()
+{
+    UGV2ForgeryEntryTestWidget::SetModeForNextInstance(PreviousMode);
+}
+
+EGV2ForgeryMode UGV2ForgeryEntryTestWidget::GetModeForNextInstance()
+{
+    return GForgeryModeForNextInstance;
+}
+
+void UGV2ForgeryEntryTestWidget::SetModeForNextInstance(EGV2ForgeryMode NewMode)
+{
+    GForgeryModeForNextInstance = NewMode;
+}
+
+void UGV2ForgeryEntryTestWidget::PostInitProperties()
+{
+    Super::PostInitProperties();
+    if (!HasAnyFlags(RF_ClassDefaultObject))
+    {
+        ActiveMode = GetModeForNextInstance();
+    }
 }
 
 void UGV2ForgeryEntryTestWidget::DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const
 {
-    switch (ModeForNextInstance())
+    if (!ActiveMode.IsSet())
+    {
+        ActiveMode = GetModeForNextInstance();
+    }
+
+    switch (*ActiveMode)
     {
     case EGV2ForgeryMode::NoOpConsumer:
         OutBuilder.AddBinding(TEXT("forgery_binding"), NAME_None);

@@ -28,7 +28,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `ctest_expected_failure_contract`, `host_conformance_parity_contract`, `presentation_apply_*`, `central_style_runtime_boundary_*`, `viewport_refresh_coverage_*`, `package_set_factory_inventory_*`, `core_*_gate_contract`, `gv2_content_*`.
+> **Проверки:** `ctest_expected_failure_contract`, `host_conformance_parity_contract`, `ue_test_report_contract`, `mcp_transport_contract`, `ue_acceptance_runner_contract`, `presentation_apply_*`, `central_style_runtime_boundary_*`, `viewport_refresh_coverage_*`, `package_set_factory_inventory_*`, `core_*_gate_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -338,12 +338,13 @@ GV2_PORTABLE_API std::string Run<Area>Conformance();
 |---|---|---|---|
 | Package set | declarations, возвращающие `FResolvedPackageSet` или optional `FPackageDescriptor`, и их production call sites | создавать набор может host bootstrap; downstream только получает готовое значение | parser видит C++ declarations/calls известных return shapes, но не доказывает семантику произвольной фабрики с другим типом результата |
 | Snapshot/Prepare context | public fields/accessors фактических declarations | обязательные authority categories и единственный snapshot-backed context | source inventory проверяет форму и полноту классификации; lifetime/publication подтверждают session automation |
-| UBT/CMake graph | все `*.Build.cs` и canonical `CMakeLists.txt` | Apply allowlist; единственный consumer — `GV2`; portable targets не принимают UE source/link edge | CMake scan разбирает graph-команды, но не исполняет произвольные custom macros; итог подтверждает реальная portable-сборка |
+| UBT/CMake graph | `GV2PresentationApply.Build.cs` (fail-closed strict declarative C# parser), все `*.Build.cs` и canonical `CMakeLists.txt` плюс вычисленный CMake File API codemodel (`codemodel-v2`) | Apply allowlist; единственный consumer — `GV2`; portable targets не принимают UE source/link edge; любые нераспознанные конструкции в `GV2PresentationApply.Build.cs` отвергаются | fail-closed парсер проверяет 100% токенов `GV2PresentationApply.Build.cs` (отвергает неявные типы массивов вне allowlist, хелперы, ветвления, сторонние include paths и custom base classes); File API codemodel проверяет реальные сгенерированные цели/линковку, а изоляцию authority в UBT подтверждает compiler-negative проверка |
 | Apply surface | все exported declarations в `GV2PresentationApply/Public` и весь source tree модуля | одна transaction façade; DTO/result, widget/lifecycle roles и pure calculations | forbidden-capability scan (`load`, settings, filesystem, soft refs) является secondary: множество будущих UE API открыто и при добавлении capability требует классификации |
 | Operation/payload | alternatives `FGV2PreparedOperationVariant` и recursive fields всех exported operation structs | exhaustive `Visit(TOverloaded)` без generic/default branch; allowlist value types и запрет resolver/context/callback/service/soft reference | compiler доказывает полноту dispatch; field scanner — допустимую форму declaration, но не runtime-смысл скаляра |
 | Central style | реализации `IGV2UiStyleConsumer`, prepared role interfaces, variant roles и все physical role/helper call sites | равенство Prepare/role/Apply sets; вызов prepared role только из façade; `NativePreConstruct` только design-time values | function-level source scan вторичен; production subtree, late RichText и design-time branch проверяются automation |
 | Viewport refresh | production Widget sources с canonical text-apply/scale call sites | каждый выведенный класс реализует конкретный `IGV2PreparedViewportRefreshTarget`; actual engine event проверяет automation | source markers не моделируют все будущие UE scaling API; новый параллельный механизм обязан быть отклонён layout audit/code review |
 | Widget Blueprint migration | все native `UUserWidget` classes модуля Apply и Asset Registry closure всех `/Game` Widget Blueprints | ноль retired `/Script/GV2.<Class>` metadata/object paths; ancestry указывает на `/Script/GV2PresentationApply` | исполняется только в Editor automation после clean load; мутацию ассетов не выполняет |
+| Test fixture ownership | все source и header файлы в каталогах `Source/**/Tests` | вызовы `AddToRoot` разрешены только в `FScopedTestWorldContext` (`GV2PresentationTestFixtures.h`) и тестах жизненного цикла подсистем (`GV2RuntimeSubsystemTests.cpp`); прямая мутация `EGV2ForgeryMode` запрещена и требует `FScopedForgeryMode` | static regex scan исходников тестов; synthetic negative self-tests в `validate_test_fixture_ownership.py` (CTest `test_fixture_ownership_contract`, `test_fixture_ownership_negative_contract`); runtime isolation проверяется automation |
 
 `GetConfiguredTheme()` и `GetConfiguredRegistry()` запрещены по symbol declaration/definition/call-site во всём production tree. `GetCoreMinimalTheme()` разрешён только bootstrap построению fallback внутри snapshot и UE-native cold-start recovery, у которого snapshot отсутствует по определению.
 
@@ -367,9 +368,9 @@ Cold-start использует только core-minimal values (`ImageCatalogF
 
 | Job | Runner | Содержание |
 |---|---|---|
-| CMake, CTest and headless | hosted Ubuntu | Configure/build, CTest (включая `host_conformance_parity_contract`), явные `gv2-headless --self-test`, `gv2-headless --check-scripts` и `gv2-content` smoke commands (включая информационный `gv2-content coverage`) |
+| CMake, CTest and headless | hosted Ubuntu | Configure/build, CTest (включая `host_conformance_parity_contract`, `ue_test_report_contract`, `mcp_transport_contract`, `ue_acceptance_runner_contract`, `test_fixture_ownership_contract`, `test_fixture_ownership_negative_contract`), явные `gv2-headless --self-test`, `gv2-headless --check-scripts` и `gv2-content` smoke commands (включая информационный `gv2-content coverage`) |
 | Documentation contracts | hosted Ubuntu | `Tools/Documentation/validate_docs.py`: UTF-8, front matter, relative links/anchors, targets `depends_on`/`decisions`, отсутствие cycles |
-| Unreal `GV2.Runtime` | self-hosted linux x64 | Build `GV2Editor` и полный automation filter `GV2.Runtime` |
+| Unreal `GV2` Acceptance | self-hosted linux x64 | Build `GV2Editor` и полный automation filter `GV2` через `Tools/Testing/run_ue_acceptance.py` с fail-closed валидацией машинного отчёта `index.json` модулем `ue_test_report.py` |
 
 `Tools/Content/validate_host_conformance_parity.py` (CTest `host_conformance_parity_contract`) проверяет:
 1. Отсутствие host-локальных self-тестов в `Headless/Source/main.cpp`.
@@ -386,7 +387,7 @@ Cold-start использует только core-minimal values (`ImageCatalogF
 
 Список закрыт и не расширяется. Каждый набор мигрирует в спеки при следующем изменении его предмета.
 
-Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}` (default `/opt/unreal-engine`, переопределяется repository variable). Fork pull request не запускается на self-hosted runner. Нулевой exit code Unreal process недостаточен: job обязан найти marker `TEST COMPLETE. EXIT CODE: 0` и отклонить любой `Result={Fail}` в automation log.
+Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}` (default `/opt/unreal-engine`, переопределяется repository variable). Fork pull request не запускается на self-hosted runner. Прогон запускается в свежем процессе Editor (`UnrealEditor-Cmd`) со сбором полного discovery инвентаря `GV2` и машинного отчёта `-ReportExportPath`. Результат валидируется `Tools/Testing/ue_test_report.py` (`validate_run`): множество обнаруженных тестов обязано строго совпасть со всеми завершёнными записями, каждая запись обязана иметь статус `Success` и 0 ошибок, счётчики `total`/`passed`/`failed`/`skipped` согласованы, а `run_identity` (`run_id`, `source_revision`, `source_diff_hash`, `build_fingerprint`) подтверждает соответствие актуальному коду и бинарникам. Любое расхождение, пропуск, состояние `NotRun`/`InProcess` или неидентифицированный отчёт являются безусловным отказом (fail-closed). MCP в уже запущенном Editor допускается как дополнительный developer run (`Tools/MCP/run_ue_tests.py`), но mismatch загруженных библиотек запрещает считать его freeze evidence.
 
 ## Локальные эквиваленты
 
@@ -399,6 +400,9 @@ ctest --test-dir cmake-build-ci --output-on-failure
 ./cmake-build-ci/Tools/Content/gv2-content validate GameData/core
 ./cmake-build-ci/Tools/Content/gv2-content coverage GameData/core
 python3 Tools/Documentation/validate_docs.py
+python3 Tools/Testing/run_ue_acceptance.py --filter GV2 --fresh-process
+# Дополнительный developer run в открытом Editor (при соответствии бинарников):
+python3 Tools/MCP/run_ue_tests.py --filter StartsWith:GV2
 ```
 
 ## Supported foundation baseline

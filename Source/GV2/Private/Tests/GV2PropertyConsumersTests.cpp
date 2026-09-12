@@ -183,10 +183,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
     // 3. UPP-13: FGV2ImageResourcePropertyConsumer rejects Unset scale policy and verifies compatibility in Prepare
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
+        GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+        UWorld* TestWorld = WorldContext.GetWorld();
 
         UGV2ImageWidgetBase* ImageWidget = CreateWidget<UGV2ImageWidgetBase>(TestWorld, UGV2ImageWidgetBase::StaticClass());
         ImageWidget->WidgetTree = NewObject<UWidgetTree>(ImageWidget);
@@ -489,10 +487,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
     // 5. UPP-14: UGV2ButtonWidgetBase binding/key consumer & negative schema compatibility test
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
+        GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+        UWorld* TestWorld = WorldContext.GetWorld();
 
         UGV2ButtonWidgetBase* ButtonWidget = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
         ButtonWidget->WidgetTree = NewObject<UWidgetTree>(ButtonWidget);
@@ -583,10 +579,8 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
 
     // 6. UPP-16: UCheckBox, UEditableTextBox, UGV2CheckboxWidgetBase, and UGV2InputFieldWidgetBase consumers
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
+        GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+        UWorld* TestWorld = WorldContext.GetWorld();
 
         // 6a. UCheckBox Boolean consumer (is_checked, is_read_only)
         {
@@ -2631,12 +2625,9 @@ bool FGV2PreparedKeyCapabilityRoutingTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("the generic identity name is not claimed"), IsHostClaimedKeyCapability(FName(TEXT("key"))));
     TestFalse(TEXT("an unnamed reset routing is not claimed"), IsHostClaimedKeyCapability(NAME_None));
 
-    // Same standalone-world setup every other case in this file uses: outered to GEngine and
-    // rooted, so the instance and its world survive a GC between the widgets created below.
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    // CFC-02A: Scoped standalone-world setup
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     // A host that does NOT own the name must refuse it, through the real consumer.
     UGV2ButtonWidgetBase* Button = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
@@ -2680,8 +2671,6 @@ bool FGV2PreparedKeyCapabilityRoutingTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("a dropdown refuses the tab container's own capability"), Consumer.Commit(Dropdown, CommitErr));
     TestEqual(TEXT("owner identity still untouched"), DropdownHost->GetKey(), FName(TEXT("dropdown_identity")));
 
-    GameInstance->Shutdown();
-    GameInstance->RemoveFromRoot();
     return true;
 }
 

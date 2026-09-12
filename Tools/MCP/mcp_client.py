@@ -25,10 +25,56 @@ except ImportError:
 DEFAULT_MCP_URL = os.environ.get("UNREAL_MCP_URL", "http://127.0.0.1:8000/mcp")
 
 
+def _parse_sse_stream(line_iterator) -> Dict[str, Any]:
+    """Parses an SSE stream into a JSON object.
+
+    Handles:
+    - single event with 'data: {...}'
+    - short events ('data:{}', 'data: 1')
+    - multiple chunks / multi-line data
+    - ignores SSE comments (lines starting with ':')
+    - raises RuntimeError on malformed JSON
+    - raises ConnectionError if stream ends before complete data event is received
+    """
+    data_lines: List[str] = []
+
+    for raw_line in line_iterator:
+        if isinstance(raw_line, bytes):
+            line = raw_line.decode("utf-8")
+        else:
+            line = raw_line
+        line = line.rstrip("\r\n")
+
+        if line == "":
+            if data_lines:
+                combined = "\n".join(data_lines)
+                try:
+                    return json.loads(combined)
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(f"Malformed JSON in SSE event: {e}\nPayload: {combined}") from e
+        elif line.startswith(":"):
+            # Comment line in SSE, ignore
+            continue
+        elif line.startswith("data:"):
+            content = line[5:]
+            if content.startswith(" "):
+                content = content[1:]
+            data_lines.append(content)
+
+    if data_lines:
+        combined = "\n".join(data_lines)
+        try:
+            return json.loads(combined)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Malformed JSON in SSE event: {e}\nPayload: {combined}") from e
+
+    raise ConnectionError("SSE stream ended before receiving complete data event")
+
+
 class UnrealMcpClient:
     """Client for interacting with Unreal Editor's MCP Server."""
 
-    def __init__(self, url: str = DEFAULT_MCP_URL, timeout: float = 120.0):
+    def __init__(self, url: str = DEFAULT_MCP_URL, timeout: float = 120.0, auto_initialize: bool = True):
         self.url = url
         self.timeout = timeout
         self.session_id: Optional[str] = None
@@ -37,7 +83,8 @@ class UnrealMcpClient:
             self.session = requests.Session()
         else:
             self.session = None
-        self.initialize()
+        if auto_initialize:
+            self.initialize()
 
     def _send_raw(self, method: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         self.req_id += 1
@@ -64,21 +111,23 @@ class UnrealMcpClient:
 
                 content_type = r.headers.get("content-type", "")
                 if "text/event-stream" in content_type:
-                    for line in r.iter_lines():
-                        if line:
-                            decoded = line.decode("utf-8").strip()
-                            if decoded.startswith("data: "):
-                                return json.loads(decoded[6:])
-                    return {}
+                    return _parse_sse_stream(r.iter_lines())
                 else:
-                    if r.text:
+                    if not r.text or not r.text.strip():
+                        raise ConnectionError("Empty response received from MCP server")
+                    try:
                         return r.json()
-                    return {}
+                    except json.JSONDecodeError as e:
+                        raise RuntimeError(f"Malformed JSON response from MCP server: {e}\nBody: {r.text}") from e
+            except requests.exceptions.Timeout as e:
+                raise TimeoutError(f"MCP request timed out after {self.timeout}s for {method}") from e
             except requests.exceptions.ConnectionError as e:
                 raise ConnectionError(
                     f"Failed to connect to Unreal Editor MCP server at {self.url}. "
                     f"Ensure Unreal Editor is running with ModelContextProtocol enabled on port 8000."
                 ) from e
+            except (ConnectionError, TimeoutError, RuntimeError):
+                raise
             except Exception as e:
                 raise RuntimeError(f"MCP request failed for {method}: {e}") from e
         else:
@@ -92,25 +141,37 @@ class UnrealMcpClient:
                             self.session_id = session_header
 
                     content_type = resp.headers.get("Content-Type", "")
-                    body = resp.read().decode("utf-8")
-
                     if "text/event-stream" in content_type:
-                        for line in body.splitlines():
-                            line = line.strip()
-                            if line.startswith("data: "):
-                                return json.loads(line[6:])
-                        return {}
-                    elif body:
-                        return json.loads(body)
-                    return {}
+                        def _urllib_lines():
+                            while True:
+                                raw = resp.readline()
+                                if not raw:
+                                    break
+                                yield raw
+                        return _parse_sse_stream(_urllib_lines())
+                    else:
+                        body = resp.read().decode("utf-8")
+                        if not body or not body.strip():
+                            raise ConnectionError("Empty response received from MCP server")
+                        try:
+                            return json.loads(body)
+                        except json.JSONDecodeError as e:
+                            raise RuntimeError(f"Malformed JSON response from MCP server: {e}\nBody: {body}") from e
             except urllib.error.HTTPError as e:
                 error_body = e.read().decode("utf-8") if e.fp else ""
                 raise RuntimeError(f"MCP HTTP {e.code} Error for {method}: {error_body}") from e
             except urllib.error.URLError as e:
+                reason_str = str(e.reason).lower() if e.reason else ""
+                if "timed out" in reason_str:
+                    raise TimeoutError(f"MCP request timed out after {self.timeout}s for {method}: {e.reason}") from e
                 raise ConnectionError(
                     f"Failed to connect to Unreal Editor MCP server at {self.url}. "
                     f"Ensure Unreal Editor is running with ModelContextProtocol enabled. Reason: {e.reason}"
                 ) from e
+            except (ConnectionError, TimeoutError, RuntimeError):
+                raise
+            except Exception as e:
+                raise RuntimeError(f"MCP request failed for {method}: {e}") from e
 
     def initialize(self) -> Dict[str, Any]:
         """Initializes the MCP session with the Unreal Editor."""
@@ -187,8 +248,8 @@ class UnrealMcpClient:
             {"bForceRediscover": force_rediscover}
         )
 
-    def list_tests(self, name_filter: str = "", tag_filter: str = "", limit: int = 500) -> List[str]:
-        """Lists available automation tests matching the filter."""
+    def list_tests(self, name_filter: str = "", tag_filter: str = "", limit: int = 0) -> List[str]:
+        """Lists available automation tests matching the filter (limit=0 means unlimited)."""
         res = self.call_tool(
             "AutomationTestToolset.AutomationTestToolset",
             "ListTests",

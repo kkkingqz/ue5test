@@ -43,14 +43,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 namespace
 {
-UUserWidget* MakeBoundHost()
+UUserWidget* MakeBoundHost(UWorld* World)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
-
-    UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
+    check(World != nullptr);
+    UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(World, UGV2PanelWidgetBase::StaticClass());
     Host->WidgetTree = NewObject<UWidgetTree>(Host);
     UVerticalBox* Root = Host->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
     Host->WidgetTree->RootWidget = Root;
@@ -63,16 +59,12 @@ UUserWidget* MakeBoundHost()
     return Host;
 }
 
-UUserWidget* MakeUnboundHost()
+UUserWidget* MakeUnboundHost(UWorld* World)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
-
+    check(World != nullptr);
     // Asset drift simulation: a host whose WidgetTree never bound Label/Bar/Root, as if a
     // Blueprint edit renamed or removed the renderer control a capability still points to.
-    UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(TestWorld, UGV2PanelWidgetBase::StaticClass());
+    UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(World, UGV2PanelWidgetBase::StaticClass());
     Host->WidgetTree = NewObject<UWidgetTree>(Host);
     return Host;
 }
@@ -90,10 +82,13 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
     }
     const FGV2PresentationPrepareContext& PrepareContext = *ContextFixture.Get();
 
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+
     // 1. Positive: Boolean/Number/Text all have real UPP-09 consumers with a genuine
     // physical target, so every capability must be provably observable.
     {
-        UUserWidget* Host = MakeBoundHost();
+        UUserWidget* Host = MakeBoundHost(TestWorld);
         const FGV2UiCapabilityTree Caps = FGV2UiCapabilityBuilder()
             .AddBoolean(TEXT("enabled_ok"), FName(TEXT("Root")))
             .AddNumber(TEXT("percent_ok"), FName(TEXT("Bar")), 0.0, 1.0)
@@ -111,7 +106,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
     // Key). Prepare/Commit both report success, yet nothing distinguishable happens --
     // exactly the class of lie ADR-0040 Decision 4 exists to catch.
     {
-        UUserWidget* Host = MakeBoundHost();
+        UUserWidget* Host = MakeBoundHost(TestWorld);
         const FGV2UiCapabilityTree Caps = FGV2UiCapabilityBuilder()
             .AddInteger(TEXT("int_gap"), FName(TEXT("Label")))
             .AddString(TEXT("str_gap"), FName(TEXT("Label")))
@@ -135,7 +130,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
     // 2b. Red scenario: renderer target disconnected in the asset (Blueprint drift) --
     // GetWidgetFromName resolves to nullptr for every capability's TargetName.
     {
-        UUserWidget* Host = MakeUnboundHost();
+        UUserWidget* Host = MakeUnboundHost(TestWorld);
         const FGV2UiCapabilityTree Caps = FGV2UiCapabilityBuilder()
             .AddBoolean(TEXT("enabled_missing"), FName(TEXT("Root")))
             .AddNumber(TEXT("percent_missing"), FName(TEXT("Bar")), 0.0, 1.0)
@@ -159,7 +154,7 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
     // repository, and Binding's consumer is a genuine no-op today because no widget yet
     // implements IGV2UiBindingTarget (UPP-12+ migrates the first one).
     {
-        UUserWidget* Host = MakeBoundHost();
+        UUserWidget* Host = MakeBoundHost(TestWorld);
         const FGV2UiCapabilityTree Caps = FGV2UiCapabilityBuilder()
             .AddImage(TEXT("icon_gap"), FName(TEXT("Label")), TEXT("resource"))
             .AddBinding(TEXT("binding_gap"), FName(TEXT("Root")))
@@ -174,11 +169,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 3. UPP-12: UGV2TextWidgetBase implements IGV2UiPropertyHost and is observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2TextWidgetBase* TextWidget = CreateWidget<UGV2TextWidgetBase>(TestWorld, UGV2TextWidgetBase::StaticClass());
         TextWidget->WidgetTree = NewObject<UWidgetTree>(TextWidget);
         UCommonTextBlock* TextBlock = TextWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("TextBlock"));
@@ -204,11 +194,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 4. UPP-13: UGV2ImageWidgetBase and UGV2IconWidgetBase implement IGV2UiPropertyHost and are observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2ImageWidgetBase* ImageWidget = CreateWidget<UGV2ImageWidgetBase>(TestWorld, UGV2ImageWidgetBase::StaticClass());
         ImageWidget->WidgetTree = NewObject<UWidgetTree>(ImageWidget);
         UImage* InnerImage = ImageWidget->WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("Image"));
@@ -250,11 +235,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 5. UPP-14: UGV2ButtonWidgetBase implements IGV2UiPropertyHost and is observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2ButtonWidgetBase* ButtonWidget = CreateWidget<UGV2ButtonWidgetBase>(TestWorld, UGV2ButtonWidgetBase::StaticClass());
         ButtonWidget->WidgetTree = NewObject<UWidgetTree>(ButtonWidget);
         UCommonTextBlock* LabelText = ButtonWidget->WidgetTree->ConstructWidget<UCommonTextBlock>(UCommonTextBlock::StaticClass(), TEXT("LabelText"));
@@ -280,11 +260,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 6. UPP-16: UGV2CheckboxWidgetBase implements IGV2UiPropertyHost and is observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2CheckboxWidgetBase* CheckboxWidget = CreateWidget<UGV2CheckboxWidgetBase>(TestWorld, UGV2CheckboxWidgetBase::StaticClass());
         CheckboxWidget->WidgetTree = NewObject<UWidgetTree>(CheckboxWidget);
         UVerticalBox* Root = CheckboxWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
@@ -309,11 +284,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
     // is_read_only/max_length are primitive capabilities — all four are swept by the generic
     // observability harness below, proving none of them is a raw setter bypassing Prepare/Commit.
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2InputFieldWidgetBase* InputFieldWidget = CreateWidget<UGV2InputFieldWidgetBase>(TestWorld, UGV2InputFieldWidgetBase::StaticClass());
         InputFieldWidget->WidgetTree = NewObject<UWidgetTree>(InputFieldWidget);
         UVerticalBox* Root = InputFieldWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
@@ -335,11 +305,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 8. UPP-17: UGV2ProgressBarWidgetBase implements IGV2UiPropertyHost and is observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2ProgressBarWidgetBase* ProgressBarWidget = CreateWidget<UGV2ProgressBarWidgetBase>(TestWorld, UGV2ProgressBarWidgetBase::StaticClass());
         ProgressBarWidget->WidgetTree = NewObject<UWidgetTree>(ProgressBarWidget);
         UVerticalBox* Root = ProgressBarWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
@@ -361,11 +326,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 9. UPP-17: UGV2PortraitWidgetBase implements IGV2UiPropertyHost and is observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2PortraitWidgetBase* PortraitWidget = CreateWidget<UGV2PortraitWidgetBase>(TestWorld, UGV2PortraitWidgetBase::StaticClass());
         PortraitWidget->WidgetTree = NewObject<UWidgetTree>(PortraitWidget);
         UVerticalBox* Root = PortraitWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
@@ -387,11 +347,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 10. UPP-18: UGV2RichTextWidgetBase implements IGV2UiPropertyHost and is observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2RichTextWidgetBase* RichTextWidget = CreateWidget<UGV2RichTextWidgetBase>(TestWorld, UGV2RichTextWidgetBase::StaticClass());
         RichTextWidget->WidgetTree = NewObject<UWidgetTree>(RichTextWidget);
         UVerticalBox* Root = RichTextWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
@@ -411,11 +366,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
     // 11. UPP-18: UGV2RichTextPopoverWidgetBase implements IGV2UiPropertyHost and is observable
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
-
         UGV2RichTextPopoverWidgetBase* PopoverWidget = CreateWidget<UGV2RichTextPopoverWidgetBase>(TestWorld, UGV2RichTextPopoverWidgetBase::StaticClass());
         PopoverWidget->WidgetTree = NewObject<UWidgetTree>(PopoverWidget);
         UVerticalBox* Root = PopoverWidget->WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Root"));
@@ -449,18 +399,6 @@ bool FGV2UiCapabilityObservabilityTest::RunTest(const FString& Parameters)
 
 namespace
 {
-// STATUS-005 closure: sweep every remaining IGV2UiPropertyHost, using the real WBP assets
-// rather than a synthetic widget tree. The composites are exactly where every historical
-// "accepted and silently dropped" defect lived, so leaving them outside the sweep left the
-// plan's central guarantee unverified precisely where it has failed before. Loading the
-// production asset also proves the capability/target binding of §17.2, not just the code.
-UWorld* MakeSweepWorld()
-{
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    return GameInstance->GetWorld();
-}
 
 /**
  * The sweep's source set is the native implementation boundary, not a hand-maintained
@@ -558,7 +496,8 @@ bool FGV2UiCapabilityObservabilityCompositeSweepTest::RunTest(const FString& Par
     }
     const FGV2PresentationPrepareContext& PrepareContext = *ContextFixture.Get();
 
-    UWorld* World = MakeSweepWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* World = WorldContext.GetWorld();
     const TArray<UClass*> ProductionHostImplementations = CollectProductionUiPropertyHostImplementations();
     TestTrue(TEXT("DUC-04: reflection discovers production IGV2UiPropertyHost implementations"), ProductionHostImplementations.Num() > 0);
 
@@ -759,14 +698,15 @@ bool FGV2UiCollectionForgeryTest::RunTest(const FString& Parameters)
     }
     const FGV2PresentationPrepareContext& PrepareContext = *ContextFixture.Get();
 
-    UWorld* World = MakeSweepWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* World = WorldContext.GetWorld();
+
+    const EGV2ForgeryMode InitialMode = UGV2ForgeryEntryTestWidget::GetModeForNextInstance();
 
     auto RunForgeryScenario = [this, World, &PrepareContext](EGV2ForgeryMode Mode, const TCHAR* ExpectedCode, const TCHAR* Label)
     {
-        // The recursion instantiates a *fresh* entry instance via CreateWidget, with no seam
-        // for the test to configure that specific instance -- ModeForNextInstance is a
-        // static the widget's DescribeUiCapabilities reads at call time instead.
-        UGV2ForgeryEntryTestWidget::ModeForNextInstance() = Mode;
+        // CFC-02A: FScopedForgeryMode saves previous mode and restores it on scope exit.
+        FScopedForgeryMode ForgeryScope(Mode);
 
         UUserWidget* Host = CreateWidget<UGV2PanelWidgetBase>(World, UGV2PanelWidgetBase::StaticClass());
         Host->WidgetTree = NewObject<UWidgetTree>(Host);
@@ -805,26 +745,90 @@ bool FGV2UiCollectionForgeryTest::RunTest(const FString& Parameters)
             bFoundExpected);
     };
 
-    // 1. Consumer replaced with a no-op: the entry's SetBindingHandle never stores what it
-    // is given, so Capture(Commit(A)) == Capture(Commit(B)) at the entry's own target.
+    // Forward pass of the 3 scenarios
+    // 1. Consumer replaced with a no-op
     RunForgeryScenario(
         EGV2ForgeryMode::NoOpConsumer,
         TEXT("core:diagnostic.ui_observability.not_distinguishable"),
         TEXT("NoOpConsumer"));
+    TestEqual(TEXT("CFC-02A: Mode restored after NoOpConsumer scenario"),
+        UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), InitialMode);
 
-    // 2. Renderer detached: the entry is a bare native widget with no WidgetTree at all, so
-    // its capability's TargetName can never resolve to any child.
+    // 2. Renderer detached
     RunForgeryScenario(
         EGV2ForgeryMode::DetachedRenderer,
         TEXT("prepare_or_commit_failed"),
         TEXT("DetachedRenderer"));
+    TestEqual(TEXT("CFC-02A: Mode restored after DetachedRenderer scenario"),
+        UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), InitialMode);
 
-    // 3. Capability declared without implementation: StableId with a non-"resource"
-    // TargetKind has no probe pair the harness can even attempt to synthesize.
+    // 3. Capability declared without implementation
     RunForgeryScenario(
         EGV2ForgeryMode::UnimplementableKind,
         TEXT("core:diagnostic.ui_observability.no_distinct_pair"),
         TEXT("UnimplementableKind"));
+    TestEqual(TEXT("CFC-02A: Mode restored after UnimplementableKind scenario"),
+        UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), InitialMode);
+
+    // 4. Reverse order pass to verify order-invariance
+    RunForgeryScenario(
+        EGV2ForgeryMode::UnimplementableKind,
+        TEXT("core:diagnostic.ui_observability.no_distinct_pair"),
+        TEXT("Reverse_UnimplementableKind"));
+    RunForgeryScenario(
+        EGV2ForgeryMode::DetachedRenderer,
+        TEXT("prepare_or_commit_failed"),
+        TEXT("Reverse_DetachedRenderer"));
+    RunForgeryScenario(
+        EGV2ForgeryMode::NoOpConsumer,
+        TEXT("core:diagnostic.ui_observability.not_distinguishable"),
+        TEXT("Reverse_NoOpConsumer"));
+    TestEqual(TEXT("CFC-02A: Mode restored after reverse order pass"),
+        UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), InitialMode);
+
+    // 5. CFC-02A: Nested scopes verification
+    {
+        FScopedForgeryMode OuterScope(EGV2ForgeryMode::DetachedRenderer);
+        TestEqual(TEXT("CFC-02A: Outer scope set DetachedRenderer"),
+            UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), EGV2ForgeryMode::DetachedRenderer);
+        {
+            FScopedForgeryMode InnerScope(EGV2ForgeryMode::UnimplementableKind);
+            TestEqual(TEXT("CFC-02A: Inner scope set UnimplementableKind"),
+                UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), EGV2ForgeryMode::UnimplementableKind);
+        }
+        TestEqual(TEXT("CFC-02A: Exiting inner scope restored DetachedRenderer"),
+            UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), EGV2ForgeryMode::DetachedRenderer);
+    }
+    TestEqual(TEXT("CFC-02A: Exiting outer scope restored InitialMode"),
+        UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), InitialMode);
+
+    // 6. CFC-02A: Early return verification
+    auto TestEarlyReturn = [InitialMode]()
+    {
+        FScopedForgeryMode EarlyScope(EGV2ForgeryMode::UnimplementableKind);
+        if (EarlyScope.GetPreviousMode() == InitialMode)
+        {
+            return;
+        }
+    };
+    TestEarlyReturn();
+    TestEqual(TEXT("CFC-02A: Early return in scope properly restores previous mode"),
+        UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), InitialMode);
+
+    // 7. CFC-02A: Widget instance pins active mode (subsequent mode changes do not alter existing widget)
+    UGV2ForgeryEntryTestWidget* PinnedWidget = nullptr;
+    {
+        FScopedForgeryMode PinningScope(EGV2ForgeryMode::DetachedRenderer);
+        PinnedWidget = CreateWidget<UGV2ForgeryEntryTestWidget>(World, UGV2ForgeryEntryTestWidget::StaticClass());
+        TestNotNull(TEXT("CFC-02A: PinnedWidget created"), PinnedWidget);
+        TestEqual(TEXT("CFC-02A: Widget captured DetachedRenderer during construction"),
+            PinnedWidget->GetActiveMode(), EGV2ForgeryMode::DetachedRenderer);
+    }
+    // Scope ended, global mode restored to InitialMode
+    TestEqual(TEXT("CFC-02A: Global mode restored after PinningScope"),
+        UGV2ForgeryEntryTestWidget::GetModeForNextInstance(), InitialMode);
+    TestEqual(TEXT("CFC-02A: Widget retains DetachedRenderer even after global mode changed back"),
+        PinnedWidget->GetActiveMode(), EGV2ForgeryMode::DetachedRenderer);
 
     return true;
 }

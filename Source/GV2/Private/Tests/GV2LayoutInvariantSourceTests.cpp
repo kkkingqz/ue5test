@@ -10,6 +10,7 @@
 #include "Components/PanelWidget.h"
 #include "Components/SizeBox.h"
 #include "Components/WrapBox.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 
 // DCA-15 (ADR-0035, LayoutInvariant M4): a two-half gate over the claim
 // "a value that defines layout is derived from the actually allotted space,
@@ -557,15 +558,8 @@ bool FGV2LayoutParameterViewportDerivationTest::RunTest(const FString& Parameter
     TArray<FAssetData> UiAssets;
     AssetRegistryModule.Get().GetAssets(UiAssetFilter, UiAssets);
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    TestNotNull(TEXT("DCA-15 Half B: standalone GameInstance is created"), GameInstance);
-    if (GameInstance == nullptr)
-    {
-        return false;
-    }
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* const TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* const TestWorld = WorldContext.GetWorld();
 
     int32 AssetsWalked = 0;
     int32 WidgetsChecked = 0;
@@ -622,9 +616,6 @@ bool FGV2LayoutParameterViewportDerivationTest::RunTest(const FString& Parameter
         *FString::Printf(TEXT("DCA-15 Half B: no unexplained authored absolute layout properties across %d walked assets (%d excepted)"), AssetsWalked, ContentExceptedCount),
         ContentViolations.Num(),
         0);
-
-    GameInstance->Shutdown();
-    GameInstance->RemoveFromRoot();
 
     return true;
 }

@@ -11,9 +11,72 @@
 #include "Application/GV2PackageClosure.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
 #include "UI/GV2UiTheme.h"
+#include "Blueprint/UserWidget.h"
+#include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
 
 namespace GV2PresentationTestFixtures
 {
+// CFC-02A: Scoped RAII owner for a test GameInstance and World.
+// Guarantees that GameInstance->Shutdown() and GameInstance->RemoveFromRoot() are called
+// on any exit from the scope, eliminating leaks of rooted game instances and world contexts.
+class FScopedTestWorldContext final
+{
+public:
+    FScopedTestWorldContext()
+    {
+        check(GEngine != nullptr);
+        GameInstance = NewObject<UGameInstance>(GEngine);
+        check(GameInstance != nullptr);
+        GameInstance->AddToRoot();
+        GameInstance->InitializeStandalone();
+        World = GameInstance->GetWorld();
+        check(World != nullptr);
+    }
+
+    ~FScopedTestWorldContext()
+    {
+        Teardown();
+    }
+
+    FScopedTestWorldContext(const FScopedTestWorldContext&) = delete;
+    FScopedTestWorldContext& operator=(const FScopedTestWorldContext&) = delete;
+
+    void Teardown()
+    {
+        if (GameInstance != nullptr)
+        {
+            if (World != nullptr)
+            {
+                if (GEngine != nullptr)
+                {
+                    GEngine->DestroyWorldContext(World);
+                }
+                World->DestroyWorld(false);
+                World = nullptr;
+            }
+            GameInstance->Shutdown();
+            GameInstance->RemoveFromRoot();
+            GameInstance = nullptr;
+        }
+    }
+
+    UWorld* GetWorld() const { return World; }
+    UGameInstance* GetGameInstance() const { return GameInstance; }
+
+    template <typename TWidget>
+    TWidget* CreateTestWidget(UClass* Class = TWidget::StaticClass()) const
+    {
+        check(World != nullptr);
+        return CreateWidget<TWidget>(World, Class);
+    }
+
+private:
+    UGameInstance* GameInstance = nullptr;
+    UWorld* World = nullptr;
+};
+
 // PSC-11: tests carry an FString of their own; the single Apply facade returns a result
 // struct. This adapts one to the other for test call sites only -- production has exactly
 // one way to apply a transaction and does not go through here.

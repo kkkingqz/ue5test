@@ -976,16 +976,13 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
         return false;
     }
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2DeclaredCompositeWidgetBase* const Composite = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CompositeClass);
     TestNotNull(TEXT("GBH-02B: composite instance created"), Composite);
     if (Composite == nullptr)
     {
-        GameInstance->RemoveFromRoot();
         return false;
     }
 
@@ -1118,14 +1115,6 @@ bool FGV2DeclaredCompositeCollectionHostFirstEntryTest::RunTest(const FString& P
     const bool bSecondCommitted = bSecondPrepared && CommitUiHostProperties(Composite, SecondPlan, SecondFailedPath, SecondCommitError);
     TestTrue(TEXT("GBH-02B: second Commit succeeds"), bSecondCommitted);
     TestEqual(TEXT("GBH-02B: ListView now has two entries"), ItemsList->GetEntryCount(), 2);
-
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 

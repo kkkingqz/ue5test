@@ -23,6 +23,8 @@ enum class EGV2ForgeryMode : uint8
     UnimplementableKind
 };
 
+class FScopedForgeryMode;
+
 UCLASS(meta = (GV2TestOnly))
 class UGV2ForgeryEntryTestWidget
     : public UUserWidget
@@ -32,13 +34,11 @@ class UGV2ForgeryEntryTestWidget
     GENERATED_BODY()
 
 public:
-    // RunUiCapabilityObservabilityHarness's recursion constructs its own fresh instance of
-    // this class via CreateWidget, so the test has no seam to configure that specific
-    // instance directly -- mutating the CDO's own field does not propagate into that new
-    // instance (NewObject's property init runs before the CDO's runtime-mutated value would
-    // apply here). A plain static, read at describe-time, sidesteps that entirely.
-    static EGV2ForgeryMode& ModeForNextInstance();
+    // CFC-02A: GetModeForNextInstance returns the active global forgery mode for new instances.
+    // Mutation is restricted to FScopedForgeryMode via friend access.
+    static EGV2ForgeryMode GetModeForNextInstance();
 
+    virtual void PostInitProperties() override;
     virtual void DescribeUiCapabilities(FGV2UiCapabilityBuilder& OutBuilder) const override;
     virtual FGV2UiPropertyHostState& GetPropertyHostState() override { return PropertyHostState; }
     virtual const FGV2UiPropertyHostState& GetPropertyHostState() const override { return PropertyHostState; }
@@ -49,8 +49,33 @@ public:
     virtual void SetBindingHandle(const FGV2UiBindingHandle& InBindingHandle) override { (void)InBindingHandle; }
     virtual FGV2UiBindingHandle GetBindingHandle() const override { return FGV2UiBindingHandle::Create(TEXT("forgery_fixed@1:1")); }
 
+    EGV2ForgeryMode GetActiveMode() const { return ActiveMode.Get(GetModeForNextInstance()); }
+
 private:
+    friend class FScopedForgeryMode;
+    static void SetModeForNextInstance(EGV2ForgeryMode InMode);
+
     FGV2UiPropertyHostState PropertyHostState;
+    mutable TOptional<EGV2ForgeryMode> ActiveMode;
+};
+
+/**
+ * CFC-02A: RAII helper to scope EGV2ForgeryMode modifications.
+ * Guarantees previous mode is restored upon leaving scope, even with early returns or exceptions.
+ */
+class FScopedForgeryMode final
+{
+public:
+    explicit FScopedForgeryMode(EGV2ForgeryMode InMode);
+    ~FScopedForgeryMode();
+
+    FScopedForgeryMode(const FScopedForgeryMode&) = delete;
+    FScopedForgeryMode& operator=(const FScopedForgeryMode&) = delete;
+
+    EGV2ForgeryMode GetPreviousMode() const { return PreviousMode; }
+
+private:
+    EGV2ForgeryMode PreviousMode;
 };
 
 /**

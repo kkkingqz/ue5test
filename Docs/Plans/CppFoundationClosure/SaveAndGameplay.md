@@ -7,11 +7,13 @@ depends_on:
   - ../../Architecture/CanonicalStateAndSave.md
   - ../../Architecture/BootstrapAndSessionLifecycle.md
   - ../../Architecture/AuthoringSurfaceContract.md
+  - ../../Architecture/BuildAndTooling.md
+  - ../../Architecture/CompatibilityPolicy.md
 ---
 
 # Save/load и проверка Lua-геймплея
 
-> **Материализует:** M2 и gameplay-приёмку M3 [плана](README.md). Storage остаётся native capability, state/preflight/migrations и игровые правила — Lua-owned.
+> **Материализует:** M2 и финальную приёмку M3 [плана](README.md). Storage остаётся native capability, state/preflight/migrations и игровые правила — Lua-owned.
 
 ## CFC-08 — Сохранять предыдущее поколение opaque slot
 
@@ -164,3 +166,46 @@ depends_on:
 - 100 lifecycle cycles завершаются без живых чужих generations, незавершённых operations и сохранённых native callbacks Lua.
 
 **Evidence:** tier/spec inventory, manifest/package/script hashes, expected fixture, UE step traces и consumer assertions, native production diff, stress counts. Финальная готовность объявляется только CFC-13, после полной приёмки.
+
+## CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
+
+- [ ] CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
+
+**Зависимость:** CFC-01…12, включая CFC-02A, CFC-03A, CFC-04A/04B, CFC-05A, CFC-07A. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Guides/WhenToWriteCpp.md`, `Docs/Guides/AddLuaSpec.md`, `Docs/Authoring/README.md`, `Docs/Status/AuditFindings.md`, `Docs/Status/ImplementationStatus.md`; CI artifacts и локальный `Saved/Audit/` для полных отчётов.
+
+**Инвариант:** [scope](../../Architecture/Overview.md), [совместимость](../../Architecture/CompatibilityPolicy.md). Готовность относится к зафиксированной поверхности и ревизии, а не к абстрактному «всему C++».
+
+**Не считается закрытием:** повтор старых 104/141 результатов; review только helper tests; удаление известных STATUS-002/003; план со всеми checkbox без red-on-revert evidence.
+
+**Шаги:**
+1. Сверить каждый Done с именем проверки, actual enumerator и независимым oracle. Проверить новые public native entry points по исходникам `Public/` и bindings; новые enum values обязаны попадать в exhaustive dispatch/test inventory.
+2. Выполнить targeted negative mutations каждой устранённой причины: второй schema source, shared mutable Screen Registry между A/B, старый candidate, ранний host teardown, игнорируемый freeze result, неподключённый storage, потерянная previous copy, запрещённый dependency statement, NotRun и missing UE record. Дополнительно вернуть untraced owning widget/class pointer, leaked test root/global mode, native semantic state merge, ignored seed, signed-zero mismatch и len-only hash validation; штатные tests/gates обязаны обнаружить каждый. Для registry повторить failed B и successful B с отличающимися inputs/package closure, проверяя exact Resolve A, а не только snapshot pointer/hash. Мутации живут в временных checkout и обязаны краснеть в штатном pipeline.
+3. На чистой ревизии выполнить приведённый ниже runbook, full UE test inventory и CFC-12. Зафиксировать revision, build fingerprints, package/script hashes, environment, warnings и ограничения.
+4. Выполнить portable ASan/UBSan build и CTest/shared conformance для Lua/native marshalling и storage; документировать unsupported toolchain отдельным препятствием для этой задачи. Это проверка памяти на исполненных сценариях, не доказательство всего возможного ввода.
+5. Удалить только полностью закрытые status rows; записать исход каждой audit-находки и task ID. Обновить Guide: новое native API требует scope reason, production consumer, negative fixture и enumerator в одном change set; обычные Lua commands/services/presentation не требуют нового C++.
+6. Зафиксировать supported Linux Development baseline и открытые effects/animations/Shipping/platform limits; выполнить docs validator, закоммитить завершённую приёмку. Архивировать план/аудит затем по отдельной двухкоммитной процедуре, без фиктивных исходов.
+
+**Runbook:**
+```bash
+cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
+cmake --build cmake-build-ci --parallel 2
+ctest --test-dir cmake-build-ci --output-on-failure
+./cmake-build-ci/Headless/gv2-headless --self-test
+./cmake-build-ci/Headless/gv2-headless --check-scripts
+./cmake-build-ci/Tools/Content/gv2-content validate GameData/core
+./cmake-build-ci/Tools/Content/gv2-content coverage GameData/core
+/opt/unreal-engine/Engine/Build/BatchFiles/Linux/Build.sh GV2Editor Linux Development /home/king/ue5/GV2/GV2.uproject -WaitMutex -NoHotReloadFromIDE
+python3 Tools/Testing/run_ue_acceptance.py --filter GV2 --fresh-process
+python3 Tools/Documentation/validate_docs.py
+git diff --check
+```
+`run_ue_acceptance.py` и его CLI создаются CFC-02; до её выполнения команда не существует. UE root может быть задан текущим environment; пользовательский Editor не завершать ради fresh-process run. Sanitizer configuration CFC-13 использует отдельный build directory, чтобы не подменить release evidence.
+
+**Done:**
+- Каждый checkbox плана сопоставлен с выполненным evidence; enumerator — actual task headings, а не ручная сводка выполненного.
+- Все targeted mutations отвергнуты pipeline; ожидаемые причины отказа проверены, не только nonzero exit.
+- Fresh portable, full UE, sanitizer и вертикальные проверки прошли на зафиксированных inputs.
+- Реальные remote CI результаты отделены от local equivalent; если remote запуск недоступен, он не объявлен выполненным.
+- Поддержанная поверхность и оставшиеся gaps описаны без обещания абсолютной корректности.
+
+**Evidence:** итоговый отчёт с командами/exits, именами тестов, artifact identity, результатами mutations и ссылкой на ревизию. Находки после проверки вне проверенной поверхности создают новый конкретный gap; не устраняются общим заявлением «архитектура чистая».

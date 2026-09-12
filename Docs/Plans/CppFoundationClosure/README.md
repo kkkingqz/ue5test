@@ -93,7 +93,7 @@ Local MCP и fresh-process CI используют один report validator. Ac
 | M0 — Достоверная приёмка | CFC-01…03, CFC-02A/03A; [Acceptance](Acceptance.md), [Portable Correctness](PortableCorrectness.md) | Строгий runner, изоляция fixtures, dependency gate и canonical value/codecs |
 | M1 — Session ownership | CFC-04…07, CFC-04A/04B, CFC-05A/07A; [Session Lifecycle](SessionLifecycle.md), [Portable Correctness](PortableCorrectness.md) | Изолированные authorities, GC lifetime, Lua-owned state, seed input и replacement |
 | M2 — Save/load в игре | CFC-08…10, [Save and Gameplay](SaveAndGameplay.md) | Previous copy, safe save, active-session preflight и product load |
-| M3 — Lua baseline | CFC-11…13, [Save and Gameplay](SaveAndGameplay.md), [Acceptance](Acceptance.md) | Обязательность сцены, сквозной сценарий и зафиксированная поддержанная поверхность |
+| M3 — Lua baseline | CFC-11…13, [Save and Gameplay](SaveAndGameplay.md) | Обязательность сцены, сквозной сценарий и зафиксированная поддержанная поверхность |
 
 Зависимости: `01 → 02 → 02A → 03 → 03A → 04 → 04A → 04B → 05 → 05A → 06 → 07 → 07A → 08 → 09 → 10 → 11 → 12 → 13`. Порядок намеренно последовательный: следующая приёмка использует уже исправленный runner, а save/load использует уже испытанный replacement. Реализацию одного этапа можно ревьюить и отклонять независимо от следующего; массовое переписывание всех surfaces одним commit не требуется.
 
