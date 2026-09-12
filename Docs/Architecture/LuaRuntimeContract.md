@@ -1,8 +1,8 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 3.0
-updated: 2026-08-20
+version: 3.1
+updated: 2026-09-12
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -10,6 +10,7 @@ decisions:
   - ../ADR/0007-lua-module-environment.md
   - ../ADR/0010-portable-runtime-and-headless-simulation.md
   - ../ADR/0025-lua-module-replacement-and-export-freezing.md
+  - ../ADR/0044-session-replacement-and-registry-sealing.md
 ---
 
 # Lua Runtime Contract
@@ -72,6 +73,7 @@ Scripts/
 |---|---|
 | boolean | bool |
 | UTF-8 string | string |
+| opaque byte buffer | Lua string с явной byte-buffer schema; UTF-8 validation не применяется |
 | integer | signed int64 |
 | finite number | double |
 | dense `1..N` table | schema array |
@@ -102,9 +104,24 @@ Expected gameplay refusal — typed Result. Неверная schema, forbidden p
 
 Native bindings также фиксированы и schema-defined. Outbound DTO валидируется и копируется в coordinator-owned queue до запуска Presentation или operation work. Blueprint delegate и другой host callback не вызываются синхронно во время Lua execution.
 
+## Fixed lifecycle entry points
+
+Portable host использует закрытые typed entry points, а не имена functions из gameplay content:
+
+- bootstrap принимает pinned repository, ordered sources и `start_inputs`, где `mode`, repository identity и `seed_hex` обязательны; load дополнительно получает captured opaque bytes;
+- registry sealing вызывается один раз после `register` hooks через private bootstrap owner и возвращает только success либо `FRuntimeFault`;
+- state composition, restore, validation и start являются последовательными protected phases и не возвращают canonical tree в C++;
+- `preflight_save_bytes(bytes)` read-only проверяет container в active VM и возвращает только typed outcome;
+- `save_to_slot(slot_id)` вызывается host-ом только в safe point; storage binding получает opaque bytes;
+- stop/unregister выполняются в reverse resolved module order, уже известном loader-у.
+
+`seed_hex` имеет форму ровно 16 lowercase ASCII hex characters и представляет полный uint64. Session generation не является seed. Load восстанавливает сохранённые stream states и не переинициализирует их из descriptor. Legacy numeric manifest seed мигрируется codec-ом, а не lifecycle entry point.
+
+Preflight и subsequent load получают один и тот же request-owned byte buffer. Lua может декодировать его дважды на разных фазах, но C++ не читает slot повторно и не преобразует bytes в `FValue`. Preflight не меняет `game.state`, registries, queues, PRNG или presentation source.
+
 ## Determinism and technical ingress
 
-- Named PRNG streams и gameplay clock входят в canonical inputs; wall clock отсутствует.
+- Root `seed_hex`, named PRNG streams и gameplay clock входят в canonical inputs; wall clock отсутствует. Algorithm, stream derivation и vectors определены в [Canonical State and Save](CanonicalStateAndSave.md#deterministic-random-streams).
 - Значимый map iteration использует deterministic sorting; порядок `pairs()` не влияет на authoritative result.
 - Async completion становится ordered TechnicalInput. Worker scheduling и headless timing не являются authoritative inputs.
 

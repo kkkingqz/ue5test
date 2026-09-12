@@ -1,8 +1,8 @@
 ---
 title: Blueprint Screen Template Contract
 status: normative
-version: 1.29
-updated: 2026-09-11
+version: 1.30
+updated: 2026-09-12
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - WidgetRegistry.md
@@ -36,6 +36,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Screen Field Host (`IGV2ScreenFieldHost`) идентифицирует виджет в дереве экрана как приёмник конкретного `field_id`.
 - Property Host (`IGV2UiPropertyHost`) объявляет capabilities виджета и применяет подготовленные свойства через универсальные property consumers.
 - Screen Registry является единственным UE presentation mapping `screen_id → trusted Widget Blueprint class`.
+- Authoring `UGV2ScreenRegistry` является только const input компиляции. Каждый session snapshot владеет независимым immutable resolved value с GC-safe class ownership, placement policy и deterministic identity enumeration; candidate B не изменяет authoring input или resolved value A. Это реализация ADR-0043 D1 и не создаёт новый authority.
 
 ### LocationScreen: template и values definition
 
@@ -65,6 +66,7 @@ Screen Template задаёт UE-authored layout конкретного Screen и
 - Registry строится до первого использования, не хранит session state и запрещает duplicate `schema_id`. Unknown schema отклоняет весь candidate Screen request.
 - Равномерное масштабирование кадра (uniform frame scale) запрещено: раскладка отзывчивая (responsive) и распределяет фактический viewport.
 - Текст масштабируется нелинейной кривой темы и никогда не опускается ниже `MinReadableFontSize` (10 pt).
+- Нормативная schema сцены LocationScreen — `textsystem:schema.ui_field.location_scene.v2`: поле `characters` обязательно, но пустой массив допустим. Само поле `scene` обязательно из-за строгой bijection configured hosts ↔ incoming fields. Optional background/context не превращают отсутствующую публикацию сцены в корректную пустую сцену. Реализация v1 остаётся отмеченным `STATUS-011` до CFC-11.
 
 ## Responsive Layout and Scaling Model (ADR-0035)
 
@@ -427,7 +429,7 @@ fields: [
 
 1. **Регистрация источника**: пакет регистрирует функцию-источник презентации через `game.presentation.register_source(fn)` на фазе `register`. Повторная регистрация (`PresentationSourceDuplicateRegistration`), невалидный тип (`InvalidPresentationSource`) и регистрация после freeze (`PresentationSourceRegistryFrozen`) отклоняются.
 2. **Автоматическая инвалидация**: рантайм вызывает `game.presentation.resolve()` после каждой **успешно закоммиченной** команды вне окна мутации (`mutation_window`). При отказе или runtime fault источник не вызывается. Попытка мутации состояния из источника презентации блокируется ошибкой `MutationWindowClosed`.
-3. **Шов под UI document**: источник презентации разрешает активный экран из текущего состояния и является архитектурным швом, который в будущем будет заменён маршрутизатором UI document без изменения геймплейного кода.
+3. **UI document**: источник презентации разрешает активный экран из текущего состояния и публикует route полного UI document; маршруты, overlays и modals расширяют тот же envelope без изменения gameplay command path.
 
 ## Apply lifecycle
 
@@ -452,7 +454,7 @@ fields: [
 |---|---|---|
 | `top_bar` | `WBP_LocationTopBar` (`UGV2DeclaredCompositeWidgetBase`, DUC-08) | `textsystem:schema.ui_field.location_top_bar.v1` |
 | `player_status` | `WBP_PlayerStatusPanel` (`UGV2DeclaredCompositeWidgetBase`, DCA-06) | `textsystem:schema.ui_field.location_player_status.v1` |
-| `scene` | `WBP_SceneView` (`UGV2DeclaredCompositeWidgetBase`, DCA-05) | `textsystem:schema.ui_field.location_scene.v1` |
+| `scene` | `WBP_SceneView` (`UGV2DeclaredCompositeWidgetBase`, DCA-05) | Сейчас `textsystem:schema.ui_field.location_scene.v1`; normative target v2 — `STATUS-011` / CFC-11 |
 | `commands` | `WBP_CommandPanel` (`UGV2DeclaredCompositeWidgetBase`, DCA-07) | `textsystem:schema.ui_field.location_commands.v1` |
 
 Lua presenter (`GameData/textsystem/scripts/presentation/location_presenter.lua`, `M.build_screen_request`) публикует все четыре поля через `game.presentation.register_source` при каждой успешно закоммиченной команде (см. [Источник презентации](#источник-презентации-и-автоматическая-инвалидация-sas-1416-adr-0028)). `GV2ScreenFieldMaterializer` генерически материализует значения полей и биндинги по скомпилированным схемам; Runtime разрешает class только через `DA_ScreenRegistry`. Идентичность route зафиксирована ([UI Document § Устойчивая идентичность LocationScreen](UIDocumentAndReconciliation.md)): `screen_id`/`instance_key` не меняются между локациями, переход обновляет поля существующего widget.

@@ -1,8 +1,8 @@
 ---
 title: UI Document and Reconciliation
 status: normative
-version: 1.26
-updated: 2026-09-11
+version: 1.27
+updated: 2026-09-12
 depends_on:
   - ../Architecture/StableIDSpecification.md
   - ../Architecture/CommandsAndEvents.md
@@ -16,6 +16,7 @@ decisions:
   - ../ADR/0041-ui-commit-rollback-model.md
   - ../ADR/0042-presentation-authority-and-publication.md
   - ../ADR/0043-presentation-apply-boundary.md
+  - ../ADR/0044-session-replacement-and-registry-sealing.md
 ---
 
 # UI Document and Reconciliation
@@ -245,6 +246,12 @@ Publication является atomic: registry сначала валидируе�
 `FGV2LayeredUiReconciler` не коммитит биндинги ревизии сам: это делает вызывающий `FGV2SessionCoordinator` отдельным вызовом `FGV2UiBindingRegistry::CommitPreparedBindings` после успешного `Reconcile`. Enter/exit animation экрана в текущем коде не реализованы (`STATUS-003`) — ни `FGV2LayeredUiReconciler`, ни вызывающий runtime не содержат animation-гейтинга; detach/attach выполняются синхронно.
 
 В случае отказа на стадии Prepare физическое дерево виджетов и активные биндинги вообще не затрагиваются; компенсирующий откат устранён физически. Failed candidate не оставляет частично обновлённый interactive screen.
+
+### Lifetime и thread boundary prepared state
+
+Верхний owner prepared transaction/reconciliation обязан удерживать GC-safe strong references на каждый off-tree candidate и UObject, необходимый для rollback, до terminal `Commit` или `Abort`. После успешного attach владение передаётся UMG hierarchy/`UPROPERTY`; после `Abort` discarded candidates освобождаются. Borrowed ссылки на уже attached targets выражаются weak reference и повторно проверяются перед physical use. Plain `TObjectPtr` внутри непрослеживаемого C++ container не является GC ownership; `AddToRoot` как постоянная замена scoped ownership запрещён.
+
+Все UObject/UMG Prepare, Commit, rollback и cleanup выполняются на Game Thread. Public `FGV2PresentationApply::Apply` отклоняет off-thread вызов до первой mutation. Этот guard защищает misuse, но не вводит async presentation architecture.
 
 ## Presentation health and catastrophic recovery
 

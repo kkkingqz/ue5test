@@ -1,8 +1,8 @@
 ---
 title: Canonical State and Save
 status: draft
-version: 2.0
-updated: 2026-08-20
+version: 2.1
+updated: 2026-09-12
 depends_on:
   - LuaRuntimeContract.md
   - RuntimeFacadeAndRegistries.md
@@ -15,6 +15,8 @@ decisions:
   - ../ADR/0027-designer-lua-authoring-layer.md
   - ../ADR/0031-entity-authoring-extensions.md
   - ../ADR/0032-field-contracts-and-generic-instance-creation.md
+  - ../ADR/0044-session-replacement-and-registry-sealing.md
+  - ../ADR/0045-atomic-save-slot-generation-publication.md
 ---
 
 # Canonical State and Save
@@ -35,6 +37,7 @@ game.state = {
     schema_version = 1,
     save_version = 1,
     save_id = "",
+    seed_hex = "0000000000000000",
     player_actor_id = "actor@1",
     instance_counters = {},
     prng = {},
@@ -51,7 +54,7 @@ game.state = {
 
 | Section | Purpose |
 |---|---|
-| `meta` | Save/schema versions, save identity, player actor ID (`player_actor_id`), instance counters, PRNG streams, gameplay time |
+| `meta` | Save/schema versions, save identity, full-width root seed (`seed_hex`), player actor ID (`player_actor_id`), instance counters, PRNG streams, gameplay time |
 | `actors` | Persistent player and NPC actor instances (`instance_id`, `definition_id`, `current_location_id`, ...) |
 | `item_instances` | Unique item instances; stack counts live in owning containers |
 | `world` | Global flags и world state; локация игрока хранится на акторе игрока, а `game.instances.world().current_location` является read-only аксессором ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)) |
@@ -60,6 +63,14 @@ game.state = {
 | `definitions` | Sparse runtime-состояние definitions (`definitions[def_id]`), ключуется по Stable ID определения и валидируется против pinned repository ([ADR-0027](../ADR/0027-designer-lua-authoring-layer.md)) |
 
 Стандартные mod entities используют общие registries. `mods[mod_id]` не дублирует standard state.
+
+## State composition ownership
+
+`core:module.runtime.state_composition` целиком владеет созданием root, вызовом module state hooks, merge/collision policy и назначением temporary tree. C++ передаёт ordered winning module IDs, typed scalar start inputs и optional opaque load bytes, вызывает один protected phase и получает только success/fault. Section names, contribution tables и decoded state boundary не пересекают.
+
+Фиксированные поля `meta` (`schema_version`, `save_version`, `save_id`, `seed_hex`, `player_actor_id`) устанавливает composition owner; module contributions не переопределяют их. Обычная contribution является map известных canonical root sections в table без metatable. Ключ верхнего section и каждый ключ внутри section уникальны по всему ordered module pass; collision даёт `LuaModuleDefaultStateInvalid`. Для engine-owned nested maps `meta.instance_counters`, `meta.prng` и `meta.time` разрешено объединение только по уникальным child keys; overwrite также запрещён.
+
+В `mods` module может записывать только ключ собственного namespace/module ID. Actual canonical section set и special nested-map classification находятся в одном Lua descriptor, используемом и composition, и validation; C++ enum/string list отсутствует. Новый section добавляется вместе с descriptor, validation и Lua spec. Partial tree при fault не присваивается `game.state`.
 
 ## Allowed values
 
@@ -94,6 +105,40 @@ Persistent record хранит `instance_id`, `definition_id` и explicit state.
 
 Для наблюдаемости Lua публикует fixed `game.runtime.get_canonical_state_hash`; host читает один скаляр через `FRuntimeSession::GetCanonicalStateHash()`. До создания `game.state` accessor возвращает `""` без fault; дерево state boundary не пересекает.
 
+## Deterministic random streams
+
+`game.random` принадлежит Lua. Host передаёт root `seed_hex` до первого default/state/start hook; C++ не реализует PRNG и не изменяет `meta.prng`. `seed_hex` — ровно 16 lowercase ASCII hex characters, то есть полный uint64 без преобразования через JSON number/double.
+
+Stream identity — Stable ID kind `random_stream`, например `core:random_stream.gameplay`. Первое обращение к новому stream вычисляет:
+
+```text
+digest = SHA-256("gv2-prng-v1\0" + seed_hex + "\0" + stream_id)
+state  = первые 16 bytes digest как четыре big-endian uint32
+```
+
+All-zero state заменяет последний word на `00000001`. Это defensive rule, а не обещание отсутствия hash collisions. Состояние хранится в `meta.prng[stream_id]` как algorithm tag `xoshiro128ss-v1` и четыре lowercase 8-hex words; load восстанавливает эти words и не reseed-ит существующий stream.
+
+Переход и output используют `xoshiro128**` над unsigned 32-bit arithmetic:
+
+```text
+result = rotl32(s1 * 5, 7) * 9
+t = s1 << 9
+s2 ^= s0; s3 ^= s1; s1 ^= s2; s0 ^= s3; s2 ^= t; s3 = rotl32(s3, 11)
+```
+
+Каждая операция маскируется до 32 bits. `next_u32(stream_id)` возвращает `result` как nonnegative int64; `next_unit` возвращает `result / 2^32`. `next_int(min, max)` использует rejection sampling и отклоняет пустой диапазон или span больше `2^32`; modulo bias запрещён.
+
+Independent vectors для первых пяти `next_u32`:
+
+| `seed_hex` | `stream_id` | Initial words | Outputs |
+|---|---|---|---|
+| `0000000000000000` | `core:random_stream.gameplay` | `b11c2782 47dc733c af0684fb b5b1f64c` | `e020c7cb f94e13e0 a66c9e06 086a074f 81883abc` |
+| `ffffffffffffffff` | `core:random_stream.gameplay` | `9370d948 28ef89cd 478ed7a1 af65c35b` | `0d9c8816 8a60ae26 1241ad6f 99d5616e 73735263` |
+
+Изменение derivation, algorithm, word encoding или range mapping является breaking save/replay change: требует нового algorithm tag, migration либо typed refusal и обновления independent vectors.
+
+До CFC-07A seed transport, `game.random` и stream state ещё не подключены; это `STATUS-023`, а не альтернативный алгоритм.
+
 ## Save container
 
 Container включает:
@@ -124,22 +169,24 @@ Canonical gameplay-state не пересекает C++/Lua boundary (ADR-0021). 
 Host предоставляет slot-scoped storage primitive:
 
 ```text
-read_slot(save_slot_id) -> bytes | not_found | unreadable
+read_slot(save_slot_id, revision: Current | Previous) -> bytes | not_found | unreadable
 write_slot(save_slot_id, bytes) -> ok | failure
 ```
 
 Host обязан:
 
 1. Разрешать `save_slot_id` в физический путь и запрещать любую другую адресацию.
-2. Записывать во временный файл и атомарно подменять slot.
-3. Сохранять предыдущую копию.
-4. Возвращать typed result, не интерпретируя содержимое.
+2. Читать только явно выбранную revision; отсутствующий `Previous` возвращает `NotFound`, hidden fallback запрещён.
+3. Публиковать immutable generation через один atomic head commit по [ADR-0045](../ADR/0045-atomic-save-slot-generation-publication.md).
+4. Сохранять в `Previous` непосредственно предшествующие committed bytes.
+5. Сериализовать операции одним application-owned storage owner; второй writer того же root получает `Busy`.
+6. Возвращать typed result, не интерпретируя содержимое.
 
-Host не разбирает bytes, не проверяет их структуру и не знает формата. Lua не выполняет filesystem I/O и не получает пути. Save write failure не меняет предыдущий valid slot.
+Host не разбирает bytes, не проверяет их структуру и не знает формата. Lua не выполняет filesystem I/O и не получает пути. Save write failure до head commit не меняет `Current` или `Previous`; cleanup failure после commit не отменяет успешную запись. Гарантия первой поверхности — process crash на Linux filesystem с temp/target на одном volume; power-loss durability не заявляется.
 
 Обнаружение повреждения, отказ применять несовместимый container и все migrations принадлежат Lua и обязаны быть покрыты conformance-тестами.
 
-**Реализованная запись (SAV-06/10, план [SaveAndLoad](../Plans/Archive/SaveAndLoad.md)).** `write_slot` реализован как `GV2RuntimeCore::FFilesystemSaveSlotStorage`, единая реализация для обоих host-ов (`Docs/Architecture/BuildAndTooling.md` "Save slot storage primitive"), доступная Lua через единственный биндинг `game.save_slots.write(slot_id, bytes) -> ok, err_code` (`core:module.runtime.save.M.save` — единственный вызывающий). `read_slot` пока не забинжен в Lua — он появится вместе с Cold Start Load (M4).
+**Текущее состояние реализации.** Portable storage уже выполняет opaque write/read и atomic replacement одного current-файла, а cold-start load читает slot через host. Application wiring, `Previous`/generation head и active-session preflight остаются gaps, перечисленными в [Implementation Status](../Status/ImplementationStatus.md); нормативный protocol выше не маскируется более слабой текущей реализацией.
 
 ## Safe point
 
@@ -153,24 +200,24 @@ Save разрешён только когда:
 
 **Реализованная проверка (SAV-09, план [SaveAndLoad](../Plans/Archive/SaveAndLoad.md)).** `core:module.runtime.save.M.is_safe_point()` проверяет `game.runtime.phase == "idle"` (что само по себе исключает `ExecutingCommand`, `PumpingEvents` и `Failed` — единственные другие значения фазы), `game.commands.get_queue_length() == 0` и `game.events.get_queue_length() == 0`. `M.save()` вызывает эту проверку первым шагом и возвращает `false, "SaveNotAtSafePoint"` без единого обращения к storage primitive, если она не проходит — реентерабельный вызов `save()` изнутри обработчика команды/события всегда видит не-`idle` фазу и отклоняется тем же путём.
 
+Gameplay/UI не вызывает storage напрямую. Lua-authored command может только поставить `request_save(slot_id)` в outbound control queue. Host принимает его после successful command dispatch и выхода из Lua, ждёт safe point и вызывает fixed `save_to_slot`; при отказе команды buffered request отбрасывается. Save outcome возвращается TechnicalInput/operation result и не является gameplay Event.
+
 ## Load
 
-Load всегда создаёт replacement session. Preflight выполняет **текущая** active session: она читает bytes через storage primitive и проверяет их сама, до запроса teardown. Вторая параллельная VM для preflight не создаётся — инвариант одной VM сохраняется.
+Load всегда создаёт replacement session по [ADR-0044](../ADR/0044-session-replacement-and-registry-sealing.md). `request_load(slot_id, revision)` выбирает `current` или `previous` явно и проходит тот же post-dispatch buffering, что save; C++ не знает command ID, который создал request.
 
-1. Текущая session читает slot и проверяет header, integrity, версии и mod metadata.
-2. Failed preflight отклоняет запрос: current session остаётся Ready, teardown не выполняется.
-3. Application resolve-ит required packages и выбирает current repository.
-4. Old session уничтожается только после успешного preflight.
-5. Replacement session декодирует container во временное дерево.
-6. Explicit core/mod migrations выполняются в deterministic order.
-7. Stable ID redirects разрешаются.
-8. Runtime instances восстанавливаются, invariants проверяются.
-9. Canonical state назначается только после полного успеха.
-10. Строится initial presentation, session коммитится как Ready.
+1. Application resolve-ит required packages/repository и один раз читает выбранную revision в request-owned immutable byte buffer.
+2. **Текущая** active VM A выполняет `preflight_save_bytes(buffer)`: header, integrity, versions, mod metadata и referential checks без изменения state/registries/queues/PRNG.
+3. Failed preflight или изменение repository identity отклоняет request: A и её UI остаются Ready, teardown не выполняется.
+4. Coordinator выполняет `commit-to-replace` и полностью уничтожает A; только затем создаётся VM B.
+5. B получает ровно captured buffer шага 1, декодирует его во временное дерево, выполняет deterministic migrations и Stable ID redirects.
+6. Runtime instances восстанавливаются, invariants проверяются; canonical state назначается только после полного успеха.
+7. Сохранённые PRNG stream states продолжаются; seed start descriptor не вызывает reseed.
+8. Initial presentation B готовится против candidate snapshot B и публикуется вместе с `Ready`.
 
-Migration failure не изменяет source slot. После failure replacement candidate уничтожается и создаётся recovery menu.
+Повторное чтение slot между preflight и B запрещено. Migration/start/presentation failure после `commit-to-replace` не изменяет source slot, уничтожает B и ведёт в native recovery; уже уничтоженная A не восстанавливается.
 
-**Реализован только холодный старт (SAV-12–17, план [SaveAndLoad](../Plans/Archive/SaveAndLoad.md)).** Из шагов выше существует только эквивалент шагов 5, 8, 9 — и только когда приложение стартует с нуля (`FRuntimeSession::StartFromSave`), а не когда уже есть активная session. Replacement session (шаги 1–4, 10 — preflight текущей сессией, teardown, коммит нового session как Ready) не реализован (README.md прямо это оговаривает: без него пункт меню «загрузить другое сохранение» работать не будет). Explicit core/mod migrations (шаг 6) — M5, не реализованы. Реализованный порядок: slot читается host-примитивом до создания VM (`SaveSlotNotFound`/`SaveSlotUnreadable` — configuration failure нулевой VM-стоимости) → `core:module.runtime.load.decode_and_prepare` целиком в Lua (preflight header/codec/save_version/integrity, редиректы шага 7 разрешаются и переписываются, referential integrity) → структурная валидация дерева → хук `restore_instances` (шаг 8) → модульный `validate_state` → присвоение canonical state (шаг 9) → `start`. Провал любой стадии оставляет сессию без назначенного состояния — эквивалент recovery surface на уровне `FRuntimeFault`, без UI-слоя (тот принадлежит `GV2SessionCoordinator`, не затронут этим планом).
+**Текущее состояние реализации.** Cold-start `FRuntimeSession::StartFromSave` выполняет decode/migrate/restore/validate/assign внутри новой VM и не публикует partial state. Active-session preflight, captured-buffer replacement и UE product load ещё не реализованы; они остаются явными status gaps, а не альтернативной lifecycle semantics.
 
 ## Missing mods
 

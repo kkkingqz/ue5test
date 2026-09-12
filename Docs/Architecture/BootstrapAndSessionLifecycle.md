@@ -1,8 +1,8 @@
 ---
 title: Bootstrap and Session Lifecycle
 status: normative
-version: 3.5
-updated: 2026-09-11
+version: 4.0
+updated: 2026-09-12
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -14,6 +14,7 @@ decisions:
   - ../ADR/0011-blueprint-screen-templates.md
   - ../ADR/0042-presentation-authority-and-publication.md
   - ../ADR/0043-presentation-apply-boundary.md
+  - ../ADR/0044-session-replacement-and-registry-sealing.md
 ---
 
 # Bootstrap and Session Lifecycle
@@ -28,11 +29,11 @@ decisions:
 
 ## Core invariants
 
-- Не более одной active session и одной Lua VM.
+- Не более одной active session и одной Lua VM. До teardown A candidate B может содержать только native immutable inputs/authorities; runtime session и VM B ещё не существуют.
 - VM создаётся и уничтожается вместе с session.
 - Cold start создаёт full menu session с обычным lifecycle core и enabled mod modules и empty gameplay roots.
 - Initial repository строится до первой VM. Application может позднее опубликовать новый current snapshot, но active session остаётся pinned до restart.
-- После registration host выполняет единый registry freeze gate по [Runtime Facade and Registries](RuntimeFacadeAndRegistries.md#host-side-freeze-sequence).
+- После registration один private Lua lifecycle owner выполняет единый registry sealing gate по [Runtime Facade and Registries](RuntimeFacadeAndRegistries.md#host-side-freeze-sequence).
 - До `Ready` semantic input, commands, events, effects и save закрыты, кроме lifecycle-owned initial projection path.
 - Async result проверяет owner, session generation и operation token.
 - Failure candidate session заканчивается обязательным cleanup до `Destroyed`.
@@ -58,7 +59,9 @@ Any build phase → Failed → Stopping → Destroyed
 Ready → Stopping → Destroyed
 ```
 
-Public readiness — один bool `is_ready`. Он становится true только после successful initial presentation apply и сбрасывается до выхода из `Ready`.
+`Registering` включает module `register` hooks и обязательный sealing checkpoint; state `BuildingState` недостижим при незавершённом sealing. Public readiness — один bool `is_ready`. Он становится true только при `publish-ready` после successful initial presentation apply и сбрасывается перед `commit-to-replace` или обычным teardown.
+
+Каждая portable protected phase возвращает закрытый `FRuntimePhaseResult`: `Completed` либо `Fault(FRuntimeFault)`. Отмена не является return value Lua hook и проверяется native orchestrator-ом между phases. UE transition routine проецирует исполненную фазу в существующий `EGV2SessionState`; отдельная модель states, которую production path не вызывает, запрещена.
 
 ## C++ lifecycle façade
 
@@ -68,37 +71,73 @@ Public readiness — один bool `is_ready`. Он становится true т
 
 - `GetSessionState()` возвращает application/session state и `is_ready` без mutable internal references.
 - `SubmitUiInteraction(binding_handle, input_values)` принимает opaque UI binding handle и schema-defined values; команда определяется только current binding registry.
+- `RequestSession(descriptor)`, `RequestSave(slot_id)` и `RequestLoad(slot_id, revision)` возвращают opaque operation ID; `CancelSessionRequest(operation_id)` возвращает typed `Accepted | TooLate | Stale`.
 - lifecycle requests используют отдельные typed methods/descriptors, а не generic `CallLuaFunction(name, args)`.
 
-Текущий vertical slice реализует façade без test-only runtime methods:
+Public façade не содержит test-only runtime methods:
 
-- `StartSession()`/`EndSession()` открывают и закрывают generation с одной Lua 5.4.8 VM;
+- compatibility adapters `StartSession()`/`EndSession()` могут только делегировать typed lifecycle protocol и не владеют вторым transition path;
 - `GetActiveScreen()` возвращает только текущую reconstructable presentation instance;
 - `SubmitUiInteraction(...)` является единственным публичным путём пользовательского input;
 - создание Screen из C++ параметров, вызов Lua builder из automation и методы с семантикой `ForTest` запрещены.
 
-**Правило (ADR-0043 D1; реализация сверена в [архиве аудита](../Status/Archive/PresentationAuthorityStructuralClosureAudit.md)):** Screen Registry, Image Resource Catalog, UI-схемы, Theme и GameShell layer identity принадлежат одному private candidate `FGV2SessionContentSnapshot`, который `FGV2SessionCoordinator` строит целиком внутри `StartSession()` из одного и того же `FResolvedPackageSet`, что и репозиторий с Lua-исходниками пакета — не по отдельности и не до открытия session. Ни один из них не читается из global config/DataAsset accessor во время `Ready`-рантайма; резолюция происходит один раз, при построении candidate. Candidate snapshot остаётся private до полной сборки и публикуется атомарно вместе с успешным initial Commit — тем же моментом, что и переход session в `Ready` (см. «Session states» выше); отказ на любом шаге кандидата не публикует частичный snapshot. Ошибка построения любой его части или сборки репозитория запрещает создание Lua VM и переход session в `Ready` (явный fault code: `ScreenRegistryNotReady`, `ImageCatalogNotReady` или `RepositoryNotReady`); наличие ранее опубликованного snapshot instance не маскирует failure текущего bootstrap build — новая сессия не наследует snapshot предыдущей ни при успехе, ни при отказе, а candidate одной сессии не виден другой одновременно существующей candidate-сборке. При переходе в `Failed` подсистема отображает UE-native recovery surface `UGV2RecoveryScreenWidget` с описанием сбоя без создания синтетических binding handles или использования debug-виджетов; этот экран — единственное presentation-состояние, которому по определению неоткуда взять session snapshot (сессия, для которой он показан, в `Ready` не перешла), и он использует программно собранную минимальную тему ядра, а не snapshot-owned Theme. Перед module bootstrap coordinator рекурсивно загружает UTF-8 `.lua` tree из `Scripts/`; portable runtime проверяет `bootstrap/manifest.lua`, graph и source coverage до module initialization. Любая ошибка после создания candidate переводит candidate session в `Failed`. Binding records session-scoped и инвалидируются при новой generation.
+**Presentation candidate (ADR-0043 D1).** Screen Registry, Image Resource Catalog, UI schemas, Theme и GameShell identity принадлежат одному private `FGV2SessionContentSnapshot`, построенному из того же `FResolvedPackageSet`, что repository и Lua sources. Candidate строится один раз, не читает runtime global config и содержит независимый resolved Screen Registry value. До `publish-ready` он не виден как active snapshot; partial publication запрещена.
+
+Failure repository/snapshot build не создаёт VM B и возвращает `RepositoryNotReady`, `ScreenRegistryNotReady` или `ImageCatalogNotReady`. При cold start без A показывается `UGV2RecoveryScreenWidget`; при replacement до `commit-to-replace` продолжает работать A. Recovery surface не создаёт bindings и использует только programmatic core-minimal theme. Binding records session-scoped и инвалидируются при новой generation.
 
 Start sequence: `GameInstance` start → Screen Registry ready → package modules register and freeze registries → package-owned `start` hook may create its initial gameplay state exclusively through a registered Command Dispatcher command → presentation source resolves the resulting state and publishes an initial Screen request → coordinator забирает pending screen → registry resolution → prepared field/binding candidate → registered `WBP_ScreenBase` child → atomic field apply → binding revision commit → активный экран отображается во viewport. Screen replacement выполняется после выхода из Lua. C++ не знает ни стартовой команды пакета, ни `screen_id`, ни Widget class.
 
 Интерактивный Editor использует data-driven development profile `UGV2RuntimeSettings.EditorPackageRoots` из `DefaultGame.ini`: production profile `core + textsystem + rh` открывает `textsystem:screen.location` из начального RH gameplay-state. Один и тот же resolved package set (`FResolvedPackageSet`, ADR-0043 D1) обязан использоваться для repository build, для загрузки package Lua sources, для обнаружения `ui_field`/`ui_value` схем и для построения Screen Registry/Image Catalog/Theme candidate snapshot; расхождение этих наборов, включая повторное самостоятельное discovery канонического замыкания любым из них, запрещено (`PAH-R3`) — второй вывод того же факта является вторым авторитетом, даже когда сегодня совпадает с первым. Обнаружение схем и остальных частей snapshot происходит один раз за сессию, синхронно внутри `StartSession()`, до перехода в `Ready` — сессия владеет своим snapshot так же, как `PinnedRepository` (его частью), и он не переживает `EndSession()`. Commandlet, unattended automation, Headless и Shipping игнорируют Editor profile и используют обычный package set; automation, которой нужен fixture, подключает `sample` явно. Automatic debug fixture запрещён в Shipping и не добавляет отдельный test API.
 
-Production-вход coordinator — только `StartSession(PinnedRepository, RepositoryVersion, const FResolvedPackageSet&)`. Отсутствующий set является ошибкой host bootstrap: coordinator/candidate не выполняют fallback discovery и не могут заменить переданное множество каноническим каталогом. Упрощённый overload без set существует только под `WITH_DEV_AUTOMATION_TESTS` как test fixture и не входит в production call inventory.
+Coordinator получает один уже разрешённый `FResolvedPackageSet`, pinned repository и repository identity через typed descriptor/context. Отсутствующий set является ошибкой host bootstrap: coordinator/candidate не выполняют fallback discovery и не могут заменить переданное множество каноническим каталогом. Упрощённый overload без set допустим только под `WITH_DEV_AUTOMATION_TESTS` как fixture и не входит в production call inventory.
 
 `FGV2SessionCoordinator` является private UE owner active/candidate session. Он создаёт для каждой generation отдельную portable runtime session, Bridge context, ingress queue, UI binding registry и operation registry. Ни один из этих объектов не переживает уничтожение owning session. `GV2RuntimeCore` не зависит от UObject/UMG и назначает вызывающий Game Thread owner thread-ом VM; standalone host использует тот же lifecycle на своём worker thread.
 
 Все Blueprint/UE requests сначала попадают в coordinator-owned bounded FIFO ingress. Coordinator проверяет state/generation и запускает Lua entry point только когда `bExecutingLua=false`. Submit из работающего entry point может только добавить следующий item в очередь; nested execution запрещён. Переполнение возвращает typed technical rejection и не расходует accepted input sequence. Lua outbound publications принимаются как copied DTO и применяются после возврата текущего protected entry point; synchronous Blueprint ↔ Lua re-entry запрещён.
 
-## Session start descriptor
+## Session start descriptor and results
+
+Downstream API использует закрытые типы `ESessionStartMode`, `FSessionStartDescriptor`, `ESessionOperationOutcome` и `ESessionCancellationResult`; stringly-typed mode/outcome запрещены.
 
 ```text
 mode: Menu | NewGame | LoadSave
-save_slot_id: required only for LoadSave
+save_slot_id: required only for LoadSave; otherwise absent
+save_slot_revision: Current | Previous; required only for LoadSave
 repository_version: exact pinned snapshot identity
+repository_content_hash: exact pinned repository identity
+seed_hex: exactly 16 lowercase ASCII hex characters
 reason: diagnostic string
 ```
 
-LoadSave выполняет read-only preflight container до teardown active session. Preflight исполняет текущая active session: она читает bytes через slot storage primitive и проверяет их сама, поэтому вторая VM не создаётся и инвариант одной VM сохраняется (ADR-0021). Failed preflight оставляет current session `Ready`. Commit запрещён, если requested repository version больше не current.
+`seed_hex` — gameplay input uint64, а session generation — lifetime token; они не взаимозаменяемы. `Restart` повторяет committed descriptor. `LoadSave` восстанавливает сохранённые PRNG streams и не reseed-ит их значением descriptor.
+
+Terminal operation outcome имеет закрытое множество `Completed | Failed | Cancelled | Superseded`. `Failed` несёт typed fault; остальные outcomes не маскируются как success. Operation ID value-only и не содержит callback/Lua reference.
+
+## Session replacement protocol
+
+[ADR-0044](../ADR/0044-session-replacement-and-registry-sealing.md) задаёт две границы.
+
+### До `commit-to-replace`
+
+Ready-сессия A целиком остаётся public и исполнима. Host может разрешить package set/repository, построить native `FGV2SessionContentSnapshot` candidate B и захватить выбранные save bytes. Для `LoadSave` read-only preflight выполняет VM A над захваченным buffer; runtime session/VM B ещё не создаётся. Preflight не меняет state, registries, queues, bindings или UI A.
+
+Ошибка, отмена, supersede либо изменение requested repository identity оставляют A без перестроения и повторной публикации. Последняя проверка repository identity выполняется непосредственно перед границей.
+
+### `commit-to-replace`
+
+Только `FGV2SessionCoordinator` может пересечь границу через private move-only transition token со стадиями `Preflight | Replacing | Preparing | Committed | Aborted`. Он атомарно закрывает input A и readiness, инвалидирует bindings, удаляет проекцию, выполняет reverse teardown и уничтожает VM A. После этого rollback к A запрещён. Token нельзя копировать, создать вне coordinator или перевести в terminal stage дважды.
+
+### После `commit-to-replace`
+
+Создаётся единственная runtime session/VM B. B получает те же pinned repository/native candidate и, для load, тот же immutable byte buffer, который проверила A. После sealing registries, сборки state и start initial document готовится с явно переданным `FGV2PresentationPrepareContext` B:
+
+```cpp
+using FDocumentSink = TFunction<bool(
+    const FGV2UiDocumentViewModel&,
+    const FGV2PresentationPrepareContext&)>;
+```
+
+Ambient `GetContentSnapshotForPrepare()` или другой выбор между A/B запрещён. `publish-ready` одним owner routine публикует snapshot, projection, bindings, generation и status B. Failure/cancellation после необратимой границы уничтожает B и показывает UE-native recovery; A не воскрешается.
 
 ## Module lifecycle
 
@@ -153,31 +192,35 @@ Order: core modules, затем mods по resolved load order. `stop`/`unregiste
 
 ## New/load session build
 
-1. Allocate new session ID/generation, VM, Bridge and service set privately; build private candidate `FGV2SessionContentSnapshot` (schemas, Screen Registry, Image Catalog, Theme, GameShell) from the resolved package set pinned to this session.
-2. Register modules and выполнить единый registry freeze gate.
-3. Build temporary state: defaults for NewGame; decoded/migrated tree for LoadSave.
-4. Restore instances and validate module/global invariants.
-5. Assign canonical state only after full validation.
-6. Run start hooks with external gates closed.
-7. Build initial UI document and apply it against the (still private) candidate snapshot.
-8. Commit `Ready` and enable input; publish candidate snapshot atomically with this same commit.
+1. Пока A остаётся Ready, resolve-ить exact package/repository identity и построить только private native `FGV2SessionContentSnapshot` candidate B. Resolved Screen Registry является независимым compiled value candidate-а, а не mutable authoring DataAsset.
+2. Для `LoadSave` один раз прочитать выбранную slot revision в request-owned immutable buffer и выполнить read-only Lua preflight в VM A. Для cold start без A preflight является первой protected фазой новой VM после её создания.
+3. Повторно проверить repository identity и пересечь `commit-to-replace`; полностью уничтожить A. До этого шага VM B запрещена.
+4. Создать generation, runtime session B, Bridge и service set; передать typed start inputs, pinned repository, sources и optional captured bytes.
+5. Вызвать module `register`, затем единый descriptor-driven registry sealing gate.
+6. Собрать temporary state целиком в Lua: defaults для Menu/NewGame либо decode/migrate captured bytes для LoadSave.
+7. Restore instances, validate invariants и назначить canonical state только после полного успеха.
+8. Выполнить start hooks при закрытых external gates.
+9. Построить initial UI document и применить его с явно переданным candidate context B.
+10. Выполнить `publish-ready` и enable input; snapshot/projection/bindings/status становятся видимы одним commit.
 
 ## Lifecycle requests
 
-Coordinator performs one transition at a time. Equivalent request may join. One conflicting pending slot uses last-wins semantics; replaced request completes as `Superseded`. Shutdown has highest priority and clears pending work.
+Coordinator performs one transition at a time. Actual request set выводится из закрытого mode/control enum, а каждый kind обрабатывается exhaustive dispatch без `default`. Equivalent request may join. One conflicting pending slot uses last-wins semantics; replaced request completes as `Superseded`. Shutdown has highest priority and clears pending work.
 
-Cancellation is accepted only between phases before Ready commit. Synchronous Lua hook is not interrupted; cancellation applies after it returns.
+Cancellation is accepted only between phase boundaries. Synchronous Lua hook is not interrupted; cancellation applies after it returns. До `commit-to-replace` accepted cancellation сохраняет A. После границы cancellation может только остановить B и перейти в recovery, но не восстановить A. Phase/result trace производится единственным transition routine; прямые присваивания public lifecycle state в обход него запрещены.
 
 ## Replacement sequences
 
-- **Menu → Game:** destroy menu completely, show UE-native loading surface, create game candidate.
-- **Game → Menu:** destroy game completely, create new full menu session.
+- **Menu → Game:** подготовить native game candidate при живой menu A; после `commit-to-replace` уничтожить A, показать UE-native loading surface и создать VM B.
+- **Game → Menu:** подготовить native menu candidate при живой game A; после границы уничтожить A и создать новую full menu session.
 - **Restart:** copy committed start descriptor, destroy current session, create replacement.
 - **Load another save:** preflight target slot, then full replacement session; never mutate active state in place.
 - **Content reload:** build/publish new Application current snapshot, then controlled restart so replacement session pins it.
 - **Shutdown:** clear pending, block new input/operations, reverse cleanup, release repository/platform services.
 
 ## Teardown order
+
+Пункты 1–8 начинаются только по owner-решению coordinator: при replacement это и есть `commit-to-replace`; UE adapter не выполняет их заранее.
 
 1. `is_ready=false`; block input, commands, events, save and new operations.
 2. Invalidate UI binding registry, чтобы queued или уже захваченные Widget events стали stale.

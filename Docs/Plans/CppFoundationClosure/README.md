@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Closure Implementation Plan
 status: active
-version: 1.2
+version: 1.3
 updated: 2026-09-12
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
@@ -12,13 +12,15 @@ decisions:
   - ../../ADR/0020-cpp-scope-criterion.md
   - ../../ADR/0021-opaque-save-container.md
   - ../../ADR/0043-presentation-apply-boundary.md
+  - ../../ADR/0044-session-replacement-and-registry-sealing.md
+  - ../../ADR/0045-atomic-save-slot-generation-publication.md
 ---
 
 # C++ Foundation Closure: план реализации
 
 > **Материализует:** принятые границы ownership, session publication и opaque save в работающей UE composition и проверяемой процедуре приёмки. Основание — [текущий аудит](../../Status/AuditFindings.md) и accepted ADR выше.
 > **Не является нормативным:** проектирование ниже описывает рекомендуемую реализацию существующих правил. Новые API, failure semantics и решения сначала фиксируются задачей CFC-01 в owner contracts; план не подменяет ADR.
-> **Исполнение:** использовать `superpowers:executing-plans`, последовательно по задачам. Checkbox задачи — единственный источник её завершения; все задачи сейчас открыты.
+> **Исполнение:** использовать `superpowers:executing-plans`, последовательно по задачам. Checkbox задачи — единственный источник её завершения.
 
 **Цель:** получить ограниченную и проверенную C++-основу, на которой gameplay-срез со стартом, командами, UI, сохранением, загрузкой и продолжением игры развивается в Lua без изменения native gameplay-логики.
 

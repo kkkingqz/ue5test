@@ -1,8 +1,8 @@
 ---
 title: Presentation Model
 status: informative
-version: 1.2
-updated: 2026-08-18
+version: 1.3
+updated: 2026-09-12
 depends_on:
   - README.md
 ---
@@ -58,11 +58,13 @@ Lua не описывает дерево виджетов и не знает п�
 
 **Единые пути вместо локальных решений.** Текст, картинки, повторяющиеся элементы и ввод проходят через общие механизмы; отдельный виджет не заводит собственный способ отрисовать текст или обработать нажатие. Причина — [ADR-0017](../ADR/0017-centralized-ui-presentation-paths.md).
 
+**Сессия публикуется целиком.** Пока новая сессия готовится, старая остаётся полностью рабочей. После необратимого начала замены старая VM уничтожается, а новая становится видимой только вместе со своим snapshot, bindings и первым успешно применённым документом. Initial document получает новый snapshot явно; он не выбирается через глобальный getter. Причина — [ADR-0044](../ADR/0044-session-replacement-and-registry-sealing.md).
+
 ## Что реализовано, а что нет
 
-Работают: реестр экранов с валидацией, набор базовых виджетов, адаптеры полей, централизованная тема, текстовый конвейер, каталог изображений, semantic input с проверкой устаревших handle, source-based presentation с автоматической инвалидацией.
+Работают: UI document с route/слоями/overlays/modals, реестр экранов с валидацией, набор базовых виджетов, универсальные Screen Fields, централизованная тема, текстовый конвейер, каталог изображений, semantic input с проверкой устаревших handle и source-based presentation с автоматической инвалидацией.
 
-Не реализовано: UI-документ с маршрутами, слоями, оверлеями и модальными окнами — сейчас активен ровно один экран; одноразовые presentation-эффекты. Актуальный объём — [Implementation Status](../Status/ImplementationStatus.md).
+Не реализованы one-shot presentation effects и enter/exit animations. Полный replacement lifecycle и product save/load остаются незавершёнными; точные gaps — в [Implementation Status](../Status/ImplementationStatus.md). Это не отменяет уже работающую synchronous-реконсиляцию UI document.
 
 ## Дальше
 

@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.4
-updated: 2026-09-10
+version: 3.5
+updated: 2026-09-12
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -18,6 +18,8 @@ decisions:
   - ../ADR/0028-simplified-authoring-surface.md
   - ../ADR/0029-content-authoring-and-schema-evolution.md
   - ../ADR/0037-content-authoring-layer.md
+  - ../ADR/0044-session-replacement-and-registry-sealing.md
+  - ../ADR/0045-atomic-save-slot-generation-publication.md
 ---
 
 # Build and Tooling Contract
@@ -55,11 +57,15 @@ Vendored Lua (`Source/GV2RuntimeCore/Private/ThirdParty/Lua54`) собирает
 
 ### Save slot storage primitive (SAV-05/06/07, план [SaveAndLoad](../Plans/Archive/SaveAndLoad.md))
 
-`GV2RuntimeCore::ISaveSlotStorage` (`Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2HostServices.h`) — единственный C++ примитив плана SaveAndLoad (ADR-0021): чтение и запись непрозрачных байт по `save_slot_id`, с типизированным результатом (`Ok`/`NotFound`/`Unreadable`/`Failure`). Интерфейс не содержит путей, `FString`, UObject и filesystem-типов; отсутствие конкретной реализации не мешает `FRuntimeSession::Start` — примитив не является параметром сессии, как и `IResourceCatalog`/`ILocalizationAdapter` рядом с ним.
+`GV2RuntimeCore::ISaveSlotStorage` (`Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2HostServices.h`) — единственный C++ примитив save/load (ADR-0021): чтение выбранной `Current | Previous` revision и запись непрозрачных байт по `save_slot_id`, с типизированным результатом (`Ok`/`NotFound`/`Unreadable`/`Busy`/`Failure`). Интерфейс не содержит путей, `FString`, UObject и filesystem-типов; отсутствие конкретной реализации не мешает library session без persistence, но игровой UE profile обязан передать application-owned storage до старта.
 
-`GV2RuntimeCore::FFilesystemSaveSlotStorage` — единственная реализация примитива, используемая обоими host-ами без дублирования: `std::filesystem::path` уже принят как portable-тип на этом уровне (см. discovery-заголовки `GV2ContentHostSupport`). Каждый host передаёт конструктору свой корневой каталог; резолв `save_slot_id` в путь и его ограничение этим каталогом целиком внутри реализации. Запись идёт во временный файл рядом со слотом и публикуется одним `rename` (атомарным на одном volume) — отказ на любом шаге до `rename` оставляет предыдущий опубликованный слот нетронутым.
+Фиксированная public форма CFC-08: `ESaveSlotRevision { Current, Previous }`; `ReadSlot(SlotId, Revision)` возвращает `FSaveSlotReadResult`; `WriteSlot(SlotId, Bytes)` возвращает `FSaveSlotWriteResult`; `FFilesystemSaveSlotStorage::Open(RootDir)` возвращает `FSaveSlotStorageOpenResult { Result, unique Storage }`. Default `Current` допустим только как C++ convenience и не означает fallback с `Previous`. Успешно возвращённый Storage всегда владеет lock; public constructor, создающий unlocked partial object, запрещён.
 
-Conformance-набор `GV2RuntimeCore::Testing::RunSaveSlotStorageConformance()` (`Source/GV2RuntimeCore/Public/GV2RuntimeCore/Testing/GV2SaveSlotStorageConformance.h`) сам создаёт и удаляет временный каталог — оба host-а вызывают его без аргументов и без host-specific setup, как остальные наборы в этом namespace. Покрывает write/read roundtrip с произвольными байтами (включая NUL), чтение отсутствующего слота, чтение слота с не-файлом на его месте, прерванную запись с сохранением предыдущего содержимого и отказ адресации по невалидному `save_slot_id`. Исполняется `gv2-headless --self-test` и `GV2.Runtime.SaveAndLoad.SaveSlotStorageConformance`.
+`GV2RuntimeCore::FFilesystemSaveSlotStorage` — единственная реализация примитива, используемая обоими host-ами без дублирования. Factory `Open(root)` возвращает unique owner либо typed `Busy`/failure; успешно созданный object удерживает exclusive process lock до destruction. Резолв `save_slot_id` в path и confinement целиком внутри реализации.
+
+По [ADR-0045](../ADR/0045-atomic-save-slot-generation-publication.md) bytes живут в immutable generation files, а versioned storage-owned head атомарно публикует пару `(Current, Previous)`. Temp/generation имена уникальны. Ошибка до rename head сохраняет прежнюю пару, cleanup после commit не меняет success. Legacy single-current slot мигрирует при первом overwrite. Это Linux process-crash baseline; power-loss durability не заявляется.
+
+Обязательный conformance-набор `GV2RuntimeCore::Testing::RunSaveSlotStorageConformance()` исполняется обоими hosts и покрывает opaque bytes с NUL, `Current`/`Previous`, malformed head, legacy migration, path refusal, process lock и per-stage injected failures. Отдельный portable process harness убивает writer после каждого фактически зарегистрированного filesystem stage и сверяет пару revisions с независимым oracle. До CFC-08 текущий набор покрывает только single-current storage; разница зафиксирована `STATUS-019`. Test helper не реализует альтернативный storage protocol.
 
 ## Executable hosts
 
@@ -159,10 +165,10 @@ gv2-content coverage <package-or-container-root> [--locale=LOCALE] [--format=tex
 ### `gv2-headless`
 
 ```text
-gv2-headless [--self-test] [--check-scripts] [--commands=N] [--seed=N] [--manifest=PATH] [--content-root=PATH] [--output-manifest=PATH] [--output-digest=PATH]
+gv2-headless [--self-test] [--check-scripts] [--commands=N] [--seed=HEX16] [--manifest=PATH] [--content-root=PATH] [--output-manifest=PATH] [--output-digest=PATH]
 ```
 
-`--content-root` по умолчанию разрешается в игровой набор пакетов (`GameData/core`, `GameData/rh`) или каталог-контейнер `GameData`; может принимать список корней через запятую (`--content-root=path1,path2`), каталог-контейнер или путь к одиночному пакету. Repository строится и закрепляется до создания Lua VM. Вывод в stdout содержит единую JSON-строку с метаданными прогона, `repository_content_hash`, `state_hash`, `digest_hash` и вложенным объектом `digest` (включающим `state_hash`). Опция `--manifest` воспроизводит записанную последовательность команд; при несовпадении `repository_content_hash` прогон завершается с exit code 2 до bootstrap. Опции `--output-manifest` и `--output-digest` сохраняют полный сериализованный `FRunManifest` и `FRunDigest` в указанные файлы.
+`--content-root` по умолчанию разрешается в игровой набор пакетов (`GameData/core`, `GameData/rh`) или каталог-контейнер `GameData`; может принимать список корней через запятую (`--content-root=path1,path2`), каталог-контейнер или путь к одиночному пакету. Нормативный `--seed` принимает ровно 16 lowercase hex digits и передаёт полный uint64 до bootstrap; default обязан сериализоваться в той же форме. Текущий numeric-only CLI/codec остаётся частью `STATUS-023` до CFC-07A. Repository строится и закрепляется до создания Lua VM. Вывод в stdout содержит единую JSON-строку с метаданными прогона, `repository_content_hash`, `state_hash`, `digest_hash` и вложенным объектом `digest` (включающим `state_hash`). Опция `--manifest` воспроизводит записанную последовательность команд; при несовпадении `repository_content_hash` прогон завершается с exit code 2 до bootstrap. Опции `--output-manifest` и `--output-digest` сохраняют полный сериализованный `FRunManifest` и `FRunDigest` в указанные файлы.
 
 Флаг `--check-scripts` запускает изолированную проверку дерева `Scripts/` без старта геймплея и без диспетчеризации команд. Он загружает манифест модулей, проверяет покрытие файлов, топологически разрешает граф зависимостей (проверяя отсутствие циклов, отсутствующих или незаявленных модулей) и компилирует каждый модуль с валидацией экспортной таблицы. При успехе выводит детерминированный JSON `{"ok":true,"status":"ok","modules_checked":N,"repository_content_hash":"...","script_set_hash":"..."}` (а также массив `"replaced_modules"` с цепочками провайдеров для каждого замещённого модуля) и возвращает 0. При ошибке возвращает exit code 1 с выводом `module_id`, относительного пути и позиции ошибки.
 
@@ -394,6 +400,14 @@ ctest --test-dir cmake-build-ci --output-on-failure
 ./cmake-build-ci/Tools/Content/gv2-content coverage GameData/core
 python3 Tools/Documentation/validate_docs.py
 ```
+
+## Supported foundation baseline
+
+Первая фиксируемая C++/Lua foundation surface — Linux Development: portable CMake/CTest и `gv2-headless`, `GV2Editor`/игровой UE host, synchronous desired presentation, централизованные text/image/Screen Fields/Semantic Input paths, commands/services/events, `Menu | NewGame | LoadSave | Restart | Reload | Shutdown`, opaque slot storage и Lua authoring.
+
+Shipping/cook/package, другие ОС и power-loss storage durability не входят в этот baseline без отдельного evidence. One-shot presentation effects ([STATUS-002](../Status/ImplementationStatus.md)) и enter/exit animations ([STATUS-003](../Status/ImplementationStatus.md)) остаются явными gaps: их отсутствие не блокирует synchronous gameplay slice, но запрещает называть весь presentation contract реализованным.
+
+Universal acceptance assertion обязано называть actual enumerator, независимый oracle и production path. Для плана actual task set выводится из checkbox headings всех активных файлов плана; ручное число или milestone summary не заменяет это множество. Для UE run actual set выводится discovery текущего build, а completed records обязаны совпасть с ним один к одному. Для enum/variant используется compiler/exhaustive dispatch. Неизвестная форма inventory считается отказом проверки.
 
 ## Verification
 

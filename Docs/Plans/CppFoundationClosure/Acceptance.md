@@ -14,13 +14,13 @@ depends_on:
 
 ## CFC-01 — Согласовать границы и проверяемые outcomes
 
-- [ ] CFC-01 — Согласовать границы и проверяемые outcomes
+- [x] CFC-01 — Согласовать границы и проверяемые outcomes
 
-**Файлы:** изменить `Docs/Architecture/BootstrapAndSessionLifecycle.md`, `RuntimeFacadeAndRegistries.md`, `LuaRuntimeContract.md`, `CanonicalStateAndSave.md`, `BuildAndTooling.md` в том же каталоге; `Docs/Concepts/PresentationModel.md`; создать ADR о protocol session replacement и lifecycle sealing, а также ADR об atomic slot generation publication в `Docs/ADR/` и добавить их в ADR index. Номера резервируются созданием файлов, не этими ссылками.
+**Файлы:** изменить `Docs/Architecture/BootstrapAndSessionLifecycle.md`, `RuntimeFacadeAndRegistries.md`, `LuaRuntimeContract.md`, `CanonicalStateAndSave.md`, `HeadlessSimulationContract.md`, `BuildAndTooling.md`; `Docs/UI/UIDocumentAndReconciliation.md`, `ScreenTemplates.md`; `Docs/Concepts/PresentationModel.md`; создать [ADR-0044](../../ADR/0044-session-replacement-and-registry-sealing.md) и [ADR-0045](../../ADR/0045-atomic-save-slot-generation-publication.md), добавить их в ADR index. Номера зарезервированы созданными файлами.
 
 **Инвариант:** [Bootstrap lifecycle](../../Architecture/BootstrapAndSessionLifecycle.md), [opaque save](../../ADR/0021-opaque-save-container.md), [C++ scope](../../ADR/0020-cpp-scope-criterion.md). Старую Ready A нельзя одновременно считать сохранённой и лишить её UI; preflight не создаёт вторую VM.
 
-**Решение для реализации:** зафиксировать две границы из README, private fixed Lua sealing descriptor, phase/result types CFC-06/07, typed save/load requests CFC-09/10 и atomic head для storage generations CFC-08. Публичный lifecycle API остаётся минимальным; внутренний transition token не пересекает Lua boundary. До accepted решений и синхронных owner contracts зависимые API не внедряются. Scene policy CFC-11 уточняет existing Screen Fields contract: обязательный массив `characters`, при этом пустой массив допустим; новые обязательные свойства без consumer-смысла не добавляются.
+**Решение для реализации:** [ADR-0044](../../ADR/0044-session-replacement-and-registry-sealing.md) фиксирует две границы replacement, private fixed Lua sealing descriptor, phase/result types CFC-06/07 и минимальный public lifecycle API; internal transition token boundary не пересекает. [ADR-0045](../../ADR/0045-atomic-save-slot-generation-publication.md) фиксирует atomic head storage generations CFC-08. Typed save/load requests CFC-09/10 согласованы в owner contracts. Scene policy CFC-11 уточняет existing Screen Fields contract: обязательный массив `characters`, при этом пустой массив допустим; новые обязательные свойства без consumer-смысла не добавляются.
 
 **Не считается закрытием:** новый обзор с обещанием atomicity без разделения двух commit points; новый stateful C++ gameplay service; снятие требований ради зелёного текущего кода.
 

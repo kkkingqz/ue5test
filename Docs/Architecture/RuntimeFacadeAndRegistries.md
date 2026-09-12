@@ -1,8 +1,8 @@
 ---
 title: Runtime Facade and Registries
 status: normative
-version: 1.0
-updated: 2026-08-20
+version: 1.1
+updated: 2026-09-12
 depends_on:
   - LuaRuntimeContract.md
   - StableIDSpecification.md
@@ -12,6 +12,7 @@ decisions:
   - ../ADR/0031-entity-authoring-extensions.md
   - ../ADR/0033-command-validator-authoring.md
   - ../ADR/0034-gameplay-service-authoring.md
+  - ../ADR/0044-session-replacement-and-registry-sealing.md
 ---
 
 # Runtime Facade and Registries
@@ -70,7 +71,11 @@ Functions и implementation tables остаются внутри Lua. Host зн�
 
 ## Host-side freeze sequence
 
-После вызова всех module hooks `register`, до создания или присвоения canonical state, host выполняет единый gate:
+Private sealed module `core:module.bootstrap.registry_lifecycle` владеет закрытым descriptor engine registries. Одна запись descriptor содержит `facade_path`, factory, optional resolve step, seal operation и frozen predicate. Тот же descriptor является actual enumerator и для установки, и для sealing; отдельный список, существующий только в C++ или тесте, запрещён.
+
+`registry_lifecycle.install()` вызывается bootstrap composition до module hooks `register`: создаёт каждый registry и устанавливает его в read-only façade slot. Privileged installation handle остаётся lexical private bootstrap-а; module hook может вызвать registration operation registry, но не заменить object/slot. Descriptor не содержит gameplay entries, не публикуется через `game` и не расширяется модами.
+
+После всех module hooks `register`, до создания или присвоения canonical state, `registry_lifecycle.seal()` выполняет единый gate:
 
 1. Authoring adapters регистрируют накопленные declarations и проверяют targets/mежпакетные ссылки.
 2. Замораживаются `services`, `actions`, `entity_extensions`.
@@ -80,12 +85,14 @@ Functions и implementation tables остаются внутри Lua. Host зн�
 6. Замораживается `presentation` source registry.
 7. Замораживаются reference-field/schema registries canonical state.
 
-Порядок фиксирован, потому что validation раннего registry может ссылаться на declarations, собранные всеми пакетами. Ошибка resolution или freeze блокирует session startup; частично замороженная candidate session не публикуется.
+Порядок фиксирован, потому что validation раннего registry может ссылаться на declarations, собранные всеми пакетами. Для каждой descriptor entry обязательны существующий object, callable seal operation и результат frozen predicate ровно `true`. Missing participant/method, исключение, неверный return type или false блокируют session startup до state build и дают typed fault с `phase=SealingRegistries` и `registry_path`. Частично sealed runtime session не публикуется.
+
+C++ вызывает один fixed protected lifecycle entry point и получает только success/fault. Он не получает descriptor, registry objects или functions и не повторяет порядок path-by-path. Полнота проверяется сопоставлением actual registry publishers/factories с descriptor; неизвестный publisher или façade slot является ошибкой, а не автоматически допустимым extension point.
 
 Module export tables замораживает loader сразу после исполнения provider-а, а не этот gate. Package load order и module replacement определяет [Lua Runtime Contract](LuaRuntimeContract.md); registry override rules не наследуют last-wins автоматически.
 
 ## Failure and evolution
 
-Отсутствующий required registry, mutable production entry, late registration и незамороженный registry при переходе к state build являются startup fault. Registry API расширяется только при наличии owner subsystem и concrete consumer; generic «registry of everything» запрещён.
+Отсутствующий required registry, mutable production entry, late registration и незамороженный registry при переходе к state build являются startup fault. Registry API расширяется только при наличии owner subsystem и concrete consumer; generic «registry of everything» запрещён. Новый engine registry добавляется одним change set с owner contract, descriptor entry, publisher inventory и failure fixture. Gameplay/mod declarations продолжают использовать существующие registry APIs и descriptor не меняют.
 
 Проверки обязаны подтверждать late-registration rejection, immutable entries, deterministic enumeration, duplicate/override policy owner-а, target resolution после загрузки всех пакетов и одинаковый frozen state в UE/headless hosts.

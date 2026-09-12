@@ -1,8 +1,8 @@
 ---
 title: Architecture Decision Records
 status: informative
-version: 2.8
-updated: 2026-09-07
+version: 2.9
+updated: 2026-09-12
 ---
 
 # Architecture Decision Records
@@ -55,6 +55,8 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0041](0041-ui-commit-rollback-model.md) | accepted | UI Commit Rollback Model: захват предыдущего состояния перед live-мутацией и откат в обратном порядке той же Prepare/Commit-машиной на всех границах reused host/screen/collection/Shell attach — `REM-02`/`GBH-09` |
 | [0042](0042-presentation-authority-and-publication.md) | accepted | Presentation Authority and Publication: один неизменяемый снимок контента сессии, отсутствие обнаружения после `Ready`, одна абстракция реконсиляции для повторяемых структур, одно зафиксированное логическое состояние с восстановимой физической проекцией, семантика решается до подготовленной транзакции |
 | [0043](0043-presentation-apply-boundary.md) | accepted | Presentation Apply Boundary: один опубликованный снимок и точный набор пакетов, физическая граница применения отдельным модулем Unreal, самодостаточная подготовленная операция, запрет направления зависимостей как первичная гарантия `INV-P5` |
+| [0044](0044-session-replacement-and-registry-sealing.md) | accepted | Session Replacement and Registry Sealing: две границы replacement, один lifecycle owner, явный candidate context и descriptor-driven sealing Lua registries |
+| [0045](0045-atomic-save-slot-generation-publication.md) | accepted | Atomic Save Slot Generation Publication: immutable generations, atomic head `Current`/`Previous`, single writer и явный выбор revision |
 
 ## Template
 
