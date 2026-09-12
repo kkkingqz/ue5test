@@ -22,6 +22,7 @@ language: ru
 | Изучить открытые идеи | [Proposals](Proposals/README.md) |
 | Сверить contract и реализацию | [Implementation Status](Status/ImplementationStatus.md) |
 | Проверить готовность C++-основы к gameplay на Lua | [Текущий аудит и блокеры фиксации](Status/AuditFindings.md) |
+| Результаты полного C++ code review | [C++ Full Code Review](Status/CppFullCodeReview.md) |
 | Узнать результат проверок выполненных планов | [Archived Audit Rounds](Status/Archive/README.md) |
 
 ## Authority и lifecycle
