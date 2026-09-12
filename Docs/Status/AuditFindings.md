@@ -1,7 +1,7 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.1
+version: 1.2
 updated: 2026-09-12
 depends_on:
   - ImplementationStatus.md
@@ -52,7 +52,25 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 ## Счёт и интерпретация
 
-Девять находок: шесть P1 и три P2. Семь подтверждённых contract gaps перенесены в `STATUS-013…019`; две находки организации приёмки остаются открытыми здесь. Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Гейт зависимостей и неполный CI-filter уже были обнаружены в предшествующей оценке и в этом аудите перепроверены.
+Первоначальный аудит дал девять находок: шесть P1 и три P2; семь contract gaps перенесены в `STATUS-013…019`, две находки организации приёмки остаются открытыми здесь. Дополнительная проверка внешнего review 2026-09-12 подтвердила SNAP-AF-01 / STATUS-020. Итого десять находок: семь P1 и три P2, восемь подтверждённых contract gaps. Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Результаты запусков выше относятся к первоначальному аудиту; дополнение ниже основано на анализе кода и не является повторным полным test run.
+
+### Snapshot ownership — дополнение внешнего review
+
+#### SNAP-AF-01 — P1 — snapshot разделяет mutable Screen Registry с новым candidate
+
+**Источник:** внешнее review пользователя, имя SNAP-R1. Независимо сверено по production-коду ревизии `035ac04` (2026-09-12); рабочее дерево перед проверкой чистое.
+
+**Норма:** [ADR-0043 D1](../ADR/0043-presentation-apply-boundary.md), [Bootstrap and Session Lifecycle](../Architecture/BootstrapAndSessionLifecycle.md): snapshot неизменяем, authorities принадлежат candidate/session, подготовка B и её отказ до commit-to-replace не меняют опубликованную A.
+
+**Подтверждение:** `Source/GV2/Private/Application/GV2SessionContentSnapshot.h:20–22` хранит `TStrongObjectPtr<UGV2ScreenRegistry>` внутри resolved wrapper. В `GV2SessionContentSnapshot.cpp:124–142` candidate загружает configured DataAsset, вызывает `RegistryAsset->Build(ClosureEntries, ...)` и сохраняет ссылку на тот же asset. Wrapper `Resolve` делегирует этому объекту (`:24–36`). `Source/GV2/Private/UI/GV2ScreenRegistry.cpp:249–252` при каждом Build сначала очищает `ResolvedByScreenId` и выставляет `bBuilt=false`; отказ из проверок ниже оставляет этот объект очищенным. Успех заменяет ту же map (`:350–351`), а Resolve читает её с учётом `bBuilt` (`:363`). Strong pointer обеспечивает lifetime, но не изоляцию.
+
+**Следствие:** после успешной A registry failure B способен сделать ранее допустимый Resolve A неизвестным; при успешном rebuild B A читает его map вместо своего compiled value. Разные package closures также проходят через общий mutable объект. Комментарий о безопасности повторного Build с тем же closure не покрывает failure и разные inputs. Это отдельный дефект от STATUS-014 (выбор неправильного snapshot) и STATUS-015 (раннее разрушение UI): правильная ссылка на A не сохраняет её содержимое.
+
+**Граница evidence:** shared ownership и destructive-before-validation path подтверждены исходниками. Динамический A→failed B и A→successful B с разными closures в этой проверке не запускались; они обязательны для закрытия задачи. Остальные замечания внешнего review уже отражены в текущем аудите/плане; их положительная общая оценка не заменяет новую приёмку всей C++-поверхности.
+
+**Проверка для закрытия:** authoring DataAsset компилируется read-only в независимый resolved registry value каждого snapshot; fingerprint и Resolve читают именно его. Published A сохраняет exact descriptor/class/placement outcomes после registry failure B и успешного B с различающимися inputs/closures. Дополнительно проверяются strong class ownership при GC и actual inventory вложенных authority references; `const` wrapper или shallow pointer copy недостаточны. Исполнение — [CFC-04A](../Plans/CppFoundationClosure/SessionLifecycle.md#cfc-04a-сделать-resolved-screen-registry-независимым-значением-snapshot); верхний UI replacement повторяет CFC-06.
+
+**Исход:** подтверждено как contract gap, [STATUS-020](ImplementationStatus.md). Добавление задачи не является исправлением.
 
 ### PresentationStructuralClosure
 

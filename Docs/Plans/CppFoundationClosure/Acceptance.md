@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Acceptance
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-12
 depends_on:
   - ../../Architecture/BuildAndTooling.md
@@ -23,6 +23,8 @@ depends_on:
 **Решение для реализации:** зафиксировать две границы из README, private fixed Lua sealing descriptor, phase/result types CFC-06/07, typed save/load requests CFC-09/10 и atomic head для storage generations CFC-08. Публичный lifecycle API остаётся минимальным; внутренний transition token не пересекает Lua boundary. До accepted решений и синхронных owner contracts зависимые API не внедряются. Scene policy CFC-11 уточняет existing Screen Fields contract: обязательный массив `characters`, при этом пустой массив допустим; новые обязательные свойства без consumer-смысла не добавляются.
 
 **Не считается закрытием:** новый обзор с обещанием atomicity без разделения двух commit points; новый stateful C++ gameplay service; снятие требований ради зелёного текущего кода.
+
+Compile-to-value API CFC-04A синхронизировать с owner contracts как выполнение уже принятого ADR-0043 D1: authoring DataAsset остаётся входом, resolved runtime state принадлежит snapshot. Новый ADR только ради устранения этого расхождения не требуется.
 
 **Шаги:**
 1. Сопоставить каждый пункт таблицы находок README с точной нормой и production path из аудита.
@@ -107,7 +109,7 @@ Fixtures содержат явные counters и records, а не результ
 
 - [ ] CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
 
-**Зависимость:** CFC-01…12. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Guides/WhenToWriteCpp.md`, `Docs/Guides/AddLuaSpec.md`, `Docs/Authoring/README.md`, `Docs/Status/AuditFindings.md`, `Docs/Status/ImplementationStatus.md`; CI artifacts и локальный `Saved/Audit/` для полных отчётов.
+**Зависимость:** CFC-01…12, включая CFC-04A. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Guides/WhenToWriteCpp.md`, `Docs/Guides/AddLuaSpec.md`, `Docs/Authoring/README.md`, `Docs/Status/AuditFindings.md`, `Docs/Status/ImplementationStatus.md`; CI artifacts и локальный `Saved/Audit/` для полных отчётов.
 
 **Инвариант:** [scope](../../Architecture/Overview.md), [совместимость](../../Architecture/CompatibilityPolicy.md). Готовность относится к зафиксированной поверхности и ревизии, а не к абстрактному «всему C++».
 
@@ -115,7 +117,7 @@ Fixtures содержат явные counters и records, а не результ
 
 **Шаги:**
 1. Сверить каждый Done с именем проверки, actual enumerator и независимым oracle. Проверить новые public native entry points по исходникам `Public/` и bindings; новые enum values обязаны попадать в exhaustive dispatch/test inventory.
-2. Выполнить targeted negative mutations каждой устранённой причины: второй schema source, старый candidate, ранний host teardown, игнорируемый freeze result, неподключённый storage, потерянная previous copy, запрещённый dependency statement, NotRun и missing UE record. Мутации живут в временных checkout и обязаны краснеть в штатном pipeline.
+2. Выполнить targeted negative mutations каждой устранённой причины: второй schema source, shared mutable Screen Registry между A/B, старый candidate, ранний host teardown, игнорируемый freeze result, неподключённый storage, потерянная previous copy, запрещённый dependency statement, NotRun и missing UE record. Для registry повторить failed B и successful B с отличающимися inputs/package closure, проверяя exact Resolve A, а не только snapshot pointer/hash. Мутации живут в временных checkout и обязаны краснеть в штатном pipeline.
 3. На чистой ревизии выполнить приведённый ниже runbook, full UE test inventory и CFC-12. Зафиксировать revision, build fingerprints, package/script hashes, environment, warnings и ограничения.
 4. Выполнить portable ASan/UBSan build и CTest/shared conformance для Lua/native marshalling и storage; документировать unsupported toolchain отдельным препятствием для этой задачи. Это проверка памяти на исполненных сценариях, не доказательство всего возможного ввода.
 5. Удалить только полностью закрытые status rows; записать исход каждой audit-находки и task ID. Обновить Guide: новое native API требует scope reason, production consumer, negative fixture и enumerator в одном change set; обычные Lua commands/services/presentation не требуют нового C++.

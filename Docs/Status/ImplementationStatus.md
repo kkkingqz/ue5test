@@ -1,8 +1,8 @@
 ---
 title: Confirmed Contract Gaps
 status: informative
-version: 2.18
-updated: 2026-09-11
+version: 2.19
+updated: 2026-09-12
 depends_on:
   - ../README.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -39,6 +39,7 @@ depends_on:
 | `STATUS-017` | `known_nonconformance` | [Runtime Facade and Registries § Host-side freeze sequence](../Architecture/RuntimeFacadeAndRegistries.md#host-side-freeze-sequence): ошибка freeze блокирует startup | `FreezeGameRegistry` игнорирует результат `lua_pcall` и не проверяет frozen state. Реальный `FRuntimeSession::Start` с synthetic throwing `game.services.freeze` успешно стартует с незамороженным реестром. | `GV2RuntimeSession.cpp:1711–1733`; compiled probe: `started=1 fault= registry=unfrozen`; [RUNTIME-AF-01](AuditFindings.md#runtime-af-01-p1-ошибка-freeze-реестра-не-блокирует-startup). |
 | `STATUS-018` | `missing` | [Overview § Vertical slice acceptance](../Architecture/Overview.md#vertical-slice-acceptance), [Canonical State and Save](../Architecture/CanonicalStateAndSave.md): product save/load через host storage | Storage и cold-start load реализованы в portable library, но игровая UE composition не вызывает `SetSaveSlotStorage`/`StartFromSave`. Сохранение при достижении storage получает `SaveWriteFailed:unavailable`; UE-пути загрузки слота нет. Общий replacement lifecycle отдельно ведётся в `STATUS-001`. | Production coordinator вызывает только `RuntimeSession.Start`; UE-вызов `SetSaveSlotStorage` найден только в `GV2LuaSpecRunnerHostTests.cpp`; native unavailable branch `GV2RuntimeSession.cpp:399`; [SAV-AF-01](AuditFindings.md#sav-af-01-p1-saveload-библиотека-не-подключена-к-игровой-ue-сессии). |
 | `STATUS-019` | `missing` | [ADR-0021 § Decision](../ADR/0021-opaque-save-container.md#decision), [Canonical State and Save § Export boundary](../Architecture/CanonicalStateAndSave.md#export-boundary): сохранение предыдущей копии | `FFilesystemSaveSlotStorage::WriteSlot` атомарно заменяет слот, но после успешной замены backup предыдущих bytes отсутствует. Сохранность старых bytes при неуспешной записи является отдельным реализованным свойством. | Две успешные записи через реальный storage в temporary directory: один файл с текущими bytes, предыдущей копии нет; `GV2SaveSlotStorage.cpp:114`; [SAV-AF-02](AuditFindings.md#sav-af-02-p2-успешная-перезапись-слота-не-сохраняет-предыдущую-копию). |
+| `STATUS-020` | `known_nonconformance` | [ADR-0043 D1](../ADR/0043-presentation-apply-boundary.md), [Bootstrap and Session Lifecycle](../Architecture/BootstrapAndSessionLifecycle.md): candidate не изменяет published immutable snapshot | `FGV2ResolvedScreenRegistry` хранит strong pointer на общий authoring `UGV2ScreenRegistry`. Candidate B вызывает на нём mutating Build, очищающий `ResolvedByScreenId/bBuilt` до validation; A после отказа внутри registry Build теряет прежние resolutions, после успешного Build B читает его map. | `GV2SessionContentSnapshot.h:20–22`, `GV2SessionContentSnapshot.cpp:124–142`, `GV2ScreenRegistry.cpp:249–252,350–363`; анализ production-кода `035ac04`, [SNAP-AF-01](AuditFindings.md#snap-af-01-p1-snapshot-разделяет-mutable-screen-registry-с-новым-candidate). Динамическая регрессия ещё не выполнена. |
 
 ## Правило изменения
 

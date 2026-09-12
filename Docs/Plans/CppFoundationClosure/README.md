@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Closure Implementation Plan
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-12
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
@@ -40,6 +40,8 @@ decisions:
 
 `FGV2SessionCoordinator` остаётся единственным владельцем active/candidate session. `FGV2SessionContentSnapshot` владеет всеми presentation authorities. Подготовка initial document получает candidate явно; последующая подготовка получает published snapshot той же generation. `GetContentSnapshotForPrepare()` с выбором из двух источников удаляется. Schema lookup требует ссылку на `FGV2PresentationPrepareContext`; global cache, session cache rebuild и fallback discovery удаляются. `GV2PresentationApply` получает только уже разрешённую транзакцию.
 
+Владение snapshot включает независимость достижимого runtime state: authoring `UGV2ScreenRegistry` — read-only input для compile, а resolved rows/class ownership/placement policy — private value конкретного snapshot. Candidate B не вызывает mutating Build на объекте, которым разрешает экраны A. CFC-04A закрывает этот отдельный пробел внешнего review (SNAP-R1 / SNAP-AF-01); перенос публикации или shallow const wrapper его не устраняют.
+
 ### Две границы replacement с разной семантикой отказа
 
 До **commit-to-replace** существует прежняя Ready-сессия A. Можно построить native content candidate B, прочитать opaque save bytes и выполнить read-only Lua preflight в A. Ошибка/отмена здесь сохраняет VM, generation, snapshot, bindings и реально работающий UI A.
@@ -74,7 +76,7 @@ Local MCP и fresh-process CI используют один report validator. Ac
 
 ## Объём фиксации
 
-План закрывает девять находок аудита, `STATUS-001`, `STATUS-013…019` и scene-presence gap `STATUS-011`. Это один связанный путь: приёмка → lifecycle/authority → persistence → сквозной gameplay.
+План включает 14 задач: CFC-01…13 и дополнительную CFC-04A. Он закрывает десять находок аудита с учётом проверенного внешнего SNAP-R1, `STATUS-001`, `STATUS-013…020` и scene-presence gap `STATUS-011`. Это один связанный путь: приёмка → lifecycle/authority → persistence → сквозной gameplay.
 
 Первая фиксируемая поверхность: **Linux Development, UE game host и headless**, synchronous desired presentation, текущие centralized text/image/fields/input paths, команды/services/events, new/menu/restart/load/reload/shutdown, opaque slots и Lua authoring. Shipping/cook/package и другие ОС не считаются проверенными этим baseline. One-shot effects (`STATUS-002`) и enter/exit animations (`STATUS-003`) остаются открытыми и вне первой обещанной gameplay-поверхности. Они не блокируют синхронный gameplay-срез, но запрещено объявлять весь исходный contract полностью реализованным.
 
@@ -85,14 +87,14 @@ Local MCP и fresh-process CI используют один report validator. Ac
 | Milestone | Задачи | Проверяемый результат |
 |---|---|---|
 | M0 — Достоверная приёмка | CFC-01…03, [Acceptance](Acceptance.md) | Явные contracts, строгий runner и закрытый dependency gate |
-| M1 — Session ownership | CFC-04…07, [Session Lifecycle](SessionLifecycle.md) | Один schema source, fail-closed freeze, реальные replacement transitions |
+| M1 — Session ownership | CFC-04, CFC-04A, CFC-05…07, [Session Lifecycle](SessionLifecycle.md) | Один schema source, независимый resolved registry, fail-closed freeze, реальные replacement transitions |
 | M2 — Save/load в игре | CFC-08…10, [Save and Gameplay](SaveAndGameplay.md) | Previous copy, safe save, active-session preflight и product load |
 | M3 — Lua baseline | CFC-11…13, [Save and Gameplay](SaveAndGameplay.md), [Acceptance](Acceptance.md) | Обязательность сцены, сквозной сценарий и зафиксированная поддержанная поверхность |
 
-Зависимости: `01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13`. Порядок намеренно последовательный: следующая приёмка использует уже исправленный runner, а save/load использует уже испытанный replacement. Реализацию одного этапа можно ревьюить и отклонять независимо от следующего; массовое переписывание всех surfaces одним commit не требуется.
+Зависимости: `01 → 02 → 03 → 04 → 04A → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13`. Порядок намеренно последовательный: следующая приёмка использует уже исправленный runner, а save/load использует уже испытанный replacement. Реализацию одного этапа можно ревьюить и отклонять независимо от следующего; массовое переписывание всех surfaces одним commit не требуется.
 
 - [ ] M0 — CFC-01…03 приняты по Done/Evidence.
-- [ ] M1 — CFC-04…07 приняты по Done/Evidence.
+- [ ] M1 — CFC-04, CFC-04A, CFC-05…07 приняты по Done/Evidence.
 - [ ] M2 — CFC-08…10 приняты по Done/Evidence.
 - [ ] M3 — CFC-11…13 приняты по Done/Evidence.
 
@@ -101,6 +103,7 @@ Local MCP и fresh-process CI используют один report validator. Ac
 | VERIFY-AF-01, VERIFY-AF-02 | CFC-02, финальная сверка CFC-13 |
 | PSC-AF-06 / STATUS-016 | CFC-03 |
 | PSC-AF-03 / STATUS-013 | CFC-04 |
+| SNAP-AF-01 (внешнее SNAP-R1) / STATUS-020 | CFC-04A; верхний replacement path — CFC-06 |
 | RUNTIME-AF-01 / STATUS-017 | CFC-05 |
 | PSC-AF-04 / STATUS-014 | CFC-06 |
 | PSC-AF-05 / STATUS-015 | CFC-06 и CFC-07 |

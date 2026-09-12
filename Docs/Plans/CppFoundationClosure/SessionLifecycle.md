@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Session Lifecycle
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-12
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
@@ -11,7 +11,7 @@ depends_on:
 
 # Владение session и её публикация
 
-> **Материализует:** M1 [плана](README.md): удаление второго schema authority, проверяемое sealing и один production protocol replacement. Зависит от CFC-01…03.
+> **Материализует:** M1 [плана](README.md): удаление второго schema authority, независимое владение resolved registry, проверяемое sealing и один production protocol replacement. Зависит от CFC-01…03.
 
 ## CFC-04 — Сделать snapshot единственным источником UI-схем
 
@@ -39,6 +39,41 @@ depends_on:
 - При полном закрытии удалён STATUS-013, PSC-AF-03 дополнен исходом CFC-04.
 
 **Evidence:** A/B inputs и outcomes, discovery count, caller inventory, compile/gate negative result, UBT/UE acceptance и docs validation. Совпадающий pointer без отличающегося schema behavior — недостаточное доказательство.
+
+## CFC-04A — Сделать resolved Screen Registry независимым значением snapshot
+
+- [ ] CFC-04A — Сделать resolved Screen Registry независимым значением snapshot
+
+**Зависимость:** CFC-04; задача предшествует CFC-05/06. Закрывает SNAP-AF-01 (внешнее имя SNAP-R1), STATUS-020. Исполняется до проверки сохранности A при replacement: сохранение ссылки на A бессмысленно, если candidate B уже изменил её содержимое.
+
+**Файлы:** `Source/GV2/Private/Application/GV2SessionContentSnapshot.h/.cpp`, `Source/GV2/Public/UI/GV2ScreenRegistry.h`, `Source/GV2/Private/UI/GV2ScreenRegistry.cpp`, `Source/GV2/Private/Tests/GV2RuntimeCoreTests.cpp`, `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp`; callers и tests `UGV2ScreenRegistry::Build/Resolve/GetResolvedScreenIdentities` определить по actual references. Обновить `Tools/Testing/validate_screen_registry_entry_encapsulation.py`; создать `Tools/Testing/validate_session_snapshot_ownership.py` с negative self-tests и подключить в `Source/CMakeLists.txt`. Docs: `Docs/Architecture/BootstrapAndSessionLifecycle.md`, `Docs/UI/ScreenTemplates.md`, `Docs/Architecture/BuildAndTooling.md`, `Docs/Authoring/AddUIScreen.md` (authoring DataAsset и runtime resolution).
+
+**Инвариант:** [ADR-0043 D1](../../ADR/0043-presentation-apply-boundary.md), [session candidate](../../Architecture/BootstrapAndSessionLifecycle.md). Published A и candidate B не разделяют mutable registry runtime state. `TStrongObjectPtr` защищает lifetime объекта, но не даёт изоляцию или immutable contents. Это выполнение уже принятого ownership, отдельного изменения инварианта не требуется.
+
+**Интерфейс и ownership:** `UGV2ScreenRegistry` сохраняет authoring `Entries` и compile operation с const input. Рекомендуемая сигнатура — `bool CompileResolvedRegistry(const TArray<GV2PackageClosure::FEntry>& ClosureEntries, FGV2ResolvedScreenRegistry& OutRegistry, FString& OutError) const`. Компиляция пишет только в локальный builder и выдаёт value после полного успеха; при отказе `OutRegistry` не меняется. `FGV2ResolvedScreenRegistry` владеет private map resolved rows: ScreenId, разрешённый UClass с GC-safe strong ownership и placement/layer policy. `Resolve` остаётся единственным способом получить class с обязательным placement; deterministic identity enumeration для fingerprint читает ту же map. Ни авторские rows, ни mutable map наружу не выдаются.
+
+Runtime cache `ResolvedByScreenId/bBuilt` на authoring DataAsset и snapshot-pointer на этот DataAsset удаляются. Build/Resolve consumers переводятся на compile/value API; static validation helpers могут остаться на прежнем owner. Существующие правила namespace/package-root ownership, class validation, exact layer matching и hash composition не ослабляются. Strong references на разрешённые UClass допустимы: они удерживают native asset lifetime и не являются общим перестраиваемым реестром. Compile не изменяет classes/CDO или authoring inputs.
+
+**Не считается закрытием:** отложить `ResolvedByScreenId.Reset()` до success; поставить `const` на pointer к общему UObject; скопировать wrapper с тем же pointer; восстановить A повторным Build после ошибки; `DuplicateObject` authoring registry как конечная архитектура; проверить только равенство snapshot pointers/hashes при изменившемся Resolve.
+
+**Шаги:**
+1. Создать изолированную authoring fixture, используемую обоими candidate builders; production settings живого пользовательского Editor не портить. Построить и опубликовать A, разрешить X через её PrepareContext. Запустить B через настоящий candidate path с ошибкой внутри registry compile после входа в фазу; подтвердить именно `ScreenRegistryNotReady`, затем повторить Resolve X через A. В исходном коде общая map очищается на входе Build; red-test обязан дойти до этого места, а не отказать раньше на schema/repository.
+2. Реализовать compile-to-value и перенести placement/identity resolution на private resolved rows. Hash A/B строить из compiled value соответствующего snapshot, а не из `RegistryAsset->GetResolvedScreenIdentities()`. Удалить старые mutable runtime APIs и перевести callers по compile errors/reference inventory без постоянных fallback overloads.
+3. Построить A/B с разными exact package closures: успешный B и отдельно B с registry ownership failure. Зафиксировать из fixture ожидаемые class/placement/availability для каждого разрешаемого screen ID; A после обоих исходов B сохраняет прежние решения. В успешном сценарии изменить authoring fixture для B так, чтобы хотя бы один class/placement/ID resolution действительно отличался; иначе два одинаковых результата не проверяют изоляцию.
+4. Проверить освобождение B и garbage collection при живой A: classes, удерживаемые A, остаются доступными. Lifetime fixture не имеет иных strong roots; постоянно живой native class не доказывает корректность удержания. Уничтожение A не повреждает B. Проверить rejected placements и unknown IDs после переходов наряду с positive Resolve.
+5. Создать actual ownership inventory по declarations snapshot и вложенных resolved types, включая pointer/container members, и по registry compile/resolve callers. Gate запрещает достижимый authoring registry как runtime resolver, публичный mutable compiled map и старые Build writers; неизвестная форма декларации/неописанный тип требует классификации, не молча пропускается. Для остальных snapshot authorities записать, какие references value-owned, candidate-local или shared native asset и какие production writes возможны; не объявлять всякий UObject pointer дефектом без evidence. Новое shared mutable authority требует устранения или отдельного STATUS до закрытия универсального утверждения.
+6. Вернуть shared-registry pointer в temporary negative fixture и подтвердить отказ структурного gate и regression. Обновить owner contracts/Guide-like authoring reference, выполнить UBT, полный UE acceptance CFC-02 и docs validator. Сквозной StartSession A → failed B → работающий UI A затем повторяется CFC-06, где закрывается отдельный ранний host teardown.
+
+**Done:**
+- Snapshot-owned registry value не содержит ссылки на authoring DataAsset как runtime authority; compile не меняет ранее опубликованные values или authoring input.
+- A сохраняет exact class, placement outcomes и availability после registry failure B и после успешного B с отличающимися inputs/package closure.
+- Actual screen set берётся из compiled registry, actual placements — из `FGV2ScreenPlacement::EKind`; expected descriptors/rejections задаются независимыми fixtures, не повторным чтением A после B. До обхода проверить равенство actual keys и независимо заданного expected fixture set: пропавший при compile экран не должен исчезнуть из самого теста.
+- Fingerprint identity enumeration и runtime Resolve относятся к одному compiled value; hash сам по себе не заменяет behavioral assertions.
+- GC/lifetime проверены с удалением другого candidate/snapshot; resolved class pointers не висят без owning references.
+- Поля и вложенные authority references actual snapshot inventory классифицированы; неизвестный member/type и возврат mutable registry дают красный gate.
+- При полном закрытии удалён STATUS-020, SNAP-AF-01 получает исход CFC-04A; CFC-06 отдельно подтверждает сохранность физической UI-проекции.
+
+**Evidence:** reached registry phase/failure code, независимые A/B expected tables и actual Resolve outcomes, разные package fingerprints, GC assertions, ownership/caller inventories, negative mutation, UBT/full UE результаты. Динамические сценарии обязательны при реализации; исходная находка подтверждена анализом кода, не объявляется уже выполненным regression run.
 
 ## CFC-05 — Сделать registry sealing обязательной фазой запуска
 
@@ -72,6 +107,8 @@ depends_on:
 ## CFC-06 — Передавать candidate явно и объединить publication с UE projection
 
 - [ ] CFC-06 — Передавать candidate явно и объединить publication с UE projection
+
+**Зависимость:** CFC-04A и CFC-05. Проверка сохранности A включает прежние registry resolutions, а не только сохранение адреса её snapshot; fixture CFC-04A повторяется через верхний runtime entry point.
 
 **Файлы:** `Source/GV2/Private/Application/GV2SessionCoordinator.h/.cpp`, `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, `Source/GV2/Public/Runtime/GV2RuntimeSubsystem.h`, `Source/GV2/Public/Bridge/GV2BridgeTypes.h`, production reconciler/factory callers из actual references; `Source/GV2/Private/Tests/GV2RuntimeCoreTests.cpp`, `GV2RuntimeSubsystemTests.cpp`; `Docs/Architecture/BootstrapAndSessionLifecycle.md`, `Docs/UI/UIDocumentAndReconciliation.md`, `Docs/UI/ScreenTemplates.md`.
 
