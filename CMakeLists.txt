@@ -488,4 +488,18 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_headless_hash_fields.py"
             "--self-test"
     )
+    # CFC-04A: session content snapshot ownership and Screen Registry value-isolation contract
+    add_test(
+        NAME session_snapshot_ownership_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_snapshot_ownership.py"
+    )
+    add_test(
+        NAME session_snapshot_ownership_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_snapshot_ownership.py"
+            "--self-test"
+    )
 endif()

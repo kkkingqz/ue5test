@@ -1839,18 +1839,18 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
         ? RegistrySettings->RegistryAsset.LoadSynchronous()
         : nullptr;
     TestNotNull(TEXT("Configured Screen Registry is loadable"), Registry);
+    FGV2ResolvedScreenRegistry ResolvedRegistry;
     FString BuildError;
     TestTrue(
-        *FString::Printf(TEXT("Screen Registry builds [Error: %s]"), *BuildError),
-        Registry != nullptr && Registry->Build(GV2PackageClosure::DiscoverFromGameData(), BuildError));
+        *FString::Printf(TEXT("Screen Registry compiles [Error: %s]"), *BuildError),
+        Registry != nullptr && Registry->CompileResolvedRegistry(GV2PackageClosure::DiscoverFromGameData(), ResolvedRegistry, BuildError));
     FGV2ResolvedScreenDescriptor TestScreenDescriptor;
     FGV2ScreenResolutionRejection TestScreenRejection;
-    const bool bTestScreenResolved = Registry != nullptr
-        && Registry->Resolve(
-            TEXT("core:screen.test"),
-            FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
-            TestScreenDescriptor,
-            TestScreenRejection);
+    const bool bTestScreenResolved = ResolvedRegistry.Resolve(
+        TEXT("core:screen.test"),
+        FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
+        TestScreenDescriptor,
+        TestScreenRejection);
     TestTrue(
         *FString::Printf(TEXT("Screen Registry contains the test screen entry [Error: %s]"), *TestScreenRejection.Message),
         bTestScreenResolved);
@@ -1878,12 +1878,11 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
     // core:screen.test_embedded is registered Embedded.
     FGV2ResolvedScreenDescriptor CrossPlacementDescriptor;
     FGV2ScreenResolutionRejection EmbeddedRequestedAsTopLevelRejection;
-    const bool bEmbeddedRequestedAsTopLevelResolved = Registry != nullptr
-        && Registry->Resolve(
-            TEXT("core:screen.test_embedded"),
-            FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
-            CrossPlacementDescriptor,
-            EmbeddedRequestedAsTopLevelRejection);
+    const bool bEmbeddedRequestedAsTopLevelResolved = ResolvedRegistry.Resolve(
+        TEXT("core:screen.test_embedded"),
+        FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
+        CrossPlacementDescriptor,
+        EmbeddedRequestedAsTopLevelRejection);
     TestFalse(
         TEXT("Screen registered Embedded is rejected when resolved as TopLevel"),
         bEmbeddedRequestedAsTopLevelResolved);
@@ -1892,12 +1891,11 @@ bool FGV2ScreenRegistryContract::RunTest(const FString& Parameters)
         EmbeddedRequestedAsTopLevelRejection.Message.Contains(TEXT("core:diagnostic.ui_screen_registry.placement_mismatch")));
 
     FGV2ScreenResolutionRejection TopLevelRequestedAsEmbeddedRejection;
-    const bool bTopLevelRequestedAsEmbeddedResolved = Registry != nullptr
-        && Registry->Resolve(
-            TEXT("core:screen.test"),
-            FGV2ScreenPlacement::Embedded(),
-            CrossPlacementDescriptor,
-            TopLevelRequestedAsEmbeddedRejection);
+    const bool bTopLevelRequestedAsEmbeddedResolved = ResolvedRegistry.Resolve(
+        TEXT("core:screen.test"),
+        FGV2ScreenPlacement::Embedded(),
+        CrossPlacementDescriptor,
+        TopLevelRequestedAsEmbeddedRejection);
     TestFalse(
         TEXT("Screen registered TopLevel is rejected when resolved as Embedded"),
         bTopLevelRequestedAsEmbeddedResolved);
@@ -4060,8 +4058,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
     // 2. UIF-17: Screen Registry Validation
     UGV2ScreenRegistry* Registry = NewObject<UGV2ScreenRegistry>();
+    FGV2ResolvedScreenRegistry EmptyResolvedRegistry;
     FString ValidationError;
-    TestFalse(TEXT("Empty registry fails to build"), Registry->Build({}, ValidationError));
+    TestFalse(TEXT("Empty registry fails to build"), Registry->CompileResolvedRegistry({}, EmptyResolvedRegistry, ValidationError));
 
     // 3. UIF-19, UIF-20, UIF-21: Multi-layer Reconciliation, Reuse, Replacement, Modal Blocking, Atomicity
     UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
@@ -5605,6 +5604,11 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
         // this is the production shape, not an authority call invented for the test.
         UGV2ScreenRegistry* Registry = LoadConfiguredRegistryForTest();
         TestNotNull(TEXT("PAH-08: a configured Screen Registry is available"), Registry);
+        FGV2ResolvedScreenRegistry ResolvedRegistry;
+        FString CompileError;
+        const bool bCompiled = Registry != nullptr
+            && Registry->CompileResolvedRegistry(GV2PackageClosure::DiscoverFromGameData(), ResolvedRegistry, CompileError);
+        TestTrue(TEXT("PAH-08: configured Screen Registry compiles"), bCompiled);
 
         UGV2ScreenWidgetBase* Fixture = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
 
@@ -5619,7 +5623,7 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
                 // Result deliberately unused for widget selection: the fixture screen is
                 // returned either way. What matters here is that the production factory
                 // shape consults the authority, and that it does so during preparation.
-                (void)Registry->Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection);
+                (void)ResolvedRegistry.Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection);
                 return Fixture;
             };
 

@@ -18,7 +18,7 @@ depends_on:
 
 1. Добавьте Definition kind `screen` по [Add Definition](AddDefinition.md).
 2. Соберите Widget Blueprint на базе `WBP_ScreenBase` из существующих Dynamic Screen Elements. Editor asset создаётся и меняется только через `unreal-mcp`, затем compile/save.
-3. Добавьте `screen_id → widget class + layer` в Screen Registry через Unreal Editor API.
+3. Добавьте `screen_id → widget class + layer` в авторский Screen Registry через Unreal Editor API. При запуске сессии ассет компилируется в независимое immutable значение snapshot (`FGV2ResolvedScreenRegistry`), через которое происходит runtime-разрешение экранов.
 4. Объявите в template полный набор `field_id`, соответствующие `schema_id` и required policy.
 5. Постройте полный desired Screen Instance в Lua:
 

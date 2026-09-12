@@ -54,13 +54,16 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
     }
 
     FString RegistryBuildError;
+    FGV2ResolvedScreenRegistry ResolvedRegistry;
+    const bool bRegistryBuilt = Registry != nullptr
+        && Registry->CompileResolvedRegistry(GV2PackageClosure::FromResolvedPackageSet(*ResolvedSet), ResolvedRegistry, RegistryBuildError);
     TestTrue(
         *FString::Printf(TEXT("DUC-10: Screen Registry builds [Error: %s]"), *RegistryBuildError),
-        Registry->Build(GV2PackageClosure::FromResolvedPackageSet(*ResolvedSet), RegistryBuildError));
+        bRegistryBuilt);
 
     FGV2ResolvedScreenDescriptor ChainDescriptor;
     FGV2ScreenResolutionRejection ChainRejection;
-    const bool bChainResolved = Registry->Resolve(
+    const bool bChainResolved = ResolvedRegistry.Resolve(
         TEXT("textsystem:screen.duc10_nested_chain"),
         FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
         ChainDescriptor,
@@ -71,7 +74,7 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
 
     FGV2ResolvedScreenDescriptor BlockDescriptor;
     FGV2ScreenResolutionRejection BlockRejection;
-    const bool bBlockResolved = Registry->Resolve(
+    const bool bBlockResolved = ResolvedRegistry.Resolve(
         TEXT("textsystem:screen.duc10_nested_block"),
         FGV2ScreenPlacement::Embedded(),
         BlockDescriptor,
@@ -206,11 +209,11 @@ bool FGV2Duc10NestedChainFixtureTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    auto ScreenFactory = [Registry, TestWorld](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
+    auto ScreenFactory = [&ResolvedRegistry, TestWorld](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
     {
         FGV2ResolvedScreenDescriptor Descriptor;
         FGV2ScreenResolutionRejection Rejection;
-        if (!Registry->Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection))
+        if (!ResolvedRegistry.Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection))
         {
             return nullptr;
         }

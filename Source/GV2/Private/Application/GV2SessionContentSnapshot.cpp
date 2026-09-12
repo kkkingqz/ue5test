@@ -18,23 +18,6 @@ std::string SnapshotToUtf8(const FString& Value)
 }
 } // namespace
 
-// PAH-08: phase=prepare -- a passthrough to UGV2ScreenRegistry::Resolve (the actual
-// authority, itself phase=authority). Not yet called from any production path -- PSC-06
-// wires FGV2PresentationPrepareContext to reach this only from Prepare.
-bool FGV2ResolvedScreenRegistry::Resolve(
-    const FString& ScreenId,
-    const FGV2ScreenPlacement& Placement,
-    FGV2ResolvedScreenDescriptor& OutDescriptor,
-    FGV2ScreenResolutionRejection& OutRejection) const
-{
-    if (!Registry.IsValid())
-    {
-        OutRejection.Code = EGV2ScreenResolutionError::UnknownScreenId;
-        OutRejection.Message = TEXT("core:diagnostic.ui_screen_registry.no_snapshot");
-        return false;
-    }
-    return Registry->Resolve(ScreenId, Placement, OutDescriptor, OutRejection);
-}
 
 // PAH-08: phase=prepare -- a passthrough to UGV2ImageResourceCatalog::Resolve. Not yet
 // called from any production path -- PSC-06 wires FGV2PresentationPrepareContext to reach
@@ -134,12 +117,11 @@ bool FGV2SessionContentCandidate::Build(
     const TArray<GV2PackageClosure::FEntry> ClosureEntries =
         GV2PackageClosure::FromResolvedPackageSet(ResolvedPackageSet);
     FString RegistryError;
-    if (!RegistryAsset->Build(ClosureEntries, RegistryError))
+    if (!RegistryAsset->CompileResolvedRegistry(ClosureEntries, OutSnapshot.ScreenRegistry, RegistryError))
     {
         OutFault = {"ScreenRegistryNotReady", SnapshotToUtf8(RegistryError)};
         return false;
     }
-    OutSnapshot.ScreenRegistry.Registry = TStrongObjectPtr<UGV2ScreenRegistry>(RegistryAsset);
 
     // Image Catalog -- a fresh transient instance this candidate owns, mirroring
     // UGV2ImageResourceCatalog::RebuildForSession's own construction (NewObject +
@@ -200,7 +182,7 @@ bool FGV2SessionContentCandidate::Build(
     std::vector<std::pair<std::string, GV2ContentCore::FValue>> PresentationFields;
 
     std::vector<GV2ContentCore::FValue> ScreensArray;
-    for (const TPair<FString, FString>& Identity : RegistryAsset->GetResolvedScreenIdentities())
+    for (const TPair<FString, FString>& Identity : OutSnapshot.ScreenRegistry.GetResolvedScreenIdentities())
     {
         std::vector<std::pair<std::string, GV2ContentCore::FValue>> ScreenFields;
         ScreenFields.emplace_back("screen_id", GV2ContentCore::FValue::MakeString(SnapshotToUtf8(Identity.Key)));

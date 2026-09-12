@@ -62,9 +62,12 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
     }
 
     FString RegistryBuildError;
+    FGV2ResolvedScreenRegistry ResolvedRegistry;
+    const bool bRegistryBuilt = Registry != nullptr
+        && Registry->CompileResolvedRegistry(GV2PackageClosure::FromResolvedPackageSet(*ResolvedSet), ResolvedRegistry, RegistryBuildError);
     TestTrue(
         *FString::Printf(TEXT("DCA-11: Screen Registry builds [Error: %s]"), *RegistryBuildError),
-        Registry->Build(GV2PackageClosure::FromResolvedPackageSet(*ResolvedSet), RegistryBuildError));
+        bRegistryBuilt);
 
     const TPair<const TCHAR*, FGV2ScreenPlacement> ExpectedScreens[] = {
         {TEXT("textsystem:screen.dca11_inventory_fixture"), FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent)},
@@ -75,7 +78,7 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
     {
         FGV2ResolvedScreenDescriptor Descriptor;
         FGV2ScreenResolutionRejection Rejection;
-        const bool bResolved = Registry->Resolve(ScreenId, Placement, Descriptor, Rejection);
+        const bool bResolved = ResolvedRegistry.Resolve(ScreenId, Placement, Descriptor, Rejection);
         if (!TestTrue(
                 *FString::Printf(TEXT("DCA-11: '%s' is registered [Error: %s]"), ScreenId, *Rejection.Message),
                 bResolved))
@@ -181,11 +184,11 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    auto ScreenFactory = [Registry, TestWorld](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
+    auto ScreenFactory = [&ResolvedRegistry, TestWorld](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
     {
         FGV2ResolvedScreenDescriptor Descriptor;
         FGV2ScreenResolutionRejection Rejection;
-        if (!Registry->Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection))
+        if (!ResolvedRegistry.Resolve(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), Descriptor, Rejection))
         {
             return nullptr;
         }

@@ -52,7 +52,7 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 ## Счёт и интерпретация
 
-Первоначальный аудит дал девять находок: шесть P1 и три P2; семь contract gaps перенесены в `STATUS-013…019`, две находки организации приёмки остаются открытыми здесь. Дополнительная проверка внешнего review 2026-09-12 подтвердила SNAP-AF-01 / STATUS-020. Итого десять находок: семь P1 и три P2, восемь подтверждённых contract gaps. Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Результаты запусков выше относятся к первоначальному аудиту; дополнение ниже основано на анализе кода и не является повторным полным test run.
+Первоначальный аудит дал девять находок: шесть P1 и три P2; семь contract gaps перенесены в `STATUS-013…019`, две находки организации приёмки остаются открытыми здесь. Дополнительная проверка внешнего review 2026-09-12 подтвердила SNAP-AF-01 (закрыта задачей CFC-04A, STATUS-020 удалён). Находка PSC-AF-03 также закрыта задачей CFC-04 (STATUS-013 удалён). Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Результаты запусков выше относятся к первоначальному аудиту; дополнение ниже основано на анализе кода и не является повторным полным test run.
 
 ### Snapshot ownership — дополнение внешнего review
 
@@ -70,7 +70,7 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 **Проверка для закрытия:** authoring DataAsset компилируется read-only в независимый resolved registry value каждого snapshot; fingerprint и Resolve читают именно его. Published A сохраняет exact descriptor/class/placement outcomes после registry failure B и успешного B с различающимися inputs/closures. Дополнительно проверяются strong class ownership при GC и actual inventory вложенных authority references; `const` wrapper или shallow pointer copy недостаточны. Исполнение — [CFC-04A](../Plans/CppFoundationClosure/SessionLifecycle.md#cfc-04a-сделать-resolved-screen-registry-независимым-значением-snapshot); верхний UI replacement повторяет CFC-06.
 
-**Исход:** подтверждено как contract gap, [STATUS-020](ImplementationStatus.md). Добавление задачи не является исправлением.
+**Исход:** *(Закрыто задачей CFC-04A)* Авторский `UGV2ScreenRegistry` переведён в статус строго входного `const` DataAsset без мутируемого кэша, а `FGV2SessionContentSnapshot` теперь владеет независимым значением `FGV2ResolvedScreenRegistry` с GC-safe `TStrongObjectPtr<UClass>`, изолированным от мутаций и ошибок других сессий (подтверждено тестом `FGV2SessionScreenRegistrySnapshotIsolationTest` и статическим гейтом `validate_session_snapshot_ownership.py`).
 
 ### PresentationStructuralClosure
 

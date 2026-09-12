@@ -16,18 +16,6 @@
 // constructor is instantiated -- e.g. GV2SessionCoordinator.cpp's MakeUnique<...>() -- so T
 // must be a complete type here, not merely forward-declared.
 
-// Resolved Screen Registry built and strongly owned by this session's candidate.
-struct FGV2ResolvedScreenRegistry
-{
-    TStrongObjectPtr<UGV2ScreenRegistry> Registry;
-
-    bool Resolve(
-        const FString& ScreenId,
-        const FGV2ScreenPlacement& Placement,
-        FGV2ResolvedScreenDescriptor& OutDescriptor,
-        FGV2ScreenResolutionRejection& OutRejection) const;
-};
-
 struct FGV2ResolvedImageCatalog
 {
     TStrongObjectPtr<UGV2ImageResourceCatalog> Catalog;

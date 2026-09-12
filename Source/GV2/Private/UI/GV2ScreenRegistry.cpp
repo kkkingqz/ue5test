@@ -241,15 +241,15 @@ bool UGV2ScreenRegistry::IsAssetAllowedForScreenNamespace(
     return AssetPackageIndex <= ScreenPackageIndex;
 }
 
-// PAH-08: phase=prepare -- compiles the authoring registry once, before a
-// session presents anything; this is where package order and content-root
-// ownership are read, and the only place they are.
-// PSC-02 (ADR-0043 D1/D5): ClosureEntries comes from the caller's single resolved package
-// set (UGV2RuntimeSubsystem::Initialize) -- Build() itself performs no package discovery.
-bool UGV2ScreenRegistry::Build(const TArray<GV2PackageClosure::FEntry>& ClosureEntries, FString& OutError)
+// PAH-08: phase=prepare -- compiles the authoring registry once, into an isolated
+// FGV2ResolvedScreenRegistry value; package order and content-root ownership are validated,
+// and the authoring DataAsset is not mutated.
+bool UGV2ScreenRegistry::CompileResolvedRegistry(
+    const TArray<GV2PackageClosure::FEntry>& ClosureEntries,
+    FGV2ResolvedScreenRegistry& OutRegistry,
+    FString& OutError) const
 {
-    ResolvedByScreenId.Reset();
-    bBuilt = false;
+    OutError.Reset();
 
     if (Entries.IsEmpty())
     {
@@ -274,7 +274,7 @@ bool UGV2ScreenRegistry::Build(const TArray<GV2PackageClosure::FEntry>& ClosureE
         return false;
     }
 
-    TMap<FString, FResolvedScreen> Built;
+    TMap<FString, FGV2ResolvedScreenRegistry::FResolvedScreenRow> LocalRows;
     for (const FGV2ScreenRegistryEntry& Entry : Entries)
     {
         if (!GV2StableIdUE::IsOfKind(Entry.ScreenId, "screen"))
@@ -283,7 +283,7 @@ bool UGV2ScreenRegistry::Build(const TArray<GV2PackageClosure::FEntry>& ClosureE
             return false;
         }
 
-        if (Built.Contains(Entry.ScreenId))
+        if (LocalRows.Contains(Entry.ScreenId))
         {
             OutError = FString::Printf(TEXT("Duplicate screen_id: '%s'"), *Entry.ScreenId);
             return false;
@@ -344,23 +344,25 @@ bool UGV2ScreenRegistry::Build(const TArray<GV2PackageClosure::FEntry>& ClosureE
             }
         }
 
-        Built.Add(Entry.ScreenId, FResolvedScreen{WidgetClass, Entry.Layer});
+        LocalRows.Add(Entry.ScreenId, FGV2ResolvedScreenRegistry::FResolvedScreenRow{
+            TStrongObjectPtr<UClass>(WidgetClass),
+            Entry.Layer
+        });
     }
 
-    ResolvedByScreenId = MoveTemp(Built);
-    bBuilt = true;
+    OutRegistry.Rows = MoveTemp(LocalRows);
     return true;
 }
 
 // PAH-08: phase=authority
-bool UGV2ScreenRegistry::Resolve(
+bool FGV2ResolvedScreenRegistry::Resolve(
     const FString& ScreenId,
     const FGV2ScreenPlacement& Placement,
     FGV2ResolvedScreenDescriptor& OutDescriptor,
     FGV2ScreenResolutionRejection& OutRejection) const
 {
     GV2_NOTE_AUTHORITY_RESOLVE();
-    const FResolvedScreen* Found = bBuilt ? ResolvedByScreenId.Find(ScreenId) : nullptr;
+    const FResolvedScreenRow* Found = Rows.Find(ScreenId);
     if (Found == nullptr)
     {
         OutRejection.Code = EGV2ScreenResolutionError::UnknownScreenId;
@@ -380,10 +382,10 @@ bool UGV2ScreenRegistry::Resolve(
     switch (Placement.GetKind())
     {
     case FGV2ScreenPlacement::EKind::Embedded:
-        bPlacementMatches = IsLayerAllowedForEmbedded(Found->Layer);
+        bPlacementMatches = UGV2ScreenRegistry::IsLayerAllowedForEmbedded(Found->Layer);
         break;
     case FGV2ScreenPlacement::EKind::TopLevel:
-        bPlacementMatches = IsLayerAllowedForTopLevel(Found->Layer) && Found->Layer == Placement.GetLayer();
+        bPlacementMatches = UGV2ScreenRegistry::IsLayerAllowedForTopLevel(Found->Layer) && Found->Layer == Placement.GetLayer();
         break;
     default:
         checkf(false, TEXT("Unhandled FGV2ScreenPlacement::EKind value"));
@@ -400,21 +402,17 @@ bool UGV2ScreenRegistry::Resolve(
     }
 
     OutDescriptor.ScreenId = ScreenId;
-    OutDescriptor.WidgetClass = Found->WidgetClass;
+    OutDescriptor.WidgetClass = Found->WidgetClass.Get();
     return true;
 }
 
-TArray<TPair<FString, FString>> UGV2ScreenRegistry::GetResolvedScreenIdentities() const
+TArray<TPair<FString, FString>> FGV2ResolvedScreenRegistry::GetResolvedScreenIdentities() const
 {
     TArray<TPair<FString, FString>> Identities;
-    if (!bBuilt)
+    Identities.Reserve(Rows.Num());
+    for (const auto& [ScreenId, Row] : Rows)
     {
-        return Identities;
-    }
-    Identities.Reserve(ResolvedByScreenId.Num());
-    for (const auto& [ScreenId, Resolved] : ResolvedByScreenId)
-    {
-        const FString ClassPath = Resolved.WidgetClass != nullptr ? Resolved.WidgetClass->GetPathName() : FString();
+        const FString ClassPath = Row.WidgetClass.IsValid() ? Row.WidgetClass->GetPathName() : FString();
         Identities.Emplace(ScreenId, ClassPath);
     }
     Identities.Sort([](const TPair<FString, FString>& A, const TPair<FString, FString>& B)

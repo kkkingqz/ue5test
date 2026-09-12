@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Engine/DataAsset.h"
+#include "UObject/StrongObjectPtr.h"
 #include "GV2ScreenRegistry.generated.h"
 
 namespace GV2PackageClosure { struct FEntry; }
@@ -104,6 +105,49 @@ struct GV2_API FGV2ScreenResolutionRejection
     FString Message;
 };
 
+// CFC-04A: Independent, immutable resolved screen registry owned by a session snapshot.
+// Compiled read-only from authoring UGV2ScreenRegistry; holds GC-safe strong references
+// to resolved widget classes (TStrongObjectPtr<UClass>), placement policies, and
+// provides deterministic screen identity enumeration.
+class GV2_API FGV2ResolvedScreenRegistry
+{
+public:
+    FGV2ResolvedScreenRegistry() = default;
+    ~FGV2ResolvedScreenRegistry() = default;
+    FGV2ResolvedScreenRegistry(const FGV2ResolvedScreenRegistry&) = default;
+    FGV2ResolvedScreenRegistry& operator=(const FGV2ResolvedScreenRegistry&) = default;
+    FGV2ResolvedScreenRegistry(FGV2ResolvedScreenRegistry&&) = default;
+    FGV2ResolvedScreenRegistry& operator=(FGV2ResolvedScreenRegistry&&) = default;
+
+    // PAH-02 / CFC-04A: The only way to obtain a resolved screen's class.
+    // Switches exhaustively over FGV2ScreenPlacement::EKind, validates layer matching,
+    // and returns the descriptor with WidgetClass rooted by this registry.
+    bool Resolve(
+        const FString& ScreenId,
+        const FGV2ScreenPlacement& Placement,
+        FGV2ResolvedScreenDescriptor& OutDescriptor,
+        FGV2ScreenResolutionRejection& OutRejection) const;
+
+    // PSC-04 / CFC-04A: Deterministic identity enumeration (sorted by screen_id)
+    // for presentation_hash composition: pairs of (screen_id, widget class path).
+    TArray<TPair<FString, FString>> GetResolvedScreenIdentities() const;
+
+    int32 Num() const { return Rows.Num(); }
+    bool IsEmpty() const { return Rows.IsEmpty(); }
+    bool Contains(const FString& ScreenId) const { return Rows.Contains(ScreenId); }
+
+private:
+    friend class UGV2ScreenRegistry;
+
+    struct FResolvedScreenRow
+    {
+        TStrongObjectPtr<UClass> WidgetClass;
+        FName Layer;
+    };
+
+    TMap<FString, FResolvedScreenRow> Rows;
+};
+
 UCLASS(BlueprintType)
 class GV2_API UGV2ScreenRegistry : public UDataAsset
 {
@@ -182,43 +226,24 @@ public:
         TArray<FGV2ContentRootOwnership>& OutOwnership,
         FString& OutError);
 
-    // PAH-02: performs every authoring-time check exactly once -- screen_id format,
-    // duplicates, WidgetClass load/inheritance/non-abstract, layer name validity, and
-    // package ownership of the widget asset (folds in the former, production-dead
-    // Validate()). Must succeed before Resolve() can return anything but
-    // UnknownScreenId. Idempotent: safe to call again (e.g. before a fresh Resolve() in
-    // a standalone test that only loaded the DataAsset), rebuilding from Entries each time.
-    // PSC-02 (ADR-0043 D1/D5): ClosureEntries is the caller's single already-resolved
-    // package set -- Build() performs no package discovery of its own.
-    bool Build(const TArray<GV2PackageClosure::FEntry>& ClosureEntries, FString& OutError);
+    // CFC-04A (ADR-0043 D1): Compiles authoring Entries into an independent, value-owned
+    // FGV2ResolvedScreenRegistry. Const operation: writes only into a local builder, and
+    // populates OutRegistry strictly on complete success. On failure, OutRegistry is untouched.
+    // The DataAsset holds NO runtime cache or mutation state.
+    bool CompileResolvedRegistry(
+        const TArray<GV2PackageClosure::FEntry>& ClosureEntries,
+        FGV2ResolvedScreenRegistry& OutRegistry,
+        FString& OutError) const;
 
-    // PAH-02: the only way to get a screen's class. A screen registered for one Placement
-    // is rejected, not silently handed out, when asked for a different one -- Placement
-    // is not optional and there is no overload that omits it.
-    bool Resolve(
-        const FString& ScreenId,
-        const FGV2ScreenPlacement& Placement,
-        FGV2ResolvedScreenDescriptor& OutDescriptor,
-        FGV2ScreenResolutionRejection& OutRejection) const;
-
-    // PSC-04 (ADR-0043 D1): every resolved screen's own identity (screen_id, its already-
-    // loaded WidgetClass's path) for presentation_hash -- not FGV2ScreenRegistryEntry (the
-    // raw, unvalidated authoring row validate_screen_registry_entry_encapsulation.py keeps
-    // out of production code), and not usable to obtain a class outside Resolve()'s checks.
-    // Deterministic (sorted by screen_id) so the hash doesn't depend on TMap iteration order.
-    TArray<TPair<FString, FString>> GetResolvedScreenIdentities() const;
+    // CFC-04A: test helper to append entry to synthetic registry assets.
+    void AddEntryForTest(const FGV2ScreenRegistryEntry& Entry)
+    {
+        Entries.Add(Entry);
+    }
 
 private:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GV2|UI|Screen Registry", meta = (AllowPrivateAccess = "true"))
     TArray<FGV2ScreenRegistryEntry> Entries;
-
-    struct FResolvedScreen
-    {
-        UClass* WidgetClass = nullptr;
-        FName Layer;
-    };
-    TMap<FString, FResolvedScreen> ResolvedByScreenId;
-    bool bBuilt = false;
 };
 
 UCLASS(Config = Game, DefaultConfig)

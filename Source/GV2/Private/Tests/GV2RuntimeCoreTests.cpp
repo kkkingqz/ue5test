@@ -8,6 +8,8 @@
 #include "Application/GV2SessionContentSnapshot.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "UI/GV2UiSchemaCache.h"
+#include "UI/GV2ScreenRegistry.h"
+#include "UI/GV2GameShellWidgetBase.h"
 #include "Blueprint/UserWidget.h"
 #include "UObject/UObjectIterator.h"
 #include "Components/VerticalBox.h"
@@ -2034,7 +2036,7 @@ bool FGV2SessionContentSnapshotContract::RunTest(const FString& Parameters)
         TEXT("A known ui_field schema is already compiled in the snapshot's schema cache"),
         Snapshot->GetSchemaCache().GetCompiledSchema("core:schema.ui_field.text.v1", SchemaError).get());
 
-    TestTrue(TEXT("Snapshot owns a resolved Screen Registry"), Snapshot->GetScreenRegistry().Registry.IsValid());
+    TestTrue(TEXT("Snapshot owns a resolved Screen Registry"), !Snapshot->GetScreenRegistry().IsEmpty());
     TestTrue(TEXT("Snapshot owns a resolved Image Catalog"), Snapshot->GetImageCatalog().Catalog.IsValid());
     TestTrue(TEXT("Snapshot owns a resolved Theme"), Snapshot->GetTheme().Theme.IsValid());
 
@@ -2951,6 +2953,204 @@ bool FGV2SessionUiSchemaSnapshotIsolationTest::RunTest(const FString& Parameters
     const int32 DiscoveryCountAfter = FGV2UiSchemaCache::GetGlobalDiscoveryCount();
     TestEqual(TEXT("Re-processing against Snapshot A does not read filesystem or invoke discovery"),
         DiscoveryCountAfter, DiscoveryCountBefore);
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionScreenRegistrySnapshotIsolationTest,
+    "GV2.Runtime.Session.ScreenRegistrySnapshotIsolation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// CFC-04A: Screen Registry is an independent, immutable value owned by FGV2SessionContentSnapshot.
+// 1. Candidate B fails build closed when Screen Registry is invalid, leaving Snapshot A untouched.
+// 2. Snapshot A and Snapshot B compile distinct screen sets: Snapshot A resolves only A's screens,
+//    Snapshot B resolves only B's screens, and their presentation hashes differ.
+// 3. GC collection does not invalidate rooted widget classes in Snapshot A even after Candidate/Snapshot B is discarded.
+bool FGV2SessionScreenRegistrySnapshotIsolationTest::RunTest(const FString& Parameters)
+{
+    UGV2ScreenRegistrySettings* MutableSettings = GetMutableDefault<UGV2ScreenRegistrySettings>();
+    TestNotNull(TEXT("UGV2ScreenRegistrySettings is available"), MutableSettings);
+    if (MutableSettings == nullptr)
+    {
+        return false;
+    }
+
+    const TSoftObjectPtr<UGV2ScreenRegistry> OriginalRegistryAsset = MutableSettings->RegistryAsset;
+    struct FSettingsRestorer
+    {
+        TSoftObjectPtr<UGV2ScreenRegistry> SavedAsset;
+        ~FSettingsRestorer()
+        {
+            if (UGV2ScreenRegistrySettings* Settings = GetMutableDefault<UGV2ScreenRegistrySettings>())
+            {
+                Settings->RegistryAsset = SavedAsset;
+            }
+        }
+    } Restorer{OriginalRegistryAsset};
+
+    auto BuildSnapshotHelper = [](
+        FGV2SessionContentSnapshot& OutSnapshot,
+        FString& OutError) -> bool
+    {
+        const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+        const std::vector<std::filesystem::path> PackageRoots = {
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("core")))),
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("textsystem")))),
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("rh")))),
+        };
+
+        std::vector<GV2ContentCore::FDiagnostic> ResolveDiagnostics;
+        const std::optional<GV2ContentHostSupport::FResolvedPackageSet> ResolvedSet =
+            GV2ContentHostSupport::ResolvePackageSetFromDirectories(PackageRoots, ResolveDiagnostics);
+        if (!ResolvedSet.has_value())
+        {
+            OutError = TEXT("Unable to resolve package set");
+            return false;
+        }
+
+        const GV2ContentCore::FBuildResult RepositoryBuild =
+            BuildGV2RepositoryFromResolvedPackageSet(*ResolvedSet);
+        if (!RepositoryBuild.IsSuccess())
+        {
+            OutError = TEXT("Unable to build repository");
+            return false;
+        }
+
+        TArray<FGV2SchemaPackageRoot> SchemaRoots;
+        SchemaRoots.Reserve(static_cast<int32>(ResolvedSet->OrderedSources.size()));
+        for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedSet->OrderedSources)
+        {
+            SchemaRoots.Add(FGV2SchemaPackageRoot{
+                UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
+                UTF8_TO_TCHAR(Source.Root.string().c_str())});
+        }
+
+        GV2RuntimeCore::FRuntimeFault Fault;
+        if (!FGV2SessionContentCandidate::Build(
+                RepositoryBuild.GetCandidate().GetReadHandle(),
+                *ResolvedSet,
+                SchemaRoots,
+                {},
+                OutSnapshot,
+                Fault))
+        {
+            OutError = FString::Printf(TEXT("%s: %s"), UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str()));
+            return false;
+        }
+        return true;
+    };
+
+    // Prepare two distinct synthetic registries: RegistryA and RegistryB
+    TStrongObjectPtr<UGV2ScreenRegistry> RegistryA(NewObject<UGV2ScreenRegistry>(GetTransientPackage()));
+    TestNotNull(TEXT("Synthetic Registry A created"), RegistryA.Get());
+
+    TStrongObjectPtr<UGV2ScreenRegistry> RegistryB(NewObject<UGV2ScreenRegistry>(GetTransientPackage()));
+    TestNotNull(TEXT("Synthetic Registry B created"), RegistryB.Get());
+
+    // Entry A: core:screen.test (TopLevel location_content)
+    FGV2ScreenRegistryEntry EntryA;
+    EntryA.ScreenId = TEXT("core:screen.test");
+    EntryA.Layer = UGV2GameShellWidgetBase::LayerLocationContent;
+    EntryA.WidgetClass = TSoftClassPtr<UGV2ScreenWidgetBase>(FSoftObjectPath(TEXT("/Game/UI/Widgets/WBP_Testscreen.WBP_Testscreen_C")));
+    RegistryA->AddEntryForTest(EntryA);
+
+    // Entry B: core:screen.test_embedded (Embedded)
+    FGV2ScreenRegistryEntry EntryB;
+    EntryB.ScreenId = TEXT("core:screen.test_embedded");
+    EntryB.Layer = UGV2ScreenRegistry::LayerEmbedded;
+    EntryB.WidgetClass = TSoftClassPtr<UGV2ScreenWidgetBase>(FSoftObjectPath(TEXT("/Game/UI/Widgets/WBP_Testscreen.WBP_Testscreen_C")));
+    RegistryB->AddEntryForTest(EntryB);
+
+    // 1. Build Snapshot A with Registry A
+    MutableSettings->RegistryAsset = RegistryA.Get();
+    FGV2SessionContentSnapshot SnapshotA;
+    FString ErrorA;
+    const bool bBuiltA = BuildSnapshotHelper(SnapshotA, ErrorA);
+    TestTrue(*FString::Printf(TEXT("Build Snapshot A succeeded [Error: %s]"), *ErrorA), bBuiltA);
+    if (!bBuiltA)
+    {
+        return false;
+    }
+
+    // Verify initial resolution in Snapshot A
+    FGV2ResolvedScreenDescriptor DescA;
+    FGV2ScreenResolutionRejection RejA;
+    TestTrue(
+        TEXT("Snapshot A resolves core:screen.test"),
+        SnapshotA.GetScreenRegistry().Resolve(TEXT("core:screen.test"), FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent), DescA, RejA));
+    TestNotNull(TEXT("Snapshot A resolved class is valid"), DescA.WidgetClass);
+    UClass* InitialClassA = DescA.WidgetClass;
+
+    // 2. Candidate B failure isolation:
+    // Configure settings with an invalid registry (empty registry).
+    UGV2ScreenRegistry* InvalidRegistry = NewObject<UGV2ScreenRegistry>(GetTransientPackage());
+    MutableSettings->RegistryAsset = InvalidRegistry;
+    FGV2SessionContentSnapshot FailedSnapshotB;
+    FString ErrorFailedB;
+    const bool bBuiltFailedB = BuildSnapshotHelper(FailedSnapshotB, ErrorFailedB);
+    TestFalse(TEXT("Candidate B fails to build with invalid registry"), bBuiltFailedB);
+    TestTrue(TEXT("Candidate B fault is ScreenRegistryNotReady"), ErrorFailedB.Contains(TEXT("ScreenRegistryNotReady")));
+
+    // Snapshot A must remain completely unaffected by B's failure
+    FGV2ResolvedScreenDescriptor DescAAfterFailedB;
+    FGV2ScreenResolutionRejection RejAAfterFailedB;
+    TestTrue(
+        TEXT("Snapshot A still resolves core:screen.test after Candidate B failed"),
+        SnapshotA.GetScreenRegistry().Resolve(TEXT("core:screen.test"), FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent), DescAAfterFailedB, RejAAfterFailedB));
+    TestEqual(TEXT("Snapshot A resolved class unchanged"), DescAAfterFailedB.WidgetClass, InitialClassA);
+
+    // 3. Distinct registries: Snapshot A vs Snapshot B
+    MutableSettings->RegistryAsset = RegistryB.Get();
+    {
+        FGV2SessionContentSnapshot SnapshotB;
+        FString ErrorB;
+        const bool bBuiltB = BuildSnapshotHelper(SnapshotB, ErrorB);
+        TestTrue(*FString::Printf(TEXT("Build Snapshot B succeeded [Error: %s]"), *ErrorB), bBuiltB);
+        if (bBuiltB)
+        {
+            // Snapshot A resolves A's screen, rejects B's screen
+            FGV2ResolvedScreenDescriptor DescA_on_B;
+            FGV2ScreenResolutionRejection RejA_on_B;
+            TestFalse(
+                TEXT("Snapshot A does not resolve core:screen.test_embedded"),
+                SnapshotA.GetScreenRegistry().Resolve(TEXT("core:screen.test_embedded"), FGV2ScreenPlacement::Embedded(), DescA_on_B, RejA_on_B));
+            TestEqual(TEXT("Snapshot A rejection code is UnknownScreenId"), RejA_on_B.Code, EGV2ScreenResolutionError::UnknownScreenId);
+
+            // Snapshot B resolves B's screen, rejects A's screen
+            FGV2ResolvedScreenDescriptor DescB_on_B;
+            FGV2ScreenResolutionRejection RejB_on_B;
+            TestTrue(
+                TEXT("Snapshot B resolves core:screen.test_embedded"),
+                SnapshotB.GetScreenRegistry().Resolve(TEXT("core:screen.test_embedded"), FGV2ScreenPlacement::Embedded(), DescB_on_B, RejB_on_B));
+
+            FGV2ResolvedScreenDescriptor DescB_on_A;
+            FGV2ScreenResolutionRejection RejB_on_A;
+            TestFalse(
+                TEXT("Snapshot B does not resolve core:screen.test"),
+                SnapshotB.GetScreenRegistry().Resolve(TEXT("core:screen.test"), FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent), DescB_on_A, RejB_on_A));
+            TestEqual(TEXT("Snapshot B rejection code is UnknownScreenId"), RejB_on_A.Code, EGV2ScreenResolutionError::UnknownScreenId);
+
+            // Presentation hashes must differ because screen identities differ
+            TestNotEqual(
+                TEXT("Presentation hashes of Snapshot A and B are distinct"),
+                SnapshotA.GetPresentationHash(),
+                SnapshotB.GetPresentationHash());
+        }
+    } // Snapshot B destroyed here
+
+    // 4. Garbage collection safety:
+    // With Snapshot B destroyed, invoke GC and verify Snapshot A's resolved UClass* remains valid.
+    CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+    FGV2ResolvedScreenDescriptor DescAPostGC;
+    FGV2ScreenResolutionRejection RejAPostGC;
+    TestTrue(
+        TEXT("Snapshot A still resolves core:screen.test after garbage collection"),
+        SnapshotA.GetScreenRegistry().Resolve(TEXT("core:screen.test"), FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent), DescAPostGC, RejAPostGC));
+    TestNotNull(TEXT("Resolved class is still valid after GC"), DescAPostGC.WidgetClass);
+    TestTrue(TEXT("Resolved class is a valid UObject"), IsValid(DescAPostGC.WidgetClass));
+    TestEqual(TEXT("Resolved class matches original class"), DescAPostGC.WidgetClass, InitialClassA);
 
     return true;
 }

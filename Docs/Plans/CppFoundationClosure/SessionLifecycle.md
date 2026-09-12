@@ -42,7 +42,7 @@ depends_on:
 
 ## CFC-04A — Сделать resolved Screen Registry независимым значением snapshot
 
-- [ ] CFC-04A — Сделать resolved Screen Registry независимым значением snapshot
+- [x] CFC-04A — Сделать resolved Screen Registry независимым значением snapshot
 
 **Зависимость:** CFC-04; задача предшествует CFC-05/06. Закрывает SNAP-AF-01 (внешнее имя SNAP-R1), STATUS-020. Исполняется до проверки сохранности A при replacement: сохранение ссылки на A бессмысленно, если candidate B уже изменил её содержимое.
 
