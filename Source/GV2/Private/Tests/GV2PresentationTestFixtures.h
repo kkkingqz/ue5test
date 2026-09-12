@@ -47,6 +47,7 @@ public:
     {
         if (GameInstance != nullptr)
         {
+            GameInstance->Shutdown();
             if (World != nullptr)
             {
                 if (GEngine != nullptr)
@@ -56,7 +57,6 @@ public:
                 World->DestroyWorld(false);
                 World = nullptr;
             }
-            GameInstance->Shutdown();
             GameInstance->RemoveFromRoot();
             GameInstance = nullptr;
         }
