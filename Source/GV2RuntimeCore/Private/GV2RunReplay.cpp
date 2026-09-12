@@ -28,8 +28,17 @@ bool ReplayRunManifest(
         return false;
     }
 
+    char SeedBuffer[32];
+    std::snprintf(SeedBuffer, sizeof(SeedBuffer), "%016llx", static_cast<unsigned long long>(Manifest.Seed));
+
+    FSessionStartInputs StartInputs;
+    StartInputs.SessionGeneration = 1;
+    StartInputs.SeedHex = SeedBuffer;
+    StartInputs.Mode = "NewGame";
+    StartInputs.RepositoryContentHash = Manifest.RepositoryContentHash;
+
     FRuntimeSession Runtime;
-    if (!Runtime.Start(1, RepositoryHandle, RuntimeSources, OutFault))
+    if (!Runtime.Start(StartInputs, RepositoryHandle, RuntimeSources, OutFault))
     {
         OutResult.FaultCode = OutFault.Code;
         return false;

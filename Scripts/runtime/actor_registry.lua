@@ -481,10 +481,8 @@ M.wrap = function(actor_state)
 end
 
 function M.register(_ctx)
-    if not game.instances then
-        game.instances = {}
-    end
-    game.instances.actors = M.create_registry()
+    -- CFC-05: game.instances.actors is installed into the game facade by
+    -- core:module.bootstrap.registry_lifecycle before module register hooks run.
 end
 
 return M

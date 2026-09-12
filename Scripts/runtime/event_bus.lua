@@ -334,40 +334,19 @@ function M.freeze()
     end
 end
 
-function M.register(_ctx)
-    if not game then
-        game = {}
+function M.is_frozen()
+    if game and game.events and game.events.subscribers then
+        return game.events.subscribers.is_frozen()
     end
-    if not game.runtime then
-        game.runtime = {}
-    end
-    if not game.runtime.phase then
-        game.runtime.phase = "idle"
-    end
-    if not game.events then
-        game.events = {}
-    end
+    return false
+end
 
-    local registry, admin = subscriber_registry.create_registry()
+function M.set_subscriber_admin(admin)
     subscriber_registry_admin = admin
-    game.events.subscribers = registry
-    game.events.enqueue = M.enqueue
-    game.events.emit = M.emit
-    game.events.subscribe = registry.register
-    game.events.freeze = M.freeze
-    game.events.get_published_events = M.get_published_events
-    game.events.clear_published_events = M.clear_published_events
-    -- Review fix: clear_subscribers is deliberately NOT exposed on
-    -- game.events (production facade) — it can unfreeze the subscriber
-    -- registry, violating "Registries freeze после registration"
-    -- (BootstrapAndSessionLifecycle.md) if reachable by any gameplay
-    -- module/mod. Tests/Lua specs call event_bus.clear_subscribers()
-    -- directly (they already require() the module) — see M.clear_subscribers above.
-    game.events.set_pump_limit = M.set_pump_limit
-    game.events.get_pump_limit = M.get_pump_limit
-    game.events.reset_pump_limit = M.reset_pump_limit
-    game.events.get_queue_length = M.get_queue_length
-    game.events.is_envelope = event_envelope.is_envelope
+end
+
+function M.register(_ctx)
+    -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
 
 return M

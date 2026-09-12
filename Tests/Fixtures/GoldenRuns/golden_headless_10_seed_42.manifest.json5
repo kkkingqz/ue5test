@@ -1,8 +1,9 @@
 {
+  "manifest_format_version": 2,
   "lua_release_num": 50408,
   "repository_content_hash": "292a5ee53437e70fc8478cba179248adc035d688d83141ea5397a18e5e9d48e5",
-  "script_set_hash": "30090fbe05e806d129454c155eeb1f37171d8aed31f8183fd4f71fd195263493",
-  "seed": 42,
+  "script_set_hash": "4bcec7c28a5d7b1cc892ff10522b7ac11797caf8be3225445872f4514f7861fc",
+  "seed": "000000000000002a",
   "accepted_commands": [
     {
       "command_id": "core:command.test.headless_step",

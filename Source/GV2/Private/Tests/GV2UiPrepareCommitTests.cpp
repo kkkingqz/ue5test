@@ -17,6 +17,12 @@
 #include "Tests/GV2PresentationTestFixtures.h"
 #include "Engine/GameInstance.h"
 #include "UObject/GarbageCollection.h"
+#include "UI/GV2ListViewWidgetBase.h"
+#include "UI/GV2ButtonWidgetBase.h"
+#include "UI/GV2TabContainerWidgetBase.h"
+#include "GV2PresentationApply/PreparedPresentationTransaction.h"
+#include "UI/GV2ScreenWidgetBase.h"
+#include <future>
 
 namespace
 {
@@ -544,6 +550,291 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
                 TestEqual(*FString::Printf(TEXT("CFC-02A [%d]: WorldContexts returns to baseline"), Iter), GEngine->GetWorldContexts().Num(), BaselineContexts);
             }
         }
+    }
+
+    // 8. CFC-04B: FGV2KeyedCollectionPropertyConsumer GC ownership of off-tree candidates
+    {
+        GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+        FString ContextErr;
+        const bool bContextReady = ContextFixture.Initialize(ContextErr);
+        TestTrue(TEXT("CFC-04B: ContextFixture initialized"), bContextReady);
+        const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+
+        TStrongObjectPtr<UGV2ListViewWidgetBase> ListView(
+            CreateWidget<UGV2ListViewWidgetBase>(TestWorld, UGV2ListViewWidgetBase::StaticClass()));
+        UVerticalBox* ContainerBox = NewObject<UVerticalBox>(ListView.Get());
+        ListView->SetContainerPanel(ContainerBox);
+
+        FGV2UiPropertyCapability ItemCap;
+        ItemCap.TargetType = EGV2UiCapabilityTargetType::RendererControl;
+        ItemCap.EntryWidgetClass = UGV2ButtonWidgetBase::StaticClass();
+
+        FGV2UiCapabilityBuilder Builder;
+        Builder.AddKeyedCollection(TEXT("items"), FName(TEXT("ContainerPanel")), ItemCap, TEXT("key"), UGV2ButtonWidgetBase::StaticClass());
+        const FGV2UiCapabilityTree Tree = Builder.Build();
+        const FGV2UiPropertyCapability* CollCap = Tree.FindProperty(TEXT("items"));
+        TestNotNull(TEXT("CFC-04B: Collection capability found"), CollCap);
+
+        auto BaselineItemSpec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+        BaselineItemSpec->Kind = GV2ContentCore::EUiFieldKind::Object;
+        BaselineItemSpec->Fields.push_back({ "key", true, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Key) });
+        BaselineItemSpec->Fields.push_back({ "binding", false, std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>(GV2ContentCore::EUiFieldKind::Binding) });
+
+        const FGV2UiBindingHandle TestHandleA = FGV2UiBindingHandle::Create(TEXT("action_a@1:1"));
+        const FGV2UiBindingHandle TestHandleB = FGV2UiBindingHandle::Create(TEXT("action_b@1:1"));
+
+        TMap<FString, FGV2PreparedUiValue> ItemAInitMap;
+        ItemAInitMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_a")));
+        ItemAInitMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleA));
+
+        TMap<FString, FGV2PreparedUiValue> ItemBInitMap;
+        ItemBInitMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_b")));
+        ItemBInitMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleB));
+
+        TArray<FGV2PreparedUiValue> BaselineElements;
+        BaselineElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemAInitMap)));
+        BaselineElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemBInitMap)));
+
+        // 8a. Prepare off-tree candidates -> GC -> verify alive -> Commit -> verify attached
+        TWeakObjectPtr<UWidget> WeakItemA;
+        TWeakObjectPtr<UWidget> WeakItemB;
+        {
+            TSharedPtr<IGV2PropertyConsumer> Consumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+            TestNotNull(TEXT("CFC-04B: Collection consumer created"), Consumer.Get());
+            Consumer->SetPrepareContext(PrepareContext);
+
+            FGV2KeyedCollectionPropertyConsumer* KeyedConsumer =
+                static_cast<FGV2KeyedCollectionPropertyConsumer*>(Consumer.Get());
+            KeyedConsumer->SetCompiledItemSpec(BaselineItemSpec, TEXT("test:schema.button_item"), TEXT("items"));
+
+            FString PrepErr, CommitErr;
+            const bool bPrepSuccess = KeyedConsumer->Prepare(
+                FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(BaselineElements)),
+                *CollCap, ListView.Get(), PrepErr);
+            TestTrue(TEXT("CFC-04B: Collection Prepare succeeds"), bPrepSuccess);
+            TestEqual(TEXT("CFC-04B: CandidateWidgetsByKey has 2 items"), KeyedConsumer->GetCandidateWidgetsByKey().Num(), 2);
+
+            WeakItemA = KeyedConsumer->GetCandidateWidgetsByKey().FindChecked(FName(TEXT("item_a"))).Get();
+            WeakItemB = KeyedConsumer->GetCandidateWidgetsByKey().FindChecked(FName(TEXT("item_b"))).Get();
+            TestTrue(TEXT("CFC-04B: WeakItemA is valid after Prepare"), WeakItemA.IsValid());
+            TestTrue(TEXT("CFC-04B: WeakItemB is valid after Prepare"), WeakItemB.IsValid());
+
+            // Run GC while candidates are off-tree (uncommitted)
+            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+            TestTrue(TEXT("CFC-04B: WeakItemA survived GC in CandidateWidgetsByKey"), WeakItemA.IsValid());
+            TestTrue(TEXT("CFC-04B: WeakItemB survived GC in CandidateWidgetsByKey"), WeakItemB.IsValid());
+
+            // Commit transfers ownership to container and clears CandidateWidgetsByKey
+            const bool bCommitSuccess = KeyedConsumer->Commit(ListView.Get(), CommitErr);
+            TestTrue(TEXT("CFC-04B: Collection Commit succeeds"), bCommitSuccess);
+            TestEqual(TEXT("CFC-04B: CandidateWidgetsByKey cleared after Commit"), KeyedConsumer->GetCandidateWidgetsByKey().Num(), 0);
+            TestEqual(TEXT("CFC-04B: ActiveWidgetsByKey has 2 items"), KeyedConsumer->GetActiveWidgetsByKey().Num(), 2);
+
+            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+            TestTrue(TEXT("CFC-04B: WeakItemA survived GC as attached widget"), WeakItemA.IsValid());
+            TestTrue(TEXT("CFC-04B: WeakItemB survived GC as attached widget"), WeakItemB.IsValid());
+        }
+
+        // 8b. Abort / Reset path: uncommitted candidates are freed and collected by GC
+        {
+            TSharedPtr<IGV2PropertyConsumer> AbortConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::CollectionHost);
+            AbortConsumer->SetPrepareContext(PrepareContext);
+
+            FGV2KeyedCollectionPropertyConsumer* KeyedAbortConsumer =
+                static_cast<FGV2KeyedCollectionPropertyConsumer*>(AbortConsumer.Get());
+            KeyedAbortConsumer->SetCompiledItemSpec(BaselineItemSpec, TEXT("test:schema.button_item"), TEXT("items"));
+
+            TMap<FString, FGV2PreparedUiValue> ItemAbortMap;
+            ItemAbortMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("item_abort")));
+            ItemAbortMap.Add(TEXT("binding"), FGV2PreparedUiValue::MakeBinding(TestHandleA));
+            TArray<FGV2PreparedUiValue> AbortElements;
+            AbortElements.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(ItemAbortMap)));
+
+            FString PrepErr;
+            TestTrue(TEXT("CFC-04B: Abort consumer Prepare succeeds"),
+                KeyedAbortConsumer->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(AbortElements)),
+                    *CollCap, ListView.Get(), PrepErr));
+
+            TWeakObjectPtr<UWidget> WeakAbortItem =
+                KeyedAbortConsumer->GetCandidateWidgetsByKey().FindChecked(FName(TEXT("item_abort"))).Get();
+            TestTrue(TEXT("CFC-04B: WeakAbortItem valid before Reset"), WeakAbortItem.IsValid());
+
+            // Reset frees CandidateWidgetsByKey
+            KeyedAbortConsumer->Reset(ListView.Get());
+            TestEqual(TEXT("CFC-04B: CandidateWidgetsByKey cleared by Reset"), KeyedAbortConsumer->GetCandidateWidgetsByKey().Num(), 0);
+
+            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+            TestFalse(TEXT("CFC-04B: Discarded candidate collected by GC after Reset"), WeakAbortItem.IsValid());
+        }
+    }
+
+    // 9. CFC-04B: FGV2TabContainerTabsPropertyConsumer GC ownership, candidate lifecycle, and sibling failure rollback
+    {
+        GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+        FString ContextErr;
+        const bool bContextReady = ContextFixture.Initialize(ContextErr);
+        TestTrue(TEXT("CFC-04B: ContextFixture initialized for tabs"), bContextReady);
+        const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+
+        TStrongObjectPtr<UGV2TabContainerWidgetBase> TabContainer(
+            CreateWidget<UGV2TabContainerWidgetBase>(TestWorld, UGV2TabContainerWidgetBase::StaticClass()));
+
+        FGV2UiCapabilityBuilder Builder;
+        TabContainer->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree Tree = Builder.Build();
+        const FGV2UiPropertyCapability* TabsCap = Tree.FindProperty(TEXT("tabs"));
+        TestNotNull(TEXT("CFC-04B: Tabs capability found"), TabsCap);
+
+        TArray<FGV2PreparedUiValue> ValidTabs;
+        TMap<FString, FGV2PreparedUiValue> Tab1Map;
+        Tab1Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("inventory")));
+        Tab1Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(GV2PresentationTestFixtures::MakeResolvedText(TEXT("Inventory"))));
+        Tab1Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
+        ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab1Map)));
+
+        TMap<FString, FGV2PreparedUiValue> Tab2Map;
+        Tab2Map.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("skills")));
+        Tab2Map.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(GV2PresentationTestFixtures::MakeResolvedText(TEXT("Skills"))));
+        Tab2Map.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
+        ValidTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(Tab2Map)));
+
+        FGV2PreparedUiValue ValidTabsValue = FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(ValidTabs));
+
+        // 9a. Prepare off-tree candidates -> GC -> verify alive -> Commit -> verify attached
+        TWeakObjectPtr<UGV2ScreenWidgetBase> WeakTab1;
+        TWeakObjectPtr<UGV2ScreenWidgetBase> WeakTab2;
+        {
+            TSharedPtr<IGV2PropertyConsumer> TabsConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+            TestNotNull(TEXT("CFC-04B: Tabs consumer created"), TabsConsumer.Get());
+            TabsConsumer->SetPrepareContext(PrepareContext);
+
+            FGV2TabContainerTabsPropertyConsumer* TabConsumerConcrete =
+                static_cast<FGV2TabContainerTabsPropertyConsumer*>(TabsConsumer.Get());
+
+            FString PrepErr, CommitErr;
+            const bool bPrepSuccess = TabConsumerConcrete->Prepare(ValidTabsValue, *TabsCap, TabContainer.Get(), PrepErr);
+            TestTrue(TEXT("CFC-04B: Tabs Prepare succeeds"), bPrepSuccess);
+            TestEqual(TEXT("CFC-04B: Tab CandidateWidgetsByKey has 2 items"), TabConsumerConcrete->GetCandidateWidgetsByKey().Num(), 2);
+
+            WeakTab1 = TabConsumerConcrete->GetCandidateWidgetsByKey().FindChecked(FName(TEXT("inventory"))).Get();
+            WeakTab2 = TabConsumerConcrete->GetCandidateWidgetsByKey().FindChecked(FName(TEXT("skills"))).Get();
+            TestTrue(TEXT("CFC-04B: WeakTab1 valid after Prepare"), WeakTab1.IsValid());
+            TestTrue(TEXT("CFC-04B: WeakTab2 valid after Prepare"), WeakTab2.IsValid());
+
+            // Run GC while candidate screen widgets are off-tree
+            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+            TestTrue(TEXT("CFC-04B: WeakTab1 survived GC in CandidateWidgetsByKey"), WeakTab1.IsValid());
+            TestTrue(TEXT("CFC-04B: WeakTab2 survived GC in CandidateWidgetsByKey"), WeakTab2.IsValid());
+
+            // Commit transfers ownership to TabContainer
+            const bool bCommitSuccess = TabConsumerConcrete->Commit(TabContainer.Get(), CommitErr);
+            TestTrue(TEXT("CFC-04B: Tabs Commit succeeds"), bCommitSuccess);
+            TestEqual(TEXT("CFC-04B: Tab CandidateWidgetsByKey cleared after Commit"), TabConsumerConcrete->GetCandidateWidgetsByKey().Num(), 0);
+
+            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+            TestTrue(TEXT("CFC-04B: WeakTab1 survived GC as attached tab widget"), WeakTab1.IsValid());
+            TestTrue(TEXT("CFC-04B: WeakTab2 survived GC as attached tab widget"), WeakTab2.IsValid());
+        }
+
+        // 9b. Reset frees uncommitted candidate screen widgets
+        {
+            TSharedPtr<IGV2PropertyConsumer> AbortTabsConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+            AbortTabsConsumer->SetPrepareContext(PrepareContext);
+
+            FGV2TabContainerTabsPropertyConsumer* TabAbortConcrete =
+                static_cast<FGV2TabContainerTabsPropertyConsumer*>(AbortTabsConsumer.Get());
+
+            TArray<FGV2PreparedUiValue> AbortTabs;
+            TMap<FString, FGV2PreparedUiValue> AbortTabMap;
+            AbortTabMap.Add(TEXT("key"), FGV2PreparedUiValue::MakeKey(TEXT("abort_tab")));
+            AbortTabMap.Add(TEXT("title"), FGV2PreparedUiValue::MakeText(GV2PresentationTestFixtures::MakeResolvedText(TEXT("AbortTab"))));
+            AbortTabMap.Add(TEXT("screen_id"), FGV2PreparedUiValue::MakeStableId(TEXT("core:screen.test_embedded"), TEXT("screen")));
+            AbortTabs.Add(FGV2PreparedUiValue::MakeObject(FGV2PreparedUiObject::Create(AbortTabMap)));
+
+            FString PrepErr;
+            TestTrue(TEXT("CFC-04B: Tab abort Prepare succeeds"),
+                TabAbortConcrete->Prepare(
+                    FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(AbortTabs)),
+                    *TabsCap, TabContainer.Get(), PrepErr));
+
+            TWeakObjectPtr<UGV2ScreenWidgetBase> WeakAbortTab =
+                TabAbortConcrete->GetCandidateWidgetsByKey().FindChecked(FName(TEXT("abort_tab"))).Get();
+            TestTrue(TEXT("CFC-04B: WeakAbortTab valid before Reset"), WeakAbortTab.IsValid());
+
+            TabAbortConcrete->Reset(TabContainer.Get());
+            TestEqual(TEXT("CFC-04B: Tab CandidateWidgetsByKey cleared by Reset"), TabAbortConcrete->GetCandidateWidgetsByKey().Num(), 0);
+
+            CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
+
+            TestFalse(TEXT("CFC-04B: Discarded tab candidate collected by GC after Reset"), WeakAbortTab.IsValid());
+        }
+
+        // 9c. Late sibling failure rollback during CommitWithFailureInjector
+        {
+            TStrongObjectPtr<UGV2TabContainerWidgetBase> FailTabContainer(
+                CreateWidget<UGV2TabContainerWidgetBase>(TestWorld, UGV2TabContainerWidgetBase::StaticClass()));
+
+            TSharedPtr<IGV2PropertyConsumer> FailTabsConsumer = FGV2PropertyConsumerFactory::CreateConsumer(
+                EGV2PreparedUiValueKind::Array, EGV2UiCapabilityTargetType::NestedScreen);
+            FailTabsConsumer->SetPrepareContext(PrepareContext);
+
+            FGV2TabContainerTabsPropertyConsumer* TabFailConcrete =
+                static_cast<FGV2TabContainerTabsPropertyConsumer*>(FailTabsConsumer.Get());
+
+            FString PrepErr;
+            TestTrue(TEXT("CFC-04B: Tab fail Prepare succeeds"),
+                TabFailConcrete->Prepare(ValidTabsValue, *TabsCap, FailTabContainer.Get(), PrepErr));
+
+            // Inject failure on the second tab's child screen plan
+            FString FailCommitErr;
+            const bool bCommitFailed = TabFailConcrete->CommitWithFailureInjector(
+                FailTabContainer.Get(),
+                FailCommitErr,
+                [](const FString& InPropertyPath) -> bool
+                {
+                    return InPropertyPath.Contains(TEXT("skills"));
+                },
+                TEXT("tabs"));
+
+            // If failure happens, candidate widgets are reset/cleared
+            TestEqual(TEXT("CFC-04B: CandidateWidgetsByKey cleared on sibling failure"),
+                TabFailConcrete->GetCandidateWidgetsByKey().Num(), 0);
+        }
+    }
+
+    // 10. CFC-04B: Defensive Game Thread guard on FGV2PresentationApply::Apply
+    {
+        // 10a. On Game Thread: empty transaction passes thread guard
+        GV2PresentationApply::FGV2PreparedPresentationTransaction GtTransaction;
+        FGV2PresentationApplyResult GtResult;
+        const bool bGtSuccess = FGV2PresentationApply::Apply(GtTransaction, GtResult);
+        TestTrue(TEXT("CFC-04B: Apply on Game Thread succeeds on empty transaction"), bGtSuccess);
+        TestFalse(TEXT("CFC-04B: Apply on Game Thread does not emit off-game-thread diagnostic"),
+            GtResult.Error.Contains(TEXT("core:diagnostic.presentation_apply.off_game_thread")));
+
+        // 10b. Off Game Thread (worker thread): rejected with typed diagnostic
+        auto OffThreadFuture = std::async(std::launch::async, []()
+        {
+            GV2PresentationApply::FGV2PreparedPresentationTransaction WorkerTransaction;
+            FGV2PresentationApplyResult WorkerResult;
+            const bool bWorkerApplied = FGV2PresentationApply::Apply(WorkerTransaction, WorkerResult);
+            return TPair<bool, FString>(bWorkerApplied, WorkerResult.Error);
+        });
+
+        TPair<bool, FString> OffThreadOutcome = OffThreadFuture.get();
+        TestFalse(TEXT("CFC-04B: Apply from worker thread is rejected"), OffThreadOutcome.Key);
+        TestTrue(TEXT("CFC-04B: Apply from worker thread emits off_game_thread diagnostic"),
+            OffThreadOutcome.Value.Contains(TEXT("core:diagnostic.presentation_apply.off_game_thread")));
     }
 
     return true;

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Components/Widget.h"
+#include "UObject/StrongObjectPtr.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2PreparedUiValue.h"
 #include "UI/GV2UiCapability.h"
@@ -8,6 +10,7 @@
 #include "UI/GV2UiHostSemanticState.h"
 
 class UWidget;
+class UGV2ScreenWidgetBase;
 class FGV2PresentationPrepareContext;
 class FGV2UiHostMutationPlan;
 struct FGV2ScreenMutationPlan;
@@ -349,6 +352,9 @@ struct GV2_API FGV2CollectionItemDiscrepancy
 class GV2_API FGV2KeyedCollectionPropertyConsumer : public IGV2PropertyConsumer
 {
 public:
+    FGV2KeyedCollectionPropertyConsumer();
+    virtual ~FGV2KeyedCollectionPropertyConsumer() override;
+
     virtual EGV2PreparedUiValueKind GetSupportedKind() const override { return EGV2PreparedUiValueKind::Array; }
     virtual bool CanConsume(const FGV2PreparedUiValue& Value) const override;
     virtual bool Prepare(const FGV2PreparedUiValue& Value, const FGV2UiPropertyCapability& Capability, UWidget* TargetWidget, FString& OutError) override;
@@ -364,7 +370,8 @@ public:
         const FString& PropertyPath) override;
     virtual void Reset(UWidget* TargetWidget) override;
 
-    const TMap<FName, TObjectPtr<UWidget>>& GetActiveWidgetsByKey() const { return ActiveWidgetsByKey; }
+    const TMap<FName, TWeakObjectPtr<UWidget>>& GetActiveWidgetsByKey() const { return ActiveWidgetsByKey; }
+    const TMap<FName, TStrongObjectPtr<UWidget>>& GetCandidateWidgetsByKey() const { return CandidateWidgetsByKey; }
 
     void SetCompiledItemSpec(
         GV2ContentCore::FCompiledUiFieldSpecPtr InItemSpec,
@@ -393,7 +400,7 @@ private:
     struct FPreparedCollectionItem
     {
         FName Key;
-        TObjectPtr<UWidget> Widget;
+        TWeakObjectPtr<UWidget> Widget;
         TSharedPtr<FGV2UiHostMutationPlan> Plan;
         bool bIsHost = false;
         // GBF-05 (ADR-0041): restore this exact accounting snapshot only after
@@ -420,8 +427,8 @@ private:
 
     FString KeyPropertyName = TEXT("key");
     TArray<FPreparedCollectionItem> PreparedItems;
-    TMap<FName, TObjectPtr<UWidget>> ActiveWidgetsByKey;
-    TMap<FName, TObjectPtr<UWidget>> CandidateWidgetsByKey;
+    TMap<FName, TWeakObjectPtr<UWidget>> ActiveWidgetsByKey;
+    TMap<FName, TStrongObjectPtr<UWidget>> CandidateWidgetsByKey;
 
     GV2ContentCore::FCompiledUiFieldSpecPtr CompiledItemSpec;
     FString ContextSchemaId;
@@ -475,13 +482,16 @@ class UGV2ScreenWidgetBase;
 class GV2_API FGV2TabContainerTabsPropertyConsumer : public IGV2PropertyConsumer
 {
 public:
+    FGV2TabContainerTabsPropertyConsumer();
+    virtual ~FGV2TabContainerTabsPropertyConsumer() override;
+
     struct FPreparedTabItem
     {
         FName Key;
         FGV2TextViewModel Title;
         FString ScreenId;
         TSubclassOf<UGV2ScreenWidgetBase> ScreenWidgetClass;
-        TObjectPtr<UGV2ScreenWidgetBase> ScreenWidget;
+        TWeakObjectPtr<UGV2ScreenWidgetBase> ScreenWidget;
         // DUC-09: prepared through the child screen's own PrepareScreenFields, the
         // same public two-phase API a top-level screen uses -- not a hand-rolled
         // mutation plan built against a schema synthesized from its capability.
@@ -502,6 +512,7 @@ public:
     virtual void Reset(UWidget* TargetWidget) override;
 
     const TArray<FPreparedTabItem>& GetPreparedTabs() const { return PreparedTabs; }
+    const TMap<FName, TStrongObjectPtr<UGV2ScreenWidgetBase>>& GetCandidateWidgetsByKey() const { return CandidateWidgetsByKey; }
 
     // DUC-11: injected by PrepareUiHostProperties (GV2UiMutationPlan.cpp) right
     // after this consumer is created, mirroring FGV2KeyedCollectionPropertyConsumer's
@@ -514,7 +525,7 @@ public:
 
 private:
     TArray<FPreparedTabItem> PreparedTabs;
-    TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> CandidateWidgetsByKey;
+    TMap<FName, TStrongObjectPtr<UGV2ScreenWidgetBase>> CandidateWidgetsByKey;
     const TArray<FString>* ActiveCompositionChain = nullptr;
     const FGV2PresentationPrepareContext* PrepareContext = nullptr;
     // GBF-05: publishing is allowed only for a revision Prepare accepted. Without

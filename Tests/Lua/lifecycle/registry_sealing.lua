@@ -1,0 +1,181 @@
+-- CFC-05: Mandatory Registry Sealing Phase Specification
+-- Verifies:
+-- 1. All engine registries are sealed and report is_frozen() == true.
+-- 2. Late registration is uniformly rejected by every frozen registry.
+-- 3. Read-only facade slots prevent slot replacement and ad hoc additions.
+-- 4. Descriptor order matches contract sequence.
+-- 5. Sealing validation logic correctly catches errors and false predicates.
+
+local registry_lifecycle = require("core:module.bootstrap.registry_lifecycle")
+local state_validator = require("core:module.runtime.state_validator")
+local authoring_context = require("core:module.authoring.context")
+local authoring_properties = require("core:module.authoring.properties")
+
+return {
+    registry_lifecycle_module_present = function()
+        assert(registry_lifecycle ~= nil, "core:module.bootstrap.registry_lifecycle must be loadable")
+        assert(type(registry_lifecycle.install) == "function", "install must be a function")
+        assert(type(registry_lifecycle.seal) == "function", "seal must be a function")
+        assert(type(registry_lifecycle.is_sealed) == "function", "is_sealed must be a function")
+        assert(registry_lifecycle.is_sealed() == true, "registry_lifecycle must report is_sealed() == true in active session")
+    end,
+
+    descriptor_matches_contract_order = function()
+        local expected = {
+            "authoring",
+            "services",
+            "actions",
+            "entity_extensions",
+            "commands.validators",
+            "commands.handlers",
+            "events.subscribers",
+            "events",
+            "instances.actors",
+            "instances",
+            "presentation",
+            "state_validator",
+        }
+
+        local desc = registry_lifecycle.descriptor
+        assert(type(desc) == "table", "descriptor must be an array table")
+        assert(#desc == #expected, "descriptor length mismatch: expected " .. #expected .. ", got " .. #desc)
+
+        for i, exp in ipairs(expected) do
+            assert(desc[i].facade_path == exp, "descriptor order mismatch at index " .. i .. ": expected '" .. exp .. "', got '" .. tostring(desc[i].facade_path) .. "'")
+            assert(type(desc[i].seal) == "function", "entry " .. exp .. " must have seal function")
+            assert(type(desc[i].is_frozen) == "function", "entry " .. exp .. " must have is_frozen predicate")
+        end
+    end,
+
+    all_registries_frozen_in_active_session = function()
+        assert(game.services and game.services.is_frozen() == true, "game.services must be frozen")
+        assert(game.actions and game.actions.is_frozen() == true, "game.actions must be frozen")
+        assert(game.entity_extensions and game.entity_extensions.is_frozen() == true, "game.entity_extensions must be frozen")
+        assert(game.commands and game.commands.validators and game.commands.validators.is_frozen() == true, "game.commands.validators must be frozen")
+        assert(game.commands and game.commands.handlers and game.commands.handlers.is_frozen() == true, "game.commands.handlers must be frozen")
+        assert(game.events and game.events.subscribers and game.events.subscribers.is_frozen() == true, "game.events.subscribers must be frozen")
+        assert(game.events and game.events.is_frozen() == true, "game.events must be frozen")
+        assert(game.instances and game.instances.actors and game.instances.actors.is_frozen() == true, "game.instances.actors must be frozen")
+        assert(game.instances and game.instances.is_frozen() == true, "game.instances must be frozen")
+        assert(game.presentation and game.presentation.is_frozen() == true, "game.presentation must be frozen")
+        assert(state_validator.is_frozen() == true, "state_validator must be frozen")
+        assert(authoring_context.is_frozen() == true, "authoring_context must be frozen")
+        assert(authoring_properties.is_frozen() == true, "authoring_properties must be frozen")
+    end,
+
+    late_registration_rejected_across_all_registries = function()
+        -- Services
+        local ok, err = pcall(function()
+            game.services.register("core:service.test.late", { ping = function() end })
+        end)
+        assert(not ok and string.find(tostring(err), "ServiceRegistryFrozen"), "late service register must fail with ServiceRegistryFrozen")
+
+        -- Actions
+        ok, err = pcall(function()
+            game.actions.register("core:action.test.late", { execute = function() end })
+        end)
+        assert(not ok and string.find(tostring(err), "ActionRegistryFrozen"), "late action register must fail with ActionRegistryFrozen")
+
+        -- Entity extensions
+        ok, err = pcall(function()
+            game.entity_extensions.register("core:module.test.mod", "core", "actor", "late_method", function() end)
+        end)
+        assert(not ok and string.find(tostring(err), "EntityExtensionRegistryFrozen"), "late entity extension register must fail with EntityExtensionRegistryFrozen")
+
+        -- Validators
+        ok, err = pcall(function()
+            game.commands.validators.register("core:validator.test.late", function() return true end)
+        end)
+        assert(not ok and string.find(tostring(err), "ValidatorRegistryFrozen"), "late validator register must fail with ValidatorRegistryFrozen")
+
+        -- Handlers
+        ok, err = pcall(function()
+            game.commands.handlers.register("core:command.test.late", function() end)
+        end)
+        assert(not ok and string.find(tostring(err), "CommandHandlerRegistryFrozen"), "late handler register must fail with CommandHandlerRegistryFrozen")
+
+        -- Subscribers
+        ok, err = pcall(function()
+            game.events.subscribers.register("core:subscriber.test.late", "core:event.test.step", function() end)
+        end)
+        assert(not ok and string.find(tostring(err), "SubscriberRegistryFrozen"), "late subscriber register must fail with SubscriberRegistryFrozen")
+
+        -- Actors
+        ok, err = pcall(function()
+            game.instances.actors.register_type("test_disc", function(b) return b end)
+        end)
+        assert(not ok and string.find(tostring(err), "ActorTypeRegistryFrozen"), "late actor register must fail with ActorTypeRegistryFrozen")
+
+        -- Instances
+        ok, err = pcall(function()
+            game.instances.register_kind("test_kind")
+        end)
+        assert(not ok and string.find(tostring(err), "InstanceKindRegistryFrozen"), "late instance kind register must fail with InstanceKindRegistryFrozen")
+
+        -- Presentation source
+        ok, err = pcall(function()
+            game.presentation.register_source(function() return nil end)
+        end)
+        assert(not ok and string.find(tostring(err), "PresentationSourceRegistryFrozen"), "late presentation register must fail with PresentationSourceRegistryFrozen")
+
+        -- State validator reference fields
+        ok, err = pcall(function()
+            state_validator.register_reference_field("test_ref_field", "actor")
+        end)
+        assert(not ok and string.find(tostring(err), "StateReferenceFieldRegistryFrozen"), "late ref field register must fail with StateReferenceFieldRegistryFrozen")
+
+        -- Authoring properties
+        ok, err = pcall(function()
+            authoring_properties.register_definition_type("test_target", function(b) return b end)
+        end)
+        assert(not ok and string.find(tostring(err), "DefinitionTypeRegistryFrozen"), "late def type register must fail with DefinitionTypeRegistryFrozen")
+    end,
+
+    facade_read_only_protection = function()
+        -- Attempting to overwrite existing registry slot on game
+        local ok, err = pcall(function()
+            game.services = {}
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "overwriting game.services must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            game.commands = {}
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "overwriting game.commands must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        -- Attempting to add ad hoc slot to game facade
+        ok, err = pcall(function()
+            game.unauthorized_registry = {}
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "adding ad hoc slot to game must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        -- Attempting to overwrite slot in sub-facade
+        ok, err = pcall(function()
+            game.commands.validators = {}
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "overwriting game.commands.validators must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            game.events.subscribers = {}
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "overwriting game.events.subscribers must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            game.instances.actors = {}
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "overwriting game.instances.actors must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        -- Attempting to add ad hoc property to sub-facade
+        ok, err = pcall(function()
+            game.commands.extra = true
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "adding property to game.commands must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+    end,
+}

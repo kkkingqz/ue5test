@@ -23,6 +23,7 @@ struct GV2_PORTABLE_API FRunResult final
 
 struct GV2_PORTABLE_API FRunDigest final
 {
+    std::int32_t DigestFormatVersion = 2;
     std::string DigestHash;
     std::int32_t LuaReleaseNumber = FRuntimeSession::LuaReleaseNumber;
     std::string RepositoryContentHash;

@@ -5,6 +5,7 @@
 #include "GV2ContentCore/Value.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -85,6 +86,42 @@ struct FRuntimeFault
     std::string Code;
     std::string Message;
 };
+
+enum class ERuntimeLifecyclePhase
+{
+    Registering,
+    BuildingState,
+    RestoringInstances,
+    Starting
+};
+
+enum class ERuntimePhaseResultKind
+{
+    Completed,
+    Fault
+};
+
+struct FRuntimePhaseResult
+{
+    ERuntimePhaseResultKind Kind = ERuntimePhaseResultKind::Completed;
+    FRuntimeFault Fault;
+
+    static FRuntimePhaseResult MakeCompleted()
+    {
+        return {ERuntimePhaseResultKind::Completed, {}};
+    }
+
+    static FRuntimePhaseResult MakeFault(FRuntimeFault InFault)
+    {
+        return {ERuntimePhaseResultKind::Fault, std::move(InFault)};
+    }
+
+    bool IsCompleted() const { return Kind == ERuntimePhaseResultKind::Completed; }
+    bool IsFault() const { return Kind == ERuntimePhaseResultKind::Fault; }
+};
+
+using FPhaseCompletionCallback = std::function<bool(ERuntimeLifecyclePhase Phase, const FRuntimePhaseResult& Result)>;
+
 
 struct FCommandRequest
 {
@@ -176,6 +213,33 @@ struct FReplacedModuleInfo
     bool operator==(const FReplacedModuleInfo&) const = default;
 };
 
+struct GV2_PORTABLE_API FSessionStartInputs final
+{
+    std::int32_t SessionGeneration = 1;
+    std::string SeedHex = "0000000000000000";
+    std::string Mode = "NewGame";
+    std::string RepositoryVersion;
+    std::string RepositoryContentHash;
+
+    bool operator==(const FSessionStartInputs&) const = default;
+};
+
+inline bool IsValidSeedHex(std::string_view SeedHex)
+{
+    if (SeedHex.size() != 16)
+    {
+        return false;
+    }
+    for (char C : SeedHex)
+    {
+        if (!((C >= '0' && C <= '9') || (C >= 'a' && C <= 'f')))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 class GV2_PORTABLE_API FRuntimeSession
 {
 public:
@@ -184,6 +248,12 @@ public:
 
     FRuntimeSession(const FRuntimeSession&) = delete;
     FRuntimeSession& operator=(const FRuntimeSession&) = delete;
+
+    bool Start(
+        const FSessionStartInputs& StartInputs,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        FRuntimeFault& OutFault);
 
     bool Start(
         std::int32_t InSessionGeneration,
@@ -201,6 +271,14 @@ public:
     // unstarted, exactly like a failed Start() above — never a partially
     // loaded state. NewGame's Start() above is entirely unaffected.
     bool StartFromSave(
+        const FSessionStartInputs& StartInputs,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        ISaveSlotStorage& Storage,
+        const std::string& SaveSlotId,
+        FRuntimeFault& OutFault);
+
+    bool StartFromSave(
         std::int32_t InSessionGeneration,
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
         const std::vector<FRuntimeSource>& Sources,
@@ -208,7 +286,25 @@ public:
         const std::string& SaveSlotId,
         FRuntimeFault& OutFault);
 
-    bool Stop(FRuntimeFault* OutFault = nullptr);
+    bool StartSessionPhases(
+        const FSessionStartInputs& StartInputs,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        const std::string* LoadContainerBytes,
+        const FPhaseCompletionCallback& PhaseCallback,
+        FRuntimeFault& OutFault);
+
+    bool StartSessionPhases(
+        std::int32_t InSessionGeneration,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        const std::string* LoadContainerBytes,
+        const FPhaseCompletionCallback& PhaseCallback,
+        FRuntimeFault& OutFault);
+
+    bool Stop(FRuntimeFault* OutFault = nullptr, const std::string& Reason = "teardown");
+
+    static std::int32_t GetLiveVmCount();
 
     // SAV-05/06/10: wires the host's slot-scoped save storage into
     // game.save_slots for this session (composition root's job, per
@@ -266,6 +362,7 @@ public:
     bool IsStarted() const;
     bool IsExecuting() const;
     std::int32_t GetSessionGeneration() const;
+    std::string GetSeedHex() const;
     const GV2ContentCore::FRepositoryReadHandle& GetPinnedRepository() const;
     std::string GetCanonicalStateHash(FRuntimeFault* OutFault = nullptr) const;
     std::string GetScriptSetHash() const;

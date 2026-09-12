@@ -93,6 +93,8 @@ INFRA_STRUCT_ALLOWLIST = {
     "FGV2ScreenInstanceViewModel",
     "FGV2UiDocumentViewModel",
     "FGV2SessionStatus",
+    "FSessionStartDescriptor",
+    "FGV2SessionStartDescriptor",
 }
 
 

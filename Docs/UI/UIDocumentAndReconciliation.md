@@ -249,9 +249,13 @@ Publication является atomic: registry сначала валидируе�
 
 ### Lifetime и thread boundary prepared state
 
-Верхний owner prepared transaction/reconciliation обязан удерживать GC-safe strong references на каждый off-tree candidate и UObject, необходимый для rollback, до terminal `Commit` или `Abort`. После успешного attach владение передаётся UMG hierarchy/`UPROPERTY`; после `Abort` discarded candidates освобождаются. Borrowed ссылки на уже attached targets выражаются weak reference и повторно проверяются перед physical use. Plain `TObjectPtr` внутри непрослеживаемого C++ container не является GC ownership; `AddToRoot` как постоянная замена scoped ownership запрещён.
+Верхний owner prepared transaction/reconciliation обязан удерживать GC-safe strong references на каждый off-tree candidate и UObject, необходимый для rollback, до terminal `Commit` или `Abort`:
+- **Off-tree candidates**: `FGV2KeyedCollectionPropertyConsumer` и `FGV2TabContainerTabsPropertyConsumer` хранят созданные off-tree кандидаты в `CandidateWidgetsByKey` через `TStrongObjectPtr<UUserWidget>`. Реконсилер слоёв `FGV2LayeredUiReconciler::FPreparedScreenInstance` хранит кандидатные top-level экраны через `TStrongObjectPtr<UGV2ScreenWidgetBase>`.
+- **Commit и transfer**: при успешном завершении `Commit` владение передаётся в UMG hierarchy (`UPanelWidget::AddChild` / `UPROPERTY`), а промежуточные `CandidateWidgetsByKey` и кандидатные указатели сбрасываются.
+- **Abort и cleanup**: при ошибке Prepare или Rollback вызов `Reset()` / сброс плана освобождает сильные ссылки, позволяя сборщику мусора Unreal Engine очистить отброшенные виджеты без утечек и без использования постоянных `AddToRoot`.
+- **Borrowed targets**: ссылки на уже присоединённые виджеты (`ActiveWidgetsByKey`, `TargetWidget` в `FGV2UiPropertyMutation`, `HostWidget` в `FGV2ScreenFieldPlan`, виджеты в `ActiveScreens`) используют `TWeakObjectPtr` и проверяются через `.IsValid()` перед физическим обращением. Plain `TObjectPtr` внутри непрослеживаемого C++ контейнера запрещён и отвергается статическим гейтом `validate_session_snapshot_ownership.py`.
 
-Все UObject/UMG Prepare, Commit, rollback и cleanup выполняются на Game Thread. Public `FGV2PresentationApply::Apply` отклоняет off-thread вызов до первой mutation. Этот guard защищает misuse, но не вводит async presentation architecture.
+Все UObject/UMG Prepare, Commit, rollback и cleanup выполняются на Game Thread. Public `FGV2PresentationApply::Apply` проверяет `IsInGameThread()` и отклоняет off-thread вызов до первой Slate/UMG мутации с типизированным кодом `core:diagnostic.presentation_apply.off_game_thread`. Этот guard защищает от misuse, но не вводит async presentation architecture.
 
 ## Presentation health and catastrophic recovery
 

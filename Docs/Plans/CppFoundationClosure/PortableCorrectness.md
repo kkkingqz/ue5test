@@ -44,7 +44,7 @@ depends_on:
 
 ## CFC-05A — Передать сборку canonical state целиком Lua
 
-- [ ] CFC-05A — Передать сборку canonical state целиком Lua
+- [x] CFC-05A — Передать сборку canonical state целиком Lua
 
 **Зависимость:** CFC-05. **Файлы:** `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp`, public session header; `Scripts/runtime/state_validator.lua`, `Scripts/bootstrap/main.lua`, `Scripts/bootstrap/manifest.lua`; создать `Scripts/runtime/state_composition.lua`, `Tests/Lua/lifecycle/state_contributions.lua`; перенести затронутые Lua-rule assertions из `Source/GV2/Private/Tests/GV2RuntimeCoreTests.cpp` в shared Lua specs. Native mechanism tests сохраняют проверки stack/error/phase boundary. Docs: `CanonicalStateAndSave.md`, `LuaRuntimeContract.md`, `BootstrapAndSessionLifecycle.md`, `Docs/Guides/AddLuaModule.md`.
 
@@ -72,7 +72,7 @@ depends_on:
 
 ## CFC-07A — Передать seed через единый deterministic session input
 
-- [ ] CFC-07A — Передать seed через единый deterministic session input
+- [x] CFC-07A — Передать seed через единый deterministic session input
 
 **Зависимость:** CFC-05A и CFC-07; выполняется до save/load CFC-08…10. **Файлы:** `Source/GV2RuntimeCore/Private/GV2RunReplay.cpp`, `GV2RuntimeSession.cpp`, manifest/digest codecs и conformance в том же каталоге; public session/manifest headers; `Headless/Source/main.cpp`; coordinator/start descriptor CFC-07; `Scripts/bootstrap/main.lua`, `Scripts/runtime/state_composition.lua`, `Scripts/runtime/state_validator.lua`; создать `Scripts/runtime/random.lua`, `Tests/Lua/lifecycle/deterministic_seed.lua`. Docs: `HeadlessSimulationContract.md`, `CanonicalStateAndSave.md`, `LuaRuntimeContract.md`, `RuntimeFacadeAndRegistries.md`, `Docs/Authoring/LuaGameplayReference.md`.
 

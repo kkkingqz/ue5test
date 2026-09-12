@@ -6,6 +6,10 @@
 -- module loader, never staged into the packaged game.
 local dispatcher_factory = require("core:module.runtime.command_dispatcher")
 local handler_registry = require("core:module.runtime.handler_registry")
+local validator_registry = require("core:module.runtime.validator_registry")
+local event_bus = require("core:module.runtime.event_bus")
+local subscriber_registry = require("core:module.runtime.subscriber_registry")
+local event_envelope = require("core:module.runtime.event_envelope")
 
 local M = {
     id = "core:module.test.command_validator_specs_driver",
@@ -47,6 +51,41 @@ local function make_scoped_validator(target_command_id, behavior)
 end
 
 function M.register(_ctx)
+    if not game.commands then
+        game.commands = {}
+    end
+    if not game.commands.validators then
+        game.commands.validators = validator_registry.create_registry()
+    end
+    if not game.commands.handlers then
+        game.commands.handlers = handler_registry.create_registry()
+    end
+    game.commands.enqueue = dispatcher_factory.enqueue
+    game.commands.clear_queue = dispatcher_factory.clear_queue
+    game.commands.get_queue_length = dispatcher_factory.get_queue_length
+    game.commands.drain_queue = dispatcher_factory.drain_queue
+
+    if not game.events then
+        game.events = {}
+    end
+    local sub_reg, admin = subscriber_registry.create_registry()
+    game.events.subscribers = sub_reg
+    if event_bus.set_subscriber_admin then
+        event_bus.set_subscriber_admin(admin)
+    end
+    game.events.enqueue = event_bus.enqueue
+    game.events.emit = event_bus.emit
+    game.events.subscribe = sub_reg.register
+    game.events.freeze = event_bus.freeze
+    game.events.is_frozen = event_bus.is_frozen
+    game.events.get_published_events = event_bus.get_published_events
+    game.events.clear_published_events = event_bus.clear_published_events
+    game.events.set_pump_limit = event_bus.set_pump_limit
+    game.events.get_pump_limit = event_bus.get_pump_limit
+    game.events.reset_pump_limit = event_bus.reset_pump_limit
+    game.events.get_queue_length = event_bus.get_queue_length
+    game.events.is_envelope = event_envelope.is_envelope
+
     -- GEW-02 fixtures (Tests/Lua/commands/validator_invocation.lua)
     game.commands.validators.register(
         "core:validator.test.gew02_read_check",
@@ -103,6 +142,10 @@ function M.register(_ctx)
             .. ":" .. tostring(game.state.mutation_attempt or false)
             .. ":" .. tostring(game.state.b_was_called or false)
     end
+
+    game.commands.validators.freeze()
+    game.commands.handlers.freeze()
+    game.events.freeze()
 end
 
 return M

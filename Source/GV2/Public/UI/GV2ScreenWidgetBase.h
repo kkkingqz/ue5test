@@ -10,7 +10,7 @@
 
 struct FGV2ScreenFieldPlan
 {
-    TObjectPtr<UUserWidget> HostWidget;
+    TWeakObjectPtr<UUserWidget> HostWidget;
     FGV2UiHostMutationPlan MutationPlan;
     TSharedPtr<const FGV2PreparedUiObject> CommittedValue;
     std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> CommittedSchema;

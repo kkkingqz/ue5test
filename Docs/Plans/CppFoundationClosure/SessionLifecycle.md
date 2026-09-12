@@ -77,7 +77,7 @@ Runtime cache `ResolvedByScreenId/bBuilt` на authoring DataAsset и snapshot-p
 
 ## CFC-04B — Зафиксировать GC ownership prepared UI и границу Game Thread
 
-- [ ] CFC-04B — Зафиксировать GC ownership prepared UI и границу Game Thread
+- [x] CFC-04B — Зафиксировать GC ownership prepared UI и границу Game Thread
 
 **Зависимость:** CFC-02A и CFC-04A. **Файлы:** `Source/GV2/Public/UI/GV2LayeredUiReconciler.h`, `GV2PropertyConsumers.h`, `GV2ScreenWidgetBase.h`, `GV2UiMutationPlan.h` в том же каталоге и их implementations; `Source/GV2PresentationApply/Private/PresentationApplyFacade.cpp`, prepared transaction/target types нижнего модуля; source ownership gate CFC-04A расширяется на actual prepared types; `Source/GV2/Private/Tests/GV2UiPrepareCommitTests.cpp`, `GV2UiCapabilityObservabilityTests.cpp`, `GV2RuntimeSubsystemTests.cpp`. Docs: `UIDocumentAndReconciliation.md`, `ScreenTemplates.md`, `BuildAndTooling.md`.
 
@@ -107,7 +107,7 @@ Runtime cache `ResolvedByScreenId/bBuilt` на authoring DataAsset и snapshot-p
 
 ## CFC-05 — Сделать registry sealing обязательной фазой запуска
 
-- [ ] CFC-05 — Сделать registry sealing обязательной фазой запуска
+- [x] CFC-05 — Сделать registry sealing обязательной фазой запуска
 
 **Файлы:** изменить `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp`, `Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2RuntimeSession.h`, `Scripts/bootstrap/main.lua`, `Scripts/bootstrap/manifest.lua`, `Scripts/runtime/state_validator.lua`; actual registry providers найти по их `game` publication и `freeze/is_frozen` definitions. Создать `Scripts/bootstrap/registry_lifecycle.lua`, `Tests/Lua/lifecycle/registry_sealing.lua`, `Tools/Testing/validate_registry_lifecycle_ownership.py`; native mechanism conformance и его public entry point добавить по [канонической форме](../../Architecture/BuildAndTooling.md#каноническая-форма-conformance-entry-point), подключить в обоих hosts. Документы: `RuntimeFacadeAndRegistries.md`, `LuaRuntimeContract.md`, `Docs/Guides/AddLuaModule.md`.
 
@@ -136,7 +136,7 @@ Runtime cache `ResolvedByScreenId/bBuilt` на authoring DataAsset и snapshot-p
 
 ## CFC-06 — Передавать candidate явно и объединить publication с UE projection
 
-- [ ] CFC-06 — Передавать candidate явно и объединить publication с UE projection
+- [x] CFC-06 — Передавать candidate явно и объединить publication с UE projection
 
 **Зависимость:** CFC-04A и CFC-05. Проверка сохранности A включает прежние registry resolutions, а не только сохранение адреса её snapshot; fixture CFC-04A повторяется через верхний runtime entry point.
 
@@ -174,7 +174,7 @@ Context приходит из конкретной active/candidate generation, 
 
 ## CFC-07 — Завершить lifecycle requests, отмену и teardown
 
-- [ ] CFC-07 — Завершить lifecycle requests, отмену и teardown
+- [x] CFC-07 — Завершить lifecycle requests, отмену и teardown
 
 **Файлы:** coordinator/subsystem/bridge types из CFC-06; `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp` и public header; создать `Source/GV2/Private/Application/GV2SessionTransition.h/.cpp` для private transition policy в существующем GV2 module и `Source/GV2/Private/Tests/GV2SessionTransitionTests.cpp`; portable phase-result mechanism tests/shared host adapters; `Docs/Architecture/BootstrapAndSessionLifecycle.md`, `Docs/Architecture/LuaRuntimeContract.md` (operation/re-entry boundary).
 

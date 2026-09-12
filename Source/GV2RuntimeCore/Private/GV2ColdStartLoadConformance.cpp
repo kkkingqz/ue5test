@@ -199,6 +199,32 @@ end
 return M
 )lua";
 
+const char* StateCompositionStubSource = R"lua(
+local state_validator = require("core:module.runtime.state_validator")
+
+local M = {
+    id = "core:module.runtime.state_composition",
+}
+
+function M.compose_default_state(ctx, modules)
+    local tree = state_validator.create_empty_canonical_state()
+    for _, entry in ipairs(modules or {}) do
+        local hook = entry.create_default_state or (entry.module and entry.module.create_default_state)
+        if hook then
+            local contrib = hook(ctx)
+            if contrib then
+                for k, v in pairs(contrib) do
+                    tree[k] = v
+                end
+            end
+        end
+    end
+    return tree, nil
+end
+
+return M
+)lua";
+
 // SAV-17/18/19: proves "migrate_state" fires before "restore_instances",
 // and only on a cold-start load — game.debug is outside canonical state,
 // so setting a flag there cannot affect the state_hash roundtrip
@@ -318,6 +344,11 @@ std::vector<FRuntimeSource> MakeSharedSources(const char* DriverModuleId, const 
                     dependencies = {},
                 },
                 {
+                    module_id = "core:module.runtime.state_composition",
+                    source = "runtime/state_composition.lua",
+                    dependencies = { "core:module.runtime.state_validator" },
+                },
+                {
                     module_id = "core:module.runtime.save",
                     source = "runtime/save.lua",
                     dependencies = {},
@@ -340,6 +371,7 @@ std::vector<FRuntimeSource> MakeSharedSources(const char* DriverModuleId, const 
                     dependencies = {
                         "core:module.runtime.migrate",
                         "core:module.runtime.state_validator",
+                        "core:module.runtime.state_composition",
                         "core:module.runtime.save",
                         "core:module.runtime.load",
                         "core:module.test.restore_marker",
@@ -352,6 +384,7 @@ std::vector<FRuntimeSource> MakeSharedSources(const char* DriverModuleId, const 
         {"@core/bootstrap/manifest.lua", Manifest},
         {"@core/runtime/migrate.lua", MigrateStubSource},
         {"@core/runtime/state_validator.lua", StateValidatorStubSource},
+        {"@core/runtime/state_composition.lua", StateCompositionStubSource},
         {"@core/runtime/save.lua", SaveStubSource},
         {"@core/runtime/load.lua", LoadStubSource},
         {"@core/test/restore_marker.lua", RestoreMarkerSource},

@@ -166,6 +166,12 @@ MECHANISM_LUA_FIXTURE_CONFORMANCE_FILES = {
     # preflight/integrity/redirect/safe-point rules are covered by
     # Tests/Lua/save/{canonical_codec,save_path,load_path}.lua instead.
     "GV2RuntimeCore/Private/GV2ColdStartLoadConformance.cpp",
+    # Tests FRuntimeSession::Start mandatory registry sealing orchestration
+    # (CFC-05, plan SessionLifecycle, M1): contract order traversal, fail-closed
+    # handling of throws, false is_frozen, missing participant, and missing seal
+    # methods before any canonical state build. Its embedded Lua is synthetic
+    # fixture data, not a gameplay rule.
+    "GV2RuntimeCore/Private/GV2RegistryLifecycleConformance.cpp",
 }
 
 

@@ -110,10 +110,12 @@ Portable host использует закрытые typed entry points, а не 
 
 - bootstrap принимает pinned repository, ordered sources и `start_inputs`, где `mode`, repository identity и `seed_hex` обязательны; load дополнительно получает captured opaque bytes;
 - registry sealing вызывается один раз после `register` hooks через private bootstrap owner и возвращает только success либо `FRuntimeFault`;
-- state composition, restore, validation и start являются последовательными protected phases и не возвращают canonical tree в C++;
+- state composition целиком владеет `core:module.runtime.state_composition` (`compose_default_state`); C++ не знает названий секций (`meta`, `mods`, `prng`, `time`) и правил слияния вкладов модулей, а вызывает единственную защищённую точку входа и проверяет типизированный результат;
+- restore, validation и start являются последующими защищёнными фазами с уведомлением о переходе через фазовый callback (`FPhaseCallback`), позволяющий хосту инспектировать прогресс и проверять cancellation между фазами без прерывания защищенного выполнения Lua; canonical tree не возвращается в C++ и boundary не пересекает;
+- в процессе гарантируется строго не более одной живой Lua VM (атомарный `GLiveVmCount`, `INV-010`), попытка превышения отвергается ошибкой `LuaVmExceededLimit`;
 - `preflight_save_bytes(bytes)` read-only проверяет container в active VM и возвращает только typed outcome;
 - `save_to_slot(slot_id)` вызывается host-ом только в safe point; storage binding получает opaque bytes;
-- stop/unregister выполняются в reverse resolved module order, уже известном loader-у.
+- `stop`/`unregister` выполняются в reverse resolved module order, уже известном loader-у (CFC-07); ошибка в user hook прерывает последующие user hooks, но не обязательный C++ teardown.
 
 `seed_hex` имеет форму ровно 16 lowercase ASCII hex characters и представляет полный uint64. Session generation не является seed. Load восстанавливает сохранённые stream states и не переинициализирует их из descriptor. Legacy numeric manifest seed мигрируется codec-ом, а не lifecycle entry point.
 

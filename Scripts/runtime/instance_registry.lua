@@ -218,18 +218,16 @@ M.freeze = function()
     return M.get_default_registry().freeze()
 end
 
-function M.register(_ctx)
-    if not game.instances then
-        game.instances = {}
+M.is_frozen = function()
+    if game and game.instances and game.instances.is_frozen then
+        return game.instances.is_frozen()
     end
-    local reg = M.get_default_registry()
-    game.instances.register_kind = reg.register_kind
-    game.instances.is_registered_kind = reg.is_registered_kind
-    game.instances.get_section_name = reg.get_section_name
-    game.instances.create = reg.create
-    game.instances.freeze = reg.freeze
-    game.instances.kinds = reg.kinds
-    game.instances.clear_for_test = reg.clear_for_test
+    return M.get_default_registry().is_frozen()
+end
+
+function M.register(_ctx)
+    -- CFC-05: game.instances is installed into the game facade by
+    -- core:module.bootstrap.registry_lifecycle before module register hooks run.
 end
 
 return M

@@ -2,6 +2,7 @@ local boundary = require("core:module.boundary.entrypoints")
 local resources = require("core:module.resources.service")
 local text = require("core:module.resources.text")
 local state_validator = require("core:module.runtime.state_validator")
+local state_composition = require("core:module.runtime.state_composition")
 local instance_allocator = require("core:module.runtime.instance_allocator")
 local instance_registry = require("core:module.runtime.instance_registry")
 local state_hasher = require("core:module.runtime.state_hasher")
@@ -26,6 +27,11 @@ local authoring_presentation = require("core:module.authoring.presentation")
 local authoring_field = require("core:module.authoring.field")
 local authoring_context = require("core:module.authoring.context")
 local presentation_source = require("core:module.runtime.presentation_source")
+local random = require("core:module.runtime.random")
+local registry_lifecycle = require("core:module.bootstrap.registry_lifecycle")
+
+-- CFC-05: Install engine registries into read-only facade slots before module register hooks run.
+registry_lifecycle.install()
 
 return {
     id = "core:module.bootstrap.main",
@@ -33,6 +39,7 @@ return {
     resources = resources,
     text = text,
     state_validator = state_validator,
+    state_composition = state_composition,
     instance_allocator = instance_allocator,
     instance_registry = instance_registry,
     state_hasher = state_hasher,
@@ -57,4 +64,6 @@ return {
     authoring_presentation = authoring_presentation,
     authoring_field = authoring_field,
     presentation_source = presentation_source,
+    random = random,
+    registry_lifecycle = registry_lifecycle,
 }

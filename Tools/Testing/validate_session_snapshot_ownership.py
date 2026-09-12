@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Validates that FGV2SessionContentSnapshot and FGV2ResolvedScreenRegistry own independent,
-immutable resolved values and do not retain pointers/references to the authoring UGV2ScreenRegistry DataAsset.
+"""Validates that:
+1. FGV2SessionContentSnapshot and FGV2ResolvedScreenRegistry own independent,
+   immutable resolved values and do not retain pointers/references to the authoring UGV2ScreenRegistry DataAsset.
+2. Prepared UI types (reconciliation, collection consumers, tab consumers, screen field plans, property mutations)
+   strictly maintain explicit GC ownership: off-tree candidates use TStrongObjectPtr, borrowed targets use
+   TWeakObjectPtr, and no untraced raw or plain TObjectPtr pointers exist.
 
 CFC-04A (ADR-0043 D1, SNAP-AF-01, STATUS-020):
-1. FGV2SessionContentSnapshot and FGV2ResolvedScreenRegistry must not store pointers or references
-   (raw, smart, TStrongObjectPtr, TWeakObjectPtr, TObjectPtr) to UGV2ScreenRegistry.
-2. UGV2ScreenRegistry is strictly an authoring DataAsset: it must not contain mutable runtime caches
-   (ResolvedByScreenId, bBuilt), mutating Build() methods, or Resolve() member functions.
-3. FGV2ResolvedScreenRegistry must hold GC-safe strong references (TStrongObjectPtr<UClass>)
-   to resolved widget classes.
-4. FGV2SessionContentSnapshot member declarations are strictly inventoried and classified.
+- FGV2SessionContentSnapshot and FGV2ResolvedScreenRegistry must not store pointers or references to UGV2ScreenRegistry.
+- UGV2ScreenRegistry is strictly an authoring DataAsset without mutable runtime caches.
+- FGV2ResolvedScreenRegistry holds GC-safe strong references (TStrongObjectPtr<UClass>) to resolved widget classes.
+- FGV2SessionContentSnapshot member declarations are strictly inventoried and classified.
+
+CFC-04B (ADR-0041, ADR-0042, CFC-AF-03, STATUS-021):
+- Prepared candidate widgets (FPreparedScreenInstance, CandidateWidgetsByKey) are held as TStrongObjectPtr.
+- Borrowed targets (HostWidget, TargetWidget, ScreenWidget, ActiveWidgetsByKey, Modals) are held as TWeakObjectPtr.
+- Member inventories of prepared UI types are strictly inventoried and classified.
 """
 
 from __future__ import annotations
@@ -33,6 +39,120 @@ REGISTRY_HEADER_PATH = (
 REGISTRY_IMPL_PATH = (
     REPO_ROOT / "Source" / "GV2" / "Private" / "UI" / "GV2ScreenRegistry.cpp"
 )
+RECONCILER_HEADER_PATH = (
+    REPO_ROOT / "Source" / "GV2" / "Public" / "UI" / "GV2LayeredUiReconciler.h"
+)
+PROPERTY_CONSUMERS_HEADER_PATH = (
+    REPO_ROOT / "Source" / "GV2" / "Public" / "UI" / "GV2PropertyConsumers.h"
+)
+SCREEN_WIDGET_BASE_HEADER_PATH = (
+    REPO_ROOT / "Source" / "GV2" / "Public" / "UI" / "GV2ScreenWidgetBase.h"
+)
+UI_MUTATION_PLAN_HEADER_PATH = (
+    REPO_ROOT / "Source" / "GV2" / "Public" / "UI" / "GV2UiMutationPlan.h"
+)
+
+EXPECTED_PREPARED_TYPES_MEMBERS: dict[str, dict[str, str]] = {
+    "FActiveScreenEntry": {
+        "ScreenId": "FString",
+        "Widget": "TWeakObjectPtr<UGV2ScreenWidgetBase>",
+    },
+    "FPreparedScreenInstance": {
+        "Layer": "FName",
+        "InstanceKey": "FName",
+        "ScreenId": "FString",
+        "TargetWidget": "TWeakObjectPtr<UGV2ScreenWidgetBase>",
+        "CandidateWidget": "TStrongObjectPtr<UGV2ScreenWidgetBase>",
+        "MutationPlan": "FGV2ScreenMutationPlan",
+        "CentralStyleTransaction": "GV2PresentationApply::FGV2PreparedPresentationTransaction",
+        "bIsReuse": "bool",
+    },
+    "FPreparedReconciliationPlan": {
+        "ScreensToUpdateOrAttach": "TArray<FPreparedScreenInstance>",
+        "NewActiveScreens": "TMap<FScreenSlotKey, FActiveScreenEntry>",
+        "bHasModals": "bool",
+        "Modals": "TArray<TWeakObjectPtr<UGV2ScreenWidgetBase>>",
+    },
+    "FPreparedCollectionItem": {
+        "Key": "FName",
+        "Widget": "TWeakObjectPtr<UWidget>",
+        "Plan": "TSharedPtr<FGV2UiHostMutationPlan>",
+        "bIsHost": "bool",
+        "PreviousCommittedSnapshot": "FGV2UiHostCommittedSnapshot",
+        "bIsReused": "bool",
+        "RollbackPlan": "TSharedPtr<FGV2UiHostMutationPlan>",
+        "CommittedValue": "TSharedPtr<const FGV2PreparedUiObject>",
+        "CentralStyleTransaction": "GV2PresentationApply::FGV2PreparedPresentationTransaction",
+    },
+    "FGV2KeyedCollectionPropertyConsumer": {
+        "PreparedItems": "TArray<FPreparedCollectionItem>",
+        "ActiveWidgetsByKey": "TMap<FName, TWeakObjectPtr<UWidget>>",
+        "CandidateWidgetsByKey": "TMap<FName, TStrongObjectPtr<UWidget>>",
+        "CompiledItemSpec": "GV2ContentCore::FCompiledUiFieldSpecPtr",
+        "ContextSchemaId": "FString",
+        "ContextPropertyPath": "FString",
+        "ContextScreenId": "FString",
+        "ContextFieldId": "FString",
+        "PrepareContext": "const FGV2PresentationPrepareContext*",
+        "Discrepancies": "TArray<FGV2CollectionItemDiscrepancy>",
+    },
+    "FPreparedTabItem": {
+        "Key": "FName",
+        "Title": "FGV2TextViewModel",
+        "ScreenId": "FString",
+        "ScreenWidgetClass": "TSubclassOf<UGV2ScreenWidgetBase>",
+        "ScreenWidget": "TWeakObjectPtr<UGV2ScreenWidgetBase>",
+        "ChildScreenPlan": "TSharedPtr<FGV2ScreenMutationPlan>",
+        "CentralStyleTransaction": "GV2PresentationApply::FGV2PreparedPresentationTransaction",
+        "bHasChildPlan": "bool",
+    },
+    "FGV2TabContainerTabsPropertyConsumer": {
+        "PreparedTabs": "TArray<FPreparedTabItem>",
+        "CandidateWidgetsByKey": "TMap<FName, TStrongObjectPtr<UGV2ScreenWidgetBase>>",
+        "ActiveCompositionChain": "const TArray<FString>*",
+        "PrepareContext": "const FGV2PresentationPrepareContext*",
+        "bHasAcceptedRevision": "bool",
+    },
+    "FGV2ScreenFieldPlan": {
+        "HostWidget": "TWeakObjectPtr<UUserWidget>",
+        "MutationPlan": "FGV2UiHostMutationPlan",
+        "CommittedValue": "TSharedPtr<const FGV2PreparedUiObject>",
+        "CommittedSchema": "std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>",
+        "CommittedSchemaId": "FString",
+        "PreviousCommittedSnapshot": "FGV2UiHostCommittedSnapshot",
+        "RollbackPlan": "FGV2UiHostMutationPlan",
+    },
+    "FGV2ScreenMutationPlan": {
+        "FieldPlans": "TArray<FGV2ScreenFieldPlan>",
+    },
+    "FGV2UiPropertyMutation": {
+        "PropertyName": "FString",
+        "PropertyPath": "FString",
+        "Kind": "EGV2PreparedUiValueKind",
+        "Consumer": "TSharedPtr<IGV2PropertyConsumer>",
+        "TargetWidget": "TWeakObjectPtr<UWidget>",
+        "bIsReset": "bool",
+        "PreparedValue": "FGV2PreparedUiValue",
+    },
+    "FGV2UiHostMutationPlan": {
+        "Mutations": "TArray<FGV2UiPropertyMutation>",
+    },
+}
+
+PREPARED_TYPES_CONFIG: list[tuple[str, str, bool, bool]] = [
+    # (type_name, header_key, private_only, strip_nested)
+    ("FActiveScreenEntry", "reconciler", False, False),
+    ("FPreparedScreenInstance", "reconciler", False, False),
+    ("FPreparedReconciliationPlan", "reconciler", False, False),
+    ("FPreparedCollectionItem", "property_consumers", False, False),
+    ("FGV2KeyedCollectionPropertyConsumer", "property_consumers", True, True),
+    ("FPreparedTabItem", "property_consumers", False, False),
+    ("FGV2TabContainerTabsPropertyConsumer", "property_consumers", True, True),
+    ("FGV2ScreenFieldPlan", "screen_widget_base", False, False),
+    ("FGV2ScreenMutationPlan", "screen_widget_base", False, False),
+    ("FGV2UiPropertyMutation", "ui_mutation_plan", False, False),
+    ("FGV2UiHostMutationPlan", "ui_mutation_plan", True, True),
+]
 
 EXPECTED_SNAPSHOT_MEMBERS = {
     "Repository": "GV2ContentCore::FRepositoryReadHandle",
@@ -61,9 +181,9 @@ def strip_comments(source: str) -> str:
     return re.sub(r"//[^\n]*", "", source)
 
 
-def extract_class_body(source: str, class_name: str) -> str | None:
+def extract_type_body(source: str, type_name: str) -> str | None:
     signature_pattern = re.compile(
-        rf"(?<!friend\s)\bclass\s+(?:[A-Z0-9_]+_API\s+)?{re.escape(class_name)}\b(?!\s*;)"
+        rf"(?<!friend\s)\b(?:class|struct)\s+(?:[A-Z0-9_]+_API\s+)?{re.escape(type_name)}\b(?!\s*;)"
     )
     match = signature_pattern.search(source)
     if not match:
@@ -84,6 +204,10 @@ def extract_class_body(source: str, class_name: str) -> str | None:
     return None
 
 
+def extract_class_body(source: str, class_name: str) -> str | None:
+    return extract_type_body(source, class_name)
+
+
 def extract_private_section(body: str) -> str:
     marker = body.find("private:")
     if marker < 0:
@@ -91,16 +215,50 @@ def extract_private_section(body: str) -> str:
     return body[marker:]
 
 
-FIELD_LINE_PATTERN = re.compile(r"^\s*(?P<type>[\w:<>,\*&]+(?:\s+[\w:<>,\*&]+)*)\s+(?P<name>[A-Za-z_]\w*)\s*;\s*$")
+def strip_nested_blocks(body: str) -> str:
+    result = []
+    depth = 0
+    for char in body:
+        if char == "{":
+            depth += 1
+            if depth == 1:
+                result.append(";")
+        elif char == "}":
+            depth -= 1
+        elif depth == 0:
+            result.append(char)
+    return "".join(result)
 
 
-def extract_member_fields(section: str) -> dict[str, str]:
+FIELD_LINE_PATTERN = re.compile(
+    r"^\s*(?P<type>[\w:<>,\*&]+(?:\s+[\w:<>,\*&]+)*)\s+(?P<name>[A-Za-z_]\w*)\s*(?:=\s*[^;]+)?;\s*$"
+)
+
+
+def extract_member_fields(body: str, private_only: bool = False, strip_nested: bool = False) -> dict[str, str]:
+    if private_only:
+        marker = body.find("private:")
+        if marker >= 0:
+            body = body[marker:]
+        else:
+            return {}
+    if strip_nested:
+        body = strip_nested_blocks(body)
     fields = {}
-    for line in section.splitlines():
+    for line in body.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("friend "):
+        if (
+            not stripped
+            or stripped.startswith("friend ")
+            or stripped.startswith("GENERATED_BODY")
+            or stripped.startswith("public:")
+            or stripped.startswith("protected:")
+            or stripped.startswith("private:")
+        ):
             continue
-        match = FIELD_LINE_PATTERN.match(line)
+        if "(" in stripped and not stripped.startswith("using "):
+            continue
+        match = FIELD_LINE_PATTERN.match(stripped)
         if match is None:
             continue
         fields[match.group("name")] = match.group("type")
@@ -218,12 +376,65 @@ def find_snapshot_ownership_violations(
     return violations
 
 
+def find_prepared_types_ownership_violations(headers: dict[str, str]) -> list[str]:
+    violations: list[str] = []
+    clean_headers = {k: strip_comments(v) for k, v in headers.items()}
+
+    untraced_widget_ptr_pattern = re.compile(
+        r"\b(?:UWidget|UUserWidget|UGV2ScreenWidgetBase)\s*\*|TObjectPtr\s*<\s*(?:UWidget|UUserWidget|UGV2ScreenWidgetBase)\s*>"
+    )
+
+    for type_name, header_key, private_only, strip_nested in PREPARED_TYPES_CONFIG:
+        header_src = clean_headers.get(header_key, "")
+        body = extract_type_body(header_src, type_name)
+        if not body:
+            violations.append(f"Could not find '{type_name}' in {header_key} header source")
+            continue
+
+        members = extract_member_fields(body, private_only=private_only, strip_nested=strip_nested)
+        if not members:
+            violations.append(f"{type_name} has no member fields parsed; extraction failed")
+            continue
+
+        expected = EXPECTED_PREPARED_TYPES_MEMBERS.get(type_name, {})
+        for name, expected_type in expected.items():
+            if name not in members:
+                violations.append(f"{type_name} is missing expected member '{name}'")
+            elif members[name] != expected_type:
+                violations.append(
+                    f"{type_name}::{name} has type '{members[name]}', expected '{expected_type}'"
+                )
+
+        for member_name in members:
+            if member_name not in expected:
+                violations.append(
+                    f"{type_name}::{member_name} is unclassified in EXPECTED_PREPARED_TYPES_MEMBERS"
+                )
+
+            actual_type = members[member_name]
+            if untraced_widget_ptr_pattern.search(actual_type):
+                violations.append(
+                    f"{type_name}::{member_name} has untraced raw/plain pointer type '{actual_type}'. "
+                    "Off-tree candidates must use TStrongObjectPtr and borrowed targets must use TWeakObjectPtr."
+                )
+
+    return violations
+
+
 def validate_repository() -> list[str]:
-    return find_snapshot_ownership_violations(
+    violations = find_snapshot_ownership_violations(
         SNAPSHOT_HEADER_PATH.read_text(encoding="utf-8"),
         REGISTRY_HEADER_PATH.read_text(encoding="utf-8"),
         REGISTRY_IMPL_PATH.read_text(encoding="utf-8"),
     )
+    headers = {
+        "reconciler": RECONCILER_HEADER_PATH.read_text(encoding="utf-8"),
+        "property_consumers": PROPERTY_CONSUMERS_HEADER_PATH.read_text(encoding="utf-8"),
+        "screen_widget_base": SCREEN_WIDGET_BASE_HEADER_PATH.read_text(encoding="utf-8"),
+        "ui_mutation_plan": UI_MUTATION_PLAN_HEADER_PATH.read_text(encoding="utf-8"),
+    }
+    violations.extend(find_prepared_types_ownership_violations(headers))
+    return violations
 
 
 def run_self_test() -> bool:
@@ -231,10 +442,21 @@ def run_self_test() -> bool:
     base_snapshot_hdr = SNAPSHOT_HEADER_PATH.read_text(encoding="utf-8")
     base_registry_hdr = REGISTRY_HEADER_PATH.read_text(encoding="utf-8")
     base_registry_impl = REGISTRY_IMPL_PATH.read_text(encoding="utf-8")
+    base_headers = {
+        "reconciler": RECONCILER_HEADER_PATH.read_text(encoding="utf-8"),
+        "property_consumers": PROPERTY_CONSUMERS_HEADER_PATH.read_text(encoding="utf-8"),
+        "screen_widget_base": SCREEN_WIDGET_BASE_HEADER_PATH.read_text(encoding="utf-8"),
+        "ui_mutation_plan": UI_MUTATION_PLAN_HEADER_PATH.read_text(encoding="utf-8"),
+    }
 
     errors = find_snapshot_ownership_violations(base_snapshot_hdr, base_registry_hdr, base_registry_impl)
     if errors:
         print("FAILED: current production sources violate the snapshot ownership contract:\n" + "\n".join(errors))
+        return False
+
+    prep_errors = find_prepared_types_ownership_violations(base_headers)
+    if prep_errors:
+        print("FAILED: current production sources violate the prepared types ownership contract:\n" + "\n".join(prep_errors))
         return False
 
     # Negative mutation 1: Snapshot retains TStrongObjectPtr<UGV2ScreenRegistry>
@@ -309,7 +531,57 @@ def run_self_test() -> bool:
         print("FAILED: gate did not flag unclassified member in FGV2SessionContentSnapshot")
         return False
 
-    print("SUCCESS: validate_session_snapshot_ownership self-test passed (8/8 negative mutations caught)")
+    # Negative mutation 9: FPreparedScreenInstance::CandidateWidget uses TObjectPtr
+    mutated_9 = dict(base_headers)
+    mutated_9["reconciler"] = mutated_9["reconciler"].replace(
+        "TStrongObjectPtr<UGV2ScreenWidgetBase> CandidateWidget;",
+        "TObjectPtr<UGV2ScreenWidgetBase> CandidateWidget;",
+    )
+    if not any("CandidateWidget" in err for err in find_prepared_types_ownership_violations(mutated_9)):
+        print("FAILED: gate did not flag CandidateWidget using TObjectPtr")
+        return False
+
+    # Negative mutation 10: FGV2KeyedCollectionPropertyConsumer::CandidateWidgetsByKey uses untraced raw pointer
+    mutated_10 = dict(base_headers)
+    mutated_10["property_consumers"] = mutated_10["property_consumers"].replace(
+        "TMap<FName, TStrongObjectPtr<UWidget>> CandidateWidgetsByKey;",
+        "TMap<FName, UWidget*> CandidateWidgetsByKey;",
+    )
+    if not any("CandidateWidgetsByKey" in err for err in find_prepared_types_ownership_violations(mutated_10)):
+        print("FAILED: gate did not flag CandidateWidgetsByKey using raw pointer")
+        return False
+
+    # Negative mutation 11: FGV2ScreenFieldPlan::HostWidget uses raw pointer UUserWidget*
+    mutated_11 = dict(base_headers)
+    mutated_11["screen_widget_base"] = mutated_11["screen_widget_base"].replace(
+        "TWeakObjectPtr<UUserWidget> HostWidget;",
+        "UUserWidget* HostWidget;",
+    )
+    if not any("HostWidget" in err for err in find_prepared_types_ownership_violations(mutated_11)):
+        print("FAILED: gate did not flag FGV2ScreenFieldPlan::HostWidget using raw pointer")
+        return False
+
+    # Negative mutation 12: FGV2UiPropertyMutation::TargetWidget uses raw pointer UWidget*
+    mutated_12 = dict(base_headers)
+    mutated_12["ui_mutation_plan"] = mutated_12["ui_mutation_plan"].replace(
+        "TWeakObjectPtr<UWidget> TargetWidget;",
+        "UWidget* TargetWidget;",
+    )
+    if not any("TargetWidget" in err for err in find_prepared_types_ownership_violations(mutated_12)):
+        print("FAILED: gate did not flag FGV2UiPropertyMutation::TargetWidget using raw pointer")
+        return False
+
+    # Negative mutation 13: Unclassified member in FPreparedScreenInstance
+    mutated_13 = dict(base_headers)
+    mutated_13["reconciler"] = mutated_13["reconciler"].replace(
+        "bool bIsReuse = false;",
+        "bool bIsReuse = false;\n    UWidget* RogueCandidateWidget;",
+    )
+    if not any("RogueCandidateWidget" in err for err in find_prepared_types_ownership_violations(mutated_13)):
+        print("FAILED: gate did not flag unclassified member in FPreparedScreenInstance")
+        return False
+
+    print("SUCCESS: validate_session_snapshot_ownership self-test passed (13/13 negative mutations caught)")
     return True
 
 
@@ -326,7 +598,7 @@ def main() -> int:
         print("validate_session_snapshot_ownership FAILED:\n" + "\n".join(f" - {err}" for err in errors), file=sys.stderr)
         return 1
 
-    print("SUCCESS: FGV2SessionContentSnapshot and FGV2ResolvedScreenRegistry enforce value-isolated ownership")
+    print("SUCCESS: FGV2SessionContentSnapshot and prepared UI types enforce GC safety and value-isolated ownership")
     return 0
 
 

@@ -321,6 +321,34 @@ end
 
 Короткое имя становится `<package>:event.<name>`. Payload обязан быть portable; wrappers автоматически превращаются в tagged references и восстанавливаются для subscriber. Event — только факт после успешной mutation. Subscriber работает с закрытым mutation window: прямое изменение state и `fail()` запрещены; следующую Command ставьте через `:later()`.
 
+## Детерминированный генератор случайных чисел: game.random
+
+Назначение: получение псевдослучайных чисел через именованные изолированные потоки (`random_stream`).
+Нормативно: [Deterministic random streams](../Architecture/CanonicalStateAndSave.md#deterministic-random-streams).
+
+Сигнатуры:
+- `game.random.next_u32(stream_id)` -> неотрицательное целое число в диапазоне `[0, 2^32 - 1]`.
+- `game.random.next_unit(stream_id)` -> число с плавающей точкой в полуинтервале `[0.0, 1.0)`.
+- `game.random.next_int(stream_id, min_val, max_val)` -> целое число в диапазоне `[min_val, max_val]` с честным rejection sampling без modulo bias.
+
+Пример:
+
+```lua
+local stream = "core:random_stream.gameplay"
+
+-- Бросок 6-гранного кубика [1, 6]
+local roll = game.random.next_int(stream, 1, 6)
+
+-- Вероятность срабатывания события 25%
+if game.random.next_unit(stream) < 0.25 then
+    -- событие наступило
+end
+```
+
+Стандартный `math.random` отключён для предотвращения недетерминизма. Состояние каждого потока сохраняется в `state.meta.prng[stream_id]` (алгоритм `xoshiro128ss-v1`) и восстанавливается при загрузке без повторного сидирования. Идентификатор потока обязан быть Stable ID вида `<namespace>:random_stream.<path>`.
+
+Типичные ошибки: `InvalidRandomStreamId`, `InvalidRandomRange`, `InvalidSeedHex`.
+
 ## Быстрая самопроверка
 
 - Gameplay mutation начинается в Command и проходит через domain method/Service.

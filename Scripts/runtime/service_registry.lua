@@ -87,10 +87,7 @@ function M.create_registry()
 end
 
 function M.register(_ctx)
-    if not game then
-        game = {}
-    end
-    game.services = M.create_registry()
+    -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
 
 function M.with_isolated_services(fn)
@@ -99,10 +96,14 @@ function M.with_isolated_services(fn)
     if not game then
         game = {}
     end
-    game.services = fresh_registry
+    rawset(game, "services", fresh_registry)
 
     local ok, err = pcall(fn)
-    game.services = old_services
+    if getmetatable(game) ~= nil then
+        rawset(game, "services", nil)
+    else
+        rawset(game, "services", old_services)
+    end
     if not ok then
         error(err, 0)
     end

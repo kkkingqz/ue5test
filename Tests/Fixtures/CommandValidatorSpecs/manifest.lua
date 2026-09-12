@@ -74,6 +74,8 @@ return {
                 "core:module.runtime.validator_registry",
                 "core:module.runtime.handler_registry",
                 "core:module.runtime.event_bus",
+                "core:module.runtime.subscriber_registry",
+                "core:module.runtime.event_envelope",
             },
         },
     },

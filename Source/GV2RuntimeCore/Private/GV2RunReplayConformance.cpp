@@ -34,18 +34,18 @@ std::vector<FRuntimeSource> CreateReplayRuntimeSources()
     Sources.push_back({
         "@core/bootstrap/manifest.lua",
         "return {\n"
-        "    entry_module_id = 'core:module.bootstrap.main',\n"
+        "    entry_module_id = 'core:module.test.replay',\n"
         "    modules = {\n"
         "        {\n"
-        "            module_id = 'core:module.bootstrap.main',\n"
-        "            source = 'bootstrap/main.lua',\n"
+        "            module_id = 'core:module.test.replay',\n"
+        "            source = 'test/replay.lua',\n"
         "            dependencies = {}\n"
         "        }\n"
         "    }\n"
         "}\n"
     });
     Sources.push_back({
-        "@core/bootstrap/main.lua",
+        "@core/test/replay.lua",
         "game.runtime = {\n"
         "    dispatch_command = function(request)\n"
         "        return request.sequence\n"

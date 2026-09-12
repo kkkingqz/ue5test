@@ -98,37 +98,33 @@ return {
     end,
 
     presentation_action_helper_resolves_semantic_actions = function()
-        local reg = action_registry.create_registry()
-        reg.bind("textsystem:action.location.travel", "rh:command.travel")
-        reg.bind("rh:action.buy_sword", {
-            command_id = "rh:command.buy",
-            args = { item = "rh:item.weapon.iron_sword" },
-        })
+        game.actions.with_isolated_actions(function()
+            game.actions.bind("textsystem:action.location.travel", "rh:command.travel")
+            game.actions.bind("rh:action.buy_sword", {
+                command_id = "rh:command.buy",
+                args = { item = "rh:item.weapon.iron_sword" },
+            })
 
-        local prev_actions = game.actions
-        game.actions = reg
+            local action_helper = authoring_presentation.create_action_helper("rh")
 
-        local action_helper = authoring_presentation.create_action_helper("rh")
+            -- Resolve semantic action with extra arg
+            local act1 = action_helper("textsystem:action.location.travel", { target_location_id = "rh:location.city.market" })
+            assert(type(act1) == "table", "action must return a table")
+            assert(act1.command_id == "rh:command.travel", "command_id must resolve to rh:command.travel")
+            assert(act1.args.target_location_id == "rh:location.city.market", "args must contain target_location_id")
 
-        -- Resolve semantic action with extra arg
-        local act1 = action_helper("textsystem:action.location.travel", { target_location_id = "rh:location.city.market" })
-        assert(type(act1) == "table", "action must return a table")
-        assert(act1.command_id == "rh:command.travel", "command_id must resolve to rh:command.travel")
-        assert(act1.args.target_location_id == "rh:location.city.market", "args must contain target_location_id")
+            -- Resolve semantic action with default args
+            local act2 = action_helper("rh:action.buy_sword")
+            assert(act2.command_id == "rh:command.buy")
+            assert(act2.args.item == "rh:item.weapon.iron_sword")
 
-        -- Resolve semantic action with default args
-        local act2 = action_helper("rh:action.buy_sword")
-        assert(act2.command_id == "rh:command.buy")
-        assert(act2.args.item == "rh:item.weapon.iron_sword")
-
-        -- Unbound semantic action throws ActionNotBound
-        local ok, err = pcall(function()
-            action_helper("rh:action.unbound_action")
+            -- Unbound semantic action throws ActionNotBound
+            local ok, err = pcall(function()
+                action_helper("rh:action.unbound_action")
+            end)
+            assert(not ok, "unbound semantic action must fail")
+            assert(string.find(tostring(err), "ActionNotBound") ~= nil,
+                "Error must contain ActionNotBound, got: " .. tostring(err))
         end)
-        assert(not ok, "unbound semantic action must fail")
-        assert(string.find(tostring(err), "ActionNotBound") ~= nil,
-            "Error must contain ActionNotBound, got: " .. tostring(err))
-
-        game.actions = prev_actions
     end,
 }

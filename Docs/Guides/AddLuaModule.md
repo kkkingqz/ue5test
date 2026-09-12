@@ -1,8 +1,8 @@
 ---
 title: Add Lua Module
 status: informative
-version: 2.0
-updated: 2026-08-20
+version: 2.1
+updated: 2026-09-12
 depends_on:
   - README.md
   - ../Architecture/LuaRuntimeContract.md
@@ -57,6 +57,8 @@ Gameplay rules, Commands, entity methods и presentation не требуют pro
 
 - `ManifestMismatch`: generator не запущен после изменения sources/imports.
 - `DynamicRequireDisallowed`: ID вычисляется во время выполнения.
-- Hidden dependency, cycle или unreachable module: graph отклоняется до первого module.
+- `HiddenDependency`: hidden dependency, cycle или unreachable module: graph отклоняется до первого module.
+- `UnauthorizedRegistryPublication`: попытка присвоить `game.<slot> = ...` в `register()`. Фасад `game` защищён от записи; все engine registries устанавливаются и запечатываются исключительно через `core:module.bootstrap.registry_lifecycle`.
+- `LuaModuleDefaultStateInvalid`: невалидный вклад состояния в `create_default_state` (чужой mod namespace, коллизия ключей, неподдерживаемый тип или попытка перезаписать фиксированные поля `meta`). Сборка стейта целиком принадлежит `core:module.runtime.state_composition`.
 - `LuaModuleSealed`/`LuaModuleForeignNewId`: package нарушает ownership или replacement policy.
 - `require()` в handler: импортируйте один раз при initialization и сохраните local.

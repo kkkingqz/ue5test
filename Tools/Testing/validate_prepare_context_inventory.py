@@ -55,6 +55,10 @@ CLASSIFIED_SITES = {
         "PSC-10B: GV2CentralStylePreparer::PrepareForSubtree parameter -- the only place a Theme is read on behalf of a styled widget; turns it into central-style operations on the caller's transaction. By reference, not pointer: unlike the Prepare paths above there is no legacy no-context call site to keep working, so a caller without a snapshot cannot reach this function at all",
     ("UI/GV2UiCapabilityObservability.h", "const FGV2PresentationPrepareContext& PrepareContext,"):
         "PSC-10B: observability probes execute the real property Prepare path against the caller's pinned snapshot instead of a global test catalog",
+    ("Runtime/GV2RuntimeSubsystem.h", "const FGV2PresentationPrepareContext& PrepareContext) const;"):
+        "CFC-06: UGV2RuntimeSubsystem::ResolveScreenClass resolves screen class against candidate PrepareContext",
+    ("Runtime/GV2RuntimeSubsystem.h", "const FGV2PresentationPrepareContext& PrepareContext);"):
+        "CFC-06: UGV2RuntimeSubsystem::InstantiateScreenWidget and HandleDocumentRequested prepare UI projection against candidate PrepareContext",
 }
 
 

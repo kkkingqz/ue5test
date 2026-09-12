@@ -35,6 +35,7 @@
 #include "GV2RuntimeCore/Testing/GV2LuaSpecRunnerConformance.h"
 #include "GV2RuntimeCore/Testing/GV2SaveSlotStorageConformance.h"
 #include "GV2RuntimeCore/Testing/GV2ColdStartLoadConformance.h"
+#include "GV2RuntimeCore/Testing/GV2RegistryLifecycleConformance.h"
 #include "GV2ContentHostSupport/Testing/PackageDiscoveryAndOrderConformance.h"
 #include "GV2ContentHostSupport/Testing/PackageManifestConformance.h"
 #include "GV2ContentCore/Testing/RepresentativeCore.h"
@@ -595,6 +596,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("Provider 1 is test_mod"), FString(UTF8_TO_TCHAR(ReplacedModules[0].Providers[1].c_str())), FString(TEXT("test_mod")));
         }
     }
+    OverrideSession.Stop();
 
     // Base sources without override produces a different ScriptSetHash
     const std::vector<GV2RuntimeCore::FRuntimeSource> BaseOnlySources = { OverrideSources[0], OverrideSources[1] };
@@ -603,6 +605,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     const std::string BaseHash = BaseSession.GetScriptSetHash();
     TestTrue(TEXT("Override changes ScriptSetHash"), BaseHash != OverrideHash);
     TestEqual(TEXT("Base session has 0 replaced modules"), BaseSession.GetReplacedModules().size(), static_cast<std::size_t>(0));
+    BaseSession.Stop();
 
     // CheckScripts also reports ScriptSetHash and ReplacedModules
     std::size_t CheckedCount = 0;
@@ -824,7 +827,7 @@ bool FGV2SessionCoordinatorPreparedCommitAndFailureInjectionTest::RunTest(const 
     int32 DocumentSinkCallCount = 0;
 
     Coordinator.SetDocumentSink(
-        [&LastCapturedDoc, &bSinkShouldSucceed, &DocumentSinkCallCount](const FGV2UiDocumentViewModel& Doc) -> bool
+        [&LastCapturedDoc, &bSinkShouldSucceed, &DocumentSinkCallCount](const FGV2UiDocumentViewModel& Doc, const FGV2PresentationPrepareContext&) -> bool
         {
             ++DocumentSinkCallCount;
             LastCapturedDoc = Doc;
@@ -967,7 +970,7 @@ bool FGV2RuntimeIngressDispatchTest::RunTest(const FString& Parameters)
     } Scope;
 
     FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts its Lua VM"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     TestTrue(TEXT("Lua VM belongs to the active session"), Coordinator.IsLuaVmStarted());
 
@@ -1045,7 +1048,7 @@ bool FGV2RuntimeInputSchemaTest::RunTest(const FString& Parameters)
     } Scope;
 
     FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts for schema validation"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
 
     FGV2UiBindingDefinition Definition = MakeBindingDefinition(
@@ -1134,7 +1137,7 @@ bool FGV2RuntimeIngressCapacityTest::RunTest(const FString& Parameters)
     } Scope;
 
     FGV2SessionCoordinator Coordinator(0);
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts for capacity validation"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
 
     TArray<FGV2UiBindingHandle> Handles;
@@ -1229,7 +1232,7 @@ bool FGV2SessionRepositoryPinningAcrossRestartTest::RunTest(const FString& Param
     }
 
     FGV2SessionCoordinator Coordinator(4);
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) { return true; });
     TestTrue(TEXT("Session starts pinned to repository A"), Coordinator.StartSession(ReadHandleA, 1));
     TestEqual(
         TEXT("Active session is pinned to A's content hash"),
@@ -1277,7 +1280,7 @@ bool FGV2SessionRejectsInvalidRepositoryTest::RunTest(const FString& Parameters)
     } Scope;
 
     FGV2SessionCoordinator Coordinator(4);
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
 
     // 1. Initial StartSession with invalid handle
     AddExpectedError(
@@ -1350,7 +1353,7 @@ bool FGV2SessionReplacementContentBuilderFailurePreservesActiveSessionTest::RunT
     } Scope;
 
     FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
 
     TestTrue(TEXT("Start valid session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
@@ -1412,7 +1415,9 @@ bool FGV2SessionContentSnapshotNotPublishedBeforeReadyTest::RunTest(const FStrin
     // check alone can't distinguish "never published" from "published early, then reset by
     // FailRuntime" -- both look identical after the fact).
     Coordinator.SetDocumentSink(
-        [&Coordinator, &bSnapshotWasNullDuringDocumentSink, &bDocumentSinkRan](const FGV2UiDocumentViewModel&) -> bool
+        [&Coordinator, &bSnapshotWasNullDuringDocumentSink, &bDocumentSinkRan](
+            const FGV2UiDocumentViewModel&,
+            const FGV2PresentationPrepareContext&) -> bool
         {
             bDocumentSinkRan = true;
             bSnapshotWasNullDuringDocumentSink = Coordinator.GetContentSnapshot() == nullptr;
@@ -1458,7 +1463,7 @@ bool FGV2SessionContentSnapshotImageCatalogGcLifetimeTest::RunTest(const FString
     TWeakObjectPtr<UGV2ImageResourceCatalog> WeakCatalog;
     {
         FGV2SessionCoordinator Coordinator;
-        Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+        Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
         TestTrue(TEXT("Start session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
         const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
         TestNotNull(TEXT("Session published a content snapshot"), Snapshot);
@@ -1493,7 +1498,9 @@ bool FGV2SessionContentSnapshotImageCatalogGcLifetimeTest::RunTest(const FString
 // candidates -- this test adds that the ALREADY-ACTIVE session's own published snapshot
 // doesn't interfere either). A full second StartSession() success with rh's real content
 // isn't used here: rh's gameplay Lua expects repository content the available frozen test
-// fixtures don't provide, unrelated to what this test needs to demonstrate.
+// CFC-06 (ADR-0044 D1/D2, PSC-AF-04, STATUS-014): two sequential StartSession() calls on the
+// SAME coordinator must prepare and commit session B against B's own authorities, without
+// leaking session A's published snapshot or confusing candidate B with active A.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2SequentialSessionsDoNotShareAuthoritiesTest,
     "GV2.Runtime.Session.SequentialSessionsDoNotShareAuthorities",
@@ -1501,81 +1508,137 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SequentialSessionsDoNotShareAuthoritiesTest::RunTest(const FString& Parameters)
 {
-    FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
-
-    // Session 1: sample override -- core+textsystem+sample -- a real, Ready session with
-    // its own published snapshot.
-    {
-        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true;
-        TestTrue(TEXT("Session 1 starts"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
-        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false;
-    }
-    const FGV2SessionContentSnapshot* Snapshot1 = Coordinator.GetContentSnapshot();
-    TestNotNull(TEXT("Session 1 published a content snapshot"), Snapshot1);
-    if (Snapshot1 == nullptr)
-    {
-        return false;
-    }
-    const FString PackageIds1 = FString::Join(Snapshot1->GetOrderedPackageIds(), TEXT(","));
-
-    // A genuinely different candidate -- core+textsystem+rh -- built directly via the same
-    // production function, while session 1's snapshot is still the coordinator's active one.
     const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
-    std::vector<GV2ContentCore::FDiagnostic> ResolveDiagnostics;
-    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> RhSet =
+
+    std::vector<GV2ContentCore::FDiagnostic> DiagnosticsA;
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> SetA =
         GV2ContentHostSupport::ResolvePackageSetFromDirectories(
             {
                 std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("core")))),
                 std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("textsystem")))),
                 std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("rh")))),
             },
-            ResolveDiagnostics);
-    TestTrue(TEXT("core+textsystem+rh package set resolves"), RhSet.has_value());
-    if (!RhSet.has_value())
+            DiagnosticsA);
+    TestTrue(TEXT("SetA (core+textsystem+rh) resolves"), SetA.has_value());
+    if (!SetA.has_value())
     {
         return false;
     }
 
-    TArray<FGV2SchemaPackageRoot> SchemaPackageRoots;
-    for (const GV2ContentHostSupport::FResolvedPackageSource& Source : RhSet->OrderedSources)
+    std::vector<GV2ContentCore::FDiagnostic> DiagnosticsB;
+    const std::optional<GV2ContentHostSupport::FResolvedPackageSet> SetB =
+        GV2ContentHostSupport::ResolvePackageSetFromDirectories(
+            {
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("core")))),
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("textsystem")))),
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("sample")))),
+            },
+            DiagnosticsB);
+    TestTrue(TEXT("SetB (core+textsystem+sample) resolves"), SetB.has_value());
+    if (!SetB.has_value())
     {
-        SchemaPackageRoots.Add(FGV2SchemaPackageRoot{
-            UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
-            UTF8_TO_TCHAR(Source.Root.string().c_str())});
+        return false;
     }
 
-    FGV2SessionContentSnapshot RhCandidate;
-    GV2RuntimeCore::FRuntimeFault CandidateFault;
-    TestTrue(
-        TEXT("A differently-composed candidate builds successfully alongside session 1's active snapshot"),
-        FGV2SessionContentCandidate::Build(
-            MakeFrozenCoreFixturePinnedRepository(*this),
-            *RhSet,
-            SchemaPackageRoots,
-            {},
-            RhCandidate,
-            CandidateFault));
+    FGV2SessionCoordinator Coordinator;
 
-    const FString PackageIdsRh = FString::Join(RhCandidate.GetOrderedPackageIds(), TEXT(","));
-    TestNotEqual(TEXT("The new candidate's package ids differ from session 1's (rh vs sample)"), PackageIdsRh, PackageIds1);
+    struct FSinkInvocation
+    {
+        FString ScreenId;
+        int32 ResourceCount = 0;
+        bool bObservedNullSnapshot = false;
+        bool bResolvedRouteScreen = false;
+    };
+    TArray<FSinkInvocation> SinkInvocations;
 
-    // Session 1's own snapshot is completely unaffected by building the second candidate.
-    TestEqual(TEXT("Session 1's snapshot is still the same instance"), Coordinator.GetContentSnapshot(), Snapshot1);
-    TestEqual(
-        TEXT("Session 1's own package ids are unchanged"),
-        FString::Join(Snapshot1->GetOrderedPackageIds(), TEXT(",")),
-        PackageIds1);
+    Coordinator.SetDocumentSink(
+        [&](const FGV2UiDocumentViewModel& Document, const FGV2PresentationPrepareContext& PrepareContext) -> bool
+        {
+            FSinkInvocation Invocation;
+            Invocation.ScreenId = Document.Route.ScreenId;
+            Invocation.ResourceCount = PrepareContext.GetResourceIds().Num();
+            Invocation.bObservedNullSnapshot = (Coordinator.GetContentSnapshot() == nullptr);
 
-    // The new candidate's own resolved screen identities reflect ITS OWN closure, not
-    // session 1's -- the exact PAH-R3-class check PSC-04's equivalent test already proved
-    // for two independently-built candidates.
+            FGV2ResolvedScreenDescriptor Descriptor;
+            FGV2ScreenResolutionRejection Rejection;
+            Invocation.bResolvedRouteScreen = PrepareContext.ResolveScreen(
+                Document.Route.ScreenId,
+                FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent),
+                Descriptor,
+                Rejection);
+
+            SinkInvocations.Add(Invocation);
+            return true;
+        });
+
+    // 1. Start session A with repo built from SetA
+    const GV2ContentCore::FBuildResult RepoBuildA = BuildGV2RepositoryFromResolvedPackageSet(*SetA);
+    TestTrue(TEXT("RepoBuildA succeeded"), RepoBuildA.IsSuccess());
+    if (!RepoBuildA.IsSuccess())
+    {
+        return false;
+    }
+    const GV2ContentCore::FRepositoryReadHandle PinnedRepoA = RepoBuildA.GetCandidate().GetReadHandle();
+
+    TestTrue(TEXT("Session A starts successfully"), Coordinator.StartSession(PinnedRepoA, 1, *SetA));
+    TestTrue(TEXT("Session A is ready"), Coordinator.GetStatus().bIsReady);
+    TestEqual(TEXT("Session A generation is 1"), Coordinator.GetStatus().SessionGeneration, 1);
+    TestEqual(TEXT("Document sink was invoked for session A"), SinkInvocations.Num(), 1);
+    if (SinkInvocations.Num() >= 1)
+    {
+        TestEqual(TEXT("Session A initial route is textsystem:screen.location"), SinkInvocations[0].ScreenId, TEXT("textsystem:screen.location"));
+        TestTrue(TEXT("Session A sink resolves its initial screen"), SinkInvocations[0].bResolvedRouteScreen);
+        TestEqual(TEXT("Session A sink has 10 resources (textsystem + rh)"), SinkInvocations[0].ResourceCount, 10);
+        TestTrue(TEXT("Session A snapshot was null during initial sink"), SinkInvocations[0].bObservedNullSnapshot);
+    }
+
+    const FGV2SessionContentSnapshot* SnapshotA = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("Session A published content snapshot"), SnapshotA);
+    if (SnapshotA == nullptr)
+    {
+        return false;
+    }
+    TestEqual(TEXT("Snapshot A package IDs match SetA"), FString::Join(SnapshotA->GetOrderedPackageIds(), TEXT(",")), TEXT("core,textsystem,rh"));
+
+    // 2. Start session B on the SAME coordinator instance with repo built from SetB
+    const GV2ContentCore::FBuildResult RepoBuildB = BuildGV2RepositoryFromResolvedPackageSet(*SetB);
+    TestTrue(TEXT("RepoBuildB succeeded"), RepoBuildB.IsSuccess());
+    if (!RepoBuildB.IsSuccess())
+    {
+        return false;
+    }
+    const GV2ContentCore::FRepositoryReadHandle PinnedRepoB = RepoBuildB.GetCandidate().GetReadHandle();
+
+    TestTrue(TEXT("Session B starts successfully on the same coordinator"), Coordinator.StartSession(PinnedRepoB, 2, *SetB));
+    TestTrue(TEXT("Session B is ready"), Coordinator.GetStatus().bIsReady);
+    TestEqual(TEXT("Session B generation is 2"), Coordinator.GetStatus().SessionGeneration, 2);
+    TestEqual(TEXT("Document sink was invoked twice"), SinkInvocations.Num(), 2);
+    if (SinkInvocations.Num() >= 2)
+    {
+        TestEqual(TEXT("Session B initial route is core:screen.test"), SinkInvocations[1].ScreenId, TEXT("core:screen.test"));
+        TestTrue(TEXT("Session B sink resolves its initial screen"), SinkInvocations[1].bResolvedRouteScreen);
+        TestEqual(TEXT("Session B sink has 5 resources (textsystem only)"), SinkInvocations[1].ResourceCount, 5);
+        TestNotEqual(TEXT("Session A and Session B have distinct resource counts"), SinkInvocations[0].ResourceCount, SinkInvocations[1].ResourceCount);
+        TestTrue(TEXT("Session B snapshot was null during initial sink (clean replacement boundary)"), SinkInvocations[1].bObservedNullSnapshot);
+    }
+
+    const FGV2SessionContentSnapshot* SnapshotB = Coordinator.GetContentSnapshot();
+    TestNotNull(TEXT("Session B published content snapshot"), SnapshotB);
+    if (SnapshotB == nullptr)
+    {
+        return false;
+    }
+    TestNotEqual(TEXT("Snapshot B is a different instance from Snapshot A"), SnapshotB, SnapshotA);
+    TestEqual(TEXT("Snapshot B package IDs match SetB"), FString::Join(SnapshotB->GetOrderedPackageIds(), TEXT(",")), TEXT("core,textsystem,sample"));
+
+    // Verify candidate B's authorities are active and queryable through PrepareContext
     FGV2ResolvedScreenDescriptor Descriptor;
     FGV2ScreenResolutionRejection Rejection;
-    const FGV2PresentationPrepareContext RhPrepareContext(RhCandidate);
+    const FGV2PresentationPrepareContext PrepareContextB(*SnapshotB);
     TestTrue(
-        TEXT("The rh-composed candidate's own registered screen resolves through its own snapshot"),
-        RhPrepareContext.ResolveScreen(TEXT("core:screen.test"), FGV2ScreenPlacement::TopLevel(TEXT("location_content")), Descriptor, Rejection));
+        TEXT("Screen resolves through session B's snapshot"),
+        PrepareContextB.ResolveScreen(TEXT("core:screen.test"), FGV2ScreenPlacement::TopLevel(UGV2GameShellWidgetBase::LayerLocationContent), Descriptor, Rejection));
+    TestEqual(TEXT("Session B snapshot has 5 resources"), PrepareContextB.GetResourceIds().Num(), 5);
 
     return true;
 }
@@ -1941,6 +2004,25 @@ bool FGV2ColdStartLoadConformanceCrossHostTest::RunTest(const FString& Parameter
     return true;
 }
 
+// CFC-05: Cross-host registry lifecycle and sealing conformance test
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2RegistryLifecycleConformanceCrossHostTest,
+    "GV2.Runtime.Lifecycle.RegistryLifecycleConformance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2RegistryLifecycleConformanceCrossHostTest::RunTest(const FString& Parameters)
+{
+    const std::string Error = GV2RuntimeCore::Testing::RunRegistryLifecycleConformance();
+    if (!Error.empty())
+    {
+        AddError(FString::Printf(
+            TEXT("Registry lifecycle cross-host conformance failed: %s"),
+            UTF8_TO_TCHAR(Error.c_str())));
+        return false;
+    }
+    return true;
+}
+
 // PKG-01/02/03: Cross-host package manifest conformance test
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2PackageManifestConformanceCrossHostTest,
@@ -2005,7 +2087,7 @@ bool FGV2SessionContentSnapshotContract::RunTest(const FString& Parameters)
     } Scope;
 
     FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     TestTrue(TEXT("Session is ready"), Coordinator.GetStatus().bIsReady);
 
@@ -2102,7 +2184,7 @@ bool FGV2CentralStyleThroughPreparedTransactionTest::RunTest(const FString& Para
     } Scope;
 
     FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
 
     const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
@@ -2249,7 +2331,7 @@ bool FGV2CentralStyleImplementationInventoryTest::RunTest(const FString& Paramet
     } Scope;
 
     FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
     TestNotNull(TEXT("Session publishes a content snapshot"), Snapshot);
@@ -2334,7 +2416,7 @@ bool FGV2HoverPopoverStyledFromPreparedValuesTest::RunTest(const FString& Parame
     } Scope;
 
     FGV2SessionCoordinator Coordinator;
-    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+    Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
     TestTrue(TEXT("Coordinator starts session"), Coordinator.StartSession(MakeFrozenCoreFixturePinnedRepository(*this), 1));
     const FGV2SessionContentSnapshot* Snapshot = Coordinator.GetContentSnapshot();
     TestNotNull(TEXT("Session publishes a content snapshot"), Snapshot);

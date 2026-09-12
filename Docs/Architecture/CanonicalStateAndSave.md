@@ -24,8 +24,8 @@ decisions:
 > **Владеет:** canonical state, identity/lifecycle runtime instances, effective entity methods, конвертом сейва и последовательностью загрузки.
 > **Не владеет:** тем, когда состояние меняется ([Commands and Events](CommandsAndEvents.md)), и содержимым definitions ([GameDataRepository](GameDataRepositoryContract.md)).
 > **Инварианты:** [INV-001](Invariants.md), [INV-008](Invariants.md), [INV-015](Invariants.md)
-> **Реализация:** `Scripts/runtime/state_validator.lua`, `instance_allocator.lua`, `canonical_codec.lua`, `save.lua`, `load.lua`.
-> **Проверки:** `Tests/Lua/lifecycle/state_sections.lua`, `Tests/Lua/save/`.
+> **Реализация:** `Scripts/runtime/state_composition.lua`, `state_validator.lua`, `instance_allocator.lua`, `canonical_codec.lua`, `save.lua`, `load.lua`.
+> **Проверки:** `Tests/Lua/lifecycle/state_sections.lua`, `Tests/Lua/lifecycle/state_contributions.lua`, `Tests/Lua/save/`.
 
 Этот начальный контракт фиксирует границу state/save. Конкретная per-system schema будет добавляться без изменения ownership.
 
@@ -137,7 +137,7 @@ Independent vectors для первых пяти `next_u32`:
 
 Изменение derivation, algorithm, word encoding или range mapping является breaking save/replay change: требует нового algorithm tag, migration либо typed refusal и обновления independent vectors.
 
-До CFC-07A seed transport, `game.random` и stream state ещё не подключены; это `STATUS-023`, а не альтернативный алгоритм.
+Seed transport, `game.random` и stream state реализованы в CFC-07A: host передаёт 16-символьный hex seed до первого bootstrap-хука, PRNG принадлежит Lua и сохраняет состояние потоков в `meta.prng`.
 
 ## Save container
 

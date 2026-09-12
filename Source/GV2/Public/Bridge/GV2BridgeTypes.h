@@ -43,6 +43,144 @@ enum class EGV2SessionState : uint8
     Destroyed
 };
 
+UENUM(BlueprintType)
+enum class ESessionStartMode : uint8
+{
+    Menu,
+    NewGame,
+    LoadSave
+};
+using EGV2SessionStartMode = ESessionStartMode;
+
+UENUM(BlueprintType)
+enum class ESessionOperationOutcome : uint8
+{
+    Completed,
+    Failed,
+    Cancelled,
+    Superseded
+};
+using EGV2SessionOperationOutcome = ESessionOperationOutcome;
+
+UENUM(BlueprintType)
+enum class ESessionCancellationResult : uint8
+{
+    Accepted,
+    TooLate,
+    Stale
+};
+using EGV2SessionCancellationResult = ESessionCancellationResult;
+
+USTRUCT(BlueprintType)
+struct GV2_API FSessionStartDescriptor
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
+    ESessionStartMode Mode = ESessionStartMode::NewGame;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
+    FString SaveSlotId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
+    FString SaveSlotRevision = TEXT("Current");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
+    FString RepositoryVersion;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
+    FString RepositoryContentHash;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
+    FString SeedHex = TEXT("0000000000000000");
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
+    FString Reason;
+
+    bool operator==(const FSessionStartDescriptor& Other) const
+    {
+        return Mode == Other.Mode
+            && SaveSlotId == Other.SaveSlotId
+            && SaveSlotRevision == Other.SaveSlotRevision
+            && RepositoryVersion == Other.RepositoryVersion
+            && RepositoryContentHash == Other.RepositoryContentHash
+            && SeedHex == Other.SeedHex
+            && Reason == Other.Reason;
+    }
+
+    bool operator!=(const FSessionStartDescriptor& Other) const
+    {
+        return !(*this == Other);
+    }
+
+    bool IsEquivalentTo(const FSessionStartDescriptor& Other) const
+    {
+        return Mode == Other.Mode
+            && SaveSlotId == Other.SaveSlotId
+            && SaveSlotRevision == Other.SaveSlotRevision
+            && RepositoryVersion == Other.RepositoryVersion
+            && RepositoryContentHash == Other.RepositoryContentHash
+            && SeedHex == Other.SeedHex;
+    }
+
+    static bool IsValidSeedHex(const FString& InSeedHex)
+    {
+        if (InSeedHex.Len() != 16)
+        {
+            return false;
+        }
+        for (TCHAR Ch : InSeedHex)
+        {
+            const bool bIsDigit = Ch >= TEXT('0') && Ch <= TEXT('9');
+            const bool bIsLowerHex = Ch >= TEXT('a') && Ch <= TEXT('f');
+            if (!bIsDigit && !bIsLowerHex)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool IsValid(FString* OutError = nullptr) const
+    {
+        if (Mode == ESessionStartMode::LoadSave)
+        {
+            if (SaveSlotId.IsEmpty())
+            {
+                if (OutError != nullptr)
+                {
+                    *OutError = TEXT("SaveSlotId must not be empty for LoadSave mode.");
+                }
+                return false;
+            }
+            if (SaveSlotRevision != TEXT("Current") && SaveSlotRevision != TEXT("Previous"))
+            {
+                if (OutError != nullptr)
+                {
+                    *OutError = TEXT("SaveSlotRevision must be 'Current' or 'Previous'.");
+                }
+                return false;
+            }
+        }
+        if (!IsValidSeedHex(SeedHex))
+        {
+            if (OutError != nullptr)
+            {
+                *OutError = TEXT("SeedHex must be exactly 16 lowercase hex characters.");
+            }
+            return false;
+        }
+        return true;
+    }
+
+    bool Validate(FString* OutError = nullptr) const
+    {
+        return IsValid(OutError);
+    }
+};
+using FGV2SessionStartDescriptor = FSessionStartDescriptor;
+
+
 USTRUCT(BlueprintType)
 struct GV2_API FGV2ScreenFieldValue
 {

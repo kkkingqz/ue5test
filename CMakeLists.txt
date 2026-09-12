@@ -247,6 +247,38 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_screen_registry_entry_encapsulation.py"
             "--self-test"
     )
+    # CFC-05: Registry lifecycle and sealing ownership (plan SessionLifecycle, M1).
+    # Ensures only registry_lifecycle.lua installs registries and owns DESCRIPTOR in contract order;
+    # forbids ad hoc game.<slot> assignments and unlisted registry factories in Scripts/.
+    add_test(
+        NAME registry_lifecycle_ownership_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_registry_lifecycle_ownership.py"
+    )
+    add_test(
+        NAME registry_lifecycle_ownership_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_registry_lifecycle_ownership.py"
+            "--self-test"
+    )
+    # CFC-05A: Canonical state composition ownership (plan PortableCorrectness, M2).
+    # Ensures only state_composition.lua owns default state composition and contribution merging;
+    # forbids schema-shaped state keys and native merge logic in C++ sources.
+    add_test(
+        NAME state_composition_ownership_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_state_composition_ownership.py"
+    )
+    add_test(
+        NAME state_composition_ownership_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_state_composition_ownership.py"
+            "--self-test"
+    )
     # PAH-04A (ADR-0042, INV-P1): after a session reaches Ready, presentation code
     # must not discover content. Every content-discovery call site in production
     # source must be classified pre-Ready or explicitly deferred to a named task.
@@ -500,6 +532,34 @@ if(BUILD_TESTING)
         COMMAND
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_snapshot_ownership.py"
+            "--self-test"
+    )
+    # CFC-06: session replacement token, owner routines, and projection publication/teardown contract
+    add_test(
+        NAME session_replacement_ownership_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_replacement_ownership.py"
+    )
+    add_test(
+        NAME session_replacement_ownership_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_replacement_ownership.py"
+            "--self-test"
+    )
+    # CFC-07: session transition policy and single Lua VM invariant contract
+    add_test(
+        NAME session_transition_ownership_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_transition_ownership.py"
+    )
+    add_test(
+        NAME session_transition_ownership_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_transition_ownership.py"
             "--self-test"
     )
 endif()

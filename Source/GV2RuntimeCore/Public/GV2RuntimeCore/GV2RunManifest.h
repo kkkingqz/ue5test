@@ -21,6 +21,7 @@ struct GV2_PORTABLE_API FRunAcceptedCommand final
 
 struct GV2_PORTABLE_API FRunManifest final
 {
+    std::int32_t ManifestFormatVersion = 2;
     std::int32_t LuaReleaseNumber = FRuntimeSession::LuaReleaseNumber;
     std::string RepositoryContentHash;
     std::string ScriptSetHash;

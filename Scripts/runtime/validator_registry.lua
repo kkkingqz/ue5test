@@ -189,13 +189,7 @@ function M.run_conformance()
 end
 
 function M.register(_ctx)
-    if not game then
-        game = {}
-    end
-    if not game.commands then
-        game.commands = {}
-    end
-    game.commands.validators = M.create_registry()
+    -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
 
 return M

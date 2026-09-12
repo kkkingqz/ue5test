@@ -6631,7 +6631,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         } Scope;
 
         FGV2SessionCoordinator Coordinator;
-        Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&) -> bool { return true; });
+        Coordinator.SetDocumentSink([](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool { return true; });
         const FString CorePackageRoot = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData/core"));
         const GV2ContentCore::FBuildResult RepoBuild = BuildGV2RepositoryFromDirectory(CorePackageRoot);
         GV2ContentCore::FRepositoryReadHandle ReadHandle;
@@ -6642,7 +6642,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         TestTrue(TEXT("Coordinator StartSession succeeds"), Coordinator.StartSession(ReadHandle, 1));
 
         bool bDocumentHandled = false;
-        Coordinator.SetDocumentSink([&bDocumentHandled](const FGV2UiDocumentViewModel&) -> bool
+        Coordinator.SetDocumentSink([&bDocumentHandled](const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&) -> bool
         {
             bDocumentHandled = true;
             return true;
@@ -10267,6 +10267,171 @@ bool FGV2WidgetBlueprintApplyMigrationInventoryTest::RunTest(const FString& Para
             *FString::Printf(TEXT("Retired class object is absent after clean reload: %s"), *RetiredPath),
             FindObject<UClass>(nullptr, *RetiredPath));
     }
+    return true;
+}
+
+// CFC-06 (ADR-0044 D1/D2, PSC-AF-05, STATUS-015): Candidate build failure before BeginReplace
+// preserves session A's UI, viewport attachment, bindings, and status on UGV2RuntimeSubsystem.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionPreservesProjectionWhenCandidateFailsTest,
+    "GV2.Runtime.Session.PreservesProjectionWhenCandidateFails",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionPreservesProjectionWhenCandidateFailsTest::RunTest(const FString& Parameters)
+{
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        GameInstance->Shutdown();
+        if (TestWorld != nullptr)
+        {
+            TestWorld->DestroyWorld(false);
+            GEngine->DestroyWorldContext(TestWorld);
+        }
+        GameInstance->RemoveFromRoot();
+        return false;
+    }
+
+    // 1. Start initial session A
+    FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+    const FGV2SessionStatus StatusA = Runtime->GetSessionState();
+    TestTrue(TEXT("Initial session A is ready"), StatusA.bIsReady);
+    TestEqual(TEXT("Initial session A is in Ready state"), StatusA.SessionState, EGV2SessionState::Ready);
+
+    UGV2GameShellWidgetBase* ShellA = Runtime->GetActiveGameShell();
+    UUserWidget* ScreenA = Runtime->GetActiveScreen();
+    TestNotNull(TEXT("Session A created an active GameShell"), ShellA);
+    TestNotNull(TEXT("Session A created an active Screen"), ScreenA);
+
+    // 2. Inject candidate B failure before BeginReplace (undecodable resource)
+    const FString BadResourceDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("Resources/core/resource/cfc06_test"));
+    const FString BadResourcePath = FPaths::Combine(BadResourceDir, TEXT("candidate_fail_test.png"));
+    IFileManager::Get().MakeDirectory(*BadResourceDir, true);
+    const TArray<uint8> GarbageBytes = {0x00, 0x01, 0x02, 0x03};
+    TestTrue(
+        TEXT("Undecodable PNG fixture is written to trigger candidate build failure"),
+        FFileHelper::SaveArrayToFile(GarbageBytes, *BadResourcePath));
+
+    AddExpectedError(
+        TEXT("GV2 Lua runtime fault: code=ImageCatalogNotReady"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedError(
+        TEXT("Failed to start GV2 session"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+
+    // 3. Attempt replacement session B -> must fail candidate build and preserve session A
+    Runtime->StartSession();
+
+    // 4. Assert session A is completely preserved
+    const FGV2SessionStatus StatusAfterFail = Runtime->GetSessionState();
+    TestTrue(TEXT("Session A remains ready after candidate B failure"), StatusAfterFail.bIsReady);
+    TestEqual(TEXT("Session A remains in Ready state"), StatusAfterFail.SessionState, EGV2SessionState::Ready);
+    TestEqual(TEXT("Active GameShell is still the exact session A instance"), Runtime->GetActiveGameShell(), ShellA);
+    TestEqual(TEXT("Active Screen is still the exact session A instance"), Runtime->GetActiveScreen(), ScreenA);
+    TestNull(
+        TEXT("No recovery screen was shown since session A was preserved"),
+        Cast<UGV2RecoveryScreenWidget>(Runtime->GetActiveScreen()));
+
+    // Cleanup bad file
+    IFileManager::Get().Delete(*BadResourcePath);
+    IFileManager::Get().DeleteDirectory(*BadResourceDir, false, true);
+
+    // End session and clean up
+    Runtime->EndSession();
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
+    return true;
+}
+
+// CFC-06 (ADR-0044 D1/D2): Initial document apply failure after BeginReplace transitions
+// coordinator to Failed and displays native recovery widget without false Ready state.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionNativeRecoveryOnInitialApplyFailureTest,
+    "GV2.Runtime.Session.NativeRecoveryOnInitialApplyFailure",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SessionNativeRecoveryOnInitialApplyFailureTest::RunTest(const FString& Parameters)
+{
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
+    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
+    GameInstance->AddToRoot();
+    GameInstance->InitializeStandalone();
+    UWorld* TestWorld = GameInstance->GetWorld();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        GameInstance->Shutdown();
+        if (TestWorld != nullptr)
+        {
+            TestWorld->DestroyWorld(false);
+            GEngine->DestroyWorldContext(TestWorld);
+        }
+        GameInstance->RemoveFromRoot();
+        return false;
+    }
+
+    // 1. Force document sink failure after BeginReplace
+    UGV2RuntimeSubsystem::bTestForceDocumentSinkFailure = true;
+
+    AddExpectedErrorPlain(
+        TEXT("UI Document reconciliation failed (forced by automation test)"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedErrorPlain(
+        TEXT("GV2 Lua runtime fault: code=InitialPresentationApplyFailed"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedErrorPlain(
+        TEXT("Failed to start GV2 session"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+    AddExpectedErrorPlain(
+        TEXT("Showing UE-native recovery surface: session bootstrap failed"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+
+    // 2. Start session with forced apply failure
+    FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
+
+    // 3. Assert failure semantics: not ready, state Failed, recovery screen active
+    const FGV2SessionStatus FailedStatus = Runtime->GetSessionState();
+    TestFalse(TEXT("Session is not ready after initial apply failure"), FailedStatus.bIsReady);
+    TestEqual(TEXT("Session state is Failed"), FailedStatus.SessionState, EGV2SessionState::Failed);
+    TestNull(TEXT("Active GameShell is null after apply failure"), Runtime->GetActiveGameShell());
+
+    UGV2RecoveryScreenWidget* RecoveryScreen = Cast<UGV2RecoveryScreenWidget>(Runtime->GetActiveScreen());
+    TestNotNull(TEXT("Native recovery widget is shown as active screen"), RecoveryScreen);
+
+    // Reset test flag
+    UGV2RuntimeSubsystem::bTestForceDocumentSinkFailure = false;
+
+    // Clean up
+    Runtime->EndSession();
+    GameInstance->Shutdown();
+    if (TestWorld != nullptr)
+    {
+        TestWorld->DestroyWorld(false);
+        GEngine->DestroyWorldContext(TestWorld);
+    }
+    GameInstance->RemoveFromRoot();
     return true;
 }
 

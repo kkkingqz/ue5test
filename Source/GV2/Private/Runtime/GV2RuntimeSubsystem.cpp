@@ -150,9 +150,17 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
             *Item.Binding.CommandId);
 
     });
-    Coordinator->SetDocumentSink([this](const FGV2UiDocumentViewModel& Document)
+    Coordinator->SetProjectionTeardownSink([this]()
     {
-        return HandleDocumentRequested(Document);
+        TeardownActiveProjection();
+    });
+    Coordinator->SetDocumentSink([this](const FGV2UiDocumentViewModel& Document, const FGV2PresentationPrepareContext& PrepareContext)
+    {
+        return HandleDocumentRequested(Document, PrepareContext);
+    });
+    Coordinator->SetProjectionPublishSink([this]()
+    {
+        PublishActiveProjection();
     });
 #if !UE_BUILD_SHIPPING
     StartGameInstanceHandle = FWorldDelegates::OnStartGameInstance.AddUObject(
@@ -173,22 +181,14 @@ void UGV2RuntimeSubsystem::Deinitialize()
         FWorldDelegates::OnStartGameInstance.Remove(StartGameInstanceHandle);
         StartGameInstanceHandle.Reset();
     }
-    Reconciler->Reset();
-    if (ActiveGameShell != nullptr)
-    {
-        ActiveGameShell->RemoveFromParent();
-        ActiveGameShell = nullptr;
-    }
-    if (ActiveScreen != nullptr)
-    {
-        ActiveScreen->RemoveFromParent();
-        ActiveScreen = nullptr;
-    }
+    TeardownActiveProjection();
     if (Coordinator)
     {
         Coordinator->EndSession(EGV2SessionState::Destroyed);
         Coordinator->ClearInteractionSink();
         Coordinator->ClearDocumentSink();
+        Coordinator->ClearProjectionTeardownSink();
+        Coordinator->ClearProjectionPublishSink();
         Coordinator.Reset();
     }
     RepositoryPublisher.Reset();
@@ -213,14 +213,105 @@ EGV2SubmitUiInteractionResult UGV2RuntimeSubsystem::SubmitUiInteraction(
         : EGV2SubmitUiInteractionResult::RuntimeNotReady;
 }
 
+int64 UGV2RuntimeSubsystem::RequestSession(const FSessionStartDescriptor& Descriptor)
+{
+    check(IsInGameThread());
+    check(Coordinator);
+
+    FString ValidateError;
+    if (!Descriptor.IsValid(&ValidateError))
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("RequestSession rejected descriptor: %s"), *ValidateError);
+        Coordinator->FailBootstrap(TEXT("InvalidSessionDescriptor"), ValidateError);
+        return 0;
+    }
+
+    if (!bRepositoryReady || !RepositoryPublisher->HasCurrent())
+    {
+        UE_LOG(
+            LogGV2Runtime,
+            Error,
+            TEXT("RequestSession rejected: GameDataRepository is not ready: %s"),
+            *RepositoryBuildError);
+        Coordinator->FailBootstrap(
+            TEXT("RepositoryNotReady"),
+            RepositoryBuildError.IsEmpty() ? TEXT("No published GameDataRepository to pin.") : RepositoryBuildError);
+        return 0;
+    }
+
+    const uint64 OpId = Coordinator->RequestSession(
+        Descriptor,
+        RepositoryPublisher->GetCurrent(),
+        RepositoryPublisher->GetVersion(),
+        *ResolvedPackageSet);
+
+    const TOptional<ESessionOperationOutcome> Outcome = Coordinator->GetSessionOperationOutcome(OpId);
+    if (Outcome.IsSet() && *Outcome == ESessionOperationOutcome::Failed)
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
+        if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed && GetGameInstance() != nullptr)
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("Showing UE-native recovery surface: session bootstrap failed"));
+        if (PendingGameShell != nullptr)
+        {
+            PendingGameShell->RemoveFromParent();
+            PendingGameShell = nullptr;
+        }
+        PendingScreen = nullptr;
+        UGV2RecoveryScreenWidget* RecoveryScreen = CreateWidget<UGV2RecoveryScreenWidget>(
+            GetGameInstance(),
+            UGV2RecoveryScreenWidget::StaticClass());
+        if (RecoveryScreen != nullptr)
+        {
+            const FString TitleText = ResolveRecoveryText(
+                TEXT("core:text.screen.recovery.title"),
+                TEXT("Recovery"));
+            const FString MessageText = ResolveRecoveryText(
+                TEXT("core:text.screen.error.description"),
+                TEXT("Session initialization rejected by host lifecycle"));
+
+            if (RecoveryScreen->InitializeRecoveryScreen(TitleText, MessageText))
+            {
+                ReplaceActiveScreen(RecoveryScreen);
+            }
+        }
+    }
+    }
+
+    return static_cast<int64>(OpId);
+}
+
+ESessionCancellationResult UGV2RuntimeSubsystem::CancelSessionRequest(const int64 OperationId)
+{
+    check(IsInGameThread());
+    return Coordinator ? Coordinator->CancelSessionRequest(static_cast<uint64>(OperationId)) : ESessionCancellationResult::Stale;
+}
+
+bool UGV2RuntimeSubsystem::GetSessionOperationOutcome(const int64 OperationId, ESessionOperationOutcome& OutOutcome) const
+{
+    if (!Coordinator)
+    {
+        return false;
+    }
+    const TOptional<ESessionOperationOutcome> Outcome = Coordinator->GetSessionOperationOutcome(static_cast<uint64>(OperationId));
+    if (Outcome.IsSet())
+    {
+        OutOutcome = *Outcome;
+        return true;
+    }
+    return false;
+}
+
+TOptional<ESessionOperationOutcome> UGV2RuntimeSubsystem::GetSessionOperationOutcome(const uint64 OperationId) const
+{
+    return Coordinator ? Coordinator->GetSessionOperationOutcome(OperationId) : TOptional<ESessionOperationOutcome>();
+}
+
 void UGV2RuntimeSubsystem::StartSession()
 {
     check(IsInGameThread());
     check(Coordinator);
 
-    // PSC-06: Screen Registry readiness is no longer checked here -- it's resolved fresh,
-    // per session, inside Coordinator->StartSession()'s own content candidate build, which
-    // already fails closed with ScreenRegistryNotReady if it can't build.
     if (!bRepositoryReady || !RepositoryPublisher->HasCurrent())
     {
         UE_LOG(
@@ -234,85 +325,79 @@ void UGV2RuntimeSubsystem::StartSession()
         return;
     }
 
-    if (ActiveScreen != nullptr)
-    {
-        ActiveScreen->RemoveFromParent();
-        ActiveScreen = nullptr;
-    }
-    if (ActiveGameShell != nullptr)
-    {
-        ActiveGameShell->RemoveFromParent();
-        ActiveGameShell = nullptr;
-    }
-    Reconciler->Reset();
+    FSessionStartDescriptor Descriptor;
+    Descriptor.Mode = ESessionStartMode::NewGame;
+    Descriptor.RepositoryVersion = FString::Printf(TEXT("%lld"), RepositoryPublisher->GetVersion());
+    Descriptor.RepositoryContentHash = UTF8_TO_TCHAR(RepositoryPublisher->GetCurrent().GetContentHash().c_str());
 
-    const UGV2ScreenRegistrySettings* RegistrySettings = GetDefault<UGV2ScreenRegistrySettings>();
-    UClass* GameShellClass = RegistrySettings != nullptr
-        ? RegistrySettings->GameShellClass.LoadSynchronous()
-        : nullptr;
-    if (GameShellClass != nullptr && GetWorld() != nullptr)
+    const int64 OpId = RequestSession(Descriptor);
+    if (OpId > 0)
     {
-        ActiveGameShell = CreateWidget<UGV2GameShellWidgetBase>(GetWorld(), GameShellClass);
-        if (ActiveGameShell != nullptr && bActiveScreenAddedToViewport)
+        ESessionOperationOutcome Outcome;
+        if (GetSessionOperationOutcome(OpId, Outcome) && Outcome == ESessionOperationOutcome::Completed)
         {
-            ActiveGameShell->AddToViewport();
+            UE_LOG(
+                LogGV2Runtime,
+                Display,
+                TEXT("Started session generation %d with repository version %lld"),
+                Coordinator->GetStatus().SessionGeneration,
+                Coordinator->GetStatus().RepositoryVersion);
         }
     }
-
-    if (!Coordinator->StartSession(
-            RepositoryPublisher->GetCurrent(),
-            RepositoryPublisher->GetVersion(),
-            *ResolvedPackageSet))
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Failed to start GV2 session"));
-        if (Coordinator->GetStatus().ApplicationState == EGV2ApplicationState::Failed && GetGameInstance() != nullptr)
-        {
-            UE_LOG(LogGV2Runtime, Error, TEXT("Showing UE-native recovery surface: session bootstrap failed"));
-            UGV2RecoveryScreenWidget* RecoveryScreen = CreateWidget<UGV2RecoveryScreenWidget>(
-                GetGameInstance(),
-                UGV2RecoveryScreenWidget::StaticClass());
-            if (RecoveryScreen != nullptr)
-            {
-                const FString TitleText = ResolveRecoveryText(
-                    TEXT("core:text.screen.recovery.title"),
-                    TEXT("Recovery"));
-                const FString MessageText = ResolveRecoveryText(
-                    TEXT("core:text.screen.error.description"),
-                    TEXT("Session initialization rejected by host lifecycle"));
-
-                if (RecoveryScreen->InitializeRecoveryScreen(TitleText, MessageText))
-                {
-                    ReplaceActiveScreen(RecoveryScreen);
-                }
-            }
-        }
-        return;
-    }
-    UE_LOG(
-        LogGV2Runtime,
-        Display,
-        TEXT("Started session generation %d with repository version %lld"),
-        Coordinator->GetStatus().SessionGeneration,
-        Coordinator->GetStatus().RepositoryVersion);
 }
 
 void UGV2RuntimeSubsystem::EndSession()
 {
     check(IsInGameThread());
     check(Coordinator);
-    Reconciler->Reset();
-    if (ActiveGameShell != nullptr)
-    {
-        ActiveGameShell->RemoveFromParent();
-        ActiveGameShell = nullptr;
-    }
+    bActiveScreenAddedToViewport = false;
+    Coordinator->EndSession(EGV2SessionState::Destroyed);
+}
+
+void UGV2RuntimeSubsystem::TeardownActiveProjection()
+{
     if (ActiveScreen != nullptr)
     {
         ActiveScreen->RemoveFromParent();
         ActiveScreen = nullptr;
     }
-    bActiveScreenAddedToViewport = false;
-    Coordinator->EndSession(EGV2SessionState::Destroyed);
+    if (ActiveGameShell != nullptr)
+    {
+        ActiveGameShell->RemoveFromParent();
+        ActiveGameShell = nullptr;
+    }
+    if (PendingGameShell != nullptr)
+    {
+        PendingGameShell->RemoveFromParent();
+        PendingGameShell = nullptr;
+    }
+    PendingScreen = nullptr;
+    if (Reconciler.IsValid())
+    {
+        Reconciler->Reset();
+    }
+}
+
+void UGV2RuntimeSubsystem::PublishActiveProjection()
+{
+    if (PendingGameShell != nullptr)
+    {
+        ActiveGameShell = PendingGameShell;
+        PendingGameShell = nullptr;
+        if (bActiveScreenAddedToViewport && ActiveGameShell != nullptr && !ActiveGameShell->IsInViewport())
+        {
+            ActiveGameShell->AddToViewport();
+        }
+    }
+    if (PendingScreen != nullptr)
+    {
+        ActiveScreen = PendingScreen;
+        PendingScreen = nullptr;
+        if (bActiveScreenAddedToViewport && ActiveScreen != nullptr && !ActiveScreen->IsInViewport())
+        {
+            ActiveScreen->AddToViewport();
+        }
+    }
 }
 
 UUserWidget* UGV2RuntimeSubsystem::GetActiveScreen() const
@@ -352,25 +437,11 @@ FString UGV2RuntimeSubsystem::GetActiveTab(const FString& ContainerPath) const
     return FString();
 }
 
-// PAH-08: phase=prepare -- the screen factory the reconciler calls from
-// PrepareReconcile to obtain a candidate widget class; no caller is on the
-// application path.
-// PSC-06 (ADR-0043 D1): resolves through this session's own FGV2PresentationPrepareContext
-// -- GetContentSnapshotForPrepare() returns the in-progress candidate while StartSession()
-// is still running its own initial Prepare/Commit, or the published snapshot for every
-// later document update once Ready (see GV2SessionCoordinator.h's doc comment). Unlike the
-// old GameInstance-lifetime ScreenRegistry member this replaces, there is no case where a
-// screen can be resolved from a DIFFERENT session's registry -- each session's own
-// candidate/snapshot is the only one this subsystem's single Coordinator ever exposes.
-UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const
+UClass* UGV2RuntimeSubsystem::ResolveScreenClass(
+    const FString& ScreenId,
+    const FGV2ScreenPlacement& Placement,
+    const FGV2PresentationPrepareContext& PrepareContext) const
 {
-    const FGV2SessionContentSnapshot* Snapshot = Coordinator ? Coordinator->GetContentSnapshotForPrepare() : nullptr;
-    if (Snapshot == nullptr)
-    {
-        UE_LOG(LogGV2Runtime, Error, TEXT("Unknown screen_id '%s': no session content snapshot is available"), *ScreenId);
-        return nullptr;
-    }
-    const FGV2PresentationPrepareContext PrepareContext(*Snapshot);
     FGV2ResolvedScreenDescriptor Descriptor;
     FGV2ScreenResolutionRejection Rejection;
     if (!PrepareContext.ResolveScreen(ScreenId, Placement, Descriptor, Rejection))
@@ -381,9 +452,12 @@ UClass* UGV2RuntimeSubsystem::ResolveScreenClass(const FString& ScreenId, const 
     return Descriptor.WidgetClass;
 }
 
-UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement)
+UGV2ScreenWidgetBase* UGV2RuntimeSubsystem::InstantiateScreenWidget(
+    const FString& ScreenId,
+    const FGV2ScreenPlacement& Placement,
+    const FGV2PresentationPrepareContext& PrepareContext)
 {
-    UClass* ScreenClass = ResolveScreenClass(ScreenId, Placement);
+    UClass* ScreenClass = ResolveScreenClass(ScreenId, Placement, PrepareContext);
     if (ScreenClass == nullptr || GetGameInstance() == nullptr)
     {
         return nullptr;
@@ -433,34 +507,42 @@ void UGV2RuntimeSubsystem::HandleViewportResized(FViewport* Viewport, uint32 /*U
 }
 
 bool UGV2RuntimeSubsystem::HandleDocumentRequested(
-    const FGV2UiDocumentViewModel& Document)
+    const FGV2UiDocumentViewModel& Document,
+    const FGV2PresentationPrepareContext& PrepareContext)
 {
-    FString ReconcileError;
-    auto ScreenFactory = [this](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
+#if WITH_DEV_AUTOMATION_TESTS
+    if (bTestForceDocumentSinkFailure)
     {
-        return InstantiateScreenWidget(ScreenId, FGV2ScreenPlacement::TopLevel(Layer));
-    };
-
-    // PSC-06 (ADR-0043 D1): GetContentSnapshotForPrepare() returns the in-progress
-    // candidate while StartSession() is still preparing/committing the initial document
-    // (before Ready), or the published snapshot for every later document update.
-    const FGV2SessionContentSnapshot* SnapshotForPrepare =
-        Coordinator ? Coordinator->GetContentSnapshotForPrepare() : nullptr;
-    // PSC-10B: without a snapshot there is no presentation authority at all, and since no
-    // widget resolves a Theme of its own any more, reconciling anyway would publish an
-    // unstyled document. Refuse the document instead of degrading it silently.
-    if (SnapshotForPrepare == nullptr)
-    {
-        UE_LOG(
-            LogGV2Runtime,
-            Error,
-            TEXT("UI Document reconciliation refused: no session content snapshot is available to prepare against"));
+        UE_LOG(LogGV2Runtime, Error, TEXT("UI Document reconciliation failed (forced by automation test)"));
         return false;
     }
-    const FGV2PresentationPrepareContext PrepareContext(*SnapshotForPrepare);
+#endif
+    FString ReconcileError;
+    auto ScreenFactory = [this, &PrepareContext](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
+    {
+        return InstantiateScreenWidget(ScreenId, FGV2ScreenPlacement::TopLevel(Layer), PrepareContext);
+    };
+
+    UGV2GameShellWidgetBase* TargetShell = ActiveGameShell;
+    if (TargetShell == nullptr)
+    {
+        if (PendingGameShell != nullptr)
+        {
+            TargetShell = PendingGameShell;
+        }
+        else
+        {
+            UClass* GameShellClass = PrepareContext.GetGameShellClass();
+            if (GameShellClass != nullptr && GetWorld() != nullptr)
+            {
+                PendingGameShell = CreateWidget<UGV2GameShellWidgetBase>(GetWorld(), GameShellClass);
+                TargetShell = PendingGameShell;
+            }
+        }
+    }
 
     if (!Reconciler->Reconcile(
-            ActiveGameShell,
+            TargetShell,
             Document,
             ScreenFactory,
             ReconcileError,
@@ -470,12 +552,20 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
         return false;
     }
 
-    if (ActiveGameShell == nullptr && Document.bHasRoute)
+    if (TargetShell == nullptr && Document.bHasRoute)
     {
-        ActiveScreen = Reconciler->GetActiveScreen(Document.Route.Layer, Document.Route.InstanceKey);
-        if (bActiveScreenAddedToViewport && ActiveScreen != nullptr && ActiveScreen->GetParent() == nullptr && !ActiveScreen->IsInViewport())
+        UGV2ScreenWidgetBase* ReconciledScreen = Reconciler->GetActiveScreen(Document.Route.Layer, Document.Route.InstanceKey);
+        if (ActiveGameShell != nullptr || ActiveScreen != nullptr)
         {
-            ActiveScreen->AddToViewport();
+            ActiveScreen = ReconciledScreen;
+            if (bActiveScreenAddedToViewport && ActiveScreen != nullptr && ActiveScreen->GetParent() == nullptr && !ActiveScreen->IsInViewport())
+            {
+                ActiveScreen->AddToViewport();
+            }
+        }
+        else
+        {
+            PendingScreen = ReconciledScreen;
         }
     }
     return true;
@@ -495,6 +585,8 @@ void UGV2RuntimeSubsystem::ReplaceActiveScreen(UUserWidget* NewScreen)
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
+bool UGV2RuntimeSubsystem::bTestForceDocumentSinkFailure = false;
+
 const FGV2SessionContentSnapshot* UGV2RuntimeSubsystem::GetContentSnapshotForAutomationTest() const
 {
     return Coordinator ? Coordinator->GetContentSnapshot() : nullptr;

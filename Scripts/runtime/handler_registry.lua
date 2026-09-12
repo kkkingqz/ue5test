@@ -161,13 +161,7 @@ function M.create_registry()
 end
 
 function M.register(_ctx)
-    if not game then
-        game = {}
-    end
-    if not game.commands then
-        game.commands = {}
-    end
-    game.commands.handlers = M.create_registry()
+    -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
 
 function M.with_isolated_handlers(fn)
@@ -177,12 +171,16 @@ function M.with_isolated_handlers(fn)
         game = {}
     end
     if not game.commands then
-        game.commands = {}
+        rawset(game, "commands", {})
     end
-    game.commands.handlers = fresh_registry
+    rawset(game.commands, "handlers", fresh_registry)
 
     local ok, err = pcall(fn)
-    game.commands.handlers = old_handlers
+    if getmetatable(game.commands) ~= nil then
+        rawset(game.commands, "handlers", nil)
+    else
+        rawset(game.commands, "handlers", old_handlers)
+    end
     if not ok then
         error(err, 0)
     end

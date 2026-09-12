@@ -142,7 +142,62 @@ std::string RunRunManifestConformance()
         return "run_manifest.reject_invalid_command_id";
     }
 
-    // 4. Sanitation check: ensure output does not contain file system roots or absolute paths
+    // 4. Manifest format version 2 and uint64 seed roundtrip (CFC-07A)
+    FRunManifest V2Manifest;
+    V2Manifest.LuaReleaseNumber = 50408;
+    V2Manifest.RepositoryContentHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
+    V2Manifest.ScriptSetHash = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
+    V2Manifest.Seed = 0xdeadbeef12345678ULL;
+
+    const std::string V2Json = SerializeRunManifest(V2Manifest);
+    if (V2Json.find("\"manifest_format_version\": 2") == std::string::npos
+        || V2Json.find("\"seed\": \"deadbeef12345678\"") == std::string::npos)
+    {
+        return "run_manifest.v2_serialization_format";
+    }
+
+    FRunManifest ParsedV2;
+    if (!DeserializeRunManifest(V2Json, ParsedV2, Error) || !Error.empty())
+    {
+        return "run_manifest.deserialize_v2_manifest";
+    }
+    if (ParsedV2 != V2Manifest)
+    {
+        return "run_manifest.v2_manifest_equality";
+    }
+
+    // 5. Manifest format v1 migration (CFC-07A)
+    const std::string V1Json = "{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 42, accepted_commands: [] }";
+    FRunManifest ParsedV1;
+    if (!DeserializeRunManifest(V1Json, ParsedV1, Error) || !Error.empty())
+    {
+        return "run_manifest.deserialize_v1_migration";
+    }
+    if (ParsedV1.Seed != 42)
+    {
+        return "run_manifest.v1_migrated_seed_value";
+    }
+
+    // 6. Format v2 seed validation rejections (CFC-07A)
+    const std::string V2NumericSeedJson = "{ manifest_format_version: 2, lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 42, accepted_commands: [] }";
+    if (DeserializeRunManifest(V2NumericSeedJson, InvalidParsed, Error) || Error != "run_manifest.invalid_seed")
+    {
+        return "run_manifest.reject_v2_numeric_seed";
+    }
+
+    const std::string V2BadHexSeedJson = "{ manifest_format_version: 2, lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: '000000000000002G', accepted_commands: [] }";
+    if (DeserializeRunManifest(V2BadHexSeedJson, InvalidParsed, Error) || Error != "run_manifest.invalid_seed")
+    {
+        return "run_manifest.reject_v2_bad_hex_seed";
+    }
+
+    const std::string UnsupportedVerJson = "{ manifest_format_version: 99, lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: '0000000000000000', accepted_commands: [] }";
+    if (DeserializeRunManifest(UnsupportedVerJson, InvalidParsed, Error) || Error != "run_manifest.unsupported_format_version")
+    {
+        return "run_manifest.reject_unsupported_manifest_format_version";
+    }
+
+    // 7. Sanitation check: ensure output does not contain file system roots or absolute paths
     if (RichJson1.find("/home/") != std::string::npos
         || RichJson1.find("/Game/") != std::string::npos
         || RichJson1.find("C:\\") != std::string::npos)

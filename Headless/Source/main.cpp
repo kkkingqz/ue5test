@@ -49,6 +49,7 @@
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
 #include "GV2RuntimeCore/Testing/GV2ValidatorRegistryConformance.h"
 #include "GV2RuntimeCore/Testing/GV2LuaSpecRunnerConformance.h"
+#include "GV2RuntimeCore/Testing/GV2RegistryLifecycleConformance.h"
 #include "GV2TestSupport/LuaSpecRunner.h"
 #include "GV2TestSupport/CommandValidatorFixture.h"
 
@@ -113,6 +114,51 @@ bool TryParsePositive(const std::string& Text, std::int64_t& OutValue)
     const char* End = Begin + Text.size();
     const auto Result = std::from_chars(Begin, End, OutValue);
     return Result.ec == std::errc{} && Result.ptr == End && OutValue > 0;
+}
+
+bool TryParseSeed(const std::string& Text, std::uint64_t& OutValue, std::string& OutHex)
+{
+    if (Text.empty())
+    {
+        return false;
+    }
+    if (Text.size() == 16)
+    {
+        bool bAllHex = true;
+        for (char C : Text)
+        {
+            if (!((C >= '0' && C <= '9') || (C >= 'a' && C <= 'f') || (C >= 'A' && C <= 'F')))
+            {
+                bAllHex = false;
+                break;
+            }
+        }
+        if (bAllHex)
+        {
+            char* EndPtr = nullptr;
+            OutValue = std::strtoull(Text.c_str(), &EndPtr, 16);
+            if (EndPtr != nullptr && *EndPtr == '\0')
+            {
+                char HexBuf[32];
+                std::snprintf(HexBuf, sizeof(HexBuf), "%016llx", static_cast<unsigned long long>(OutValue));
+                OutHex = HexBuf;
+                return true;
+            }
+        }
+    }
+    const char* Begin = Text.data();
+    const char* End = Begin + Text.size();
+    std::uint64_t Parsed = 0;
+    const auto Result = std::from_chars(Begin, End, Parsed);
+    if (Result.ec == std::errc{} && Result.ptr == End)
+    {
+        OutValue = Parsed;
+        char HexBuf[32];
+        std::snprintf(HexBuf, sizeof(HexBuf), "%016llx", static_cast<unsigned long long>(OutValue));
+        OutHex = HexBuf;
+        return true;
+    }
+    return false;
 }
 
 // PSC-02 (ADR-0043 D1/D5): consumes the session's already-resolved package set --
@@ -819,7 +865,8 @@ bool RunSharedJson5FixtureConformance()
 
 int Run(
     const std::int64_t CommandCount,
-    const std::int64_t Seed,
+    const std::uint64_t Seed,
+    const std::string& SeedHex,
     const bool bSelfTest,
     const std::vector<GV2RuntimeCore::FRuntimeSource>& RuntimeSources,
     const std::optional<GV2ContentHostSupport::FResolvedPackageSet>& ResolvedPackageSet,
@@ -1041,10 +1088,12 @@ int Run(
             OutFile << GV2RuntimeCore::SerializeRunDigest(Digest);
         }
 
+        char SeedBuf[32];
+        std::snprintf(SeedBuf, sizeof(SeedBuf), "%016llx", static_cast<unsigned long long>(Manifest.Seed));
         std::cout << "{\"ok\":true"
                   << ",\"lua_release_num\":" << GV2RuntimeCore::FRuntimeSession::LuaReleaseNumber
                   << ",\"commands\":" << Manifest.AcceptedCommands.size()
-                  << ",\"seed\":" << Manifest.Seed
+                  << ",\"seed\":\"" << SeedBuf << "\""
                   << ",\"commands_per_second\":" << CommandsPerSecond
                   << ",\"repository_content_hash\":\"" << RepositoryHandle.GetContentHash() << "\""
                   << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
@@ -1052,11 +1101,12 @@ int Run(
                   << ",\"media_payload_loaded\":false"
                   << ",\"localization_resolved\":false"
                   << ",\"digest_hash\":\"" << Digest.DigestHash << "\""
-                  << ",\"digest\":{\"digest_hash\":\"" << Digest.DigestHash << "\""
+                  << ",\"digest\":{\"digest_format_version\":" << Digest.DigestFormatVersion
+                  << ",\"digest_hash\":\"" << Digest.DigestHash << "\""
                   << ",\"lua_release_num\":" << Digest.LuaReleaseNumber
                   << ",\"repository_content_hash\":\"" << Digest.RepositoryContentHash << "\""
                   << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
-                  << ",\"seed\":" << Digest.Seed
+                  << ",\"seed\":\"" << SeedBuf << "\""
                   << ",\"executed_commands_count\":" << Digest.ExecutedCommandsCount
                   << ",\"success\":" << (Digest.bSuccess ? "true" : "false")
                   << ",\"final_screen_id\":\"" << Digest.FinalScreenId << "\""
@@ -1066,9 +1116,15 @@ int Run(
         return 0;
     }
 
+    GV2RuntimeCore::FSessionStartInputs StartInputs;
+    StartInputs.SessionGeneration = 1;
+    StartInputs.SeedHex = SeedHex;
+    StartInputs.Mode = "NewGame";
+    StartInputs.RepositoryContentHash = RepositoryHandle.GetContentHash();
+
     GV2RuntimeCore::FRuntimeSession Runtime;
     GV2RuntimeCore::FRuntimeFault Fault;
-    if (!Runtime.Start(1, RepositoryHandle, RuntimeSources, Fault))
+    if (!Runtime.Start(StartInputs, RepositoryHandle, RuntimeSources, Fault))
     {
         std::cerr << "runtime_start_failed code=" << Fault.Code << " message=" << Fault.Message << '\n';
         return 2;
@@ -1086,7 +1142,7 @@ int Run(
         GV2RuntimeCore::FCommandRequest Request;
         Request.CommandId = "core:command.test.headless_step";
         Request.Sequence = Index;
-        Request.Args.emplace("seed", GV2RuntimeCore::FValue(Seed));
+        Request.Args.emplace("seed", GV2RuntimeCore::FValue(static_cast<std::int64_t>(Seed)));
         Request.Args.emplace("step", GV2RuntimeCore::FValue(Index));
         if (!Runtime.DispatchCommand(Request, Fault))
         {
@@ -1109,6 +1165,47 @@ int Run(
         : 0.0;
 
     std::optional<GV2RuntimeCore::FScreenRequest> PendingScreen;
+
+    if (bSelfTest)
+    {
+        GV2RuntimeCore::FSemanticInput Input;
+        Input.SessionGeneration = 1;
+        Input.UiInstanceId = "ui@1:1";
+        Input.Revision = 1;
+        Input.Sequence = CommandCount + 1;
+        Input.NodeKeyPath = {"route", "button"};
+        Input.CommandId = "core:command.test.semantic_step";
+        if (!Runtime.DispatchSemanticInput(Input, Fault))
+        {
+            std::cerr << "semantic_input_failed code=" << Fault.Code
+                      << " message=" << Fault.Message << '\n';
+            return 6;
+        }
+
+        GV2RuntimeCore::FRunAcceptedCommand SemanticAccepted;
+        SemanticAccepted.CommandId = Input.CommandId;
+        SemanticAccepted.Sequence = Input.Sequence;
+        SemanticAccepted.Args = Input.Args;
+        Manifest.AcceptedCommands.push_back(std::move(SemanticAccepted));
+
+        Runtime.TakePendingScreen(PendingScreen, Fault);
+    }
+
+    GV2RuntimeCore::FRunResult RunResult;
+    RunResult.bSuccess = true;
+    RunResult.ExecutedCommandsCount = Manifest.AcceptedCommands.size();
+    RunResult.FinalScreenId = PendingScreen ? PendingScreen->ScreenId : "";
+    if (PendingScreen)
+    {
+        for (const auto& Field : PendingScreen->Fields)
+        {
+            RunResult.FinalScreenFields.emplace(Field.FieldId, Field.Value);
+        }
+    }
+    RunResult.FaultCode = "";
+    RunResult.StateHash = Runtime.GetCanonicalStateHash();
+
+    Runtime.Stop();
 
     if (bSelfTest)
     {
@@ -1178,6 +1275,15 @@ int Run(
         {
             std::cerr << "package_discovery_and_order_conformance_failed case=" << DiscoveryOrderFailure << '\n';
             return 20;
+        }
+
+        // CFC-05: mandatory registry sealing conformance (plan SessionLifecycle, M1).
+        const std::string RegistryLifecycleFailure =
+            GV2RuntimeCore::Testing::RunRegistryLifecycleConformance();
+        if (!RegistryLifecycleFailure.empty())
+        {
+            std::cerr << "registry_lifecycle_conformance_failed case=" << RegistryLifecycleFailure << '\n';
+            return 21;
         }
 
         // TAS-04: both hosts call this one runner over Tests/Lua/**/*.lua.
@@ -1420,45 +1526,7 @@ int Run(
                 return 16;
             }
         }
-
-        GV2RuntimeCore::FSemanticInput Input;
-        Input.SessionGeneration = 1;
-        Input.UiInstanceId = "ui@1:1";
-        Input.Revision = 1;
-        Input.Sequence = CommandCount + 1;
-        Input.NodeKeyPath = {"route", "button"};
-        Input.CommandId = "core:command.test.semantic_step";
-        if (!Runtime.DispatchSemanticInput(Input, Fault))
-        {
-            std::cerr << "semantic_input_failed code=" << Fault.Code
-                      << " message=" << Fault.Message << '\n';
-            return 6;
-        }
-
-        GV2RuntimeCore::FRunAcceptedCommand SemanticAccepted;
-        SemanticAccepted.CommandId = Input.CommandId;
-        SemanticAccepted.Sequence = Input.Sequence;
-        SemanticAccepted.Args = Input.Args;
-        Manifest.AcceptedCommands.push_back(std::move(SemanticAccepted));
-
-        Runtime.TakePendingScreen(PendingScreen, Fault);
     }
-
-    GV2RuntimeCore::FRunResult RunResult;
-    RunResult.bSuccess = true;
-    RunResult.ExecutedCommandsCount = Manifest.AcceptedCommands.size();
-    RunResult.FinalScreenId = PendingScreen ? PendingScreen->ScreenId : "";
-    if (PendingScreen)
-    {
-        for (const auto& Field : PendingScreen->Fields)
-        {
-            RunResult.FinalScreenFields.emplace(Field.FieldId, Field.Value);
-        }
-    }
-    RunResult.FaultCode = "";
-    RunResult.StateHash = Runtime.GetCanonicalStateHash();
-
-    Runtime.Stop();
 
     const GV2RuntimeCore::FRunDigest Digest = GV2RuntimeCore::ComputeRunDigest(Manifest, RunResult);
 
@@ -1484,10 +1552,12 @@ int Run(
         OutFile << GV2RuntimeCore::SerializeRunDigest(Digest);
     }
 
+    char SeedBuf[32];
+    std::snprintf(SeedBuf, sizeof(SeedBuf), "%016llx", static_cast<unsigned long long>(Seed));
     std::cout << "{\"ok\":true"
               << ",\"lua_release_num\":" << GV2RuntimeCore::FRuntimeSession::LuaReleaseNumber
               << ",\"commands\":" << CommandCount
-              << ",\"seed\":" << Seed
+              << ",\"seed\":\"" << SeedBuf << "\""
               << ",\"commands_per_second\":" << CommandsPerSecond
               << ",\"repository_content_hash\":\"" << RepositoryHandle.GetContentHash() << "\""
               << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
@@ -1495,11 +1565,12 @@ int Run(
               << ",\"media_payload_loaded\":false"
               << ",\"localization_resolved\":false"
               << ",\"digest_hash\":\"" << Digest.DigestHash << "\""
-              << ",\"digest\":{\"digest_hash\":\"" << Digest.DigestHash << "\""
+              << ",\"digest\":{\"digest_format_version\":" << Digest.DigestFormatVersion
+              << ",\"digest_hash\":\"" << Digest.DigestHash << "\""
               << ",\"lua_release_num\":" << Digest.LuaReleaseNumber
               << ",\"repository_content_hash\":\"" << Digest.RepositoryContentHash << "\""
               << ",\"script_set_hash\":\"" << Digest.ScriptSetHash << "\""
-              << ",\"seed\":" << Digest.Seed
+              << ",\"seed\":\"" << SeedBuf << "\""
               << ",\"executed_commands_count\":" << Digest.ExecutedCommandsCount
               << ",\"success\":" << (Digest.bSuccess ? "true" : "false")
               << ",\"final_screen_id\":\"" << Digest.FinalScreenId << "\""
@@ -1568,7 +1639,8 @@ int RunCheckScripts(
 int main(int argc, char** argv)
 {
     std::int64_t CommandCount = 1000;
-    std::int64_t Seed = 1;
+    std::uint64_t Seed = 1;
+    std::string SeedHex = "0000000000000001";
     bool bSelfTest = false;
     bool bCheckScripts = false;
     std::optional<std::string> ExplicitContentRoot;
@@ -1597,7 +1669,7 @@ int main(int argc, char** argv)
         }
         else if (Argument.rfind("--seed=", 0) == 0)
         {
-            if (!TryParsePositive(Argument.substr(7), Seed))
+            if (!TryParseSeed(Argument.substr(7), Seed, SeedHex))
             {
                 std::cerr << "invalid --seed value\n";
                 return 64;
@@ -1656,5 +1728,5 @@ int main(int argc, char** argv)
     {
         return RunCheckScripts(RuntimeSources, ResolvedPackageSet);
     }
-    return Run(CommandCount, Seed, bSelfTest, RuntimeSources, ResolvedPackageSet, ManifestPath, OutputManifestPath, OutputDigestPath);
+    return Run(CommandCount, Seed, SeedHex, bSelfTest, RuntimeSources, ResolvedPackageSet, ManifestPath, OutputManifestPath, OutputDigestPath);
 }

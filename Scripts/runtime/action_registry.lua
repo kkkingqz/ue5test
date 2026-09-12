@@ -156,11 +156,7 @@ end
 local default_registry = nil
 
 function M.register(_ctx)
-    if not game then
-        game = {}
-    end
-    default_registry = M.create_registry()
-    game.actions = default_registry
+    -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
 
 return M

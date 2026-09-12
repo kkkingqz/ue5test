@@ -256,16 +256,8 @@ function M.drain_queue(dispatcher)
 end
 
 function M.register(_ctx)
-    if not game then
-        game = {}
-    end
-    if not game.commands then
-        game.commands = {}
-    end
-    game.commands.enqueue = M.enqueue
-    game.commands.clear_queue = M.clear_queue
-    game.commands.get_queue_length = M.get_queue_length
-    game.commands.drain_queue = M.drain_queue
+    -- CFC-05: game.commands queue methods are installed into the game facade by
+    -- core:module.bootstrap.registry_lifecycle before module register hooks run.
 end
 
 return M

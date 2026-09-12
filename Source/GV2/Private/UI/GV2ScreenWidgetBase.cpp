@@ -20,7 +20,7 @@ bool IsCanonicalFieldId(const FName FieldId)
 
 struct FGV2ScreenHostRecord
 {
-    TObjectPtr<UUserWidget> HostWidget;
+    TWeakObjectPtr<UUserWidget> HostWidget;
     FName FieldId;
 };
 
@@ -161,7 +161,7 @@ bool PrepareScreenFieldPlans(
         FGV2UiHostMutationPlan MutationPlan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
         const bool bPrepared = PrepareUiHostProperties(
-            Host.HostWidget,
+            Host.HostWidget.Get(),
             CapabilityTree,
             *Value.PreparedValue,
             *Value.CompiledSchema,
@@ -175,17 +175,14 @@ bool PrepareScreenFieldPlans(
         if (!bPrepared)
         {
             OutError = FString::Printf(
-                TEXT("screen field '%s' failed to prepare: %s"),
+                TEXT("core:diagnostic.ui_mutation.prepare_failed: screen field '%s' cannot prepare: %s"),
                 *Host.FieldId.ToString(),
                 Diagnostics.Num() > 0 ? *Diagnostics[0].ToString() : TEXT("unknown error"));
             return false;
         }
 
-        // GBF-04 (ADR-0041): an inverse is prepared from the complete committed
-        // snapshot. On the first revision there is no old schema, so the candidate
-        // schema correctly produces an all-Reset inverse. A non-empty old value without
-        // its old schema is never guessed from the candidate schema: that would reset
-        // properties the old schema owned but the candidate no longer owns.
+        // GBH-10 (ADR-0041): build the mandatory inverse plan off-tree, alongside
+        // MutationPlan, before any host commits.
         const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec>& PreviousCommittedSchema = HostState.GetLastCommittedSchema();
         const FString& PreviousCommittedSchemaId = HostState.GetLastCommittedSchemaId();
         const bool bHasCommittedSnapshot = PreviousCommittedSchema && !PreviousCommittedSchemaId.IsEmpty();
@@ -206,7 +203,7 @@ bool PrepareScreenFieldPlans(
         FGV2UiHostMutationPlan RollbackPlan;
         TArray<FGV2UiSchemaCompatibilityDiagnostic> RollbackDiagnostics;
         if (!PrepareUiHostRollbackPlan(
-                Host.HostWidget,
+                Host.HostWidget.Get(),
                 CapabilityTree,
                 MutationPlan,
                 PreviousCommittedValue,
@@ -260,8 +257,18 @@ FGV2UiRollbackResult RollbackFieldPlans(
     for (int32 Index = FieldPlans.Num() - 1; Index >= 0; --Index)
     {
         const FGV2ScreenFieldPlan& FieldPlan = FieldPlans[Index];
+        if (!FieldPlan.HostWidget.IsValid())
+        {
+            if (Result.bRestored)
+            {
+                Result = FGV2UiRollbackResult::RestorationFailed(
+                    TEXT("host"),
+                    TEXT("core:diagnostic.ui_screen.host_invalidated: Screen field host widget is no longer valid during rollback"));
+            }
+            continue;
+        }
         FString RollbackFailedPath, RollbackError;
-        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.RollbackPlan, RollbackFailedPath, RollbackError, RollbackFailureInjector))
+        if (!CommitUiHostProperties(FieldPlan.HostWidget.Get(), FieldPlan.RollbackPlan, RollbackFailedPath, RollbackError, RollbackFailureInjector))
         {
             UE_LOG(LogGV2ScreenWidget, Error,
                 TEXT("GBH-10: rollback failed restoring host '%s' property '%s': %s -- invariant violation, physical state may not match previous revision"),
@@ -301,8 +308,13 @@ bool UGV2ScreenWidgetBase::CommitScreenFields(
     int32 CommittedHostCount = 0;
     for (const FGV2ScreenFieldPlan& FieldPlan : Plan.FieldPlans)
     {
+        if (!FieldPlan.HostWidget.IsValid())
+        {
+            OutError = TEXT("core:diagnostic.ui_screen.host_invalidated: Screen field host widget is no longer valid");
+            return false;
+        }
         FString FailedPath, CommitError;
-        if (!CommitUiHostProperties(FieldPlan.HostWidget, FieldPlan.MutationPlan, FailedPath, CommitError, FailureInjector, &FieldPlan.RollbackPlan, RollbackFailureInjector))
+        if (!CommitUiHostProperties(FieldPlan.HostWidget.Get(), FieldPlan.MutationPlan, FailedPath, CommitError, FailureInjector, &FieldPlan.RollbackPlan, RollbackFailureInjector))
         {
             // GBH-10 (ADR-0041): every plan above already prepared cleanly, so reaching
             // this is either injected test failure or a genuine engine-level fault, not

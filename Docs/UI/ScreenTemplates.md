@@ -444,6 +444,8 @@ fields: [
 7. `UGV2ScreenWidgetBase::CommitScreenFields` исполняет подготовленный план мутаций (`CommitUiHostProperties`).
 8. После полного успеха коммитятся подготовленные биндинги ревизии. `OnScreenFieldsApplied` и tab callbacks (`OnTabModelApplied`, `OnTabSelectionUpdated`, `OnTabChanged`) отсутствуют: GBF-06 удалил неиспользуемые Blueprint callbacks, которые прежде исполнялись внутри отменяемой Commit-фазы.
 
+Подготовленный план мутаций полей экрана (`FGV2ScreenFieldPlan`) удерживает borrowed reference на целевой виджет (`HostWidget`) через `TWeakObjectPtr<UUserWidget>`, а элементарные мутации (`FGV2UiPropertyMutation`) — `TargetWidget` через `TWeakObjectPtr<UWidget>`. Доступ к целевым виджетам валидируется через `IsValid()`. Новые off-tree виджеты элементов и вкладок удерживаются консьюмерами через `TStrongObjectPtr` до фазы Commit, где переносятся в иерархию панели UMG, либо уничтожаются сборщиком мусора при сбросе/откате плана.
+
 `GetScreenFieldIds` возвращает сконфигурированные `field_id` экрана и используется validation/tests.
 
 ## Current vertical slice

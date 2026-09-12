@@ -163,7 +163,11 @@ FValue ContentValueToRuntimeValue(const GV2ContentCore::FValue& InValue)
 
 std::string SerializeRunManifest(const FRunManifest& Manifest)
 {
+    char SeedBuffer[32];
+    std::snprintf(SeedBuffer, sizeof(SeedBuffer), "%016llx", static_cast<unsigned long long>(Manifest.Seed));
+
     std::string Out = "{\n";
+    Out += "  \"manifest_format_version\": " + std::to_string(Manifest.ManifestFormatVersion) + ",\n";
     Out += "  \"lua_release_num\": " + std::to_string(Manifest.LuaReleaseNumber) + ",\n";
     Out += "  \"repository_content_hash\": ";
     EscapeJsonString(Manifest.RepositoryContentHash, Out);
@@ -171,7 +175,9 @@ std::string SerializeRunManifest(const FRunManifest& Manifest)
     Out += "  \"script_set_hash\": ";
     EscapeJsonString(Manifest.ScriptSetHash, Out);
     Out += ",\n";
-    Out += "  \"seed\": " + std::to_string(Manifest.Seed) + ",\n";
+    Out += "  \"seed\": \"";
+    Out += SeedBuffer;
+    Out += "\",\n";
     Out += "  \"accepted_commands\": [";
 
     if (Manifest.AcceptedCommands.empty())
@@ -224,6 +230,18 @@ bool DeserializeRunManifest(
         return false;
     }
 
+    const auto* FormatVersionVal = Root.FindField("manifest_format_version");
+    std::int32_t FormatVersion = 1;
+    if (FormatVersionVal != nullptr)
+    {
+        if (!FormatVersionVal->IsInteger() || FormatVersionVal->AsInteger() != 2)
+        {
+            OutError = "run_manifest.unsupported_format_version";
+            return false;
+        }
+        FormatVersion = static_cast<std::int32_t>(FormatVersionVal->AsInteger());
+    }
+
     const auto* LuaReleaseVal = Root.FindField("lua_release_num");
     if (LuaReleaseVal == nullptr || !LuaReleaseVal->IsInteger())
     {
@@ -246,10 +264,50 @@ bool DeserializeRunManifest(
     }
 
     const auto* SeedVal = Root.FindField("seed");
-    if (SeedVal == nullptr || !SeedVal->IsInteger() || SeedVal->AsInteger() < 0)
+    if (SeedVal == nullptr)
     {
         OutError = "run_manifest.invalid_seed";
         return false;
+    }
+
+    std::uint64_t ParsedSeed = 0;
+    if (FormatVersion == 2)
+    {
+        if (!SeedVal->IsString())
+        {
+            OutError = "run_manifest.invalid_seed";
+            return false;
+        }
+        const std::string& SeedStr = SeedVal->AsString();
+        if (SeedStr.size() != 16)
+        {
+            OutError = "run_manifest.invalid_seed";
+            return false;
+        }
+        for (char C : SeedStr)
+        {
+            if (!((C >= '0' && C <= '9') || (C >= 'a' && C <= 'f')))
+            {
+                OutError = "run_manifest.invalid_seed";
+                return false;
+            }
+        }
+        char* EndPtr = nullptr;
+        ParsedSeed = std::strtoull(SeedStr.c_str(), &EndPtr, 16);
+        if (EndPtr == nullptr || *EndPtr != '\0')
+        {
+            OutError = "run_manifest.invalid_seed";
+            return false;
+        }
+    }
+    else // FormatVersion == 1 (legacy migration)
+    {
+        if (!SeedVal->IsInteger() || SeedVal->AsInteger() < 0)
+        {
+            OutError = "run_manifest.invalid_seed";
+            return false;
+        }
+        ParsedSeed = static_cast<std::uint64_t>(SeedVal->AsInteger());
     }
 
     const auto* CommandsVal = Root.FindField("accepted_commands");
@@ -302,10 +360,11 @@ bool DeserializeRunManifest(
         Commands.push_back(std::move(Cmd));
     }
 
+    OutManifest.ManifestFormatVersion = FormatVersion;
     OutManifest.LuaReleaseNumber = static_cast<std::int32_t>(LuaReleaseVal->AsInteger());
     OutManifest.RepositoryContentHash = HashVal->AsString();
     OutManifest.ScriptSetHash = ScriptSetHashVal->AsString();
-    OutManifest.Seed = static_cast<std::uint64_t>(SeedVal->AsInteger());
+    OutManifest.Seed = ParsedSeed;
     OutManifest.AcceptedCommands = std::move(Commands);
     return true;
 }

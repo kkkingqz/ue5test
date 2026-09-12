@@ -23,6 +23,11 @@ DIGEST_CPP_PATH = REPO_ROOT / "Source" / "GV2RuntimeCore" / "Private" / "GV2RunD
 # Independent expected field policy table:
 # (struct_name, member_name, json_field_name): policy_dict
 EXPECTED_FIELD_POLICY = {
+    ("FRunManifest", "ManifestFormatVersion", "manifest_format_version"): {
+        "is_hash": False,
+        "allow_empty": False,
+        "description": "Run manifest format version (integer)",
+    },
     ("FRunManifest", "LuaReleaseNumber", "lua_release_num"): {
         "is_hash": False,
         "allow_empty": False,
@@ -62,6 +67,11 @@ EXPECTED_FIELD_POLICY = {
         "is_hash": False,
         "allow_empty": False,
         "description": "Sequence index of accepted command (int64)",
+    },
+    ("FRunDigest", "DigestFormatVersion", "digest_format_version"): {
+        "is_hash": False,
+        "allow_empty": False,
+        "description": "Run digest format version (integer)",
     },
     ("FRunDigest", "DigestHash", "digest_hash"): {
         "is_hash": True,

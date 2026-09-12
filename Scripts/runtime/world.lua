@@ -84,10 +84,8 @@ end
 M.get_world = get_world
 
 function M.register(_ctx)
-    if not game.instances then
-        game.instances = {}
-    end
-    game.instances.world = get_world
+    -- CFC-05: game.instances.world is installed into the game facade by
+    -- core:module.bootstrap.registry_lifecycle before module register hooks run.
 end
 
 return M

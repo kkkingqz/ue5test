@@ -5,6 +5,7 @@
 
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
 #include "UI/GV2ScreenWidgetBase.h"
+#include "UObject/StrongObjectPtr.h"
 
 class UGV2GameShellWidgetBase;
 class UGV2ScreenWidgetBase;
@@ -55,7 +56,7 @@ public:
     struct FActiveScreenEntry
     {
         FString ScreenId;
-        TObjectPtr<UGV2ScreenWidgetBase> Widget;
+        TWeakObjectPtr<UGV2ScreenWidgetBase> Widget;
     };
 
     struct FPreparedScreenInstance
@@ -63,7 +64,8 @@ public:
         FName Layer;
         FName InstanceKey;
         FString ScreenId;
-        TObjectPtr<UGV2ScreenWidgetBase> TargetWidget;
+        TWeakObjectPtr<UGV2ScreenWidgetBase> TargetWidget;
+        TStrongObjectPtr<UGV2ScreenWidgetBase> CandidateWidget;
         FGV2ScreenMutationPlan MutationPlan;
         // PSC-10B: central style resolved for this screen's whole subtree during Prepare and
         // applied in CommitReconcile. It sits beside MutationPlan rather than inside it
@@ -78,7 +80,7 @@ public:
         TArray<FPreparedScreenInstance> ScreensToUpdateOrAttach;
         TMap<FScreenSlotKey, FActiveScreenEntry> NewActiveScreens;
         bool bHasModals = false;
-        TArray<TObjectPtr<UGV2ScreenWidgetBase>> Modals; // In modal_stack order
+        TArray<TWeakObjectPtr<UGV2ScreenWidgetBase>> Modals; // In modal_stack order
     };
 
     // PAH-02: Layer is the requested top-level Placement for ScreenId (every screen this

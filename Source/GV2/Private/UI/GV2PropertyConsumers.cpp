@@ -1032,6 +1032,9 @@ void FGV2BindingPropertyConsumer::Reset(UWidget* TargetWidget)
 
 // --- FGV2KeyedCollectionPropertyConsumer ---
 
+FGV2KeyedCollectionPropertyConsumer::FGV2KeyedCollectionPropertyConsumer() = default;
+FGV2KeyedCollectionPropertyConsumer::~FGV2KeyedCollectionPropertyConsumer() = default;
+
 bool FGV2KeyedCollectionPropertyConsumer::CanConsume(const FGV2PreparedUiValue& Value) const
 {
     return Value.IsArray();
@@ -1198,7 +1201,13 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
     }
     else
     {
-        ExistingWidgets = ActiveWidgetsByKey;
+        for (const auto& Pair : ActiveWidgetsByKey)
+        {
+            if (Pair.Value.IsValid())
+            {
+                ExistingWidgets.Add(Pair.Key, Pair.Value.Get());
+            }
+        }
     }
 
     // Determine fallback widget class if needed
@@ -1278,7 +1287,7 @@ bool FGV2KeyedCollectionPropertyConsumer::Prepare(
             }
         }
 
-        CandidateWidgetsByKey.Add(ItemKey, ItemWidget);
+        CandidateWidgetsByKey.Add(ItemKey, TStrongObjectPtr<UWidget>(ItemWidget));
 
         FGV2UiCapabilityTree ItemCaps;
         if (IGV2UiPropertyHost* ItemHost = Cast<IGV2UiPropertyHost>(ItemWidget))
@@ -1630,7 +1639,12 @@ bool FGV2KeyedCollectionPropertyConsumer::CommitWithFailureInjector(
         }
     }
 
-    ActiveWidgetsByKey = MoveTemp(CandidateWidgetsByKey);
+    ActiveWidgetsByKey.Reset();
+    for (const auto& Pair : CandidateWidgetsByKey)
+    {
+        ActiveWidgetsByKey.Add(Pair.Key, Pair.Value.Get());
+    }
+    CandidateWidgetsByKey.Reset();
 
     return true;
 }
@@ -1880,6 +1894,9 @@ void FGV2RichTextSpansPropertyConsumer::Reset(UWidget* TargetWidget)
 }
 
 // --- FGV2TabContainerTabsPropertyConsumer ---
+
+FGV2TabContainerTabsPropertyConsumer::FGV2TabContainerTabsPropertyConsumer() = default;
+FGV2TabContainerTabsPropertyConsumer::~FGV2TabContainerTabsPropertyConsumer() = default;
 
 bool FGV2TabContainerTabsPropertyConsumer::CanConsume(const FGV2PreparedUiValue& Value) const
 {
@@ -2168,7 +2185,7 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
 
         if (ChildWidget != nullptr)
         {
-            CandidateWidgetsByKey.Add(TabKey, ChildWidget);
+            CandidateWidgetsByKey.Add(TabKey, TStrongObjectPtr<UGV2ScreenWidgetBase>(ChildWidget));
         }
 
         PreparedTabs.Add(MoveTemp(PreparedItem));
@@ -2324,6 +2341,7 @@ bool FGV2TabContainerTabsPropertyConsumer::CommitWithFailureInjector(
         }
     }
 
+    CandidateWidgetsByKey.Reset();
     return true;
 }
 

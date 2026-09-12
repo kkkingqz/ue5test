@@ -10,6 +10,7 @@
 namespace GV2PackageClosure { struct FEntry; }
 
 class FGV2LayeredUiReconciler;
+class FGV2PresentationPrepareContext;
 class FGV2RepositoryPublisher;
 class FGV2ScreenPlacement;
 class FGV2SessionContentSnapshot;
@@ -60,6 +61,17 @@ public:
     }
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    int64 RequestSession(const FSessionStartDescriptor& Descriptor);
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    ESessionCancellationResult CancelSessionRequest(int64 OperationId);
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    bool GetSessionOperationOutcome(int64 OperationId, ESessionOperationOutcome& OutOutcome) const;
+
+    TOptional<ESessionOperationOutcome> GetSessionOperationOutcome(uint64 OperationId) const;
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
     void StartSession();
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
@@ -90,12 +102,22 @@ private:
     // separate, GameInstance-lifetime Screen Registry authority of its own (PAH-R3's
     // original defect: this used to be built once in Initialize(), before any session's
     // actual package set was even known).
-    UClass* ResolveScreenClass(const FString& ScreenId, const FGV2ScreenPlacement& Placement) const;
-    UGV2ScreenWidgetBase* InstantiateScreenWidget(const FString& ScreenId, const FGV2ScreenPlacement& Placement);
+    UClass* ResolveScreenClass(
+        const FString& ScreenId,
+        const FGV2ScreenPlacement& Placement,
+        const FGV2PresentationPrepareContext& PrepareContext) const;
+    UGV2ScreenWidgetBase* InstantiateScreenWidget(
+        const FString& ScreenId,
+        const FGV2ScreenPlacement& Placement,
+        const FGV2PresentationPrepareContext& PrepareContext);
     void HandleStartGameInstance(UGameInstance* StartedGameInstance);
     void HandleViewportResized(FViewport* Viewport, uint32 Unused);
-    bool HandleDocumentRequested(const FGV2UiDocumentViewModel& Document);
+    bool HandleDocumentRequested(
+        const FGV2UiDocumentViewModel& Document,
+        const FGV2PresentationPrepareContext& PrepareContext);
     void ReplaceActiveScreen(UUserWidget* NewScreen);
+    void TeardownActiveProjection();
+    void PublishActiveProjection();
 
 public:
 #if WITH_DEV_AUTOMATION_TESTS
@@ -105,6 +127,8 @@ public:
     // recovered one publishes a catalog that resolves real content") instead of asserting it
     // through a global that production no longer has.
     const FGV2SessionContentSnapshot* GetContentSnapshotForAutomationTest() const;
+
+    static bool bTestForceDocumentSinkFailure;
 #endif
 
 private:
@@ -116,6 +140,12 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UGV2GameShellWidgetBase> ActiveGameShell;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UGV2GameShellWidgetBase> PendingGameShell;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UGV2ScreenWidgetBase> PendingScreen;
 
     TPimplPtr<FGV2LayeredUiReconciler> Reconciler;
 

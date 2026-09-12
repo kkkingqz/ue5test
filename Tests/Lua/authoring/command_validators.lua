@@ -621,8 +621,11 @@ return {
             mutation_window.execute_in_window(function()
                 local reg = actor_registry.create_registry()
                 reg.register_type("character", function(base) return {} end)
-                game.instances = game.instances or {}
-                game.instances.actors = reg
+                if getmetatable(game.instances) ~= nil then
+                    rawset(game.instances, "actors", reg)
+                else
+                    game.instances.actors = reg
+                end
                 local hero = reg.create("rh:actor.character.hero", {
                     stamina = 100,
                     gold = 50,
@@ -682,6 +685,9 @@ return {
             assert(res_fail.error.params.cost == 100, "Params cost should match")
             assert(res_fail.error.params.available == 50, "Params available should match")
             assert(handler_called == false, "Handler should not be called")
+            if getmetatable(game.instances) ~= nil then
+                rawset(game.instances, "actors", nil)
+            end
         end)
     end,
 
@@ -692,8 +698,11 @@ return {
                 if not (game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player()) then
                     local reg = actor_registry.create_registry()
                     reg.register_type("character", function(base) return {} end)
-                    game.instances = game.instances or {}
-                    game.instances.actors = reg
+                    if getmetatable(game.instances) ~= nil then
+                        rawset(game.instances, "actors", reg)
+                    else
+                        game.instances.actors = reg
+                    end
                     local hero = reg.create("rh:actor.character.hero", {
                         stamina = 20,
                         gold = 50,
@@ -726,6 +735,9 @@ return {
             command_dispatcher.drain_queue()
             assert(game.commands.get_queue_length() == 0, "Queue should be completely drained")
             assert(handler_calls == 1, "Handler should have run only for the valid command, got " .. tostring(handler_calls))
+            if getmetatable(game.instances) ~= nil then
+                rawset(game.instances, "actors", nil)
+            end
         end)
     end,
 

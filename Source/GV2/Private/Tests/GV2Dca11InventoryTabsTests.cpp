@@ -100,7 +100,7 @@ bool FGV2Dca11InventoryTabsFixtureTest::RunTest(const FString& Parameters)
     FGV2SessionCoordinator Coordinator;
     FGV2UiDocumentViewModel CapturedDocument;
     int32 DocumentCount = 0;
-    Coordinator.SetDocumentSink([&CapturedDocument, &DocumentCount](const FGV2UiDocumentViewModel& Document)
+    Coordinator.SetDocumentSink([&CapturedDocument, &DocumentCount](const FGV2UiDocumentViewModel& Document, const FGV2PresentationPrepareContext&)
     {
         CapturedDocument = Document;
         ++DocumentCount;

@@ -253,6 +253,13 @@ bool FGV2PresentationApply::Apply(
     using namespace GV2PresentationApply;
 
     OutResult = FGV2PresentationApplyResult();
+
+    if (!IsInGameThread())
+    {
+        OutResult.Error = TEXT("core:diagnostic.presentation_apply.off_game_thread: FGV2PresentationApply::Apply must be called on the Game Thread.");
+        return false;
+    }
+
     bool bFailed = false;
 
     for (const FGV2PreparedOperationVariant& Operation : Transaction.GetOperations())

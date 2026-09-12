@@ -71,11 +71,11 @@ local function run_with_mock_environment(fn)
     local registry = actor_registry.create_registry()
     local service_registry = require("core:module.runtime.service_registry")
     service_registry.register()
+    local world_module = require("core:module.runtime.world")
     _G.game.instances = {
         actors = registry,
+        world = world_module.get_world,
     }
-    local world_module = require("core:module.runtime.world")
-    world_module.register()
 
     local ok, err = pcall(function()
         state_validator.with_isolated_state(function()

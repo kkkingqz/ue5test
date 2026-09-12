@@ -763,17 +763,34 @@ bool CommitUiHostProperties(
         }
         else
         {
-            if (Mutation.Consumer.IsValid() && Mutation.TargetWidget.IsValid())
+            if (Mutation.Consumer.IsValid())
             {
-                FString CommitError;
-                if (!Mutation.Consumer->CommitWithFailureInjector(
-                        Mutation.TargetWidget.Get(),
-                        CommitError,
-                        FailureInjector,
-                        Mutation.PropertyPath))
+                if (Mutation.TargetWidget.IsValid())
+                {
+                    FString CommitError;
+                    if (!Mutation.Consumer->CommitWithFailureInjector(
+                            Mutation.TargetWidget.Get(),
+                            CommitError,
+                            FailureInjector,
+                            Mutation.PropertyPath))
+                    {
+                        OutFailedPropertyPath = Mutation.PropertyPath;
+                        OutError = CommitError;
+                        if (RollbackPlan != nullptr)
+                        {
+                            ReportSelfHealResult(
+                                RollbackCommittedMutations(*RollbackPlan, CommittedCount, RollbackFailureInjector),
+                                OutError);
+                        }
+                        return false;
+                    }
+                }
+                else
                 {
                     OutFailedPropertyPath = Mutation.PropertyPath;
-                    OutError = CommitError;
+                    OutError = FString::Printf(
+                        TEXT("core:diagnostic.ui_mutation.target_invalidated: target for '%s' became invalid between Prepare and Commit"),
+                        *Mutation.PropertyPath);
                     if (RollbackPlan != nullptr)
                     {
                         ReportSelfHealResult(
@@ -782,6 +799,14 @@ bool CommitUiHostProperties(
                     }
                     return false;
                 }
+            }
+            else if (FailureInjector && FailureInjector(Mutation.PropertyPath))
+            {
+                OutFailedPropertyPath = Mutation.PropertyPath;
+                OutError = FString::Printf(
+                    TEXT("core:diagnostic.ui_mutation.commit_failed_injected: %s"),
+                    *Mutation.PropertyPath);
+                return false;
             }
         }
         ++CommittedCount;

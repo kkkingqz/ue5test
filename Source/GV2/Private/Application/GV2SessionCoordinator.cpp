@@ -192,6 +192,26 @@ void FGV2SessionCoordinator::ClearDocumentSink()
     DocumentSink = nullptr;
 }
 
+void FGV2SessionCoordinator::SetProjectionTeardownSink(FProjectionTeardownSink InSink)
+{
+    ProjectionTeardownSink = MoveTemp(InSink);
+}
+
+void FGV2SessionCoordinator::ClearProjectionTeardownSink()
+{
+    ProjectionTeardownSink = nullptr;
+}
+
+void FGV2SessionCoordinator::SetProjectionPublishSink(FProjectionPublishSink InSink)
+{
+    ProjectionPublishSink = MoveTemp(InSink);
+}
+
+void FGV2SessionCoordinator::ClearProjectionPublishSink()
+{
+    ProjectionPublishSink = nullptr;
+}
+
 #if WITH_DEV_AUTOMATION_TESTS
 // PAH-04: pre_ready_discovery -- this test-only overload resolves its fixture set before
 // delegating to the production StartSession overload; Status cannot yet be Ready.
@@ -225,34 +245,134 @@ bool FGV2SessionCoordinator::StartSession(
     const int64 InRepositoryVersion,
     const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)
 {
+    FSessionStartDescriptor Descriptor;
+    Descriptor.Mode = ESessionStartMode::NewGame;
+    Descriptor.RepositoryVersion = FString::Printf(TEXT("%lld"), InRepositoryVersion);
+    Descriptor.RepositoryContentHash = InPinnedRepository.IsValid()
+        ? UTF8_TO_TCHAR(InPinnedRepository.GetContentHash().c_str())
+        : TEXT("");
+
+    const uint64 OpId = RequestSession(Descriptor, InPinnedRepository, InRepositoryVersion, ResolvedPackageSet);
+    const TOptional<ESessionOperationOutcome> Outcome = GetSessionOperationOutcome(OpId);
+    return Outcome.IsSet() && *Outcome == ESessionOperationOutcome::Completed;
+}
+
+uint64 FGV2SessionCoordinator::RequestSession(
+    const FSessionStartDescriptor& Descriptor,
+    const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+    const int64 InRepositoryVersion,
+    const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet)
+{
     check(IsInGameThread());
 
-    // PSC-05 (BootstrapAndSessionLifecycle.md "Целевое правило"): captured before anything
-    // is touched. A failure below, before the commit-to-replace boundary, either preserves
-    // this exact session (nothing mutated yet) or -- if there was nothing valid running --
-    // transitions to Failed so the attempt is never silently indistinguishable from "no
-    // session was ever started".
+    bool bJoined = false;
+    uint64 JoinedOpId = 0;
+    const uint64 OpId = TransitionPolicy.EnqueueRequest(Descriptor, bJoined, JoinedOpId);
+    if (bJoined)
+    {
+        return JoinedOpId;
+    }
+
+    PendingStartContext = FPendingStartContext{InPinnedRepository, InRepositoryVersion, ResolvedPackageSet};
+
+    if (bProcessingTransition)
+    {
+        return OpId;
+    }
+
+    ProcessNextTransition();
+    return OpId;
+}
+
+ESessionCancellationResult FGV2SessionCoordinator::CancelSessionRequest(const uint64 OperationId)
+{
+    check(IsInGameThread());
+    const ESessionCancellationResult Result = TransitionPolicy.CancelRequest(OperationId);
+    if (Result == ESessionCancellationResult::Accepted)
+    {
+        if (PendingStartContext.IsSet() && TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->OperationId != OperationId)
+        {
+            PendingStartContext.Reset();
+        }
+    }
+    return Result;
+}
+
+TOptional<ESessionOperationOutcome> FGV2SessionCoordinator::GetSessionOperationOutcome(const uint64 OperationId) const
+{
+    return TransitionPolicy.GetOutcome(OperationId);
+}
+
+void FGV2SessionCoordinator::ProcessNextTransition()
+{
+    if (bProcessingTransition)
+    {
+        return;
+    }
+
+    TGuardValue<bool> ProcessingGuard(bProcessingTransition, true);
+
+    while (TransitionPolicy.HasPendingOperation())
+    {
+        TOptional<FSessionOperationRecord> NextOp = TransitionPolicy.DequeuePendingOperation();
+        if (!NextOp.IsSet())
+        {
+            break;
+        }
+
+        switch (NextOp->Kind)
+        {
+        case ESessionTransitionKind::Menu:
+        case ESessionTransitionKind::NewGame:
+        case ESessionTransitionKind::LoadSave:
+            if (PendingStartContext.IsSet())
+            {
+                FPendingStartContext Context = MoveTemp(*PendingStartContext);
+                PendingStartContext.Reset();
+                ExecuteSessionStart(*NextOp, Context.PinnedRepository, Context.RepositoryVersion, Context.ResolvedPackageSet);
+            }
+            else
+            {
+                TransitionPolicy.RecordOutcome(NextOp->OperationId, ESessionOperationOutcome::Failed);
+            }
+            break;
+
+        case ESessionTransitionKind::Shutdown:
+            PendingStartContext.Reset();
+            ExecuteShutdown(*NextOp, EGV2SessionState::Destroyed);
+            break;
+        }
+    }
+}
+
+bool FGV2SessionCoordinator::ExecuteSessionStart(
+    const FSessionOperationRecord& Op,
+    const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+    const int64 InRepositoryVersion,
+    const GV2ContentHostSupport::FResolvedPackageSet& InResolvedPackageSet)
+{
+    check(IsInGameThread());
+    CurrentTransitionKind = Op.Kind;
     const bool bHadPriorReadySession = Status.bIsReady;
 
     if (!InPinnedRepository.IsValid())
     {
         FailReplacementAttempt(
             {"RepositoryNotReady", "No published GameDataRepository to pin."}, bHadPriorReadySession);
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
         return false;
     }
 
     GV2RuntimeCore::FRuntimeFault Fault;
     std::vector<GV2RuntimeCore::FRuntimeSource> RuntimeSources;
     TArray<FGV2SchemaPackageRoot> SchemaPackageRoots;
-    if (!LoadPortableRuntimeSources(RuntimeSources, Fault, ResolvedPackageSet, SchemaPackageRoots))
+    if (!LoadPortableRuntimeSources(RuntimeSources, Fault, InResolvedPackageSet, SchemaPackageRoots))
     {
         FailReplacementAttempt(Fault, bHadPriorReadySession);
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
         return false;
     }
 
-    // PAH-04A (ADR-0042, INV-P1): discovery happens here, synchronously, before this
-    // session can reach Ready -- the exact SchemaPackageRoots LoadPortableRuntimeSources
-    // just resolved this session's Lua sources from, not a second independent lookup.
     TArray<FString> ClosurePackageIds;
     ClosurePackageIds.Reserve(SchemaPackageRoots.Num());
     for (const FGV2SchemaPackageRoot& SchemaRoot : SchemaPackageRoots)
@@ -260,42 +380,230 @@ bool FGV2SessionCoordinator::StartSession(
         ClosurePackageIds.Add(SchemaRoot.PackageId);
     }
 
-    // PSC-04/05 (ADR-0043 D1): resolves Screen Registry/Image Catalog/Theme/GameShell/
-    // eagerly compiled schemas from this exact ResolvedPackageSet -- still entirely before
-    // touching whatever session is currently active, so a content-builder failure here
-    // (UiSchemaNotReady/ScreenRegistryNotReady/ImageCatalogNotReady/ThemeNotReady) has not
-    // yet committed to replacing anything. PSC-10C retired the image catalog session
-    // global, and CFC-04 retired the UI schema cache session global.
     TUniquePtr<FGV2SessionContentSnapshot> Candidate = MakeUnique<FGV2SessionContentSnapshot>();
     GV2RuntimeCore::FRuntimeFault CandidateFault;
     if (!FGV2SessionContentCandidate::Build(
             InPinnedRepository,
-            ResolvedPackageSet,
+            InResolvedPackageSet,
             SchemaPackageRoots,
             RuntimeSources,
             *Candidate,
             CandidateFault))
     {
         FailReplacementAttempt(CandidateFault, bHadPriorReadySession);
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
         return false;
     }
 
+    // Cancellation checkpoint 1: Before BeginReplace (Session A remains completely intact)
+    if (Op.bCancellationRequested || (TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->bCancellationRequested))
+    {
+        FailReplacementAttempt({"OperationCancelled", "Session start cancelled before BeginReplace."}, bHadPriorReadySession);
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Cancelled);
+        return false;
+    }
+
+    FSessionReplacementToken Token(MoveTemp(Candidate));
+
+    GV2RuntimeCore::FRuntimeFault ReplaceFault;
+    if (!BeginReplace(Token, InPinnedRepository, InRepositoryVersion, ReplaceFault, Op.Kind))
+    {
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
+
+    if (TransitionPolicy.GetActiveOperation().IsSet())
+    {
+        TransitionPolicy.GetActiveOperation()->bCommitted = true;
+    }
+
+    GV2RuntimeCore::FSessionStartInputs StartInputs;
+    StartInputs.SessionGeneration = Status.SessionGeneration;
+    StartInputs.SeedHex = TCHAR_TO_UTF8(*Op.Descriptor.SeedHex);
+    StartInputs.Mode = Op.Descriptor.Mode == ESessionStartMode::Menu ? "Menu" : (Op.Descriptor.Mode == ESessionStartMode::LoadSave ? "LoadSave" : "NewGame");
+    StartInputs.RepositoryVersion = TCHAR_TO_UTF8(*Op.Descriptor.RepositoryVersion);
+    StartInputs.RepositoryContentHash = TCHAR_TO_UTF8(*Op.Descriptor.RepositoryContentHash);
+
+    // Discrete phase execution using StartSessionPhases
+    bool bPhasesOk = RuntimeSession.StartSessionPhases(
+        StartInputs,
+        InPinnedRepository,
+        Token.GetCandidate().GetLuaSources(),
+        nullptr,
+        [this, Op](GV2RuntimeCore::ERuntimeLifecyclePhase Phase, const GV2RuntimeCore::FRuntimePhaseResult& Result) -> bool
+        {
+            if (TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->bCancellationRequested)
+            {
+                return false;
+            }
+
+            switch (Phase)
+            {
+            case GV2RuntimeCore::ERuntimeLifecyclePhase::Registering:
+                TryTransitionSessionState(Status, EGV2SessionState::Registering, Op.Kind);
+                break;
+            case GV2RuntimeCore::ERuntimeLifecyclePhase::BuildingState:
+                TryTransitionSessionState(Status, EGV2SessionState::BuildingState, Op.Kind);
+                break;
+            case GV2RuntimeCore::ERuntimeLifecyclePhase::RestoringInstances:
+                TryTransitionSessionState(Status, EGV2SessionState::RestoringInstances, Op.Kind);
+                break;
+            case GV2RuntimeCore::ERuntimeLifecyclePhase::Starting:
+                TryTransitionSessionState(Status, EGV2SessionState::Starting, Op.Kind);
+                break;
+            }
+
+            if (TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->bCancellationRequested)
+            {
+                return false;
+            }
+
+            return true;
+        },
+        ReplaceFault);
+
+    if (!bPhasesOk)
+    {
+        Token.TransitionTo(EReplacementStage::Aborted);
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, Op.Kind);
+        RuntimeSession.Stop(nullptr, "phase_failure");
+        TryTransitionSessionState(Status, EGV2SessionState::Failed, Op.Kind);
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime fault: code=%s message=%s"),
+            UTF8_TO_TCHAR(ReplaceFault.Code.c_str()),
+            UTF8_TO_TCHAR(ReplaceFault.Message.c_str()));
+        const bool bWasCancelled = (ReplaceFault.Code == "OperationCancelled")
+            || (TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->bCancellationRequested);
+        TransitionPolicy.RecordOutcome(Op.OperationId, bWasCancelled ? ESessionOperationOutcome::Cancelled : ESessionOperationOutcome::Failed);
+        return false;
+    }
+
+    FGV2SessionContentCandidate::FinalizeScriptIdentity(Token.GetCandidate(), RuntimeSession.GetScriptSetHash());
+    Token.TransitionTo(EReplacementStage::Preparing);
+
+    TryTransitionSessionState(Status, EGV2SessionState::PreparingPresentation, Op.Kind);
+
+    std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
+    GV2RuntimeCore::FRuntimeFault DocFault;
+    if (!RuntimeSession.TakePendingDocument(PendingDoc, DocFault))
+    {
+        Token.TransitionTo(EReplacementStage::Aborted);
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, Op.Kind);
+        RuntimeSession.Stop(nullptr, "doc_fault");
+        TryTransitionSessionState(Status, EGV2SessionState::Failed, Op.Kind);
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime fault: code=%s message=%s"),
+            UTF8_TO_TCHAR(DocFault.Code.c_str()),
+            UTF8_TO_TCHAR(DocFault.Message.c_str()));
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
+    if (!PendingDoc.has_value())
+    {
+        Token.TransitionTo(EReplacementStage::Aborted);
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, Op.Kind);
+        RuntimeSession.Stop(nullptr, "doc_missing");
+        TryTransitionSessionState(Status, EGV2SessionState::Failed, Op.Kind);
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime fault: code=InitialPresentationMissing message=Session start did not publish an initial UI document."));
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
+
+    const FGV2PresentationPrepareContext PrepareContext(Token.GetCandidate());
+    FGV2UiDocumentViewModel DocModel;
+    FGV2PreparedBindingSet PreparedBindings;
+    if (!PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings, PrepareContext))
+    {
+        Token.TransitionTo(EReplacementStage::Aborted);
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, Op.Kind);
+        RuntimeSession.Stop(nullptr, "prepare_failed");
+        TryTransitionSessionState(Status, EGV2SessionState::Failed, Op.Kind);
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime fault: code=InitialPresentationInvalid message=Initial UI document failed binding preparation."));
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
+
+    const bool bApplied = DocumentSink && DocumentSink(DocModel, PrepareContext);
+    if (!bApplied)
+    {
+        Token.TransitionTo(EReplacementStage::Aborted);
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, Op.Kind);
+        RuntimeSession.Stop(nullptr, "apply_failed");
+        TryTransitionSessionState(Status, EGV2SessionState::Failed, Op.Kind);
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime fault: code=InitialPresentationApplyFailed message=Initial UI document could not be applied."));
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
+    if (!BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+    {
+        Token.TransitionTo(EReplacementStage::Aborted);
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, Op.Kind);
+        RuntimeSession.Stop(nullptr, "commit_failed");
+        TryTransitionSessionState(Status, EGV2SessionState::Failed, Op.Kind);
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+        UE_LOG(
+            LogTemp,
+            Error,
+            TEXT("GV2 Lua runtime fault: code=InitialPresentationCommitFailed message=Initial UI binding candidate could not be committed."));
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
+
+    const bool bReadyOk = PublishReady(MoveTemp(Token), DocModel.Revision, Op.Kind);
+    TransitionPolicy.RecordOutcome(Op.OperationId, bReadyOk ? ESessionOperationOutcome::Completed : ESessionOperationOutcome::Failed);
+    return bReadyOk;
+}
+
+bool FGV2SessionCoordinator::BeginReplace(
+    FSessionReplacementToken& Token,
+    const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+    const int64 InRepositoryVersion,
+    GV2RuntimeCore::FRuntimeFault& OutFault,
+    const ESessionTransitionKind TransitionKind)
+{
+    check(Token.GetStage() == EReplacementStage::Preflight);
+    Token.TransitionTo(EReplacementStage::Replacing);
+
     // ---- Past this point, StartSession commits to replacing whatever was active. ----
-    // Every failure from here on legitimately ends this attempt with the prior session
-    // already gone (its VM is about to be stopped below) -- FailRuntime, not
-    // FailReplacementAttempt, is correct for all of them.
     BindingRegistry.EndSession();
     IngressQueue.Reset();
+    ContentSnapshot.Reset();
+
     GV2RuntimeCore::FRuntimeFault StopFault;
-    if (!RuntimeSession.Stop(&StopFault))
+    if (RuntimeSession.IsStarted() && !RuntimeSession.Stop(&StopFault))
     {
+        Token.TransitionTo(EReplacementStage::Aborted);
         FailRuntime(StopFault);
+        OutFault = StopFault;
         return false;
+    }
+
+    if (ProjectionTeardownSink)
+    {
+        ProjectionTeardownSink();
     }
 
     ++Status.SessionGeneration;
-    Status.ApplicationState = EGV2ApplicationState::Bootstrapping;
-    Status.SessionState = EGV2SessionState::Creating;
+    TryTransitionApplicationState(Status, EGV2ApplicationState::Bootstrapping);
+    TryTransitionSessionState(Status, EGV2SessionState::Creating, TransitionKind);
     Status.bIsReady = false;
     Status.RepositoryVersion = InRepositoryVersion;
     NextInputSequence = 1;
@@ -303,68 +611,40 @@ bool FGV2SessionCoordinator::StartSession(
     PinnedRepository = InPinnedRepository;
     BindingRegistry.BeginSession(Status.SessionGeneration);
 
-    // PSC-10C: no second image catalog is built here any more. The candidate above already
-    // built this session's catalog from the same closure package ids and pinned it in the
-    // snapshot, failing with the same ImageCatalogNotReady fault on the same inputs; a
-    // process-global copy alongside it was a second content authority for one session.
+    return true;
+}
 
-    // PSC-04: RuntimeSession consumes the snapshot's own Lua source set -- it was moved
-    // into the candidate above, not read a second time from a separately-held local copy.
-    if (!RuntimeSession.Start(Status.SessionGeneration, InPinnedRepository, Candidate->GetLuaSources(), Fault))
-    {
-        FailRuntime(Fault);
-        return false;
-    }
-    FGV2SessionContentCandidate::FinalizeScriptIdentity(*Candidate, RuntimeSession.GetScriptSetHash());
-    // PSC-06: the initial document's own Prepare step (below) needs this candidate's
-    // resolved Screen Registry/Image Catalog -- GetContentSnapshotForPrepare() exposes it
-    // internally from this point on, while GetContentSnapshot() stays null until Ready.
-    InProgressCandidate = Candidate.Get();
+bool FGV2SessionCoordinator::PublishReady(
+    FSessionReplacementToken&& Token,
+    const int64 InUiRevision,
+    const ESessionTransitionKind TransitionKind)
+{
+    check(Token.GetStage() == EReplacementStage::Preparing);
+    ContentSnapshot = Token.TakeCandidate();
+    Token.TransitionTo(EReplacementStage::Committed);
 
-    std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
-    if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
+    UiRevision = InUiRevision;
+    switch (TransitionKind)
     {
-        FailRuntime(Fault);
-        return false;
-    }
-    if (!PendingDoc.has_value())
-    {
-        FailRuntime({"InitialPresentationMissing", "Session start did not publish an initial UI document."});
-        return false;
+    case ESessionTransitionKind::Menu:
+        TryTransitionApplicationState(Status, EGV2ApplicationState::MenuActive);
+        break;
+    case ESessionTransitionKind::NewGame:
+    case ESessionTransitionKind::LoadSave:
+        TryTransitionApplicationState(Status, EGV2ApplicationState::GameActive);
+        break;
+    case ESessionTransitionKind::Shutdown:
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Uninitialized);
+        break;
     }
 
-    FGV2UiDocumentViewModel DocModel;
-    FGV2PreparedBindingSet PreparedBindings;
-    if (!PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings))
-    {
-        FailRuntime({"InitialPresentationInvalid", "Initial UI document failed binding preparation."});
-        return false;
-    }
-
-    const bool bApplied = DocumentSink && DocumentSink(DocModel);
-    if (!bApplied)
-    {
-        FailRuntime({"InitialPresentationApplyFailed", "Initial UI document could not be applied."});
-        return false;
-    }
-    if (!BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
-    {
-        FailRuntime({"InitialPresentationCommitFailed", "Initial UI binding candidate could not be committed."});
-        return false;
-    }
-
-    // PSC-05 (ADR-0043 D1): ContentSnapshot becomes observable atomically with the exact
-    // moment this session becomes Ready -- never before, and never on an attempt that
-    // fails at any later step. InProgressCandidate's raw pointer is now dangling-but-unused:
-    // GetContentSnapshotForPrepare() checks ContentSnapshot first, so it's never read again
-    // once this line runs; still cleared for clarity.
-    ContentSnapshot = MoveTemp(Candidate);
-    InProgressCandidate = nullptr;
-    UiRevision = DocModel.Revision;
-    Status.ApplicationState = EGV2ApplicationState::MenuActive;
-    Status.SessionState = EGV2SessionState::Ready;
+    TryTransitionSessionState(Status, EGV2SessionState::Ready, TransitionKind);
     Status.bIsReady = true;
 
+    if (ProjectionPublishSink)
+    {
+        ProjectionPublishSink();
+    }
     return true;
 }
 
@@ -380,29 +660,59 @@ void FGV2SessionCoordinator::FailBootstrap(const FString& Code, const FString& M
 void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
 {
     check(IsInGameThread());
+    if (!TransitionPolicy.GetActiveOperation().IsSet() || TransitionPolicy.GetActiveOperation()->Kind != ESessionTransitionKind::Shutdown)
+    {
+        bool bJoined = false;
+        uint64 JoinedOpId = 0;
+        TransitionPolicy.EnqueueShutdown(bJoined, JoinedOpId);
+        const TOptional<FSessionOperationRecord> NextOp = TransitionPolicy.DequeuePendingOperation();
+        if (NextOp.IsSet())
+        {
+            TransitionPolicy.SetActiveOperation(*NextOp);
+        }
+    }
+
+    CurrentTransitionKind = ESessionTransitionKind::Shutdown;
 
     Status.bIsReady = false;
     BindingRegistry.EndSession();
     IngressQueue.Reset();
 
     GV2RuntimeCore::FRuntimeFault StopFault;
-    if (!RuntimeSession.Stop(&StopFault))
+    if (RuntimeSession.IsStarted())
     {
-        UE_LOG(
-            LogTemp,
-            Error,
-            TEXT("GV2 Lua runtime Stop failed in EndSession: code=%s message=%s"),
-            UTF8_TO_TCHAR(StopFault.Code.c_str()),
-            UTF8_TO_TCHAR(StopFault.Message.c_str()));
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, ESessionTransitionKind::Shutdown);
+        TryTransitionApplicationState(Status, EGV2ApplicationState::ShuttingDown);
+        RuntimeSession.Stop(&StopFault, "shutdown");
     }
+
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     ContentSnapshot.Reset();
-    InProgressCandidate = nullptr;
-    Status.ApplicationState = EGV2ApplicationState::Uninitialized;
-    Status.SessionState = FinalState;
+
+    if (ProjectionTeardownSink)
+    {
+        ProjectionTeardownSink();
+    }
+
+    if (Status.ApplicationState != EGV2ApplicationState::Uninitialized)
+    {
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Uninitialized);
+    }
+    TryTransitionSessionState(Status, FinalState, ESessionTransitionKind::Shutdown);
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;
+
+    if (TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->Kind == ESessionTransitionKind::Shutdown)
+    {
+        TransitionPolicy.RecordOutcome(TransitionPolicy.GetActiveOperation()->OperationId, ESessionOperationOutcome::Completed);
+        TransitionPolicy.ClearActiveOperation();
+    }
+}
+
+void FGV2SessionCoordinator::ExecuteShutdown(const FSessionOperationRecord& Op, const EGV2SessionState FinalState)
+{
+    EndSession(FinalState);
 }
 
 const FGV2SessionStatus& FGV2SessionCoordinator::GetStatus() const
@@ -562,19 +872,11 @@ bool FGV2SessionCoordinator::ValidateInputValues(
 bool FGV2SessionCoordinator::PrepareDocumentRequest(
     const GV2RuntimeCore::FUiDocument& Document,
     FGV2UiDocumentViewModel& OutModel,
-    FGV2PreparedBindingSet& OutBindings)
+    FGV2PreparedBindingSet& OutBindings,
+    const FGV2PresentationPrepareContext& PrepareContext)
 {
     OutModel = {};
     OutBindings = {};
-
-    // CFC-04 (ADR-0043 D1): PrepareDocumentRequest requires the pinned session snapshot context.
-    const FGV2SessionContentSnapshot* SnapshotForPrepare = GetContentSnapshotForPrepare();
-    if (SnapshotForPrepare == nullptr)
-    {
-        UE_LOG(LogTemp, Error, TEXT("PrepareDocumentRequest failed: no ContentSnapshot is available for prepare"));
-        return false;
-    }
-    const FGV2PresentationPrepareContext PrepareContext(*SnapshotForPrepare);
 
     OutModel.UiInstanceId = UTF8_TO_TCHAR(Document.UiInstanceId.c_str());
     OutModel.Revision = Document.Revision;
@@ -750,14 +1052,18 @@ void FGV2SessionCoordinator::PumpIngress()
 
         if (PendingDoc)
         {
-            FGV2UiDocumentViewModel DocModel;
-            FGV2PreparedBindingSet PreparedBindings;
-            if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings))
+            if (ContentSnapshot.IsValid())
             {
-                const bool bApplied = DocumentSink && DocumentSink(DocModel);
-                if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+                const FGV2PresentationPrepareContext PrepareContext(*ContentSnapshot);
+                FGV2UiDocumentViewModel DocModel;
+                FGV2PreparedBindingSet PreparedBindings;
+                if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings, PrepareContext))
                 {
-                    UiRevision = DocModel.Revision;
+                    const bool bApplied = DocumentSink && DocumentSink(DocModel, PrepareContext);
+                    if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+                    {
+                        UiRevision = DocModel.Revision;
+                    }
                 }
             }
         }
@@ -779,8 +1085,8 @@ void FGV2SessionCoordinator::FailReplacementAttempt(
         // BindingRegistry/PinnedRepository/ContentSnapshot, none of which this attempt
         // ever mutated.
         Status.bIsReady = false;
-        Status.ApplicationState = EGV2ApplicationState::Failed;
-        Status.SessionState = EGV2SessionState::Failed;
+        TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+        TryTransitionSessionState(Status, EGV2SessionState::Failed, CurrentTransitionKind);
     }
     // else: a Ready session was active when this attempt began and nothing about it has
     // been touched -- Status/PinnedRepository/BindingRegistry/RuntimeSession/
@@ -797,12 +1103,20 @@ void FGV2SessionCoordinator::FailReplacementAttempt(
 void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault)
 {
     Status.bIsReady = false;
-    Status.ApplicationState = EGV2ApplicationState::Failed;
-    Status.SessionState = EGV2SessionState::Failed;
     BindingRegistry.EndSession();
     IngressQueue.Reset();
+
     GV2RuntimeCore::FRuntimeFault StopFault;
-    if (!RuntimeSession.Stop(&StopFault))
+    if (RuntimeSession.IsStarted())
+    {
+        TryTransitionSessionState(Status, EGV2SessionState::Stopping, CurrentTransitionKind);
+        RuntimeSession.Stop(&StopFault, "runtime_fault");
+    }
+
+    TryTransitionApplicationState(Status, EGV2ApplicationState::Failed);
+    TryTransitionSessionState(Status, EGV2SessionState::Failed, CurrentTransitionKind);
+
+    if (!RuntimeSession.IsStarted() && !StopFault.Code.empty())
     {
         UE_LOG(
             LogTemp,
@@ -811,9 +1125,9 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
             UTF8_TO_TCHAR(StopFault.Code.c_str()),
             UTF8_TO_TCHAR(StopFault.Message.c_str()));
     }
+
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     ContentSnapshot.Reset();
-    InProgressCandidate = nullptr;
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;

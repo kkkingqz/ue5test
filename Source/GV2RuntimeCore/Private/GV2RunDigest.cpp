@@ -48,11 +48,15 @@ FRunDigest ComputeRunDigest(
     const FRunManifest& Manifest,
     const FRunResult& Result)
 {
+    char SeedBuffer[32];
+    std::snprintf(SeedBuffer, sizeof(SeedBuffer), "%016llx", static_cast<unsigned long long>(Manifest.Seed));
+
     GV2ContentCore::FValue::FObject HashPayload;
+    HashPayload.emplace_back("digest_format_version", GV2ContentCore::FValue(static_cast<std::int64_t>(2)));
     HashPayload.emplace_back("lua_release_num", GV2ContentCore::FValue(static_cast<std::int64_t>(Manifest.LuaReleaseNumber)));
     HashPayload.emplace_back("repository_content_hash", GV2ContentCore::FValue(Manifest.RepositoryContentHash));
     HashPayload.emplace_back("script_set_hash", GV2ContentCore::FValue(Manifest.ScriptSetHash));
-    HashPayload.emplace_back("seed", GV2ContentCore::FValue(static_cast<std::int64_t>(Manifest.Seed)));
+    HashPayload.emplace_back("seed", GV2ContentCore::FValue(std::string(SeedBuffer)));
 
     GV2ContentCore::FValue::FArray CommandsArray;
     CommandsArray.reserve(Manifest.AcceptedCommands.size());
@@ -74,6 +78,7 @@ FRunDigest ComputeRunDigest(
     HashPayload.emplace_back("fault_code", GV2ContentCore::FValue(Result.FaultCode));
 
     FRunDigest Digest;
+    Digest.DigestFormatVersion = 2;
     Digest.DigestHash = GV2ContentCore::ComputeCanonicalHash(GV2ContentCore::FValue(std::move(HashPayload)));
     Digest.LuaReleaseNumber = Manifest.LuaReleaseNumber;
     Digest.RepositoryContentHash = Manifest.RepositoryContentHash;
@@ -89,7 +94,11 @@ FRunDigest ComputeRunDigest(
 
 std::string SerializeRunDigest(const FRunDigest& Digest)
 {
+    char SeedBuffer[32];
+    std::snprintf(SeedBuffer, sizeof(SeedBuffer), "%016llx", static_cast<unsigned long long>(Digest.Seed));
+
     std::string Out = "{\n";
+    Out += "  \"digest_format_version\": " + std::to_string(Digest.DigestFormatVersion) + ",\n";
     Out += "  \"digest_hash\": ";
     EscapeJsonString(Digest.DigestHash, Out);
     Out += ",\n";
@@ -100,7 +109,9 @@ std::string SerializeRunDigest(const FRunDigest& Digest)
     Out += "  \"script_set_hash\": ";
     EscapeJsonString(Digest.ScriptSetHash, Out);
     Out += ",\n";
-    Out += "  \"seed\": " + std::to_string(Digest.Seed) + ",\n";
+    Out += "  \"seed\": \"";
+    Out += SeedBuffer;
+    Out += "\",\n";
     Out += "  \"executed_commands_count\": " + std::to_string(Digest.ExecutedCommandsCount) + ",\n";
     Out += "  \"success\": ";
     Out += Digest.bSuccess ? "true,\n" : "false,\n";
@@ -137,6 +148,18 @@ bool DeserializeRunDigest(
         return false;
     }
 
+    const auto* FormatVersionVal = Root.FindField("digest_format_version");
+    std::int32_t FormatVersion = 1;
+    if (FormatVersionVal != nullptr)
+    {
+        if (!FormatVersionVal->IsInteger() || FormatVersionVal->AsInteger() != 2)
+        {
+            OutError = "run_digest.unsupported_format_version";
+            return false;
+        }
+        FormatVersion = static_cast<std::int32_t>(FormatVersionVal->AsInteger());
+    }
+
     const auto* DigestHashVal = Root.FindField("digest_hash");
     if (DigestHashVal == nullptr || !DigestHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(DigestHashVal->AsString()))
     {
@@ -166,10 +189,50 @@ bool DeserializeRunDigest(
     }
 
     const auto* SeedVal = Root.FindField("seed");
-    if (SeedVal == nullptr || !SeedVal->IsInteger() || SeedVal->AsInteger() < 0)
+    if (SeedVal == nullptr)
     {
         OutError = "run_digest.invalid_seed";
         return false;
+    }
+
+    std::uint64_t ParsedSeed = 0;
+    if (FormatVersion == 2)
+    {
+        if (!SeedVal->IsString())
+        {
+            OutError = "run_digest.invalid_seed";
+            return false;
+        }
+        const std::string& SeedStr = SeedVal->AsString();
+        if (SeedStr.size() != 16)
+        {
+            OutError = "run_digest.invalid_seed";
+            return false;
+        }
+        for (char C : SeedStr)
+        {
+            if (!((C >= '0' && C <= '9') || (C >= 'a' && C <= 'f')))
+            {
+                OutError = "run_digest.invalid_seed";
+                return false;
+            }
+        }
+        char* EndPtr = nullptr;
+        ParsedSeed = std::strtoull(SeedStr.c_str(), &EndPtr, 16);
+        if (EndPtr == nullptr || *EndPtr != '\0')
+        {
+            OutError = "run_digest.invalid_seed";
+            return false;
+        }
+    }
+    else // FormatVersion == 1 (legacy migration)
+    {
+        if (!SeedVal->IsInteger() || SeedVal->AsInteger() < 0)
+        {
+            OutError = "run_digest.invalid_seed";
+            return false;
+        }
+        ParsedSeed = static_cast<std::uint64_t>(SeedVal->AsInteger());
     }
 
     const auto* ExecutedVal = Root.FindField("executed_commands_count");
@@ -207,11 +270,12 @@ bool DeserializeRunDigest(
         return false;
     }
 
+    OutDigest.DigestFormatVersion = FormatVersion;
     OutDigest.DigestHash = DigestHashVal->AsString();
     OutDigest.LuaReleaseNumber = static_cast<std::int32_t>(LuaReleaseVal->AsInteger());
     OutDigest.RepositoryContentHash = RepoHashVal->AsString();
     OutDigest.ScriptSetHash = ScriptSetHashVal->AsString();
-    OutDigest.Seed = static_cast<std::uint64_t>(SeedVal->AsInteger());
+    OutDigest.Seed = ParsedSeed;
     OutDigest.ExecutedCommandsCount = static_cast<std::uint64_t>(ExecutedVal->AsInteger());
     OutDigest.bSuccess = SuccessVal->AsBoolean();
     OutDigest.FinalScreenId = ScreenVal->AsString();

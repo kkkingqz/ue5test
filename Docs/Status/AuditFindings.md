@@ -100,7 +100,7 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 **Проверка для закрытия:** два настоящих успешных `StartSession` с различающимися authority values; внутри второго DocumentSink Prepare-context соответствует B, внешний snapshot не выдаёт A за готовую B. Отдельный cold-start тест этого не заменяет.
 
-**Исход:** подтверждено как contract gap, [STATUS-014](ImplementationStatus.md).
+**Исход:** *(Закрыто задачей CFC-06)* Методы `GetContentSnapshotForPrepare` и `InProgressCandidate` удалены; `FDocumentSink` получает явный `const FGV2PresentationPrepareContext&`, а в `BeginReplace` старый snapshot сбрасывается до вызова sink. Два последовательных вызова `StartSession` на одном координаторе с разными наборами пакетов (SetA и SetB) подтвердили, что initial document сессии B готовится строго против authorities B, а координатор во время sink B не возвращает старый снимок A (`FGV2SequentialSessionsDoNotShareAuthoritiesTest`, `STATUS-014` удалён).
 
 #### PSC-AF-05 — P1 — UE-host разрушает текущую проекцию до отказоспособной проверки replacement
 
@@ -112,7 +112,7 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 **Проверка для закрытия:** inject content-builder failure через `UGV2RuntimeSubsystem`, сравнить до/после identity и геометрию прежнего shell, экраны, работоспособность bindings и session generation. Actual set стадий отказа должен выводиться из candidate-build stages. Проверить источник класса нового shell в успешной ветви.
 
-**Исход:** подтверждено как contract gap, [STATUS-015](ImplementationStatus.md).
+**Исход:** *(Закрыто задачей CFC-06)* Из `UGV2RuntimeSubsystem::StartSession` удалены преждевременный teardown `ActiveScreen`/`ActiveGameShell` и синхронная загрузка `GameShellClass` из настроек; teardown выполняется через `ProjectionTeardownSink` внутри `BeginReplace`, GameShell инстанциируется из `PrepareContext.GetGameShellClass()`, удерживается вне viewport как `PendingGameShell` и публикуется в viewport только в `PublishActiveProjection` внутри `PublishReady`. Отказ candidate до `BeginReplace` оставляет активный UI сессии A, её viewport attachment и интерактивность полностью сохранными (`FGV2SessionPreservesProjectionWhenCandidateFailsTest`, гейт `validate_session_replacement_ownership.py`, `STATUS-015` удалён).
 
 #### PSC-AF-06 — P2 — гейт Build.cs молча пропускает запрещённую зависимость в другой форме C#
 
@@ -153,7 +153,7 @@ end
 
 **Проверка для закрытия:** ошибка, отсутствующий required registry, missing freeze и false `is_frozen` не дают перейти к state build/start; отказ содержит registry identity. Actual registry set должен происходить из production lifecycle declarations, а fault injections проходить через `FRuntimeSession::Start` в обоих hosts.
 
-**Исход:** подтверждено как contract gap, [STATUS-017](ImplementationStatus.md).
+**Исход:** *(Закрыто задачей CFC-05)* Фаза freeze заменена на обязательную фазу sealing через `core:module.bootstrap.registry_lifecycle`, где ошибка freeze, отсутствие участника контракта или false из `is_frozen()` гарантированно прерывают startup типизированным fault с указанием пути реестра, фасад защищён от ad hoc мутаций metatable-барьером, а C++-оркестрация и Lua-спецификация проверяют невозможность перехода к state build.
 
 ### SaveAndLoad
 
@@ -223,21 +223,15 @@ exit=0
 
 #### CFC-AF-03 — REVIEW-03 — P1 — off-tree candidates без traced owner
 
-**Подтверждён более узкий ownership gap:** `GV2PropertyConsumers.cpp:1260–1281` создаёт off-tree widget и хранит его в plain `CandidateWidgetsByKey`; аналогичны tabs и prepared reconciliation plan. Plain `TObjectPtr` там не является GC root. При этом `FActiveScreenEntry` attached widget и `FGV2ScreenFieldPlan::HostWidget` могут быть borrowed references с владельцем в UMG tree: blanket-замена всех указателей из review не обоснована. Норма — [lifetime Prepare/Commit/rollback](../UI/UIDocumentAndReconciliation.md). Synchronous path сам по себе не доказывает наличие GC crash в текущем запуске.
-
-**Исход:** [STATUS-021](ImplementationStatus.md), CFC-04B. Требуются actual owner graph и Prepare→GC→Commit/Abort/rollback; USTRUCT без traced owning container, временный тестовый root или замена всех refs на strong не считаются решением.
+*(Закрыто задачей CFC-04B)* Зафиксирован явный GC ownership off-tree candidates (`TStrongObjectPtr` в `CandidateWidgetsByKey` коллекций/табов и `CandidateWidget` реконсилера) с освобождением при Commit/Reset, borrowed targets переведены на `TWeakObjectPtr`, добавлен Game Thread guard в `FGV2PresentationApply::Apply`, а соблюдение структуры защищено расширенным статическим гейтом `validate_session_snapshot_ownership.py`.
 
 #### CFC-AF-04 — REVIEW-04 — P1 — seed не достигает session bootstrap
 
-**Подтверждён input gap, уточнена причина:** `GV2RunReplay.cpp:31–32` создаёт session без Manifest.Seed; Start API seed не принимает. `1` — session generation, не случайный seed. `GV2RuntimeSession.cpp:235–236` удаляет math.random/randomseed; production PRNG с «default seed» и описанный randomized divergence review не показал. Норма — [deterministic inputs](../Architecture/LuaRuntimeContract.md#determinism-and-technical-ingress), [replay input manifest](../Architecture/HeadlessSimulationContract.md#run-manifest-и-digest).
-
-**Исход:** [STATUS-023](ImplementationStatus.md), CFC-07A. Seed отдельно передаётся Lua до startup hooks; actual seeded behavior проверяется в обоих hosts. Один DigestHash, меняющийся от metadata Seed, недостаточен; передача seed вместо generation запрещена.
+*(Закрыто задачей CFC-07A)* Введён типизированный `FSessionStartInputs` с 16-символьным hex seed, изолированным от session generation и передаваемым в Lua (`game.runtime.seed_hex`) до первого bootstrap-хука, реализован Lua-owned xoshiro128** PRNG (`game.random`) с сериализацией в `state.meta.prng`, манифесты и дайджесты переведены на формат v2, а детерминизм и изоляция проверены в обоих хостах.
 
 #### CFC-AF-05 — REVIEW-05 — P1 — native code интерпретирует canonical state
 
-**Подтверждено шире трёх строк review:** `GV2RuntimeSession.cpp:1338–1490` содержит `MergeStateContribution`, root-section validation, mod namespace isolation, special merge `meta.instance_counters/prng/time` и collision exemptions `schema_version/save_version/save_id`. Это Lua-capable gameplay-state semantics внутри C++, против [INV-013](../Architecture/Overview.md#границы-c) и [Lua-owned state](../Architecture/CanonicalStateAndSave.md).
-
-**Исход:** [STATUS-022](ImplementationStatus.md), CFC-05A. Переносится весь semantic composition path. Предложенный альтернативный «generic Lua-driven merge descriptor в C++» не принимается: host всё равно интерпретирует state-shaped операции.
+*(Закрыто задачей CFC-05A)* Сборка canonical state и слияние вкладов модулей перенесены целиком в Lua (`core:module.runtime.state_composition`), из C++ удалены `MergeStateContribution` и `IsCanonicalStateSection`, а разделение защищено статическим гейтом `validate_state_composition_ownership.py`.
 
 #### CFC-AF-06 — REVIEW-06 — P2 — canonical zero; NaN-часть отклонена
 
@@ -281,9 +275,7 @@ exit=0
 
 #### CFC-AF-15 — REVIEW-15 — indentation lifecycle block
 
-**Подтверждено как style:** `GV2RuntimeSession.cpp` содержит неотформатированный block после `else`; само по себе это не runtime contract gap.
-
-**Открыто как сопутствующая правка:** CFC-05A перерабатывает этот state-composition участок и исправляет indentation в том же change set. Отдельной задачи или STATUS нет; поведение проверяется semantic tests CFC-05A, не indentation snapshot test.
+*(Закрыто задачей CFC-05A)* Блок жизненного цикла фазы 3 в `GV2RuntimeSession.cpp` заменён вызовом `ComposeDefaultCanonicalStateTree` и отформатирован в едином стиле в рамках переноса State Composition.
 
 ### Evidence дополнительной portable проверки
 

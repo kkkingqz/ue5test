@@ -84,11 +84,12 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         PreparedInst.InstanceKey = Instance.InstanceKey;
         PreparedInst.ScreenId = Instance.ScreenId;
 
-        if (Existing != nullptr && Existing->ScreenId == Instance.ScreenId && Existing->Widget != nullptr)
+        if (Existing != nullptr && Existing->ScreenId == Instance.ScreenId && Existing->Widget.IsValid())
         {
             // Reuse existing widget instance (preserving UI-local state)
             PreparedInst.bIsReuse = true;
-            PreparedInst.TargetWidget = Existing->Widget;
+            PreparedInst.TargetWidget = Existing->Widget.Get();
+            PreparedInst.CandidateWidget.Reset();
         }
         else
         {
@@ -99,14 +100,16 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
             // simply absent from that rebuild -- is dropped atomically along with any
             // other removed screen, not detached by a separate step.
             PreparedInst.bIsReuse = false;
-            PreparedInst.TargetWidget = ScreenFactory(Instance.ScreenId, Instance.Layer);
-            if (PreparedInst.TargetWidget == nullptr)
+            UGV2ScreenWidgetBase* NewWidget = ScreenFactory(Instance.ScreenId, Instance.Layer);
+            if (NewWidget == nullptr)
             {
                 OutError = FString::Printf(
                     TEXT("Failed to instantiate screen widget for screen_id '%s'"),
                     *Instance.ScreenId);
                 return false;
             }
+            PreparedInst.CandidateWidget.Reset(NewWidget);
+            PreparedInst.TargetWidget = NewWidget;
         }
 
         // Prepare screen fields (predicts any deep child failure across all field hosts).
@@ -115,7 +118,7 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         // an intermediate screen -- is caught as a cycle rather than silently
         // accepted; see FGV2TabContainerTabsPropertyConsumer's own guard.
         const TArray<FString> RootCompositionChain{Instance.ScreenId};
-        if (!PreparedInst.TargetWidget->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError, &RootCompositionChain, &PrepareContext))
+        if (!PreparedInst.TargetWidget.Get()->PrepareScreenFields(Instance.Fields, PreparedInst.MutationPlan, OutError, &RootCompositionChain, &PrepareContext))
         {
             if (OutError.IsEmpty())
             {
@@ -127,12 +130,12 @@ bool FGV2LayeredUiReconciler::PrepareReconcile(
         // PSC-10B: the theme is read HERE, in Prepare, holding the session snapshot -- and
         // nowhere below. What reaches Commit is finished values.
         if (!GV2CentralStylePreparer::PrepareForSubtree(
-                PreparedInst.TargetWidget, PrepareContext, PreparedInst.CentralStyleTransaction, OutError))
+                PreparedInst.TargetWidget.Get(), PrepareContext, PreparedInst.CentralStyleTransaction, OutError))
         {
             return false;
         }
 
-        OutPlan.NewActiveScreens.Add(Key, {Instance.ScreenId, PreparedInst.TargetWidget});
+        OutPlan.NewActiveScreens.Add(Key, {Instance.ScreenId, PreparedInst.TargetWidget.Get()});
         if (Instance.Layer == UGV2GameShellWidgetBase::LayerModalStack)
         {
             OutPlan.Modals.Add(PreparedInst.TargetWidget);
@@ -174,7 +177,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
     for (int32 InstIndex = 0; InstIndex < Plan.ScreensToUpdateOrAttach.Num(); ++InstIndex)
     {
         const FPreparedScreenInstance& Inst = Plan.ScreensToUpdateOrAttach[InstIndex];
-        if (Inst.TargetWidget == nullptr)
+        if (!Inst.TargetWidget.IsValid())
         {
             continue;
         }
@@ -197,7 +200,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             };
         }
         FString ScreenCommitError;
-        const bool bScreenFieldsCommitted = Inst.TargetWidget->CommitScreenFields(
+        const bool bScreenFieldsCommitted = Inst.TargetWidget.Get()->CommitScreenFields(
             Inst.MutationPlan, ScreenCommitError, PerScreenInjector, PerScreenRollbackInjector);
 
         // PSC-10B: central style is applied through the ordinary transaction Apply pair,
@@ -295,7 +298,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             TArray<const FPreparedScreenInstance*> LayerInstances;
             for (const FPreparedScreenInstance& Inst : Plan.ScreensToUpdateOrAttach)
             {
-                if (Inst.Layer == Layer && Inst.TargetWidget != nullptr)
+                if (Inst.Layer == Layer && Inst.TargetWidget.IsValid())
                 {
                     LayerInstances.Add(&Inst);
                 }
@@ -304,7 +307,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             TMap<FName, TObjectPtr<UGV2ScreenWidgetBase>> SeedByKey;
             for (const FPreparedScreenInstance* Inst : LayerInstances)
             {
-                SeedByKey.Add(Inst->InstanceKey, Inst->TargetWidget);
+                SeedByKey.Add(Inst->InstanceKey, Inst->TargetWidget.Get());
             }
 
             FGV2LayerReconcileState& State = LayerStates.AddDefaulted_GetRef();
@@ -408,7 +411,7 @@ bool FGV2LayeredUiReconciler::CommitReconcile(
             // and performs no widget mutation of its own.
             TArray<UUserWidget*> OrderedModals;
             OrderedModals.Reserve(Plan.Modals.Num());
-            for (const TObjectPtr<UGV2ScreenWidgetBase>& Modal : Plan.Modals)
+            for (const TWeakObjectPtr<UGV2ScreenWidgetBase>& Modal : Plan.Modals)
             {
                 OrderedModals.Add(Modal.Get());
             }

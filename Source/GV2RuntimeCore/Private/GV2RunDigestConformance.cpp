@@ -225,6 +225,57 @@ std::string RunRunDigestConformance()
         return "run_digest.reject_non_string_state_hash";
     }
 
+    // 8. Digest format version 2 and uint64 seed roundtrip (CFC-07A)
+    FRunDigest V2Digest = Digest1;
+    V2Digest.Seed = 0xdeadbeef12345678ULL;
+    const std::string V2DigestJson = SerializeRunDigest(V2Digest);
+    if (V2DigestJson.find("\"digest_format_version\": 2") == std::string::npos
+        || V2DigestJson.find("\"seed\": \"deadbeef12345678\"") == std::string::npos)
+    {
+        return "run_digest.v2_serialization_format";
+    }
+
+    FRunDigest DeserializedV2;
+    if (!DeserializeRunDigest(V2DigestJson, DeserializedV2, Error) || !Error.empty())
+    {
+        return "run_digest.deserialize_v2_failed";
+    }
+    if (DeserializedV2.Seed != V2Digest.Seed)
+    {
+        return "run_digest.v2_seed_equality";
+    }
+
+    // 9. Digest format v1 migration (CFC-07A)
+    const std::string V1DigestJson = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 42, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+    FRunDigest DeserializedV1;
+    if (!DeserializeRunDigest(V1DigestJson, DeserializedV1, Error) || !Error.empty())
+    {
+        return "run_digest.deserialize_v1_migration_failed";
+    }
+    if (DeserializedV1.Seed != 42)
+    {
+        return "run_digest.v1_migrated_seed_value";
+    }
+
+    // 10. Format v2 seed validation rejections (CFC-07A)
+    const std::string V2NumericSeedJson = "{ digest_format_version: 2, digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 42, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+    if (DeserializeRunDigest(V2NumericSeedJson, InvalidDigest, Error) || Error != "run_digest.invalid_seed")
+    {
+        return "run_digest.reject_v2_numeric_seed";
+    }
+
+    const std::string V2BadHexSeedJson = "{ digest_format_version: 2, digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: '000000000000002G', executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+    if (DeserializeRunDigest(V2BadHexSeedJson, InvalidDigest, Error) || Error != "run_digest.invalid_seed")
+    {
+        return "run_digest.reject_v2_bad_hex_seed";
+    }
+
+    const std::string UnsupportedDigestVerJson = "{ digest_format_version: 99, digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: '0000000000000000', executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+    if (DeserializeRunDigest(UnsupportedDigestVerJson, InvalidDigest, Error) || Error != "run_digest.unsupported_format_version")
+    {
+        return "run_digest.reject_unsupported_digest_format_version";
+    }
+
     return "";
 }
 } // namespace GV2RuntimeCore::Testing

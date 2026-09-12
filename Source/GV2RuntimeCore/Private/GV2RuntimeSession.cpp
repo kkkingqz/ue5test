@@ -11,6 +11,7 @@ extern "C"
 }
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -26,6 +27,8 @@ namespace GV2RuntimeCore
 {
 namespace
 {
+static std::atomic<std::int32_t> GLiveVmCount{0};
+
 constexpr int MaxValueDepth = 64;
 constexpr std::size_t MaxValueNodes = 10000;
 constexpr const char* SessionImplRegistryKey = "GV2.SessionImpl";
@@ -183,12 +186,14 @@ struct FRuntimeSession::FImpl
     lua_State* State = nullptr;
     std::thread::id OwnerThread;
     std::int32_t SessionGeneration = 0;
+    std::string SeedHex = "0000000000000000";
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     bool bExecuting = false;
     ISaveSlotStorage* SaveSlotStorage = nullptr;
     std::string ScriptSetHash;
     std::vector<FReplacedModuleInfo> ReplacedModules;
     std::vector<std::string> DiscoveredPackageIds;
+    std::vector<FModuleSpec> LoadedModulesOrder;
 
     bool IsOwnerThread() const
     {
@@ -239,9 +244,11 @@ struct FRuntimeSession::FImpl
         lua_setfield(State, LUA_REGISTRYINDEX, SessionImplRegistryKey);
 
         lua_createtable(State, 0, 8);
-        lua_createtable(State, 0, 3);
+        lua_createtable(State, 0, 4);
         lua_pushinteger(State, SessionGeneration);
         lua_setfield(State, -2, "session_generation");
+        lua_pushstring(State, SeedHex.c_str());
+        lua_setfield(State, -2, "seed_hex");
         lua_setfield(State, -2, "runtime");
         lua_createtable(State, 0, 1);
         lua_setfield(State, -2, "ui");
@@ -249,10 +256,6 @@ struct FRuntimeSession::FImpl
         lua_setfield(State, -2, "debug");
         lua_createtable(State, 0, 0);
         lua_setfield(State, -2, "null");
-        lua_createtable(State, 0, 4);
-        lua_setfield(State, -2, "instances");
-        lua_createtable(State, 0, 4);
-        lua_setfield(State, -2, "services");
 
         // game.repository
         lua_createtable(State, 0, 4);
@@ -1311,210 +1314,106 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
-    bool IsCanonicalStateSection(const char* SectionKey)
+    void RunStopHooks(const std::string& Reason)
     {
-        FStackRestore Stack{State, lua_gettop(State)};
-        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-        if (lua_istable(State, -1))
+        if (State == nullptr || LoadedModulesOrder.empty())
         {
-            lua_getfield(State, -1, "core:module.runtime.state_validator");
-            if (lua_istable(State, -1))
+            return;
+        }
+        for (auto It = LoadedModulesOrder.rbegin(); It != LoadedModulesOrder.rend(); ++It)
+        {
+            const FModuleSpec& Spec = *It;
+            FStackRestore Stack{State, lua_gettop(State)};
+            FExecutionGuard Execution(bExecuting);
+
+            lua_pushcfunction(State, Traceback);
+            const int ErrorHandler = lua_gettop(State);
+
+            lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+            if (!lua_istable(State, -1))
             {
-                lua_getfield(State, -1, "is_canonical_section");
-                if (lua_isfunction(State, -1))
-                {
-                    lua_pushstring(State, SectionKey);
-                    if (lua_pcall(State, 1, 1, 0) == LUA_OK)
-                    {
-                        const bool bResult = lua_toboolean(State, -1) != 0;
-                        return bResult;
-                    }
-                }
+                break;
+            }
+            lua_getfield(State, -1, Spec.ModuleId.c_str());
+            lua_remove(State, -2);
+
+            if (!lua_istable(State, -1))
+            {
+                break;
+            }
+
+            lua_getfield(State, -1, "stop");
+            if (lua_isnil(State, -1))
+            {
+                continue;
+            }
+            if (!lua_isfunction(State, -1))
+            {
+                break;
+            }
+
+            lua_createtable(State, 0, 1);
+            lua_pushinteger(State, SessionGeneration);
+            lua_setfield(State, -2, "session_generation");
+
+            lua_pushlstring(State, Reason.data(), Reason.size());
+
+            if (lua_pcall(State, 2, 0, ErrorHandler) != LUA_OK)
+            {
+                // First user-hook error stops subsequent user hooks, but not native cleanup
+                break;
             }
         }
-        return false;
     }
 
-    bool MergeStateContribution(
-        int TargetTreeIndex,
-        int ContributionIndex,
-        const std::string& ModuleId,
-        FRuntimeFault& OutFault)
+    void RunUnregisterHooks()
     {
-        std::string ModNamespace = ModuleId;
-        const auto ColonPos = ModuleId.find(':');
-        if (ColonPos != std::string::npos)
+        if (State == nullptr || LoadedModulesOrder.empty())
         {
-            ModNamespace = ModuleId.substr(0, ColonPos);
+            return;
         }
-
-        const int AbsTarget = lua_absindex(State, TargetTreeIndex);
-        const int AbsContrib = lua_absindex(State, ContributionIndex);
-
-        lua_pushnil(State);
-        while (lua_next(State, AbsContrib) != 0)
+        for (auto It = LoadedModulesOrder.rbegin(); It != LoadedModulesOrder.rend(); ++It)
         {
-            // key is at -2, value is at -1
-            if (lua_type(State, -2) != LUA_TSTRING)
+            const FModuleSpec& Spec = *It;
+            FStackRestore Stack{State, lua_gettop(State)};
+            FExecutionGuard Execution(bExecuting);
+
+            lua_pushcfunction(State, Traceback);
+            const int ErrorHandler = lua_gettop(State);
+
+            lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+            if (!lua_istable(State, -1))
             {
-                OutFault = {
-                    "LuaModuleDefaultStateInvalid",
-                    "State contribution section keys must be strings: " + ModuleId};
-                lua_pop(State, 2);
-                return false;
+                break;
+            }
+            lua_getfield(State, -1, Spec.ModuleId.c_str());
+            lua_remove(State, -2);
+
+            if (!lua_istable(State, -1))
+            {
+                break;
             }
 
-            std::size_t KeyLen = 0;
-            const char* KeyChars = lua_tolstring(State, -2, &KeyLen);
-            std::string_view SectionKey(KeyChars, KeyLen);
-
-            if (!IsCanonicalStateSection(KeyChars))
+            lua_getfield(State, -1, "unregister");
+            if (lua_isnil(State, -1))
             {
-                OutFault = {
-                    "LuaModuleDefaultStateInvalid",
-                    "Unknown canonical state section '" + std::string(SectionKey) + "' in module contribution: " + ModuleId};
-                lua_pop(State, 2);
-                return false;
+                continue;
+            }
+            if (!lua_isfunction(State, -1))
+            {
+                break;
             }
 
-            if (lua_type(State, -1) != LUA_TTABLE)
+            lua_createtable(State, 0, 1);
+            lua_pushinteger(State, SessionGeneration);
+            lua_setfield(State, -2, "session_generation");
+
+            if (lua_pcall(State, 1, 0, ErrorHandler) != LUA_OK)
             {
-                OutFault = {
-                    "LuaModuleDefaultStateInvalid",
-                    "State contribution section '" + std::string(SectionKey) + "' must be a table: " + ModuleId};
-                lua_pop(State, 2);
-                return false;
+                // First user-hook error stops subsequent user hooks, but not native cleanup
+                break;
             }
-
-            if (lua_getmetatable(State, -1) != 0)
-            {
-                lua_pop(State, 1); // pop metatable
-                OutFault = {
-                    "LuaStateValidationInvalid",
-                    "State contribution section '" + std::string(SectionKey) + "' cannot have a metatable: " + ModuleId};
-                lua_pop(State, 2);
-                return false;
-            }
-
-            // Get target section table
-            lua_getfield(State, AbsTarget, KeyChars);
-            assert(lua_istable(State, -1));
-            const int TargetSection = lua_absindex(State, -1);
-
-            // Copy all fields from source section into target section with collision and isolation checks
-            const int SourceSection = lua_absindex(State, -2);
-            lua_pushnil(State);
-            while (lua_next(State, SourceSection) != 0)
-            {
-                // key at -2, value at -1
-
-                // Check section isolation for 'mods': module can only write to its own mod_id / namespace
-                if (SectionKey == "mods")
-                {
-                    if (lua_type(State, -2) != LUA_TSTRING)
-                    {
-                        OutFault = {
-                            "LuaModuleDefaultStateInvalid",
-                            "Mod state keys must be string mod IDs: " + ModuleId};
-                        lua_pop(State, 4);
-                        return false;
-                    }
-                    std::size_t ModKeyLen = 0;
-                    const char* ModKeyChars = lua_tolstring(State, -2, &ModKeyLen);
-                    std::string_view ModKey(ModKeyChars, ModKeyLen);
-
-                    if (ModKey != ModNamespace && ModKey != ModuleId)
-                    {
-                        OutFault = {
-                            "LuaModuleDefaultStateInvalid",
-                            "Module '" + ModuleId + "' attempted to contribute to forbidden mod section '" + std::string(ModKey) + "'"};
-                        lua_pop(State, 4);
-                        return false;
-                    }
-                }
-
-                // If section is "meta" and key is a nested container table (instance_counters, prng, time)
-                if (SectionKey == "meta" && lua_type(State, -2) == LUA_TSTRING && lua_type(State, -1) == LUA_TTABLE)
-                {
-                    std::size_t MetaKeyLen = 0;
-                    const char* MetaKeyChars = lua_tolstring(State, -2, &MetaKeyLen);
-                    std::string_view MetaSubKey(MetaKeyChars, MetaKeyLen);
-                    if (MetaSubKey == "instance_counters" || MetaSubKey == "prng" || MetaSubKey == "time")
-                    {
-                        lua_pushvalue(State, -2);
-                        lua_gettable(State, TargetSection);
-                        if (lua_istable(State, -1))
-                        {
-                            const int TargetSubTable = lua_absindex(State, -1);
-                            const int SourceSubTable = lua_absindex(State, -2);
-                            lua_pushnil(State);
-                            while (lua_next(State, SourceSubTable) != 0)
-                            {
-                                // key at -2, value at -1
-                                lua_pushvalue(State, -2);
-                                lua_pushvalue(State, -2);
-                                lua_settable(State, TargetSubTable);
-                                lua_pop(State, 1);
-                            }
-                            lua_pop(State, 1); // pop target sub table
-                            lua_pop(State, 1); // pop source value
-                            continue;
-                        }
-                        lua_pop(State, 1); // pop non-table
-                    }
-                }
-
-                // Check collision / override of existing key (except for default meta primitives)
-                bool bSkipCollision = false;
-                if (SectionKey == "meta" && lua_type(State, -2) == LUA_TSTRING)
-                {
-                    std::size_t MetaKeyLen = 0;
-                    const char* MetaKeyChars = lua_tolstring(State, -2, &MetaKeyLen);
-                    std::string_view MetaSubKey(MetaKeyChars, MetaKeyLen);
-                    if (MetaSubKey == "schema_version" || MetaSubKey == "save_version" || MetaSubKey == "save_id")
-                    {
-                        bSkipCollision = true;
-                    }
-                }
-
-                lua_pushvalue(State, -2); // push key to check in TargetSection
-                lua_gettable(State, TargetSection);
-                const bool bKeyAlreadyExists = !lua_isnil(State, -1);
-                lua_pop(State, 1); // pop check result
-
-                if (bKeyAlreadyExists && !bSkipCollision)
-                {
-                    std::string CollidingKey;
-                    if (lua_type(State, -2) == LUA_TSTRING)
-                    {
-                        CollidingKey = lua_tostring(State, -2);
-                    }
-                    else if (lua_type(State, -2) == LUA_TNUMBER)
-                    {
-                        CollidingKey = std::to_string(lua_tointeger(State, -2));
-                    }
-                    else
-                    {
-                        CollidingKey = "unknown";
-                    }
-
-                    OutFault = {
-                        "LuaModuleDefaultStateInvalid",
-                        "Duplicate state contribution key '" + CollidingKey + "' in section '" + std::string(SectionKey) + "' from module: " + ModuleId};
-                    lua_pop(State, 4);
-                    return false;
-                }
-
-                lua_pushvalue(State, -2); // duplicate key for settable
-                lua_pushvalue(State, -2); // duplicate value for settable
-                lua_settable(State, TargetSection);
-                lua_pop(State, 1); // pop value, keep key for next
-            }
-
-            lua_pop(State, 1); // pop target section table
-            lua_pop(State, 1); // pop value, keep key for next
         }
-        return true;
     }
 
     bool ValidateCanonicalStateTree(int TreeIndex, FRuntimeFault& OutFault)
@@ -1560,34 +1459,121 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
-    bool CreateDefaultCanonicalStateTree(int& OutTreeRef)
+    bool ComposeDefaultCanonicalStateTree(
+        const std::vector<FModuleSpec>& LoadOrder,
+        int& OutTreeRef,
+        FRuntimeFault& OutFault)
     {
-        FStackRestore Stack{State, lua_gettop(State)};
-        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-        if (lua_istable(State, -1))
+        if (!BeginEntry("state_composition", OutFault))
         {
-            lua_getfield(State, -1, "core:module.runtime.state_validator");
-            if (lua_istable(State, -1))
-            {
-                lua_getfield(State, -1, "create_empty_canonical_state");
-                if (lua_isfunction(State, -1))
-                {
-                    if (lua_pcall(State, 0, 1, 0) == LUA_OK && lua_istable(State, -1))
-                    {
-                        OutTreeRef = luaL_ref(State, LUA_REGISTRYINDEX);
-                        return true;
-                    }
-                }
-            }
+            return false;
         }
 
-        lua_createtable(State, 0, 0);
-        OutTreeRef = luaL_ref(State, LUA_REGISTRYINDEX);
-        return true;
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        if (!lua_istable(State, -1))
+        {
+            lua_createtable(State, 0, 0);
+            OutTreeRef = luaL_ref(State, LUA_REGISTRYINDEX);
+            return true;
+        }
+
+        lua_getfield(State, -1, "core:module.runtime.state_composition");
+        lua_remove(State, -2);
+        if (lua_isnil(State, -1))
+        {
+            for (const FModuleSpec& Spec : LoadOrder)
+            {
+                if (Spec.ModuleId == "core:module.bootstrap.main")
+                {
+                    OutFault = {"StateCompositionModuleMissing", "core:module.runtime.state_composition is not loaded."};
+                    return false;
+                }
+            }
+            lua_createtable(State, 0, 0);
+            OutTreeRef = luaL_ref(State, LUA_REGISTRYINDEX);
+            return true;
+        }
+
+        lua_getfield(State, -1, "compose_default_state");
+        lua_remove(State, -2);
+        if (!lua_isfunction(State, -1))
+        {
+            OutFault = {"StateCompositionInvalid", "core:module.runtime.state_composition.compose_default_state is missing."};
+            return false;
+        }
+
+        // Argument 1: ctx
+        lua_createtable(State, 0, 1);
+        lua_pushinteger(State, SessionGeneration);
+        lua_setfield(State, -2, "session_generation");
+
+        // Argument 2: modules array
+        lua_createtable(State, static_cast<int>(LoadOrder.size()), 0);
+        for (std::size_t i = 0; i < LoadOrder.size(); ++i)
+        {
+            const FModuleSpec& Spec = LoadOrder[i];
+            lua_createtable(State, 0, 2);
+            lua_pushlstring(State, Spec.ModuleId.c_str(), Spec.ModuleId.size());
+            lua_setfield(State, -2, "module_id");
+
+            lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+            lua_getfield(State, -1, Spec.ModuleId.c_str());
+            lua_remove(State, -2);
+            lua_setfield(State, -2, "module");
+
+            lua_rawseti(State, -2, static_cast<lua_Integer>(i + 1));
+        }
+
+        if (lua_pcall(State, 2, 2, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "LuaModuleLifecycleError", "compose_default_state failed.", OutFault);
+            return false;
+        }
+
+        // Stack: [..., tree_or_nil, fault_or_nil]
+        if (lua_istable(State, -2))
+        {
+            lua_pop(State, 1); // pop fault (nil)
+            OutTreeRef = luaL_ref(State, LUA_REGISTRYINDEX); // pops tree
+            return true;
+        }
+
+        std::string Code = "LuaStateInitializationFailed";
+        std::string Message = "Failed to compose default canonical state tree.";
+        if (lua_istable(State, -1))
+        {
+            lua_getfield(State, -1, "code");
+            if (lua_isstring(State, -1))
+            {
+                Code = lua_tostring(State, -1);
+            }
+            lua_pop(State, 1);
+
+            lua_getfield(State, -1, "message");
+            if (lua_isstring(State, -1))
+            {
+                Message = lua_tostring(State, -1);
+            }
+            lua_pop(State, 1);
+        }
+        else if (lua_isstring(State, -1))
+        {
+            Message = lua_tostring(State, -1);
+        }
+
+        OutFault = {Code, Message};
+        lua_pop(State, 2);
+        return false;
     }
 
     // SAV-12/13/14/15/16: cold-start load counterpart to
-    // CreateDefaultCanonicalStateTree above. Calls
+    // ComposeDefaultCanonicalStateTree above. Calls
     // core:module.runtime.load.decode_and_prepare(container_bytes), which
     // does preflight, payload decode, and reference-rewrite entirely in
     // Lua and returns either a ready-to-use tree or (nil, typed_error) —
@@ -1702,40 +1688,108 @@ struct FRuntimeSession::FImpl
         return false;
     }
 
-    // Calls .freeze() on the table found by walking `game` then each field
-    // in Path (e.g. {"commands", "validators"} -> game.commands.validators),
-    // if every step and the final freeze() method exist. Used at the end of
-    // the "register" lifecycle phase for every registry the game facade
-    // exposes (game.services, game.commands.validators, ...), so late
-    // registration is uniformly rejected.
-    void FreezeGameRegistry(std::initializer_list<const char*> Path)
+    // CFC-05: Mandatory registry sealing phase after "register" hooks.
+    // Invokes core:module.bootstrap.registry_lifecycle.seal(), which verifies,
+    // resolves, and freezes all engine registries in contract order.
+    // Failure at any step populates OutFault with phase=SealingRegistries,
+    // the failing registry path, and detail, stopping startup before canonical state build.
+    bool SealRegistries(FRuntimeFault& OutFault)
     {
         const int Base = lua_gettop(State);
-        lua_getglobal(State, "game");
-        bool bFound = lua_istable(State, -1) != 0;
-        for (const char* Field : Path)
+        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+        if (!lua_istable(State, -1))
         {
-            if (!bFound)
-            {
-                break;
-            }
-            lua_getfield(State, -1, Field);
-            bFound = lua_istable(State, -1) != 0;
+            lua_settop(State, Base);
+            OutFault = {"RegistryLifecycleMissing", "SealingRegistries: loaded modules registry table is missing."};
+            return false;
         }
-        if (bFound)
+
+        lua_getfield(State, -1, "core:module.bootstrap.registry_lifecycle");
+        const bool bHasLifecycle = lua_istable(State, -1);
+        if (!bHasLifecycle)
         {
-            lua_getfield(State, -1, "freeze");
-            if (lua_isfunction(State, -1))
+            // Check if core:module.bootstrap.main was loaded.
+            // If so, missing registry_lifecycle is a fatal startup fault!
+            lua_getfield(State, -2, "core:module.bootstrap.main");
+            const bool bHasBootstrapMain = !lua_isnil(State, -1);
+            lua_pop(State, 1);
+
+            if (bHasBootstrapMain)
             {
-                lua_pcall(State, 0, 0, 0); // Ignore result; missing/erroring freeze leaves the registry unfrozen.
+                lua_settop(State, Base);
+                OutFault = {
+                    "RegistryLifecycleMissing",
+                    "SealingRegistries: core:module.bootstrap.registry_lifecycle is not loaded."
+                };
+                return false;
             }
+
+            // Standalone test session that does not run core:module.bootstrap.main
+            lua_settop(State, Base);
+            return true;
         }
+
+        lua_getfield(State, -1, "seal");
+        if (!lua_isfunction(State, -1))
+        {
+            lua_settop(State, Base);
+            OutFault = {"RegistryLifecycleInvalid", "SealingRegistries: seal method is missing on registry_lifecycle module."};
+            return false;
+        }
+
+        const int PCallResult = lua_pcall(State, 0, 2, 0);
+        if (PCallResult != LUA_OK)
+        {
+            ReadLuaError(State, "RegistrySealingFailed", "Failed to seal registries.", OutFault);
+            lua_settop(State, Base);
+            return false;
+        }
+
+        const bool bOk = lua_toboolean(State, -2) != 0;
+        if (!bOk)
+        {
+            std::string Phase = "SealingRegistries";
+            std::string RegistryPath = "unknown";
+            std::string ErrorDetail = "Registry sealing failed.";
+
+            if (lua_istable(State, -1))
+            {
+                lua_getfield(State, -1, "phase");
+                if (lua_isstring(State, -1))
+                {
+                    Phase = lua_tostring(State, -1);
+                }
+                lua_pop(State, 1);
+
+                lua_getfield(State, -1, "registry_path");
+                if (lua_isstring(State, -1))
+                {
+                    RegistryPath = lua_tostring(State, -1);
+                }
+                lua_pop(State, 1);
+
+                lua_getfield(State, -1, "error");
+                if (lua_isstring(State, -1))
+                {
+                    ErrorDetail = lua_tostring(State, -1);
+                }
+                lua_pop(State, 1);
+            }
+
+            OutFault.Code = "RegistrySealingFailed";
+            OutFault.Message = Phase + ": registry '" + RegistryPath + "' failed: " + ErrorDetail;
+            lua_settop(State, Base);
+            return false;
+        }
+
         lua_settop(State, Base);
+        return true;
     }
 
     bool RunLifecycleHooks(
         const std::vector<FModuleSpec>& LoadOrder,
         const std::string* LoadContainerBytes,
+        const FPhaseCompletionCallback& PhaseCallback,
         FRuntimeFault& OutFault)
     {
         // 1. Phase "register"
@@ -1744,39 +1798,17 @@ struct FRuntimeSession::FImpl
             return false;
         }
 
-        // Freeze registries at the end of register phase (GEW-01: validators,
-        // CHR-02: command handlers, GEW-10: event subscribers, EAE-02: entity extensions).
-        FreezeGameRegistry({"services"});
-        FreezeGameRegistry({"actions"});
-        FreezeGameRegistry({"entity_extensions"});
-        FreezeGameRegistry({"commands", "validators"});
-        FreezeGameRegistry({"commands", "handlers"});
-        FreezeGameRegistry({"events", "subscribers"});
-        FreezeGameRegistry({"events"});
-        FreezeGameRegistry({"instances", "actors"});
-        FreezeGameRegistry({"instances"});
-        FreezeGameRegistry({"presentation"});
-
-        // Freeze state validator reference fields registry (CBM-10)
-        lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-        if (lua_istable(State, -1))
+        // 1b. CFC-05: Mandatory registry sealing phase right after register phase.
+        if (!SealRegistries(OutFault))
         {
-            lua_getfield(State, -1, "core:module.runtime.state_validator");
-            if (lua_istable(State, -1))
-            {
-                lua_getfield(State, -1, "freeze_reference_fields");
-                if (lua_isfunction(State, -1))
-                {
-                    lua_pcall(State, 0, 0, 0);
-                }
-                else
-                {
-                    lua_pop(State, 1);
-                }
-            }
-            lua_pop(State, 1);
+            return false;
         }
-        lua_pop(State, 1);
+
+        if (PhaseCallback && !PhaseCallback(ERuntimeLifecyclePhase::Registering, FRuntimePhaseResult::MakeCompleted()))
+        {
+            OutFault = {"OperationCancelled", "Session cancelled after Registering phase."};
+            return false;
+        }
 
         // 2. Obtain the canonical state tree. SAV-12/13/14/15/16: on a
         // cold-start load, the tree comes whole from the save container —
@@ -1793,101 +1825,16 @@ struct FRuntimeSession::FImpl
             {
                 return false;
             }
-        }
-        else
-        {
-        if (!CreateDefaultCanonicalStateTree(TreeRef))
-        {
-            OutFault = {"LuaStateInitializationFailed", "Failed to initialize canonical state tree."};
-            return false;
-        }
 
-        // 3. Phase "create_default_state"
-        for (const FModuleSpec& Spec : LoadOrder)
-        {
-            if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                return false;
-            }
-
-            FStackRestore Stack{State, lua_gettop(State)};
-            FExecutionGuard Execution(bExecuting);
-
-            lua_pushcfunction(State, Traceback);
-            const int ErrorHandler = lua_gettop(State);
-
-            lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-            lua_getfield(State, -1, Spec.ModuleId.c_str());
-            lua_remove(State, -2);
-
-            if (!lua_istable(State, -1))
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                OutFault = {"LuaModuleLifecycleError", "Module export table is missing: " + Spec.ModuleId};
-                return false;
-            }
-
-            lua_getfield(State, -1, "create_default_state");
-            if (lua_isnil(State, -1))
-            {
-                continue;
-            }
-            if (!lua_isfunction(State, -1))
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                OutFault = {
-                    "LuaModuleLifecycleInvalid",
-                    "Module hook 'create_default_state' must be a function: " + Spec.ModuleId};
-                return false;
-            }
-
-            lua_createtable(State, 0, 1);
-            lua_pushinteger(State, SessionGeneration);
-            lua_setfield(State, -2, "session_generation");
-
-            if (lua_pcall(State, 1, 1, ErrorHandler) != LUA_OK)
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                ReadLuaError(State, "LuaModuleLifecycleError", "Module create_default_state failed.", OutFault);
-                return false;
-            }
-
-            if (!lua_isnil(State, -1))
-            {
-                if (!lua_istable(State, -1))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    OutFault = {
-                        "LuaModuleDefaultStateInvalid",
-                        "Module create_default_state must return a table or nil: " + Spec.ModuleId};
-                    return false;
-                }
-
-                lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
-                const int TreeIndex = lua_gettop(State);
-                const int ContribIndex = TreeIndex - 1;
-                if (!MergeStateContribution(TreeIndex, ContribIndex, Spec.ModuleId, OutFault))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    return false;
-                }
-                lua_pop(State, 1); // pop Tree
-            }
-        }
-        } // end LoadContainerBytes == nullptr (NewGame default-state branch)
-
-        // SAV-18/19/20: phase "migrate_state" — only on a cold-start load,
-        // between decode (above) and restore_instances (below), so a
-        // migration can repair shape before restore_instances/validate_state
-        // see the tree. Same (ctx, tree) calling convention as
-        // "restore_instances"/"validate_state". core:module.runtime.load
-        // already rejected a downgrade (a saved section newer than this
-        // build) before returning a tree at all; what remains here is
-        // giving every module a chance to claim a pending migration, then
-        // verifying none was silently left unclaimed.
-        if (LoadContainerBytes != nullptr)
-        {
+            // SAV-18/19/20: phase "migrate_state" — only on a cold-start load,
+            // between decode (above) and restore_instances (below), so a
+            // migration can repair shape before restore_instances/validate_state
+            // see the tree. Same (ctx, tree) calling convention as
+            // "restore_instances"/"validate_state". core:module.runtime.load
+            // already rejected a downgrade (a saved section newer than this
+            // build) before returning a tree at all; what remains here is
+            // giving every module a chance to claim a pending migration, then
+            // verifying none was silently left unclaimed.
             for (const FModuleSpec& Spec : LoadOrder)
             {
                 if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
@@ -1947,6 +1894,13 @@ struct FRuntimeSession::FImpl
                 return false;
             }
         }
+        else
+        {
+            if (!ComposeDefaultCanonicalStateTree(LoadOrder, TreeRef, OutFault))
+            {
+                return false;
+            }
+        }
 
         // 4. Validate canonical state tree structure & value types (runs
         // for both NewGame and cold-start load — a loaded tree gets the
@@ -1960,6 +1914,13 @@ struct FRuntimeSession::FImpl
             return false;
         }
         lua_pop(State, 1);
+
+        if (PhaseCallback && !PhaseCallback(ERuntimeLifecyclePhase::BuildingState, FRuntimePhaseResult::MakeCompleted()))
+        {
+            luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+            OutFault = {"OperationCancelled", "Session cancelled after BuildingState phase."};
+            return false;
+        }
 
         // SAV-17: phase "restore_instances" — only on a cold-start load (a
         // freshly-defaulted state has nothing to restore). Same (ctx, tree)
@@ -2075,6 +2036,13 @@ struct FRuntimeSession::FImpl
             }
         }
 
+        if (PhaseCallback && !PhaseCallback(ERuntimeLifecyclePhase::RestoringInstances, FRuntimePhaseResult::MakeCompleted()))
+        {
+            luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+            OutFault = {"OperationCancelled", "Session cancelled after RestoringInstances phase."};
+            return false;
+        }
+
         // 5. Assign canonical state to game.state
         lua_getglobal(State, "game");
         lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
@@ -2117,12 +2085,19 @@ struct FRuntimeSession::FImpl
             return false;
         }
 
+        if (PhaseCallback && !PhaseCallback(ERuntimeLifecyclePhase::Starting, FRuntimePhaseResult::MakeCompleted()))
+        {
+            OutFault = {"OperationCancelled", "Session cancelled after Starting phase."};
+            return false;
+        }
+
         return true;
     }
 
     bool LoadModules(
         const std::vector<FRuntimeSource>& Sources,
         const std::string* LoadContainerBytes,
+        const FPhaseCompletionCallback& PhaseCallback,
         FRuntimeFault& OutFault)
     {
         std::vector<FModuleSpec> LoadOrder;
@@ -2131,6 +2106,7 @@ struct FRuntimeSession::FImpl
         {
             return false;
         }
+        LoadedModulesOrder = LoadOrder;
 
         lua_getglobal(State, "game");
         if (lua_istable(State, -1))
@@ -2162,7 +2138,7 @@ struct FRuntimeSession::FImpl
                 return false;
             }
         }
-        if (!RunLifecycleHooks(LoadOrder, LoadContainerBytes, OutFault))
+        if (!RunLifecycleHooks(LoadOrder, LoadContainerBytes, PhaseCallback, OutFault))
         {
             return false;
         }
@@ -3003,14 +2979,16 @@ FRuntimeSession::~FRuntimeSession()
     Stop();
 }
 
-bool FRuntimeSession::Start(
-    const std::int32_t InSessionGeneration,
+bool FRuntimeSession::StartSessionPhases(
+    const FSessionStartInputs& StartInputs,
     const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
     const std::vector<FRuntimeSource>& Sources,
+    const std::string* LoadContainerBytes,
+    const FPhaseCompletionCallback& PhaseCallback,
     FRuntimeFault& OutFault)
 {
     OutFault = {};
-    if (!Stop(&OutFault))
+    if (!Stop(&OutFault, "restart"))
     {
         return false;
     }
@@ -3019,9 +2997,14 @@ bool FRuntimeSession::Start(
         OutFault = {"RepositoryNotReady", "Runtime session requires a valid pinned repository read handle."};
         return false;
     }
-    if (InSessionGeneration <= 0)
+    if (StartInputs.SessionGeneration <= 0)
     {
         OutFault = {"InvalidSessionGeneration", "Runtime requires a positive session generation."};
+        return false;
+    }
+    if (!IsValidSeedHex(StartInputs.SeedHex))
+    {
+        OutFault = {"InvalidSeedHex", "SeedHex must be exactly 16 lowercase ASCII hex characters."};
         return false;
     }
     if (Sources.empty())
@@ -3030,31 +3013,74 @@ bool FRuntimeSession::Start(
         return false;
     }
 
+    const std::int32_t CurrentVmCount = ++GLiveVmCount;
+    if (CurrentVmCount > 1)
+    {
+        --GLiveVmCount;
+        OutFault = {"LuaVmExceededLimit", "Maximum simultaneous live VMs exceeded (limit 1)."};
+        return false;
+    }
+
     Impl->State = luaL_newstate();
     if (Impl->State == nullptr)
     {
+        --GLiveVmCount;
         OutFault = {"LuaVmAllocationFailed", "Lua VM allocation failed."};
         return false;
     }
     Impl->OwnerThread = std::this_thread::get_id();
-    Impl->SessionGeneration = InSessionGeneration;
+    Impl->SessionGeneration = StartInputs.SessionGeneration;
+    Impl->SeedHex = StartInputs.SeedHex;
     Impl->PinnedRepository = PinnedRepository;
 
     if (!Impl->OpenEnvironment(OutFault))
     {
-        Stop();
+        Stop(nullptr, "error");
         return false;
     }
-    if (!Impl->LoadModules(Sources, nullptr, OutFault))
+    if (!Impl->LoadModules(Sources, LoadContainerBytes, PhaseCallback, OutFault))
     {
-        Stop();
+        Stop(nullptr, "error");
         return false;
     }
     return true;
 }
 
-bool FRuntimeSession::StartFromSave(
+bool FRuntimeSession::StartSessionPhases(
     const std::int32_t InSessionGeneration,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    const std::string* LoadContainerBytes,
+    const FPhaseCompletionCallback& PhaseCallback,
+    FRuntimeFault& OutFault)
+{
+    FSessionStartInputs Inputs;
+    Inputs.SessionGeneration = InSessionGeneration;
+    return StartSessionPhases(Inputs, PinnedRepository, Sources, LoadContainerBytes, PhaseCallback, OutFault);
+}
+
+bool FRuntimeSession::Start(
+    const FSessionStartInputs& StartInputs,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    FRuntimeFault& OutFault)
+{
+    return StartSessionPhases(StartInputs, PinnedRepository, Sources, nullptr, {}, OutFault);
+}
+
+bool FRuntimeSession::Start(
+    const std::int32_t InSessionGeneration,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    FRuntimeFault& OutFault)
+{
+    FSessionStartInputs Inputs;
+    Inputs.SessionGeneration = InSessionGeneration;
+    return Start(Inputs, PinnedRepository, Sources, OutFault);
+}
+
+bool FRuntimeSession::StartFromSave(
+    const FSessionStartInputs& StartInputs,
     const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
     const std::vector<FRuntimeSource>& Sources,
     ISaveSlotStorage& Storage,
@@ -3062,14 +3088,6 @@ bool FRuntimeSession::StartFromSave(
     FRuntimeFault& OutFault)
 {
     OutFault = {};
-    if (!Stop(&OutFault))
-    {
-        return false;
-    }
-
-    // SAV-12: the slot is read with no Lua VM in existence yet — a missing
-    // or unreadable slot is a configuration failure the caller (composition
-    // root) surfaces as a recovery surface before any VM cost is paid.
     const FSaveSlotReadResult ReadResult = Storage.ReadSlot(SaveSlotId);
     if (ReadResult.Result == ESaveSlotResult::NotFound)
     {
@@ -3082,43 +3100,20 @@ bool FRuntimeSession::StartFromSave(
         return false;
     }
 
-    if (!PinnedRepository.IsValid())
-    {
-        OutFault = {"RepositoryNotReady", "Runtime session requires a valid pinned repository read handle."};
-        return false;
-    }
-    if (InSessionGeneration <= 0)
-    {
-        OutFault = {"InvalidSessionGeneration", "Runtime requires a positive session generation."};
-        return false;
-    }
-    if (Sources.empty())
-    {
-        OutFault = {"LuaRuntimeSourceMissing", "Runtime requires at least one Lua source."};
-        return false;
-    }
+    return StartSessionPhases(StartInputs, PinnedRepository, Sources, &ReadResult.Bytes, {}, OutFault);
+}
 
-    Impl->State = luaL_newstate();
-    if (Impl->State == nullptr)
-    {
-        OutFault = {"LuaVmAllocationFailed", "Lua VM allocation failed."};
-        return false;
-    }
-    Impl->OwnerThread = std::this_thread::get_id();
-    Impl->SessionGeneration = InSessionGeneration;
-    Impl->PinnedRepository = PinnedRepository;
-
-    if (!Impl->OpenEnvironment(OutFault))
-    {
-        Stop();
-        return false;
-    }
-    if (!Impl->LoadModules(Sources, &ReadResult.Bytes, OutFault))
-    {
-        Stop();
-        return false;
-    }
-    return true;
+bool FRuntimeSession::StartFromSave(
+    const std::int32_t InSessionGeneration,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    ISaveSlotStorage& Storage,
+    const std::string& SaveSlotId,
+    FRuntimeFault& OutFault)
+{
+    FSessionStartInputs Inputs;
+    Inputs.SessionGeneration = InSessionGeneration;
+    return StartFromSave(Inputs, PinnedRepository, Sources, Storage, SaveSlotId, OutFault);
 }
 
 bool FRuntimeSession::CheckScripts(
@@ -3161,9 +3156,18 @@ bool FRuntimeSession::CheckScripts(
         return false;
     }
 
+    const std::int32_t CurrentVmCount = ++GLiveVmCount;
+    if (CurrentVmCount > 1)
+    {
+        --GLiveVmCount;
+        OutFault = {"LuaVmExceededLimit", "Maximum simultaneous live VMs exceeded (limit 1)."};
+        return false;
+    }
+
     Impl->State = luaL_newstate();
     if (Impl->State == nullptr)
     {
+        --GLiveVmCount;
         OutFault = {"LuaVmAllocationFailed", "Lua VM allocation failed."};
         return false;
     }
@@ -3181,7 +3185,7 @@ bool FRuntimeSession::CheckScripts(
     return bSuccess;
 }
 
-bool FRuntimeSession::Stop(FRuntimeFault* OutFault)
+bool FRuntimeSession::Stop(FRuntimeFault* OutFault, const std::string& Reason)
 {
     if (OutFault != nullptr)
     {
@@ -3195,8 +3199,10 @@ bool FRuntimeSession::Stop(FRuntimeFault* OutFault)
     {
         Impl->PinnedRepository = {};
         Impl->SessionGeneration = 0;
+        Impl->SeedHex = "0000000000000000";
         Impl->OwnerThread = {};
         Impl->bExecuting = false;
+        Impl->LoadedModulesOrder.clear();
         return true;
     }
     if (!Impl->IsOwnerThread())
@@ -3215,13 +3221,26 @@ bool FRuntimeSession::Stop(FRuntimeFault* OutFault)
         }
         return false;
     }
+
+    Impl->RunStopHooks(Reason);
+    Impl->RunUnregisterHooks();
+
     lua_close(Impl->State);
     Impl->State = nullptr;
+    --GLiveVmCount;
+
     Impl->PinnedRepository = {};
     Impl->SessionGeneration = 0;
+    Impl->SeedHex = "0000000000000000";
     Impl->OwnerThread = {};
     Impl->bExecuting = false;
+    Impl->LoadedModulesOrder.clear();
     return true;
+}
+
+std::int32_t FRuntimeSession::GetLiveVmCount()
+{
+    return GLiveVmCount.load();
 }
 
 void FRuntimeSession::SetSaveSlotStorage(ISaveSlotStorage* Storage)
@@ -3315,7 +3334,12 @@ bool FRuntimeSession::IsExecuting() const
 
 std::int32_t FRuntimeSession::GetSessionGeneration() const
 {
-    return Impl->SessionGeneration;
+    return Impl ? Impl->SessionGeneration : 0;
+}
+
+std::string FRuntimeSession::GetSeedHex() const
+{
+    return Impl ? Impl->SeedHex : "";
 }
 
 const GV2ContentCore::FRepositoryReadHandle& FRuntimeSession::GetPinnedRepository() const

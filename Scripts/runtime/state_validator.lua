@@ -55,6 +55,10 @@ function M.freeze()
     is_frozen = true
 end
 
+function M.is_frozen()
+    return is_frozen
+end
+
 function M.with_isolated_state(fn)
     local prev_ref_fields = reference_fields
     local prev_sections = registered_sections
@@ -128,11 +132,16 @@ function M.is_canonical_section(name)
 end
 
 function M.create_empty_canonical_state()
+    local seed_hex = "0000000000000000"
+    if _G.game and _G.game.runtime and type(_G.game.runtime.seed_hex) == "string" then
+        seed_hex = _G.game.runtime.seed_hex
+    end
     local state = {
         meta = {
             schema_version = 1,
             save_version = 1,
             save_id = "",
+            seed_hex = seed_hex,
             instance_counters = {},
             prng = {},
             time = {},
@@ -343,8 +352,32 @@ function M.validate_state_tree(tree)
             end
         end
     end
-    if meta.prng ~= nil and (type(meta.prng) ~= "table" or getmetatable(meta.prng) ~= nil) then
-        error("LuaStateValidationInvalid: meta.prng must be a plain table")
+    if meta.seed_hex ~= nil then
+        if type(meta.seed_hex) ~= "string" or not meta.seed_hex:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") then
+            error("LuaStateValidationInvalid: meta.seed_hex must be exactly 16 lowercase hex characters")
+        end
+    end
+    if meta.prng ~= nil then
+        if type(meta.prng) ~= "table" or getmetatable(meta.prng) ~= nil then
+            error("LuaStateValidationInvalid: meta.prng must be a plain table")
+        end
+        for stream_id, stream_state in pairs(meta.prng) do
+            if type(stream_id) ~= "string" or not stable_id.is_kind(stream_id, "random_stream") then
+                error("LuaStateValidationInvalid: invalid random stream id in meta.prng: " .. tostring(stream_id) .. " (must be Stable ID of kind 'random_stream')")
+            end
+            if type(stream_state) ~= "table" or getmetatable(stream_state) ~= nil then
+                error("LuaStateValidationInvalid: stream state for '" .. stream_id .. "' in meta.prng must be a plain table")
+            end
+            if stream_state.algorithm ~= "xoshiro128ss-v1" then
+                error("LuaStateValidationInvalid: invalid algorithm in meta.prng['" .. stream_id .. "']: " .. tostring(stream_state.algorithm))
+            end
+            for _, word in ipairs({"s0", "s1", "s2", "s3"}) do
+                local val = stream_state[word]
+                if type(val) ~= "string" or not val:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") then
+                    error("LuaStateValidationInvalid: invalid word '" .. word .. "' in meta.prng['" .. stream_id .. "']: " .. tostring(val))
+                end
+            end
+        end
     end
     if meta.time ~= nil and (type(meta.time) ~= "table" or getmetatable(meta.time) ~= nil) then
         error("LuaStateValidationInvalid: meta.time must be a plain table")

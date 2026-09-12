@@ -302,15 +302,35 @@ std::string RunValidatorRegistryConformance()
                         dependencies = { "core:module.runtime.stable_id" },
                     },
                     {
+                        module_id = "core:module.bootstrap.registry_lifecycle",
+                        source = "bootstrap/registry_lifecycle.lua",
+                        dependencies = {},
+                    },
+                    {
                         module_id = "core:module.test.validator_registry_driver",
                         source = "test/validator_registry_driver.lua",
-                        dependencies = { "core:module.runtime.validator_registry" },
+                        dependencies = {
+                            "core:module.runtime.validator_registry",
+                            "core:module.bootstrap.registry_lifecycle",
+                        },
                     },
                 },
             })lua"
         },
         {"@core/runtime/stable_id.lua", StableIdScriptSource},
         {"@core/runtime/validator_registry.lua", ValidatorRegistryScriptSource},
+        {"@core/bootstrap/registry_lifecycle.lua", R"lua(
+local M = {}
+function M.install() end
+function M.seal()
+    if game and game.commands and game.commands.validators then
+        game.commands.validators.freeze()
+    end
+    return true
+end
+function M.is_sealed() return true end
+return M
+)lua"},
         {"@core/test/validator_registry_driver.lua", DriverScriptSource},
     };
 

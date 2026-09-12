@@ -247,17 +247,9 @@ function M.create_registry()
 end
 
 local default_registry = M.create_registry()
-if _G.game and not _G.game.entity_extensions then
-    _G.game.entity_extensions = default_registry
-end
 
 M.register = function(_ctx)
-    if not _G.game then
-        _G.game = {}
-    end
-    if not _G.game.entity_extensions then
-        _G.game.entity_extensions = default_registry or M.create_registry()
-    end
+    -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
 
 M.get_method = function(entity_kind, method_name)

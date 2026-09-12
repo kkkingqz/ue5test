@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Application/GV2SessionContentSnapshot.h"
+#include "Application/GV2SessionTransition.h"
 #include "Bridge/GV2RuntimeIngressQueue.h"
 #include "Bridge/GV2UiBindingRegistry.h"
 #include "GV2ContentCore/RepositorySnapshot.h"
@@ -11,7 +12,11 @@ class FGV2SessionCoordinator
 {
 public:
     using FInteractionSink = TFunction<void(const FGV2UiIngressItem&)>;
-    using FDocumentSink = TFunction<bool(const FGV2UiDocumentViewModel&)>;
+    using FDocumentSink = TFunction<bool(
+        const FGV2UiDocumentViewModel&,
+        const FGV2PresentationPrepareContext&)>;
+    using FProjectionTeardownSink = TFunction<void()>;
+    using FProjectionPublishSink = TFunction<void()>;
 
     explicit FGV2SessionCoordinator(int32 InIngressCapacity = 256);
 
@@ -19,6 +24,10 @@ public:
     void ClearInteractionSink();
     void SetDocumentSink(FDocumentSink InSink);
     void ClearDocumentSink();
+    void SetProjectionTeardownSink(FProjectionTeardownSink InSink);
+    void ClearProjectionTeardownSink();
+    void SetProjectionPublishSink(FProjectionPublishSink InSink);
+    void ClearProjectionPublishSink();
 
     // PCC-36: PinnedRepository must be a valid read handle obtained from the
     // Application-scope FGV2RepositoryPublisher current snapshot at the time
@@ -40,6 +49,20 @@ public:
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
         int64 RepositoryVersion);
 #endif
+    // CFC-07: Public lifecycle requests
+    uint64 RequestSession(
+        const FSessionStartDescriptor& Descriptor,
+        const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+        int64 InRepositoryVersion,
+        const GV2ContentHostSupport::FResolvedPackageSet& ResolvedPackageSet);
+
+    ESessionCancellationResult CancelSessionRequest(uint64 OperationId);
+
+    TOptional<ESessionOperationOutcome> GetSessionOperationOutcome(uint64 OperationId) const;
+
+    FGV2SessionTransitionPolicy& GetTransitionPolicy() { return TransitionPolicy; }
+    const FGV2SessionTransitionPolicy& GetTransitionPolicy() const { return TransitionPolicy; }
+
     void FailBootstrap(const FString& Code, const FString& Message);
     void EndSession(EGV2SessionState FinalState = EGV2SessionState::Destroyed);
 
@@ -52,20 +75,51 @@ public:
     // fails, even if the failure happens after the candidate itself was already valid.
     const FGV2SessionContentSnapshot* GetContentSnapshot() const { return ContentSnapshot.Get(); }
 
-    // PSC-06 (ADR-0043 D1): for this coordinator's OWN internal Prepare-phase machinery
-    // ONLY (the ScreenFactory callback UGV2RuntimeSubsystem passes into the Reconciler,
-    // reached synchronously from DocumentSink -- which StartSession() itself invokes,
-    // before Ready, to prepare/commit the initial document). Returns the published
-    // snapshot once Ready (same value as GetContentSnapshot()), or the in-progress
-    // candidate while StartSession() is still executing its own bootstrap -- the initial
-    // document's own screen/resource resolution legitimately needs the candidate that
-    // will become this session's snapshot, before that candidate is externally observable.
-    // Never use this from outside the coordinator's own callback machinery -- any other
-    // caller must use GetContentSnapshot(), which stays strictly Ready-gated.
-    const FGV2SessionContentSnapshot* GetContentSnapshotForPrepare() const
+    enum class EReplacementStage
     {
-        return ContentSnapshot ? ContentSnapshot.Get() : InProgressCandidate;
-    }
+        Preflight,
+        Replacing,
+        Preparing,
+        Committed,
+        Aborted
+    };
+
+    class FSessionReplacementToken
+    {
+    public:
+        ~FSessionReplacementToken() = default;
+        FSessionReplacementToken(FSessionReplacementToken&&) = default;
+        FSessionReplacementToken& operator=(FSessionReplacementToken&&) = default;
+        FSessionReplacementToken(const FSessionReplacementToken&) = delete;
+        FSessionReplacementToken& operator=(const FSessionReplacementToken&) = delete;
+
+        EReplacementStage GetStage() const { return Stage; }
+        const FGV2SessionContentSnapshot& GetCandidate() const { check(Candidate.IsValid()); return *Candidate; }
+        FGV2SessionContentSnapshot& GetCandidate() { check(Candidate.IsValid()); return *Candidate; }
+
+    private:
+        friend class FGV2SessionCoordinator;
+        explicit FSessionReplacementToken(TUniquePtr<FGV2SessionContentSnapshot> InCandidate)
+            : Candidate(MoveTemp(InCandidate))
+            , Stage(EReplacementStage::Preflight)
+        {
+            check(Candidate.IsValid());
+        }
+
+        void TransitionTo(EReplacementStage NewStage)
+        {
+            Stage = NewStage;
+        }
+
+        TUniquePtr<FGV2SessionContentSnapshot> TakeCandidate()
+        {
+            check(Stage == EReplacementStage::Preparing || Stage == EReplacementStage::Committed);
+            return MoveTemp(Candidate);
+        }
+
+        TUniquePtr<FGV2SessionContentSnapshot> Candidate;
+        EReplacementStage Stage = EReplacementStage::Preflight;
+    };
 
     bool PublishUiBindings(
         const FString& UiInstanceId,
@@ -113,9 +167,22 @@ private:
     bool PrepareDocumentRequest(
         const GV2RuntimeCore::FUiDocument& Document,
         FGV2UiDocumentViewModel& OutModel,
-        FGV2PreparedBindingSet& OutBindings);
+        FGV2PreparedBindingSet& OutBindings,
+        const FGV2PresentationPrepareContext& PrepareContext);
     void PumpIngress();
     void FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault);
+
+    bool BeginReplace(
+        FSessionReplacementToken& Token,
+        const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+        int64 InRepositoryVersion,
+        GV2RuntimeCore::FRuntimeFault& OutFault,
+        ESessionTransitionKind TransitionKind);
+
+    bool PublishReady(
+        FSessionReplacementToken&& Token,
+        int64 InUiRevision,
+        ESessionTransitionKind TransitionKind);
 
     // PSC-05 (ADR-0042/BootstrapAndSessionLifecycle.md "Session states"): used only for a
     // failure that occurs BEFORE StartSession commits to tearing down whatever session was
@@ -129,22 +196,39 @@ private:
     // started".
     void FailReplacementAttempt(const GV2RuntimeCore::FRuntimeFault& Fault, bool bHadPriorReadySession);
 
+    struct FPendingStartContext
+    {
+        GV2ContentCore::FRepositoryReadHandle PinnedRepository;
+        int64 RepositoryVersion = 0;
+        GV2ContentHostSupport::FResolvedPackageSet ResolvedPackageSet;
+    };
+
+    bool ExecuteSessionStart(
+        const FSessionOperationRecord& Op,
+        const GV2ContentCore::FRepositoryReadHandle& InPinnedRepository,
+        int64 InRepositoryVersion,
+        const GV2ContentHostSupport::FResolvedPackageSet& InResolvedPackageSet);
+
+    void ExecuteShutdown(const FSessionOperationRecord& Op, EGV2SessionState FinalState = EGV2SessionState::Destroyed);
+    void ProcessNextTransition();
+
     FGV2SessionStatus Status;
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     TUniquePtr<FGV2SessionContentSnapshot> ContentSnapshot;
-    // PSC-06: non-owning, set to the in-progress Candidate right after RuntimeSession::Start
-    // succeeds (before the document pipeline runs), cleared the instant this attempt is
-    // either published (ownership moves to ContentSnapshot) or fails (FailRuntime). See
-    // GetContentSnapshotForPrepare()'s doc comment.
-    const FGV2SessionContentSnapshot* InProgressCandidate = nullptr;
     FGV2UiBindingRegistry BindingRegistry;
     FGV2RuntimeIngressQueue IngressQueue;
     GV2RuntimeCore::FRuntimeSession RuntimeSession;
+    FGV2SessionTransitionPolicy TransitionPolicy;
+    TOptional<FPendingStartContext> PendingStartContext;
     FInteractionSink InteractionSink;
     FDocumentSink DocumentSink;
+    FProjectionTeardownSink ProjectionTeardownSink;
+    FProjectionPublishSink ProjectionPublishSink;
     TMap<FString, FString> ActiveTabsByContainerPath;
     int64 NextInputSequence = 1;
     int64 UiRevision = 0;
     bool bPumpingIngress = false;
     bool bExecutingRuntime = false;
+    bool bProcessingTransition = false;
+    ESessionTransitionKind CurrentTransitionKind = ESessionTransitionKind::NewGame;
 };
