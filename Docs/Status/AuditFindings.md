@@ -86,7 +86,7 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 **Проверка для закрытия:** production document с binding/nested envelope получает compiled schema именно своего snapshot; другой построенный candidate и изменение исходных файлов не меняют результат. Actual set — все schema lookup callers materializer/consumer из исходников, oracle — identity схемы pinned snapshot. Второй global cache/discovery path отсутствует.
 
-**Исход:** подтверждено как contract gap, [STATUS-013](ImplementationStatus.md).
+**Исход:** *(Закрыто задачей CFC-04)* Процесс-глобальный кеш схем и методы Rebuild/ReleaseSchemaCacheForSession полностью удалены, все точки входа materializer требуют обязательный `FGV2PresentationPrepareContext` и читают схемы исключительно из snapshot-scoped кеша, изолированного от изменений файлов и других сессий (подтверждено тестом `FGV2SessionUiSchemaSnapshotIsolationTest` и структурным гейтом `validate_ui_schema_authority.py`).
 
 #### PSC-AF-04 — P1 — повторный StartSession подготавливает первый документ через прежний snapshot
 

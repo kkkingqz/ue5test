@@ -9,6 +9,7 @@
 #include "UI/GV2PanelWidgetBase.h"
 #include "UI/GV2TextWidgetBase.h"
 #include "UI/GV2UiSchemaCache.h"
+#include "Tests/GV2PresentationTestFixtures.h"
 #include "Blueprint/WidgetTree.h"
 #include "GV2ContentCore/UiSchema.h"
 #include "Misc/AutomationTest.h"
@@ -321,9 +322,11 @@ bool FGV2UiPropertyHostTest::RunTest(const FString& Parameters)
             TestNotNull(TEXT("TestWorld created"), TestWorld);
 
             // Source 1: Schema loaded directly from repository package
-            FGV2UiSchemaCache RepoSchemaCache({ FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")} });
+            TSharedPtr<FGV2UiSchemaCache> RepoSchemaCache = FGV2UiSchemaCacheTestAccess::Create({
+                FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
+            });
             FString SchemaErr;
-            GV2ContentCore::FCompiledUiFieldSpecPtr RepoSchema = RepoSchemaCache.GetCompiledSchema(
+            GV2ContentCore::FCompiledUiFieldSpecPtr RepoSchema = RepoSchemaCache->GetCompiledSchema(
                 "textsystem:schema.ui_field.location_commands.v1",
                 SchemaErr);
             TestNotNull(TEXT("PCC-02 Source 1: Schema loaded from repository"), RepoSchema.get());
@@ -501,21 +504,21 @@ bool FGV2SchemaRootsFromClosureTest::RunTest(const FString& Parameters)
     // A schema whose declared `id` namespace doesn't match the package root it was
     // discovered under is rejected -- proven with real content (textsystem's own
     // location_commands schema) deliberately tagged as belonging to "core".
-    FGV2UiSchemaCache MismatchedCache({
+    TSharedPtr<FGV2UiSchemaCache> MismatchedCache = FGV2UiSchemaCacheTestAccess::Create({
         FGV2SchemaPackageRoot{TEXT("core"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
     });
     FString MismatchError;
     TestNull(
         TEXT("A schema whose id namespace doesn't match its tagged package root is not registered"),
-        MismatchedCache.GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MismatchError).get());
+        MismatchedCache->GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MismatchError).get());
 
-    FGV2UiSchemaCache MatchedCache({
+    TSharedPtr<FGV2UiSchemaCache> MatchedCache = FGV2UiSchemaCacheTestAccess::Create({
         FGV2SchemaPackageRoot{TEXT("textsystem"), FPaths::ProjectDir() / TEXT("GameData/textsystem")}
     });
     FString MatchedError;
     TestNotNull(
         TEXT("The same schema resolves normally when its package root is correctly tagged"),
-        MatchedCache.GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MatchedError).get());
+        MatchedCache->GetCompiledSchema("textsystem:schema.ui_field.location_commands.v1", MatchedError).get());
 
     return true;
 }

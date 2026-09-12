@@ -106,7 +106,7 @@ bool FGV2SessionContentCandidate::Build(
 
     // Eagerly compiled UI schemas (PSC-04): unknown/invalid schema is a bootstrap failure,
     // never a lazy post-Ready fallback discovered only when some screen first uses it.
-    OutSnapshot.SchemaCache = MakeShared<FGV2UiSchemaCache>(SchemaPackageRoots);
+    OutSnapshot.SchemaCache = TSharedPtr<FGV2UiSchemaCache>(new FGV2UiSchemaCache(SchemaPackageRoots));
     FString SchemaError;
     if (!OutSnapshot.SchemaCache->CompileAll(SchemaError))
     {

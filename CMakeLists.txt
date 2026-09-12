@@ -311,6 +311,22 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_prepare_context_inventory.py"
             "--self-test"
     )
+    # CFC-04 (ADR-0043 D1, BootstrapAndSessionLifecycle.md): the snapshot is the sole
+    # UI schema authority -- cache construction outside FGV2SessionContentCandidate::Build
+    # and materializer calls without explicit PrepareContext are prohibited.
+    add_test(
+        NAME ui_schema_authority_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_schema_authority.py"
+    )
+    add_test(
+        NAME ui_schema_authority_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_ui_schema_authority.py"
+            "--self-test"
+    )
     # PSC-09A (ADR-0043 D2/D4): GV2PresentationApply's own Build.cs dependency list IS
     # the primary guarantee physical Apply cannot reach a content/authority type -- this
     # gate reads that declaration directly and requires GV2's forward edge onto it exist.

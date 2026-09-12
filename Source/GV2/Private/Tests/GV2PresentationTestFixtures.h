@@ -10,11 +10,28 @@
 #include "UI/GV2ImageResourceCatalog.h"
 #include "Application/GV2PackageClosure.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2UiSchemaCache.h"
 #include "UI/GV2UiTheme.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+
+// CFC-04: Test-only accessor allowing tests under Tests/ to construct and compile isolated
+// FGV2UiSchemaCache instances via friended private constructor.
+class FGV2UiSchemaCacheTestAccess
+{
+public:
+    static TSharedPtr<FGV2UiSchemaCache> Create(TArray<FGV2SchemaPackageRoot> InPackageRoots)
+    {
+        return TSharedPtr<FGV2UiSchemaCache>(new FGV2UiSchemaCache(MoveTemp(InPackageRoots)));
+    }
+
+    static bool CompileAll(const FGV2UiSchemaCache& Cache, FString& OutError)
+    {
+        return Cache.CompileAll(OutError);
+    }
+};
 
 namespace GV2PresentationTestFixtures
 {

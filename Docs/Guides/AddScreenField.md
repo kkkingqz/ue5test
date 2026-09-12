@@ -71,6 +71,7 @@ depends_on:
 
 3. **Регистрация схемы в пакете**:
    - Добавьте schema binding в манифест пакета (`manifest.json5` / дескриптор пакета) для связывания пути файла схемы с `schema_id`.
+   - UI-схемы компилируются и изолируются внутри immutable snapshot сессии (`FGV2SessionContentSnapshot`). При построении candidate snapshot сессии все схемы пакетов компилируются жадно (eager compilation) в `FGV2UiSchemaCache`, удерживаемый snapshot. Вся дальнейшая материализация полей (`GV2ScreenFieldMaterializer::BuildFields`, `PrepareBindingDefinitions`) резолвит схемы исключительно через `FGV2PresentationPrepareContext`. Неизвестная или невалидная схема приводит к отказу построения сессии (`UiSchemaNotReady`), а не к ленивой ошибке во время игры.
 
 4. **Связывание с презентацией**:
    - `field_id` — это `HostIdentity`, уже заданный в Части A, шаг 4, на самом composite; отдельного поля для него в Dynamic Screen Element нет.

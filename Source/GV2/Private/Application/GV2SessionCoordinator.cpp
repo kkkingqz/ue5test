@@ -265,7 +265,7 @@ bool FGV2SessionCoordinator::StartSession(
     // touching whatever session is currently active, so a content-builder failure here
     // (UiSchemaNotReady/ScreenRegistryNotReady/ImageCatalogNotReady/ThemeNotReady) has not
     // yet committed to replacing anything. PSC-10C retired the image catalog session
-    // global entirely; RebuildSchemaCacheForSession below is the last remaining one.
+    // global, and CFC-04 retired the UI schema cache session global.
     TUniquePtr<FGV2SessionContentSnapshot> Candidate = MakeUnique<FGV2SessionContentSnapshot>();
     GV2RuntimeCore::FRuntimeFault CandidateFault;
     if (!FGV2SessionContentCandidate::Build(
@@ -292,7 +292,6 @@ bool FGV2SessionCoordinator::StartSession(
         FailRuntime(StopFault);
         return false;
     }
-    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
 
     ++Status.SessionGeneration;
     Status.ApplicationState = EGV2ApplicationState::Bootstrapping;
@@ -303,8 +302,6 @@ bool FGV2SessionCoordinator::StartSession(
     UiRevision = 0;
     PinnedRepository = InPinnedRepository;
     BindingRegistry.BeginSession(Status.SessionGeneration);
-
-    GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(SchemaPackageRoots));
 
     // PSC-10C: no second image catalog is built here any more. The candidate above already
     // built this session's catalog from the same closure package ids and pinned it in the
@@ -399,7 +396,6 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
             UTF8_TO_TCHAR(StopFault.Message.c_str()));
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
-    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     ContentSnapshot.Reset();
     InProgressCandidate = nullptr;
     Status.ApplicationState = EGV2ApplicationState::Uninitialized;
@@ -571,6 +567,15 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
     OutModel = {};
     OutBindings = {};
 
+    // CFC-04 (ADR-0043 D1): PrepareDocumentRequest requires the pinned session snapshot context.
+    const FGV2SessionContentSnapshot* SnapshotForPrepare = GetContentSnapshotForPrepare();
+    if (SnapshotForPrepare == nullptr)
+    {
+        UE_LOG(LogTemp, Error, TEXT("PrepareDocumentRequest failed: no ContentSnapshot is available for prepare"));
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContext(*SnapshotForPrepare);
+
     OutModel.UiInstanceId = UTF8_TO_TCHAR(Document.UiInstanceId.c_str());
     OutModel.Revision = Document.Revision;
 
@@ -583,7 +588,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         Request.Fields = Inst.Fields;
 
         TArray<FGV2UiBindingDefinition> InstDefs;
-        if (!GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, InstDefs))
+        if (!GV2ScreenFieldMaterializer::PrepareBindingDefinitions(PrepareContext, Request, InstDefs))
         {
             UE_LOG(LogTemp, Error, TEXT("GV2 initial document has unsupported fields for screen '%s'"), UTF8_TO_TCHAR(Inst.ScreenId.c_str()));
             return false;
@@ -659,18 +664,6 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         return false;
     }
 
-    // PSC-10A (ADR-0043 D1): same TOptional<FGV2PresentationPrepareContext> idiom
-    // UGV2RuntimeSubsystem::HandleDocumentRequested already uses -- GetContentSnapshotForPrepare()
-    // returns the in-progress candidate while StartSession() is still preparing/committing
-    // the initial document (before Ready), or the published snapshot for every later
-    // document update, so this covers both of PrepareDocumentRequest's own call sites.
-    const FGV2SessionContentSnapshot* SnapshotForPrepare = GetContentSnapshotForPrepare();
-    const TOptional<FGV2PresentationPrepareContext> PrepareContext =
-        SnapshotForPrepare != nullptr
-            ? TOptional<FGV2PresentationPrepareContext>(FGV2PresentationPrepareContext(*SnapshotForPrepare))
-            : TOptional<FGV2PresentationPrepareContext>();
-    const FGV2PresentationPrepareContext* PrepareContextPtr = PrepareContext.IsSet() ? &PrepareContext.GetValue() : nullptr;
-
     auto BuildInstanceModel = [&](const GV2RuntimeCore::FScreenInstance& Inst, const FInstDefRange& Range, FGV2ScreenInstanceViewModel& OutInstModel) -> bool
     {
         OutInstModel.Layer = FName(UTF8_TO_TCHAR(Inst.Layer.c_str()));
@@ -687,7 +680,7 @@ bool FGV2SessionCoordinator::PrepareDocumentRequest(
         GV2RuntimeCore::FScreenRequest Request;
         Request.ScreenId = Inst.ScreenId;
         Request.Fields = Inst.Fields;
-        if (!GV2ScreenFieldMaterializer::BuildFields(Request, InstHandles, OutInstModel.Fields, PrepareContextPtr))
+        if (!GV2ScreenFieldMaterializer::BuildFields(PrepareContext, Request, InstHandles, OutInstModel.Fields))
         {
             UE_LOG(LogTemp, Error, TEXT("GV2 initial document fields could not be built for screen '%s'"), *OutInstModel.ScreenId);
             return false;
@@ -819,7 +812,6 @@ void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fa
             UTF8_TO_TCHAR(StopFault.Message.c_str()));
     }
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
-    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
     ContentSnapshot.Reset();
     InProgressCandidate = nullptr;
     Status.RepositoryVersion = 0;

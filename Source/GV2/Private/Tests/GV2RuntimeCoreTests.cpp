@@ -6,6 +6,8 @@
 #include "Application/GV2RepositoryPublisher.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionContentSnapshot.h"
+#include "Application/GV2ScreenFieldMaterializer.h"
+#include "UI/GV2UiSchemaCache.h"
 #include "Blueprint/UserWidget.h"
 #include "UObject/UObjectIterator.h"
 #include "Components/VerticalBox.h"
@@ -2606,6 +2608,350 @@ bool FGV2DesignTimePreviewNoRuntimeAuthorityTest::RunTest(const FString& Paramet
         TEXT("Design-time preview keeps the widget's serialized physical value"),
         Widget->ReadAppliedThickness(),
         SerializedThickness);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SessionUiSchemaSnapshotIsolationTest,
+    "GV2.Runtime.Session.UiSchemaSnapshotIsolation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+// CFC-04: the snapshot is the sole UI schema authority.
+// This test builds Snapshot A with schema package root containing schema version A.
+// Then it mutates the files on disk and builds Snapshot B with distinct constraints.
+// It verifies:
+// 1. Snapshot A and Snapshot B exhibit distinct schema-driven outcomes (top-level, binding, nested).
+// 2. Re-processing against Snapshot A does not perform filesystem discovery (delta == 0).
+bool FGV2SessionUiSchemaSnapshotIsolationTest::RunTest(const FString& Parameters)
+{
+    const FString TestSchemaDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("CFC04IsolationTest/SchemaRoot"));
+    IFileManager::Get().DeleteDirectory(*TestSchemaDir, false, true);
+    IFileManager::Get().MakeDirectory(*TestSchemaDir, true);
+
+    struct FDirectoryCleaner
+    {
+        FString Path;
+        ~FDirectoryCleaner()
+        {
+            IFileManager::Get().DeleteDirectory(*Path, false, true);
+        }
+    } Cleaner{TestSchemaDir};
+
+    auto BuildSnapshotWithExtraRoot = [this](
+        const FString& ExtraSchemaDir,
+        FGV2SessionContentSnapshot& OutSnapshot,
+        FString& OutError) -> bool
+    {
+        const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+        const std::vector<std::filesystem::path> PackageRoots = {
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("core")))),
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("textsystem")))),
+            std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("rh")))),
+        };
+
+        std::vector<GV2ContentCore::FDiagnostic> ResolveDiagnostics;
+        const std::optional<GV2ContentHostSupport::FResolvedPackageSet> ResolvedSet =
+            GV2ContentHostSupport::ResolvePackageSetFromDirectories(PackageRoots, ResolveDiagnostics);
+        if (!ResolvedSet.has_value())
+        {
+            OutError = TEXT("Unable to resolve package set");
+            return false;
+        }
+
+        const GV2ContentCore::FBuildResult RepositoryBuild =
+            BuildGV2RepositoryFromResolvedPackageSet(*ResolvedSet);
+        if (!RepositoryBuild.IsSuccess())
+        {
+            OutError = TEXT("Unable to build repository");
+            return false;
+        }
+
+        TArray<FGV2SchemaPackageRoot> SchemaRoots;
+        SchemaRoots.Reserve(static_cast<int32>(ResolvedSet->OrderedSources.size()) + 1);
+        for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedSet->OrderedSources)
+        {
+            SchemaRoots.Add(FGV2SchemaPackageRoot{
+                UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
+                UTF8_TO_TCHAR(Source.Root.string().c_str())});
+        }
+        SchemaRoots.Add(FGV2SchemaPackageRoot{TEXT("core"), ExtraSchemaDir});
+
+        GV2RuntimeCore::FRuntimeFault Fault;
+        if (!FGV2SessionContentCandidate::Build(
+                RepositoryBuild.GetCandidate().GetReadHandle(),
+                *ResolvedSet,
+                SchemaRoots,
+                {},
+                OutSnapshot,
+                Fault))
+        {
+            OutError = FString::Printf(TEXT("%s: %s"), UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str()));
+            return false;
+        }
+        return true;
+    };
+
+    const FString TopSchemaFile = FPaths::Combine(TestSchemaDir, TEXT("cfc04_isolation_top.schema.json5"));
+    const FString NestedSchemaFile = FPaths::Combine(TestSchemaDir, TEXT("cfc04_isolation_nested.schema.json5"));
+    const FString CompositeSchemaFile = FPaths::Combine(TestSchemaDir, TEXT("cfc04_isolation_composite.schema.json5"));
+
+    const FString TopSchemaJsonA = TEXT("{\n")
+        TEXT("  id: \"core:schema.ui_field.cfc04_isolation_top.v1\",\n")
+        TEXT("  schema_domain: \"ui_field\",\n")
+        TEXT("  schema_version: 1,\n")
+        TEXT("  root: {\n")
+        TEXT("    kind: \"object\",\n")
+        TEXT("    fields: {\n")
+        TEXT("      number_val: { kind: \"number\", required: true, min: 10.0, max: 20.0 },\n")
+        TEXT("      items: {\n")
+        TEXT("        kind: \"array\",\n")
+        TEXT("        required: true,\n")
+        TEXT("        keyed_by: \"key\",\n")
+        TEXT("        items: {\n")
+        TEXT("          kind: \"object\",\n")
+        TEXT("          fields: {\n")
+        TEXT("            key: { kind: \"key\", required: true },\n")
+        TEXT("            binding: { kind: \"binding\", required: true }\n")
+        TEXT("          }\n")
+        TEXT("        }\n")
+        TEXT("      }\n")
+        TEXT("    }\n")
+        TEXT("  }\n")
+        TEXT("}\n");
+
+    const FString NestedSchemaJsonA = TEXT("{\n")
+        TEXT("  id: \"core:schema.ui_field.cfc04_isolation_nested.v1\",\n")
+        TEXT("  schema_domain: \"ui_field\",\n")
+        TEXT("  schema_version: 1,\n")
+        TEXT("  root: {\n")
+        TEXT("    kind: \"object\",\n")
+        TEXT("    fields: {\n")
+        TEXT("      tag: { kind: \"key\", required: true },\n")
+        TEXT("      flag_a: { kind: \"bool\", required: true }\n")
+        TEXT("    }\n")
+        TEXT("  }\n")
+        TEXT("}\n");
+
+    const FString CompositeSchemaJson = TEXT("{\n")
+        TEXT("  id: \"core:schema.ui_field.cfc04_isolation_composite.v1\",\n")
+        TEXT("  schema_domain: \"ui_field\",\n")
+        TEXT("  schema_version: 1,\n")
+        TEXT("  root: {\n")
+        TEXT("    kind: \"object\",\n")
+        TEXT("    fields: {\n")
+        TEXT("      fields: { kind: \"screen_fields\", required: true }\n")
+        TEXT("    }\n")
+        TEXT("  }\n")
+        TEXT("}\n");
+
+    TestTrue(TEXT("Write TopSchemaJsonA"), FFileHelper::SaveStringToFile(TopSchemaJsonA, *TopSchemaFile));
+    TestTrue(TEXT("Write NestedSchemaJsonA"), FFileHelper::SaveStringToFile(NestedSchemaJsonA, *NestedSchemaFile));
+    TestTrue(TEXT("Write CompositeSchemaJson"), FFileHelper::SaveStringToFile(CompositeSchemaJson, *CompositeSchemaFile));
+
+    FGV2SessionContentSnapshot SnapshotA;
+    FString ErrorA;
+    const bool bBuiltA = BuildSnapshotWithExtraRoot(TestSchemaDir, SnapshotA, ErrorA);
+    TestTrue(*FString::Printf(TEXT("Build Snapshot A [Error: %s]"), *ErrorA), bBuiltA);
+    if (!bBuiltA)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContextA(SnapshotA);
+
+    const FString TopSchemaJsonB = TEXT("{\n")
+        TEXT("  id: \"core:schema.ui_field.cfc04_isolation_top.v1\",\n")
+        TEXT("  schema_domain: \"ui_field\",\n")
+        TEXT("  schema_version: 1,\n")
+        TEXT("  root: {\n")
+        TEXT("    kind: \"object\",\n")
+        TEXT("    fields: {\n")
+        TEXT("      number_val: { kind: \"number\", required: true, min: 100.0, max: 200.0 },\n")
+        TEXT("      items: {\n")
+        TEXT("        kind: \"array\",\n")
+        TEXT("        required: true,\n")
+        TEXT("        keyed_by: \"key\",\n")
+        TEXT("        items: {\n")
+        TEXT("          kind: \"object\",\n")
+        TEXT("          fields: {\n")
+        TEXT("            key: { kind: \"key\", required: true },\n")
+        TEXT("            text: { kind: \"text\", required: true }\n")
+        TEXT("          }\n")
+        TEXT("        }\n")
+        TEXT("      }\n")
+        TEXT("    }\n")
+        TEXT("  }\n")
+        TEXT("}\n");
+
+    const FString NestedSchemaJsonB = TEXT("{\n")
+        TEXT("  id: \"core:schema.ui_field.cfc04_isolation_nested.v1\",\n")
+        TEXT("  schema_domain: \"ui_field\",\n")
+        TEXT("  schema_version: 1,\n")
+        TEXT("  root: {\n")
+        TEXT("    kind: \"object\",\n")
+        TEXT("    fields: {\n")
+        TEXT("      tag: { kind: \"key\", required: true },\n")
+        TEXT("      flag_b: { kind: \"bool\", required: true }\n")
+        TEXT("    }\n")
+        TEXT("  }\n")
+        TEXT("}\n");
+
+    TestTrue(TEXT("Overwrite TopSchemaJsonB"), FFileHelper::SaveStringToFile(TopSchemaJsonB, *TopSchemaFile));
+    TestTrue(TEXT("Overwrite NestedSchemaJsonB"), FFileHelper::SaveStringToFile(NestedSchemaJsonB, *NestedSchemaFile));
+
+    FGV2SessionContentSnapshot SnapshotB;
+    FString ErrorB;
+    const bool bBuiltB = BuildSnapshotWithExtraRoot(TestSchemaDir, SnapshotB, ErrorB);
+    TestTrue(*FString::Printf(TEXT("Build Snapshot B [Error: %s]"), *ErrorB), bBuiltB);
+    if (!bBuiltB)
+    {
+        return false;
+    }
+    const FGV2PresentationPrepareContext PrepareContextB(SnapshotB);
+
+    AddExpectedErrorPlain(TEXT("rejected (closed schema)"), EAutomationExpectedErrorFlags::Contains, 4);
+    AddExpectedErrorPlain(TEXT("ProjectMaterializedValue failed"), EAutomationExpectedErrorFlags::Contains, 2);
+
+    using FObject = GV2RuntimeCore::FValue::FObject;
+    using FArray = GV2RuntimeCore::FValue::FArray;
+
+    // 1. Top-level and binding outcome checks
+    GV2RuntimeCore::FScreenRequest ReqDocA;
+    ReqDocA.ScreenId = "core:screen.test_screen";
+    GV2RuntimeCore::FScreenField FieldDocA;
+    FieldDocA.FieldId = "top_field";
+    FieldDocA.SchemaId = "core:schema.ui_field.cfc04_isolation_top.v1";
+    FObject ObjA;
+    ObjA["number_val"] = GV2RuntimeCore::FValue(15.0);
+    FObject BtnA;
+    BtnA["key"] = GV2RuntimeCore::FValue(std::string("btn1"));
+    BtnA["binding"] = GV2RuntimeCore::FValue(std::string("core:command.test"));
+    ObjA["items"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(BtnA)});
+    FieldDocA.Value = GV2RuntimeCore::FValue(MoveTemp(ObjA));
+    ReqDocA.Fields.push_back(MoveTemp(FieldDocA));
+
+    GV2RuntimeCore::FScreenRequest ReqDocB;
+    ReqDocB.ScreenId = "core:screen.test_screen";
+    GV2RuntimeCore::FScreenField FieldDocB;
+    FieldDocB.FieldId = "top_field";
+    FieldDocB.SchemaId = "core:schema.ui_field.cfc04_isolation_top.v1";
+    FObject ObjB;
+    ObjB["number_val"] = GV2RuntimeCore::FValue(150.0);
+    FObject BtnB;
+    BtnB["key"] = GV2RuntimeCore::FValue(std::string("btn1"));
+    FObject TextB;
+    TextB["text_id"] = GV2RuntimeCore::FValue(std::string("core:text.common.ok"));
+    BtnB["text"] = GV2RuntimeCore::FValue(TextB);
+    ObjB["items"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(BtnB)});
+    FieldDocB.Value = GV2RuntimeCore::FValue(MoveTemp(ObjB));
+    ReqDocB.Fields.push_back(MoveTemp(FieldDocB));
+
+    // Binding extraction
+    TArray<FGV2UiBindingDefinition> DefsA;
+    TestTrue(TEXT("Snapshot A extracts binding for Doc A"),
+        GV2ScreenFieldMaterializer::PrepareBindingDefinitions(PrepareContextA, ReqDocA, DefsA));
+    TestEqual(TEXT("Snapshot A extracted 1 binding definition"), DefsA.Num(), 1);
+
+    TArray<FGV2UiBindingDefinition> DefsB;
+    TestFalse(TEXT("Snapshot B rejects Doc A in binding extraction"),
+        GV2ScreenFieldMaterializer::PrepareBindingDefinitions(PrepareContextB, ReqDocA, DefsB));
+
+    TArray<FGV2UiBindingDefinition> DefsA2;
+    TestFalse(TEXT("Snapshot A rejects Doc B in binding extraction"),
+        GV2ScreenFieldMaterializer::PrepareBindingDefinitions(PrepareContextA, ReqDocB, DefsA2));
+
+    // BuildFields
+    TArray<FGV2UiBindingHandle> HandlesA;
+    HandlesA.Add(FGV2UiBindingHandle::Create(TEXT("core:command.test")));
+    TArray<FGV2ScreenFieldValue> FieldsA;
+    TestTrue(TEXT("Snapshot A builds fields for Doc A"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextA, ReqDocA, HandlesA, FieldsA));
+
+    TArray<FGV2ScreenFieldValue> FieldsA_on_B;
+    TestFalse(TEXT("Snapshot B rejects fields for Doc A (number_val out of range, items invalid)"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextB, ReqDocA, HandlesA, FieldsA_on_B));
+
+    TArray<FGV2ScreenFieldValue> FieldsB;
+    TestTrue(TEXT("Snapshot B builds fields for Doc B"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextB, ReqDocB, {}, FieldsB));
+
+    TArray<FGV2ScreenFieldValue> FieldsB_on_A;
+    TestFalse(TEXT("Snapshot A rejects fields for Doc B (number_val 150 > max 20)"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextA, ReqDocB, {}, FieldsB_on_A));
+
+    // 2. Nested schema outcome checks
+    FObject InnerObjA;
+    InnerObjA["tag"] = GV2RuntimeCore::FValue(std::string("tag1"));
+    InnerObjA["flag_a"] = GV2RuntimeCore::FValue(true);
+
+    FObject EnvelopeA;
+    EnvelopeA["field_id"] = GV2RuntimeCore::FValue(std::string("nested_item"));
+    EnvelopeA["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.cfc04_isolation_nested.v1"));
+    EnvelopeA["value"] = GV2RuntimeCore::FValue(InnerObjA);
+
+    FObject CompositeObjA;
+    CompositeObjA["fields"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(EnvelopeA)});
+
+    GV2RuntimeCore::FScreenRequest NestedReqA;
+    NestedReqA.ScreenId = "core:screen.test_screen";
+    GV2RuntimeCore::FScreenField CompFieldA;
+    CompFieldA.FieldId = "comp_field";
+    CompFieldA.SchemaId = "core:schema.ui_field.cfc04_isolation_composite.v1";
+    CompFieldA.Value = GV2RuntimeCore::FValue(MoveTemp(CompositeObjA));
+    NestedReqA.Fields.push_back(MoveTemp(CompFieldA));
+
+    TArray<FGV2ScreenFieldValue> NestedBuiltA;
+    TestTrue(TEXT("Snapshot A builds nested field containing flag_a"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextA, NestedReqA, {}, NestedBuiltA));
+
+    TArray<FGV2ScreenFieldValue> NestedBuiltA_on_B;
+    TestFalse(TEXT("Snapshot B rejects nested field containing flag_a (requires flag_b)"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextB, NestedReqA, {}, NestedBuiltA_on_B));
+
+    FObject InnerObjB;
+    InnerObjB["tag"] = GV2RuntimeCore::FValue(std::string("tag1"));
+    InnerObjB["flag_b"] = GV2RuntimeCore::FValue(true);
+
+    FObject EnvelopeB;
+    EnvelopeB["field_id"] = GV2RuntimeCore::FValue(std::string("nested_item"));
+    EnvelopeB["schema_id"] = GV2RuntimeCore::FValue(std::string("core:schema.ui_field.cfc04_isolation_nested.v1"));
+    EnvelopeB["value"] = GV2RuntimeCore::FValue(InnerObjB);
+
+    FObject CompositeObjB;
+    CompositeObjB["fields"] = GV2RuntimeCore::FValue(FArray{GV2RuntimeCore::FValue(EnvelopeB)});
+
+    GV2RuntimeCore::FScreenRequest NestedReqB;
+    NestedReqB.ScreenId = "core:screen.test_screen";
+    GV2RuntimeCore::FScreenField CompFieldB;
+    CompFieldB.FieldId = "comp_field";
+    CompFieldB.SchemaId = "core:schema.ui_field.cfc04_isolation_composite.v1";
+    CompFieldB.Value = GV2RuntimeCore::FValue(MoveTemp(CompositeObjB));
+    NestedReqB.Fields.push_back(MoveTemp(CompFieldB));
+
+    TArray<FGV2ScreenFieldValue> NestedBuiltB;
+    TestTrue(TEXT("Snapshot B builds nested field containing flag_b"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextB, NestedReqB, {}, NestedBuiltB));
+
+    TArray<FGV2ScreenFieldValue> NestedBuiltB_on_A;
+    TestFalse(TEXT("Snapshot A rejects nested field containing flag_b (requires flag_a)"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextA, NestedReqB, {}, NestedBuiltB_on_A));
+
+    // 3. Discovery count check on re-processing
+    const int32 DiscoveryCountBefore = FGV2UiSchemaCache::GetGlobalDiscoveryCount();
+
+    TArray<FGV2UiBindingDefinition> ReplayDefsA;
+    TestTrue(TEXT("Replay Snapshot A binding extraction"),
+        GV2ScreenFieldMaterializer::PrepareBindingDefinitions(PrepareContextA, ReqDocA, ReplayDefsA));
+    TArray<FGV2ScreenFieldValue> ReplayFieldsA;
+    TestTrue(TEXT("Replay Snapshot A build fields"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextA, ReqDocA, HandlesA, ReplayFieldsA));
+    TArray<FGV2ScreenFieldValue> ReplayNestedA;
+    TestTrue(TEXT("Replay Snapshot A nested build fields"),
+        GV2ScreenFieldMaterializer::BuildFields(PrepareContextA, NestedReqA, {}, ReplayNestedA));
+
+    const int32 DiscoveryCountAfter = FGV2UiSchemaCache::GetGlobalDiscoveryCount();
+    TestEqual(TEXT("Re-processing against Snapshot A does not read filesystem or invoke discovery"),
+        DiscoveryCountAfter, DiscoveryCountBefore);
+
     return true;
 }
 

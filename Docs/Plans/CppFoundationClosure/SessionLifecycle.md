@@ -15,7 +15,7 @@ depends_on:
 
 ## CFC-04 — Сделать snapshot единственным источником UI-схем
 
-- [ ] CFC-04 — Сделать snapshot единственным источником UI-схем
+- [x] CFC-04 — Сделать snapshot единственным источником UI-схем
 
 **Файлы:** изменить `Source/GV2/Private/Application/GV2SessionContentSnapshot.h/.cpp`, `GV2ScreenFieldMaterializer.h/.cpp`, `GV2SessionCoordinator.cpp` в том же каталоге; `Source/GV2/Private/UI/GV2UiSchemaCache.h/.cpp`; `Source/GV2/Private/Tests/GV2RuntimeCoreTests.cpp`; `Docs/UI/ScreenTemplates.md`, `Docs/Guides/AddScreenField.md`. Actual additional callers определить поиском declarations/references materializer и schema cache, не ограничивать этими стартовыми файлами.
 

@@ -12,26 +12,6 @@
 #include <string>
 #include <vector>
 
-namespace
-{
-// PAH-04A: session-scoped, not process-lifetime -- rebuilt by
-// RebuildSchemaCacheForSession (called once per StartSession, before Ready) and
-// torn down by ReleaseSchemaCacheForSession (EndSession, and a failed
-// StartSession). No GV2PackageClosure::DiscoverFromGameData() call here anymore:
-// that function always re-derives the canonical mods.lock.json5 default and
-// ignores whatever roots this session actually started with (Editor's
-// EditorPackageRoots override, the test-only sample override), which is exactly
-// PKG-R1 -- a second, independent discovery that can silently diverge from the
-// session's own repository/Lua package set.
-TOptional<FGV2UiSchemaCache> GSessionSchemaCache;
-
-// PAH-08: phase=authority -- the session schema cache accessor itself.
-FGV2UiSchemaCache& GetSchemaCache()
-{
-    check(GSessionSchemaCache.IsSet());
-    return *GSessionSchemaCache;
-}
-} // anonymous namespace
 
 namespace
 {
@@ -495,10 +475,15 @@ bool ProjectMaterializedValue(
                 return false;
             }
 
+            if (Ctx.PrepareContext == nullptr)
+            {
+                return false;
+            }
+
             const FString SchemaIdStr = UTF8_TO_TCHAR(SchemaIdVal->AsString().c_str());
             FString SchemaError;
             GV2ContentCore::FCompiledUiFieldSpecPtr InnerSchema =
-                GetSchemaCache().GetCompiledSchema(SchemaIdVal->AsString(), SchemaError);
+                Ctx.PrepareContext->GetSchemaCache().GetCompiledSchema(SchemaIdVal->AsString(), SchemaError);
             if (InnerSchema == nullptr)
             {
                 return false;
@@ -575,29 +560,20 @@ static void NormalizeArraysInContentValue(
 
 namespace GV2ScreenFieldMaterializer
 {
-void RebuildSchemaCacheForSession(TArray<FGV2SchemaPackageRoot> PackageRoots)
+// PAH-08: phase=prepare -- DUC-09 / CFC-04: lets a nested-screen-fields consumer
+// (FGV2TabContainerTabsPropertyConsumer) re-resolve one envelope's compiled schema
+// by schema_id during prepare phase.
+GV2ContentCore::FCompiledUiFieldSpecPtr GetCompiledSchema(
+    const FGV2PresentationPrepareContext& PrepareContext,
+    const std::string& SchemaId,
+    FString& OutError)
 {
-    GSessionSchemaCache.Emplace(MoveTemp(PackageRoots));
-}
-
-void ReleaseSchemaCacheForSession()
-{
-    GSessionSchemaCache.Reset();
-}
-
-// DUC-09: lets a nested-screen-fields consumer (FGV2TabContainerTabsPropertyConsumer)
-// re-resolve one envelope's compiled schema by schema_id -- a cache hit against the
-// same session-scoped cache ProjectMaterializedValue already resolved it through
-// above, needed only to fill FGV2ScreenFieldValue::CompiledSchema for
-// PrepareScreenFields.
-// PAH-08: phase=authority -- free-function face of the same cache.
-GV2ContentCore::FCompiledUiFieldSpecPtr GetCompiledSchema(const std::string& SchemaId, FString& OutError)
-{
-    return GetSchemaCache().GetCompiledSchema(SchemaId, OutError);
+    return PrepareContext.GetSchemaCache().GetCompiledSchema(SchemaId, OutError);
 }
 
 // PAH-08: phase=prepare -- named for its phase; called before any mutation.
 bool PrepareBindingDefinitions(
+    const FGV2PresentationPrepareContext& PrepareContext,
     const GV2RuntimeCore::FScreenRequest& Request,
     TArray<FGV2UiBindingDefinition>& OutDefinitions)
 {
@@ -605,7 +581,7 @@ bool PrepareBindingDefinitions(
     for (const GV2RuntimeCore::FScreenField& Field : Request.Fields)
     {
         FString SchemaError;
-        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = GetSchemaCache().GetCompiledSchema(Field.SchemaId, SchemaError);
+        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = PrepareContext.GetSchemaCache().GetCompiledSchema(Field.SchemaId, SchemaError);
         if (!Schema)
         {
             OutDefinitions.Reset();
@@ -646,7 +622,7 @@ bool PrepareBindingDefinitions(
         }
 
         FCollectBindingsContext BindContext;
-        BindContext.SchemaCache = &GetSchemaCache();
+        BindContext.SchemaCache = &PrepareContext.GetSchemaCache();
         BindContext.ScreenId = Request.ScreenId;
         BindContext.Definitions = &OutDefinitions;
         if (!CollectBindingDefinitions(
@@ -666,10 +642,10 @@ bool PrepareBindingDefinitions(
 
 // PAH-08: phase=prepare -- builds the candidate field set from the document.
 bool BuildFields(
+    const FGV2PresentationPrepareContext& PrepareContext,
     const GV2RuntimeCore::FScreenRequest& Request,
     const TArray<FGV2UiBindingHandle>& Handles,
-    TArray<FGV2ScreenFieldValue>& OutFields,
-    const FGV2PresentationPrepareContext* PrepareContext)
+    TArray<FGV2ScreenFieldValue>& OutFields)
 {
     OutFields.Reset();
     OutFields.Reserve(static_cast<int32>(Request.Fields.size()));
@@ -678,7 +654,7 @@ bool BuildFields(
     for (const GV2RuntimeCore::FScreenField& Field : Request.Fields)
     {
         FString SchemaError;
-        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = GetSchemaCache().GetCompiledSchema(Field.SchemaId, SchemaError);
+        GV2ContentCore::FCompiledUiFieldSpecPtr Schema = PrepareContext.GetSchemaCache().GetCompiledSchema(Field.SchemaId, SchemaError);
         if (!Schema)
         {
             UE_LOG(LogTemp, Error, TEXT("BuildFields: schema '%s' could not be compiled: %s"), UTF8_TO_TCHAR(Field.SchemaId.c_str()), *SchemaError);
@@ -722,7 +698,7 @@ bool BuildFields(
         FMaterializeContext MatContext;
         MatContext.Handles = &Handles;
         MatContext.HandleCursor = &HandleCursor;
-        MatContext.PrepareContext = PrepareContext;
+        MatContext.PrepareContext = &PrepareContext;
         FGV2PreparedUiValue PreparedValue;
         if (!ProjectMaterializedValue(
                 MatContext,

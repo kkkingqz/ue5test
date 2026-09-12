@@ -19,24 +19,12 @@ class FGV2PresentationPrepareContext;
 // *.schema.json5 file declares that schema_id -- nothing here hardcodes a list.
 namespace GV2ScreenFieldMaterializer
 {
-// PAH-04A (ADR-0006, ADR-0042 INV-P1/INV-P2): the schema cache used by every
-// function below is session-scoped, not process-lifetime. FGV2SessionCoordinator
-// calls this once per StartSession, with the exact same resolved package roots
-// (BootstrapAndSessionLifecycle.md: "Одни и те же resolved package roots обязаны
-// использоваться и для repository build, и для загрузки package Lua sources" --
-// this extends that invariant to schemas) used to build this session's repository
-// and load its Lua sources, before Ready. Discovery happens synchronously inside
-// this call (FGV2UiSchemaCache's constructor); nothing here reads the filesystem
-// again afterward.
-void RebuildSchemaCacheForSession(TArray<FGV2SchemaPackageRoot> PackageRoots);
-
-// Releases the session-scoped schema cache: called on EndSession and on a failed
-// StartSession, so no compiled schema or parsed document survives past the
-// session that owns it. Every function below reports "no schema cache" until
-// RebuildSchemaCacheForSession runs again.
-void ReleaseSchemaCacheForSession();
-
+// CFC-04 (ADR-0043 D1, BootstrapAndSessionLifecycle.md): the snapshot is the sole
+// UI schema authority. All entry points below require an explicit pinned
+// FGV2PresentationPrepareContext reference and resolve schemas through its cache;
+// no process-global or ambient schema cache exists.
 bool PrepareBindingDefinitions(
+    const FGV2PresentationPrepareContext& PrepareContext,
     const GV2RuntimeCore::FScreenRequest& Request,
     TArray<FGV2UiBindingDefinition>& OutDefinitions);
 
@@ -45,20 +33,18 @@ bool PrepareBindingDefinitions(
 // PrepareBindingDefinitions() + FGV2UiBindingRegistry::PrepareBindings() pass --
 // Handles must be in the same order PrepareBindingDefinitions produced them in,
 // since both passes walk the same schema/value tree in the same deterministic order.
-// PrepareContext routes semantic values through the pinned session snapshot and populates
-// the resolved presentation consumed by Apply. A null context remains useful only for
-// context-free schemas/tests; any value requiring session content fails closed.
+// PrepareContext routes semantic values and schemas through the pinned session snapshot.
 bool BuildFields(
+    const FGV2PresentationPrepareContext& PrepareContext,
     const GV2RuntimeCore::FScreenRequest& Request,
     const TArray<FGV2UiBindingHandle>& Handles,
-    TArray<FGV2ScreenFieldValue>& OutFields,
-    const FGV2PresentationPrepareContext* PrepareContext = nullptr);
+    TArray<FGV2ScreenFieldValue>& OutFields);
 
-// DUC-09: lets a nested-screen-fields consumer re-resolve one envelope's compiled
+// DUC-09 / CFC-04: lets a nested-screen-fields consumer re-resolve one envelope's compiled
 // schema by schema_id after ProjectMaterializedValue already validated it -- a cache
-// hit against the same session-scoped cache, needed only to fill
-// FGV2ScreenFieldValue::CompiledSchema.
+// hit against the snapshot-scoped cache, needed to fill FGV2ScreenFieldValue::CompiledSchema.
 std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> GetCompiledSchema(
+    const FGV2PresentationPrepareContext& PrepareContext,
     const std::string& SchemaId,
     FString& OutError);
 

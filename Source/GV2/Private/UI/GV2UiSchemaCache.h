@@ -43,11 +43,20 @@ struct FGV2SchemaPackageRoot
 class FGV2UiSchemaCache
 {
 public:
-    explicit FGV2UiSchemaCache(TArray<FGV2SchemaPackageRoot> InPackageRoots);
-
     GV2ContentCore::FCompiledUiFieldSpecPtr GetCompiledSchema(
         const std::string& SchemaId,
         FString& OutError) const;
+
+#if !UE_BUILD_SHIPPING
+    uint64 GetDiscoveryInvocationCount() const { return DiscoveryInvocationCount; }
+    static uint64 GetGlobalDiscoveryCount();
+#endif
+
+private:
+    friend class FGV2SessionContentCandidate;
+    friend class FGV2UiSchemaCacheTestAccess;
+
+    explicit FGV2UiSchemaCache(TArray<FGV2SchemaPackageRoot> InPackageRoots);
 
     // PSC-04 (ADR-0043 D1): compiles every schema DiscoverAll() found, not just the ones a
     // UI field happens to reference before Ready. An unknown/invalid schema is a typed
@@ -58,11 +67,15 @@ public:
     // that resolves a schema after this never recompiles it.
     bool CompileAll(FString& OutError) const;
 
-private:
     void DiscoverAll();
 
     TArray<FGV2SchemaPackageRoot> PackageRoots;
     GV2ContentCore::FInMemoryUiSchemaResolver Resolver;
     mutable std::map<std::string, GV2ContentCore::FCompiledUiFieldSpecPtr, std::less<>> CompiledCache;
     TArray<FString> DiscoveredSchemaIds;
+#if !UE_BUILD_SHIPPING
+    uint64 DiscoveryInvocationCount = 0;
+    static inline uint64 GlobalDiscoveryCount = 0;
+#endif
 };
+

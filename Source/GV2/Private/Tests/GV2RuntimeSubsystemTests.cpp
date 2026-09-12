@@ -183,29 +183,6 @@ struct FGV2ScopedSamplePackageOverride
     ~FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
 };
 
-// PAH-04A: the schema cache is session-scoped now -- RebuildSchemaCacheForSession is a
-// coordinator-only entry point in production, called once per StartSession. A test that
-// calls GV2ScreenFieldMaterializer::PrepareBindingDefinitions/BuildFields/GetCompiledSchema
-// directly, without starting a real session, uses this to give itself one from the real
-// GameData closure, and releases it on scope exit so it can never leak into an unrelated
-// later test (the exact hidden cross-test ordering dependency a process-lifetime static
-// used to risk).
-struct FGV2ScopedRealSchemaCache
-{
-    FGV2ScopedRealSchemaCache()
-    {
-        TArray<FGV2SchemaPackageRoot> Roots;
-        for (const GV2PackageClosure::FEntry& Entry : GV2PackageClosure::DiscoverFromGameData())
-        {
-            Roots.Add(FGV2SchemaPackageRoot{Entry.PackageId, Entry.RootDirectory});
-        }
-        GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession(MoveTemp(Roots));
-    }
-    ~FGV2ScopedRealSchemaCache()
-    {
-        GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
-    }
-};
 
 // PAH-04B: sibling to FGV2ScopedRealSchemaCache above -- the image resource catalog is
 // session-scoped now too (UGV2ImageResourceCatalog::RebuildForSession/ReleaseForSession,
@@ -377,8 +354,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
-
     auto ReadSource = [this](const TCHAR* RelativePath, FString& OutSource)
     {
         const FString FullPath = FPaths::Combine(FPaths::ProjectDir(), RelativePath);
@@ -524,6 +499,18 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         }
     }
 
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
     GV2RuntimeCore::FScreenRequest UnknownSchemaRequest;
     UnknownSchemaRequest.ScreenId = "core:screen.unknown_schema_fixture";
     GV2RuntimeCore::FScreenField UnknownField;
@@ -535,6 +522,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
     TestFalse(
         TEXT("Adapter registry rejects an unknown Screen Field schema"),
         GV2ScreenFieldMaterializer::PrepareBindingDefinitions(
+            *PrepareContext,
             UnknownSchemaRequest,
             UnknownDefinitions));
     TestTrue(
@@ -577,7 +565,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> ValidDefs;
         TestTrue(
             TEXT("Valid button list with distinct keys is accepted"),
-            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(ValidReq, ValidDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, ValidReq, ValidDefs));
         TestEqual(TEXT("Prepares two binding definitions"), ValidDefs.Num(), 2);
     }
 
@@ -597,7 +585,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> MissingDefs;
         TestFalse(
             TEXT("Button list with missing key is rejected (UiElementKeyMissing)"),
-            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(MissingKeyReq, MissingDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, MissingKeyReq, MissingDefs));
         TestTrue(TEXT("Rejected candidate leaves definitions empty"), MissingDefs.IsEmpty());
     }
 
@@ -619,7 +607,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> DupDefs;
         TestFalse(
             TEXT("Button list with duplicate key is rejected (UiElementKeyDuplicate)"),
-            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(DupKeyReq, DupDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, DupKeyReq, DupDefs));
         TestTrue(TEXT("Rejected duplicate key leaves definitions empty"), DupDefs.IsEmpty());
     }
 
@@ -640,7 +628,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> TextDefs;
         TestFalse(
             TEXT("Button list with text-derived key is rejected (UiElementKeyTextDerived)"),
-            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(TextKeyReq, TextDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, TextKeyReq, TextDefs));
         TestTrue(TEXT("Rejected text key leaves definitions empty"), TextDefs.IsEmpty());
     }
 
@@ -666,7 +654,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
         TArray<FGV2UiBindingDefinition> ValidDefs;
         TestTrue(
             TEXT("BAI-08: Repeated element keys with ':', '@', '-', '.' grammar are accepted"),
-            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(ValidGrammarReq, ValidDefs));
+            GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, ValidGrammarReq, ValidDefs));
         TestEqual(TEXT("Prepares three binding definitions for valid keys"), ValidDefs.Num(), 3);
     }
 
@@ -701,7 +689,7 @@ bool FGV2CentralPresentationPathSourceAudit::RunTest(const FString& Parameters)
             TestFalse(
                 *FString::Printf(TEXT("BAI-08: Invalid grammar key '%s' is rejected (UiElementKeyInvalid)"),
                     UTF8_TO_TCHAR(BadKey.c_str())),
-                GV2ScreenFieldMaterializer::PrepareBindingDefinitions(InvalidKeyReq, InvalidDefs));
+                GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, InvalidKeyReq, InvalidDefs));
             TestTrue(TEXT("Rejected invalid key leaves definitions empty"), InvalidDefs.IsEmpty());
         }
     }
@@ -885,7 +873,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
 
     if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
     {
@@ -923,7 +921,7 @@ bool FGV2UiCoreBaselineAdaptersContract::RunTest(const FString& Parameters)
         ValidReq.Fields.push_back(MoveTemp(CmdField));
 
         TArray<FGV2UiBindingDefinition> Defs;
-        TestTrue(TEXT("Generic binding extraction succeeds for commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(ValidReq, Defs));
+        TestTrue(TEXT("Generic binding extraction succeeds for commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, ValidReq, Defs));
         TestEqual(TEXT("Extracted 1 binding definition"), Defs.Num(), 1);
         if (Defs.Num() == 1)
         {
@@ -2961,37 +2959,39 @@ bool FGV2SchemaCacheSessionScopingTest::RunTest(const FString& Parameters)
 
     auto IsUnknownSchemaId = [](const FString& Error) { return Error.Contains(TEXT("unknown schema_id")); };
 
-    GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession({FGV2SchemaPackageRoot{TEXT("core"), RootA}});
+    TSharedPtr<FGV2UiSchemaCache> CacheA = FGV2UiSchemaCacheTestAccess::Create({FGV2SchemaPackageRoot{TEXT("core"), RootA}});
+    FString CompileErrorA;
+    TestTrue(TEXT("Cache A compiles"), FGV2UiSchemaCacheTestAccess::CompileAll(*CacheA, CompileErrorA));
 
     FString ErrorA1;
-    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdA), ErrorA1);
+    CacheA->GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdA), ErrorA1);
     TestFalse(
         *FString::Printf(TEXT("Session 1 (root A) resolves fixture A [Error: %s]"), *ErrorA1),
         IsUnknownSchemaId(ErrorA1));
 
     FString ErrorB1;
-    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdB), ErrorB1);
+    CacheA->GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdB), ErrorB1);
     TestTrue(
         *FString::Printf(TEXT("Session 1 (root A) does not know fixture B [Error: %s]"), *ErrorB1),
         IsUnknownSchemaId(ErrorB1));
 
-    // Controlled restart: a second RebuildSchemaCacheForSession call, root B this time --
-    // mirrors what StartSession does for a real session replacement.
-    GV2ScreenFieldMaterializer::RebuildSchemaCacheForSession({FGV2SchemaPackageRoot{TEXT("core"), RootB}});
+    // Controlled restart: a second cache instance, root B this time --
+    // mirrors what StartSession candidate building does for a real session replacement.
+    TSharedPtr<FGV2UiSchemaCache> CacheB = FGV2UiSchemaCacheTestAccess::Create({FGV2SchemaPackageRoot{TEXT("core"), RootB}});
+    FString CompileErrorB;
+    TestTrue(TEXT("Cache B compiles"), FGV2UiSchemaCacheTestAccess::CompileAll(*CacheB, CompileErrorB));
 
     FString ErrorB2;
-    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdB), ErrorB2);
+    CacheB->GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdB), ErrorB2);
     TestFalse(
         *FString::Printf(TEXT("Session 2 (root B) resolves fixture B [Error: %s]"), *ErrorB2),
         IsUnknownSchemaId(ErrorB2));
 
     FString ErrorA2;
-    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdA), ErrorA2);
+    CacheB->GetCompiledSchema(TCHAR_TO_UTF8(SchemaIdA), ErrorA2);
     TestTrue(
-        *FString::Printf(TEXT("Session 2 (root B) no longer knows fixture A -- replaced, not accumulated [Error: %s]"), *ErrorA2),
+        *FString::Printf(TEXT("Session 2 (root B) does not know fixture A -- isolated, not accumulated [Error: %s]"), *ErrorA2),
         IsUnknownSchemaId(ErrorA2));
-
-    GV2ScreenFieldMaterializer::ReleaseSchemaCacheForSession();
 
     IFileManager::Get().DeleteDirectory(*RootA, false, true);
     IFileManager::Get().DeleteDirectory(*RootB, false, true);
@@ -5970,8 +5970,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
-
     if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
     {
         Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inventory"), FText::FromString(TEXT("Inventory")));
@@ -6180,6 +6178,7 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
             GV2ScreenFieldMaterializer::FMaterializeContext BadMatCtx;
             BadMatCtx.Handles = &NoHandles;
             BadMatCtx.HandleCursor = &BadHandleCursor;
+            BadMatCtx.PrepareContext = PrepareContext;
             const bool bBadProjected = bBadValidated && GV2ScreenFieldMaterializer::ProjectMaterializedValue(
                 BadMatCtx, OuterSchema, BadOuterMaterialized, BadProjected);
             TestFalse(TEXT("DUC-09: unknown nested schema_id is rejected, not silently passed through"), bBadProjected);
@@ -9333,7 +9332,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
 
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
@@ -9364,7 +9373,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Field value level unknown key rejected on commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, Request, Definitions));
     }
 
     // 2. Rejection at collection element level: unknown key on button item
@@ -9391,7 +9400,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Collection element level unknown key rejected on button"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, Request, Definitions));
     }
 
     // 3. Rejection at nested Binding level: unknown property in binding object
@@ -9418,7 +9427,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Nested Binding level unknown key rejected"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, Request, Definitions));
     }
 
     // 4. Rejection of duplicate button keys in collection
@@ -9447,7 +9456,7 @@ bool FGV2ScreenFieldClosedSchemaRejectionTest::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2UiBindingDefinition> Definitions;
-        TestFalse(TEXT("BAI-03: Duplicate button key rejected in commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions));
+        TestFalse(TEXT("BAI-03: Duplicate button key rejected in commands"), GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, Request, Definitions));
     }
 
     return true;
@@ -9460,7 +9469,17 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
 
     using FObject = GV2RuntimeCore::FValue::FObject;
     using FArray = GV2RuntimeCore::FValue::FArray;
@@ -9497,7 +9516,7 @@ bool FGV2LocationKeyBoundaryTest::RunTest(const FString& Parameters)
             Request.Fields.push_back(MoveTemp(Field));
 
             TArray<FGV2UiBindingDefinition> Definitions;
-            return GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions);
+            return GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, Request, Definitions);
         };
 
         TestTrue(TEXT("Conforming command key accepted"), BuildWithCommandKey("tavern_keeper"));
@@ -9628,7 +9647,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
     GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
     FString ContextError;
     const bool bContextReady = ContextFixture.Initialize(ContextError);
@@ -9871,7 +9889,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
 
     // 4. REV3-03: button element extra properties are rejected by closed schema parser
     {
-        auto PrepareWithExtraBtnProp = [](const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
+        auto PrepareWithExtraBtnProp = [PrepareContext](const char* ExtraKey, GV2RuntimeCore::FValue ExtraValue) -> bool
         {
             GV2RuntimeCore::FScreenRequest Request;
             Request.ScreenId = "textsystem:screen.location";
@@ -9895,7 +9913,7 @@ bool FGV2UiFailurePropagationTest::RunTest(const FString& Parameters)
             Request.Fields.push_back(MoveTemp(Field));
 
             TArray<FGV2UiBindingDefinition> Definitions;
-            return GV2ScreenFieldMaterializer::PrepareBindingDefinitions(Request, Definitions);
+            return GV2ScreenFieldMaterializer::PrepareBindingDefinitions(*PrepareContext, Request, Definitions);
         };
 
         TestFalse(TEXT("REV3-03: button rejects scaling_policy"),
@@ -9916,7 +9934,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters)
 {
-    const FGV2ScopedRealSchemaCache ScopedSchemaCache;
     GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
     FString ContextError;
     const bool bContextReady = ContextFixture.Initialize(ContextError);
@@ -9972,7 +9989,7 @@ bool FGV2ScreenFieldUnifiedValidatorPcc04Test::RunTest(const FString& Parameters
         Request.Fields.push_back(MoveTemp(Field));
 
         TArray<FGV2ScreenFieldValue> Fields;
-        return GV2ScreenFieldMaterializer::BuildFields(Request, {}, Fields, PrepareContext);
+        return GV2ScreenFieldMaterializer::BuildFields(*PrepareContext, Request, {}, Fields);
     };
 
     // Valid meters percent within [0.0, 1.0] succeeds

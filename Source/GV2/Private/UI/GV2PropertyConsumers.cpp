@@ -2108,7 +2108,7 @@ bool FGV2TabContainerTabsPropertyConsumer::Prepare(
                 const FString SchemaIdStr = SchemaIdVal->AsString();
                 FString SchemaError;
                 const std::shared_ptr<const GV2ContentCore::FCompiledUiFieldSpec> NestedSchema =
-                    GV2ScreenFieldMaterializer::GetCompiledSchema(TCHAR_TO_UTF8(*SchemaIdStr), SchemaError);
+                    GV2ScreenFieldMaterializer::GetCompiledSchema(*PrepareContext, TCHAR_TO_UTF8(*SchemaIdStr), SchemaError);
                 if (!NestedSchema)
                 {
                     OutError = FString::Printf(TEXT("core:diagnostic.ui_consumer.unknown_schema: Tab '%s' nested field schema '%s' could not be compiled: %s"), *TabKey.ToString(), *SchemaIdStr, *SchemaError);
