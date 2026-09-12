@@ -241,17 +241,11 @@ exit=0
 
 #### CFC-AF-06 — REVIEW-06 — P2 — canonical zero; NaN-часть отклонена
 
-**Воспроизведено:** direct `FValue::MakeNumber(0.0)` и `MakeNumber(-0.0)` сравниваются равными, но `ComputeCanonicalHash` различается. Вывод probe: `zero_values_equal=1 zero_hashes_equal=0`. [Canonical numbers](../Architecture/DefinitionEnvelopeAndSchemaRules.md) требуют нормализации negative zero.
-
-**Уточнение:** `Value.cpp:106–113` уже отвергает non-finite constructor argument; MakeNumber делегирует ему. Probe для NaN и Infinity дал `nonfinite_accepted=0` в обоих случаях. Утверждение о принятии NaN C++ API отклонено; наблюдаемое условие повторной проверки — новый numeric factory/bypass либо регрессия non-finite constructor tests.
-
-**Исход:** zero gap перенесён в [STATUS-024](ImplementationStatus.md), CFC-03A; нормализация в одном value construction owner, не дополнительная несогласованная policy только в hasher.
+*(Закрыто задачей CFC-03A)* Конструктор `FValue(double)` нормализует negative zero (`-0.0` → `+0.0`), обеспечивая равенство значений и идентичность canonical SHA-256 хэшей при сохранении разных kinds для Integer 0 и Number 0.0, а non-finite double по-прежнему отвергаются исключением `std::invalid_argument`.
 
 #### CFC-AF-07 — REVIEW-07 — P2 — Digest принимает неканонические hash strings
 
-**Воспроизведено:** Serialize/Deserialize Digest с `digest_hash`, repository и script hashes из 64 символов `z` успешно читается; Manifest отвергает тот же repository hash. Probe: `invalid_digest_accepted=1`, `invalid_manifest_accepted=0 error=run_manifest.invalid_repository_content_hash`. `GV2RunDigest.cpp` проверяет длину, а Manifest дополнительно lowercase hex. Норма — [manifest/digest hashes](../Architecture/HeadlessSimulationContract.md#run-manifest-и-digest).
-
-**Исход:** [STATUS-025](ImplementationStatus.md), CFC-03A; общий domain validator с actual hash-field inventory и независимым codec corpus. Не расширять вывод до всех возможных serializer ошибок без проверки.
+*(Закрыто задачей CFC-03A)* Введён единый предикат `IsCanonicalSha256`, проверяющий ровно 64 lowercase ASCII hex-символа для всех хэш-полей Manifest и Digest (с разрешённым пустым `state_hash`), а соответствие полей подтверждено структурным гейтом `validate_headless_hash_fields.py`.
 
 #### CFC-AF-08 — REVIEW-08 — отсутствие локального Game Thread assertion
 

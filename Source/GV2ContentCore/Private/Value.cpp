@@ -104,7 +104,7 @@ void RequireValidUtf8(const std::string_view Value)
     }
 
     FValue::FValue(double InValue)
-        : Storage(InValue)
+        : Storage(InValue == 0.0 ? 0.0 : InValue)
     {
         if (!std::isfinite(InValue))
         {

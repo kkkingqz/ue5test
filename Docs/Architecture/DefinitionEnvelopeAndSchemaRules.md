@@ -297,7 +297,7 @@ Built-in defaults (`0`, `false`, empty array, first enum/union variant) запр
 - Coercion отсутствует: `"10"` не становится number, `0` не становится bool.
 - Literal `10` — int64; `10.0` и `1e1` — finite double.
 - NaN, infinity и int64 overflow запрещены.
-- `-0.0` canonicalizes to `+0.0`.
+- `-0.0` canonicalizes to `+0.0` в единственной точке double-конструктора `FValue(double)` (и factory `MakeNumber`). Positive и negative zero дают идентичные canonical SHA-256 hashes (`ComputeCanonicalHash`). Integer `0` (`EValueKind::Integer`) и Number `0.0` (`EValueKind::Number`) строго сохраняют разные kinds и не сравниваются как равные. Non-finite double (`NaN`, `±Infinity`) немедленно отвергаются исключением `std::invalid_argument` при создании значения.
 - String не trim-ится и не case-fold-ится.
 - Array order сохраняется; arrays не сортируются и не дедуплицируются.
 - Map source order не является gameplay semantics; значимый order хранится array-ем.

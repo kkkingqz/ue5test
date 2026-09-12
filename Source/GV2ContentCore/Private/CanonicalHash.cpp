@@ -156,4 +156,20 @@ std::string ComputeCanonicalHash(const FValue& Value)
     AppendCanonical(Canonical, Value);
     return Sha256(std::move(Canonical));
 }
+
+bool IsCanonicalSha256(std::string_view Text) noexcept
+{
+    if (Text.size() != 64)
+    {
+        return false;
+    }
+    for (const char Ch : Text)
+    {
+        if (!((Ch >= '0' && Ch <= '9') || (Ch >= 'a' && Ch <= 'f')))
+        {
+            return false;
+        }
+    }
+    return true;
+}
 }

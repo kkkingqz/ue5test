@@ -132,10 +132,97 @@ std::string RunRunDigestConformance()
         return "run_digest.reject_malformed_json";
     }
 
-    if (DeserializeRunDigest("{ digest_hash: 'short', lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }", InvalidDigest, Error)
-        || Error != "run_digest.invalid_digest_hash")
+    const std::string ValidSha = "35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8";
+    const std::vector<std::string> BadHashes = {
+        "short",
+        std::string(63, 'a'),
+        std::string(65, 'a'),
+        std::string(64, 'z'),
+        "35ED7D8000170391D46CAC29A1D23534AFFA093312BF5EB9C73E62CCDC0AE5D8",
+        ""
+    };
+
+    // Invalid digest_hash
+    for (const auto& BadHash : BadHashes)
     {
-        return "run_digest.reject_invalid_digest_hash";
+        const std::string Json = "{ digest_hash: '" + BadHash + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+        if (DeserializeRunDigest(Json, InvalidDigest, Error)
+            || Error != "run_digest.invalid_digest_hash")
+        {
+            return "run_digest.reject_invalid_digest_hash";
+        }
+    }
+
+    // Invalid repository_content_hash
+    for (const auto& BadHash : BadHashes)
+    {
+        const std::string Json = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + BadHash + "', script_set_hash: '" + ValidSha + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+        if (DeserializeRunDigest(Json, InvalidDigest, Error)
+            || Error != "run_digest.invalid_repository_content_hash")
+        {
+            return "run_digest.reject_invalid_repository_content_hash";
+        }
+    }
+
+    // Invalid script_set_hash
+    for (const auto& BadHash : BadHashes)
+    {
+        const std::string Json = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + BadHash + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+        if (DeserializeRunDigest(Json, InvalidDigest, Error)
+            || Error != "run_digest.invalid_script_set_hash")
+        {
+            return "run_digest.reject_invalid_script_set_hash";
+        }
+    }
+
+    // 7. State hash validation: permitted empty/omitted vs rejected invalid
+    FRunDigest ValidPermittedDigest;
+
+    // Permitted: omitted state_hash
+    const std::string OmittedStateJson = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '' }";
+    if (!DeserializeRunDigest(OmittedStateJson, ValidPermittedDigest, Error) || !Error.empty() || !ValidPermittedDigest.StateHash.empty())
+    {
+        return "run_digest.omitted_state_hash_must_be_permitted";
+    }
+
+    // Permitted: empty state_hash string
+    const std::string EmptyStateJson = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '', state_hash: '' }";
+    if (!DeserializeRunDigest(EmptyStateJson, ValidPermittedDigest, Error) || !Error.empty() || !ValidPermittedDigest.StateHash.empty())
+    {
+        return "run_digest.empty_state_hash_must_be_permitted";
+    }
+
+    // Permitted: valid 64 lowercase hex state_hash
+    const std::string ValidStateJson = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '', state_hash: '" + ValidSha + "' }";
+    if (!DeserializeRunDigest(ValidStateJson, ValidPermittedDigest, Error) || !Error.empty() || ValidPermittedDigest.StateHash != ValidSha)
+    {
+        return "run_digest.valid_state_hash_must_be_accepted";
+    }
+
+    // Rejected: invalid non-empty state_hash (64 'z', uppercase, length 63, length 65)
+    const std::vector<std::string> BadStateHashes = {
+        "short",
+        std::string(63, 'a'),
+        std::string(65, 'a'),
+        std::string(64, 'z'),
+        "35ED7D8000170391D46CAC29A1D23534AFFA093312BF5EB9C73E62CCDC0AE5D8"
+    };
+    for (const auto& BadStateHash : BadStateHashes)
+    {
+        const std::string BadStateJson = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '', state_hash: '" + BadStateHash + "' }";
+        if (DeserializeRunDigest(BadStateJson, InvalidDigest, Error)
+            || Error != "run_digest.invalid_state_hash")
+        {
+            return "run_digest.reject_invalid_state_hash";
+        }
+    }
+
+    // Rejected: non-string state_hash
+    const std::string NonStringStateJson = "{ digest_hash: '" + ValidSha + "', lua_release_num: 50408, repository_content_hash: '" + ValidSha + "', script_set_hash: '" + ValidSha + "', seed: 0, executed_commands_count: 0, success: true, final_screen_id: '', fault_code: '', state_hash: 12345 }";
+    if (DeserializeRunDigest(NonStringStateJson, InvalidDigest, Error)
+        || Error != "run_digest.invalid_state_hash")
+    {
+        return "run_digest.reject_non_string_state_hash";
     }
 
     return "";

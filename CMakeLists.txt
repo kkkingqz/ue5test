@@ -458,4 +458,18 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_test_fixture_ownership.py"
             "--self-test"
     )
+    # CFC-03A: headless run manifest and digest hash-field inventory and validator gate
+    add_test(
+        NAME headless_hash_field_inventory_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_headless_hash_fields.py"
+    )
+    add_test(
+        NAME headless_hash_field_inventory_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_headless_hash_fields.py"
+            "--self-test"
+    )
 endif()

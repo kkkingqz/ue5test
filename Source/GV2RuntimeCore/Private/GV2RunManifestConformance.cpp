@@ -102,18 +102,30 @@ std::string RunRunManifestConformance()
         return "run_manifest.reject_missing_lua_release";
     }
 
-    // Invalid hash (not 64 hex characters)
-    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: 'tooshort', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, accepted_commands: [] }", InvalidParsed, Error)
-        || Error != "run_manifest.invalid_repository_content_hash")
+    // Invalid hash (not 64 lowercase hex characters)
+    const std::vector<std::string> BadHashes = {
+        "tooshort",
+        std::string(63, 'a'),
+        std::string(65, 'a'),
+        std::string(64, 'z'),
+        "35ED7D8000170391D46CAC29A1D23534AFFA093312BF5EB9C73E62CCDC0AE5D8",
+        ""
+    };
+    for (const std::string& BadHash : BadHashes)
     {
-        return "run_manifest.reject_invalid_hash";
-    }
+        const std::string BadRepoJson = "{ lua_release_num: 50408, repository_content_hash: '" + BadHash + "', script_set_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', seed: 0, accepted_commands: [] }";
+        if (DeserializeRunManifest(BadRepoJson, InvalidParsed, Error)
+            || Error != "run_manifest.invalid_repository_content_hash")
+        {
+            return "run_manifest.reject_invalid_hash";
+        }
 
-    // Invalid script_set_hash
-    if (DeserializeRunManifest("{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: 'tooshort', seed: 0, accepted_commands: [] }", InvalidParsed, Error)
-        || Error != "run_manifest.invalid_script_set_hash")
-    {
-        return "run_manifest.reject_invalid_script_set_hash";
+        const std::string BadScriptJson = "{ lua_release_num: 50408, repository_content_hash: '35ed7d8000170391d46cac29a1d23534affa093312bf5eb9c73e62ccdc0ae5d8', script_set_hash: '" + BadHash + "', seed: 0, accepted_commands: [] }";
+        if (DeserializeRunManifest(BadScriptJson, InvalidParsed, Error)
+            || Error != "run_manifest.invalid_script_set_hash")
+        {
+            return "run_manifest.reject_invalid_script_set_hash";
+        }
     }
 
     // Invalid seed (negative)

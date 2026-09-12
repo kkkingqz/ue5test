@@ -16,7 +16,7 @@ depends_on:
 
 ## CFC-03A — Замкнуть канонические numbers и validation hash-полей
 
-- [ ] CFC-03A — Замкнуть канонические numbers и validation hash-полей
+- [x] CFC-03A — Замкнуть канонические numbers и validation hash-полей
 
 **Зависимость:** CFC-03. **Файлы:** `Source/GV2ContentCore/Private/Value.cpp`, `Source/GV2ContentCore/Private/CanonicalHash.cpp`, существующие value/hash conformance; `Source/GV2RuntimeCore/Private/GV2RunManifest.cpp`, `GV2RunDigest.cpp`, `GV2RunManifestConformance.cpp`, `GV2RunDigestConformance.cpp` в том же каталоге. Общий strict SHA-256 text validator разместить в `Source/GV2ContentCore/Public/GV2ContentCore/CanonicalHash.h` и его implementation; оба codecs зависят от ContentCore уже сейчас. Docs: `DefinitionEnvelopeAndSchemaRules.md`, `HeadlessSimulationContract.md`, `BuildAndTooling.md`; при изменении golden — `Docs/Guides/RegenerateGolden.md`.
 

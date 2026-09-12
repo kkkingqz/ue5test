@@ -121,6 +121,7 @@ bool DeserializeRunDigest(
     FRunDigest& OutDigest,
     std::string& OutError)
 {
+    OutError.clear();
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
     auto Document = GV2ContentCore::ParseJson5Document(Json, GV2ContentCore::FParseLimits{}, Diagnostics);
     if (!Document.has_value() || !Diagnostics.empty())
@@ -137,7 +138,7 @@ bool DeserializeRunDigest(
     }
 
     const auto* DigestHashVal = Root.FindField("digest_hash");
-    if (DigestHashVal == nullptr || !DigestHashVal->IsString() || DigestHashVal->AsString().length() != 64)
+    if (DigestHashVal == nullptr || !DigestHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(DigestHashVal->AsString()))
     {
         OutError = "run_digest.invalid_digest_hash";
         return false;
@@ -151,14 +152,14 @@ bool DeserializeRunDigest(
     }
 
     const auto* RepoHashVal = Root.FindField("repository_content_hash");
-    if (RepoHashVal == nullptr || !RepoHashVal->IsString() || RepoHashVal->AsString().length() != 64)
+    if (RepoHashVal == nullptr || !RepoHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(RepoHashVal->AsString()))
     {
         OutError = "run_digest.invalid_repository_content_hash";
         return false;
     }
 
     const auto* ScriptSetHashVal = Root.FindField("script_set_hash");
-    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || ScriptSetHashVal->AsString().length() != 64)
+    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(ScriptSetHashVal->AsString()))
     {
         OutError = "run_digest.invalid_script_set_hash";
         return false;
@@ -200,7 +201,7 @@ bool DeserializeRunDigest(
     }
 
     const auto* StateHashVal = Root.FindField("state_hash");
-    if (StateHashVal != nullptr && !StateHashVal->IsString())
+    if (StateHashVal != nullptr && (!StateHashVal->IsString() || (!StateHashVal->AsString().empty() && !GV2ContentCore::IsCanonicalSha256(StateHashVal->AsString()))))
     {
         OutError = "run_digest.invalid_state_hash";
         return false;

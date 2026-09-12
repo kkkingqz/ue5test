@@ -1,5 +1,6 @@
 #include "GV2RuntimeCore/GV2RunManifest.h"
 
+#include "GV2ContentCore/CanonicalHash.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
 #include "GV2ContentCore/StableId.h"
@@ -207,6 +208,7 @@ bool DeserializeRunManifest(
     FRunManifest& OutManifest,
     std::string& OutError)
 {
+    OutError.clear();
     std::vector<GV2ContentCore::FDiagnostic> Diagnostics;
     auto Document = GV2ContentCore::ParseJson5Document(Json, GV2ContentCore::FParseLimits{}, Diagnostics);
     if (!Document.has_value() || !Diagnostics.empty())
@@ -230,33 +232,17 @@ bool DeserializeRunManifest(
     }
 
     const auto* HashVal = Root.FindField("repository_content_hash");
-    if (HashVal == nullptr || !HashVal->IsString() || HashVal->AsString().length() != 64)
+    if (HashVal == nullptr || !HashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(HashVal->AsString()))
     {
         OutError = "run_manifest.invalid_repository_content_hash";
         return false;
     }
-    for (const char Ch : HashVal->AsString())
-    {
-        if (!((Ch >= '0' && Ch <= '9') || (Ch >= 'a' && Ch <= 'f')))
-        {
-            OutError = "run_manifest.invalid_repository_content_hash";
-            return false;
-        }
-    }
 
     const auto* ScriptSetHashVal = Root.FindField("script_set_hash");
-    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || ScriptSetHashVal->AsString().length() != 64)
+    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(ScriptSetHashVal->AsString()))
     {
         OutError = "run_manifest.invalid_script_set_hash";
         return false;
-    }
-    for (const char Ch : ScriptSetHashVal->AsString())
-    {
-        if (!((Ch >= '0' && Ch <= '9') || (Ch >= 'a' && Ch <= 'f')))
-        {
-            OutError = "run_manifest.invalid_script_set_hash";
-            return false;
-        }
     }
 
     const auto* SeedVal = Root.FindField("seed");
