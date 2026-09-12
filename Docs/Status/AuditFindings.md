@@ -1,7 +1,7 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.2
+version: 1.3
 updated: 2026-09-12
 depends_on:
   - ImplementationStatus.md
@@ -207,6 +207,100 @@ exit=0
 
 **Открыто.** Для закрытия runner должен отвергать любой незавершённый/non-success record, несогласованность счётчиков, неполный/пустой report и несовпадение с discovery; нужны отрицательные fixtures его собственного протокола. SSE transport и завершение server task проверяются отдельно от успешности тестов.
 
+### CppFullCodeReview — проверка REVIEW-01…15
+
+Источник — предоставленный `Docs/Status/CppFullCodeReview.md`; исходные формулировки не являются нормой. Сверено с source HEAD `78e96f1` 2026-09-12. Входные незакоммиченные review и `Docs/README.md` не изменялись. Применён последовательный анализ кода/owner contracts, для Value/manifest/digest — отдельный compiled probe против portable libraries из `build/Source`. Полный suite, UE GC, thread death tests, OOM и randomized gameplay replay в этой дополнительной проверке не запускались. Заявленные исходным review пять параллельных проверок и 104 tests здесь не выдаются за наше новое evidence.
+
+Добавлено 15 adjudication blocks CFC-AF-01…15: девять содержат подтверждённый дефект или более узкий механизм риска (01…07, 09, 10), пять отклоняют заявленную correctness/performance проблему (08, 11…14), один фиксирует только форматирование (15). Пять новых contract gaps — STATUS-021…025; test hygiene и defensive guards отдельно не объявляются прежними runtime contract violations. Вместе с прежними десятью записями документ содержит 25 finding blocks; это не 25 новых открытых bugs. Утверждение исходного review «архитектура строго соответствует инвариантам» не подтверждается при существующих STATUS и обнаруженном native state composition.
+
+#### CFC-AF-01 — REVIEW-01 — P1 — GC ownership registry classes
+
+**Подтверждено по коду:** `GV2ScreenRegistry.h` хранит raw `UClass*` в plain `FResolvedScreen`, map не traced; authoring `TSoftClassPtr` после `LoadSynchronous` не становится owning class reference. Snapshot strong-pointer удерживает registry, но не исправляет его непрослеживаемую map. Crash после GC не воспроизведён в этом раунде. Норма — lifetime resolved value для [snapshot/Prepare](../Architecture/BootstrapAndSessionLifecycle.md).
+
+**Исход:** [STATUS-021](ImplementationStatus.md), CFC-04A. Предложенное review возвращение runtime map на UPROPERTY DataAsset не принимается как архитектура: оно противоречит выбранному compile-to-value устранению STATUS-020. GC-safe class ownership уже включено в CFC-04A и проверяется вместе с CFC-04B.
+
+#### CFC-AF-02 — REVIEW-02 — P2 — fixtures оставляют rooted GameInstance
+
+**Подтверждено:** `GV2UiPrepareCommitTests.cpp:44–61` возвращает widget, потеряв owner созданного и rooted GameInstance; RemoveFromRoot/Shutdown отсутствуют. `GV2UiCapabilityObservabilityTests.cpp` повторяет AddToRoot в helpers и отдельных tests без cleanup. Накопление rooted objects следует из кода; OOM и нестабильный CI run не измерены, поэтому исходный P1 с такими последствиями сужен до test-hygiene P2.
+
+**Открыто:** CFC-02A исправляет scoped ownership, world teardown и early-return cleanup; enumerator — actual root-mutator sites, проверка — repeated actual suite + collectible weak refs. В ImplementationStatus не добавляется как доказанное прежнее runtime contract нарушение.
+
+#### CFC-AF-03 — REVIEW-03 — P1 — off-tree candidates без traced owner
+
+**Подтверждён более узкий ownership gap:** `GV2PropertyConsumers.cpp:1260–1281` создаёт off-tree widget и хранит его в plain `CandidateWidgetsByKey`; аналогичны tabs и prepared reconciliation plan. Plain `TObjectPtr` там не является GC root. При этом `FActiveScreenEntry` attached widget и `FGV2ScreenFieldPlan::HostWidget` могут быть borrowed references с владельцем в UMG tree: blanket-замена всех указателей из review не обоснована. Норма — [lifetime Prepare/Commit/rollback](../UI/UIDocumentAndReconciliation.md). Synchronous path сам по себе не доказывает наличие GC crash в текущем запуске.
+
+**Исход:** [STATUS-021](ImplementationStatus.md), CFC-04B. Требуются actual owner graph и Prepare→GC→Commit/Abort/rollback; USTRUCT без traced owning container, временный тестовый root или замена всех refs на strong не считаются решением.
+
+#### CFC-AF-04 — REVIEW-04 — P1 — seed не достигает session bootstrap
+
+**Подтверждён input gap, уточнена причина:** `GV2RunReplay.cpp:31–32` создаёт session без Manifest.Seed; Start API seed не принимает. `1` — session generation, не случайный seed. `GV2RuntimeSession.cpp:235–236` удаляет math.random/randomseed; production PRNG с «default seed» и описанный randomized divergence review не показал. Норма — [deterministic inputs](../Architecture/LuaRuntimeContract.md#determinism-and-technical-ingress), [replay input manifest](../Architecture/HeadlessSimulationContract.md#run-manifest-и-digest).
+
+**Исход:** [STATUS-023](ImplementationStatus.md), CFC-07A. Seed отдельно передаётся Lua до startup hooks; actual seeded behavior проверяется в обоих hosts. Один DigestHash, меняющийся от metadata Seed, недостаточен; передача seed вместо generation запрещена.
+
+#### CFC-AF-05 — REVIEW-05 — P1 — native code интерпретирует canonical state
+
+**Подтверждено шире трёх строк review:** `GV2RuntimeSession.cpp:1338–1490` содержит `MergeStateContribution`, root-section validation, mod namespace isolation, special merge `meta.instance_counters/prng/time` и collision exemptions `schema_version/save_version/save_id`. Это Lua-capable gameplay-state semantics внутри C++, против [INV-013](../Architecture/Overview.md#границы-c) и [Lua-owned state](../Architecture/CanonicalStateAndSave.md).
+
+**Исход:** [STATUS-022](ImplementationStatus.md), CFC-05A. Переносится весь semantic composition path. Предложенный альтернативный «generic Lua-driven merge descriptor в C++» не принимается: host всё равно интерпретирует state-shaped операции.
+
+#### CFC-AF-06 — REVIEW-06 — P2 — canonical zero; NaN-часть отклонена
+
+**Воспроизведено:** direct `FValue::MakeNumber(0.0)` и `MakeNumber(-0.0)` сравниваются равными, но `ComputeCanonicalHash` различается. Вывод probe: `zero_values_equal=1 zero_hashes_equal=0`. [Canonical numbers](../Architecture/DefinitionEnvelopeAndSchemaRules.md) требуют нормализации negative zero.
+
+**Уточнение:** `Value.cpp:106–113` уже отвергает non-finite constructor argument; MakeNumber делегирует ему. Probe для NaN и Infinity дал `nonfinite_accepted=0` в обоих случаях. Утверждение о принятии NaN C++ API отклонено; наблюдаемое условие повторной проверки — новый numeric factory/bypass либо регрессия non-finite constructor tests.
+
+**Исход:** zero gap перенесён в [STATUS-024](ImplementationStatus.md), CFC-03A; нормализация в одном value construction owner, не дополнительная несогласованная policy только в hasher.
+
+#### CFC-AF-07 — REVIEW-07 — P2 — Digest принимает неканонические hash strings
+
+**Воспроизведено:** Serialize/Deserialize Digest с `digest_hash`, repository и script hashes из 64 символов `z` успешно читается; Manifest отвергает тот же repository hash. Probe: `invalid_digest_accepted=1`, `invalid_manifest_accepted=0 error=run_manifest.invalid_repository_content_hash`. `GV2RunDigest.cpp` проверяет длину, а Manifest дополнительно lowercase hex. Норма — [manifest/digest hashes](../Architecture/HeadlessSimulationContract.md#run-manifest-и-digest).
+
+**Исход:** [STATUS-025](ImplementationStatus.md), CFC-03A; общий domain validator с actual hash-field inventory и независимым codec corpus. Не расширять вывод до всех возможных serializer ошибок без проверки.
+
+#### CFC-AF-08 — REVIEW-08 — отсутствие локального Game Thread assertion
+
+**Подтверждено только отсутствие guard:** actual `FGV2PresentationApply::Apply` начинается на строке 249, не 684; локального IsInGameThread assertion нет. Production coordinator Start/ingress guards Game Thread, а evidence вызова Apply worker-ом review не содержит.
+
+**Исход:** *(Отклонено)* как подтверждённый P2 production thread violation. Наблюдаемое условие повторного открытия — новый worker/asynchronous caller в actual Apply call inventory либо failed thread-affinity test. CFC-04B добавляет bounded defensive guard и misuse test; это не новая async architecture и не доказательство ранее случавшегося UB.
+
+#### CFC-AF-09 — REVIEW-09 — P2 — fixed temporary slot path при concurrent writers
+
+**Подтверждён collision mechanism:** `GV2SaveSlotStorage.cpp:94` использует один `.tmp` для slot и не синхронизирует отдельные writers. Две concurrent записи могут столкнуться; concurrent product caller и испорченный файл в этом раунде не воспроизведены. Обещание atomic replace описано [storage contract](../Architecture/BuildAndTooling.md); actual concurrency boundary должен быть явным.
+
+**Открыто, уже покрыто:** CFC-08 требует exclusive owner lock, serialization и process/concurrent tests плюс atomic publication Current/Previous. Unique filename само по себе не определяет порядок commits/Previous и не заменяет этот protocol. Новый STATUS, дублирующий уже запланированную storage boundary, не добавляется без отдельного подтверждённого product concurrency нарушения.
+
+#### CFC-AF-10 — REVIEW-10 — P2 — forgery mode не восстанавливается
+
+**Подтверждено:** `GV2ForgeryTestWidgets.cpp:13–16` возвращает mutable static mode; test `GV2UiCapabilityObservabilityTests.cpp:769` присваивает его и после последнего сценария оставляет UnimplementableKind. Следующий test не получает прежнее environment. Настоящий flaky test run не воспроизведён.
+
+**Открыто:** CFC-02A — scoped restore прежнего значения, instance-local snapshot mode при необходимости, actual global writer inventory и тест двух порядков исполнения. Не требуется новый runtime subsystem или отдельный план.
+
+#### CFC-AF-11 — REVIEW-11 — смешение shared pointer families
+
+**Исход:** *(Отклонено)* как correctness gap. `GV2BridgeTypes.h` соединяет UE prepared value и portable compiled schema; разные pointer families отражают модульную границу, причина non-UPROPERTY уже описана рядом с полями. Pimpl ради единообразия здесь не нужен. Наблюдаемое условие повторного открытия — ошибка ownership/conversion либо изменение portable API, создающее реальную зависимость от UE types.
+
+#### CFC-AF-12 — REVIEW-12 — размер RuntimeCoreTests
+
+**Исход:** *(Отклонено)* как обязательный foundation blocker: `wc -l` на проверенной ревизии показывает 2612 строк, не 10K+. Ни compilation regression, ни failure-localization metric не приведены. Новые tests CFC-задач размещаются по owner-у; blanket split файла не требуется. Наблюдаемое условие повторного открытия — измеренный compile-time regression этого translation unit или конкретная воспроизводимая проблема test ownership/discovery.
+
+#### CFC-AF-13 — REVIEW-13 — Queue.Empty как оптимизация
+
+**Исход:** *(Отклонено)* как доказанная performance/correctness проблема. RuntimeIngressQueue.Reset корректно dequeue-ит и сбрасывает QueueSize. Локальный UE `Containers/Queue.h:110` реализует Empty через цикл Pop, а не constant-time освобождение. Замена могла бы убрать перемещение Item, но измеренного bottleneck нет. Условие повторного открытия — профиль, показывающий существенную стоимость Reset/item move, либо неверный queue size после reset.
+
+#### CFC-AF-14 — REVIEW-14 — synchronous asset load на старте
+
+**Исход:** *(Отклонено)* как самостоятельный performance defect без измерения: [bootstrap contract](../Architecture/BootstrapAndSessionLifecycle.md) прямо допускает synchronous pre-VM candidate build. Неправильный отдельный GameShell settings lookup уже устраняется CFC-06/STATUS-015; новый async loader из замечания не следует. Условие повторного открытия — измеренное нарушение принятого loading-time budget либо обнаруженный LoadSynchronous на Ready/Apply пути.
+
+#### CFC-AF-15 — REVIEW-15 — indentation lifecycle block
+
+**Подтверждено как style:** `GV2RuntimeSession.cpp` содержит неотформатированный block после `else`; само по себе это не runtime contract gap.
+
+**Открыто как сопутствующая правка:** CFC-05A перерабатывает этот state-composition участок и исправляет indentation в том же change set. Отдельной задачи или STATUS нет; поведение проверяется semantic tests CFC-05A, не indentation snapshot test.
+
+### Evidence дополнительной portable проверки
+
+Локально: `Saved/Audit/CppFullReviewVerification/value_digest_probe.cpp` и executable; входные SHA-256 review/router — `input.json`. Probe вызвал реальные public constructors/hash/codecs, linked `build/Source/libgv2_runtime_core.a` и `libgv2_content_core.a`. Существенные результаты приведены в CFC-AF-06/07 и не зависят от сохранности временного каталога. Это не замена полного native/UE acceptance и не утверждение, что отредактированы или исправлены исходники.
+
 ## Ранее известные ограничения
 
 - `STATUS-001`: replacement/preflight/cancellation/session lifecycle не завершён. Portable cold-start load существует; UE product load из этого не следует.
@@ -220,7 +314,7 @@ exit=0
 
 Рекомендуемая последовательность приёмки:
 
-1. Закрыть `STATUS-013…017` и две VERIFY-находки: единственный schema authority, верный candidate при повторном запуске, сохранность прежнего UI при отказе, fail-closed lifecycle и достоверная приёмка.
+1. Закрыть `STATUS-013…017`, `STATUS-020…025`, VERIFY-находки и test-hygiene findings: единственные изолированные authorities, GC lifetime, верный candidate при повторном запуске, сохранность UI, Lua-owned state composition, seed input, canonical values/codecs и достоверная приёмка.
 2. Завершить необходимый для игры save/load путь (`STATUS-001`, `018`, `019`), проверить его через UE composition root и восстановление после отказов. Зелёная библиотечная функция не заменяет продуктовый сценарий.
 3. Ограничить обещанную первую gameplay-версию: effects/animations и остальные ещё отсутствующие host capabilities либо реализуются, либо явно остаются за её пределами; отсутствие функции не выдаётся за её готовность.
 4. На чистой зафиксированной ревизии повторить portable + полный UE gate и один вертикальный сценарий: старт → команда → canonical mutation/event → presentation → save → load → продолжение команды. Ожидаемые состояние, bindings и geometry проверяются независимо; transitions действительно исполняются. Для Shipping отдельно нужны cook/package и smoke запуска установленного продукта.

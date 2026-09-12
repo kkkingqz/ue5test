@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Session Lifecycle
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-12
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
@@ -74,6 +74,36 @@ Runtime cache `ResolvedByScreenId/bBuilt` на authoring DataAsset и snapshot-p
 - При полном закрытии удалён STATUS-020, SNAP-AF-01 получает исход CFC-04A; CFC-06 отдельно подтверждает сохранность физической UI-проекции.
 
 **Evidence:** reached registry phase/failure code, независимые A/B expected tables и actual Resolve outcomes, разные package fingerprints, GC assertions, ownership/caller inventories, negative mutation, UBT/full UE результаты. Динамические сценарии обязательны при реализации; исходная находка подтверждена анализом кода, не объявляется уже выполненным regression run.
+
+## CFC-04B — Зафиксировать GC ownership prepared UI и границу Game Thread
+
+- [ ] CFC-04B — Зафиксировать GC ownership prepared UI и границу Game Thread
+
+**Зависимость:** CFC-02A и CFC-04A. **Файлы:** `Source/GV2/Public/UI/GV2LayeredUiReconciler.h`, `GV2PropertyConsumers.h`, `GV2ScreenWidgetBase.h`, `GV2UiMutationPlan.h` в том же каталоге и их implementations; `Source/GV2PresentationApply/Private/PresentationApplyFacade.cpp`, prepared transaction/target types нижнего модуля; source ownership gate CFC-04A расширяется на actual prepared types; `Source/GV2/Private/Tests/GV2UiPrepareCommitTests.cpp`, `GV2UiCapabilityObservabilityTests.cpp`, `GV2RuntimeSubsystemTests.cpp`. Docs: `UIDocumentAndReconciliation.md`, `ScreenTemplates.md`, `BuildAndTooling.md`.
+
+**Инвариант:** [Prepare/Commit](../../UI/UIDocumentAndReconciliation.md): prepared candidate жив до Commit/Abort, прежняя проекция — до завершения rollback/replace. Plain C++ `TObjectPtr` сам по себе не регистрирует GC ownership. Borrowed ссылки на уже удерживаемое WidgetTree не превращаются автоматически в defects.
+
+**Решение:** lifetime owner верхней prepared transaction/reconciliation держит GC-safe strong references на off-tree candidates и объекты, нужные rollback. Borrowed targets обозначаются `TWeakObjectPtr` и проверяются на границе использования; active UMG hierarchy и UPROPERTY остаются штатным owner attached widgets. Нижний Apply-модуль не начинает владеть authoritative registries. Не превращать всё дерево plain structs в USTRUCT без traced owning container и не заменять каждый pointer strong-ссылкой: это создаст бессрочное удержание.
+
+**Не считается закрытием:** механическая замена raw pointer на TObjectPtr; AddToRoot без ограниченного scope; GC-тест с дополнительным strong test root на кандидате; объявить текущий synchronous caller доказанным worker-thread bug только из-за отсутствия локального assert.
+
+**Шаги:**
+1. Actual reference inventory охватывает новые collection/tab widgets, top-level screens, reused/removed widgets, prepared field plans, classes и resolved resources. Для каждого указать реальный owner и срок удержания. Начальные подтверждённые gaps — off-tree `CandidateWidgetsByKey` и `FPreparedScreenInstance`, класс registry закрывает CFC-04A.
+2. Через production Prepare создать новые candidates, не вставляя их в UMG tree; выполнить GC между Prepare и Commit. Проверить weak identity, фактические свойства после Commit и rollback после позднего sibling failure. Fixture не держит candidates вместо production owner.
+3. Ввести scoped strong ownership на уровне готовящего/откатывающего плана; при Commit передать ownership attached tree, при Abort освободить кандидаты. Проверить GC после каждого исхода: live widgets живы, discarded candidates collectable; сохраняемая копия плана имеет определённую copy/move lifetime semantics.
+4. Gate выводит actual pointer/container members prepared types и ownership classification; неизвестный member и возврат untraced owning TObjectPtr делают gate красным. Expected lifetime не выводится из текущего pointer типа: задаётся фазами contract и независимыми fixtures.
+5. На `FGV2PresentationApply::Apply` добавить локальный Game Thread guard как защиту misuse, сверить actual callers. Worker-thread negative fixture запускается отдельным процессом и отвергается до widget mutation; existing Game Thread production scenario проходит. Новая async презентационная архитектура не вводится.
+6. Выполнить UBT, полный UE run и red-on-revert ownership fixture; синхронизировать contracts. STATUS-021 закрывается только после CFC-04A и CFC-04B; CFC-06 повторяет верхний replacement path с GC/failure checks.
+
+**Done:**
+- Actual prepared reference inventory классифицирован по owner/lifetime; untraced owning candidate references отсутствуют.
+- New/reused/removed collection/tab/screen scenarios выполняют реальные Prepare/GC/Commit/Rollback, а не только helper.
+- Abort/cleanup освобождают discarded candidates; ownership не исправлен утечкой или посторонним test root.
+- Восстановленные widgets сохраняют independently expected fields/placement; pointer validity одна не закрывает сценарий.
+- Apply guard проверен misuse fixture и actual Game Thread callers; runtime off-thread crash без воспроизведения не заявлен.
+- CFC-AF-01/03 / STATUS-021 закрыты общей GC-приёмкой; REVIEW-01 не реализован возвратом mutable registry DataAsset в качестве owner.
+
+**Evidence:** traced owner graph, independent weak-ref/field assertions до/после GC, fault/abort matrix, negative pointer mutation, Game Thread guard fixture, UBT/full UE results.
 
 ## CFC-05 — Сделать registry sealing обязательной фазой запуска
 

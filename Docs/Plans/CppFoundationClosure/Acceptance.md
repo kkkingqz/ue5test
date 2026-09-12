@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Acceptance
 status: active
-version: 1.1
+version: 1.2
 updated: 2026-09-12
 depends_on:
   - ../../Architecture/BuildAndTooling.md
@@ -25,6 +25,8 @@ depends_on:
 **Не считается закрытием:** новый обзор с обещанием atomicity без разделения двух commit points; новый stateful C++ gameplay service; снятие требований ради зелёного текущего кода.
 
 Compile-to-value API CFC-04A синхронизировать с owner contracts как выполнение уже принятого ADR-0043 D1: authoring DataAsset остаётся входом, resolved runtime state принадлежит snapshot. Новый ADR только ради устранения этого расхождения не требуется.
+
+Дополнение full review: согласовать GC ownership prepared candidates (CFC-04B), перенос state composition в Lua (CFC-05A), canonical number/hash domain (CFC-03A) и seed transport до bootstrap (CFC-07A). Для deterministic streams определить алгоритм и независимые vectors в owner contract; формат полного uint64 seed в manifest/digest и его migration принять до изменения codecs. Это часть существующего foundation scope, а не разрешение новых native gameplay services.
 
 **Шаги:**
 1. Сопоставить каждый пункт таблицы находок README с точной нормой и production path из аудита.
@@ -78,6 +80,34 @@ Fixtures содержат явные counters и records, а не результ
 
 **Evidence:** отрицательный исход каждого fixture, discovery/report/identity реального запуска, exit codes local и CI-equivalent команд. Изменение YAML не доказывает успешность удалённого CI; фактический remote run указывать отдельно.
 
+## CFC-02A — Изолировать lifetime и mutable настройки automation fixtures
+
+- [ ] CFC-02A — Изолировать lifetime и mutable настройки automation fixtures
+
+**Зависимость:** CFC-02. **Файлы:** `Source/GV2/Private/Tests/GV2UiPrepareCommitTests.cpp`, `GV2UiCapabilityObservabilityTests.cpp`, `GV2ForgeryTestWidgets.h/.cpp`, `GV2PresentationTestFixtures.h` в том же каталоге; actual остальные test root/settings mutators вывести из `Source/**/Tests` и test support. Создать `Tools/Testing/validate_test_fixture_ownership.py` с negative self-tests и включить в CTest; обновить `Docs/Architecture/BuildAndTooling.md`.
+
+**Инвариант:** [достоверная приёмка](../../Architecture/BuildAndTooling.md). Fixture не оставляет rooted GameInstance/world и изменённый global mode следующему тесту. Требование test isolation закрепляется в contract этим change set; текущие leaks не выдаются за уже воспроизведённый production OOM.
+
+**Решение:** общий scoped world/GameInstance owner возвращает borrowed World/Widget и выполняет полный teardown на любом выходе. Удержание root и Shutdown/world cleanup принадлежат одному RAII owner; factory не возвращает widget с потерянным owner. `FScopedForgeryMode` сохраняет прежний Mode и восстанавливает его при destruction; setter становится private для scoped helper. Экземпляр forgery widget фиксирует выбранный mode, если используется после выхода scope, чтобы следующая смена global mode не меняла уже созданный объект.
+
+**Не считается закрытием:** RemoveFromRoot только в конце happy path; обнулить global настройку вместо возврата прежней; посчитать только число Add/Remove в исходнике; маскировать unrooted candidates вечным root fixture.
+
+**Шаги:**
+1. Через повторный запуск реальных `GV2.UI.PrepareCommitAndFailureInjection` и capability tests измерить оставшиеся fixture-owned rooted objects/world contexts; отдельно проверить Mode до/после forgery test. Исходные AddToRoot не имеют paired cleanup, последний Mode остаётся UnimplementableKind.
+2. Ввести scoped owners и перевести actual helper callers; создать fixture с ранним failure/return. Проверить очищенные world contexts, root set и collectibility через weak refs после scope; normal suite success не заменяет teardown evidence.
+3. Закрыть direct forgery mode assignment; проверить вложенные scopes, early return и разные порядки двух настоящих tests. Expected initial/final Mode задаёт тест до запуска, а не helper после cleanup.
+4. Gate выводит actual root/mode mutator sites из test sources и допускает их только в scoped owners. Новые raw AddToRoot или global assignment в temporary fixture делают полный gate красным. Object counts измеряются по test ownership, не по всем Editor roots, которые пользователь вправе менять.
+5. Повторить affected suite в одном fresh process 20 раз и в двух заданных порядках; roots/worlds возвращаются к исходному fixture baseline, Mode восстановлен. Затем выполнить полный CFC-02 runner и docs validation.
+
+**Done:**
+- Actual root/mode mutation sites принадлежат scoped owners, неизвестный direct writer обнаруживается gate.
+- Fixture-owned objects/worlds освобождены при success и early failure; weak refs подтверждают collectibility после GC.
+- Mode и поведение соседнего теста не зависят от порядка запуска; foreign initial value восстановлен точно.
+- 20 повторов не накапливают fixture-owned roots/world contexts; это конкретный corpus, не утверждение о всей памяти UE.
+- CFC-AF-02/10 получают исход CFC-02A; production OOM или настоящий flaky run без воспроизведения не заявлены.
+
+**Evidence:** actual mutator inventory, before/after root/world/Mode measurements, early-exit and order fixtures, negative mutations, repeated/полный UE reports. GC acceptance CFC-04A/04B проводится без протекающих roots, которые могли скрыть дефект.
+
 ## CFC-03 — Закрыть неполный inventory графа сборки
 
 - [ ] CFC-03 — Закрыть неполный inventory графа сборки
@@ -109,7 +139,7 @@ Fixtures содержат явные counters и records, а не результ
 
 - [ ] CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
 
-**Зависимость:** CFC-01…12, включая CFC-04A. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Guides/WhenToWriteCpp.md`, `Docs/Guides/AddLuaSpec.md`, `Docs/Authoring/README.md`, `Docs/Status/AuditFindings.md`, `Docs/Status/ImplementationStatus.md`; CI artifacts и локальный `Saved/Audit/` для полных отчётов.
+**Зависимость:** CFC-01…12, включая CFC-02A, CFC-03A, CFC-04A/04B, CFC-05A, CFC-07A. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Guides/WhenToWriteCpp.md`, `Docs/Guides/AddLuaSpec.md`, `Docs/Authoring/README.md`, `Docs/Status/AuditFindings.md`, `Docs/Status/ImplementationStatus.md`; CI artifacts и локальный `Saved/Audit/` для полных отчётов.
 
 **Инвариант:** [scope](../../Architecture/Overview.md), [совместимость](../../Architecture/CompatibilityPolicy.md). Готовность относится к зафиксированной поверхности и ревизии, а не к абстрактному «всему C++».
 
@@ -117,7 +147,7 @@ Fixtures содержат явные counters и records, а не результ
 
 **Шаги:**
 1. Сверить каждый Done с именем проверки, actual enumerator и независимым oracle. Проверить новые public native entry points по исходникам `Public/` и bindings; новые enum values обязаны попадать в exhaustive dispatch/test inventory.
-2. Выполнить targeted negative mutations каждой устранённой причины: второй schema source, shared mutable Screen Registry между A/B, старый candidate, ранний host teardown, игнорируемый freeze result, неподключённый storage, потерянная previous copy, запрещённый dependency statement, NotRun и missing UE record. Для registry повторить failed B и successful B с отличающимися inputs/package closure, проверяя exact Resolve A, а не только snapshot pointer/hash. Мутации живут в временных checkout и обязаны краснеть в штатном pipeline.
+2. Выполнить targeted negative mutations каждой устранённой причины: второй schema source, shared mutable Screen Registry между A/B, старый candidate, ранний host teardown, игнорируемый freeze result, неподключённый storage, потерянная previous copy, запрещённый dependency statement, NotRun и missing UE record. Дополнительно вернуть untraced owning widget/class pointer, leaked test root/global mode, native semantic state merge, ignored seed, signed-zero mismatch и len-only hash validation; штатные tests/gates обязаны обнаружить каждый. Для registry повторить failed B и successful B с отличающимися inputs/package closure, проверяя exact Resolve A, а не только snapshot pointer/hash. Мутации живут в временных checkout и обязаны краснеть в штатном pipeline.
 3. На чистой ревизии выполнить приведённый ниже runbook, full UE test inventory и CFC-12. Зафиксировать revision, build fingerprints, package/script hashes, environment, warnings и ограничения.
 4. Выполнить portable ASan/UBSan build и CTest/shared conformance для Lua/native marshalling и storage; документировать unsupported toolchain отдельным препятствием для этой задачи. Это проверка памяти на исполненных сценариях, не доказательство всего возможного ввода.
 5. Удалить только полностью закрытые status rows; записать исход каждой audit-находки и task ID. Обновить Guide: новое native API требует scope reason, production consumer, negative fixture и enumerator в одном change set; обычные Lua commands/services/presentation не требуют нового C++.

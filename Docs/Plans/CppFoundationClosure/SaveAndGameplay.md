@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Save and Gameplay
 status: active
-version: 1.0
+version: 1.1
 updated: 2026-09-12
 depends_on:
   - ../../Architecture/CanonicalStateAndSave.md
@@ -79,6 +79,8 @@ depends_on:
 
 - [ ] CFC-10 — Загрузить захваченные bytes через единый replacement
 
+**Дополнение CFC-07A:** Load восстанавливает Lua-owned stream state из save; seed нового прохождения не переинициализирует загруженные streams. Проверить actual следующий random результат, а не только наличие meta.prng в контейнере.
+
 **Файлы:** coordinator/subsystem/bridge types и transition policy CFC-07; `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp` и public header; `Scripts/runtime/load.lua`, `Scripts/boundary/entrypoints.lua`, `Tests/Lua/save/load_path.lua`; существующий `GV2ColdStartLoadConformance.cpp` и UE transition tests. Docs: `CanonicalStateAndSave.md`, `BootstrapAndSessionLifecycle.md`, `LuaRuntimeContract.md`, save/load Authoring reference CFC-09.
 
 **Интерфейс:** `RequestLoad(SlotId, ESaveSlotRevision)` дополняет typed start descriptor и использует ту же operation policy. `game.bridge.request_load(slot_id, revision)` принимает только revision `current`/`previous`; core Lua `core:command.session.load` переводит bound UI input в этот fixed request с тем же post-dispatch buffering, что CFC-09. `FRuntimeSession::PreflightSaveBytes(Bytes, OutFault)` выполняет read-only проверку в active Lua VM и отдаёт только outcome; `StartFromSaveBytes(...)` принимает immutable buffer и вызывает тот же internal load builder, что существующий `StartFromSave`. Slot-reading overload делегирует bytes overload, а не дублирует lifecycle. Переносимый input — opaque bytes, не Lua table. Результат preflight не обещает успех будущих module hooks B.
@@ -136,6 +138,8 @@ depends_on:
 ## CFC-12 — Подтвердить gameplay-срез без новой native логики
 
 - [ ] CFC-12 — Подтвердить gameplay-срез без новой native логики
+
+**Дополнение CFC-07A:** fixture включает детерминированную seeded команду и продолжение stream после save/load; ожидаемая последовательность задаётся независимо. Полный сценарий выполняется после GC/test-lifetime исправлений CFC-02A/04B, чтобы leaked roots не маскировали ownership defects.
 
 **Файлы:** добавить Lua specs в `Tests/Lua/` по существующему tier discovery; для сценария использовать `GameData/sample` fixture package и существующие authoring patterns; общий portable conformance только для C++-механизма host-control transport при необходимости, не для новых Lua-правил. UE сценарий — `Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp` и общая test fixture data. Docs: save/load Authoring reference CFC-09 и релевантные `AddCommand`/presentation references.
 
