@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.7
+version: 3.8
 updated: 2026-09-13
 depends_on:
   - SystemContextAndComponents.md
@@ -393,6 +393,8 @@ Cold-start использует только core-minimal values (`ImageCatalogF
 Список закрыт и не расширяется. Каждый набор мигрирует в спеки при следующем изменении его предмета.
 
 Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}` (default `/opt/unreal-engine`, переопределяется repository variable). Fork pull request не запускается на self-hosted runner. Прогон запускается в свежем процессе Editor (`UnrealEditor-Cmd`) со сбором полного discovery инвентаря `GV2` и машинного отчёта `-ReportExportPath`. Результат валидируется `Tools/Testing/ue_test_report.py` (`validate_run`): множество discovery обязано строго совпасть с завершёнными записями, каждая запись имеет `Success` и 0 ошибок, а counters согласованы. `run_identity` связывает две независимые части evidence. `source_revision`, `source_diff_hash` и `build_fingerprint` порождаются runtime C++ модулем `FGV2Module` (`GV2.Runtime.ModuleIdentity` и `runtime_identity.json`), а runner независимо вычисляет эталон, включая `git diff HEAD` и untracked files. `run_id` является execution-correlation, а не binary identity: fresh runner связывает его с единственным новым процессом, очищенным report directory и report mtime; MCP runner выводит его только из проверенного JSON-RPC response id либо exact async `task_id`. Любые incomplete/error prefixes, расхождения, пропуски, `NotRun`/`InProcess` и неидентифицированный отчёт являются fail-closed отказом.
+
+Следствие, которое выглядит неудобным и ослаблять его нельзя: identity привязана к ревизии и diff рабочего дерева, поэтому **любой** коммит или правка файла — включая изменения одной документации, не влияющие на бинарник, — делает предыдущий зелёный acceptance run недействительным до пересборки. Раннер в этом случае сообщает `Run identity mismatch` и возвращает ненулевой код, даже когда все тесты прошли. Это и есть требуемое поведение: утверждение «набор исполнен» относится к конкретным исходникам и конкретным загруженным бинарникам, а не к тому, что когда-то был зелёный прогон. Правильная реакция — пересобрать и повторить прогон, а не расширять допуск сравнения.
 
 Нормализаторы отчётов (`normalize_mcp_report` и `normalize_ue_json_report` в `Tools/Testing/ue_test_report.py`) строго требуют схему, типы и поля без синтетических defaults:
 - Отчёт обязан содержать поддерживаемую версию схемы (`schema_version`); известный raw payload `RunTestsByFilter`/`GetTestResults` адаптируется к `gv2-mcp-report-v1` только в typed MCP client, runner не добавляет версию к произвольному payload;

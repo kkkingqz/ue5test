@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Closure Implementation Plan
 status: active
-version: 1.5
+version: 1.6
 updated: 2026-09-13
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
@@ -97,7 +97,7 @@ Local MCP и fresh-process CI используют один report validator. Ac
 
 Зависимости: `01 → 02 → 02A → 03 → 03A → 04 → 04A → 04B → 05 → 05A → 06 → 07 → 07A → 08 → 09 → 10 → 11 → 12 → 13`. Порядок намеренно последовательный: следующая приёмка использует уже исправленный runner, а save/load использует уже испытанный replacement. Реализацию одного этапа можно ревьюить и отклонять независимо от следующего; массовое переписывание всех surfaces одним commit не требуется.
 
-- [x] M0 — CFC-01…03 и CFC-02A/03A приняты по Done/Evidence.
+- [x] M0 — CFC-01…03 и CFC-02A/03A приняты по Done/Evidence. (перепроверено 2026-09-13 на текущей ревизии)
 - [x] M1 — CFC-04…07 и CFC-04A/04B, CFC-05A/07A приняты по Done/Evidence. (2026-09-13)
 - [ ] M2 — CFC-08…10 приняты по Done/Evidence.
 - [ ] M3 — CFC-11…13 приняты по Done/Evidence.
@@ -126,6 +126,28 @@ Local MCP и fresh-process CI используют один report validator. Ac
 | REVIEW-11…14 / CFC-AF-11…14 | Отклонены как самостоятельные correctness/performance blockers; условия повторного открытия в аудите |
 | REVIEW-15 / CFC-AF-15 | Сопутствующее форматирование участка CFC-05A |
 
+## Приёмка M0 (перепроверка 2026-09-13)
+
+Галочка M0 была поставлена на коммите `6d2ac6a`, после чего собственные поставки этапа переписали: `aa0eb7e` заменил `ue_test_report.py`, `test_ue_test_report.py`, `validate_test_fixture_ownership.py`, `run_ue_acceptance.py`, CI-шаг и добавил машинерию build identity, а `cdb4217` дотащил остаток той же работы. То есть принятое состояние перестало существовать вскоре после приёмки. Перепроверка перепривязывает M0 к тому коду, который лежит в дереве сейчас.
+
+**Центральная поставка проверена тем, что отказала.** Первый прогон `Tools/Testing/run_ue_acceptance.py` дал 158/158 пройденных тестов и при этом вернул ненулевой exit:
+
+```text
+VALIDATION FAILED (FAIL-CLOSED):
+  - Run identity mismatch for 'source_revision': expected 'b163e03…', got '0bbb5fb…'
+  - Run identity mismatch for 'source_diff_hash': expected 'clean', got 'b41e006…'
+```
+
+Загруженный бинарник был собран из более раннего и грязного дерева, и раннер не засчитал зелёное. После пересборки — `SUCCESS: All 158/158 discovered tests passed validation`. Это и есть смысл `VERIFY-AF-01/02`: «проверен GV2» означает исполненный актуальный набор на сверенных бинарниках, а не маркер в логе.
+
+Связь evidence с бинарником не подстраивается: `GV2BuildIdentity.gen.h` генерируется `PreBuildSteps` обоих `Target.cs`, константа компилируется в модуль, тест `GV2.Runtime.ModuleIdentity` печатает её из загруженного кода, ожидаемая сторона считается из рабочего дерева, а раннер передаёт нормализатору только `run_id` — сама идентичность извлекается из рантайма и при её отсутствии валидатор краснеет.
+
+**Проверено мутациями, а не чтением.** `validate_run` выполняет все четыре утверждения «Проверки алгоритма» плюс дубликаты имён, пустую идентичность, `Success` с warnings и `Success` с errors. Ограниченный парсер `Build.cs` отверг весь корпус: `AddRange(new[] { … })` — исходный обход аудита, — одиночный `Add`, условную зависимость, helper, алиас через переменную и `PublicIncludePathModuleNames`. Гейт fixture ownership краснеет на сыром `AddToRoot`, непарном `RemoveFromRoot` и на доступе к `GForgeryModeForNextInstance`, включая алиас через ссылку; сам сеттер режима закрыт `private` + единственным `friend`, то есть первично компилятором. Откат нормализации нуля в `FValue` красит шесть портируемых тестов; подмена вызова общего hash-валидатора в codec немедленно красит inventory-гейт.
+
+**Открытый пункт evidence.** Evidence `CFC-02` требует отдельно указать фактический удалённый CI run: «Изменение YAML не доказывает успешность удалённого CI». Workflow настроен правильно и вызывает тот же раннер с тем же валидатором, но ссылки на прогон на `origin` в записях нет. Пункт остаётся открытым до её появления; он не блокирует M0, потому что локальный fresh-process прогон выполнен и зафиксирован выше.
+
+Верификация перепроверки: `run_ue_acceptance.py` — 158/158 с прошедшей identity-валидацией, `ctest` — 123/123, 26 structural gates и их self-test'ы, `validate_docs` — 188 файлов.
+
 ## Приёмка M1 (2026-09-13)
 
 Этап принят после отдельного ревью и двух раундов исправлений. Запись нужна потому, что чекбокс сам по себе не говорит, чем именно приёмка отличалась от «тесты зелёные».
@@ -153,10 +175,12 @@ Local MCP и fresh-process CI используют один report validator. Ac
 | CFC-04 | `a9b2508` | |
 | CFC-04A | `2aaa92a` | |
 | CFC-04B, CFC-05, CFC-05A, CFC-06, CFC-07, CFC-07A | `981a4f1` | шесть задач одним change set; разделить историю нельзя, ревью M1 выполнено по содержимому |
-| (общее усиление гейтов M0) | `aa0eb7e` | без task ID; RAII fixtures, CMake codemodel, hash codec helpers |
-| Ревью M1: B1 | `cdb4217` | также несёт незакоммиченную работу M0 по acceptance/MCP |
+| Переписывание поставок M0 после его приёмки | `aa0eb7e` | без task ID: `ue_test_report.py`, `test_ue_test_report.py`, `validate_test_fixture_ownership.py`, `run_ue_acceptance.py`, CI-шаг, build identity (`GV2BuildIdentity.gen.h`, `GV2.Runtime.ModuleIdentity`, `generate_build_identity.py`), RAII fixtures, CMake codemodel, hash codec helpers. Принятое на `6d2ac6a` состояние M0 этим коммитом перестало существовать; перепривязка — «Приёмка M0» выше |
+| Ревью M1: B1 | `cdb4217` | также несёт остаток работы M0 по acceptance/MCP (`Tools/MCP/*`, `ue_test_report.py`, `validate_test_fixture_ownership.py`, `test_mcp_transport.py`), которая на момент ревью лежала незакоммиченной |
 | Ревью M1: B2…B5, N3…N7 | `0bbb5fb` | |
-| Ревью M1: R1 | текущий change set | непрозрачность save container и контракт seed по формам старта |
+| Ревью M1: R1 | `c0268f6` | непрозрачность save container и контракт seed по формам старта |
+| Приёмка M1 и `STATUS-026` | `b163e03` | |
+| Перепроверка и перепривязка приёмки M0 | текущий change set | evidence-прогон `run_ue_acceptance.py` на актуальной ревизии |
 
 Дальнейшие задачи фиксируются по одной; таблица дополняется в том же change set, что и задача.
 
