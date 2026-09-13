@@ -397,6 +397,10 @@ void UGV2RuntimeSubsystem::PublishActiveProjection()
     }
     if (PendingScreen != nullptr)
     {
+        if (ActiveScreen != nullptr && ActiveScreen != PendingScreen)
+        {
+            ActiveScreen->RemoveFromParent();
+        }
         ActiveScreen = PendingScreen;
         PendingScreen = nullptr;
         if (bActiveScreenAddedToViewport && ActiveScreen != nullptr && !ActiveScreen->IsInViewport())
@@ -561,17 +565,10 @@ bool UGV2RuntimeSubsystem::HandleDocumentRequested(
     if (TargetShell == nullptr && Document.bHasRoute)
     {
         UGV2ScreenWidgetBase* ReconciledScreen = Reconciler->GetActiveScreen(Document.Route.Layer, Document.Route.InstanceKey);
+        PendingScreen = ReconciledScreen;
         if (ActiveGameShell != nullptr || ActiveScreen != nullptr)
         {
-            ActiveScreen = ReconciledScreen;
-            if (bActiveScreenAddedToViewport && ActiveScreen != nullptr && ActiveScreen->GetParent() == nullptr && !ActiveScreen->IsInViewport())
-            {
-                ActiveScreen->AddToViewport();
-            }
-        }
-        else
-        {
-            PendingScreen = ReconciledScreen;
+            PublishActiveProjection();
         }
     }
     return true;

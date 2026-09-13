@@ -40,7 +40,7 @@ public:
     }
 };
 
-std::vector<GV2RuntimeCore::FRuntimeSource> LoadMinimalCoreSources()
+std::vector<GV2RuntimeCore::FRuntimeSource> LoadTransitionCoreSources()
 {
     std::vector<GV2RuntimeCore::FRuntimeSource> Sources;
     FString ScriptsDirectory = FPaths::Combine(FPaths::ProjectDir(), TEXT("Scripts"));
@@ -87,12 +87,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SessionTransitionOracleMatrixTest::RunTest(const FString& Parameters)
 {
-    // Test valid progressive transitions for Start modes (Menu, NewGame, LoadSave)
-    const ESessionTransitionKind StartKinds[] = {
-        ESessionTransitionKind::Menu,
-        ESessionTransitionKind::NewGame,
-        ESessionTransitionKind::LoadSave
-    };
+    static_assert(UE_ARRAY_COUNT(AllSessionTransitionKinds) == SessionTransitionKindCount,
+        "AllSessionTransitionKinds must have exactly SessionTransitionKindCount elements");
+
+    // Dynamically derive StartKinds from AllSessionTransitionKinds (all non-shutdown kinds)
+    TArray<ESessionTransitionKind> StartKinds;
+    for (const ESessionTransitionKind Kind : AllSessionTransitionKinds)
+    {
+        if (Kind != ESessionTransitionKind::Shutdown)
+        {
+            StartKinds.Add(Kind);
+        }
+    }
+    TestEqual(TEXT("StartKinds count matches expected start modes"), StartKinds.Num(), static_cast<int32>(SessionTransitionKindCount) - 1);
 
     for (ESessionTransitionKind Kind : StartKinds)
     {
@@ -179,6 +186,11 @@ bool FGV2SessionTransitionOracleMatrixTest::RunTest(const FString& Parameters)
         TestFalse(TEXT("Shutdown: Creating -> Registering is invalid"),
             FGV2SessionTransitionOracle::CanTransitionSessionState(EGV2SessionState::Creating, EGV2SessionState::Registering, ShutdownKind));
     }
+
+    // Verify complete enum coverage across the oracle test (StartKinds + Shutdown)
+    TSet<ESessionTransitionKind> CoveredKinds(StartKinds);
+    CoveredKinds.Add(ESessionTransitionKind::Shutdown);
+    TestEqual(TEXT("All transition kinds covered by Oracle test"), CoveredKinds.Num(), static_cast<int32>(SessionTransitionKindCount));
 
     return true;
 }
@@ -393,7 +405,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2SessionReverseTeardownTest::RunTest(const FString& Parameters)
 {
-    std::vector<GV2RuntimeCore::FRuntimeSource> Sources = LoadMinimalCoreSources();
+    std::vector<GV2RuntimeCore::FRuntimeSource> Sources = LoadTransitionCoreSources();
 
     // Add 3 synthetic test modules with chain dependencies: mod1 <- mod2 <- mod3
     const char* ManifestSource = R"(
@@ -606,7 +618,7 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
     {
         GV2RuntimeCore::FRuntimeSession SessionA;
         GV2RuntimeCore::FRuntimeFault FaultA;
-        const std::vector<GV2RuntimeCore::FRuntimeSource> Sources = LoadMinimalCoreSources();
+        const std::vector<GV2RuntimeCore::FRuntimeSource> Sources = LoadTransitionCoreSources();
         TestTrue(TEXT("SessionA starts"), SessionA.Start(1, "0000000000000001", ReadHandle, Sources, FaultA));
         TestEqual(TEXT("LiveVmCount is 1"), GV2RuntimeCore::FRuntimeSession::GetLiveVmCount(), 1);
 

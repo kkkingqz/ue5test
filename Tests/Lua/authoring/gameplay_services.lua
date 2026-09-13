@@ -9,6 +9,7 @@
 
 local authoring_context = require("core:module.authoring.context")
 local service_registry = require("core:module.runtime.service_registry")
+local test_isolation = require("core:module.runtime.test_isolation")
 
 return {
     -- ------------------------------------------------------------------------
@@ -16,7 +17,7 @@ return {
     -- ------------------------------------------------------------------------
 
     service_registry_rejects_invalid_kind = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local reg = service_registry.create_registry()
             local ok, err = pcall(function()
                 reg.register("core:validator.invalid", { op = function() end })
@@ -33,7 +34,7 @@ return {
     end,
 
     service_registry_accepts_canonical_service_id = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local reg = service_registry.create_registry()
             local impl = { op = function() return 42 end }
             local registered = reg.register("rh:service.trade", impl)
@@ -44,7 +45,7 @@ return {
     end,
 
     service_registry_rejects_duplicate_and_frozen = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local reg = service_registry.create_registry()
             reg.register("rh:service.trade", { op = function() end })
 
@@ -68,7 +69,7 @@ return {
     -- ------------------------------------------------------------------------
 
     authoring_declares_and_calls_service = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             env.services.trade = {
                 buy = function(buyer, seller, amount)
@@ -84,7 +85,7 @@ return {
     end,
 
     authoring_rejects_invalid_service_name = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             local ok, err = pcall(function()
                 env.services["TradeService"] = { buy = function() end }
@@ -101,7 +102,7 @@ return {
     end,
 
     authoring_rejects_non_table_implementation = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             local ok, err = pcall(function()
                 env.services.trade = "not a table"
@@ -112,7 +113,7 @@ return {
     end,
 
     authoring_rejects_non_function_field = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             local ok, err = pcall(function()
                 env.services.trade = {
@@ -126,7 +127,7 @@ return {
     end,
 
     authoring_rejects_distributed_declaration = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             local ok, err = pcall(function()
                 env.services.trade.buy = function() end
@@ -141,7 +142,7 @@ return {
     -- ------------------------------------------------------------------------
 
     authoring_service_immutable_after_registration = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             env.services.trade = {
                 buy = function() return true end,
@@ -162,7 +163,7 @@ return {
     end,
 
     authoring_service_duplicate_declaration_rejected = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             env.services.trade = { buy = function() end }
 
@@ -175,7 +176,7 @@ return {
     end,
 
     authoring_service_declaration_after_freeze_rejected = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
             mod.freeze()
 
@@ -188,7 +189,7 @@ return {
     end,
 
     authoring_unknown_service_key_rejected = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env = authoring_context.create_authoring_environment("rh")
             local ok, err = pcall(function()
                 return env.services.nonexistent
@@ -199,7 +200,7 @@ return {
     end,
 
     authoring_cross_package_reference_resolved_on_freeze = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             -- Module A in package "core_game" references "economy:service.calc"
             local _, env_a = authoring_context.create_authoring_environment("core_game")
             local calc_proxy = env_a.services["economy:service.calc"]
@@ -219,7 +220,7 @@ return {
     end,
 
     authoring_cross_package_reference_missing_target_throws_on_freeze = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local _, env_a = authoring_context.create_authoring_environment("core_game")
             local _ = env_a.services["missing_pkg:service.missing"]
 
@@ -238,7 +239,7 @@ return {
     -- ------------------------------------------------------------------------
 
     service_called_in_command_inherits_scope_and_mutates_state = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
             env.services.economy = {
                 transfer_gold = function(actor, amount)
@@ -262,7 +263,7 @@ return {
     end,
 
     service_called_in_validator_inherits_scope_and_guards_side_effects = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
             env.services.unsafe = {
                 try_emit = function()
@@ -293,7 +294,7 @@ return {
     end,
 
     service_fail_and_emit_attributed_to_declaring_package = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local captured_event = nil
             -- Package "trade_system" declares service with fail() and emit()
             local mod_trade, env_trade = authoring_context.create_authoring_environment("trade_system")

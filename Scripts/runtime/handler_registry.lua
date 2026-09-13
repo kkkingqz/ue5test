@@ -163,27 +163,5 @@ end
 function M.register(_ctx)
     -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
-
-function M.with_isolated_handlers(fn)
-    local old_handlers = game and game.commands and game.commands.handlers
-    local fresh_registry = M.create_registry()
-    if not game then
-        game = {}
-    end
-    if not game.commands then
-        rawset(game, "commands", {})
-    end
-    rawset(game.commands, "handlers", fresh_registry)
-
-    local ok, err = pcall(fn)
-    if getmetatable(game.commands) ~= nil then
-        rawset(game.commands, "handlers", nil)
-    else
-        rawset(game.commands, "handlers", old_handlers)
-    end
-    if not ok then
-        error(err, 0)
-    end
-end
-
+ 
 return M

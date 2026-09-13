@@ -339,6 +339,20 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.runtime.test_isolation",
+            source = "runtime/test_isolation.lua",
+            dependencies = {
+                "core:module.bootstrap.registry_lifecycle",
+                "core:module.runtime.service_registry",
+                "core:module.runtime.handler_registry",
+                "core:module.runtime.validator_registry",
+                "core:module.runtime.actor_registry",
+                "core:module.runtime.event_bus",
+                "core:module.authoring.context",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.bootstrap.main",
             source = "bootstrap/main.lua",
             dependencies = {
@@ -375,6 +389,7 @@ return {
                 "core:module.runtime.command_dispatcher",
                 "core:module.bootstrap.registry_lifecycle",
                 "core:module.runtime.random",
+                "core:module.runtime.test_isolation",
             },
             replaceable = false,
         },

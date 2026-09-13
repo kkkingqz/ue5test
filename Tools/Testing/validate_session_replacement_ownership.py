@@ -19,21 +19,23 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+GV2_SOURCE_DIR = REPO_ROOT / "Source" / "GV2"
 COORDINATOR_HEADER_PATH = (
-    REPO_ROOT / "Source" / "GV2" / "Private" / "Application" / "GV2SessionCoordinator.h"
+    GV2_SOURCE_DIR / "Private" / "Application" / "GV2SessionCoordinator.h"
 )
 COORDINATOR_IMPL_PATH = (
-    REPO_ROOT / "Source" / "GV2" / "Private" / "Application" / "GV2SessionCoordinator.cpp"
+    GV2_SOURCE_DIR / "Private" / "Application" / "GV2SessionCoordinator.cpp"
 )
 SUBSYSTEM_HEADER_PATH = (
-    REPO_ROOT / "Source" / "GV2" / "Public" / "Runtime" / "GV2RuntimeSubsystem.h"
+    GV2_SOURCE_DIR / "Public" / "Runtime" / "GV2RuntimeSubsystem.h"
 )
 SUBSYSTEM_IMPL_PATH = (
-    REPO_ROOT / "Source" / "GV2" / "Private" / "Runtime" / "GV2RuntimeSubsystem.cpp"
+    GV2_SOURCE_DIR / "Private" / "Runtime" / "GV2RuntimeSubsystem.cpp"
 )
 
 
@@ -93,10 +95,19 @@ def validate_coordinator_header(header_content: str) -> list[str]:
     if "InProgressCandidate" in header_content:
         errors.append("Forbidden ambient member InProgressCandidate found in GV2SessionCoordinator.h")
 
-    # 4. FSessionReplacementToken defined with stages
-    token_pattern = r"(?:struct|class)\s+FSessionReplacementToken"
-    if not re.search(token_pattern, header_content):
+    # 4. FSessionReplacementToken defined with stages in private section
+    token_match = re.search(r"(?:struct|class)\s+FSessionReplacementToken", header_content)
+    if not token_match:
         errors.append("FSessionReplacementToken class/struct definition missing in GV2SessionCoordinator.h")
+    else:
+        prefix = header_content[:token_match.start()]
+        access_specifiers = list(re.finditer(r"\b(public|protected|private)\s*:", prefix))
+        if access_specifiers:
+            last_specifier = access_specifiers[-1].group(1)
+            if last_specifier != "private":
+                errors.append(
+                    f"FSessionReplacementToken must be declared in the private section of FGV2SessionCoordinator, but found in '{last_specifier}:'"
+                )
 
     for stage in ["Preflight", "Replacing", "Preparing", "Committed", "Aborted"]:
         if stage not in header_content:
@@ -229,6 +240,189 @@ def validate_subsystem(impl_content: str, header_content: str) -> list[str]:
     return errors
 
 
+CLASSIFICATION_TAXONOMY: dict[tuple[str, str], str] = {
+    # owner_routine: official publication / teardown routines
+    ("UGV2RuntimeSubsystem", "PublishActiveProjection"): "owner_routine",
+    ("UGV2RuntimeSubsystem", "TeardownActiveProjection"): "owner_routine",
+    ("UGV2RuntimeSubsystem", "HandleDocumentRequested"): "owner_routine",
+    ("UGV2RuntimeSubsystem", "Initialize"): "owner_routine",
+
+    # recovery_surface: host-level error recovery projection
+    ("UGV2RuntimeSubsystem", "ReplaceActiveScreen"): "recovery_surface",
+    ("UGV2RuntimeSubsystem", "RequestSession"): "recovery_surface",
+
+    # adapter_shutdown: host subsystem deinitialization
+    ("UGV2RuntimeSubsystem", "Deinitialize"): "adapter_shutdown",
+
+    # shell_slot_management: game shell panel slots
+    ("UGV2GameShellWidgetBase", "AttachScreenToLayer"): "shell_slot_management",
+    ("UGV2GameShellWidgetBase", "DetachScreen"): "shell_slot_management",
+}
+
+ROLE_ALLOWED_KINDS: dict[str, dict[tuple[str, str], set[str]]] = {
+    "owner_routine": {
+        ("UGV2RuntimeSubsystem", "PublishActiveProjection"): {
+            "assign_ActiveGameShell", "assign_ActiveScreen",
+            "assign_PendingGameShell", "assign_PendingScreen",
+            "call_AddToViewport", "call_RemoveFromParent"
+        },
+        ("UGV2RuntimeSubsystem", "TeardownActiveProjection"): {
+            "assign_ActiveGameShell", "assign_ActiveScreen",
+            "assign_PendingGameShell", "assign_PendingScreen",
+            "call_RemoveFromParent"
+        },
+        ("UGV2RuntimeSubsystem", "HandleDocumentRequested"): {
+            "assign_PendingGameShell", "assign_PendingScreen",
+            "call_PublishActiveProjection"
+        },
+        ("UGV2RuntimeSubsystem", "Initialize"): {
+            "call_TeardownActiveProjection", "call_PublishActiveProjection"
+        },
+    },
+    "recovery_surface": {
+        ("UGV2RuntimeSubsystem", "ReplaceActiveScreen"): {
+            "assign_ActiveScreen", "call_AddToViewport", "call_RemoveFromParent"
+        },
+        ("UGV2RuntimeSubsystem", "RequestSession"): {
+            "assign_PendingGameShell", "assign_PendingScreen",
+            "call_RemoveFromParent", "call_ReplaceActiveScreen"
+        },
+    },
+    "adapter_shutdown": {
+        ("UGV2RuntimeSubsystem", "Deinitialize"): {
+            "call_TeardownActiveProjection"
+        },
+    },
+    "shell_slot_management": {
+        ("UGV2GameShellWidgetBase", "AttachScreenToLayer"): {
+            "call_RemoveFromParent"
+        },
+        ("UGV2GameShellWidgetBase", "DetachScreen"): {
+            "call_RemoveFromParent"
+        },
+    },
+}
+
+PROJECTION_PATTERNS: dict[str, re.Pattern] = {
+    "assign_ActiveScreen": re.compile(r"\bActiveScreen\s*="),
+    "assign_ActiveGameShell": re.compile(r"\bActiveGameShell\s*="),
+    "assign_PendingScreen": re.compile(r"\bPendingScreen\s*="),
+    "assign_PendingGameShell": re.compile(r"\bPendingGameShell\s*="),
+    "call_AddToViewport": re.compile(r"->AddToViewport\s*\("),
+    "call_RemoveFromParent": re.compile(r"->RemoveFromParent\s*\("),
+    "call_TeardownActiveProjection": re.compile(r"\bTeardownActiveProjection\s*\("),
+    "call_PublishActiveProjection": re.compile(r"\bPublishActiveProjection\s*\("),
+    "call_ReplaceActiveScreen": re.compile(r"\bReplaceActiveScreen\s*\("),
+}
+
+
+def extract_all_function_bodies(source: str) -> list[tuple[str, str, int, int]]:
+    """Extracts all (class_name, func_name, start_char, end_char) ranges in a C++ file."""
+    pattern = re.compile(r"(?:[A-Za-z0-9_:<>\s\*&]+\s+)?([A-Za-z0-9_]+)::([A-Za-z0-9_]+)\s*\([^)]*\)\s*(?:const)?\s*\{")
+    funcs: list[tuple[str, str, int, int]] = []
+    for match in pattern.finditer(source):
+        class_name = match.group(1)
+        func_name = match.group(2)
+        start = match.end() - 1
+        depth = 0
+        i = start
+        while i < len(source):
+            char = source[i]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    funcs.append((class_name, func_name, start, i + 1))
+                    break
+            elif char in ('"', "'"):
+                quote = char
+                i += 1
+                while i < len(source) and source[i] != quote:
+                    if source[i] == "\\":
+                        i += 1
+                    i += 1
+            elif source[i : i + 2] == "//":
+                end_line = source.find("\n", i)
+                i = len(source) if end_line == -1 else end_line
+                continue
+            elif source[i : i + 2] == "/*":
+                end_comment = source.find("*/", i + 2)
+                i = len(source) if end_comment == -1 else end_comment + 1
+                continue
+            i += 1
+    return funcs
+
+
+def validate_projection_source(source: str, file_name: str = "Mock.cpp") -> list[str]:
+    """Validates projection mutations and method calls in a single source file."""
+    errors: list[str] = []
+    is_header = file_name.endswith(".h")
+    is_cpp = file_name.endswith(".cpp")
+    funcs = extract_all_function_bodies(source)
+
+    lines = source.splitlines()
+    for idx, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("*"):
+            continue
+        line_offset = sum(len(l) + 1 for l in lines[: idx - 1])
+
+        for kind, pat in PROJECTION_PATTERNS.items():
+            if pat.search(line):
+                # Ignore method declarations in headers
+                if is_header and ("void " in line or "class " in line or "struct " in line):
+                    continue
+                # Ignore function definition headers in .cpp
+                if is_cpp and ("::TeardownActiveProjection" in line or "::PublishActiveProjection" in line or "::ReplaceActiveScreen" in line) and "{" not in line.split("::")[-1]:
+                    continue
+
+                # Find enclosing function
+                enclosing: tuple[str, str] | None = None
+                for c, f, s, e in funcs:
+                    if s <= line_offset < e:
+                        enclosing = (c, f)
+                        break
+
+                if not enclosing:
+                    errors.append(
+                        f"{file_name}:{idx}: [{kind}] '{stripped}' is outside any classified C++ method body"
+                    )
+                    continue
+
+                role = CLASSIFICATION_TAXONOMY.get(enclosing)
+                if not role:
+                    errors.append(
+                        f"{file_name}:{idx}: [{kind}] '{stripped}' in unclassified function {enclosing[0]}::{enclosing[1]}. "
+                        f"All projection mutations must belong to classified owner-routine, recovery-surface, adapter-shutdown, or shell-slot-management."
+                    )
+                    continue
+
+                allowed_ops = ROLE_ALLOWED_KINDS.get(role, {}).get(enclosing, set())
+                if kind not in allowed_ops:
+                    errors.append(
+                        f"{file_name}:{idx}: operation [{kind}] '{stripped}' is not permitted in {enclosing[0]}::{enclosing[1]} "
+                        f"(classified as {role})."
+                    )
+
+    return errors
+
+
+def validate_projection_mutation_sites(gv2_source_dir: Path) -> list[str]:
+    """Scans all non-test C++ sources in Source/GV2 and classifies every projection mutation site."""
+    errors: list[str] = []
+    for p in sorted(gv2_source_dir.rglob("*")):
+        if p.suffix not in (".h", ".cpp"):
+            continue
+        if "Tests" in p.parts:
+            continue
+        rel = p.relative_to(gv2_source_dir)
+        source = p.read_text(encoding="utf-8")
+        errors.extend(validate_projection_source(source, str(rel)))
+
+    return errors
+
+
 def run_self_tests() -> bool:
     print("Running validate_session_replacement_ownership self-tests...")
     all_passed = True
@@ -312,6 +506,67 @@ def run_self_tests() -> bool:
         print("FAIL: Expected error for settings lookup in StartSession")
         all_passed = False
 
+    # Test 6: Projection mutation in an unclassified method
+    unclassified_mutation_src = """
+    void UGV2RuntimeSubsystem::StartSession() {
+        ActiveScreen = nullptr;
+    }
+    """
+    errs = validate_projection_source(unclassified_mutation_src, "Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp")
+    if not any("in unclassified function UGV2RuntimeSubsystem::StartSession" in e for e in errs):
+        print("FAIL: Expected error for unclassified projection mutation in StartSession")
+        all_passed = False
+
+    # Test 7: Forbidden AddToViewport inside HandleDocumentRequested (Issue B4 defect)
+    forbidden_add_viewport_src = """
+    bool UGV2RuntimeSubsystem::HandleDocumentRequested(const FGV2UiDocumentViewModel& Document, const FGV2PresentationPrepareContext& PrepareContext) {
+        ReconciledScreen->AddToViewport();
+        return true;
+    }
+    """
+    errs = validate_projection_source(forbidden_add_viewport_src, "Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp")
+    if not any("operation [call_AddToViewport]" in e and "HandleDocumentRequested" in e for e in errs):
+        print("FAIL: Expected error for forbidden AddToViewport in HandleDocumentRequested")
+        all_passed = False
+
+    # Test 8: Forbidden call_RemoveFromParent in unauthorized routine
+    unauthorized_remove_src = """
+    void UGV2RuntimeSubsystem::SneakyTeardown() {
+        ActiveScreen->RemoveFromParent();
+    }
+    """
+    errs = validate_projection_source(unauthorized_remove_src, "Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp")
+    if not any("SneakyTeardown" in e for e in errs):
+        print("FAIL: Expected error for unauthorized RemoveFromParent in SneakyTeardown")
+        all_passed = False
+
+    # Test 9: Forbidden call to TeardownActiveProjection outside adapter_shutdown / sink
+    forbidden_teardown_call_src = """
+    void UGV2RuntimeSubsystem::StartSession() {
+        TeardownActiveProjection();
+    }
+    """
+    errs = validate_projection_source(forbidden_teardown_call_src, "Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp")
+    if not any("StartSession" in e for e in errs):
+        print("FAIL: Expected error for TeardownActiveProjection call in StartSession")
+        all_passed = False
+
+    # Test 10: FSessionReplacementToken declared in public section of coordinator header
+    public_token_header = """
+    class FGV2SessionCoordinator {
+    public:
+        using FDocumentSink = TFunction<bool(const FGV2UiDocumentViewModel&, const FGV2PresentationPrepareContext&)>;
+        enum class EReplacementStage { Preflight, Replacing, Preparing, Committed, Aborted };
+        class FSessionReplacementToken {};
+        bool BeginReplace();
+        bool PublishReady();
+    };
+    """
+    errs = validate_coordinator_header(public_token_header)
+    if not any("must be declared in the private section" in e for e in errs):
+        print("FAIL: Expected error for public FSessionReplacementToken")
+        all_passed = False
+
     if all_passed:
         print("All self-tests passed!")
     return all_passed
@@ -335,6 +590,7 @@ def main() -> int:
     all_errors.extend(validate_coordinator_header(coord_header))
     all_errors.extend(validate_coordinator_impl(coord_impl))
     all_errors.extend(validate_subsystem(subsystem_impl, subsystem_header))
+    all_errors.extend(validate_projection_mutation_sites(GV2_SOURCE_DIR))
 
     if all_errors:
         print("Validation errors found:", file=sys.stderr)

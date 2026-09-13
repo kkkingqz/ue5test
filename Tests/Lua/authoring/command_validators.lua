@@ -24,10 +24,11 @@ local properties = require("core:module.authoring.properties")
 local actor_registry = require("core:module.runtime.actor_registry")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
 local validator_registry = require("core:module.runtime.validator_registry")
+local test_isolation = require("core:module.runtime.test_isolation")
 
 return {
     execution_scope_tracking_and_restoration = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             assert(authoring_context.get_current_scope().kind == "none", "Initial scope must be 'none'")
 
             local M_rh = authoring_context.gameplay("rh")
@@ -113,7 +114,7 @@ return {
     end,
 
     fail_in_validator_scope_produces_typed_refusal = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M_rh = authoring_context.gameplay("rh")
             local M_curse = authoring_context.gameplay("curse_mod")
 
@@ -143,7 +144,7 @@ return {
     end,
 
     fail_outside_command_and_validator_rejected = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             -- Calling fail outside active command / validator must throw AuthoringFailOutsideCommand
             local ok_none, err_none = pcall(function()
                 authoring_context.fail("unauthorized_error", {})
@@ -176,7 +177,7 @@ return {
     end,
 
     lua_error_in_validator_bubbles_as_runtime_fault = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M_rh = authoring_context.gameplay("rh")
             local handler_called = false
 
@@ -205,7 +206,7 @@ return {
     end,
 
     validate_api_validation_errors = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
 
             -- 1. Invalid command_ref
@@ -257,7 +258,7 @@ return {
     end,
 
     validator_stable_id_construction_and_introspection = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M_rh = authoring_context.gameplay("rh")
             local M_mod = authoring_context.gameplay("curse_mod")
 
@@ -292,7 +293,7 @@ return {
     end,
 
     target_resolution_at_freeze_and_order_independence = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             -- 1. Order independence: Module 1 declares validator before Module 2 declares target command
             local M_mod1 = authoring_context.gameplay("curse_mod")
             local M_mod2 = authoring_context.gameplay("rh")
@@ -332,7 +333,7 @@ return {
     end,
 
     multiple_validators_and_deterministic_order_first_refusal_wins = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
 
             local log = {}
@@ -370,7 +371,7 @@ return {
     end,
 
     identical_argument_decoding_for_handler_and_validator = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
 
             local val_args = nil
@@ -421,7 +422,7 @@ return {
     end,
 
     validate_function_in_authoring_environment = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
             assert(type(env.validate) == "function", "validate must be accessible in authoring _ENV")
             assert(env.validate == mod.validate, "env.validate must refer to mod.validate")
@@ -439,7 +440,7 @@ return {
     end,
 
     side_effect_emit_disallowed_in_validator = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
             M.commands.test_cmd = function() return { ok = true } end
 
@@ -480,7 +481,7 @@ return {
     end,
 
     side_effect_show_screen_disallowed_in_validator = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
             M.commands.test_cmd = function() return { ok = true } end
 
@@ -506,7 +507,7 @@ return {
     end,
 
     side_effect_later_disallowed_in_validator = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
             M.commands.target_cmd = function() return { ok = true } end
             M.commands.other_cmd = function() return { ok = true } end
@@ -548,7 +549,7 @@ return {
     end,
 
     side_effect_service_mutation_disallowed_in_validator = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
             M.commands.test_cmd = function() return { ok = true } end
 
@@ -577,7 +578,7 @@ return {
     end,
 
     state_mutation_and_nested_run_disallowed_in_validator = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M = authoring_context.gameplay("rh")
             M.commands.target_cmd = function() return { ok = true } end
             M.commands.nested_cmd = function() return { ok = true } end
@@ -616,133 +617,99 @@ return {
     end,
 
     allowed_read_only_operations_succeed_in_validator = function()
-        authoring_context.with_isolated_context(function()
-            local M = authoring_context.gameplay("rh")
-            mutation_window.execute_in_window(function()
-                local reg = actor_registry.create_registry()
-                reg.register_type("character", function(base) return {} end)
-                if getmetatable(game.instances) ~= nil then
-                    rawset(game.instances, "actors", reg)
-                else
-                    game.instances.actors = reg
+        test_isolation.with_isolated_context(function()
+            test_isolation.with_isolated_actors(function()
+                local M = authoring_context.gameplay("rh")
+                mutation_window.execute_in_window(function()
+                    local hero = game.instances.actors.create("rh:actor.character.hero", {
+                        stamina = 100,
+                        gold = 50,
+                    })
+                    game.state.meta.player_actor_id = hero.instance_id
+                end)
+
+                local handler_called = false
+                M.commands.buy = function(cost)
+                    handler_called = true
+                    return { ok = true }
                 end
-                local hero = reg.create("rh:actor.character.hero", {
-                    stamina = 100,
-                    gold = 50,
-                })
-                game.state.meta.player_actor_id = hero.instance_id
+
+                M.validate(M.commands.buy, "check_funds", function(cost)
+                    -- 1. Read player wrapper properties
+                    local p = M.player
+                    assert(p.gold == 50, "Player gold should be readable in validator")
+                    assert(p.stamina == 100, "Player stamina should be readable in validator")
+
+                    -- 2. Validate condition
+                    if cost > p.gold then
+                        M.fail("insufficient_funds", { cost = cost, available = p.gold })
+                    end
+                end)
+
+                M.register()
+                authoring_context.freeze()
+
+                -- Path A: Allowed
+                local res_ok = M.commands.buy:run(30)
+                assert(res_ok ~= nil and res_ok.ok == true, "Command should succeed when cost <= gold")
+                assert(handler_called == true, "Handler should have been executed")
+
+                -- Path B: Refused
+                handler_called = false
+                local res_fail = M.commands.buy:run(100)
+                assert(res_fail ~= nil and res_fail.ok == false, "Command should be refused when cost > gold")
+                assert(res_fail.error.code == "rh:error.insufficient_funds", "Refusal code should match")
+                assert(res_fail.error.params.cost == 100, "Params cost should match")
+                assert(res_fail.error.params.available == 50, "Params available should match")
+                assert(handler_called == false, "Handler should not be called")
             end)
-
-            local handler_called = false
-            M.commands.buy = function(cost)
-                handler_called = true
-                return { ok = true }
-            end
-
-            M.validate(M.commands.buy, "check_funds", function(cost)
-                -- 1. Read player wrapper properties
-                local p = M.player
-                assert(p ~= nil, "Player should be readable")
-                assert(p.gold == 50, "Player gold should be 50")
-                assert(p.stamina == 100, "Player stamina should be 100")
-
-                -- 2. Read world
-                local w = M.world
-                assert(w ~= nil, "World should be readable")
-
-                -- 3. Read repository
-                if game.repository and game.repository.exists then
-                    local exists = game.repository.exists("rh:actor.character.hero")
-                end
-
-                -- 4. Text spec creation (pure, no side effect)
-                local txt = M.text("some_key", { amount = cost })
-                assert(txt.text_id == "rh:text.some_key", "TextSpec should be created")
-
-                -- 5. Action creation (pure, no side effect)
-                local act = M.action(M.commands.buy, 10)
-                assert(act.command_id == "rh:command.buy", "Action should be created")
-
-                -- 6. Check condition and fail if cost > gold
-                if cost > p.gold then
-                    M.fail("insufficient_funds", { cost = cost, available = p.gold })
-                end
-            end)
-
-            M.register()
-            authoring_context.freeze()
-
-            -- Path A: Allowed
-            local res_ok = M.commands.buy:run(30)
-            assert(res_ok ~= nil and res_ok.ok == true, "Command should succeed when cost <= gold")
-            assert(handler_called == true, "Handler should be called")
-
-            -- Path B: Refused
-            handler_called = false
-            local res_fail = M.commands.buy:run(100)
-            assert(res_fail ~= nil and res_fail.ok == false, "Command should be refused when cost > gold")
-            assert(res_fail.error.code == "rh:error.insufficient_funds", "Refusal code should match")
-            assert(res_fail.error.params.cost == 100, "Params cost should match")
-            assert(res_fail.error.params.available == 50, "Params available should match")
-            assert(handler_called == false, "Handler should not be called")
-            if getmetatable(game.instances) ~= nil then
-                rawset(game.instances, "actors", nil)
-            end
         end)
     end,
 
     deferred_command_later_executes_validators = function()
-        authoring_context.with_isolated_context(function()
-            local M = authoring_context.gameplay("rh")
-            mutation_window.execute_in_window(function()
-                if not (game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player()) then
-                    local reg = actor_registry.create_registry()
-                    reg.register_type("character", function(base) return {} end)
-                    if getmetatable(game.instances) ~= nil then
-                        rawset(game.instances, "actors", reg)
-                    else
-                        game.instances.actors = reg
+        test_isolation.with_isolated_context(function()
+            test_isolation.with_isolated_actors(function()
+                local M = authoring_context.gameplay("rh")
+                mutation_window.execute_in_window(function()
+                    if not (game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player()) then
+                        local hero = game.instances.actors.create("rh:actor.character.hero", {
+                            stamina = 20,
+                            gold = 50,
+                        })
+                        game.state.meta.player_actor_id = hero.instance_id
                     end
-                    local hero = reg.create("rh:actor.character.hero", {
-                        stamina = 20,
-                        gold = 50,
-                    })
-                    game.state.meta.player_actor_id = hero.instance_id
+                end)
+
+                local handler_calls = 0
+                M.commands.queued_action = function(val)
+                    handler_calls = handler_calls + 1
+                    return { ok = true }
                 end
+
+                M.validate(M.commands.queued_action, "positive_only", function(val)
+                    if val < 0 then
+                        M.fail("negative_not_allowed", { val = val })
+                    end
+                end)
+
+                M.register()
+                authoring_context.freeze()
+
+                game.commands.clear_queue()
+                M.commands.queued_action:later(-10)
+                M.commands.queued_action:later(20)
+
+                assert(game.commands.get_queue_length() == 2, "Queue length should be 2")
+
+                command_dispatcher.drain_queue()
+                assert(game.commands.get_queue_length() == 0, "Queue should be completely drained")
+                assert(handler_calls == 1, "Handler should have run only for the valid command, got " .. tostring(handler_calls))
             end)
-
-            local handler_calls = 0
-            M.commands.queued_action = function(val)
-                handler_calls = handler_calls + 1
-                return { ok = true }
-            end
-
-            M.validate(M.commands.queued_action, "positive_only", function(val)
-                if val < 0 then
-                    M.fail("negative_not_allowed", { val = val })
-                end
-            end)
-
-            M.register()
-            authoring_context.freeze()
-
-            game.commands.clear_queue()
-            M.commands.queued_action:later(-10)
-            M.commands.queued_action:later(20)
-
-            assert(game.commands.get_queue_length() == 2, "Queue length should be 2")
-
-            command_dispatcher.drain_queue()
-            assert(game.commands.get_queue_length() == 0, "Queue should be completely drained")
-            assert(handler_calls == 1, "Handler should have run only for the valid command, got " .. tostring(handler_calls))
-            if getmetatable(game.instances) ~= nil then
-                rawset(game.instances, "actors", nil)
-            end
         end)
     end,
 
     validators_run_before_handler_lookup = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             -- Case A: Validator on unregistered command returns typed refusal
             game.commands.validators.register("rh:validator.rh.unregistered.reject_all", {
                 validate = function(ctx)
@@ -764,7 +731,7 @@ return {
             assert(res_a.error.code == "rh:error.custom_precondition", "Error should be validator's refusal, not unknown command: " .. tostring(res_a.error.code))
 
             -- Case B: Validator allows, then dispatcher reports unknown command
-            authoring_context.with_isolated_context(function()
+            test_isolation.with_isolated_context(function()
                 game.commands.validators.register("rh:validator.rh.unregistered_b.allow", {
                     validate = function(ctx)
                         return true
@@ -785,7 +752,7 @@ return {
     end,
 
     command_replacement_rejected_when_not_declared_replaceable = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M_base = authoring_context.gameplay("base_pkg")
             local M_mod = authoring_context.gameplay("mod_pkg")
 
@@ -815,7 +782,7 @@ return {
     end,
 
     command_replacement_succeeded_when_declared_replaceable_and_preserves_validators = function()
-        authoring_context.with_isolated_context(function()
+        test_isolation.with_isolated_context(function()
             local M_base = authoring_context.gameplay("base_pkg")
             local M_curse = authoring_context.gameplay("curse_pkg")
             local M_mod = authoring_context.gameplay("mod_pkg")

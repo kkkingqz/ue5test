@@ -60,7 +60,6 @@ public:
 
     TOptional<ESessionOperationOutcome> GetSessionOperationOutcome(uint64 OperationId) const;
 
-    FGV2SessionTransitionPolicy& GetTransitionPolicy() { return TransitionPolicy; }
     const FGV2SessionTransitionPolicy& GetTransitionPolicy() const { return TransitionPolicy; }
 
     void FailBootstrap(const FString& Code, const FString& Message);
@@ -77,52 +76,6 @@ public:
     // observable atomically with Ready, never for a session whose bootstrap ultimately
     // fails, even if the failure happens after the candidate itself was already valid.
     const FGV2SessionContentSnapshot* GetContentSnapshot() const { return ContentSnapshot.Get(); }
-
-    enum class EReplacementStage
-    {
-        Preflight,
-        Replacing,
-        Preparing,
-        Committed,
-        Aborted
-    };
-
-    class FSessionReplacementToken
-    {
-    public:
-        ~FSessionReplacementToken() = default;
-        FSessionReplacementToken(FSessionReplacementToken&&) = default;
-        FSessionReplacementToken& operator=(FSessionReplacementToken&&) = default;
-        FSessionReplacementToken(const FSessionReplacementToken&) = delete;
-        FSessionReplacementToken& operator=(const FSessionReplacementToken&) = delete;
-
-        EReplacementStage GetStage() const { return Stage; }
-        const FGV2SessionContentSnapshot& GetCandidate() const { check(Candidate.IsValid()); return *Candidate; }
-        FGV2SessionContentSnapshot& GetCandidate() { check(Candidate.IsValid()); return *Candidate; }
-
-    private:
-        friend class FGV2SessionCoordinator;
-        explicit FSessionReplacementToken(TUniquePtr<FGV2SessionContentSnapshot> InCandidate)
-            : Candidate(MoveTemp(InCandidate))
-            , Stage(EReplacementStage::Preflight)
-        {
-            check(Candidate.IsValid());
-        }
-
-        void TransitionTo(EReplacementStage NewStage)
-        {
-            Stage = NewStage;
-        }
-
-        TUniquePtr<FGV2SessionContentSnapshot> TakeCandidate()
-        {
-            check(Stage == EReplacementStage::Preparing || Stage == EReplacementStage::Committed);
-            return MoveTemp(Candidate);
-        }
-
-        TUniquePtr<FGV2SessionContentSnapshot> Candidate;
-        EReplacementStage Stage = EReplacementStage::Preflight;
-    };
 
     bool PublishUiBindings(
         const FString& UiInstanceId,
@@ -174,6 +127,52 @@ private:
         const FGV2PresentationPrepareContext& PrepareContext);
     void PumpIngress();
     void FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault);
+
+    enum class EReplacementStage
+    {
+        Preflight,
+        Replacing,
+        Preparing,
+        Committed,
+        Aborted
+    };
+
+    class FSessionReplacementToken
+    {
+    public:
+        ~FSessionReplacementToken() = default;
+        FSessionReplacementToken(FSessionReplacementToken&&) = default;
+        FSessionReplacementToken& operator=(FSessionReplacementToken&&) = default;
+        FSessionReplacementToken(const FSessionReplacementToken&) = delete;
+        FSessionReplacementToken& operator=(const FSessionReplacementToken&) = delete;
+
+        EReplacementStage GetStage() const { return Stage; }
+        const FGV2SessionContentSnapshot& GetCandidate() const { check(Candidate.IsValid()); return *Candidate; }
+        FGV2SessionContentSnapshot& GetCandidate() { check(Candidate.IsValid()); return *Candidate; }
+
+    private:
+        friend class FGV2SessionCoordinator;
+        explicit FSessionReplacementToken(TUniquePtr<FGV2SessionContentSnapshot> InCandidate)
+            : Candidate(MoveTemp(InCandidate))
+            , Stage(EReplacementStage::Preflight)
+        {
+            check(Candidate.IsValid());
+        }
+
+        void TransitionTo(EReplacementStage NewStage)
+        {
+            Stage = NewStage;
+        }
+
+        TUniquePtr<FGV2SessionContentSnapshot> TakeCandidate()
+        {
+            check(Stage == EReplacementStage::Preparing || Stage == EReplacementStage::Committed);
+            return MoveTemp(Candidate);
+        }
+
+        TUniquePtr<FGV2SessionContentSnapshot> Candidate;
+        EReplacementStage Stage = EReplacementStage::Preflight;
+    };
 
     bool BeginReplace(
         FSessionReplacementToken& Token,

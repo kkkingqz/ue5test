@@ -10,6 +10,8 @@ local registry_lifecycle = require("core:module.bootstrap.registry_lifecycle")
 local state_validator = require("core:module.runtime.state_validator")
 local authoring_context = require("core:module.authoring.context")
 local authoring_properties = require("core:module.authoring.properties")
+local service_registry = require("core:module.runtime.service_registry")
+local handler_registry = require("core:module.runtime.handler_registry")
 
 return {
     registry_lifecycle_module_present = function()
@@ -44,6 +46,23 @@ return {
             assert(desc[i].facade_path == exp, "descriptor order mismatch at index " .. i .. ": expected '" .. exp .. "', got '" .. tostring(desc[i].facade_path) .. "'")
             assert(type(desc[i].seal) == "function", "entry " .. exp .. " must have seal function")
             assert(type(desc[i].is_frozen) == "function", "entry " .. exp .. " must have is_frozen predicate")
+            if desc[i].path then
+                assert(type(desc[i].create) == "function", "facade entry " .. exp .. " must have create function")
+            end
+        end
+    end,
+
+    install_derives_from_descriptor = function()
+        local desc = registry_lifecycle.descriptor
+        for _, entry in ipairs(desc) do
+            if entry.path then
+                local cur = game
+                for _, seg in ipairs(entry.path) do
+                    assert(type(cur) == "table", "segment '" .. seg .. "' must exist on facade for entry '" .. entry.facade_path .. "'")
+                    cur = cur[seg]
+                end
+                assert(cur ~= nil, "registry object for '" .. entry.facade_path .. "' must be installed on game facade")
+            end
         end
     end,
 
@@ -177,5 +196,73 @@ return {
         end)
         assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
             "adding property to game.commands must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+    end,
+
+    facade_rawset_protection_and_package_isolation = function()
+        -- 1. Attempting rawset directly into game facade must fail
+        local ok, err = pcall(function()
+            rawset(game, "services", {})
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "rawset on game.services must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            rawset(game, "unauthorized_slot", {})
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "rawset of ad hoc slot on game must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            rawset(_G.game, "actions", {})
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "rawset on _G.game.actions must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        -- 2. Attempting rawset into protected sub-facades must fail
+        ok, err = pcall(function()
+            rawset(game.commands, "handlers", {})
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "rawset on game.commands.handlers must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            rawset(game.events, "subscribers", {})
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "rawset on game.events.subscribers must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            rawset(game.instances, "actors", {})
+        end)
+        assert(not ok and string.find(tostring(err), "FacadeSlotAssignmentDisallowed"),
+            "rawset on game.instances.actors must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
+
+        -- 3. Verify production modules do not export with_isolated_* helpers to live VM
+        assert(service_registry.with_isolated_services == nil,
+            "service_registry must not export with_isolated_services in production")
+        assert(handler_registry.with_isolated_handlers == nil,
+            "handler_registry must not export with_isolated_handlers in production")
+        assert(authoring_context.with_isolated_validators == nil,
+            "authoring_context must not export with_isolated_validators in production")
+        assert(authoring_context.with_isolated_context == nil,
+            "authoring_context must not export with_isolated_context in production")
+
+        -- 4. Verify unauthorized code cannot call registry_lifecycle.with_isolated_facade_slot without valid handle
+        ok, err = pcall(function()
+            registry_lifecycle.with_isolated_facade_slot(nil, game, "services", {}, function() end)
+        end)
+        assert(not ok and string.find(tostring(err), "UnauthorizedIsolation"),
+            "calling with_isolated_facade_slot with nil handle must fail with UnauthorizedIsolation, got: " .. tostring(err))
+
+        ok, err = pcall(function()
+            registry_lifecycle.with_isolated_facade_slot({}, game, "services", {}, function() end)
+        end)
+        assert(not ok and string.find(tostring(err), "UnauthorizedIsolation"),
+            "calling with_isolated_facade_slot with forged handle must fail with UnauthorizedIsolation, got: " .. tostring(err))
+
+        -- 5. Ordinary rawset on non-facade tables must work without hindrance
+        local regular_tbl = {}
+        rawset(regular_tbl, "test_key", 42)
+        assert(regular_tbl.test_key == 42, "rawset must work normally on non-facade tables")
     end,
 }

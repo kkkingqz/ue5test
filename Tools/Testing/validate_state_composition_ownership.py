@@ -27,24 +27,137 @@ SESSION_IMPL = SOURCE_ROOT / "Private" / "GV2RuntimeSession.cpp"
 SCRIPTS_ROOT = REPO_ROOT / "Scripts"
 TESTS_ROOT = REPO_ROOT / "Tests"
 
-FORBIDDEN_SESSION_SECTION_LITERALS = [
-    '"meta"',
-    '"mods"',
-    '"player"',
-    '"actors"',
-    '"item_instances"',
-    '"quests"',
-    '"definitions"',
-]
+# Fixed boundary handles:
+# - Global facade "game", boundary assignment slot "state", facade sub-tables, bootstrap globals.
+FIXED_BOUNDARY_HANDLES = {
+    "game",
+    "state",
+    "runtime",
+    "ui",
+    "debug",
+    "null",
+    "repository",
+    "save_slots",
+    "require",
+    "require_base",
+    "next",
+}
 
-FORBIDDEN_SESSION_SUBKEY_LITERALS = [
-    '"instance_counters"',
-    '"prng"',
-    '"time"',
-    '"schema_version"',
-    '"save_version"',
-    '"save_id"',
-]
+# Generic Lua metamethods:
+GENERIC_METAMETHODS = {
+    "__index",
+    "__newindex",
+    "__metatable",
+    "__pairs",
+}
+
+# Generic type, diagnostic, session, fault, and package lifetime fields:
+GENERIC_TYPE_AND_LIFETIME = {
+    "code",
+    "message",
+    "error",
+    "phase",
+    "package_id",
+    "packages",
+    "script_set_hash",
+    "session_generation",
+    "seed_hex",
+    "canonical_id",
+    "requested_id",
+    "registry_path",
+}
+
+# Module manifest & dependency graph fields:
+MODULE_MANIFEST_AND_SPEC = {
+    "modules",
+    "dependencies",
+    "replaceable",
+    "authoring",
+    "module_id",
+    "module",
+}
+
+# Canonical core module IDs:
+FIXED_MODULE_IDS = {
+    "core:module.authoring.context",
+    "core:module.bootstrap.main",
+    "core:module.bootstrap.registry_lifecycle",
+    "core:module.runtime.load",
+    "core:module.runtime.migrate",
+    "core:module.runtime.mutation_window",
+    "core:module.runtime.state_composition",
+    "core:module.runtime.state_validator",
+}
+
+# Canonical lifecycle entry point functions:
+FIXED_LIFECYCLE_ENTRY_POINTS = {
+    "compose_default_state",
+    "create_authoring_environment",
+    "decode_and_prepare",
+    "get_canonical_state_hash",
+    "guard_state",
+    "migrate_state",
+    "restore_instances",
+    "seal",
+    "stop",
+    "take_pending_screen",
+    "unregister",
+    "validate_state",
+    "validate_state_tree",
+    "verify_complete",
+}
+
+# Fixed repository/save service API methods:
+FIXED_SERVICE_API_METHODS = {
+    "get",
+    "require",
+    "list",
+    "exists",
+    "write",
+}
+
+# Presentation document deserialization fields:
+PRESENTATION_DOCUMENT_FIELDS = {
+    "route",
+    "screen_id",
+    "layer",
+    "instance_key",
+    "fields",
+    "value",
+    "modals",
+    "overlays",
+    "revision",
+    "schema_id",
+    "ui_instance_id",
+}
+
+CLASSIFIED_ALLOWED_LITERALS = (
+    FIXED_BOUNDARY_HANDLES
+    | GENERIC_METAMETHODS
+    | GENERIC_TYPE_AND_LIFETIME
+    | MODULE_MANIFEST_AND_SPEC
+    | FIXED_MODULE_IDS
+    | FIXED_LIFECYCLE_ENTRY_POINTS
+    | FIXED_SERVICE_API_METHODS
+    | PRESENTATION_DOCUMENT_FIELDS
+)
+
+# Known canonical state section and subkey names (schema-shaped traversal is strictly forbidden in C++):
+FORBIDDEN_SCHEMA_TRAVERSAL_LITERALS = {
+    "meta",
+    "mods",
+    "player",
+    "actors",
+    "item_instances",
+    "quests",
+    "definitions",
+    "instance_counters",
+    "prng",
+    "time",
+    "schema_version",
+    "save_version",
+    "save_id",
+}
 
 FORBIDDEN_CPP_IDENTIFIERS = [
     "MergeStateContribution",
@@ -63,6 +176,27 @@ def strip_cpp_comments_and_raw_strings(content: str) -> str:
     return content
 
 
+def extract_lua_c_api_accesses(source: str) -> list[tuple[int, str, str]]:
+    """Extracts (line_number, api_function, literal_arg) for all Lua table/field access calls."""
+    lines = source.splitlines()
+    accesses = []
+    field_pattern = re.compile(
+        r'\b(lua_getfield|lua_setfield)\s*\(\s*[^,]+,\s*[^,]+,\s*"([^"]+)"\s*\)'
+    )
+    global_pattern = re.compile(
+        r'\b(lua_getglobal|lua_setglobal)\s*\(\s*[^,]+,\s*"([^"]+)"\s*\)'
+    )
+    for idx, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("*"):
+            continue
+        for match in field_pattern.finditer(line):
+            accesses.append((idx, match.group(1), match.group(2)))
+        for match in global_pattern.finditer(line):
+            accesses.append((idx, match.group(1), match.group(2)))
+    return accesses
+
+
 def validate_session_implementation(session_file: Path) -> list[str]:
     errors: list[str] = []
     if not session_file.exists():
@@ -71,20 +205,47 @@ def validate_session_implementation(session_file: Path) -> list[str]:
     content = session_file.read_text(encoding="utf-8")
     stripped = strip_cpp_comments_and_raw_strings(content)
 
-    rel_path = session_file.relative_to(REPO_ROOT) if session_file.is_relative_to(REPO_ROOT) else session_file.name
+    rel_path = (
+        session_file.relative_to(REPO_ROOT)
+        if session_file.is_relative_to(REPO_ROOT)
+        else session_file.name
+    )
 
-    for literal in FORBIDDEN_SESSION_SECTION_LITERALS:
-        if literal in stripped:
+    accesses = extract_lua_c_api_accesses(stripped)
+    for line_idx, api_call, literal in accesses:
+        # Check 1: schema-shaped traversal / canonical state section access
+        if literal in FORBIDDEN_SCHEMA_TRAVERSAL_LITERALS:
             errors.append(
-                f"{rel_path}: forbidden schema-shaped section literal {literal} found in session implementation"
+                f"{rel_path}:{line_idx}: forbidden schema-shaped state access literal '{literal}' in {api_call}(). "
+                f"Canonical state composition and traversal belong exclusively to Lua."
+            )
+            continue
+
+        # Check 2: "state" must only be assigned via lua_setfield (game.state = opaque_tree)
+        # Any lua_getfield("state") is an attempt to read/traverse canonical state from C++
+        if literal == "state" and api_call != "lua_setfield":
+            errors.append(
+                f"{rel_path}:{line_idx}: forbidden reading of canonical state handle via {api_call}('state'). "
+                f"Canonical state boundary handle may only be assigned via lua_setfield."
+            )
+            continue
+
+        # Check 3: Every literal must belong to classified allowed categories
+        if literal not in CLASSIFIED_ALLOWED_LITERALS:
+            errors.append(
+                f"{rel_path}:{line_idx}: unclassified Lua C API access literal '{literal}' in {api_call}(). "
+                f"All semantic state and boundary accesses in session implementation must be classified."
             )
 
-    for literal in FORBIDDEN_SESSION_SUBKEY_LITERALS:
-        if literal in stripped:
+    # Check 4: Global presence of forbidden schema literals as raw tokens
+    for literal in FORBIDDEN_SCHEMA_TRAVERSAL_LITERALS:
+        pattern = rf'"{re.escape(literal)}"'
+        if re.search(pattern, stripped):
             errors.append(
-                f"{rel_path}: forbidden schema-shaped subkey literal {literal} found in session implementation"
+                f"{rel_path}: forbidden schema-shaped literal '\"{literal}\"' found in session implementation"
             )
 
+    # Check 5: No forbidden native merge identifiers
     for identifier in FORBIDDEN_CPP_IDENTIFIERS:
         if re.search(r"\b" + re.escape(identifier) + r"\b", stripped):
             errors.append(
@@ -195,7 +356,21 @@ def run_self_test() -> int:
             print("Self-test failed: did not detect forbidden section literal '\"meta\"'")
             return 1
 
-        # Mutation D: missing compose_default_state in Lua module
+        # Mutation D: unclassified new section name in lua_getfield
+        bad_session.write_text('void ReadSec(lua_State* L) { lua_getfield(L, -1, "inventory"); }', encoding="utf-8")
+        errors = validate_session_implementation(bad_session)
+        if not any("unclassified Lua C API access literal 'inventory'" in e for e in errors):
+            print("Self-test failed: did not detect unclassified Lua C API access literal 'inventory'")
+            return 1
+
+        # Mutation E: forbidden reading of canonical state via lua_getfield("state")
+        bad_session.write_text('void ReadState(lua_State* L) { lua_getfield(L, -1, "state"); }', encoding="utf-8")
+        errors = validate_session_implementation(bad_session)
+        if not any("forbidden reading of canonical state handle" in e for e in errors):
+            print("Self-test failed: did not detect forbidden reading of canonical state via lua_getfield('state')")
+            return 1
+
+        # Mutation F: missing compose_default_state in Lua module
         mut_scripts_dir = tmp_path / "Scripts"
         (mut_scripts_dir / "runtime").mkdir(parents=True)
         bad_lua = mut_scripts_dir / "runtime" / "state_composition.lua"

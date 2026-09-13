@@ -835,75 +835,28 @@ function M.is_frozen()
     return is_frozen
 end
 
-function M.with_isolated_validators(fn)
-    local validator_registry = require("core:module.runtime.validator_registry")
-    local old_validators = game and game.commands and game.commands.validators
-    local fresh_registry = validator_registry.create_registry()
-    if not game then game = {} end
-    if not game.commands then
-        rawset(game, "commands", {})
-    end
-
-    if getmetatable(game.commands) ~= nil then
-        rawset(game.commands, "validators", fresh_registry)
-    else
-        rawset(game.commands, "validators", fresh_registry)
-    end
-
-    local prev_all = all_declared_validators
-    local prev_scope = current_scope
-    all_declared_validators = {}
-    current_scope = { kind = "none" }
-
-    local ok, err = pcall(fn)
-
-    all_declared_validators = prev_all
-    current_scope = prev_scope
-
-    if getmetatable(game.commands) ~= nil then
-        rawset(game.commands, "validators", nil)
-    else
-        rawset(game.commands, "validators", old_validators)
-    end
-
-    if not ok then
-        error(err, 0)
-    end
+function M.snapshot_test_state()
+    return {
+        all_declared_validators = all_declared_validators,
+        current_scope = current_scope,
+        all_referenced_services = all_referenced_services,
+        is_frozen = is_frozen,
+    }
 end
 
-function M.with_isolated_context(fn)
-    local prev_frozen = is_frozen
+function M.restore_test_state(snap)
+    if not snap then return end
+    all_declared_validators = snap.all_declared_validators
+    current_scope = snap.current_scope
+    all_referenced_services = snap.all_referenced_services
+    is_frozen = snap.is_frozen
+end
+
+function M.reset_test_state()
+    all_declared_validators = {}
+    current_scope = { kind = "none" }
+    all_referenced_services = {}
     is_frozen = false
-    local handler_registry = require("core:module.runtime.handler_registry")
-    local event_bus = require("core:module.runtime.event_bus")
-    local service_registry = require("core:module.runtime.service_registry")
-    local ok, res = pcall(function()
-        return handler_registry.with_isolated_handlers(function()
-            return event_bus.with_isolated_subscribers(function()
-                return service_registry.with_isolated_services(function()
-                    return M.with_isolated_validators(function()
-                        local prev_referenced_services = all_referenced_services
-                        all_referenced_services = {}
-                        local prev_phase = game and game.runtime and game.runtime.phase
-                        local ok_inner, res_inner = pcall(fn)
-                        all_referenced_services = prev_referenced_services
-                        if game and game.runtime and prev_phase then
-                            game.runtime.phase = prev_phase
-                        end
-                        if not ok_inner then
-                            error(res_inner, 0)
-                        end
-                        return res_inner
-                    end)
-                end)
-            end)
-        end)
-    end)
-    is_frozen = prev_frozen
-    if not ok then
-        error(res, 0)
-    end
-    return res
 end
 
 function M.create_authoring_environment(package_id, opt_module_id)

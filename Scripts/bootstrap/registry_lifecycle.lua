@@ -83,7 +83,7 @@ local DESCRIPTOR = {
     {
         facade_path = "services",
         path = { "services" },
-        factory = function()
+        create = function()
             return service_registry.create_registry()
         end,
         seal = function(reg)
@@ -96,7 +96,7 @@ local DESCRIPTOR = {
     {
         facade_path = "actions",
         path = { "actions" },
-        factory = function()
+        create = function()
             return action_registry.create_registry()
         end,
         seal = function(reg)
@@ -109,7 +109,7 @@ local DESCRIPTOR = {
     {
         facade_path = "entity_extensions",
         path = { "entity_extensions" },
-        factory = function()
+        create = function()
             return entity_extension_registry.create_registry()
         end,
         seal = function(reg)
@@ -122,7 +122,7 @@ local DESCRIPTOR = {
     {
         facade_path = "commands.validators",
         path = { "commands", "validators" },
-        factory = function()
+        create = function()
             return validator_registry.create_registry()
         end,
         seal = function(reg)
@@ -135,7 +135,7 @@ local DESCRIPTOR = {
     {
         facade_path = "commands.handlers",
         path = { "commands", "handlers" },
-        factory = function()
+        create = function()
             return handler_registry.create_registry()
         end,
         seal = function(reg)
@@ -148,6 +148,13 @@ local DESCRIPTOR = {
     {
         facade_path = "events.subscribers",
         path = { "events", "subscribers" },
+        create = function()
+            local sub_reg, admin = subscriber_registry.create_registry()
+            if event_bus.set_subscriber_admin then
+                event_bus.set_subscriber_admin(admin)
+            end
+            return sub_reg
+        end,
         seal = function(reg)
             return reg.freeze()
         end,
@@ -158,6 +165,24 @@ local DESCRIPTOR = {
     {
         facade_path = "events",
         path = { "events" },
+        create = function(existing)
+            local events = existing or {}
+            rawset(events, "enqueue", event_bus.enqueue)
+            rawset(events, "emit", event_bus.emit)
+            if events.subscribers and events.subscribers.register then
+                rawset(events, "subscribe", events.subscribers.register)
+            end
+            rawset(events, "freeze", event_bus.freeze)
+            rawset(events, "is_frozen", event_bus.is_frozen)
+            rawset(events, "get_published_events", event_bus.get_published_events)
+            rawset(events, "clear_published_events", event_bus.clear_published_events)
+            rawset(events, "set_pump_limit", event_bus.set_pump_limit)
+            rawset(events, "get_pump_limit", event_bus.get_pump_limit)
+            rawset(events, "reset_pump_limit", event_bus.reset_pump_limit)
+            rawset(events, "get_queue_length", event_bus.get_queue_length)
+            rawset(events, "is_envelope", event_envelope.is_envelope)
+            return events
+        end,
         seal = function(reg)
             return reg.freeze()
         end,
@@ -168,7 +193,7 @@ local DESCRIPTOR = {
     {
         facade_path = "instances.actors",
         path = { "instances", "actors" },
-        factory = function()
+        create = function()
             return actor_registry.create_registry()
         end,
         seal = function(reg)
@@ -181,6 +206,20 @@ local DESCRIPTOR = {
     {
         facade_path = "instances",
         path = { "instances" },
+        create = function(existing)
+            local instances = existing or {}
+            rawset(instances, "world", world.get_world)
+            local inst_reg = instance_registry.get_default_registry()
+            rawset(instances, "register_kind", inst_reg.register_kind)
+            rawset(instances, "is_registered_kind", inst_reg.is_registered_kind)
+            rawset(instances, "get_section_name", inst_reg.get_section_name)
+            rawset(instances, "create", inst_reg.create)
+            rawset(instances, "freeze", inst_reg.freeze)
+            rawset(instances, "is_frozen", inst_reg.is_frozen)
+            rawset(instances, "kinds", inst_reg.kinds)
+            rawset(instances, "clear_for_test", inst_reg.clear_for_test)
+            return instances
+        end,
         seal = function(reg)
             return reg.freeze()
         end,
@@ -191,7 +230,7 @@ local DESCRIPTOR = {
     {
         facade_path = "presentation",
         path = { "presentation" },
-        factory = function()
+        create = function()
             return presentation_source.create_registry()
         end,
         seal = function(reg)
@@ -225,6 +264,21 @@ local DESCRIPTOR = {
 
 M.descriptor = DESCRIPTOR
 
+local _native_rawset = rawset
+local protected_facade_tables = setmetatable({}, { __mode = "k" })
+local facade_storage = setmetatable({}, { __mode = "k" })
+local BOOTSTRAP_ISOLATION_HANDLE = { id = "registry_lifecycle_private_handle" }
+
+local function safe_rawset(tbl, key, value)
+    local protected_name = protected_facade_tables[tbl]
+    if protected_name then
+        error("FacadeSlotAssignmentDisallowed: cannot rawset into protected facade table '" .. tostring(protected_name) .. "'", 2)
+    end
+    return _native_rawset(tbl, key, value)
+end
+rawset = safe_rawset
+_G.rawset = safe_rawset
+
 local function protect_facade_table(tbl, table_name, allowed_subtables)
     if getmetatable(tbl) ~= nil then
         return tbl
@@ -234,6 +288,9 @@ local function protect_facade_table(tbl, table_name, allowed_subtables)
         storage[k] = v
         tbl[k] = nil
     end
+
+    protected_facade_tables[tbl] = table_name
+    facade_storage[tbl] = storage
 
     local mt = {
         __index = storage,
@@ -260,6 +317,28 @@ local function protect_facade_table(tbl, table_name, allowed_subtables)
     return tbl
 end
 
+function M.get_isolation_handle()
+    return BOOTSTRAP_ISOLATION_HANDLE
+end
+
+function M.with_isolated_facade_slot(handle, facade_tbl, slot_key, isolated_value, fn)
+    if handle ~= BOOTSTRAP_ISOLATION_HANDLE then
+        error("UnauthorizedIsolation: invalid bootstrap isolation handle", 2)
+    end
+    local storage = facade_storage[facade_tbl]
+    if not storage then
+        error("IsolationTargetNotProtected: table is not a protected facade table", 2)
+    end
+    local old_val = storage[slot_key]
+    storage[slot_key] = isolated_value
+    local ok, res_or_err = pcall(fn)
+    storage[slot_key] = old_val
+    if not ok then
+        error(res_or_err, 0)
+    end
+    return res_or_err
+end
+
 function M.install()
     if not _G.game then
         _G.game = {}
@@ -276,101 +355,48 @@ function M.install()
         rawset(runtime, "phase", "idle")
     end
 
-    -- 1. Services
-    if not game_ref.services then
-        rawset(game_ref, "services", service_registry.create_registry())
+    -- Install all engine registries derived strictly from DESCRIPTOR
+    for _, entry in ipairs(DESCRIPTOR) do
+        if entry.path and entry.create then
+            local cur = game_ref
+            for i = 1, #entry.path - 1 do
+                local seg = entry.path[i]
+                local sub = rawget(cur, seg) or cur[seg]
+                if not sub then
+                    sub = {}
+                    rawset(cur, seg, sub)
+                end
+                cur = sub
+            end
+            local leaf = entry.path[#entry.path]
+            local existing = rawget(cur, leaf) or cur[leaf]
+            if not existing then
+                rawset(cur, leaf, entry.create(cur, game_ref))
+            elseif type(entry.create) == "function" and (entry.facade_path == "events" or entry.facade_path == "instances") then
+                entry.create(existing, game_ref)
+            end
+        end
     end
 
-    -- 2. Actions
-    if not game_ref.actions then
-        rawset(game_ref, "actions", action_registry.create_registry())
-    end
-
-    -- 3. Entity extensions
-    if not game_ref.entity_extensions then
-        rawset(game_ref, "entity_extensions", entity_extension_registry.create_registry())
-    end
-
-    -- 4. Commands (validators, handlers)
     local commands = game_ref.commands
-    if not commands then
-        commands = {}
-        rawset(game_ref, "commands", commands)
-    end
-    if not commands.validators then
-        rawset(commands, "validators", validator_registry.create_registry())
-    end
-    if not commands.handlers then
-        rawset(commands, "handlers", handler_registry.create_registry())
-    end
-    if not commands.enqueue then
+    if commands and not commands.enqueue then
         rawset(commands, "enqueue", command_dispatcher.enqueue)
         rawset(commands, "clear_queue", command_dispatcher.clear_queue)
         rawset(commands, "get_queue_length", command_dispatcher.get_queue_length)
         rawset(commands, "drain_queue", command_dispatcher.drain_queue)
     end
-    protect_facade_table(commands, "game.commands")
-
-    -- 5. Events (subscribers, event bus)
-    local events = game_ref.events
-    if not events then
-        events = {}
-        rawset(game_ref, "events", events)
-    end
-    if not events.subscribers then
-        local sub_reg, admin = subscriber_registry.create_registry()
-        rawset(events, "subscribers", sub_reg)
-        if event_bus.set_subscriber_admin then
-            event_bus.set_subscriber_admin(admin)
-        end
-    end
-    if not events.enqueue then
-        rawset(events, "enqueue", event_bus.enqueue)
-        rawset(events, "emit", event_bus.emit)
-        rawset(events, "subscribe", events.subscribers.register)
-        rawset(events, "freeze", event_bus.freeze)
-        rawset(events, "is_frozen", event_bus.is_frozen)
-        rawset(events, "get_published_events", event_bus.get_published_events)
-        rawset(events, "clear_published_events", event_bus.clear_published_events)
-        rawset(events, "set_pump_limit", event_bus.set_pump_limit)
-        rawset(events, "get_pump_limit", event_bus.get_pump_limit)
-        rawset(events, "reset_pump_limit", event_bus.reset_pump_limit)
-        rawset(events, "get_queue_length", event_bus.get_queue_length)
-        rawset(events, "is_envelope", event_envelope.is_envelope)
-    end
-    protect_facade_table(events, "game.events")
-
-    -- 6. Instances (actors, general instances, world wrapper)
-    local instances = game_ref.instances
-    if not instances then
-        instances = {}
-        rawset(game_ref, "instances", instances)
-    end
-    if not instances.actors then
-        rawset(instances, "actors", actor_registry.create_registry())
-    end
-    if not instances.world then
-        rawset(instances, "world", world.get_world)
-    end
-    if not instances.register_kind then
-        local inst_reg = instance_registry.get_default_registry()
-        rawset(instances, "register_kind", inst_reg.register_kind)
-        rawset(instances, "is_registered_kind", inst_reg.is_registered_kind)
-        rawset(instances, "get_section_name", inst_reg.get_section_name)
-        rawset(instances, "create", inst_reg.create)
-        rawset(instances, "freeze", inst_reg.freeze)
-        rawset(instances, "is_frozen", inst_reg.is_frozen)
-        rawset(instances, "kinds", inst_reg.kinds)
-        rawset(instances, "clear_for_test", inst_reg.clear_for_test)
-    end
-    protect_facade_table(instances, "game.instances")
-
-    -- 7. Presentation
-    if not game_ref.presentation then
-        rawset(game_ref, "presentation", presentation_source.create_registry())
+    if commands then
+        protect_facade_table(commands, "game.commands")
     end
 
-    -- 8. Random (CFC-07A)
+    if game_ref.events then
+        protect_facade_table(game_ref.events, "game.events")
+    end
+
+    if game_ref.instances then
+        protect_facade_table(game_ref.instances, "game.instances")
+    end
+
     local random_facade = game_ref.random
     if not random_facade then
         random_facade = {
@@ -382,17 +408,12 @@ function M.install()
     end
     protect_facade_table(random_facade, "game.random")
 
-    -- Protect top-level game table from ad hoc slot additions and registry replacement
-    local allowed_registry_slots = {
-        services = true,
-        actions = true,
-        entity_extensions = true,
-        commands = true,
-        events = true,
-        instances = true,
-        presentation = true,
-        random = true,
-    }
+    local allowed_registry_slots = { random = true }
+    for _, entry in ipairs(DESCRIPTOR) do
+        if entry.path and entry.path[1] then
+            allowed_registry_slots[entry.path[1]] = true
+        end
+    end
     protect_facade_table(game_ref, "game", allowed_registry_slots)
 end
 

@@ -90,23 +90,4 @@ function M.register(_ctx)
     -- Registration managed by core:module.bootstrap.registry_lifecycle
 end
 
-function M.with_isolated_services(fn)
-    local old_services = game and game.services
-    local fresh_registry = M.create_registry()
-    if not game then
-        game = {}
-    end
-    rawset(game, "services", fresh_registry)
-
-    local ok, err = pcall(fn)
-    if getmetatable(game) ~= nil then
-        rawset(game, "services", nil)
-    else
-        rawset(game, "services", old_services)
-    end
-    if not ok then
-        error(err, 0)
-    end
-end
-
 return M

@@ -10,7 +10,7 @@ local authoring_context = require("core:module.authoring.context")
 local authoring_commands = require("core:module.authoring.commands")
 local tagged_ref = require("core:module.authoring.tagged_ref")
 local mutation_window = require("core:module.runtime.mutation_window")
-local handler_registry = require("core:module.runtime.handler_registry")
+local test_isolation = require("core:module.runtime.test_isolation")
 local command_dispatcher = require("core:module.runtime.command_dispatcher")
 
 local function ensure_player(initial_stamina, initial_gold)
@@ -34,7 +34,7 @@ end
 
 return {
     commands_proxy_declaration_and_descriptor_stability = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local M = authoring_context.gameplay("rh")
             assert(M.commands ~= nil, "M.commands proxy must exist")
 
@@ -70,7 +70,7 @@ return {
     end,
 
     commands_proxy_errors_on_unknown_key_after_freeze = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local M = authoring_context.gameplay("rh")
             M.commands.valid_cmd = function() end
 
@@ -94,7 +94,7 @@ return {
     end,
 
     argument_canonicalization_and_rehydration = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local player = nil
             mutation_window.execute_in_window(function()
                 player = ensure_player(20, 50)
@@ -148,7 +148,7 @@ return {
     end,
 
     fail_before_mutation_returns_typed_refusal = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local player = nil
             local initial_gold = 0
             mutation_window.execute_in_window(function()
@@ -183,7 +183,7 @@ return {
     end,
 
     fail_after_mutation_throws_authoring_fail_after_mutation = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             mutation_window.execute_in_window(function()
                 ensure_player(20, 50)
             end)
@@ -211,7 +211,7 @@ return {
     end,
 
     nested_run_rejected_from_inside_command_handler = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             mutation_window.execute_in_window(function()
                 ensure_player(20, 50)
             end)
@@ -239,7 +239,7 @@ return {
     end,
 
     later_enqueues_and_executes_in_deferred_queue = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local player = nil
             local initial_gold = 0
             mutation_window.execute_in_window(function()

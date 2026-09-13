@@ -5,7 +5,7 @@
 
 local authoring_context = require("core:module.authoring.context")
 local mutation_window = require("core:module.runtime.mutation_window")
-local handler_registry = require("core:module.runtime.handler_registry")
+local test_isolation = require("core:module.runtime.test_isolation")
 local screens = require("core:module.presentation.screen_requests")
 
 return {
@@ -54,7 +54,7 @@ return {
     end,
 
     implicit_command_returns_and_fail_normalization = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
 
             local local_multiplier = 2
@@ -145,7 +145,7 @@ return {
     end,
 
     preconditions_and_non_local_exit = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
 
             local hero = nil
@@ -248,7 +248,7 @@ return {
     end,
 
     spend_operations_and_precondition_not_checked_fault = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
 
             mutation_window.execute_in_window(function()
@@ -306,7 +306,7 @@ return {
     end,
 
     command_handlers_receive_definition_handles = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             local mod, env = authoring_context.create_authoring_environment("rh")
 
             mutation_window.execute_in_window(function()
@@ -356,7 +356,7 @@ return {
     end,
 
     unified_actor_domain_api = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             if game and game.instances and game.instances.clear_for_test then
                 game.instances.clear_for_test()
                 game.instances.register_kind("item")
@@ -470,7 +470,7 @@ return {
     end,
 
     automatic_invalidation_after_successful_command = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             game.presentation.clear_for_test()
 
             local mod, env = authoring_context.create_authoring_environment("rh")
@@ -570,7 +570,7 @@ return {
     end,
 
     general_buy_command_supports_arbitrary_item_definitions = function()
-        handler_registry.with_isolated_handlers(function()
+        test_isolation.with_isolated_handlers(function()
             if game and game.instances and game.instances.clear_for_test then
                 game.instances.clear_for_test()
                 game.instances.register_kind("item")
@@ -688,7 +688,7 @@ return {
 
     entity_method_fail_package_attribution = function()
         game.entity_extensions.with_isolated_extensions(function()
-            handler_registry.with_isolated_handlers(function()
+            test_isolation.with_isolated_handlers(function()
                 local mod, env = authoring_context.create_authoring_environment("rh", "rh:authoring.test_fail")
 
                 -- Declare an Actor method in package 'rh' that calls fail()

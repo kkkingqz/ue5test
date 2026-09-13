@@ -2886,15 +2886,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     "GV2.Runtime.ContentCore.SchemaCacheSessionScoping",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-// PAH-04A: two sequential sessions -- here, two sequential RebuildSchemaCacheForSession
-// calls, the exact production entry point FGV2SessionCoordinator::StartSession makes --
-// each with their own resolved package roots, must see only their own session's schemas.
+// PAH-04A / CFC-04: two sequential sessions -- here, two sequential snapshot schema cache
+// instances created per session candidate (mirroring what FGV2SessionCoordinator::StartSession
+// candidate building does for session replacement) -- each with their own resolved package roots,
+// must see only their own session's schemas.
 // The core-decoupling gate forbids a game-package namespace literal anywhere under
 // Source/, so this uses two temporary, hand-written *.schema.json5 fixtures under the
 // core namespace instead of real higher-package GameData content -- proving both
 // directions a one-sided real-content asymmetry could only prove one of: schema present
-// in root set 1 and absent from set 2, AND vice versa, AND that rebuilding truly
-// replaces rather than accumulates (set 1's schema must vanish once set 2 is active,
+// in root set 1 and absent from set 2, AND vice versa, AND that candidate creation truly
+// isolates rather than accumulates (set 1's schema must vanish once set 2 is active,
 // not just coexist with it).
 bool FGV2SchemaCacheSessionScopingTest::RunTest(const FString& Parameters)
 {

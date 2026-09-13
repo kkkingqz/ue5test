@@ -12,6 +12,17 @@ enum class ESessionTransitionKind : uint8
     Shutdown
 };
 
+inline constexpr uint8 SessionTransitionKindCount = 4;
+static_assert(static_cast<uint8>(ESessionTransitionKind::Shutdown) + 1 == SessionTransitionKindCount,
+    "SessionTransitionKindCount must match the number of ESessionTransitionKind enumerators.");
+
+inline constexpr ESessionTransitionKind AllSessionTransitionKinds[SessionTransitionKindCount] = {
+    ESessionTransitionKind::Menu,
+    ESessionTransitionKind::NewGame,
+    ESessionTransitionKind::LoadSave,
+    ESessionTransitionKind::Shutdown,
+};
+
 inline const TCHAR* LexToString(ESessionTransitionKind Kind)
 {
     switch (Kind)
@@ -25,7 +36,6 @@ inline const TCHAR* LexToString(ESessionTransitionKind Kind)
     case ESessionTransitionKind::Shutdown:
         return TEXT("Shutdown");
     }
-    return TEXT("Unknown");
 }
 
 inline ESessionTransitionKind ToTransitionKind(ESessionStartMode Mode)
@@ -39,7 +49,6 @@ inline ESessionTransitionKind ToTransitionKind(ESessionStartMode Mode)
     case ESessionStartMode::LoadSave:
         return ESessionTransitionKind::LoadSave;
     }
-    return ESessionTransitionKind::NewGame;
 }
 
 // Independent transition oracle matrix for session & application states
