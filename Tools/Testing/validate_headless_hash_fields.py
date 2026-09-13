@@ -19,6 +19,7 @@ MANIFEST_HEADER_PATH = REPO_ROOT / "Source" / "GV2RuntimeCore" / "Public" / "GV2
 DIGEST_HEADER_PATH = REPO_ROOT / "Source" / "GV2RuntimeCore" / "Public" / "GV2RuntimeCore" / "GV2RunDigest.h"
 MANIFEST_CPP_PATH = REPO_ROOT / "Source" / "GV2RuntimeCore" / "Private" / "GV2RunManifest.cpp"
 DIGEST_CPP_PATH = REPO_ROOT / "Source" / "GV2RuntimeCore" / "Private" / "GV2RunDigest.cpp"
+CODEC_HELPERS_PATH = REPO_ROOT / "Source" / "GV2RuntimeCore" / "Private" / "GV2RunCodecHelpers.h"
 
 # Independent expected field policy table:
 # (struct_name, member_name, json_field_name): policy_dict
@@ -152,8 +153,40 @@ def extract_struct_members(header_source: str, struct_name: str) -> list[str]:
     return members
 
 
-def extract_find_fields(cpp_source: str, function_name: str) -> list[str]:
-    """Extracts field names queried via FindField(\"...\") in a given function."""
+def validate_codec_helpers(helpers_source: str) -> list[str]:
+    """Validates that GV2RunCodecHelpers.h defines required and optional SHA-256 helpers that invoke IsCanonicalSha256."""
+    violations = []
+    stripped = strip_comments(helpers_source)
+    for helper_name in ("ReadRequiredCanonicalSha256Field", "ReadOptionalCanonicalSha256Field"):
+        fn_idx = stripped.find(helper_name)
+        if fn_idx < 0:
+            violations.append(f"GV2RunCodecHelpers.h is missing helper definition: {helper_name}")
+            continue
+        open_brace = stripped.find("{", fn_idx)
+        if open_brace < 0:
+            violations.append(f"GV2RunCodecHelpers.h: could not find body for {helper_name}")
+            continue
+        depth = 0
+        end_brace = -1
+        for i in range(open_brace, len(stripped)):
+            if stripped[i] == "{":
+                depth += 1
+            elif stripped[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    end_brace = i
+                    break
+        if end_brace < 0:
+            violations.append(f"GV2RunCodecHelpers.h: unbalanced braces for {helper_name}")
+            continue
+        body = stripped[open_brace : end_brace + 1]
+        if "IsCanonicalSha256" not in body:
+            violations.append(f"GV2RunCodecHelpers.h: {helper_name} does not invoke IsCanonicalSha256")
+    return violations
+
+
+def extract_queried_fields(cpp_source: str, function_name: str) -> list[str]:
+    """Extracts field names queried via FindField(\"...\") or Read(Required|Optional)CanonicalSha256Field(...) in a given function."""
     stripped = strip_comments(cpp_source)
     fn_start = stripped.find(function_name)
     if fn_start < 0:
@@ -178,24 +211,46 @@ def extract_find_fields(cpp_source: str, function_name: str) -> list[str]:
         return []
 
     fn_body = stripped[open_brace : end_brace + 1]
-    return re.findall(r'FindField\(\s*"([^"]+)"\s*\)', fn_body)
+    pattern = re.compile(
+        r'(?:FindField\s*\(\s*|Read(?:Required|Optional)CanonicalSha256Field\s*\([^,]+,\s*)"([^"]+)"'
+    )
+    return pattern.findall(fn_body)
 
 
-def check_hash_validation(cpp_source: str, function_name: str, json_field: str) -> bool:
-    """Checks that the deserialization block for json_field invokes IsCanonicalSha256."""
+extract_find_fields = extract_queried_fields
+
+
+def check_hash_validation(cpp_source: str, function_name: str, json_field: str, allow_empty: bool) -> bool:
+    """Checks that the deserialization function invokes the exact helper for json_field."""
     stripped = strip_comments(cpp_source)
     fn_start = stripped.find(function_name)
     if fn_start < 0:
         return False
 
-    field_call = f'FindField("{json_field}")'
-    field_idx = stripped.find(field_call, fn_start)
-    if field_idx < 0:
+    open_brace = stripped.find("{", fn_start)
+    if open_brace < 0:
         return False
 
-    # Inspect the next 500 characters after FindField call for IsCanonicalSha256
-    window = stripped[field_idx : field_idx + 500]
-    return "IsCanonicalSha256" in window
+    depth = 0
+    end_brace = -1
+    for i in range(open_brace, len(stripped)):
+        if stripped[i] == "{":
+            depth += 1
+        elif stripped[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end_brace = i
+                break
+
+    if end_brace < 0:
+        return False
+
+    fn_body = stripped[open_brace : end_brace + 1]
+    helper_name = "ReadOptionalCanonicalSha256Field" if allow_empty else "ReadRequiredCanonicalSha256Field"
+    call_pattern = re.compile(
+        rf'\b{helper_name}\s*\(\s*[^,]+,\s*"{re.escape(json_field)}"\s*,'
+    )
+    return bool(call_pattern.search(fn_body))
 
 
 def validate_sources(
@@ -203,8 +258,13 @@ def validate_sources(
     digest_header: str,
     manifest_cpp: str,
     digest_cpp: str,
+    codec_helpers: str | None = None,
 ) -> list[str]:
     violations = []
+
+    if codec_helpers is None:
+        codec_helpers = CODEC_HELPERS_PATH.read_text(encoding="utf-8")
+    violations.extend(validate_codec_helpers(codec_helpers))
 
     # 1. Check FRunManifest and FRunAcceptedCommand members
     manifest_members = extract_struct_members(manifest_header, "FRunManifest")
@@ -217,7 +277,7 @@ def validate_sources(
 
     manifest_json_fields = extract_find_fields(manifest_cpp, "DeserializeRunManifest")
     if not manifest_json_fields:
-        violations.append("DeserializeRunManifest: could not extract FindField calls from cpp")
+        violations.append("DeserializeRunManifest: could not extract queried fields from cpp")
 
     # 2. Check FRunDigest members
     digest_members = extract_struct_members(digest_header, "FRunDigest")
@@ -226,7 +286,7 @@ def validate_sources(
 
     digest_json_fields = extract_find_fields(digest_cpp, "DeserializeRunDigest")
     if not digest_json_fields:
-        violations.append("DeserializeRunDigest: could not extract FindField calls from cpp")
+        violations.append("DeserializeRunDigest: could not extract queried fields from cpp")
 
     # 3. Match against EXPECTED_FIELD_POLICY
     for (struct_name, member_name, json_field), policy in EXPECTED_FIELD_POLICY.items():
@@ -249,9 +309,14 @@ def validate_sources(
             )
 
         if policy["is_hash"]:
-            if not check_hash_validation(actual_cpp, deser_fn, json_field):
+            if not check_hash_validation(actual_cpp, deser_fn, json_field, policy["allow_empty"]):
+                helper_expected = (
+                    "ReadOptionalCanonicalSha256Field"
+                    if policy["allow_empty"]
+                    else "ReadRequiredCanonicalSha256Field"
+                )
                 violations.append(
-                    f"{struct_name} hash field '{json_field}' ({member_name}) does not invoke IsCanonicalSha256 in {deser_fn}"
+                    f"{struct_name} hash field '{json_field}' ({member_name}) does not use {helper_expected} in {deser_fn}"
                 )
 
     # 4. Check for unclassified struct members
@@ -276,7 +341,7 @@ def validate_sources(
                 f"FRunDigest::{member} is not classified in EXPECTED_FIELD_POLICY table in validate_headless_hash_fields.py"
             )
 
-    # 5. Check for unclassified FindField queries
+    # 5. Check for unclassified queried fields
     for field in manifest_json_fields:
         matching = [p for p in EXPECTED_FIELD_POLICY if p[0] in ("FRunManifest", "FRunAcceptedCommand") and p[2] == field]
         if not matching:
@@ -300,6 +365,7 @@ def validate_repository() -> list[str]:
         DIGEST_HEADER_PATH.read_text(encoding="utf-8"),
         MANIFEST_CPP_PATH.read_text(encoding="utf-8"),
         DIGEST_CPP_PATH.read_text(encoding="utf-8"),
+        CODEC_HELPERS_PATH.read_text(encoding="utf-8"),
     )
 
 
@@ -310,47 +376,86 @@ def run_self_test() -> bool:
         print("FAILED: current production code violates the gate:\n" + "\n".join(repo_errors))
         return False
 
-    # Negative test 1: Unclassified member in FRunManifest
-    synth_manifest_header = MANIFEST_HEADER_PATH.read_text(encoding="utf-8").replace(
+    manifest_header = MANIFEST_HEADER_PATH.read_text(encoding="utf-8")
+    digest_header = DIGEST_HEADER_PATH.read_text(encoding="utf-8")
+    manifest_cpp = MANIFEST_CPP_PATH.read_text(encoding="utf-8")
+    digest_cpp = DIGEST_CPP_PATH.read_text(encoding="utf-8")
+    codec_helpers = CODEC_HELPERS_PATH.read_text(encoding="utf-8")
+
+    # Mutation test: automatic enumerator over ALL is_hash fields in EXPECTED_FIELD_POLICY
+    # Removes validation of each hash field in turn and asserts expected red
+    hash_fields = [
+        (struct_name, member_name, json_field, policy)
+        for (struct_name, member_name, json_field), policy in EXPECTED_FIELD_POLICY.items()
+        if policy["is_hash"]
+    ]
+    if not hash_fields:
+        print("FAILED: no hash fields found in EXPECTED_FIELD_POLICY")
+        return False
+
+    for struct_name, member_name, json_field, policy in hash_fields:
+        is_manifest = struct_name in ("FRunManifest", "FRunAcceptedCommand")
+        target_cpp = manifest_cpp if is_manifest else digest_cpp
+        helper_func = (
+            "ReadOptionalCanonicalSha256Field"
+            if policy["allow_empty"]
+            else "ReadRequiredCanonicalSha256Field"
+        )
+        block_pattern = re.compile(
+            rf'\s*if\s*\(\s*!Internal::{helper_func}\s*\(\s*[^,]+,\s*"{re.escape(json_field)}"[^;]+;\s*}}\n?',
+            re.DOTALL,
+        )
+        mutated_cpp, count = block_pattern.subn("", target_cpp)
+        if count != 1:
+            print(f"FAILED: self-test could not locate exact validation block for {struct_name}::{member_name} ({json_field})")
+            return False
+
+        m_manifest = mutated_cpp if is_manifest else manifest_cpp
+        m_digest = digest_cpp if is_manifest else mutated_cpp
+
+        errors = validate_sources(manifest_header, digest_header, m_manifest, m_digest, codec_helpers)
+        expected_msg = f"{struct_name} hash field '{json_field}' ({member_name}) does not use {helper_func}"
+        if not any(expected_msg in e for e in errors):
+            print(f"FAILED: removing validation for {struct_name}::{member_name} ({json_field}) did not trigger expected red:\n{errors}")
+            return False
+        print(f"  [+] Verified red on removal of {struct_name}::{member_name} ({json_field})")
+
+    # Negative test: Wrong helper variant (e.g. required field calling ReadOptionalCanonicalSha256Field)
+    synth_manifest_cpp = manifest_cpp.replace(
+        'ReadRequiredCanonicalSha256Field(\n            Root,\n            "repository_content_hash"',
+        'ReadOptionalCanonicalSha256Field(\n            Root,\n            "repository_content_hash"',
+    )
+    errors = validate_sources(manifest_header, digest_header, synth_manifest_cpp, digest_cpp, codec_helpers)
+    if not any("repository_content_hash" in e and "does not use ReadRequiredCanonicalSha256Field" in e for e in errors):
+        print(f"FAILED: negative test did not catch wrong helper variant: {errors}")
+        return False
+
+    # Negative test: Unclassified member in FRunManifest
+    synth_manifest_header = manifest_header.replace(
         "struct GV2_PORTABLE_API FRunManifest final\n{",
-        "struct GV2_PORTABLE_API FRunManifest final\n{\n    int UnclassifiedExtraField;\n"
+        "struct GV2_PORTABLE_API FRunManifest final\n{\n    int UnclassifiedExtraField;\n",
     )
-    errors = validate_sources(
-        synth_manifest_header,
-        DIGEST_HEADER_PATH.read_text(encoding="utf-8"),
-        MANIFEST_CPP_PATH.read_text(encoding="utf-8"),
-        DIGEST_CPP_PATH.read_text(encoding="utf-8"),
-    )
+    errors = validate_sources(synth_manifest_header, digest_header, manifest_cpp, digest_cpp, codec_helpers)
     if not any("UnclassifiedExtraField" in e for e in errors):
         print(f"FAILED: negative test did not catch unclassified struct member: {errors}")
         return False
 
-    # Negative test 2: Hash field missing IsCanonicalSha256
-    synth_digest_cpp = DIGEST_CPP_PATH.read_text(encoding="utf-8").replace(
-        "IsCanonicalSha256(DigestHashVal->AsString())", "DigestHashVal->AsString().length() == 64"
-    )
-    errors = validate_sources(
-        MANIFEST_HEADER_PATH.read_text(encoding="utf-8"),
-        DIGEST_HEADER_PATH.read_text(encoding="utf-8"),
-        MANIFEST_CPP_PATH.read_text(encoding="utf-8"),
-        synth_digest_cpp,
-    )
-    if not any("DigestHash" in e and "IsCanonicalSha256" in e for e in errors):
-        print(f"FAILED: negative test did not catch missing IsCanonicalSha256 validator: {errors}")
-        return False
-
-    # Negative test 3: Unclassified FindField call
-    synth_manifest_cpp = MANIFEST_CPP_PATH.read_text(encoding="utf-8").replace(
+    # Negative test: Unclassified queried field
+    synth_manifest_cpp = manifest_cpp.replace(
         'Root.FindField("seed")', 'Root.FindField("unclassified_seed_query")'
     )
-    errors = validate_sources(
-        MANIFEST_HEADER_PATH.read_text(encoding="utf-8"),
-        DIGEST_HEADER_PATH.read_text(encoding="utf-8"),
-        synth_manifest_cpp,
-        DIGEST_CPP_PATH.read_text(encoding="utf-8"),
-    )
+    errors = validate_sources(manifest_header, digest_header, synth_manifest_cpp, digest_cpp, codec_helpers)
     if not any("unclassified_seed_query" in e for e in errors):
-        print(f"FAILED: negative test did not catch unclassified FindField query: {errors}")
+        print(f"FAILED: negative test did not catch unclassified query: {errors}")
+        return False
+
+    # Negative test: Helper in GV2RunCodecHelpers.h missing IsCanonicalSha256
+    synth_codec_helpers = codec_helpers.replace(
+        "GV2ContentCore::IsCanonicalSha256", "GV2ContentCore::IsDummyCheck"
+    )
+    errors = validate_sources(manifest_header, digest_header, manifest_cpp, digest_cpp, synth_codec_helpers)
+    if not any("does not invoke IsCanonicalSha256" in e for e in errors):
+        print(f"FAILED: negative test did not catch missing IsCanonicalSha256 in helper header: {errors}")
         return False
 
     print("SUCCESS: validate_headless_hash_fields passed all checks and negative self-tests")

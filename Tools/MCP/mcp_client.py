@@ -272,34 +272,103 @@ class UnrealMcpClient:
             "RunTestsByFilter",
             {"filterExpression": filter_expr}
         )
+        parsed: Dict[str, Any]
         if isinstance(res, dict) and "returnValue" in res:
             val = res["returnValue"]
             if isinstance(val, str):
                 try:
-                    return json.loads(val)
+                    parsed = json.loads(val)
                 except Exception:
-                    return {"raw": val}
+                    parsed = {"raw": val}
             elif isinstance(val, dict):
-                return val
-        return res if isinstance(res, dict) else {"raw": res}
+                parsed = val
+            else:
+                parsed = {"raw": res}
+        elif isinstance(res, dict):
+            parsed = res
+        else:
+            parsed = {"raw": res}
 
-    def get_test_results(self) -> Dict[str, Any]:
-        """Retrieves detailed results for the most recent test run."""
+        if isinstance(parsed, dict) and "tests" in parsed and "schema_version" not in parsed:
+            parsed["schema_version"] = 1
+        return parsed
+
+    def get_test_status(self, task_id: str) -> Dict[str, Any]:
+        """Retrieves lightweight status snapshot for the specified automation test task_id."""
+        if not task_id or not isinstance(task_id, str) or not task_id.strip():
+            raise ValueError("Calling GetTestStatus without an exact task_id is forbidden.")
+        tid = task_id.strip()
+        res = self.call_tool(
+            "AutomationTestToolset.AutomationTestToolset",
+            "GetTestStatus",
+            {"taskId": tid, "task_id": tid}
+        )
+        parsed: Dict[str, Any]
+        if isinstance(res, dict) and "returnValue" in res:
+            val = res["returnValue"]
+            if isinstance(val, str):
+                try:
+                    parsed = json.loads(val)
+                except Exception:
+                    parsed = {"raw": val}
+            elif isinstance(val, dict):
+                parsed = val
+            else:
+                parsed = {"raw": res}
+        elif isinstance(res, dict):
+            parsed = res
+        else:
+            parsed = {"raw": res}
+
+        if isinstance(parsed, dict):
+            ret_id = parsed.get("taskId") or parsed.get("task_id")
+            if ret_id and str(ret_id).strip() != tid:
+                raise ValueError(
+                    f"Mismatched task_id in GetTestStatus: expected '{tid}', got '{ret_id}'"
+                )
+        return parsed
+
+    def get_test_results(self, task_id: str) -> Dict[str, Any]:
+        """Retrieves detailed results for the specified automation test task_id.
+
+        Generic 'latest result' retrieval without task_id is strictly forbidden.
+        """
+        if not task_id or not isinstance(task_id, str) or not task_id.strip():
+            raise ValueError("Calling GetTestResults without an exact task_id is forbidden.")
+        tid = task_id.strip()
         res = self.call_tool(
             "AutomationTestToolset.AutomationTestToolset",
             "GetTestResults",
-            {}
+            {"taskId": tid, "task_id": tid}
         )
+        parsed: Dict[str, Any]
         if isinstance(res, dict) and "returnValue" in res:
             val = res["returnValue"]
             if isinstance(val, str):
                 try:
-                    return json.loads(val)
+                    parsed = json.loads(val)
                 except Exception:
-                    return {"raw": val}
+                    parsed = {"raw": val}
             elif isinstance(val, dict):
-                return val
-        return res if isinstance(res, dict) else {"raw": res}
+                parsed = val
+            else:
+                parsed = {"raw": res}
+        elif isinstance(res, dict):
+            parsed = res
+        else:
+            parsed = {"raw": res}
+
+        if isinstance(parsed, dict):
+            ret_id = parsed.get("taskId") or parsed.get("task_id")
+            if ret_id and str(ret_id).strip() != tid:
+                raise ValueError(
+                    f"Mismatched task_id in GetTestResults: expected '{tid}', got '{ret_id}'"
+                )
+            if "tests" in parsed:
+                parsed["task_id"] = tid
+                if "schema_version" not in parsed:
+                    parsed["schema_version"] = 1
+        return parsed
 
 
 if __name__ == "__main__":

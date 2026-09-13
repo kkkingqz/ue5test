@@ -36,6 +36,8 @@ public class GV2 : ModuleRules
         {
             "AssetRegistry",
             "ImageCore",
+            "Json",
+            "JsonUtilities",
             "Slate",
             "SlateCore"
         });

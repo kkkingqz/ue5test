@@ -94,68 +94,141 @@ std::uint32_t RotateRight(const std::uint32_t Value, const int Amount)
 {
     return (Value >> Amount) | (Value << (32 - Amount));
 }
+} // namespace
 
-std::string Sha256(std::string Input)
+FSha256Builder::FSha256Builder()
+    : TotalBytes(0)
+    , State{0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+            0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19}
+    , BufferLen(0)
+    , bFinalized(false)
 {
-    const std::uint64_t BitLength = static_cast<std::uint64_t>(Input.size()) * 8;
-    Input.push_back(static_cast<char>(0x80));
-    while ((Input.size() % 64) != 56) Input.push_back('\0');
-    for (int Shift = 56; Shift >= 0; Shift -= 8)
+}
+
+void FSha256Builder::ProcessBlock(const std::uint8_t* Block)
+{
+    std::array<std::uint32_t, 64> Words{};
+    for (std::size_t Index = 0; Index < 16; ++Index)
     {
-        Input.push_back(static_cast<char>((BitLength >> Shift) & 0xff));
+        Words[Index] = (static_cast<std::uint32_t>(Block[Index * 4]) << 24)
+            | (static_cast<std::uint32_t>(Block[Index * 4 + 1]) << 16)
+            | (static_cast<std::uint32_t>(Block[Index * 4 + 2]) << 8)
+            | static_cast<std::uint32_t>(Block[Index * 4 + 3]);
+    }
+    for (std::size_t Index = 16; Index < 64; ++Index)
+    {
+        const std::uint32_t S0 = RotateRight(Words[Index - 15], 7)
+            ^ RotateRight(Words[Index - 15], 18) ^ (Words[Index - 15] >> 3);
+        const std::uint32_t S1 = RotateRight(Words[Index - 2], 17)
+            ^ RotateRight(Words[Index - 2], 19) ^ (Words[Index - 2] >> 10);
+        Words[Index] = Words[Index - 16] + S0 + Words[Index - 7] + S1;
+    }
+    auto [A, B, C, D, E, F, G, H] = State;
+    for (std::size_t Index = 0; Index < 64; ++Index)
+    {
+        const std::uint32_t S1 = RotateRight(E, 6) ^ RotateRight(E, 11) ^ RotateRight(E, 25);
+        const std::uint32_t Choice = (E & F) ^ ((~E) & G);
+        const std::uint32_t Temp1 = H + S1 + Choice + K[Index] + Words[Index];
+        const std::uint32_t S0 = RotateRight(A, 2) ^ RotateRight(A, 13) ^ RotateRight(A, 22);
+        const std::uint32_t Majority = (A & B) ^ (A & C) ^ (B & C);
+        const std::uint32_t Temp2 = S0 + Majority;
+        H = G; G = F; F = E; E = D + Temp1;
+        D = C; C = B; B = A; A = Temp1 + Temp2;
+    }
+    State[0] += A; State[1] += B; State[2] += C; State[3] += D;
+    State[4] += E; State[5] += F; State[6] += G; State[7] += H;
+}
+
+void FSha256Builder::Update(const void* Data, std::size_t Length)
+{
+    if (bFinalized || Data == nullptr || Length == 0)
+    {
+        return;
     }
 
-    std::array<std::uint32_t, 8> Hash{
-        0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,
-        0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19
-    };
-    for (std::size_t Offset = 0; Offset < Input.size(); Offset += 64)
+    TotalBytes += Length;
+    const auto* Bytes = static_cast<const std::uint8_t*>(Data);
+
+    if (BufferLen > 0)
     {
-        std::array<std::uint32_t, 64> Words{};
-        for (std::size_t Index = 0; Index < 16; ++Index)
+        const std::size_t Fill = std::min(Length, 64 - BufferLen);
+        std::copy_n(Bytes, Fill, Buffer.data() + BufferLen);
+        BufferLen += Fill;
+        Bytes += Fill;
+        Length -= Fill;
+
+        if (BufferLen == 64)
         {
-            const auto* Bytes = reinterpret_cast<const unsigned char*>(Input.data() + Offset + Index * 4);
-            Words[Index] = (static_cast<std::uint32_t>(Bytes[0]) << 24)
-                | (static_cast<std::uint32_t>(Bytes[1]) << 16)
-                | (static_cast<std::uint32_t>(Bytes[2]) << 8)
-                | static_cast<std::uint32_t>(Bytes[3]);
+            ProcessBlock(Buffer.data());
+            BufferLen = 0;
         }
-        for (std::size_t Index = 16; Index < 64; ++Index)
-        {
-            const std::uint32_t S0 = RotateRight(Words[Index - 15], 7)
-                ^ RotateRight(Words[Index - 15], 18) ^ (Words[Index - 15] >> 3);
-            const std::uint32_t S1 = RotateRight(Words[Index - 2], 17)
-                ^ RotateRight(Words[Index - 2], 19) ^ (Words[Index - 2] >> 10);
-            Words[Index] = Words[Index - 16] + S0 + Words[Index - 7] + S1;
-        }
-        auto [A, B, C, D, E, F, G, H] = Hash;
-        for (std::size_t Index = 0; Index < 64; ++Index)
-        {
-            const std::uint32_t S1 = RotateRight(E, 6) ^ RotateRight(E, 11) ^ RotateRight(E, 25);
-            const std::uint32_t Choice = (E & F) ^ ((~E) & G);
-            const std::uint32_t Temp1 = H + S1 + Choice + K[Index] + Words[Index];
-            const std::uint32_t S0 = RotateRight(A, 2) ^ RotateRight(A, 13) ^ RotateRight(A, 22);
-            const std::uint32_t Majority = (A & B) ^ (A & C) ^ (B & C);
-            const std::uint32_t Temp2 = S0 + Majority;
-            H = G; G = F; F = E; E = D + Temp1;
-            D = C; C = B; B = A; A = Temp1 + Temp2;
-        }
-        Hash[0] += A; Hash[1] += B; Hash[2] += C; Hash[3] += D;
-        Hash[4] += E; Hash[5] += F; Hash[6] += G; Hash[7] += H;
     }
+
+    while (Length >= 64)
+    {
+        ProcessBlock(Bytes);
+        Bytes += 64;
+        Length -= 64;
+    }
+
+    if (Length > 0)
+    {
+        std::copy_n(Bytes, Length, Buffer.data());
+        BufferLen = Length;
+    }
+}
+
+void FSha256Builder::Update(std::string_view Text)
+{
+    Update(Text.data(), Text.size());
+}
+
+std::string FSha256Builder::FinalizeHex()
+{
+    if (!bFinalized)
+    {
+        const std::uint64_t BitLength = TotalBytes * 8;
+        Buffer[BufferLen++] = 0x80;
+
+        if (BufferLen > 56)
+        {
+            std::fill(Buffer.data() + BufferLen, Buffer.data() + 64, 0);
+            ProcessBlock(Buffer.data());
+            BufferLen = 0;
+        }
+
+        std::fill(Buffer.data() + BufferLen, Buffer.data() + 56, 0);
+        for (int Shift = 56; Shift >= 0; Shift -= 8)
+        {
+            Buffer[56 + (7 - Shift / 8)] = static_cast<std::uint8_t>((BitLength >> Shift) & 0xff);
+        }
+        ProcessBlock(Buffer.data());
+        bFinalized = true;
+    }
+
     std::ostringstream Output;
     Output << std::hex << std::setfill('0');
-    for (const std::uint32_t Word : Hash) Output << std::setw(8) << Word;
+    for (const std::uint32_t Word : State)
+    {
+        Output << std::setw(8) << Word;
+    }
     return Output.str();
 }
+
+std::string ComputeSha256(std::string_view Data)
+{
+    FSha256Builder Builder;
+    Builder.Update(Data);
+    return Builder.FinalizeHex();
 }
 
 std::string ComputeCanonicalHash(const FValue& Value)
 {
     std::string Canonical;
     AppendCanonical(Canonical, Value);
-    return Sha256(std::move(Canonical));
+    return ComputeSha256(Canonical);
 }
+
 
 bool IsCanonicalSha256(std::string_view Text) noexcept
 {

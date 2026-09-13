@@ -1,5 +1,7 @@
 #include "GV2RuntimeCore/GV2RunDigest.h"
 
+#include "GV2RunCodecHelpers.h"
+
 #include "GV2ContentCore/CanonicalHash.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
@@ -160,10 +162,13 @@ bool DeserializeRunDigest(
         FormatVersion = static_cast<std::int32_t>(FormatVersionVal->AsInteger());
     }
 
-    const auto* DigestHashVal = Root.FindField("digest_hash");
-    if (DigestHashVal == nullptr || !DigestHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(DigestHashVal->AsString()))
+    if (!Internal::ReadRequiredCanonicalSha256Field(
+            Root,
+            "digest_hash",
+            OutDigest.DigestHash,
+            OutError,
+            "run_digest.invalid_digest_hash"))
     {
-        OutError = "run_digest.invalid_digest_hash";
         return false;
     }
 
@@ -174,17 +179,23 @@ bool DeserializeRunDigest(
         return false;
     }
 
-    const auto* RepoHashVal = Root.FindField("repository_content_hash");
-    if (RepoHashVal == nullptr || !RepoHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(RepoHashVal->AsString()))
+    if (!Internal::ReadRequiredCanonicalSha256Field(
+            Root,
+            "repository_content_hash",
+            OutDigest.RepositoryContentHash,
+            OutError,
+            "run_digest.invalid_repository_content_hash"))
     {
-        OutError = "run_digest.invalid_repository_content_hash";
         return false;
     }
 
-    const auto* ScriptSetHashVal = Root.FindField("script_set_hash");
-    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(ScriptSetHashVal->AsString()))
+    if (!Internal::ReadRequiredCanonicalSha256Field(
+            Root,
+            "script_set_hash",
+            OutDigest.ScriptSetHash,
+            OutError,
+            "run_digest.invalid_script_set_hash"))
     {
-        OutError = "run_digest.invalid_script_set_hash";
         return false;
     }
 
@@ -263,23 +274,22 @@ bool DeserializeRunDigest(
         return false;
     }
 
-    const auto* StateHashVal = Root.FindField("state_hash");
-    if (StateHashVal != nullptr && (!StateHashVal->IsString() || (!StateHashVal->AsString().empty() && !GV2ContentCore::IsCanonicalSha256(StateHashVal->AsString()))))
+    if (!Internal::ReadOptionalCanonicalSha256Field(
+            Root,
+            "state_hash",
+            OutDigest.StateHash,
+            OutError,
+            "run_digest.invalid_state_hash"))
     {
-        OutError = "run_digest.invalid_state_hash";
         return false;
     }
 
     OutDigest.DigestFormatVersion = FormatVersion;
-    OutDigest.DigestHash = DigestHashVal->AsString();
     OutDigest.LuaReleaseNumber = static_cast<std::int32_t>(LuaReleaseVal->AsInteger());
-    OutDigest.RepositoryContentHash = RepoHashVal->AsString();
-    OutDigest.ScriptSetHash = ScriptSetHashVal->AsString();
     OutDigest.Seed = ParsedSeed;
     OutDigest.ExecutedCommandsCount = static_cast<std::uint64_t>(ExecutedVal->AsInteger());
     OutDigest.bSuccess = SuccessVal->AsBoolean();
     OutDigest.FinalScreenId = ScreenVal->AsString();
-    OutDigest.StateHash = StateHashVal != nullptr ? StateHashVal->AsString() : "";
     OutDigest.FaultCode = FaultVal->AsString();
     return true;
 }

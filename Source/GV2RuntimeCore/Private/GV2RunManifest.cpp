@@ -1,5 +1,7 @@
 #include "GV2RuntimeCore/GV2RunManifest.h"
 
+#include "GV2RunCodecHelpers.h"
+
 #include "GV2ContentCore/CanonicalHash.h"
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
@@ -249,17 +251,23 @@ bool DeserializeRunManifest(
         return false;
     }
 
-    const auto* HashVal = Root.FindField("repository_content_hash");
-    if (HashVal == nullptr || !HashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(HashVal->AsString()))
+    if (!Internal::ReadRequiredCanonicalSha256Field(
+            Root,
+            "repository_content_hash",
+            OutManifest.RepositoryContentHash,
+            OutError,
+            "run_manifest.invalid_repository_content_hash"))
     {
-        OutError = "run_manifest.invalid_repository_content_hash";
         return false;
     }
 
-    const auto* ScriptSetHashVal = Root.FindField("script_set_hash");
-    if (ScriptSetHashVal == nullptr || !ScriptSetHashVal->IsString() || !GV2ContentCore::IsCanonicalSha256(ScriptSetHashVal->AsString()))
+    if (!Internal::ReadRequiredCanonicalSha256Field(
+            Root,
+            "script_set_hash",
+            OutManifest.ScriptSetHash,
+            OutError,
+            "run_manifest.invalid_script_set_hash"))
     {
-        OutError = "run_manifest.invalid_script_set_hash";
         return false;
     }
 
@@ -362,8 +370,6 @@ bool DeserializeRunManifest(
 
     OutManifest.ManifestFormatVersion = FormatVersion;
     OutManifest.LuaReleaseNumber = static_cast<std::int32_t>(LuaReleaseVal->AsInteger());
-    OutManifest.RepositoryContentHash = HashVal->AsString();
-    OutManifest.ScriptSetHash = ScriptSetHashVal->AsString();
     OutManifest.Seed = ParsedSeed;
     OutManifest.AcceptedCommands = std::move(Commands);
     return true;

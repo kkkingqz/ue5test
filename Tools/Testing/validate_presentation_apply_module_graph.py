@@ -17,8 +17,10 @@ allowlist itself.
 
 from __future__ import annotations
 
+import argparse
 import bisect
 import json
+import os
 import re
 import shlex
 import shutil
@@ -579,6 +581,28 @@ def find_cmake_violations(cmake_sources: dict[Path, str] | None = None) -> list[
     return errors
 
 
+REQUIRED_PORTABLE_TARGETS = {
+    "gv2_content_core",
+    "gv2_content_host_support",
+    "gv2_runtime_core",
+    "gv2_test_support",
+    "gv2_content_authoring",
+    "gv2_content_editor",
+    "gv2_content_editor_conformance",
+    "gv2-headless",
+    "gv2-content",
+}
+
+
+def ensure_cmake_query(build_dir: Path) -> Path:
+    """Pre-create the CMake File API query before configure so replies are emitted on first pass."""
+    query_dir = build_dir / ".cmake" / "api" / "v1" / "query"
+    query_dir.mkdir(parents=True, exist_ok=True)
+    query_file = query_dir / "codemodel-v2"
+    query_file.touch(exist_ok=True)
+    return query_file
+
+
 def find_cmake_reply_dirs() -> list[Path]:
     dirs: list[Path] = []
     for candidate in sorted(REPO_ROOT.glob("cmake-build*")):
@@ -592,38 +616,81 @@ def find_cmake_reply_dirs() -> list[Path]:
     return dirs
 
 
-def find_cmake_codemodel_violations(reply_dirs: list[Path] | None = None) -> list[str]:
-    """Inspect evaluated CMake File API codemodel to ensure no target links or compiles UE items."""
+def find_cmake_codemodel_violations(
+    reply_dirs: list[Path] | None = None,
+    required_targets: set[str] | None = REQUIRED_PORTABLE_TARGETS,
+) -> list[str]:
+    """Inspect evaluated CMake File API codemodel to ensure no target links or compiles UE items,
+    and fail closed if codemodel is missing or incomplete."""
     errors: list[str] = []
     if reply_dirs is None:
         reply_dirs = find_cmake_reply_dirs()
         if not reply_dirs and shutil.which("cmake"):
             with tempfile.TemporaryDirectory() as tmp_build:
+                tmp_build_path = Path(tmp_build)
+                ensure_cmake_query(tmp_build_path)
                 res = subprocess.run(
-                    ["cmake", "-S", str(REPO_ROOT), "-B", tmp_build],
+                    ["cmake", "-S", str(REPO_ROOT), "-B", str(tmp_build_path)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                 )
                 if res.returncode == 0:
-                    tmp_reply = Path(tmp_build) / ".cmake" / "api" / "v1" / "reply"
+                    tmp_reply = tmp_build_path / ".cmake" / "api" / "v1" / "reply"
                     if tmp_reply.is_dir() and list(tmp_reply.glob("codemodel-v2-*.json")):
                         reply_dirs = [tmp_reply]
 
-    for reply_dir in reply_dirs or []:
+    if not reply_dirs:
+        return ["CMake File API codemodel reply is missing: no valid codemodel found in build directories or via configure"]
+
+    for reply_dir in reply_dirs:
+        if not reply_dir.is_dir():
+            errors.append(f"CMake File API reply directory '{reply_dir}' does not exist")
+            continue
         codemodel_files = sorted(reply_dir.glob("codemodel-v2-*.json"))
         if not codemodel_files:
+            errors.append(f"CMake File API reply directory '{reply_dir}' contains no codemodel-v2 reply")
             continue
+
         try:
             cm = json.loads(codemodel_files[0].read_text(encoding="utf-8"))
         except Exception as ex:
-            errors.append(f"{reply_dir}: failed to read codemodel: {ex}")
+            errors.append(f"{reply_dir}: failed to read codemodel JSON: {ex}")
             continue
 
-        for config in cm.get("configurations", []):
-            for target_ref in config.get("targets", []):
-                t_path = reply_dir / target_ref["jsonFile"]
-                if not t_path.exists():
+        if cm.get("kind") != "codemodel" or cm.get("version", {}).get("major") != 2:
+            errors.append(f"{reply_dir}: unexpected codemodel schema (expected kind='codemodel', version.major=2)")
+            continue
+
+        configs = cm.get("configurations", [])
+        if not configs:
+            errors.append(f"{reply_dir}: codemodel contains zero configurations")
+            continue
+
+        for config in configs:
+            targets_list = config.get("targets", [])
+            if not targets_list:
+                errors.append(f"{reply_dir}: configuration '{config.get('name', '')}' has no targets")
+                continue
+
+            target_names = {t.get("name", "") for t in targets_list}
+            if required_targets:
+                missing_required = sorted(required_targets - target_names)
+                if missing_required:
+                    errors.append(
+                        f"{reply_dir}: codemodel is incomplete: required portable targets missing: {missing_required}"
+                    )
+
+            for target_ref in targets_list:
+                json_file = target_ref.get("jsonFile")
+                if not json_file:
+                    errors.append(f"{reply_dir}: target reference missing 'jsonFile'")
+                    continue
+                t_path = reply_dir / json_file
+                if not t_path.is_file():
+                    errors.append(
+                        f"{reply_dir}: codemodel is incomplete: target JSON file '{t_path}' does not exist"
+                    )
                     continue
                 try:
                     target = json.loads(t_path.read_text(encoding="utf-8"))
@@ -631,7 +698,7 @@ def find_cmake_codemodel_violations(reply_dirs: list[Path] | None = None) -> lis
                     errors.append(f"{t_path}: failed to read target json: {ex}")
                     continue
 
-                name = target.get("name", "")
+                name = target.get("name", target_ref.get("name", ""))
                 label = f"CMake codemodel target '{name}'"
 
                 for s in target.get("sources", []):
@@ -647,12 +714,25 @@ def find_cmake_codemodel_violations(reply_dirs: list[Path] | None = None) -> lis
                             f"{label}: portable target compiles/includes UE source '{path}'"
                         )
 
-                for dep in target.get("compileDependencies", []) + target.get("linkLibraries", []):
+                all_deps = (
+                    target.get("compileDependencies", [])
+                    + target.get("linkLibraries", [])
+                    + target.get("interfaceLinkLibraries", [])
+                    + target.get("dependencies", [])
+                )
+                for dep in all_deps:
                     dep_id = dep.get("id", "").split("::")[0]
-                    if forbidden_cmake_link_item(dep_id):
+                    if dep_id and forbidden_cmake_link_item(dep_id):
                         errors.append(
                             f"{label}: portable target links forbidden dependency '{dep_id}'"
                         )
+                    frag = dep.get("fragment", "")
+                    if frag:
+                        for arg in cmake_arguments(frag):
+                            if forbidden_cmake_link_item(arg):
+                                errors.append(
+                                    f"{label}: portable target links forbidden item '{arg}'"
+                                )
 
                 link_info = target.get("link", {})
                 for frag in link_info.get("commandFragments", []):
@@ -681,7 +761,7 @@ def find_reverse_edge_violations(modules: dict[str, str]) -> list[str]:
     return errors
 
 
-def validate_repository() -> list[str]:
+def validate_repository(reply_dir: Path | None = None) -> list[str]:
     violations: list[str] = []
     if not APPLY_BUILD_CS.exists():
         return [f"{APPLY_BUILD_CS}: not found"]
@@ -699,13 +779,14 @@ def validate_repository() -> list[str]:
     violations.extend(find_conditional_dependency_violations(modules[APPLY_MODULE], str(APPLY_BUILD_CS)))
     violations.extend(find_reverse_edge_violations(modules))
     violations.extend(find_cmake_violations())
-    violations.extend(find_cmake_codemodel_violations())
+    reply_dirs = [reply_dir] if reply_dir else None
+    violations.extend(find_cmake_codemodel_violations(reply_dirs))
     return violations
 
 
-def run_self_test() -> bool:
+def run_self_test(reply_dir: Path | None = None, ue_root: Path | None = None) -> bool:
     print("[*] Running validate_presentation_apply_module_graph self-test...")
-    if errors := validate_repository():
+    if errors := validate_repository(reply_dir):
         print("FAILED: current repository already violates the gate:\n" + "\n".join(errors))
         return False
 
@@ -980,7 +1061,74 @@ def run_self_test() -> bool:
         print(f"FAILED: CMake graph gate accepted a UE source edge: {cmake_errors}")
         return False
 
-    # 16. Evaluated CMake File API codemodel checks
+    # 16. Configured CMake File API codemodel mutations via real macro() and function()
+    if shutil.which("cmake"):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+            # Test 16a: Real macro() mutating target_link_libraries with forbidden item
+            macro_proj = tmpdir_path / "macro_proj"
+            macro_proj.mkdir()
+            (macro_proj / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.25)\n"
+                "project(MacroMutation LANGUAGES CXX)\n"
+                "macro(inject_forbidden_link tgt)\n"
+                "    target_link_libraries(${tgt} PRIVATE UMG)\n"
+                "endmacro()\n"
+                "add_library(macro_tgt STATIC dummy.cpp)\n"
+                "inject_forbidden_link(macro_tgt)\n",
+                encoding="utf-8",
+            )
+            (macro_proj / "dummy.cpp").write_text("int f() { return 0; }\n", encoding="utf-8")
+            macro_build = tmpdir_path / "macro_build"
+            ensure_cmake_query(macro_build)
+            res = subprocess.run(
+                ["cmake", "-S", str(macro_proj), "-B", str(macro_build)],
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                print(f"FAILED: synthetic macro CMake configure failed: {res.stderr}")
+                return False
+            macro_reply = macro_build / ".cmake" / "api" / "v1" / "reply"
+            macro_errors = find_cmake_codemodel_violations([macro_reply], required_targets=None)
+            if not any("UMG" in err and "macro_tgt" in err for err in macro_errors):
+                print(f"FAILED: CMake codemodel gate did not flag macro-injected link dependency: {macro_errors}")
+                return False
+
+            # Test 16b: Real function() mutating target_sources with forbidden UE source
+            func_proj = tmpdir_path / "func_proj"
+            func_proj.mkdir()
+            (func_proj / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.25)\n"
+                "project(FuncMutation LANGUAGES CXX)\n"
+                "function(inject_forbidden_source tgt)\n"
+                "    target_sources(${tgt} PRIVATE Source/GV2/Private/UI/Forbidden.cpp)\n"
+                "endfunction()\n"
+                "add_library(func_tgt STATIC dummy.cpp)\n"
+                "inject_forbidden_source(func_tgt)\n",
+                encoding="utf-8",
+            )
+            (func_proj / "dummy.cpp").write_text("int g() { return 0; }\n", encoding="utf-8")
+            forbidden_dir = func_proj / "Source" / "GV2" / "Private" / "UI"
+            forbidden_dir.mkdir(parents=True, exist_ok=True)
+            (forbidden_dir / "Forbidden.cpp").write_text("int forbidden() { return 1; }\n", encoding="utf-8")
+            func_build = tmpdir_path / "func_build"
+            ensure_cmake_query(func_build)
+            res = subprocess.run(
+                ["cmake", "-S", str(func_proj), "-B", str(func_build)],
+                capture_output=True,
+                text=True,
+            )
+            if res.returncode != 0:
+                print(f"FAILED: synthetic function CMake configure failed: {res.stderr}")
+                return False
+            func_reply = func_build / ".cmake" / "api" / "v1" / "reply"
+            func_errors = find_cmake_codemodel_violations([func_reply], required_targets=None)
+            if not any("Forbidden.cpp" in err and "func_tgt" in err for err in func_errors):
+                print(f"FAILED: CMake codemodel gate did not flag function-injected UE source: {func_errors}")
+                return False
+
+    # 17. Evaluated CMake File API codemodel negative checks (violations and incompleteness)
     with tempfile.TemporaryDirectory() as tmpdir:
         reply_dir = Path(tmpdir) / "reply"
         reply_dir.mkdir(parents=True)
@@ -990,7 +1138,10 @@ def run_self_test() -> bool:
         t3_file = reply_dir / "target-clean.json"
 
         cm_data = {
+            "kind": "codemodel",
+            "version": {"major": 2, "minor": 0},
             "configurations": [{
+                "name": "Debug",
                 "targets": [
                     {"jsonFile": t1_file.name, "name": "bad_source"},
                     {"jsonFile": t2_file.name, "name": "bad_link"},
@@ -1018,7 +1169,7 @@ def run_self_test() -> bool:
             "link": {"commandFragments": [{"fragment": "-lm"}]}
         }), encoding="utf-8")
 
-        codemodel_errors = find_cmake_codemodel_violations([reply_dir])
+        codemodel_errors = find_cmake_codemodel_violations([reply_dir], required_targets=None)
         if not any("bad_source" in err and "SomeClass.cpp" in err for err in codemodel_errors):
             print(f"FAILED: CMake codemodel gate did not flag forbidden source: {codemodel_errors}")
             return False
@@ -1026,18 +1177,107 @@ def run_self_test() -> bool:
             print(f"FAILED: CMake codemodel gate did not flag forbidden link fragment: {codemodel_errors}")
             return False
 
+        # Check missing target JSON file is flagged as incomplete
+        t1_file.unlink()
+        incompleteness_errors = find_cmake_codemodel_violations([reply_dir], required_targets=None)
+        if not any("target-bad-source.json" in err and "does not exist" in err for err in incompleteness_errors):
+            print(f"FAILED: CMake codemodel gate silently ignored missing target JSON file: {incompleteness_errors}")
+            return False
+
+        # Check missing required portable target is flagged as incomplete
+        missing_target_errors = find_cmake_codemodel_violations([reply_dir], required_targets={"gv2_content_core"})
+        if not any("gv2_content_core" in err and "missing" in err for err in missing_target_errors):
+            print(f"FAILED: CMake codemodel gate did not flag missing required portable target: {missing_target_errors}")
+            return False
+
+    # 18. Compiler-negative UBT probe (if UBT/UE is present)
+    if ue_root is None:
+        ue_root = Path(os.environ.get("UE_ROOT", "/opt/unreal-engine"))
+    build_sh = ue_root / "Engine" / "Build" / "BatchFiles" / "Linux" / "Build.sh"
+    if build_sh.is_file() and os.access(build_sh, os.X_OK):
+        if not run_compiler_negative_ubt_probe(ue_root):
+            return False
+    else:
+        print(f"[*] Skipping compiler-negative UBT probe in self-test: Unreal Engine Build.sh not found at {build_sh}")
+
     print("SUCCESS: GV2PresentationApply's dependency list stays within the ADR-0043 D2 allowlist")
     return True
 
 
-def main(argv: list[str]) -> int:
-    if argv == ["--self-test"]:
-        return 0 if run_self_test() else 1
-    if argv:
-        print("usage: validate_presentation_apply_module_graph.py [--self-test]", file=sys.stderr)
-        return 2
+def run_compiler_negative_ubt_probe(ue_root: Path | None = None, repo_root: Path = REPO_ROOT) -> bool:
+    """Proves via actual UBT compilation failure that GV2PresentationApply cannot reach authority headers."""
+    print("[*] Running compiler-negative UBT probe for GV2PresentationApply...")
+    if ue_root is None:
+        ue_root = Path(os.environ.get("UE_ROOT", "/opt/unreal-engine"))
+    build_sh = ue_root / "Engine" / "Build" / "BatchFiles" / "Linux" / "Build.sh"
+    if not build_sh.is_file() or not os.access(build_sh, os.X_OK):
+        print(f"FAILED: Unreal Engine Build.sh not found or not executable at: {build_sh}", file=sys.stderr)
+        return False
 
-    errors = validate_repository()
+    uproject = repo_root / "GV2.uproject"
+    if not uproject.is_file():
+        print(f"FAILED: GV2.uproject not found at: {uproject}", file=sys.stderr)
+        return False
+
+    probe_file = repo_root / "Source" / "GV2PresentationApply" / "Private" / "GV2CompilerNegativeAuthorityProbe.cpp"
+    probe_content = (
+        '// Synthetic probe to verify compiler-negative authority isolation in UBT\n'
+        '#include "GV2PresentationApply/PreparedPresentationTransaction.h"\n'
+        '#include "GV2ContentCore/CanonicalHash.h" // Authority header must NOT be accessible in GV2PresentationApply\n'
+        '\n'
+        'void GV2CompilerNegativeAuthorityProbeAnchor()\n'
+        '{\n'
+        '}\n'
+    )
+
+    try:
+        probe_file.write_text(probe_content, encoding="utf-8")
+        cmd = [
+            str(build_sh),
+            "GV2Editor",
+            "Linux",
+            "Development",
+            str(uproject),
+            "-WaitMutex",
+            "-NoHotReloadFromIDE",
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        output = res.stdout + "\n" + res.stderr
+        if res.returncode == 0:
+            print(f"FAILED: UBT unexpectedly SUCCEEDED with forbidden authority header included!\nOutput:\n{output}", file=sys.stderr)
+            return False
+
+        if "GV2ContentCore/CanonicalHash.h" not in output or "not found" not in output.lower():
+            print(f"FAILED: UBT failed, but not for expected 'file not found' error:\nOutput:\n{output}", file=sys.stderr)
+            return False
+
+        print("SUCCESS: UBT correctly rejected authority header in GV2PresentationApply with compilation error.")
+        return True
+    finally:
+        if probe_file.exists():
+            probe_file.unlink()
+        gen_script = repo_root / "Tools" / "Build" / "generate_build_identity.py"
+        if gen_script.is_file():
+            subprocess.run([sys.executable, str(gen_script)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Validate GV2PresentationApply module graph, CMake codemodel, and authority isolation."
+    )
+    parser.add_argument("--self-test", action="store_true", help="Run comprehensive gate self-test suite.")
+    parser.add_argument("--reply-dir", type=Path, default=None, help="Exact CMake File API reply directory to inspect.")
+    parser.add_argument("--ubt-probe", action="store_true", help="Run compiler-negative UBT probe.")
+    parser.add_argument("--ue-root", type=Path, default=None, help="Root directory of Unreal Engine installation.")
+    args = parser.parse_args(argv)
+
+    if args.ubt_probe:
+        return 0 if run_compiler_negative_ubt_probe(args.ue_root) else 1
+
+    if args.self_test:
+        return 0 if run_self_test(args.reply_dir, args.ue_root) else 1
+
+    errors = validate_repository(args.reply_dir)
     if errors:
         print("\n".join(errors), file=sys.stderr)
         return 1

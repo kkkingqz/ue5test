@@ -1,8 +1,8 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.3
-updated: 2026-09-12
+version: 1.4
+updated: 2026-09-13
 depends_on:
   - ImplementationStatus.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -127,7 +127,7 @@ PrivateDependencyModuleNames.AddRange(new[] { "GV2ContentCore" });        // vio
 
 Baseline и штатный self-test зелёные. Парсер `extract_dependency_modules`, строки 71–84, распознаёт ограниченную форму и не сигнализирует о пропущенном dependency statement. Запрещённой зависимости в текущем Apply-модуле нет; это подтверждённая неполнота гейта, а не заявление о существующей обратной ссылке или выполненная компиляция synthetic Build.cs.
 
-**Исход:** *(Закрыто задачей CFC-03)* Статический regex заменён на fail-closed парсер C# для `GV2PresentationApply.Build.cs`, проверяющий 100% токенов/выражений, отвергающий любые вспомогательные методы, циклы, ветвления, сторонние include paths и custom base classes, поддерживающий `new string[]`, `new[]` и `.Add()`, проверяющий forward edge `GV2 -> GV2PresentationApply` и единственный consumer, а также вычисленный CMake File API codemodel и изоляцию authority в UBT.
+**Исход:** *(Закрыто задачей CFC-03)* Статический regex заменён на fail-closed парсер C# для `GV2PresentationApply.Build.cs`, проверяющий 100% токенов/выражений, отвергающий любые вспомогательные методы, циклы, ветвления, сторонние include paths и custom base classes, поддерживающий `new string[]`, `new[]` и `.Add()`, проверяющий forward edge `GV2 -> GV2PresentationApply` и единственный consumer. CMake File API query создаётся до configure (`.cmake/api/v1/query/codemodel-v2`), гейт `validate_presentation_apply_module_graph.py` получает точный `--reply-dir` текущего build directory и завершается ошибкой при отсутствии или неполноте codemodel (включая инвентарь обязательных переносимых таргетов), self-test проверяет сконфигурированные мутации через настоящие CMake `macro()` и `function()`, а изоляция authority в UBT доказана compiler-negative probe (`--ubt-probe`).
 
 ### Runtime foundation
 
@@ -205,6 +205,16 @@ exit=0
 
 *(Закрыто задачей CFC-02)* В `ue_test_report.py` реализована fail-closed валидация `validate_run`, подключённая к `run_ue_tests.py` и `run_ue_acceptance.py`, исключающая пропуск non-success состояний (NotRun, InProcess, Fail) и расхождений счётчиков.
 
+#### VERIFY-AF-03 — P1 — тавтологическая проверка identity и пропуск неполного отчёта
+
+**Подтверждено по коду:** `Tools/Testing/ue_test_report.py` вычислял `run_identity` только на стороне runner и сам же записывал её в нормализованный отчёт перед вызовом `validate_run`. Сравнение `actual` и `expected` получалось тавтологическим и не подтверждало, какой именно бинарник был загружен в Unreal Engine. Дополнительно:
+- `missing_binaries` принимался валидатором как допустимый fingerprint;
+- неотслеживаемые файлы (`git ls-files --others --exclude-standard`) не влияли на `source_diff_hash`;
+- отсутствие счётчиков `failed`/`skipped` в отчёте MCP молча заменялось нулями, а нормализаторы допускали отсутствие `schema_version` и использовали синтетические дефолты;
+- `Tools/MCP/run_ue_tests.py` принимал несвязанный результат `GetTestResults` без `task_id`.
+
+*(Закрыто задачей CFC-02)* `run_identity` переведена на runtime-происхождение: C++ модуль `FGV2Module` в Unreal Engine регистрирует сгенерированные при сборке ревизию и хэш диффа (`GV2BuildIdentity.gen.h`), вычисляет детерминированный SHA-256 хэш содержимого проектных бинарников `libUnrealEditor-GV2*.so` через стриминг `GV2ContentCore::FSha256Builder`, публикует артефакт `runtime_identity.json` и эмитирует событие в тесте `GV2.Runtime.ModuleIdentity`. Нормализаторы извлекают runtime-identity из отчёта/артефактов, а runner независимо вычисляет эталонное значение и сверяет его. `compute_source_diff_hash` учитывает неотслеживаемые файлы. Нормализаторы строго требуют наличие полей, типы и `schema_version` без синтетических дефолтов. Во всём MCP polling и result flow (`GetTestStatus`, `GetTestResults`) строго требуется exact `task_id`, generic «последний результат» запрещён, а нетерминальное состояние асинхронной задачи без `task_id` или с несовпадающим `task_id` вызывает безусловный отказ (fail-closed). Любые префиксы `missing_`, `unknown_`, `no_`, `error:`, отсутствие обязательных счётчиков или длительности вызывают отказ.
+
 ### CppFullCodeReview — проверка REVIEW-01…15
 
 Источник — предоставленный `Docs/Status/CppFullCodeReview.md`; исходные формулировки не являются нормой. Сверено с source HEAD `78e96f1` 2026-09-12. Входные незакоммиченные review и `Docs/README.md` не изменялись. Применён последовательный анализ кода/owner contracts, для Value/manifest/digest — отдельный compiled probe против portable libraries из `build/Source`. Полный suite, UE GC, thread death tests, OOM и randomized gameplay replay в этой дополнительной проверке не запускались. Заявленные исходным review пять параллельных проверок и 104 tests здесь не выдаются за наше новое evidence.
@@ -219,7 +229,7 @@ exit=0
 
 #### CFC-AF-02 — REVIEW-02 — P2 — fixtures оставляют rooted GameInstance
 
-*(Закрыто задачей CFC-02A)* Введён RAII-владелец `FScopedTestWorldContext`, гарантирующий вызов `Shutdown()`, удаление из root и уничтожение `UWorld`/`FWorldContext` в `GEngine`, тестовые вызовы `AddToRoot` переведены на scoped context и защищены статическим гейтом `validate_test_fixture_ownership.py`.
+*(Закрыто задачей CFC-02A)* Введены RAII-владельцы `FScopedTestWorldContext` и `TScopedRootObject`, гарантирующие вызов `Shutdown()`, удаление из root и уничтожение `UWorld`/`FWorldContext` в `GEngine` при выходе из scope. Все 37 вызовов `AddToRoot` и ручные `RemoveFromRoot` переведены на scoped owners; file-level allowlists полностью исключены из гейта `validate_test_fixture_ownership.py`, а проверка переведена на scope-aware AST/block анализ enclosing class/function с негативными мутациями внутри ранее разрешённых файлов.
 
 #### CFC-AF-03 — REVIEW-03 — P1 — off-tree candidates без traced owner
 
@@ -239,7 +249,7 @@ exit=0
 
 #### CFC-AF-07 — REVIEW-07 — P2 — Digest принимает неканонические hash strings
 
-*(Закрыто задачей CFC-03A)* Введён единый предикат `IsCanonicalSha256`, проверяющий ровно 64 lowercase ASCII hex-символа для всех хэш-полей Manifest и Digest (с разрешённым пустым `state_hash`), а соответствие полей подтверждено структурным гейтом `validate_headless_hash_fields.py`.
+*(Закрыто задачей CFC-03A)* Введён единый предикат `IsCanonicalSha256`, проверяющий ровно 64 lowercase ASCII hex-символа для всех хэш-полей Manifest и Digest (с разрешённым пустым `state_hash`), а соответствие полей подтверждено структурным гейтом `validate_headless_hash_fields.py` через точные хелперы `ReadRequiredCanonicalSha256Field` / `ReadOptionalCanonicalSha256Field` и автоматический перечислитель мутаций, удаляющий проверку каждого хэш-поля по очереди.
 
 #### CFC-AF-08 — REVIEW-08 — отсутствие локального Game Thread assertion
 

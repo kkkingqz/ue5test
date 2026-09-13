@@ -161,45 +161,113 @@ def main() -> int:
     results = client.run_tests_by_filter(args.filter)
 
     # If the API returns an async task handle or indicates tests are in progress, wait for terminal result
-    start_poll = time.time()
-    while (
+    is_async_execution = (
         isinstance(results, dict)
         and (
             results.get("status") in ("InProcess", "Running")
             or results.get("state") in ("InProcess", "Running")
-            or results.get("bIsRunning") is True
             or ("taskId" in results and "tests" not in results)
+            or ("task_id" in results and "tests" not in results)
         )
-    ):
-        if time.time() - start_poll > args.timeout:
-            print(f"ERROR: Automation test execution timed out after {args.timeout}s.", file=sys.stderr)
+    )
+
+    task_id: Optional[str] = None
+    if is_async_execution:
+        raw_tid = results.get("taskId") or results.get("task_id")
+        if not raw_tid or not isinstance(raw_tid, str) or not raw_tid.strip():
+            print(
+                "ERROR: Automation test execution indicated in-process state but returned no valid task_id.\n"
+                "Unbound/generic asynchronous execution is forbidden.",
+                file=sys.stderr,
+            )
             return 1
-        time.sleep(1.0)
-        try:
-            status = client.call_tool("AutomationTestToolset.AutomationTestToolset", "GetTestStatus", {})
-            if isinstance(status, dict) and not status.get("bIsRunning", True):
-                res = client.call_tool("AutomationTestToolset.AutomationTestToolset", "GetTestResults", {})
-                if isinstance(res, dict) and "returnValue" in res:
-                    val = res["returnValue"]
-                    results = json.loads(val) if isinstance(val, str) else val
-                else:
-                    results = res
-                break
-        except Exception as err:
-            print(f"ERROR: Exception while polling async test status: {err}", file=sys.stderr)
-            return 1
+        task_id = raw_tid.strip()
+
+        start_poll = time.time()
+        while True:
+            if time.time() - start_poll > args.timeout:
+                print(f"ERROR: Automation test execution timed out after {args.timeout}s for task '{task_id}'.", file=sys.stderr)
+                return 1
+            time.sleep(1.0)
+            try:
+                status = client.call_tool(
+                    "AutomationTestToolset.AutomationTestToolset",
+                    "GetTestStatus",
+                    {"taskId": task_id, "task_id": task_id},
+                )
+                if isinstance(status, dict):
+                    status_task_id = str(status.get("taskId") or status.get("task_id") or "").strip()
+                    if status_task_id and status_task_id != task_id:
+                        print(
+                            f"ERROR: GetTestStatus returned mismatched task_id '{status_task_id}' (expected '{task_id}').",
+                            file=sys.stderr,
+                        )
+                        return 1
+
+                is_running = (
+                    isinstance(status, dict)
+                    and (status.get("state") in ("InProcess", "Running") or status.get("bIsRunning") is True)
+                )
+                if not is_running:
+                    res = client.call_tool(
+                        "AutomationTestToolset.AutomationTestToolset",
+                        "GetTestResults",
+                        {"taskId": task_id, "task_id": task_id},
+                    )
+                    if isinstance(res, dict) and "returnValue" in res:
+                        val = res["returnValue"]
+                        candidate_results = json.loads(val) if isinstance(val, str) else val
+                    else:
+                        candidate_results = res
+
+                    if not isinstance(candidate_results, dict):
+                        print(
+                            f"ERROR: GetTestResults returned non-dict payload for task '{task_id}': {type(candidate_results).__name__}",
+                            file=sys.stderr,
+                        )
+                        return 1
+
+                    res_task_id = str(candidate_results.get("taskId") or candidate_results.get("task_id") or "").strip()
+                    if res_task_id and res_task_id != task_id:
+                        print(
+                            f"ERROR: GetTestResults returned mismatched task_id '{res_task_id}' (expected '{task_id}').",
+                            file=sys.stderr,
+                        )
+                        return 1
+
+                    if "tests" in candidate_results:
+                        candidate_results["task_id"] = task_id
+                        results = candidate_results
+                        break
+            except Exception as err:
+                print(f"ERROR: Exception while polling async test status for task '{task_id}': {err}", file=sys.stderr)
+                return 1
 
     elapsed = time.time() - start_time
 
-    run_identity = compute_run_identity(project_root=Path(REPO_ROOT), run_id=f"mcp-{uuid.uuid4().hex[:8]}")
+    if not isinstance(results, dict):
+        print(f"ERROR: Expected dict test results, got {type(results).__name__}", file=sys.stderr)
+        return 1
+
+    if "schema_version" not in results and "schemaVersion" not in results:
+        results["schema_version"] = 1
+
+    run_id = f"mcp-{uuid.uuid4().hex[:8]}"
+    expected_identity = compute_run_identity(project_root=Path(REPO_ROOT), run_id=run_id)
 
     try:
-        normalized_report = normalize_mcp_report(results, run_identity)
+        normalized_report = normalize_mcp_report(
+            results,
+            run_id=run_id,
+            repo_root=Path(REPO_ROOT),
+            expected_task_id=task_id,
+        )
     except Exception as e:
         print(f"ERROR: Failed to normalize MCP test report: {e}", file=sys.stderr)
         return 1
 
-    diagnostics = validate_run(discovered, normalized_report, run_identity)
+    diagnostics = validate_run(discovered, normalized_report, expected_identity)
+
 
     tests = normalized_report.get("tests", [])
     passed = normalized_report.get("passed", 0)

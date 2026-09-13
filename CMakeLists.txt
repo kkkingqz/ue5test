@@ -367,6 +367,8 @@ if(BUILD_TESTING)
         COMMAND
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_module_graph.py"
+            "--reply-dir"
+            "${CMAKE_BINARY_DIR}/.cmake/api/v1/reply"
     )
     add_test(
         NAME presentation_apply_module_graph_negative_contract
@@ -374,6 +376,8 @@ if(BUILD_TESTING)
             "${Python3_EXECUTABLE}"
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_presentation_apply_module_graph.py"
             "--self-test"
+            "--reply-dir"
+            "${CMAKE_BINARY_DIR}/.cmake/api/v1/reply"
     )
     # PSC-09B (ADR-0043 D2/D3): every prepared-operation field is a plain, self-contained
     # value -- never a function/callback, a PrepareContext/repository/registry/theme

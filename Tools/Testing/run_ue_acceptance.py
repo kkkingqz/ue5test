@@ -145,11 +145,10 @@ def run_acceptance(
         "-nop4",
         "-nosound",
         "-nullrhi",
-        "-notraceserver",
+        "-FORCELOGFLUSH",
         f"-abslog={log_path}",
         f"-ReportExportPath={report_dir}",
         f"-ExecCmds=Automation RunTests {filter_expr}; Quit",
-        "-TestExit=Automation Test Queue Empty",
     ]
 
     print("=" * 70)
@@ -243,12 +242,17 @@ def run_acceptance(
         return 1
 
     try:
-        normalized_report = normalize_ue_json_report(index_json_path, run_identity)
+        normalized_report = normalize_ue_json_report(
+            index_json_path,
+            run_id=run_id,
+            report_file_path=index_json_path,
+        )
     except Exception as e:
         print(f"ERROR: Failed to normalize UE index.json report: {e}", file=sys.stderr)
         return 1
 
     diagnostics = validate_run(discovered, normalized_report, run_identity)
+
 
     tests = normalized_report.get("tests", [])
     passed = normalized_report.get("passed", 0)

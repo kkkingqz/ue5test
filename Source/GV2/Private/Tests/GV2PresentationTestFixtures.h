@@ -94,6 +94,74 @@ private:
     UWorld* World = nullptr;
 };
 
+// CFC-02A / ADR-0040: Scoped RAII owner for any UObject rooted during a test.
+// Guarantees that Object->RemoveFromRoot() is called on exit from scope.
+template <typename T = UObject>
+class TScopedRootObject final
+{
+public:
+    TScopedRootObject()
+        : Object(nullptr)
+    {
+    }
+
+    explicit TScopedRootObject(T* InObject)
+        : Object(InObject)
+    {
+        if (Object != nullptr)
+        {
+            Object->AddToRoot();
+        }
+    }
+
+    ~TScopedRootObject()
+    {
+        Reset();
+    }
+
+    TScopedRootObject(const TScopedRootObject&) = delete;
+    TScopedRootObject& operator=(const TScopedRootObject&) = delete;
+
+    TScopedRootObject(TScopedRootObject&& Other) noexcept
+        : Object(Other.Object)
+    {
+        Other.Object = nullptr;
+    }
+
+    TScopedRootObject& operator=(TScopedRootObject&& Other) noexcept
+    {
+        if (this != &Other)
+        {
+            Reset();
+            Object = Other.Object;
+            Other.Object = nullptr;
+        }
+        return *this;
+    }
+
+    void Reset(T* NewObject = nullptr)
+    {
+        if (Object != nullptr)
+        {
+            Object->RemoveFromRoot();
+        }
+        Object = NewObject;
+        if (Object != nullptr)
+        {
+            Object->AddToRoot();
+        }
+    }
+
+    T* Get() const { return Object; }
+    T* operator->() const { return Object; }
+    T& operator*() const { check(Object != nullptr); return *Object; }
+    operator T*() const { return Object; }
+    explicit operator bool() const { return Object != nullptr; }
+
+private:
+    T* Object = nullptr;
+};
+
 // PSC-11: tests carry an FString of their own; the single Apply facade returns a result
 // struct. This adapts one to the other for test call sites only -- production has exactly
 // one way to apply a transaction and does not go through here.

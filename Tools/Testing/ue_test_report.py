@@ -46,26 +46,53 @@ def compute_source_revision(repo_root: Path) -> str:
 
 
 def compute_source_diff_hash(repo_root: Path) -> str:
-    """Returns sha256 hash of git diff against HEAD, or 'clean' if no changes."""
+    """Returns sha256 hash of git diff against HEAD and untracked files, or 'clean' if no changes."""
     try:
-        res = subprocess.run(
+        diff_res = subprocess.run(
             ["git", "diff", "HEAD"],
             cwd=str(repo_root),
             capture_output=True,
             text=True,
             check=True,
-            timeout=10,
+            timeout=15,
         )
-        diff_text = res.stdout
-        if not diff_text.strip():
+        diff_text = diff_res.stdout
+
+        untracked_res = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=15,
+        )
+        untracked_files = [line.strip() for line in untracked_res.stdout.splitlines() if line.strip()]
+
+        if not diff_text.strip() and not untracked_files:
             return "clean"
-        return hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
+
+        h = hashlib.sha256()
+        h.update(diff_text.encode("utf-8"))
+
+        for rel_path_str in sorted(untracked_files):
+            file_path = repo_root / rel_path_str
+            if file_path.is_file():
+                try:
+                    file_bytes = file_path.read_bytes()
+                    file_hash = hashlib.sha256(file_bytes).hexdigest()
+                    h.update(f"\nuntracked:{rel_path_str}:{file_hash}\n".encode("utf-8"))
+                except Exception as e:
+                    return f"error:untracked:{rel_path_str}:{e}"
+            elif file_path.exists():
+                h.update(f"\nuntracked:{rel_path_str}:special\n".encode("utf-8"))
+
+        return h.hexdigest()
     except Exception:
         return "unknown_diff"
 
 
 def compute_build_fingerprint(repo_root: Path) -> str:
-    """Computes a SHA-256 fingerprint over built Unreal Engine binaries in Binaries/Linux."""
+    """Computes a deterministic SHA-256 fingerprint over built Unreal Engine binaries in Binaries/Linux."""
     binaries_dir = repo_root / "Binaries" / "Linux"
     if not binaries_dir.is_dir():
         return "missing_binaries"
@@ -73,27 +100,21 @@ def compute_build_fingerprint(repo_root: Path) -> str:
     # Find project-owned .so files
     so_files = sorted(binaries_dir.glob("libUnrealEditor-GV2*.so"))
     if not so_files:
-        so_files = sorted(binaries_dir.glob("*.so"))
-
-    if not so_files:
-        return "no_so_binaries"
+        return "missing_binaries"
 
     h = hashlib.sha256()
     for f in so_files:
         try:
             stat = f.stat()
-            # Include filename, size, and mtime_ns
-            h.update(f"{f.name}:{stat.st_size}:{stat.st_mtime_ns}".encode("utf-8"))
-            # Sample first and last 64KB
+            h.update(f.name.encode("utf-8"))
+            h.update(b":")
+            h.update(str(stat.st_size).encode("utf-8"))
+            h.update(b":")
             with open(f, "rb") as fp:
-                head = fp.read(65536)
-                h.update(head)
-                if stat.st_size > 65536:
-                    fp.seek(max(0, stat.st_size - 65536))
-                    tail = fp.read(65536)
-                    h.update(tail)
+                while chunk := fp.read(65536):
+                    h.update(chunk)
         except Exception as e:
-            h.update(f"error:{f.name}:{e}".encode("utf-8"))
+            return f"error:{f.name}:{e}"
 
     return h.hexdigest()
 
@@ -117,56 +138,220 @@ def compute_run_identity(
     }
 
 
-def normalize_mcp_report(raw_report: Any, run_identity: Dict[str, str]) -> Dict[str, Any]:
+def extract_runtime_identity_from_ue_data(
+    ue_data: Dict[str, Any],
+    report_file_path: Optional[Path] = None,
+) -> Dict[str, str]:
+    """Extracts runtime-originated identity from UE automation test entries or sibling artifact."""
+    if "run_identity" in ue_data and isinstance(ue_data["run_identity"], dict) and ue_data["run_identity"]:
+        return dict(ue_data["run_identity"])
+
+    # 1. Look for GV2.Runtime.ModuleIdentity test entries
+    tests = ue_data.get("tests", [])
+    if isinstance(tests, list):
+        for item in tests:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("fullTestPath") or item.get("testDisplayName") or item.get("name")
+            if name == "GV2.Runtime.ModuleIdentity":
+                for entry in item.get("entries", []):
+                    if isinstance(entry, dict):
+                        ev = entry.get("event", {})
+                        if isinstance(ev, dict):
+                            msg = ev.get("message", "")
+                            if "GV2_RUNTIME_IDENTITY:" in msg:
+                                json_part = msg.split("GV2_RUNTIME_IDENTITY:", 1)[1].strip()
+                                try:
+                                    parsed = json.loads(json_part)
+                                    if isinstance(parsed, dict):
+                                        return parsed
+                                except Exception:
+                                    pass
+
+    # 2. Look for sibling runtime_identity.json next to index.json
+    if report_file_path is not None:
+        sibling = report_file_path.parent / "runtime_identity.json"
+        if sibling.is_file():
+            try:
+                with open(sibling, "r", encoding="utf-8") as f:
+                    parsed = json.load(f)
+                    if isinstance(parsed, dict):
+                        return parsed
+            except Exception:
+                pass
+
+    return {}
+
+
+def extract_runtime_identity_from_mcp_data(
+    raw_report: Dict[str, Any],
+    repo_root: Optional[Path] = None,
+) -> Dict[str, str]:
+    """Extracts runtime-originated identity from MCP test report or Saved automation artifacts."""
+    if "run_identity" in raw_report and isinstance(raw_report["run_identity"], dict) and raw_report["run_identity"]:
+        return dict(raw_report["run_identity"])
+
+    tests = raw_report.get("tests", [])
+    if isinstance(tests, list):
+        for item in tests:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get("fullTestPath")
+            if name == "GV2.Runtime.ModuleIdentity":
+                candidates = item.get("entries", []) + item.get("warnings", []) + item.get("errors", [])
+                for entry in candidates:
+                    msg = entry.get("message", "") if isinstance(entry, dict) else str(entry)
+                    if "GV2_RUNTIME_IDENTITY:" in msg:
+                        json_part = msg.split("GV2_RUNTIME_IDENTITY:", 1)[1].strip()
+                        try:
+                            parsed = json.loads(json_part)
+                            if isinstance(parsed, dict):
+                                return parsed
+                        except Exception:
+                            pass
+
+    if repo_root is not None:
+        saved_identity = repo_root / "Saved" / "Automation" / "Reports" / "runtime_identity.json"
+        if saved_identity.is_file():
+            try:
+                with open(saved_identity, "r", encoding="utf-8") as f:
+                    parsed = json.load(f)
+                    if isinstance(parsed, dict):
+                        return parsed
+            except Exception:
+                pass
+
+    return {}
+
+
+
+SUPPORTED_REPORT_SCHEMA_VERSIONS = (1, "1", "1.0", "gv2-mcp-report-v1", "gv2-ue-report-v1")
+
+
+def normalize_mcp_report(
+    raw_report: Any,
+    run_id: Optional[Union[str, Dict[str, str]]] = None,
+    repo_root: Optional[Path] = None,
+    run_identity: Optional[Dict[str, str]] = None,
+    expected_task_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Adapts MCP RunTestsByFilter response into normalized report dict.
 
+    Extracts runtime-originated identity from test results or saved artifacts,
+    or accepts explicit identity for testing/fixtures.
+    Strictly validates all required fields, types, and schema version.
+    Zero synthetic defaults.
     Raises ValueError if raw_report does not match expected schema.
     """
     if not isinstance(raw_report, dict):
         raise ValueError(f"Invalid MCP report: expected dict, got {type(raw_report).__name__}")
 
+    # 1. Require schema version
+    if "schema_version" not in raw_report and "schemaVersion" not in raw_report:
+        raise ValueError("Invalid MCP report: missing required 'schema_version'")
+    schema_ver = raw_report.get("schema_version", raw_report.get("schemaVersion"))
+    if schema_ver not in SUPPORTED_REPORT_SCHEMA_VERSIONS:
+        raise ValueError(f"Invalid MCP report: unsupported schema_version {schema_ver!r}")
+
+    # 2. Validate task_id if present or expected
+    raw_task_id = raw_report.get("task_id") or raw_report.get("taskId")
+    if raw_task_id is not None:
+        if not isinstance(raw_task_id, str) or not raw_task_id.strip():
+            raise ValueError(f"Invalid MCP report: 'task_id' must be a non-empty string, got {raw_task_id!r}")
+    if expected_task_id is not None:
+        if not isinstance(expected_task_id, str) or not expected_task_id.strip():
+            raise ValueError(f"expected_task_id must be a non-empty string, got {expected_task_id!r}")
+        if raw_task_id is not None and raw_task_id != expected_task_id:
+            raise ValueError(
+                f"MCP report task_id mismatch: expected '{expected_task_id}', got '{raw_task_id}'"
+            )
+
+    # 3. Require tests list
     if "tests" not in raw_report or not isinstance(raw_report["tests"], list):
         raise ValueError("Invalid MCP report: 'tests' field is missing or not a list")
 
+    effective_run_id: Optional[str] = None
+    if isinstance(run_id, dict):
+        run_identity = run_id
+    elif isinstance(run_id, str):
+        effective_run_id = run_id
+
+    # 4. Strictly validate each test item (zero synthetic defaults)
     normalized_tests: List[Dict[str, Any]] = []
-    for item in raw_report["tests"]:
+    for idx, item in enumerate(raw_report["tests"]):
         if not isinstance(item, dict):
-            raise ValueError(f"Invalid test record in MCP report: {item}")
+            raise ValueError(f"Invalid test record #{idx} in MCP report: expected dict, got {type(item).__name__}")
 
         name = item.get("name") or item.get("fullTestPath")
-        if not name or not isinstance(name, str):
-            raise ValueError(f"MCP test record missing name: {item}")
+        if not name or not isinstance(name, str) or not name.strip():
+            raise ValueError(f"MCP test record #{idx} missing or invalid name: {item}")
 
-        state = item.get("state", "Unknown")
-        duration = float(item.get("duration", 0.0))
-        errors = item.get("errors", [])
-        if isinstance(errors, (str, int)):
-            errors = [str(errors)] if errors else []
-        elif not isinstance(errors, list):
-            errors = [str(errors)]
+        if "state" not in item:
+            raise ValueError(f"MCP test record #{idx} ('{name}') missing required 'state'")
+        state = item["state"]
+        if not isinstance(state, str) or not state.strip():
+            raise ValueError(f"MCP test record #{idx} ('{name}') invalid 'state': {state!r}")
 
-        warnings = item.get("warnings", [])
-        if isinstance(warnings, (str, int)):
-            warnings = [str(warnings)] if warnings else []
-        elif not isinstance(warnings, list):
-            warnings = [str(warnings)]
+        if "duration" not in item:
+            raise ValueError(f"MCP test record #{idx} ('{name}') missing required 'duration'")
+        item_dur = item["duration"]
+        if not isinstance(item_dur, (int, float)) or isinstance(item_dur, bool) or item_dur < 0.0:
+            raise ValueError(f"MCP test record #{idx} ('{name}') invalid 'duration': {item_dur!r}")
+
+        if "errors" not in item:
+            raise ValueError(f"MCP test record #{idx} ('{name}') missing required 'errors'")
+        errors = item["errors"]
+        if not isinstance(errors, list) or not all(isinstance(e, str) for e in errors):
+            raise ValueError(
+                f"MCP test record #{idx} ('{name}') 'errors' must be a list of strings, got {type(errors).__name__}"
+            )
+
+        if "warnings" not in item:
+            raise ValueError(f"MCP test record #{idx} ('{name}') missing required 'warnings'")
+        warnings = item["warnings"]
+        if not isinstance(warnings, list) or not all(isinstance(w, str) for w in warnings):
+            raise ValueError(
+                f"MCP test record #{idx} ('{name}') 'warnings' must be a list of strings, got {type(warnings).__name__}"
+            )
 
         normalized_tests.append({
             "name": name,
-            "state": str(state),
-            "duration": duration,
-            "errors": errors,
-            "warnings": warnings,
+            "state": state,
+            "duration": float(item_dur),
+            "errors": list(errors),
+            "warnings": list(warnings),
         })
 
-    total = int(raw_report.get("total", len(normalized_tests)))
-    passed = int(raw_report.get("passed", 0))
-    failed = int(raw_report.get("failed", 0))
-    skipped = int(raw_report.get("skipped", 0))
-    duration = float(raw_report.get("duration", 0.0))
+    # 5. Strictly validate counters and duration on root report (zero synthetic defaults)
+    for req_counter in ("total", "passed", "failed", "skipped"):
+        if req_counter not in raw_report:
+            raise ValueError(f"Invalid MCP report: missing required counter '{req_counter}'")
+        c_val = raw_report[req_counter]
+        if not isinstance(c_val, int) or isinstance(c_val, bool) or c_val < 0:
+            raise ValueError(f"Invalid MCP report: counter '{req_counter}' must be a non-negative integer, got {c_val!r}")
 
-    return {
-        "run_identity": dict(run_identity),
+    total = raw_report["total"]
+    passed = raw_report["passed"]
+    failed = raw_report["failed"]
+    skipped = raw_report["skipped"]
+
+    if "duration" not in raw_report:
+        raise ValueError("Invalid MCP report: missing required field 'duration'")
+    rep_dur = raw_report["duration"]
+    if not isinstance(rep_dur, (int, float)) or isinstance(rep_dur, bool) or rep_dur < 0.0:
+        raise ValueError(f"Invalid MCP report: 'duration' must be a non-negative number, got {rep_dur!r}")
+    duration = float(rep_dur)
+
+    if run_identity is not None:
+        extracted_identity = dict(run_identity)
+    else:
+        extracted_identity = extract_runtime_identity_from_mcp_data(raw_report, repo_root=repo_root)
+        if effective_run_id:
+            extracted_identity["run_id"] = effective_run_id
+
+    result = {
+        "schema_version": 1,
+        "run_identity": extracted_identity,
         "tests": normalized_tests,
         "total": total,
         "passed": passed,
@@ -174,50 +359,88 @@ def normalize_mcp_report(raw_report: Any, run_identity: Dict[str, str]) -> Dict[
         "skipped": skipped,
         "duration": duration,
     }
+    effective_task_id = expected_task_id or raw_task_id
+    if effective_task_id:
+        result["task_id"] = effective_task_id
+    return result
 
 
 def normalize_ue_json_report(
     ue_data: Union[Dict[str, Any], str, Path],
-    run_identity: Dict[str, str],
+    run_id: Optional[Union[str, Dict[str, str]]] = None,
+    report_file_path: Optional[Path] = None,
+    run_identity: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Adapts Unreal Engine index.json (from -ReportExportPath) into normalized report dict.
 
+    Extracts runtime-originated identity from test results or saved artifacts,
+    or accepts explicit identity for testing/fixtures.
+    Strictly validates all required fields and types with zero synthetic defaults.
     Raises ValueError if ue_data does not match expected schema or cannot be parsed.
     """
+    file_path: Optional[Path] = None
     if isinstance(ue_data, (str, Path)):
-        p = Path(ue_data)
-        if not p.is_file():
-            raise FileNotFoundError(f"UE report file not found: {p}")
+        file_path = Path(ue_data)
+        if not file_path.is_file():
+            raise FileNotFoundError(f"UE report file not found: {file_path}")
         try:
-            with open(p, "r", encoding="utf-8-sig") as f:
+            with open(file_path, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in UE report file {p}: {e}") from e
+            raise ValueError(f"Invalid JSON in UE report file {file_path}: {e}") from e
     elif isinstance(ue_data, dict):
         data = ue_data
+        file_path = report_file_path
     else:
         raise ValueError(f"Invalid UE report data: expected dict or path, got {type(ue_data).__name__}")
 
+    # 1. Validate schema version if present
+    if "schema_version" in data or "schemaVersion" in data:
+        s_ver = data.get("schema_version", data.get("schemaVersion"))
+        if s_ver not in SUPPORTED_REPORT_SCHEMA_VERSIONS:
+            raise ValueError(f"Invalid UE report: unsupported schema_version {s_ver!r}")
+
+    # 2. Require tests list
     if "tests" not in data or not isinstance(data["tests"], list):
         raise ValueError("Invalid UE report: 'tests' field is missing or not a list")
 
+    effective_run_id: Optional[str] = None
+    if isinstance(run_id, dict):
+        run_identity = run_id
+    elif isinstance(run_id, str):
+        effective_run_id = run_id
+
+    # 3. Strictly validate each test item (zero synthetic defaults)
     normalized_tests: List[Dict[str, Any]] = []
-    for item in data["tests"]:
+    for idx, item in enumerate(data["tests"]):
         if not isinstance(item, dict):
-            raise ValueError(f"Invalid test record in UE report: {item}")
+            raise ValueError(f"Invalid test record #{idx} in UE report: expected dict, got {type(item).__name__}")
 
         name = item.get("fullTestPath") or item.get("testDisplayName") or item.get("name")
-        if not name or not isinstance(name, str):
-            raise ValueError(f"UE test record missing name: {item}")
+        if not name or not isinstance(name, str) or not name.strip():
+            raise ValueError(f"UE test record #{idx} missing or invalid name: {item}")
 
-        state = item.get("state", "Unknown")
-        duration = float(item.get("duration", 0.0))
+        if "state" not in item:
+            raise ValueError(f"UE test record #{idx} ('{name}') missing required 'state'")
+        state = item["state"]
+        if not isinstance(state, str) or not state.strip():
+            raise ValueError(f"UE test record #{idx} ('{name}') invalid 'state': {state!r}")
+
+        if "duration" not in item:
+            raise ValueError(f"UE test record #{idx} ('{name}') missing required 'duration'")
+        item_dur = item["duration"]
+        if not isinstance(item_dur, (int, float)) or isinstance(item_dur, bool) or item_dur < 0.0:
+            raise ValueError(f"UE test record #{idx} ('{name}') invalid 'duration': {item_dur!r}")
 
         # Extract errors and warnings from entries or fields
         errors: List[str] = []
         warnings: List[str] = []
-        entries = item.get("entries", [])
-        if isinstance(entries, list):
+        if "entries" in item:
+            entries = item["entries"]
+            if not isinstance(entries, list):
+                raise ValueError(
+                    f"UE test record #{idx} ('{name}') 'entries' must be a list, got {type(entries).__name__}"
+                )
             for entry in entries:
                 if isinstance(entry, dict):
                     event = entry.get("event", {})
@@ -230,29 +453,63 @@ def normalize_ue_json_report(
                             warnings.append(ev_msg or "Warning event")
 
         # Fallback to direct error count if entries did not specify message
-        direct_errors = item.get("errors", 0)
-        if isinstance(direct_errors, int) and direct_errors > len(errors):
-            errors.extend([f"Unspecified error #{i+1}" for i in range(direct_errors - len(errors))])
+        if "errors" in item:
+            direct_errors = item["errors"]
+            if not isinstance(direct_errors, int) or isinstance(direct_errors, bool) or direct_errors < 0:
+                raise ValueError(
+                    f"UE test record #{idx} ('{name}') 'errors' counter must be a non-negative integer, got {direct_errors!r}"
+                )
+            if direct_errors > len(errors):
+                errors.extend([f"Unspecified error #{i+1}" for i in range(direct_errors - len(errors))])
+
+        if "warnings" in item:
+            direct_warnings = item["warnings"]
+            if not isinstance(direct_warnings, int) or isinstance(direct_warnings, bool) or direct_warnings < 0:
+                raise ValueError(
+                    f"UE test record #{idx} ('{name}') 'warnings' counter must be a non-negative integer, got {direct_warnings!r}"
+                )
 
         normalized_tests.append({
             "name": name,
-            "state": str(state),
-            "duration": duration,
+            "state": state,
+            "duration": float(item_dur),
             "errors": errors,
             "warnings": warnings,
         })
 
-    succeeded = int(data.get("succeeded", 0))
-    succeeded_with_warnings = int(data.get("succeededWithWarnings", 0))
+    # 4. Strictly validate all required counters and duration on root report (zero synthetic defaults)
+    for req_counter in ("succeeded", "succeededWithWarnings", "failed", "notRun", "inProcess"):
+        if req_counter not in data:
+            raise ValueError(f"Invalid UE report: missing required counter '{req_counter}'")
+        c_val = data[req_counter]
+        if not isinstance(c_val, int) or isinstance(c_val, bool) or c_val < 0:
+            raise ValueError(f"Invalid UE report: counter '{req_counter}' must be a non-negative integer, got {c_val!r}")
+
+    succeeded = data["succeeded"]
+    succeeded_with_warnings = data["succeededWithWarnings"]
     passed = succeeded + succeeded_with_warnings
-    failed = int(data.get("failed", 0))
-    not_run = int(data.get("notRun", 0))
-    in_process = int(data.get("inProcess", 0))
+    failed = data["failed"]
+    not_run = data["notRun"]
+    in_process = data["inProcess"]
     total = passed + failed + not_run + in_process
-    duration = float(data.get("totalDuration", 0.0))
+
+    if "totalDuration" not in data:
+        raise ValueError("Invalid UE report: missing required field 'totalDuration'")
+    tot_dur = data["totalDuration"]
+    if not isinstance(tot_dur, (int, float)) or isinstance(tot_dur, bool) or tot_dur < 0.0:
+        raise ValueError(f"Invalid UE report: 'totalDuration' must be a non-negative number, got {tot_dur!r}")
+    duration = float(tot_dur)
+
+    if run_identity is not None:
+        extracted_identity = dict(run_identity)
+    else:
+        extracted_identity = extract_runtime_identity_from_ue_data(data, report_file_path=file_path)
+        if run_id:
+            extracted_identity["run_id"] = run_id
 
     return {
-        "run_identity": dict(run_identity),
+        "schema_version": 1,
+        "run_identity": extracted_identity,
         "tests": normalized_tests,
         "total": total,
         "passed": passed,
@@ -261,6 +518,10 @@ def normalize_ue_json_report(
         "in_process": in_process,
         "duration": duration,
     }
+
+
+
+REJECTED_IDENTITY_PREFIXES = ("missing_", "unknown_", "no_", "error:")
 
 
 def validate_run(
@@ -290,23 +551,36 @@ def validate_run(
             val = run_identity.get(k)
             if not val or not isinstance(val, str) or not val.strip():
                 diagnostics.append(f"Expected run_identity has missing or empty key '{k}'.")
+            elif any(val.startswith(p) for p in REJECTED_IDENTITY_PREFIXES):
+                diagnostics.append(f"Expected run_identity has rejected incomplete/error value for '{k}': '{val}'.")
 
-    # 3. Validate report structure and identity
+    # 3. Validate report structure, schema version, and identity
     if not isinstance(report, dict):
         diagnostics.append(f"Report must be a dict, got {type(report).__name__}.")
         return diagnostics
 
+    if "schema_version" not in report:
+        diagnostics.append("Report is missing required 'schema_version'.")
+    elif report["schema_version"] not in SUPPORTED_REPORT_SCHEMA_VERSIONS:
+        diagnostics.append(f"Report has unsupported schema_version: {report['schema_version']!r}.")
+
     rep_identity = report.get("run_identity")
     if not isinstance(rep_identity, dict):
         diagnostics.append("Report is missing 'run_identity' dictionary.")
-    elif isinstance(run_identity, dict):
+    else:
         for k in REQUIRED_IDENTITY_KEYS:
-            expected_v = run_identity.get(k)
-            actual_v = rep_identity.get(k)
-            if actual_v != expected_v:
-                diagnostics.append(
-                    f"Run identity mismatch for '{k}': expected '{expected_v}', got '{actual_v}'."
-                )
+            act_v = rep_identity.get(k)
+            if not act_v or not isinstance(act_v, str) or not act_v.strip():
+                diagnostics.append(f"Report run_identity has missing or empty key '{k}'.")
+            elif any(act_v.startswith(p) for p in REJECTED_IDENTITY_PREFIXES):
+                diagnostics.append(f"Report run_identity has rejected incomplete/error value for '{k}': '{act_v}'.")
+            elif isinstance(run_identity, dict):
+                exp_v = run_identity.get(k)
+                if act_v != exp_v:
+                    diagnostics.append(
+                        f"Run identity mismatch for '{k}': expected '{exp_v}', got '{act_v}'."
+                    )
+
 
     # 4. Validate test records
     tests = report.get("tests")

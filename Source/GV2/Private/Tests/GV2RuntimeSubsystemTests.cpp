@@ -1641,10 +1641,9 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
         TEXT("Theme provides a visible loading indicator brush"),
         Theme->LoadingIndicatorBrush.DrawAs != ESlateBrushDrawType::NoDrawType);
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     for (const FComponentContract& Component : Components)
     {
@@ -1817,13 +1816,6 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -2466,10 +2458,9 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
         EAutomationExpectedErrorFlags::Contains,
         1);
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
@@ -2496,22 +2487,15 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
             Runtime->GetContentSnapshotForAutomationTest());
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
+    WorldContext.Teardown();
 
     IFileManager::Get().Delete(*BadResourcePath);
 
     // A fresh session started after the bad fixture is removed succeeds and publishes a
     // real, resolvable catalog -- the failure was specific to that one file, not sticky.
-    UGameInstance* RecoveredGameInstance = NewObject<UGameInstance>(GEngine);
-    RecoveredGameInstance->AddToRoot();
-    RecoveredGameInstance->InitializeStandalone();
-    UWorld* RecoveredWorld = RecoveredGameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext RecoveredWorldContext;
+    UGameInstance* RecoveredGameInstance = RecoveredWorldContext.GetGameInstance();
+    UWorld* RecoveredWorld = RecoveredWorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* RecoveredRuntime = RecoveredGameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("Runtime subsystem exists after fixture cleanup"), RecoveredRuntime);
@@ -2538,13 +2522,6 @@ bool FGV2ImageCatalogBootstrapGate::RunTest(const FString& Parameters)
         RecoveredRuntime->EndSession();
     }
 
-    RecoveredGameInstance->Shutdown();
-    if (RecoveredWorld != nullptr)
-    {
-        RecoveredWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(RecoveredWorld);
-    }
-    RecoveredGameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -2575,10 +2552,9 @@ bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
 
     const FGV2ScopedSamplePackageOverride SampleOverride;
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("Standalone GameInstance initializes the runtime"), Runtime);
@@ -2591,13 +2567,6 @@ bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
         Runtime->EndSession();
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -2620,10 +2589,9 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             RuntimeSettings->EditorPackageRoots.Contains(TEXT("GameData/sample")));
     }
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("Standalone GameInstance initializes the runtime"), Runtime);
@@ -2910,13 +2878,6 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
         Runtime->EndSession();
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -3186,10 +3147,9 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
 {
     const FGV2ScopedSamplePackageOverride SampleOverride;
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("Standalone GameInstance initializes the GV2 runtime subsystem"), Runtime);
@@ -3340,13 +3300,6 @@ bool FGV2LuaTestScreenWidgetCreation::RunTest(const FString& Parameters)
     {
         Screen->RemoveFromParent();
     }
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -3364,14 +3317,12 @@ bool FGV2CommittedPresentationViewportResizeTest::RunTest(const FString& Paramet
 {
     const FGV2ScopedSamplePackageOverride SampleOverride;
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
+    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
+    UWorld* TestWorld = ScopedWorld.GetWorld();
     if (TestWorld == nullptr)
     {
         AddError(TEXT("Standalone GameInstance did not create a world"));
-        GameInstance->RemoveFromRoot();
         return false;
     }
 
@@ -3468,10 +3419,6 @@ bool FGV2CommittedPresentationViewportResizeTest::RunTest(const FString& Paramet
     WorldContext.GameViewport = PreviousWorldViewport;
     TestViewportClient->RemoveAssociation(*TestViewport);
 
-    GameInstance->Shutdown();
-    TestWorld->DestroyWorld(false);
-    GEngine->DestroyWorldContext(TestWorld);
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -3489,14 +3436,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 // style pass to erase prepared typography, makes this test fail.
 bool FGV2CommandReconcilePreservesPreparedTypographyTest::RunTest(const FString& Parameters)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
+    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
+    UWorld* TestWorld = ScopedWorld.GetWorld();
     if (TestWorld == nullptr)
     {
         AddError(TEXT("Standalone GameInstance did not create a world"));
-        GameInstance->RemoveFromRoot();
         return false;
     }
 
@@ -3637,10 +3582,6 @@ bool FGV2CommandReconcilePreservesPreparedTypographyTest::RunTest(const FString&
     OwningViewportClient->RemoveAssociation(*OwningViewport);
     ForeignViewportClient->RemoveAssociation(*ForeignViewport);
 
-    GameInstance->Shutdown();
-    TestWorld->DestroyWorld(false);
-    GEngine->DestroyWorldContext(TestWorld);
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -3667,18 +3608,14 @@ bool FGV2GameShellViewportFillTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>();
-    GameInstance->AddToRoot();
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
     if (TestWorld == nullptr)
     {
         AddError(TEXT("GameShell viewport-fill scenario could not create a game world"));
-        GameInstance->RemoveFromRoot();
         return false;
     }
-
-    GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(TestWorld);
-    GameInstance->Init();
 
     UClass* ShellClass = LoadClass<UGV2GameShellWidgetBase>(
         nullptr,
@@ -3739,10 +3676,6 @@ bool FGV2GameShellViewportFillTest::RunTest(const FString& Parameters)
             bReconciled);
         if (!bReconciled)
         {
-            GameInstance->Shutdown();
-            TestWorld->DestroyWorld(false);
-            GEngine->DestroyWorldContext(TestWorld);
-            GameInstance->RemoveFromRoot();
             return false;
         }
 
@@ -3849,10 +3782,6 @@ bool FGV2GameShellViewportFillTest::RunTest(const FString& Parameters)
         }
     }
 
-    GameInstance->Shutdown();
-    TestWorld->DestroyWorld(false);
-    GEngine->DestroyWorldContext(TestWorld);
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -3875,10 +3804,9 @@ bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
         return false;
     }
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2InputFieldWidgetBase* InputFieldWidget = TestWorld != nullptr
         ? CreateWidget<UGV2InputFieldWidgetBase>(TestWorld, WidgetClass)
@@ -3923,13 +3851,6 @@ bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
             EGV2SubmitUiInteractionResult::RuntimeNotReady);
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -4063,10 +3984,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
     TestFalse(TEXT("Empty registry fails to build"), Registry->CompileResolvedRegistry({}, EmptyResolvedRegistry, ValidationError));
 
     // 3. UIF-19, UIF-20, UIF-21: Multi-layer Reconciliation, Reuse, Replacement, Modal Blocking, Atomicity
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
     if (TestWorld != nullptr)
     {
         UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
@@ -4080,9 +4000,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TestWorld,
             GameShellClass);
         TestNotNull(TEXT("Game shell instantiated"), Shell);
+        GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
         if (Shell != nullptr)
         {
-            Shell->AddToRoot();
             const TPair<FName, FName> LayersToVerify[] = {
                 {UGV2GameShellWidgetBase::LayerBackground, TEXT("BackgroundHost")},
                 {UGV2GameShellWidgetBase::LayerLocationContent, TEXT("LocationContentHost")},
@@ -4596,9 +4516,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         {
             UGV2GameShellWidgetBase* PartialShell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
             TestNotNull(TEXT("GBH-01: partial-host shell instantiated"), PartialShell);
+            GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedPartialShell(PartialShell);
             if (PartialShell != nullptr)
             {
-                PartialShell->AddToRoot();
 
                 UVerticalBox* LocationHostPanel = NewObject<UVerticalBox>(PartialShell);
                 if (FObjectPropertyBase* HostProp = FindFProperty<FObjectPropertyBase>(PartialShell->GetClass(), TEXT("LocationContentHost")))
@@ -4669,8 +4589,6 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                     GbhReconciler.Reconcile(PartialShell, GbhPositiveDoc, GbhFactory, GbhPositiveError, *PrepareContext));
                 TestEqual(TEXT("GBH-01: positive control actually attached to the authored host"),
                     LocationHostPanel->GetChildrenCount(), 1);
-
-                PartialShell->RemoveFromRoot();
             }
         }
 
@@ -4691,9 +4609,9 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
 
             UGV2GameShellWidgetBase* AttachFailureShell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, UGV2GameShellWidgetBase::StaticClass());
             TestNotNull(TEXT("GBF-01: attach-failure Shell instantiated"), AttachFailureShell);
+            GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedAttachFailureShell(AttachFailureShell);
             if (AttachFailureShell != nullptr)
             {
-                AttachFailureShell->AddToRoot();
 
                 UOverlay* LocationHostPanel = NewObject<UOverlay>(AttachFailureShell);
                 USizeBox* SingleChildOverlayHost = NewObject<USizeBox>(AttachFailureShell);
@@ -4816,8 +4734,6 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                     AttachFailureShell->GetScreensInLayer(TEXT("overlay_stack")).Contains(AcceptedOverlay));
                 TestFalse(TEXT("GBF-01: rejected overlay is physically absent from the Shell tree"),
                     AttachFailureShell->GetScreensInLayer(TEXT("overlay_stack")).Contains(RejectedOverlay));
-
-                AttachFailureShell->RemoveFromRoot();
             }
         }
 
@@ -5168,20 +5084,8 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TestEqual(TEXT("Overlay host is empty"), Shell->GetScreensInLayer(TEXT("overlay_stack")).Num(), 0);
             TestEqual(TEXT("Modal host is empty"), Shell->GetScreensInLayer(TEXT("modal_stack")).Num(), 0);
         }
-
-        if (Shell != nullptr)
-        {
-            Shell->RemoveFromRoot();
-        }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -5212,10 +5116,9 @@ bool FGV2ModalStackKeyedCollectionOrderingContract::RunTest(const FString& Param
     {
         return false;
     }
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
     if (TestWorld != nullptr)
     {
         UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
@@ -5227,9 +5130,9 @@ bool FGV2ModalStackKeyedCollectionOrderingContract::RunTest(const FString& Param
         }
         UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
         TestNotNull(TEXT("PAH-06A: Game shell instantiated"), Shell);
+        GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
         if (Shell != nullptr)
         {
-            Shell->AddToRoot();
 
             FGV2LayeredUiReconciler Reconciler;
             auto MockFactory = [&](const FString&, FName) -> UGV2ScreenWidgetBase*
@@ -5302,18 +5205,9 @@ bool FGV2ModalStackKeyedCollectionOrderingContract::RunTest(const FString& Param
             }
             TestFalse(TEXT("PAH-06A: B is no longer a child of modal_stack"), ReorderedOrder.Contains(Cast<UUserWidget>(WidgetB)));
             TestNull(TEXT("PAH-06A: B has no parent after removal"), WidgetB->GetParent());
-
-            Shell->RemoveFromRoot();
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -5343,10 +5237,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 // remains the more direct, minimal one.
 bool FGV2KeyedCollectionReconcilePreparedRestoresOnSwapFailure::RunTest(const FString& Parameters)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UBorder* FailingContainer = NewObject<UBorder>(TestWorld);
     UGV2ButtonWidgetBase* ExistingWidget = NewObject<UGV2ButtonWidgetBase>(TestWorld);
@@ -5394,13 +5287,6 @@ bool FGV2KeyedCollectionReconcilePreparedRestoresOnSwapFailure::RunTest(const FS
         TestEqual(TEXT("PAH-06A: OutPreviousOrderedWidgets[0] is the original widget"), PreviousOrderedOut[0], ExistingWidget);
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -5431,10 +5317,9 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
     {
         return false;
     }
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
     if (TestWorld != nullptr)
     {
         UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
@@ -5446,9 +5331,9 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
         }
         UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
         TestNotNull(TEXT("PAH-06B: Game shell instantiated"), Shell);
+        GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
         if (Shell != nullptr)
         {
-            Shell->AddToRoot();
 
             FGV2LayeredUiReconciler Reconciler;
             auto MockFactory = [&](const FString&, FName) -> UGV2ScreenWidgetBase*
@@ -5532,18 +5417,9 @@ bool FGV2NonModalLayerReorderAndReplaceContract::RunTest(const FString& Paramete
                 TestEqual(TEXT("PAH-06B: untouched A keeps its position (position 1)"), Order[1], Cast<UUserWidget>(WidgetA));
             }
             TestFalse(TEXT("PAH-06B: old B is no longer a child of overlay_stack"), Order.Contains(Cast<UUserWidget>(WidgetB)));
-
-            Shell->RemoveFromRoot();
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -5584,10 +5460,9 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
     {
         return false;
     }
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
     if (TestWorld != nullptr)
     {
         UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
@@ -5598,6 +5473,7 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
         }
         UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
         TestNotNull(TEXT("PAH-08: Game shell instantiated"), Shell);
+        GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
 
         // The factory is registry-backed on purpose: GV2LayeredUiReconciler.h documents
         // FScreenFactory as "an implementation backed by UGV2ScreenRegistry::Resolve", so
@@ -5614,7 +5490,6 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
 
         if (Shell != nullptr && Registry != nullptr && Fixture != nullptr)
         {
-            Shell->AddToRoot();
 
             auto Factory = [&](const FString& ScreenId, FName Layer) -> UGV2ScreenWidgetBase*
             {
@@ -5680,18 +5555,9 @@ bool FGV2PresentationAuthorityPhaseContract::RunTest(const FString& Parameters)
                 TEXT("PAH-08: Reconcile as a whole DOES resolve (it contains preparation), so it is the wrong "
                      "bracket for the invariant -- CommitReconcile is"),
                 AfterWhole > BeforeWhole);
-
-            Shell->RemoveFromRoot();
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -5725,10 +5591,9 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
     {
         return false;
     }
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
     if (TestWorld != nullptr)
     {
         UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
@@ -5740,9 +5605,9 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
         }
         UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(TestWorld, GameShellClass);
         TestNotNull(TEXT("PAH-07: Game shell instantiated"), Shell);
+        GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
         if (Shell != nullptr)
         {
-            Shell->AddToRoot();
 
             // Route widget at location_content -- a plain, field-less screen. Reused by a
             // fixed-instance factory (not CreateWidget-per-call) so its C++ identity is
@@ -5952,18 +5817,9 @@ bool FGV2PresentationCatastrophicRecoveryContract::RunTest(const FString& Parame
                 Reconciler.Reconcile(Shell, MakeDoc(4, TEXT("core:screen.pah07_route"), TEXT("FinalA"), TEXT("FinalB")), Factory, ReconcileError, *PrepareContext));
             TestEqual(TEXT("PAH-07: health returns to Nominal after the next successful commit"),
                 Reconciler.GetHealth(), EGV2PresentationHealth::Nominal);
-
-            Shell->RemoveFromRoot();
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -6194,10 +6050,9 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
         // PrepareScreenFields / CommitScreenFields -- the same two-phase API a
         // top-level screen uses, not a hand-rolled mutation plan.
         {
-            UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-            GameInstance->AddToRoot();
-            GameInstance->InitializeStandalone();
-            UWorld* TestWorld = GameInstance->GetWorld();
+            GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+            UGameInstance* GameInstance = WorldContext.GetGameInstance();
+            UWorld* TestWorld = WorldContext.GetWorld();
 
             // Child screen: a real UGV2ScreenWidgetBase with a nested declared
             // composite (DUC-08 shape) exposing exactly the two properties
@@ -6479,10 +6334,9 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
     // DUC-11: composition-cycle guard for screen_id-based nested screens
     // =========================================================================
     {
-        UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-        GameInstance->AddToRoot();
-        GameInstance->InitializeStandalone();
-        UWorld* TestWorld = GameInstance->GetWorld();
+        GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+        UGameInstance* GameInstance = WorldContext.GetGameInstance();
+        UWorld* TestWorld = WorldContext.GetWorld();
 
         // Builds a minimal screen: a DeclaredComposite host declaring one
         // NestedScreen-kind property ("tabs") targeting a real child
@@ -6703,10 +6557,9 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
 
         // 7. Full widget + FGV2UiInteractionEmitter + UGV2RuntimeSubsystem integration test
         {
-            UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-            GameInstance->AddToRoot();
-            GameInstance->InitializeStandalone();
-            UWorld* TestWorld = GameInstance->GetWorld();
+            GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+            UGameInstance* GameInstance = WorldContext.GetGameInstance();
+            UWorld* TestWorld = WorldContext.GetWorld();
 
             UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
             TestNotNull(TEXT("Runtime subsystem exists for tab container test"), Runtime);
@@ -6747,14 +6600,6 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                     TestEqual(TEXT("Runtime subsystem synced switched active tab (inventory)"), Runtime->GetActiveTab(TEXT("location_content/main/tabs")), TEXT("inventory"));
                 }
             }
-
-            GameInstance->Shutdown();
-            if (TestWorld != nullptr)
-            {
-                TestWorld->DestroyWorld(false);
-                GEngine->DestroyWorldContext(TestWorld);
-            }
-            GameInstance->RemoveFromRoot();
         }
     }
 
@@ -7129,10 +6974,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
     const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
     TestNotNull(TEXT("Configured theme is available for prepared text fixtures"), Theme);
 
@@ -7761,13 +7605,6 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -7781,10 +7618,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     // -------------------------------------------------------------------------
     // -------------------------------------------------------------------------
@@ -7866,13 +7702,6 @@ bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("CCF-11: CommandPanel Key getter/setter"), CmdPanel->GetKey(), FName(TEXT("cmd_test")));
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -7977,14 +7806,11 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("FreeStretch compatible with Tile"), IsScalePolicyCompatible(EGV2PrimitiveScalePolicy::FreeStretch, EGV2ImageRenderMode::Tile));
 
     // 2. Test ImageWidget atomic rollback on incompatible resource apply
-    UGameInstance* GameInstance = NewObject<UGameInstance>();
-    GameInstance->AddToRoot();
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
+    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
+    UWorld* TestWorld = ScopedWorld.GetWorld();
     if (TestWorld != nullptr)
     {
-        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
-        WorldContext.SetCurrentWorld(TestWorld);
-        GameInstance->Init();
 
         UClass* ImageClass = LoadClass<UGV2ImageWidgetBase>(nullptr, TEXT("/Game/UI/Widgets/WBP_Image.WBP_Image_C"));
         UGV2ImageWidgetBase* ImageWidget = ImageClass ? CreateWidget<UGV2ImageWidgetBase>(TestWorld, ImageClass) : NewObject<UGV2ImageWidgetBase>(TestWorld);
@@ -8055,11 +7881,7 @@ bool FGV2GraphicsScalingPolicyTest::RunTest(const FString& Parameters)
             }
         }
 
-        GameInstance->Shutdown();
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
     }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -8073,14 +7895,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>();
-    GameInstance->AddToRoot();
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
+    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
+    UWorld* TestWorld = ScopedWorld.GetWorld();
     if (TestWorld != nullptr)
     {
-        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
-        WorldContext.SetCurrentWorld(TestWorld);
-        GameInstance->Init();
 
         // 1. SceneView validation & semantics
         {
@@ -8112,13 +7931,6 @@ bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -8132,14 +7944,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>();
-    GameInstance->AddToRoot();
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
+    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
+    UWorld* TestWorld = ScopedWorld.GetWorld();
     if (TestWorld != nullptr)
     {
-        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
-        WorldContext.SetCurrentWorld(TestWorld);
-        GameInstance->Init();
         const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
         TestNotNull(TEXT("Configured theme is available for prepared text fixtures"), Theme);
 
@@ -8512,13 +8321,6 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -8549,14 +8351,11 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
             && Widget->ApplyResolvedImageResource(MakePreparedResolvedImageForTest(Resolved), OutError);
     };
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>();
-    GameInstance->AddToRoot();
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
+    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
+    UWorld* TestWorld = ScopedWorld.GetWorld();
     if (TestWorld != nullptr)
     {
-        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
-        WorldContext.SetCurrentWorld(TestWorld);
-        GameInstance->Init();
 
         const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
         TestNotNull(TEXT("Configured theme is valid"), Theme);
@@ -8700,13 +8499,6 @@ bool FGV2RenderingConformanceTest::RunTest(const FString& Parameters)
         }
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -8720,10 +8512,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters)
 {
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("RuntimeSubsystem initialized"), Runtime);
@@ -8830,13 +8621,6 @@ bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters
         Runtime->EndSession();
     }
 
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -8876,10 +8660,9 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
 
     AddExpectedErrorPlain(TEXT("ApplyScreenFields rejected"), EAutomationExpectedErrorFlags::Contains, 3);
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2ScreenWidgetBase* Screen = CreateWidget<UGV2ScreenWidgetBase>(TestWorld, UGV2ScreenWidgetBase::StaticClass());
     TestNotNull(TEXT("Screen instantiated"), Screen);
@@ -9029,7 +8812,6 @@ bool FGV2ScreenPreflightPredictsDeepChildFailureTest::RunTest(const FString& Par
         Cast<UGV2ButtonWidgetBase>(ButtonBox->GetChildAt(0)),
         OriginalButton);
 
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -9071,14 +8853,11 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
         }
     }
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>();
-    GameInstance->AddToRoot();
-    UWorld* TestWorld = UWorld::CreateWorld(EWorldType::Game, false);
+    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
+    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
+    UWorld* TestWorld = ScopedWorld.GetWorld();
     if (TestWorld != nullptr)
     {
-        FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
-        WorldContext.SetCurrentWorld(TestWorld);
-        GameInstance->Init();
 
         UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(
             nullptr,
@@ -9124,11 +8903,7 @@ bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
             }
         }
 
-        GameInstance->Shutdown();
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
     }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -10281,22 +10056,14 @@ bool FGV2SessionPreservesProjectionWhenCandidateFailsTest::RunTest(const FString
 {
     const FGV2ScopedSamplePackageOverride SampleOverride;
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
     if (Runtime == nullptr)
     {
-        GameInstance->Shutdown();
-        if (TestWorld != nullptr)
-        {
-            TestWorld->DestroyWorld(false);
-            GEngine->DestroyWorldContext(TestWorld);
-        }
-        GameInstance->RemoveFromRoot();
         return false;
     }
 
@@ -10348,13 +10115,6 @@ bool FGV2SessionPreservesProjectionWhenCandidateFailsTest::RunTest(const FString
 
     // End session and clean up
     Runtime->EndSession();
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 
@@ -10369,22 +10129,14 @@ bool FGV2SessionNativeRecoveryOnInitialApplyFailureTest::RunTest(const FString& 
 {
     const FGV2ScopedSamplePackageOverride SampleOverride;
 
-    UGameInstance* GameInstance = NewObject<UGameInstance>(GEngine);
-    GameInstance->AddToRoot();
-    GameInstance->InitializeStandalone();
-    UWorld* TestWorld = GameInstance->GetWorld();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
     TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
     if (Runtime == nullptr)
     {
-        GameInstance->Shutdown();
-        if (TestWorld != nullptr)
-        {
-            TestWorld->DestroyWorld(false);
-            GEngine->DestroyWorldContext(TestWorld);
-        }
-        GameInstance->RemoveFromRoot();
         return false;
     }
 
@@ -10425,13 +10177,6 @@ bool FGV2SessionNativeRecoveryOnInitialApplyFailureTest::RunTest(const FString& 
 
     // Clean up
     Runtime->EndSession();
-    GameInstance->Shutdown();
-    if (TestWorld != nullptr)
-    {
-        TestWorld->DestroyWorld(false);
-        GEngine->DestroyWorldContext(TestWorld);
-    }
-    GameInstance->RemoveFromRoot();
     return true;
 }
 

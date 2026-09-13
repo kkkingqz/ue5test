@@ -20,7 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure
-        run: cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
+        run: |
+          mkdir -p cmake-build-ci/.cmake/api/v1/query
+          touch cmake-build-ci/.cmake/api/v1/query/codemodel-v2
+          cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build cmake-build-ci --config Release --parallel 2
       - name: CTest
@@ -61,6 +64,9 @@ jobs:
         run: |
           test -x "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh"
           test -x "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor-Cmd"
+      - name: Run UBT compiler-negative probe
+        run: |
+          python3 Tools/Testing/validate_presentation_apply_module_graph.py --ubt-probe --ue-root "$UE_ROOT"
       - name: Build GV2Editor
         run: >-
           "$UE_ROOT/Engine/Build/BatchFiles/Linux/Build.sh"

@@ -3,6 +3,8 @@ Binaries/
 DerivedDataCache/
 Intermediate/
 Saved/
+*.gen.h
+
 
 # IDE and editor state
 .vs/
