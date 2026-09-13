@@ -317,7 +317,20 @@ local function protect_facade_table(tbl, table_name, allowed_subtables)
     return tbl
 end
 
-function M.get_isolation_handle()
+-- CFC-05 (B3): the isolation capability is handed out EXACTLY ONCE, to whichever module
+-- takes it first during bootstrap -- in this build that is core:module.runtime.test_isolation,
+-- which is loaded before any package module. A second caller, including a mod that declares
+-- this module as a dependency and calls the same function, receives nil and therefore cannot
+-- reach with_isolated_facade_slot at all. A plain getter would have made a sealed registry
+-- swappable by anyone able to require this module, which is the hole the read-only facade and
+-- safe_rawset exist to close.
+local isolation_handle_taken = false
+
+function M.take_isolation_handle()
+    if isolation_handle_taken then
+        return nil
+    end
+    isolation_handle_taken = true
     return BOOTSTRAP_ISOLATION_HANDLE
 end
 

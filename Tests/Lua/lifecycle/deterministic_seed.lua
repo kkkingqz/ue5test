@@ -25,6 +25,41 @@ local function with_mock_state(seed_hex, fn)
 end
 
 return {
+    seed_is_required_and_never_defaulted_to_zero = function()
+        -- CFC-07A (ревью M1): раньше отсутствие seed заменялось нулями в трёх местах, поэтому
+        -- прохождение молча шло по одному PRNG-потоку. Обе двери закрыты: пустое canonical
+        -- state без известного seed построить нельзя, а state без meta.seed_hex не проходит
+        -- validate_state -- то есть сейв без seed отвергает владелец кодирования, а не
+        -- случайный более поздний вызов game.random.
+        local ok, err = pcall(function()
+            state_validator.create_empty_canonical_state("NOTHEX0123456789")
+        end)
+        assert(not ok and string.find(tostring(err), "InvalidSeedHex"),
+            "create_empty_canonical_state must refuse a non-hex seed, got: " .. tostring(err))
+
+        local tree = state_validator.create_empty_canonical_state("0123456789abcdef")
+        assert(tree.meta.seed_hex == "0123456789abcdef", "explicit seed must reach meta.seed_hex")
+        assert(tree.meta.seed_hex ~= "0000000000000000", "seed must never silently become zero")
+
+        tree.meta.seed_hex = nil
+        ok, err = pcall(function()
+            state_validator.validate_state_tree(tree)
+        end)
+        assert(not ok and string.find(tostring(err), "meta.seed_hex"),
+            "validate_state_tree must reject a canonical state without meta.seed_hex, got: " .. tostring(err))
+
+        -- Neither an explicit seed nor a session seed: the empty state has no deterministic
+        -- source at all, and that must be a refusal rather than a substituted constant.
+        local previous_session_seed = _G.game.runtime.seed_hex
+        _G.game.runtime.seed_hex = nil
+        ok, err = pcall(function()
+            state_validator.create_empty_canonical_state()
+        end)
+        _G.game.runtime.seed_hex = previous_session_seed
+        assert(not ok and string.find(tostring(err), "InvalidSeedHex"),
+            "create_empty_canonical_state must refuse when no seed is available anywhere, got: " .. tostring(err))
+    end,
+
     seed_transport_and_generation_isolation = function()
         assert(_G.game ~= nil and _G.game.runtime ~= nil, "game.runtime must exist")
         local seed_hex = _G.game.runtime.seed_hex

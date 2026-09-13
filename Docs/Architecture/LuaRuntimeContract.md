@@ -108,7 +108,7 @@ Native bindings также фиксированы и schema-defined. Outbound DT
 
 Portable host использует закрытые typed entry points, а не имена functions из gameplay content:
 
-- bootstrap принимает pinned repository, ordered sources и `start_inputs`, где `mode`, repository identity и `seed_hex` обязательны; load дополнительно получает captured opaque bytes;
+- bootstrap принимает pinned repository, ordered sources и `start_inputs`, где `mode` и repository identity обязательны; load дополнительно получает captured opaque bytes;
 - registry sealing вызывается один раз после `register` hooks через private bootstrap owner и возвращает только success либо `FRuntimeFault`;
 - state composition целиком владеет `core:module.runtime.state_composition` (`compose_default_state`); C++ не знает названий секций (`meta`, `mods`, `prng`, `time`) и правил слияния вкладов модулей, а вызывает единственную защищённую точку входа и проверяет типизированный результат;
 - restore, validation и start являются последующими защищёнными фазами с уведомлением о переходе через фазовый callback (`FPhaseCallback`), позволяющий хосту инспектировать прогресс и проверять cancellation между фазами без прерывания защищенного выполнения Lua; canonical tree не возвращается в C++ и boundary не пересекает;
@@ -117,7 +117,16 @@ Portable host использует закрытые typed entry points, а не 
 - `save_to_slot(slot_id)` вызывается host-ом только в safe point; storage binding получает opaque bytes;
 - `stop`/`unregister` выполняются в reverse resolved module order, уже известном loader-у (CFC-07); ошибка в user hook прерывает последующие user hooks, но не обязательный C++ teardown.
 
-`seed_hex` имеет форму ровно 16 lowercase ASCII hex characters и представляет полный uint64. Session generation не является seed. Load восстанавливает сохранённые stream states и не переинициализирует их из descriptor. Legacy numeric manifest seed мигрируется codec-ом, а не lifecycle entry point.
+`seed_hex` имеет форму ровно 16 lowercase ASCII hex characters и представляет полный uint64. Session generation не является seed. Legacy numeric manifest seed мигрируется codec-ом, а не lifecycle entry point.
+
+У двух форм старта требования к seed противоположны, и это не послабление, а следствие того, кто им владеет:
+
+| Форма старта | `start_inputs.seed_hex` | Источник seed |
+|---|---|---|
+| Cold start (`Menu`, `NewGame`) | **обязателен**, 16 lowercase hex | host; отсутствующий или неверный — `InvalidSeedHex`, не молчаливый ноль |
+| Load (captured opaque bytes) | **обязан отсутствовать** | `meta.seed_hex` внутри восстановленного Lua состояния; host-переданный seed отвергается как `SeedHexNotAcceptedForLoad`, потому что он бы переинициализировал продолжаемое прохождение |
+
+Из этого следует запрет, который легко нарушить «удобным» исправлением: C++ не извлекает seed из container bytes. Container для него — непрозрачные байты ([ADR-0021](../ADR/0021-opaque-save-container.md)), а поиск поля внутри них означал бы, что host знает gameplay-кодирование и что любое содержимое сейва, совпавшее с искомой формой, может подменить seed. `meta.seed_hex` обязателен в canonical state: `core:module.runtime.state_validator` отвергает состояние без него, поэтому сейв без seed отклоняется владельцем кодирования на загрузке, а не всплывает при первом обращении к `game.random`.
 
 Preflight и subsequent load получают один и тот же request-owned byte buffer. Lua может декодировать его дважды на разных фазах, но C++ не читает slot повторно и не преобразует bytes в `FValue`. Preflight не меняет `game.state`, registries, queues, PRNG или presentation source.
 

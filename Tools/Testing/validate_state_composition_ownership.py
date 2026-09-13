@@ -252,6 +252,38 @@ def validate_session_implementation(session_file: Path) -> list[str]:
                 f"{rel_path}: forbidden native state merge identifier '{identifier}' found in session implementation"
             )
 
+    # Check 6: the save container stays opaque to C++ (ADR-0021). The actual set here is every
+    # use of the container-bytes parameter itself, not a list of function names: a use is
+    # classified by the token that follows it, and only forwarding, dereferencing and null
+    # comparison are accepted. Member access, subscripting or any call ON the bytes is an
+    # inspection of gameplay-owned encoding and turns this red -- which is how a seed, a
+    # version or any other field gets read back out of the container.
+    errors.extend(validate_container_bytes_opacity(stripped, rel_path))
+
+    return errors
+
+
+CONTAINER_BYTES_IDENTIFIER = "LoadContainerBytes"
+
+
+def validate_container_bytes_opacity(stripped: str, rel_path) -> list[str]:
+    errors: list[str] = []
+    for match in re.finditer(r"\b" + re.escape(CONTAINER_BYTES_IDENTIFIER) + r"\b", stripped):
+        tail = stripped[match.end():].lstrip()
+        line_idx = stripped.count("\n", 0, match.start()) + 1
+        if tail.startswith("->") or tail.startswith("[") or (tail.startswith(".") and not tail.startswith("...")):
+            errors.append(
+                f"{rel_path}:{line_idx}: '{CONTAINER_BYTES_IDENTIFIER}' is inspected, not forwarded. "
+                f"The save container is opaque bytes in C++ (ADR-0021); any field inside it -- seed, "
+                f"version, section -- is read by Lua, which owns the encoding."
+            )
+    # A dereferenced form reaches members without touching the identifier's own tail.
+    for match in re.finditer(r"\(\s*\*\s*" + re.escape(CONTAINER_BYTES_IDENTIFIER) + r"\s*\)\s*(\.|->|\[)", stripped):
+        line_idx = stripped.count("\n", 0, match.start()) + 1
+        errors.append(
+            f"{rel_path}:{line_idx}: dereferenced '{CONTAINER_BYTES_IDENTIFIER}' is inspected, not forwarded. "
+            f"The save container is opaque bytes in C++ (ADR-0021)."
+        )
     return errors
 
 
@@ -368,6 +400,32 @@ def run_self_test() -> int:
         errors = validate_session_implementation(bad_session)
         if not any("forbidden reading of canonical state handle" in e for e in errors):
             print("Self-test failed: did not detect forbidden reading of canonical state via lua_getfield('state')")
+            return 1
+
+        # Mutation G: container bytes inspected instead of forwarded (three shapes), and the
+        # legitimate forwarding/null-check shapes must stay accepted -- otherwise the rule
+        # would just be "never mention the parameter".
+        for bad_use, label in (
+            ('if (LoadContainerBytes->find("8:seed_hexs16:") != npos) {}', "arrow member access"),
+            ('const char C = LoadContainerBytes[0];', "subscript"),
+            ('if ((*LoadContainerBytes).starts_with("SYNTHETIC")) {}', "dereferenced member access"),
+        ):
+            bad_session.write_text(f"void Use(const std::string* LoadContainerBytes) {{ {bad_use} }}", encoding="utf-8")
+            errors = validate_session_implementation(bad_session)
+            if not any("is inspected, not forwarded" in e for e in errors):
+                print(f"Self-test failed: did not detect container bytes inspection ({label})")
+                return 1
+
+        good_session_uses = (
+            "bool Forward(const std::string* LoadContainerBytes) {\n"
+            "    if (LoadContainerBytes == nullptr) { return false; }\n"
+            "    return Decode(*LoadContainerBytes);\n"
+            "}\n"
+        )
+        bad_session.write_text(good_session_uses, encoding="utf-8")
+        errors = validate_session_implementation(bad_session)
+        if any("is inspected, not forwarded" in e for e in errors):
+            print("Self-test failed: rejected legitimate forwarding/null-check of container bytes")
             return 1
 
         # Mutation F: missing compose_default_state in Lua module

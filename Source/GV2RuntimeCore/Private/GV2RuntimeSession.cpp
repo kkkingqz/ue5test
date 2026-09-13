@@ -247,8 +247,14 @@ struct FRuntimeSession::FImpl
         lua_createtable(State, 0, 4);
         lua_pushinteger(State, SessionGeneration);
         lua_setfield(State, -2, "session_generation");
-        lua_pushstring(State, SeedHex.c_str());
-        lua_setfield(State, -2, "seed_hex");
+        // CFC-07A: published only when the host actually supplied one (cold start). A load
+        // leaves it absent rather than empty, so Lua's own "is this a seed?" check reads as
+        // "no host seed, use the one the save carries" instead of accepting "" as a value.
+        if (!SeedHex.empty())
+        {
+            lua_pushstring(State, SeedHex.c_str());
+            lua_setfield(State, -2, "seed_hex");
+        }
         lua_setfield(State, -2, "runtime");
         lua_createtable(State, 0, 1);
         lua_setfield(State, -2, "ui");
@@ -1828,12 +1834,10 @@ struct FRuntimeSession::FImpl
                 return false;
             }
 
-            if (SeedHex.empty())
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                OutFault = {"InvalidSeedHex", "Could not extract valid seed_hex from save slot."};
-                return false;
-            }
+            // CFC-07A: no seed check here. A loaded run's seed is meta.seed_hex inside the
+            // tree Lua just produced, and C++ must not look into that tree (ADR-0021) --
+            // core:module.runtime.state_validator requires the field and rejects a state
+            // without it, which is the same refusal in the module that owns the encoding.
 
             // SAV-18/19/20: phase "migrate_state" — only on a cold-start load,
             // between decode (above) and restore_instances (below), so a
@@ -2988,44 +2992,6 @@ FRuntimeSession::~FRuntimeSession()
     Stop();
 }
 
-bool ExtractSeedHexFromSaveBytes(std::string_view ContainerBytes, std::string& OutSeedHex)
-{
-    OutSeedHex.clear();
-    // 1. Check canonical codec pattern: "8:seed_hexs16:" followed by 16 hex chars
-    constexpr std::string_view Pattern = "8:seed_hexs16:";
-    const std::size_t Pos = ContainerBytes.find(Pattern);
-    if (Pos != std::string_view::npos)
-    {
-        const std::size_t SeedStart = Pos + Pattern.size();
-        if (SeedStart + 16 <= ContainerBytes.size())
-        {
-            const std::string_view Candidate = ContainerBytes.substr(SeedStart, 16);
-            if (IsValidSeedHex(Candidate))
-            {
-                OutSeedHex.assign(Candidate);
-                return true;
-            }
-        }
-    }
-
-    // 2. Check synthetic container for test suites: SYNTHETIC_CONTAINER:marker:version:seed_hex
-    constexpr std::string_view SynthPrefix = "SYNTHETIC_CONTAINER:";
-    if (ContainerBytes.starts_with(SynthPrefix))
-    {
-        const std::size_t LastColon = ContainerBytes.rfind(':');
-        if (LastColon != std::string_view::npos && LastColon + 17 == ContainerBytes.size())
-        {
-            const std::string_view Candidate = ContainerBytes.substr(LastColon + 1, 16);
-            if (IsValidSeedHex(Candidate))
-            {
-                OutSeedHex.assign(Candidate);
-                return true;
-            }
-        }
-    }
-
-    return false;
-}
 
 bool FRuntimeSession::StartSessionPhases(
     const FSessionStartInputs& StartInputs,
@@ -3050,14 +3016,29 @@ bool FRuntimeSession::StartSessionPhases(
         OutFault = {"InvalidSessionGeneration", "Runtime requires a positive session generation."};
         return false;
     }
-    FSessionStartInputs EffectiveInputs = StartInputs;
-    if (EffectiveInputs.SeedHex.empty() && LoadContainerBytes != nullptr)
+    // CFC-07A: the seed is a gameplay input, and which seed a CONTINUED run uses is decided
+    // by the save it continues -- Lua restores meta.seed_hex from the state it deserializes.
+    // C++ therefore never reads a seed out of the container (ADR-0021: the container is
+    // opaque bytes here), and the two start shapes have opposite requirements:
+    //
+    //   cold start  -- no container, so the host must supply the seed; an absent or malformed
+    //                  one is a typed refusal, never a silent zero;
+    //   load        -- the container carries it, so a host-supplied seed would silently
+    //                  reseed a continued playthrough and is refused for that reason.
+    const FSessionStartInputs& EffectiveInputs = StartInputs;
+    if (LoadContainerBytes == nullptr)
     {
-        ExtractSeedHexFromSaveBytes(*LoadContainerBytes, EffectiveInputs.SeedHex);
+        if (!IsValidSeedHex(EffectiveInputs.SeedHex))
+        {
+            OutFault = {"InvalidSeedHex", "SeedHex must be exactly 16 lowercase ASCII hex characters."};
+            return false;
+        }
     }
-    if (LoadContainerBytes == nullptr && !IsValidSeedHex(EffectiveInputs.SeedHex))
+    else if (!EffectiveInputs.SeedHex.empty())
     {
-        OutFault = {"InvalidSeedHex", "SeedHex must be exactly 16 lowercase ASCII hex characters."};
+        OutFault = {
+            "SeedHexNotAcceptedForLoad",
+            "A load restores its seed from the save container; a host-supplied seed would reseed the run."};
         return false;
     }
     if (Sources.empty())

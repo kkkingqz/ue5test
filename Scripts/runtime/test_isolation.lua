@@ -7,7 +7,11 @@ local validator_registry = require("core:module.runtime.validator_registry")
 local actor_registry = require("core:module.runtime.actor_registry")
 local event_bus = require("core:module.runtime.event_bus")
 
-local handle = registry_lifecycle.get_isolation_handle()
+-- Taken once at module load; registry_lifecycle hands the capability to no one else.
+local handle = registry_lifecycle.take_isolation_handle()
+if handle == nil then
+    error("IsolationHandleUnavailable: core:module.runtime.test_isolation must be the sole holder of the bootstrap isolation handle", 0)
+end
 
 function M.with_isolated_services(fn)
     local fresh_registry = service_registry.create_registry()

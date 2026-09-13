@@ -37,7 +37,7 @@ game.state = {
     schema_version = 1,
     save_version = 1,
     save_id = "",
-    seed_hex = "0000000000000000",
+    seed_hex = "9f2c41a6b30d75e8",
     player_actor_id = "actor@1",
     instance_counters = {},
     prng = {},
@@ -68,7 +68,7 @@ game.state = {
 
 `core:module.runtime.state_composition` целиком владеет созданием root, вызовом module state hooks, merge/collision policy и назначением temporary tree. C++ передаёт ordered winning module IDs, typed scalar start inputs и optional opaque load bytes, вызывает один protected phase и получает только success/fault. Section names, contribution tables и decoded state boundary не пересекают.
 
-Фиксированные поля `meta` (`schema_version`, `save_version`, `save_id`, `seed_hex`, `player_actor_id`) устанавливает composition owner; module contributions не переопределяют их. Обычная contribution является map известных canonical root sections в table без metatable. Ключ верхнего section и каждый ключ внутри section уникальны по всему ordered module pass; collision даёт `LuaModuleDefaultStateInvalid`. Для engine-owned nested maps `meta.instance_counters`, `meta.prng` и `meta.time` разрешено объединение только по уникальным child keys; overwrite также запрещён.
+Фиксированные поля `meta` (`schema_version`, `save_version`, `save_id`, `seed_hex`, `player_actor_id`) устанавливает composition owner; module contributions не переопределяют их. `seed_hex` обязателен: canonical state без него не имеет детерминированного источника, поэтому `validate_state` отвергает такое состояние, а построение пустого состояния без известного seed является ошибкой, а не поводом подставить нули. Обычная contribution является map известных canonical root sections в table без metatable. Ключ верхнего section и каждый ключ внутри section уникальны по всему ordered module pass; collision даёт `LuaModuleDefaultStateInvalid`. Для engine-owned nested maps `meta.instance_counters`, `meta.prng` и `meta.time` разрешено объединение только по уникальным child keys; overwrite также запрещён.
 
 В `mods` module может записывать только ключ собственного namespace/module ID. Actual canonical section set и special nested-map classification находятся в одном Lua descriptor, используемом и composition, и validation; C++ enum/string list отсутствует. Новый section добавляется вместе с descriptor, validation и Lua spec. Partial tree при fault не присваивается `game.state`.
 

@@ -136,8 +136,12 @@ function M.create_empty_canonical_state(opt_seed_hex)
     if (not seed_hex or seed_hex == "") and _G.game and _G.game.runtime and type(_G.game.runtime.seed_hex) == "string" then
         seed_hex = _G.game.runtime.seed_hex
     end
-    if not seed_hex or seed_hex == "" then
-        seed_hex = "0000000000000000"
+    -- CFC-07A: no silent zero. An empty canonical state is only ever built for a run whose
+    -- seed is already known -- the host supplies it at cold start, and a continued run gets
+    -- it from the save. Substituting zeros here would make every such run share one PRNG
+    -- stream and would do so without any fault to notice.
+    if type(seed_hex) ~= "string" or not seed_hex:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") then
+        error("InvalidSeedHex: canonical state requires a 16-character lowercase hex seed, got: " .. tostring(seed_hex), 2)
     end
     local state = {
         meta = {
@@ -355,10 +359,12 @@ function M.validate_state_tree(tree)
             end
         end
     end
-    if meta.seed_hex ~= nil then
-        if type(meta.seed_hex) ~= "string" or not meta.seed_hex:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") then
-            error("LuaStateValidationInvalid: meta.seed_hex must be exactly 16 lowercase hex characters")
-        end
+    -- CFC-07A: required, not optional. meta.seed_hex is where a continued run's seed lives,
+    -- so a state that reaches validation without one has no deterministic source at all --
+    -- and the absence must be a typed rejection here, in the owner of the encoding, rather
+    -- than a surprise at the first call into game.random much later in the run.
+    if type(meta.seed_hex) ~= "string" or not meta.seed_hex:match("^[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]$") then
+        error("LuaStateValidationInvalid: meta.seed_hex must be exactly 16 lowercase hex characters")
     end
     if meta.prng ~= nil then
         if type(meta.prng) ~= "table" or getmetatable(meta.prng) ~= nil then

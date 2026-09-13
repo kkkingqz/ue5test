@@ -32,7 +32,7 @@ return {
         local state_validator = require("core:module.runtime.state_validator")
         local world = game.instances.world()
         local bad_tree = {
-            meta = { schema_version = 1, save_version = 1, save_id = "", instance_counters = {}, prng = {}, time = {} },
+            meta = { schema_version = 1, save_version = 1, save_id = "", seed_hex = "0123456789abcdef", instance_counters = {}, prng = {}, time = {} },
             player = {},
             actors = {},
             item_instances = {},

@@ -198,6 +198,27 @@ return {
             "adding property to game.commands must fail with FacadeSlotAssignmentDisallowed, got: " .. tostring(err))
     end,
 
+    isolation_capability_is_single_use = function()
+        -- B3: the isolation handle is a capability, not a getter. core:module.runtime.test_isolation
+        -- took it during bootstrap, so every later caller -- including a package module that
+        -- declares core:module.bootstrap.registry_lifecycle as a dependency -- gets nil and is
+        -- refused by with_isolated_facade_slot.
+        assert(registry_lifecycle.get_isolation_handle == nil,
+            "registry_lifecycle must not expose a plain isolation-handle getter")
+
+        local second = registry_lifecycle.take_isolation_handle()
+        assert(second == nil, "the isolation handle must be takeable only once, got: " .. tostring(second))
+
+        local ok, err = pcall(function()
+            registry_lifecycle.with_isolated_facade_slot(second, game, "services", {}, function() end)
+        end)
+        assert(not ok and string.find(tostring(err), "UnauthorizedIsolation"),
+            "a caller without the handle must be refused with UnauthorizedIsolation, got: " .. tostring(err))
+
+        -- The sealed registry is still the one every reader sees.
+        assert(game.services.is_frozen() == true, "game.services must remain frozen after the refused isolation attempt")
+    end,
+
     facade_rawset_protection_and_package_isolation = function()
         -- 1. Attempting rawset directly into game facade must fail
         local ok, err = pcall(function()

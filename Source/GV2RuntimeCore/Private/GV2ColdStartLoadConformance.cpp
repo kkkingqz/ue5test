@@ -656,6 +656,37 @@ std::string RunColdStartLoadConformance()
         }
     }
 
+    // 5. Negative (CFC-07A, ревью M1): a load must not carry a host-supplied seed. The seed of
+    //    a continued run lives in the save's own meta.seed_hex, which Lua restores; accepting
+    //    one here would silently reseed the playthrough, and reading one out of the container
+    //    would make C++ a parser of gameplay encoding (ADR-0021). Both are refused, and this
+    //    is the production path that proves the first of them.
+    {
+        FRuntimeSession SeededLoadSession;
+        FRuntimeFault Fault;
+        const std::vector<FRuntimeSource> Sources =
+            MakeSharedSources("core:module.test.load_driver", LoadDriverSource);
+        FSessionStartInputs SeededInputs;
+        SeededInputs.SessionGeneration = 1;
+        SeededInputs.SeedHex = "0123456789abcdef";
+
+        FFilesystemSaveSlotStorage SeededStorage(SlotRoot);
+        SeededStorage.WriteSlot("seeded_load_slot", "SYNTHETIC_CONTAINER:marker:2:0123456789abcdef");
+        const bool bStarted = SeededLoadSession.StartFromSave(
+            SeededInputs, RepoHandle, Sources, SeededStorage, "seeded_load_slot", Fault);
+        SeededLoadSession.Stop();
+        std::error_code SeededEc;
+        std::filesystem::remove_all(SlotRoot, SeededEc);
+        if (bStarted)
+        {
+            return "cold_start_load_conformance.seeded_load_was_accepted";
+        }
+        if (Fault.Code != "SeedHexNotAcceptedForLoad")
+        {
+            return "cold_start_load_conformance.seeded_load_wrong_fault_code: " + Fault.Code;
+        }
+    }
+
     return "";
 }
 }

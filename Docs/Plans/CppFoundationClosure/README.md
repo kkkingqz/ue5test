@@ -1,8 +1,8 @@
 ---
 title: Cpp Foundation Closure Implementation Plan
 status: active
-version: 1.3
-updated: 2026-09-12
+version: 1.4
+updated: 2026-09-13
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
   - ../../Architecture/RuntimeFacadeAndRegistries.md
@@ -125,6 +125,26 @@ Local MCP и fresh-process CI используют один report validator. Ac
 | REVIEW-09 / CFC-AF-09 | Уже покрыт single-writer/atomic publication CFC-08 |
 | REVIEW-11…14 / CFC-AF-11…14 | Отклонены как самостоятельные correctness/performance blockers; условия повторного открытия в аудите |
 | REVIEW-15 / CFC-AF-15 | Сопутствующее форматирование участка CFC-05A |
+
+## Соответствие задач и change set
+
+Правило 2 требует коммит на завершённую задачу. Часть задач M1 была зафиксирована одним коммитом, поэтому их evidence не разделяется историей; таблица восстанавливает соответствие явно, чтобы ревью и последующая архивация не выводили его заново из содержимого diff.
+
+| Задача | Commit | Примечание |
+|---|---|---|
+| CFC-01 | `aa7c781` | ADR-0044/0045 и owner contracts до кода |
+| CFC-02, CFC-02A, CFC-03 | `651500a` | fail-closed runner, fixture lifetime, module graph |
+| CFC-02A (порядок teardown) | `6d2ac6a` | закрытие M0 |
+| CFC-03A | `4ae4967` | canonical zero и общий SHA-256 validator |
+| CFC-04 | `a9b2508` | |
+| CFC-04A | `2aaa92a` | |
+| CFC-04B, CFC-05, CFC-05A, CFC-06, CFC-07, CFC-07A | `981a4f1` | шесть задач одним change set; разделить историю нельзя, ревью M1 выполнено по содержимому |
+| (общее усиление гейтов M0) | `aa0eb7e` | без task ID; RAII fixtures, CMake codemodel, hash codec helpers |
+| Ревью M1: B1 | `cdb4217` | также несёт незакоммиченную работу M0 по acceptance/MCP |
+| Ревью M1: B2…B5, N3…N7 | `0bbb5fb` | |
+| Ревью M1: R1 | текущий change set | непрозрачность save container и контракт seed по формам старта |
+
+Дальнейшие задачи фиксируются по одной; таблица дополняется в том же change set, что и задача.
 
 ## Правила выполнения и остановки
 

@@ -246,7 +246,6 @@ inline bool IsValidSeedHex(std::string_view SeedHex)
     return true;
 }
 
-GV2_PORTABLE_API bool ExtractSeedHexFromSaveBytes(std::string_view ContainerBytes, std::string& OutSeedHex);
 
 class GV2_PORTABLE_API FRuntimeSession
 {

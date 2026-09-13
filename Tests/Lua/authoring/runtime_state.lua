@@ -94,12 +94,12 @@ return {
     universal_definition_state_section_in_canonical_state = function()
         run_with_mock_environment(function(registry)
             -- 1. Create empty canonical state contains definitions
-            local empty_state = state_validator.create_empty_canonical_state()
+            local empty_state = state_validator.create_empty_canonical_state("0123456789abcdef")
             assert(type(empty_state.definitions) == "table", "create_empty_canonical_state must initialize definitions section")
 
             -- 2. State tree with valid definition in state.definitions passes validation
             local state = {
-                meta = { schema_version = 1, save_version = 1, save_id = "", instance_counters = {}, prng = {}, time = {} },
+                meta = { schema_version = 1, save_version = 1, save_id = "", seed_hex = "0123456789abcdef", instance_counters = {}, prng = {}, time = {} },
                 player = {},
                 actors = {},
                 item_instances = {},
@@ -119,7 +119,7 @@ return {
 
             -- 3. Nonexistent definition in state.definitions must be rejected
             local state_bad = {
-                meta = { schema_version = 1, save_version = 1, save_id = "", instance_counters = {}, prng = {}, time = {} },
+                meta = { schema_version = 1, save_version = 1, save_id = "", seed_hex = "0123456789abcdef", instance_counters = {}, prng = {}, time = {} },
                 player = {},
                 actors = {},
                 item_instances = {},

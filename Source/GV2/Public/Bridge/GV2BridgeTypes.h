@@ -133,41 +133,6 @@ struct GV2_API FSessionStartDescriptor
         return FString::Printf(TEXT("%016llx"), static_cast<unsigned long long>(Seed));
     }
 
-    static bool ExtractSeedHexFromSaveBytes(const FString& ContainerBytes, FString& OutSeedHex)
-    {
-        OutSeedHex.Empty();
-        constexpr const TCHAR* Pattern = TEXT("8:seed_hexs16:");
-        const int32 Pos = ContainerBytes.Find(Pattern);
-        if (Pos != INDEX_NONE)
-        {
-            const int32 SeedStart = Pos + FCString::Strlen(Pattern);
-            if (SeedStart + 16 <= ContainerBytes.Len())
-            {
-                const FString Candidate = ContainerBytes.Mid(SeedStart, 16);
-                if (IsValidSeedHex(Candidate))
-                {
-                    OutSeedHex = Candidate;
-                    return true;
-                }
-            }
-        }
-        constexpr const TCHAR* SynthPrefix = TEXT("SYNTHETIC_CONTAINER:");
-        if (ContainerBytes.StartsWith(SynthPrefix))
-        {
-            int32 LastColon = INDEX_NONE;
-            if (ContainerBytes.FindLastChar(TEXT(':'), LastColon) && LastColon + 17 == ContainerBytes.Len())
-            {
-                const FString Candidate = ContainerBytes.Mid(LastColon + 1, 16);
-                if (IsValidSeedHex(Candidate))
-                {
-                    OutSeedHex = Candidate;
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     static bool IsValidSeedHex(const FString& InSeedHex)
     {
         if (InSeedHex.Len() != 16)
