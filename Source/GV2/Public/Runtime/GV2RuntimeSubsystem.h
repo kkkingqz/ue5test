@@ -77,6 +77,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
     void EndSession();
 
+    UFUNCTION(BlueprintPure, Category = "GV2|Runtime")
+    FString GetActiveSeedHex() const;
+
     UFUNCTION(BlueprintPure, Category = "GV2|UI")
     UUserWidget* GetActiveScreen() const;
 

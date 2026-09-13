@@ -1,7 +1,7 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.4
+version: 1.5
 updated: 2026-09-13
 depends_on:
   - ImplementationStatus.md
@@ -213,7 +213,7 @@ exit=0
 - отсутствие счётчиков `failed`/`skipped` в отчёте MCP молча заменялось нулями, а нормализаторы допускали отсутствие `schema_version` и использовали синтетические дефолты;
 - `Tools/MCP/run_ue_tests.py` принимал несвязанный результат `GetTestResults` без `task_id`.
 
-*(Закрыто задачей CFC-02)* `run_identity` переведена на runtime-происхождение: C++ модуль `FGV2Module` в Unreal Engine регистрирует сгенерированные при сборке ревизию и хэш диффа (`GV2BuildIdentity.gen.h`), вычисляет детерминированный SHA-256 хэш содержимого проектных бинарников `libUnrealEditor-GV2*.so` через стриминг `GV2ContentCore::FSha256Builder`, публикует артефакт `runtime_identity.json` и эмитирует событие в тесте `GV2.Runtime.ModuleIdentity`. Нормализаторы извлекают runtime-identity из отчёта/артефактов, а runner независимо вычисляет эталонное значение и сверяет его. `compute_source_diff_hash` учитывает неотслеживаемые файлы. Нормализаторы строго требуют наличие полей, типы и `schema_version` без синтетических дефолтов. Во всём MCP polling и result flow (`GetTestStatus`, `GetTestResults`) строго требуется exact `task_id`, generic «последний результат» запрещён, а нетерминальное состояние асинхронной задачи без `task_id` или с несовпадающим `task_id` вызывает безусловный отказ (fail-closed). Любые префиксы `missing_`, `unknown_`, `no_`, `error:`, отсутствие обязательных счётчиков или длительности вызывают отказ.
+*(Закрыто задачей CFC-02)* Binary-поля `source_revision`, `source_diff_hash`, `build_fingerprint` переведены на runtime-происхождение: `FGV2Module` публикует `runtime_identity.json` и событие `GV2.Runtime.ModuleIdentity`, runner независимо вычисляет эталон и учитывает untracked files. `run_id` явно классифицирован как execution-correlation: fresh-process связывает его через новый процесс, очищенный report directory и mtime, MCP — через проверенный JSON-RPC response id либо exact async `task_id`; он не выдаётся за runtime binary identity. Runner не добавляет отсутствующий `schema_version`, task-less async result не relabel-ится ожидаемым ID. MCP client отклоняет HTTP non-2xx, malformed/mismatched JSON-RPC id и ограничивает весь SSE exchange абсолютным deadline, который не продлевают keep-alive/byte trickle. Process-wide `/proc`-эвристика удалена как не доказывающая связь PID с endpoint. Отсутствие обязательных полей, counters, duration либо допустимой identity вызывает fail-closed отказ.
 
 ### CppFullCodeReview — проверка REVIEW-01…15
 
@@ -229,7 +229,7 @@ exit=0
 
 #### CFC-AF-02 — REVIEW-02 — P2 — fixtures оставляют rooted GameInstance
 
-*(Закрыто задачей CFC-02A)* Введены RAII-владельцы `FScopedTestWorldContext` и `TScopedRootObject`, гарантирующие вызов `Shutdown()`, удаление из root и уничтожение `UWorld`/`FWorldContext` в `GEngine` при выходе из scope. Все 37 вызовов `AddToRoot` и ручные `RemoveFromRoot` переведены на scoped owners; file-level allowlists полностью исключены из гейта `validate_test_fixture_ownership.py`, а проверка переведена на scope-aware AST/block анализ enclosing class/function с негативными мутациями внутри ранее разрешённых файлов.
+*(Закрыто задачей CFC-02A)* Введены RAII-владельцы `FScopedTestWorldContext` и `TScopedRootObject`, гарантирующие `Shutdown`, удаление из root и уничтожение `UWorld`/`FWorldContext`. Gate строит actual inventory каждого token occurrence `AddToRoot`/`RemoveFromRoot` и допускает вызов только в точном `namespace/class/function` scope владельца; member, unqualified и inherited syntax проходят один enumerator. Произвольный метод класса с разрешённым именем и direct backing-mode writer проверяются отдельными отрицательными мутациями. Это scope-aware token/block gate, а не заявленный ранее AST-анализ.
 
 #### CFC-AF-03 — REVIEW-03 — P1 — off-tree candidates без traced owner
 

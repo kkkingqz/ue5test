@@ -319,7 +319,7 @@ std::string RunRegistryLifecycleConformance()
         FRuntimeSession Session;
         FRuntimeFault Fault;
         const std::vector<FRuntimeSource> Sources = MakeSources("valid", "", false);
-        const bool bStarted = Session.Start(1, RepoHandle, Sources, Fault);
+        const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault);
         if (bStarted)
         {
             Session.Stop();
@@ -345,7 +345,7 @@ std::string RunRegistryLifecycleConformance()
             FRuntimeSession Session;
             FRuntimeFault Fault;
             const std::vector<FRuntimeSource> Sources = MakeSources("throw", Participant);
-            const bool bStarted = Session.Start(1, RepoHandle, Sources, Fault);
+            const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault);
             if (bStarted)
             {
                 Session.Stop();
@@ -379,7 +379,7 @@ std::string RunRegistryLifecycleConformance()
             FRuntimeSession Session;
             FRuntimeFault Fault;
             const std::vector<FRuntimeSource> Sources = MakeSources("not_frozen", Participant);
-            const bool bStarted = Session.Start(1, RepoHandle, Sources, Fault);
+            const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault);
             if (bStarted)
             {
                 Session.Stop();
@@ -405,7 +405,7 @@ std::string RunRegistryLifecycleConformance()
             FRuntimeSession Session;
             FRuntimeFault Fault;
             const std::vector<FRuntimeSource> Sources = MakeSources("non_bool_frozen", Participant);
-            const bool bStarted = Session.Start(1, RepoHandle, Sources, Fault);
+            const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault);
             if (bStarted)
             {
                 Session.Stop();
@@ -427,7 +427,7 @@ std::string RunRegistryLifecycleConformance()
             FRuntimeSession Session;
             FRuntimeFault Fault;
             const std::vector<FRuntimeSource> Sources = MakeSources("missing_participant", Participant);
-            const bool bStarted = Session.Start(1, RepoHandle, Sources, Fault);
+            const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault);
             if (bStarted)
             {
                 Session.Stop();
@@ -449,7 +449,7 @@ std::string RunRegistryLifecycleConformance()
             FRuntimeSession Session;
             FRuntimeFault Fault;
             const std::vector<FRuntimeSource> Sources = MakeSources("missing_seal", Participant);
-            const bool bStarted = Session.Start(1, RepoHandle, Sources, Fault);
+            const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault);
             if (bStarted)
             {
                 Session.Stop();
@@ -474,7 +474,7 @@ std::string RunRegistryLifecycleConformance()
         FRuntimeSession Session;
         FRuntimeFault Fault;
         const std::vector<FRuntimeSource> Sources = MakeSources("valid", "");
-        const bool bStarted = Session.Start(1, RepoHandle, Sources, Fault);
+        const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault);
         if (!bStarted)
         {
             return "registry_lifecycle_conformance.valid_session_start_failed: " + Fault.Code + ": " + Fault.Message;

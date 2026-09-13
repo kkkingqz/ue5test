@@ -329,6 +329,7 @@ void UGV2RuntimeSubsystem::StartSession()
     Descriptor.Mode = ESessionStartMode::NewGame;
     Descriptor.RepositoryVersion = FString::Printf(TEXT("%lld"), RepositoryPublisher->GetVersion());
     Descriptor.RepositoryContentHash = UTF8_TO_TCHAR(RepositoryPublisher->GetCurrent().GetContentHash().c_str());
+    Descriptor.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
     const int64 OpId = RequestSession(Descriptor);
     if (OpId > 0)
@@ -344,6 +345,11 @@ void UGV2RuntimeSubsystem::StartSession()
                 Coordinator->GetStatus().RepositoryVersion);
         }
     }
+}
+
+FString UGV2RuntimeSubsystem::GetActiveSeedHex() const
+{
+    return Coordinator ? Coordinator->GetActiveSeedHex() : FString();
 }
 
 void UGV2RuntimeSubsystem::EndSession()

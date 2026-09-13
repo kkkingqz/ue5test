@@ -7,6 +7,9 @@ Verifies:
 3. Malformed SSE event (invalid JSON raises RuntimeError)
 4. Disconnect (premature server closure raises ConnectionError/RuntimeError)
 5. Timeout (unresponsive server raises TimeoutError/RuntimeError, no indefinite hang)
+6. HTTP errors are rejected before parsing success-shaped bodies
+7. SSE keep-alives cannot extend the absolute request deadline
+8. JSON-RPC responses must echo the exact request id
 """
 
 from __future__ import annotations
@@ -203,6 +206,99 @@ class TestMcpTransport(unittest.TestCase):
             elapsed = time.time() - start
             # Verify client didn't hang indefinitely (timeout was 0.1s, should return < 0.4s)
             self.assertLess(elapsed, 0.4)
+        finally:
+            server.server_close()
+
+    def test_http_500_success_shaped_body_is_rejected(self) -> None:
+        """A proxy/server HTTP failure must never be accepted as an MCP success."""
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                body_len = int(self.headers.get("Content-Length", 0))
+                if body_len > 0:
+                    self.rfile.read(body_len)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"jsonrpc":"2.0","id":1,"result":{"ok":true}}')
+
+            def log_message(self, format, *args):
+                pass
+
+        server = FakeMcpServer(Handler)
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        try:
+            client = UnrealMcpClient(
+                url=f"http://127.0.0.1:{server.server_port}/mcp",
+                timeout=1.0,
+                auto_initialize=False,
+            )
+            with self.assertRaises(RuntimeError):
+                client._send_raw("test_http_error")
+        finally:
+            server.server_close()
+
+    def test_sse_keepalives_do_not_extend_absolute_deadline(self) -> None:
+        """Periodic bytes must not turn the configured total timeout into an idle timeout."""
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                body_len = int(self.headers.get("Content-Length", 0))
+                if body_len > 0:
+                    self.rfile.read(body_len)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.end_headers()
+                for _ in range(20):
+                    try:
+                        self.wfile.write(b": keep-alive\n\n")
+                        self.wfile.flush()
+                    except OSError:
+                        break
+                    time.sleep(0.03)
+
+            def log_message(self, format, *args):
+                pass
+
+        server = FakeMcpServer(Handler)
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        try:
+            client = UnrealMcpClient(
+                url=f"http://127.0.0.1:{server.server_port}/mcp",
+                timeout=0.12,
+                auto_initialize=False,
+            )
+            start = time.monotonic()
+            with self.assertRaises(TimeoutError):
+                client._send_raw("test_keepalive_deadline")
+            self.assertLess(time.monotonic() - start, 0.35)
+        finally:
+            server.server_close()
+
+    def test_json_rpc_response_id_must_match_request(self) -> None:
+        """A stale/crossed JSON-RPC response cannot satisfy the current request."""
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                body_len = int(self.headers.get("Content-Length", 0))
+                if body_len > 0:
+                    self.rfile.read(body_len)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"jsonrpc":"2.0","id":999,"result":{"ok":true}}')
+
+            def log_message(self, format, *args):
+                pass
+
+        server = FakeMcpServer(Handler)
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        try:
+            client = UnrealMcpClient(
+                url=f"http://127.0.0.1:{server.server_port}/mcp",
+                timeout=1.0,
+                auto_initialize=False,
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                client._send_raw("test_response_id")
+            self.assertIn("response id", str(ctx.exception))
         finally:
             server.server_close()
 

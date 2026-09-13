@@ -1,8 +1,8 @@
 ---
 title: Confirmed Contract Gaps
 status: informative
-version: 2.21
-updated: 2026-09-12
+version: 2.23
+updated: 2026-09-13
 depends_on:
   - ../README.md
   - ../Architecture/BootstrapAndSessionLifecycle.md

@@ -66,7 +66,8 @@ function M.save(slot_id, data_version)
     if not game or not game.save_slots or not game.save_slots.write then
         return false, "SaveSlotStorageUnavailable"
     end
-    local container = "SYNTHETIC_CONTAINER:" .. tostring(game.state.data.marker) .. ":" .. tostring(data_version or 2)
+    local seed = (game.runtime and game.runtime.seed_hex) or "0123456789abcdef"
+    local container = "SYNTHETIC_CONTAINER:" .. tostring(game.state.data.marker) .. ":" .. tostring(data_version or 2) .. ":" .. seed
     local ok, err = game.save_slots.write(slot_id, container)
     if not ok then
         return false, "SaveWriteFailed:" .. tostring(err)
@@ -141,7 +142,11 @@ function M.decode_and_prepare(container_bytes)
     if type(container_bytes) ~= "string" then
         return nil, "SaveContainerCorrupt"
     end
-    local marker, saved_version_str = container_bytes:match("^SYNTHETIC_CONTAINER:([^:]*):(%-?%d+)$")
+    local marker, saved_version_str, seed = container_bytes:match("^SYNTHETIC_CONTAINER:([^:]*):(%-?%d+):([0-9a-f]+)$")
+    if not marker then
+        marker, saved_version_str = container_bytes:match("^SYNTHETIC_CONTAINER:([^:]*):(%-?%d+)$")
+        seed = "0123456789abcdef"
+    end
     if not marker then
         return nil, "SaveContainerCorrupt"
     end
@@ -154,7 +159,7 @@ function M.decode_and_prepare(container_bytes)
         game.runtime.pending_section_migrations = pending
     end
 
-    return { meta = { save_version = 1 }, data = { marker = marker } }, nil
+    return { meta = { save_version = 1, seed_hex = seed }, data = { marker = marker } }, nil
 end
 
 return M
@@ -415,7 +420,7 @@ std::string RunColdStartLoadConformance()
         WriteSession.SetSaveSlotStorage(&Storage);
         const std::vector<FRuntimeSource> Sources =
             MakeSharedSources("core:module.test.save_driver", SaveDriverSource);
-        if (!WriteSession.Start(1, RepoHandle, Sources, Fault))
+        if (!WriteSession.Start(1, "0123456789abcdef", RepoHandle, Sources, Fault))
         {
             std::error_code Ec;
             std::filesystem::remove_all(SlotRoot, Ec);
@@ -568,7 +573,7 @@ std::string RunColdStartLoadConformance()
     //     hook runs, let alone assigning state.
     {
         const FSaveSlotWriteResult WriteResult =
-            Storage.WriteSlot("cold_start_downgrade_slot", "SYNTHETIC_CONTAINER:before_save:99");
+            Storage.WriteSlot("cold_start_downgrade_slot", "SYNTHETIC_CONTAINER:before_save:99:0123456789abcdef");
         if (WriteResult.Result != ESaveSlotResult::Ok)
         {
             std::error_code Ec;

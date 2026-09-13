@@ -706,12 +706,22 @@ class TestRunnersIntegration(unittest.TestCase):
             client.get_test_status("   ")
         self.assertIn("Calling GetTestStatus without an exact task_id is forbidden", str(ctx.exception))
 
+        class MissingEchoClient(UnrealMcpClient):
+            def call_tool(self, *args, **kwargs):
+                return {"state": "Completed", "tests": []}
+
+        missing_echo = MissingEchoClient(auto_initialize=False)
+        with self.assertRaises(ValueError):
+            missing_echo.get_test_status("task-current")
+        with self.assertRaises(ValueError):
+            missing_echo.get_test_results("task-current")
+
     def test_run_ue_tests_verif_af_02_fail_closed(self) -> None:
         """VERIFY-AF-02: Runner must exit non-zero when total=1, skipped=1, NotRun."""
         from Tools.MCP import run_ue_tests
 
         class FakeClient:
-            def __init__(self, **kw): pass
+            def __init__(self, **kw): self.last_response_id = 11
             def discover_tests(self, **kw): return {}
             def list_tests(self, **kw): return ["GV2.Audit.Synthetic"]
             def run_tests_by_filter(self, *a):
@@ -752,7 +762,7 @@ class TestRunnersIntegration(unittest.TestCase):
         this_test = self
 
         class FakeSuccessClient:
-            def __init__(self, **kw): pass
+            def __init__(self, **kw): self.last_response_id = 12
             def discover_tests(self, **kw): return {}
             def list_tests(self, **kw): return ["GV2.Test.A"]
             def run_tests_by_filter(self, *a):
@@ -777,16 +787,23 @@ class TestRunnersIntegration(unittest.TestCase):
         old_sleep = run_ue_tests.time.sleep
         old_compute = run_ue_tests.compute_run_identity
         old_argv = sys.argv
-        try:
-            run_ue_tests.UnrealMcpClient = FakeSuccessClient
-            run_ue_tests.time.sleep = lambda *_: None
-            run_ue_tests.compute_run_identity = lambda **kw: {
+        observed_run_ids = []
+
+        def capture_identity(**kw):
+            observed_run_ids.append(kw.get("run_id"))
+            return {
                 **self.identity,
                 "run_id": kw.get("run_id") or self.identity["run_id"],
             }
+
+        try:
+            run_ue_tests.UnrealMcpClient = FakeSuccessClient
+            run_ue_tests.time.sleep = lambda *_: None
+            run_ue_tests.compute_run_identity = capture_identity
             sys.argv = ["run_ue_tests.py", "--filter", "StartsWith:GV2"]
             exit_code = run_ue_tests.main()
             self.assertEqual(exit_code, 0, "Successful test run must exit with 0")
+            self.assertEqual(observed_run_ids, ["mcp-rpc:12"])
         finally:
             run_ue_tests.UnrealMcpClient = old_client
             run_ue_tests.time.sleep = old_sleep
@@ -861,34 +878,33 @@ class TestRunnersIntegration(unittest.TestCase):
             def list_tests(self, **kw): return ["GV2.AsyncTest"]
             def run_tests_by_filter(self, *a):
                 return {"status": "InProcess", "taskId": "task-async-1"}
-            def call_tool(self, toolset, tool, args):
-                if tool == "GetTestStatus":
-                    self.calls += 1
-                    self.polled_task_ids.append(args.get("taskId"))
-                    # Return not running on second poll
-                    return {"state": "Completed" if self.calls >= 2 else "Running", "bIsRunning": False if self.calls >= 2 else True}
-                elif tool == "GetTestResults":
-                    self.polled_task_ids.append(args.get("taskId"))
-                    return {
-                        "returnValue": json.dumps({
-                            "schema_version": 1,
-                            "taskId": "task-async-1",
-                            "total": 1,
-                            "passed": 1,
-                            "failed": 0,
-                            "skipped": 0,
-                            "duration": 0.1,
-                            "run_identity": dict(this_test.identity),
-                            "tests": [{
-                                "name": "GV2.AsyncTest",
-                                "state": "Success",
-                                "duration": 0.1,
-                                "errors": [],
-                                "warnings": []
-                            }]
-                        })
-                    }
-                return {}
+            def get_test_status(self, task_id):
+                self.calls += 1
+                self.polled_task_ids.append(task_id)
+                return {
+                    "taskId": task_id,
+                    "state": "Completed" if self.calls >= 2 else "Running",
+                    "bIsRunning": False if self.calls >= 2 else True,
+                }
+            def get_test_results(self, task_id):
+                self.polled_task_ids.append(task_id)
+                return {
+                    "schema_version": 1,
+                    "taskId": task_id,
+                    "total": 1,
+                    "passed": 1,
+                    "failed": 0,
+                    "skipped": 0,
+                    "duration": 0.1,
+                    "run_identity": dict(this_test.identity),
+                    "tests": [{
+                        "name": "GV2.AsyncTest",
+                        "state": "Success",
+                        "duration": 0.1,
+                        "errors": [],
+                        "warnings": [],
+                    }],
+                }
 
         fake_client = FakeAsyncClient()
         old_client = run_ue_tests.UnrealMcpClient
@@ -950,30 +966,13 @@ class TestRunnersIntegration(unittest.TestCase):
             def list_tests(self, **kw): return ["GV2.AsyncTest"]
             def run_tests_by_filter(self, *a):
                 return {"status": "InProcess", "taskId": "task-expected-1"}
-            def call_tool(self, toolset, tool, args):
-                if tool == "GetTestStatus":
-                    return {"state": "Completed", "bIsRunning": False}
-                elif tool == "GetTestResults":
-                    return {
-                        "returnValue": json.dumps({
-                            "schema_version": 1,
-                            "taskId": "task-wrong-foreign-2",  # Mismatch!
-                            "total": 1,
-                            "passed": 1,
-                            "failed": 0,
-                            "skipped": 0,
-                            "duration": 0.1,
-                            "run_identity": dict(this_test.identity),
-                            "tests": [{
-                                "name": "GV2.AsyncTest",
-                                "state": "Success",
-                                "duration": 0.1,
-                                "errors": [],
-                                "warnings": []
-                            }]
-                        })
-                    }
-                return {}
+            def get_test_status(self, task_id):
+                return {"taskId": task_id, "state": "Completed", "bIsRunning": False}
+            def get_test_results(self, task_id):
+                raise ValueError(
+                    "Mismatched task_id in GetTestResults: expected "
+                    f"'{task_id}', got 'task-wrong-foreign-2'"
+                )
 
         old_client = run_ue_tests.UnrealMcpClient
         old_sleep = run_ue_tests.time.sleep
@@ -989,6 +988,88 @@ class TestRunnersIntegration(unittest.TestCase):
             sys.argv = ["run_ue_tests.py", "--filter", "StartsWith:GV2"]
             exit_code = run_ue_tests.main()
             self.assertEqual(exit_code, 1, "Mismatched task_id in results must fail closed with exit 1")
+        finally:
+            run_ue_tests.UnrealMcpClient = old_client
+            run_ue_tests.time.sleep = old_sleep
+            run_ue_tests.compute_run_identity = old_compute
+            sys.argv = old_argv
+
+    def test_run_ue_tests_async_results_without_task_id_fails_closed(self) -> None:
+        """A task-less result cannot be relabelled as belonging to the requested async run."""
+        from Tools.MCP import run_ue_tests
+
+        this_test = self
+
+        class FakeMissingResultTaskClient:
+            def __init__(self, **kw): pass
+            def discover_tests(self, **kw): return {}
+            def list_tests(self, **kw): return ["GV2.AsyncTest"]
+            def run_tests_by_filter(self, *a):
+                return {"status": "InProcess", "taskId": "task-current-1"}
+            def get_test_status(self, task_id):
+                return {"taskId": task_id, "state": "Completed", "bIsRunning": False}
+            def get_test_results(self, task_id):
+                raise ValueError(f"GetTestResults response is missing exact task_id '{task_id}'")
+
+        old_client = run_ue_tests.UnrealMcpClient
+        old_sleep = run_ue_tests.time.sleep
+        old_compute = run_ue_tests.compute_run_identity
+        old_argv = sys.argv
+        try:
+            run_ue_tests.UnrealMcpClient = FakeMissingResultTaskClient
+            run_ue_tests.time.sleep = lambda *_: None
+            run_ue_tests.compute_run_identity = lambda **kw: {
+                **self.identity,
+                "run_id": kw.get("run_id") or self.identity["run_id"],
+            }
+            sys.argv = ["run_ue_tests.py", "--filter", "StartsWith:GV2"]
+            self.assertEqual(run_ue_tests.main(), 1)
+        finally:
+            run_ue_tests.UnrealMcpClient = old_client
+            run_ue_tests.time.sleep = old_sleep
+            run_ue_tests.compute_run_identity = old_compute
+            sys.argv = old_argv
+
+    def test_run_ue_tests_sync_report_without_schema_version_fails_closed(self) -> None:
+        """The runner must not invent a schema version for an unversioned report."""
+        from Tools.MCP import run_ue_tests
+
+        this_test = self
+
+        class FakeUnversionedClient:
+            def __init__(self, **kw): self.last_response_id = 7
+            def discover_tests(self, **kw): return {}
+            def list_tests(self, **kw): return ["GV2.Test.A"]
+            def run_tests_by_filter(self, *a):
+                return {
+                    "total": 1,
+                    "passed": 1,
+                    "failed": 0,
+                    "skipped": 0,
+                    "duration": 0.1,
+                    "run_identity": dict(this_test.identity),
+                    "tests": [{
+                        "name": "GV2.Test.A",
+                        "state": "Success",
+                        "duration": 0.1,
+                        "errors": [],
+                        "warnings": [],
+                    }],
+                }
+
+        old_client = run_ue_tests.UnrealMcpClient
+        old_sleep = run_ue_tests.time.sleep
+        old_compute = run_ue_tests.compute_run_identity
+        old_argv = sys.argv
+        try:
+            run_ue_tests.UnrealMcpClient = FakeUnversionedClient
+            run_ue_tests.time.sleep = lambda *_: None
+            run_ue_tests.compute_run_identity = lambda **kw: {
+                **self.identity,
+                "run_id": kw.get("run_id") or self.identity["run_id"],
+            }
+            sys.argv = ["run_ue_tests.py", "--filter", "StartsWith:GV2"]
+            self.assertEqual(run_ue_tests.main(), 1)
         finally:
             run_ue_tests.UnrealMcpClient = old_client
             run_ue_tests.time.sleep = old_sleep

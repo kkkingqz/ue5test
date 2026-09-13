@@ -48,7 +48,7 @@ Compile-to-value API CFC-04A синхронизировать с owner contracts
 
 **Файлы:** изменить `Tools/MCP/run_ue_tests.py`, `Tools/MCP/mcp_client.py`, `.github/workflows/linux-ci.yml`, `Source/CMakeLists.txt`, `Docs/Architecture/BuildAndTooling.md`; создать `Tools/Testing/ue_test_report.py`, `Tools/Testing/test_ue_test_report.py`, `Tools/Testing/run_ue_acceptance.py`, `Tools/Testing/test_mcp_transport.py`. Report module только валидирует normalised evidence; runners отвечают за transport/process/discovery.
 
-**Интерфейс:** `validate_run(discovered: set[str], report: dict, run_identity: dict) -> list[str]`; пустой список разрешён только для полного успешного текущего запуска. Common normalised record: `name`, `state`, `errors`; identity: `run_id`, `source_revision`, `source_diff_hash`, `build_fingerprint`. Adapters MCP и UE JSON не принимают неизвестную форму отчёта молча.
+**Интерфейс:** `validate_run(discovered: set[str], report: dict, run_identity: dict) -> list[str]`; пустой список разрешён только для полного успешного текущего запуска. Common normalised record: `name`, `state`, `errors`; binary identity: `source_revision`, `source_diff_hash`, `build_fingerprint`; execution correlation: `run_id`, связанный с fresh process boundary, verified JSON-RPC response id либо exact async `task_id`. Adapters MCP и UE JSON не принимают неизвестную форму отчёта молча.
 
 **Инвариант:** [Build and Tooling](../../Architecture/BuildAndTooling.md). «Проверен GV2» означает исполненный актуальный набор, не marker в старом log. Actual enumerator — UE Automation discovery текущего build; expected success predicate задаётся независимыми fixtures протокола.
 

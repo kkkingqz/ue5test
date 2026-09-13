@@ -10,11 +10,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
-import uuid
 from pathlib import Path
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -29,46 +27,6 @@ from Tools.Testing.ue_test_report import (
     normalize_mcp_report,
     validate_run,
 )
-
-
-def check_editor_binary_staleness(repo_root: Path) -> tuple[bool, str]:
-    """Checks if built binaries in Binaries/Linux are newer than running Unreal Editor process."""
-    binaries_dir = repo_root / "Binaries" / "Linux"
-    if not binaries_dir.is_dir():
-        return False, ""
-
-    so_files = list(binaries_dir.glob("libUnrealEditor-GV2*.so"))
-    if not so_files:
-        return False, ""
-
-    latest_so_mtime = max(f.stat().st_mtime for f in so_files)
-
-    # Check Linux /proc for running UnrealEditor
-    try:
-        proc_path = Path("/proc")
-        if proc_path.is_dir():
-            for entry in proc_path.iterdir():
-                if not entry.name.isdigit():
-                    continue
-                cmdline_file = entry / "cmdline"
-                if not cmdline_file.is_file():
-                    continue
-                try:
-                    cmdline = cmdline_file.read_bytes().decode("utf-8", errors="ignore")
-                    if "UnrealEditor" in cmdline and "GV2.uproject" in cmdline and "UnrealEditor-Cmd" not in cmdline:
-                        proc_start_time = entry.stat().st_mtime
-                        if latest_so_mtime > proc_start_time:
-                            return True, (
-                                f"Project binaries on disk ({time.ctime(latest_so_mtime)}) are newer than "
-                                f"running Unreal Editor process (PID {entry.name}, started {time.ctime(proc_start_time)}). "
-                                f"Editor memory contains stale binaries; run cannot be used as freeze evidence."
-                            )
-                except (PermissionError, FileNotFoundError):
-                    continue
-    except Exception:
-        pass
-
-    return False, ""
 
 
 def main() -> int:
@@ -105,7 +63,7 @@ def main() -> int:
     parser.add_argument(
         "--require-fresh-binaries",
         action="store_true",
-        help="Fail if running Unreal Editor has older binaries than on-disk build."
+        help="Compatibility flag; runtime identity is always validated against the current checkout."
     )
     parser.add_argument(
         "--url",
@@ -113,14 +71,6 @@ def main() -> int:
         help="MCP server endpoint URL."
     )
     args = parser.parse_args()
-
-    # Check for binary staleness against running editor
-    is_stale, stale_msg = check_editor_binary_staleness(Path(REPO_ROOT))
-    if is_stale:
-        print(f"WARNING: {stale_msg}", file=sys.stderr)
-        if args.require_fresh_binaries:
-            print("ERROR: --require-fresh-binaries specified: aborting run.", file=sys.stderr)
-            return 1
 
     try:
         client = UnrealMcpClient(url=args.url)
@@ -190,35 +140,14 @@ def main() -> int:
                 return 1
             time.sleep(1.0)
             try:
-                status = client.call_tool(
-                    "AutomationTestToolset.AutomationTestToolset",
-                    "GetTestStatus",
-                    {"taskId": task_id, "task_id": task_id},
-                )
-                if isinstance(status, dict):
-                    status_task_id = str(status.get("taskId") or status.get("task_id") or "").strip()
-                    if status_task_id and status_task_id != task_id:
-                        print(
-                            f"ERROR: GetTestStatus returned mismatched task_id '{status_task_id}' (expected '{task_id}').",
-                            file=sys.stderr,
-                        )
-                        return 1
+                status = client.get_test_status(task_id)
 
                 is_running = (
                     isinstance(status, dict)
                     and (status.get("state") in ("InProcess", "Running") or status.get("bIsRunning") is True)
                 )
                 if not is_running:
-                    res = client.call_tool(
-                        "AutomationTestToolset.AutomationTestToolset",
-                        "GetTestResults",
-                        {"taskId": task_id, "task_id": task_id},
-                    )
-                    if isinstance(res, dict) and "returnValue" in res:
-                        val = res["returnValue"]
-                        candidate_results = json.loads(val) if isinstance(val, str) else val
-                    else:
-                        candidate_results = res
+                    candidate_results = client.get_test_results(task_id)
 
                     if not isinstance(candidate_results, dict):
                         print(
@@ -227,16 +156,7 @@ def main() -> int:
                         )
                         return 1
 
-                    res_task_id = str(candidate_results.get("taskId") or candidate_results.get("task_id") or "").strip()
-                    if res_task_id and res_task_id != task_id:
-                        print(
-                            f"ERROR: GetTestResults returned mismatched task_id '{res_task_id}' (expected '{task_id}').",
-                            file=sys.stderr,
-                        )
-                        return 1
-
                     if "tests" in candidate_results:
-                        candidate_results["task_id"] = task_id
                         results = candidate_results
                         break
             except Exception as err:
@@ -249,10 +169,14 @@ def main() -> int:
         print(f"ERROR: Expected dict test results, got {type(results).__name__}", file=sys.stderr)
         return 1
 
-    if "schema_version" not in results and "schemaVersion" not in results:
-        results["schema_version"] = 1
-
-    run_id = f"mcp-{uuid.uuid4().hex[:8]}"
+    if task_id:
+        run_id = f"mcp-task:{task_id}"
+    else:
+        response_id = getattr(client, "last_response_id", None)
+        if response_id is None:
+            print("ERROR: MCP client did not expose a verified JSON-RPC response id.", file=sys.stderr)
+            return 1
+        run_id = f"mcp-rpc:{response_id}"
     expected_identity = compute_run_identity(project_root=Path(REPO_ROOT), run_id=run_id)
 
     try:

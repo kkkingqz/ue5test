@@ -251,6 +251,7 @@ bool FGV2SessionCoordinator::StartSession(
     Descriptor.RepositoryContentHash = InPinnedRepository.IsValid()
         ? UTF8_TO_TCHAR(InPinnedRepository.GetContentHash().c_str())
         : TEXT("");
+    Descriptor.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
     const uint64 OpId = RequestSession(Descriptor, InPinnedRepository, InRepositoryVersion, ResolvedPackageSet);
     const TOptional<ESessionOperationOutcome> Outcome = GetSessionOperationOutcome(OpId);
@@ -354,6 +355,15 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     check(IsInGameThread());
     CurrentTransitionKind = Op.Kind;
     const bool bHadPriorReadySession = Status.bIsReady;
+
+    FString DescriptorError;
+    if (!Op.Descriptor.IsValid(&DescriptorError))
+    {
+        FailReplacementAttempt(
+            {"InvalidSessionDescriptor", TCHAR_TO_UTF8(*DescriptorError)}, bHadPriorReadySession);
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
 
     if (!InPinnedRepository.IsValid())
     {

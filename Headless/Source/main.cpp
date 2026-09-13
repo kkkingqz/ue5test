@@ -1430,7 +1430,7 @@ int Run(
 
                 GV2RuntimeCore::FRuntimeSession SpecSession;
                 GV2RuntimeCore::FRuntimeFault SpecSessionFault;
-                if (!SpecSession.Start(1, TierRepoHandle, TierRuntimeSources, SpecSessionFault))
+                if (!SpecSession.Start(1, "0000000000000001", TierRepoHandle, TierRuntimeSources, SpecSessionFault))
                 {
                     std::cerr << "lua_spec_session_start_failed subtree=" << Subtree
                               << " code=" << SpecSessionFault.Code

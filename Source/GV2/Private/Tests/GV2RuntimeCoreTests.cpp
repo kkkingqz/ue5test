@@ -275,7 +275,7 @@ bool FGV2PortableRuntimeTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Manifest-driven Lua source tree is loadable"), RuntimeSources.size() >= 2);
     TestTrue(
         TEXT("Lua VM starts with the configured runtime sources"),
-        Host.Start(23, MakeFrozenCoreFixturePinnedRepository(*this), RuntimeSources, Fault));
+        Host.Start(23, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), RuntimeSources, Fault));
     TestTrue(TEXT("Lua VM reports started state"), Host.IsStarted());
     TestFalse(TEXT("Lua VM is idle after bootstrap"), Host.IsExecuting());
     if (!Host.IsStarted())
@@ -436,7 +436,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession MissingSourceHost;
     TestFalse(
         TEXT("Manifest rejects a missing declared module source"),
-        MissingSourceHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), MissingSource, Fault));
+        MissingSourceHost.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), MissingSource, Fault));
     TestEqual(
         TEXT("Missing module source has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -455,7 +455,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession HiddenDependencyHost;
     TestFalse(
         TEXT("Module cannot import an undeclared dependency"),
-        HiddenDependencyHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), HiddenDependency, Fault));
+        HiddenDependencyHost.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), HiddenDependency, Fault));
     TestEqual(
         TEXT("Hidden dependency fails during module initialization"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -469,7 +469,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession UnlistedSourceHost;
     TestFalse(
         TEXT("Unlisted Lua source is rejected"),
-        UnlistedSourceHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), UnlistedSource, Fault));
+        UnlistedSourceHost.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), UnlistedSource, Fault));
     TestEqual(
         TEXT("Unlisted source has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -499,7 +499,7 @@ bool FGV2LuaModuleGraphTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession CyclicHost;
     TestFalse(
         TEXT("Cyclic module dependencies are rejected"),
-        CyclicHost.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), CyclicSources, Fault));
+        CyclicHost.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), CyclicSources, Fault));
     TestEqual(
         TEXT("Dependency cycle has a stable fault code"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -577,7 +577,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession OverrideSession;
     TestTrue(
         TEXT("Runtime starts with valid multi-package module override"),
-        OverrideSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), OverrideSources, Fault));
+        OverrideSession.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), OverrideSources, Fault));
 
     const std::string OverrideHash = OverrideSession.GetScriptSetHash();
     TestEqual(TEXT("Override session script set hash length is 64"), OverrideHash.length(), static_cast<std::size_t>(64));
@@ -601,7 +601,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     // Base sources without override produces a different ScriptSetHash
     const std::vector<GV2RuntimeCore::FRuntimeSource> BaseOnlySources = { OverrideSources[0], OverrideSources[1] };
     GV2RuntimeCore::FRuntimeSession BaseSession;
-    TestTrue(TEXT("Base session starts"), BaseSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), BaseOnlySources, Fault));
+    TestTrue(TEXT("Base session starts"), BaseSession.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), BaseOnlySources, Fault));
     const std::string BaseHash = BaseSession.GetScriptSetHash();
     TestTrue(TEXT("Override changes ScriptSetHash"), BaseHash != OverrideHash);
     TestEqual(TEXT("Base session has 0 replaced modules"), BaseSession.GetReplacedModules().size(), static_cast<std::size_t>(0));
@@ -657,7 +657,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession SealedSession;
     TestFalse(
         TEXT("Overriding sealed module is rejected"),
-        SealedSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), SealedSources, Fault));
+        SealedSession.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), SealedSources, Fault));
     TestEqual(
         TEXT("Sealed module override error code is LuaModuleSealed"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -703,7 +703,7 @@ bool FGV2LuaModulePackageOverrideTest::RunTest(const FString& Parameters)
     GV2RuntimeCore::FRuntimeSession ForeignNewSession;
     TestFalse(
         TEXT("Mod cannot introduce a new core module ID"),
-        ForeignNewSession.Start(1, MakeFrozenCoreFixturePinnedRepository(*this), ForeignNewSources, Fault));
+        ForeignNewSession.Start(1, "0000000000000001", MakeFrozenCoreFixturePinnedRepository(*this), ForeignNewSources, Fault));
     TestEqual(
         TEXT("Foreign new ID error code is LuaModuleForeignNewId"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -1676,7 +1676,7 @@ bool FGV2RuntimeSessionPinnedHandleTest::RunTest(const FString& Parameters)
     // 1. Invalid handle is rejected before Lua VM creation with RepositoryNotReady
     TestFalse(
         TEXT("Start rejects uninitialized read handle"),
-        Session.Start(1, GV2ContentCore::FRepositoryReadHandle(), RuntimeSources, Fault));
+        Session.Start(1, "0000000000000001", GV2ContentCore::FRepositoryReadHandle(), RuntimeSources, Fault));
     TestEqual(
         TEXT("Fault code is RepositoryNotReady"),
         FString(UTF8_TO_TCHAR(Fault.Code.c_str())),
@@ -1689,7 +1689,7 @@ bool FGV2RuntimeSessionPinnedHandleTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Test pinned repository is valid"), PinnedHandle.IsValid());
     TestTrue(
         TEXT("Start succeeds with valid pinned handle"),
-        Session.Start(1, PinnedHandle, RuntimeSources, Fault));
+        Session.Start(1, "0000000000000001", PinnedHandle, RuntimeSources, Fault));
     TestTrue(TEXT("Session is started"), Session.IsStarted());
     TestTrue(TEXT("Session stores valid pinned handle"), Session.GetPinnedRepository().IsValid());
     TestEqual(
@@ -1701,6 +1701,19 @@ bool FGV2RuntimeSessionPinnedHandleTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Stop succeeds"), Session.Stop());
     TestFalse(TEXT("Session is not started after Stop"), Session.IsStarted());
     TestFalse(TEXT("Stop clears pinned handle"), Session.GetPinnedRepository().IsValid());
+
+    // 4. Missing or invalid seed is rejected before VM creation
+    {
+        GV2RuntimeCore::FRuntimeSession SeedSession;
+        GV2RuntimeCore::FRuntimeFault SeedFault;
+        TestFalse(
+            TEXT("Start rejects uninitialized seed"),
+            SeedSession.Start(1, PinnedHandle, RuntimeSources, SeedFault));
+        TestEqual(
+            TEXT("Fault code is InvalidSeedHex"),
+            FString(UTF8_TO_TCHAR(SeedFault.Code.c_str())),
+            FString(TEXT("InvalidSeedHex")));
+    }
 
     return true;
 }
@@ -1890,7 +1903,7 @@ bool FGV2LuaRepositoryAccessTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Modded pinned repository is valid"), PinnedHandle.IsValid());
     TestTrue(
         TEXT("Start succeeds with test repository sources"),
-        Host.Start(1, PinnedHandle, TestSources, Fault));
+        Host.Start(1, "0000000000000001", PinnedHandle, TestSources, Fault));
     if (!Host.IsStarted())
     {
         AddError(FString::Printf(

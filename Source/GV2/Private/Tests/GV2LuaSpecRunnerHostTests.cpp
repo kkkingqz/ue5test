@@ -156,7 +156,7 @@ bool FGV2LuaSpecRunnerHostTest::RunTest(const FString& Parameters)
 
             GV2RuntimeCore::FRuntimeSession Session;
             GV2RuntimeCore::FRuntimeFault Fault;
-            const bool bStarted = Session.Start(1, RepoHandle, TierRuntimeSources, Fault);
+            const bool bStarted = Session.Start(1, "0000000000000001", RepoHandle, TierRuntimeSources, Fault);
             if (!TestTrue(
                     FString::Printf(TEXT("Runtime session starts for %s: code=%s message=%s"),
                         UTF8_TO_TCHAR(Subtree.c_str()), UTF8_TO_TCHAR(Fault.Code.c_str()), UTF8_TO_TCHAR(Fault.Message.c_str())),

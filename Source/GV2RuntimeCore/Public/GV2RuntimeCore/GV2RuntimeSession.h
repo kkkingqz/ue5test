@@ -216,10 +216,16 @@ struct FReplacedModuleInfo
 struct GV2_PORTABLE_API FSessionStartInputs final
 {
     std::int32_t SessionGeneration = 1;
-    std::string SeedHex = "0000000000000000";
+    std::string SeedHex;
     std::string Mode = "NewGame";
     std::string RepositoryVersion;
     std::string RepositoryContentHash;
+
+    FSessionStartInputs() = default;
+    explicit FSessionStartInputs(std::string InSeedHex, std::int32_t InSessionGeneration = 1)
+        : SessionGeneration(InSessionGeneration), SeedHex(std::move(InSeedHex))
+    {
+    }
 
     bool operator==(const FSessionStartInputs&) const = default;
 };
@@ -240,6 +246,8 @@ inline bool IsValidSeedHex(std::string_view SeedHex)
     return true;
 }
 
+GV2_PORTABLE_API bool ExtractSeedHexFromSaveBytes(std::string_view ContainerBytes, std::string& OutSeedHex);
+
 class GV2_PORTABLE_API FRuntimeSession
 {
 public:
@@ -251,6 +259,13 @@ public:
 
     bool Start(
         const FSessionStartInputs& StartInputs,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        FRuntimeFault& OutFault);
+
+    bool Start(
+        std::int32_t InSessionGeneration,
+        const std::string& InSeedHex,
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
         const std::vector<FRuntimeSource>& Sources,
         FRuntimeFault& OutFault);

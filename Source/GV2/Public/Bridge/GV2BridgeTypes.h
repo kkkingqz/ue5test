@@ -92,7 +92,7 @@ struct GV2_API FSessionStartDescriptor
     FString RepositoryContentHash;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
-    FString SeedHex = TEXT("0000000000000000");
+    FString SeedHex;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GV2|Lifecycle")
     FString Reason;
@@ -121,6 +121,51 @@ struct GV2_API FSessionStartDescriptor
             && RepositoryVersion == Other.RepositoryVersion
             && RepositoryContentHash == Other.RepositoryContentHash
             && SeedHex == Other.SeedHex;
+    }
+
+    static FString GenerateFreshSeedHex()
+    {
+        const FGuid Guid = FGuid::NewGuid();
+        const uint64 Cycles = FPlatformTime::Cycles64();
+        const uint64 High = static_cast<uint64>(Guid.A) ^ (static_cast<uint64>(Guid.C) << 32);
+        const uint64 Low = static_cast<uint64>(Guid.B) | (static_cast<uint64>(Guid.D) << 32);
+        const uint64 Seed = (High ^ Low) ^ Cycles;
+        return FString::Printf(TEXT("%016llx"), static_cast<unsigned long long>(Seed));
+    }
+
+    static bool ExtractSeedHexFromSaveBytes(const FString& ContainerBytes, FString& OutSeedHex)
+    {
+        OutSeedHex.Empty();
+        constexpr const TCHAR* Pattern = TEXT("8:seed_hexs16:");
+        const int32 Pos = ContainerBytes.Find(Pattern);
+        if (Pos != INDEX_NONE)
+        {
+            const int32 SeedStart = Pos + FCString::Strlen(Pattern);
+            if (SeedStart + 16 <= ContainerBytes.Len())
+            {
+                const FString Candidate = ContainerBytes.Mid(SeedStart, 16);
+                if (IsValidSeedHex(Candidate))
+                {
+                    OutSeedHex = Candidate;
+                    return true;
+                }
+            }
+        }
+        constexpr const TCHAR* SynthPrefix = TEXT("SYNTHETIC_CONTAINER:");
+        if (ContainerBytes.StartsWith(SynthPrefix))
+        {
+            int32 LastColon = INDEX_NONE;
+            if (ContainerBytes.FindLastChar(TEXT(':'), LastColon) && LastColon + 17 == ContainerBytes.Len())
+            {
+                const FString Candidate = ContainerBytes.Mid(LastColon + 1, 16);
+                if (IsValidSeedHex(Candidate))
+                {
+                    OutSeedHex = Candidate;
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     static bool IsValidSeedHex(const FString& InSeedHex)

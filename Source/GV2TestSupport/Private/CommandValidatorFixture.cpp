@@ -106,6 +106,6 @@ bool StartCommandValidatorFixtureSession(
     }
     Sources.push_back({"@core/test/command_validator_specs_driver.lua", *DriverSource});
 
-    return OutSession.Start(1, RepoHandle, Sources, OutFault);
+    return OutSession.Start(1, "0000000000000001", RepoHandle, Sources, OutFault);
 }
 } // namespace GV2TestSupport

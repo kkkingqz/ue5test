@@ -4,12 +4,11 @@
 CFC-02A (ADR-0040, CFC-AF-02, CFC-AF-10):
 Fixtures must never leave rooted GameInstance or UWorld objects, or un-restored global
 test settings (such as EGV2ForgeryMode) behind for subsequent tests.
-1. AddToRoot and RemoveFromRoot in test sources are strictly restricted to approved scoped
-   RAII owners (FScopedTestWorldContext, TScopedRootObject). File-level allowlists are prohibited;
-   enclosing class and function scope are strictly verified.
-2. Direct mutation of global test settings (e.g., ModeForNextInstance() = ...) is forbidden;
-   mutations must use RAII scoped helpers (FScopedForgeryMode). Direct calls to SetModeForNextInstance
-   are restricted to FScopedForgeryMode or the widget method definition.
+1. Every AddToRoot/RemoveFromRoot token occurrence in test sources is restricted to exact
+   namespace/class/function scopes of the RAII owners. This includes calls, unqualified inherited
+   syntax and member pointers; file-level or class-name-only allowlists are prohibited.
+2. Every access to global mode storage and SetModeForNextInstance is inventoried. Mutation must use
+   FScopedForgeryMode; aliases and function pointers cannot bypass the scoped owner.
 """
 
 from __future__ import annotations
@@ -25,10 +24,15 @@ SOURCE_ROOT = REPO_ROOT / "Source"
 
 SCANNED_SUFFIXES = (".h", ".cpp")
 
-ALLOWED_ROOT_CLASSES = {"FScopedTestWorldContext", "TScopedRootObject"}
-ALLOWED_ROOT_FUNCS_PREFIX = ("FScopedTestWorldContext::", "TScopedRootObject::")
+ALLOWED_ROOT_SCOPES = {
+    ("GV2PresentationTestFixtures", "FScopedTestWorldContext", "FScopedTestWorldContext"),
+    ("GV2PresentationTestFixtures", "FScopedTestWorldContext", "~FScopedTestWorldContext"),
+    ("GV2PresentationTestFixtures", "FScopedTestWorldContext", "Teardown"),
+    ("GV2PresentationTestFixtures", "TScopedRootObject", "TScopedRootObject"),
+    ("GV2PresentationTestFixtures", "TScopedRootObject", "~TScopedRootObject"),
+    ("GV2PresentationTestFixtures", "TScopedRootObject", "Reset"),
+}
 
-ALLOWED_SET_MODE_CLASSES = {"FScopedForgeryMode"}
 ALLOWED_SET_MODE_FUNCS = {
     "FScopedForgeryMode::FScopedForgeryMode",
     "FScopedForgeryMode::~FScopedForgeryMode",
@@ -95,47 +99,49 @@ def find_violations_in_file(path: Path) -> list[str]:
     idx = 0
     total = len(tokens)
 
+    def current_scope() -> tuple[str, str, str]:
+        namespaces = [s["name"] for s in scope_stack if s["type"] == "namespace"]
+        classes = [s["name"] for s in scope_stack if s["type"] == "class"]
+        funcs = [s["name"] for s in scope_stack if s["type"] == "func"]
+        return (
+            "::".join(namespaces),
+            classes[-1] if classes else "",
+            funcs[-1] if funcs else "",
+        )
+
     while idx < total:
         kind, val, line_no, pos = tokens[idx]
 
         # Check AddToRoot and RemoveFromRoot
-        if kind == "IDENT" and val in ("AddToRoot", "RemoveFromRoot"):
-            if stmt_tokens and stmt_tokens[-1][1] == "->":
-                call_name = val
-                enclosing_classes = [s["name"] for s in scope_stack if s["type"] == "class"]
-                enclosing_funcs = [s["name"] for s in scope_stack if s["type"] == "func"]
+        root_symbol = val.split("::")[-1] if kind == "IDENT" else ""
+        if root_symbol in ("AddToRoot", "RemoveFromRoot"):
+            call_name = root_symbol
+            is_permitted = current_scope() in ALLOWED_ROOT_SCOPES
 
-                is_permitted = any(c in ALLOWED_ROOT_CLASSES for c in enclosing_classes) or any(
-                    any(f.startswith(p) for p in ALLOWED_ROOT_FUNCS_PREFIX) for f in enclosing_funcs
+            if not is_permitted:
+                scope_desc = " > ".join(f"{s['type']}:{s['name']}" for s in scope_stack) or "global"
+                violations.append(
+                    f"{path}:{line_no}: raw '{call_name}()' in test fixture is prohibited outside RAII owners "
+                    f"(FScopedTestWorldContext, TScopedRootObject). Scope: [{scope_desc}]"
                 )
-
-                if not is_permitted:
-                    scope_desc = " > ".join(f"{s['type']}:{s['name']}" for s in scope_stack) or "global"
-                    violations.append(
-                        f"{path}:{line_no}: raw '{call_name}()' in test fixture is prohibited outside RAII owners "
-                        f"(FScopedTestWorldContext, TScopedRootObject). Scope: [{scope_desc}]"
-                    )
 
         # Check SetModeForNextInstance calls
         if kind == "IDENT" and val.endswith("SetModeForNextInstance"):
-            if idx + 1 < total and tokens[idx + 1][1] == "(":
-                # Check if it is a declaration/definition rather than a call:
-                is_definition = bool(stmt_tokens and stmt_tokens[-1][1] == "void")
+            # A declaration/definition is introduced by its return type; every other occurrence
+            # is a capability use, including taking a function pointer.
+            is_definition = bool(stmt_tokens and stmt_tokens[-1][1] == "void")
 
-                if not is_definition:
-                    enclosing_classes = [s["name"] for s in scope_stack if s["type"] == "class"]
-                    enclosing_funcs = [s["name"] for s in scope_stack if s["type"] == "func"]
+            if not is_definition:
+                enclosing_funcs = [s["name"] for s in scope_stack if s["type"] == "func"]
+                is_permitted = any(f in ALLOWED_SET_MODE_FUNCS for f in enclosing_funcs)
 
-                    is_permitted = any(c in ALLOWED_SET_MODE_CLASSES for c in enclosing_classes) or any(
-                        f in ALLOWED_SET_MODE_FUNCS for f in enclosing_funcs
+                if not is_permitted:
+                    scope_desc = " > ".join(f"{s['type']}:{s['name']}" for s in scope_stack) or "global"
+                    access_kind = "direct call to" if idx + 1 < total and tokens[idx + 1][1] == "(" else "direct access to"
+                    violations.append(
+                        f"{path}:{line_no}: {access_kind} '{val}{'()' if access_kind == 'direct call to' else ''}' is prohibited outside "
+                        f"FScopedForgeryMode or UGV2ForgeryEntryTestWidget definition. Scope: [{scope_desc}]"
                     )
-
-                    if not is_permitted:
-                        scope_desc = " > ".join(f"{s['type']}:{s['name']}" for s in scope_stack) or "global"
-                        violations.append(
-                            f"{path}:{line_no}: direct call to '{val}()' is prohibited outside "
-                            f"FScopedForgeryMode or UGV2ForgeryEntryTestWidget definition. Scope: [{scope_desc}]"
-                        )
 
         # Check direct assignment to ModeForNextInstance
         if kind == "IDENT" and val.endswith("ModeForNextInstance"):
@@ -154,6 +160,25 @@ def find_violations_in_file(path: Path) -> list[str]:
                         f"{path}:{line_no}: direct assignment to ModeForNextInstance is prohibited. "
                         "Use FScopedForgeryMode to guarantee RAII restoration of test settings."
                     )
+
+        # Inventory every backing-storage access so aliases cannot hide a later write.
+        if kind == "IDENT" and val == "GForgeryModeForNextInstance":
+            _, _, function_name = current_scope()
+            statement_idents = {token[1] for token in stmt_tokens if token[0] == "IDENT"}
+            is_storage_initialization = (
+                not function_name
+                and "static" in statement_idents
+                and "EGV2ForgeryMode" in statement_idents
+            )
+            is_owner_access = function_name in {
+                "UGV2ForgeryEntryTestWidget::GetModeForNextInstance",
+                "UGV2ForgeryEntryTestWidget::SetModeForNextInstance",
+            }
+            if not is_storage_initialization and not is_owner_access:
+                violations.append(
+                    f"{path}:{line_no}: direct access to GForgeryModeForNextInstance is prohibited. "
+                    "Use FScopedForgeryMode to guarantee RAII restoration of test settings."
+                )
 
         # Structure / Braces
         if val == "{":
@@ -299,6 +324,79 @@ def run_self_test() -> bool:
             print(f"FAILED: gate did not flag direct assignment to ModeForNextInstance in GV2ForgeryTestWidgets.h: {v4}")
             return False
         bad_forgery_h.unlink()
+
+        # Negative Mutation 5: valid C++ unqualified/inherited call syntax must be inventoried.
+        bad_unqualified_cpp = test_dir / "GV2UnqualifiedRootTests.cpp"
+        bad_unqualified_cpp.write_text(
+            "class FLeakyObject : public UObject {\n"
+            "    void Leak() { AddToRoot(); }\n"
+            "};\n",
+            encoding="utf-8",
+        )
+        v5 = validate_repository(tmp_root / "Source")
+        if not any("GV2UnqualifiedRootTests.cpp" in v and "raw 'AddToRoot()'" in v for v in v5):
+            print(f"FAILED: gate did not flag unqualified AddToRoot call: {v5}")
+            return False
+        bad_unqualified_cpp.unlink()
+
+        # Negative Mutation 6: an approved class name does not authorize arbitrary methods.
+        bad_owner_method = test_dir / "GV2SpoofedOwnerTests.cpp"
+        bad_owner_method.write_text(
+            "namespace GV2PresentationTestFixtures {\n"
+            "class FScopedTestWorldContext {\n"
+            "    void Leak() { Object->AddToRoot(); }\n"
+            "};\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        v6 = validate_repository(tmp_root / "Source")
+        if not any("GV2SpoofedOwnerTests.cpp" in v and "raw 'AddToRoot()'" in v for v in v6):
+            print(f"FAILED: gate accepted an arbitrary method inside an approved class: {v6}")
+            return False
+        bad_owner_method.unlink()
+
+        # Negative Mutation 7: direct writes to the backing mode variable must be inventoried.
+        bad_mode_storage = test_dir / "GV2RawModeWriterTests.cpp"
+        bad_mode_storage.write_text(
+            "void RogueWriter() {\n"
+            "    GForgeryModeForNextInstance = EGV2ForgeryMode::DetachedRenderer;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        v7 = validate_repository(tmp_root / "Source")
+        if not any("GV2RawModeWriterTests.cpp" in v and "direct access" in v for v in v7):
+            print(f"FAILED: gate did not flag direct backing mode assignment: {v7}")
+            return False
+        bad_mode_storage.unlink()
+
+        # Negative Mutation 8: taking a root mutator pointer is still a raw capability site.
+        bad_root_pointer = test_dir / "GV2RootPointerTests.cpp"
+        bad_root_pointer.write_text(
+            "void RoguePointer() {\n"
+            "    auto RootMutator = &UObject::AddToRoot;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        v8 = validate_repository(tmp_root / "Source")
+        if not any("GV2RootPointerTests.cpp" in v and "raw 'AddToRoot()'" in v for v in v8):
+            print(f"FAILED: gate did not flag AddToRoot member pointer: {v8}")
+            return False
+        bad_root_pointer.unlink()
+
+        # Negative Mutation 9: an alias to mode storage must not bypass assignment detection.
+        bad_mode_alias = test_dir / "GV2ModeAliasTests.cpp"
+        bad_mode_alias.write_text(
+            "void RogueAlias() {\n"
+            "    auto& ModeAlias = GForgeryModeForNextInstance;\n"
+            "    ModeAlias = EGV2ForgeryMode::DetachedRenderer;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        v9 = validate_repository(tmp_root / "Source")
+        if not any("GV2ModeAliasTests.cpp" in v and "GForgeryModeForNextInstance" in v for v in v9):
+            print(f"FAILED: gate did not flag alias access to backing mode storage: {v9}")
+            return False
+        bad_mode_alias.unlink()
 
         # Positive Fixtures: approved RAII owners in the exact previously allowed files
         good_fixtures_h = test_dir / "GV2PresentationTestFixtures.h"

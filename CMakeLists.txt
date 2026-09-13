@@ -1,11 +1,18 @@
 cmake_minimum_required(VERSION 3.25)
 project(GV2Headless LANGUAGES C CXX)
 
-# CFC-03: Ensure CMake File API codemodel query exists so evaluation details are exported on configure
-file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/.cmake/api/v1/query")
-file(TOUCH "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/codemodel-v2")
-
 include(CTest)
+
+# CFC-03: the File API query must exist before configure starts; creating it here is too late
+# for CMake to emit a reply for this configure pass.
+if(BUILD_TESTING AND NOT EXISTS "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/codemodel-v2")
+    message(FATAL_ERROR
+        "Missing pre-configure CMake File API query. Run: "
+        "mkdir -p '${CMAKE_BINARY_DIR}/.cmake/api/v1/query' && "
+        "touch '${CMAKE_BINARY_DIR}/.cmake/api/v1/query/codemodel-v2', then configure again."
+    )
+endif()
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/Tools/Testing/GV2CliContractTests.cmake")
 
 set(GV2_PCC_FIXTURE_ROOT

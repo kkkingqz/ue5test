@@ -85,7 +85,7 @@ std::string RunRunReplayConformance()
 
     FRuntimeSession ProbeSession;
     FRuntimeFault ProbeFault;
-    if (!ProbeSession.Start(1, ReadHandle, Sources, ProbeFault))
+    if (!ProbeSession.Start(1, "0000000000000001", ReadHandle, Sources, ProbeFault))
     {
         return "run_replay.probe_session_failed";
     }

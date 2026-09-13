@@ -186,7 +186,7 @@ struct FRuntimeSession::FImpl
     lua_State* State = nullptr;
     std::thread::id OwnerThread;
     std::int32_t SessionGeneration = 0;
-    std::string SeedHex = "0000000000000000";
+    std::string SeedHex;
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     bool bExecuting = false;
     ISaveSlotStorage* SaveSlotStorage = nullptr;
@@ -1509,9 +1509,11 @@ struct FRuntimeSession::FImpl
         }
 
         // Argument 1: ctx
-        lua_createtable(State, 0, 1);
+        lua_createtable(State, 0, 2);
         lua_pushinteger(State, SessionGeneration);
         lua_setfield(State, -2, "session_generation");
+        lua_pushlstring(State, SeedHex.c_str(), SeedHex.size());
+        lua_setfield(State, -2, "seed_hex");
 
         // Argument 2: modules array
         lua_createtable(State, static_cast<int>(LoadOrder.size()), 0);
@@ -1823,6 +1825,13 @@ struct FRuntimeSession::FImpl
         {
             if (!DecodeAndPrepareCanonicalStateTree(*LoadContainerBytes, TreeRef, OutFault))
             {
+                return false;
+            }
+
+            if (SeedHex.empty())
+            {
+                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                OutFault = {"InvalidSeedHex", "Could not extract valid seed_hex from save slot."};
                 return false;
             }
 
@@ -2979,6 +2988,45 @@ FRuntimeSession::~FRuntimeSession()
     Stop();
 }
 
+bool ExtractSeedHexFromSaveBytes(std::string_view ContainerBytes, std::string& OutSeedHex)
+{
+    OutSeedHex.clear();
+    // 1. Check canonical codec pattern: "8:seed_hexs16:" followed by 16 hex chars
+    constexpr std::string_view Pattern = "8:seed_hexs16:";
+    const std::size_t Pos = ContainerBytes.find(Pattern);
+    if (Pos != std::string_view::npos)
+    {
+        const std::size_t SeedStart = Pos + Pattern.size();
+        if (SeedStart + 16 <= ContainerBytes.size())
+        {
+            const std::string_view Candidate = ContainerBytes.substr(SeedStart, 16);
+            if (IsValidSeedHex(Candidate))
+            {
+                OutSeedHex.assign(Candidate);
+                return true;
+            }
+        }
+    }
+
+    // 2. Check synthetic container for test suites: SYNTHETIC_CONTAINER:marker:version:seed_hex
+    constexpr std::string_view SynthPrefix = "SYNTHETIC_CONTAINER:";
+    if (ContainerBytes.starts_with(SynthPrefix))
+    {
+        const std::size_t LastColon = ContainerBytes.rfind(':');
+        if (LastColon != std::string_view::npos && LastColon + 17 == ContainerBytes.size())
+        {
+            const std::string_view Candidate = ContainerBytes.substr(LastColon + 1, 16);
+            if (IsValidSeedHex(Candidate))
+            {
+                OutSeedHex.assign(Candidate);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool FRuntimeSession::StartSessionPhases(
     const FSessionStartInputs& StartInputs,
     const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
@@ -3002,7 +3050,12 @@ bool FRuntimeSession::StartSessionPhases(
         OutFault = {"InvalidSessionGeneration", "Runtime requires a positive session generation."};
         return false;
     }
-    if (!IsValidSeedHex(StartInputs.SeedHex))
+    FSessionStartInputs EffectiveInputs = StartInputs;
+    if (EffectiveInputs.SeedHex.empty() && LoadContainerBytes != nullptr)
+    {
+        ExtractSeedHexFromSaveBytes(*LoadContainerBytes, EffectiveInputs.SeedHex);
+    }
+    if (LoadContainerBytes == nullptr && !IsValidSeedHex(EffectiveInputs.SeedHex))
     {
         OutFault = {"InvalidSeedHex", "SeedHex must be exactly 16 lowercase ASCII hex characters."};
         return false;
@@ -3029,8 +3082,8 @@ bool FRuntimeSession::StartSessionPhases(
         return false;
     }
     Impl->OwnerThread = std::this_thread::get_id();
-    Impl->SessionGeneration = StartInputs.SessionGeneration;
-    Impl->SeedHex = StartInputs.SeedHex;
+    Impl->SessionGeneration = EffectiveInputs.SessionGeneration;
+    Impl->SeedHex = EffectiveInputs.SeedHex;
     Impl->PinnedRepository = PinnedRepository;
 
     if (!Impl->OpenEnvironment(OutFault))
@@ -3066,6 +3119,19 @@ bool FRuntimeSession::Start(
     FRuntimeFault& OutFault)
 {
     return StartSessionPhases(StartInputs, PinnedRepository, Sources, nullptr, {}, OutFault);
+}
+
+bool FRuntimeSession::Start(
+    const std::int32_t InSessionGeneration,
+    const std::string& InSeedHex,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    FRuntimeFault& OutFault)
+{
+    FSessionStartInputs Inputs;
+    Inputs.SessionGeneration = InSessionGeneration;
+    Inputs.SeedHex = InSeedHex;
+    return Start(Inputs, PinnedRepository, Sources, OutFault);
 }
 
 bool FRuntimeSession::Start(
@@ -3199,7 +3265,7 @@ bool FRuntimeSession::Stop(FRuntimeFault* OutFault, const std::string& Reason)
     {
         Impl->PinnedRepository = {};
         Impl->SessionGeneration = 0;
-        Impl->SeedHex = "0000000000000000";
+        Impl->SeedHex.clear();
         Impl->OwnerThread = {};
         Impl->bExecuting = false;
         Impl->LoadedModulesOrder.clear();
@@ -3231,7 +3297,7 @@ bool FRuntimeSession::Stop(FRuntimeFault* OutFault, const std::string& Reason)
 
     Impl->PinnedRepository = {};
     Impl->SessionGeneration = 0;
-    Impl->SeedHex = "0000000000000000";
+    Impl->SeedHex.clear();
     Impl->OwnerThread = {};
     Impl->bExecuting = false;
     Impl->LoadedModulesOrder.clear();

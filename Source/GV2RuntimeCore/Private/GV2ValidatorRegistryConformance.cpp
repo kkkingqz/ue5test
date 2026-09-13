@@ -336,7 +336,7 @@ return M
 
     FRuntimeSession Session;
     FRuntimeFault Fault;
-    if (!Session.Start(1, RepoHandle, Sources, Fault))
+    if (!Session.Start(1, "0000000000000001", RepoHandle, Sources, Fault))
     {
         return "validator_registry_conformance.session_start_failed: " + Fault.Code + ": " + Fault.Message;
     }

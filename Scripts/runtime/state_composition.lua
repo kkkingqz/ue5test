@@ -101,7 +101,7 @@ end
 
 function M.compose_default_state(ctx, modules)
     ctx = ctx or {}
-    local target_tree = state_validator.create_empty_canonical_state()
+    local target_tree = state_validator.create_empty_canonical_state(ctx.seed_hex)
 
     if modules == nil then
         return target_tree, nil

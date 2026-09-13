@@ -197,6 +197,7 @@ bool FGV2SessionTransitionRequestJoiningTest::RunTest(const FString& Parameters)
     DescA.Mode = ESessionStartMode::NewGame;
     DescA.RepositoryVersion = TEXT("1");
     DescA.RepositoryContentHash = TEXT("content_hash_alpha");
+    DescA.SeedHex = TEXT("0000000000000001");
 
     bool bJoinedA = false;
     uint64 JoinedOpIdA = 0;
@@ -224,6 +225,7 @@ bool FGV2SessionTransitionRequestJoiningTest::RunTest(const FString& Parameters)
     DescC.Mode = ESessionStartMode::NewGame;
     DescC.RepositoryVersion = TEXT("2");
     DescC.RepositoryContentHash = TEXT("content_hash_beta");
+    DescC.SeedHex = TEXT("0000000000000003");
     bool bJoinedC = false;
     uint64 JoinedOpIdC = 0;
     const uint64 OpC = Policy.EnqueueRequest(DescC, bJoinedC, JoinedOpIdC);
@@ -256,6 +258,7 @@ bool FGV2SessionTransitionPendingSupersededTest::RunTest(const FString& Paramete
     FSessionStartDescriptor DescA;
     DescA.Mode = ESessionStartMode::NewGame;
     DescA.RepositoryVersion = TEXT("1");
+    DescA.SeedHex = TEXT("0000000000000001");
     bool bJoined = false;
     uint64 JoinedId = 0;
     const uint64 OpA = Policy.EnqueueRequest(DescA, bJoined, JoinedId);
@@ -266,6 +269,7 @@ bool FGV2SessionTransitionPendingSupersededTest::RunTest(const FString& Paramete
     FSessionStartDescriptor DescB;
     DescB.Mode = ESessionStartMode::NewGame;
     DescB.RepositoryVersion = TEXT("2");
+    DescB.SeedHex = TEXT("0000000000000002");
     const uint64 OpB = Policy.EnqueueRequest(DescB, bJoined, JoinedId);
     TestTrue(TEXT("OpB is pending"), Policy.HasPendingOperation());
     TestEqual(TEXT("Pending Op is OpB"), Policy.GetPendingOperation()->OperationId, OpB);
@@ -274,6 +278,7 @@ bool FGV2SessionTransitionPendingSupersededTest::RunTest(const FString& Paramete
     FSessionStartDescriptor DescC;
     DescC.Mode = ESessionStartMode::Menu;
     DescC.RepositoryVersion = TEXT("3");
+    DescC.SeedHex = TEXT("0000000000000003");
     const uint64 OpC = Policy.EnqueueRequest(DescC, bJoined, JoinedId);
     TestTrue(TEXT("Pending slot now holds OpC"), Policy.HasPendingOperation());
     TestEqual(TEXT("Pending Op is OpC"), Policy.GetPendingOperation()->OperationId, OpC);
@@ -299,6 +304,7 @@ bool FGV2SessionTransitionCancellationTest::RunTest(const FString& Parameters)
     FSessionStartDescriptor DescA;
     DescA.Mode = ESessionStartMode::NewGame;
     DescA.RepositoryVersion = TEXT("1");
+    DescA.SeedHex = TEXT("0000000000000001");
     bool bJoined = false;
     uint64 JoinedId = 0;
     const uint64 OpA = Policy.EnqueueRequest(DescA, bJoined, JoinedId);
@@ -309,6 +315,7 @@ bool FGV2SessionTransitionCancellationTest::RunTest(const FString& Parameters)
     FSessionStartDescriptor DescB;
     DescB.Mode = ESessionStartMode::NewGame;
     DescB.RepositoryVersion = TEXT("2");
+    DescB.SeedHex = TEXT("0000000000000002");
     const uint64 OpB = Policy.EnqueueRequest(DescB, bJoined, JoinedId);
 
     // 1. Cancel pending request OpB -> Accepted, outcome Cancelled, pending slot cleared
@@ -347,6 +354,7 @@ bool FGV2SessionTransitionShutdownPriorityTest::RunTest(const FString& Parameter
     FSessionStartDescriptor DescA;
     DescA.Mode = ESessionStartMode::NewGame;
     DescA.RepositoryVersion = TEXT("1");
+    DescA.SeedHex = TEXT("0000000000000001");
     bool bJoined = false;
     uint64 JoinedId = 0;
     const uint64 OpA = Policy.EnqueueRequest(DescA, bJoined, JoinedId);
@@ -356,6 +364,7 @@ bool FGV2SessionTransitionShutdownPriorityTest::RunTest(const FString& Parameter
     FSessionStartDescriptor DescB;
     DescB.Mode = ESessionStartMode::NewGame;
     DescB.RepositoryVersion = TEXT("2");
+    DescB.SeedHex = TEXT("0000000000000002");
     const uint64 OpB = Policy.EnqueueRequest(DescB, bJoined, JoinedId); // Pending
 
     // Enqueue Shutdown
@@ -469,7 +478,7 @@ return M
         GV2RuntimeCore::FRuntimeSession Session;
         Session.SetSaveSlotStorage(&TraceStorage);
 
-        const bool bStarted = Session.Start(1, ReadHandle, Sources, Fault);
+        const bool bStarted = Session.Start(1, "0000000000000001", ReadHandle, Sources, Fault);
         TestTrue(TEXT("Session with test modules started successfully"), bStarted);
 
         // Stop session: should run reverse teardown
@@ -545,6 +554,7 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
         MenuDesc.Mode = ESessionStartMode::Menu;
         MenuDesc.RepositoryVersion = TEXT("1");
         MenuDesc.RepositoryContentHash = UTF8_TO_TCHAR(ReadHandle.GetContentHash().c_str());
+        MenuDesc.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
         const uint64 OpMenu1 = Coordinator.RequestSession(MenuDesc, ReadHandle, 1, *Resolved);
         TestEqual(TEXT("Menu session 1 outcome is Completed"),
@@ -560,6 +570,7 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
         GameDesc.Mode = ESessionStartMode::NewGame;
         GameDesc.RepositoryVersion = TEXT("1");
         GameDesc.RepositoryContentHash = UTF8_TO_TCHAR(ReadHandle.GetContentHash().c_str());
+        GameDesc.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
         const uint64 OpGame = Coordinator.RequestSession(GameDesc, ReadHandle, 1, *Resolved);
         TestEqual(TEXT("Game session outcome is Completed"),
@@ -575,6 +586,7 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
         MenuDesc3.Mode = ESessionStartMode::Menu;
         MenuDesc3.RepositoryVersion = TEXT("1");
         MenuDesc3.RepositoryContentHash = UTF8_TO_TCHAR(ReadHandle.GetContentHash().c_str());
+        MenuDesc3.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
         const uint64 OpMenu3 = Coordinator.RequestSession(MenuDesc3, ReadHandle, 1, *Resolved);
         TestEqual(TEXT("Menu session 3 outcome is Completed"),
@@ -595,12 +607,12 @@ bool FGV2SessionSingleVmInvariantTest::RunTest(const FString& Parameters)
         GV2RuntimeCore::FRuntimeSession SessionA;
         GV2RuntimeCore::FRuntimeFault FaultA;
         const std::vector<GV2RuntimeCore::FRuntimeSource> Sources = LoadMinimalCoreSources();
-        TestTrue(TEXT("SessionA starts"), SessionA.Start(1, ReadHandle, Sources, FaultA));
+        TestTrue(TEXT("SessionA starts"), SessionA.Start(1, "0000000000000001", ReadHandle, Sources, FaultA));
         TestEqual(TEXT("LiveVmCount is 1"), GV2RuntimeCore::FRuntimeSession::GetLiveVmCount(), 1);
 
         GV2RuntimeCore::FRuntimeSession SessionB;
         GV2RuntimeCore::FRuntimeFault FaultB;
-        const bool bStartedB = SessionB.Start(2, ReadHandle, Sources, FaultB);
+        const bool bStartedB = SessionB.Start(2, "0000000000000002", ReadHandle, Sources, FaultB);
         TestFalse(TEXT("SessionB is rejected by atomic guard"), bStartedB);
         TestEqual(TEXT("Fault code is LuaVmExceededLimit"), FString(UTF8_TO_TCHAR(FaultB.Code.c_str())), TEXT("LuaVmExceededLimit"));
         TestEqual(TEXT("LiveVmCount never exceeds 1"), GV2RuntimeCore::FRuntimeSession::GetLiveVmCount(), 1);
@@ -654,6 +666,7 @@ bool FGV2SessionPreCommitCancellationTest::RunTest(const FString& Parameters)
     DescA.Mode = ESessionStartMode::Menu;
     DescA.RepositoryVersion = TEXT("1");
     DescA.RepositoryContentHash = UTF8_TO_TCHAR(ReadHandle.GetContentHash().c_str());
+    DescA.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
     const uint64 OpA = Coordinator.RequestSession(DescA, ReadHandle, 1, *Resolved);
     TestEqual(TEXT("Session A completed"), *Coordinator.GetSessionOperationOutcome(OpA), ESessionOperationOutcome::Completed);
@@ -667,6 +680,7 @@ bool FGV2SessionPreCommitCancellationTest::RunTest(const FString& Parameters)
     DescB.Mode = ESessionStartMode::NewGame;
     DescB.RepositoryVersion = TEXT("1");
     DescB.RepositoryContentHash = UTF8_TO_TCHAR(ReadHandle.GetContentHash().c_str());
+    DescB.SeedHex = FSessionStartDescriptor::GenerateFreshSeedHex();
 
     // Test transition policy cancellation directly:
     FGV2SessionTransitionPolicy TestPolicy;

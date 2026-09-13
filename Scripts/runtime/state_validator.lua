@@ -131,10 +131,13 @@ function M.is_canonical_section(name)
     return false
 end
 
-function M.create_empty_canonical_state()
-    local seed_hex = "0000000000000000"
-    if _G.game and _G.game.runtime and type(_G.game.runtime.seed_hex) == "string" then
+function M.create_empty_canonical_state(opt_seed_hex)
+    local seed_hex = opt_seed_hex
+    if (not seed_hex or seed_hex == "") and _G.game and _G.game.runtime and type(_G.game.runtime.seed_hex) == "string" then
         seed_hex = _G.game.runtime.seed_hex
+    end
+    if not seed_hex or seed_hex == "" then
+        seed_hex = "0000000000000000"
     end
     local state = {
         meta = {

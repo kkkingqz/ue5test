@@ -61,8 +61,6 @@ local function get_stream_state(stream_id)
             seed_hex = state.meta.seed_hex
         elseif _G.game.runtime and type(_G.game.runtime.seed_hex) == "string" then
             seed_hex = _G.game.runtime.seed_hex
-        else
-            seed_hex = "0000000000000000"
         end
         stream_state = M.derive_stream(seed_hex, stream_id)
         state.meta.prng[stream_id] = stream_state

@@ -416,7 +416,7 @@ std::string RunLuaRepositoryAccessConformance()
     FRuntimeFault Fault;
 
     // 1. Session start with valid pinned handle
-    if (!Session.Start(1, PinnedHandle1, Sources, Fault))
+    if (!Session.Start(1, "0000000000000001", PinnedHandle1, Sources, Fault))
     {
         return "session_start_failed: " + Fault.Code + ": " + Fault.Message;
     }

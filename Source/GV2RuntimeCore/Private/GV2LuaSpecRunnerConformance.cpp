@@ -54,7 +54,7 @@ bool StartFixtureSession(FRuntimeSession& Session, FRuntimeFault& OutFault)
         {"@core/test/loaded_marker.lua", LoadedMarkerSource},
     };
 
-    return Session.Start(1, RepoHandle, Sources, OutFault);
+    return Session.Start(1, "0000000000000001", RepoHandle, Sources, OutFault);
 }
 } // namespace
 

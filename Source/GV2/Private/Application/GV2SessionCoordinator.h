@@ -68,6 +68,9 @@ public:
 
     const FGV2SessionStatus& GetStatus() const;
     const GV2ContentCore::FRepositoryReadHandle& GetPinnedRepository() const { return PinnedRepository; }
+    FString GetActiveSeedHex() const { return UTF8_TO_TCHAR(RuntimeSession.GetSeedHex().c_str()); }
+    GV2RuntimeCore::FRuntimeSession& GetRuntimeSession() { return RuntimeSession; }
+    const GV2RuntimeCore::FRuntimeSession& GetRuntimeSession() const { return RuntimeSession; }
 
     // PSC-04/05 (ADR-0043 D1): null before a successful StartSession() and after
     // EndSession()/a failed StartSession() -- this is the EXTERNAL-facing contract: only

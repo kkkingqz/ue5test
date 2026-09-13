@@ -5,8 +5,8 @@ Validates that:
 1. Discovered tests strictly match completed unique records (no missing, no extra, no duplicates).
 2. Every test record has state 'Success' and zero errors.
 3. Summary counters (total, passed, failed, skipped) are consistent with records.
-4. Run identity (run_id, source_revision, source_diff_hash, build_fingerprint)
-   matches the expected current source/build state.
+4. Binary identity (source_revision, source_diff_hash, build_fingerprint) matches the
+   current source/build state, while run_id carries process/transport correlation.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ def compute_run_identity(
     project_root: Optional[Union[str, Path]] = None,
     run_id: Optional[str] = None,
 ) -> Dict[str, str]:
-    """Computes run identity dictionary containing all required identity keys."""
+    """Builds expected binary identity plus the caller-proven execution correlation id."""
     if project_root is None:
         # Default to repository root relative to this script
         project_root = Path(__file__).resolve().parent.parent.parent
@@ -261,7 +261,11 @@ def normalize_mcp_report(
     if expected_task_id is not None:
         if not isinstance(expected_task_id, str) or not expected_task_id.strip():
             raise ValueError(f"expected_task_id must be a non-empty string, got {expected_task_id!r}")
-        if raw_task_id is not None and raw_task_id != expected_task_id:
+        if raw_task_id is None:
+            raise ValueError(
+                f"MCP report is not bound to expected task_id '{expected_task_id}': task_id is missing"
+            )
+        if raw_task_id != expected_task_id:
             raise ValueError(
                 f"MCP report task_id mismatch: expected '{expected_task_id}', got '{raw_task_id}'"
             )

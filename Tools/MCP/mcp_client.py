@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -79,6 +81,7 @@ class UnrealMcpClient:
         self.timeout = timeout
         self.session_id: Optional[str] = None
         self.req_id = 0
+        self.last_response_id: Optional[int] = None
         if HAS_REQUESTS:
             self.session = requests.Session()
         else:
@@ -103,9 +106,52 @@ class UnrealMcpClient:
         if self.session_id:
             headers["Mcp-Session-Id"] = self.session_id
 
+        request_id = self.req_id
+        outcome: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+        def perform_request() -> None:
+            try:
+                outcome.put((True, self._send_raw_blocking(method, payload, headers)))
+            except Exception as exc:
+                outcome.put((False, exc))
+
+        threading.Thread(target=perform_request, daemon=True).start()
+        try:
+            succeeded, value = outcome.get(timeout=self.timeout)
+        except queue.Empty as exc:
+            raise TimeoutError(
+                f"MCP request exceeded absolute deadline of {self.timeout}s for {method}"
+            ) from exc
+
+        if not succeeded:
+            raise value
+
+        if not isinstance(value, dict):
+            raise RuntimeError(
+                f"Malformed JSON-RPC response for {method}: expected object, got {type(value).__name__}"
+            )
+        if value.get("jsonrpc") != "2.0":
+            raise RuntimeError(f"Malformed JSON-RPC response for {method}: missing jsonrpc='2.0'")
+        if value.get("id") != request_id:
+            raise RuntimeError(
+                f"MCP response id mismatch for {method}: expected {request_id}, got {value.get('id')!r}"
+            )
+
+        self.last_response_id = request_id
+        return value
+
+    def _send_raw_blocking(
+        self,
+        method: str,
+        payload: Dict[str, Any],
+        headers: Dict[str, str],
+    ) -> Dict[str, Any]:
+        """Performs one blocking HTTP exchange; _send_raw owns the absolute deadline."""
+
         if HAS_REQUESTS and self.session is not None:
             try:
                 r = self.session.post(self.url, json=payload, headers=headers, stream=True, timeout=self.timeout)
+                r.raise_for_status()
                 if not self.session_id and "Mcp-Session-Id" in r.headers:
                     self.session_id = r.headers["Mcp-Session-Id"]
 
@@ -322,7 +368,9 @@ class UnrealMcpClient:
 
         if isinstance(parsed, dict):
             ret_id = parsed.get("taskId") or parsed.get("task_id")
-            if ret_id and str(ret_id).strip() != tid:
+            if not isinstance(ret_id, str) or not ret_id.strip():
+                raise ValueError(f"GetTestStatus response is missing exact task_id '{tid}'")
+            if ret_id.strip() != tid:
                 raise ValueError(
                     f"Mismatched task_id in GetTestStatus: expected '{tid}', got '{ret_id}'"
                 )
@@ -360,7 +408,9 @@ class UnrealMcpClient:
 
         if isinstance(parsed, dict):
             ret_id = parsed.get("taskId") or parsed.get("task_id")
-            if ret_id and str(ret_id).strip() != tid:
+            if not isinstance(ret_id, str) or not ret_id.strip():
+                raise ValueError(f"GetTestResults response is missing exact task_id '{tid}'")
+            if ret_id.strip() != tid:
                 raise ValueError(
                     f"Mismatched task_id in GetTestResults: expected '{tid}', got '{ret_id}'"
                 )
