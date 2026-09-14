@@ -1,17 +1,25 @@
 #pragma once
 
 #include "Application/GV2FilesystemContentSourceProvider.h"
+#include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionContentSnapshot.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
+#include "HAL/PlatformTime.h"
+#include "Layout/ArrangedChildren.h"
 #include "Misc/Paths.h"
-#include "UI/GV2TextPipeline.h"
-#include "UI/GV2ImageResourceCatalog.h"
+#include "Rendering/DrawElements.h"
+#include "Styling/WidgetStyle.h"
 #include "Application/GV2PackageClosure.h"
+#include "UI/GV2ImagePresentation.h"
+#include "UI/GV2ImageResourceCatalog.h"
 #include "UI/GV2RichTextPopoverWidgetBase.h"
+#include "UI/GV2TextPipeline.h"
 #include "UI/GV2UiSchemaCache.h"
 #include "UI/GV2UiTheme.h"
+#include "Widgets/SNullWidget.h"
+#include "Widgets/SVirtualWindow.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -330,5 +338,155 @@ inline FGV2TextViewModel MakeResolvedText(
     FString Error;
     UGV2TextPipeline::ResolveLiteralForAutomationTest(LoadTheme(), Text, StyleToken, Result, Error);
     return Result;
+}
+
+// TSR-03: Shared loader for configured Theme with minimal fallback, used across presentation and UI tests.
+inline UGV2UiTheme* LoadConfiguredThemeForTest()
+{
+    const UGV2UiThemeSettings* Settings = GetDefault<UGV2UiThemeSettings>();
+    UGV2UiTheme* Theme = Settings != nullptr && !Settings->ThemeAsset.IsNull()
+        ? Settings->ThemeAsset.LoadSynchronous()
+        : nullptr;
+    return Theme != nullptr ? Theme : UGV2UiTheme::GetCoreMinimalTheme();
+}
+
+// TSR-03 / PSC-10B: Shared literal-resolution seam delegating to UGV2TextPipeline's implementation.
+inline FGV2TextViewModel MakeResolvedLiteralTextForTest(
+    const UGV2UiTheme& Theme,
+    const FString& Text,
+    FName StyleToken = NAME_None)
+{
+    FGV2TextViewModel Result;
+    FString Error;
+    UGV2TextPipeline::ResolveLiteralForAutomationTest(&Theme, Text, StyleToken, Result, Error);
+    return Result;
+}
+
+// TSR-03: Shared adapter converting FGV2ResolvedImageResource to prepared presentation value.
+inline GV2PresentationApply::FPreparedResolvedImageValue MakePreparedResolvedImageForTest(
+    const FGV2ResolvedImageResource& Resolved)
+{
+    GV2PresentationApply::FPreparedResolvedImageValue Result;
+    Result.ResourceId = Resolved.ResourceId;
+    Result.RenderMode = FGV2ImagePresentation::ToPreparedRenderMode(Resolved.RenderMode);
+    Result.FixedAspectRatio = Resolved.FixedAspectRatio;
+    Result.Brush = Resolved.Brush;
+    return Result;
+}
+
+// TSR-03 / CBM-03 / CFC-02A: Scoped RAII override for tests requiring the sample package.
+// Preserves and restores previous session coordinator and theme catalog state on ANY exit
+// (including early return or nested scopes), fulfilling test isolation requirements.
+class FGV2ScopedSamplePackageOverride final
+{
+public:
+    FGV2ScopedSamplePackageOverride()
+    {
+        bPreviousForceIncludeSamplePackage = FGV2SessionCoordinator::bTestForceIncludeSamplePackage;
+        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true;
+
+        if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
+        {
+            TargetTheme = Theme;
+            const FString Pkg = TEXT("sample");
+            const TArray<TTuple<FString, FText>> EntriesToApply = {
+                { FString::Printf(TEXT("%s:text.location.hub.title"), *Pkg), FText::FromString(TEXT("Central Hub")) },
+                { FString::Printf(TEXT("%s:text.screen.hub.description"), *Pkg), FText::FromString(TEXT("You are standing in the central hub.")) },
+                { FString::Printf(TEXT("%s:text.location.east.title"), *Pkg), FText::FromString(TEXT("East Wing")) },
+                { FString::Printf(TEXT("%s:text.screen.east.description"), *Pkg), FText::FromString(TEXT("You are in the quiet east wing.")) },
+                { FString::Printf(TEXT("%s:text.location.west.title"), *Pkg), FText::FromString(TEXT("West Wing")) },
+                { FString::Printf(TEXT("%s:text.screen.west.description"), *Pkg), FText::FromString(TEXT("You are in the windy west wing.")) },
+                { FString::Printf(TEXT("%s:text.action.scout"), *Pkg), FText::FromString(TEXT("Scout Area")) }
+            };
+
+            for (const auto& Entry : EntriesToApply)
+            {
+                const FString& Key = Entry.Get<0>();
+                const FText& Val = Entry.Get<1>();
+                if (const FText* Existing = Theme->FallbackTextCatalog.Find(Key))
+                {
+                    SavedCatalogEntries.Add(Key, *Existing);
+                }
+                else
+                {
+                    SavedCatalogEntries.Add(Key, TOptional<FText>());
+                }
+                Theme->FallbackTextCatalog.Add(Key, Val);
+            }
+        }
+    }
+
+    ~FGV2ScopedSamplePackageOverride()
+    {
+        Teardown();
+    }
+
+    FGV2ScopedSamplePackageOverride(const FGV2ScopedSamplePackageOverride&) = delete;
+    FGV2ScopedSamplePackageOverride& operator=(const FGV2ScopedSamplePackageOverride&) = delete;
+
+    void Teardown()
+    {
+        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = bPreviousForceIncludeSamplePackage;
+
+        if (UGV2UiTheme* Theme = TargetTheme.Get())
+        {
+            for (const auto& Pair : SavedCatalogEntries)
+            {
+                if (Pair.Value.IsSet())
+                {
+                    Theme->FallbackTextCatalog.Add(Pair.Key, Pair.Value.GetValue());
+                }
+                else
+                {
+                    Theme->FallbackTextCatalog.Remove(Pair.Key);
+                }
+            }
+            SavedCatalogEntries.Empty();
+            TargetTheme = nullptr;
+        }
+    }
+
+private:
+    bool bPreviousForceIncludeSamplePackage = false;
+    TWeakObjectPtr<UGV2UiTheme> TargetTheme;
+    TMap<FString, TOptional<FText>> SavedCatalogEntries;
+};
+
+// TSR-03 / DCA-13: walks the Slate tree and calls Tick() directly on every widget that
+// still wants one, using the geometry PaintWindow just cached for it.
+inline void GV2TickWidgetSubtreeRecursively(const TSharedRef<SWidget>& Widget, double CurrentTime, float DeltaTime)
+{
+    if (Widget->GetCanTick())
+    {
+        Widget->Tick(Widget->GetTickSpaceGeometry(), CurrentTime, DeltaTime);
+    }
+    if (FChildren* Children = Widget->GetAllChildren())
+    {
+        const int32 NumChildren = Children->Num();
+        for (int32 Index = 0; Index < NumChildren; ++Index)
+        {
+            const TSharedRef<SWidget> Child = Children->GetChildAt(Index);
+            if (Child != SNullWidget::NullWidget)
+            {
+                GV2TickWidgetSubtreeRecursively(Child, CurrentTime, DeltaTime);
+            }
+        }
+    }
+}
+
+// TSR-03 / DCA-13: one full simulated frame on an off-screen SVirtualWindow honest
+// about dynamic (Tick-driven) layouts.
+inline void GV2SimulateResponsiveFrame(const TSharedRef<SVirtualWindow>& Window, const FVector2D& Size)
+{
+    Window->Resize(Size);
+    Window->SlatePrepass(1.0f);
+    {
+        FSlateWindowElementList SeedElementList(Window);
+        Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, SeedElementList, FWidgetStyle(), true);
+    }
+    GV2TickWidgetSubtreeRecursively(Window, FPlatformTime::Seconds(), 0.016f);
+    Window->SlatePrepass(1.0f);
+    FSlateWindowElementList WindowElementList(Window);
+    Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, WindowElementList, FWidgetStyle(), true);
 }
 }

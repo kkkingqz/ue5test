@@ -95,14 +95,13 @@
 
 namespace
 {
-UGV2UiTheme* LoadConfiguredThemeForTest()
-{
-    const UGV2UiThemeSettings* Settings = GetDefault<UGV2UiThemeSettings>();
-    UGV2UiTheme* Theme = Settings != nullptr && !Settings->ThemeAsset.IsNull()
-        ? Settings->ThemeAsset.LoadSynchronous()
-        : nullptr;
-    return Theme != nullptr ? Theme : UGV2UiTheme::GetCoreMinimalTheme();
-}
+// TSR-03: shared presentation and UI test helpers moved to GV2PresentationTestFixtures.h.
+using GV2PresentationTestFixtures::LoadConfiguredThemeForTest;
+using GV2PresentationTestFixtures::MakeResolvedLiteralTextForTest;
+using GV2PresentationTestFixtures::MakePreparedResolvedImageForTest;
+using GV2PresentationTestFixtures::FGV2ScopedSamplePackageOverride;
+using GV2PresentationTestFixtures::GV2TickWidgetSubtreeRecursively;
+using GV2PresentationTestFixtures::GV2SimulateResponsiveFrame;
 
 UGV2ScreenRegistry* LoadConfiguredRegistryForTest()
 {
@@ -110,32 +109,6 @@ UGV2ScreenRegistry* LoadConfiguredRegistryForTest()
     return Settings != nullptr && !Settings->RegistryAsset.IsNull()
         ? Settings->RegistryAsset.LoadSynchronous()
         : nullptr;
-}
-
-// PSC-10B: one literal-resolution seam, shared with GV2PresentationTestFixtures. Two
-// hand-rolled copies of "fill the resolved presentation fields" existed here and in that
-// header; both could drift from what production Resolve() actually produces, so both now
-// delegate to the pipeline's own implementation.
-FGV2TextViewModel MakeResolvedLiteralTextForTest(
-    const UGV2UiTheme& Theme,
-    const FString& Text,
-    FName StyleToken = NAME_None)
-{
-    FGV2TextViewModel Result;
-    FString Error;
-    UGV2TextPipeline::ResolveLiteralForAutomationTest(&Theme, Text, StyleToken, Result, Error);
-    return Result;
-}
-
-GV2PresentationApply::FPreparedResolvedImageValue MakePreparedResolvedImageForTest(
-    const FGV2ResolvedImageResource& Resolved)
-{
-    GV2PresentationApply::FPreparedResolvedImageValue Result;
-    Result.ResourceId = Resolved.ResourceId;
-    Result.RenderMode = FGV2ImagePresentation::ToPreparedRenderMode(Resolved.RenderMode);
-    Result.FixedAspectRatio = Resolved.FixedAspectRatio;
-    Result.Brush = Resolved.Brush;
-    return Result;
 }
 
 GV2PresentationApply::FPreparedRichTextStyle MakePreparedRichTextStyleForTest(
@@ -169,97 +142,6 @@ GV2PresentationApply::FPreparedRichTextStyle MakePreparedRichTextStyleForTest(
     Result.PopoverStyle.Scale.ReferenceViewportHeight = Theme.ReferenceViewportHeight;
     Result.bIsResolved = true;
     return Result;
-}
-
-// CBM-03: GameData/sample carries the WBP_Testscreen demo/debug-start screen
-// but is deliberately excluded from the default package set (mods.lock.json5),
-// since it and GameData/rh both bind the shared
-// "textsystem:action.location.travel" action and cannot load together.
-// Tests that need the demo screen opt in explicitly via this scope guard,
-// matching the "runs that need the demo screen connect sample explicitly"
-// intent from CoreBoundaryMigration/DemoOut.md.
-struct FGV2ScopedSamplePackageOverride
-{
-    FGV2ScopedSamplePackageOverride()
-    {
-        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true;
-        if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
-        {
-            const FString Pkg = TEXT("sample");
-            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.location.hub.title"), *Pkg), FText::FromString(TEXT("Central Hub")));
-            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.screen.hub.description"), *Pkg), FText::FromString(TEXT("You are standing in the central hub.")));
-            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.location.east.title"), *Pkg), FText::FromString(TEXT("East Wing")));
-            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.screen.east.description"), *Pkg), FText::FromString(TEXT("You are in the quiet east wing.")));
-            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.location.west.title"), *Pkg), FText::FromString(TEXT("West Wing")));
-            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.screen.west.description"), *Pkg), FText::FromString(TEXT("You are in the windy west wing.")));
-            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.action.scout"), *Pkg), FText::FromString(TEXT("Scout Area")));
-        }
-    }
-    ~FGV2ScopedSamplePackageOverride()
-    {
-        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false;
-    }
-};
-
-
-// PAH-04B: sibling to FGV2ScopedRealSchemaCache above -- the image resource catalog is
-// session-scoped now too (UGV2ImageResourceCatalog::RebuildForSession/ReleaseForSession,
-// called by FGV2SessionCoordinator::StartSession/EndSession in production). A test that
-// resolves an image resource_id directly, without starting a real session first, uses
-// this to give itself a real catalog built from the real GameData closure.
-
-// DCA-13: a dynamic SWrapBox (UseAllottedSize=true) only recalculates its own
-// wrap threshold (PreferredSize) inside Tick(), which the normal
-// FSlateApplication loop drives every frame for a registered top-level
-// window -- an off-screen SVirtualWindow driven by hand (Resize +
-// SlatePrepass + PaintWindow, no FSlateApplication involved) never receives
-// it, so PreferredSize freezes at whatever the first Paint ever measured and
-// silently reuses that stale threshold at every later, narrower resolution.
-// This walks the Slate tree and calls Tick() directly on every widget that
-// still wants one, using the geometry PaintWindow just cached for it
-// (GetTickSpaceGeometry() -- Paint/Arrange already update that on their own,
-// no Tick needed for that part) -- the explicit-subtree-tick alternative to
-// registering a real window with FSlateApplication.
-void GV2TickWidgetSubtreeRecursively(const TSharedRef<SWidget>& Widget, double CurrentTime, float DeltaTime)
-{
-    if (Widget->GetCanTick())
-    {
-        Widget->Tick(Widget->GetTickSpaceGeometry(), CurrentTime, DeltaTime);
-    }
-    if (FChildren* Children = Widget->GetAllChildren())
-    {
-        const int32 NumChildren = Children->Num();
-        for (int32 Index = 0; Index < NumChildren; ++Index)
-        {
-            const TSharedRef<SWidget> Child = Children->GetChildAt(Index);
-            if (Child != SNullWidget::NullWidget)
-            {
-                GV2TickWidgetSubtreeRecursively(Child, CurrentTime, DeltaTime);
-            }
-        }
-    }
-}
-
-// DCA-13: one full simulated frame on an off-screen SVirtualWindow honest
-// about dynamic (Tick-driven) layouts -- Resize, an initial Paint pass so
-// every widget's GetTickSpaceGeometry() reflects the new size, an explicit
-// subtree tick so any dynamic SWrapBox catches up its PreferredSize to that
-// geometry, then a second Prepass+Paint that actually arranges children
-// against the now-correct threshold. A single Paint (the pre-DCA-13 harness)
-// only ever arranges against whichever PreferredSize the previous iteration
-// left behind.
-void GV2SimulateResponsiveFrame(const TSharedRef<SVirtualWindow>& Window, const FVector2D& Size)
-{
-    Window->Resize(Size);
-    Window->SlatePrepass(1.0f);
-    {
-        FSlateWindowElementList SeedElementList(Window);
-        Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, SeedElementList, FWidgetStyle(), true);
-    }
-    GV2TickWidgetSubtreeRecursively(Window, FPlatformTime::Seconds(), 0.016f);
-    Window->SlatePrepass(1.0f);
-    FSlateWindowElementList WindowElementList(Window);
-    Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, WindowElementList, FWidgetStyle(), true);
 }
 
 // DCA-14: the one and only definition of 2-axis containment (Left/Top edge
@@ -2566,6 +2448,56 @@ bool FGV2DebugStartScreenFlow::RunTest(const FString& Parameters)
             Style->GetFont(Font);
             TestNotNull(TEXT("CommonUI text style has an explicit font"), Font.FontObject.Get());
             TestEqual(TEXT("CommonUI text style selects Regular typeface"), Font.TypefaceFontName, FName(TEXT("Regular")));
+        }
+    }
+
+    // TSR-03: Scoped-override RAII verification (nested scope and early exit restoration).
+    {
+        const bool bInitialFlag = FGV2SessionCoordinator::bTestForceIncludeSamplePackage;
+        UGV2UiTheme* ConfiguredTheme = LoadConfiguredThemeForTest();
+        const FString TestKey = FString::Printf(TEXT("%s:text.action.scout"), TEXT("sample"));
+        const FText* InitialCatalogEntry = ConfiguredTheme ? ConfiguredTheme->FallbackTextCatalog.Find(TestKey) : nullptr;
+        const TOptional<FText> InitialText = InitialCatalogEntry ? TOptional<FText>(*InitialCatalogEntry) : TOptional<FText>();
+
+        // 1. Early exit restoration via lambda
+        [&]() {
+            FGV2ScopedSamplePackageOverride EarlyExitOverride;
+            TestTrue(TEXT("Override enables bTestForceIncludeSamplePackage"), FGV2SessionCoordinator::bTestForceIncludeSamplePackage);
+            if (ConfiguredTheme)
+            {
+                TestTrue(TEXT("Override populates FallbackTextCatalog entry"), ConfiguredTheme->FallbackTextCatalog.Contains(TestKey));
+            }
+            return; // Early return unwinds stack
+        }();
+
+        TestEqual(TEXT("Early return restores bTestForceIncludeSamplePackage"), FGV2SessionCoordinator::bTestForceIncludeSamplePackage, bInitialFlag);
+        if (ConfiguredTheme)
+        {
+            const FText* RestoredEntry = ConfiguredTheme->FallbackTextCatalog.Find(TestKey);
+            const TOptional<FText> RestoredText = RestoredEntry ? TOptional<FText>(*RestoredEntry) : TOptional<FText>();
+            TestEqual(TEXT("Early return restores FallbackTextCatalog presence"), RestoredText.IsSet(), InitialText.IsSet());
+        }
+
+        // 2. Nested scope restoration
+        {
+            FGV2ScopedSamplePackageOverride OuterOverride;
+            TestTrue(TEXT("Outer override enables flag"), FGV2SessionCoordinator::bTestForceIncludeSamplePackage);
+            {
+                FGV2ScopedSamplePackageOverride InnerOverride;
+                TestTrue(TEXT("Inner override maintains flag enabled"), FGV2SessionCoordinator::bTestForceIncludeSamplePackage);
+            }
+            TestTrue(TEXT("Exiting inner scope preserves outer override flag"), FGV2SessionCoordinator::bTestForceIncludeSamplePackage);
+            if (ConfiguredTheme)
+            {
+                TestTrue(TEXT("Exiting inner scope preserves outer override catalog"), ConfiguredTheme->FallbackTextCatalog.Contains(TestKey));
+            }
+        }
+        TestEqual(TEXT("Exiting outer scope restores initial flag"), FGV2SessionCoordinator::bTestForceIncludeSamplePackage, bInitialFlag);
+        if (ConfiguredTheme)
+        {
+            const FText* RestoredEntry = ConfiguredTheme->FallbackTextCatalog.Find(TestKey);
+            const TOptional<FText> RestoredText = RestoredEntry ? TOptional<FText>(*RestoredEntry) : TOptional<FText>();
+            TestEqual(TEXT("Exiting outer scope restores initial catalog state"), RestoredText.IsSet(), InitialText.IsSet());
         }
     }
 
