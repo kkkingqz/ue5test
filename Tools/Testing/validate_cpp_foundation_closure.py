@@ -157,6 +157,7 @@ ENUM_TEST_POLICIES = (
         (
             "Source/GV2/Private/Tests/GV2SessionTransitionTests.cpp",
             "Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp",
+            "Source/GV2/Private/Tests/GV2SaveAndLoadTests.cpp",
         ),
     ),
     EnumTestPolicy(
@@ -165,6 +166,7 @@ ENUM_TEST_POLICIES = (
         (
             "Source/GV2/Private/Tests/GV2SessionTransitionTests.cpp",
             "Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp",
+            "Source/GV2/Private/Tests/GV2SaveAndLoadTests.cpp",
         ),
     ),
     EnumTestPolicy(
@@ -175,7 +177,10 @@ ENUM_TEST_POLICIES = (
     EnumTestPolicy(
         "EGV2SaveSlotRevision",
         "Source/GV2/Public/Bridge/GV2BridgeTypes.h",
-        ("Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp",),
+        (
+            "Source/GV2/Private/Tests/GV2RuntimeSubsystemTests.cpp",
+            "Source/GV2/Private/Tests/GV2SaveAndLoadTests.cpp",
+        ),
     ),
     EnumTestPolicy(
         "ERuntimeLifecyclePhase",

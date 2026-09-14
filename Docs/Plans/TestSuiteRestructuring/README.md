@@ -188,7 +188,7 @@ Gate получает baseline фактических привязок и про
 
 ### TSR-04 — Перенести save/load как пилот
 
-- [ ] TSR-04 — Перенести save/load как пилот
+- [x] TSR-04 — Перенести save/load как пилот
 
 **Зависимость:** TSR-03. **Файлы:** создать `Source/GV2/Private/Tests/GV2SaveAndLoadTests.cpp`; источник — строки 10518–12341 исходного файла, 15 тестов с общим префиксом `FGV2SaveAndLoad*`.
 
