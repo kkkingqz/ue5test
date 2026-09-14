@@ -1,7 +1,7 @@
 ---
 title: Archived Audit Rounds
 status: archived
-version: 1.9
+version: 1.10
 updated: 2026-09-14
 depends_on:
   - ../ImplementationStatus.md
@@ -24,7 +24,7 @@ depends_on:
 | [PresentationArchitectureReview2026-09-06](PresentationArchitectureReview2026-09-06.md) | 2026-09-07 | Внешнее ревью архитектуры презентации на `698c933`, закрыто планом PresentationAuthorityHardening (PAH-01…09) | 5 находок устранены; сверх ревью найдены пятый потребитель контентного факта и утечка авторитета на фазе применения (`STATUS-012`) |
 | [PresentationAuthorityStructuralClosureAudit](PresentationAuthorityStructuralClosureAudit.md) | 2026-09-11 | Повторное ревью presentation authority и независимая сверка structural closure, включая PIE viewport lifecycle/geometry | 9 находок устранены; новых подтверждённых contract gaps не осталось |
 | [CppFullCodeReview2026-09-12](CppFullCodeReview2026-09-12.md) | 2026-09-14 | Внешнее полное code review всех восьми C++ модулей на `78e96f1`: 85 621 строка, 348 файлов, пять параллельных ревьюеров | 15 находок: 10 устранено задачами плана C++ Foundation Closure, 5 отклонены с условием повторного открытия; два собственных утверждения ревью сверкой не подтвердились |
-| [CppFoundationReadinessAudit2026-09-14](CppFoundationReadinessAudit2026-09-14.md) | 2026-09-14 | Готовность C++-основы к gameplay на Lua: сплошная проверка на `67058de`, сверка внешнего snapshot review на `035ac04`, разбор полного code review на `78e96f1` и находки финальной приёмки | 29 findings: 24 устранено, 5 отклонено с условием повторного открытия, одно расхождение выжило как `STATUS-027`; foundation принята в границах Linux Editor/Development |
+| [CppFoundationReadinessAudit2026-09-14](CppFoundationReadinessAudit2026-09-14.md) | 2026-09-14 | Готовность C++-основы к gameplay на Lua: сплошная проверка на `67058de`, сверка внешнего snapshot review на `035ac04`, разбор полного code review на `78e96f1` и находки финальной приёмки | 29 findings: 24 устранено, 5 отклонено с условием повторного открытия; сверх них перенесено одно открытое расхождение — `STATUS-027`; foundation принята в границах Linux Editor/Development |
 
 ## Отдельные разборы
 
