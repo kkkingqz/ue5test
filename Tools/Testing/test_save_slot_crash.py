@@ -43,37 +43,84 @@ def run_helper(helper: Path, args: list[str], timeout: float = 10.0) -> subproce
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
 
+# ADR-0045 D2 & D5 independent contract specifications for filesystem operations
+FIRST_WRITE_CONTRACT_STAGES = [
+    (1, "check_head_exists"),
+    (2, "check_legacy_exists"),
+    (3, "write_new_temp_generation"),
+    (4, "commit_new_generation"),
+    (5, "write_temp_head"),
+    (6, "commit_head"),  # Commit point
+    (7, "cleanup_list_root"),
+]
+FIRST_WRITE_COMMIT_STAGE = 6
+
+OVERWRITE_CONTRACT_STAGES = [
+    (1, "check_head_exists"),
+    (2, "check_head_is_regular"),
+    (3, "write_read_head"),
+    (4, "write_new_temp_generation"),
+    (5, "commit_new_generation"),
+    (6, "write_temp_head"),
+    (7, "commit_head"),  # Commit point
+    (8, "cleanup_list_root"),
+]
+OVERWRITE_COMMIT_STAGE = 7
+
+LEGACY_MIGRATION_CONTRACT_STAGES = [
+    (1, "check_head_exists"),
+    (2, "check_legacy_exists"),
+    (3, "check_legacy_is_regular"),
+    (4, "read_legacy_for_migration"),
+    (5, "write_legacy_temp_generation"),
+    (6, "commit_legacy_generation"),
+    (7, "write_new_temp_generation"),
+    (8, "commit_new_generation"),
+    (9, "write_temp_head"),
+    (10, "commit_head"),  # Commit point
+    (11, "cleanup_migrated_legacy_file"),
+    (12, "cleanup_list_root"),
+]
+LEGACY_MIGRATION_COMMIT_STAGE = 10
+
+
 def test_first_write_crash_matrix(helper: Path) -> list[str]:
     errors = []
     slot = "first_write_slot"
     payload = "payload_first_gen"
 
-    # Step 1: count stages
+    # Step 1: count stages and verify trace matches contract
     with tempfile.TemporaryDirectory(prefix="gv2_crash_test_") as tmp_dir:
         res = run_helper(helper, ["--action", "count-stages", "--root", tmp_dir, "--slot", slot, "--payload", payload])
         if res.returncode != 0:
             return [f"count-stages failed on first write: {res.stderr}"]
 
         stages = 0
-        commit_stage = 0
+        actual_stages = []
         for line in res.stdout.splitlines():
             if line.startswith("STAGES "):
                 stages = int(line.split()[1])
-            elif line.startswith("COMMIT_STAGE "):
-                commit_stage = int(line.split()[1])
+            elif line.startswith("STAGE "):
+                parts = line.split(maxsplit=2)
+                if len(parts) == 3:
+                    actual_stages.append((int(parts[1]), parts[2]))
 
-        if stages == 0 or commit_stage == 0:
-            return [f"Invalid stage counts for first write: stages={stages}, commit_stage={commit_stage}"]
+        if stages != len(FIRST_WRITE_CONTRACT_STAGES):
+            return [f"Stage count mismatch on first write: expected {len(FIRST_WRITE_CONTRACT_STAGES)}, got {stages}"]
 
-    # Step 2: crash matrix enumeration
-    for stage in range(1, stages + 1):
+        for (exp_ord, exp_desc), (act_ord, act_desc) in zip(FIRST_WRITE_CONTRACT_STAGES, actual_stages):
+            if exp_ord != act_ord or exp_desc != act_desc:
+                return [f"Contract stage mismatch on first write: expected ({exp_ord}, {exp_desc}), got ({act_ord}, {act_desc})"]
+
+    # Step 2: crash matrix enumeration across contract stages
+    for stage in range(1, len(FIRST_WRITE_CONTRACT_STAGES) + 1):
         with tempfile.TemporaryDirectory(prefix="gv2_crash_stage_") as tmp_dir:
             crash_res = run_helper(
                 helper,
                 ["--action", "write", "--root", tmp_dir, "--slot", slot, "--payload", payload, "--crash-at-stage", str(stage)],
             )
             # Process must crash or return non-zero
-            if stage < commit_stage:
+            if stage < FIRST_WRITE_COMMIT_STAGE:
                 # Pre-commit: must be NotFound
                 cur_res = run_helper(helper, ["--action", "read", "--root", tmp_dir, "--slot", slot, "--revision", "current"])
                 prev_res = run_helper(helper, ["--action", "read", "--root", tmp_dir, "--slot", slot, "--revision", "previous"])
@@ -100,7 +147,7 @@ def test_overwrite_crash_matrix(helper: Path) -> list[str]:
     initial = "initial_committed_payload"
     updated = "updated_committed_payload"
 
-    # Step 1: count stages
+    # Step 1: count stages and verify trace matches contract
     with tempfile.TemporaryDirectory(prefix="gv2_crash_ow_") as tmp_dir:
         run_helper(helper, ["--action", "write", "--root", tmp_dir, "--slot", slot, "--payload", initial])
         res = run_helper(helper, ["--action", "count-stages", "--root", tmp_dir, "--slot", slot, "--payload", updated])
@@ -108,18 +155,24 @@ def test_overwrite_crash_matrix(helper: Path) -> list[str]:
             return [f"count-stages failed on overwrite: {res.stderr}"]
 
         stages = 0
-        commit_stage = 0
+        actual_stages = []
         for line in res.stdout.splitlines():
             if line.startswith("STAGES "):
                 stages = int(line.split()[1])
-            elif line.startswith("COMMIT_STAGE "):
-                commit_stage = int(line.split()[1])
+            elif line.startswith("STAGE "):
+                parts = line.split(maxsplit=2)
+                if len(parts) == 3:
+                    actual_stages.append((int(parts[1]), parts[2]))
 
-        if stages == 0 or commit_stage == 0:
-            return [f"Invalid stage counts for overwrite: stages={stages}, commit_stage={commit_stage}"]
+        if stages != len(OVERWRITE_CONTRACT_STAGES):
+            return [f"Stage count mismatch on overwrite: expected {len(OVERWRITE_CONTRACT_STAGES)}, got {stages}"]
 
-    # Step 2: crash matrix enumeration
-    for stage in range(1, stages + 1):
+        for (exp_ord, exp_desc), (act_ord, act_desc) in zip(OVERWRITE_CONTRACT_STAGES, actual_stages):
+            if exp_ord != act_ord or exp_desc != act_desc:
+                return [f"Contract stage mismatch on overwrite: expected ({exp_ord}, {exp_desc}), got ({act_ord}, {act_desc})"]
+
+    # Step 2: crash matrix enumeration across contract stages
+    for stage in range(1, len(OVERWRITE_CONTRACT_STAGES) + 1):
         with tempfile.TemporaryDirectory(prefix="gv2_crash_ow_stage_") as tmp_dir:
             run_helper(helper, ["--action", "write", "--root", tmp_dir, "--slot", slot, "--payload", initial])
             crash_res = run_helper(
@@ -130,7 +183,7 @@ def test_overwrite_crash_matrix(helper: Path) -> list[str]:
             cur_res = run_helper(helper, ["--action", "read", "--root", tmp_dir, "--slot", slot, "--revision", "current"])
             prev_res = run_helper(helper, ["--action", "read", "--root", tmp_dir, "--slot", slot, "--revision", "previous"])
 
-            if stage < commit_stage:
+            if stage < OVERWRITE_COMMIT_STAGE:
                 # Pre-commit crash: initial remains current, previous remains NotFound
                 expected_cur = f"OK {initial}"
                 if cur_res.stdout.strip() != expected_cur:
@@ -155,7 +208,7 @@ def test_legacy_migration_crash_matrix(helper: Path) -> list[str]:
     legacy_data = "legacy_original_bytes"
     new_data = "migrated_new_bytes"
 
-    # Step 1: count stages
+    # Step 1: count stages and verify trace matches contract
     with tempfile.TemporaryDirectory(prefix="gv2_crash_leg_") as tmp_dir:
         legacy_file = Path(tmp_dir) / f"{slot}.save"
         legacy_file.write_text(legacy_data, encoding="utf-8")
@@ -165,18 +218,24 @@ def test_legacy_migration_crash_matrix(helper: Path) -> list[str]:
             return [f"count-stages failed on legacy overwrite: {res.stderr}"]
 
         stages = 0
-        commit_stage = 0
+        actual_stages = []
         for line in res.stdout.splitlines():
             if line.startswith("STAGES "):
                 stages = int(line.split()[1])
-            elif line.startswith("COMMIT_STAGE "):
-                commit_stage = int(line.split()[1])
+            elif line.startswith("STAGE "):
+                parts = line.split(maxsplit=2)
+                if len(parts) == 3:
+                    actual_stages.append((int(parts[1]), parts[2]))
 
-        if stages == 0 or commit_stage == 0:
-            return [f"Invalid stage counts for legacy overwrite: stages={stages}, commit_stage={commit_stage}"]
+        if stages != len(LEGACY_MIGRATION_CONTRACT_STAGES):
+            return [f"Stage count mismatch on legacy overwrite: expected {len(LEGACY_MIGRATION_CONTRACT_STAGES)}, got {stages}"]
 
-    # Step 2: crash matrix enumeration
-    for stage in range(1, stages + 1):
+        for (exp_ord, exp_desc), (act_ord, act_desc) in zip(LEGACY_MIGRATION_CONTRACT_STAGES, actual_stages):
+            if exp_ord != act_ord or exp_desc != act_desc:
+                return [f"Contract stage mismatch on legacy overwrite: expected ({exp_ord}, {exp_desc}), got ({act_ord}, {act_desc})"]
+
+    # Step 2: crash matrix enumeration across contract stages
+    for stage in range(1, len(LEGACY_MIGRATION_CONTRACT_STAGES) + 1):
         with tempfile.TemporaryDirectory(prefix="gv2_crash_leg_stage_") as tmp_dir:
             legacy_file = Path(tmp_dir) / f"{slot}.save"
             legacy_file.write_text(legacy_data, encoding="utf-8")
@@ -189,7 +248,7 @@ def test_legacy_migration_crash_matrix(helper: Path) -> list[str]:
             cur_res = run_helper(helper, ["--action", "read", "--root", tmp_dir, "--slot", slot, "--revision", "current"])
             prev_res = run_helper(helper, ["--action", "read", "--root", tmp_dir, "--slot", slot, "--revision", "previous"])
 
-            if stage < commit_stage:
+            if stage < LEGACY_MIGRATION_COMMIT_STAGE:
                 # Pre-commit crash: legacy remains current, previous remains NotFound
                 expected_cur = f"OK {legacy_data}"
                 if cur_res.stdout.strip() != expected_cur:
@@ -245,6 +304,20 @@ def run_self_test() -> bool:
     print("Running test_save_slot_crash self-tests...")
     # Self-test validates oracle logic and path handling
     assert find_helper("/non/existent/path/binary") is None
+
+    # Validate contract tables integrity and commit points
+    assert len(FIRST_WRITE_CONTRACT_STAGES) == 7
+    assert FIRST_WRITE_COMMIT_STAGE == 6
+    assert FIRST_WRITE_CONTRACT_STAGES[FIRST_WRITE_COMMIT_STAGE - 1] == (6, "commit_head")
+
+    assert len(OVERWRITE_CONTRACT_STAGES) == 8
+    assert OVERWRITE_COMMIT_STAGE == 7
+    assert OVERWRITE_CONTRACT_STAGES[OVERWRITE_COMMIT_STAGE - 1] == (7, "commit_head")
+
+    assert len(LEGACY_MIGRATION_CONTRACT_STAGES) == 12
+    assert LEGACY_MIGRATION_COMMIT_STAGE == 10
+    assert LEGACY_MIGRATION_CONTRACT_STAGES[LEGACY_MIGRATION_COMMIT_STAGE - 1] == (10, "commit_head")
+
     print("All self-tests passed!")
     return True
 

@@ -31,6 +31,46 @@ struct FScopedTempDir
         std::filesystem::remove_all(Dir, Ec);
     }
 };
+
+std::string VerifyTraceMatchesContract(
+    const std::vector<Internal::FFilesystemOpRecord>& ActualTrace,
+    const std::vector<Internal::Contract::FContractOpStep>& ExpectedStages,
+    const std::string& ContextName)
+{
+    if (ActualTrace.size() != ExpectedStages.size())
+    {
+        return "save_slot_storage_conformance.trace_length_mismatch context=" + ContextName
+            + " expected=" + std::to_string(ExpectedStages.size())
+            + " actual=" + std::to_string(ActualTrace.size());
+    }
+    for (std::size_t i = 0; i < ExpectedStages.size(); ++i)
+    {
+        const auto& Exp = ExpectedStages[i];
+        const auto& Act = ActualTrace[i];
+        if (Act.Ordinal != Exp.Ordinal)
+        {
+            return "save_slot_storage_conformance.trace_ordinal_mismatch context=" + ContextName
+                + " index=" + std::to_string(i)
+                + " expected=" + std::to_string(Exp.Ordinal)
+                + " actual=" + std::to_string(Act.Ordinal);
+        }
+        if (Act.Kind != Exp.Kind)
+        {
+            return "save_slot_storage_conformance.trace_kind_mismatch context=" + ContextName
+                + " index=" + std::to_string(i)
+                + " expected=" + std::to_string(static_cast<int>(Exp.Kind))
+                + " actual=" + std::to_string(static_cast<int>(Act.Kind));
+        }
+        if (Act.Description != Exp.Description)
+        {
+            return "save_slot_storage_conformance.trace_desc_mismatch context=" + ContextName
+                + " index=" + std::to_string(i)
+                + " expected=" + Exp.Description
+                + " actual=" + Act.Description;
+        }
+    }
+    return {};
+}
 }
 
 std::string RunSaveSlotStorageConformance()
@@ -286,6 +326,28 @@ std::string RunSaveSlotStorageConformance()
             return "save_slot_storage_conformance.fault_injection_open_failed";
         }
 
+        // 9. Fault injection across actual filesystem stages:
+        const auto FirstWriteStages = Internal::Contract::GetFirstWriteContractStages();
+        const std::size_t FirstWriteCommitOrdinal = Internal::Contract::GetCommitOrdinal(FirstWriteStages);
+        if (FirstWriteCommitOrdinal == 0)
+        {
+            return "save_slot_storage_conformance.invalid_contract_first_write_commit_ordinal";
+        }
+
+        const auto OverwriteStages = Internal::Contract::GetOverwriteContractStages();
+        const std::size_t OverwriteCommitOrdinal = Internal::Contract::GetCommitOrdinal(OverwriteStages);
+        if (OverwriteCommitOrdinal == 0)
+        {
+            return "save_slot_storage_conformance.invalid_contract_overwrite_commit_ordinal";
+        }
+
+        const auto LegacyStages = Internal::Contract::GetLegacyMigrationContractStages();
+        const std::size_t LegacyCommitOrdinal = Internal::Contract::GetCommitOrdinal(LegacyStages);
+        if (LegacyCommitOrdinal == 0)
+        {
+            return "save_slot_storage_conformance.invalid_contract_legacy_commit_ordinal";
+        }
+
         // Baseline first write
         const std::string FiSlot = "fi_slot";
         const std::string BaselineBytesA = "payload_a";
@@ -295,7 +357,11 @@ std::string RunSaveSlotStorageConformance()
         {
             return "save_slot_storage_conformance.fi_baseline_write_a_failed";
         }
-        const std::size_t FirstWriteOps = InstrumentedFs->Trace.size();
+        const std::string FirstWriteVerifyErr = VerifyTraceMatchesContract(InstrumentedFs->Trace, FirstWriteStages, "first_write");
+        if (!FirstWriteVerifyErr.empty())
+        {
+            return FirstWriteVerifyErr;
+        }
 
         // Baseline overwrite
         const std::string BaselineBytesB = "payload_b";
@@ -305,37 +371,17 @@ std::string RunSaveSlotStorageConformance()
         {
             return "save_slot_storage_conformance.fi_baseline_write_b_failed";
         }
-        const std::size_t OverwriteOps = InstrumentedFs->Trace.size();
+        const std::string OverwriteVerifyErr = VerifyTraceMatchesContract(InstrumentedFs->Trace, OverwriteStages, "overwrite");
+        if (!OverwriteVerifyErr.empty())
+        {
+            return OverwriteVerifyErr;
+        }
 
         // Close storage to prepare clean directories for each injected failure ordinal
         FiOpen.Storage.reset();
 
         // 9a. Test fault injection on first write:
-        // Identify the commit ordinal (when "commit_head" rename occurs)
-        std::size_t FirstWriteCommitOrdinal = 0;
-        {
-            FScopedTempDir TmpTrace;
-            auto TraceFs = std::make_shared<Internal::FInstrumentedSaveSlotFilesystem>();
-            auto TraceOpen = FGV2SaveSlotStorageTestAccess::OpenWithFilesystem(TmpTrace.Dir, TraceFs);
-            TraceFs->Reset();
-            TraceOpen.Storage->WriteSlot("trace_slot", "data");
-            for (const auto& Rec : TraceFs->Trace)
-            {
-                if (Rec.Description == "commit_head")
-                {
-                    FirstWriteCommitOrdinal = Rec.Ordinal;
-                    break;
-                }
-            }
-            TraceOpen.Storage.reset();
-        }
-
-        if (FirstWriteCommitOrdinal == 0)
-        {
-            return "save_slot_storage_conformance.commit_head_not_found_in_trace";
-        }
-
-        for (std::size_t Ord = 1; Ord <= FirstWriteOps; ++Ord)
+        for (std::size_t Ord = 1; Ord <= FirstWriteStages.size(); ++Ord)
         {
             FScopedTempDir StepDir;
             auto StepFs = std::make_shared<Internal::FInstrumentedSaveSlotFilesystem>();
@@ -374,26 +420,7 @@ std::string RunSaveSlotStorageConformance()
         }
 
         // 9b. Test fault injection on overwrite:
-        std::size_t OverwriteCommitOrdinal = 0;
-        {
-            FScopedTempDir TmpTrace;
-            auto TraceFs = std::make_shared<Internal::FInstrumentedSaveSlotFilesystem>();
-            auto TraceOpen = FGV2SaveSlotStorageTestAccess::OpenWithFilesystem(TmpTrace.Dir, TraceFs);
-            TraceOpen.Storage->WriteSlot("trace_slot", "prev");
-            TraceFs->Reset();
-            TraceOpen.Storage->WriteSlot("trace_slot", "new");
-            for (const auto& Rec : TraceFs->Trace)
-            {
-                if (Rec.Description == "commit_head")
-                {
-                    OverwriteCommitOrdinal = Rec.Ordinal;
-                    break;
-                }
-            }
-            TraceOpen.Storage.reset();
-        }
-
-        for (std::size_t Ord = 1; Ord <= OverwriteOps; ++Ord)
+        for (std::size_t Ord = 1; Ord <= OverwriteStages.size(); ++Ord)
         {
             FScopedTempDir StepDir;
             auto StepFs = std::make_shared<Internal::FInstrumentedSaveSlotFilesystem>();
@@ -439,8 +466,6 @@ std::string RunSaveSlotStorageConformance()
         }
 
         // 9c. Test fault injection on legacy migration:
-        std::size_t LegacyCommitOrdinal = 0;
-        std::size_t LegacyOps = 0;
         {
             FScopedTempDir TmpTrace;
             const std::filesystem::path LegPath = TmpTrace.Dir / "legacy_slot.save";
@@ -457,24 +482,15 @@ std::string RunSaveSlotStorageConformance()
             {
                 return "save_slot_storage_conformance.legacy_baseline_write_failed";
             }
-            LegacyOps = TraceFs->Trace.size();
-            for (const auto& Rec : TraceFs->Trace)
+            const std::string LegacyVerifyErr = VerifyTraceMatchesContract(TraceFs->Trace, LegacyStages, "legacy_migration");
+            if (!LegacyVerifyErr.empty())
             {
-                if (Rec.Description == "commit_head")
-                {
-                    LegacyCommitOrdinal = Rec.Ordinal;
-                    break;
-                }
+                return LegacyVerifyErr;
             }
             TraceOpen.Storage.reset();
         }
 
-        if (LegacyCommitOrdinal == 0)
-        {
-            return "save_slot_storage_conformance.legacy_commit_head_not_found_in_trace";
-        }
-
-        for (std::size_t Ord = 1; Ord <= LegacyOps; ++Ord)
+        for (std::size_t Ord = 1; Ord <= LegacyStages.size(); ++Ord)
         {
             FScopedTempDir StepDir;
             const std::filesystem::path LegPath = StepDir.Dir / "legacy_slot.save";

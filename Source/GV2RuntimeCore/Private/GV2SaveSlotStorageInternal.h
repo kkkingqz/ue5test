@@ -32,6 +32,76 @@ struct FFilesystemOpRecord
     std::filesystem::path Path2;
 };
 
+namespace Contract
+{
+
+struct FContractOpStep
+{
+    std::size_t Ordinal = 0;
+    EFilesystemOpKind Kind = EFilesystemOpKind::Exists;
+    std::string Description;
+    bool bIsCommitPoint = false;
+};
+
+inline std::vector<FContractOpStep> GetFirstWriteContractStages()
+{
+    return {
+        {1, EFilesystemOpKind::Exists, "check_head_exists", false},
+        {2, EFilesystemOpKind::Exists, "check_legacy_exists", false},
+        {3, EFilesystemOpKind::WriteFile, "write_new_temp_generation", false},
+        {4, EFilesystemOpKind::Rename, "commit_new_generation", false},
+        {5, EFilesystemOpKind::WriteFile, "write_temp_head", false},
+        {6, EFilesystemOpKind::Rename, "commit_head", true},
+        {7, EFilesystemOpKind::ListDirectory, "cleanup_list_root", false},
+    };
+}
+
+inline std::vector<FContractOpStep> GetOverwriteContractStages()
+{
+    return {
+        {1, EFilesystemOpKind::Exists, "check_head_exists", false},
+        {2, EFilesystemOpKind::IsRegularFile, "check_head_is_regular", false},
+        {3, EFilesystemOpKind::ReadFile, "write_read_head", false},
+        {4, EFilesystemOpKind::WriteFile, "write_new_temp_generation", false},
+        {5, EFilesystemOpKind::Rename, "commit_new_generation", false},
+        {6, EFilesystemOpKind::WriteFile, "write_temp_head", false},
+        {7, EFilesystemOpKind::Rename, "commit_head", true},
+        {8, EFilesystemOpKind::ListDirectory, "cleanup_list_root", false},
+    };
+}
+
+inline std::vector<FContractOpStep> GetLegacyMigrationContractStages()
+{
+    return {
+        {1, EFilesystemOpKind::Exists, "check_head_exists", false},
+        {2, EFilesystemOpKind::Exists, "check_legacy_exists", false},
+        {3, EFilesystemOpKind::IsRegularFile, "check_legacy_is_regular", false},
+        {4, EFilesystemOpKind::ReadFile, "read_legacy_for_migration", false},
+        {5, EFilesystemOpKind::WriteFile, "write_legacy_temp_generation", false},
+        {6, EFilesystemOpKind::Rename, "commit_legacy_generation", false},
+        {7, EFilesystemOpKind::WriteFile, "write_new_temp_generation", false},
+        {8, EFilesystemOpKind::Rename, "commit_new_generation", false},
+        {9, EFilesystemOpKind::WriteFile, "write_temp_head", false},
+        {10, EFilesystemOpKind::Rename, "commit_head", true},
+        {11, EFilesystemOpKind::Remove, "cleanup_migrated_legacy_file", false},
+        {12, EFilesystemOpKind::ListDirectory, "cleanup_list_root", false},
+    };
+}
+
+inline std::size_t GetCommitOrdinal(const std::vector<FContractOpStep>& Stages)
+{
+    for (const auto& Step : Stages)
+    {
+        if (Step.bIsCommitPoint)
+        {
+            return Step.Ordinal;
+        }
+    }
+    return 0;
+}
+
+} // namespace Contract
+
 class ISaveSlotFilesystem
 {
 public:

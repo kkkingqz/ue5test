@@ -92,17 +92,11 @@ int main(int argc, char* argv[])
             return 1;
         }
 
-        std::size_t CommitStage = 0;
+        std::cout << "STAGES " << Fs->Trace.size() << "\n";
         for (const auto& Rec : Fs->Trace)
         {
-            if (Rec.Description == "commit_head")
-            {
-                CommitStage = Rec.Ordinal;
-                break;
-            }
+            std::cout << "STAGE " << Rec.Ordinal << " " << Rec.Description << "\n";
         }
-        std::cout << "STAGES " << Fs->Trace.size() << "\n";
-        std::cout << "COMMIT_STAGE " << CommitStage << "\n";
         return 0;
     }
 
