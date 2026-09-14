@@ -1,11 +1,23 @@
 #include "GV2RuntimeCore/GV2HostServices.h"
+#include "GV2SaveSlotStorageInternal.h"
 
+#include "GV2ContentCore/Json5Parser.h"
+#include "GV2ContentCore/ParseLimits.h"
+
+#include <atomic>
 #include <cctype>
+#include <chrono>
+#include <fcntl.h>
 #include <fstream>
+#include <mutex>
 #include <sstream>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace GV2RuntimeCore
 {
+
 bool IsValidSaveSlotId(const std::string& SlotId)
 {
     if (SlotId.empty())
@@ -28,91 +40,719 @@ bool IsValidSaveSlotId(const std::string& SlotId)
     return true;
 }
 
-namespace
+namespace Internal
 {
-std::optional<std::filesystem::path> ResolveSlotPath(
-    const std::filesystem::path& RootDir,
-    const std::string& SlotId)
-{
-    if (!IsValidSaveSlotId(SlotId))
-    {
-        return std::nullopt;
-    }
-    return RootDir / (SlotId + ".save");
-}
-}
 
-FFilesystemSaveSlotStorage::FFilesystemSaveSlotStorage(std::filesystem::path InRootDir)
-    : RootDir(std::move(InRootDir))
+bool FDefaultSaveSlotFilesystem::Exists(const std::filesystem::path& Path)
 {
-}
-
-FSaveSlotReadResult FFilesystemSaveSlotStorage::ReadSlot(const std::string& SlotId) const
-{
-    const std::optional<std::filesystem::path> SlotPath = ResolveSlotPath(RootDir, SlotId);
-    if (!SlotPath)
-    {
-        return {ESaveSlotResult::Unreadable, {}};
-    }
-
     std::error_code Ec;
-    const bool bExists = std::filesystem::exists(*SlotPath, Ec);
-    if (Ec || !bExists)
-    {
-        return {ESaveSlotResult::NotFound, {}};
-    }
-    if (!std::filesystem::is_regular_file(*SlotPath, Ec) || Ec)
-    {
-        return {ESaveSlotResult::Unreadable, {}};
-    }
+    return std::filesystem::exists(Path, Ec) && !Ec;
+}
 
-    std::ifstream Stream(*SlotPath, std::ios::binary);
+bool FDefaultSaveSlotFilesystem::IsRegularFile(const std::filesystem::path& Path)
+{
+    std::error_code Ec;
+    return std::filesystem::is_regular_file(Path, Ec) && !Ec;
+}
+
+bool FDefaultSaveSlotFilesystem::ReadFile(const std::filesystem::path& Path, std::string& OutBytes, const std::string& Desc)
+{
+    (void)Desc;
+    std::ifstream Stream(Path, std::ios::binary);
     if (!Stream.is_open())
     {
-        return {ESaveSlotResult::Unreadable, {}};
+        return false;
     }
     std::ostringstream Buffer;
     Buffer << Stream.rdbuf();
     if (Stream.bad())
     {
+        return false;
+    }
+    OutBytes = Buffer.str();
+    return true;
+}
+
+bool FDefaultSaveSlotFilesystem::WriteFile(const std::filesystem::path& Path, const std::string& Bytes, const std::string& Desc)
+{
+    (void)Desc;
+    std::ofstream Stream(Path, std::ios::binary | std::ios::trunc);
+    if (!Stream.is_open())
+    {
+        return false;
+    }
+    Stream.write(Bytes.data(), static_cast<std::streamsize>(Bytes.size()));
+    Stream.flush();
+    return Stream.good() && !Stream.bad();
+}
+
+bool FDefaultSaveSlotFilesystem::Rename(const std::filesystem::path& From, const std::filesystem::path& To, const std::string& Desc)
+{
+    (void)Desc;
+    std::error_code Ec;
+    std::filesystem::rename(From, To, Ec);
+    return !Ec;
+}
+
+bool FDefaultSaveSlotFilesystem::Remove(const std::filesystem::path& Path, const std::string& Desc)
+{
+    (void)Desc;
+    std::error_code Ec;
+    std::filesystem::remove(Path, Ec);
+    return !Ec;
+}
+
+FInstrumentedSaveSlotFilesystem::FInstrumentedSaveSlotFilesystem(std::shared_ptr<ISaveSlotFilesystem> InUnderlying)
+    : Underlying(InUnderlying ? std::move(InUnderlying) : std::make_shared<FDefaultSaveSlotFilesystem>())
+{
+}
+
+void FInstrumentedSaveSlotFilesystem::Reset()
+{
+    Trace.clear();
+    NextOrdinal = 1;
+    InjectedFailureOrdinal = 0;
+    CrashAtOrdinal = 0;
+    OnOpPreHook = nullptr;
+}
+
+std::size_t FInstrumentedSaveSlotFilesystem::BeginOp(
+    EFilesystemOpKind Kind,
+    const std::string& Desc,
+    const std::filesystem::path& P1,
+    const std::filesystem::path& P2)
+{
+    const std::size_t Ord = NextOrdinal++;
+    FFilesystemOpRecord Rec;
+    Rec.Ordinal = Ord;
+    Rec.Kind = Kind;
+    Rec.Description = Desc;
+    Rec.Path1 = P1;
+    Rec.Path2 = P2;
+    Trace.push_back(Rec);
+
+    if (OnOpPreHook)
+    {
+        OnOpPreHook(Ord, Rec);
+    }
+
+    if (InjectedFailureOrdinal != 0 && InjectedFailureOrdinal == Ord)
+    {
+        return 0;
+    }
+
+    return Ord;
+}
+
+void FInstrumentedSaveSlotFilesystem::CheckPostOp(std::size_t Ord)
+{
+    if (CrashAtOrdinal != 0 && CrashAtOrdinal == Ord)
+    {
+        std::_Exit(42);
+    }
+}
+
+bool FInstrumentedSaveSlotFilesystem::Exists(const std::filesystem::path& Path)
+{
+    return Underlying->Exists(Path);
+}
+
+bool FInstrumentedSaveSlotFilesystem::IsRegularFile(const std::filesystem::path& Path)
+{
+    return Underlying->IsRegularFile(Path);
+}
+
+bool FInstrumentedSaveSlotFilesystem::ReadFile(const std::filesystem::path& Path, std::string& OutBytes, const std::string& Desc)
+{
+    const std::size_t Ord = BeginOp(EFilesystemOpKind::ReadFile, Desc, Path);
+    if (Ord == 0)
+    {
+        return false;
+    }
+    const bool bOk = Underlying->ReadFile(Path, OutBytes, Desc);
+    CheckPostOp(Ord);
+    return bOk;
+}
+
+bool FInstrumentedSaveSlotFilesystem::WriteFile(const std::filesystem::path& Path, const std::string& Bytes, const std::string& Desc)
+{
+    const std::size_t Ord = BeginOp(EFilesystemOpKind::WriteFile, Desc, Path);
+    if (Ord == 0)
+    {
+        return false;
+    }
+    const bool bOk = Underlying->WriteFile(Path, Bytes, Desc);
+    CheckPostOp(Ord);
+    return bOk;
+}
+
+bool FInstrumentedSaveSlotFilesystem::Rename(const std::filesystem::path& From, const std::filesystem::path& To, const std::string& Desc)
+{
+    const std::size_t Ord = BeginOp(EFilesystemOpKind::Rename, Desc, From, To);
+    if (Ord == 0)
+    {
+        return false;
+    }
+    const bool bOk = Underlying->Rename(From, To, Desc);
+    CheckPostOp(Ord);
+    return bOk;
+}
+
+bool FInstrumentedSaveSlotFilesystem::Remove(const std::filesystem::path& Path, const std::string& Desc)
+{
+    const std::size_t Ord = BeginOp(EFilesystemOpKind::Remove, Desc, Path);
+    if (Ord == 0)
+    {
+        return false;
+    }
+    const bool bOk = Underlying->Remove(Path, Desc);
+    CheckPostOp(Ord);
+    return bOk;
+}
+
+} // namespace Internal
+
+namespace
+{
+
+std::atomic<std::uint64_t> GUniqueTagCounter{1};
+
+std::string MakeUniqueTag()
+{
+    const auto Now = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto Ctr = GUniqueTagCounter.fetch_add(1, std::memory_order_relaxed);
+    return std::to_string(Now) + "_" + std::to_string(Ctr) + "_" + std::to_string(getpid());
+}
+
+bool IsValidGenerationFilename(const std::string& SlotId, const std::string& Filename)
+{
+    if (Filename.find('/') != std::string::npos || Filename.find('\\') != std::string::npos || Filename.find("..") != std::string::npos)
+    {
+        return false;
+    }
+    const std::string Prefix = SlotId + ".gen_";
+    const std::string Suffix = ".save";
+    if (Filename.size() <= Prefix.size() + Suffix.size())
+    {
+        return false;
+    }
+    if (Filename.rfind(Prefix, 0) != 0)
+    {
+        return false;
+    }
+    if (Filename.compare(Filename.size() - Suffix.size(), Suffix.size(), Suffix) != 0)
+    {
+        return false;
+    }
+    const std::string Middle = Filename.substr(Prefix.size(), Filename.size() - Prefix.size() - Suffix.size());
+    if (Middle.empty())
+    {
+        return false;
+    }
+    for (const char Ch : Middle)
+    {
+        if (!std::isalnum(static_cast<unsigned char>(Ch)) && Ch != '_')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+struct FSlotHead
+{
+    std::int32_t Version = 1;
+    std::string CurrentGen;
+    std::string PreviousGen;
+};
+
+ESaveSlotResult ParseHeadDocument(
+    const std::string& SlotId,
+    const std::string& Content,
+    FSlotHead& OutHead)
+{
+    GV2ContentCore::FParseLimits Limits;
+    Limits.MaxFileSizeBytes = 8192;
+    std::vector<GV2ContentCore::FDiagnostic> Diags;
+    auto Doc = GV2ContentCore::ParseJson5(Content, Limits, Diags);
+    if (!Doc || !Doc->IsObject() || !Diags.empty())
+    {
+        return ESaveSlotResult::Unreadable;
+    }
+
+    // Strict bounded grammar: reject unknown fields
+    for (const auto& [Key, Val] : Doc->AsObject())
+    {
+        if (Key != "version" && Key != "current" && Key != "previous")
+        {
+            return ESaveSlotResult::Unreadable;
+        }
+    }
+
+    const auto* VersionVal = Doc->FindField("version");
+    if (!VersionVal || !VersionVal->IsInteger() || VersionVal->AsInteger() != 1)
+    {
+        return ESaveSlotResult::Unreadable;
+    }
+    OutHead.Version = 1;
+
+    const auto* CurrentVal = Doc->FindField("current");
+    if (!CurrentVal || !CurrentVal->IsString() || !IsValidGenerationFilename(SlotId, CurrentVal->AsString()))
+    {
+        return ESaveSlotResult::Unreadable;
+    }
+    OutHead.CurrentGen = CurrentVal->AsString();
+
+    const auto* PreviousVal = Doc->FindField("previous");
+    if (PreviousVal != nullptr)
+    {
+        if (!PreviousVal->IsString() || !IsValidGenerationFilename(SlotId, PreviousVal->AsString()))
+        {
+            return ESaveSlotResult::Unreadable;
+        }
+        OutHead.PreviousGen = PreviousVal->AsString();
+    }
+    else
+    {
+        OutHead.PreviousGen.clear();
+    }
+
+    return ESaveSlotResult::Ok;
+}
+
+std::string SerializeHeadDocument(const FSlotHead& Head)
+{
+    std::string Out = "{\n";
+    Out += "  \"version\": 1,\n";
+    Out += "  \"current\": \"" + Head.CurrentGen + "\"";
+    if (!Head.PreviousGen.empty())
+    {
+        Out += ",\n  \"previous\": \"" + Head.PreviousGen + "\"";
+    }
+    Out += "\n}\n";
+    return Out;
+}
+
+} // namespace
+
+struct FFilesystemSaveSlotStorage::FImpl
+{
+    std::filesystem::path RootDir;
+    int LockFd = -1;
+    mutable std::mutex Mutex;
+    std::shared_ptr<Internal::ISaveSlotFilesystem> Fs;
+
+    FImpl(std::filesystem::path InRootDir, int InLockFd, std::shared_ptr<Internal::ISaveSlotFilesystem> InFs)
+        : RootDir(std::move(InRootDir))
+        , LockFd(InLockFd)
+        , Fs(InFs ? std::move(InFs) : std::make_shared<Internal::FDefaultSaveSlotFilesystem>())
+    {
+    }
+
+    ~FImpl()
+    {
+        if (LockFd >= 0)
+        {
+            struct flock Fl = {};
+            Fl.l_type = F_UNLCK;
+            Fl.l_whence = SEEK_SET;
+            Fl.l_start = 0;
+            Fl.l_len = 0;
+            fcntl(LockFd, F_SETLK, &Fl);
+            close(LockFd);
+            LockFd = -1;
+        }
+    }
+
+    void StartupCleanup()
+    {
+        std::error_code Ec;
+        if (!std::filesystem::exists(RootDir, Ec) || Ec)
+        {
+            return;
+        }
+
+        // Clean up unreferenced files for slots with valid heads
+        for (const auto& Entry : std::filesystem::directory_iterator(RootDir, Ec))
+        {
+            if (Ec)
+            {
+                break;
+            }
+            if (!Entry.is_regular_file(Ec) || Ec)
+            {
+                continue;
+            }
+            const std::string Filename = Entry.path().filename().string();
+            const std::string HeadSuffix = ".head";
+            if (Filename.size() > HeadSuffix.size() &&
+                Filename.compare(Filename.size() - HeadSuffix.size(), HeadSuffix.size(), HeadSuffix) == 0)
+            {
+                const std::string SlotId = Filename.substr(0, Filename.size() - HeadSuffix.size());
+                if (!IsValidSaveSlotId(SlotId))
+                {
+                    continue;
+                }
+
+                std::string HeadBytes;
+                if (!Fs->ReadFile(Entry.path(), HeadBytes, "startup_cleanup_read_head"))
+                {
+                    continue;
+                }
+                FSlotHead Head;
+                if (ParseHeadDocument(SlotId, HeadBytes, Head) != ESaveSlotResult::Ok)
+                {
+                    continue;
+                }
+
+                // Delete any unreferenced generation/temp files for this slot
+                const std::string GenPrefix = SlotId + ".gen_";
+                const std::string TmpPrefix = SlotId + ".tmp_";
+                const std::string HeadTmpPrefix = SlotId + ".head.tmp";
+
+                std::error_code IterEc;
+                for (const auto& SubEntry : std::filesystem::directory_iterator(RootDir, IterEc))
+                {
+                    if (IterEc)
+                    {
+                        break;
+                    }
+                    const std::string SubName = SubEntry.path().filename().string();
+                    if (SubName.rfind(GenPrefix, 0) == 0)
+                    {
+                        if (SubName != Head.CurrentGen && SubName != Head.PreviousGen)
+                        {
+                            Fs->Remove(SubEntry.path(), "startup_cleanup_remove_unreferenced");
+                        }
+                    }
+                    else if (SubName.rfind(TmpPrefix, 0) == 0 || SubName.rfind(HeadTmpPrefix, 0) == 0)
+                    {
+                        Fs->Remove(SubEntry.path(), "startup_cleanup_remove_temp");
+                    }
+                }
+            }
+        }
+    }
+};
+
+FFilesystemSaveSlotStorage::FFilesystemSaveSlotStorage(std::unique_ptr<FImpl> InImpl)
+    : Impl(std::move(InImpl))
+{
+}
+
+FFilesystemSaveSlotStorage::~FFilesystemSaveSlotStorage() = default;
+
+const std::filesystem::path& FFilesystemSaveSlotStorage::GetRootDir() const
+{
+    return Impl->RootDir;
+}
+
+FSaveSlotStorageOpenResult FFilesystemSaveSlotStorage::Open(const std::filesystem::path& InRootDir)
+{
+    return Testing::FGV2SaveSlotStorageTestAccess::OpenWithFilesystem(InRootDir, nullptr);
+}
+
+FSaveSlotReadResult FFilesystemSaveSlotStorage::ReadSlot(
+    const std::string& SlotId,
+    ESaveSlotRevision Revision) const
+{
+    if (!IsValidSaveSlotId(SlotId))
+    {
         return {ESaveSlotResult::Unreadable, {}};
     }
-    return {ESaveSlotResult::Ok, Buffer.str()};
+
+    std::lock_guard<std::mutex> Lock(Impl->Mutex);
+
+    const std::filesystem::path HeadPath = Impl->RootDir / (SlotId + ".head");
+    if (Impl->Fs->Exists(HeadPath))
+    {
+        if (!Impl->Fs->IsRegularFile(HeadPath))
+        {
+            return {ESaveSlotResult::Unreadable, {}};
+        }
+
+        std::string HeadBytes;
+        if (!Impl->Fs->ReadFile(HeadPath, HeadBytes, "read_head"))
+        {
+            return {ESaveSlotResult::Unreadable, {}};
+        }
+
+        FSlotHead Head;
+        if (ParseHeadDocument(SlotId, HeadBytes, Head) != ESaveSlotResult::Ok)
+        {
+            return {ESaveSlotResult::Unreadable, {}};
+        }
+
+        if (Revision == ESaveSlotRevision::Current)
+        {
+            const std::filesystem::path GenPath = Impl->RootDir / Head.CurrentGen;
+            if (!Impl->Fs->Exists(GenPath) || !Impl->Fs->IsRegularFile(GenPath))
+            {
+                return {ESaveSlotResult::Unreadable, {}};
+            }
+            std::string Payload;
+            if (!Impl->Fs->ReadFile(GenPath, Payload, "read_current_generation"))
+            {
+                return {ESaveSlotResult::Unreadable, {}};
+            }
+            return {ESaveSlotResult::Ok, std::move(Payload)};
+        }
+        else // Revision == Previous
+        {
+            if (Head.PreviousGen.empty())
+            {
+                return {ESaveSlotResult::NotFound, {}};
+            }
+            const std::filesystem::path GenPath = Impl->RootDir / Head.PreviousGen;
+            if (!Impl->Fs->Exists(GenPath) || !Impl->Fs->IsRegularFile(GenPath))
+            {
+                return {ESaveSlotResult::Unreadable, {}};
+            }
+            std::string Payload;
+            if (!Impl->Fs->ReadFile(GenPath, Payload, "read_previous_generation"))
+            {
+                return {ESaveSlotResult::Unreadable, {}};
+            }
+            return {ESaveSlotResult::Ok, std::move(Payload)};
+        }
+    }
+
+    // No head: check legacy single-current slot
+    const std::filesystem::path LegacyPath = Impl->RootDir / (SlotId + ".save");
+    if (!Impl->Fs->Exists(LegacyPath))
+    {
+        return {ESaveSlotResult::NotFound, {}};
+    }
+    if (!Impl->Fs->IsRegularFile(LegacyPath))
+    {
+        return {ESaveSlotResult::Unreadable, {}};
+    }
+
+    if (Revision == ESaveSlotRevision::Current)
+    {
+        std::string Payload;
+        if (!Impl->Fs->ReadFile(LegacyPath, Payload, "read_legacy_slot"))
+        {
+            return {ESaveSlotResult::Unreadable, {}};
+        }
+        return {ESaveSlotResult::Ok, std::move(Payload)};
+    }
+    else
+    {
+        // Legacy single-current slot has no previous generation
+        return {ESaveSlotResult::NotFound, {}};
+    }
 }
 
-FSaveSlotWriteResult FFilesystemSaveSlotStorage::WriteSlot(const std::string& SlotId, const std::string& Bytes)
+FSaveSlotWriteResult FFilesystemSaveSlotStorage::WriteSlot(
+    const std::string& SlotId,
+    const std::string& Bytes)
 {
-    const std::optional<std::filesystem::path> SlotPath = ResolveSlotPath(RootDir, SlotId);
-    if (!SlotPath)
+    if (!IsValidSaveSlotId(SlotId))
     {
         return {ESaveSlotResult::Failure};
     }
+
+    std::lock_guard<std::mutex> Lock(Impl->Mutex);
 
     std::error_code Ec;
-    std::filesystem::create_directories(RootDir, Ec);
+    std::filesystem::create_directories(Impl->RootDir, Ec);
 
-    const std::filesystem::path TempPath = SlotPath->string() + ".tmp";
+    const std::filesystem::path HeadPath = Impl->RootDir / (SlotId + ".head");
+    const std::filesystem::path LegacyPath = Impl->RootDir / (SlotId + ".save");
+
+    std::string OldCurrentGenName;
+    bool bLegacyMigration = false;
+    std::string LegacyBytes;
+
+    if (Impl->Fs->Exists(HeadPath))
     {
-        std::ofstream Stream(TempPath, std::ios::binary | std::ios::trunc);
-        if (!Stream.is_open())
+        if (!Impl->Fs->IsRegularFile(HeadPath))
         {
             return {ESaveSlotResult::Failure};
         }
-        Stream.write(Bytes.data(), static_cast<std::streamsize>(Bytes.size()));
-        Stream.flush();
-        if (Stream.bad())
+        std::string HeadBytes;
+        if (!Impl->Fs->ReadFile(HeadPath, HeadBytes, "write_read_head"))
         {
-            std::filesystem::remove(TempPath, Ec);
             return {ESaveSlotResult::Failure};
         }
+        FSlotHead Head;
+        if (ParseHeadDocument(SlotId, HeadBytes, Head) != ESaveSlotResult::Ok)
+        {
+            return {ESaveSlotResult::Failure};
+        }
+        OldCurrentGenName = Head.CurrentGen;
+    }
+    else if (Impl->Fs->Exists(LegacyPath))
+    {
+        if (!Impl->Fs->IsRegularFile(LegacyPath))
+        {
+            return {ESaveSlotResult::Failure};
+        }
+        if (!Impl->Fs->ReadFile(LegacyPath, LegacyBytes, "read_legacy_for_migration"))
+        {
+            return {ESaveSlotResult::Failure};
+        }
+        bLegacyMigration = true;
     }
 
-    std::filesystem::rename(TempPath, *SlotPath, Ec);
-    if (Ec)
+    const std::string Tag = MakeUniqueTag();
+
+    // 1. If legacy migration: copy legacy bytes to an immutable generation
+    std::string LegacyGenName;
+    std::filesystem::path LegacyGenPath;
+    if (bLegacyMigration)
     {
-        std::filesystem::remove(TempPath, Ec);
+        const std::string LegacyTmpName = SlotId + ".tmp_leg_" + Tag + ".save";
+        LegacyGenName = SlotId + ".gen_leg_" + Tag + ".save";
+        const std::filesystem::path LegacyTmpPath = Impl->RootDir / LegacyTmpName;
+        LegacyGenPath = Impl->RootDir / LegacyGenName;
+
+        if (!Impl->Fs->WriteFile(LegacyTmpPath, LegacyBytes, "write_legacy_temp_generation"))
+        {
+            Impl->Fs->Remove(LegacyTmpPath, "cleanup_failed_legacy_tmp");
+            return {ESaveSlotResult::Failure};
+        }
+        if (!Impl->Fs->Rename(LegacyTmpPath, LegacyGenPath, "commit_legacy_generation"))
+        {
+            Impl->Fs->Remove(LegacyTmpPath, "cleanup_failed_legacy_tmp");
+            return {ESaveSlotResult::Failure};
+        }
+        OldCurrentGenName = LegacyGenName;
+    }
+
+    // 2. Write new payload to unique temp generation
+    const std::string NewTmpName = SlotId + ".tmp_new_" + Tag + ".save";
+    const std::string NewGenName = SlotId + ".gen_" + Tag + ".save";
+    const std::filesystem::path NewTmpPath = Impl->RootDir / NewTmpName;
+    const std::filesystem::path NewGenPath = Impl->RootDir / NewGenName;
+
+    if (!Impl->Fs->WriteFile(NewTmpPath, Bytes, "write_new_temp_generation"))
+    {
+        Impl->Fs->Remove(NewTmpPath, "cleanup_failed_new_tmp");
+        if (bLegacyMigration)
+        {
+            Impl->Fs->Remove(LegacyGenPath, "cleanup_legacy_gen_on_failure");
+        }
         return {ESaveSlotResult::Failure};
     }
+
+    // 3. Rename temp generation to immutable generation
+    if (!Impl->Fs->Rename(NewTmpPath, NewGenPath, "commit_new_generation"))
+    {
+        Impl->Fs->Remove(NewTmpPath, "cleanup_failed_new_tmp");
+        if (bLegacyMigration)
+        {
+            Impl->Fs->Remove(LegacyGenPath, "cleanup_legacy_gen_on_failure");
+        }
+        return {ESaveSlotResult::Failure};
+    }
+
+    // 4. Write temp head (new_generation, old_current)
+    FSlotHead NewHead;
+    NewHead.Version = 1;
+    NewHead.CurrentGen = NewGenName;
+    NewHead.PreviousGen = OldCurrentGenName;
+    const std::string NewHeadContent = SerializeHeadDocument(NewHead);
+
+    const std::string TempHeadName = SlotId + ".head.tmp_" + Tag;
+    const std::filesystem::path TempHeadPath = Impl->RootDir / TempHeadName;
+
+    if (!Impl->Fs->WriteFile(TempHeadPath, NewHeadContent, "write_temp_head"))
+    {
+        Impl->Fs->Remove(TempHeadPath, "cleanup_failed_temp_head");
+        Impl->Fs->Remove(NewGenPath, "cleanup_new_gen_on_failure");
+        if (bLegacyMigration)
+        {
+            Impl->Fs->Remove(LegacyGenPath, "cleanup_legacy_gen_on_failure");
+        }
+        return {ESaveSlotResult::Failure};
+    }
+
+    // 5. ATOMIC COMMIT POINT: rename temp head to published head
+    if (!Impl->Fs->Rename(TempHeadPath, HeadPath, "commit_head"))
+    {
+        Impl->Fs->Remove(TempHeadPath, "cleanup_failed_temp_head");
+        Impl->Fs->Remove(NewGenPath, "cleanup_new_gen_on_failure");
+        if (bLegacyMigration)
+        {
+            Impl->Fs->Remove(LegacyGenPath, "cleanup_legacy_gen_on_failure");
+        }
+        return {ESaveSlotResult::Failure};
+    }
+
+    // 6. Post-commit cleanup: remove legacy file and obsolete generation files
+    if (bLegacyMigration)
+    {
+        Impl->Fs->Remove(LegacyPath, "cleanup_migrated_legacy_file");
+    }
+
+    // Cleanup obsolete generations for this slot
+    const std::string GenPrefix = SlotId + ".gen_";
+    const std::string TmpPrefix = SlotId + ".tmp_";
+    const std::string HeadTmpPrefix = SlotId + ".head.tmp";
+
+    std::error_code IterEc;
+    for (const auto& SubEntry : std::filesystem::directory_iterator(Impl->RootDir, IterEc))
+    {
+        if (IterEc)
+        {
+            break;
+        }
+        const std::string SubName = SubEntry.path().filename().string();
+        if (SubName.rfind(GenPrefix, 0) == 0)
+        {
+            if (SubName != NewGenName && SubName != OldCurrentGenName)
+            {
+                Impl->Fs->Remove(SubEntry.path(), "cleanup_obsolete_generation");
+            }
+        }
+        else if (SubName.rfind(TmpPrefix, 0) == 0 || SubName.rfind(HeadTmpPrefix, 0) == 0)
+        {
+            Impl->Fs->Remove(SubEntry.path(), "cleanup_leftover_temp");
+        }
+    }
+
     return {ESaveSlotResult::Ok};
 }
+
+namespace Testing
+{
+
+FSaveSlotStorageOpenResult FGV2SaveSlotStorageTestAccess::OpenWithFilesystem(
+    const std::filesystem::path& RootDir,
+    std::shared_ptr<Internal::ISaveSlotFilesystem> Filesystem)
+{
+    std::error_code Ec;
+    std::filesystem::create_directories(RootDir, Ec);
+    if (Ec)
+    {
+        return {ESaveSlotResult::Failure, nullptr};
+    }
+
+    const std::filesystem::path LockPath = RootDir / ".storage.lock";
+    int LockFd = open(LockPath.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0666);
+    if (LockFd < 0)
+    {
+        return {ESaveSlotResult::Failure, nullptr};
+    }
+
+    if (flock(LockFd, LOCK_EX | LOCK_NB) < 0)
+    {
+        close(LockFd);
+        if (errno == EWOULDBLOCK || errno == EAGAIN || errno == EACCES)
+        {
+            return {ESaveSlotResult::Busy, nullptr};
+        }
+        return {ESaveSlotResult::Failure, nullptr};
+    }
+
+    auto Impl = std::make_unique<FFilesystemSaveSlotStorage::FImpl>(RootDir, LockFd, std::move(Filesystem));
+    Impl->StartupCleanup();
+
+    return {ESaveSlotResult::Ok, std::unique_ptr<FFilesystemSaveSlotStorage>(new FFilesystemSaveSlotStorage(std::move(Impl)))};
 }
+
+} // namespace Testing
+
+} // namespace GV2RuntimeCore

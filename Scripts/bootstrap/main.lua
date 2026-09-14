@@ -28,6 +28,7 @@ local authoring_field = require("core:module.authoring.field")
 local authoring_context = require("core:module.authoring.context")
 local presentation_source = require("core:module.runtime.presentation_source")
 local random = require("core:module.runtime.random")
+local session_controls = require("core:module.runtime.session_controls")
 local registry_lifecycle = require("core:module.bootstrap.registry_lifecycle")
 
 -- CFC-05: Install engine registries into read-only facade slots before module register hooks run.
@@ -65,5 +66,6 @@ return {
     authoring_field = authoring_field,
     presentation_source = presentation_source,
     random = random,
+    session_controls = session_controls,
     registry_lifecycle = registry_lifecycle,
 }

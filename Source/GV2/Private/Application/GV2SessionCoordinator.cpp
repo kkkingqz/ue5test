@@ -1,6 +1,7 @@
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2ScreenFieldMaterializer.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "GV2RuntimeCore/GV2HostServices.h"
 
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -15,6 +16,30 @@ std::string SessionCoordinatorToUtf8(const FString& Value)
 {
     const FTCHARToUTF8 Converted(*Value);
     return std::string(Converted.Get(), Converted.Length());
+}
+
+bool IsValidSaveSlotId(const FString& SlotId)
+{
+    if (SlotId.IsEmpty())
+    {
+        return false;
+    }
+    const TCHAR First = SlotId[0];
+    if (First < TEXT('a') || First > TEXT('z'))
+    {
+        return false;
+    }
+    for (int32 i = 1; i < SlotId.Len(); ++i)
+    {
+        const TCHAR C = SlotId[i];
+        const bool bLower = (C >= TEXT('a') && C <= TEXT('z'));
+        const bool bDigit = (C >= TEXT('0') && C <= TEXT('9'));
+        if (!bLower && !bDigit && C != TEXT('_'))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 // PAH-04: pre_ready_discovery -- only called from StartSession(), before this
@@ -276,7 +301,7 @@ uint64 FGV2SessionCoordinator::RequestSession(
 
     PendingStartContext = FPendingStartContext{InPinnedRepository, InRepositoryVersion, ResolvedPackageSet};
 
-    if (bProcessingTransition)
+    if (bProcessingTransition || bPumpingIngress || bExecutingRuntime)
     {
         return OpId;
     }
@@ -285,9 +310,127 @@ uint64 FGV2SessionCoordinator::RequestSession(
     return OpId;
 }
 
+uint64 FGV2SessionCoordinator::RequestLoad(const FString& SlotId, const ESaveSlotRevision Revision)
+{
+    check(IsInGameThread());
+    const GV2ContentCore::FRepositoryReadHandle* RepoToUse = nullptr;
+    int64 RepoVerToUse = 0;
+    const GV2ContentHostSupport::FResolvedPackageSet* PkgToUse = nullptr;
+
+    if (ActivePackageSet.IsSet() && PinnedRepository.IsValid())
+    {
+        RepoToUse = &PinnedRepository;
+        RepoVerToUse = Status.RepositoryVersion;
+        PkgToUse = &*ActivePackageSet;
+    }
+    else if (PendingStartContext.IsSet())
+    {
+        RepoToUse = &PendingStartContext->PinnedRepository;
+        RepoVerToUse = PendingStartContext->RepositoryVersion;
+        PkgToUse = &PendingStartContext->ResolvedPackageSet;
+    }
+
+    if (!RepoToUse || !PkgToUse)
+    {
+        const uint64 OpId = TransitionPolicy.AllocateOperationId();
+        TransitionPolicy.RecordOutcome(OpId, ESessionOperationOutcome::Failed);
+        return OpId;
+    }
+
+    FSessionStartDescriptor Descriptor;
+    Descriptor.Mode = ESessionStartMode::LoadSave;
+    Descriptor.SaveSlotId = SlotId;
+    Descriptor.SaveSlotRevision = Revision == ESaveSlotRevision::Previous ? TEXT("Previous") : TEXT("Current");
+    Descriptor.RepositoryVersion = FString::Printf(TEXT("%lld"), RepoVerToUse);
+    Descriptor.RepositoryContentHash = UTF8_TO_TCHAR(RepoToUse->GetContentHash().c_str());
+    Descriptor.Reason = TEXT("RequestLoad");
+
+    return RequestSession(Descriptor, *RepoToUse, RepoVerToUse, *PkgToUse);
+}
+
+void FGV2SessionCoordinator::SetSaveSlotStorage(GV2RuntimeCore::ISaveSlotStorage* InStorage)
+{
+    SaveSlotStorage = InStorage;
+    RuntimeSession.SetSaveSlotStorage(SaveSlotStorage);
+}
+
+uint64 FGV2SessionCoordinator::RequestSave(const FString& SlotId)
+{
+    check(IsInGameThread());
+    const uint64 OpId = TransitionPolicy.AllocateOperationId();
+
+    if (!Status.bIsReady)
+    {
+        TransitionPolicy.RecordOutcome(OpId, ESessionOperationOutcome::Failed);
+        return OpId;
+    }
+
+    if (!IsValidSaveSlotId(SlotId))
+    {
+        TransitionPolicy.RecordOutcome(OpId, ESessionOperationOutcome::Failed);
+        return OpId;
+    }
+
+    if (bPumpingIngress || bExecutingRuntime || bProcessingTransition)
+    {
+        PendingSaveRequests.Add(FPendingSaveRequest{OpId, SlotId});
+        return OpId;
+    }
+
+    ExecuteSaveOperation(OpId, SlotId);
+    return OpId;
+}
+
+void FGV2SessionCoordinator::ExecuteSaveOperation(const uint64 OpId, const FString& SlotId)
+{
+    if (!Status.bIsReady)
+    {
+        TransitionPolicy.RecordOutcome(OpId, ESessionOperationOutcome::Failed);
+        return;
+    }
+
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const bool bSuccess = RuntimeSession.SaveToSlot(SessionCoordinatorToUtf8(SlotId), Fault);
+    if (bSuccess)
+    {
+        TransitionPolicy.RecordOutcome(OpId, ESessionOperationOutcome::Completed);
+    }
+    else
+    {
+        UE_LOG(
+            LogTemp,
+            Warning,
+            TEXT("SaveToSlot failed: code=%s message=%s"),
+            UTF8_TO_TCHAR(Fault.Code.c_str()),
+            UTF8_TO_TCHAR(Fault.Message.c_str()));
+        TransitionPolicy.RecordOutcome(OpId, ESessionOperationOutcome::Failed);
+    }
+}
+
+void FGV2SessionCoordinator::DrainPendingSaveRequests()
+{
+    while (!PendingSaveRequests.IsEmpty())
+    {
+        const FPendingSaveRequest Req = PendingSaveRequests[0];
+        PendingSaveRequests.RemoveAt(0);
+        ExecuteSaveOperation(Req.OperationId, Req.SlotId);
+    }
+}
+
 ESessionCancellationResult FGV2SessionCoordinator::CancelSessionRequest(const uint64 OperationId)
 {
     check(IsInGameThread());
+
+    for (int32 Index = 0; Index < PendingSaveRequests.Num(); ++Index)
+    {
+        if (PendingSaveRequests[Index].OperationId == OperationId)
+        {
+            PendingSaveRequests.RemoveAt(Index);
+            TransitionPolicy.RecordOutcome(OperationId, ESessionOperationOutcome::Cancelled);
+            return ESessionCancellationResult::Accepted;
+        }
+    }
+
     const ESessionCancellationResult Result = TransitionPolicy.CancelRequest(OperationId);
     if (Result == ESessionCancellationResult::Accepted)
     {
@@ -413,6 +556,71 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
         return false;
     }
 
+    // CFC-10: For LoadSave, capture save bytes from storage and perform active VM preflight before BeginReplace
+    std::string CapturedSaveBytes;
+    if (Op.Descriptor.Mode == ESessionStartMode::LoadSave)
+    {
+        if (SaveSlotStorage == nullptr)
+        {
+            FailReplacementAttempt(
+                {"SaveSlotStorageUnavailable", "Save storage is not configured."},
+                bHadPriorReadySession);
+            TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+            return false;
+        }
+
+        GV2RuntimeCore::ESaveSlotRevision StorageRevision = GV2RuntimeCore::ESaveSlotRevision::Current;
+        if (Op.Descriptor.SaveSlotRevision.Equals(TEXT("Previous"), ESearchCase::IgnoreCase))
+        {
+            StorageRevision = GV2RuntimeCore::ESaveSlotRevision::Previous;
+        }
+
+        const GV2RuntimeCore::FSaveSlotReadResult ReadResult = SaveSlotStorage->ReadSlot(
+            SessionCoordinatorToUtf8(Op.Descriptor.SaveSlotId), StorageRevision);
+        if (ReadResult.Result == GV2RuntimeCore::ESaveSlotResult::NotFound)
+        {
+            FailReplacementAttempt(
+                {"SaveSlotNotFound", "Requested save slot was not found."},
+                bHadPriorReadySession);
+            TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+            return false;
+        }
+        if (ReadResult.Result != GV2RuntimeCore::ESaveSlotResult::Ok)
+        {
+            FailReplacementAttempt(
+                {"SaveSlotUnreadable", "Requested save slot is unreadable."},
+                bHadPriorReadySession);
+            TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+            return false;
+        }
+
+        CapturedSaveBytes = ReadResult.Bytes;
+#if WITH_DEV_AUTOMATION_TESTS
+        if (TestOnSaveBytesCaptured)
+        {
+            TestOnSaveBytesCaptured();
+        }
+#endif
+
+        if (RuntimeSession.IsStarted())
+        {
+            GV2RuntimeCore::FRuntimeFault PreflightFault;
+            if (!RuntimeSession.PreflightSaveBytes(CapturedSaveBytes, PreflightFault))
+            {
+                FailReplacementAttempt(PreflightFault, bHadPriorReadySession);
+                TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+                return false;
+            }
+        }
+    }
+
+    if (InRepositoryVersion <= 0 || !InPinnedRepository.IsValid())
+    {
+        FailReplacementAttempt({"RepositoryVersionChanged", "Repository handle is invalid or changed before BeginReplace."}, bHadPriorReadySession);
+        TransitionPolicy.RecordOutcome(Op.OperationId, ESessionOperationOutcome::Failed);
+        return false;
+    }
+
     FSessionReplacementToken Token(MoveTemp(Candidate));
 
     GV2RuntimeCore::FRuntimeFault ReplaceFault;
@@ -429,17 +637,19 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
 
     GV2RuntimeCore::FSessionStartInputs StartInputs;
     StartInputs.SessionGeneration = Status.SessionGeneration;
-    StartInputs.SeedHex = TCHAR_TO_UTF8(*Op.Descriptor.SeedHex);
+    StartInputs.SeedHex = Op.Descriptor.Mode == ESessionStartMode::LoadSave ? "" : TCHAR_TO_UTF8(*Op.Descriptor.SeedHex);
     StartInputs.Mode = Op.Descriptor.Mode == ESessionStartMode::Menu ? "Menu" : (Op.Descriptor.Mode == ESessionStartMode::LoadSave ? "LoadSave" : "NewGame");
     StartInputs.RepositoryVersion = TCHAR_TO_UTF8(*Op.Descriptor.RepositoryVersion);
     StartInputs.RepositoryContentHash = TCHAR_TO_UTF8(*Op.Descriptor.RepositoryContentHash);
+
+    const std::string* LoadContainerBytesPtr = Op.Descriptor.Mode == ESessionStartMode::LoadSave ? &CapturedSaveBytes : nullptr;
 
     // Discrete phase execution using StartSessionPhases
     bool bPhasesOk = RuntimeSession.StartSessionPhases(
         StartInputs,
         InPinnedRepository,
         Token.GetCandidate().GetLuaSources(),
-        nullptr,
+        LoadContainerBytesPtr,
         [this, Op](GV2RuntimeCore::ERuntimeLifecyclePhase Phase, const GV2RuntimeCore::FRuntimePhaseResult& Result) -> bool
         {
             if (TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->bCancellationRequested)
@@ -578,6 +788,10 @@ bool FGV2SessionCoordinator::ExecuteSessionStart(
     }
 
     const bool bReadyOk = PublishReady(MoveTemp(Token), DocModel.Revision, Op.Kind);
+    if (bReadyOk)
+    {
+        ActivePackageSet = InResolvedPackageSet;
+    }
     TransitionPolicy.RecordOutcome(Op.OperationId, bReadyOk ? ESessionOperationOutcome::Completed : ESessionOperationOutcome::Failed);
     return bReadyOk;
 }
@@ -620,6 +834,7 @@ bool FGV2SessionCoordinator::BeginReplace(
     UiRevision = 0;
     PinnedRepository = InPinnedRepository;
     BindingRegistry.BeginSession(Status.SessionGeneration);
+    RuntimeSession.SetSaveSlotStorage(SaveSlotStorage);
 
     return true;
 }
@@ -698,6 +913,7 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
 
     PinnedRepository = GV2ContentCore::FRepositoryReadHandle();
     ContentSnapshot.Reset();
+    ActivePackageSet.Reset();
 
     if (ProjectionTeardownSink)
     {
@@ -712,6 +928,12 @@ void FGV2SessionCoordinator::EndSession(const EGV2SessionState FinalState)
     Status.RepositoryVersion = 0;
     NextInputSequence = 1;
     UiRevision = 0;
+
+    for (const FPendingSaveRequest& Req : PendingSaveRequests)
+    {
+        TransitionPolicy.RecordOutcome(Req.OperationId, ESessionOperationOutcome::Failed);
+    }
+    PendingSaveRequests.Empty();
 
     if (TransitionPolicy.GetActiveOperation().IsSet() && TransitionPolicy.GetActiveOperation()->Kind == ESessionTransitionKind::Shutdown)
     {
@@ -1040,47 +1262,78 @@ void FGV2SessionCoordinator::PumpIngress()
         return;
     }
 
-    TGuardValue<bool> PumpGuard(bPumpingIngress, true);
-    FGV2UiIngressItem Item;
-    while (Status.bIsReady && IngressQueue.Dequeue(Item))
     {
-        std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
+        TGuardValue<bool> PumpGuard(bPumpingIngress, true);
+        FGV2UiIngressItem Item;
+        while (Status.bIsReady && IngressQueue.Dequeue(Item))
         {
-            TGuardValue<bool> ExecutionGuard(bExecutingRuntime, true);
-            GV2RuntimeCore::FRuntimeFault Fault;
-            if (!RuntimeSession.DispatchSemanticInput(ToPortableInput(Item), Fault))
+            std::optional<GV2RuntimeCore::FUiDocument> PendingDoc;
             {
-                FailRuntime(Fault);
-                return;
-            }
-            if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
-            {
-                FailRuntime(Fault);
-                return;
-            }
-        }
-
-        if (PendingDoc)
-        {
-            if (ContentSnapshot.IsValid())
-            {
-                const FGV2PresentationPrepareContext PrepareContext(*ContentSnapshot);
-                FGV2UiDocumentViewModel DocModel;
-                FGV2PreparedBindingSet PreparedBindings;
-                if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings, PrepareContext))
+                TGuardValue<bool> ExecutionGuard(bExecutingRuntime, true);
+                GV2RuntimeCore::FRuntimeFault Fault;
+                if (!RuntimeSession.DispatchSemanticInput(ToPortableInput(Item), Fault))
                 {
-                    const bool bApplied = DocumentSink && DocumentSink(DocModel, PrepareContext);
-                    if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+                    FailRuntime(Fault);
+                    return;
+                }
+                if (!RuntimeSession.TakePendingDocument(PendingDoc, Fault))
+                {
+                    FailRuntime(Fault);
+                    return;
+                }
+            }
+
+            std::vector<GV2RuntimeCore::FHostControlRequest> PendingControlRequests;
+            GV2RuntimeCore::FRuntimeFault ControlFault;
+            if (RuntimeSession.TakePendingControlRequests(PendingControlRequests, ControlFault))
+            {
+                for (const auto& Req : PendingControlRequests)
+                {
+                    if (Req.Kind == "save")
                     {
-                        UiRevision = DocModel.Revision;
+                        RequestSave(UTF8_TO_TCHAR(Req.SlotId.c_str()));
+                    }
+                    else if (Req.Kind == "load")
+                    {
+                        ESaveSlotRevision Rev = ESaveSlotRevision::Current;
+                        if (Req.Revision == "previous")
+                        {
+                            Rev = ESaveSlotRevision::Previous;
+                        }
+                        RequestLoad(UTF8_TO_TCHAR(Req.SlotId.c_str()), Rev);
                     }
                 }
             }
+
+            if (PendingDoc)
+            {
+                if (ContentSnapshot.IsValid())
+                {
+                    const FGV2PresentationPrepareContext PrepareContext(*ContentSnapshot);
+                    FGV2UiDocumentViewModel DocModel;
+                    FGV2PreparedBindingSet PreparedBindings;
+                    if (PrepareDocumentRequest(*PendingDoc, DocModel, PreparedBindings, PrepareContext))
+                    {
+                        const bool bApplied = DocumentSink && DocumentSink(DocModel, PrepareContext);
+                        if (bApplied && BindingRegistry.CommitPreparedBindings(MoveTemp(PreparedBindings)))
+                        {
+                            UiRevision = DocModel.Revision;
+                        }
+                    }
+                }
+            }
+            if (InteractionSink)
+            {
+                InteractionSink(Item);
+            }
+
+            DrainPendingSaveRequests();
         }
-        if (InteractionSink)
-        {
-            InteractionSink(Item);
-        }
+    }
+
+    if (TransitionPolicy.HasPendingOperation())
+    {
+        ProcessNextTransition();
     }
 }
 
@@ -1112,6 +1365,12 @@ void FGV2SessionCoordinator::FailReplacementAttempt(
 
 void FGV2SessionCoordinator::FailRuntime(const GV2RuntimeCore::FRuntimeFault& Fault)
 {
+    for (const FPendingSaveRequest& Req : PendingSaveRequests)
+    {
+        TransitionPolicy.RecordOutcome(Req.OperationId, ESessionOperationOutcome::Failed);
+    }
+    PendingSaveRequests.Empty();
+
     Status.bIsReady = false;
     BindingRegistry.EndSession();
     IngressQueue.Reset();

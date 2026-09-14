@@ -2,7 +2,7 @@
 title: Cpp Foundation Save and Gameplay
 status: active
 version: 1.1
-updated: 2026-09-12
+updated: 2026-09-14
 depends_on:
   - ../../Architecture/CanonicalStateAndSave.md
   - ../../Architecture/BootstrapAndSessionLifecycle.md
@@ -17,7 +17,7 @@ depends_on:
 
 ## CFC-08 — Сохранять предыдущее поколение opaque slot
 
-- [ ] CFC-08 — Сохранять предыдущее поколение opaque slot
+- [x] CFC-08 — Сохранять предыдущее поколение opaque slot
 
 **Файлы:** `Source/GV2RuntimeCore/Public/GV2RuntimeCore/GV2HostServices.h`, `Source/GV2RuntimeCore/Private/GV2SaveSlotStorage.cpp`, `GV2SaveSlotStorageConformance.cpp` в том же каталоге; `Docs/Architecture/CanonicalStateAndSave.md`, `Docs/Architecture/BuildAndTooling.md`. Для process-crash harness создать `Tools/Testing/test_save_slot_crash.py` и отдельный test executable в portable test build.
 
@@ -48,7 +48,7 @@ depends_on:
 
 ## CFC-09 — Подключить storage и safe-point save к UE-host
 
-- [ ] CFC-09 — Подключить storage и safe-point save к UE-host
+- [x] CFC-09 — Подключить storage и safe-point save к UE-host
 
 **Файлы:** `Source/GV2/Private/Runtime/GV2RuntimeSubsystem.cpp`, public header; coordinator/bridge types из CFC-06/07; `Source/GV2RuntimeCore/Private/GV2RuntimeSession.cpp` и public header; `Scripts/boundary/entrypoints.lua`, `Scripts/boundary/outbound.lua`, `Scripts/runtime/save.lua`, `Scripts/runtime/command_dispatcher.lua`; создать `Scripts/runtime/session_controls.lua` и добавить в bootstrap manifest/module graph; `Tests/Lua/save/save_path.lua`, UE subsystem tests. Docs: `CanonicalStateAndSave.md`, `LuaRuntimeContract.md`, `BootstrapAndSessionLifecycle.md`, `RuntimeFacadeAndRegistries.md`; добавить раздел save/load controls в существующий `Docs/Authoring/PresentationAuthoringReference.md` и обновить его index в `Docs/Authoring/README.md`. Отдельный дублирующий reference не создавать.
 
@@ -79,7 +79,7 @@ depends_on:
 
 ## CFC-10 — Загрузить захваченные bytes через единый replacement
 
-- [ ] CFC-10 — Загрузить захваченные bytes через единый replacement
+- [x] CFC-10 — Загрузить захваченные bytes через единый replacement
 
 **Дополнение CFC-07A:** Load восстанавливает Lua-owned stream state из save; seed нового прохождения не переинициализирует загруженные streams. Проверить actual следующий random результат, а не только наличие meta.prng в контейнере.
 

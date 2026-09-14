@@ -2,7 +2,7 @@
 title: Lua Runtime Contract
 status: normative
 version: 3.1
-updated: 2026-09-12
+updated: 2026-09-14
 depends_on:
   - StableIDSpecification.md
 decisions:
@@ -110,11 +110,12 @@ Portable host использует закрытые typed entry points, а не 
 
 - bootstrap принимает pinned repository, ordered sources и `start_inputs`, где `mode` и repository identity обязательны; load дополнительно получает captured opaque bytes;
 - registry sealing вызывается один раз после `register` hooks через private bootstrap owner и возвращает только success либо `FRuntimeFault`;
-- state composition целиком владеет `core:module.runtime.state_composition` (`compose_default_state`); C++ не знает названий секций (`meta`, `mods`, `prng`, `time`) и правил слияния вкладов модулей, а вызывает единственную защищённую точку входа и проверяет типизированный результат;
 - restore, validation и start являются последующими защищёнными фазами с уведомлением о переходе через фазовый callback (`FPhaseCallback`), позволяющий хосту инспектировать прогресс и проверять cancellation между фазами без прерывания защищенного выполнения Lua; canonical tree не возвращается в C++ и boundary не пересекает;
 - в процессе гарантируется строго не более одной живой Lua VM (атомарный `GLiveVmCount`, `INV-010`), попытка превышения отвергается ошибкой `LuaVmExceededLimit`;
-- `preflight_save_bytes(bytes)` read-only проверяет container в active VM и возвращает только typed outcome;
-- `save_to_slot(slot_id)` вызывается host-ом только в safe point; storage binding получает opaque bytes;
+- `preflight_save_bytes(bytes)` read-only проверяет container в active VM через `game.runtime.preflight_save_bytes` и возвращает только typed outcome;
+- `game.bridge.request_save(slot_id)` ставит отложенный запрос сохранения в очередь исходящего моста хоста; системный обработчик `core:command.session.save` (модуль `core:module.runtime.session_controls`) валидирует `slot_id` и вызывает этот мост; запрос фиксируется только при успешном выходе из диспетчеризации команды и сбрасывается при отказе или ошибке;
+- `game.bridge.request_load(slot_id, revision)` ставит отложенный запрос загрузки слота в очередь исходящего моста хоста; системный обработчик `core:command.session.load` (модуль `core:module.runtime.session_controls`) валидирует `slot_id` и `revision` (`current` или `previous`) и вызывает этот мост; запрос фиксируется только при успешном выходе из диспетчеризации команды;
+- `save_to_slot(slot_id)` вызывается host-ом строго в safe point (вне окна мутации команд); storage binding получает opaque bytes;
 - `stop`/`unregister` выполняются в reverse resolved module order, уже известном loader-у (CFC-07); ошибка в user hook прерывает последующие user hooks, но не обязательный C++ teardown.
 
 `seed_hex` имеет форму ровно 16 lowercase ASCII hex characters и представляет полный uint64. Session generation не является seed. Legacy numeric manifest seed мигрируется codec-ом, а не lifecycle entry point.

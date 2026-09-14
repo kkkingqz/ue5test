@@ -169,4 +169,15 @@ target_compile_features(gv2_content_editor_conformance PRIVATE cxx_std_20)
 target_link_libraries(gv2_content_editor_conformance PRIVATE gv2_content_editor)
 add_test(NAME content_editor_conformance COMMAND gv2_content_editor_conformance)
 
+# CFC-08: standalone save slot crash helper
+add_executable(gv2_save_slot_crash_helper
+    "${CMAKE_SOURCE_DIR}/Tools/Testing/SaveSlotCrashHelperMain.cpp"
+)
+target_compile_features(gv2_save_slot_crash_helper PRIVATE cxx_std_20)
+target_include_directories(gv2_save_slot_crash_helper PRIVATE
+    "${GV2_RUNTIME_CORE_DIR}/Private"
+    "${GV2_RUNTIME_CORE_DIR}/Public"
+)
+target_link_libraries(gv2_save_slot_crash_helper PRIVATE gv2_runtime_core)
+
 # CFC-02: UE acceptance runner and report validator contracts are registered in root CMakeLists.txt.

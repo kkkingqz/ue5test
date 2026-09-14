@@ -1,8 +1,8 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.5
-updated: 2026-09-13
+version: 1.6
+updated: 2026-09-14
 depends_on:
   - ImplementationStatus.md
   - ../Architecture/BootstrapAndSessionLifecycle.md
@@ -52,7 +52,7 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 ## Счёт и интерпретация
 
-Первоначальный аудит дал девять находок: шесть P1 и три P2; семь contract gaps перенесены в `STATUS-013…019`, две находки организации приёмки остаются открытыми здесь. Дополнительная проверка внешнего review 2026-09-12 подтвердила SNAP-AF-01 (закрыта задачей CFC-04A, STATUS-020 удалён). Находка PSC-AF-03 также закрыта задачей CFC-04 (STATUS-013 удалён). Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Результаты запусков выше относятся к первоначальному аудиту; дополнение ниже основано на анализе кода и не является повторным полным test run.
+Первоначальный аудит дал девять находок: шесть P1 и три P2; семь contract gaps перенесены в `STATUS-013…019`, две находки организации приёмки остаются открытыми здесь. Дополнительная проверка внешнего review 2026-09-12 подтвердила SNAP-AF-01 (закрыта задачей CFC-04A, STATUS-020 удалён). Находка PSC-AF-03 также закрыта задачей CFC-04 (STATUS-013 удалён). Находка SAV-AF-02 закрыта задачей CFC-08 (STATUS-019 удалён). Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Результаты запусков выше относятся к первоначальному аудиту; дополнение ниже основано на анализе кода и не является повторным полным test run.
 
 ### Snapshot ownership — дополнение внешнего review
 
@@ -167,7 +167,7 @@ end
 
 **Проверка для закрытия:** реальная UE-сессия получает storage, сохраняет достигнутое командой состояние в safe point, загружается через production entry point и продолжает игру с теми же state hash/instance IDs. Прямой вызов storage из теста и отдельная portable load-сессия недостаточны.
 
-**Исход:** подтверждено как contract gap, [STATUS-018](ImplementationStatus.md).
+**Исход:** *(Закрыто задачами CFC-09/CFC-10)* Игровой UE-host подключён к filesystem storage под `Saved/SaveGames`, реализованы safe-point сохранение через `RequestSave(SlotId)` / `core:command.session.save` и загрузка через `RequestLoad(SlotId, Revision)` / `core:command.session.load` с active-VM preflight и captured-buffer replacement, подтверждённые полным набором из 13 automation тестов `GV2.Runtime.SaveAndLoad.*`.
 
 #### SAV-AF-02 — P2 — успешная перезапись слота не сохраняет предыдущую копию
 
@@ -178,8 +178,7 @@ end
 Сохранность старого слота при неуспешной записи — другое свойство, и оно покрыто существующим conformance. Наблюдение не утверждает отсутствие atomic replace и не является power-loss тестом. Более узкое описание atomic write в BuildAndTooling не отменяет требования accepted ADR о предыдущей копии.
 
 **Проверка для закрытия:** после успешной замены доступны новые bytes и предыдущая valid copy; fault injection по стадиям ротации не уничтожает обе. Ожидаемые bytes задаёт fixture независимо от implementation. Формат контейнера остаётся непрозрачным для host-а.
-
-**Исход:** подтверждено как contract gap, [STATUS-019](ImplementationStatus.md).
+*(Закрыто задачей CFC-08)* Реализованы ESaveSlotRevision (Current/Previous), atomic publish через versioned head и immutable generations по ADR-0045, process lock Busy, legacy migration и crash matrix harness test_save_slot_crash.py с независимым оракулом байтов; STATUS-019 удалён.
 
 ### Project verification
 

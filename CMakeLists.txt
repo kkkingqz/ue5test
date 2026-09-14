@@ -573,4 +573,20 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_session_transition_ownership.py"
             "--self-test"
     )
+    # CFC-08: save slot crash matrix and process concurrency contract
+    add_test(
+        NAME save_slot_crash_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/test_save_slot_crash.py"
+            "--helper"
+            "$<TARGET_FILE:gv2_save_slot_crash_helper>"
+    )
+    add_test(
+        NAME save_slot_crash_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/test_save_slot_crash.py"
+            "--self-test"
+    )
 endif()

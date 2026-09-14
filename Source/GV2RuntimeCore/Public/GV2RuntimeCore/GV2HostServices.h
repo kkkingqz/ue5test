@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -50,12 +51,19 @@ public:
 // any concrete storage does not prevent a session from starting without
 // saving — this interface is never required by FRuntimeSession::Start,
 // matching IResourceCatalog/ILocalizationAdapter above.
+enum class ESaveSlotRevision : std::uint8_t
+{
+    Current,
+    Previous,
+};
+
 enum class ESaveSlotResult : std::uint8_t
 {
     Ok,
     NotFound,
     Unreadable,
     Failure,
+    Busy,
 };
 
 struct FSaveSlotReadResult
@@ -76,7 +84,9 @@ class GV2_PORTABLE_API ISaveSlotStorage
 public:
     virtual ~ISaveSlotStorage() = default;
 
-    virtual FSaveSlotReadResult ReadSlot(const std::string& SlotId) const = 0;
+    virtual FSaveSlotReadResult ReadSlot(
+        const std::string& SlotId,
+        ESaveSlotRevision Revision = ESaveSlotRevision::Current) const = 0;
 
     // Atomic replace: when Result == Ok the slot now holds exactly Bytes;
     // for any other result the slot's previous content (if any) is left
@@ -91,24 +101,52 @@ public:
 // separator or a ".." traversal component.
 GV2_PORTABLE_API bool IsValidSaveSlotId(const std::string& SlotId);
 
-// SAV-06: the one filesystem-backed ISaveSlotStorage implementation, shared
-// verbatim by both hosts — each supplies its own RootDir at construction
+class FFilesystemSaveSlotStorage;
+
+// CFC-08: factory Open result. Storage is a unique owner owning an exclusive
+// process-level lock on RootDir; null on Busy or Failure.
+struct FSaveSlotStorageOpenResult
+{
+    ESaveSlotResult Result = ESaveSlotResult::Failure;
+    std::unique_ptr<FFilesystemSaveSlotStorage> Storage;
+};
+
+// SAV-06 / CFC-08: the one filesystem-backed ISaveSlotStorage implementation, shared
+// verbatim by both hosts — each supplies its own RootDir at construction via Open()
 // (std::filesystem::path is already an accepted portable type at this
 // layer, see GV2ContentHostSupport's discovery headers). Resolving SlotId
 // to a path, and confining that path inside RootDir, is entirely internal:
 // nothing above ISaveSlotStorage ever sees a path. Writes go to a temporary
-// file inside RootDir and are published with a single filesystem rename,
-// atomic on the same volume — a write that fails at any point before the
-// rename leaves the previously-published slot file untouched.
+// file inside RootDir, flush/close, rename to immutable generation, write
+// head (new_generation, old_current), and atomic rename head on the same volume —
+// a write that fails at any point before the head rename leaves the
+// previously-published slot generation(s) untouched.
+namespace Testing { class FGV2SaveSlotStorageTestAccess; }
+
 class GV2_PORTABLE_API FFilesystemSaveSlotStorage final : public ISaveSlotStorage
 {
 public:
-    explicit FFilesystemSaveSlotStorage(std::filesystem::path InRootDir);
+    ~FFilesystemSaveSlotStorage() override;
+    FFilesystemSaveSlotStorage(const FFilesystemSaveSlotStorage&) = delete;
+    FFilesystemSaveSlotStorage& operator=(const FFilesystemSaveSlotStorage&) = delete;
+    FFilesystemSaveSlotStorage(FFilesystemSaveSlotStorage&&) = delete;
+    FFilesystemSaveSlotStorage& operator=(FFilesystemSaveSlotStorage&&) = delete;
 
-    FSaveSlotReadResult ReadSlot(const std::string& SlotId) const override;
+    static FSaveSlotStorageOpenResult Open(const std::filesystem::path& InRootDir);
+
+    FSaveSlotReadResult ReadSlot(
+        const std::string& SlotId,
+        ESaveSlotRevision Revision = ESaveSlotRevision::Current) const override;
     FSaveSlotWriteResult WriteSlot(const std::string& SlotId, const std::string& Bytes) override;
 
+    const std::filesystem::path& GetRootDir() const;
+
 private:
-    std::filesystem::path RootDir;
+    friend class Testing::FGV2SaveSlotStorageTestAccess;
+
+    struct FImpl;
+    explicit FFilesystemSaveSlotStorage(std::unique_ptr<FImpl> InImpl);
+
+    std::unique_ptr<FImpl> Impl;
 };
 }

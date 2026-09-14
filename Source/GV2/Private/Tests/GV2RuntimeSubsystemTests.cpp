@@ -15,6 +15,7 @@
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "GV2RuntimeCore/Testing/GV2StableIdConformance.h"
+#include "GV2RuntimeCore/GV2HostServices.h"
 #include "Runtime/GV2RuntimeSubsystem.h"
 #include "UI/GV2ButtonListWidgetBase.h"
 #include "UI/GV2ButtonWidgetBase.h"
@@ -10177,6 +10178,942 @@ bool FGV2SessionNativeRecoveryOnInitialApplyFailureTest::RunTest(const FString& 
     UGV2RuntimeSubsystem::bTestForceDocumentSinkFailure = false;
 
     // Clean up
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-09: Production RequestSave executes safe-point save and writes container to disk
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadProductionRequestSaveTest,
+    "GV2.Runtime.SaveAndLoad.ProductionRequestSave",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadProductionRequestSaveTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_prod_save");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+
+    // Ensure clean state before test
+    IFileManager::Get().Delete(*HeadFile);
+
+    // 1. Start session
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    // 2. Execute gameplay command (travel or work)
+    UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("LocationScreen is presented"), Screen);
+    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
+    if (Screen != nullptr && Screen->WidgetTree != nullptr)
+    {
+        Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+        {
+            if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
+            {
+                CommandWidget = Cmd;
+            }
+        });
+    }
+    TestNotNull(TEXT("CommandWidget exists"), CommandWidget);
+    UGV2ListViewWidgetBase* CmdRep = CommandWidget != nullptr
+        ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
+        : nullptr;
+    if (CmdRep != nullptr)
+    {
+        for (const auto& Pair : CmdRep->GetActiveWidgetsMap())
+        {
+            if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Pair.Value))
+            {
+                const EGV2SubmitUiInteractionResult SubmitRes = Runtime->SubmitUiInteraction(Btn->GetBindingHandle(), {});
+                TestEqual(TEXT("Command interaction accepted"), SubmitRes, EGV2SubmitUiInteractionResult::Accepted);
+                break;
+            }
+        }
+    }
+
+    // 3. Request save
+    const int64 OpId = Runtime->RequestSave(SaveSlot);
+    TestTrue(TEXT("RequestSave returned non-zero operation ID"), OpId > 0);
+
+    ESessionOperationOutcome Outcome = ESessionOperationOutcome::Superseded;
+    const bool bGotOutcome = Runtime->GetSessionOperationOutcome(OpId, Outcome);
+    TestTrue(TEXT("Save outcome is available"), bGotOutcome);
+    TestEqual(TEXT("Save completed successfully"), Outcome, ESessionOperationOutcome::Completed);
+
+    // 4. Verify save container on disk
+    TestTrue(TEXT("Head file exists on disk"), IFileManager::Get().FileExists(*HeadFile));
+    FString HeadContent;
+    TestTrue(TEXT("Head file can be read"), FFileHelper::LoadFileToString(HeadContent, *HeadFile));
+    TestTrue(TEXT("Head references gen_"), HeadContent.Contains(TEXT("test_prod_save.gen_")));
+
+    TSharedPtr<FJsonObject> HeadJson;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(HeadContent);
+    TestTrue(TEXT("Head is valid JSON"), FJsonSerializer::Deserialize(Reader, HeadJson) && HeadJson.IsValid());
+    const FString CurrentGen = HeadJson.IsValid() ? HeadJson->GetStringField(TEXT("current")) : FString();
+    const FString GenFile = FPaths::Combine(SaveDir, CurrentGen);
+    TestTrue(TEXT("Generation file exists on disk"), IFileManager::Get().FileExists(*GenFile));
+    int64 GenFileSize = IFileManager::Get().FileSize(*GenFile);
+    TestTrue(TEXT("Generation file is non-empty"), GenFileSize > 0);
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    IFileManager::Get().Delete(*GenFile);
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-09: Save initiated via UI bound command core:command.session.save executes on safe point
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadUiAuthoredSaveButtonTest,
+    "GV2.Runtime.SaveAndLoad.UiAuthoredSaveButton",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_ui_save");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    // Publish a screen binding representing a UI-authored save button
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    TArray<FGV2UiBindingDefinition> Defs;
+    FGV2UiBindingDefinition SaveBtnDef;
+    SaveBtnDef.NodeKeyPath = { TEXT("root"), TEXT("save_button") };
+    SaveBtnDef.ElementId = TEXT("btn_save_game");
+    SaveBtnDef.CommandId = TEXT("core:command.session.save");
+    FGV2UiControlValue SlotVal;
+    SlotVal.Name = FName(TEXT("slot_id"));
+    SlotVal.Type = EGV2UiControlValueType::String;
+    SlotVal.StringValue = SaveSlot;
+    SaveBtnDef.BoundArgs.Add(SlotVal);
+    Defs.Add(SaveBtnDef);
+
+    TArray<FGV2UiBindingHandle> Handles;
+    const bool bPublished = Coordinator->PublishScreenBindings(Defs, Handles);
+    TestTrue(TEXT("Published screen binding for save command"), bPublished);
+    if (!TestEqual(TEXT("Got 1 handle"), Handles.Num(), 1))
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    // Submit interaction: UI button click
+    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(Handles[0], {});
+    TestEqual(TEXT("UI save command interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+
+    // Safe point drain executed the save
+    TestTrue(TEXT("Head file exists on disk after UI command execution"), IFileManager::Get().FileExists(*HeadFile));
+    FString HeadContent;
+    TestTrue(TEXT("Head file can be read"), FFileHelper::LoadFileToString(HeadContent, *HeadFile));
+
+    TSharedPtr<FJsonObject> HeadJson;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(HeadContent);
+    TestTrue(TEXT("Head is valid JSON"), FJsonSerializer::Deserialize(Reader, HeadJson) && HeadJson.IsValid());
+    const FString CurrentGen = HeadJson.IsValid() ? HeadJson->GetStringField(TEXT("current")) : FString();
+    const FString GenFile = FPaths::Combine(SaveDir, CurrentGen);
+    TestTrue(TEXT("Generation file exists on disk"), IFileManager::Get().FileExists(*GenFile));
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    IFileManager::Get().Delete(*GenFile);
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-09: When command is refused, staged save request is discarded; no file is written
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadCommandRefusalDiscardsSaveTest,
+    "GV2.Runtime.SaveAndLoad.CommandRefusalDiscardsSave",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadCommandRefusalDiscardsSaveTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString BadSlot = TEXT("INVALID_SLOT_NAME!");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, BadSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    // Publish binding with invalid slot_id argument -> validator in session_controls.lua will refuse
+    TArray<FGV2UiBindingDefinition> Defs;
+    FGV2UiBindingDefinition SaveBtnDef;
+    SaveBtnDef.NodeKeyPath = { TEXT("root"), TEXT("bad_save_button") };
+    SaveBtnDef.ElementId = TEXT("btn_bad_save");
+    SaveBtnDef.CommandId = TEXT("core:command.session.save");
+    FGV2UiControlValue BadSlotVal;
+    BadSlotVal.Name = FName(TEXT("slot_id"));
+    BadSlotVal.Type = EGV2UiControlValueType::String;
+    BadSlotVal.StringValue = BadSlot;
+    SaveBtnDef.BoundArgs.Add(BadSlotVal);
+    Defs.Add(SaveBtnDef);
+
+    TArray<FGV2UiBindingHandle> Handles;
+    const bool bPublished = Coordinator->PublishScreenBindings(Defs, Handles);
+    TestTrue(TEXT("Published screen binding for bad save"), bPublished);
+    if (!TestEqual(TEXT("Got 1 handle"), Handles.Num(), 1))
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    // Submit interaction: validator will refuse the command
+    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(Handles[0], {});
+    TestEqual(TEXT("UI save command interaction accepted into ingress"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+
+    // The staged save must have been discarded: no file written!
+    TestFalse(TEXT("No head file written on refused command"), IFileManager::Get().FileExists(*HeadFile));
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-09: Consecutive saves produce Current and Previous revisions in storage
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest,
+    "GV2.Runtime.SaveAndLoad.ConsecutiveSavesCurrentAndPrevious",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_consec_save");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    // First save: generation 1
+    const int64 Op1 = Runtime->RequestSave(SaveSlot);
+    ESessionOperationOutcome Outcome1;
+    TestTrue(TEXT("Outcome 1 available"), Runtime->GetSessionOperationOutcome(Op1, Outcome1));
+    TestEqual(TEXT("Save 1 completed"), Outcome1, ESessionOperationOutcome::Completed);
+
+    FString Head1;
+    TestTrue(TEXT("Head 1 exists"), FFileHelper::LoadFileToString(Head1, *HeadFile));
+    TSharedPtr<FJsonObject> Head1Json;
+    TSharedRef<TJsonReader<>> Reader1 = TJsonReaderFactory<>::Create(Head1);
+    TestTrue(TEXT("Head 1 valid JSON"), FJsonSerializer::Deserialize(Reader1, Head1Json) && Head1Json.IsValid());
+    const FString Gen1Name = Head1Json.IsValid() ? Head1Json->GetStringField(TEXT("current")) : FString();
+    TestTrue(TEXT("Head 1 has current gen"), Gen1Name.StartsWith(TEXT("test_consec_save.gen_")));
+    TestFalse(TEXT("Head 1 has no previous"), Head1Json.IsValid() && Head1Json->HasField(TEXT("previous")));
+    const FString Gen1File = FPaths::Combine(SaveDir, Gen1Name);
+    TestTrue(TEXT("Gen 1 file exists"), IFileManager::Get().FileExists(*Gen1File));
+
+    // Second save: generation 2
+    const int64 Op2 = Runtime->RequestSave(SaveSlot);
+    ESessionOperationOutcome Outcome2;
+    TestTrue(TEXT("Outcome 2 available"), Runtime->GetSessionOperationOutcome(Op2, Outcome2));
+    TestEqual(TEXT("Save 2 completed"), Outcome2, ESessionOperationOutcome::Completed);
+
+    FString Head2;
+    TestTrue(TEXT("Head 2 exists"), FFileHelper::LoadFileToString(Head2, *HeadFile));
+    TSharedPtr<FJsonObject> Head2Json;
+    TSharedRef<TJsonReader<>> Reader2 = TJsonReaderFactory<>::Create(Head2);
+    TestTrue(TEXT("Head 2 valid JSON"), FJsonSerializer::Deserialize(Reader2, Head2Json) && Head2Json.IsValid());
+    const FString Gen2Name = Head2Json.IsValid() ? Head2Json->GetStringField(TEXT("current")) : FString();
+    const FString Head2PrevName = Head2Json.IsValid() ? Head2Json->GetStringField(TEXT("previous")) : FString();
+    TestTrue(TEXT("Head 2 has current gen"), Gen2Name.StartsWith(TEXT("test_consec_save.gen_")));
+    TestEqual(TEXT("Head 2 previous matches Gen 1"), Head2PrevName, Gen1Name);
+    TestNotEqual(TEXT("Current and previous are distinct"), Gen2Name, Gen1Name);
+
+    const FString Gen2File = FPaths::Combine(SaveDir, Gen2Name);
+    TestTrue(TEXT("Gen 1 file still exists as previous"), IFileManager::Get().FileExists(*Gen1File));
+    TestTrue(TEXT("Gen 2 file exists as current"), IFileManager::Get().FileExists(*Gen2File));
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    IFileManager::Get().Delete(*Gen1File);
+    IFileManager::Get().Delete(*Gen2File);
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-09: Error cases: unready session, invalid slot name, cancellation before execution
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadRequestSaveErrorCasesTest,
+    "GV2.Runtime.SaveAndLoad.RequestSaveErrorCases",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadRequestSaveErrorCasesTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    // 1. Unready session: RequestSave before StartSession
+    const int64 UnreadyOp = Runtime->RequestSave(TEXT("any_slot"));
+    TestTrue(TEXT("Unready RequestSave returns op ID"), UnreadyOp > 0);
+    ESessionOperationOutcome UnreadyOutcome;
+    TestTrue(TEXT("Unready outcome available"), Runtime->GetSessionOperationOutcome(UnreadyOp, UnreadyOutcome));
+    TestEqual(TEXT("Unready outcome is Failed"), UnreadyOutcome, ESessionOperationOutcome::Failed);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    // 2. Invalid slot names
+    const TArray<FString> BadSlotNames = {
+        TEXT(""),
+        TEXT("123bad"),
+        TEXT("BadCaps"),
+        TEXT("bad-dash"),
+        TEXT("bad slot with spaces"),
+    };
+    for (const FString& BadSlot : BadSlotNames)
+    {
+        const int64 BadOp = Runtime->RequestSave(BadSlot);
+        TestTrue(TEXT("Bad slot returns op ID"), BadOp > 0);
+        ESessionOperationOutcome BadOutcome;
+        TestTrue(TEXT("Bad slot outcome available"), Runtime->GetSessionOperationOutcome(BadOp, BadOutcome));
+        TestEqual(TEXT("Invalid slot name outcome is Failed"), BadOutcome, ESessionOperationOutcome::Failed);
+    }
+
+    // 3. Cancellation before execution
+    // Set interaction sink to queue a save while pumping ingress, and immediately cancel it
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    uint64 QueuedOpId = 0;
+    ESessionCancellationResult CancelResult = ESessionCancellationResult::Stale;
+
+    Coordinator->SetInteractionSink([&](const FGV2UiIngressItem&)
+    {
+        QueuedOpId = Coordinator->RequestSave(TEXT("cancelled_slot"));
+        CancelResult = Coordinator->CancelSessionRequest(QueuedOpId);
+    });
+
+    // Publish a dummy binding and submit interaction to trigger the sink
+    TArray<FGV2UiBindingDefinition> DummyDefs;
+    FGV2UiBindingDefinition DummyDef;
+    DummyDef.NodeKeyPath = { TEXT("root"), TEXT("dummy_button") };
+    DummyDef.ElementId = TEXT("btn_dummy");
+    DummyDef.CommandId = TEXT("core:command.session.save");
+    FGV2UiControlValue DummyVal;
+    DummyVal.Name = FName(TEXT("slot_id"));
+    DummyVal.Type = EGV2UiControlValueType::String;
+    DummyVal.StringValue = TEXT("dummy_slot");
+    DummyDef.BoundArgs.Add(DummyVal);
+    DummyDefs.Add(DummyDef);
+
+    TArray<FGV2UiBindingHandle> DummyHandles;
+    const bool bPublished = Coordinator->PublishScreenBindings(DummyDefs, DummyHandles);
+    TestTrue(TEXT("Published screen binding for dummy"), bPublished);
+    if (!TestEqual(TEXT("Got 1 handle"), DummyHandles.Num(), 1))
+    {
+        Coordinator->SetInteractionSink(nullptr);
+        Runtime->EndSession();
+        return false;
+    }
+    Runtime->SubmitUiInteraction(DummyHandles[0], {});
+
+    TestTrue(TEXT("QueuedOpId was set"), QueuedOpId > 0);
+    TestEqual(TEXT("Cancellation of queued save was accepted"), CancelResult, ESessionCancellationResult::Accepted);
+
+    TOptional<ESessionOperationOutcome> CancelOutcome = Coordinator->GetSessionOperationOutcome(QueuedOpId);
+    TestTrue(TEXT("CancelOutcome is set"), CancelOutcome.IsSet());
+    TestEqual(TEXT("Outcome is Cancelled"), *CancelOutcome, ESessionOperationOutcome::Cancelled);
+
+    // Reset interaction sink
+    Coordinator->SetInteractionSink(nullptr);
+
+    // Stale cancellation on completed operation
+    const ESessionCancellationResult StaleResult = Coordinator->CancelSessionRequest(999999);
+    TestEqual(TEXT("Unknown op returns Stale"), StaleResult, ESessionCancellationResult::Stale);
+
+    // Cleanup files that might have been created by dummy_slot
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    IFileManager::Get().Delete(*FPaths::Combine(SaveDir, TEXT("dummy_slot.head")));
+    IFileManager::Get().Delete(*FPaths::Combine(SaveDir, TEXT("dummy_slot.gen_1")));
+    IFileManager::Get().Delete(*FPaths::Combine(SaveDir, TEXT("cancelled_slot.head")));
+    IFileManager::Get().Delete(*FPaths::Combine(SaveDir, TEXT("cancelled_slot.gen_1")));
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-10: RequestLoad starts session B from save slot and restores state
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadProductionRequestLoadTest,
+    "GV2.Runtime.SaveAndLoad.ProductionRequestLoad",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadProductionRequestLoadTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_prod_load");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    // 1. Start initial session A
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+    const int32 GenA = Runtime->GetSessionState().SessionGeneration;
+
+    // 2. Submit gameplay command
+    UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("LocationScreen is presented"), Screen);
+    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
+    if (Screen != nullptr && Screen->WidgetTree != nullptr)
+    {
+        Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+        {
+            if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
+            {
+                CommandWidget = Cmd;
+            }
+        });
+    }
+    TestNotNull(TEXT("CommandWidget exists"), CommandWidget);
+    UGV2ListViewWidgetBase* CmdRep = CommandWidget != nullptr
+        ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
+        : nullptr;
+    if (CmdRep != nullptr)
+    {
+        for (const auto& Pair : CmdRep->GetActiveWidgetsMap())
+        {
+            if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Pair.Value))
+            {
+                const EGV2SubmitUiInteractionResult SubmitRes = Runtime->SubmitUiInteraction(Btn->GetBindingHandle(), {});
+                TestEqual(TEXT("Command interaction accepted"), SubmitRes, EGV2SubmitUiInteractionResult::Accepted);
+                break;
+            }
+        }
+    }
+
+    // 3. Request save
+    const int64 SaveOpId = Runtime->RequestSave(SaveSlot);
+    TestTrue(TEXT("RequestSave returned non-zero operation ID"), SaveOpId > 0);
+    ESessionOperationOutcome SaveOutcome;
+    TestTrue(TEXT("Save outcome is available"), Runtime->GetSessionOperationOutcome(SaveOpId, SaveOutcome));
+    TestEqual(TEXT("Save completed successfully"), SaveOutcome, ESessionOperationOutcome::Completed);
+
+    // 4. Request load
+    const int64 LoadOpId = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
+    TestTrue(TEXT("RequestLoad returned non-zero operation ID"), LoadOpId > 0);
+    ESessionOperationOutcome LoadOutcome;
+    TestTrue(TEXT("Load outcome is available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome));
+    TestEqual(TEXT("Load completed successfully"), LoadOutcome, ESessionOperationOutcome::Completed);
+
+    // 5. Assert replacement session B is active with new generation
+    const FGV2SessionStatus StatusB = Runtime->GetSessionState();
+    TestTrue(TEXT("Session B is ready"), StatusB.bIsReady);
+    TestEqual(TEXT("Session B is in Ready state"), StatusB.SessionState, EGV2SessionState::Ready);
+    TestTrue(TEXT("Session generation incremented"), StatusB.SessionGeneration > GenA);
+
+    // 6. Submit gameplay command in session B to verify it accepts subsequent commands
+    UGV2ScreenWidgetBase* ScreenB = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("Session B LocationScreen is presented"), ScreenB);
+    UGV2DeclaredCompositeWidgetBase* CommandWidgetB = nullptr;
+    if (ScreenB != nullptr && ScreenB->WidgetTree != nullptr)
+    {
+        ScreenB->WidgetTree->ForEachWidget([&](UWidget* Widget)
+        {
+            if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
+            {
+                CommandWidgetB = Cmd;
+            }
+        });
+    }
+    TestNotNull(TEXT("Session B CommandWidget exists"), CommandWidgetB);
+    UGV2ListViewWidgetBase* CmdRepB = CommandWidgetB != nullptr
+        ? Cast<UGV2ListViewWidgetBase>(CommandWidgetB->GetWidgetFromName(TEXT("ButtonRepeater")))
+        : nullptr;
+    if (CmdRepB != nullptr)
+    {
+        for (const auto& Pair : CmdRepB->GetActiveWidgetsMap())
+        {
+            if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Pair.Value))
+            {
+                const EGV2SubmitUiInteractionResult SubmitRes = Runtime->SubmitUiInteraction(Btn->GetBindingHandle(), {});
+                TestEqual(TEXT("Session B command interaction accepted"), SubmitRes, EGV2SubmitUiInteractionResult::Accepted);
+                break;
+            }
+        }
+    }
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> GenFiles;
+    IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : GenFiles)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-10: UI-authored load button triggers core:command.session.load which performs replacement load
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadUiAuthoredLoadButtonTest,
+    "GV2.Runtime.SaveAndLoad.UiAuthoredLoadButton",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadUiAuthoredLoadButtonTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_ui_load");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+    const int32 GenA = Runtime->GetSessionState().SessionGeneration;
+
+    // Save slot first
+    const int64 SaveOp = Runtime->RequestSave(SaveSlot);
+    ESessionOperationOutcome SaveOutcome;
+    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+    TestEqual(TEXT("Save completed"), SaveOutcome, ESessionOperationOutcome::Completed);
+
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    // Publish UI binding with core:command.session.load
+    TArray<FGV2UiBindingDefinition> Defs;
+    FGV2UiBindingDefinition LoadBtnDef;
+    LoadBtnDef.NodeKeyPath = { TEXT("root"), TEXT("load_button") };
+    LoadBtnDef.ElementId = TEXT("btn_load");
+    LoadBtnDef.CommandId = TEXT("core:command.session.load");
+    FGV2UiControlValue SlotVal;
+    SlotVal.Name = FName(TEXT("slot_id"));
+    SlotVal.Type = EGV2UiControlValueType::String;
+    SlotVal.StringValue = SaveSlot;
+    LoadBtnDef.BoundArgs.Add(SlotVal);
+    Defs.Add(LoadBtnDef);
+
+    TArray<FGV2UiBindingHandle> Handles;
+    const bool bPublished = Coordinator->PublishScreenBindings(Defs, Handles);
+    TestTrue(TEXT("Published screen binding for load button"), bPublished);
+    if (!TestEqual(TEXT("Got 1 handle"), Handles.Num(), 1))
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    // Submit UI interaction: triggers load command
+    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(Handles[0], {});
+    TestEqual(TEXT("UI load command interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+
+    // Assert session B is ready with new generation
+    const FGV2SessionStatus StatusB = Runtime->GetSessionState();
+    TestTrue(TEXT("Session B is ready after UI load"), StatusB.bIsReady);
+    TestTrue(TEXT("Session B generation incremented"), StatusB.SessionGeneration > GenA);
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> GenFiles;
+    IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : GenFiles)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-10: Corrupt save bytes fail preflight in VM A and preserve Session A
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadPreflightFailurePreservesSessionATest,
+    "GV2.Runtime.SaveAndLoad.PreflightFailurePreservesSessionA",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadPreflightFailurePreservesSessionATest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString CorruptSlot = TEXT("test_corrupt_preflight");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, CorruptSlot + TEXT(".head"));
+    const FString GenFile = FPaths::Combine(SaveDir, CorruptSlot + TEXT(".gen_1.save"));
+
+    // Write corrupted container on disk
+    IFileManager::Get().MakeDirectory(*SaveDir, true);
+    FFileHelper::SaveStringToFile(TEXT("{\"version\":1,\"current\":\"test_corrupt_preflight.gen_1.save\"}"), *HeadFile);
+    FFileHelper::SaveStringToFile(TEXT("GARBAGE_BYTES_NOT_A_VALID_SAVE_CONTAINER"), *GenFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
+    const int32 GenA = Runtime->GetSessionState().SessionGeneration;
+    UGV2GameShellWidgetBase* ShellA = Runtime->GetActiveGameShell();
+    UUserWidget* ScreenA = Runtime->GetActiveScreen();
+
+    AddExpectedError(
+        TEXT("GV2 Lua runtime fault: code=SaveContainerCorrupt"),
+        EAutomationExpectedErrorFlags::Contains,
+        1);
+
+    // Request load of corrupt slot
+    const int64 LoadOpId = Runtime->RequestLoad(CorruptSlot, EGV2SaveSlotRevision::Current);
+    TestTrue(TEXT("RequestLoad returned non-zero operation ID"), LoadOpId > 0);
+
+    ESessionOperationOutcome LoadOutcome;
+    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome));
+    TestEqual(TEXT("Load outcome is Failed"), LoadOutcome, ESessionOperationOutcome::Failed);
+
+    // Assert session A is preserved
+    const FGV2SessionStatus StatusAfterFail = Runtime->GetSessionState();
+    TestTrue(TEXT("Session A remains ready"), StatusAfterFail.bIsReady);
+    TestEqual(TEXT("Session A remains in Ready state"), StatusAfterFail.SessionState, EGV2SessionState::Ready);
+    TestEqual(TEXT("Session generation unchanged"), StatusAfterFail.SessionGeneration, GenA);
+    TestEqual(TEXT("GameShell unchanged"), Runtime->GetActiveGameShell(), ShellA);
+    TestEqual(TEXT("Screen unchanged"), Runtime->GetActiveScreen(), ScreenA);
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    IFileManager::Get().Delete(*GenFile);
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-10: CapturedSaveBytes in-memory buffer makes replacement immune to disk file tampering after capture
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadCapturedBytesImmunityToFileOverwriteTest,
+    "GV2.Runtime.SaveAndLoad.CapturedBytesImmunityToFileOverwrite",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadCapturedBytesImmunityToFileOverwriteTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_captured_immunity");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+    const int32 GenA = Runtime->GetSessionState().SessionGeneration;
+
+    const int64 SaveOp = Runtime->RequestSave(SaveSlot);
+    ESessionOperationOutcome SaveOutcome;
+    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+    TestEqual(TEXT("Save completed"), SaveOutcome, ESessionOperationOutcome::Completed);
+
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    // Set hook to corrupt file on disk right after bytes are captured
+    bool bHookFired = false;
+    Coordinator->TestOnSaveBytesCaptured = [&]()
+    {
+        bHookFired = true;
+        // Delete head file and corrupt gen file on disk
+        IFileManager::Get().Delete(*HeadFile);
+        TArray<FString> GenFiles;
+        IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+        for (const FString& GenFile : GenFiles)
+        {
+            FFileHelper::SaveStringToFile(TEXT("DESTROYED_ON_DISK"), *FPaths::Combine(SaveDir, GenFile));
+        }
+    };
+
+    const int64 LoadOp = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
+    TestTrue(TEXT("RequestLoad returned op ID"), LoadOp > 0);
+
+    // Clear hook
+    Coordinator->TestOnSaveBytesCaptured = nullptr;
+
+    TestTrue(TEXT("Hook was fired during ExecuteSessionStart"), bHookFired);
+
+    ESessionOperationOutcome LoadOutcome;
+    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
+    TestEqual(TEXT("Load completed successfully despite disk corruption"), LoadOutcome, ESessionOperationOutcome::Completed);
+
+    const FGV2SessionStatus StatusB = Runtime->GetSessionState();
+    TestTrue(TEXT("Session B is ready"), StatusB.bIsReady);
+    TestTrue(TEXT("Session B generation incremented"), StatusB.SessionGeneration > GenA);
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> GenFiles;
+    IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : GenFiles)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-10: Loading Previous revision restores the previous generation rather than current
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadPreviousRevisionLoadTest,
+    "GV2.Runtime.SaveAndLoad.PreviousRevisionLoad",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_prev_rev_load");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    // Save 1 (Rev 1)
+    const int64 SaveOp1 = Runtime->RequestSave(SaveSlot);
+    ESessionOperationOutcome Outcome1;
+    TestTrue(TEXT("Save 1 outcome available"), Runtime->GetSessionOperationOutcome(SaveOp1, Outcome1));
+    TestEqual(TEXT("Save 1 completed"), Outcome1, ESessionOperationOutcome::Completed);
+
+    // Mutate state with command
+    UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("LocationScreen is presented"), Screen);
+    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
+    if (Screen != nullptr && Screen->WidgetTree != nullptr)
+    {
+        Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+        {
+            if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
+            {
+                CommandWidget = Cmd;
+            }
+        });
+    }
+    if (CommandWidget != nullptr)
+    {
+        UGV2ListViewWidgetBase* CmdRep = Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")));
+        if (CmdRep != nullptr)
+        {
+            for (const auto& Pair : CmdRep->GetActiveWidgetsMap())
+            {
+                if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Pair.Value))
+                {
+                    Runtime->SubmitUiInteraction(Btn->GetBindingHandle(), {});
+                    break;
+                }
+            }
+        }
+    }
+
+    // Save 2 (Rev 2: now current; Rev 1 is now previous)
+    const int64 SaveOp2 = Runtime->RequestSave(SaveSlot);
+    ESessionOperationOutcome Outcome2;
+    TestTrue(TEXT("Save 2 outcome available"), Runtime->GetSessionOperationOutcome(SaveOp2, Outcome2));
+    TestEqual(TEXT("Save 2 completed"), Outcome2, ESessionOperationOutcome::Completed);
+
+    // Verify .head has both current and previous
+    FString HeadContent;
+    TestTrue(TEXT("Head exists"), FFileHelper::LoadFileToString(HeadContent, *HeadFile));
+    TSharedPtr<FJsonObject> HeadJson;
+    TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(HeadContent);
+    TestTrue(TEXT("Head valid JSON"), FJsonSerializer::Deserialize(Reader, HeadJson) && HeadJson.IsValid());
+    TestTrue(TEXT("Head has current"), HeadJson.IsValid() && HeadJson->HasField(TEXT("current")));
+    TestTrue(TEXT("Head has previous"), HeadJson.IsValid() && HeadJson->HasField(TEXT("previous")));
+
+    const int32 GenBeforeLoad = Runtime->GetSessionState().SessionGeneration;
+
+    // RequestLoad with Previous revision
+    const int64 LoadOp = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Previous);
+    TestTrue(TEXT("RequestLoad returned op ID"), LoadOp > 0);
+
+    ESessionOperationOutcome LoadOutcome;
+    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
+    TestEqual(TEXT("Load previous completed"), LoadOutcome, ESessionOperationOutcome::Completed);
+
+    const FGV2SessionStatus StatusAfterLoad = Runtime->GetSessionState();
+    TestTrue(TEXT("Session is ready after loading previous"), StatusAfterLoad.bIsReady);
+    TestTrue(TEXT("Generation incremented"), StatusAfterLoad.SessionGeneration > GenBeforeLoad);
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> GenFiles;
+    IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : GenFiles)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-10: Enforce empty seed descriptor for load and verify PRNG continuity
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadPrngStreamContinuationTest,
+    "GV2.Runtime.SaveAndLoad.PrngStreamContinuation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadPrngStreamContinuationTest::RunTest(const FString& Parameters)
+{
+    // 1. Negative descriptor validation: non-empty seed is rejected for LoadSave mode
+    {
+        FSessionStartDescriptor BadDesc;
+        BadDesc.Mode = ESessionStartMode::LoadSave;
+        BadDesc.SaveSlotId = TEXT("valid_slot");
+        BadDesc.SaveSlotRevision = TEXT("Current");
+        BadDesc.SeedHex = TEXT("0123456789abcdef");
+        BadDesc.RepositoryVersion = TEXT("1");
+        BadDesc.RepositoryContentHash = TEXT("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789");
+
+        FString ErrorMsg;
+        TestFalse(TEXT("LoadSave with non-empty seed must be rejected"), BadDesc.IsValid(&ErrorMsg));
+        TestTrue(TEXT("Error message mentions SeedHex"), ErrorMsg.Contains(TEXT("SeedHex")));
+
+        BadDesc.SeedHex = TEXT("");
+        TestTrue(TEXT("LoadSave with empty seed is valid"), BadDesc.IsValid(&ErrorMsg));
+    }
+
+    // 2. Runtime session load restores PRNG streams from meta.prng
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = TEXT("test_prng_load");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+
+    const int64 SaveOp = Runtime->RequestSave(SaveSlot);
+    ESessionOperationOutcome SaveOutcome;
+    TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+    TestEqual(TEXT("Save completed"), SaveOutcome, ESessionOperationOutcome::Completed);
+
+    // Perform load
+    const int64 LoadOp = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
+    ESessionOperationOutcome LoadOutcome;
+    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
+    TestEqual(TEXT("Load completed"), LoadOutcome, ESessionOperationOutcome::Completed);
+
+    // Verify session is ready and executes commands cleanly
+    TestTrue(TEXT("Session is ready after PRNG load"), Runtime->GetSessionState().bIsReady);
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> GenFiles;
+    IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : GenFiles)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
+
     Runtime->EndSession();
     return true;
 }

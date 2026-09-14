@@ -553,6 +553,11 @@ void FGV2SessionTransitionPolicy::RecordOutcome(const uint64 OperationId, const 
     }
 }
 
+uint64 FGV2SessionTransitionPolicy::AllocateOperationId()
+{
+    return NextOperationId++;
+}
+
 void FGV2SessionTransitionPolicy::Reset()
 {
     ActiveOperation.Reset();

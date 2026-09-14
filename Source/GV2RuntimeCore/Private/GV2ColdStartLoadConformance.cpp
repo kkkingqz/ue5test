@@ -162,6 +162,25 @@ function M.decode_and_prepare(container_bytes)
     return { meta = { save_version = 1, seed_hex = seed }, data = { marker = marker } }, nil
 end
 
+function M.preflight_bytes(container_bytes)
+    if type(container_bytes) ~= "string" then
+        return false, "SaveContainerCorrupt"
+    end
+    local marker, saved_version_str, seed = container_bytes:match("^SYNTHETIC_CONTAINER:([^:]*):(%-?%d+):([0-9a-f]+)$")
+    if not marker then
+        marker, saved_version_str = container_bytes:match("^SYNTHETIC_CONTAINER:([^:]*):(%-?%d+)$")
+    end
+    if not marker then
+        return false, "SaveContainerCorrupt"
+    end
+
+    local pending, plan_err = migrate.plan_migrations({ data = tonumber(saved_version_str) })
+    if not pending then
+        return false, plan_err
+    end
+    return true, nil
+end
+
 return M
 )lua";
 // Deliberately minimal stand-in for the real state_validator: this suite
@@ -272,6 +291,7 @@ return M
 // driver sets it itself in "register", exactly like event_bus normally does).
 const char* SaveDriverSource = R"lua(
 local save = require("core:module.runtime.save")
+local load_mod = require("core:module.runtime.load")
 
 local M = {
     id = "core:module.test.save_driver",
@@ -279,6 +299,7 @@ local M = {
 
 function M.register(ctx)
     game.runtime.phase = "idle"
+    game.runtime.preflight_save_bytes = load_mod.preflight_bytes
     -- Synthetic stand-in for boundary/outbound.lua's real hash wiring —
     -- proves the C++ before/after comparison mechanism, not the real
     -- canonical hashing algorithm (that is Tests/Lua/save/canonical_codec.lua's job).
@@ -318,11 +339,14 @@ return M
 // restore_marker + load do the real work; RunColdStartLoadConformance
 // checks the resulting state after StartFromSave returns.
 const char* LoadDriverSource = R"lua(
+local load_mod = require("core:module.runtime.load")
+
 local M = {
     id = "core:module.test.load_driver",
 }
 
 function M.register(ctx)
+    game.runtime.preflight_save_bytes = load_mod.preflight_bytes
     game.runtime.get_canonical_state_hash = function()
         return "hash:" .. tostring(game.state.data.marker)
     end
@@ -409,7 +433,12 @@ std::string RunColdStartLoadConformance()
     const std::filesystem::path SlotRoot = std::filesystem::temp_directory_path()
         / ("gv2_cold_start_load_conformance_"
             + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    FFilesystemSaveSlotStorage Storage(SlotRoot);
+    auto StorageOpen = FFilesystemSaveSlotStorage::Open(SlotRoot);
+    if (StorageOpen.Result != ESaveSlotResult::Ok || !StorageOpen.Storage)
+    {
+        return "cold_start_load_conformance.storage_open_failed";
+    }
+    auto& Storage = *StorageOpen.Storage;
 
     // 1. Write session (NewGame): seeds data.marker, saves through the
     //    real host primitive.
@@ -644,6 +673,7 @@ std::string RunColdStartLoadConformance()
         const bool bStarted = MissingSlotSession.StartFromSave(
             1, RepoHandle, Sources, Storage, "slot_that_was_never_written", Fault);
         MissingSlotSession.Stop();
+        StorageOpen.Storage.reset();
         std::error_code Ec;
         std::filesystem::remove_all(SlotRoot, Ec);
         if (bStarted)
@@ -670,13 +700,22 @@ std::string RunColdStartLoadConformance()
         SeededInputs.SessionGeneration = 1;
         SeededInputs.SeedHex = "0123456789abcdef";
 
-        FFilesystemSaveSlotStorage SeededStorage(SlotRoot);
+        const std::filesystem::path SeededSlotRoot = std::filesystem::temp_directory_path()
+            / ("gv2_cold_start_load_seeded_"
+                + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        auto SeededStorageOpen = FFilesystemSaveSlotStorage::Open(SeededSlotRoot);
+        if (SeededStorageOpen.Result != ESaveSlotResult::Ok || !SeededStorageOpen.Storage)
+        {
+            return "cold_start_load_conformance.seeded_storage_open_failed";
+        }
+        auto& SeededStorage = *SeededStorageOpen.Storage;
         SeededStorage.WriteSlot("seeded_load_slot", "SYNTHETIC_CONTAINER:marker:2:0123456789abcdef");
         const bool bStarted = SeededLoadSession.StartFromSave(
             SeededInputs, RepoHandle, Sources, SeededStorage, "seeded_load_slot", Fault);
         SeededLoadSession.Stop();
+        SeededStorageOpen.Storage.reset();
         std::error_code SeededEc;
-        std::filesystem::remove_all(SlotRoot, SeededEc);
+        std::filesystem::remove_all(SeededSlotRoot, SeededEc);
         if (bStarted)
         {
             return "cold_start_load_conformance.seeded_load_was_accepted";
@@ -685,6 +724,85 @@ std::string RunColdStartLoadConformance()
         {
             return "cold_start_load_conformance.seeded_load_wrong_fault_code: " + Fault.Code;
         }
+    }
+
+    // 6. CFC-10: PreflightSaveBytes on active session.
+    //    Preflights valid and corrupted bytes in an active session.
+    //    Proves that preflight is non-mutating and failures do not crash or dirty the session.
+    {
+        FRuntimeSession ActiveSession;
+        FRuntimeFault StartFault;
+        const std::vector<FRuntimeSource> Sources =
+            MakeSharedSources("core:module.test.load_driver", LoadDriverSource);
+        FSessionStartInputs Inputs;
+        Inputs.SessionGeneration = 1;
+        Inputs.SeedHex = "0000000000000001";
+
+        if (!ActiveSession.Start(Inputs, RepoHandle, Sources, StartFault))
+        {
+            return "cold_start_load_conformance.preflight_active_session_start_failed: " + StartFault.Code;
+        }
+
+        // Test valid save bytes
+        FRuntimeFault PreflightFault;
+        const std::string ValidBytes = "SYNTHETIC_CONTAINER:preflight_test:2:0123456789abcdef";
+        if (!ActiveSession.PreflightSaveBytes(ValidBytes, PreflightFault))
+        {
+            ActiveSession.Stop();
+            return "cold_start_load_conformance.preflight_valid_bytes_failed: " + PreflightFault.Code;
+        }
+
+        // Test corrupt save bytes
+        if (ActiveSession.PreflightSaveBytes("corrupted_garbage_bytes", PreflightFault))
+        {
+            ActiveSession.Stop();
+            return "cold_start_load_conformance.preflight_corrupt_bytes_accepted";
+        }
+        if (PreflightFault.Code != "SaveContainerCorrupt")
+        {
+            ActiveSession.Stop();
+            return "cold_start_load_conformance.preflight_corrupt_bytes_wrong_code: " + PreflightFault.Code;
+        }
+
+        // Test unsupported future version (plan_migrations returns MigrationDowngradeUnsupported when saved > current)
+        const std::string FutureVersionBytes = "SYNTHETIC_CONTAINER:future:99:0123456789abcdef";
+        if (ActiveSession.PreflightSaveBytes(FutureVersionBytes, PreflightFault))
+        {
+            ActiveSession.Stop();
+            return "cold_start_load_conformance.preflight_future_version_accepted";
+        }
+        if (PreflightFault.Code != "MigrationDowngradeUnsupported")
+        {
+            ActiveSession.Stop();
+            return "cold_start_load_conformance.preflight_future_version_wrong_code: " + PreflightFault.Code;
+        }
+
+        ActiveSession.Stop();
+    }
+
+    // 7. CFC-10: StartFromSaveBytes starts cleanly from captured memory buffer
+    {
+        FRuntimeSession MemorySession;
+        FRuntimeFault StartFault;
+        const std::vector<FRuntimeSource> Sources =
+            MakeSharedSources("core:module.test.load_driver", LoadDriverSource);
+        FSessionStartInputs Inputs;
+        Inputs.SessionGeneration = 2;
+
+        const std::string CapturedBytes = "SYNTHETIC_CONTAINER:mem_loaded_marker:2:0123456789abcdef";
+        if (!MemorySession.StartFromSaveBytes(Inputs, RepoHandle, Sources, CapturedBytes, StartFault))
+        {
+            MemorySession.Stop();
+            return "cold_start_load_conformance.mem_load_start_failed: " + StartFault.Code;
+        }
+
+        if (MemorySession.GetCanonicalStateHash() != "hash:mem_loaded_marker")
+        {
+            MemorySession.Stop();
+            return "cold_start_load_conformance.mem_load_state_hash_mismatch: " + MemorySession.GetCanonicalStateHash();
+        }
+
+        MemorySession.Stop();
     }
 
     return "";

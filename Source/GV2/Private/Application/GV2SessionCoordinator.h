@@ -60,6 +60,13 @@ public:
 
     TOptional<ESessionOperationOutcome> GetSessionOperationOutcome(uint64 OperationId) const;
 
+    // CFC-09: Save control requests & storage
+    void SetSaveSlotStorage(GV2RuntimeCore::ISaveSlotStorage* InStorage);
+    uint64 RequestSave(const FString& SlotId);
+
+    // CFC-10: Load control requests
+    uint64 RequestLoad(const FString& SlotId, ESaveSlotRevision Revision);
+
     const FGV2SessionTransitionPolicy& GetTransitionPolicy() const { return TransitionPolicy; }
 
     void FailBootstrap(const FString& Code, const FString& Message);
@@ -114,6 +121,10 @@ public:
     // need its demo screen/debug-start module opt in here instead of
     // mutating the shipped lock file.
     static bool bTestForceIncludeSamplePackage;
+
+    // CFC-10: Test-only hook invoked immediately after save bytes are captured into memory,
+    // before preflight and replacement teardown.
+    TFunction<void()> TestOnSaveBytesCaptured;
 #endif
 
 private:
@@ -214,6 +225,15 @@ private:
     void ExecuteShutdown(const FSessionOperationRecord& Op, EGV2SessionState FinalState = EGV2SessionState::Destroyed);
     void ProcessNextTransition();
 
+    struct FPendingSaveRequest
+    {
+        uint64 OperationId = 0;
+        FString SlotId;
+    };
+
+    void DrainPendingSaveRequests();
+    void ExecuteSaveOperation(uint64 OpId, const FString& SlotId);
+
     FGV2SessionStatus Status;
     GV2ContentCore::FRepositoryReadHandle PinnedRepository;
     TUniquePtr<FGV2SessionContentSnapshot> ContentSnapshot;
@@ -222,6 +242,9 @@ private:
     GV2RuntimeCore::FRuntimeSession RuntimeSession;
     FGV2SessionTransitionPolicy TransitionPolicy;
     TOptional<FPendingStartContext> PendingStartContext;
+    TOptional<GV2ContentHostSupport::FResolvedPackageSet> ActivePackageSet;
+    TArray<FPendingSaveRequest> PendingSaveRequests;
+    GV2RuntimeCore::ISaveSlotStorage* SaveSlotStorage = nullptr;
     FInteractionSink InteractionSink;
     FDocumentSink DocumentSink;
     FProjectionTeardownSink ProjectionTeardownSink;

@@ -99,7 +99,7 @@ Local MCP и fresh-process CI используют один report validator. Ac
 
 - [x] M0 — CFC-01…03 и CFC-02A/03A приняты по Done/Evidence. (перепроверено 2026-09-13 на текущей ревизии)
 - [x] M1 — CFC-04…07 и CFC-04A/04B, CFC-05A/07A приняты по Done/Evidence. (2026-09-13)
-- [ ] M2 — CFC-08…10 приняты по Done/Evidence.
+- [x] M2 — CFC-08…10 приняты по Done/Evidence. (2026-09-14)
 - [ ] M3 — CFC-11…13 приняты по Done/Evidence.
 
 | Находка / gap | Закрывающие задачи |

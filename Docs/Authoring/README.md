@@ -2,7 +2,7 @@
 title: Lua Authoring Reference Index
 status: informative
 version: 1.1
-updated: 2026-08-20
+updated: 2026-09-14
 depends_on:
   - ../README.md
   - ../Architecture/AuthoringSurfaceContract.md
@@ -56,6 +56,8 @@ depends_on:
 | `show_modal(key, spec)`, `close_modal(key?)` | управлять modal stack | [Presentation: modal](PresentationAuthoringReference.md#показать-и-закрыть-modal) |
 | `tab(key, title, screen, fields)` | построить вкладку | [Presentation: tabs](PresentationAuthoringReference.md#собрать-tabs) |
 | `tab_container(spec)`, `tabs(spec)` | построить tab-container field | [Presentation: tabs](PresentationAuthoringReference.md#собрать-tabs) |
+| `action("core:command.session.save", { slot_id = "..." })` | привязать кнопку к сохранению слота | [Presentation: save](PresentationAuthoringReference.md#элементы-управления-сохранением-save-controls) |
+| `action("core:command.session.load", { slot_id = "...", revision = "current" })` | привязать кнопку к загрузке слота | [Presentation: load](PresentationAuthoringReference.md#элементы-управления-загрузкой-load-controls) |
 
 ## Граница справочника
 

@@ -24,7 +24,9 @@ class FTestTraceSaveSlotStorage : public GV2RuntimeCore::ISaveSlotStorage
 public:
     std::vector<std::string> TracedHooks;
 
-    virtual GV2RuntimeCore::FSaveSlotReadResult ReadSlot(const std::string& SlotId) const override
+    virtual GV2RuntimeCore::FSaveSlotReadResult ReadSlot(
+        const std::string& SlotId,
+        GV2RuntimeCore::ESaveSlotRevision Revision = GV2RuntimeCore::ESaveSlotRevision::Current) const override
     {
         return {};
     }

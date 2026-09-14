@@ -131,6 +131,16 @@ PRESENTATION_DOCUMENT_FIELDS = {
     "ui_instance_id",
 }
 
+# Host control, bridge and safe-point save entry points:
+HOST_CONTROL_AND_BRIDGE_FIELDS = {
+    "bridge",
+    "save_to_slot",
+    "preflight_save_bytes",
+    "take_pending_requests",
+    "kind",
+    "slot_id",
+}
+
 CLASSIFIED_ALLOWED_LITERALS = (
     FIXED_BOUNDARY_HANDLES
     | GENERIC_METAMETHODS
@@ -140,6 +150,7 @@ CLASSIFIED_ALLOWED_LITERALS = (
     | FIXED_LIFECYCLE_ENTRY_POINTS
     | FIXED_SERVICE_API_METHODS
     | PRESENTATION_DOCUMENT_FIELDS
+    | HOST_CONTROL_AND_BRIDGE_FIELDS
 )
 
 # Known canonical state section and subkey names (schema-shaped traversal is strictly forbidden in C++):

@@ -2,7 +2,7 @@
 title: Canonical State and Save
 status: draft
 version: 2.1
-updated: 2026-09-12
+updated: 2026-09-14
 depends_on:
   - LuaRuntimeContract.md
   - RuntimeFacadeAndRegistries.md
@@ -186,7 +186,7 @@ Host не разбирает bytes, не проверяет их структу�
 
 Обнаружение повреждения, отказ применять несовместимый container и все migrations принадлежат Lua и обязаны быть покрыты conformance-тестами.
 
-**Текущее состояние реализации.** Portable storage уже выполняет opaque write/read и atomic replacement одного current-файла, а cold-start load читает slot через host. Application wiring, `Previous`/generation head и active-session preflight остаются gaps, перечисленными в [Implementation Status](../Status/ImplementationStatus.md); нормативный protocol выше не маскируется более слабой текущей реализацией.
+**Текущее состояние реализации.** Storage primitive (`FFilesystemSaveSlotStorage`) полностью реализует atomic generation publication по [ADR-0045](../ADR/0045-atomic-save-slot-generation-publication.md), чтение `Current`/`Previous`, эксклюзивный process lock (`Busy`), legacy migration и верифицирован fault injection / process crash harness `test_save_slot_crash.py` (CFC-08). Application wiring сейва к UE-хосту реализован в CFC-09: `UGV2RuntimeSubsystem::Initialize` открывает `FFilesystemSaveSlotStorage` в корне сохранений приложения (`FPaths::ProjectSavedDir() / "SaveGames"`), передаёт его в `FGV2SessionCoordinator` и `FRuntimeSession`, а сохранение инициируется через typed host request `RequestSave(SlotId)` или UI-привязанную команду `core:command.session.save` со строгим исполнением на safe point вне окна мутации команд. Active-session preflight с captured-buffer replacement реализован в CFC-10.
 
 ## Safe point
 
@@ -217,7 +217,7 @@ Load всегда создаёт replacement session по [ADR-0044](../ADR/0044
 
 Повторное чтение slot между preflight и B запрещено. Migration/start/presentation failure после `commit-to-replace` не изменяет source slot, уничтожает B и ведёт в native recovery; уже уничтоженная A не восстанавливается.
 
-**Текущее состояние реализации.** Cold-start `FRuntimeSession::StartFromSave` выполняет decode/migrate/restore/validate/assign внутри новой VM и не публикует partial state. Active-session preflight, captured-buffer replacement и UE product load ещё не реализованы; они остаются явными status gaps, а не альтернативной lifecycle semantics.
+**Текущее состояние реализации.** Load-цепочка полностью реализована в portable runtime и игровом UE-хосте (CFC-10). `FRuntimeSession::PreflightSaveBytes` выполняет non-mutating preflight байтов в активной сессии через `game.runtime.preflight_save_bytes` (`core:module.runtime.load.preflight_bytes`). `FRuntimeSession::StartFromSaveBytes` принимает неизменяемый буфер и восстанавливает сессию с продолжением PRNG-потоков. `FGV2SessionCoordinator::RequestLoad` / `UGV2RuntimeSubsystem::RequestLoad` выполняют единый replacement: чтение слота в захваченный буфер `TArray<uint8>`, preflight в активной VM A (при ошибке A сохраняет работоспособность), переход `BeginReplace`, разрушение A (`GLiveVmCount == 0`), создание VM B и инициализацию из захваченного буфера с иммунитетом к перезаписи слота на диске.
 
 ## Missing mods
 

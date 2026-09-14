@@ -2,7 +2,7 @@
 title: Presentation Authoring Reference
 status: informative
 version: 1.0
-updated: 2026-08-20
+updated: 2026-09-14
 depends_on:
   - README.md
   - ../Architecture/AuthoringSurfaceContract.md
@@ -238,6 +238,44 @@ show_screen({
 ```
 
 Tab key — стабильная identity, не localized text. `tabs` обязан быть непустым array. Типичные ошибки: `InvalidTabKey`, `TextDisallowedAsKey`, `InvalidTextSpec`, `InvalidScreenTemplate`, `InvalidFields`, `InvalidTabContainerSpec`.
+
+## Элементы управления сохранением (Save Controls)
+
+Назначение: привязать кнопку сохранения к системной команде управления сессией `core:command.session.save` с аргументом `slot_id`.
+
+```lua
+local save_btn = button(
+    text("ui.button.save"),
+    action("core:command.session.save", { slot_id = "slot_1" }),
+    "save_slot_1"
+)
+```
+
+**Инварианты и семантика:**
+- Команда `core:command.session.save` является системной командой управления сессией, зарегистрированной в модуле `core:module.runtime.session_controls`.
+- Handler команды не производит непосредственную запись на диск или сериализацию: он проверяет аргумент `slot_id` (валидный идентификатор слота: строчные буквы ASCII, цифры, дефис, подчёркивание, от 1 до 64 символов) и ставит отложенный запрос сохранения в очередь исходящего моста хоста (`game.bridge.request_save(slot_id)`).
+- **Safe Point Invariant:** Физическое сохранение (`FRuntimeSession::SaveToSlot`) никогда не происходит синхронно внутри окна мутации команды или диспетчера. Хост извлекает запрос из очереди только по завершении цикла диспетчеризации и исполняет сохранение строго на безопасной точке (safe point: фаза `idle`, очереди команд и событий пусты).
+- **Discard on Refusal:** Если команда отклонена валидатором (например, некорректное имя слота `slot_id`) или завершилась ошибкой, отложенный запрос отбрасывается и запись в хранилище не производится.
+- **Ошибки и исходы:** Недопустимый идентификатор слота отвергается валидатором команды (`Refused`). Исход операции сохранения хоста типизируется (`ESessionOperationOutcome::Completed | Failed | Cancelled`) и передаётся через технический ввод, а не как post-commit факт в EventBus.
+
+## Элементы управления загрузкой (Load Controls)
+
+Назначение: привязать кнопку загрузки к системной команде управления сессией `core:command.session.load` с аргументами `slot_id` и опциональным `revision`.
+
+```lua
+local load_btn = button(
+    text("ui.button.load"),
+    action("core:command.session.load", { slot_id = "slot_1", revision = "current" }),
+    "load_slot_1"
+)
+```
+
+**Инварианты и семантика:**
+- Команда `core:command.session.load` является системной командой управления сессией, зарегистрированной в модуле `core:module.runtime.session_controls`.
+- Handler команды валидирует аргументы `slot_id` (валидный идентификатор слота: строчные буквы ASCII, цифры, дефис, подчёркивание, от 1 до 64 символов) и опциональный `revision` (`"current"` по умолчанию либо `"previous"`). При успешной валидации запрос ставится в очередь исходящего моста хоста (`game.bridge.request_load(slot_id, revision)`).
+- **Post-dispatch buffering:** Запрос загрузки буферизуется до успешного завершения диспетчеризации команды. Если команда отклонена валидатором (например, недопустимый идентификатор слота или неизвестная ревизия) или завершилась с ошибкой, отложенный запрос сбрасывается.
+- **Single Replacement Session Invariant:** Хост читает запрошенный слот в неизменяемый буфер байтов и производит non-mutating preflight в активной VM A. При ошибке preflight сессия A и её UI остаются нетронутыми и работоспособными. При успехе preflight координатор переходит в `BeginReplace`, разрушает сессию A (`GLiveVmCount == 0`), создает новую сессию B и передает ей захваченный буфер байтов. Вторая VM параллельно не создается; повторное чтение слота с диска между preflight и сессией B не производится.
+- **Ошибки и исходы:** Недопустимый идентификатор слота или неверная ревизия отвергаются валидатором команды (`Refused`). Исход операции загрузки типизируется (`ESessionOperationOutcome::Completed | Failed | Cancelled`) и завершает операцию хоста.
 
 ## Desired presentation и обновление экрана
 

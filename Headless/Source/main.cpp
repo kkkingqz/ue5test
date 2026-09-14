@@ -1441,8 +1441,13 @@ int Run(
                 const std::filesystem::path SaveSlotSpecRoot = std::filesystem::temp_directory_path()
                     / ("gv2_headless_save_spec_slots_"
                         + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-                GV2RuntimeCore::FFilesystemSaveSlotStorage SaveSlotSpecStorage(SaveSlotSpecRoot);
-                SpecSession.SetSaveSlotStorage(&SaveSlotSpecStorage);
+                auto SaveSlotSpecOpen = GV2RuntimeCore::FFilesystemSaveSlotStorage::Open(SaveSlotSpecRoot);
+                if (SaveSlotSpecOpen.Result != GV2RuntimeCore::ESaveSlotResult::Ok || !SaveSlotSpecOpen.Storage)
+                {
+                    std::cerr << "failed to open save slot storage for lua specs: " << static_cast<int>(SaveSlotSpecOpen.Result) << '\n';
+                    return 16;
+                }
+                SpecSession.SetSaveSlotStorage(SaveSlotSpecOpen.Storage.get());
 
                 GV2TestSupport::FLuaSpecRunResult SpecResult;
                 const bool bSpecsPassed = GV2TestSupport::RunLuaSpecs(SpecRoot, SpecSession, SpecResult);

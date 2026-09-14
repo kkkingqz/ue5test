@@ -124,4 +124,101 @@ return {
         assert(retry_ok == true,
             "retrying the exact same save_id after a failed attempt must succeed — save_id is never consumed by a failure")
     end,
+
+    -- CFC-09: game.bridge.request_save validates slot_id grammar
+    bridge_request_save_rejects_invalid_slot_id = function()
+        local outbound = require("core:module.boundary.outbound")
+        local ok, err = outbound.request_save("Invalid Slot Name")
+        assert(ok == false, "request_save must reject invalid slot names")
+        assert(err == "InvalidSaveSlotId", "rejection must be InvalidSaveSlotId, got: " .. tostring(err))
+
+        local ok2, err2 = outbound.request_save("")
+        assert(ok2 == false, "request_save must reject empty slot name")
+        assert(err2 == "InvalidSaveSlotId", "rejection must be InvalidSaveSlotId, got: " .. tostring(err2))
+    end,
+
+    -- CFC-09: idle request directly enqueues
+    bridge_request_save_idle_direct_enqueue = function()
+        local outbound = require("core:module.boundary.outbound")
+        outbound.clear_queue()
+        local ok = outbound.request_save("idle_save_slot")
+        assert(ok == true, "request_save in idle must succeed")
+        local pending = outbound.take_pending_requests()
+        assert(pending ~= nil and #pending == 1, "must return one pending request")
+        assert(pending[1].kind == "save", "pending kind must be save")
+        assert(pending[1].slot_id == "idle_save_slot", "slot_id must match")
+        assert(outbound.take_pending_requests() == nil, "subsequent take must return nil")
+    end,
+
+    -- CFC-09: staged during command dispatch, committed on success
+    bridge_request_save_staged_and_committed_on_command_success = function()
+        local outbound = require("core:module.boundary.outbound")
+        local dispatcher_mod = require("core:module.runtime.command_dispatcher")
+        local handler_reg_mod = require("core:module.runtime.handler_registry")
+        outbound.clear_queue()
+
+        local reg = handler_reg_mod.create_registry()
+        reg.register("core:command.test.save_bridge_ok", function(_req)
+            local ok, err = game.bridge.request_save("command_staged_slot")
+            assert(ok == true, "request_save inside command must succeed: " .. tostring(err))
+            assert(outbound.get_staged_length() == 1, "must be staged during command dispatch")
+            assert(outbound.get_queue_length() == 0, "must not be in committed queue yet")
+            return { ok = true }
+        end)
+
+        local dispatcher = dispatcher_mod.new(reg)
+        dispatcher.dispatch({
+            command_id = "core:command.test.save_bridge_ok",
+            args = {},
+        })
+
+        assert(outbound.get_staged_length() == 0, "staged must be cleared after commit")
+        local pending = outbound.take_pending_requests()
+        assert(pending ~= nil and #pending == 1, "pending must contain committed request")
+        assert(pending[1].slot_id == "command_staged_slot", "slot_id must match")
+    end,
+
+    -- CFC-09: staged during command dispatch, discarded on command failure
+    bridge_request_save_discarded_on_command_failure = function()
+        local outbound = require("core:module.boundary.outbound")
+        local dispatcher_mod = require("core:module.runtime.command_dispatcher")
+        local handler_reg_mod = require("core:module.runtime.handler_registry")
+        outbound.clear_queue()
+
+        local reg = handler_reg_mod.create_registry()
+        reg.register("core:command.test.save_bridge_fail", function(_req)
+            game.bridge.request_save("discarded_slot")
+            assert(outbound.get_staged_length() == 1, "must be staged")
+            return {
+                ok = false,
+                error = { code = "core:error.command.validation_refused", params = {} },
+            }
+        end)
+
+        local dispatcher = dispatcher_mod.new(reg)
+        dispatcher.dispatch({
+            command_id = "core:command.test.save_bridge_fail",
+            args = {},
+        })
+
+        assert(outbound.get_staged_length() == 0, "staged queue must be cleared on failure")
+        assert(outbound.take_pending_requests() == nil, "committed queue must be empty on command refusal")
+    end,
+
+    -- CFC-09: core:command.session.save handler invokes bridge.request_save
+    session_controls_save_handler = function()
+        local outbound = require("core:module.boundary.outbound")
+        local dispatcher_mod = require("core:module.runtime.command_dispatcher")
+        outbound.clear_queue()
+
+        local dispatcher = dispatcher_mod.new()
+        dispatcher.dispatch({
+            command_id = "core:command.session.save",
+            args = { slot_id = "session_controls_slot" },
+        })
+
+        local pending = outbound.take_pending_requests()
+        assert(pending ~= nil and #pending == 1, "session.save command must produce committed request")
+        assert(pending[1].slot_id == "session_controls_slot", "slot_id must match")
+    end,
 }

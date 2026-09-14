@@ -159,4 +159,135 @@ return {
         assert(not ok, "dangling reference must fail")
         assert(tostring(err):find("SaveReferenceUnknown") ~= nil, "got: " .. tostring(err))
     end,
+
+    -- CFC-10: preflight_bytes accepts well-formed container
+    preflight_bytes_accepts_valid_container = function()
+        local envelope = save.build_envelope({
+            meta = { version = 1 },
+            prng = { stream_1 = { state = 12345 } },
+        }, 1, "repo_hash")
+        local container = save.serialize_envelope(envelope)
+        local ok, err = load_module.preflight_bytes(container)
+        assert(ok == true, "preflight_bytes must accept valid container, got err=" .. tostring(err))
+    end,
+
+    -- CFC-10: preflight_bytes rejects missing required package
+    preflight_bytes_rejects_missing_package = function()
+        local envelope = save.build_envelope({ meta = {} }, 1, "repo_hash")
+        envelope.packages = { "pkg:missing_package_that_does_not_exist" }
+        local container = save.serialize_envelope(envelope)
+        local ok, err = load_module.preflight_bytes(container)
+        assert(ok == false, "preflight_bytes must reject missing package")
+        assert(tostring(err):find("SaveMissingPackage") ~= nil, "error must indicate SaveMissingPackage, got: " .. tostring(err))
+    end,
+
+    -- CFC-10: preflight_bytes rejects corrupt / invalid bytes
+    preflight_bytes_rejects_corrupted_container = function()
+        local ok1, err1 = load_module.preflight_bytes("not a valid canonical container")
+        assert(ok1 == false, "garbage bytes must be rejected")
+        assert(err1 == "SaveContainerCorrupt", "got err=" .. tostring(err1))
+
+        local ok2, err2 = load_module.preflight_bytes(nil)
+        assert(ok2 == false, "nil must be rejected")
+        assert(err2 == "SaveContainerCorrupt", "got err=" .. tostring(err2))
+    end,
+
+    -- CFC-10: preflight_bytes rejects dangling reference in payload
+    preflight_bytes_rejects_dangling_reference = function()
+        local envelope = save.build_envelope({
+            meta = {},
+            item = { definition_id = "core:item.test.nonexistent_ref" },
+        }, 1, "repo_hash")
+        local container = save.serialize_envelope(envelope)
+        local ok, err = load_module.preflight_bytes(container)
+        assert(ok == false, "preflight_bytes must reject payload with dangling definition reference")
+        assert(tostring(err):find("SaveReferenceUnknown") ~= nil, "got err=" .. tostring(err))
+    end,
+
+    -- CFC-10: preflight_bytes is completely read-only on active session
+    preflight_bytes_does_not_mutate_state_or_registries_or_queues = function()
+        local outbound = require("core:module.boundary.outbound")
+        local initial_state = game and game.state
+        local initial_pending = game and game.runtime and game.runtime.pending_section_migrations
+        local initial_queue_len = outbound.get_queue_length()
+
+        local envelope = save.build_envelope({
+            meta = { player_name = "Original" },
+        }, 1, "repo_hash")
+        envelope.section_versions = { meta = 1 }
+        local container = save.serialize_envelope(envelope)
+
+        local ok, err = load_module.preflight_bytes(container)
+        assert(ok == true, "preflight_bytes must succeed: " .. tostring(err))
+
+        assert(game.state == initial_state, "game.state must not be mutated by preflight_bytes")
+        if game.runtime then
+            assert(game.runtime.pending_section_migrations == initial_pending,
+                "game.runtime.pending_section_migrations must not be assigned by preflight_bytes")
+        end
+        assert(outbound.get_queue_length() == initial_queue_len,
+            "outbound queue length must not change during preflight_bytes")
+    end,
+
+    -- CFC-10: outbound request_load validates slot_id and revision
+    bridge_request_load_validation = function()
+        local outbound = require("core:module.boundary.outbound")
+        local ok1, err1 = outbound.request_load("", "current")
+        assert(ok1 == false and err1 == "InvalidSaveSlotId", "empty slot must be rejected")
+
+        local ok2, err2 = outbound.request_load("bad slot!", "current")
+        assert(ok2 == false and err2 == "InvalidSaveSlotId", "slot with space/symbols must be rejected")
+
+        local ok3, err3 = outbound.request_load("valid_slot", "future_rev")
+        assert(ok3 == false and err3 == "InvalidSaveSlotRevision", "invalid revision must be rejected")
+
+        outbound.clear_queue()
+        local ok4, err4 = outbound.request_load("valid_slot", "previous")
+        assert(ok4 == true, "valid_slot and previous revision must succeed: " .. tostring(err4))
+        local pending = outbound.take_pending_requests()
+        assert(pending ~= nil and #pending == 1, "must enqueue 1 request")
+        assert(pending[1].kind == "load", "kind must be load")
+        assert(pending[1].slot_id == "valid_slot", "slot_id must match")
+        assert(pending[1].revision == "previous", "revision must match")
+    end,
+
+    -- CFC-10: core:command.session.load command handler routes to game.bridge.request_load
+    session_controls_load_handler = function()
+        local outbound = require("core:module.boundary.outbound")
+        local dispatcher_mod = require("core:module.runtime.command_dispatcher")
+        outbound.clear_queue()
+
+        local dispatcher = dispatcher_mod.new()
+        dispatcher.dispatch({
+            command_id = "core:command.session.load",
+            args = { slot_id = "ui_load_slot", revision = "current" },
+        })
+        local res = game and game.runtime and game.runtime.last_command_result
+        assert(res ~= nil and res.ok == true, "command must succeed: " .. tostring(res and res.error and res.error.code))
+
+        local pending = outbound.take_pending_requests()
+        assert(pending ~= nil and #pending == 1, "must enqueue 1 request")
+        assert(pending[1].kind == "load", "kind must be load")
+        assert(pending[1].slot_id == "ui_load_slot", "slot_id must match")
+        assert(pending[1].revision == "current", "revision must match")
+
+        -- Rejection tests
+        dispatcher.dispatch({
+            command_id = "core:command.session.load",
+            args = { slot_id = "", revision = "current" },
+        })
+        local bad_res = game and game.runtime and game.runtime.last_command_result
+        assert(bad_res ~= nil and bad_res.ok == false, "command with empty slot_id must fail")
+        assert(bad_res.error.code == "core:error.load.invalid_slot", "expected invalid_slot error")
+        assert(outbound.take_pending_requests() == nil, "no requests enqueued on failure")
+
+        dispatcher.dispatch({
+            command_id = "core:command.session.load",
+            args = { slot_id = "some_slot", revision = "invalid" },
+        })
+        local bad_rev_res = game and game.runtime and game.runtime.last_command_result
+        assert(bad_rev_res ~= nil and bad_rev_res.ok == false, "command with invalid revision must fail")
+        assert(bad_rev_res.error.code == "core:error.load.invalid_revision", "expected invalid_revision error")
+        assert(outbound.take_pending_requests() == nil, "no requests enqueued on failure")
+    end,
 }

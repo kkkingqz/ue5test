@@ -4,7 +4,8 @@
 #include "GV2PresentationApply/GV2PresentationInteractionSink.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "Subsystems/GameInstanceSubsystem.h"
-#include "Templates/PimplPtr.h"
+#include "GV2RuntimeCore/GV2HostServices.h"
+#include <memory>
 #include "GV2RuntimeSubsystem.generated.h"
 
 namespace GV2PackageClosure { struct FEntry; }
@@ -62,6 +63,12 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
     int64 RequestSession(const FSessionStartDescriptor& Descriptor);
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    int64 RequestSave(const FString& SlotId);
+
+    UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
+    int64 RequestLoad(const FString& SlotId, EGV2SaveSlotRevision Revision = EGV2SaveSlotRevision::Current);
 
     UFUNCTION(BlueprintCallable, Category = "GV2|Runtime")
     ESessionCancellationResult CancelSessionRequest(int64 OperationId);
@@ -130,6 +137,7 @@ public:
     // recovered one publishes a catalog that resolves real content") instead of asserting it
     // through a global that production no longer has.
     const FGV2SessionContentSnapshot* GetContentSnapshotForAutomationTest() const;
+    FGV2SessionCoordinator* GetCoordinatorForAutomationTest() const { return Coordinator.Get(); }
 
     static bool bTestForceDocumentSinkFailure;
 #endif
@@ -137,6 +145,7 @@ public:
 private:
     TPimplPtr<FGV2SessionCoordinator> Coordinator;
     TPimplPtr<FGV2RepositoryPublisher> RepositoryPublisher;
+    std::unique_ptr<GV2RuntimeCore::FFilesystemSaveSlotStorage> SaveSlotStorage;
 
     UPROPERTY(Transient)
     TObjectPtr<UUserWidget> ActiveScreen;

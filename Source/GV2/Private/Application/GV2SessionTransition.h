@@ -118,6 +118,8 @@ public:
 
     void RecordOutcome(uint64 OperationId, ESessionOperationOutcome Outcome);
 
+    uint64 AllocateOperationId();
+
     void Reset();
 
 private:

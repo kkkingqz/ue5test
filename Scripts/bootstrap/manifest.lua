@@ -175,6 +175,9 @@ return {
             dependencies = {
                 "core:module.presentation.screen_requests",
                 "core:module.runtime.state_hasher",
+                "core:module.runtime.save",
+                "core:module.runtime.load",
+                "core:module.runtime.command_dispatcher",
             },
             replaceable = false,
         },
@@ -353,6 +356,14 @@ return {
             replaceable = false,
         },
         {
+            module_id = "core:module.runtime.session_controls",
+            source = "runtime/session_controls.lua",
+            dependencies = {
+                "core:module.runtime.stable_id",
+            },
+            replaceable = false,
+        },
+        {
             module_id = "core:module.bootstrap.main",
             source = "bootstrap/main.lua",
             dependencies = {
@@ -390,6 +401,7 @@ return {
                 "core:module.bootstrap.registry_lifecycle",
                 "core:module.runtime.random",
                 "core:module.runtime.test_isolation",
+                "core:module.runtime.session_controls",
             },
             replaceable = false,
         },

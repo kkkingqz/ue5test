@@ -299,6 +299,10 @@ struct FRuntimeSession::FImpl
         lua_setmetatable(State, -2);
         lua_setfield(State, -2, "save_slots");
 
+        // game.bridge (CFC-09)
+        lua_createtable(State, 0, 4);
+        lua_setfield(State, -2, "bridge");
+
         lua_setglobal(State, "game");
 
         lua_createtable(State, 0, 16);
@@ -2917,6 +2921,239 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
+    bool CallSaveToSlot(const std::string& SlotId, FRuntimeFault& OutFault)
+    {
+        if (!BeginEntry("SaveToSlot", OutFault))
+        {
+            return false;
+        }
+
+        if (!IsValidSaveSlotId(SlotId))
+        {
+            OutFault = {"InvalidSaveSlotId", "Slot ID '" + SlotId + "' does not match required slot naming grammar."};
+            return false;
+        }
+
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getglobal(State, "game");
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaEntryPointMissing", "game facade table is missing."};
+            return false;
+        }
+        lua_getfield(State, -1, "runtime");
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaEntryPointMissing", "game.runtime table is missing."};
+            return false;
+        }
+        lua_getfield(State, -1, "save_to_slot");
+        if (!lua_isfunction(State, -1))
+        {
+            OutFault = {"LuaEntryPointMissing", "Fixed entry point is missing: game.runtime.save_to_slot"};
+            return false;
+        }
+
+        lua_pushlstring(State, SlotId.data(), SlotId.size());
+        if (lua_pcall(State, 1, 2, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "LuaSaveError", "Lua failed during save_to_slot.", OutFault);
+            return false;
+        }
+
+        const bool bOk = lua_toboolean(State, -2) != 0;
+        if (!bOk)
+        {
+            std::string ErrCode = "SaveFailed";
+            std::string ErrMsg = "Save operation was rejected.";
+            if (lua_isstring(State, -1))
+            {
+                std::size_t Len = 0;
+                const char* Str = lua_tolstring(State, -1, &Len);
+                ErrMsg = std::string(Str, Len);
+                if (ErrMsg == "SaveNotAtSafePoint")
+                {
+                    ErrCode = "SaveNotAtSafePoint";
+                }
+                else if (ErrMsg == "SaveSlotStorageUnavailable")
+                {
+                    ErrCode = "SaveSlotStorageUnavailable";
+                }
+                else if (ErrMsg.rfind("SaveWriteFailed:", 0) == 0)
+                {
+                    ErrCode = "SaveWriteFailed";
+                }
+            }
+            OutFault = {std::move(ErrCode), std::move(ErrMsg)};
+            return false;
+        }
+
+        return true;
+    }
+
+    bool CallPreflightSaveBytes(
+        const std::string& Bytes,
+        FRuntimeFault& OutFault)
+    {
+        OutFault = {};
+        if (!BeginEntry("preflight_save_bytes", OutFault))
+        {
+            return false;
+        }
+
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getglobal(State, "game");
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaEntryPointMissing", "game facade table is missing."};
+            return false;
+        }
+        lua_getfield(State, -1, "runtime");
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaEntryPointMissing", "game.runtime table is missing."};
+            return false;
+        }
+        lua_getfield(State, -1, "preflight_save_bytes");
+        if (!lua_isfunction(State, -1))
+        {
+            OutFault = {"LuaEntryPointMissing", "Fixed entry point is missing: game.runtime.preflight_save_bytes"};
+            return false;
+        }
+
+        lua_pushlstring(State, Bytes.data(), Bytes.size());
+        if (lua_pcall(State, 1, 2, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "LuaPreflightError", "Lua failed during preflight_save_bytes.", OutFault);
+            return false;
+        }
+
+        const bool bOk = lua_toboolean(State, -2) != 0;
+        if (!bOk)
+        {
+            std::string ErrCode = "SavePreflightFailed";
+            std::string ErrMsg = "Save preflight was rejected.";
+            if (lua_isstring(State, -1))
+            {
+                std::size_t Len = 0;
+                const char* Str = lua_tolstring(State, -1, &Len);
+                ErrMsg = std::string(Str, Len);
+                const auto ColonPos = ErrMsg.find(':');
+                if (ColonPos != std::string::npos)
+                {
+                    ErrCode = ErrMsg.substr(0, ColonPos);
+                }
+                else
+                {
+                    ErrCode = ErrMsg;
+                }
+            }
+            OutFault = {std::move(ErrCode), std::move(ErrMsg)};
+            return false;
+        }
+
+        return true;
+    }
+
+    bool CallTakePendingControlRequests(
+        std::vector<FHostControlRequest>& OutRequests,
+        FRuntimeFault& OutFault)
+    {
+        OutRequests.clear();
+        if (!BeginEntry("take_pending_requests", OutFault))
+        {
+            return false;
+        }
+
+        FStackRestore Stack{State, lua_gettop(State)};
+        FExecutionGuard Execution(bExecuting);
+        lua_pushcfunction(State, Traceback);
+        const int ErrorHandler = lua_gettop(State);
+
+        lua_getglobal(State, "game");
+        if (!lua_istable(State, -1))
+        {
+            return true;
+        }
+        lua_getfield(State, -1, "bridge");
+        if (!lua_istable(State, -1))
+        {
+            return true;
+        }
+        lua_getfield(State, -1, "take_pending_requests");
+        if (!lua_isfunction(State, -1))
+        {
+            return true;
+        }
+
+        if (lua_pcall(State, 0, 1, ErrorHandler) != LUA_OK)
+        {
+            ReadLuaError(State, "LuaControlRequestTakeError", "Lua failed to return pending control requests.", OutFault);
+            return false;
+        }
+
+        if (lua_isnil(State, -1))
+        {
+            return true;
+        }
+
+        if (!lua_istable(State, -1))
+        {
+            OutFault = {"LuaControlRequestsInvalid", "Pending control requests must be an array table."};
+            return false;
+        }
+
+        const int TableIndex = lua_absindex(State, -1);
+        const int Count = static_cast<int>(lua_rawlen(State, TableIndex));
+        OutRequests.reserve(Count);
+
+        for (int i = 1; i <= Count; ++i)
+        {
+            lua_rawgeti(State, TableIndex, i);
+            if (!lua_istable(State, -1))
+            {
+                lua_pop(State, 1);
+                OutFault = {"LuaControlRequestsInvalid", "Control request element must be a table."};
+                return false;
+            }
+
+            FHostControlRequest Req;
+            lua_getfield(State, -1, "kind");
+            if (lua_isstring(State, -1))
+            {
+                Req.Kind = lua_tostring(State, -1);
+            }
+            lua_pop(State, 1);
+
+            lua_getfield(State, -1, "slot_id");
+            if (lua_isstring(State, -1))
+            {
+                Req.SlotId = lua_tostring(State, -1);
+            }
+            lua_pop(State, 1);
+
+            lua_getfield(State, -1, "revision");
+            if (lua_isstring(State, -1))
+            {
+                Req.Revision = lua_tostring(State, -1);
+            }
+            lua_pop(State, 1);
+
+            OutRequests.push_back(std::move(Req));
+            lua_pop(State, 1);
+        }
+
+        return true;
+    }
+
     std::string CallGetCanonicalStateHash(FRuntimeFault* OutFault) const
     {
         if (!State)
@@ -3126,6 +3363,18 @@ bool FRuntimeSession::Start(
     return Start(Inputs, PinnedRepository, Sources, OutFault);
 }
 
+bool FRuntimeSession::StartFromSaveBytes(
+    const FSessionStartInputs& StartInputs,
+    const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+    const std::vector<FRuntimeSource>& Sources,
+    const std::string& SaveBytes,
+    FRuntimeFault& OutFault,
+    const FPhaseCompletionCallback& PhaseCallback)
+{
+    OutFault = {};
+    return StartSessionPhases(StartInputs, PinnedRepository, Sources, &SaveBytes, PhaseCallback, OutFault);
+}
+
 bool FRuntimeSession::StartFromSave(
     const FSessionStartInputs& StartInputs,
     const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
@@ -3147,7 +3396,7 @@ bool FRuntimeSession::StartFromSave(
         return false;
     }
 
-    return StartSessionPhases(StartInputs, PinnedRepository, Sources, &ReadResult.Bytes, {}, OutFault);
+    return StartFromSaveBytes(StartInputs, PinnedRepository, Sources, ReadResult.Bytes, OutFault, {});
 }
 
 bool FRuntimeSession::StartFromSave(
@@ -3367,6 +3616,38 @@ bool FRuntimeSession::TakePendingDocument(
 {
     OutDocument.reset();
     return Impl->CallTakePendingDocument(OutDocument, OutFault);
+}
+
+bool FRuntimeSession::SaveToSlot(const std::string& SlotId, FRuntimeFault& OutFault)
+{
+    if (!Impl)
+    {
+        OutFault = {"LuaVmNotStarted", "SaveToSlot requires a valid runtime session."};
+        return false;
+    }
+    return Impl->CallSaveToSlot(SlotId, OutFault);
+}
+
+bool FRuntimeSession::PreflightSaveBytes(const std::string& Bytes, FRuntimeFault& OutFault)
+{
+    if (!Impl)
+    {
+        OutFault = {"LuaVmNotStarted", "PreflightSaveBytes requires a valid runtime session."};
+        return false;
+    }
+    return Impl->CallPreflightSaveBytes(Bytes, OutFault);
+}
+
+bool FRuntimeSession::TakePendingControlRequests(
+    std::vector<FHostControlRequest>& OutRequests,
+    FRuntimeFault& OutFault)
+{
+    if (!Impl)
+    {
+        OutFault = {"LuaVmNotStarted", "TakePendingControlRequests requires a valid runtime session."};
+        return false;
+    }
+    return Impl->CallTakePendingControlRequests(OutRequests, OutFault);
 }
 
 bool FRuntimeSession::IsStarted() const

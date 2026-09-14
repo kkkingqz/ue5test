@@ -71,6 +71,14 @@ enum class ESessionCancellationResult : uint8
 };
 using EGV2SessionCancellationResult = ESessionCancellationResult;
 
+UENUM(BlueprintType)
+enum class EGV2SaveSlotRevision : uint8
+{
+    Current,
+    Previous
+};
+using ESaveSlotRevision = EGV2SaveSlotRevision;
+
 USTRUCT(BlueprintType)
 struct GV2_API FSessionStartDescriptor
 {
@@ -171,6 +179,15 @@ struct GV2_API FSessionStartDescriptor
                 }
                 return false;
             }
+            if (!SeedHex.IsEmpty())
+            {
+                if (OutError != nullptr)
+                {
+                    *OutError = TEXT("SeedHex must be empty for LoadSave mode (restored from save).");
+                }
+                return false;
+            }
+            return true;
         }
         if (!IsValidSeedHex(SeedHex))
         {

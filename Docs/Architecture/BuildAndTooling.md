@@ -65,7 +65,7 @@ Vendored Lua (`Source/GV2RuntimeCore/Private/ThirdParty/Lua54`) собирает
 
 По [ADR-0045](../ADR/0045-atomic-save-slot-generation-publication.md) bytes живут в immutable generation files, а versioned storage-owned head атомарно публикует пару `(Current, Previous)`. Temp/generation имена уникальны. Ошибка до rename head сохраняет прежнюю пару, cleanup после commit не меняет success. Legacy single-current slot мигрирует при первом overwrite. Это Linux process-crash baseline; power-loss durability не заявляется.
 
-Обязательный conformance-набор `GV2RuntimeCore::Testing::RunSaveSlotStorageConformance()` исполняется обоими hosts и покрывает opaque bytes с NUL, `Current`/`Previous`, malformed head, legacy migration, path refusal, process lock и per-stage injected failures. Отдельный portable process harness убивает writer после каждого фактически зарегистрированного filesystem stage и сверяет пару revisions с независимым oracle. До CFC-08 текущий набор покрывает только single-current storage; разница зафиксирована `STATUS-019`. Test helper не реализует альтернативный storage protocol.
+Обязательный conformance-набор `GV2RuntimeCore::Testing::RunSaveSlotStorageConformance()` исполняется обоими hosts и покрывает opaque bytes с NUL, `Current`/`Previous`, malformed head, legacy migration, path refusal, process lock и per-stage injected failures. Отдельный portable process crash harness (`Tools/Testing/test_save_slot_crash.py`, `gv2_save_slot_crash_helper`) завершает writer после каждого фактически зарегистрированного filesystem stage и сверяет пару revisions с независимым oracle (CFC-08). Test helper не реализует альтернативный storage protocol.
 
 ## Executable hosts
 

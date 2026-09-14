@@ -18,6 +18,7 @@
 #include "UI/GV2ScreenWidgetBase.h"
 #include "UI/GV2UiTheme.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
+#include "GV2RuntimeCore/GV2HostServices.h"
 #include "UnrealClient.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGV2Runtime, Log, All);
@@ -139,6 +140,20 @@ void UGV2RuntimeSubsystem::Initialize(FSubsystemCollectionBase& Collection)
         &ThisClass::HandleViewportResized);
 
     Coordinator = MakePimpl<FGV2SessionCoordinator>();
+
+    const FString SaveRoot = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    auto OpenResult = GV2RuntimeCore::FFilesystemSaveSlotStorage::Open(
+        std::filesystem::path(TCHAR_TO_UTF8(*SaveRoot)));
+    if (OpenResult.Result == GV2RuntimeCore::ESaveSlotResult::Ok)
+    {
+        SaveSlotStorage = std::move(OpenResult.Storage);
+        Coordinator->SetSaveSlotStorage(SaveSlotStorage.get());
+    }
+    else
+    {
+        UE_LOG(LogGV2Runtime, Warning, TEXT("Failed to open save slot storage at: %s"), *SaveRoot);
+    }
+
     Coordinator->SetInteractionSink([this](const FGV2UiIngressItem& Item)
     {
         UE_LOG(
@@ -191,6 +206,7 @@ void UGV2RuntimeSubsystem::Deinitialize()
         Coordinator->ClearProjectionPublishSink();
         Coordinator.Reset();
     }
+    SaveSlotStorage.reset();
     RepositoryPublisher.Reset();
     ResolvedPackageSet.Reset();
     bRepositoryReady = false;
@@ -279,6 +295,47 @@ int64 UGV2RuntimeSubsystem::RequestSession(const FSessionStartDescriptor& Descri
     }
 
     return static_cast<int64>(OpId);
+}
+
+int64 UGV2RuntimeSubsystem::RequestSave(const FString& SlotId)
+{
+    check(IsInGameThread());
+    if (!Coordinator)
+    {
+        return 0;
+    }
+    return static_cast<int64>(Coordinator->RequestSave(SlotId));
+}
+
+int64 UGV2RuntimeSubsystem::RequestLoad(const FString& SlotId, const EGV2SaveSlotRevision Revision)
+{
+    check(IsInGameThread());
+    if (!Coordinator)
+    {
+        return 0;
+    }
+
+    if (Coordinator->IsLuaVmStarted() && Coordinator->GetStatus().bIsReady)
+    {
+        return static_cast<int64>(Coordinator->RequestLoad(SlotId, Revision));
+    }
+
+    if (!bRepositoryReady || !RepositoryPublisher->HasCurrent() || !ResolvedPackageSet.IsSet())
+    {
+        UE_LOG(LogGV2Runtime, Error, TEXT("RequestLoad rejected: GameDataRepository is not ready."));
+        Coordinator->FailBootstrap(TEXT("RepositoryNotReady"), TEXT("No published GameDataRepository to pin."));
+        return 0;
+    }
+
+    FSessionStartDescriptor Descriptor;
+    Descriptor.Mode = ESessionStartMode::LoadSave;
+    Descriptor.SaveSlotId = SlotId;
+    Descriptor.SaveSlotRevision = Revision == ESaveSlotRevision::Previous ? TEXT("Previous") : TEXT("Current");
+    Descriptor.RepositoryVersion = FString::Printf(TEXT("%lld"), RepositoryPublisher->GetVersion());
+    Descriptor.RepositoryContentHash = UTF8_TO_TCHAR(RepositoryPublisher->GetCurrent().GetContentHash().c_str());
+    Descriptor.Reason = TEXT("RequestLoad");
+
+    return RequestSession(Descriptor);
 }
 
 ESessionCancellationResult UGV2RuntimeSubsystem::CancelSessionRequest(const int64 OperationId)

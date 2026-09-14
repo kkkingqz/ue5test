@@ -217,4 +217,50 @@ function M.decode_and_prepare(container_bytes)
     return decoded, nil
 end
 
+-- CFC-10: Read-only active VM preflight for replacement sessions.
+-- Checks envelope validity, deserializes payload into temporary table,
+-- validates required package closure, verifies referential integrity
+-- without mutating game.state, and checks that section migration plan is
+-- valid without mutating game.runtime.pending_section_migrations.
+-- Returns true, nil on success, or false, typed_error_code on failure.
+function M.preflight_bytes(container_bytes)
+    local envelope, preflight_err = M.preflight(container_bytes)
+    if not envelope then
+        return false, preflight_err
+    end
+
+    local ok, decoded = pcall(canonical_codec.deserialize, envelope.payload)
+    if not ok or type(decoded) ~= "table" then
+        return false, "SaveContainerCorrupt"
+    end
+
+    if envelope.packages and type(envelope.packages) == "table" and game and game.runtime and game.runtime.packages then
+        local loaded_pkgs = {}
+        for _, pkg in ipairs(game.runtime.packages) do
+            local pid = type(pkg) == "table" and pkg.package_id or pkg
+            if pid then
+                loaded_pkgs[pid] = true
+            end
+        end
+        for _, pkg in ipairs(envelope.packages) do
+            local pid = type(pkg) == "table" and pkg.package_id or pkg
+            if pid and not loaded_pkgs[pid] then
+                return false, "SaveMissingPackage: " .. tostring(pid)
+            end
+        end
+    end
+
+    local rewrite_ok, rewrite_err = rewrite_references(decoded, "state", nil)
+    if not rewrite_ok then
+        return false, rewrite_err
+    end
+
+    local pending, plan_err = migrate.plan_migrations(envelope.section_versions)
+    if not pending then
+        return false, plan_err
+    end
+
+    return true, nil
+end
+
 return M

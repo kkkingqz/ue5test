@@ -11,6 +11,12 @@ local M = {
     id = "core:module.runtime.command_dispatcher",
 }
 
+local outbound_handler = nil
+
+function M.set_outbound(handler)
+    outbound_handler = handler
+end
+
 local MAX_COMMAND_QUEUE_SIZE = 100
 local deferred_command_queue = {}
 local active_dispatcher = nil
@@ -173,6 +179,9 @@ function M.new(handlers_registry)
             end
 
             event_bus.begin_command_context(request)
+            if outbound_handler then
+                outbound_handler.begin_command_context()
+            end
 
             mutation_window.execute_in_window(function()
                 command_result = handler_fn(request)
@@ -191,17 +200,26 @@ function M.new(handlers_registry)
 
             if is_success then
                 event_bus.commit_command_context()
+                if outbound_handler then
+                    outbound_handler.commit_command_context()
+                end
                 if game and game.presentation and game.presentation.resolve then
                     game.presentation.resolve()
                 end
             else
                 event_bus.rollback_command_context()
+                if outbound_handler then
+                    outbound_handler.rollback_command_context()
+                end
             end
         end)
         is_dispatching = false
 
         if not ok then
             event_bus.discard_command_context()
+            if outbound_handler then
+                outbound_handler.discard_command_context()
+            end
             if game and game.runtime and game.runtime.phase == "executing_command" then
                 game.runtime.phase = "idle"
             end

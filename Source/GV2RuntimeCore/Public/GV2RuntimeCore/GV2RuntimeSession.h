@@ -130,6 +130,13 @@ struct FCommandRequest
     std::int64_t Sequence = 0;
 };
 
+struct FHostControlRequest
+{
+    std::string Kind;
+    std::string SlotId;
+    std::string Revision;
+};
+
 struct FSemanticInput
 {
     std::int32_t SessionGeneration = 0;
@@ -300,6 +307,17 @@ public:
         const std::string& SaveSlotId,
         FRuntimeFault& OutFault);
 
+    // CFC-10: starts the session from pre-captured save bytes instead of reading
+    // from disk storage. Used by unified session replacement where the slot was
+    // already read once and preflighted in the prior active VM.
+    bool StartFromSaveBytes(
+        const FSessionStartInputs& StartInputs,
+        const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
+        const std::vector<FRuntimeSource>& Sources,
+        const std::string& SaveBytes,
+        FRuntimeFault& OutFault,
+        const FPhaseCompletionCallback& PhaseCallback = {});
+
     bool StartSessionPhases(
         const FSessionStartInputs& StartInputs,
         const GV2ContentCore::FRepositoryReadHandle& PinnedRepository,
@@ -371,6 +389,11 @@ public:
         FRuntimeFault& OutFault);
     bool TakePendingDocument(
         std::optional<FUiDocument>& OutDocument,
+        FRuntimeFault& OutFault);
+    bool SaveToSlot(const std::string& SlotId, FRuntimeFault& OutFault);
+    bool PreflightSaveBytes(const std::string& Bytes, FRuntimeFault& OutFault);
+    bool TakePendingControlRequests(
+        std::vector<FHostControlRequest>& OutRequests,
         FRuntimeFault& OutFault);
 
     bool IsStarted() const;
