@@ -29,6 +29,7 @@ depends_on:
 
 ## Активные планы
 
+- [Test Suite Restructuring](TestSuiteRestructuring/README.md) — граница между contract-тестом движка и smoke-тестом контента: декомпозиция монолитного suite, отвязка от конкретных локаций и порог на размер теста.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 
