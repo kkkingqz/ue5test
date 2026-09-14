@@ -15,7 +15,7 @@
 // DCA-15 (ADR-0035, LayoutInvariant M4): a two-half gate over the claim
 // "a value that defines layout is derived from the actually allotted space,
 // or is an explicit, reasoned exception" -- the class of problem the
-// WrapSize=1200 finding (Docs/Status/GV2_CommandPanelWrapSizeFixedNonScaling_2026-09-03.md)
+// WrapSize=1200 finding (Docs/Status/Archive/CommandPanelWrapSize2026-09-03.md)
 // turned out to belong to, not a one-off. Neither half is a file list: both
 // are computed by scanning/walking, so a future violation of either shape is
 // caught without a test edit, the same guarantee DCA-08's Cast-gate and the

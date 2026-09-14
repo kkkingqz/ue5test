@@ -10,7 +10,7 @@ GV2/GV2ContentCore/GV2ContentHostSupport/GV2RuntimeCore/DeveloperSettings/AssetR
 ImageCore or any filesystem/content-authoring module cannot link code from it, whatever a
 future authority type is named. Source-scanning stays a second, weaker rubric (ADR-0043's
 own words -- the exact anti-pattern PAH-08's hand-listed authority accessors already
-proved insufficient once, see AuditFindings.md). This gate reads the declaration
+proved insufficient once, see Docs/Status/Archive/CppFoundationReadinessAudit2026-09-14.md). This gate reads the declaration
 directly, not a hand-maintained expectation of what it "should" contain beyond the
 allowlist itself.
 """

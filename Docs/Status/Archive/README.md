@@ -1,8 +1,8 @@
 ---
 title: Archived Audit Rounds
 status: archived
-version: 1.8
-updated: 2026-09-11
+version: 1.9
+updated: 2026-09-14
 depends_on:
   - ../ImplementationStatus.md
 ---
@@ -23,3 +23,14 @@ depends_on:
 | [GenericUiTransactionFollowUpAudit](GenericUiTransactionFollowUpAudit.md) | 2026-09-03 | Независимая проверка плана GenericUiTransactionFollowUp (GBF-01…08), заявленного выполненным | 3 находки устранены: незакрытый путь отката вложенного экрана вместе с латентным применением непринятой ревизии, закрытие по 16 тестам из 108 и расхождение отметок внутри документа плана |
 | [PresentationArchitectureReview2026-09-06](PresentationArchitectureReview2026-09-06.md) | 2026-09-07 | Внешнее ревью архитектуры презентации на `698c933`, закрыто планом PresentationAuthorityHardening (PAH-01…09) | 5 находок устранены; сверх ревью найдены пятый потребитель контентного факта и утечка авторитета на фазе применения (`STATUS-012`) |
 | [PresentationAuthorityStructuralClosureAudit](PresentationAuthorityStructuralClosureAudit.md) | 2026-09-11 | Повторное ревью presentation authority и независимая сверка structural closure, включая PIE viewport lifecycle/geometry | 9 находок устранены; новых подтверждённых contract gaps не осталось |
+| [CppFullCodeReview2026-09-12](CppFullCodeReview2026-09-12.md) | 2026-09-14 | Внешнее полное code review всех восьми C++ модулей на `78e96f1`: 85 621 строка, 348 файлов, пять параллельных ревьюеров | 15 находок: 10 устранено задачами плана C++ Foundation Closure, 5 отклонены с условием повторного открытия; два собственных утверждения ревью сверкой не подтвердились |
+| [CppFoundationReadinessAudit2026-09-14](CppFoundationReadinessAudit2026-09-14.md) | 2026-09-14 | Готовность C++-основы к gameplay на Lua: сплошная проверка на `67058de`, сверка внешнего snapshot review на `035ac04`, разбор полного code review на `78e96f1` и находки финальной приёмки | 29 findings: 24 устранено, 5 отклонено с условием повторного открытия, одно расхождение выжило как `STATUS-027`; foundation принята в границах Linux Editor/Development |
+
+## Отдельные разборы
+
+Раунду соответствует summary, одиночному разбору — сам разбор. Документы ниже описывают по одной закрытой находке, уже содержат полный анализ и исход, поэтому перенесены целиком: пересказ такого документа короче исходника не делает, а теряет именно то, ради чего он писался.
+
+| Разбор | Закрыт | Содержание |
+|---|---|---|
+| [CommandPanelWrapSize2026-09-03](CommandPanelWrapSize2026-09-03.md) | 2026-09-04 | `WrapSize=1200` в `WBP_CommandPanel` не масштабировался под viewport вопреки ADR-0035; разобрано происхождение значения и три независимых пробела, из-за которых ни один гейт этого не поймал. Закрыт задачами DCA-13…16, `STATUS-009` удалён |
+| [Dca11TestOnlySourceAddition2026-09-04](Dca11TestOnlySourceAddition2026-09-04.md) | 2026-09-04 | Почему единственная правка `DCA-11` под `Source/` — новый тестовый файл — не нарушает инвариант «три композита без единой строки C++» и почему без неё нельзя было обойтись. Сознательно допущенное исключение без условия повторного открытия |

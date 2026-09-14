@@ -12,7 +12,7 @@ depends_on:
 
 # Portable correctness и Lua ownership
 
-> **Материализует:** подтверждённые REVIEW-04…07 из внешнего C++ review в рамках [C++ Foundation Closure](README.md). Сверка и границы выводов находятся в [текущем аудите](../../Status/AuditFindings.md); отдельного проекта исправлений нет.
+> **Материализует:** подтверждённые REVIEW-04…07 из внешнего C++ review в рамках [C++ Foundation Closure](README.md). Сверка и границы выводов находятся в [текущем аудите](../../Status/Archive/CppFoundationReadinessAudit2026-09-14.md); отдельного проекта исправлений нет.
 
 ## CFC-03A — Замкнуть канонические numbers и validation hash-полей
 

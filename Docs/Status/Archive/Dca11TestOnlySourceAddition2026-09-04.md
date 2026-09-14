@@ -1,11 +1,11 @@
 ---
 title: DCA-11 — единственная правка под Source/ это тест, не производственный код
-status: informative
-version: 1.0
-updated: 2026-09-04
+status: archived
+version: 1.1
+updated: 2026-09-14
 depends_on:
-  - ImplementationStatus.md
-  - ../Plans/Archive/DeclaredCompositeAdoption.md
+  - ../ImplementationStatus.md
+  - ../../Plans/Archive/DeclaredCompositeAdoption.md
 ---
 
 # DCA-11: `Source/GV2/Private/Tests/GV2Dca11InventoryTabsTests.cpp` — разбор правки под `Source/`
@@ -31,6 +31,6 @@ depends_on:
 
 ## Статус
 
-Закрыто, условия для повторного открытия нет: это не дефект и не незавершённая работа, а сознательно допущенное, ограниченное по объёму исключение (один тестовый файл, ноль production-строк), заранее разрешённое собственной Evidence-строкой задачи `DCA-11` в [Authoring.md](../Plans/Archive/DeclaredCompositeAdoption.md). Не зарегистрировано как `STATUS-NNN` в [ImplementationStatus.md](ImplementationStatus.md), поскольку эта таблица — открытые несоответствия контракту, ожидающие исправления, а здесь закрывать нечего.
+Закрыто, условия для повторного открытия нет: это не дефект и не незавершённая работа, а сознательно допущенное, ограниченное по объёму исключение (один тестовый файл, ноль production-строк), заранее разрешённое собственной Evidence-строкой задачи `DCA-11` в [Authoring.md](../../Plans/Archive/DeclaredCompositeAdoption.md). Не зарегистрировано как `STATUS-NNN` в [ImplementationStatus.md](../ImplementationStatus.md), поскольку эта таблица — открытые несоответствия контракту, ожидающие исправления, а здесь закрывать нечего.
 
 Если в будущем понадобится **обобщённый** (не привязанный к конкретной фикстуре) тест «прогони реальный многоуровневый Screen Template и проверь rollback на любом уровне», это самостоятельная задача инструментария — не блокирует и не блокируется `DeclaredCompositeAdoption`.

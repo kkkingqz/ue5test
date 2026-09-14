@@ -1,8 +1,8 @@
 ---
 title: DeclaredCompositeAdoption Archive Summary
 status: archived
-version: 1.0
-updated: 2026-09-06
+version: 1.1
+updated: 2026-09-14
 ---
 
 # DeclaredCompositeAdoption: итог выполнения
@@ -117,8 +117,8 @@ updated: 2026-09-06
 - [Screen Templates](../../UI/ScreenTemplates.md)
 - [DataDrivenUiComposition](DataDrivenUiComposition.md)
 - [GenericBoundaryHardening](GenericBoundaryHardening.md)
-- [CommandPanel WrapSize: разбор](../../Status/GV2_CommandPanelWrapSizeFixedNonScaling_2026-09-03.md)
-- [DCA-11: добавление файла только под тесты](../../Status/GV2_DCA11TestOnlySourceAddition_2026-09-04.md)
+- [CommandPanel WrapSize: разбор](../../Status/Archive/CommandPanelWrapSize2026-09-03.md)
+- [DCA-11: добавление файла только под тесты](../../Status/Archive/Dca11TestOnlySourceAddition2026-09-04.md)
 
 ## Source record
 

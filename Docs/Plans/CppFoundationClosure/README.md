@@ -18,7 +18,7 @@ decisions:
 
 # C++ Foundation Closure: план реализации
 
-> **Материализует:** принятые границы ownership, session publication и opaque save в работающей UE composition и проверяемой процедуре приёмки. Основание — [текущий аудит](../../Status/AuditFindings.md) и accepted ADR выше.
+> **Материализует:** принятые границы ownership, session publication и opaque save в работающей UE composition и проверяемой процедуре приёмки. Основание — [аудит готовности C++](../../Status/Archive/CppFoundationReadinessAudit2026-09-14.md) и accepted ADR выше.
 > **Не является нормативным:** проектирование ниже описывает рекомендуемую реализацию существующих правил. Новые API, failure semantics и решения сначала фиксируются задачей CFC-01 в owner contracts; план не подменяет ADR.
 > **Исполнение:** использовать `superpowers:executing-plans`, последовательно по задачам. Checkbox задачи — единственный источник её завершения.
 
