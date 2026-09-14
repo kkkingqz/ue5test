@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""CFC-13 inventory gate for plan evidence, milestones, mutations, and native enums.
+"""Native surface gate for the accepted C++ foundation baseline.
 
-The plan itself is the actual task/Done/milestone enumerator.  The tables below
-are an independent review oracle: adding a task, milestone, Done assertion, or
-CFC native enum value without evidence makes the standard CTest pipeline fail
-closed.
+The plan that produced this baseline is archived; what survives it is the
+guarantee, not the bookkeeping.  Three claims are enforced here: the named
+regression checks the baseline was accepted on still exist, every value of a
+CFC-introduced native enum reaches exhaustive production dispatch and a test
+inventory, and the repository Lua callback cannot longjmp over C++ RAII.
+
+Actual sets come from the tree: CTest registrations are parsed out of every
+CMakeLists.txt, UE test names out of the automation sources, enum values out of
+their declarations.  The tables below are the independent expected side —
+deleting or renaming a check without touching them fails the standard CTest
+pipeline closed.
 """
 
 from __future__ import annotations
@@ -12,74 +19,77 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from collections import namedtuple
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-PLAN_DIR = REPO_ROOT / "Docs" / "Plans" / "CppFoundationClosure"
 
-TaskEvidence = namedtuple(
-    "TaskEvidence",
-    "done_count ctests ue_tests enumerator oracle production_path",
+# Named checks the accepted baseline relies on.  Every entry is verified against
+# the actual CTest and automation registrations, so a deleted or silently
+# renamed regression check is a gate failure rather than a quiet loss.
+BASELINE_CTESTS: tuple[str, ...] = (
+    "cpp_foundation_closure_contract",
+    "cpp_foundation_closure_negative_contract",
+    "documentation_contract",
+    "gv2_headless_check_scripts",
+    "gv2_headless_self_test",
+    "headless_hash_field_inventory_contract",
+    "headless_hash_field_inventory_negative_contract",
+    "mcp_transport_contract",
+    "presentation_apply_field_inventory_contract",
+    "presentation_apply_module_graph_contract",
+    "presentation_apply_module_graph_negative_contract",
+    "registry_lifecycle_ownership_contract",
+    "registry_lifecycle_ownership_negative_contract",
+    "save_slot_crash_contract",
+    "save_slot_crash_negative_contract",
+    "session_replacement_ownership_contract",
+    "session_replacement_ownership_negative_contract",
+    "session_snapshot_ownership_contract",
+    "session_snapshot_ownership_negative_contract",
+    "session_transition_ownership_contract",
+    "session_transition_ownership_negative_contract",
+    "state_composition_ownership_contract",
+    "state_composition_ownership_negative_contract",
+    "test_fixture_ownership_contract",
+    "test_fixture_ownership_negative_contract",
+    "ue_acceptance_runner_contract",
+    "ue_test_report_contract",
+    "ui_schema_authority_contract",
+    "ui_schema_authority_negative_contract",
 )
 
-
-def evidence(
-    done_count: int,
-    ctests: tuple[str, ...],
-    ue_tests: tuple[str, ...],
-    enumerator: str,
-    oracle: str,
-    production_path: str,
-) -> TaskEvidence:
-    return TaskEvidence(done_count, ctests, ue_tests, enumerator, oracle, production_path)
-
-
-# Independent mapping reviewed in CFC-13.  done_count binds every individual
-# bullet under **Done:**; the check sets may cover several bullets of one task.
-TASK_EVIDENCE: dict[str, TaskEvidence] = {
-    "CFC-01": evidence(4, ("documentation_contract",), ("GV2.Runtime.ContentCore.SharedFixtureCorpus",), "owner-contract and accepted-ADR links", "normative ownership/lifecycle rules", "documentation validator plus compiled shared fixture"),
-    "CFC-02": evidence(5, ("ue_test_report_contract", "mcp_transport_contract", "ue_acceptance_runner_contract"), ("GV2.Runtime.ModuleIdentity",), "UE discovery records and runtime identity", "runner-owned expected revision/fingerprint", "fresh-process UE runner"),
-    "CFC-02A": evidence(5, ("test_fixture_ownership_contract", "test_fixture_ownership_negative_contract"), ("GV2.UI.CapabilityObservabilityCollectionForgery",), "actual root and mode-storage token sites", "scoped-owner allowlist and foreign initial mode", "automation fixture construction and teardown"),
-    "CFC-03": evidence(4, ("presentation_apply_module_graph_contract", "presentation_apply_module_graph_negative_contract"), ("GV2.Runtime.ModuleIdentity",), "parsed Build.cs plus CMake codemodel", "module/dependency allowlist", "CMake and UBT compiler-negative probes"),
-    "CFC-03A": evidence(5, ("headless_hash_field_inventory_contract", "headless_hash_field_inventory_negative_contract", "gv2_headless_self_test"), ("GV2.Runtime.ContentCore.ValueModel", "GV2.Runtime.Session.RunDigest"), "Value constructors and actual manifest/digest fields", "canonical +0.0 and hash-domain fixtures", "public constructors/codecs in both hosts"),
-    "CFC-04": evidence(5, ("ui_schema_authority_contract", "ui_schema_authority_negative_contract"), ("GV2.Runtime.Session.UiSchemaSnapshotIsolation",), "materializer declarations and call sites", "independent A/B schemas", "production Prepare context"),
-    "CFC-04A": evidence(7, ("session_snapshot_ownership_contract", "session_snapshot_ownership_negative_contract"), ("GV2.Runtime.Session.ScreenRegistrySnapshotIsolation",), "snapshot members and compiled registry keys/placements", "independent A/B registry descriptors", "production snapshot Resolve after failed/successful B"),
-    "CFC-04B": evidence(6, ("session_snapshot_ownership_contract", "presentation_apply_field_inventory_contract"), ("GV2.Runtime.Session.PreparedCommitAndFailureInjection",), "prepared owning pointer/member inventory", "expected fields and GC weak references", "Prepare/Commit/Rollback through production widgets"),
-    "CFC-05": evidence(6, ("registry_lifecycle_ownership_contract", "registry_lifecycle_ownership_negative_contract", "gv2_headless_self_test"), ("GV2.Runtime.Lifecycle.RegistryLifecycleConformance",), "bootstrap DESCRIPTOR registry participants", "per-participant fault fixtures", "public FRuntimeSession::Start in both hosts"),
-    "CFC-05A": evidence(5, ("state_composition_ownership_contract", "state_composition_ownership_negative_contract", "gv2_headless_self_test"), ("GV2.Runtime.Lua.SpecRunnerHost",), "actual native canonical-state access sites", "Lua state-composition specs", "production session bootstrap in both hosts"),
-    "CFC-06": evidence(6, ("session_replacement_ownership_contract", "session_replacement_ownership_negative_contract"), ("GV2.Runtime.Session.SequentialSessionsDoNotShareAuthorities", "GV2.Runtime.Session.PreservesProjectionWhenCandidateFails"), "production projection publication/teardown sites", "independent A/B authorities and viewport state", "two real coordinator/subsystem starts"),
-    "CFC-07": evidence(6, ("session_transition_ownership_contract", "session_transition_ownership_negative_contract", "gv2_headless_self_test"), ("GV2.Session.Transition.OracleMatrix", "GV2.Session.Transition.SingleVmInvariantAndSequentialLifecycle"), "closed request/phase enums and transition calls", "contract transition matrix", "public lifecycle request processing"),
-    "CFC-07A": evidence(6, ("state_composition_ownership_contract", "gv2_headless_self_test"), ("GV2.Runtime.Session.ManifestReplayReproducesSessionPrng", "GV2.Runtime.Session.NewGameSessionsProduceDistinctSeedsAndPrng"), "actual session-start and replay callers", "fixed PRNG vectors and explicit seed fixtures", "UE/headless/replay session starts"),
-    "CFC-08": evidence(5, ("save_slot_crash_contract", "save_slot_crash_negative_contract", "gv2_headless_self_test"), ("GV2.Runtime.SaveAndLoad.SaveSlotStorageConformance",), "actual filesystem operation trace", "independent stage/byte-pair tables", "filesystem storage and process crash helper"),
-    "CFC-09": evidence(8, ("state_composition_ownership_contract", "gv2_headless_self_test"), ("GV2.Runtime.SaveAndLoad.ProductionRequestSave", "GV2.Runtime.SaveAndLoad.UiAuthoredSaveButton", "GV2.Runtime.SaveAndLoad.CommandRefusalDiscardsSave"), "actual start/composition and outbound-control sites", "Lua state hash and on-disk opaque bytes", "semantic input to safe-point storage write"),
-    "CFC-10": evidence(7, ("session_replacement_ownership_contract", "session_transition_ownership_contract", "gv2_headless_self_test"), ("GV2.Runtime.SaveAndLoad.ProductionRequestLoad", "GV2.Runtime.SaveAndLoad.CapturedBytesImmunityToFileOverwrite", "GV2.Runtime.SaveAndLoad.LoadAnotherSaveAndRestart"), "request/phase enums and captured buffer", "independent saved state/hash fixtures", "semantic input through replacement and continued command"),
-    "CFC-11": evidence(4, ("documentation_contract", "gv2_headless_self_test"), ("GV2.Runtime.Presentation.LocationSceneDiagnostic", "GV2.Runtime.Presentation.ScreenFieldClosedSchemaRejection"), "schema required-property set", "positive/negative v2 scene fixtures", "production presentation Prepare"),
-    "CFC-12": evidence(5, ("gv2_headless_self_test", "gv2_headless_check_scripts"), ("GV2.Runtime.SaveAndLoad.GameplaySlice", "GV2.Runtime.SaveAndLoad.LifecycleStress100"), "Lua spec tiers and production package manifests", "independent expected state/events/bindings", "semantic input, save/load, continued command"),
-    "CFC-13": evidence(5, ("cpp_foundation_closure_contract", "cpp_foundation_closure_negative_contract", "documentation_contract"), ("GV2.Runtime.SaveAndLoad.GameplaySlice", "GV2.Runtime.ModuleIdentity"), "actual task headings, Done bullets, CTest and UE registrations", "this independent evidence/mutation policy", "full portable and fresh-process UE runbook"),
-}
-
-
-# Independent milestone composition. The plan README is the actual milestone
-# checkbox enumerator; this map binds every milestone to the task checkboxes
-# whose state determines whether the milestone may be marked complete.
-MILESTONE_TASKS: dict[str, tuple[str, ...]] = {
-    "M0": ("CFC-01", "CFC-02", "CFC-02A", "CFC-03", "CFC-03A"),
-    "M1": (
-        "CFC-04",
-        "CFC-04A",
-        "CFC-04B",
-        "CFC-05",
-        "CFC-05A",
-        "CFC-06",
-        "CFC-07",
-        "CFC-07A",
-    ),
-    "M2": ("CFC-08", "CFC-09", "CFC-10"),
-    "M3": ("CFC-11", "CFC-12", "CFC-13"),
-}
+BASELINE_UE_TESTS: tuple[str, ...] = (
+    "GV2.Runtime.ContentCore.SharedFixtureCorpus",
+    "GV2.Runtime.ContentCore.ValueModel",
+    "GV2.Runtime.Lifecycle.RegistryLifecycleConformance",
+    "GV2.Runtime.Lua.SpecRunnerHost",
+    "GV2.Runtime.ModuleIdentity",
+    "GV2.Runtime.Presentation.LocationSceneDiagnostic",
+    "GV2.Runtime.Presentation.ScreenFieldClosedSchemaRejection",
+    "GV2.Runtime.SaveAndLoad.CapturedBytesImmunityToFileOverwrite",
+    "GV2.Runtime.SaveAndLoad.CommandRefusalDiscardsSave",
+    "GV2.Runtime.SaveAndLoad.GameplaySlice",
+    "GV2.Runtime.SaveAndLoad.LifecycleStress100",
+    "GV2.Runtime.SaveAndLoad.LoadAnotherSaveAndRestart",
+    "GV2.Runtime.SaveAndLoad.ProductionRequestLoad",
+    "GV2.Runtime.SaveAndLoad.ProductionRequestSave",
+    "GV2.Runtime.SaveAndLoad.SaveSlotStorageConformance",
+    "GV2.Runtime.SaveAndLoad.UiAuthoredSaveButton",
+    "GV2.Runtime.Session.ManifestReplayReproducesSessionPrng",
+    "GV2.Runtime.Session.NewGameSessionsProduceDistinctSeedsAndPrng",
+    "GV2.Runtime.Session.PreparedCommitAndFailureInjection",
+    "GV2.Runtime.Session.PreservesProjectionWhenCandidateFails",
+    "GV2.Runtime.Session.RunDigest",
+    "GV2.Runtime.Session.ScreenRegistrySnapshotIsolation",
+    "GV2.Runtime.Session.SequentialSessionsDoNotShareAuthorities",
+    "GV2.Runtime.Session.UiSchemaSnapshotIsolation",
+    "GV2.Session.Transition.OracleMatrix",
+    "GV2.Session.Transition.SingleVmInvariantAndSequentialLifecycle",
+    "GV2.UI.CapabilityObservabilityCollectionForgery",
+)
 
 
 @dataclass(frozen=True)
@@ -89,6 +99,9 @@ class MutationEvidence:
     kind: str = "ctest"
 
 
+# Each accepted regression cause and the check that must reject it.  The table
+# records what the baseline was actually mutation-tested against; it does not
+# replace running those mutations on a revision under review.
 TARGETED_MUTATIONS: dict[str, MutationEvidence] = {
     "second_schema_source": MutationEvidence("ui_schema_authority_negative_contract", "forbidden schema authority/discovery"),
     "shared_mutable_screen_registry": MutationEvidence("session_snapshot_ownership_negative_contract", "mutable or shared registry authority"),
@@ -185,168 +198,6 @@ ENUM_TEST_POLICIES = (
         ("Source/GV2RuntimeCore/Private/GV2SaveSlotStorageConformance.cpp",),
     ),
 )
-
-
-TASK_HEADING = re.compile(r"^## (CFC-[0-9]+[A-Z]?) — (.+?)\s*$")
-TASK_CHECKBOX = re.compile(r"^- \[([ xX])\] (CFC-[0-9]+[A-Z]?) — (.+?)\s*$")
-MILESTONE_CHECKBOX = re.compile(r"^- \[([ xX])\] (M[0-9]+) — .+?\s*$")
-
-
-def collect_plan_inventory(plan_dir: Path) -> tuple[dict[str, tuple[str, int]], list[str]]:
-    tasks: dict[str, tuple[str, int]] = {}
-    errors: list[str] = []
-    for path in sorted(plan_dir.glob("*.md")):
-        current_id: str | None = None
-        current_title = ""
-        done_count = 0
-        in_done = False
-        checkbox_seen = False
-
-        def finish_task() -> None:
-            nonlocal current_id, current_title, done_count, checkbox_seen
-            if current_id is None:
-                return
-            if current_id in tasks:
-                errors.append(f"duplicate task heading {current_id}")
-            else:
-                tasks[current_id] = (current_title, done_count)
-            if not checkbox_seen:
-                errors.append(f"{current_id}: missing matching task checkbox")
-
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            heading = TASK_HEADING.match(line)
-            if heading:
-                finish_task()
-                current_id, current_title = heading.group(1), heading.group(2)
-                done_count = 0
-                in_done = False
-                checkbox_seen = False
-                continue
-            if current_id is None:
-                continue
-            checkbox = TASK_CHECKBOX.match(line)
-            if checkbox:
-                if checkbox.group(2) != current_id or checkbox.group(3) != current_title:
-                    errors.append(f"{path}:{line_number}: checkbox does not match heading {current_id}")
-                if checkbox_seen:
-                    errors.append(f"{path}:{line_number}: duplicate checkbox for {current_id}")
-                checkbox_seen = True
-                continue
-            if line == "**Done:**":
-                in_done = True
-                continue
-            if in_done and line.startswith("**"):
-                in_done = False
-            elif in_done and line.startswith("- "):
-                done_count += 1
-        finish_task()
-    return tasks, errors
-
-
-def validate_plan_inventory(plan_dir: Path, evidence_map: dict[str, TaskEvidence]) -> list[str]:
-    tasks, errors = collect_plan_inventory(plan_dir)
-    for task_id, (_, done_count) in sorted(tasks.items()):
-        evidence_row = evidence_map.get(task_id)
-        if evidence_row is None:
-            errors.append(f"unmapped task {task_id}")
-            continue
-        if evidence_row.done_count != done_count:
-            errors.append(
-                f"{task_id}: Done count is {done_count}, evidence maps {evidence_row.done_count}"
-            )
-        for field_name in ("enumerator", "oracle", "production_path"):
-            if not getattr(evidence_row, field_name).strip():
-                errors.append(f"{task_id}: empty {field_name}")
-        if not evidence_row.ctests and not evidence_row.ue_tests:
-            errors.append(f"{task_id}: no named executable checks")
-    for task_id in sorted(set(evidence_map) - set(tasks)):
-        errors.append(f"evidence row {task_id} has no actual task heading")
-    return errors
-
-
-def collect_task_checkbox_states(plan_dir: Path) -> tuple[dict[str, bool], list[str]]:
-    states: dict[str, bool] = {}
-    errors: list[str] = []
-    for path in sorted(plan_dir.glob("*.md")):
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            checkbox = TASK_CHECKBOX.match(line)
-            if checkbox is None:
-                continue
-            task_id = checkbox.group(2)
-            if task_id in states:
-                errors.append(f"{path}:{line_number}: duplicate task checkbox {task_id}")
-                continue
-            states[task_id] = checkbox.group(1).lower() == "x"
-    return states, errors
-
-
-def collect_milestone_checkbox_states(plan_dir: Path) -> tuple[dict[str, bool], list[str]]:
-    states: dict[str, bool] = {}
-    errors: list[str] = []
-    readme = plan_dir / "README.md"
-    if not readme.is_file():
-        return {}, ["plan README.md is missing; milestone inventory is unavailable"]
-    for line_number, line in enumerate(readme.read_text(encoding="utf-8").splitlines(), start=1):
-        if re.match(r"^- \[[ xX]\] M[0-9]+\b", line) is None:
-            continue
-        checkbox = MILESTONE_CHECKBOX.match(line)
-        if checkbox is None:
-            errors.append(f"{readme}:{line_number}: malformed milestone checkbox")
-            continue
-        milestone_id = checkbox.group(2)
-        if milestone_id in states:
-            errors.append(f"{readme}:{line_number}: duplicate milestone checkbox {milestone_id}")
-            continue
-        states[milestone_id] = checkbox.group(1).lower() == "x"
-    return states, errors
-
-
-def validate_milestone_inventory(
-    plan_dir: Path,
-    milestone_tasks: dict[str, tuple[str, ...]],
-) -> list[str]:
-    task_states, errors = collect_task_checkbox_states(plan_dir)
-    milestone_states, milestone_errors = collect_milestone_checkbox_states(plan_dir)
-    errors.extend(milestone_errors)
-    errors.extend(validate_milestone_states(task_states, milestone_states, milestone_tasks))
-    return errors
-
-
-def validate_milestone_states(
-    task_states: dict[str, bool],
-    milestone_states: dict[str, bool],
-    milestone_tasks: dict[str, tuple[str, ...]],
-) -> list[str]:
-    errors: list[str] = []
-
-    for milestone_id in sorted(set(milestone_states) - set(milestone_tasks)):
-        errors.append(f"unmapped milestone {milestone_id}")
-    for milestone_id in sorted(set(milestone_tasks) - set(milestone_states)):
-        errors.append(f"milestone row {milestone_id} has no actual checkbox")
-
-    assigned_tasks: dict[str, str] = {}
-    for milestone_id, task_ids in sorted(milestone_tasks.items()):
-        for task_id in task_ids:
-            previous = assigned_tasks.get(task_id)
-            if previous is not None:
-                errors.append(f"task {task_id} belongs to both {previous} and {milestone_id}")
-            assigned_tasks[task_id] = milestone_id
-            if task_id not in task_states:
-                errors.append(f"{milestone_id}: unknown task checkbox {task_id}")
-
-        if milestone_id not in milestone_states or any(task_id not in task_states for task_id in task_ids):
-            continue
-        tasks_complete = all(task_states[task_id] for task_id in task_ids)
-        milestone_complete = milestone_states[milestone_id]
-        if tasks_complete and not milestone_complete:
-            errors.append(f"{milestone_id}: milestone is open although all mapped tasks are complete")
-        elif milestone_complete and not tasks_complete:
-            incomplete = ", ".join(task_id for task_id in task_ids if not task_states[task_id])
-            errors.append(f"{milestone_id}: milestone is complete while tasks are open: {incomplete}")
-
-    for task_id in sorted(set(task_states) - set(assigned_tasks)):
-        errors.append(f"task checkbox {task_id} is not assigned to a milestone")
-    return errors
 
 
 def collect_ctest_names(repo_root: Path) -> set[str]:
@@ -470,31 +321,23 @@ def validate_named_checks(repo_root: Path) -> list[str]:
     ctests = collect_ctest_names(repo_root)
     ue_tests = collect_ue_test_names(repo_root)
     errors: list[str] = []
-    for task_id, row in TASK_EVIDENCE.items():
-        for check in row.ctests:
-            if check not in ctests:
-                errors.append(f"{task_id}: unknown CTest check {check}")
-        for check in row.ue_tests:
-            if check not in ue_tests:
-                errors.append(f"{task_id}: unknown UE check {check}")
+    for check in BASELINE_CTESTS:
+        if check not in ctests:
+            errors.append(f"baseline CTest check {check} is no longer registered")
+    for check in BASELINE_UE_TESTS:
+        if check not in ue_tests:
+            errors.append(f"baseline UE check {check} is no longer registered")
     for mutation_id, row in TARGETED_MUTATIONS.items():
-        known = ue_tests if row.kind == "ue" else ctests
+        known = BASELINE_UE_TESTS if row.kind == "ue" else BASELINE_CTESTS
         if row.check not in known:
-            errors.append(f"mutation {mutation_id}: unknown {row.kind} check {row.check}")
+            errors.append(f"mutation {mutation_id}: {row.kind} check {row.check} is outside the baseline inventory")
         if not row.expected_cause.strip():
             errors.append(f"mutation {mutation_id}: empty expected cause")
     return errors
 
 
 def validate_repository(repo_root: Path = REPO_ROOT) -> list[str]:
-    errors = validate_plan_inventory(repo_root / "Docs" / "Plans" / "CppFoundationClosure", TASK_EVIDENCE)
-    errors.extend(
-        validate_milestone_inventory(
-            repo_root / "Docs" / "Plans" / "CppFoundationClosure",
-            MILESTONE_TASKS,
-        )
-    )
-    errors.extend(validate_named_checks(repo_root))
+    errors = validate_named_checks(repo_root)
     for policy in ENUM_DISPATCH_POLICIES:
         header_path = repo_root / policy.header
         consumers = {
@@ -549,34 +392,16 @@ def run_self_test() -> list[str]:
     if not diagnostics:
         errors.append("self-test: Lua error longjmp over repository RAII did not fail")
 
-    tasks, inventory_errors = collect_plan_inventory(PLAN_DIR)
-    if inventory_errors:
-        errors.extend(f"self-test baseline: {error}" for error in inventory_errors)
-    elif not tasks:
-        errors.append("self-test baseline: plan task enumerator returned an empty set")
+    baseline_diagnostics = validate_named_checks(REPO_ROOT)
+    if baseline_diagnostics:
+        errors.extend(f"self-test baseline: {error}" for error in baseline_diagnostics)
     else:
-        dropped = dict(TASK_EVIDENCE)
-        dropped.pop(next(iter(tasks)), None)
-        diagnostics = validate_plan_inventory(PLAN_DIR, dropped)
-        if not any("unmapped task" in diagnostic for diagnostic in diagnostics):
-            errors.append("self-test: an unmapped task did not fail")
-
-    milestone_diagnostics = validate_milestone_inventory(PLAN_DIR, MILESTONE_TASKS)
-    if milestone_diagnostics:
-        errors.extend(f"self-test baseline: {error}" for error in milestone_diagnostics)
-    else:
-        task_states, _ = collect_task_checkbox_states(PLAN_DIR)
-        milestone_states, _ = collect_milestone_checkbox_states(PLAN_DIR)
-        last_milestone = sorted(MILESTONE_TASKS)[-1]
-        open_milestone_states = dict(milestone_states)
-        open_milestone_states[last_milestone] = False
-        diagnostics = validate_milestone_states(
-            task_states,
-            open_milestone_states,
-            MILESTONE_TASKS,
-        )
-        if not any(last_milestone in diagnostic and "open" in diagnostic for diagnostic in diagnostics):
-            errors.append("self-test: an open milestone with completed tasks did not fail")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            empty_root = Path(temp_dir)
+            (empty_root / "CMakeLists.txt").write_text("", encoding="utf-8")
+            diagnostics = validate_named_checks(empty_root)
+        if not any("no longer registered" in diagnostic for diagnostic in diagnostics):
+            errors.append("self-test: a removed baseline check did not fail")
     return errors
 
 
@@ -586,19 +411,16 @@ def main() -> int:
     args = parser.parse_args()
     errors = run_self_test() if args.self_test else validate_repository()
     if errors:
-        print("CFC-13 foundation inventory validation failed:", file=sys.stderr)
+        print("C++ foundation baseline validation failed:", file=sys.stderr)
         for error in errors:
             print(f"  - {error}", file=sys.stderr)
         return 1
     if args.self_test:
-        print("SUCCESS: CFC-13 inventory self-test rejected task, milestone-state, and enum mutations.")
+        print("SUCCESS: baseline self-test rejected a removed check and enum/RAII mutations.")
     else:
-        task_count = len(TASK_EVIDENCE)
-        done_count = sum(row.done_count for row in TASK_EVIDENCE.values())
         print(
-            f"SUCCESS: mapped {task_count} CFC tasks, {len(MILESTONE_TASKS)} milestones, "
-            f"and {done_count} Done assertions; "
-            f"classified {len(TARGETED_MUTATIONS)} targeted mutations and verified native enum dispatch."
+            f"SUCCESS: confirmed {len(BASELINE_CTESTS)} CTest and {len(BASELINE_UE_TESTS)} UE baseline checks, "
+            f"{len(TARGETED_MUTATIONS)} classified targeted mutations and native enum dispatch."
         )
     return 0
 

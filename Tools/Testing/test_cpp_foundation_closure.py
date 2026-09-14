@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Contract tests for the CFC-13 plan/evidence and native-enum inventory gate."""
+"""Contract tests for the accepted C++ foundation baseline gate."""
 
 from __future__ import annotations
 
-import copy
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,77 +10,32 @@ from pathlib import Path
 import validate_cpp_foundation_closure as closure
 
 
-class TestCppFoundationClosureInventory(unittest.TestCase):
+class TestCppFoundationBaselineInventory(unittest.TestCase):
     def test_repository_inventory_is_complete(self) -> None:
         self.assertEqual(closure.validate_repository(), [])
 
-    def test_unmapped_task_heading_is_rejected(self) -> None:
+    def test_removed_baseline_check_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            plan_dir = Path(temp_dir)
-            (plan_dir / "Plan.md").write_text(
-                "## CFC-99 — Synthetic task\n\n"
-                "- [ ] CFC-99 — Synthetic task\n\n"
-                "**Done:**\n"
-                "- Synthetic requirement.\n\n"
-                "**Evidence:** synthetic.\n",
-                encoding="utf-8",
-            )
-            errors = closure.validate_plan_inventory(plan_dir, closure.TASK_EVIDENCE)
+            empty_root = Path(temp_dir)
+            (empty_root / "CMakeLists.txt").write_text("", encoding="utf-8")
+            errors = closure.validate_named_checks(empty_root)
 
-        self.assertTrue(any("unmapped task CFC-99" in error for error in errors), errors)
-
-    def test_new_done_bullet_is_rejected_until_evidence_is_added(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            plan_dir = Path(temp_dir)
-            (plan_dir / "Plan.md").write_text(
-                "## CFC-13 — Synthetic closure\n\n"
-                "- [ ] CFC-13 — Synthetic closure\n\n"
-                "**Done:**\n"
-                "- First requirement.\n"
-                "- Unmapped requirement.\n\n"
-                "**Evidence:** synthetic.\n",
-                encoding="utf-8",
-            )
-            evidence = {"CFC-13": copy.deepcopy(closure.TASK_EVIDENCE["CFC-13"])}
-            evidence["CFC-13"] = evidence["CFC-13"]._replace(done_count=1)
-            errors = closure.validate_plan_inventory(plan_dir, evidence)
-
-        self.assertTrue(any("Done count" in error for error in errors), errors)
-
-    def test_completed_task_set_rejects_open_milestone(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            plan_dir = Path(temp_dir)
-            (plan_dir / "README.md").write_text(
-                "- [ ] M9 — Synthetic milestone.\n",
-                encoding="utf-8",
-            )
-            (plan_dir / "Plan.md").write_text(
-                "## CFC-98 — First task\n\n"
-                "- [x] CFC-98 — First task\n\n"
-                "**Done:**\n"
-                "- First requirement.\n\n"
-                "## CFC-99 — Second task\n\n"
-                "- [x] CFC-99 — Second task\n\n"
-                "**Done:**\n"
-                "- Second requirement.\n",
-                encoding="utf-8",
-            )
-
-            errors = closure.validate_milestone_inventory(
-                plan_dir,
-                {"M9": ("CFC-98", "CFC-99")},
-            )
-
-        self.assertTrue(any("M9" in error and "open" in error for error in errors), errors)
-
-    def test_completed_milestone_rejects_open_task(self) -> None:
-        errors = closure.validate_milestone_states(
-            {"CFC-98": True, "CFC-99": False},
-            {"M9": True},
-            {"M9": ("CFC-98", "CFC-99")},
+        self.assertTrue(
+            any("no longer registered" in error for error in errors), errors
+        )
+        self.assertTrue(
+            any(check in error for check in closure.BASELINE_UE_TESTS for error in errors),
+            errors,
         )
 
-        self.assertTrue(any("M9" in error and "CFC-99" in error for error in errors), errors)
+    def test_targeted_mutation_check_must_stay_in_baseline(self) -> None:
+        for mutation_id, row in closure.TARGETED_MUTATIONS.items():
+            known = (
+                closure.BASELINE_UE_TESTS
+                if row.kind == "ue"
+                else closure.BASELINE_CTESTS
+            )
+            self.assertIn(row.check, known, mutation_id)
 
     def test_unhandled_runtime_phase_is_rejected(self) -> None:
         header = """

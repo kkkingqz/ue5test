@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.9
+version: 4.0
 updated: 2026-09-14
 depends_on:
   - SystemContextAndComponents.md
@@ -429,9 +429,9 @@ python3 Tools/MCP/run_ue_tests.py --filter StartsWith:GV2
 
 Shipping/cook/package, другие ОС и power-loss storage durability не входят в этот baseline без отдельного evidence. One-shot presentation effects ([STATUS-002](../Status/ImplementationStatus.md)) и enter/exit animations ([STATUS-003](../Status/ImplementationStatus.md)) остаются явными gaps: их отсутствие не блокирует synchronous gameplay slice, но запрещает называть весь presentation contract реализованным.
 
-Universal acceptance assertion обязано называть actual enumerator, независимый oracle и production path. Для плана actual task set выводится из checkbox headings всех активных файлов плана; ручное число или milestone summary не заменяет это множество. Для UE run actual set выводится discovery текущего build, а completed records обязаны совпасть с ним один к одному. Для enum/variant используется compiler/exhaustive dispatch. Неизвестная форма inventory считается отказом проверки.
+Universal acceptance assertion обязано называть actual enumerator, независимый oracle и production path. Для активного плана actual task set выводится из checkbox headings всех его файлов; ручное число или milestone summary не заменяет это множество. Для UE run actual set выводится discovery текущего build, а completed records обязаны совпасть с ним один к одному. Для enum/variant используется compiler/exhaustive dispatch. Неизвестная форма inventory считается отказом проверки.
 
-`cpp_foundation_closure_contract` материализует это правило для CFC: парсит actual task headings и каждый `Done`-пункт, требует независимую evidence-запись с именованными CTest/UE checks, перечислителем, oracle и production path, а также выводит значения добавленных планом public enum из их declarations. Новая задача, новый `Done` или enum value без синхронного check inventory краснят штатный CTest; отдельный negative contract проверяет fail-closed поведение самого перечислителя. Таблица targeted mutations связывает каждую причину с точным ожидаемым отказом, но её наличие не заменяет фактический mutation run на проверяемой ревизии.
+`cpp_foundation_closure_contract` удерживает то, что осталось от этого правила после закрытия и архивации плана. Он сверяет с actual регистрациями CMake и automation именованные regression checks, на которых baseline был принят, и выводит значения добавленных public enum из их declarations: удалённый или молча переименованный check, новое значение enum без exhaustive production dispatch либо без test inventory краснят штатный CTest. Отдельный negative contract проверяет fail-closed поведение самого перечислителя. Таблица targeted mutations хранит, против какой причины отказа проверялся baseline, и её наличие не заменяет фактический mutation run на проверяемой ревизии. Bookkeeping по задачам и milestone ушёл вместе с планом: его история — в [архивной сводке](../Plans/Archive/CppFoundationClosure.md).
 
 ## Verification
 

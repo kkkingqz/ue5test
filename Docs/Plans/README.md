@@ -1,8 +1,8 @@
 ---
 title: GV2 Implementation Plans Index
 status: informative
-version: 3.8
-updated: 2026-09-12
+version: 3.9
+updated: 2026-09-14
 depends_on:
   - ../README.md
 ---
@@ -29,7 +29,6 @@ depends_on:
 
 ## Активные планы
 
-- [C++ Foundation Closure](CppFoundationClosure/README.md) — единый snapshot и replacement lifecycle, fail-closed приёмка, продуктовый save/load и проверенная основа для gameplay на Lua.
 
 Фактическое состояние реализации по подсистемам: [Implementation Status](../Status/ImplementationStatus.md).
 

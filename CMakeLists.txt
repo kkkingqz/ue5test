@@ -589,8 +589,9 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/test_save_slot_crash.py"
             "--self-test"
     )
-    # CFC-13: derive the complete task/Done set from the active plan and bind it
-    # to independently named CTest/UE evidence and closed native enum dispatch.
+    # Baseline gate: the named regression checks the accepted C++ foundation was
+    # verified on must stay registered, and CFC-introduced native enums must keep
+    # closed production dispatch plus a test inventory.
     add_test(
         NAME cpp_foundation_closure_contract
         COMMAND
