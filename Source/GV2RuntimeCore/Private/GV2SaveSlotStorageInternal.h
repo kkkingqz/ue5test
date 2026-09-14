@@ -3,6 +3,7 @@
 #include "GV2RuntimeCore/GV2HostServices.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -101,6 +102,20 @@ inline std::size_t GetCommitOrdinal(const std::vector<FContractOpStep>& Stages)
 }
 
 } // namespace Contract
+
+struct FSlotHead
+{
+    std::int32_t Version = 1;
+    std::string CurrentGen;
+    std::string PreviousGen;
+};
+
+ESaveSlotResult ParseHeadDocument(
+    const std::string& SlotId,
+    const std::string& Content,
+    FSlotHead& OutHead);
+
+std::string SerializeHeadDocument(const FSlotHead& Head);
 
 class ISaveSlotFilesystem
 {

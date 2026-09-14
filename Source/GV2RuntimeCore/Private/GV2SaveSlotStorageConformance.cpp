@@ -257,6 +257,36 @@ std::string RunSaveSlotStorageConformance()
         {
             return "save_slot_storage_conformance.missing_gen_file_head_not_unreadable";
         }
+
+        // 5g. FSlotHead serialization and parsing round-trip
+        Internal::FSlotHead SampleHead;
+        SampleHead.Version = 1;
+        SampleHead.CurrentGen = "rt_slot.gen_1.save";
+        SampleHead.PreviousGen = "rt_slot.gen_0.save";
+        const std::string Serialized = Internal::SerializeHeadDocument(SampleHead);
+        Internal::FSlotHead ParsedHead;
+        if (Internal::ParseHeadDocument("rt_slot", Serialized, ParsedHead) != ESaveSlotResult::Ok)
+        {
+            return "save_slot_storage_conformance.head_roundtrip_parse_failed";
+        }
+        if (ParsedHead.Version != SampleHead.Version || ParsedHead.CurrentGen != SampleHead.CurrentGen || ParsedHead.PreviousGen != SampleHead.PreviousGen)
+        {
+            return "save_slot_storage_conformance.head_roundtrip_mismatch";
+        }
+
+        // 5h. Version field serialization faithfully reflects non-1 version and is strictly rejected
+        Internal::FSlotHead Ver2Head = SampleHead;
+        Ver2Head.Version = 2;
+        const std::string Ver2Serialized = Internal::SerializeHeadDocument(Ver2Head);
+        if (Ver2Serialized.find("\"version\": 2") == std::string::npos)
+        {
+            return "save_slot_storage_conformance.head_version_not_serialized";
+        }
+        Internal::FSlotHead Ver2Parsed;
+        if (Internal::ParseHeadDocument("rt_slot", Ver2Serialized, Ver2Parsed) != ESaveSlotResult::Unreadable)
+        {
+            return "save_slot_storage_conformance.head_version_2_not_rejected";
+        }
     }
 
     // 6. A slot whose path is occupied by something other than a regular file is Unreadable.

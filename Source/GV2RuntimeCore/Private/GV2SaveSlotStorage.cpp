@@ -321,12 +321,10 @@ bool IsValidGenerationFilename(const std::string& SlotId, const std::string& Fil
     return true;
 }
 
-struct FSlotHead
+} // namespace
+
+namespace Internal
 {
-    std::int32_t Version = 1;
-    std::string CurrentGen;
-    std::string PreviousGen;
-};
 
 ESaveSlotResult ParseHeadDocument(
     const std::string& SlotId,
@@ -356,7 +354,7 @@ ESaveSlotResult ParseHeadDocument(
     {
         return ESaveSlotResult::Unreadable;
     }
-    OutHead.Version = 1;
+    OutHead.Version = static_cast<std::int32_t>(VersionVal->AsInteger());
 
     const auto* CurrentVal = Doc->FindField("current");
     if (!CurrentVal || !CurrentVal->IsString() || !IsValidGenerationFilename(SlotId, CurrentVal->AsString()))
@@ -385,7 +383,7 @@ ESaveSlotResult ParseHeadDocument(
 std::string SerializeHeadDocument(const FSlotHead& Head)
 {
     std::string Out = "{\n";
-    Out += "  \"version\": 1,\n";
+    Out += "  \"version\": " + std::to_string(Head.Version) + ",\n";
     Out += "  \"current\": \"" + Head.CurrentGen + "\"";
     if (!Head.PreviousGen.empty())
     {
@@ -395,7 +393,11 @@ std::string SerializeHeadDocument(const FSlotHead& Head)
     return Out;
 }
 
-} // namespace
+} // namespace Internal
+
+using Internal::FSlotHead;
+using Internal::ParseHeadDocument;
+using Internal::SerializeHeadDocument;
 
 struct FFilesystemSaveSlotStorage::FImpl
 {
