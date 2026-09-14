@@ -10182,6 +10182,240 @@ bool FGV2SessionNativeRecoveryOnInitialApplyFailureTest::RunTest(const FString& 
     return true;
 }
 
+// CFC-09/10: Helper to retrieve ButtonRepeater from LocationScreen
+static UGV2ListViewWidgetBase* GetButtonRepeaterFromLocationScreen(UGV2ScreenWidgetBase* Screen)
+{
+    if (Screen == nullptr || Screen->WidgetTree == nullptr)
+    {
+        return nullptr;
+    }
+    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
+    Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+    {
+        if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
+        {
+            CommandWidget = Cmd;
+        }
+    });
+    return CommandWidget != nullptr
+        ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
+        : nullptr;
+}
+
+// CFC-09/10: Helper to compute canonical state hash from active session
+static FString GetSessionStateHash(
+    FAutomationTestBase& Test,
+    GV2RuntimeCore::FRuntimeSession& Session)
+{
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const std::string SpecSource = R"lua(
+return {
+    sample = function()
+        local state_hasher = require("core:module.runtime.state_hasher")
+        local hash = state_hasher.hash_state(game.state)
+        error("STATE_HASH:" .. tostring(hash))
+    end
+}
+)lua";
+
+    Session.RunLuaSpec("@query_state_hash", SpecSource, Results, Fault);
+    if (Results.empty())
+    {
+        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
+        return TEXT("");
+    }
+
+    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
+    const FString Prefix = TEXT("STATE_HASH:");
+    const int32 PrefixIdx = ErrorMessage.Find(Prefix, ESearchCase::CaseSensitive);
+    if (PrefixIdx == INDEX_NONE)
+    {
+        Test.AddError(FString::Printf(TEXT("Could not extract state hash: %s"), *ErrorMessage));
+        return TEXT("");
+    }
+
+    FString HashStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
+    int32 NewlineIdx = INDEX_NONE;
+    if (HashStr.FindChar(TEXT('\n'), NewlineIdx))
+    {
+        HashStr = HashStr.Left(NewlineIdx);
+    }
+    if (HashStr.FindChar(TEXT('\r'), NewlineIdx))
+    {
+        HashStr = HashStr.Left(NewlineIdx);
+    }
+    return HashStr.TrimStartAndEnd();
+}
+
+// CFC-09/10: Helper to query player location from active session
+static FString GetSessionPlayerLocation(
+    FAutomationTestBase& Test,
+    GV2RuntimeCore::FRuntimeSession& Session)
+{
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const std::string SpecSource = R"lua(
+return {
+    sample = function()
+        local player_id = game.state.meta.player_actor_id
+        local actor = player_id and game.state.actors and game.state.actors[player_id]
+        local loc = actor and (actor.current_location_id or actor.current_location) or ""
+        error("PLAYER_LOC:" .. tostring(loc))
+    end
+}
+)lua";
+
+    Session.RunLuaSpec("@query_player_loc", SpecSource, Results, Fault);
+    if (Results.empty())
+    {
+        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
+        return TEXT("");
+    }
+
+    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
+    const FString Prefix = TEXT("PLAYER_LOC:");
+    const int32 PrefixIdx = ErrorMessage.Find(Prefix, ESearchCase::CaseSensitive);
+    if (PrefixIdx == INDEX_NONE)
+    {
+        Test.AddError(FString::Printf(TEXT("Could not extract player location: %s"), *ErrorMessage));
+        return TEXT("");
+    }
+
+    FString LocStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
+    int32 NewlineIdx = INDEX_NONE;
+    if (LocStr.FindChar(TEXT('\n'), NewlineIdx))
+    {
+        LocStr = LocStr.Left(NewlineIdx);
+    }
+    if (LocStr.FindChar(TEXT('\r'), NewlineIdx))
+    {
+        LocStr = LocStr.Left(NewlineIdx);
+    }
+    return LocStr.TrimStartAndEnd();
+}
+
+// CFC-09/10: Helper to compute canonical state hash from container bytes via Lua
+static FString GetContainerStateHash(
+    FAutomationTestBase& Test,
+    GV2RuntimeCore::FRuntimeSession& Session,
+    const TArray<uint8>& ContainerBytes)
+{
+    const FString HexStr = FString::FromHexBlob(ContainerBytes.GetData(), ContainerBytes.Num());
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const FString SpecSource = FString(TEXT("return {\n    sample = function()\n        local hex = \""))
+        + HexStr
+        + TEXT("\"\n")
+        + TEXT(R"lua(
+        local bytes = (hex:gsub('..', function(cc) return string.char(tonumber(cc, 16)) end))
+        local load_mod = require("core:module.runtime.load")
+        local envelope, err = load_mod.preflight(bytes)
+        if not envelope then
+            error("CONTAINER_ERROR:" .. tostring(err))
+        end
+        local canonical_codec = require("core:module.runtime.canonical_codec")
+        local state_hasher = require("core:module.runtime.state_hasher")
+        local ok, decoded = pcall(canonical_codec.deserialize, envelope.payload)
+        if not ok or type(decoded) ~= "table" then
+            error("CONTAINER_ERROR:payload_corrupt")
+        end
+        local hash = state_hasher.hash_state(decoded)
+        error("CONTAINER_HASH:" .. tostring(hash))
+    end
+}
+)lua");
+
+    Session.RunLuaSpec("@query_container_hash", TCHAR_TO_UTF8(*SpecSource), Results, Fault);
+    if (Results.empty())
+    {
+        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
+        return TEXT("");
+    }
+
+    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
+    const FString Prefix = TEXT("CONTAINER_HASH:");
+    const int32 PrefixIdx = ErrorMessage.Find(Prefix, ESearchCase::CaseSensitive);
+    if (PrefixIdx == INDEX_NONE)
+    {
+        Test.AddError(FString::Printf(TEXT("Could not extract container state hash: %s"), *ErrorMessage));
+        return TEXT("");
+    }
+
+    FString HashStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
+    int32 NewlineIdx = INDEX_NONE;
+    if (HashStr.FindChar(TEXT('\n'), NewlineIdx))
+    {
+        HashStr = HashStr.Left(NewlineIdx);
+    }
+    if (HashStr.FindChar(TEXT('\r'), NewlineIdx))
+    {
+        HashStr = HashStr.Left(NewlineIdx);
+    }
+    return HashStr.TrimStartAndEnd();
+}
+
+// CFC-09/10: Helper to query player location from container bytes via Lua
+static FString GetContainerPlayerLocation(
+    FAutomationTestBase& Test,
+    GV2RuntimeCore::FRuntimeSession& Session,
+    const TArray<uint8>& ContainerBytes)
+{
+    const FString HexStr = FString::FromHexBlob(ContainerBytes.GetData(), ContainerBytes.Num());
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const FString SpecSource = FString(TEXT("return {\n    sample = function()\n        local hex = \""))
+        + HexStr
+        + TEXT("\"\n")
+        + TEXT(R"lua(
+        local bytes = (hex:gsub('..', function(cc) return string.char(tonumber(cc, 16)) end))
+        local load_mod = require("core:module.runtime.load")
+        local envelope, err = load_mod.preflight(bytes)
+        if not envelope then
+            error("CONTAINER_ERROR:" .. tostring(err))
+        end
+        local canonical_codec = require("core:module.runtime.canonical_codec")
+        local ok, decoded = pcall(canonical_codec.deserialize, envelope.payload)
+        if not ok or type(decoded) ~= "table" then
+            error("CONTAINER_ERROR:payload_corrupt")
+        end
+        local player_id = decoded.meta.player_actor_id
+        local actor = player_id and decoded.actors and decoded.actors[player_id]
+        local loc = actor and (actor.current_location_id or actor.current_location) or ""
+        error("CONTAINER_PLAYER_LOC:" .. tostring(loc))
+    end
+}
+)lua");
+
+    Session.RunLuaSpec("@query_container_player_loc", TCHAR_TO_UTF8(*SpecSource), Results, Fault);
+    if (Results.empty())
+    {
+        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
+        return TEXT("");
+    }
+
+    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
+    const FString Prefix = TEXT("CONTAINER_PLAYER_LOC:");
+    const int32 PrefixIdx = ErrorMessage.Find(Prefix, ESearchCase::CaseSensitive);
+    if (PrefixIdx == INDEX_NONE)
+    {
+        Test.AddError(FString::Printf(TEXT("Could not extract container player location: %s"), *ErrorMessage));
+        return TEXT("");
+    }
+
+    FString LocStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
+    int32 NewlineIdx = INDEX_NONE;
+    if (LocStr.FindChar(TEXT('\n'), NewlineIdx))
+    {
+        LocStr = LocStr.Left(NewlineIdx);
+    }
+    if (LocStr.FindChar(TEXT('\r'), NewlineIdx))
+    {
+        LocStr = LocStr.Left(NewlineIdx);
+    }
+    return LocStr.TrimStartAndEnd();
+}
+
 // CFC-09: Production RequestSave executes safe-point save and writes container to disk
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2SaveAndLoadProductionRequestSaveTest,
@@ -10211,38 +10445,29 @@ bool FGV2SaveAndLoadProductionRequestSaveTest::RunTest(const FString& Parameters
     Runtime->StartSession();
     TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
 
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
     // 2. Execute gameplay command (travel or work)
     UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
         UGV2GameShellWidgetBase::LayerLocationContent,
         FName(TEXT("location")));
     TestNotNull(TEXT("LocationScreen is presented"), Screen);
-    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
-    if (Screen != nullptr && Screen->WidgetTree != nullptr)
-    {
-        Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
-        {
-            if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
-            {
-                CommandWidget = Cmd;
-            }
-        });
-    }
-    TestNotNull(TEXT("CommandWidget exists"), CommandWidget);
-    UGV2ListViewWidgetBase* CmdRep = CommandWidget != nullptr
-        ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
+    UGV2ListViewWidgetBase* CmdRep = GetButtonRepeaterFromLocationScreen(Screen);
+    TestNotNull(TEXT("ButtonRepeater exists"), CmdRep);
+    UGV2ButtonWidgetBase* TravelMarketBtn = CmdRep != nullptr
+        ? Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))))
         : nullptr;
-    if (CmdRep != nullptr)
+    TestNotNull(TEXT("Travel to market button exists"), TravelMarketBtn);
+    if (TravelMarketBtn != nullptr)
     {
-        for (const auto& Pair : CmdRep->GetActiveWidgetsMap())
-        {
-            if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Pair.Value))
-            {
-                const EGV2SubmitUiInteractionResult SubmitRes = Runtime->SubmitUiInteraction(Btn->GetBindingHandle(), {});
-                TestEqual(TEXT("Command interaction accepted"), SubmitRes, EGV2SubmitUiInteractionResult::Accepted);
-                break;
-            }
-        }
+        const EGV2SubmitUiInteractionResult SubmitRes = Runtime->SubmitUiInteraction(TravelMarketBtn->GetBindingHandle(), {});
+        TestEqual(TEXT("Command interaction accepted"), SubmitRes, EGV2SubmitUiInteractionResult::Accepted);
     }
+
+    const FString SessionHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString SessionLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Session player location is market"), SessionLoc, TEXT("rh:location.city.market"));
 
     // 3. Request save
     const int64 OpId = Runtime->RequestSave(SaveSlot);
@@ -10267,6 +10492,16 @@ bool FGV2SaveAndLoadProductionRequestSaveTest::RunTest(const FString& Parameters
     TestTrue(TEXT("Generation file exists on disk"), IFileManager::Get().FileExists(*GenFile));
     int64 GenFileSize = IFileManager::Get().FileSize(*GenFile);
     TestTrue(TEXT("Generation file is non-empty"), GenFileSize > 0);
+
+    // Verify container bytes match reached state
+    TArray<uint8> GenBytes;
+    TestTrue(TEXT("Load save container file into bytes"), FFileHelper::LoadFileToArray(GenBytes, *GenFile));
+    TestTrue(TEXT("Save container bytes non-empty"), GenBytes.Num() > 0);
+
+    const FString SavedHash = GetContainerStateHash(*this, Coordinator->GetRuntimeSession(), GenBytes);
+    const FString SavedLoc = GetContainerPlayerLocation(*this, Coordinator->GetRuntimeSession(), GenBytes);
+    TestEqual(TEXT("Save container state hash matches reached session state hash"), SavedHash, SessionHash);
+    TestEqual(TEXT("Save container player location matches reached session player location"), SavedLoc, SessionLoc);
 
     // Cleanup
     IFileManager::Get().Delete(*HeadFile);
@@ -10301,10 +10536,38 @@ bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
     Runtime->StartSession();
     TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
 
-    // Publish a screen binding representing a UI-authored save button
     FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
     TestNotNull(TEXT("Coordinator exists"), Coordinator);
 
+    // Initial state: Tavern
+    const FString InitialHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString InitialLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Initial player location is tavern"), InitialLoc, TEXT("rh:location.city.tavern"));
+
+    // Execute gameplay command to reach Market before saving
+    UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("LocationScreen is presented"), Screen);
+    UGV2ListViewWidgetBase* CmdRep = GetButtonRepeaterFromLocationScreen(Screen);
+    TestNotNull(TEXT("ButtonRepeater exists"), CmdRep);
+    UGV2ButtonWidgetBase* TravelMarketBtn = CmdRep != nullptr
+        ? Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))))
+        : nullptr;
+    TestNotNull(TEXT("Travel to market button exists"), TravelMarketBtn);
+    if (TravelMarketBtn != nullptr)
+    {
+        const EGV2SubmitUiInteractionResult TravelRes = Runtime->SubmitUiInteraction(TravelMarketBtn->GetBindingHandle(), {});
+        TestEqual(TEXT("Travel command accepted"), TravelRes, EGV2SubmitUiInteractionResult::Accepted);
+    }
+
+    // Verify reached state in active session
+    const FString ReachedHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString ReachedLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestNotEqual(TEXT("State hash changed after travel"), ReachedHash, InitialHash);
+    TestEqual(TEXT("Player reached market"), ReachedLoc, TEXT("rh:location.city.market"));
+
+    // Publish a screen binding representing a UI-authored save button
     TArray<FGV2UiBindingDefinition> Defs;
     FGV2UiBindingDefinition SaveBtnDef;
     SaveBtnDef.NodeKeyPath = { TEXT("root"), TEXT("save_button") };
@@ -10326,7 +10589,7 @@ bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
         return false;
     }
 
-    // Submit interaction: UI button click
+    // Submit interaction: UI save button click
     const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(Handles[0], {});
     TestEqual(TEXT("UI save command interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
 
@@ -10341,6 +10604,18 @@ bool FGV2SaveAndLoadUiAuthoredSaveButtonTest::RunTest(const FString& Parameters)
     const FString CurrentGen = HeadJson.IsValid() ? HeadJson->GetStringField(TEXT("current")) : FString();
     const FString GenFile = FPaths::Combine(SaveDir, CurrentGen);
     TestTrue(TEXT("Generation file exists on disk"), IFileManager::Get().FileExists(*GenFile));
+
+    // Verify save container bytes and assert it contains reached state
+    TArray<uint8> GenBytes;
+    TestTrue(TEXT("Load save container file into bytes"), FFileHelper::LoadFileToArray(GenBytes, *GenFile));
+    TestTrue(TEXT("Save container bytes non-empty"), GenBytes.Num() > 0);
+
+    const FString ContainerHash = GetContainerStateHash(*this, Coordinator->GetRuntimeSession(), GenBytes);
+    const FString ContainerLoc = GetContainerPlayerLocation(*this, Coordinator->GetRuntimeSession(), GenBytes);
+
+    TestEqual(TEXT("Save container state hash matches reached state hash (Market)"), ContainerHash, ReachedHash);
+    TestNotEqual(TEXT("Save container state hash does not match initial state hash"), ContainerHash, InitialHash);
+    TestEqual(TEXT("Save container player location matches reached location (Market)"), ContainerLoc, TEXT("rh:location.city.market"));
 
     // Cleanup
     IFileManager::Get().Delete(*HeadFile);
@@ -10437,7 +10712,15 @@ bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FStrin
     Runtime->StartSession();
     TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
 
-    // First save: generation 1
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    // Initial state: State 1 (Tavern)
+    const FString State1Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString State1Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Initial location is tavern"), State1Loc, TEXT("rh:location.city.tavern"));
+
+    // First save: generation 1 (State 1: Tavern)
     const int64 Op1 = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome Outcome1;
     TestTrue(TEXT("Outcome 1 available"), Runtime->GetSessionOperationOutcome(Op1, Outcome1));
@@ -10454,7 +10737,39 @@ bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FStrin
     const FString Gen1File = FPaths::Combine(SaveDir, Gen1Name);
     TestTrue(TEXT("Gen 1 file exists"), IFileManager::Get().FileExists(*Gen1File));
 
-    // Second save: generation 2
+    TArray<uint8> Gen1Bytes;
+    TestTrue(TEXT("Gen 1 bytes loaded"), FFileHelper::LoadFileToArray(Gen1Bytes, *Gen1File));
+    TestTrue(TEXT("Gen 1 bytes non-empty"), Gen1Bytes.Num() > 0);
+
+    const FString Gen1ContainerHash = GetContainerStateHash(*this, Coordinator->GetRuntimeSession(), Gen1Bytes);
+    const FString Gen1ContainerLoc = GetContainerPlayerLocation(*this, Coordinator->GetRuntimeSession(), Gen1Bytes);
+    TestEqual(TEXT("Gen 1 container state hash matches State 1"), Gen1ContainerHash, State1Hash);
+    TestEqual(TEXT("Gen 1 container player location is tavern"), Gen1ContainerLoc, State1Loc);
+
+    // Separate saves by a gameplay command: travel to Market
+    UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("LocationScreen is presented"), Screen);
+    UGV2ListViewWidgetBase* CmdRep = GetButtonRepeaterFromLocationScreen(Screen);
+    TestNotNull(TEXT("ButtonRepeater exists"), CmdRep);
+    UGV2ButtonWidgetBase* TravelMarketBtn = CmdRep != nullptr
+        ? Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))))
+        : nullptr;
+    TestNotNull(TEXT("Travel to market button exists"), TravelMarketBtn);
+    if (TravelMarketBtn != nullptr)
+    {
+        const EGV2SubmitUiInteractionResult TravelRes = Runtime->SubmitUiInteraction(TravelMarketBtn->GetBindingHandle(), {});
+        TestEqual(TEXT("Travel command accepted"), TravelRes, EGV2SubmitUiInteractionResult::Accepted);
+    }
+
+    // Mutated state: State 2 (Market)
+    const FString State2Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString State2Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestNotEqual(TEXT("State 2 hash differs from State 1 hash"), State2Hash, State1Hash);
+    TestEqual(TEXT("Player reached market for State 2"), State2Loc, TEXT("rh:location.city.market"));
+
+    // Second save: generation 2 (State 2: Market)
     const int64 Op2 = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome Outcome2;
     TestTrue(TEXT("Outcome 2 available"), Runtime->GetSessionOperationOutcome(Op2, Outcome2));
@@ -10469,11 +10784,29 @@ bool FGV2SaveAndLoadConsecutiveSavesCurrentAndPreviousTest::RunTest(const FStrin
     const FString Head2PrevName = Head2Json.IsValid() ? Head2Json->GetStringField(TEXT("previous")) : FString();
     TestTrue(TEXT("Head 2 has current gen"), Gen2Name.StartsWith(TEXT("test_consec_save.gen_")));
     TestEqual(TEXT("Head 2 previous matches Gen 1"), Head2PrevName, Gen1Name);
-    TestNotEqual(TEXT("Current and previous are distinct"), Gen2Name, Gen1Name);
+    TestNotEqual(TEXT("Current and previous distinct"), Gen2Name, Gen1Name);
 
     const FString Gen2File = FPaths::Combine(SaveDir, Gen2Name);
     TestTrue(TEXT("Gen 1 file still exists as previous"), IFileManager::Get().FileExists(*Gen1File));
     TestTrue(TEXT("Gen 2 file exists as current"), IFileManager::Get().FileExists(*Gen2File));
+
+    TArray<uint8> Gen2Bytes;
+    TestTrue(TEXT("Gen 2 bytes loaded"), FFileHelper::LoadFileToArray(Gen2Bytes, *Gen2File));
+    TestTrue(TEXT("Gen 2 bytes non-empty"), Gen2Bytes.Num() > 0);
+
+    const FString Gen2ContainerHash = GetContainerStateHash(*this, Coordinator->GetRuntimeSession(), Gen2Bytes);
+    const FString Gen2ContainerLoc = GetContainerPlayerLocation(*this, Coordinator->GetRuntimeSession(), Gen2Bytes);
+    TestEqual(TEXT("Gen 2 container state hash matches State 2"), Gen2ContainerHash, State2Hash);
+    TestEqual(TEXT("Gen 2 container player location is market"), Gen2ContainerLoc, State2Loc);
+
+    // Require that Current and Previous bytes differ and correspond to their reached states
+    TestNotEqual(TEXT("Current (Gen 2) and Previous (Gen 1) save bytes are distinct"), Gen2Bytes, Gen1Bytes);
+    TestNotEqual(TEXT("Current (Gen 2) and Previous (Gen 1) container hashes are distinct"), Gen2ContainerHash, Gen1ContainerHash);
+    TestEqual(TEXT("Previous container hash corresponds to State 1 (Tavern)"), Gen1ContainerHash, State1Hash);
+    TestEqual(TEXT("Current container hash corresponds to State 2 (Market)"), Gen2ContainerHash, State2Hash);
+    TestNotEqual(TEXT("Current and Previous container player locations are distinct"), Gen2ContainerLoc, Gen1ContainerLoc);
+    TestEqual(TEXT("Previous container player location corresponds to State 1 (Tavern)"), Gen1ContainerLoc, State1Loc);
+    TestEqual(TEXT("Current container player location corresponds to State 2 (Market)"), Gen2ContainerLoc, State2Loc);
 
     // Cleanup
     IFileManager::Get().Delete(*HeadFile);
@@ -10589,119 +10922,6 @@ bool FGV2SaveAndLoadRequestSaveErrorCasesTest::RunTest(const FString& Parameters
 
     Runtime->EndSession();
     return true;
-}
-
-// CFC-10: Helper to retrieve ButtonRepeater from LocationScreen
-static UGV2ListViewWidgetBase* GetButtonRepeaterFromLocationScreen(UGV2ScreenWidgetBase* Screen)
-{
-    if (Screen == nullptr || Screen->WidgetTree == nullptr)
-    {
-        return nullptr;
-    }
-    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
-    Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
-    {
-        if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
-        {
-            CommandWidget = Cmd;
-        }
-    });
-    return CommandWidget != nullptr
-        ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
-        : nullptr;
-}
-
-// CFC-10: Helper to compute canonical state hash from active session
-static FString GetSessionStateHash(
-    FAutomationTestBase& Test,
-    GV2RuntimeCore::FRuntimeSession& Session)
-{
-    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
-    GV2RuntimeCore::FRuntimeFault Fault;
-    const std::string SpecSource = R"lua(
-return {
-    sample = function()
-        local state_hasher = require("core:module.runtime.state_hasher")
-        local hash = state_hasher.hash_state(game.state)
-        error("STATE_HASH:" .. tostring(hash))
-    end
-}
-)lua";
-
-    Session.RunLuaSpec("@query_state_hash", SpecSource, Results, Fault);
-    if (Results.empty())
-    {
-        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
-        return TEXT("");
-    }
-
-    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
-    const FString Prefix = TEXT("STATE_HASH:");
-    const int32 PrefixIdx = ErrorMessage.Find(Prefix, ESearchCase::CaseSensitive);
-    if (PrefixIdx == INDEX_NONE)
-    {
-        Test.AddError(FString::Printf(TEXT("Could not extract state hash: %s"), *ErrorMessage));
-        return TEXT("");
-    }
-
-    FString HashStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
-    int32 NewlineIdx = INDEX_NONE;
-    if (HashStr.FindChar(TEXT('\n'), NewlineIdx))
-    {
-        HashStr = HashStr.Left(NewlineIdx);
-    }
-    if (HashStr.FindChar(TEXT('\r'), NewlineIdx))
-    {
-        HashStr = HashStr.Left(NewlineIdx);
-    }
-    return HashStr.TrimStartAndEnd();
-}
-
-// CFC-10: Helper to query player location from active session
-static FString GetSessionPlayerLocation(
-    FAutomationTestBase& Test,
-    GV2RuntimeCore::FRuntimeSession& Session)
-{
-    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
-    GV2RuntimeCore::FRuntimeFault Fault;
-    const std::string SpecSource = R"lua(
-return {
-    sample = function()
-        local player_id = game.state.meta.player_actor_id
-        local actor = player_id and game.state.actors and game.state.actors[player_id]
-        local loc = actor and (actor.current_location_id or actor.current_location) or ""
-        error("PLAYER_LOC:" .. tostring(loc))
-    end
-}
-)lua";
-
-    Session.RunLuaSpec("@query_player_loc", SpecSource, Results, Fault);
-    if (Results.empty())
-    {
-        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
-        return TEXT("");
-    }
-
-    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
-    const FString Prefix = TEXT("PLAYER_LOC:");
-    const int32 PrefixIdx = ErrorMessage.Find(Prefix, ESearchCase::CaseSensitive);
-    if (PrefixIdx == INDEX_NONE)
-    {
-        Test.AddError(FString::Printf(TEXT("Could not extract player location: %s"), *ErrorMessage));
-        return TEXT("");
-    }
-
-    FString LocStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
-    int32 NewlineIdx = INDEX_NONE;
-    if (LocStr.FindChar(TEXT('\n'), NewlineIdx))
-    {
-        LocStr = LocStr.Left(NewlineIdx);
-    }
-    if (LocStr.FindChar(TEXT('\r'), NewlineIdx))
-    {
-        LocStr = LocStr.Left(NewlineIdx);
-    }
-    return LocStr.TrimStartAndEnd();
 }
 
 // CFC-10: RequestLoad starts session B from save slot and restores state
@@ -11119,43 +11339,42 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     Runtime->StartSession();
     TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
 
-    // Save 1 (Rev 1)
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+
+    // Initial state: State 1 (Tavern)
+    const FString State1Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString State1Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Initial location is tavern"), State1Loc, TEXT("rh:location.city.tavern"));
+
+    // Save 1 (Rev 1: Tavern)
     const int64 SaveOp1 = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome Outcome1;
     TestTrue(TEXT("Save 1 outcome available"), Runtime->GetSessionOperationOutcome(SaveOp1, Outcome1));
     TestEqual(TEXT("Save 1 completed"), Outcome1, ESessionOperationOutcome::Completed);
 
-    // Mutate state with command
+    // Mutate state with command: travel to Market
     UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
         UGV2GameShellWidgetBase::LayerLocationContent,
         FName(TEXT("location")));
     TestNotNull(TEXT("LocationScreen is presented"), Screen);
-    UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
-    if (Screen != nullptr && Screen->WidgetTree != nullptr)
+    UGV2ListViewWidgetBase* CmdRep = GetButtonRepeaterFromLocationScreen(Screen);
+    TestNotNull(TEXT("ButtonRepeater exists"), CmdRep);
+    UGV2ButtonWidgetBase* TravelMarketBtn = CmdRep != nullptr
+        ? Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))))
+        : nullptr;
+    TestNotNull(TEXT("Travel to market button exists"), TravelMarketBtn);
+    if (TravelMarketBtn != nullptr)
     {
-        Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
-        {
-            if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
-            {
-                CommandWidget = Cmd;
-            }
-        });
+        const EGV2SubmitUiInteractionResult TravelRes = Runtime->SubmitUiInteraction(TravelMarketBtn->GetBindingHandle(), {});
+        TestEqual(TEXT("Travel command accepted"), TravelRes, EGV2SubmitUiInteractionResult::Accepted);
     }
-    if (CommandWidget != nullptr)
-    {
-        UGV2ListViewWidgetBase* CmdRep = Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")));
-        if (CmdRep != nullptr)
-        {
-            for (const auto& Pair : CmdRep->GetActiveWidgetsMap())
-            {
-                if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Pair.Value))
-                {
-                    Runtime->SubmitUiInteraction(Btn->GetBindingHandle(), {});
-                    break;
-                }
-            }
-        }
-    }
+
+    // Mutated state: State 2 (Market)
+    const FString State2Hash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString State2Loc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestNotEqual(TEXT("State 2 hash differs from State 1 hash"), State2Hash, State1Hash);
+    TestEqual(TEXT("Player reached market for State 2"), State2Loc, TEXT("rh:location.city.market"));
 
     // Save 2 (Rev 2: now current; Rev 1 is now previous)
     const int64 SaveOp2 = Runtime->RequestSave(SaveSlot);
@@ -11174,7 +11393,7 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
 
     const int32 GenBeforeLoad = Runtime->GetSessionState().SessionGeneration;
 
-    // RequestLoad with Previous revision
+    // RequestLoad with Previous revision (restores State 1: Tavern)
     const int64 LoadOp = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Previous);
     TestTrue(TEXT("RequestLoad returned op ID"), LoadOp > 0);
 
@@ -11185,6 +11404,14 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     const FGV2SessionStatus StatusAfterLoad = Runtime->GetSessionState();
     TestTrue(TEXT("Session is ready after loading previous"), StatusAfterLoad.bIsReady);
     TestTrue(TEXT("Generation incremented"), StatusAfterLoad.SessionGeneration > GenBeforeLoad);
+
+    // Assert that loaded previous session restored State 1 (Tavern) and not State 2 (Market)
+    const FString LoadedHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString LoadedLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Loaded previous session hash matches State 1 (Tavern)"), LoadedHash, State1Hash);
+    TestNotEqual(TEXT("Loaded previous session hash differs from State 2 (Market)"), LoadedHash, State2Hash);
+    TestEqual(TEXT("Loaded previous player location is Tavern"), LoadedLoc, State1Loc);
+    TestNotEqual(TEXT("Loaded previous player location is not Market"), LoadedLoc, State2Loc);
 
     // Cleanup
     IFileManager::Get().Delete(*HeadFile);
