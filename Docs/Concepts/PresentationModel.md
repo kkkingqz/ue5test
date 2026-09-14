@@ -1,8 +1,8 @@
 ---
 title: Presentation Model
 status: informative
-version: 1.3
-updated: 2026-09-12
+version: 1.4
+updated: 2026-09-14
 depends_on:
   - README.md
 ---
@@ -64,7 +64,7 @@ Lua не описывает дерево виджетов и не знает п�
 
 Работают: UI document с route/слоями/overlays/modals, реестр экранов с валидацией, набор базовых виджетов, универсальные Screen Fields, централизованная тема, текстовый конвейер, каталог изображений, semantic input с проверкой устаревших handle и source-based presentation с автоматической инвалидацией.
 
-Не реализованы one-shot presentation effects и enter/exit animations. Полный replacement lifecycle и product save/load остаются незавершёнными; точные gaps — в [Implementation Status](../Status/ImplementationStatus.md). Это не отменяет уже работающую synchronous-реконсиляцию UI document.
+Не реализованы one-shot presentation effects и enter/exit animations; точные gaps — в [Implementation Status](../Status/ImplementationStatus.md). Полный replacement lifecycle и продуктовые save/load реализованы и приняты в границах [supported foundation baseline](../Architecture/BuildAndTooling.md#supported-foundation-baseline). Это не отменяет уже работающую synchronous-реконсиляцию UI document.
 
 ## Дальше
 

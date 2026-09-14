@@ -1,7 +1,7 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.8
+version: 1.9
 updated: 2026-09-14
 depends_on:
   - ImplementationStatus.md
@@ -52,7 +52,9 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 ## Счёт и интерпретация
 
-Первоначальный аудит дал девять находок: шесть P1 и три P2; семь contract gaps перенесены в `STATUS-013…019`, две находки организации приёмки остаются открытыми здесь. Дополнительная проверка внешнего review 2026-09-12 подтвердила SNAP-AF-01 (закрыта задачей CFC-04A, STATUS-020 удалён). Находка PSC-AF-03 также закрыта задачей CFC-04 (STATUS-013 удалён). Находка SAV-AF-02 закрыта задачей CFC-08 (STATUS-019 удалён). Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Результаты запусков выше относятся к первоначальному аудиту; дополнение ниже основано на анализе кода и не является повторным полным test run.
+Первоначальный аудит дал девять находок: шесть P1 и три P2; семь contract gaps перенесены в `STATUS-013…019`, две находки организации приёмки (VERIFY-AF-01/02) закрыты задачей CFC-02. Дополнительная проверка внешнего review 2026-09-12 подтвердила SNAP-AF-01 (закрыта задачей CFC-04A, STATUS-020 удалён). Находка PSC-AF-03 также закрыта задачей CFC-04 (STATUS-013 удалён). Находка SAV-AF-02 закрыта задачей CFC-08 (STATUS-019 удалён). Перенос в status означает фиксацию расхождения для планирования, а не исправление кода. Результаты запусков выше относятся к первоначальному аудиту; дополнение ниже основано на анализе кода и не является повторным полным test run.
+
+На момент архивации раунда все 29 finding blocks имеют записанный исход: 24 устранены задачами плана, пять отклонены с наблюдаемым условием повторного открытия. Единственное выжившее расхождение этого раунда — [`STATUS-027`](ImplementationStatus.md); открытые `STATUS-002`, `STATUS-003` и `STATUS-026` принадлежат другим записям и не закрывались.
 
 ### Snapshot ownership — дополнение внешнего review
 
@@ -218,7 +220,7 @@ exit=0
 
 Источник — предоставленный `Docs/Status/CppFullCodeReview.md`; исходные формулировки не являются нормой. Сверено с source HEAD `78e96f1` 2026-09-12. Входные незакоммиченные review и `Docs/README.md` не изменялись. Применён последовательный анализ кода/owner contracts, для Value/manifest/digest — отдельный compiled probe против portable libraries из `build/Source`. Полный suite, UE GC, thread death tests, OOM и randomized gameplay replay в этой дополнительной проверке не запускались. Заявленные исходным review пять параллельных проверок и 104 tests здесь не выдаются за наше новое evidence.
 
-Добавлено 15 adjudication blocks CFC-AF-01…15: девять содержат подтверждённый дефект или более узкий механизм риска (01…07, 09, 10), пять отклоняют заявленную correctness/performance проблему (08, 11…14), один фиксирует только форматирование (15). Пять новых contract gaps — STATUS-021…025; test hygiene и defensive guards отдельно не объявляются прежними runtime contract violations. Вместе с прежними десятью записями документ содержит 25 finding blocks; это не 25 новых открытых bugs. Утверждение исходного review «архитектура строго соответствует инвариантам» не подтверждается при существующих STATUS и обнаруженном native state composition.
+Добавлено 15 adjudication blocks CFC-AF-01…15: девять содержат подтверждённый дефект или более узкий механизм риска (01…07, 09, 10), пять отклоняют заявленную correctness/performance проблему (08, 11…14), один фиксирует только форматирование (15). Пять новых contract gaps — STATUS-021…025; test hygiene и defensive guards отдельно не объявляются прежними runtime contract violations. Вместе с прежними одиннадцатью записями и добавленными при финальной приёмке CFC-AF-16…18 документ содержит 29 finding blocks; это не 29 новых открытых bugs. Утверждение исходного review «архитектура строго соответствует инвариантам» не подтверждается при существующих STATUS и обнаруженном native state composition.
 
 #### CFC-AF-01 — REVIEW-01 — P1 — GC ownership registry classes
 
@@ -326,6 +328,8 @@ Code/evidence revision: `02cb996b4b905f383b724aa099b1b9324cebd2f5`, чистый
 - `STATUS-002` и `STATUS-003`: effects и enter/exit animation paths отсутствуют. Они не препятствуют всякой gameplay-разработке, но замораживать C++ с обещанием этих возможностей нельзя.
 - `STATUS-011` закрыт задачей CFC-11: обязательная scene surface и typed отказ закреплены schema v2 fixtures.
 - [PresentationModel](../Concepts/PresentationModel.md) всё ещё говорит об одном экране и нереализованном UI document; [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md) одновременно содержит старую запись о неготовых migrations и отдельный раздел реализованных migrations. Валидатор links/front matter не проверяет такие смысловые противоречия. Эти описания не использованы как evidence отсутствия реально существующего кода.
+  *(Закрыто перед архивацией раунда)* Перепроверено по текущему тексту: `PresentationModel` уже описывает работающий UI document, а противоречащая запись о неготовых migrations в `CanonicalStateAndSave` снята задачами CFC-08…10. Оставалось одно устаревшее утверждение — «полный replacement lifecycle и product save/load остаются незавершёнными», — снятое тем же change set. Смысловые противоречия по-прежнему вне досягаемости валидатора links/front matter.
+- Обязательный job `Unreal GV2 Acceptance` из [Integration gate](../Architecture/BuildAndTooling.md#integration-gate) ни разу не исполнялся на `origin`; открытый пункт evidence CFC-02 перенесён в [`STATUS-027`](ImplementationStatus.md).
 
 ## Решение по фиксации C++
 
