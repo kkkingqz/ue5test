@@ -437,6 +437,94 @@ std::string RunSaveSlotStorageConformance()
             }
             StepOpen.Storage.reset();
         }
+
+        // 9c. Test fault injection on legacy migration:
+        std::size_t LegacyCommitOrdinal = 0;
+        std::size_t LegacyOps = 0;
+        {
+            FScopedTempDir TmpTrace;
+            const std::filesystem::path LegPath = TmpTrace.Dir / "legacy_slot.save";
+            {
+                std::ofstream LegFile(LegPath, std::ios::binary);
+                LegFile << "legacy_payload";
+            }
+
+            auto TraceFs = std::make_shared<Internal::FInstrumentedSaveSlotFilesystem>();
+            auto TraceOpen = FGV2SaveSlotStorageTestAccess::OpenWithFilesystem(TmpTrace.Dir, TraceFs);
+            TraceFs->Reset();
+            const FSaveSlotWriteResult LegWriteRes = TraceOpen.Storage->WriteSlot("legacy_slot", "migrated_payload");
+            if (LegWriteRes.Result != ESaveSlotResult::Ok)
+            {
+                return "save_slot_storage_conformance.legacy_baseline_write_failed";
+            }
+            LegacyOps = TraceFs->Trace.size();
+            for (const auto& Rec : TraceFs->Trace)
+            {
+                if (Rec.Description == "commit_head")
+                {
+                    LegacyCommitOrdinal = Rec.Ordinal;
+                    break;
+                }
+            }
+            TraceOpen.Storage.reset();
+        }
+
+        if (LegacyCommitOrdinal == 0)
+        {
+            return "save_slot_storage_conformance.legacy_commit_head_not_found_in_trace";
+        }
+
+        for (std::size_t Ord = 1; Ord <= LegacyOps; ++Ord)
+        {
+            FScopedTempDir StepDir;
+            const std::filesystem::path LegPath = StepDir.Dir / "legacy_slot.save";
+            {
+                std::ofstream LegFile(LegPath, std::ios::binary);
+                LegFile << "legacy_payload";
+            }
+
+            auto StepFs = std::make_shared<Internal::FInstrumentedSaveSlotFilesystem>();
+            auto StepOpen = FGV2SaveSlotStorageTestAccess::OpenWithFilesystem(StepDir.Dir, StepFs);
+            StepFs->Reset();
+            StepFs->InjectedFailureOrdinal = Ord;
+
+            const FSaveSlotWriteResult Res = StepOpen.Storage->WriteSlot("legacy_slot", "migrated_payload");
+            if (Ord <= LegacyCommitOrdinal)
+            {
+                if (Res.Result != ESaveSlotResult::Failure)
+                {
+                    return "save_slot_storage_conformance.legacy_fault_pre_commit_did_not_fail ordinal=" + std::to_string(Ord);
+                }
+                const FSaveSlotReadResult ReadCur = StepOpen.Storage->ReadSlot("legacy_slot", ESaveSlotRevision::Current);
+                if (ReadCur.Result != ESaveSlotResult::Ok || ReadCur.Bytes != "legacy_payload")
+                {
+                    return "save_slot_storage_conformance.legacy_fault_pre_commit_corrupted_current ordinal=" + std::to_string(Ord);
+                }
+                const FSaveSlotReadResult ReadPrev = StepOpen.Storage->ReadSlot("legacy_slot", ESaveSlotRevision::Previous);
+                if (ReadPrev.Result != ESaveSlotResult::NotFound)
+                {
+                    return "save_slot_storage_conformance.legacy_fault_pre_commit_previous_not_empty ordinal=" + std::to_string(Ord);
+                }
+            }
+            else
+            {
+                if (Res.Result != ESaveSlotResult::Ok)
+                {
+                    return "save_slot_storage_conformance.legacy_fault_post_commit_failed_write ordinal=" + std::to_string(Ord);
+                }
+                const FSaveSlotReadResult ReadCur = StepOpen.Storage->ReadSlot("legacy_slot", ESaveSlotRevision::Current);
+                if (ReadCur.Result != ESaveSlotResult::Ok || ReadCur.Bytes != "migrated_payload")
+                {
+                    return "save_slot_storage_conformance.legacy_fault_post_commit_corrupted_current ordinal=" + std::to_string(Ord);
+                }
+                const FSaveSlotReadResult ReadPrev = StepOpen.Storage->ReadSlot("legacy_slot", ESaveSlotRevision::Previous);
+                if (ReadPrev.Result != ESaveSlotResult::Ok || ReadPrev.Bytes != "legacy_payload")
+                {
+                    return "save_slot_storage_conformance.legacy_fault_post_commit_corrupted_previous ordinal=" + std::to_string(Ord);
+                }
+            }
+            StepOpen.Storage.reset();
+        }
     }
 
     return "";

@@ -14,10 +14,13 @@ namespace GV2RuntimeCore::Internal
 
 enum class EFilesystemOpKind
 {
+    Exists,
+    IsRegularFile,
     ReadFile,
     WriteFile,
     Rename,
     Remove,
+    ListDirectory,
 };
 
 struct FFilesystemOpRecord
@@ -34,23 +37,25 @@ class ISaveSlotFilesystem
 public:
     virtual ~ISaveSlotFilesystem() = default;
 
-    virtual bool Exists(const std::filesystem::path& Path) = 0;
-    virtual bool IsRegularFile(const std::filesystem::path& Path) = 0;
+    virtual bool Exists(const std::filesystem::path& Path, bool& bOutExists, const std::string& Desc) = 0;
+    virtual bool IsRegularFile(const std::filesystem::path& Path, bool& bOutIsRegularFile, const std::string& Desc) = 0;
     virtual bool ReadFile(const std::filesystem::path& Path, std::string& OutBytes, const std::string& Desc) = 0;
     virtual bool WriteFile(const std::filesystem::path& Path, const std::string& Bytes, const std::string& Desc) = 0;
     virtual bool Rename(const std::filesystem::path& From, const std::filesystem::path& To, const std::string& Desc) = 0;
     virtual bool Remove(const std::filesystem::path& Path, const std::string& Desc) = 0;
+    virtual bool ListDirectory(const std::filesystem::path& Path, std::vector<std::filesystem::path>& OutEntries, const std::string& Desc) = 0;
 };
 
 class FDefaultSaveSlotFilesystem final : public ISaveSlotFilesystem
 {
 public:
-    bool Exists(const std::filesystem::path& Path) override;
-    bool IsRegularFile(const std::filesystem::path& Path) override;
+    bool Exists(const std::filesystem::path& Path, bool& bOutExists, const std::string& Desc) override;
+    bool IsRegularFile(const std::filesystem::path& Path, bool& bOutIsRegularFile, const std::string& Desc) override;
     bool ReadFile(const std::filesystem::path& Path, std::string& OutBytes, const std::string& Desc) override;
     bool WriteFile(const std::filesystem::path& Path, const std::string& Bytes, const std::string& Desc) override;
     bool Rename(const std::filesystem::path& From, const std::filesystem::path& To, const std::string& Desc) override;
     bool Remove(const std::filesystem::path& Path, const std::string& Desc) override;
+    bool ListDirectory(const std::filesystem::path& Path, std::vector<std::filesystem::path>& OutEntries, const std::string& Desc) override;
 };
 
 class FInstrumentedSaveSlotFilesystem final : public ISaveSlotFilesystem
@@ -65,12 +70,13 @@ public:
     std::vector<FFilesystemOpRecord> Trace;
     std::size_t NextOrdinal = 1;
 
-    bool Exists(const std::filesystem::path& Path) override;
-    bool IsRegularFile(const std::filesystem::path& Path) override;
+    bool Exists(const std::filesystem::path& Path, bool& bOutExists, const std::string& Desc) override;
+    bool IsRegularFile(const std::filesystem::path& Path, bool& bOutIsRegularFile, const std::string& Desc) override;
     bool ReadFile(const std::filesystem::path& Path, std::string& OutBytes, const std::string& Desc) override;
     bool WriteFile(const std::filesystem::path& Path, const std::string& Bytes, const std::string& Desc) override;
     bool Rename(const std::filesystem::path& From, const std::filesystem::path& To, const std::string& Desc) override;
     bool Remove(const std::filesystem::path& Path, const std::string& Desc) override;
+    bool ListDirectory(const std::filesystem::path& Path, std::vector<std::filesystem::path>& OutEntries, const std::string& Desc) override;
 
     void Reset();
 

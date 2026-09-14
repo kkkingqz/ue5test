@@ -4,6 +4,7 @@
 #include "GV2ContentCore/Json5Parser.h"
 #include "GV2ContentCore/ParseLimits.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -43,16 +44,30 @@ bool IsValidSaveSlotId(const std::string& SlotId)
 namespace Internal
 {
 
-bool FDefaultSaveSlotFilesystem::Exists(const std::filesystem::path& Path)
+bool FDefaultSaveSlotFilesystem::Exists(const std::filesystem::path& Path, bool& bOutExists, const std::string& Desc)
 {
+    (void)Desc;
     std::error_code Ec;
-    return std::filesystem::exists(Path, Ec) && !Ec;
+    bOutExists = std::filesystem::exists(Path, Ec);
+    return !Ec;
 }
 
-bool FDefaultSaveSlotFilesystem::IsRegularFile(const std::filesystem::path& Path)
+bool FDefaultSaveSlotFilesystem::IsRegularFile(const std::filesystem::path& Path, bool& bOutIsRegularFile, const std::string& Desc)
 {
+    (void)Desc;
     std::error_code Ec;
-    return std::filesystem::is_regular_file(Path, Ec) && !Ec;
+    bOutIsRegularFile = std::filesystem::is_regular_file(Path, Ec);
+    if (Ec)
+    {
+        if (Ec == std::errc::no_such_file_or_directory)
+        {
+            bOutIsRegularFile = false;
+            return true;
+        }
+        bOutIsRegularFile = false;
+        return false;
+    }
+    return true;
 }
 
 bool FDefaultSaveSlotFilesystem::ReadFile(const std::filesystem::path& Path, std::string& OutBytes, const std::string& Desc)
@@ -100,6 +115,27 @@ bool FDefaultSaveSlotFilesystem::Remove(const std::filesystem::path& Path, const
     std::error_code Ec;
     std::filesystem::remove(Path, Ec);
     return !Ec;
+}
+
+bool FDefaultSaveSlotFilesystem::ListDirectory(const std::filesystem::path& Path, std::vector<std::filesystem::path>& OutEntries, const std::string& Desc)
+{
+    (void)Desc;
+    OutEntries.clear();
+    std::error_code Ec;
+    for (const auto& Entry : std::filesystem::directory_iterator(Path, Ec))
+    {
+        if (Ec)
+        {
+            return false;
+        }
+        OutEntries.push_back(Entry.path());
+    }
+    if (Ec)
+    {
+        return false;
+    }
+    std::sort(OutEntries.begin(), OutEntries.end());
+    return true;
 }
 
 FInstrumentedSaveSlotFilesystem::FInstrumentedSaveSlotFilesystem(std::shared_ptr<ISaveSlotFilesystem> InUnderlying)
@@ -152,14 +188,28 @@ void FInstrumentedSaveSlotFilesystem::CheckPostOp(std::size_t Ord)
     }
 }
 
-bool FInstrumentedSaveSlotFilesystem::Exists(const std::filesystem::path& Path)
+bool FInstrumentedSaveSlotFilesystem::Exists(const std::filesystem::path& Path, bool& bOutExists, const std::string& Desc)
 {
-    return Underlying->Exists(Path);
+    const std::size_t Ord = BeginOp(EFilesystemOpKind::Exists, Desc, Path);
+    if (Ord == 0)
+    {
+        return false;
+    }
+    const bool bOk = Underlying->Exists(Path, bOutExists, Desc);
+    CheckPostOp(Ord);
+    return bOk;
 }
 
-bool FInstrumentedSaveSlotFilesystem::IsRegularFile(const std::filesystem::path& Path)
+bool FInstrumentedSaveSlotFilesystem::IsRegularFile(const std::filesystem::path& Path, bool& bOutIsRegularFile, const std::string& Desc)
 {
-    return Underlying->IsRegularFile(Path);
+    const std::size_t Ord = BeginOp(EFilesystemOpKind::IsRegularFile, Desc, Path);
+    if (Ord == 0)
+    {
+        return false;
+    }
+    const bool bOk = Underlying->IsRegularFile(Path, bOutIsRegularFile, Desc);
+    CheckPostOp(Ord);
+    return bOk;
 }
 
 bool FInstrumentedSaveSlotFilesystem::ReadFile(const std::filesystem::path& Path, std::string& OutBytes, const std::string& Desc)
@@ -206,6 +256,18 @@ bool FInstrumentedSaveSlotFilesystem::Remove(const std::filesystem::path& Path, 
         return false;
     }
     const bool bOk = Underlying->Remove(Path, Desc);
+    CheckPostOp(Ord);
+    return bOk;
+}
+
+bool FInstrumentedSaveSlotFilesystem::ListDirectory(const std::filesystem::path& Path, std::vector<std::filesystem::path>& OutEntries, const std::string& Desc)
+{
+    const std::size_t Ord = BeginOp(EFilesystemOpKind::ListDirectory, Desc, Path);
+    if (Ord == 0)
+    {
+        return false;
+    }
+    const bool bOk = Underlying->ListDirectory(Path, OutEntries, Desc);
     CheckPostOp(Ord);
     return bOk;
 }
@@ -366,24 +428,27 @@ struct FFilesystemSaveSlotStorage::FImpl
 
     void StartupCleanup()
     {
-        std::error_code Ec;
-        if (!std::filesystem::exists(RootDir, Ec) || Ec)
+        bool bRootExists = false;
+        if (!Fs->Exists(RootDir, bRootExists, "startup_cleanup_check_root") || !bRootExists)
+        {
+            return;
+        }
+
+        std::vector<std::filesystem::path> Entries;
+        if (!Fs->ListDirectory(RootDir, Entries, "startup_cleanup_list_root"))
         {
             return;
         }
 
         // Clean up unreferenced files for slots with valid heads
-        for (const auto& Entry : std::filesystem::directory_iterator(RootDir, Ec))
+        for (const auto& EntryPath : Entries)
         {
-            if (Ec)
-            {
-                break;
-            }
-            if (!Entry.is_regular_file(Ec) || Ec)
+            bool bIsRegular = false;
+            if (!Fs->IsRegularFile(EntryPath, bIsRegular, "startup_cleanup_check_file") || !bIsRegular)
             {
                 continue;
             }
-            const std::string Filename = Entry.path().filename().string();
+            const std::string Filename = EntryPath.filename().string();
             const std::string HeadSuffix = ".head";
             if (Filename.size() > HeadSuffix.size() &&
                 Filename.compare(Filename.size() - HeadSuffix.size(), HeadSuffix.size(), HeadSuffix) == 0)
@@ -395,7 +460,7 @@ struct FFilesystemSaveSlotStorage::FImpl
                 }
 
                 std::string HeadBytes;
-                if (!Fs->ReadFile(Entry.path(), HeadBytes, "startup_cleanup_read_head"))
+                if (!Fs->ReadFile(EntryPath, HeadBytes, "startup_cleanup_read_head"))
                 {
                     continue;
                 }
@@ -410,24 +475,19 @@ struct FFilesystemSaveSlotStorage::FImpl
                 const std::string TmpPrefix = SlotId + ".tmp_";
                 const std::string HeadTmpPrefix = SlotId + ".head.tmp";
 
-                std::error_code IterEc;
-                for (const auto& SubEntry : std::filesystem::directory_iterator(RootDir, IterEc))
+                for (const auto& SubPath : Entries)
                 {
-                    if (IterEc)
-                    {
-                        break;
-                    }
-                    const std::string SubName = SubEntry.path().filename().string();
+                    const std::string SubName = SubPath.filename().string();
                     if (SubName.rfind(GenPrefix, 0) == 0)
                     {
                         if (SubName != Head.CurrentGen && SubName != Head.PreviousGen)
                         {
-                            Fs->Remove(SubEntry.path(), "startup_cleanup_remove_unreferenced");
+                            Fs->Remove(SubPath, "startup_cleanup_remove_unreferenced");
                         }
                     }
                     else if (SubName.rfind(TmpPrefix, 0) == 0 || SubName.rfind(HeadTmpPrefix, 0) == 0)
                     {
-                        Fs->Remove(SubEntry.path(), "startup_cleanup_remove_temp");
+                        Fs->Remove(SubPath, "startup_cleanup_remove_temp");
                     }
                 }
             }
@@ -464,9 +524,16 @@ FSaveSlotReadResult FFilesystemSaveSlotStorage::ReadSlot(
     std::lock_guard<std::mutex> Lock(Impl->Mutex);
 
     const std::filesystem::path HeadPath = Impl->RootDir / (SlotId + ".head");
-    if (Impl->Fs->Exists(HeadPath))
+    bool bHeadExists = false;
+    if (!Impl->Fs->Exists(HeadPath, bHeadExists, "read_check_head_exists"))
     {
-        if (!Impl->Fs->IsRegularFile(HeadPath))
+        return {ESaveSlotResult::Unreadable, {}};
+    }
+
+    if (bHeadExists)
+    {
+        bool bHeadIsRegular = false;
+        if (!Impl->Fs->IsRegularFile(HeadPath, bHeadIsRegular, "read_check_head_is_regular") || !bHeadIsRegular)
         {
             return {ESaveSlotResult::Unreadable, {}};
         }
@@ -486,7 +553,13 @@ FSaveSlotReadResult FFilesystemSaveSlotStorage::ReadSlot(
         if (Revision == ESaveSlotRevision::Current)
         {
             const std::filesystem::path GenPath = Impl->RootDir / Head.CurrentGen;
-            if (!Impl->Fs->Exists(GenPath) || !Impl->Fs->IsRegularFile(GenPath))
+            bool bGenExists = false;
+            if (!Impl->Fs->Exists(GenPath, bGenExists, "read_check_current_gen_exists") || !bGenExists)
+            {
+                return {ESaveSlotResult::Unreadable, {}};
+            }
+            bool bGenIsRegular = false;
+            if (!Impl->Fs->IsRegularFile(GenPath, bGenIsRegular, "read_check_current_gen_is_regular") || !bGenIsRegular)
             {
                 return {ESaveSlotResult::Unreadable, {}};
             }
@@ -504,7 +577,13 @@ FSaveSlotReadResult FFilesystemSaveSlotStorage::ReadSlot(
                 return {ESaveSlotResult::NotFound, {}};
             }
             const std::filesystem::path GenPath = Impl->RootDir / Head.PreviousGen;
-            if (!Impl->Fs->Exists(GenPath) || !Impl->Fs->IsRegularFile(GenPath))
+            bool bGenExists = false;
+            if (!Impl->Fs->Exists(GenPath, bGenExists, "read_check_previous_gen_exists") || !bGenExists)
+            {
+                return {ESaveSlotResult::Unreadable, {}};
+            }
+            bool bGenIsRegular = false;
+            if (!Impl->Fs->IsRegularFile(GenPath, bGenIsRegular, "read_check_previous_gen_is_regular") || !bGenIsRegular)
             {
                 return {ESaveSlotResult::Unreadable, {}};
             }
@@ -519,11 +598,17 @@ FSaveSlotReadResult FFilesystemSaveSlotStorage::ReadSlot(
 
     // No head: check legacy single-current slot
     const std::filesystem::path LegacyPath = Impl->RootDir / (SlotId + ".save");
-    if (!Impl->Fs->Exists(LegacyPath))
+    bool bLegacyExists = false;
+    if (!Impl->Fs->Exists(LegacyPath, bLegacyExists, "read_check_legacy_exists"))
+    {
+        return {ESaveSlotResult::Unreadable, {}};
+    }
+    if (!bLegacyExists)
     {
         return {ESaveSlotResult::NotFound, {}};
     }
-    if (!Impl->Fs->IsRegularFile(LegacyPath))
+    bool bLegacyIsRegular = false;
+    if (!Impl->Fs->IsRegularFile(LegacyPath, bLegacyIsRegular, "read_check_legacy_is_regular") || !bLegacyIsRegular)
     {
         return {ESaveSlotResult::Unreadable, {}};
     }
@@ -565,9 +650,16 @@ FSaveSlotWriteResult FFilesystemSaveSlotStorage::WriteSlot(
     bool bLegacyMigration = false;
     std::string LegacyBytes;
 
-    if (Impl->Fs->Exists(HeadPath))
+    bool bHeadExists = false;
+    if (!Impl->Fs->Exists(HeadPath, bHeadExists, "check_head_exists"))
     {
-        if (!Impl->Fs->IsRegularFile(HeadPath))
+        return {ESaveSlotResult::Failure};
+    }
+
+    if (bHeadExists)
+    {
+        bool bHeadIsRegular = false;
+        if (!Impl->Fs->IsRegularFile(HeadPath, bHeadIsRegular, "check_head_is_regular") || !bHeadIsRegular)
         {
             return {ESaveSlotResult::Failure};
         }
@@ -583,17 +675,26 @@ FSaveSlotWriteResult FFilesystemSaveSlotStorage::WriteSlot(
         }
         OldCurrentGenName = Head.CurrentGen;
     }
-    else if (Impl->Fs->Exists(LegacyPath))
+    else
     {
-        if (!Impl->Fs->IsRegularFile(LegacyPath))
+        bool bLegacyExists = false;
+        if (!Impl->Fs->Exists(LegacyPath, bLegacyExists, "check_legacy_exists"))
         {
             return {ESaveSlotResult::Failure};
         }
-        if (!Impl->Fs->ReadFile(LegacyPath, LegacyBytes, "read_legacy_for_migration"))
+        if (bLegacyExists)
         {
-            return {ESaveSlotResult::Failure};
+            bool bLegacyIsRegular = false;
+            if (!Impl->Fs->IsRegularFile(LegacyPath, bLegacyIsRegular, "check_legacy_is_regular") || !bLegacyIsRegular)
+            {
+                return {ESaveSlotResult::Failure};
+            }
+            if (!Impl->Fs->ReadFile(LegacyPath, LegacyBytes, "read_legacy_for_migration"))
+            {
+                return {ESaveSlotResult::Failure};
+            }
+            bLegacyMigration = true;
         }
-        bLegacyMigration = true;
     }
 
     const std::string Tag = MakeUniqueTag();
@@ -692,24 +793,23 @@ FSaveSlotWriteResult FFilesystemSaveSlotStorage::WriteSlot(
     const std::string TmpPrefix = SlotId + ".tmp_";
     const std::string HeadTmpPrefix = SlotId + ".head.tmp";
 
-    std::error_code IterEc;
-    for (const auto& SubEntry : std::filesystem::directory_iterator(Impl->RootDir, IterEc))
+    std::vector<std::filesystem::path> CleanupEntries;
+    if (Impl->Fs->ListDirectory(Impl->RootDir, CleanupEntries, "cleanup_list_root"))
     {
-        if (IterEc)
+        for (const auto& SubPath : CleanupEntries)
         {
-            break;
-        }
-        const std::string SubName = SubEntry.path().filename().string();
-        if (SubName.rfind(GenPrefix, 0) == 0)
-        {
-            if (SubName != NewGenName && SubName != OldCurrentGenName)
+            const std::string SubName = SubPath.filename().string();
+            if (SubName.rfind(GenPrefix, 0) == 0)
             {
-                Impl->Fs->Remove(SubEntry.path(), "cleanup_obsolete_generation");
+                if (SubName != NewGenName && SubName != OldCurrentGenName)
+                {
+                    Impl->Fs->Remove(SubPath, "cleanup_obsolete_generation");
+                }
             }
-        }
-        else if (SubName.rfind(TmpPrefix, 0) == 0 || SubName.rfind(HeadTmpPrefix, 0) == 0)
-        {
-            Impl->Fs->Remove(SubEntry.path(), "cleanup_leftover_temp");
+            else if (SubName.rfind(TmpPrefix, 0) == 0 || SubName.rfind(HeadTmpPrefix, 0) == 0)
+            {
+                Impl->Fs->Remove(SubPath, "cleanup_leftover_temp");
+            }
         }
     }
 
