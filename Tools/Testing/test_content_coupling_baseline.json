@@ -3,91 +3,25 @@
     {
       "category": "class_2",
       "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 75,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 84,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 95,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"
-    },
-    {
-      "category": "class_1",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 119,
-      "token": "textsystem:resource.ui.missing_portrait"
-    },
-    {
-      "category": "class_1",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 125,
-      "token": "textsystem:resource.ui.missing_portrait"
-    },
-    {
-      "category": "class_1",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 125,
-      "token": "textsystem:resource.ui.missing_portrait"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 135,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 140,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 164,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 180,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 213,
+      "line": 218,
       "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
     },
     {
       "category": "class_2",
       "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 631,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 685,
+      "line": 602,
       "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_Text_Default.BP_UIStyle_Text_Default_C"
     },
     {
       "category": "class_2",
       "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 686,
+      "line": 603,
       "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_ButtonLabel_Default.BP_UIStyle_ButtonLabel_Default_C"
     },
     {
       "category": "class_2",
       "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 740,
+      "line": 684,
       "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
     },
     {
@@ -484,6 +418,6 @@
       "reason": "Smoke-\u0442\u0435\u0441\u0442\u044b \u043a\u043e\u043c\u043f\u043e\u0437\u0438\u0442\u043e\u0432, \u044d\u043a\u0440\u0430\u043d\u043e\u0432 \u0438 \u0430\u0441\u0441\u0435\u0442\u043e\u0432 \u043a\u043e\u043d\u0442\u0435\u043d\u0442\u0430 (TextSystem/RH)."
     }
   ],
-  "total_allowed_couplings": 166,
+  "total_allowed_couplings": 68,
   "version": 1
 }

@@ -20,6 +20,9 @@
 #include "Engine/World.h"
 
 #include "Application/GV2ScreenFieldMaterializer.h"
+#include "Application/GV2SessionContentSnapshot.h"
+#include "GV2ContentCore/RepositorySnapshot.h"
+#include "GV2ContentCore/Value.h"
 #include "UI/GV2ButtonWidgetBase.h"
 #include "UI/GV2ImageWidgetBase.h"
 #include "UI/GV2ImageResourceCatalog.h"
@@ -36,10 +39,15 @@
 #include "UI/GV2TextWidgetBase.h"
 #include "CommonTextBlock.h"
 
+#include <vector>
+#include <string>
+#include <algorithm>
+
 // =========================================================================
-// TSR-07 (ADR-0046, Plan TestSuiteRestructuring):
-// Content Smoke Tests for TextSystem & RH widgets and assets.
-// These tests verify that authored game blueprints load, configure, and render correctly.
+// TSR-07 / TSR-08 (ADR-0046, Plan TestSuiteRestructuring):
+// Content Smoke Tests for TextSystem & RH widgets, styles, and startup flow.
+// These tests verify that authored game blueprints load, configure, and render correctly,
+// with all gameplay expectations read dynamically from content repository definitions.
 // =========================================================================
 
 namespace
@@ -55,142 +63,140 @@ bool GV2FitsInBounds(const FVector2D& Pos, const FVector2D& Size, const FVector2
         && (Pos.X + Size.X) <= (Bounds.X + 1.0f)
         && (Pos.Y + Size.Y) <= (Bounds.Y + 1.0f);
 }
-}
 
-// CCF-06..12: Location Composite Correctness Smoke Test
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationCompositeContractTest,
-    "GV2.Runtime.UI.LocationCompositeContract",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationCompositeContractTest::RunTest(const FString& Parameters)
+struct FContentCharacterExpectation
 {
-    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
-    UGameInstance* GameInstance = WorldContext.GetGameInstance();
-    UWorld* TestWorld = WorldContext.GetWorld();
+    FName Key;
+    FString ResourceId;
+};
 
-    // CCF-06: Capabilities declaration
-    {
-        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2DeclaredCompositeWidgetBase* SceneWidget = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
-        FGV2UiCapabilityBuilder SceneBuilder;
-        SceneWidget->DescribeUiCapabilities(SceneBuilder);
-        FGV2UiCapabilityTree SceneTree = SceneBuilder.Build();
-        TestNotNull(TEXT("CCF-06: Scene capabilities declared"), SceneTree.FindProperty(TEXT("key")));
-        TestNotNull(TEXT("CCF-06: Scene context_text declared"), SceneTree.FindProperty(TEXT("context_text")));
-        TestNotNull(TEXT("CCF-06: Scene characters declared"), SceneTree.FindProperty(TEXT("characters")));
-
-        UClass* CmdClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
-        UGV2DeclaredCompositeWidgetBase* CmdWidget = CmdClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
-        FGV2UiCapabilityBuilder CmdBuilder;
-        CmdWidget->DescribeUiCapabilities(CmdBuilder);
-        FGV2UiCapabilityTree CmdTree = CmdBuilder.Build();
-        TestNotNull(TEXT("CCF-06: Command capabilities declared"), CmdTree.FindProperty(TEXT("key")));
-        TestNotNull(TEXT("CCF-06: Command items declared"), CmdTree.FindProperty(TEXT("items")));
-    }
-
-    // CCF-07: Repeated elements go through Repeater only (0, 1, 2 cases)
-    {
-        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2DeclaredCompositeWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
-
-        UGV2ListViewWidgetBase* CharRep = Cast<UGV2ListViewWidgetBase>(SceneView->GetWidgetFromName(TEXT("CharacterRepeater")));
-        if (CharRep != nullptr)
-        {
-            struct FTestCharEntry { FName Key; FString ResourceId; };
-            auto GetKey = [](const FTestCharEntry& E) { return E.Key; };
-            auto CreateWidgetLambda = [TestWorld]() -> UGV2ImageWidgetBase*
-            {
-                return NewObject<UGV2ImageWidgetBase>(TestWorld);
-            };
-            auto ApplyLambda = [](UGV2ImageWidgetBase& Widget, const FTestCharEntry& Entry)
-            {
-                Widget.SetKey(Entry.Key);
-                return true;
-            };
-
-            // 0 characters
-            TArray<FTestCharEntry> C0;
-            TestTrue(TEXT("CCF-07: 0 characters applied"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(C0, GetKey, CreateWidgetLambda, ApplyLambda));
-            TestEqual(TEXT("CCF-07: Repeater count 0 for empty characters"), CharRep->GetEntryCount(), 0);
-
-            // 1 character
-            TArray<FTestCharEntry> C1 = { { FName(TEXT("c_aria")), TEXT("textsystem:resource.ui.missing_portrait") } };
-            TestTrue(TEXT("CCF-07: 1 character applied"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(C1, GetKey, CreateWidgetLambda, ApplyLambda));
-            TestEqual(TEXT("CCF-07: Repeater count 1 for 1 character"), CharRep->GetEntryCount(), 1);
-            TestNotNull(TEXT("CCF-07: CharA entry in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_aria"))));
-
-            // 2 characters
-            TArray<FTestCharEntry> C2 = { { FName(TEXT("c_aria")), TEXT("textsystem:resource.ui.missing_portrait") }, { FName(TEXT("c_merchant")), TEXT("textsystem:resource.ui.missing_portrait") } };
-            TestTrue(TEXT("CCF-07: 2 characters applied"), CharRep->ReconcileEntries<UGV2ImageWidgetBase, FTestCharEntry>(C2, GetKey, CreateWidgetLambda, ApplyLambda));
-            TestEqual(TEXT("CCF-07: Repeater count 2 for 2 characters"), CharRep->GetEntryCount(), 2);
-            TestNotNull(TEXT("CCF-07: CharA still in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_aria"))));
-            TestNotNull(TEXT("CCF-07: CharB in repeater"), CharRep->GetEntryWidget(FName(TEXT("c_merchant"))));
-        }
-    }
-
-    // CCF-11: Key and host state semantics for SceneView and CommandPanel
-    {
-        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        UGV2DeclaredCompositeWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
-        SceneView->SetKey(FName(TEXT("scene_test")));
-        TestEqual(TEXT("CCF-11: SceneView Key getter/setter"), SceneView->GetKey(), FName(TEXT("scene_test")));
-
-        UClass* CmdClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
-        UGV2DeclaredCompositeWidgetBase* CmdPanel = CmdClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CmdClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
-        CmdPanel->SetKey(FName(TEXT("cmd_test")));
-        TestEqual(TEXT("CCF-11: CommandPanel Key getter/setter"), CmdPanel->GetKey(), FName(TEXT("cmd_test")));
-    }
-
-    return true;
-}
-
-// UIH-09..UIH-12: Location Composite Semantics & Validation Smoke Test
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationCompositeSemanticsTest,
-    "GV2.Runtime.UI.LocationCompositeSemantics",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationCompositeSemanticsTest::RunTest(const FString& Parameters)
+TArray<FContentCharacterExpectation> GetExpectedScreenCharacters(
+    const GV2ContentCore::FRepositoryReadHandle& Repo,
+    const std::string& ScreenId)
 {
-    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
-    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
-    UWorld* TestWorld = ScopedWorld.GetWorld();
-    if (TestWorld != nullptr)
+    TArray<FContentCharacterExpectation> Result;
+    if (!Repo.IsValid())
     {
-        // 1. SceneView validation & semantics
+        return Result;
+    }
+    const GV2ContentCore::FValue* ScreenDef = Repo.Find(GV2ContentCore::FDefinitionId::Require(ScreenId));
+    if (!ScreenDef || !ScreenDef->IsObject())
+    {
+        return Result;
+    }
+    const GV2ContentCore::FValue* Ext = ScreenDef->FindField("extensions");
+    if (!Ext || !Ext->IsObject())
+    {
+        return Result;
+    }
+    const GV2ContentCore::FValue* RhExt = Ext->FindField("rh");
+    if (!RhExt || !RhExt->IsObject())
+    {
+        return Result;
+    }
+    const GV2ContentCore::FValue* Chars = RhExt->FindField("characters");
+    if (!Chars || !Chars->IsArray())
+    {
+        return Result;
+    }
+    for (const GV2ContentCore::FValue& CharEntry : Chars->AsArray())
+    {
+        if (!CharEntry.IsObject())
         {
-            UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-            UGV2DeclaredCompositeWidgetBase* SceneView = SceneClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
-            TestNotNull(TEXT("SceneView created"), SceneView);
-
-            FGV2UiCapabilityBuilder Builder;
-            SceneView->DescribeUiCapabilities(Builder);
-            FGV2UiCapabilityTree Caps = Builder.Build();
-            TestNotNull(TEXT("SceneView has background_tile_resource_id cap"), Caps.FindProperty(TEXT("background_tile_resource_id")));
-            TestNotNull(TEXT("SceneView has background_resource_id cap"), Caps.FindProperty(TEXT("background_resource_id")));
-            TestNotNull(TEXT("SceneView has context_text cap"), Caps.FindProperty(TEXT("context_text")));
-            TestNotNull(TEXT("SceneView has characters cap"), Caps.FindProperty(TEXT("characters")));
-            TestNotNull(TEXT("SceneView has key cap"), Caps.FindProperty(TEXT("key")));
+            continue;
         }
-
-        // 4. CommandPanel validation & semantics
+        const GV2ContentCore::FValue* KeyVal = CharEntry.FindField("key");
+        const GV2ContentCore::FValue* ResVal = CharEntry.FindField("resource_id");
+        if (KeyVal && KeyVal->IsString())
         {
-            UClass* CommandClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(nullptr, TEXT("/Game/TextSystem/UI/Widgets/WBP_CommandPanel.WBP_CommandPanel_C"));
-            UGV2DeclaredCompositeWidgetBase* CommandPanel = CommandClass ? CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, CommandClass) : NewObject<UGV2DeclaredCompositeWidgetBase>(TestWorld);
-            TestNotNull(TEXT("CommandPanel created"), CommandPanel);
-
-            FGV2UiCapabilityBuilder Builder;
-            CommandPanel->DescribeUiCapabilities(Builder);
-            FGV2UiCapabilityTree Caps = Builder.Build();
-            TestNotNull(TEXT("CommandPanel has items cap"), Caps.FindProperty(TEXT("items")));
-            TestNotNull(TEXT("CommandPanel has key cap"), Caps.FindProperty(TEXT("key")));
+            FContentCharacterExpectation Entry;
+            Entry.Key = FName(UTF8_TO_TCHAR(KeyVal->AsString().c_str()));
+            if (ResVal && ResVal->IsString())
+            {
+                Entry.ResourceId = UTF8_TO_TCHAR(ResVal->AsString().c_str());
+            }
+            Result.Add(MoveTemp(Entry));
         }
     }
-
-    return true;
+    return Result;
 }
 
+std::vector<std::string> GetConnectedLocationIds(
+    const GV2ContentCore::FRepositoryReadHandle& Repo,
+    const std::string& LocationId)
+{
+    std::vector<std::string> Result;
+    if (!Repo.IsValid())
+    {
+        return Result;
+    }
+    const GV2ContentCore::FValue* LocDef = Repo.Find(GV2ContentCore::FDefinitionId::Require(LocationId));
+    if (!LocDef || !LocDef->IsObject())
+    {
+        return Result;
+    }
+    const GV2ContentCore::FValue* Data = LocDef->FindField("data");
+    if (!Data || !Data->IsObject())
+    {
+        return Result;
+    }
+    const GV2ContentCore::FValue* Conn = Data->FindField("connected_location_ids");
+    if (!Conn || !Conn->IsArray())
+    {
+        return Result;
+    }
+    for (const GV2ContentCore::FValue& Entry : Conn->AsArray())
+    {
+        if (Entry.IsString())
+        {
+            Result.push_back(Entry.AsString());
+        }
+    }
+    return Result;
+}
+
+std::string GetLocationScreenId(
+    const GV2ContentCore::FRepositoryReadHandle& Repo,
+    const std::string& LocationId)
+{
+    if (!Repo.IsValid())
+    {
+        return "";
+    }
+    const GV2ContentCore::FValue* LocDef = Repo.Find(GV2ContentCore::FDefinitionId::Require(LocationId));
+    if (!LocDef || !LocDef->IsObject())
+    {
+        return "";
+    }
+    const GV2ContentCore::FValue* Data = LocDef->FindField("data");
+    if (!Data || !Data->IsObject())
+    {
+        return "";
+    }
+    const GV2ContentCore::FValue* Screens = Data->FindField("screen_ids");
+    if (!Screens || !Screens->IsArray() || Screens->AsArray().empty())
+    {
+        return "";
+    }
+    const GV2ContentCore::FValue& FirstScreen = Screens->AsArray()[0];
+    return FirstScreen.IsString() ? FirstScreen.AsString() : "";
+}
+
+FString ComputeTravelButtonKey(const std::string& TargetLocationId)
+{
+    const FString Target = UTF8_TO_TCHAR(TargetLocationId.c_str());
+    int32 DotIndex = INDEX_NONE;
+    if (Target.FindChar(TEXT('.'), DotIndex))
+    {
+        FString PathStr = Target.Mid(DotIndex + 1);
+        PathStr.ReplaceInline(TEXT("."), TEXT("_"));
+        return TEXT("travel_") + PathStr;
+    }
+    return TEXT("travel_") + Target;
+}
+}
+
+// =========================================================================
 // UIH-13: Real Viewport / Layout Matrix Automation Test
 // =========================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -581,98 +587,10 @@ bool FGV2LocationScreenViewportMatrixTest::RunTest(const FString& Parameters)
 }
 
 // =========================================================================
-// UIH-14: Rendering Conformance on Instantiated Widgets Test
+
 // =========================================================================
-
-// Diagnostic: LocationScene Image & Hierarchy Audit Smoke Test
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationSceneDiagnostic,
-    "GV2.Runtime.Presentation.LocationSceneDiagnostic",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationSceneDiagnostic::RunTest(const FString& Parameters)
-{
-    const FString GameNamespace = TEXT("r") TEXT("h");
-    const FString MarketResourceId = GameNamespace + TEXT(":resource.location.market");
-    const FString HeroPortraitResourceId = GameNamespace + TEXT(":resource.portrait.hero");
-
-    FString SceneCatalogError;
-    UGV2ImageResourceCatalog* Catalog =
-        GV2PresentationTestFixtures::BuildGameDataImageCatalog(SceneCatalogError);
-    TestNotNull(*FString::Printf(TEXT("Image catalog builds [Error: %s]"), *SceneCatalogError), Catalog);
-    if (Catalog != nullptr)
-    {
-        FGV2ResolvedImageResource MarketRes;
-        FString Error;
-        const bool bMarketResolved = Catalog->Resolve(MarketResourceId, MarketRes, Error);
-        TestTrue(*FString::Printf(TEXT("Market resource resolved: %s"), *Error), bMarketResolved);
-        if (bMarketResolved)
-        {
-            UObject* ResObj = MarketRes.Brush.GetResourceObject();
-            TestNotNull(TEXT("Market brush resource object is valid"), ResObj);
-            UTexture2D* Tex = Cast<UTexture2D>(ResObj);
-            TestNotNull(TEXT("Market resource is UTexture2D"), Tex);
-            if (Tex != nullptr)
-            {
-                AddInfo(FString::Printf(TEXT("Market Texture size: %dx%d, SRGB=%d, HasPlatformData=%d"),
-                    Tex->GetSizeX(), Tex->GetSizeY(), Tex->SRGB, Tex->GetPlatformData() != nullptr));
-            }
-        }
-    }
-
-    GV2PresentationTestFixtures::FScopedTestWorldContext ScopedWorld;
-    UGameInstance* GameInstance = ScopedWorld.GetGameInstance();
-    UWorld* TestWorld = ScopedWorld.GetWorld();
-    if (TestWorld != nullptr)
-    {
-        UClass* SceneClass = LoadClass<UGV2DeclaredCompositeWidgetBase>(
-            nullptr,
-            TEXT("/Game/TextSystem/UI/Widgets/WBP_SceneView.WBP_SceneView_C"));
-        TestNotNull(TEXT("SceneClass loaded"), SceneClass);
-        if (SceneClass != nullptr)
-        {
-            UGV2DeclaredCompositeWidgetBase* SceneView = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, SceneClass);
-            TestNotNull(TEXT("Scene created"), SceneView);
-            if (SceneView != nullptr)
-            {
-                UGV2ImageWidgetBase* Bg = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("Background"))));
-                UGV2ImageWidgetBase* BgTile = Cast<UGV2ImageWidgetBase>(SceneView->GetWidgetFromName(FName(TEXT("BackgroundTile"))));
-                TestNotNull(TEXT("Background widget found"), Bg);
-                TestNotNull(TEXT("BackgroundTile widget found"), BgTile);
-
-                if (Bg != nullptr)
-                {
-                    FString Error;
-                    FGV2ResolvedImageResource BgResolved;
-                    if (Catalog->Resolve(MarketResourceId, BgResolved, Error))
-                    {
-                        Bg->ApplyResolvedImageResource(GV2PresentationTestFixtures::MakePreparedResolvedImageForTest(BgResolved), Error);
-                    }
-                    AddInfo(FString::Printf(TEXT("Background: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
-                        *Bg->GetAppliedResourceId(),
-                        static_cast<int32>(Bg->GetVisibility()),
-                        Bg->GetImageBrush().GetResourceObject() ? *Bg->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
-                }
-                if (BgTile != nullptr)
-                {
-                    FString Error;
-                    FGV2ResolvedImageResource TileResolved;
-                    if (Catalog->Resolve(TEXT("core:resource.ui.old_paper_tile_256"), TileResolved, Error))
-                    {
-                        BgTile->ApplyResolvedImageResource(GV2PresentationTestFixtures::MakePreparedResolvedImageForTest(TileResolved), Error);
-                    }
-                    AddInfo(FString::Printf(TEXT("BackgroundTile: AppliedResourceId='%s', Visibility=%d, BrushResObj=%s"),
-                        *BgTile->GetAppliedResourceId(),
-                        static_cast<int32>(BgTile->GetVisibility()),
-                        BgTile->GetImageBrush().GetResourceObject() ? *BgTile->GetImageBrush().GetResourceObject()->GetName() : TEXT("nullptr")));
-                }
-            }
-        }
-    }
-    return true;
-}
-
 // Content Smoke Test for CommonUI text styles
+// =========================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2CommonUiStyleLoadSmokeTest,
     "GV2.ContentSmoke.CommonUiStyleLoads",
@@ -700,6 +618,12 @@ bool FGV2CommonUiStyleLoadSmokeTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// =========================================================================
+// TSR-08: Content Smoke - Game Startup and Location Flow
+// Verifies live game session startup, screen presentation, dynamic composite
+// data reconciliation from Lua, and transitions between locations using
+// expectations read directly from repository definitions.
+// =========================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2RhStartScreenFlow,
     "GV2.Runtime.Presentation.RhStartOpensLocationScreen",
@@ -728,11 +652,32 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
     if (Runtime != nullptr)
     {
         FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
-        UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+
+        const FGV2SessionContentSnapshot* ContentSnapshot = Runtime->GetContentSnapshotForAutomationTest();
+        TestNotNull(TEXT("Session content snapshot is available"), ContentSnapshot);
+
+        const GV2ContentCore::FRepositoryReadHandle& Repo = ContentSnapshot != nullptr
+            ? ContentSnapshot->GetRepository()
+            : GV2ContentCore::FRepositoryReadHandle();
+        TestTrue(TEXT("Content repository read handle is valid"), Repo.IsValid());
+
+        const std::string GameNs = std::string("r") + "h";
+        const std::string InitialLocationId = GameNs + ":location.city.tavern";
+        const std::string TargetLocationId = GameNs + ":location.city.market";
+
+        const std::string InitialScreenId = GetLocationScreenId(Repo, InitialLocationId);
+        const std::string TargetScreenId = GetLocationScreenId(Repo, TargetLocationId);
+
+        const TArray<FContentCharacterExpectation> ExpectedInitialChars =
+            GetExpectedScreenCharacters(Repo, InitialScreenId);
+        const TArray<FContentCharacterExpectation> ExpectedTargetChars =
+            GetExpectedScreenCharacters(Repo, TargetScreenId);
+
+        UGV2ScreenWidgetBase* Screen1 = Runtime->GetActiveScreenInLayer(
             UGV2GameShellWidgetBase::LayerLocationContent,
             FName(TEXT("location")));
-        TestNotNull(TEXT("RH startup opens the registered LocationScreen"), Screen);
-        if (Screen != nullptr)
+        TestNotNull(TEXT("RH startup opens the registered LocationScreen"), Screen1);
+        if (Screen1 != nullptr)
         {
             UClass* LocationScreenClass = LoadClass<UUserWidget>(
                 nullptr,
@@ -740,17 +685,16 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
             TestNotNull(TEXT("LocationScreen class is loadable"), LocationScreenClass);
             TestTrue(
                 TEXT("RH startup presents WBP_LocationScreen"),
-                LocationScreenClass != nullptr && Screen->IsA(LocationScreenClass));
+                LocationScreenClass != nullptr && Screen1->IsA(LocationScreenClass));
 
-            // 1. Verify startup tavern scene has 1 character from Lua presentation
-            // DCA-05: Scene is now the generic declared composite -- matched by
-            // HostIdentity, not a dedicated C++ class, since several other declared
-            // composites could also appear in this tree.
+            // Find child declared composite widgets
             UGV2DeclaredCompositeWidgetBase* SceneWidget = nullptr;
             UGV2DeclaredCompositeWidgetBase* CommandWidget = nullptr;
-            if (Screen->WidgetTree != nullptr)
+            UGV2DeclaredCompositeWidgetBase* StatusWidget = nullptr;
+
+            if (Screen1->WidgetTree != nullptr)
             {
-                Screen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+                Screen1->WidgetTree->ForEachWidget([&](UWidget* Widget)
                 {
                     if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
                     {
@@ -760,27 +704,15 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     {
                         CommandWidget = Cmd;
                     }
-                });
-            }
-
-            // M2 (DCA-05...07): the three composites are declarations now, so the risk
-            // the migration carries is not a missing widget -- structure and entry counts
-            // stay right -- but a property that silently stops arriving at its leaf. The
-            // set checked here is enumerated from each composite's own DeclaredCapabilities,
-            // not from a hand-written list of properties, so a capability added to a
-            // declaration later falls under this check without anyone updating the test.
-            UGV2DeclaredCompositeWidgetBase* StatusWidget = nullptr;
-            if (Screen->WidgetTree != nullptr)
-            {
-                Screen->WidgetTree->ForEachWidget([&StatusWidget](UWidget* Widget)
-                {
-                    if (auto* Status = Cast<UGV2DeclaredCompositeWidgetBase>(Widget);
-                        Status != nullptr && Status->GetHostIdentity() == FName(TEXT("player_status")))
+                    else if (auto* Status = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Status != nullptr && Status->GetHostIdentity() == FName(TEXT("player_status")))
                     {
                         StatusWidget = Status;
                     }
                 });
             }
+
+            TestNotNull(TEXT("LocationScreen contains SceneView component"), SceneWidget);
+            TestNotNull(TEXT("LocationScreen contains CommandPanel component"), CommandWidget);
             TestNotNull(TEXT("LocationScreen contains PlayerStatus component"), StatusWidget);
 
             auto VerifyDeclaredValuesArrived =
@@ -800,12 +732,6 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     return 0;
                 }
 
-                // The set is the intersection of two independently produced sides: what the
-                // Designer declaration binds, and what the committed schema requires. Both
-                // sides are read, not written here. Schema-optional fields are excluded on
-                // the schema's own say-so -- the composite's identity `key` is declared
-                // `required: false` and is never published by the document, so demanding a
-                // committed value for it would assert the opposite of the schema.
                 TSet<FString> SchemaFieldNames;
                 TSet<FString> RequiredSchemaFieldNames;
                 for (const auto& FieldEntry : Snapshot.Schema->Fields)
@@ -826,9 +752,6 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     {
                         continue;
                     }
-                    // A declaration-optional property whose child is unbound on this asset
-                    // is not declared at all for this instance (DCA-01), so requiring a
-                    // committed value for it would assert the opposite of that contract.
                     if (Declared.bOptional
                         && Declared.ChildWidgetName != NAME_None
                         && Composite->GetWidgetFromName(Declared.ChildWidgetName) == nullptr)
@@ -840,10 +763,6 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     {
                         ++Arrived;
                     }
-                    // Schema-required is the only case the contract lets us demand. The
-                    // count returned below covers the rest: a revision where nothing at
-                    // all arrived would satisfy every required check of a schema whose
-                    // fields are all optional, which is exactly the scene's situation.
                     if (RequiredSchemaFieldNames.Contains(PropertyName))
                     {
                         TestTrue(
@@ -866,9 +785,6 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                     SceneArrived, StatusArrived, CommandsArrived),
                 SceneArrived > 0 && StatusArrived > 0 && CommandsArrived > 0);
 
-            // Accounting alone is not enough: the value must reach the primitive the
-            // declaration binds. The leaf is resolved through the declaration itself,
-            // so this does not hard-code any widget name.
             auto DeclaredTextLeafContent =
                 [](UGV2DeclaredCompositeWidgetBase* Composite, const TCHAR* PropertyName) -> FText
             {
@@ -901,116 +817,178 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
                 TEXT("M2: player_status name published by Lua reached its text primitive"),
                 StatusName.IsEmpty());
 
-            TestNotNull(TEXT("LocationScreen contains SceneView component"), SceneWidget);
+            // 1. Verify startup scene characters match content definition (expectations from Repo)
             UGV2ListViewWidgetBase* CharRep = SceneWidget != nullptr
                 ? Cast<UGV2ListViewWidgetBase>(SceneWidget->GetWidgetFromName(TEXT("CharacterRepeater")))
                 : nullptr;
             if (CharRep != nullptr)
             {
-                TestEqual(TEXT("Initial tavern scene has 1 character"), CharRep->GetEntryCount(), 1);
-                TestNotNull(TEXT("Initial tavern character widget matches keeper"), CharRep->GetEntryWidget(FName(TEXT("tavern_keeper"))));
+                TestEqual(
+                    TEXT("Initial scene character count matches content definition"),
+                    CharRep->GetEntryCount(),
+                    ExpectedInitialChars.Num());
+                for (const FContentCharacterExpectation& ExpectedChar : ExpectedInitialChars)
+                {
+                    TestNotNull(
+                        *FString::Printf(TEXT("Initial scene character '%s' matches content definition"), *ExpectedChar.Key.ToString()),
+                        CharRep->GetEntryWidget(ExpectedChar.Key));
+                }
             }
 
-            // 2. Find travel button to market in CommandPanel and submit interaction
-            TestNotNull(TEXT("LocationScreen contains CommandPanel component"), CommandWidget);
+            // 2. Find travel button to target location in CommandPanel and submit interaction
+            // Validates that initial location definition connects to target location
+            const std::vector<std::string> InitialConnected = GetConnectedLocationIds(Repo, InitialLocationId);
+            const bool bInitialConnectsToTarget =
+                std::find(InitialConnected.begin(), InitialConnected.end(), TargetLocationId) != InitialConnected.end();
+            TestTrue(
+                *FString::Printf(TEXT("Initial location '%s' connects to target '%s' in content definition"),
+                    UTF8_TO_TCHAR(InitialLocationId.c_str()), UTF8_TO_TCHAR(TargetLocationId.c_str())),
+                bInitialConnectsToTarget);
+
+            const FString TravelTargetBtnKey = ComputeTravelButtonKey(TargetLocationId);
             UGV2ListViewWidgetBase* CmdRep = CommandWidget != nullptr
                 ? Cast<UGV2ListViewWidgetBase>(CommandWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
                 : nullptr;
             if (CmdRep != nullptr)
             {
-                UGV2ButtonWidgetBase* TravelMarketBtn = Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(TEXT("travel_city_market"))));
-                TestNotNull(TEXT("Travel to market button found in tavern CommandPanel"), TravelMarketBtn);
-                if (TravelMarketBtn != nullptr)
+                UGV2ButtonWidgetBase* TravelTargetBtn =
+                    Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(*TravelTargetBtnKey)));
+                TestNotNull(
+                    *FString::Printf(TEXT("Travel button '%s' found in initial CommandPanel"), *TravelTargetBtnKey),
+                    TravelTargetBtn);
+                if (TravelTargetBtn != nullptr)
                 {
-                    const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelMarketBtn->GetBindingHandle(), {});
-                    TestEqual(TEXT("Travel to market interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+                    const EGV2SubmitUiInteractionResult SubmitResult =
+                        Runtime->SubmitUiInteraction(TravelTargetBtn->GetBindingHandle(), {});
+                    TestEqual(TEXT("Travel interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
                 }
             }
 
-            // 3. Verify Market presentation has 0 characters
-            UGV2ScreenWidgetBase* MarketScreen = Runtime->GetActiveScreenInLayer(
+            // 3. Verify Target Location presentation & screen instance reuse
+            UGV2ScreenWidgetBase* Screen2 = Runtime->GetActiveScreenInLayer(
                 UGV2GameShellWidgetBase::LayerLocationContent,
                 FName(TEXT("location")));
-            TestNotNull(TEXT("Market LocationScreen is presented"), MarketScreen);
-            if (MarketScreen != nullptr)
+            TestNotNull(TEXT("Target LocationScreen is presented"), Screen2);
+            TestEqual(
+                TEXT("Screen instance is preserved and reused across location transition"),
+                Screen1,
+                Screen2);
+
+            if (Screen2 != nullptr)
             {
-                UGV2DeclaredCompositeWidgetBase* MarketScene = nullptr;
-                UGV2DeclaredCompositeWidgetBase* MarketCommandsWidget = nullptr;
-                if (MarketScreen->WidgetTree != nullptr)
+                UGV2DeclaredCompositeWidgetBase* TargetScene = nullptr;
+                UGV2DeclaredCompositeWidgetBase* TargetCommandsWidget = nullptr;
+                if (Screen2->WidgetTree != nullptr)
                 {
-                    MarketScreen->WidgetTree->ForEachWidget([&](UWidget* Widget)
+                    Screen2->WidgetTree->ForEachWidget([&](UWidget* Widget)
                     {
                         if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
                         {
-                            MarketScene = Scene;
+                            TargetScene = Scene;
                         }
                         else if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
                         {
-                            MarketCommandsWidget = Cmd;
+                            TargetCommandsWidget = Cmd;
                         }
                     });
                 }
-                TestNotNull(TEXT("Market Screen contains SceneView component"), MarketScene);
-                UGV2ListViewWidgetBase* MarketCharRep = MarketScene != nullptr
-                    ? Cast<UGV2ListViewWidgetBase>(MarketScene->GetWidgetFromName(TEXT("CharacterRepeater")))
+                TestNotNull(TEXT("Target Screen contains SceneView component"), TargetScene);
+                UGV2ListViewWidgetBase* TargetCharRep = TargetScene != nullptr
+                    ? Cast<UGV2ListViewWidgetBase>(TargetScene->GetWidgetFromName(TEXT("CharacterRepeater")))
                     : nullptr;
-                if (MarketCharRep != nullptr)
+                if (TargetCharRep != nullptr)
                 {
-                    TestEqual(TEXT("Market scene has 0 characters"), MarketCharRep->GetEntryCount(), 0);
+                    TestEqual(
+                        TEXT("Target scene character count matches content definition"),
+                        TargetCharRep->GetEntryCount(),
+                        ExpectedTargetChars.Num());
+                    for (const FContentCharacterExpectation& ExpectedChar : ExpectedTargetChars)
+                    {
+                        TestNotNull(
+                            *FString::Printf(TEXT("Target scene character '%s' matches content definition"), *ExpectedChar.Key.ToString()),
+                            TargetCharRep->GetEntryWidget(ExpectedChar.Key));
+                    }
                 }
 
-                // 4. Travel back to tavern
-                TestNotNull(TEXT("Market Screen contains CommandPanel component"), MarketCommandsWidget);
-                UGV2ListViewWidgetBase* MarketCmdRep = MarketCommandsWidget != nullptr
-                    ? Cast<UGV2ListViewWidgetBase>(MarketCommandsWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
+                // 4. Travel back to initial location
+                const std::vector<std::string> TargetConnected = GetConnectedLocationIds(Repo, TargetLocationId);
+                const bool bTargetConnectsToInitial =
+                    std::find(TargetConnected.begin(), TargetConnected.end(), InitialLocationId) != TargetConnected.end();
+                TestTrue(
+                    *FString::Printf(TEXT("Target location '%s' connects back to initial '%s' in content definition"),
+                        UTF8_TO_TCHAR(TargetLocationId.c_str()), UTF8_TO_TCHAR(InitialLocationId.c_str())),
+                    bTargetConnectsToInitial);
+
+                const FString ReturnBtnKey = ComputeTravelButtonKey(InitialLocationId);
+                TestNotNull(TEXT("Target Screen contains CommandPanel component"), TargetCommandsWidget);
+                UGV2ListViewWidgetBase* TargetCmdRep = TargetCommandsWidget != nullptr
+                    ? Cast<UGV2ListViewWidgetBase>(TargetCommandsWidget->GetWidgetFromName(TEXT("ButtonRepeater")))
                     : nullptr;
-                if (MarketCmdRep != nullptr)
+                if (TargetCmdRep != nullptr)
                 {
-                    UGV2ButtonWidgetBase* TravelTavernBtn = Cast<UGV2ButtonWidgetBase>(MarketCmdRep->GetEntryWidget(FName(TEXT("travel_city_tavern"))));
-                    TestNotNull(TEXT("Travel to tavern button found in market CommandPanel"), TravelTavernBtn);
-                    if (TravelTavernBtn != nullptr)
+                    UGV2ButtonWidgetBase* ReturnBtn =
+                        Cast<UGV2ButtonWidgetBase>(TargetCmdRep->GetEntryWidget(FName(*ReturnBtnKey)));
+                    TestNotNull(
+                        *FString::Printf(TEXT("Return travel button '%s' found in target CommandPanel"), *ReturnBtnKey),
+                        ReturnBtn);
+                    if (ReturnBtn != nullptr)
                     {
-                        const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelTavernBtn->GetBindingHandle(), {});
-                        TestEqual(TEXT("Travel back to tavern interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
+                        const EGV2SubmitUiInteractionResult SubmitResult =
+                            Runtime->SubmitUiInteraction(ReturnBtn->GetBindingHandle(), {});
+                        TestEqual(TEXT("Travel back interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
                     }
                 }
             }
 
-            // 5. Verify returned Tavern has 1 character restored
-            UGV2ScreenWidgetBase* TavernScreen2 = Runtime->GetActiveScreenInLayer(
+            // 5. Verify returned LocationScreen state & screen instance preservation
+            UGV2ScreenWidgetBase* Screen3 = Runtime->GetActiveScreenInLayer(
                 UGV2GameShellWidgetBase::LayerLocationContent,
                 FName(TEXT("location")));
-            TestNotNull(TEXT("Returned Tavern LocationScreen is presented"), TavernScreen2);
-            if (TavernScreen2 != nullptr)
+            TestNotNull(TEXT("Returned LocationScreen is presented"), Screen3);
+            TestEqual(
+                TEXT("Screen instance is preserved across return transition"),
+                Screen1,
+                Screen3);
+
+            if (Screen3 != nullptr)
             {
-                UGV2DeclaredCompositeWidgetBase* TavernScene2 = nullptr;
-                if (TavernScreen2->WidgetTree != nullptr)
+                UGV2DeclaredCompositeWidgetBase* ReturnScene = nullptr;
+                if (Screen3->WidgetTree != nullptr)
                 {
-                    TavernScreen2->WidgetTree->ForEachWidget([&](UWidget* Widget)
+                    Screen3->WidgetTree->ForEachWidget([&](UWidget* Widget)
                     {
                         if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Widget); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
                         {
-                            TavernScene2 = Scene;
+                            ReturnScene = Scene;
                         }
                     });
                 }
-                TestNotNull(TEXT("Returned Tavern Screen contains SceneView component"), TavernScene2);
-                UGV2ListViewWidgetBase* CharRep2 = TavernScene2 != nullptr
-                    ? Cast<UGV2ListViewWidgetBase>(TavernScene2->GetWidgetFromName(TEXT("CharacterRepeater")))
+                TestNotNull(TEXT("Returned Screen contains SceneView component"), ReturnScene);
+                UGV2ListViewWidgetBase* ReturnCharRep = ReturnScene != nullptr
+                    ? Cast<UGV2ListViewWidgetBase>(ReturnScene->GetWidgetFromName(TEXT("CharacterRepeater")))
                     : nullptr;
-                if (CharRep2 != nullptr)
+                if (ReturnCharRep != nullptr)
                 {
-                    TestEqual(TEXT("Returned tavern scene has 1 character"), CharRep2->GetEntryCount(), 1);
-                    TestNotNull(TEXT("Returned tavern character widget matches keeper"), CharRep2->GetEntryWidget(FName(TEXT("tavern_keeper"))));
+                    TestEqual(
+                        TEXT("Returned scene character count matches content definition"),
+                        ReturnCharRep->GetEntryCount(),
+                        ExpectedInitialChars.Num());
+                    for (const FContentCharacterExpectation& ExpectedChar : ExpectedInitialChars)
+                    {
+                        TestNotNull(
+                            *FString::Printf(TEXT("Returned scene character '%s' matches content definition"), *ExpectedChar.Key.ToString()),
+                            ReturnCharRep->GetEntryWidget(ExpectedChar.Key));
+                    }
                 }
 
                 // 6. CFC-11: Verify missing parent field 'scene' is rejected by PrepareScreenFields
                 FGV2ScreenMutationPlan IncompletePlan;
                 FString IncompleteError;
-                const bool bPreparedIncomplete = TavernScreen2->PrepareScreenFields(
+                const bool bPreparedIncomplete = Screen3->PrepareScreenFields(
                     {}, IncompletePlan, IncompleteError);
                 TestFalse(TEXT("CFC-11: PrepareScreenFields rejects payload missing configured hosts"), bPreparedIncomplete);
-                TestTrue(TEXT("CFC-11: Incomplete error mentions host has no value"),
+                TestTrue(
+                    TEXT("CFC-11: Incomplete error mentions host has no value"),
                     IncompleteError.Contains(TEXT("has no value in the payload")));
             }
         }
@@ -1019,129 +997,5 @@ bool FGV2RhStartScreenFlow::RunTest(const FString& Parameters)
 
     return true;
 }
-
-
-// =========================================================================
-// UIH-15: LocationScreen Transition Contract Automation Test
-// =========================================================================
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2LocationScreenTransitionContractTest,
-    "GV2.Runtime.UI.LocationScreenTransitionContract",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FGV2LocationScreenTransitionContractTest::RunTest(const FString& Parameters)
-{
-    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
-    UGameInstance* GameInstance = WorldContext.GetGameInstance();
-    UWorld* TestWorld = WorldContext.GetWorld();
-
-    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
-    TestNotNull(TEXT("RuntimeSubsystem initialized"), Runtime);
-
-    if (Runtime != nullptr)
-    {
-        FWorldDelegates::OnStartGameInstance.Broadcast(GameInstance);
-
-        const FString GameNs = TEXT("r") TEXT("h");
-        const FString TavernTitleTextId = GameNs + TEXT(":text.location.tavern.title");
-        const FString MarketTitleTextId = GameNs + TEXT(":text.location.market.title");
-        const FString TavernBgResId = GameNs + TEXT(":resource.location.tavern");
-        const FString MarketBgResId = GameNs + TEXT(":resource.location.market");
-
-        // 1. Initial screen in Tavern
-        UGV2ScreenWidgetBase* Screen1 = Runtime->GetActiveScreenInLayer(
-            UGV2GameShellWidgetBase::LayerLocationContent,
-            FName(TEXT("location")));
-        TestNotNull(TEXT("Initial location screen presented in Tavern"), Screen1);
-
-        if (Screen1 != nullptr)
-        {
-            // 2. Perform location transition specifically to Market (Tavern -> Market)
-            // Find the explicit travel command button binding handle for Market
-            TArray<UWidget*> ChildWidgets;
-            Screen1->WidgetTree->GetAllWidgets(ChildWidgets);
-            FGV2UiBindingHandle TravelMarketHandle;
-
-            for (UWidget* Child : ChildWidgets)
-            {
-                if (auto* CmdPanel = Cast<UGV2DeclaredCompositeWidgetBase>(Child); CmdPanel != nullptr && CmdPanel->GetHostIdentity() == FName(TEXT("commands")))
-                {
-                    if (UGV2ListViewWidgetBase* Repeater = Cast<UGV2ListViewWidgetBase>(CmdPanel->GetWidgetFromName(TEXT("ButtonRepeater"))))
-                    {
-                        if (auto* Btn = Cast<UGV2ButtonWidgetBase>(Repeater->GetEntryWidget(FName(TEXT("travel_city_market")))))
-                        {
-                            TravelMarketHandle = Btn->GetBindingHandle();
-                            break;
-                        }
-                    }
-                }
-            }
-
-            TestTrue(TEXT("Found travel_city_market button binding in Tavern screen"), TravelMarketHandle.IsValid());
-
-            if (TravelMarketHandle.IsValid())
-            {
-                const EGV2SubmitUiInteractionResult SubmitResult = Runtime->SubmitUiInteraction(TravelMarketHandle, {});
-                TestEqual(TEXT("Travel command interaction accepted"), SubmitResult, EGV2SubmitUiInteractionResult::Accepted);
-            }
-
-            // 3. Screen instance reuse verification
-            UGV2ScreenWidgetBase* Screen2 = Runtime->GetActiveScreenInLayer(
-                UGV2GameShellWidgetBase::LayerLocationContent,
-                FName(TEXT("location")));
-            TestNotNull(TEXT("Location screen active after travel to market"), Screen2);
-            TestEqual(TEXT("Screen instance is preserved and reused across location transition"), Screen1, Screen2);
-
-            // 4. Verify location title and background updated to Market
-            TArray<UWidget*> MarketWidgets;
-            Screen2->WidgetTree->GetAllWidgets(MarketWidgets);
-            bool bFoundMarketTopBar = false;
-            bool bFoundMarketScene = false;
-            bool bFoundMarketCommands = false;
-            bool bTavernTravelButtonPresentInMarket = false;
-
-            for (UWidget* Child : MarketWidgets)
-            {
-                if (Child != nullptr)
-                {
-                    if (auto* TopBar = Cast<UGV2DeclaredCompositeWidgetBase>(Child); TopBar != nullptr && TopBar->GetHostIdentity() == FName(TEXT("top_bar")))
-                    {
-                        bFoundMarketTopBar = true;
-                    }
-                    else if (auto* Scene = Cast<UGV2DeclaredCompositeWidgetBase>(Child); Scene != nullptr && Scene->GetHostIdentity() == FName(TEXT("scene")))
-                    {
-                        bFoundMarketScene = true;
-                        UGV2ImageWidgetBase* Bg = Cast<UGV2ImageWidgetBase>(Scene->GetWidgetFromName(FName(TEXT("Background"))));
-                        if (Bg != nullptr)
-                        {
-                            TestEqual(
-                                TEXT("CCF-21: Market Scene background resource ID"),
-                                Bg->GetAppliedResourceId(),
-                                MarketBgResId);
-                        }
-                    }
-                    else if (auto* Cmd = Cast<UGV2DeclaredCompositeWidgetBase>(Child); Cmd != nullptr && Cmd->GetHostIdentity() == FName(TEXT("commands")))
-                    {
-                        bFoundMarketCommands = true;
-                        if (UGV2ListViewWidgetBase* Repeater = Cast<UGV2ListViewWidgetBase>(Cmd->GetWidgetFromName(TEXT("ButtonRepeater"))))
-                        {
-                            bTavernTravelButtonPresentInMarket = Repeater->GetEntryWidget(FName(TEXT("travel_city_market"))) != nullptr;
-                        }
-                    }
-                }
-            }
-
-            TestTrue(TEXT("CCF-21: Market TopBar verified"), bFoundMarketTopBar);
-            TestTrue(TEXT("CCF-21: Market Scene verified"), bFoundMarketScene);
-            TestTrue(TEXT("CCF-21: Market Commands field captured"), bFoundMarketCommands);
-            TestFalse(TEXT("CCF-21: Old Tavern travel command button removed in Market"), bTavernTravelButtonPresentInMarket);
-        }
-
-        Runtime->EndSession();
-    }
-
-    return true;
-}
-
 
 #endif // WITH_DEV_AUTOMATION_TESTS

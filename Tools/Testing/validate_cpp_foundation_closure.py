@@ -67,7 +67,7 @@ BASELINE_UE_TESTS: tuple[str, ...] = (
     "GV2.Runtime.Lifecycle.RegistryLifecycleConformance",
     "GV2.Runtime.Lua.SpecRunnerHost",
     "GV2.Runtime.ModuleIdentity",
-    "GV2.Runtime.Presentation.LocationSceneDiagnostic",
+    "GV2.Runtime.Presentation.RhStartOpensLocationScreen",
     "GV2.Runtime.Presentation.ScreenFieldClosedSchemaRejection",
     "GV2.Runtime.SaveAndLoad.CapturedBytesImmunityToFileOverwrite",
     "GV2.Runtime.SaveAndLoad.CommandRefusalDiscardsSave",
