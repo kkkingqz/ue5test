@@ -1,7 +1,7 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.7
+version: 1.8
 updated: 2026-09-14
 depends_on:
   - ImplementationStatus.md
@@ -14,7 +14,7 @@ depends_on:
 
 > **Показывает:** состояние C++-основы, подтверждённые препятствия её фиксации и границы выполненной проверки.
 > **Не является нормативным:** правила задают owner contracts и accepted ADR; рекомендации приёмки ниже не меняют contracts.
-> **Исход:** фиксация всей C++-части не подтверждена. Рабочий gameplay-срез существует, штатные проверки проходят, но найдены нарушения lifecycle и ownership, отсутствует подключение save/load к игровому UE-host и неполна защита приёмки.
+> **Исход:** C++/Lua foundation принята задачей CFC-13 в ограниченной проверенной поверхности Linux Editor/Development. Это не обещание абсолютной корректности всей C++-части: `STATUS-002`, `STATUS-003`, `STATUS-026`, Shipping/package/cook и остальные platform baselines остаются вне принятой поверхности.
 
 ## Состояние и метод
 
@@ -70,7 +70,7 @@ Shipping/package/cook, платформы кроме Linux, GPU/rendered screens
 
 **Проверка для закрытия:** authoring DataAsset компилируется read-only в независимый resolved registry value каждого snapshot; fingerprint и Resolve читают именно его. Published A сохраняет exact descriptor/class/placement outcomes после registry failure B и успешного B с различающимися inputs/closures. Дополнительно проверяются strong class ownership при GC и actual inventory вложенных authority references; `const` wrapper или shallow pointer copy недостаточны. Исполнение — [CFC-04A](../Plans/CppFoundationClosure/SessionLifecycle.md#cfc-04a-сделать-resolved-screen-registry-независимым-значением-snapshot); верхний UI replacement повторяет CFC-06.
 
-**Исход:** *(Закрыто задачей CFC-04A)* Авторский `UGV2ScreenRegistry` переведён в статус строго входного `const` DataAsset без мутируемого кэша, а `FGV2SessionContentSnapshot` теперь владеет независимым значением `FGV2ResolvedScreenRegistry` с GC-safe `TStrongObjectPtr<UClass>`, изолированным от мутаций и ошибок других сессий (подтверждено тестом `FGV2SessionScreenRegistrySnapshotIsolationTest` и статическим гейтом `validate_session_snapshot_ownership.py`).
+**Исход:** *(Закрыто задачей CFC-04A; усилено при CFC-13)* Авторский `UGV2ScreenRegistry` переведён в статус строго входного `const` DataAsset без мутируемого кэша, а `FGV2SessionContentSnapshot` теперь владеет независимым значением `FGV2ResolvedScreenRegistry` с GC-safe `TStrongObjectPtr<UClass>`. `FGV2SessionScreenRegistrySnapshotIsolationTest` строит A с closure `core,textsystem,rh`, затем failed B с `core,textsystem` и successful B с `core`; после обоих B он проверяет exact authored class, placement rejection и availability A. Статический гейт `validate_session_snapshot_ownership.py` запрещает возврат shared mutable cache.
 
 ### PresentationStructuralClosure
 
@@ -296,6 +296,26 @@ exit=0
 
 *(Закрыто задачей CFC-13)* Каждый отказ register/sealing, state build/migration, restore/validation и start теперь передаётся callback как `Fault` уже после восстановления Lua stack/execution guard; callback не может подменить исходный fault отменой. Shared conformance перечисляет все значения actual `ERuntimeLifecyclePhase`, проверяет completed prefix и terminal typed fault; удаление fault-reporting краснит `gv2_headless_self_test` причиной `phase_fault_*_not_reported`.
 
+#### CFC-AF-17 — CFC-13 — P1 — Lua error обходил деструкторы C++ RAII
+
+**Подтверждение:** ASan+LSan на `gv2-headless --self-test` сообщил 286 leaked bytes в восьми allocations по пути `RepositoryRequire`. Функция держала `FRepositoryQueryResult` со `std::string`/`std::vector` и напрямую вызывала `luaL_error`; Lua реализует этот переход через `longjmp`, поэтому C++ destructors живых automatic objects не исполнялись.
+
+*(Закрыто задачей CFC-13)* Работа с repository и формирование diagnostic вынесены во внутреннюю функцию, которая всегда возвращается обычным C++ способом; внешний тривиальный trampoline вызывает `lua_error` только после уничтожения RAII-объектов. `LuaRuntimeContract` теперь запрещает longjmp-capable Lua API при живых non-trivial C++ automatic objects, а `validate_cpp_foundation_closure.py` содержит fail-closed source gate и negative self-test на возврат unsafe pattern. Повторный exact-revision ASan+UBSan CTest прошёл 128/128 без sanitizer diagnostics.
+
+#### CFC-AF-18 — CFC-13 — P1 — milestone plan не входил в actual enumerator
+
+**Подтверждение:** после закрытия CFC-13 все 19 task checkboxes и 104 `Done` assertions проходили CFC gate, но milestone `M3 — CFC-11…13` оставался `[ ]`. Валидатор перечислял task headings и не читал milestone checkboxes, поэтому ложное незавершённое состояние не могло покраснить pipeline.
+
+*(Закрыто задачей CFC-13)* `validate_cpp_foundation_closure.py` теперь извлекает actual milestone checkboxes из plan README, сопоставляет четыре milestone с независимой task composition и требует двустороннего соответствия состояний. Regression test выполняет именно случай «все задачи закрыты, milestone открыт»; M3 отмечен завершённым только после полного evidence run.
+
+### Итоговая перепроверка CFC-13
+
+Code/evidence revision: `02cb996b4b905f383b724aa099b1b9324cebd2f5`, чистый detached worktree. Release CTest — 128/128; ASan+UBSan CTest — 128/128; UBT `GV2Editor Linux Development` — success; fresh-process UE — 173/173, failed/skipped 0, source diff `clean`, build fingerprint `9f94aa000f1f1ebafdbb804dbf92f5ff83af81aa6d0270a3bf1ff238311785bd`; docs validator — 188 Markdown files. Headless self-test, 50 Lua modules, content validate/coverage успешны. Полный UE report содержит 230 warnings и не считается warning-free evidence.
+
+Исполняемый CFC gate сопоставил 19 actual task headings, четыре actual milestone checkbox и 104 actual `Done` assertions с независимой evidence-таблицей, классифицировал все 16 обязательных targeted mutations и проверил новые native enum inventories. Каждая из 16 мутаций была реально внесена в disposable checkout, штатная проверка отказала по ожидаемой причине, затем checkout удалён. Remote CI для ревизии отсутствует и не засчитан: GitHub CLI вернул пустой run list.
+
+Принятая граница: Linux Editor/Development, portable/headless и выполненные UE production paths. Открытые `STATUS-002`, `STATUS-003`, `STATUS-026` не удалялись. Shipping/package/cook, платформы кроме Linux, GPU/rendered screenshot matrix и длительная эксплуатация этой перепроверкой не подтверждены.
+
 ### Evidence дополнительной portable проверки
 
 Локально: `Saved/Audit/CppFullReviewVerification/value_digest_probe.cpp` и executable; входные SHA-256 review/router — `input.json`. Probe вызвал реальные public constructors/hash/codecs, linked `build/Source/libgv2_runtime_core.a` и `libgv2_content_core.a`. Существенные результаты приведены в CFC-AF-06/07 и не зависят от сохранности временного каталога. Это не замена полного native/UE acceptance и не утверждение, что отредактированы или исправлены исходники.
@@ -307,18 +327,10 @@ exit=0
 - `STATUS-011` закрыт задачей CFC-11: обязательная scene surface и typed отказ закреплены schema v2 fixtures.
 - [PresentationModel](../Concepts/PresentationModel.md) всё ещё говорит об одном экране и нереализованном UI document; [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md) одновременно содержит старую запись о неготовых migrations и отдельный раздел реализованных migrations. Валидатор links/front matter не проверяет такие смысловые противоречия. Эти описания не использованы как evidence отсутствия реально существующего кода.
 
-## Рекомендация по фиксации C++
+## Решение по фиксации C++
 
-Обоснованное решение на текущем состоянии — **не объявлять всю C++-часть корректной и завершённой**. Продолжать экспериментальный Lua gameplay на существующем срезе можно, но это не равнозначно фиксации инфраструктуры. Новую большую перестройку этот аудит не предписывает: сначала устранить конкретные нарушения существующих contracts.
+План [C++ Foundation Closure](../Plans/CppFoundationClosure/README.md) **принят** для явно ограниченного Linux Editor/Development baseline. Нарушения authority, lifecycle, save/load, canonical-state ownership и достоверности приёмки, перечисленные этим раундом и включённые в план, получили записанные исходы и исполняемые regression gates. CFC-12 подтвердил вертикальный Lua-only gameplay путь через production host, а CFC-13 повторил portable, sanitizer и полный UE inventory на чистой зафиксированной ревизии.
 
-Рекомендуемая последовательность приёмки:
+Это решение разрешает развивать gameplay на Lua поверх зафиксированных native contracts. Оно не замораживает C++ навсегда: новое native API обязано в том же change set получить обоснование по `INV-013`, production consumer, negative fixture и actual enumerator. Обычные Command, Validator, Event, gameplay Service, migration и presentation semantics остаются Lua-owned.
 
-1. Закрыть `STATUS-013…017`, `STATUS-020…025`, VERIFY-находки и test-hygiene findings: единственные изолированные authorities, GC lifetime, верный candidate при повторном запуске, сохранность UI, Lua-owned state composition, seed input, canonical values/codecs и достоверная приёмка.
-2. Завершить необходимый для игры save/load путь (`STATUS-001`, `018`, `019`), проверить его через UE composition root и восстановление после отказов. Зелёная библиотечная функция не заменяет продуктовый сценарий.
-3. Ограничить обещанную первую gameplay-версию: effects/animations и остальные ещё отсутствующие host capabilities либо реализуются, либо явно остаются за её пределами; отсутствие функции не выдаётся за её готовность.
-4. На чистой зафиксированной ревизии повторить portable + полный UE gate и один вертикальный сценарий: старт → команда → canonical mutation/event → presentation → save → load → продолжение команды. Ожидаемые состояние, bindings и geometry проверяются независимо; transitions действительно исполняются. Для Shipping отдельно нужны cook/package и smoke запуска установленного продукта.
-5. После этого фиксировать конкретную поддержанную поверхность C++/Lua и evidence baseline. Расширение capabilities, зависимостей и lifecycle впоследствии проходит тот же gate. Обещания «C++ больше никогда не меняется» и абсолютного отсутствия дефектов проверками не подтверждаются.
-
-Аудит завершён как обследование указанного состояния. Исправление находок не выполнялось, готовность C++ не отмечалась, планы и архивы не закрывались.
-
-Исполняемая декомпозиция устранения причин и приёмки Lua gameplay baseline: [C++ Foundation Closure](../Plans/CppFoundationClosure/README.md). Создание плана не меняет исходы находок и не подтверждает их исправление.
+Непринятые возможности не маскируются итогом плана. Effects и animations остаются `STATUS-002/003`, одноразовая registry isolation capability — `STATUS-026`; Shipping/package/cook и новые platform baselines требуют отдельных тестов и решений. Архивация плана и этого audit round выполняется отдельно двухкоммитными процедурами после closing commit и не является частью CFC-13.

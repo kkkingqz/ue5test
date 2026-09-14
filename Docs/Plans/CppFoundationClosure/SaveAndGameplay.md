@@ -169,7 +169,7 @@ depends_on:
 
 ## CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
 
-- [ ] CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
+- [x] CFC-13 — Зафиксировать поддержанную C++/Lua-поверхность
 
 **Зависимость:** CFC-01…12, включая CFC-02A, CFC-03A, CFC-04A/04B, CFC-05A, CFC-07A. **Файлы:** `Docs/Architecture/BuildAndTooling.md`, `Docs/Guides/WhenToWriteCpp.md`, `Docs/Guides/AddLuaSpec.md`, `Docs/Authoring/README.md`, `Docs/Status/AuditFindings.md`, `Docs/Status/ImplementationStatus.md`; CI artifacts и локальный `Saved/Audit/` для полных отчётов.
 
@@ -187,6 +187,8 @@ depends_on:
 
 **Runbook:**
 ```bash
+cmake -E make_directory cmake-build-ci/.cmake/api/v1/query
+cmake -E touch cmake-build-ci/.cmake/api/v1/query/codemodel-v2
 cmake -S . -B cmake-build-ci -DCMAKE_BUILD_TYPE=Release
 cmake --build cmake-build-ci --parallel 2
 ctest --test-dir cmake-build-ci --output-on-failure

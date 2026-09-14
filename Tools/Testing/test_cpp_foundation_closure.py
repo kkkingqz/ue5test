@@ -48,6 +48,41 @@ class TestCppFoundationClosureInventory(unittest.TestCase):
 
         self.assertTrue(any("Done count" in error for error in errors), errors)
 
+    def test_completed_task_set_rejects_open_milestone(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plan_dir = Path(temp_dir)
+            (plan_dir / "README.md").write_text(
+                "- [ ] M9 — Synthetic milestone.\n",
+                encoding="utf-8",
+            )
+            (plan_dir / "Plan.md").write_text(
+                "## CFC-98 — First task\n\n"
+                "- [x] CFC-98 — First task\n\n"
+                "**Done:**\n"
+                "- First requirement.\n\n"
+                "## CFC-99 — Second task\n\n"
+                "- [x] CFC-99 — Second task\n\n"
+                "**Done:**\n"
+                "- Second requirement.\n",
+                encoding="utf-8",
+            )
+
+            errors = closure.validate_milestone_inventory(
+                plan_dir,
+                {"M9": ("CFC-98", "CFC-99")},
+            )
+
+        self.assertTrue(any("M9" in error and "open" in error for error in errors), errors)
+
+    def test_completed_milestone_rejects_open_task(self) -> None:
+        errors = closure.validate_milestone_states(
+            {"CFC-98": True, "CFC-99": False},
+            {"M9": True},
+            {"M9": ("CFC-98", "CFC-99")},
+        )
+
+        self.assertTrue(any("M9" in error and "CFC-99" in error for error in errors), errors)
+
     def test_unhandled_runtime_phase_is_rejected(self) -> None:
         header = """
         enum class ERuntimeLifecyclePhase

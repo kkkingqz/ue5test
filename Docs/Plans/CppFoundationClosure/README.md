@@ -1,7 +1,7 @@
 ---
 title: Cpp Foundation Closure Implementation Plan
 status: active
-version: 1.8
+version: 1.9
 updated: 2026-09-14
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
@@ -100,7 +100,7 @@ Local MCP и fresh-process CI используют один report validator. Ac
 - [x] M0 — CFC-01…03 и CFC-02A/03A приняты по Done/Evidence. (перепроверено 2026-09-13 на текущей ревизии)
 - [x] M1 — CFC-04…07 и CFC-04A/04B, CFC-05A/07A приняты по Done/Evidence. (2026-09-13)
 - [x] M2 — CFC-08…10 приняты по Done/Evidence. (принято ревью 2026-09-14)
-- [ ] M3 — CFC-11…13 приняты по Done/Evidence.
+- [x] M3 — CFC-11…13 приняты по Done/Evidence. (принято ревью 2026-09-14)
 
 | Находка / gap | Закрывающие задачи |
 |---|---|
@@ -125,6 +125,24 @@ Local MCP и fresh-process CI используют один report validator. Ac
 | REVIEW-09 / CFC-AF-09 | Уже покрыт single-writer/atomic publication CFC-08 |
 | REVIEW-11…14 / CFC-AF-11…14 | Отклонены как самостоятельные correctness/performance blockers; условия повторного открытия в аудите |
 | REVIEW-15 / CFC-AF-15 | Сопутствующее форматирование участка CFC-05A |
+
+## Финальная приёмка CFC-13 (2026-09-14)
+
+План **принят в границах Linux Editor/Development baseline**. Это решение фиксирует проверенную C++/Lua-поверхность, но не утверждает абсолютную корректность любого C++ и не расширяет контракт на Shipping, package/cook, другие платформы, GPU/rendered visual matrix или длительную эксплуатацию.
+
+Публичная native surface, добавленная планом, сверена по actual `Public/` diff. Repository/hash/build identity работают до VM или на host boundary; Lua VM/session orchestration владеет только native VM/lifecycle и value-only boundary; filesystem storage является host capability; UObject/UMG registry, snapshot и reconciler реализуют UE-only presentation capability; conformance header является testing-only. Нового C++ gameplay-domain service, Command, Event либо canonical state authority не добавлено. Обычная gameplay и presentation semantics остаётся Lua-owned согласно `INV-013`.
+
+Приёмочная матрица исполняется штатным CTest: actual plan headings перечисляют 19 задач, actual README — четыре milestone checkbox, каждый блок `Done` даёт суммарно 104 отдельных утверждения, независимая evidence-таблица обязана покрыть каждое, а CFC-native enum values извлекаются из заголовков и сверяются с exhaustive production dispatch/test inventory. Состояние каждого milestone выводится из actual task checkboxes и обязано им соответствовать. Гейт сообщил: `mapped 19 CFC tasks, 4 milestones, and 104 Done assertions; classified 16 targeted mutations and verified native enum dispatch`. Дополнительные правила запрещают игнорировать результат native `SealRegistries` и вызывать Lua error trampoline из функции с живыми C++ RAII-объектами.
+
+Все 16 требуемых targeted mutations выполнены в disposable checkout и отвергнуты по ожидаемой причине: второй schema source, shared mutable Screen Registry, stale candidate, ранний teardown, проигнорированный seal result, disconnected storage, потерянная Previous, forbidden module dependency, `NotRun`, отсутствующая UE record, untraced owning pointer, leaked fixture, native state merge, ignored seed, signed zero и len-only hash validation. Registry-сценарий дополнительно исполнил A → failed B → successful B с разными package closures и проверил exact class/placement/availability опубликованной A после обоих B.
+
+Зафиксированная code/evidence revision — `02cb996b4b905f383b724aa099b1b9324cebd2f5`. На отдельном чистом worktree получены: Release CTest **128/128**; ASan+UBSan CTest **128/128** без sanitizer diagnostics; UBT `GV2Editor Linux Development` — `Result: Succeeded`; fresh-process UE inventory **173/173**, failed/skipped 0, `source_diff_hash=clean`, build fingerprint `9f94aa000f1f1ebafdbb804dbf92f5ff83af81aa6d0270a3bf1ff238311785bd`. `GameplaySlice`, `LifecycleStress100`, `ScreenRegistrySnapshotIsolation` и `ModuleIdentity` имеют state `Success`. UE report содержит 230 warnings и классифицирует все 173 теста как `succeededWithWarnings`; среди причин есть известная инициализация Wayland и диагностические negative fixtures, поэтому baseline не объявляется warning-free.
+
+Входы: GCC 16.2.1, CMake 4.4.3, UE 5.8.0/Clang 20.1.8, CachyOS Linux kernel 7.2.3; aggregate package/script file hash `0918819fb9aec706c45491dc13ba0956125acbd547f67145787910bf2192a600`, runtime repository hash `17f11137e7eaa54c61fb8a6d6b97ebf7b7d640445e5ac949d49a0e897c7336a1`, script set hash `d26bb835f588be66dcbca958c9eb7e013c3a72552b8264dd969bfcae531df5bc`. Headless self-test и проверка 50 Lua modules успешны; `gv2-content validate/coverage` и validator 188 Markdown-файлов успешны.
+
+Реального GitHub Actions run для этой непубликованной ревизии нет (`gh run list --commit 02cb996…` вернул пустой список); remote CI не объявлен выполненным, а local equivalent записан отдельно. Открыты и не удалены [`STATUS-002`](../../Status/ImplementationStatus.md), [`STATUS-003`](../../Status/ImplementationStatus.md) и [`STATUS-026`](../../Status/ImplementationStatus.md). Effects/animations, Shipping/package/cook и иные platform baselines требуют отдельных задач и evidence.
+
+Во время финальной приёмки исправлены четыре дефекта, которые прежняя зелёная матрица не ловила: production callback не получал terminal `Fault`, snapshot-isolation test не различал closures A/B, `lua_error` обходил деструкторы C++ RAII и давал ASan leak, а milestone M3 оставался открытым вне plan enumerator. Также clean-checkout выявил пропущенный CMake File API bootstrap в runbook; две команды создания query добавлены перед configure. Архивация плана и аудита выполняется отдельно обязательной двухкоммитной процедурой.
 
 ## Приёмка M0 (перепроверка 2026-09-13)
 
@@ -216,7 +234,7 @@ VALIDATION FAILED (FAIL-CLOSED):
 | CFC-11 | `2431209` | v2 schema поля сцены с обязательным массивом `characters` |
 | CFC-12 | `f92c5c0` | первая итерация gameplay-среза |
 | Ревью M3: устранение сайд-эффекта CFC-12 и приёмка задачи | `3aad84f` | изоляция debug/start.lua, семантический UI input в slice-тесте |
-| CFC-13: evidence/enum inventory и closed phase results | текущий change set | actual plan headings/Done, targeted mutation policy, `Completed | Fault` на production callback path |
+| CFC-13: evidence/enum inventory и closed phase results | `8c8ecac`, `02c1d04`, `02cb996`, завершающий documentation commit | actual plan headings/Done, targeted mutation policy, strengthened A/B snapshot test, `Completed | Fault` на production callback path, RAII-safe Lua error trampoline |
 
 Дальнейшие задачи фиксируются по одной; таблица дополняется в том же change set, что и задача.
 

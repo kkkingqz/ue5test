@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""CFC-13 inventory gate for plan evidence, mutations, and new native enums.
+"""CFC-13 inventory gate for plan evidence, milestones, mutations, and native enums.
 
-The plan itself is the actual task/Done enumerator.  The tables below are an
-independent review oracle: adding a task, a Done assertion, or a CFC native enum
-value without adding evidence makes the standard CTest pipeline fail closed.
+The plan itself is the actual task/Done/milestone enumerator.  The tables below
+are an independent review oracle: adding a task, milestone, Done assertion, or
+CFC native enum value without evidence makes the standard CTest pipeline fail
+closed.
 """
 
 from __future__ import annotations
@@ -58,6 +59,26 @@ TASK_EVIDENCE: dict[str, TaskEvidence] = {
     "CFC-11": evidence(4, ("documentation_contract", "gv2_headless_self_test"), ("GV2.Runtime.Presentation.LocationSceneDiagnostic", "GV2.Runtime.Presentation.ScreenFieldClosedSchemaRejection"), "schema required-property set", "positive/negative v2 scene fixtures", "production presentation Prepare"),
     "CFC-12": evidence(5, ("gv2_headless_self_test", "gv2_headless_check_scripts"), ("GV2.Runtime.SaveAndLoad.GameplaySlice", "GV2.Runtime.SaveAndLoad.LifecycleStress100"), "Lua spec tiers and production package manifests", "independent expected state/events/bindings", "semantic input, save/load, continued command"),
     "CFC-13": evidence(5, ("cpp_foundation_closure_contract", "cpp_foundation_closure_negative_contract", "documentation_contract"), ("GV2.Runtime.SaveAndLoad.GameplaySlice", "GV2.Runtime.ModuleIdentity"), "actual task headings, Done bullets, CTest and UE registrations", "this independent evidence/mutation policy", "full portable and fresh-process UE runbook"),
+}
+
+
+# Independent milestone composition. The plan README is the actual milestone
+# checkbox enumerator; this map binds every milestone to the task checkboxes
+# whose state determines whether the milestone may be marked complete.
+MILESTONE_TASKS: dict[str, tuple[str, ...]] = {
+    "M0": ("CFC-01", "CFC-02", "CFC-02A", "CFC-03", "CFC-03A"),
+    "M1": (
+        "CFC-04",
+        "CFC-04A",
+        "CFC-04B",
+        "CFC-05",
+        "CFC-05A",
+        "CFC-06",
+        "CFC-07",
+        "CFC-07A",
+    ),
+    "M2": ("CFC-08", "CFC-09", "CFC-10"),
+    "M3": ("CFC-11", "CFC-12", "CFC-13"),
 }
 
 
@@ -168,6 +189,7 @@ ENUM_TEST_POLICIES = (
 
 TASK_HEADING = re.compile(r"^## (CFC-[0-9]+[A-Z]?) — (.+?)\s*$")
 TASK_CHECKBOX = re.compile(r"^- \[([ xX])\] (CFC-[0-9]+[A-Z]?) — (.+?)\s*$")
+MILESTONE_CHECKBOX = re.compile(r"^- \[([ xX])\] (M[0-9]+) — .+?\s*$")
 
 
 def collect_plan_inventory(plan_dir: Path) -> tuple[dict[str, tuple[str, int]], list[str]]:
@@ -239,6 +261,91 @@ def validate_plan_inventory(plan_dir: Path, evidence_map: dict[str, TaskEvidence
             errors.append(f"{task_id}: no named executable checks")
     for task_id in sorted(set(evidence_map) - set(tasks)):
         errors.append(f"evidence row {task_id} has no actual task heading")
+    return errors
+
+
+def collect_task_checkbox_states(plan_dir: Path) -> tuple[dict[str, bool], list[str]]:
+    states: dict[str, bool] = {}
+    errors: list[str] = []
+    for path in sorted(plan_dir.glob("*.md")):
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            checkbox = TASK_CHECKBOX.match(line)
+            if checkbox is None:
+                continue
+            task_id = checkbox.group(2)
+            if task_id in states:
+                errors.append(f"{path}:{line_number}: duplicate task checkbox {task_id}")
+                continue
+            states[task_id] = checkbox.group(1).lower() == "x"
+    return states, errors
+
+
+def collect_milestone_checkbox_states(plan_dir: Path) -> tuple[dict[str, bool], list[str]]:
+    states: dict[str, bool] = {}
+    errors: list[str] = []
+    readme = plan_dir / "README.md"
+    if not readme.is_file():
+        return {}, ["plan README.md is missing; milestone inventory is unavailable"]
+    for line_number, line in enumerate(readme.read_text(encoding="utf-8").splitlines(), start=1):
+        if re.match(r"^- \[[ xX]\] M[0-9]+\b", line) is None:
+            continue
+        checkbox = MILESTONE_CHECKBOX.match(line)
+        if checkbox is None:
+            errors.append(f"{readme}:{line_number}: malformed milestone checkbox")
+            continue
+        milestone_id = checkbox.group(2)
+        if milestone_id in states:
+            errors.append(f"{readme}:{line_number}: duplicate milestone checkbox {milestone_id}")
+            continue
+        states[milestone_id] = checkbox.group(1).lower() == "x"
+    return states, errors
+
+
+def validate_milestone_inventory(
+    plan_dir: Path,
+    milestone_tasks: dict[str, tuple[str, ...]],
+) -> list[str]:
+    task_states, errors = collect_task_checkbox_states(plan_dir)
+    milestone_states, milestone_errors = collect_milestone_checkbox_states(plan_dir)
+    errors.extend(milestone_errors)
+    errors.extend(validate_milestone_states(task_states, milestone_states, milestone_tasks))
+    return errors
+
+
+def validate_milestone_states(
+    task_states: dict[str, bool],
+    milestone_states: dict[str, bool],
+    milestone_tasks: dict[str, tuple[str, ...]],
+) -> list[str]:
+    errors: list[str] = []
+
+    for milestone_id in sorted(set(milestone_states) - set(milestone_tasks)):
+        errors.append(f"unmapped milestone {milestone_id}")
+    for milestone_id in sorted(set(milestone_tasks) - set(milestone_states)):
+        errors.append(f"milestone row {milestone_id} has no actual checkbox")
+
+    assigned_tasks: dict[str, str] = {}
+    for milestone_id, task_ids in sorted(milestone_tasks.items()):
+        for task_id in task_ids:
+            previous = assigned_tasks.get(task_id)
+            if previous is not None:
+                errors.append(f"task {task_id} belongs to both {previous} and {milestone_id}")
+            assigned_tasks[task_id] = milestone_id
+            if task_id not in task_states:
+                errors.append(f"{milestone_id}: unknown task checkbox {task_id}")
+
+        if milestone_id not in milestone_states or any(task_id not in task_states for task_id in task_ids):
+            continue
+        tasks_complete = all(task_states[task_id] for task_id in task_ids)
+        milestone_complete = milestone_states[milestone_id]
+        if tasks_complete and not milestone_complete:
+            errors.append(f"{milestone_id}: milestone is open although all mapped tasks are complete")
+        elif milestone_complete and not tasks_complete:
+            incomplete = ", ".join(task_id for task_id in task_ids if not task_states[task_id])
+            errors.append(f"{milestone_id}: milestone is complete while tasks are open: {incomplete}")
+
+    for task_id in sorted(set(task_states) - set(assigned_tasks)):
+        errors.append(f"task checkbox {task_id} is not assigned to a milestone")
     return errors
 
 
@@ -381,6 +488,12 @@ def validate_named_checks(repo_root: Path) -> list[str]:
 
 def validate_repository(repo_root: Path = REPO_ROOT) -> list[str]:
     errors = validate_plan_inventory(repo_root / "Docs" / "Plans" / "CppFoundationClosure", TASK_EVIDENCE)
+    errors.extend(
+        validate_milestone_inventory(
+            repo_root / "Docs" / "Plans" / "CppFoundationClosure",
+            MILESTONE_TASKS,
+        )
+    )
     errors.extend(validate_named_checks(repo_root))
     for policy in ENUM_DISPATCH_POLICIES:
         header_path = repo_root / policy.header
@@ -447,6 +560,23 @@ def run_self_test() -> list[str]:
         diagnostics = validate_plan_inventory(PLAN_DIR, dropped)
         if not any("unmapped task" in diagnostic for diagnostic in diagnostics):
             errors.append("self-test: an unmapped task did not fail")
+
+    milestone_diagnostics = validate_milestone_inventory(PLAN_DIR, MILESTONE_TASKS)
+    if milestone_diagnostics:
+        errors.extend(f"self-test baseline: {error}" for error in milestone_diagnostics)
+    else:
+        task_states, _ = collect_task_checkbox_states(PLAN_DIR)
+        milestone_states, _ = collect_milestone_checkbox_states(PLAN_DIR)
+        last_milestone = sorted(MILESTONE_TASKS)[-1]
+        open_milestone_states = dict(milestone_states)
+        open_milestone_states[last_milestone] = False
+        diagnostics = validate_milestone_states(
+            task_states,
+            open_milestone_states,
+            MILESTONE_TASKS,
+        )
+        if not any(last_milestone in diagnostic and "open" in diagnostic for diagnostic in diagnostics):
+            errors.append("self-test: an open milestone with completed tasks did not fail")
     return errors
 
 
@@ -461,12 +591,13 @@ def main() -> int:
             print(f"  - {error}", file=sys.stderr)
         return 1
     if args.self_test:
-        print("SUCCESS: CFC-13 inventory self-test rejected unmapped task and enum mutations.")
+        print("SUCCESS: CFC-13 inventory self-test rejected task, milestone-state, and enum mutations.")
     else:
         task_count = len(TASK_EVIDENCE)
         done_count = sum(row.done_count for row in TASK_EVIDENCE.values())
         print(
-            f"SUCCESS: mapped {task_count} CFC tasks and {done_count} Done assertions; "
+            f"SUCCESS: mapped {task_count} CFC tasks, {len(MILESTONE_TASKS)} milestones, "
+            f"and {done_count} Done assertions; "
             f"classified {len(TARGETED_MUTATIONS)} targeted mutations and verified native enum dispatch."
         )
     return 0
