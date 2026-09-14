@@ -1,7 +1,7 @@
 ---
 title: Lua Runtime Contract
 status: normative
-version: 3.1
+version: 3.2
 updated: 2026-09-14
 depends_on:
   - StableIDSpecification.md
@@ -97,6 +97,8 @@ Canonical state остаётся внутри VM; полная форма, mutat
 4. валидирует return DTO;
 5. восстанавливает context и stack;
 6. только затем разрешает следующий queued ingress/outbound item.
+
+Native `lua_CFunction`, поднимающая semantic error, обязана сначала нормально вернуть управление из внутреннего body, владеющего `std::string`, `std::optional`, query-result objects или другими нетривиальными C++ locals. Только отдельный trivial trampoline без таких locals может вызвать `lua_error`. Вызывать `luaL_error` или `lua_error` из frame с живыми C++ destructors запрещено: bundled Lua компилируется как C и использует `longjmp`, поэтому такой переход обходит destructors. `RepositoryRequireBody`/`RepositoryRequire` является reference pattern; CFC foundation gate и ASan/LSan conformance защищают его production path.
 
 Expected gameplay refusal — typed Result. Неверная schema, forbidden phase и uncaught error — structured runtime fault.
 

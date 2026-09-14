@@ -100,6 +100,19 @@ class TestCppFoundationClosureInventory(unittest.TestCase):
 
         self.assertTrue(any("Retried" in error for error in errors), errors)
 
+    def test_lua_error_cannot_jump_over_repository_raii(self) -> None:
+        unsafe_source = """
+        static int RepositoryRequire(lua_State* State)
+        {
+            std::string Code = "not_found";
+            return luaL_error(State, "%s", Code.c_str());
+        }
+        """
+
+        errors = closure.validate_lua_callback_error_boundary(unsafe_source)
+
+        self.assertTrue(any("luaL_error" in error for error in errors), errors)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

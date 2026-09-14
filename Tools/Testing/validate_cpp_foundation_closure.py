@@ -328,6 +328,37 @@ def validate_enum_test_inventory(enum_name: str, header: str, tests: dict[str, s
     return errors
 
 
+def validate_lua_callback_error_boundary(source: str) -> list[str]:
+    """Keep repository.require's Lua longjmp outside all non-trivial C++ locals."""
+    clean = strip_cpp_comments(source)
+    errors: list[str] = []
+    body_start = clean.find("static int RepositoryRequireBody")
+    section_end = clean.find("static int RepositoryList", max(body_start, 0))
+    if body_start == -1 or section_end == -1:
+        suffix = "; direct luaL_error is forbidden" if "luaL_error" in clean else ""
+        return [f"RepositoryRequire must use a body plus trivial Lua-error trampoline{suffix}"]
+
+    section = clean[body_start:section_end]
+    if "luaL_error" in section:
+        errors.append(
+            "RepositoryRequire contains luaL_error; Lua longjmp would bypass C++ RAII destructors"
+        )
+
+    trampoline = re.compile(
+        r"static\s+int\s+RepositoryRequire\s*\(\s*lua_State\s*\*\s*InState\s*\)\s*\{"
+        r"\s*const\s+int\s+Result\s*=\s*RepositoryRequireBody\s*\(\s*InState\s*\)\s*;"
+        r"\s*if\s*\(\s*Result\s*==\s*LuaErrorPending\s*\)\s*\{"
+        r"\s*return\s+lua_error\s*\(\s*InState\s*\)\s*;\s*\}"
+        r"\s*return\s+Result\s*;\s*\}",
+        re.DOTALL,
+    )
+    if trampoline.search(section) is None:
+        errors.append(
+            "RepositoryRequire must raise only from the trivial trampoline after RepositoryRequireBody returns"
+        )
+    return errors
+
+
 def validate_named_checks(repo_root: Path) -> list[str]:
     ctests = collect_ctest_names(repo_root)
     ue_tests = collect_ue_test_names(repo_root)
@@ -377,6 +408,10 @@ def validate_repository(repo_root: Path = REPO_ROOT) -> list[str]:
                 tests,
             )
         )
+    runtime_session = (
+        repo_root / "Source" / "GV2RuntimeCore" / "Private" / "GV2RuntimeSession.cpp"
+    ).read_text(encoding="utf-8")
+    errors.extend(validate_lua_callback_error_boundary(runtime_session))
     return errors
 
 
@@ -389,6 +424,17 @@ def run_self_test() -> list[str]:
     diagnostics = validate_enum_dispatch("ERuntimeLifecyclePhase", synthetic_header, synthetic_consumer)
     if not any("Recovering" in diagnostic for diagnostic in diagnostics):
         errors.append("self-test: an unhandled enum value did not fail")
+
+    unsafe_lua_callback = """
+    static int RepositoryRequire(lua_State* State) {
+        std::string Code = "not_found";
+        return luaL_error(State, "%s", Code.c_str());
+    }
+    static int RepositoryList(lua_State*) { return 0; }
+    """
+    diagnostics = validate_lua_callback_error_boundary(unsafe_lua_callback)
+    if not diagnostics:
+        errors.append("self-test: Lua error longjmp over repository RAII did not fail")
 
     tasks, inventory_errors = collect_plan_inventory(PLAN_DIR)
     if inventory_errors:

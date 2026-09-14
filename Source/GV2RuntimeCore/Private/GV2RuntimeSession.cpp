@@ -517,11 +517,17 @@ struct FRuntimeSession::FImpl
         return 2;
     }
 
-    static int RepositoryRequire(lua_State* InState)
+    static constexpr int LuaErrorPending = -1;
+
+    // Lua is compiled as C and raises errors with longjmp. Keep every non-trivial C++
+    // local in this body, which only pushes the diagnostic and returns normally. The
+    // trivial outer trampoline below raises after these locals have been destroyed.
+    static int RepositoryRequireBody(lua_State* InState)
     {
         if (lua_gettop(InState) < 1 || lua_type(InState, 1) != LUA_TSTRING)
         {
-            return luaL_error(InState, "invalid_id: repository.require expects a string definition ID parameter");
+            lua_pushliteral(InState, "invalid_id: repository.require expects a string definition ID parameter");
+            return LuaErrorPending;
         }
 
         std::size_t IdLength = 0;
@@ -530,13 +536,15 @@ struct FRuntimeSession::FImpl
         auto ParsedId = GV2ContentCore::FDefinitionId::Parse(IdView);
         if (!ParsedId.has_value())
         {
-            return luaL_error(InState, "invalid_id: invalid definition ID '%s'", RawId);
+            lua_pushfstring(InState, "invalid_id: invalid definition ID '%s'", RawId);
+            return LuaErrorPending;
         }
 
         FImpl* Impl = GetSessionImpl(InState);
         if (Impl == nullptr || !Impl->PinnedRepository.IsValid())
         {
-            return luaL_error(InState, "invalid_handle: pinned repository read handle is invalid");
+            lua_pushliteral(InState, "invalid_handle: pinned repository read handle is invalid");
+            return LuaErrorPending;
         }
 
         auto QueryResult = Impl->PinnedRepository.Require(*ParsedId);
@@ -545,7 +553,8 @@ struct FRuntimeSession::FImpl
             GV2RuntimeCore::FRuntimeFault PushFault;
             if (!FGV2LuaMarshaller::PushValue(InState, *QueryResult.Definition, PushFault))
             {
-                return luaL_error(InState, "%s: %s", PushFault.Code.c_str(), PushFault.Message.c_str());
+                lua_pushfstring(InState, "%s: %s", PushFault.Code.c_str(), PushFault.Message.c_str());
+                return LuaErrorPending;
             }
             return 1;
         }
@@ -555,7 +564,18 @@ struct FRuntimeSession::FImpl
         {
             Code = Code.substr(std::string("core:diagnostic.repository.read.").length());
         }
-        return luaL_error(InState, "%s: definition '%s' not available in repository", Code.c_str(), RawId);
+        lua_pushfstring(InState, "%s: definition '%s' not available in repository", Code.c_str(), RawId);
+        return LuaErrorPending;
+    }
+
+    static int RepositoryRequire(lua_State* InState)
+    {
+        const int Result = RepositoryRequireBody(InState);
+        if (Result == LuaErrorPending)
+        {
+            return lua_error(InState);
+        }
+        return Result;
     }
 
     static int RepositoryList(lua_State* InState)
