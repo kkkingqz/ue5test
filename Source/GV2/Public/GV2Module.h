@@ -9,6 +9,8 @@ struct GV2_API FGV2RuntimeModuleIdentity
     FString SourceRevision;
     FString SourceDiffHash;
     FString BuildFingerprint;
+    /** MAJOR.MINOR of the engine this module was compiled against. */
+    FString EngineVersion;
 
     FString ToJson() const;
     static FGV2RuntimeModuleIdentity FromJson(const FString& JsonString);

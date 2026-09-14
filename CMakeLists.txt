@@ -13,6 +13,24 @@ if(BUILD_TESTING AND NOT EXISTS "${CMAKE_BINARY_DIR}/.cmake/api/v1/query/codemod
     )
 endif()
 
+# Sanitizer build mode for the portable targets. ASan+UBSan were executed once as
+# CFC-13 acceptance evidence, but nothing in the tree could reproduce that run by a
+# command, so the result was not repeatable. Configure with
+# -DGV2_SANITIZE=address,undefined to get it back.
+set(GV2_SANITIZE "" CACHE STRING
+    "Comma-separated sanitizer list for portable targets (e.g. address,undefined). Empty disables sanitizers."
+)
+if(GV2_SANITIZE)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        message(FATAL_ERROR
+            "GV2_SANITIZE requires Clang or GCC, got '${CMAKE_CXX_COMPILER_ID}'."
+        )
+    endif()
+    add_compile_options(-fsanitize=${GV2_SANITIZE} -fno-omit-frame-pointer -g)
+    add_link_options(-fsanitize=${GV2_SANITIZE})
+    message(STATUS "GV2: sanitizers enabled for portable targets: ${GV2_SANITIZE}")
+endif()
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/Tools/Testing/GV2CliContractTests.cmake")
 
 set(GV2_PCC_FIXTURE_ROOT

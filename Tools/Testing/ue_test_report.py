@@ -5,7 +5,7 @@ Validates that:
 1. Discovered tests strictly match completed unique records (no missing, no extra, no duplicates).
 2. Every test record has state 'Success' and zero errors.
 3. Summary counters (total, passed, failed, skipped) are consistent with records.
-4. Binary identity (source_revision, source_diff_hash, build_fingerprint) matches the
+4. Binary identity (source_revision, source_diff_hash, build_fingerprint, engine_version) matches the
    current source/build state, while run_id carries process/transport correlation.
 """
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -26,6 +27,7 @@ REQUIRED_IDENTITY_KEYS = (
     "source_revision",
     "source_diff_hash",
     "build_fingerprint",
+    "engine_version",
 )
 
 
@@ -119,6 +121,30 @@ def compute_build_fingerprint(repo_root: Path) -> str:
     return h.hexdigest()
 
 
+def compute_engine_version(repo_root: Path) -> str:
+    """Reads the engine version the project declares it is built against.
+
+    The expected side must not come from the engine the binary happened to load:
+    it comes from GV2.uproject, which is versioned and reviewable, so moving to a
+    new engine is a diff someone signs off on rather than a silent rebuild. The
+    runtime side reports ENGINE_MAJOR_VERSION/ENGINE_MINOR_VERSION compiled into
+    the loaded module, so the two disagree exactly when the build used another
+    engine. Patch-level moves within one minor version are not bound.
+    """
+    uproject = repo_root / "GV2.uproject"
+    if not uproject.is_file():
+        return "unknown_uproject_missing"
+    try:
+        data = json.loads(uproject.read_text(encoding="utf-8"))
+    except Exception as e:
+        return f"error:GV2.uproject:{e}"
+    association = data.get("EngineAssociation")
+    if not isinstance(association, str) or not re.fullmatch(r"\d+\.\d+", association.strip()):
+        # Source builds put a GUID here. Fail closed rather than guess a version.
+        return "unknown_engine_association"
+    return association.strip()
+
+
 def compute_run_identity(
     project_root: Optional[Union[str, Path]] = None,
     run_id: Optional[str] = None,
@@ -135,6 +161,7 @@ def compute_run_identity(
         "source_revision": compute_source_revision(project_root),
         "source_diff_hash": compute_source_diff_hash(project_root),
         "build_fingerprint": compute_build_fingerprint(project_root),
+        "engine_version": compute_engine_version(project_root),
     }
 
 

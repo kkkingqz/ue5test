@@ -8,6 +8,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -24,6 +25,7 @@ FString FGV2RuntimeModuleIdentity::ToJson() const
     Root->SetStringField(TEXT("source_revision"), SourceRevision);
     Root->SetStringField(TEXT("source_diff_hash"), SourceDiffHash);
     Root->SetStringField(TEXT("build_fingerprint"), BuildFingerprint);
+    Root->SetStringField(TEXT("engine_version"), EngineVersion);
 
     FString OutputString;
     TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
@@ -42,6 +44,7 @@ FGV2RuntimeModuleIdentity FGV2RuntimeModuleIdentity::FromJson(const FString& Jso
         Root->TryGetStringField(TEXT("source_revision"), Identity.SourceRevision);
         Root->TryGetStringField(TEXT("source_diff_hash"), Identity.SourceDiffHash);
         Root->TryGetStringField(TEXT("build_fingerprint"), Identity.BuildFingerprint);
+        Root->TryGetStringField(TEXT("engine_version"), Identity.EngineVersion);
     }
     return Identity;
 }
@@ -145,6 +148,9 @@ FGV2RuntimeModuleIdentity FGV2Module::GetRuntimeIdentity() const
     FGV2RuntimeModuleIdentity Identity;
     Identity.SourceRevision = TEXT(GV2_BUILD_SOURCE_REVISION);
     Identity.SourceDiffHash = TEXT(GV2_BUILD_SOURCE_DIFF_HASH);
+    // Compiled into this module by the engine headers it was built against, so the
+    // reported value follows the loaded binary rather than the environment running it.
+    Identity.EngineVersion = FString::Printf(TEXT("%d.%d"), ENGINE_MAJOR_VERSION, ENGINE_MINOR_VERSION);
 
     FString BinariesDir;
 #if PLATFORM_LINUX

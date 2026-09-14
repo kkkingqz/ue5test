@@ -12,7 +12,7 @@ Verifies:
 - Negative: non-success states (NotRun, InProcess, Fail, Unknown, Skipped)
 - Negative: errors reported even during 'Success' state
 - Negative: mismatched counters (total, passed, failed, skipped, in_process)
-- Negative: stale / mismatched run identity (run_id, source_revision, source_diff_hash, build_fingerprint)
+- Negative: stale / mismatched run identity (run_id, source_revision, source_diff_hash, build_fingerprint, engine_version)
 - Negative: missing run identity
 - Negative: truncated / malformed JSON in adapters
 - Real fixtures: MCP results and UE index.json adaptation
@@ -35,6 +35,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from Tools.Testing.ue_test_report import (
     compute_build_fingerprint,
+    compute_engine_version,
     compute_run_identity,
     compute_source_diff_hash,
     extract_runtime_identity_from_mcp_data,
@@ -52,6 +53,7 @@ class TestUeTestReport(unittest.TestCase):
             "source_revision": "abcdef1234567890abcdef1234567890abcdef12",
             "source_diff_hash": "clean",
             "build_fingerprint": "fingerprint-linux-dev-v1",
+            "engine_version": "5.8",
         }
 
     def _make_valid_report(self, test_names: list[str], with_warnings: bool = False) -> dict:
@@ -240,7 +242,7 @@ class TestUeTestReport(unittest.TestCase):
             )
 
     def test_negative_stale_identity(self) -> None:
-        for key in ["run_id", "source_revision", "source_diff_hash", "build_fingerprint"]:
+        for key in ["run_id", "source_revision", "source_diff_hash", "build_fingerprint", "engine_version"]:
             stale = dict(self.identity)
             stale[key] = f"stale-{key}"
             report = self._make_valid_report(["GV2.Test1"])
@@ -339,6 +341,53 @@ class TestUeTestReport(unittest.TestCase):
             fp2 = compute_build_fingerprint(tmp_path)
             self.assertNotEqual(fp1, fp2)
 
+    def test_compute_engine_version_from_uproject(self) -> None:
+        """Expected engine version comes from the project's own declaration, and fails closed."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            # 1. No GV2.uproject at all
+            self.assertEqual(compute_engine_version(tmp_path), "unknown_uproject_missing")
+
+            # 2. Declared release version
+            uproject = tmp_path / "GV2.uproject"
+            uproject.write_text(json.dumps({"EngineAssociation": "5.8"}), encoding="utf-8")
+            self.assertEqual(compute_engine_version(tmp_path), "5.8")
+
+            # 3. Source build puts a GUID here; guessing a version would defeat the check
+            uproject.write_text(
+                json.dumps({"EngineAssociation": "{6E1F0A1B-1111-2222-3333-444455556666}"}),
+                encoding="utf-8",
+            )
+            self.assertEqual(compute_engine_version(tmp_path), "unknown_engine_association")
+
+            # 4. Missing field
+            uproject.write_text(json.dumps({"FileVersion": 3}), encoding="utf-8")
+            self.assertEqual(compute_engine_version(tmp_path), "unknown_engine_association")
+
+    def test_negative_report_without_engine_version(self) -> None:
+        """A binary built before engine binding reports no engine_version and must not pass."""
+        report = self._make_valid_report(["GV2.Test1"])
+        del report["run_identity"]["engine_version"]
+
+        diags = validate_run({"GV2.Test1"}, report, dict(self.identity))
+
+        self.assertTrue(
+            any("engine_version" in d for d in diags),
+            f"Report identity without engine_version must be rejected, got {diags}",
+        )
+
+    def test_negative_engine_version_mismatch(self) -> None:
+        """Same sources built against another engine must not reuse the previous green run."""
+        report = self._make_valid_report(["GV2.Test1"])
+        report["run_identity"]["engine_version"] = "5.9"
+
+        diags = validate_run({"GV2.Test1"}, report, dict(self.identity))
+
+        self.assertTrue(
+            any("Run identity mismatch for 'engine_version'" in d for d in diags),
+            f"Engine version mismatch must be rejected, got {diags}",
+        )
+
     def test_negative_mcp_missing_failed_or_skipped(self) -> None:
         """normalize_mcp_report must reject missing failed or skipped counters."""
         valid_mcp = {
@@ -369,6 +418,7 @@ class TestUeTestReport(unittest.TestCase):
             "source_revision": "rev-test-456",
             "source_diff_hash": "clean",
             "build_fingerprint": "fp-test-789",
+            "engine_version": "5.8",
         }
         msg = f"LogAutomationTest: Display: GV2_RUNTIME_IDENTITY:{json.dumps(payload)}"
 
@@ -683,6 +733,7 @@ class TestRunnersIntegration(unittest.TestCase):
             "source_revision": "abcdef1234567890abcdef1234567890abcdef12",
             "source_diff_hash": "clean",
             "build_fingerprint": "fingerprint-linux-dev-v1",
+            "engine_version": "5.8",
         }
 
     def test_mcp_client_exact_task_id_required(self) -> None:

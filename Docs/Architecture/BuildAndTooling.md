@@ -1,7 +1,7 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 4.0
+version: 4.1
 updated: 2026-09-14
 depends_on:
   - SystemContextAndComponents.md
@@ -396,7 +396,7 @@ Cold-start использует только core-minimal values (`ImageCatalogF
 
 Список закрыт и не расширяется. Каждый набор мигрирует в спеки при следующем изменении его предмета.
 
-Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}` (default `/opt/unreal-engine`, переопределяется repository variable). Fork pull request не запускается на self-hosted runner. Прогон запускается в свежем процессе Editor (`UnrealEditor-Cmd`) со сбором полного discovery инвентаря `GV2` и машинного отчёта `-ReportExportPath`. Результат валидируется `Tools/Testing/ue_test_report.py` (`validate_run`): множество discovery обязано строго совпасть с завершёнными записями, каждая запись имеет `Success` и 0 ошибок, а counters согласованы. `run_identity` связывает две независимые части evidence. `source_revision`, `source_diff_hash` и `build_fingerprint` порождаются runtime C++ модулем `FGV2Module` (`GV2.Runtime.ModuleIdentity` и `runtime_identity.json`), а runner независимо вычисляет эталон, включая `git diff HEAD` и untracked files. `run_id` является execution-correlation, а не binary identity: fresh runner связывает его с единственным новым процессом, очищенным report directory и report mtime; MCP runner выводит его только из проверенного JSON-RPC response id либо exact async `task_id`. Любые incomplete/error prefixes, расхождения, пропуски, `NotRun`/`InProcess` и неидентифицированный отчёт являются fail-closed отказом.
+Unreal runner обязан иметь UE 5.8 в `${UE_ROOT}` (default `/opt/unreal-engine`, переопределяется repository variable). Fork pull request не запускается на self-hosted runner. Прогон запускается в свежем процессе Editor (`UnrealEditor-Cmd`) со сбором полного discovery инвентаря `GV2` и машинного отчёта `-ReportExportPath`. Результат валидируется `Tools/Testing/ue_test_report.py` (`validate_run`): множество discovery обязано строго совпасть с завершёнными записями, каждая запись имеет `Success` и 0 ошибок, а counters согласованы. `run_identity` связывает две независимые части evidence. `source_revision`, `source_diff_hash`, `build_fingerprint` и `engine_version` порождаются runtime C++ модулем `FGV2Module` (`GV2.Runtime.ModuleIdentity` и `runtime_identity.json`), а runner независимо вычисляет эталон, включая `git diff HEAD` и untracked files. `engine_version` — `MAJOR.MINOR`, вкомпилированные в модуль заголовками движка, которым он собран; эталон читается из `EngineAssociation` в `GV2.uproject`. Поэтому сборка тех же исходников другим движком не наследует прежний зелёный прогон, а переход на новый движок требует сначала изменить объявление проекта — то есть отдельный обозримый diff. `EngineAssociation` вида GUID (source build) даёт `unknown_engine_association` и отказ: угадывать версию вместо объявления запрещено. Patch-компонента в привязку не входит. `run_id` является execution-correlation, а не binary identity: fresh runner связывает его с единственным новым процессом, очищенным report directory и report mtime; MCP runner выводит его только из проверенного JSON-RPC response id либо exact async `task_id`. Любые incomplete/error prefixes, расхождения, пропуски, `NotRun`/`InProcess` и неидентифицированный отчёт являются fail-closed отказом.
 
 Следствие, которое выглядит неудобным и ослаблять его нельзя: identity привязана к ревизии и diff рабочего дерева, поэтому **любой** коммит или правка файла — включая изменения одной документации, не влияющие на бинарник, — делает предыдущий зелёный acceptance run недействительным до пересборки. Раннер в этом случае сообщает `Run identity mismatch` и возвращает ненулевой код, даже когда все тесты прошли. Это и есть требуемое поведение: утверждение «набор исполнен» относится к конкретным исходникам и конкретным загруженным бинарникам, а не к тому, что когда-то был зелёный прогон. Правильная реакция — пересобрать и повторить прогон, а не расширять допуск сравнения.
 
@@ -443,3 +443,13 @@ Universal acceptance assertion обязано называть actual enumerator
 - Один corpus даёт одинаковый `content_hash` в `gv2-content`, `gv2-headless` и Unreal automation.
 - Каждый негативный CTest проверяет и stable diagnostic code, и exit code.
 - `GameData/core` валидируется CI наравне с fixtures.
+- Санитайзерный прогон портируемых целей воспроизводится командой, а не описанием: `GV2_SANITIZE` добавляет `-fsanitize=<list>` в компиляцию и линковку всех портируемых целей.
+
+```bash
+mkdir -p build-asan/.cmake/api/v1/query && touch build-asan/.cmake/api/v1/query/codemodel-v2
+cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Debug -DGV2_SANITIZE=address,undefined
+cmake --build build-asan --parallel 2
+ctest --test-dir build-asan --output-on-failure
+```
+
+Санитайзеры требуют Clang или GCC; другой компилятор отвергается на configure. Прогон не входит в обязательный CI и не является частью fail-closed приёмки — он инструмент, который должен быть под рукой, а не ещё один обязательный барьер.
