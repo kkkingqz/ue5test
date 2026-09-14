@@ -120,6 +120,9 @@ struct FRuntimePhaseResult
     bool IsFault() const { return Kind == ERuntimePhaseResultKind::Fault; }
 };
 
+// Called once for every executed protected phase with its closed result. Returning
+// false requests cancellation only after Completed; a reported Fault remains the
+// terminal cause and cannot be replaced by callback cancellation.
 using FPhaseCompletionCallback = std::function<bool(ERuntimeLifecyclePhase Phase, const FRuntimePhaseResult& Result)>;
 
 

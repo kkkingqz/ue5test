@@ -1,8 +1,8 @@
 ---
 title: Add Lua Spec
 status: informative
-version: 2.0
-updated: 2026-08-20
+version: 2.1
+updated: 2026-09-14
 depends_on:
   - README.md
   - ../Architecture/HeadlessSimulationContract.md
@@ -15,6 +15,8 @@ depends_on:
 > **Нормативно:** [Headless Simulation](../Architecture/HeadlessSimulationContract.md), [Build and Tooling](../Architecture/BuildAndTooling.md).
 
 Если проверяется C++ API — parser, marshalling, storage, manifest/digest serialization или сам runner — нужен shared C++ conformance entry point. Gameplay/Lua rule в C++ дублировать запрещено.
+
+Новый Command, Validator, Event, Gameplay Service, migration или desired presentation сначала получает Lua spec и production Lua consumer; новый native entry point для такого изменения не создаётся. Если сценарий обнаружил действительно отсутствующую native capability, примените [When to Write Cpp](WhenToWriteCpp.md): scope reason, production consumer, negative fixture и actual enumerator добавляются вместе с API.
 
 ## Выбрать tier
 

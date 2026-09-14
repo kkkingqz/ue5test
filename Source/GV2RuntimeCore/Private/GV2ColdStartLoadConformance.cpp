@@ -6,6 +6,8 @@
 #include "GV2RuntimeCore/GV2HostServices.h"
 #include "GV2RuntimeCore/GV2RuntimeSession.h"
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
 #include <string>
@@ -355,6 +357,62 @@ end
 return M
 )lua";
 
+const char* RegisterFaultDriverSource = R"lua(
+local M = {
+    id = "core:module.test.register_fault_driver",
+}
+
+function M.register(ctx)
+    error("CFC13_REGISTER_PHASE_FAULT")
+end
+
+return M
+)lua";
+
+const char* BuildingStateFaultDriverSource = R"lua(
+local M = {
+    id = "core:module.test.building_state_fault_driver",
+}
+
+function M.create_default_state(ctx)
+    error("CFC13_BUILDING_STATE_PHASE_FAULT")
+end
+
+return M
+)lua";
+
+const char* RestoringInstancesFaultDriverSource = R"lua(
+local M = {
+    id = "core:module.test.restoring_instances_fault_driver",
+}
+
+function M.create_default_state(ctx)
+    return { data = { marker = "phase_fault" } }
+end
+
+function M.validate_state(ctx, tree)
+    error("CFC13_RESTORING_INSTANCES_PHASE_FAULT")
+end
+
+return M
+)lua";
+
+const char* StartingFaultDriverSource = R"lua(
+local M = {
+    id = "core:module.test.starting_fault_driver",
+}
+
+function M.create_default_state(ctx)
+    return { data = { marker = "phase_fault" } }
+end
+
+function M.start(ctx)
+    error("CFC13_STARTING_PHASE_FAULT")
+end
+
+return M
+)lua";
+
 std::vector<FRuntimeSource> MakeSharedSources(const char* DriverModuleId, const char* DriverSource)
 {
     std::string Manifest;
@@ -449,11 +507,42 @@ std::string RunColdStartLoadConformance()
         WriteSession.SetSaveSlotStorage(&Storage);
         const std::vector<FRuntimeSource> Sources =
             MakeSharedSources("core:module.test.save_driver", SaveDriverSource);
-        if (!WriteSession.Start(1, "0123456789abcdef", RepoHandle, Sources, Fault))
+        FSessionStartInputs Inputs("0123456789abcdef", 1);
+        const std::array<ERuntimeLifecyclePhase, 4> ExpectedPhases = {
+            ERuntimeLifecyclePhase::Registering,
+            ERuntimeLifecyclePhase::BuildingState,
+            ERuntimeLifecyclePhase::RestoringInstances,
+            ERuntimeLifecyclePhase::Starting,
+        };
+        std::vector<ERuntimeLifecyclePhase> ObservedPhases;
+        if (!WriteSession.StartSessionPhases(
+                Inputs,
+                RepoHandle,
+                Sources,
+                nullptr,
+                [&ObservedPhases](ERuntimeLifecyclePhase Phase, const FRuntimePhaseResult& Result)
+                {
+                    if (Result.Kind != ERuntimePhaseResultKind::Completed
+                        || !Result.IsCompleted()
+                        || Result.IsFault())
+                    {
+                        return false;
+                    }
+                    ObservedPhases.push_back(Phase);
+                    return true;
+                },
+                Fault))
         {
             std::error_code Ec;
             std::filesystem::remove_all(SlotRoot, Ec);
             return "cold_start_load_conformance.write_session_start_failed: " + Fault.Code + ": " + Fault.Message;
+        }
+        if (!std::equal(ExpectedPhases.begin(), ExpectedPhases.end(), ObservedPhases.begin(), ObservedPhases.end()))
+        {
+            WriteSession.Stop();
+            std::error_code Ec;
+            std::filesystem::remove_all(SlotRoot, Ec);
+            return "cold_start_load_conformance.completed_phase_inventory_mismatch";
         }
         StateHashBeforeSave = WriteSession.GetCanonicalStateHash();
         WriteSession.Stop();
@@ -464,6 +553,72 @@ std::string RunColdStartLoadConformance()
         std::error_code Ec;
         std::filesystem::remove_all(SlotRoot, Ec);
         return "cold_start_load_conformance.write_session_state_hash_empty";
+    }
+
+    // CFC-13 / CFC-07: the same phase callback must receive the typed Fault
+    // outcome of every failed protected phase. The case set is independent of
+    // the runtime implementation; the CFC enum gate ensures a new public phase
+    // cannot be added without extending this inventory.
+    {
+        struct FPhaseFaultCase
+        {
+            const char* ModuleId;
+            const char* Source;
+            ERuntimeLifecyclePhase ExpectedFaultPhase;
+            std::size_t ExpectedResultCount;
+        };
+        const std::array<FPhaseFaultCase, 4> FaultCases = {{
+            {"core:module.test.register_fault_driver", RegisterFaultDriverSource, ERuntimeLifecyclePhase::Registering, 1},
+            {"core:module.test.building_state_fault_driver", BuildingStateFaultDriverSource, ERuntimeLifecyclePhase::BuildingState, 2},
+            {"core:module.test.restoring_instances_fault_driver", RestoringInstancesFaultDriverSource, ERuntimeLifecyclePhase::RestoringInstances, 3},
+            {"core:module.test.starting_fault_driver", StartingFaultDriverSource, ERuntimeLifecyclePhase::Starting, 4},
+        }};
+
+        for (const FPhaseFaultCase& FaultCase : FaultCases)
+        {
+            FRuntimeSession FaultSession;
+            FRuntimeFault Fault;
+            const std::vector<FRuntimeSource> Sources = MakeSharedSources(FaultCase.ModuleId, FaultCase.Source);
+            FSessionStartInputs Inputs("0123456789abcdef", 1);
+            std::vector<std::pair<ERuntimeLifecyclePhase, FRuntimePhaseResult>> ObservedResults;
+            const bool bStarted = FaultSession.StartSessionPhases(
+                Inputs,
+                RepoHandle,
+                Sources,
+                nullptr,
+                [&ObservedResults](ERuntimeLifecyclePhase Phase, const FRuntimePhaseResult& Result)
+                {
+                    ObservedResults.emplace_back(Phase, Result);
+                    return true;
+                },
+                Fault);
+            FaultSession.Stop();
+            if (bStarted)
+            {
+                return "cold_start_load_conformance.phase_fault_was_accepted";
+            }
+            if (ObservedResults.size() != FaultCase.ExpectedResultCount)
+            {
+                return "cold_start_load_conformance.phase_fault_result_count_mismatch";
+            }
+            for (std::size_t Index = 0; Index + 1 < ObservedResults.size(); ++Index)
+            {
+                if (ObservedResults[Index].second.Kind != ERuntimePhaseResultKind::Completed
+                    || !ObservedResults[Index].second.IsCompleted())
+                {
+                    return "cold_start_load_conformance.phase_prefix_not_completed";
+                }
+            }
+            const auto& Terminal = ObservedResults.back();
+            if (Terminal.first != FaultCase.ExpectedFaultPhase
+                || Terminal.second.Kind != ERuntimePhaseResultKind::Fault
+                || !Terminal.second.IsFault()
+                || Terminal.second.IsCompleted()
+                || Terminal.second.Fault.Code != Fault.Code)
+            {
+                return "cold_start_load_conformance.phase_fault_outcome_not_reported";
+            }
+        }
     }
 
     // 2. Load session (SAV-12): StartFromSave against the slot the write

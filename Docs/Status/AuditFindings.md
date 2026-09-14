@@ -1,7 +1,7 @@
 ---
 title: C++ Foundation Readiness Audit
 status: informative
-version: 1.6
+version: 1.7
 updated: 2026-09-14
 depends_on:
   - ImplementationStatus.md
@@ -264,7 +264,7 @@ exit=0
 
 **Подтверждён collision mechanism:** `GV2SaveSlotStorage.cpp:94` использует один `.tmp` для slot и не синхронизирует отдельные writers. Две concurrent записи могут столкнуться; concurrent product caller и испорченный файл в этом раунде не воспроизведены. Обещание atomic replace описано [storage contract](../Architecture/BuildAndTooling.md); actual concurrency boundary должен быть явным.
 
-**Открыто, уже покрыто:** CFC-08 требует exclusive owner lock, serialization и process/concurrent tests плюс atomic publication Current/Previous. Unique filename само по себе не определяет порядок commits/Previous и не заменяет этот protocol. Новый STATUS, дублирующий уже запланированную storage boundary, не добавляется без отдельного подтверждённого product concurrency нарушения.
+**Исход:** *(Закрыто задачей CFC-08)* Один application-owned storage удерживает exclusive process lock, операции сериализованы, а concurrent/process и crash-matrix проверки подтверждают `Busy` второго owner и атомарную пару Current/Previous. Unique filename не использовался как замена протоколу публикации.
 
 #### CFC-AF-10 — REVIEW-10 — P2 — forgery mode не восстанавливается
 
@@ -290,15 +290,21 @@ exit=0
 
 *(Закрыто задачей CFC-05A)* Блок жизненного цикла фазы 3 в `GV2RuntimeSession.cpp` заменён вызовом `ComposeDefaultCanonicalStateTree` и отформатирован в едином стиле в рамках переноса State Composition.
 
+#### CFC-AF-16 — CFC-13 — P1 — `FRuntimePhaseResult::Fault` не достигал production callback
+
+**Подтверждение:** `ERuntimePhaseResultKind::Fault` и `FRuntimePhaseResult::MakeFault` входили в public `GV2RuntimeSession.h` и требовались Bootstrap contract, но `RunLifecycleHooks` вызывал `FPhaseCompletionCallback` только с `Completed`; любой register/build/restore/start fault возвращался напрямую. Поэтому host не мог наблюдать закрытый исход исполнявшейся фазы, а тесты CFC-07 проверяли transitions, не public phase-result mechanism.
+
+*(Закрыто задачей CFC-13)* Каждый отказ register/sealing, state build/migration, restore/validation и start теперь передаётся callback как `Fault` уже после восстановления Lua stack/execution guard; callback не может подменить исходный fault отменой. Shared conformance перечисляет все значения actual `ERuntimeLifecyclePhase`, проверяет completed prefix и terminal typed fault; удаление fault-reporting краснит `gv2_headless_self_test` причиной `phase_fault_*_not_reported`.
+
 ### Evidence дополнительной portable проверки
 
 Локально: `Saved/Audit/CppFullReviewVerification/value_digest_probe.cpp` и executable; входные SHA-256 review/router — `input.json`. Probe вызвал реальные public constructors/hash/codecs, linked `build/Source/libgv2_runtime_core.a` и `libgv2_content_core.a`. Существенные результаты приведены в CFC-AF-06/07 и не зависят от сохранности временного каталога. Это не замена полного native/UE acceptance и не утверждение, что отредактированы или исправлены исходники.
 
-## Ранее известные ограничения
+## Ранее известные ограничения и их исход
 
-- `STATUS-001`: replacement/preflight/cancellation/session lifecycle не завершён. Portable cold-start load существует; UE product load из этого не следует.
+- `STATUS-001` закрыт задачами CFC-07/CFC-10 после production replacement, preflight/cancellation и `load-another-save` сценария.
 - `STATUS-002` и `STATUS-003`: effects и enter/exit animation paths отсутствуют. Они не препятствуют всякой gameplay-разработке, но замораживать C++ с обещанием этих возможностей нельзя.
-- `STATUS-011`: обязательность данных сцены не определена; это content/schema вопрос, который следует решить до массового authoring.
+- `STATUS-011` закрыт задачей CFC-11: обязательная scene surface и typed отказ закреплены schema v2 fixtures.
 - [PresentationModel](../Concepts/PresentationModel.md) всё ещё говорит об одном экране и нереализованном UI document; [CanonicalStateAndSave](../Architecture/CanonicalStateAndSave.md) одновременно содержит старую запись о неготовых migrations и отдельный раздел реализованных migrations. Валидатор links/front matter не проверяет такие смысловые противоречия. Эти описания не использованы как evidence отсутствия реально существующего кода.
 
 ## Рекомендация по фиксации C++

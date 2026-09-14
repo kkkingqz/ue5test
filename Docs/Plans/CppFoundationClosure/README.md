@@ -1,8 +1,8 @@
 ---
 title: Cpp Foundation Closure Implementation Plan
 status: active
-version: 1.7
-updated: 2026-09-13
+version: 1.8
+updated: 2026-09-14
 depends_on:
   - ../../Architecture/BootstrapAndSessionLifecycle.md
   - ../../Architecture/RuntimeFacadeAndRegistries.md
@@ -215,7 +215,8 @@ VALIDATION FAILED (FAIL-CLOSED):
 | Приёмка M2: `load-another-save`, повторный load, restart и запись о приёмке | `063485b` | закрывает последний сценарий формулировки `STATUS-001` |
 | CFC-11 | `2431209` | v2 schema поля сцены с обязательным массивом `characters` |
 | CFC-12 | `f92c5c0` | первая итерация gameplay-среза |
-| Ревью M3: устранение сайд-эффекта CFC-12 и приёмка задачи | текущий change set | изоляция debug/start.lua, семантический UI input в slice-тесте |
+| Ревью M3: устранение сайд-эффекта CFC-12 и приёмка задачи | `3aad84f` | изоляция debug/start.lua, семантический UI input в slice-тесте |
+| CFC-13: evidence/enum inventory и closed phase results | текущий change set | actual plan headings/Done, targeted mutation policy, `Completed | Fault` на production callback path |
 
 Дальнейшие задачи фиксируются по одной; таблица дополняется в том же change set, что и задача.
 

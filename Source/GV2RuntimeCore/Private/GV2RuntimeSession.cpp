@@ -1798,22 +1798,95 @@ struct FRuntimeSession::FImpl
         return true;
     }
 
+    bool RunOptionalTreeLifecyclePhase(
+        const char* HookName,
+        const std::vector<FModuleSpec>& LoadOrder,
+        const int TreeRef,
+        FRuntimeFault& OutFault)
+    {
+        for (const FModuleSpec& Spec : LoadOrder)
+        {
+            if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
+            {
+                return false;
+            }
+
+            FStackRestore Stack{State, lua_gettop(State)};
+            FExecutionGuard Execution(bExecuting);
+
+            lua_pushcfunction(State, Traceback);
+            const int ErrorHandler = lua_gettop(State);
+
+            lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
+            lua_getfield(State, -1, Spec.ModuleId.c_str());
+            lua_remove(State, -2);
+
+            if (!lua_istable(State, -1))
+            {
+                OutFault = {"LuaModuleLifecycleError", "Module export table is missing: " + Spec.ModuleId};
+                return false;
+            }
+
+            lua_getfield(State, -1, HookName);
+            if (lua_isnil(State, -1))
+            {
+                continue;
+            }
+            if (!lua_isfunction(State, -1))
+            {
+                OutFault = {
+                    "LuaModuleLifecycleInvalid",
+                    "Module hook '" + std::string(HookName) + "' must be a function: " + Spec.ModuleId};
+                return false;
+            }
+
+            lua_createtable(State, 0, 1);
+            lua_pushinteger(State, SessionGeneration);
+            lua_setfield(State, -2, "session_generation");
+
+            lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
+
+            if (lua_pcall(State, 2, 0, ErrorHandler) != LUA_OK)
+            {
+                const std::string Fallback = "Module " + std::string(HookName) + " failed.";
+                ReadLuaError(
+                    State,
+                    "LuaModuleLifecycleError",
+                    Fallback.c_str(),
+                    OutFault);
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool RunLifecycleHooks(
         const std::vector<FModuleSpec>& LoadOrder,
         const std::string* LoadContainerBytes,
         const FPhaseCompletionCallback& PhaseCallback,
         FRuntimeFault& OutFault)
     {
+        const auto ReportPhaseFault = [&PhaseCallback, &OutFault](ERuntimeLifecyclePhase Phase)
+        {
+            if (PhaseCallback)
+            {
+                // Fault already won over cancellation. The callback observes the closed
+                // phase result but cannot replace the originating diagnostic by returning false.
+                PhaseCallback(Phase, FRuntimePhaseResult::MakeFault(OutFault));
+            }
+            return false;
+        };
+
         // 1. Phase "register"
         if (!RunLifecyclePhase("register", LoadOrder, OutFault))
         {
-            return false;
+            return ReportPhaseFault(ERuntimeLifecyclePhase::Registering);
         }
 
         // 1b. CFC-05: Mandatory registry sealing phase right after register phase.
         if (!SealRegistries(OutFault))
         {
-            return false;
+            return ReportPhaseFault(ERuntimeLifecyclePhase::Registering);
         }
 
         if (PhaseCallback && !PhaseCallback(ERuntimeLifecyclePhase::Registering, FRuntimePhaseResult::MakeCompleted()))
@@ -1835,7 +1908,7 @@ struct FRuntimeSession::FImpl
         {
             if (!DecodeAndPrepareCanonicalStateTree(*LoadContainerBytes, TreeRef, OutFault))
             {
-                return false;
+                return ReportPhaseFault(ERuntimeLifecyclePhase::BuildingState);
             }
 
             // CFC-07A: no seed check here. A loaded run's seed is meta.seed_hex inside the
@@ -1852,70 +1925,23 @@ struct FRuntimeSession::FImpl
             // build) before returning a tree at all; what remains here is
             // giving every module a chance to claim a pending migration, then
             // verifying none was silently left unclaimed.
-            for (const FModuleSpec& Spec : LoadOrder)
+            if (!RunOptionalTreeLifecyclePhase("migrate_state", LoadOrder, TreeRef, OutFault))
             {
-                if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    return false;
-                }
-
-                FStackRestore Stack{State, lua_gettop(State)};
-                FExecutionGuard Execution(bExecuting);
-
-                lua_pushcfunction(State, Traceback);
-                const int ErrorHandler = lua_gettop(State);
-
-                lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-                lua_getfield(State, -1, Spec.ModuleId.c_str());
-                lua_remove(State, -2);
-
-                if (!lua_istable(State, -1))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    OutFault = {"LuaModuleLifecycleError", "Module export table is missing: " + Spec.ModuleId};
-                    return false;
-                }
-
-                lua_getfield(State, -1, "migrate_state");
-                if (lua_isnil(State, -1))
-                {
-                    continue;
-                }
-                if (!lua_isfunction(State, -1))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    OutFault = {
-                        "LuaModuleLifecycleInvalid",
-                        "Module hook 'migrate_state' must be a function: " + Spec.ModuleId};
-                    return false;
-                }
-
-                lua_createtable(State, 0, 1);
-                lua_pushinteger(State, SessionGeneration);
-                lua_setfield(State, -2, "session_generation");
-
-                lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
-
-                if (lua_pcall(State, 2, 0, ErrorHandler) != LUA_OK)
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    ReadLuaError(State, "LuaModuleLifecycleError", "Module migrate_state failed.", OutFault);
-                    return false;
-                }
+                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                return ReportPhaseFault(ERuntimeLifecyclePhase::BuildingState);
             }
 
             if (!VerifyMigrationsComplete(OutFault))
             {
                 luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                return false;
+                return ReportPhaseFault(ERuntimeLifecyclePhase::BuildingState);
             }
         }
         else
         {
             if (!ComposeDefaultCanonicalStateTree(LoadOrder, TreeRef, OutFault))
             {
-                return false;
+                return ReportPhaseFault(ERuntimeLifecyclePhase::BuildingState);
             }
         }
 
@@ -1928,7 +1954,7 @@ struct FRuntimeSession::FImpl
         {
             lua_pop(State, 1);
             luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-            return false;
+            return ReportPhaseFault(ERuntimeLifecyclePhase::BuildingState);
         }
         lua_pop(State, 1);
 
@@ -1945,112 +1971,18 @@ struct FRuntimeSession::FImpl
         // hook in a module is not an error (BootstrapAndSessionLifecycle.md).
         if (LoadContainerBytes != nullptr)
         {
-            for (const FModuleSpec& Spec : LoadOrder)
+            if (!RunOptionalTreeLifecyclePhase("restore_instances", LoadOrder, TreeRef, OutFault))
             {
-                if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    return false;
-                }
-
-                FStackRestore Stack{State, lua_gettop(State)};
-                FExecutionGuard Execution(bExecuting);
-
-                lua_pushcfunction(State, Traceback);
-                const int ErrorHandler = lua_gettop(State);
-
-                lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-                lua_getfield(State, -1, Spec.ModuleId.c_str());
-                lua_remove(State, -2);
-
-                if (!lua_istable(State, -1))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    OutFault = {"LuaModuleLifecycleError", "Module export table is missing: " + Spec.ModuleId};
-                    return false;
-                }
-
-                lua_getfield(State, -1, "restore_instances");
-                if (lua_isnil(State, -1))
-                {
-                    continue;
-                }
-                if (!lua_isfunction(State, -1))
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    OutFault = {
-                        "LuaModuleLifecycleInvalid",
-                        "Module hook 'restore_instances' must be a function: " + Spec.ModuleId};
-                    return false;
-                }
-
-                lua_createtable(State, 0, 1);
-                lua_pushinteger(State, SessionGeneration);
-                lua_setfield(State, -2, "session_generation");
-
-                lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
-
-                if (lua_pcall(State, 2, 0, ErrorHandler) != LUA_OK)
-                {
-                    luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                    ReadLuaError(State, "LuaModuleLifecycleError", "Module restore_instances failed.", OutFault);
-                    return false;
-                }
+                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+                return ReportPhaseFault(ERuntimeLifecyclePhase::RestoringInstances);
             }
         }
 
         // 5. Phase "validate_state"
-        for (const FModuleSpec& Spec : LoadOrder)
+        if (!RunOptionalTreeLifecyclePhase("validate_state", LoadOrder, TreeRef, OutFault))
         {
-            if (!BeginEntry(Spec.ModuleId.c_str(), OutFault))
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                return false;
-            }
-
-            FStackRestore Stack{State, lua_gettop(State)};
-            FExecutionGuard Execution(bExecuting);
-
-            lua_pushcfunction(State, Traceback);
-            const int ErrorHandler = lua_gettop(State);
-
-            lua_getfield(State, LUA_REGISTRYINDEX, LoadedModulesRegistryKey);
-            lua_getfield(State, -1, Spec.ModuleId.c_str());
-            lua_remove(State, -2);
-
-            if (!lua_istable(State, -1))
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                OutFault = {"LuaModuleLifecycleError", "Module export table is missing: " + Spec.ModuleId};
-                return false;
-            }
-
-            lua_getfield(State, -1, "validate_state");
-            if (lua_isnil(State, -1))
-            {
-                continue;
-            }
-            if (!lua_isfunction(State, -1))
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                OutFault = {
-                    "LuaModuleLifecycleInvalid",
-                    "Module hook 'validate_state' must be a function: " + Spec.ModuleId};
-                return false;
-            }
-
-            lua_createtable(State, 0, 1);
-            lua_pushinteger(State, SessionGeneration);
-            lua_setfield(State, -2, "session_generation");
-
-            lua_rawgeti(State, LUA_REGISTRYINDEX, TreeRef);
-
-            if (lua_pcall(State, 2, 0, ErrorHandler) != LUA_OK)
-            {
-                luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
-                ReadLuaError(State, "LuaModuleLifecycleError", "Module validate_state failed.", OutFault);
-                return false;
-            }
+            luaL_unref(State, LUA_REGISTRYINDEX, TreeRef);
+            return ReportPhaseFault(ERuntimeLifecyclePhase::RestoringInstances);
         }
 
         if (PhaseCallback && !PhaseCallback(ERuntimeLifecyclePhase::RestoringInstances, FRuntimePhaseResult::MakeCompleted()))
@@ -2099,7 +2031,7 @@ struct FRuntimeSession::FImpl
         // 6. Phase "start"
         if (!RunLifecyclePhase("start", LoadOrder, OutFault))
         {
-            return false;
+            return ReportPhaseFault(ERuntimeLifecyclePhase::Starting);
         }
 
         if (PhaseCallback && !PhaseCallback(ERuntimeLifecyclePhase::Starting, FRuntimePhaseResult::MakeCompleted()))

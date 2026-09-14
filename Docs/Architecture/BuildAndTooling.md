@@ -1,8 +1,8 @@
 ---
 title: Build and Tooling Contract
 status: normative
-version: 3.8
-updated: 2026-09-13
+version: 3.9
+updated: 2026-09-14
 depends_on:
   - SystemContextAndComponents.md
   - GameDataRepositoryContract.md
@@ -28,7 +28,7 @@ decisions:
 > **Не владеет:** поведением рантайма — его определяют подсистемные contracts.
 > **Инварианты:** [INV-012](Invariants.md), [INV-013](Invariants.md)
 > **Реализация:** `Source/CMakeLists.txt`, `*.Build.cs`, `Tools/Content/`, `.github/workflows/linux-ci.yml`.
-> **Проверки:** `ctest_expected_failure_contract`, `host_conformance_parity_contract`, `ue_test_report_contract`, `mcp_transport_contract`, `ue_acceptance_runner_contract`, `presentation_apply_*`, `central_style_runtime_boundary_*`, `viewport_refresh_coverage_*`, `package_set_factory_inventory_*`, `core_*_gate_contract`, `gv2_content_*`.
+> **Проверки:** `ctest_expected_failure_contract`, `host_conformance_parity_contract`, `ue_test_report_contract`, `mcp_transport_contract`, `ue_acceptance_runner_contract`, `cpp_foundation_closure_*`, `presentation_apply_*`, `central_style_runtime_boundary_*`, `viewport_refresh_coverage_*`, `package_set_factory_inventory_*`, `core_*_gate_contract`, `gv2_content_*`.
 
 Документ фиксирует, как один и тот же source set собирается двумя build systems, какие исполняемые host-ы существуют, где живут shared test fixtures и что обязан проверить integration gate. Ownership и dependency direction задаёт [System Context and Components](SystemContextAndComponents.md); здесь описан только physical build/tooling слой.
 
@@ -430,6 +430,8 @@ python3 Tools/MCP/run_ue_tests.py --filter StartsWith:GV2
 Shipping/cook/package, другие ОС и power-loss storage durability не входят в этот baseline без отдельного evidence. One-shot presentation effects ([STATUS-002](../Status/ImplementationStatus.md)) и enter/exit animations ([STATUS-003](../Status/ImplementationStatus.md)) остаются явными gaps: их отсутствие не блокирует synchronous gameplay slice, но запрещает называть весь presentation contract реализованным.
 
 Universal acceptance assertion обязано называть actual enumerator, независимый oracle и production path. Для плана actual task set выводится из checkbox headings всех активных файлов плана; ручное число или milestone summary не заменяет это множество. Для UE run actual set выводится discovery текущего build, а completed records обязаны совпасть с ним один к одному. Для enum/variant используется compiler/exhaustive dispatch. Неизвестная форма inventory считается отказом проверки.
+
+`cpp_foundation_closure_contract` материализует это правило для CFC: парсит actual task headings и каждый `Done`-пункт, требует независимую evidence-запись с именованными CTest/UE checks, перечислителем, oracle и production path, а также выводит значения добавленных планом public enum из их declarations. Новая задача, новый `Done` или enum value без синхронного check inventory краснят штатный CTest; отдельный negative contract проверяет fail-closed поведение самого перечислителя. Таблица targeted mutations связывает каждую причину с точным ожидаемым отказом, но её наличие не заменяет фактический mutation run на проверяемой ревизии.
 
 ## Verification
 

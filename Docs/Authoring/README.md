@@ -1,7 +1,7 @@
 ---
 title: Lua Authoring Reference Index
 status: informative
-version: 1.1
+version: 1.2
 updated: 2026-09-14
 depends_on:
   - ../README.md
@@ -28,6 +28,8 @@ depends_on:
 | Добавить экран на существующих Screen Fields | [Add UI Screen](AddUIScreen.md) |
 
 Рабочие production-примеры взяты из `GameData/rh`, `GameData/sample` и `GameData/textsystem`. Если инструмент пока не используется production package, рядом указан conformance fixture из `Tests/Lua/`; пример повторяет проверяемую им форму.
+
+Добавление обычного Command, Validator, Event, Gameplay Service, migration или desired presentation использует эту Lua surface и не требует нового C++ класса, Blueprint node или native callback. Новая native capability допускается только по процедуре [When to Write Cpp](../Guides/WhenToWriteCpp.md) с production consumer и отрицательной проверкой в том же change set.
 
 ## Полный inventory
 
