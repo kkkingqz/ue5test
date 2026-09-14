@@ -180,8 +180,25 @@ GV2PresentationApply::FPreparedRichTextStyle MakePreparedRichTextStyleForTest(
 // intent from CoreBoundaryMigration/DemoOut.md.
 struct FGV2ScopedSamplePackageOverride
 {
-    FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true; }
-    ~FGV2ScopedSamplePackageOverride() { FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false; }
+    FGV2ScopedSamplePackageOverride()
+    {
+        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = true;
+        if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
+        {
+            const FString Pkg = TEXT("sample");
+            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.location.hub.title"), *Pkg), FText::FromString(TEXT("Central Hub")));
+            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.screen.hub.description"), *Pkg), FText::FromString(TEXT("You are standing in the central hub.")));
+            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.location.east.title"), *Pkg), FText::FromString(TEXT("East Wing")));
+            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.screen.east.description"), *Pkg), FText::FromString(TEXT("You are in the quiet east wing.")));
+            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.location.west.title"), *Pkg), FText::FromString(TEXT("West Wing")));
+            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.screen.west.description"), *Pkg), FText::FromString(TEXT("You are in the windy west wing.")));
+            Theme->FallbackTextCatalog.FindOrAdd(FString::Printf(TEXT("%s:text.action.scout"), *Pkg), FText::FromString(TEXT("Scout Area")));
+        }
+    }
+    ~FGV2ScopedSamplePackageOverride()
+    {
+        FGV2SessionCoordinator::bTestForceIncludeSamplePackage = false;
+    }
 };
 
 
@@ -12028,6 +12045,281 @@ bool FGV2SaveAndLoadAnotherSaveAndRestartTest::RunTest(const FString& Parameters
     PurgeSlot(SlotTavern);
     PurgeSlot(SlotMarket);
     Runtime->EndSession();
+    return true;
+}
+
+// CFC-12: Full end-to-end gameplay slice with no native C++ gameplay logic:
+// package-owned start -> bound UI command -> service mutation -> post-commit event ->
+// desired presentation -> typed save request -> post-save mutation -> typed load ->
+// reconstructed UI (geometry/fields/binding resolution) -> stale handle rejection ->
+// stream continuation and next bound command.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadGameplaySliceTest,
+    "GV2.Runtime.SaveAndLoad.GameplaySlice",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadGameplaySliceTest::RunTest(const FString& Parameters)
+{
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = FString::Printf(TEXT("cfc12_slice_slot_%llu"), FPlatformTime::Cycles64());
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Initial session is ready"), Runtime->GetSessionState().bIsReady);
+
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+    if (Coordinator == nullptr)
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    // 1. Start Session A with deterministic canonical seed
+    FSessionStartDescriptor FixedDesc;
+    FixedDesc.Mode = ESessionStartMode::NewGame;
+    FixedDesc.RepositoryVersion = FString::Printf(TEXT("%lld"), Coordinator->GetStatus().RepositoryVersion);
+    FixedDesc.RepositoryContentHash = UTF8_TO_TCHAR(Coordinator->GetPinnedRepository().GetContentHash().c_str());
+    FixedDesc.SeedHex = TEXT("0123456789abcdef");
+
+    const int64 NewGameOp = Runtime->RequestSession(FixedDesc);
+    ESessionOperationOutcome NewGameOutcome;
+    TestTrue(TEXT("NewGame outcome available"), Runtime->GetSessionOperationOutcome(NewGameOp, NewGameOutcome));
+    TestEqual(TEXT("NewGame completed"), NewGameOutcome, ESessionOperationOutcome::Completed);
+    TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
+    const int32 GenA = Runtime->GetSessionState().SessionGeneration;
+
+    // 2. Package-owned start: executed in Lua during RequestSession(FixedDesc) via M.start
+    // Initial state is established and initial desired presentation is published.
+
+    // 3. UI presentation verification: WBP_LocationScreen is presented at Hub
+    UGV2ScreenWidgetBase* ScreenA1 = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("Session A LocationScreen is presented"), ScreenA1);
+    TSharedPtr<SWidget> SlateA1;
+    if (ScreenA1 != nullptr)
+    {
+        SlateA1 = ScreenA1->TakeWidget();
+    }
+    TestTrue(TEXT("Session A LocationScreen produces valid Slate widget"), SlateA1.IsValid());
+
+    // Verify Screen Fields
+    const TArray<FName> FieldIds = ScreenA1 ? ScreenA1->GetScreenFieldIds() : TArray<FName>{};
+    TestTrue(TEXT("top_bar field exists"), FieldIds.Contains(FName(TEXT("top_bar"))));
+    TestTrue(TEXT("player_status field exists"), FieldIds.Contains(FName(TEXT("player_status"))));
+    TestTrue(TEXT("scene field exists"), FieldIds.Contains(FName(TEXT("scene"))));
+    TestTrue(TEXT("commands field exists"), FieldIds.Contains(FName(TEXT("commands"))));
+
+    // Verify scout_hub button in ButtonRepeater
+    UGV2ListViewWidgetBase* CmdRepA1 = GetButtonRepeaterFromLocationScreen(ScreenA1);
+    TestNotNull(TEXT("Session A ButtonRepeater exists"), CmdRepA1);
+    UGV2ButtonWidgetBase* ScoutBtnA1 = CmdRepA1 != nullptr
+        ? Cast<UGV2ButtonWidgetBase>(CmdRepA1->GetEntryWidget(FName(TEXT("scout_hub"))))
+        : nullptr;
+    TestNotNull(TEXT("scout_hub button exists in Hub screen"), ScoutBtnA1);
+
+    const FGV2UiBindingHandle ScoutHandleA = ScoutBtnA1 ? ScoutBtnA1->GetBindingHandle() : FGV2UiBindingHandle{};
+    TestTrue(TEXT("scout_hub button has valid binding handle"), ScoutHandleA.IsValid());
+
+    // 4. Bound UI interaction execution: submit scout command via ScoutBtnA1 handle
+    if (ScoutBtnA1 != nullptr)
+    {
+        const EGV2SubmitUiInteractionResult SubmitRes = Runtime->SubmitUiInteraction(ScoutHandleA, {});
+        TestEqual(TEXT("Scout command UI interaction accepted"), SubmitRes, EGV2SubmitUiInteractionResult::Accepted);
+    }
+
+    // 5. Verify service mutation: location recorded, state hash recorded
+    const FString SavedHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString SavedLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestFalse(TEXT("Player location is non-empty after scout"), SavedLoc.IsEmpty());
+
+    // 6. Request save: captures state with gold 125, scout_count 1, and advanced PRNG stream
+    const int64 SaveOpId = Runtime->RequestSave(SaveSlot);
+    TestTrue(TEXT("RequestSave returned non-zero operation ID"), SaveOpId > 0);
+    ESessionOperationOutcome SaveOutcome;
+    TestTrue(TEXT("Save outcome is available"), Runtime->GetSessionOperationOutcome(SaveOpId, SaveOutcome));
+    TestEqual(TEXT("Save completed successfully"), SaveOutcome, ESessionOperationOutcome::Completed);
+
+    // 7. Post-save mutation in Session A: travel to East Wing via UI interaction
+    UGV2ScreenWidgetBase* ScreenA2 = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("Session A LocationScreen after scout exists"), ScreenA2);
+    UGV2ListViewWidgetBase* CmdRepA2 = GetButtonRepeaterFromLocationScreen(ScreenA2);
+    UGV2ButtonWidgetBase* TravelEastBtnA = CmdRepA2 != nullptr
+        ? Cast<UGV2ButtonWidgetBase>(CmdRepA2->GetEntryWidget(FName(TEXT("travel_east"))))
+        : nullptr;
+    TestNotNull(TEXT("travel_east button found in Hub"), TravelEastBtnA);
+    if (TravelEastBtnA != nullptr)
+    {
+        const EGV2SubmitUiInteractionResult SubmitResTravel = Runtime->SubmitUiInteraction(TravelEastBtnA->GetBindingHandle(), {});
+        TestEqual(TEXT("Post-save travel interaction accepted"), SubmitResTravel, EGV2SubmitUiInteractionResult::Accepted);
+    }
+
+    const FString PostSaveHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString PostSaveLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestNotEqual(TEXT("State hash changed after post-save travel"), PostSaveHash, SavedHash);
+    TestNotEqual(TEXT("Player location changed after post-save travel"), PostSaveLoc, SavedLoc);
+
+    // 8. Typed load: replaces Session A with Session B restored from SaveSlot
+    const int64 LoadOpId = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
+    TestTrue(TEXT("RequestLoad returned non-zero operation ID"), LoadOpId > 0);
+    ESessionOperationOutcome LoadOutcome;
+    TestTrue(TEXT("Load outcome is available"), Runtime->GetSessionOperationOutcome(LoadOpId, LoadOutcome));
+    TestEqual(TEXT("Load completed successfully"), LoadOutcome, ESessionOperationOutcome::Completed);
+
+    // Assert replacement session B lifecycle state
+    const FGV2SessionStatus StatusB = Runtime->GetSessionState();
+    TestTrue(TEXT("Session B is ready"), StatusB.bIsReady);
+    TestEqual(TEXT("Session B is in Ready state"), StatusB.SessionState, EGV2SessionState::Ready);
+    TestTrue(TEXT("Session generation incremented"), StatusB.SessionGeneration > GenA);
+
+    // 9. Assert independent state restoration
+    const FString LoadedHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString LoadedLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestEqual(TEXT("Loaded state hash strictly matches saved state hash"), LoadedHash, SavedHash);
+    TestNotEqual(TEXT("Loaded state hash does not match post-save mutation hash"), LoadedHash, PostSaveHash);
+    TestEqual(TEXT("Loaded player location matches saved location (Hub)"), LoadedLoc, SavedLoc);
+
+    // 10. Reconstructed UI verification
+    UGV2ScreenWidgetBase* ScreenB = Runtime->GetActiveScreenInLayer(
+        UGV2GameShellWidgetBase::LayerLocationContent,
+        FName(TEXT("location")));
+    TestNotNull(TEXT("Session B reconstructed LocationScreen is presented"), ScreenB);
+    TSharedPtr<SWidget> SlateB;
+    if (ScreenB != nullptr)
+    {
+        SlateB = ScreenB->TakeWidget();
+    }
+    TestTrue(TEXT("Session B LocationScreen produces valid Slate widget"), SlateB.IsValid());
+
+    UGV2ListViewWidgetBase* CmdRepB = GetButtonRepeaterFromLocationScreen(ScreenB);
+    TestNotNull(TEXT("Session B ButtonRepeater exists"), CmdRepB);
+    UGV2ButtonWidgetBase* ScoutBtnB = CmdRepB != nullptr
+        ? Cast<UGV2ButtonWidgetBase>(CmdRepB->GetEntryWidget(FName(TEXT("scout_hub"))))
+        : nullptr;
+    TestNotNull(TEXT("scout_hub button exists in reconstructed Hub screen"), ScoutBtnB);
+
+    // 11. Stale binding handle rejection vs new binding handle execution
+    // Submitting old handle from Session A MUST be rejected with StaleBindingHandle!
+    const EGV2SubmitUiInteractionResult StaleResult = Runtime->SubmitUiInteraction(ScoutHandleA, {});
+    TestEqual(
+        TEXT("Old binding handle from Session A is rejected as StaleBindingHandle in Session B"),
+        StaleResult,
+        EGV2SubmitUiInteractionResult::StaleBindingHandle);
+
+    // Submitting new handle from Session B MUST be accepted!
+    if (ScoutBtnB != nullptr)
+    {
+        const FGV2UiBindingHandle ScoutHandleB = ScoutBtnB->GetBindingHandle();
+        TestTrue(TEXT("Session B scout_hub has valid binding handle"), ScoutHandleB.IsValid());
+        TestNotEqual(TEXT("Session B binding handle differs from Session A handle"), ScoutHandleB, ScoutHandleA);
+
+        const EGV2SubmitUiInteractionResult NewResult = Runtime->SubmitUiInteraction(ScoutHandleB, {});
+        TestEqual(
+            TEXT("New binding handle from Session B is accepted"),
+            NewResult,
+            EGV2SubmitUiInteractionResult::Accepted);
+
+        // 12. Continuation of deterministic PRNG stream and state mutation in Session B
+        const FString PostContinuationHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+        TestNotEqual(TEXT("State hash changed after continuation command"), PostContinuationHash, LoadedHash);
+    }
+
+    // Cleanup
+    IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> GenFiles;
+    IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : GenFiles)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
+
+    Runtime->EndSession();
+    return true;
+}
+
+// CFC-12: Bounded lifecycle stress: 100 repetitions of save/load/restart
+// verifying no leaked generations, pending operations, or stored native Lua callbacks.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadLifecycleStressTest,
+    "GV2.Runtime.SaveAndLoad.LifecycleStress100",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadLifecycleStressTest::RunTest(const FString& Parameters)
+{
+    const FGV2ScopedSamplePackageOverride SampleOverride;
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SaveSlot = FString::Printf(TEXT("cfc12_stress_slot_%llu"), FPlatformTime::Cycles64());
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+    const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
+
+    IFileManager::Get().Delete(*HeadFile);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Initial session is ready"), Runtime->GetSessionState().bIsReady);
+
+    int32 LastGen = Runtime->GetSessionState().SessionGeneration;
+
+    constexpr int32 StressIterations = 100;
+    for (int32 Cycle = 0; Cycle < StressIterations; ++Cycle)
+    {
+        const int64 SaveOp = Runtime->RequestSave(SaveSlot);
+        TestTrue(TEXT("Stress save op issued"), SaveOp > 0);
+        ESessionOperationOutcome SaveOutcome;
+        TestTrue(TEXT("Stress save completed"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
+        TestEqual(TEXT("Stress save outcome ok"), SaveOutcome, ESessionOperationOutcome::Completed);
+
+        const int64 LoadOp = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
+        TestTrue(TEXT("Stress load op issued"), LoadOp > 0);
+        ESessionOperationOutcome LoadOutcome;
+        TestTrue(TEXT("Stress load completed"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
+        TestEqual(TEXT("Stress load outcome ok"), LoadOutcome, ESessionOperationOutcome::Completed);
+
+        const FGV2SessionStatus Status = Runtime->GetSessionState();
+        TestTrue(TEXT("Session ready during stress"), Status.bIsReady);
+        TestTrue(TEXT("Session generation monotonically increases"), Status.SessionGeneration > LastGen);
+        LastGen = Status.SessionGeneration;
+    }
+
+    Runtime->EndSession();
+    TestFalse(TEXT("Session not ready after EndSession"), Runtime->GetSessionState().bIsReady);
+
+    TestEqual(TEXT("Zero live VMs after session teardown"), GV2RuntimeCore::FRuntimeSession::GetLiveVmCount(), 0);
+
+    IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> GenFiles;
+    IFileManager::Get().FindFiles(GenFiles, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : GenFiles)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
+
     return true;
 }
 

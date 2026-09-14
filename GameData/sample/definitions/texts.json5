@@ -142,6 +142,13 @@
       deprecated: false,
       extensions: {},
     },
+    {
+      id: "sample:text.action.scout",
+      data: { source_message: "Scout Area" },
+      tags: ["sample", "action"],
+      deprecated: false,
+      extensions: {},
+    },
   ],
   extensions: {},
 }

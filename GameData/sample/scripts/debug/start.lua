@@ -97,7 +97,17 @@ function M.register(_ctx)
 end
 
 function M.start(_ctx)
-    if game and game.runtime and game.runtime.dispatch_command then
+    if game and game.instances and game.instances.actors and game.instances.actors.player and game.instances.actors.player() ~= nil then
+        return
+    end
+
+    if game and game.runtime and game.runtime.seed_hex and #game.runtime.seed_hex > 0 and game.commands and game.commands.handlers and game.commands.handlers.get("sample:command.start_game") then
+        game.runtime.dispatch_command({
+            command_id = "sample:command.start_game",
+            args = {},
+            source = "session_start",
+        })
+    elseif game and game.runtime and game.runtime.dispatch_command then
         game.runtime.dispatch_command({
             command_id = "sample:command.debug.start",
             args = {},

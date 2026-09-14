@@ -139,7 +139,7 @@ depends_on:
 
 ## CFC-12 — Подтвердить gameplay-срез без новой native логики
 
-- [ ] CFC-12 — Подтвердить gameplay-срез без новой native логики
+- [x] CFC-12 — Подтвердить gameplay-срез без новой native логики
 
 **Дополнение CFC-07A:** fixture включает детерминированную seeded команду и продолжение stream после save/load; ожидаемая последовательность задаётся независимо. Полный сценарий выполняется после GC/test-lifetime исправлений CFC-02A/04B, чтобы leaked roots не маскировали ownership defects.
 

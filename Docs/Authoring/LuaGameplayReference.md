@@ -2,7 +2,7 @@
 title: Lua Gameplay Authoring Reference
 status: informative
 version: 1.0
-updated: 2026-08-20
+updated: 2026-09-14
 depends_on:
   - README.md
   - ../Architecture/AuthoringSurfaceContract.md
@@ -345,7 +345,7 @@ if game.random.next_unit(stream) < 0.25 then
 end
 ```
 
-Стандартный `math.random` отключён для предотвращения недетерминизма. Состояние каждого потока сохраняется в `state.meta.prng[stream_id]` (алгоритм `xoshiro128ss-v1`) и восстанавливается при загрузке без повторного сидирования. Идентификатор потока обязан быть Stable ID вида `<namespace>:random_stream.<path>`.
+Стандартный `math.random` отключён для предотвращения недетерминизма. Состояние каждого потока сохраняется в `state.meta.prng[stream_id]` (алгоритм `xoshiro128ss-v1`) и восстанавливается при загрузке без повторного сидирования. Идентификатор потока обязан быть Stable ID вида `<namespace>:random_stream.<path>`. При загрузке слота сохранённая сессия продолжает генерацию чисел строго с зафиксированного шага (детерминированное продолжение stream без разрывов и сбросов), а новые команды продолжают мутировать восстановленный canonical state.
 
 Типичные ошибки: `InvalidRandomStreamId`, `InvalidRandomRange`, `InvalidSeedHex`.
 

@@ -17,7 +17,13 @@
         title_text_id: "sample:text.location.hub.title",
         description_text_id: "sample:text.screen.hub.description",
         include_connected_locations: true,
-        actions: [],
+        actions: [
+          {
+            key: "scout_hub",
+            action_id: "sample:action.scout",
+            text_id: "sample:text.action.scout",
+          },
+        ],
       },
       tags: ["sample", "location", "hub"],
       deprecated: false,

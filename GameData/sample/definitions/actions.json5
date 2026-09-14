@@ -1,0 +1,14 @@
+{
+  schema_version: 1,
+  type: "action",
+  definitions: [
+    {
+      id: "sample:action.scout",
+      data: {},
+      tags: ["sample", "scout"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}
