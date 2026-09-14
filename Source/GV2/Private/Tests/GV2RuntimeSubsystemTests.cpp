@@ -11822,4 +11822,179 @@ bool FGV2SaveAndLoadPrngStreamContinuationTest::RunTest(const FString& Parameter
     return true;
 }
 
+// CFC-10 (шаг 5): load-another-save, повторный load и restart загруженной сессии.
+//
+// Остальные save/load тесты работают с одним слотом, поэтому все они одинаково пройдут
+// реализацию, в которой загрузка привязана к последнему сохранённому слоту. Здесь два
+// слота с РАЗНЫМ состоянием, и каждая загрузка обязана дать состояние именно своего
+// слота: сначала из живой сессии грузится A, затем из уже загруженной сессии -- B.
+// Это последний из трёх сценариев формулировки STATUS-001 ("load-another-save"), два
+// других -- повторный load того же слота и restart загруженной сессии -- закрываются
+// здесь же.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2SaveAndLoadAnotherSaveAndRestartTest,
+    "GV2.Runtime.SaveAndLoad.LoadAnotherSaveAndRestart",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2SaveAndLoadAnotherSaveAndRestartTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+
+    UGV2RuntimeSubsystem* Runtime = GameInstance->GetSubsystem<UGV2RuntimeSubsystem>();
+    TestNotNull(TEXT("Runtime subsystem exists"), Runtime);
+    if (Runtime == nullptr)
+    {
+        return false;
+    }
+
+    const FString SlotTavern = TEXT("test_slot_tavern");
+    const FString SlotMarket = TEXT("test_slot_market");
+    const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
+
+    auto PurgeSlot = [&SaveDir](const FString& Slot)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, Slot + TEXT(".head")));
+        TArray<FString> Gens;
+        IFileManager::Get().FindFiles(Gens, *SaveDir, *(Slot + TEXT(".gen_*")));
+        for (const FString& GenFile : Gens)
+        {
+            IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+        }
+    };
+    PurgeSlot(SlotTavern);
+    PurgeSlot(SlotMarket);
+
+    Runtime->StartSession();
+    TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+    if (Coordinator == nullptr)
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    auto TravelVia = [&](const TCHAR* ButtonKey, const TCHAR* What)
+    {
+        UGV2ScreenWidgetBase* Screen = Runtime->GetActiveScreenInLayer(
+            UGV2GameShellWidgetBase::LayerLocationContent,
+            FName(TEXT("location")));
+        TestNotNull(*FString::Printf(TEXT("LocationScreen presented before %s"), What), Screen);
+        UGV2ListViewWidgetBase* CmdRep = GetButtonRepeaterFromLocationScreen(Screen);
+        TestNotNull(*FString::Printf(TEXT("ButtonRepeater present before %s"), What), CmdRep);
+        UGV2ButtonWidgetBase* Btn = CmdRep != nullptr
+            ? Cast<UGV2ButtonWidgetBase>(CmdRep->GetEntryWidget(FName(ButtonKey)))
+            : nullptr;
+        TestNotNull(*FString::Printf(TEXT("Travel button found for %s"), What), Btn);
+        if (Btn != nullptr)
+        {
+            TestEqual(
+                *FString::Printf(TEXT("Travel command accepted for %s"), What),
+                Runtime->SubmitUiInteraction(Btn->GetBindingHandle(), {}),
+                EGV2SubmitUiInteractionResult::Accepted);
+        }
+    };
+
+    auto AwaitOutcome = [&](int64 OpId, const TCHAR* What)
+    {
+        TestTrue(*FString::Printf(TEXT("%s returned a non-zero operation ID"), What), OpId > 0);
+        ESessionOperationOutcome Outcome;
+        TestTrue(*FString::Printf(TEXT("%s outcome is available"), What), Runtime->GetSessionOperationOutcome(OpId, Outcome));
+        TestEqual(*FString::Printf(TEXT("%s completed"), What), Outcome, ESessionOperationOutcome::Completed);
+    };
+
+    // 1. Слот A сохраняется в исходной локации (таверна).
+    const FString TavernHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString TavernLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestFalse(TEXT("Tavern state hash is non-empty"), TavernHash.IsEmpty());
+    AwaitOutcome(Runtime->RequestSave(SlotTavern), TEXT("Save of the tavern slot"));
+
+    // 2. Слот B сохраняется в другой локации (рынок), из той же сессии.
+    TravelVia(TEXT("travel_city_market"), TEXT("travel to market"));
+    const FString MarketHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    const FString MarketLoc = GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession());
+    TestNotEqual(TEXT("Market state hash differs from tavern state hash"), MarketHash, TavernHash);
+    TestNotEqual(TEXT("Market location differs from tavern location"), MarketLoc, TavernLoc);
+    AwaitOutcome(Runtime->RequestSave(SlotMarket), TEXT("Save of the market slot"));
+
+    // 3. Загрузка A из живой сессии, состояние которой сейчас соответствует B.
+    const int32 GenBeforeFirstLoad = Runtime->GetSessionState().SessionGeneration;
+    AwaitOutcome(Runtime->RequestLoad(SlotTavern, EGV2SaveSlotRevision::Current), TEXT("Load of the tavern slot"));
+    TestTrue(TEXT("Session is ready after loading the tavern slot"), Runtime->GetSessionState().bIsReady);
+    TestTrue(
+        TEXT("Generation advanced after loading the tavern slot"),
+        Runtime->GetSessionState().SessionGeneration > GenBeforeFirstLoad);
+    TestEqual(
+        TEXT("Loaded state hash matches the tavern slot, not the live market state"),
+        GetSessionStateHash(*this, Coordinator->GetRuntimeSession()),
+        TavernHash);
+    TestEqual(
+        TEXT("Loaded player location matches the tavern slot"),
+        GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession()),
+        TavernLoc);
+
+    // 4. LOAD-ANOTHER-SAVE: из уже загруженной сессии грузится ДРУГОЙ слот.
+    const int32 GenBeforeAnotherLoad = Runtime->GetSessionState().SessionGeneration;
+    AwaitOutcome(Runtime->RequestLoad(SlotMarket, EGV2SaveSlotRevision::Current), TEXT("Load of another slot"));
+    TestTrue(TEXT("Session is ready after loading another slot"), Runtime->GetSessionState().bIsReady);
+    TestTrue(
+        TEXT("Generation advanced after loading another slot"),
+        Runtime->GetSessionState().SessionGeneration > GenBeforeAnotherLoad);
+    TestEqual(
+        TEXT("State hash after loading another slot matches the market slot"),
+        GetSessionStateHash(*this, Coordinator->GetRuntimeSession()),
+        MarketHash);
+    TestNotEqual(
+        TEXT("State hash after loading another slot no longer matches the tavern slot"),
+        GetSessionStateHash(*this, Coordinator->GetRuntimeSession()),
+        TavernHash);
+    TestEqual(
+        TEXT("Player location after loading another slot matches the market slot"),
+        GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession()),
+        MarketLoc);
+
+    // Независимое от хэша свидетельство: рынок предлагает дорогу в таверну, но не в рынок.
+    UGV2ListViewWidgetBase* MarketRep = GetButtonRepeaterFromLocationScreen(
+        Runtime->GetActiveScreenInLayer(UGV2GameShellWidgetBase::LayerLocationContent, FName(TEXT("location"))));
+    TestNotNull(TEXT("ButtonRepeater is presented after loading another slot"), MarketRep);
+    if (MarketRep != nullptr)
+    {
+        TestNotNull(
+            TEXT("travel_city_tavern is offered in the loaded market screen"),
+            MarketRep->GetEntryWidget(FName(TEXT("travel_city_tavern"))));
+        TestNull(
+            TEXT("travel_city_market is absent from the loaded market screen"),
+            MarketRep->GetEntryWidget(FName(TEXT("travel_city_market"))));
+    }
+
+    // 5. Повторный load того же слота воспроизводит то же состояние.
+    AwaitOutcome(Runtime->RequestLoad(SlotMarket, EGV2SaveSlotRevision::Current), TEXT("Repeat load of the same slot"));
+    TestEqual(
+        TEXT("Repeat load reproduces the market state hash"),
+        GetSessionStateHash(*this, Coordinator->GetRuntimeSession()),
+        MarketHash);
+
+    // 6. Restart загруженной сессии: обычный NewGame поверх неё. Состояние возвращается
+    // в стартовую локацию, а хэш не совпадает ни с одним сохранённым -- каждый новый
+    // прогон получает собственный seed (CFC-07A), поэтому сравнивается локация.
+    const int32 GenBeforeRestart = Runtime->GetSessionState().SessionGeneration;
+    Runtime->StartSession();
+    TestTrue(TEXT("Session is ready after restarting the loaded session"), Runtime->GetSessionState().bIsReady);
+    TestTrue(
+        TEXT("Generation advanced after restarting the loaded session"),
+        Runtime->GetSessionState().SessionGeneration > GenBeforeRestart);
+    TestEqual(
+        TEXT("Restarted session starts at the initial location again"),
+        GetSessionPlayerLocation(*this, Coordinator->GetRuntimeSession()),
+        TavernLoc);
+    const FString RestartedHash = GetSessionStateHash(*this, Coordinator->GetRuntimeSession());
+    TestNotEqual(TEXT("Restarted session is not the market save"), RestartedHash, MarketHash);
+
+    PurgeSlot(SlotTavern);
+    PurgeSlot(SlotMarket);
+    Runtime->EndSession();
+    return true;
+}
+
 #endif
