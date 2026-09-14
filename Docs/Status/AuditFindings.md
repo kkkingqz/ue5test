@@ -1,7 +1,7 @@
 ---
 title: C++ Foundation Re-Review Findings
 status: informative
-version: 1.0
+version: 1.2
 updated: 2026-09-14
 depends_on:
   - ImplementationStatus.md
@@ -14,7 +14,7 @@ depends_on:
 
 > **Показывает:** внешнее повторное ревью session/presentation boundaries после закрытия плана C++ Foundation Closure и результат проверки каждого его утверждения по коду.
 > **Не является нормативным:** правила задают owner contracts и accepted ADR. Формулировки ревью не являются нормой; нормой является contract, на который они ссылаются.
-> **Исход:** раунд открыт. Пять заявленных находок подтверждены, две из них с существенным уточнением; сверх ревью найдены две сопутствующие проблемы. Ни одна находка пока не получила исход.
+> **Исход:** раунд открыт. Пять заявленных находок подтверждены, две из них с существенным уточнением; сверх ревью найдены три сопутствующие проблемы. Ни одна находка пока не получила исход.
 
 ## Состояние и метод
 
@@ -33,7 +33,7 @@ depends_on:
 | Заявлено ревью | 5 |
 | Подтверждено по коду | 5 |
 | Из них с уточнением severity или механизма | 2 |
-| Найдено сверх ревью | 2 |
+| Найдено сверх ревью | 3 |
 
 Ни одно утверждение ревью не оказалось ложным. Два утверждения оказались точнее или шире, чем заявлено, и одно предложенное исправление не принимается в предложенном виде — см. `CFC-AF-19`.
 
@@ -101,15 +101,39 @@ depends_on:
 
 ## Находки сверх ревью
 
-#### CFC-AF-24 — устаревшие комментарии о месте вызова в `GV2ScreenRegistry.cpp`
+#### CFC-AF-24 — обоснования маркеров `PAH-04` разошлись с фактом, и гейт этого не ловит
 
-`GV2ScreenRegistry.cpp:38-40` и `:158-159` утверждают «only called from `Build()`, only called from `LoadScreenRegistry()`, only called from `Initialize()`, before any session exists». Ни `Build()`, ни `LoadScreenRegistry()` больше не являются вызывающими: путь идёт через `CompileResolvedRegistry` из candidate build каждой сессии (`GV2SessionContentSnapshot.cpp:120`). Комментарий описывает свойство, на котором держится оценка риска `CFC-AF-20`, и это свойство утрачено.
+Обнаружено при проверке `CFC-AF-20`, шире исходной находки.
+
+`Tools/Testing/validate_pre_ready_content_discovery.py` выводит из production-исходников каждое обращение к файловой системе и требует, чтобы объемлющая функция несла маркер `PAH-04: pre_ready_discovery` с указанием, **какой вызывающий и почему** делает её достижимой только до `Ready`. Гейт проверяет наличие маркера; истинность его обоснования он не проверяет ничем.
+
+Три обоснования из фактически существующих разошлись с кодом:
+
+| Маркер | Что утверждает | Факт |
+|---|---|---|
+| `GV2ScreenRegistry.cpp:38-40` | «only called from `Build()`, only called from `LoadScreenRegistry()`, only called from `Initialize()`, before any session exists» | `Build()` и `LoadScreenRegistry()` вызывающими не являются; путь идёт через `CompileResolvedRegistry` из candidate build каждой сессии |
+| `GV2ScreenRegistry.cpp:158-159` | то же | то же |
+| `GV2ImageResourceCatalog.cpp:533-535` | «never reached after a session reaches Ready» | вызывается из `FGV2SessionContentCandidate::Build()`, который исполняется, пока `Status.bIsReady == true` |
+
+Что candidate build идёт при живой Ready-сессии, проверено по коду: `GV2SessionCoordinator.cpp:535-548` вызывает `FGV2SessionContentCandidate::Build` **до** строки `Cancellation checkpoint 1: Before BeginReplace (Session A remains completely intact)` (`:551`), а `bHadPriorReadySession` снимается с `Status.bIsReady` в начале той же функции (`:500`).
+
+**Само поведение дефектом не является.** [ADR-0044](../ADR/0044-session-replacement-and-registry-sealing.md) прямо разрешает строить native candidate B, пока A остаётся Ready, поэтому candidate-scoped discovery на этом участке — designed path, а не нарушение `INV-P1`. Дефект в другом: обоснования, на которых держится зелёный гейт, описывают несуществующее положение дел, и ни один механизм этого не замечает. Именно на такое обоснование опиралась бы оценка риска `CFC-AF-20`, если бы её принимали по комментарию.
 
 **Исход:** открыт.
 
 #### CFC-AF-25 — `FGV2SessionTransitionPolicy::Reset()` не имеет вызывающих
 
 Выделено из `CFC-AF-23` отдельно, потому что это разные решения: одно — какой должна быть retention policy, другое — что в коде уже есть неиспользуемый метод очистки, который создаёт впечатление существующей policy.
+
+**Исход:** открыт.
+
+#### CFC-AF-26 — закрытие `STATUS-011` осталось без своего regression check
+
+Найдено не чтением, а гейтом: `cpp_foundation_closure_contract` покраснел на `e7d6754` с сообщением `baseline UE check GV2.Runtime.Presentation.LocationSceneDiagnostic is no longer registered`.
+
+`GV2.Runtime.Presentation.LocationSceneDiagnostic` — именованная evidence задачи `CFC-11` и проверка, которой закрывался `STATUS-011` («обязательность сцены как контракт данных»). Тест существовал в `GV2LocationCompositeRenderingTests.cpp:2031` на `e7d6754~1` и удалён коммитом `e7d6754` (`TSR-07`) вместе с 798 строками этого файла. Заменяющего теста в дереве нет: в `Source/GV2/Private/Tests` не осталось ни одного automation test id, покрывающего присутствие сцены.
+
+**Это не обязательно дефект TSR-07.** Собственный `Done` задачи `TSR-08` требует, чтобы у каждого удалённого теста был поимённо названный заменяющий и чтобы изменение множества test id было обосновано. `TSR-07` выполнен, `TSR-08` — нет, поэтому удаление могло опередить своё обоснование. Находка фиксирует не намерение, а состояние: на текущем `HEAD` закрытая строка `STATUS-011` не имеет исполняемой проверки, и штатный CTest красный.
 
 **Исход:** открыт.
 
