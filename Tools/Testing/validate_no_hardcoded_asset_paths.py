@@ -7,8 +7,10 @@ asset silently and wrong. The class element belongs on the declaring asset itsel
 (Designer), never in C++. This scans Source/, not a fixed list of files, so a future
 resurrection of the pattern is caught regardless of which file it lands in.
 
-Tests and fixtures are deliberately out of scope: a test that loads a real asset by path
-to exercise production code against it is not the dependency this gate forbids.
+Tests and fixtures are deliberately out of scope for this production code scanner
+(EXCLUDED_DIR_NAME = "Tests"). Content couplings and hardcoded asset paths within the
+test suite itself are governed by the granular two-category boundary (contract tests vs
+content smoke) and ratchet gate in validate_test_content_coupling.py per ADR-0046 (TSR-02).
 """
 
 from __future__ import annotations

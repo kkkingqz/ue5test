@@ -57,6 +57,7 @@ Accepted ADR фиксирует решение и причины. Контрак
 | [0043](0043-presentation-apply-boundary.md) | accepted | Presentation Apply Boundary: один опубликованный снимок и точный набор пакетов, физическая граница применения отдельным модулем Unreal, самодостаточная подготовленная операция, запрет направления зависимостей как первичная гарантия `INV-P5` |
 | [0044](0044-session-replacement-and-registry-sealing.md) | accepted | Session Replacement and Registry Sealing: две границы replacement, один lifecycle owner, явный candidate context и descriptor-driven sealing Lua registries |
 | [0045](0045-atomic-save-slot-generation-publication.md) | accepted | Atomic Save Slot Generation Publication: immutable generations, atomic head `Current`/`Previous`, single writer и явный выбор revision |
+| [0046](0046-test-content-coupling-boundary.md) | accepted | Граница привязки тестов к контенту: две категории тестов (contract vs smoke), отмена исключения Tests, baseline ratchet и потолок размера файлов |
 
 ## Template
 

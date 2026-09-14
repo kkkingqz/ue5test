@@ -220,6 +220,21 @@ if(BUILD_TESTING)
             "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_no_hardcoded_asset_paths.py"
             "--self-test"
     )
+    # TSR-02 (ADR-0046): ratchets test suite content coupling boundaries and file size limits.
+    # Prevents introducing new content couplings into Source/**/Tests and enforces line ceilings.
+    add_test(
+        NAME test_content_coupling_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_test_content_coupling.py"
+    )
+    add_test(
+        NAME test_content_coupling_negative_contract
+        COMMAND
+            "${Python3_EXECUTABLE}"
+            "${PROJECT_SOURCE_DIR}/Tools/Testing/validate_test_content_coupling.py"
+            "--self-test"
+    )
     # PAH-08 (ADR-0042, INV-P5): structural half of the two-part gate. Every
     # presentation-authority access is phase-classified, and no authority is
     # reachable from an application-phase root. The observational half is a

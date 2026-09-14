@@ -2,6 +2,10 @@
 """Validates that engine/core code (Scripts/, GameData/core/, Source/)
 contains no reverse dependencies / back-references to the game package 'rh:' namespace.
 Rule ID: CORE_DECOUPLING_RULE
+
+Comprehensive decoupling of the test suite (Source/**/Tests) across all game packages
+(including 'textsystem:') is governed by the two-category boundary and ratchet gate in
+validate_test_content_coupling.py per ADR-0046 (TSR-02).
 """
 
 from __future__ import annotations
