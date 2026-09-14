@@ -1,0 +1,22 @@
+{
+  id: "core:schema.ui_field.synthetic_top_bar.v1",
+  schema_domain: "ui_field",
+  schema_version: 1,
+  root: {
+    kind: "object",
+    fields: {
+      title: {
+        kind: "text",
+        required: true,
+      },
+      location: {
+        kind: "text",
+        required: false,
+      },
+      key: {
+        kind: "key",
+        required: false,
+      },
+    },
+  },
+}

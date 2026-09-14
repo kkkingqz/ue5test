@@ -1,0 +1,79 @@
+{
+  schema_version: 1,
+  type: "text",
+  definitions: [
+    {
+      id: "core:text.location.test.alpha.title",
+      data: {
+        raw: "Alpha Chamber",
+      },
+      tags: ["test", "location"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:text.location.test.alpha.desc",
+      data: {
+        raw: "You stand in the quiet alpha chamber.",
+      },
+      tags: ["test", "location"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:text.location.test.beta.title",
+      data: {
+        raw: "Beta Chamber",
+      },
+      tags: ["test", "location"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:text.location.test.beta.desc",
+      data: {
+        raw: "You stand in the echoing beta chamber.",
+      },
+      tags: ["test", "location"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:text.command.test.travel_alpha",
+      data: {
+        raw: "Travel to Alpha",
+      },
+      tags: ["test", "command"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:text.command.test.travel_beta",
+      data: {
+        raw: "Travel to Beta",
+      },
+      tags: ["test", "command"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:text.character.test_guide.name",
+      data: {
+        raw: "Synthetic Guide",
+      },
+      tags: ["test", "character"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:text.character.test_hero.name",
+      data: {
+        raw: "Synthetic Hero",
+      },
+      tags: ["test", "character"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

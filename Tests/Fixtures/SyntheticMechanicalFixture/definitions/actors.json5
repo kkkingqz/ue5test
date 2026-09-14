@@ -1,0 +1,17 @@
+{
+  schema_version: 1,
+  type: "actor",
+  definitions: [
+    {
+      id: "core:actor.test.guide",
+      data: {
+        name_text_id: "core:text.character.test_guide.name",
+        portrait_resource_id: "core:resource.character.test_guide",
+      },
+      tags: ["test", "actor", "guide"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

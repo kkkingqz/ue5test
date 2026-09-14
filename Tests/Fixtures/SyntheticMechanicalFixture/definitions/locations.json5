@@ -1,0 +1,37 @@
+{
+  schema_version: 1,
+  type: "location",
+  definitions: [
+    {
+      id: "core:location.test.alpha",
+      data: {
+        title_text_id: "core:text.location.test.alpha.title",
+        screen_ids: [
+          "core:screen.test.location",
+        ],
+        connected_location_ids: [
+          "core:location.test.beta",
+        ],
+      },
+      tags: ["test", "location", "alpha"],
+      deprecated: false,
+      extensions: {},
+    },
+    {
+      id: "core:location.test.beta",
+      data: {
+        title_text_id: "core:text.location.test.beta.title",
+        screen_ids: [
+          "core:screen.test.location",
+        ],
+        connected_location_ids: [
+          "core:location.test.alpha",
+        ],
+      },
+      tags: ["test", "location", "beta"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

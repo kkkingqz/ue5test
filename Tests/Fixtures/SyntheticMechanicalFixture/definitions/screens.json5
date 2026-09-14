@@ -1,0 +1,17 @@
+{
+  schema_version: 1,
+  type: "screen",
+  definitions: [
+    {
+      id: "core:screen.test.location",
+      data: {
+        title_text_id: "core:text.location.test.alpha.title",
+        widget_class: "/Game/UI/Widgets/WBP_Testscreen.WBP_Testscreen_C",
+      },
+      tags: ["test", "screen"],
+      deprecated: false,
+      extensions: {},
+    },
+  ],
+  extensions: {},
+}

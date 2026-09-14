@@ -3,6 +3,7 @@
 #include "Application/GV2FilesystemContentSourceProvider.h"
 #include "Application/GV2SessionCoordinator.h"
 #include "Application/GV2SessionContentSnapshot.h"
+#include "GV2RuntimeCore/GV2RuntimeSession.h"
 #include "Bridge/GV2BridgeTypes.h"
 #include "GV2ContentHostSupport/PackageDiscovery.h"
 #include "GV2PresentationApply/PreparedPresentationTransaction.h"
@@ -490,3 +491,357 @@ inline void GV2SimulateResponsiveFrame(const TSharedRef<SVirtualWindow>& Window,
     Window->PaintWindow(FPlatformTime::Seconds(), 0.016f, WindowElementList, FWidgetStyle(), true);
 }
 }
+
+// TSR-06 (ADR-0046, Plan TestSuiteRestructuring):
+// Minimal synthetic mechanical fixture under core: namespace, covering location mechanics,
+// scene with characters, command panel with transitions, and screen with field slots.
+namespace GV2SyntheticMechanicalFixture
+{
+    // Stable IDs for the synthetic fixture (all strictly under core:)
+    inline const TCHAR* const LocationAlphaId = TEXT("core:location.test.alpha");
+    inline const TCHAR* const LocationBetaId = TEXT("core:location.test.beta");
+    inline const TCHAR* const ScreenId = TEXT("core:screen.test.location");
+
+    // UI Field Schema IDs
+    inline const TCHAR* const SceneSchemaId = TEXT("core:schema.ui_field.synthetic_scene.v1");
+    inline const TCHAR* const CommandsSchemaId = TEXT("core:schema.ui_field.synthetic_commands.v1");
+    inline const TCHAR* const TopBarSchemaId = TEXT("core:schema.ui_field.synthetic_top_bar.v1");
+    inline const TCHAR* const PlayerStatusSchemaId = TEXT("core:schema.ui_field.synthetic_player_status.v1");
+
+    // Semantic tokens / keys
+    inline const FName CharacterKey = FName(TEXT("guide"));
+    inline const TCHAR* const CharacterResourceId = TEXT("core:resource.character.test_guide");
+    inline const FName TravelBetaKey = FName(TEXT("travel_beta"));
+    inline const TCHAR* const TravelBetaCommandId = TEXT("core:command.test.travel_beta");
+    inline const FName TravelAlphaKey = FName(TEXT("travel_alpha"));
+    inline const TCHAR* const TravelAlphaCommandId = TEXT("core:command.test.travel_alpha");
+
+    // Paths to synthetic fixture files
+    inline FString GetSyntheticFixtureDir()
+    {
+        return FPaths::ConvertRelativePathToFull(
+            FPaths::Combine(FPaths::ProjectDir(), TEXT("Tests/Fixtures/SyntheticMechanicalFixture")));
+    }
+
+    inline FString GetSyntheticSchemaDir()
+    {
+        return FPaths::Combine(GetSyntheticFixtureDir(), TEXT("schemas"));
+    }
+
+    inline FString GetSyntheticDefinitionsDir()
+    {
+        return FPaths::Combine(GetSyntheticFixtureDir(), TEXT("definitions"));
+    }
+
+    // Builders for synthetic FScreenRequest
+    inline GV2RuntimeCore::FScreenRequest CreateLocationAlphaScreenRequest()
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = TCHAR_TO_UTF8(ScreenId);
+
+        // 1. Scene field (1 character: guide)
+        {
+            GV2RuntimeCore::FScreenField SceneField;
+            SceneField.FieldId = "scene";
+            SceneField.SchemaId = TCHAR_TO_UTF8(SceneSchemaId);
+            GV2RuntimeCore::FValue::FObject SceneObj;
+            SceneObj["key"] = GV2RuntimeCore::FValue("scene_alpha");
+            
+            GV2RuntimeCore::FValue::FObject TextObj;
+            TextObj["text_id"] = GV2RuntimeCore::FValue("core:text.location.test.alpha.desc");
+            SceneObj["context_text"] = GV2RuntimeCore::FValue(MoveTemp(TextObj));
+            SceneObj["background_resource_id"] = GV2RuntimeCore::FValue("core:resource.location.test_alpha_bg");
+
+            GV2RuntimeCore::FValue::FObject CharObj;
+            CharObj["key"] = GV2RuntimeCore::FValue(TCHAR_TO_UTF8(*CharacterKey.ToString()));
+            CharObj["resource_id"] = GV2RuntimeCore::FValue(TCHAR_TO_UTF8(CharacterResourceId));
+            SceneObj["characters"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+                GV2RuntimeCore::FValue(MoveTemp(CharObj))
+            });
+
+            SceneField.Value = GV2RuntimeCore::FValue(MoveTemp(SceneObj));
+            Request.Fields.push_back(MoveTemp(SceneField));
+        }
+
+        // 2. Commands field (1 travel command to beta)
+        {
+            GV2RuntimeCore::FScreenField CommandsField;
+            CommandsField.FieldId = "commands";
+            CommandsField.SchemaId = TCHAR_TO_UTF8(CommandsSchemaId);
+            GV2RuntimeCore::FValue::FObject CmdsObj;
+            CmdsObj["key"] = GV2RuntimeCore::FValue("commands_alpha");
+
+            GV2RuntimeCore::FValue::FObject ItemObj;
+            ItemObj["key"] = GV2RuntimeCore::FValue(TCHAR_TO_UTF8(*TravelBetaKey.ToString()));
+            GV2RuntimeCore::FValue::FObject ItemTextObj;
+            ItemTextObj["text_id"] = GV2RuntimeCore::FValue("core:text.command.test.travel_beta");
+            ItemObj["text"] = GV2RuntimeCore::FValue(MoveTemp(ItemTextObj));
+            GV2RuntimeCore::FValue::FObject BindingObj;
+            BindingObj["command_id"] = GV2RuntimeCore::FValue(TCHAR_TO_UTF8(TravelBetaCommandId));
+            ItemObj["binding"] = GV2RuntimeCore::FValue(MoveTemp(BindingObj));
+
+            CmdsObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+                GV2RuntimeCore::FValue(MoveTemp(ItemObj))
+            });
+
+            CommandsField.Value = GV2RuntimeCore::FValue(MoveTemp(CmdsObj));
+            Request.Fields.push_back(MoveTemp(CommandsField));
+        }
+
+        // 3. TopBar field
+        {
+            GV2RuntimeCore::FScreenField TopBarField;
+            TopBarField.FieldId = "top_bar";
+            TopBarField.SchemaId = TCHAR_TO_UTF8(TopBarSchemaId);
+            GV2RuntimeCore::FValue::FObject TopBarObj;
+            TopBarObj["key"] = GV2RuntimeCore::FValue("top_bar_alpha");
+            GV2RuntimeCore::FValue::FObject TitleTextObj;
+            TitleTextObj["text_id"] = GV2RuntimeCore::FValue("core:text.location.test.alpha.title");
+            TopBarObj["title"] = GV2RuntimeCore::FValue(MoveTemp(TitleTextObj));
+            TopBarField.Value = GV2RuntimeCore::FValue(MoveTemp(TopBarObj));
+            Request.Fields.push_back(MoveTemp(TopBarField));
+        }
+
+        // 4. PlayerStatus field
+        {
+            GV2RuntimeCore::FScreenField StatusField;
+            StatusField.FieldId = "player_status";
+            StatusField.SchemaId = TCHAR_TO_UTF8(PlayerStatusSchemaId);
+            GV2RuntimeCore::FValue::FObject StatusObj;
+            StatusObj["key"] = GV2RuntimeCore::FValue("status_alpha");
+            GV2RuntimeCore::FValue::FObject NameTextObj;
+            NameTextObj["text_id"] = GV2RuntimeCore::FValue("core:text.character.test_hero.name");
+            StatusObj["name"] = GV2RuntimeCore::FValue(MoveTemp(NameTextObj));
+            StatusField.Value = GV2RuntimeCore::FValue(MoveTemp(StatusObj));
+            Request.Fields.push_back(MoveTemp(StatusField));
+        }
+
+        return Request;
+    }
+
+    inline GV2RuntimeCore::FScreenRequest CreateLocationBetaScreenRequest()
+    {
+        GV2RuntimeCore::FScreenRequest Request;
+        Request.ScreenId = TCHAR_TO_UTF8(ScreenId);
+
+        // 1. Scene field (0 characters)
+        {
+            GV2RuntimeCore::FScreenField SceneField;
+            SceneField.FieldId = "scene";
+            SceneField.SchemaId = TCHAR_TO_UTF8(SceneSchemaId);
+            GV2RuntimeCore::FValue::FObject SceneObj;
+            SceneObj["key"] = GV2RuntimeCore::FValue("scene_beta");
+            
+            GV2RuntimeCore::FValue::FObject TextObj;
+            TextObj["text_id"] = GV2RuntimeCore::FValue("core:text.location.test.beta.desc");
+            SceneObj["context_text"] = GV2RuntimeCore::FValue(MoveTemp(TextObj));
+            SceneObj["background_resource_id"] = GV2RuntimeCore::FValue("core:resource.location.test_beta_bg");
+            SceneObj["characters"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{});
+
+            SceneField.Value = GV2RuntimeCore::FValue(MoveTemp(SceneObj));
+            Request.Fields.push_back(MoveTemp(SceneField));
+        }
+
+        // 2. Commands field (1 travel command to alpha)
+        {
+            GV2RuntimeCore::FScreenField CommandsField;
+            CommandsField.FieldId = "commands";
+            CommandsField.SchemaId = TCHAR_TO_UTF8(CommandsSchemaId);
+            GV2RuntimeCore::FValue::FObject CmdsObj;
+            CmdsObj["key"] = GV2RuntimeCore::FValue("commands_beta");
+
+            GV2RuntimeCore::FValue::FObject ItemObj;
+            ItemObj["key"] = GV2RuntimeCore::FValue(TCHAR_TO_UTF8(*TravelAlphaKey.ToString()));
+            GV2RuntimeCore::FValue::FObject ItemTextObj;
+            ItemTextObj["text_id"] = GV2RuntimeCore::FValue("core:text.command.test.travel_alpha");
+            ItemObj["text"] = GV2RuntimeCore::FValue(MoveTemp(ItemTextObj));
+            GV2RuntimeCore::FValue::FObject BindingObj;
+            BindingObj["command_id"] = GV2RuntimeCore::FValue(TCHAR_TO_UTF8(TravelAlphaCommandId));
+            ItemObj["binding"] = GV2RuntimeCore::FValue(MoveTemp(BindingObj));
+
+            CmdsObj["items"] = GV2RuntimeCore::FValue(GV2RuntimeCore::FValue::FArray{
+                GV2RuntimeCore::FValue(MoveTemp(ItemObj))
+            });
+
+            CommandsField.Value = GV2RuntimeCore::FValue(MoveTemp(CmdsObj));
+            Request.Fields.push_back(MoveTemp(CommandsField));
+        }
+
+        // 3. TopBar field
+        {
+            GV2RuntimeCore::FScreenField TopBarField;
+            TopBarField.FieldId = "top_bar";
+            TopBarField.SchemaId = TCHAR_TO_UTF8(TopBarSchemaId);
+            GV2RuntimeCore::FValue::FObject TopBarObj;
+            TopBarObj["key"] = GV2RuntimeCore::FValue("top_bar_beta");
+            GV2RuntimeCore::FValue::FObject TitleTextObj;
+            TitleTextObj["text_id"] = GV2RuntimeCore::FValue("core:text.location.test.beta.title");
+            TopBarObj["title"] = GV2RuntimeCore::FValue(MoveTemp(TitleTextObj));
+            TopBarField.Value = GV2RuntimeCore::FValue(MoveTemp(TopBarObj));
+            Request.Fields.push_back(MoveTemp(TopBarField));
+        }
+
+        // 4. PlayerStatus field
+        {
+            GV2RuntimeCore::FScreenField StatusField;
+            StatusField.FieldId = "player_status";
+            StatusField.SchemaId = TCHAR_TO_UTF8(PlayerStatusSchemaId);
+            GV2RuntimeCore::FValue::FObject StatusObj;
+            StatusObj["key"] = GV2RuntimeCore::FValue("status_beta");
+            GV2RuntimeCore::FValue::FObject NameTextObj;
+            NameTextObj["text_id"] = GV2RuntimeCore::FValue("core:text.character.test_hero.name");
+            StatusObj["name"] = GV2RuntimeCore::FValue(MoveTemp(NameTextObj));
+            StatusField.Value = GV2RuntimeCore::FValue(MoveTemp(StatusObj));
+            Request.Fields.push_back(MoveTemp(StatusField));
+        }
+
+        return Request;
+    }
+
+    // Scoped RAII owner for synthetic test texts in FallbackTextCatalog
+    class FScopedSyntheticFallbackTexts final
+    {
+    public:
+        explicit FScopedSyntheticFallbackTexts(UGV2UiTheme* InTheme)
+            : TargetTheme(InTheme)
+        {
+            if (UGV2UiTheme* Theme = TargetTheme.Get())
+            {
+                const TArray<TTuple<FString, FText>> EntriesToApply = {
+                    { TEXT("core:text.location.test.alpha.title"), FText::FromString(TEXT("Alpha Chamber")) },
+                    { TEXT("core:text.location.test.alpha.desc"), FText::FromString(TEXT("You stand in the quiet alpha chamber.")) },
+                    { TEXT("core:text.location.test.beta.title"), FText::FromString(TEXT("Beta Chamber")) },
+                    { TEXT("core:text.location.test.beta.desc"), FText::FromString(TEXT("You stand in the echoing beta chamber.")) },
+                    { TEXT("core:text.command.test.travel_alpha"), FText::FromString(TEXT("Travel to Alpha")) },
+                    { TEXT("core:text.command.test.travel_beta"), FText::FromString(TEXT("Travel to Beta")) },
+                    { TEXT("core:text.character.test_guide.name"), FText::FromString(TEXT("Synthetic Guide")) },
+                    { TEXT("core:text.character.test_hero.name"), FText::FromString(TEXT("Synthetic Hero")) },
+                };
+                for (const auto& Entry : EntriesToApply)
+                {
+                    const FString& Key = Entry.Get<0>();
+                    const FText& Val = Entry.Get<1>();
+                    if (const FText* Existing = Theme->FallbackTextCatalog.Find(Key))
+                    {
+                        SavedCatalogEntries.Add(Key, *Existing);
+                    }
+                    else
+                    {
+                        SavedCatalogEntries.Add(Key, TOptional<FText>());
+                    }
+                    Theme->FallbackTextCatalog.Add(Key, Val);
+                }
+            }
+        }
+
+        ~FScopedSyntheticFallbackTexts()
+        {
+            Teardown();
+        }
+
+        FScopedSyntheticFallbackTexts(const FScopedSyntheticFallbackTexts&) = delete;
+        FScopedSyntheticFallbackTexts& operator=(const FScopedSyntheticFallbackTexts&) = delete;
+
+        void Teardown()
+        {
+            if (UGV2UiTheme* Theme = TargetTheme.Get())
+            {
+                for (const auto& Pair : SavedCatalogEntries)
+                {
+                    if (Pair.Value.IsSet())
+                    {
+                        Theme->FallbackTextCatalog.Add(Pair.Key, Pair.Value.GetValue());
+                    }
+                    else
+                    {
+                        Theme->FallbackTextCatalog.Remove(Pair.Key);
+                    }
+                }
+                SavedCatalogEntries.Empty();
+                TargetTheme = nullptr;
+            }
+        }
+
+    private:
+        TWeakObjectPtr<UGV2UiTheme> TargetTheme;
+        TMap<FString, TOptional<FText>> SavedCatalogEntries;
+    };
+
+    // A test-only prepare context fixture that includes the synthetic schemas under core:
+    class FSyntheticPrepareContextFixture final
+    {
+    public:
+        bool Initialize(FString& OutError)
+        {
+            OutError.Reset();
+            if (Context.IsValid())
+            {
+                return true;
+            }
+
+            const FString GameDataDir = FPaths::Combine(FPaths::ProjectDir(), TEXT("GameData"));
+            const std::vector<std::filesystem::path> PackageRoots = {
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("core")))),
+                std::filesystem::path(TCHAR_TO_UTF8(*FPaths::Combine(GameDataDir, TEXT("textsystem")))),
+            };
+
+            std::vector<GV2ContentCore::FDiagnostic> ResolveDiagnostics;
+            const std::optional<GV2ContentHostSupport::FResolvedPackageSet> ResolvedSet =
+                GV2ContentHostSupport::ResolvePackageSetFromDirectories(PackageRoots, ResolveDiagnostics);
+            if (!ResolvedSet.has_value())
+            {
+                OutError = TEXT("Unable to resolve package set.");
+                return false;
+            }
+
+            const GV2ContentCore::FBuildResult RepositoryBuild =
+                BuildGV2RepositoryFromResolvedPackageSet(*ResolvedSet);
+            if (!RepositoryBuild.IsSuccess())
+            {
+                OutError = TEXT("Unable to build repository snapshot.");
+                return false;
+            }
+
+            TArray<FGV2SchemaPackageRoot> SchemaRoots;
+            SchemaRoots.Reserve(static_cast<int32>(ResolvedSet->OrderedSources.size()) + 1);
+            for (const GV2ContentHostSupport::FResolvedPackageSource& Source : ResolvedSet->OrderedSources)
+            {
+                SchemaRoots.Add(FGV2SchemaPackageRoot{
+                    UTF8_TO_TCHAR(Source.Descriptor.GetPackageId().c_str()),
+                    UTF8_TO_TCHAR(Source.Root.string().c_str())});
+            }
+            // Add the synthetic schema directory under core package
+            SchemaRoots.Add(FGV2SchemaPackageRoot{
+                TEXT("core"),
+                GetSyntheticSchemaDir()
+            });
+
+            GV2RuntimeCore::FRuntimeFault Fault;
+            if (!FGV2SessionContentCandidate::Build(
+                    RepositoryBuild.GetCandidate().GetReadHandle(),
+                    *ResolvedSet,
+                    SchemaRoots,
+                    {},
+                    Snapshot,
+                    Fault))
+            {
+                OutError = FString::Printf(
+                    TEXT("Unable to build test presentation snapshot: %s: %s"),
+                    UTF8_TO_TCHAR(Fault.Code.c_str()),
+                    UTF8_TO_TCHAR(Fault.Message.c_str()));
+                return false;
+            }
+
+            Context = MakeUnique<FGV2PresentationPrepareContext>(Snapshot);
+            return true;
+        }
+
+        const FGV2PresentationPrepareContext* Get() const { return Context.Get(); }
+        const FGV2SessionContentSnapshot& GetSnapshot() const { return Snapshot; }
+
+    private:
+        FGV2SessionContentSnapshot Snapshot;
+        TUniquePtr<FGV2PresentationPrepareContext> Context;
+    };
+}
+
