@@ -11046,6 +11046,48 @@ bool FGV2SaveAndLoadPreviousRevisionLoadTest::RunTest(const FString& Parameters)
     return true;
 }
 
+// CFC-10: Helper to sample PRNG next_u32 directly from active session
+static uint32 SampleSessionPrngU32(
+    FAutomationTestBase& Test,
+    GV2RuntimeCore::FRuntimeSession& Session,
+    const FString& StreamId)
+{
+    const std::string StreamIdUtf8 = TCHAR_TO_UTF8(*StreamId);
+    std::vector<GV2RuntimeCore::FLuaSpecCaseResult> Results;
+    GV2RuntimeCore::FRuntimeFault Fault;
+    const std::string SpecSource = std::string(R"lua(
+return {
+    sample = function()
+        local mutation_window = require("core:module.runtime.mutation_window")
+        local random = require("core:module.runtime.random")
+        local val = mutation_window.execute_in_window(function()
+            return random.next_u32(")lua") + StreamIdUtf8 + R"lua(")
+        end)
+        error("PRNG_VAL:" .. tostring(val))
+    end
+}
+)lua";
+
+    Session.RunLuaSpec("@test_prng_sample", SpecSource, Results, Fault);
+    if (Results.empty())
+    {
+        Test.AddError(FString::Printf(TEXT("RunLuaSpec returned no results: %s"), UTF8_TO_TCHAR(Fault.Message.c_str())));
+        return 0;
+    }
+
+    const FString ErrorMessage = UTF8_TO_TCHAR(Results[0].ErrorMessage.c_str());
+    const FString Prefix = TEXT("PRNG_VAL:");
+    const int32 PrefixIdx = ErrorMessage.Find(Prefix);
+    if (PrefixIdx == INDEX_NONE)
+    {
+        Test.AddError(FString::Printf(TEXT("Could not extract PRNG value from spec error: %s"), *ErrorMessage));
+        return 0;
+    }
+
+    const FString NumStr = ErrorMessage.Mid(PrefixIdx + Prefix.Len());
+    return static_cast<uint32>(FCString::Strtoui64(*NumStr, nullptr, 10));
+}
+
 // CFC-10: Enforce empty seed descriptor for load and verify PRNG continuity
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FGV2SaveAndLoadPrngStreamContinuationTest,
@@ -11087,23 +11129,89 @@ bool FGV2SaveAndLoadPrngStreamContinuationTest::RunTest(const FString& Parameter
     const FString SaveDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("SaveGames"));
     const FString HeadFile = FPaths::Combine(SaveDir, SaveSlot + TEXT(".head"));
     IFileManager::Get().Delete(*HeadFile);
+    TArray<FString> ExistingGens;
+    IFileManager::Get().FindFiles(ExistingGens, *SaveDir, *(SaveSlot + TEXT(".gen_*")));
+    for (const FString& GenFile : ExistingGens)
+    {
+        IFileManager::Get().Delete(*FPaths::Combine(SaveDir, GenFile));
+    }
 
     Runtime->StartSession();
-    TestTrue(TEXT("Session is ready"), Runtime->GetSessionState().bIsReady);
+    TestTrue(TEXT("Initial session is ready"), Runtime->GetSessionState().bIsReady);
 
+    FGV2SessionCoordinator* Coordinator = Runtime->GetCoordinatorForAutomationTest();
+    TestNotNull(TEXT("Coordinator exists"), Coordinator);
+    if (Coordinator == nullptr)
+    {
+        Runtime->EndSession();
+        return false;
+    }
+
+    // Start Session A with canonical seed ffffffffffffffff (CanonicalStateAndSave.md golden vector)
+    FSessionStartDescriptor FixedDesc;
+    FixedDesc.Mode = ESessionStartMode::NewGame;
+    FixedDesc.RepositoryVersion = FString::Printf(TEXT("%lld"), Coordinator->GetStatus().RepositoryVersion);
+    FixedDesc.RepositoryContentHash = UTF8_TO_TCHAR(Coordinator->GetPinnedRepository().GetContentHash().c_str());
+    FixedDesc.SeedHex = TEXT("ffffffffffffffff");
+
+    const int64 NewGameOp = Runtime->RequestSession(FixedDesc);
+    ESessionOperationOutcome NewGameOutcome;
+    TestTrue(TEXT("NewGame outcome available"), Runtime->GetSessionOperationOutcome(NewGameOp, NewGameOutcome));
+    TestEqual(TEXT("NewGame completed"), NewGameOutcome, ESessionOperationOutcome::Completed);
+    TestTrue(TEXT("Session A is ready"), Runtime->GetSessionState().bIsReady);
+    TestEqual(TEXT("Active seed is canonical"), Runtime->GetActiveSeedHex(), FString(TEXT("ffffffffffffffff")));
+
+    // Sample initial 3 draws in Session A and verify against CanonicalStateAndSave.md golden vectors:
+    // #1: 0x0d9c8816, #2: 0x8a60ae26, #3: 0x1241ad6f
+    const FString StreamId = TEXT("core:random_stream.gameplay");
+    const uint32 DrawA1 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+    const uint32 DrawA2 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+    const uint32 DrawA3 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+
+    TestEqual(TEXT("DrawA1 matches golden output #1"), DrawA1, 0x0d9c8816u);
+    TestEqual(TEXT("DrawA2 matches golden output #2"), DrawA2, 0x8a60ae26u);
+    TestEqual(TEXT("DrawA3 matches golden output #3"), DrawA3, 0x1241ad6fu);
+
+    // Save Session A at draw #3
     const int64 SaveOp = Runtime->RequestSave(SaveSlot);
     ESessionOperationOutcome SaveOutcome;
     TestTrue(TEXT("Save outcome available"), Runtime->GetSessionOperationOutcome(SaveOp, SaveOutcome));
     TestEqual(TEXT("Save completed"), SaveOutcome, ESessionOperationOutcome::Completed);
 
-    // Perform load
-    const int64 LoadOp = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
-    ESessionOperationOutcome LoadOutcome;
-    TestTrue(TEXT("Load outcome available"), Runtime->GetSessionOperationOutcome(LoadOp, LoadOutcome));
-    TestEqual(TEXT("Load completed"), LoadOutcome, ESessionOperationOutcome::Completed);
+    // Continued draws in Session A match golden outputs #4 and #5:
+    // #4: 0x99d5616e, #5: 0x73735263
+    const uint32 DrawA4 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+    const uint32 DrawA5 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+    TestEqual(TEXT("DrawA4 matches golden output #4"), DrawA4, 0x99d5616eu);
+    TestEqual(TEXT("DrawA5 matches golden output #5"), DrawA5, 0x73735263u);
 
-    // Verify session is ready and executes commands cleanly
-    TestTrue(TEXT("Session is ready after PRNG load"), Runtime->GetSessionState().bIsReady);
+    // Perform load into Session B
+    const int64 LoadOpB = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
+    ESessionOperationOutcome LoadOutcomeB;
+    TestTrue(TEXT("Load B outcome available"), Runtime->GetSessionOperationOutcome(LoadOpB, LoadOutcomeB));
+    TestEqual(TEXT("Load B completed"), LoadOutcomeB, ESessionOperationOutcome::Completed);
+    TestTrue(TEXT("Session B is ready after load"), Runtime->GetSessionState().bIsReady);
+
+    // Verify loaded Session B strictly continues from the save point (not reseeding to draw #1)
+    const uint32 DrawB1 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+    const uint32 DrawB2 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+
+    TestEqual(TEXT("DrawB1 matches continuation output DrawA4 / golden #4"), DrawB1, 0x99d5616eu);
+    TestEqual(TEXT("DrawB2 matches continuation output DrawA5 / golden #5"), DrawB2, 0x73735263u);
+    TestNotEqual(TEXT("DrawB1 does not reseed to golden #1"), DrawB1, 0x0d9c8816u);
+
+    // Repeatedly load into Session C to prove deterministic reproduction of the continuation sequence
+    const int64 LoadOpC = Runtime->RequestLoad(SaveSlot, EGV2SaveSlotRevision::Current);
+    ESessionOperationOutcome LoadOutcomeC;
+    TestTrue(TEXT("Load C outcome available"), Runtime->GetSessionOperationOutcome(LoadOpC, LoadOutcomeC));
+    TestEqual(TEXT("Load C completed"), LoadOutcomeC, ESessionOperationOutcome::Completed);
+    TestTrue(TEXT("Session C is ready after reload"), Runtime->GetSessionState().bIsReady);
+
+    const uint32 DrawC1 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+    const uint32 DrawC2 = SampleSessionPrngU32(*this, Coordinator->GetRuntimeSession(), StreamId);
+
+    TestEqual(TEXT("DrawC1 reproduces DrawB1 identically"), DrawC1, DrawB1);
+    TestEqual(TEXT("DrawC2 reproduces DrawB2 identically"), DrawC2, DrawB2);
 
     // Cleanup
     IFileManager::Get().Delete(*HeadFile);

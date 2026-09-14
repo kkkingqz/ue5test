@@ -290,4 +290,59 @@ return {
         assert(bad_rev_res.error.code == "core:error.load.invalid_revision", "expected invalid_revision error")
         assert(outbound.take_pending_requests() == nil, "no requests enqueued on failure")
     end,
+
+    -- CFC-10: decode_and_prepare preserves meta.prng and enables stream continuation without reseed
+    load_restores_prng_stream_continuation = function()
+        local random = require("core:module.runtime.random")
+        local save_mod = require("core:module.runtime.save")
+        local load_mod = require("core:module.runtime.load")
+        local stream = "core:random_stream.gameplay"
+
+        local saved_game = _G.game
+        local ok, run_err = pcall(function()
+            local state = {
+                meta = {
+                    schema_version = 1,
+                    save_version = 1,
+                    save_id = "prng_test",
+                    seed_hex = "ffffffffffffffff",
+                    player_actor_id = "core:actor.player",
+                    instance_counters = {},
+                    time = { tick = 0 },
+                    prng = {},
+                },
+                definitions = {},
+                actors = {},
+                entities = {},
+            }
+
+            _G.game = { state = state, runtime = { packages = { "core" } } }
+            local d1 = random.next_u32(stream)
+            local d2 = random.next_u32(stream)
+            local d3 = random.next_u32(stream)
+            assert(d1 == 0x0d9c8816, "d1 mismatch")
+            assert(d2 == 0x8a60ae26, "d2 mismatch")
+            assert(d3 == 0x1241ad6f, "d3 mismatch")
+
+            local envelope = save_mod.build_envelope(state, "prng_save", "hash", "scripts", { "core" })
+            local container_bytes = require("core:module.runtime.canonical_codec").serialize(envelope)
+
+            local loaded_state, load_err = load_mod.decode_and_prepare(container_bytes)
+            assert(loaded_state ~= nil, "decode_and_prepare must succeed: " .. tostring(load_err))
+            assert(loaded_state.meta.prng ~= nil, "loaded_state.meta.prng must not be nil")
+            assert(loaded_state.meta.prng[stream] ~= nil, "stream state must be preserved in loaded state")
+
+            _G.game = { state = loaded_state, runtime = { packages = { "core" } } }
+            local loaded_d4 = random.next_u32(stream)
+            local loaded_d5 = random.next_u32(stream)
+
+            assert(loaded_d4 == 0x99d5616e, string.format("PRNG continuation mismatch: expected 99d5616e, got %08x", loaded_d4))
+            assert(loaded_d5 == 0x73735263, string.format("PRNG continuation mismatch: expected 73735263, got %08x", loaded_d5))
+            assert(loaded_d4 ~= d1, "PRNG stream must continue from save and not reseed to d1")
+        end)
+        _G.game = saved_game
+        if not ok then
+            error(run_err)
+        end
+    end,
 }
