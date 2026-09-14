@@ -66,11 +66,11 @@ UUserWidget* MakeTestHostWidget(UWorld* World)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2UiPrepareCommitTest,
-    "GV2.UI.PrepareCommitAndFailureInjection",
+    FGV2UiPrepareCommitPurityAndRollbackTest,
+    "GV2.UI.PrepareCommitPurityAndRollback",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
+bool FGV2UiPrepareCommitPurityAndRollbackTest::RunTest(const FString& Parameters)
 {
     using namespace GV2ContentCore;
 
@@ -510,6 +510,19 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
         }
     }
 
+    return true;
+}
+
+// =========================================================================
+// CFC-02A, CFC-04B: GC Lifecycle, Ownership & Thread Guard Tests
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiPrepareCommitGcAndGuardsTest,
+    "GV2.UI.PrepareCommitGcAndGuards",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiPrepareCommitGcAndGuardsTest::RunTest(const FString& Parameters)
+{
     // 7. CFC-02A: Fixture lifetime isolation, 20x repetition, and collectibility through weak references after teardown.
     {
         const int32 BaselineContexts = GEngine != nullptr ? GEngine->GetWorldContexts().Num() : 0;
@@ -551,6 +564,9 @@ bool FGV2UiPrepareCommitTest::RunTest(const FString& Parameters)
             }
         }
     }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
 
     // 8. CFC-04B: FGV2KeyedCollectionPropertyConsumer GC ownership of off-tree candidates
     {

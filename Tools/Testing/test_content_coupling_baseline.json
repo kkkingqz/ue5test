@@ -1,30 +1,6 @@
 {
   "allowed_couplings": [
     {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 218,
-      "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 602,
-      "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_Text_Default.BP_UIStyle_Text_Default_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 603,
-      "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_ButtonLabel_Default.BP_UIStyle_ButtonLabel_Default_C"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
-      "line": 684,
-      "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
-    },
-    {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2Dca11InventoryTabsTests.cpp",
       "line": 73,
@@ -79,12 +55,6 @@
       "token": "textsystem:schema.ui_field.declared_composite_fixture.v1"
     },
     {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2DeclaredCompositeTests.cpp",
-      "line": 276,
-      "token": "/Game/TextSystem/UI/Widgets/WBP_DeclaredCompositeFlatFixture.WBP_DeclaredCompositeFlatFixture_C"
-    },
-    {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2DeclaredCompositeTests.cpp",
       "line": 306,
@@ -133,18 +103,6 @@
       "token": "textsystem:screen.duc10_nested_chain"
     },
     {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2LayoutInvariantSourceTests.cpp",
-      "line": 555,
-      "token": "/Game/TextSystem/UI"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2LayoutInvariantSourceTests.cpp",
-      "line": 556,
-      "token": "/Game/RH/UI"
-    },
-    {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
       "line": 205,
@@ -153,224 +111,212 @@
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 768,
+      "line": 790,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 773,
+      "line": 795,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 785,
+      "line": 807,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 1925,
+      "line": 2067,
       "token": "textsystem:schema.ui_field.location_top_bar.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 1933,
+      "line": 2075,
       "token": "textsystem:schema.ui_field.location_top_bar.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 1942,
+      "line": 2084,
       "token": "textsystem:schema.ui_field.location_top_bar.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2087,
+      "line": 2229,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2091,
+      "line": 2233,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2100,
+      "line": 2242,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2107,
+      "line": 2249,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2114,
+      "line": 2256,
       "token": "textsystem:schema.ui_field.location_player_status.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2160,
+      "line": 2302,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2163,
+      "line": 2305,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2190,
+      "line": 2332,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2194,
+      "line": 2336,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2198,
+      "line": 2340,
       "token": "textsystem:resource.ui.missing_icon"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2209,
+      "line": 2351,
       "token": "textsystem:schema.ui_field.location_player_status.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2225,
+      "line": 2367,
       "token": "textsystem:schema.ui_field.location_player_status.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2230,
+      "line": 2372,
       "token": "textsystem:schema.ui_field.location_player_status.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2326,
+      "line": 2500,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2330,
+      "line": 2504,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2338,
+      "line": 2512,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2344,
+      "line": 2518,
       "token": "textsystem:schema.ui_field.location_scene.v2"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2360,
+      "line": 2534,
       "token": "textsystem:schema.ui_field.location_scene.v2"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2379,
+      "line": 2553,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2383,
+      "line": 2557,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2387,
+      "line": 2561,
       "token": "textsystem:resource.ui.missing_portrait"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2398,
+      "line": 2572,
       "token": "textsystem:schema.ui_field.location_scene.v2"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2414,
+      "line": 2588,
       "token": "textsystem:schema.ui_field.location_scene.v2"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2421,
+      "line": 2595,
       "token": "textsystem:schema.ui_field.location_scene.v2"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2425,
+      "line": 2599,
       "token": "textsystem:schema.ui_field.location_scene.v2"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2510,
+      "line": 2684,
       "token": "textsystem:schema.ui_field.location_commands.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2551,
+      "line": 2725,
       "token": "textsystem:schema.ui_field.location_commands.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2567,
+      "line": 2741,
       "token": "textsystem:schema.ui_field.location_commands.v1"
     },
     {
       "category": "class_1",
       "file": "Source/GV2/Private/Tests/GV2PropertyConsumersTests.cpp",
-      "line": 2571,
+      "line": 2745,
       "token": "textsystem:schema.ui_field.location_commands.v1"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2UiCapabilityObservabilityTests.cpp",
-      "line": 555,
-      "token": "/Game/TextSystem/UI"
-    },
-    {
-      "category": "class_2",
-      "file": "Source/GV2/Private/Tests/GV2UiCapabilityObservabilityTests.cpp",
-      "line": 556,
-      "token": "/Game/RH/UI"
     },
     {
       "category": "class_1",
@@ -404,6 +350,60 @@
     },
     {
       "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
+      "line": 218,
+      "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
+      "line": 602,
+      "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_Text_Default.BP_UIStyle_Text_Default_C"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
+      "line": 603,
+      "token": "/Game/TextSystem/UI/Styles/BP_UIStyle_ButtonLabel_Default.BP_UIStyle_ButtonLabel_Default_C"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",
+      "line": 684,
+      "token": "/Game/TextSystem/UI/Screens/WBP_LocationScreen.WBP_LocationScreen_C"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2DeclaredCompositeTests.cpp",
+      "line": 276,
+      "token": "/Game/TextSystem/UI/Widgets/WBP_DeclaredCompositeFlatFixture.WBP_DeclaredCompositeFlatFixture_C"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2LayoutInvariantSourceTests.cpp",
+      "line": 555,
+      "token": "/Game/TextSystem/UI"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2LayoutInvariantSourceTests.cpp",
+      "line": 556,
+      "token": "/Game/RH/UI"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2UiCapabilityObservabilityTests.cpp",
+      "line": 555,
+      "token": "/Game/TextSystem/UI"
+    },
+    {
+      "category": "class_2",
+      "file": "Source/GV2/Private/Tests/GV2UiCapabilityObservabilityTests.cpp",
+      "line": 556,
+      "token": "/Game/RH/UI"
+    },
+    {
+      "category": "class_2",
       "file": "Source/GV2/Private/Tests/GV2WidgetSemanticFontSizeContractTests.cpp",
       "line": 47,
       "token": "/Game/TextSystem/UI/Widgets/WBP_RichText.WBP_RichText_C"
@@ -412,6 +412,7 @@
   "description": "Baseline ratchet of allowed test suite content couplings and file line limits for TSR-02 / ADR-0046",
   "max_file_lines": 3306,
   "max_file_lines_exceptions": [],
+  "max_run_test_lines": 480,
   "smoke_files": [
     {
       "file": "Source/GV2/Private/Tests/GV2ContentSmokeTests.cpp",

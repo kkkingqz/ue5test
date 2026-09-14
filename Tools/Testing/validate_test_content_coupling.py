@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tempfile
 from collections import Counter
@@ -49,6 +50,9 @@ def load_baseline(baseline_path: Path) -> Dict[str, Any]:
 
     if "max_file_lines" not in data or not isinstance(data["max_file_lines"], int):
         raise ValueError(f"Baseline missing integer 'max_file_lines': {baseline_path}")
+
+    if "max_run_test_lines" not in data or not isinstance(data["max_run_test_lines"], int):
+        raise ValueError(f"Baseline missing integer 'max_run_test_lines': {baseline_path}")
 
     if "allowed_couplings" not in data or not isinstance(data["allowed_couplings"], list):
         raise ValueError(f"Baseline missing list 'allowed_couplings': {baseline_path}")
@@ -88,6 +92,69 @@ def validate_file_sizes(
                 violations.append(
                     f"{rel_path}: error [TEST_FILE_SIZE_CEILING]: File has {line_count} lines, "
                     f"exceeding the baseline ceiling of {max_lines} lines without an explicit exception."
+                )
+
+    return violations
+
+
+def extract_run_test_methods(file_path: Path) -> List[Tuple[str, int, int, int]]:
+    """Extract (test_class_name, start_line, end_line, line_count) for each RunTest in file."""
+    try:
+        lines = file_path.read_text(encoding="utf-8").splitlines()
+    except (UnicodeDecodeError, OSError):
+        return []
+    results: List[Tuple[str, int, int, int]] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        m = re.search(r"bool\s+([A-Za-z0-9_]+)::RunTest\s*\(", line)
+        if m:
+            test_name = m.group(1)
+            start_line = i + 1
+            depth = 0
+            found_open = False
+            end_line = start_line
+            for j in range(i, len(lines)):
+                l = lines[j]
+                for ch in l:
+                    if ch == "{":
+                        depth += 1
+                        found_open = True
+                    elif ch == "}":
+                        depth -= 1
+                        if found_open and depth == 0:
+                            end_line = j + 1
+                            break
+                if found_open and depth == 0:
+                    break
+            line_count = end_line - start_line + 1
+            results.append((test_name, start_line, end_line, line_count))
+            i = end_line
+        else:
+            i += 1
+    return results
+
+
+def validate_run_test_sizes(
+    repo_root: Path, baseline: Dict[str, Any]
+) -> List[str]:
+    """Validate that individual RunTest methods do not exceed the baseline ceiling (TSR-09)."""
+    max_run_lines = baseline.get("max_run_test_lines")
+    if max_run_lines is None or not isinstance(max_run_lines, int):
+        return ["Baseline error: missing or non-integer 'max_run_test_lines'."]
+
+    test_files = discover_test_files(repo_root)
+    violations: List[str] = []
+
+    for path in test_files:
+        rel_path = path.relative_to(repo_root).as_posix()
+        runs = extract_run_test_methods(path)
+        for test_name, start_line, end_line, line_count in runs:
+            if line_count > max_run_lines:
+                violations.append(
+                    f"{rel_path}:{start_line}: error [TEST_RUN_TEST_SIZE_CEILING]: "
+                    f"Test method '{test_name}::RunTest' has {line_count} lines (lines {start_line}-{end_line}), "
+                    f"exceeding the baseline ceiling of {max_run_lines} lines. (TSR-09)"
                 )
 
     return violations
@@ -169,6 +236,7 @@ def validate_repository(
         return [f"Failed to load baseline: {e}"]
 
     violations.extend(validate_file_sizes(repo_root, baseline))
+    violations.extend(validate_run_test_sizes(repo_root, baseline))
     violations.extend(validate_couplings(repo_root, baseline))
     return sorted(violations)
 
@@ -218,6 +286,7 @@ def run_self_tests() -> bool:
         baseline_data = {
             "version": 1,
             "max_file_lines": 50,
+            "max_run_test_lines": 40,
             "max_file_lines_exceptions": [
                 {
                     "file": "Source/Module/Private/Tests/TestLargeException.cpp",
@@ -306,6 +375,28 @@ def run_self_tests() -> bool:
             print(f"FAILED: excepted oversized file produced violations: {excepted_violations}")
             return False
         print("  [+] File size exception in baseline is honored.")
+        excepted_file.unlink()
+
+        # 6. Negative test: RunTest method exceeds max_run_test_lines ceiling (TSR-09)
+        oversized_run_test = test_dir / "TestOversizedRun.cpp"
+        oversized_run_lines = [
+            'IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTestOversizedRun, "Test.Oversized", EAutomationTestFlags::ApplicationContextMask)',
+            'bool FTestOversizedRun::RunTest(const FString& Parameters)',
+            '{',
+        ]
+        for idx in range(45):  # 45 + 5 = 50 lines > 40 ceiling
+            oversized_run_lines.append(f'    int32 x_{idx} = {idx};')
+        oversized_run_lines.extend([
+            '    return true;',
+            '}',
+        ])
+        oversized_run_test.write_text('\n'.join(oversized_run_lines) + '\n', encoding="utf-8")
+        run_size_violations = validate_repository(fake_root, fake_baseline_path)
+        if not any("TEST_RUN_TEST_SIZE_CEILING" in v and "FTestOversizedRun" in v for v in run_size_violations):
+            print(f"FAILED: gate did not reject oversized RunTest: {run_size_violations}")
+            return False
+        print("  [+] Negative self-test: gate rejects RunTest exceeding max_run_test_lines ceiling.")
+        oversized_run_test.unlink()
 
     print("ALL RATCHET GATE SELF-TESTS PASSED SUCCESSFULLY!")
     return True

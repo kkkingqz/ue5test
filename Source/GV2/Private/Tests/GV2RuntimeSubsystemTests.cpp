@@ -1964,11 +1964,11 @@ bool FGV2InputFieldWidgetContract::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2UiNestedInstancesAndTabsContract,
-    "GV2.Runtime.UI.NestedInstancesAndTabsContract",
+    FGV2UiTabContainerConsumerContractTest,
+    "GV2.Runtime.UI.TabContainerConsumerContract",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
+bool FGV2UiTabContainerConsumerContractTest::RunTest(const FString& Parameters)
 {
     if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
     {
@@ -2183,16 +2183,51 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                 BadMatCtx, OuterSchema, BadOuterMaterialized, BadProjected);
             TestFalse(TEXT("DUC-09: unknown nested schema_id is rejected, not silently passed through"), bBadProjected);
         }
+    }
 
-        // 27b. Consumer: FGV2TabContainerTabsPropertyConsumer turns an already-
-        // materialized envelope array into a real TArray<FGV2ScreenFieldValue>
-        // and applies it through the child screen's own public
-        // PrepareScreenFields / CommitScreenFields -- the same two-phase API a
-        // top-level screen uses, not a hand-rolled mutation plan.
-        {
-            GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
-            UGameInstance* GameInstance = WorldContext.GetGameInstance();
-            UWorld* TestWorld = WorldContext.GetWorld();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiNestedScreenReconciliationContractTest,
+    "GV2.Runtime.UI.NestedScreenReconciliationContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiNestedScreenReconciliationContractTest::RunTest(const FString& Parameters)
+{
+    if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
+    {
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inventory"), FText::FromString(TEXT("Inventory")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_use"), FText::FromString(TEXT("Use Potion")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_skills"), FText::FromString(TEXT("Skills")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_learn"), FText::FromString(TEXT("Learn Fireball")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inv"), FText::FromString(TEXT("Inventory")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_a"), FText::FromString(TEXT("Title A")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_b"), FText::FromString(TEXT("Title B")));
+    }
+
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
+
+    // 27b. Consumer: FGV2TabContainerTabsPropertyConsumer turns an already-
+    // materialized envelope array into a real TArray<FGV2ScreenFieldValue>
+    // and applies it through the child screen's own public
+    // PrepareScreenFields / CommitScreenFields -- the same two-phase API a
+    // top-level screen uses, not a hand-rolled mutation plan.
+    {
+        GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+        UGameInstance* GameInstance = WorldContext.GetGameInstance();
+        UWorld* TestWorld = WorldContext.GetWorld();
 
             // Child screen: a real UGV2ScreenWidgetBase with a nested declared
             // composite (DUC-08 shape) exposing exactly the two properties
@@ -2468,7 +2503,40 @@ bool FGV2UiNestedInstancesAndTabsContract::RunTest(const FString& Parameters)
                 *FString::Printf(TEXT("DUC-09: rejection names the unknown field [Error: %s]"), *UnknownPrepErr),
                 UnknownPrepErr.Contains(TEXT("unknown field")));
         }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiTabContainerLifecycleAndCycleContractTest,
+    "GV2.Runtime.UI.TabContainerLifecycleAndCycleContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiTabContainerLifecycleAndCycleContractTest::RunTest(const FString& Parameters)
+{
+    if (UGV2UiTheme* Theme = LoadConfiguredThemeForTest())
+    {
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inventory"), FText::FromString(TEXT("Inventory")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_use"), FText::FromString(TEXT("Use Potion")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_skills"), FText::FromString(TEXT("Skills")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.btn_learn"), FText::FromString(TEXT("Learn Fireball")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.tab_inv"), FText::FromString(TEXT("Inventory")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_a"), FText::FromString(TEXT("Title A")));
+        Theme->FallbackTextCatalog.FindOrAdd(TEXT("core:text.title_b"), FText::FromString(TEXT("Title B")));
     }
+
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+    const UGV2UiTheme* Theme = PrepareContext->GetTheme().Theme.Get();
 
     // =========================================================================
     // DUC-11: composition-cycle guard for screen_id-based nested screens

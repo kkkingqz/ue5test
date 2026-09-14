@@ -172,11 +172,11 @@ bool FGV2LocationScreenResolutionMatrixTest::RunTest(const FString& Parameters)
 // UIH-01..04: Core Repeater & Composite Reconciliation Contract Test
 // =========================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2CoreRepeaterContractTest,
-    "GV2.Runtime.UI.CoreRepeaterContract",
+    FGV2CoreRepeaterWidgetReconciliationTest,
+    "GV2.Runtime.UI.CoreRepeaterWidgetReconciliation",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
+bool FGV2CoreRepeaterWidgetReconciliationTest::RunTest(const FString& Parameters)
 {
     GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
     UGameInstance* GameInstance = WorldContext.GetGameInstance();
@@ -541,6 +541,25 @@ bool FGV2CoreRepeaterContractTest::RunTest(const FString& Parameters)
             TestEqual(TEXT("Matrix: container child count 0 after clear"), MatrixContainer->GetChildrenCount(), 0);
         }
     }
+
+    return true;
+}
+
+// =========================================================================
+// UIH-02..04: Core Repeater Composite Integration Contract Test
+// =========================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2CoreRepeaterCompositeIntegrationTest,
+    "GV2.Runtime.UI.CoreRepeaterCompositeIntegration",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2CoreRepeaterCompositeIntegrationTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UGameInstance* GameInstance = WorldContext.GetGameInstance();
+    UWorld* TestWorld = WorldContext.GetWorld();
+    const UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
+    TestNotNull(TEXT("Configured theme is available for prepared text fixtures"), Theme);
 
     // 2. UIH-02: Test CommandPanel using Core Repeater
     {

@@ -59,11 +59,11 @@ namespace
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2PropertyConsumersTest,
-    "GV2.UI.StandardPropertyConsumers",
+    FGV2PropertyConsumersFactoryAndPresentationAuditTest,
+    "GV2.UI.Consumers.FactoryAndPresentationAudit",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
+bool FGV2PropertyConsumersFactoryAndPresentationAuditTest::RunTest(const FString& Parameters)
 {
     GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
     FString ContextError;
@@ -485,6 +485,28 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
         TestEqual(TEXT("DCA-08: target-resolution logic exists in exactly one file"), FilesContainingMarker, 1);
     }
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PropertyConsumersBasicWidgetsAndHostsTest,
+    "GV2.UI.Consumers.BasicWidgetsAndHosts",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PropertyConsumersBasicWidgetsAndHostsTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
     // 5. UPP-14: UGV2ButtonWidgetBase binding/key consumer & negative schema compatibility test
     {
         GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
@@ -895,9 +917,35 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestFalse(TEXT("DUC-03: Key Commit rejects a target with no IGV2UiPropertyHost"), KeyConsumer.Commit(PlainWidget, UnsupportedErr));
             TestTrue(TEXT("DUC-03: rejection names the unhandled_target diagnostic"), UnsupportedErr.Contains(TEXT("unhandled_target")));
         }
+    }
 
-        // 8. UPP-20: FGV2KeyedCollectionPropertyConsumer & Value-Level Transactionality
-        {
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PropertyConsumersKeyedCollectionAndRollbackTest,
+    "GV2.UI.Consumers.KeyedCollectionAndRollback",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PropertyConsumersKeyedCollectionAndRollbackTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+
+    // 8. UPP-20: FGV2KeyedCollectionPropertyConsumer & Value-Level Transactionality
+    {
             UGV2ListViewWidgetBase* ListView = CreateWidget<UGV2ListViewWidgetBase>(TestWorld, UGV2ListViewWidgetBase::StaticClass());
             UVerticalBox* ContainerBox = NewObject<UVerticalBox>(ListView);
             ListView->SetContainerPanel(ContainerBox);
@@ -1277,10 +1325,35 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 }
             }
         }
-        }
+    }
 
-        // 9. UPP-21: UGV2ButtonListWidgetBase and UGV2DropdownSelectWidgetBase Property Host Reconciliation
-        {
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PropertyConsumersListsDropdownsAndSpansTest,
+    "GV2.UI.Consumers.ListsDropdownsAndSpans",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PropertyConsumersListsDropdownsAndSpansTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+
+    // 9. UPP-21: UGV2ButtonListWidgetBase and UGV2DropdownSelectWidgetBase Property Host Reconciliation
+    {
             // 9a. ButtonList Property Host
             UGV2ButtonListWidgetBase* ButtonList = CreateWidget<UGV2ButtonListWidgetBase>(TestWorld, UGV2ButtonListWidgetBase::StaticClass());
             UVerticalBox* BtnBox = NewObject<UVerticalBox>(ButtonList);
@@ -1620,10 +1693,35 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             }
         }
 
-        // 11. UPP-22: UGV2ModalWidgetBase Property Host Reconciliation
-        // REV3-04 closure: every declared Modal capability (title/content/buttons/backdrop_close_action)
-        // has a real consumer wired through DescribeUiCapabilities — none is silently dropped/partial.
-        {
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PropertyConsumersModalAndTabContainersTest,
+    "GV2.UI.Consumers.ModalAndTabContainers",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PropertyConsumersModalAndTabContainersTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+
+    // 11. UPP-22: UGV2ModalWidgetBase Property Host Reconciliation
+    // REV3-04 closure: every declared Modal capability (title/content/buttons/backdrop_close_action)
+    // has a real consumer wired through DescribeUiCapabilities — none is silently dropped/partial.
+    {
             UGV2ModalWidgetBase* ModalWidget = CreateWidget<UGV2ModalWidgetBase>(TestWorld, UGV2ModalWidgetBase::StaticClass());
 
             FGV2UiCapabilityBuilder ModalBuilder;
@@ -1769,112 +1867,154 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
             TestFalse(TEXT("Tab with unregistered screen_id rejected"), TabsConsumer->Prepare(FGV2PreparedUiValue::MakeArray(FGV2PreparedUiArray::Create(UnregScreenTabs)), *TabsCap, TabContainer, PrepErr));
         }
 
-        // 13. UPP-24: TopBar, PlayerStatus, Scene and CommandPanel (DUC-08/DCA-05/06/07: generic declared composite) as IGV2UiPropertyHost
+    return true;
+}
+
+namespace
+{
+struct FGV2CompositeHostTestHelper
+{
+    const FGV2PresentationPrepareContext* PrepareContext = nullptr;
+
+    explicit FGV2CompositeHostTestHelper(const FGV2PresentationPrepareContext* InContext)
+        : PrepareContext(InContext)
+    {}
+
+    static GV2ContentCore::FCompiledUiFieldSpecPtr MakeScalarSpec(
+        const GV2ContentCore::EScalarFieldKind Kind,
+        const TOptional<double> Min = {},
+        const TOptional<double> Max = {})
+    {
+        auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+        Spec->Kind = GV2ContentCore::EUiFieldKind::Scalar;
+        GV2ContentCore::FScalarFieldSpec Scalar;
+        Scalar.Kind = Kind;
+        if (Min.IsSet()) { Scalar.MinimumNumber = Min.GetValue(); }
+        if (Max.IsSet()) { Scalar.MaximumNumber = Max.GetValue(); }
+        Spec->Scalar = MoveTemp(Scalar);
+        return Spec;
+    }
+
+    static GV2ContentCore::FCompiledUiFieldSpecPtr MakeKeySpec()
+    {
+        auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+        Spec->Kind = GV2ContentCore::EUiFieldKind::Key;
+        return Spec;
+    }
+
+    static GV2ContentCore::FCompiledUiFieldSpecPtr MakeRefSpec(const std::string& TargetKind)
+    {
+        auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
+        Spec->Kind = GV2ContentCore::EUiFieldKind::Ref;
+        Spec->RefTargetKind = TargetKind;
+        return Spec;
+    }
+
+    bool ApplyHostProps(
+        UUserWidget* Host,
+        const TArray<TPair<FString, FGV2PreparedUiValue>>& Props,
+        const GV2ContentCore::FCompiledUiFieldSpec& Schema,
+        const FString& SchemaId,
+        FString& OutError) const
+    {
+        if (Host == nullptr) return false;
+        IGV2UiPropertyHost* PropHost = Cast<IGV2UiPropertyHost>(Host);
+        if (!PropHost) return false;
+
+        FGV2UiCapabilityBuilder Builder;
+        PropHost->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree Caps = Builder.Build();
+
+        TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(CopyTemp(Props));
+        FGV2UiHostMutationPlan Plan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+
+        const bool bPrepared = PrepareUiHostProperties(
+            Host, Caps, *Candidate, Schema, SchemaId,
+            SchemaId, GetUiHostSemanticState(PropHost->GetPropertyHostState()).GetLastCommittedProperties(), Plan, Diagnostics,
+            nullptr, PrepareContext);
+
+        if (!bPrepared)
         {
-            auto MakeScalarSpec = [](const GV2ContentCore::EScalarFieldKind Kind,
-                                     const TOptional<double> Min = {},
-                                     const TOptional<double> Max = {}) -> GV2ContentCore::FCompiledUiFieldSpecPtr
-            {
-                auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
-                Spec->Kind = GV2ContentCore::EUiFieldKind::Scalar;
-                GV2ContentCore::FScalarFieldSpec Scalar;
-                Scalar.Kind = Kind;
-                if (Min.IsSet()) { Scalar.MinimumNumber = Min.GetValue(); }
-                if (Max.IsSet()) { Scalar.MaximumNumber = Max.GetValue(); }
-                Spec->Scalar = MoveTemp(Scalar);
-                return Spec;
-            };
+            OutError = Diagnostics.Num() > 0 ? Diagnostics[0].Message : TEXT("Prepare failed");
+            UE_LOG(LogTemp, Warning, TEXT("ApplyHostProps prepare failed on %s: %s"), *Host->GetName(), *OutError);
+            return false;
+        }
 
-            auto MakeKeySpec = []() -> GV2ContentCore::FCompiledUiFieldSpecPtr
-            {
-                auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
-                Spec->Kind = GV2ContentCore::EUiFieldKind::Key;
-                return Spec;
-            };
+        FString FailedPath;
+        const bool bCommitted = CommitUiHostProperties(Host, Plan, FailedPath, OutError);
+        if (!bCommitted)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("ApplyHostProps commit failed on %s at %s: %s"), *Host->GetName(), *FailedPath, *OutError);
+        }
+        else
+        {
+            GetUiHostSemanticState(PropHost->GetPropertyHostState()).SetLastCommittedProperties(*Candidate);
+        }
+        return bCommitted;
+    }
 
-            auto MakeRefSpec = [](const std::string& TargetKind) -> GV2ContentCore::FCompiledUiFieldSpecPtr
-            {
-                auto Spec = std::make_shared<GV2ContentCore::FCompiledUiFieldSpec>();
-                Spec->Kind = GV2ContentCore::EUiFieldKind::Ref;
-                Spec->RefTargetKind = TargetKind;
-                return Spec;
-            };
+    void ResetHostProps(
+        UUserWidget* Host,
+        const GV2ContentCore::FCompiledUiFieldSpec& Schema,
+        const FString& SchemaId) const
+    {
+        if (Host == nullptr) return;
+        IGV2UiPropertyHost* PropHost = Cast<IGV2UiPropertyHost>(Host);
+        if (!PropHost) return;
 
-            // Helper to prepare and commit properties on a host widget
-            auto ApplyHostProps = [&](
-                UUserWidget* Host,
-                const TArray<TPair<FString, FGV2PreparedUiValue>>& Props,
-                const GV2ContentCore::FCompiledUiFieldSpec& Schema,
-                const FString& SchemaId,
-                FString& OutError) -> bool
-            {
-                if (Host == nullptr) return false;
-                IGV2UiPropertyHost* PropHost = Cast<IGV2UiPropertyHost>(Host);
-                if (!PropHost) return false;
+        FGV2UiCapabilityBuilder Builder;
+        PropHost->DescribeUiCapabilities(Builder);
+        const FGV2UiCapabilityTree Caps = Builder.Build();
 
-                FGV2UiCapabilityBuilder Builder;
-                PropHost->DescribeUiCapabilities(Builder);
-                const FGV2UiCapabilityTree Caps = Builder.Build();
+        TArray<TPair<FString, FGV2PreparedUiValue>> EmptyProps;
+        TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(MoveTemp(EmptyProps));
+        FGV2UiHostMutationPlan Plan;
+        TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
 
-                TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(CopyTemp(Props));
-                FGV2UiHostMutationPlan Plan;
-                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
-                
-                const bool bPrepared = PrepareUiHostProperties(
-                    Host, Caps, *Candidate, Schema, SchemaId,
-                    SchemaId, GetUiHostSemanticState(PropHost->GetPropertyHostState()).GetLastCommittedProperties(), Plan, Diagnostics,
-                    nullptr, PrepareContext);
+        PrepareUiHostProperties(
+            Host, Caps, *Candidate, Schema, SchemaId,
+            SchemaId, GetUiHostSemanticState(PropHost->GetPropertyHostState()).GetLastCommittedProperties(), Plan, Diagnostics,
+            nullptr, PrepareContext);
 
-                if (!bPrepared)
-                {
-                    OutError = Diagnostics.Num() > 0 ? Diagnostics[0].Message : TEXT("Prepare failed");
-                    UE_LOG(LogTemp, Warning, TEXT("ApplyHostProps prepare failed on %s: %s"), *Host->GetName(), *OutError);
-                    return false;
-                }
+        FString FailedPath, Error;
+        CommitUiHostProperties(Host, Plan, FailedPath, Error);
+        GetUiHostSemanticState(PropHost->GetPropertyHostState()).SetLastCommittedProperties(FGV2PreparedUiObject());
+    }
+};
+} // namespace
 
-                FString FailedPath;
-                const bool bCommitted = CommitUiHostProperties(Host, Plan, FailedPath, OutError);
-                if (!bCommitted)
-                {
-                    UE_LOG(LogTemp, Warning, TEXT("ApplyHostProps commit failed on %s at %s: %s"), *Host->GetName(), *FailedPath, *OutError);
-                }
-                else
-                {
-                    GetUiHostSemanticState(PropHost->GetPropertyHostState()).SetLastCommittedProperties(*Candidate);
-                }
-                return bCommitted;
-            };
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest,
+    "GV2.UI.Consumers.TopBarAndPlayerStatusComposite",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-            auto ResetHostProps = [&](
-                UUserWidget* Host,
-                const GV2ContentCore::FCompiledUiFieldSpec& Schema,
-                const FString& SchemaId)
-            {
-                if (Host == nullptr) return;
-                IGV2UiPropertyHost* PropHost = Cast<IGV2UiPropertyHost>(Host);
-                if (!PropHost) return;
+bool FGV2PropertyConsumersTopBarAndPlayerStatusCompositeTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
 
-                FGV2UiCapabilityBuilder Builder;
-                PropHost->DescribeUiCapabilities(Builder);
-                const FGV2UiCapabilityTree Caps = Builder.Build();
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
 
-                TArray<TPair<FString, FGV2PreparedUiValue>> EmptyProps;
-                TSharedRef<const FGV2PreparedUiObject> Candidate = FGV2PreparedUiObject::Create(MoveTemp(EmptyProps));
-                FGV2UiHostMutationPlan Plan;
-                TArray<FGV2UiSchemaCompatibilityDiagnostic> Diagnostics;
+    FGV2CompositeHostTestHelper HostHelper(PrepareContext);
+    auto MakeScalarSpec = &FGV2CompositeHostTestHelper::MakeScalarSpec;
+    auto MakeKeySpec = &FGV2CompositeHostTestHelper::MakeKeySpec;
+    auto MakeRefSpec = &FGV2CompositeHostTestHelper::MakeRefSpec;
+    auto ApplyHostProps = [&](auto&&... Args) { return HostHelper.ApplyHostProps(Forward<decltype(Args)>(Args)...); };
+    auto ResetHostProps = [&](auto&&... Args) { HostHelper.ResetHostProps(Forward<decltype(Args)>(Args)...); };
 
-                PrepareUiHostProperties(
-                    Host, Caps, *Candidate, Schema, SchemaId,
-                    SchemaId, GetUiHostSemanticState(PropHost->GetPropertyHostState()).GetLastCommittedProperties(), Plan, Diagnostics,
-                    nullptr, PrepareContext);
-
-                FString FailedPath, Error;
-                CommitUiHostProperties(Host, Plan, FailedPath, Error);
-                GetUiHostSemanticState(PropHost->GetPropertyHostState()).SetLastCommittedProperties(FGV2PreparedUiObject());
-            };
-
-            // 13a. TopBar (DUC-08: generic declared composite) Property Host Reconciliation
-            {
+    // 13a. TopBar (DUC-08: generic declared composite) Property Host Reconciliation
+    {
                 UGV2DeclaredCompositeWidgetBase* TopBar = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, UGV2DeclaredCompositeWidgetBase::StaticClass());
                 TestNotNull(TEXT("TopBar instantiated"), TopBar);
 
@@ -2234,6 +2374,38 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TestEqual(TEXT("PlayerStatus EffectRepeater cleared on reset"), EffectRep->GetEntryCount(), 0);
             }
 
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2PropertyConsumersSceneAndCommandPanelCompositeTest,
+    "GV2.UI.Consumers.SceneAndCommandPanelComposite",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2PropertyConsumersSceneAndCommandPanelCompositeTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+
+    FGV2CompositeHostTestHelper HostHelper(PrepareContext);
+    auto MakeScalarSpec = &FGV2CompositeHostTestHelper::MakeScalarSpec;
+    auto MakeKeySpec = &FGV2CompositeHostTestHelper::MakeKeySpec;
+    auto MakeRefSpec = &FGV2CompositeHostTestHelper::MakeRefSpec;
+    auto ApplyHostProps = [&](auto&&... Args) { return HostHelper.ApplyHostProps(Forward<decltype(Args)>(Args)...); };
+    auto ResetHostProps = [&](auto&&... Args) { HostHelper.ResetHostProps(Forward<decltype(Args)>(Args)...); };
+
             // 13c. LocationScene (DCA-05: generic declared composite) Property Host Reconciliation
             {
                 UGV2DeclaredCompositeWidgetBase* SceneWidget = CreateWidget<UGV2DeclaredCompositeWidgetBase>(TestWorld, UGV2DeclaredCompositeWidgetBase::StaticClass());
@@ -2572,8 +2744,6 @@ bool FGV2PropertyConsumersTest::RunTest(const FString& Parameters)
                 TestEqual(TEXT("CmdPanel Buttons cleared on reset"), BtnRep->GetEntryCount(), 0);
                 TestEqual(TEXT("CmdPanel Key cleared on reset"), CmdPanel->GetKey(), NAME_None);
             }
-        }
-    }
 
     return true;
 }

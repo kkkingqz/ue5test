@@ -452,11 +452,11 @@ bool FGV2UiCoreBaselineComponentsContract::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2UiKitCentralThemeContract,
-    "GV2.Runtime.UIKit.CentralThemeAndComponents",
+    FGV2UiKitThemeTokensAndTypographyContractTest,
+    "GV2.Runtime.UIKit.ThemeTokensAndTypographyContract",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
+bool FGV2UiKitThemeTokensAndTypographyContractTest::RunTest(const FString& Parameters)
 {
     UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
     TestNotNull(TEXT("Configured central UI theme is loadable"), Theme);
@@ -893,6 +893,23 @@ bool FGV2UiKitCentralThemeContract::RunTest(const FString& Parameters)
                 NineSliceDefinition,
                 ResolvedImage,
                 ImageResourceError));
+    }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiKitWidgetThemeApplicationContractTest,
+    "GV2.Runtime.UIKit.WidgetThemeApplicationContract",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiKitWidgetThemeApplicationContractTest::RunTest(const FString& Parameters)
+{
+    UGV2UiTheme* Theme = LoadConfiguredThemeForTest();
+    TestNotNull(TEXT("Configured central UI theme is loadable"), Theme);
+    if (Theme == nullptr)
+    {
+        return false;
     }
 
     FAssetRegistryModule& AssetRegistryModule =

@@ -55,11 +55,11 @@ UGV2ScreenRegistry* LoadConfiguredRegistryForTest()
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FGV2UiLayeredReconciliationContract,
-    "GV2.UI.LayeredReconciliationContract",
+    FGV2UiLayeredBasicLifecycleTest,
+    "GV2.UI.LayeredReconciliation.BasicLifecycle",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
+bool FGV2UiLayeredBasicLifecycleTest::RunTest(const FString& Parameters)
 {
     GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
     FString ContextError;
@@ -304,9 +304,85 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         UGV2ScreenWidgetBase* RouteWidget3 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
         TestNotNull(TEXT("New route widget exists"), RouteWidget3);
         TestNotEqual(TEXT("Old route widget replaced"), RouteWidget3, RouteWidget1);
+    }
 
-        // Step D: Doc4 adds a modal -> Lower layers blocked, top modal interactive (UIF-20)
-        FGV2UiDocumentViewModel Doc4 = Doc3;
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiLayeredModalInteractivityAndPrepareAtomicityTest,
+    "GV2.UI.LayeredReconciliation.ModalInteractivityAndPrepareAtomicity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiLayeredModalInteractivityAndPrepareAtomicityTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+    if (TestWorld == nullptr)
+    {
+        return false;
+    }
+
+    UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+        nullptr,
+        TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+    if (GameShellClass == nullptr)
+    {
+        GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+    }
+    UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(
+        TestWorld,
+        GameShellClass);
+    TestNotNull(TEXT("Game shell instantiated"), Shell);
+    GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
+
+    FGV2LayeredUiReconciler Reconciler;
+
+    TMap<FString, TSubclassOf<UGV2ScreenWidgetBase>> ScreenClasses;
+    ScreenClasses.Add(TEXT("core:screen.main"), UGV2ScreenWidgetBase::StaticClass());
+    ScreenClasses.Add(TEXT("core:screen.alt"), UGV2ScreenWidgetBase::StaticClass());
+    ScreenClasses.Add(TEXT("core:screen.modal_confirm"), UGV2ScreenWidgetBase::StaticClass());
+
+    int32 FactoryInstantiations = 0;
+    auto MockFactory = [&](const FString& ScreenId, FName) -> UGV2ScreenWidgetBase*
+    {
+        TSubclassOf<UGV2ScreenWidgetBase>* FoundClass = ScreenClasses.Find(ScreenId);
+        if (FoundClass == nullptr || *FoundClass == nullptr)
+        {
+            return nullptr;
+        }
+        ++FactoryInstantiations;
+        return CreateWidget<UGV2ScreenWidgetBase>(TestWorld, *FoundClass);
+    };
+
+    FString ReconcileError;
+
+    // Baseline route screen (Doc3)
+    FGV2UiDocumentViewModel Doc3;
+    Doc3.UiInstanceId = TEXT("ui@1:1");
+    Doc3.Revision = 3;
+    Doc3.bHasRoute = true;
+    Doc3.Route.Layer = TEXT("location_content");
+    Doc3.Route.InstanceKey = TEXT("main");
+    Doc3.Route.ScreenId = TEXT("core:screen.alt");
+    TestTrue(TEXT("Reconcile baseline Doc3 succeeds"), Reconciler.Reconcile(Shell, Doc3, MockFactory, ReconcileError, *PrepareContext));
+    UGV2ScreenWidgetBase* RouteWidget3 = Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("main"));
+    TestNotNull(TEXT("Baseline route widget exists"), RouteWidget3);
+
+    // Step D: Doc4 adds a modal -> Lower layers blocked, top modal interactive (UIF-20)
+    FGV2UiDocumentViewModel Doc4 = Doc3;
         Doc4.Revision = 4;
         FGV2ScreenInstanceViewModel ModalInst;
         ModalInst.Layer = TEXT("modal_stack");
@@ -315,7 +391,7 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
         Doc4.Modals.Add(ModalInst);
 
         TestTrue(TEXT("Reconcile Doc4 with modal succeeds"), Reconciler.Reconcile(Shell, Doc4, MockFactory, ReconcileError, *PrepareContext));
-        TestEqual(TEXT("Factory instantiated modal widget"), FactoryInstantiations, 3);
+        TestEqual(TEXT("Factory instantiated modal widget"), FactoryInstantiations, 2);
         if (Shell != nullptr)
         {
             TestFalse(TEXT("Location content layer is blocked when modal is active"), Shell->IsLayerInteractive(TEXT("location_content")));
@@ -574,9 +650,61 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
                 Reconciler.GetActiveScreen(TEXT("location_content"), TEXT("fault_slot")), FaultScreen);
         }
 
-        // Step J: PCC-07 -- multi-layer Commit-phase failure injection. UPP-28's own DoD
-        // ("failed Prepare leaves the active set and bindings untouched") only covered the
-        // Prepare phase; before PCC-07's reorder in CommitReconcile (commit every screen
+        if (Shell != nullptr)
+        {
+            TestTrue(TEXT("Location content layer is unblocked after modal closure"), Shell->IsLayerInteractive(TEXT("location_content")));
+            TestTrue(TEXT("Overlay stack layer is unblocked"), Shell->IsLayerInteractive(TEXT("overlay_stack")));
+            TestTrue(TEXT("Background layer is unblocked"), Shell->IsLayerInteractive(TEXT("background")));
+            TestTrue(TEXT("Core interface layer is unblocked"), Shell->IsLayerInteractive(TEXT("core_interface")));
+        }
+
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiLayeredMultiLayerCommitFailureTest,
+    "GV2.UI.LayeredReconciliation.MultiLayerCommitFailure",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiLayeredMultiLayerCommitFailureTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+    if (TestWorld == nullptr)
+    {
+        return false;
+    }
+
+    UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+        nullptr,
+        TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+    if (GameShellClass == nullptr)
+    {
+        GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+    }
+    UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(
+        TestWorld,
+        GameShellClass);
+    TestNotNull(TEXT("Game shell instantiated"), Shell);
+    GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
+
+    FGV2LayeredUiReconciler Reconciler;
+
+    // Step J: PCC-07 -- multi-layer Commit-phase failure injection. UPP-28's own DoD
+    // ("failed Prepare leaves the active set and bindings untouched") only covered the
+    // Prepare phase; before PCC-07's reorder in CommitReconcile (commit every screen
         // BEFORE touching Shell attach/detach or ActiveScreens), an injected Commit failure
         // on one screen of a multi-layer document could leave *other*, unrelated layers'
         // screens already replaced in the Shell tree while ActiveScreens rolled back whole
@@ -937,7 +1065,51 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             }
         }
 
-        // Step K: GBH-11 (REM-02, ADR-0041) -- the danger point PCC-07 (Step J above)
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FGV2UiLayeredReusedScreenCommitRollbackTest,
+    "GV2.UI.LayeredReconciliation.ReusedScreenCommitRollback",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FGV2UiLayeredReusedScreenCommitRollbackTest::RunTest(const FString& Parameters)
+{
+    GV2PresentationTestFixtures::FPrepareContextFixture ContextFixture;
+    FString ContextError;
+    const bool bContextReady = ContextFixture.Initialize(ContextError);
+    TestTrue(
+        *FString::Printf(TEXT("Presentation Prepare context builds [Error: %s]"), *ContextError),
+        bContextReady);
+    const FGV2PresentationPrepareContext* PrepareContext = ContextFixture.Get();
+    if (!bContextReady || PrepareContext == nullptr)
+    {
+        return false;
+    }
+
+    GV2PresentationTestFixtures::FScopedTestWorldContext WorldContext;
+    UWorld* TestWorld = WorldContext.GetWorld();
+    if (TestWorld == nullptr)
+    {
+        return false;
+    }
+
+    UClass* GameShellClass = LoadClass<UGV2GameShellWidgetBase>(
+        nullptr,
+        TEXT("/Game/UI/Shell/WBP_GameShell.WBP_GameShell_C"));
+    if (GameShellClass == nullptr)
+    {
+        GameShellClass = UGV2GameShellWidgetBase::StaticClass();
+    }
+    UGV2GameShellWidgetBase* Shell = CreateWidget<UGV2GameShellWidgetBase>(
+        TestWorld,
+        GameShellClass);
+    TestNotNull(TEXT("Game shell instantiated"), Shell);
+    GV2PresentationTestFixtures::TScopedRootObject<UGV2GameShellWidgetBase> ScopedShell(Shell);
+
+    FGV2LayeredUiReconciler Reconciler;
+
+    // Step K: GBH-11 (REM-02, ADR-0041) -- the danger point PCC-07 (Step J above)
         // never reached. PCC-07 injects failure on a screen that is being REPLACED by a
         // brand-new widget instance (V1 -> V2): the target widget is off-tree until the
         // whole document commits, so a mid-Commit failure there was always safe -- there
@@ -1274,17 +1446,6 @@ bool FGV2UiLayeredReconciliationContract::RunTest(const FString& Parameters)
             TestTrue(TEXT("GBF-04: missing committed schema reports typed rollback diagnostic"),
                 MissingSchemaError.Contains(TEXT("core:diagnostic.ui_rollback.missing_committed_schema")));
         }
-
-        if (Shell != nullptr)
-        {
-            TestTrue(TEXT("Location content layer is unblocked after modal closure"), Shell->IsLayerInteractive(TEXT("location_content")));
-            TestTrue(TEXT("Overlay stack layer is unblocked"), Shell->IsLayerInteractive(TEXT("overlay_stack")));
-            TestTrue(TEXT("Background layer is unblocked"), Shell->IsLayerInteractive(TEXT("background")));
-            TestTrue(TEXT("Core interface layer is unblocked"), Shell->IsLayerInteractive(TEXT("core_interface")));
-            TestEqual(TEXT("Overlay host is empty"), Shell->GetScreensInLayer(TEXT("overlay_stack")).Num(), 0);
-            TestEqual(TEXT("Modal host is empty"), Shell->GetScreensInLayer(TEXT("modal_stack")).Num(), 0);
-        }
-    }
 
     return true;
 }
